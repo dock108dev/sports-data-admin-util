@@ -5,9 +5,11 @@ Handles team and player boxscore upserts.
 
 from __future__ import annotations
 
+import json
 from typing import Sequence
 
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import cast, text
+from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Session
 
 from ..db import db_models
@@ -81,6 +83,8 @@ def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[Nor
         league_id = get_league_id(session, payload.team.league_code)
         team_id = _upsert_team(session, league_id, payload.team)
         stats = _build_team_stats(payload)
+        # psycopg3 requires explicit JSONB casting for dicts in raw SQL
+        stats_json = cast(text(f"'{json.dumps(stats)}'"), JSONB)
         stmt = (
             insert(db_models.SportsTeamBoxscore)
             .values(
@@ -93,7 +97,7 @@ def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[Nor
             .on_conflict_do_update(
                 constraint="uq_team_boxscore_game_team",
                 set_={
-                    "stats": stats,
+                    "stats": stats_json,
                     "updated_at": utcnow(),
                 },
             )
@@ -117,6 +121,8 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
             league_id = get_league_id(session, payload.team.league_code)
             team_id = _upsert_team(session, league_id, payload.team)
             stats = _build_player_stats(payload)
+            # psycopg3 requires explicit JSONB casting for dicts in raw SQL
+            stats_json = cast(text(f"'{json.dumps(stats)}'"), JSONB)
             stmt = (
                 insert(db_models.SportsPlayerBoxscore)
                 .values(
@@ -130,7 +136,7 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
                 .on_conflict_do_update(
                     constraint="uq_player_boxscore_identity",
                     set_={
-                        "stats": stats,
+                        "stats": stats_json,
                         "updated_at": utcnow(),
                     },
                 )

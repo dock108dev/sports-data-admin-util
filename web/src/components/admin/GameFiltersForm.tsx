@@ -158,6 +158,16 @@ export function GameFiltersForm({
           <label className={styles.checkboxLabel}>
             <input
               type="checkbox"
+              checked={filters.missingSocial ?? false}
+              onChange={(e) => onFiltersChange({ ...filters, missingSocial: e.target.checked })}
+            />
+            Missing social
+          </label>
+        </div>
+        <div className={styles.filterGroup}>
+          <label className={styles.checkboxLabel}>
+            <input
+              type="checkbox"
               checked={filters.missingAny ?? false}
               onChange={(e) => onFiltersChange({ ...filters, missingAny: e.target.checked })}
             />

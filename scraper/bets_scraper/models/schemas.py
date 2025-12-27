@@ -114,8 +114,5 @@ class IngestionConfig(BaseModel):
     backfill_player_stats: bool = False  # Re-scrape games missing player boxscores
     backfill_odds: bool = False  # Fetch odds for games missing odds data
     backfill_social: bool = False  # Fetch social posts for games missing them
-    # Social scraping specific options
-    social_pre_game_hours: int = 2  # Hours before game to start collecting
-    social_post_game_hours: int = 1  # Hours after game to stop collecting
 
 

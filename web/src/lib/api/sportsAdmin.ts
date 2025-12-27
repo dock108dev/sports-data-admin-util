@@ -44,6 +44,8 @@ export type GameSummary = {
   has_boxscore: boolean;
   has_player_stats: boolean;
   has_odds: boolean;
+  has_social: boolean;
+  social_post_count: number;
   has_required_data: boolean;
   scrape_version: number | null;
   last_scraped_at: string | null;
@@ -56,6 +58,7 @@ export type GameListResponse = {
   with_boxscore_count?: number;
   with_player_stats_count?: number;
   with_odds_count?: number;
+  with_social_count?: number;
 };
 
 export type TeamStat = {
@@ -88,6 +91,14 @@ export type OddsEntry = {
   observed_at: string | null;
 };
 
+export type SocialPost = {
+  id: number;
+  post_url: string;
+  posted_at: string;
+  has_video: boolean;
+  team_abbreviation: string;
+};
+
 export type AdminGameDetail = {
   game: {
     id: number;
@@ -105,10 +116,13 @@ export type AdminGameDetail = {
     has_boxscore: boolean;
     has_player_stats: boolean;
     has_odds: boolean;
+    has_social: boolean;
+    social_post_count: number;
   };
   team_stats: TeamStat[];
   player_stats: PlayerStat[];
   odds: OddsEntry[];
+  social_posts: SocialPost[];
   derived_metrics: Record<string, any>;
   raw_payloads: Record<string, any>;
 };
@@ -122,6 +136,7 @@ export type GameFilters = {
   missingBoxscore?: boolean;
   missingPlayerStats?: boolean;
   missingOdds?: boolean;
+  missingSocial?: boolean;
   missingAny?: boolean;
   limit?: number;
   offset?: number;
@@ -645,8 +660,10 @@ export async function createScrapeRun(payload: {
     endDate?: string;
     includeBoxscores?: boolean;
     includeOdds?: boolean;
+    includeSocial?: boolean;
     backfillPlayerStats?: boolean;
     backfillOdds?: boolean;
+    backfillSocial?: boolean;
     books?: string[];
   };
 }): Promise<ScrapeRunResponse> {

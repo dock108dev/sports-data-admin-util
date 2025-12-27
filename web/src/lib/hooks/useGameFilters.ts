@@ -10,6 +10,7 @@ export const DEFAULT_GAME_FILTERS: GameFilters = {
   missingBoxscore: false,
   missingPlayerStats: false,
   missingOdds: false,
+  missingSocial: false,
   missingAny: false,
   limit: 25,
   offset: 0,
@@ -31,6 +32,7 @@ interface UseGameFiltersReturn {
     withBoxscore: number;
     withPlayerStats: number;
     withOdds: number;
+    withSocial: number;
   } | null;
   loading: boolean;
   error: string | null;
@@ -61,6 +63,7 @@ export function useGameFilters(options: UseGameFiltersOptions = {}): UseGameFilt
     withBoxscore: number;
     withPlayerStats: number;
     withOdds: number;
+    withSocial: number;
   } | null>(null);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -86,6 +89,7 @@ export function useGameFilters(options: UseGameFiltersOptions = {}): UseGameFilt
           withBoxscore: response.with_boxscore_count ?? 0,
           withPlayerStats: response.with_player_stats_count ?? 0,
           withOdds: response.with_odds_count ?? 0,
+          withSocial: response.with_social_count ?? 0,
         });
         setNextOffset(response.next_offset);
       } catch (err) {

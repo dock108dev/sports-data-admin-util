@@ -13,7 +13,7 @@ collection strategies.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, List, Optional, Set
 
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -129,6 +129,19 @@ class PlaywrightXCollector(XCollectorStrategy):
     - timestamp
     - has_video flag
     Caption text is read only to allow spoiler filtering but is not stored.
+    
+    Authentication:
+        Set X_AUTH_TOKEN and X_CT0 environment variables from your browser cookies.
+        These are required for search functionality.
+        
+        To get these values:
+        1. Log into x.com in your browser
+        2. Open DevTools > Application > Cookies > x.com
+        3. Copy the values of 'auth_token' and 'ct0' cookies
+        
+    Rate Limiting:
+        - Polite delay of 5-9 seconds between requests (like sports reference scraping)
+        - Random jitter to appear more human-like
     """
 
     def __init__(
@@ -136,12 +149,69 @@ class PlaywrightXCollector(XCollectorStrategy):
         max_scrolls: int = 3,
         wait_ms: int = 800,
         timeout_ms: int = 30000,
+        auth_token: str | None = None,
+        ct0: str | None = None,
+        min_delay_seconds: float = 5.0,
+        max_delay_seconds: float = 9.0,
     ):
+        import os
         self.max_scrolls = max_scrolls
         self.wait_ms = wait_ms
         self.timeout_ms = timeout_ms
+        self.min_delay_seconds = min_delay_seconds
+        self.max_delay_seconds = max_delay_seconds
+        self._last_request_time = 0.0
+        # Load auth from params or environment
+        self.auth_token = auth_token or os.environ.get("X_AUTH_TOKEN")
+        self.ct0 = ct0 or os.environ.get("X_CT0")
+        
+        if not self.auth_token:
+            logger.warning("x_auth_missing", message="X_AUTH_TOKEN not set - search may not work")
+
+    def _polite_delay(self) -> None:
+        """Wait between requests to be a good citizen (5-9 seconds like sports reference)."""
+        import random
+        import time
+        
+        # Skip delay on first request (no previous request to wait from)
+        if self._last_request_time == 0:
+            return
+            
+        elapsed = time.time() - self._last_request_time
+        delay = random.uniform(self.min_delay_seconds, self.max_delay_seconds)
+        if elapsed < delay:
+            wait_time = delay - elapsed
+            logger.debug("x_polite_delay", wait_seconds=round(wait_time, 1))
+            time.sleep(wait_time)
+    
+    def _mark_request_done(self) -> None:
+        """Mark that a request just completed (for polite delay calculation)."""
+        import time
+        self._last_request_time = time.time()
 
     @retry(stop=stop_after_attempt(2), wait=wait_fixed(1))
+    def _build_search_url(self, x_handle: str, window_start: datetime, window_end: datetime) -> str:
+        """
+        Build X search URL for historical tweet lookup.
+        
+        Uses X's advanced search syntax:
+            from:handle since:YYYY-MM-DD until:YYYY-MM-DD
+        
+        This allows finding tweets from any date, not just recent ones.
+        """
+        from urllib.parse import quote
+        
+        handle = x_handle.lstrip('@')
+        # Format dates as YYYY-MM-DD for X search
+        since_date = window_start.strftime("%Y-%m-%d")
+        until_date = (window_end + timedelta(days=1)).strftime("%Y-%m-%d")  # until is exclusive
+        
+        query = f"from:{handle} since:{since_date} until:{until_date}"
+        encoded_query = quote(query)
+        
+        # f=live gives chronological order (latest first)
+        return f"https://x.com/search?q={encoded_query}&src=typed_query&f=live"
+
     def collect_posts(
         self,
         x_handle: str,
@@ -152,7 +222,8 @@ class PlaywrightXCollector(XCollectorStrategy):
             logger.warning("playwright_not_installed", x_handle=x_handle)
             return []
 
-        url = f"https://x.com/{x_handle.lstrip('@')}"
+        # Use search URL for historical access instead of profile
+        url = self._build_search_url(x_handle, window_start, window_end)
         posts: List[CollectedPost] = []
         seen: Set[str] = set()
 
@@ -182,10 +253,59 @@ class PlaywrightXCollector(XCollectorStrategy):
                     ),
                     viewport={"width": 1280, "height": 2000},
                 )
+                
+                # Add X authentication cookies if available
+                if self.auth_token:
+                    cookies = [
+                        {
+                            "name": "auth_token",
+                            "value": self.auth_token,
+                            "domain": ".x.com",
+                            "path": "/",
+                        }
+                    ]
+                    if self.ct0:
+                        cookies.append({
+                            "name": "ct0",
+                            "value": self.ct0,
+                            "domain": ".x.com", 
+                            "path": "/",
+                        })
+                    context.add_cookies(cookies)
+                    logger.debug("x_auth_cookies_added", count=len(cookies))
+                
                 page = context.new_page()
-                page.goto(url, wait_until="networkidle", timeout=self.timeout_ms)
+                
+                # Polite delay before making request (5-9 seconds between requests)
+                self._polite_delay()
+                
+                # Use domcontentloaded instead of networkidle - X.com has constant background activity
+                page.goto(url, wait_until="domcontentloaded", timeout=self.timeout_ms)
+                
+                # Mark request complete (for polite delay calculation on next request)
+                self._mark_request_done()
+                
+                # Wait a bit for JS to render search results
+                page.wait_for_timeout(3000)
+                
+                # Wait for timeline articles to appear
+                try:
+                    page.wait_for_selector("article", timeout=15000)
+                except Exception:
+                    # Debug: capture page state when no articles found
+                    page_title = page.title()
+                    page_text = page.inner_text("body")[:500] if page.query_selector("body") else "no body"
+                    
+                    logger.warning(
+                        "x_no_articles_found",
+                        handle=x_handle,
+                        url=url,
+                        page_title=page_title,
+                        page_preview=page_text[:200],
+                    )
+                    return []
 
-                # Light scrolling to load recent tweets
+                # Scroll to load more search results
                 for _ in range(self.max_scrolls):
                     page.mouse.wheel(0, 1800)
                     page.wait_for_timeout(self.wait_ms)
@@ -209,6 +329,7 @@ class PlaywrightXCollector(XCollectorStrategy):
                     except Exception:
                         continue
 
+                    # Double-check post is within our window (search is day-level granularity)
                     if posted_at < window_start or posted_at > window_end:
                         continue
 
@@ -335,7 +456,17 @@ class XPostCollector:
                 session.add(db_post)
                 result.posts_saved += 1
 
-            session.flush()
+            # Commit immediately so posts are persisted (don't wait for batch end)
+            # This ensures we don't lose progress if scraper crashes
+            if result.posts_saved > 0:
+                session.commit()
+                logger.debug(
+                    "x_posts_committed",
+                    game_id=job.game_id,
+                    team=job.team_abbreviation,
+                    count=result.posts_saved,
+                )
+            
             result.completed_at = datetime.utcnow()
 
             logger.info(
@@ -363,22 +494,24 @@ class XPostCollector:
         self,
         session: Session,
         game_id: int,
-        pre_game_hours: int = 2,
-        post_game_hours: int = 1,
     ) -> list[PostCollectionResult]:
         """
         Collect posts for both teams in a game.
 
+        Uses a simple 24-hour window around game day:
+        - Start: 5:00 AM ET on game day
+        - End: 4:59:59 AM ET the next day
+        
+        This covers all US timezones and captures pre-game hype through post-game celebration.
+
         Args:
             session: Database session
             game_id: Game database ID
-            pre_game_hours: Hours before game to start collecting
-            post_game_hours: Hours after game to stop collecting
 
         Returns:
             List of PostCollectionResult for each team
         """
-        from datetime import timedelta
+        from datetime import timedelta, time
         from ..db import db_models
 
         # Get game with team relationships
@@ -398,9 +531,34 @@ class XPostCollector:
             logger.warning("x_collect_teams_not_found", game_id=game_id)
             return []
 
-        # Calculate window
-        window_start = game.game_date - timedelta(hours=pre_game_hours)
-        window_end = game.game_date + timedelta(hours=post_game_hours)
+        # Simple 24-hour window: 5am ET game day to 4:59am ET next day
+        # 
+        # Game dates are stored as midnight UTC (e.g., 2023-10-25 00:00:00+00)
+        # The UTC date IS the game day (matches source_game_key like "202310250SAS")
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            from backports.zoneinfo import ZoneInfo  # Python < 3.9
+        
+        eastern = ZoneInfo("America/New_York")
+        utc = ZoneInfo("UTC")
+        
+        # Extract the game day from UTC date (this is the actual game day)
+        game_day = game.game_date.date()
+        
+        # Window: 5:00 AM ET game day to 4:59:59 AM ET next day (24 hours)
+        window_start = datetime.combine(game_day, time(5, 0), tzinfo=eastern).astimezone(utc)
+        window_end = datetime.combine(game_day + timedelta(days=1), time(4, 59, 59), tzinfo=eastern).astimezone(utc)
+        
+        logger.debug(
+            "x_window_calculated",
+            game_id=game_id,
+            game_day=str(game_day),
+            window_start_et=f"{game_day} 05:00 ET",
+            window_end_et=f"{game_day + timedelta(days=1)} 04:59 ET",
+            window_start_utc=str(window_start),
+            window_end_utc=str(window_end),
+        )
 
         results = []
 

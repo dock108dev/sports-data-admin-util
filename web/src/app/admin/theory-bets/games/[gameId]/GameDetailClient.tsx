@@ -43,6 +43,7 @@ export default function GameDetailClient() {
       { label: "Boxscore", ok: game.game.has_boxscore },
       { label: "Player stats", ok: game.game.has_player_stats },
       { label: "Odds", ok: game.game.has_odds },
+      { label: `Social (${game.game.social_post_count || 0})`, ok: game.game.has_social },
     ];
   }, [game]);
 
@@ -356,6 +357,37 @@ export default function GameDetailClient() {
               )}
             </div>
           </>
+        )}
+      </div>
+
+      <div className={styles.card}>
+        <h2>Social Posts</h2>
+        {!game.social_posts || game.social_posts.length === 0 ? (
+          <div style={{ color: "#475569" }}>No social posts found for this game.</div>
+        ) : (
+          <div className={styles.socialPostsGrid}>
+            {game.social_posts.map((post) => (
+              <div key={post.id} className={styles.socialPostCard}>
+                <div className={styles.socialPostHeader}>
+                  <span className={styles.badge}>{post.team_abbreviation}</span>
+                  {post.has_video && (
+                    <span className={styles.videoBadge}>🎥 Video</span>
+                  )}
+                </div>
+                <div className={styles.socialPostMeta}>
+                  {new Date(post.posted_at).toLocaleString()}
+                </div>
+                <a 
+                  href={post.post_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className={styles.socialPostLink}
+                >
+                  View on X →
+                </a>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

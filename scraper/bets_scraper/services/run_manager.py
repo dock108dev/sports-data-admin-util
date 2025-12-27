@@ -259,15 +259,17 @@ class ScrapeRunManager:
                     league=config.league_code,
                     start=str(start),
                     end=str(end),
-                    backfill_only=config.backfill_social and not config.include_social,
+                    skip_existing=True,  # Always skip games with existing posts
                 )
                 with get_session() as session:
+                    # Always skip games that already have social posts
+                    # (no need to re-scrape - social posts don't change)
                     game_ids = self._get_games_for_social(
                         session,
                         config.league_code,
                         start,
                         end,
-                        only_missing=config.backfill_social and not config.include_social,
+                        only_missing=True,  # Always skip games with existing posts
                     )
                 logger.info("found_games_for_social", count=len(game_ids), run_id=run_id)
 
@@ -277,10 +279,9 @@ class ScrapeRunManager:
                             results = self.social_collector.collect_for_game(
                                 session,
                                 game_id,
-                                pre_game_hours=config.social_pre_game_hours,
-                                post_game_hours=config.social_post_game_hours,
                             )
-                            session.commit()
+                            # Note: commits happen inside run_job for each team
+                            # so posts are persisted immediately after collection
                             for result in results:
                                 summary["social_posts"] += result.posts_saved
                     except Exception as e:

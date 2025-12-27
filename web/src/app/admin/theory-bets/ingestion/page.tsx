@@ -44,8 +44,10 @@ export default function IngestionAdminPage() {
           endDate,
           includeBoxscores: formData.includeBoxscores,
           includeOdds: formData.includeOdds,
+          includeSocial: formData.includeSocial,
           backfillPlayerStats: formData.backfillPlayerStats,
           backfillOdds: formData.backfillOdds,
+          backfillSocial: formData.backfillSocial,
         },
       });
       setSuccess(`Scrape run #${result.id} scheduled successfully!`);
@@ -83,7 +85,7 @@ export default function IngestionAdminPage() {
   return (
     <div className={styles.container}>
       <h1>Sports Data Ingestion</h1>
-      <p className={styles.subtitle}>Configure and monitor boxscore + odds scrapes.</p>
+      <p className={styles.subtitle}>Configure and monitor boxscore, odds, and social post scrapes.</p>
 
       <ScrapeRunForm
         onSubmit={handleSubmit}

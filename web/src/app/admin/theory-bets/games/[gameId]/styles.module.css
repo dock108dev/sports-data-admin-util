@@ -159,3 +159,53 @@
   color: #64748b;
   font-size: 0.95rem;
 }
+
+/* Social Posts */
+.socialPostsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.socialPostCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1rem;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.socialPostHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.videoBadge {
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.socialPostMeta {
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.socialPostLink {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-top: auto;
+}
+
+.socialPostLink:hover {
+  text-decoration: underline;
+}

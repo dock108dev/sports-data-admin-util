@@ -142,6 +142,31 @@ export function ScrapeRunForm({ onSubmit, loading = false, error, success }: Scr
           </label>
         </div>
 
+        <h3 className={styles.sectionTitle}>Social / X Posts</h3>
+        <div className={styles.toggles}>
+          <label>
+            <input
+              type="checkbox"
+              checked={form.includeSocial}
+              onChange={(e) => setForm((prev) => ({ ...prev, includeSocial: e.target.checked }))}
+            />
+            Include social posts
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={form.backfillSocial}
+              onChange={(e) => setForm((prev) => ({ ...prev, backfillSocial: e.target.checked }))}
+            />
+            Backfill missing social
+          </label>
+        </div>
+        {(form.includeSocial || form.backfillSocial) && (
+          <p className={styles.hint}>
+            Collects team posts from 5am ET game day through 5am ET next day (24hr window)
+          </p>
+        )}
+
         <button type="submit" disabled={loading}>
           {loading ? "Scheduling..." : "Schedule Run"}
         </button>

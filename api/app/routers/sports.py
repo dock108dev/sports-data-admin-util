@@ -39,13 +39,11 @@ class ScrapeRunConfig(BaseModel):
     backfill_player_stats: bool = Field(False, alias="backfillPlayerStats")
     backfill_odds: bool = Field(False, alias="backfillOdds")
     backfill_social: bool = Field(False, alias="backfillSocial")
-    social_pre_game_hours: int = Field(2, alias="socialPreGameHours")
-    social_post_game_hours: int = Field(1, alias="socialPostGameHours")
 
     def to_worker_payload(self) -> dict[str, Any]:
         return {
             "scraper_type": self.scraper_type,
-            "league_code": self.league_code,
+            "league_code": self.league_code.upper(),
             "season": self.season,
             "season_type": self.season_type,
             "start_date": self.start_date.isoformat() if self.start_date else None,
@@ -59,8 +57,6 @@ class ScrapeRunConfig(BaseModel):
             "backfill_player_stats": self.backfill_player_stats,
             "backfill_odds": self.backfill_odds,
             "backfill_social": self.backfill_social,
-            "social_pre_game_hours": self.social_pre_game_hours,
-            "social_post_game_hours": self.social_post_game_hours,
         }
 
 
@@ -96,6 +92,8 @@ class GameSummary(BaseModel):
     has_boxscore: bool
     has_player_stats: bool
     has_odds: bool
+    has_social: bool
+    social_post_count: int
     has_required_data: bool
     scrape_version: int | None
     last_scraped_at: datetime | None
@@ -108,6 +106,7 @@ class GameListResponse(BaseModel):
     with_boxscore_count: int | None = 0
     with_player_stats_count: int | None = 0
     with_odds_count: int | None = 0
+    with_social_count: int | None = 0
 
 
 class TeamStat(BaseModel):
@@ -160,8 +159,18 @@ class GameMeta(BaseModel):
     has_boxscore: bool
     has_player_stats: bool
     has_odds: bool
+    has_social: bool
+    social_post_count: int
     home_team_x_handle: str | None = None
     away_team_x_handle: str | None = None
+
+
+class SocialPostEntry(BaseModel):
+    id: int
+    post_url: str
+    posted_at: datetime
+    has_video: bool
+    team_abbreviation: str
 
 
 class GameDetailResponse(BaseModel):
@@ -169,6 +178,7 @@ class GameDetailResponse(BaseModel):
     team_stats: list[TeamStat]
     player_stats: list[PlayerStat]
     odds: list[OddsEntry]
+    social_posts: list[SocialPostEntry]
     derived_metrics: dict[str, Any]
     raw_payloads: dict[str, Any]
 
@@ -252,7 +262,7 @@ async def create_scrape_run(payload: ScrapeRunCreateRequest, session: AsyncSessi
         from ..logging_config import get_logger
 
         logger = get_logger(__name__)
-        logger.error("failed_to_enqueue_scrape", error=str(exc), exc_info=True)
+        logger.error("failed_to_enqueue_scrape: %s", str(exc), exc_info=True)
         run.status = "error"
         run.error_details = f"Failed to enqueue scrape: {exc}"
         raise HTTPException(status_code=500, detail="Failed to enqueue scrape job") from exc
@@ -350,6 +360,7 @@ def _apply_game_filters(
     missing_boxscore: bool,
     missing_player_stats: bool,
     missing_odds: bool,
+    missing_social: bool,
     missing_any: bool,
 ) -> Select[tuple[db_models.SportsGame]]:
     if leagues:
@@ -386,6 +397,8 @@ def _apply_game_filters(
         stmt = stmt.where(~db_models.SportsGame.player_boxscores.any())
     if missing_odds:
         stmt = stmt.where(~db_models.SportsGame.odds.any())
+    if missing_social:
+        stmt = stmt.where(~db_models.SportsGame.social_posts.any())
     if missing_any:
         stmt = stmt.where(
             or_(
@@ -401,6 +414,9 @@ def _summarize_game(game: db_models.SportsGame) -> GameSummary:
     has_boxscore = bool(game.team_boxscores)
     has_player_stats = bool(game.player_boxscores)
     has_odds = bool(game.odds)
+    social_posts = getattr(game, "social_posts", []) or []
+    has_social = bool(social_posts)
+    social_post_count = len(social_posts)
     season_type = getattr(game, "season_type", None)
     return GameSummary(
         id=game.id,
@@ -413,6 +429,8 @@ def _summarize_game(game: db_models.SportsGame) -> GameSummary:
         has_boxscore=has_boxscore,
         has_player_stats=has_player_stats,
         has_odds=has_odds,
+        has_social=has_social,
+        social_post_count=social_post_count,
         has_required_data=has_boxscore and has_odds,
         scrape_version=getattr(game, "scrape_version", None),
         last_scraped_at=game.last_scraped_at,
@@ -430,6 +448,7 @@ async def list_games(
     missingBoxscore: bool = Query(False, alias="missingBoxscore"),
     missingPlayerStats: bool = Query(False, alias="missingPlayerStats"),
     missingOdds: bool = Query(False, alias="missingOdds"),
+    missingSocial: bool = Query(False, alias="missingSocial"),
     missingAny: bool = Query(False, alias="missingAny"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -441,6 +460,7 @@ async def list_games(
         selectinload(db_models.SportsGame.team_boxscores),
         selectinload(db_models.SportsGame.player_boxscores),
         selectinload(db_models.SportsGame.odds),
+        selectinload(db_models.SportsGame.social_posts),
     )
 
     base_stmt = _apply_game_filters(
@@ -453,6 +473,7 @@ async def list_games(
         missing_boxscore=missingBoxscore,
         missing_player_stats=missingPlayerStats,
         missing_odds=missingOdds,
+        missing_social=missingSocial,
         missing_any=missingAny,
     )
 
@@ -471,6 +492,7 @@ async def list_games(
         missing_boxscore=missingBoxscore,
         missing_player_stats=missingPlayerStats,
         missing_odds=missingOdds,
+        missing_social=missingSocial,
         missing_any=missingAny,
     )
     total = (await session.execute(count_stmt)).scalar_one()
@@ -484,10 +506,14 @@ async def list_games(
     with_odds_count_stmt = count_stmt.where(
         exists(select(1).where(db_models.SportsGameOdds.game_id == db_models.SportsGame.id))
     )
+    with_social_count_stmt = count_stmt.where(
+        exists(select(1).where(db_models.GameSocialPost.game_id == db_models.SportsGame.id))
+    )
 
     with_boxscore_count = (await session.execute(with_boxscore_count_stmt)).scalar_one()
     with_player_stats_count = (await session.execute(with_player_stats_count_stmt)).scalar_one()
     with_odds_count = (await session.execute(with_odds_count_stmt)).scalar_one()
+    with_social_count = (await session.execute(with_social_count_stmt)).scalar_one()
 
     next_offset = offset + limit if offset + limit < total else None
     summaries = [_summarize_game(game) for game in games]
@@ -499,6 +525,7 @@ async def list_games(
         with_boxscore_count=with_boxscore_count,
         with_player_stats_count=with_player_stats_count,
         with_odds_count=with_odds_count,
+        with_social_count=with_social_count,
     )
 
 
@@ -567,6 +594,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             selectinload(db_models.SportsGame.team_boxscores).selectinload(db_models.SportsTeamBoxscore.team),
             selectinload(db_models.SportsGame.player_boxscores).selectinload(db_models.SportsPlayerBoxscore.team),
             selectinload(db_models.SportsGame.odds),
+            selectinload(db_models.SportsGame.social_posts),
         )
         .where(db_models.SportsGame.id == game_id)
     )
@@ -605,9 +633,33 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         has_boxscore=bool(game.team_boxscores),
         has_player_stats=bool(game.player_boxscores),
         has_odds=bool(game.odds),
+        has_social=bool(game.social_posts),
+        social_post_count=len(game.social_posts) if game.social_posts else 0,
         home_team_x_handle=game.home_team.x_handle if game.home_team else None,
         away_team_x_handle=game.away_team.x_handle if game.away_team else None,
     )
+
+    # Serialize social posts
+    social_posts_entries = []
+    for post in (game.social_posts or []):
+        # Get team abbreviation - need to load team relationship
+        team_abbr = "UNK"
+        if hasattr(post, "team") and post.team:
+            team_abbr = post.team.abbreviation
+        elif hasattr(post, "team_id"):
+            # Try to find team from game's teams
+            if game.home_team and game.home_team.id == post.team_id:
+                team_abbr = game.home_team.abbreviation
+            elif game.away_team and game.away_team.id == post.team_id:
+                team_abbr = game.away_team.abbreviation
+        
+        social_posts_entries.append(SocialPostEntry(
+            id=post.id,
+            post_url=post.post_url,
+            posted_at=post.posted_at,
+            has_video=post.has_video,
+            team_abbreviation=team_abbr,
+        ))
 
     derived = compute_derived_metrics(game, game.odds)
     raw_payloads = {
@@ -645,6 +697,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         team_stats=team_stats,
         player_stats=player_stats,
         odds=odds_entries,
+        social_posts=social_posts_entries,
         derived_metrics=derived,
         raw_payloads=raw_payloads,
     )
