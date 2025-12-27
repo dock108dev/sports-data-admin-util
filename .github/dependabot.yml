@@ -5,76 +5,75 @@ updates:
     directory: "/api"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+      day: "monday"
+    open-pull-requests-limit: 2
     labels:
       - "dependencies"
       - "python"
+    groups:
+      python-api-all:
+        patterns:
+          - "*"
 
   # Python dependencies (Scraper)
   - package-ecosystem: "pip"
     directory: "/scraper"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+      day: "monday"
+    open-pull-requests-limit: 2
     labels:
       - "dependencies"
       - "python"
+    groups:
+      python-scraper-all:
+        patterns:
+          - "*"
 
-  # Node.js dependencies (Web)
+  # Node.js - Root workspace (covers all packages)
   - package-ecosystem: "npm"
-    directory: "/web"
+    directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+      day: "monday"
+    open-pull-requests-limit: 2
     labels:
       - "dependencies"
       - "javascript"
-
-  # Node.js dependencies (packages/js-core)
-  - package-ecosystem: "npm"
-    directory: "/packages/js-core"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "javascript"
-
-  # Node.js dependencies (packages/ui)
-  - package-ecosystem: "npm"
-    directory: "/packages/ui"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "javascript"
-
-  # Node.js dependencies (packages/ui-kit)
-  - package-ecosystem: "npm"
-    directory: "/packages/ui-kit"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "javascript"
+    groups:
+      npm-all-production:
+        dependency-type: "production"
+        patterns:
+          - "*"
+      npm-all-development:
+        dependency-type: "development"
+        patterns:
+          - "*"
 
   # Docker dependencies
   - package-ecosystem: "docker"
     directory: "/infra"
     schedule:
       interval: "monthly"
+    open-pull-requests-limit: 1
     labels:
       - "dependencies"
       - "docker"
+    groups:
+      docker-all:
+        patterns:
+          - "*"
 
-  # GitHub Actions (if you add any)
+  # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
+    open-pull-requests-limit: 1
     labels:
       - "dependencies"
       - "ci"
-
+    groups:
+      actions-all:
+        patterns:
+          - "*"
