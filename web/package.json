@@ -13,11 +13,11 @@
     "@dock108/ui": "workspace:*",
     "@dock108/ui-kit": "workspace:*",
     "next": "16.0.10",
-    "react": "19.2.0",
+    "react": "19.2.3",
     "react-dom": "19.2.0"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^25",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
