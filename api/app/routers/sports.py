@@ -32,11 +32,15 @@ class ScrapeRunConfig(BaseModel):
     end_date: date | None = Field(None, alias="endDate")
     include_boxscores: bool = Field(True, alias="includeBoxscores")
     include_odds: bool = Field(True, alias="includeOdds")
+    include_social: bool = Field(False, alias="includeSocial")
     include_books: list[str] | None = Field(None, alias="books")
     rescrape_existing: bool = Field(False, alias="rescrapeExisting")
     only_missing: bool = Field(False, alias="onlyMissing")
     backfill_player_stats: bool = Field(False, alias="backfillPlayerStats")
     backfill_odds: bool = Field(False, alias="backfillOdds")
+    backfill_social: bool = Field(False, alias="backfillSocial")
+    social_pre_game_hours: int = Field(2, alias="socialPreGameHours")
+    social_post_game_hours: int = Field(1, alias="socialPostGameHours")
 
     def to_worker_payload(self) -> dict[str, Any]:
         return {
@@ -48,11 +52,15 @@ class ScrapeRunConfig(BaseModel):
             "end_date": self.end_date.isoformat() if self.end_date else None,
             "include_boxscores": self.include_boxscores,
             "include_odds": self.include_odds,
+            "include_social": self.include_social,
             "include_books": self.include_books,
             "rescrape_existing": self.rescrape_existing,
             "only_missing": self.only_missing,
             "backfill_player_stats": self.backfill_player_stats,
             "backfill_odds": self.backfill_odds,
+            "backfill_social": self.backfill_social,
+            "social_pre_game_hours": self.social_pre_game_hours,
+            "social_post_game_hours": self.social_post_game_hours,
         }
 
 
@@ -152,6 +160,8 @@ class GameMeta(BaseModel):
     has_boxscore: bool
     has_player_stats: bool
     has_odds: bool
+    home_team_x_handle: str | None = None
+    away_team_x_handle: str | None = None
 
 
 class GameDetailResponse(BaseModel):
@@ -595,6 +605,8 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         has_boxscore=bool(game.team_boxscores),
         has_player_stats=bool(game.player_boxscores),
         has_odds=bool(game.odds),
+        home_team_x_handle=game.home_team.x_handle if game.home_team else None,
+        away_team_x_handle=game.away_team.x_handle if game.away_team else None,
     )
 
     derived = compute_derived_metrics(game, game.odds)
@@ -768,6 +780,8 @@ class TeamDetail(BaseModel):
     league_code: str = Field(alias="leagueCode")
     location: str | None
     external_ref: str | None = Field(alias="externalRef")
+    x_handle: str | None = Field(None, alias="xHandle")
+    x_profile_url: str | None = Field(None, alias="xProfileUrl")
     recent_games: list[TeamGameSummary] = Field(alias="recentGames")
 
 
@@ -909,7 +923,38 @@ async def get_team(team_id: int, session: AsyncSession = Depends(get_db)) -> Tea
         leagueCode=league.code if league else "UNK",
         location=team.location,
         externalRef=team.external_ref,
+        xHandle=team.x_handle,
+        xProfileUrl=f"https://x.com/{team.x_handle}" if team.x_handle else None,
         recentGames=recent_games,
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Team Social Info
+# ────────────────────────────────────────────────────────────────────────────────
+
+
+class TeamSocialInfo(BaseModel):
+    """Team social media information."""
+
+    team_id: int = Field(..., alias="teamId")
+    abbreviation: str
+    x_handle: str | None = Field(None, alias="xHandle")
+    x_profile_url: str | None = Field(None, alias="xProfileUrl")
+
+
+@router.get("/teams/{team_id}/social", response_model=TeamSocialInfo)
+async def get_team_social_info(team_id: int, session: AsyncSession = Depends(get_db)) -> TeamSocialInfo:
+    """Get team's social media info including X handle."""
+    team = await session.get(db_models.SportsTeam, team_id)
+    if not team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+
+    return TeamSocialInfo(
+        teamId=team.id,
+        abbreviation=team.abbreviation or "",
+        xHandle=team.x_handle,
+        xProfileUrl=f"https://x.com/{team.x_handle}" if team.x_handle else None,
     )
 
 

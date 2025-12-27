@@ -56,6 +56,7 @@ class SportsTeam(Base):
     short_name: Mapped[str] = mapped_column(String(100), nullable=False)
     abbreviation: Mapped[str | None] = mapped_column(String(20), nullable=True)
     location: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    x_handle: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     external_codes: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -106,6 +107,7 @@ class SportsGame(Base):
     team_boxscores: Mapped[list["SportsTeamBoxscore"]] = relationship("SportsTeamBoxscore", back_populates="game", cascade="all, delete-orphan")
     player_boxscores: Mapped[list["SportsPlayerBoxscore"]] = relationship("SportsPlayerBoxscore", back_populates="game", cascade="all, delete-orphan")
     odds: Mapped[list["SportsGameOdds"]] = relationship("SportsGameOdds", back_populates="game", cascade="all, delete-orphan")
+    social_posts: Mapped[list["GameSocialPost"]] = relationship("GameSocialPost", back_populates="game", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("league_id", "season", "game_date", "home_team_id", "away_team_id", name="uq_game_identity"),
@@ -220,6 +222,30 @@ class SportsScrapeRun(Base):
     __table_args__ = (
         Index("idx_scrape_runs_league_status", "league_id", "status"),
         Index("idx_scrape_runs_created", "created_at"),
+    )
+
+
+class GameSocialPost(Base):
+    """Social media posts linked to games for timeline display."""
+
+    __tablename__ = "game_social_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False, index=True)
+    team_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Column is named tweet_url in DB for backwards compatibility, but we use post_url in code
+    post_url: Mapped[str] = mapped_column("tweet_url", Text, nullable=False, unique=True)
+    posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    has_video: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    game: Mapped[SportsGame] = relationship("SportsGame", back_populates="social_posts")
+    team: Mapped[SportsTeam] = relationship("SportsTeam")
+
+    __table_args__ = (
+        Index("idx_social_posts_game", "game_id"),
+        Index("idx_social_posts_team", "team_id"),
+        Index("idx_social_posts_posted_at", "posted_at"),
     )
 
 

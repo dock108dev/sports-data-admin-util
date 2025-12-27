@@ -15,6 +15,7 @@ from ..models import IngestionConfig
 from ..odds.synchronizer import OddsSynchronizer
 from ..persistence import persist_game_payload, upsert_player_boxscores
 from ..scrapers import get_all_scrapers
+from ..social import XPostCollector
 from ..utils.datetime_utils import utcnow
 
 
@@ -23,6 +24,7 @@ class ScrapeRunManager:
         # Use scraper registry instead of hardcoding all imports
         self.scrapers = get_all_scrapers()
         self.odds_sync = OddsSynchronizer()
+        self.social_collector = XPostCollector()
 
     def _get_incomplete_games(
         self,
@@ -107,12 +109,43 @@ class ScrapeRunManager:
             logger.exception("failed_to_update_run", run_id=run_id, error=str(exc), exc_info=True)
             raise
 
+    def _get_games_for_social(
+        self,
+        session: Session,
+        league_code: str,
+        start_date: date,
+        end_date: date,
+        only_missing: bool = False,
+    ) -> List[int]:
+        """Get game IDs for social scraping."""
+        league = session.query(db_models.SportsLeague).filter(
+            db_models.SportsLeague.code == league_code
+        ).first()
+        if not league:
+            return []
+
+        query = session.query(db_models.SportsGame.id).filter(
+            db_models.SportsGame.league_id == league.id,
+            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time()),
+            db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time()),
+        )
+
+        if only_missing:
+            # Only games without any social posts
+            has_posts = exists().where(
+                db_models.GameSocialPost.game_id == db_models.SportsGame.id
+            )
+            query = query.filter(not_(has_posts))
+
+        return [r[0] for r in query.all()]
+
     def run(self, run_id: int, config: IngestionConfig) -> dict:
         summary: Dict[str, int | str] = {
             "games": 0,
             "odds": 0,
             "backfilled_players": 0,
             "backfilled_odds": 0,
+            "social_posts": 0,
         }
         start = config.start_date or date.today()
         end = config.end_date or start
@@ -218,12 +251,53 @@ class ScrapeRunManager:
                     except Exception as e:
                         logger.warning("odds_backfill_date_failed", date=str(fetch_date), error=str(e))
 
+            # Social post scraping
+            if config.include_social or config.backfill_social:
+                logger.info(
+                    "starting_social_scraping",
+                    run_id=run_id,
+                    league=config.league_code,
+                    start=str(start),
+                    end=str(end),
+                    backfill_only=config.backfill_social and not config.include_social,
+                )
+                with get_session() as session:
+                    game_ids = self._get_games_for_social(
+                        session,
+                        config.league_code,
+                        start,
+                        end,
+                        only_missing=config.backfill_social and not config.include_social,
+                    )
+                logger.info("found_games_for_social", count=len(game_ids), run_id=run_id)
+
+                for game_id in game_ids:
+                    try:
+                        with get_session() as session:
+                            results = self.social_collector.collect_for_game(
+                                session,
+                                game_id,
+                                pre_game_hours=config.social_pre_game_hours,
+                                post_game_hours=config.social_post_game_hours,
+                            )
+                            session.commit()
+                            for result in results:
+                                summary["social_posts"] += result.posts_saved
+                    except Exception as e:
+                        logger.warning(
+                            "social_collection_failed",
+                            game_id=game_id,
+                            error=str(e),
+                        )
+
             # Build summary string
             summary_parts = [f'Games: {summary["games"]}', f'Odds: {summary["odds"]}']
             if summary["backfilled_players"]:
                 summary_parts.append(f'Backfilled players: {summary["backfilled_players"]}')
             if summary["backfilled_odds"]:
                 summary_parts.append(f'Backfilled odds: {summary["backfilled_odds"]}')
+            if summary["social_posts"]:
+                summary_parts.append(f'Social posts: {summary["social_posts"]}')
 
             self._update_run(
                 run_id,

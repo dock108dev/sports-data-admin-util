@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 SportCode = Literal["NBA", "NFL", "NCAAF", "NCAAB", "MLB", "NHL"]
 MarketType = Literal["spread", "total", "moneyline"]
-ScraperType = Literal["boxscore", "odds", "boxscore_and_odds"]
+ScraperType = Literal["boxscore", "odds", "boxscore_and_odds", "social", "all"]
 
 
 class TeamIdentity(BaseModel):
@@ -107,10 +107,15 @@ class IngestionConfig(BaseModel):
     end_date: date | None = None
     include_boxscores: bool = True
     include_odds: bool = True
+    include_social: bool = False  # Scrape X posts for games
     rescrape_existing: bool = False
     only_missing: bool = False
     include_books: list[str] | None = None
     backfill_player_stats: bool = False  # Re-scrape games missing player boxscores
     backfill_odds: bool = False  # Fetch odds for games missing odds data
+    backfill_social: bool = False  # Fetch social posts for games missing them
+    # Social scraping specific options
+    social_pre_game_hours: int = 2  # Hours before game to start collecting
+    social_post_game_hours: int = 1  # Hours after game to stop collecting
 
 

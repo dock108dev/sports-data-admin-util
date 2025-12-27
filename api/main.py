@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import sports
+from app.routers import sports, social
 
 app = FastAPI(title="sports-data-admin", version="1.0.0")
 
@@ -17,6 +17,7 @@ app.add_middleware(
 )
 
 app.include_router(sports.router)
+app.include_router(social.router)
 
 
 @app.get("/healthz")

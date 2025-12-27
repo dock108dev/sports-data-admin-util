@@ -137,6 +137,21 @@ CREATE TABLE IF NOT EXISTS sports_scrape_runs (
 CREATE INDEX IF NOT EXISTS idx_scrape_runs_league_status ON sports_scrape_runs(league_id, status);
 CREATE INDEX IF NOT EXISTS idx_scrape_runs_created ON sports_scrape_runs(created_at);
 
+-- Game social posts (X/Twitter embeds for timeline)
+CREATE TABLE IF NOT EXISTS game_social_posts (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER NOT NULL REFERENCES sports_games(id) ON DELETE CASCADE,
+    team_id INTEGER NOT NULL REFERENCES sports_teams(id) ON DELETE CASCADE,
+    tweet_url TEXT NOT NULL,
+    posted_at TIMESTAMPTZ NOT NULL,
+    has_video BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_social_posts_game ON game_social_posts(game_id);
+CREATE INDEX IF NOT EXISTS idx_social_posts_team ON game_social_posts(team_id);
+CREATE INDEX IF NOT EXISTS idx_social_posts_posted_at ON game_social_posts(posted_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_social_posts_url ON game_social_posts(tweet_url);
+
 -- Seed leagues
 INSERT INTO sports_leagues (code, name, level) VALUES
     ('NBA', 'National Basketball Association', 'pro'),

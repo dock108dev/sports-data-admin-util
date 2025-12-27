@@ -24,6 +24,9 @@ WORKDIR /app/scraper
 # Install scraper in editable mode (includes Celery)
 RUN uv pip install --system -e .
 
+# Install Playwright browser deps and Chromium for headless scraping
+RUN python -m playwright install --with-deps chromium
+
 ENV PYTHONPATH="/app/api:/app/scraper:${PYTHONPATH}"
 
 CMD ["celery", "-A", "bets_scraper.celery_app.app", "worker", "--loglevel=info", "--queues=bets-scraper"]
