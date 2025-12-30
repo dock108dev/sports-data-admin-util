@@ -9,10 +9,7 @@ cd infra
 cp .env.example .env  # Edit as needed
 
 # Full stack (creates database)
-docker compose up -d --build
-
-# First run: apply schema
-docker exec -i sports-postgres psql -U dock108 -d dock108 < ../sql/000_sports_schema.sql
+COMPOSE_PROFILES=dev docker compose up -d --build
 ```
 
 ## Files
@@ -24,6 +21,7 @@ docker exec -i sports-postgres psql -U dock108 -d dock108 < ../sql/000_sports_sc
 | `api.Dockerfile` | FastAPI service |
 | `scraper.Dockerfile` | Celery worker with Playwright |
 | `web.Dockerfile` | Next.js admin UI |
+| `nginx/admin.conf` | Admin-only Nginx config |
 | `.env.example` | Environment template |
 
 ## URLs

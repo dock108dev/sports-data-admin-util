@@ -20,6 +20,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - internal
 
   api:
     build:
@@ -35,11 +37,22 @@ services:
       REDIS_URL: redis://redis:6379/2
       CELERY_BROKER_URL: redis://redis:6379/2
       CELERY_RESULT_BACKEND: redis://redis:6379/2
+      ALLOWED_CORS_ORIGINS: ${ALLOWED_CORS_ORIGINS:-}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - internal
+      - app
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   scraper:
     build:
@@ -60,8 +73,16 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - internal
+      - app
     volumes:
       - scraper-cache:/app/scraper/game_data
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A bets_scraper.celery_app.app inspect ping -d celery@$(hostname) --timeout=5 | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   web:
     build:
@@ -72,8 +93,20 @@ services:
       NEXT_PUBLIC_SPORTS_API_URL: http://localhost:8000
     depends_on:
       - api
+    networks:
+      - app
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   scraper-cache:
+
+networks:
+  internal:
+    internal: true
+  app:

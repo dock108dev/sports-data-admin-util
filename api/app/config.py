@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,10 +27,16 @@ class Settings(BaseSettings):
     celery_result_backend: str | None = Field(default=None, alias="CELERY_RESULT_BACKEND")
     celery_default_queue: str = Field(default="bets-scraper", alias="CELERY_DEFAULT_QUEUE")
     sql_echo: bool = Field(default=False, alias="SQL_ECHO")
+    environment: str = Field(default="development", alias="ENVIRONMENT")
+    allowed_cors_origins_raw: str | None = Field(default=None, alias="ALLOWED_CORS_ORIGINS")
+    rate_limit_requests: int = Field(default=120, alias="RATE_LIMIT_REQUESTS")
+    rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
 
     @property
     def allowed_cors_origins(self) -> list[str]:
         """Allow local dev ports for the web UI."""
+        if self.allowed_cors_origins_raw:
+            return [origin.strip() for origin in self.allowed_cors_origins_raw.split(",") if origin.strip()]
         return [
             "http://localhost:3000",
             "http://127.0.0.1:3000",
@@ -50,6 +56,17 @@ class Settings(BaseSettings):
     def celery_backend(self) -> str:
         return self.celery_result_backend or self.celery_broker
 
+    @model_validator(mode="after")
+    def validate_runtime_settings(self) -> "Settings":
+        if self.environment in {"production", "staging"}:
+            if not self.allowed_cors_origins_raw:
+                raise ValueError("ALLOWED_CORS_ORIGINS must be set for production or staging.")
+            if any("localhost" in origin or "127.0.0.1" in origin for origin in self.allowed_cors_origins):
+                raise ValueError("ALLOWED_CORS_ORIGINS must not include localhost in production or staging.")
+        if self.rate_limit_requests <= 0 or self.rate_limit_window_seconds <= 0:
+            raise ValueError("Rate limit settings must be positive integers.")
+        return self
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
@@ -57,5 +74,4 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-
 
