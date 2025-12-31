@@ -495,8 +495,7 @@ export default function GameDetailClient() {
           <div style={{ color: "#475569" }}>No social posts found for this game.</div>
         ) : (
           <div className={styles.socialPostsGrid}>
-            {game.social_posts.map((post) => {
-              return (
+            {game.social_posts.map((post) => (
               <div key={post.id} className={styles.socialPostCard}>
                 <div className={styles.socialPostHeader}>
                   <span className={styles.badge}>{post.team_abbreviation}</span>
@@ -524,8 +523,7 @@ export default function GameDetailClient() {
                   {new Date(post.posted_at).toLocaleString()}
                 </div>
               </div>
-              );
-            })}
+            ))}
           </div>
         )}
       </CollapsibleSection>
