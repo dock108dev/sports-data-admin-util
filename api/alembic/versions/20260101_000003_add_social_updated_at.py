@@ -24,3 +24,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_column("game_social_posts", "updated_at")
 
+
+

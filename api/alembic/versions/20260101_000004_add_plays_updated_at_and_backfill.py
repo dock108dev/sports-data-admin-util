@@ -39,3 +39,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_column("sports_game_plays", "updated_at")
 
+
+
