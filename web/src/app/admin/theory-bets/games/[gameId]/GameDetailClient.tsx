@@ -491,11 +491,18 @@ export default function GameDetailClient() {
       </CollapsibleSection>
 
       <CollapsibleSection title="Social Posts" defaultOpen={false}>
+        {/* #region agent log */}
+        {game.social_posts && game.social_posts.length > 0 && (() => { fetch('http://127.0.0.1:7242/ingest/bbcc1fde-07f2-48ee-a458-9336304655ab',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GameDetailClient.tsx:socialPosts',message:'Raw social posts from API',data:{postCount:game.social_posts.length,samplePosts:game.social_posts.slice(0,3).map(p=>({id:p.id,media_type:p.media_type,has_video_url:!!p.video_url,has_image_url:!!p.image_url}))},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{}); return null; })()}
+        {/* #endregion */}
         {!game.social_posts || game.social_posts.length === 0 ? (
           <div style={{ color: "#475569" }}>No social posts found for this game.</div>
         ) : (
           <div className={styles.socialPostsGrid}>
-            {game.social_posts.map((post) => (
+            {([...game.social_posts]
+              .sort(
+                (a, b) =>
+                  new Date(a.posted_at).getTime() - new Date(b.posted_at).getTime()
+              )).map((post) => (
               <div key={post.id} className={styles.socialPostCard}>
                 <div className={styles.socialPostHeader}>
                   <span className={styles.badge}>{post.team_abbreviation}</span>
@@ -512,13 +519,25 @@ export default function GameDetailClient() {
                 {post.tweet_text && (
                   <div className={styles.tweetText}>{post.tweet_text}</div>
                 )}
-                <SocialMediaRenderer
-                  mediaType={post.media_type}
-                  imageUrl={post.image_url}
-                  videoUrl={post.video_url}
-                  postUrl={post.post_url}
-                  linkClassName={styles.socialPostLink}
-                />
+                {/* Only render media component if there's actual media */}
+                {(post.image_url || post.video_url || post.media_type === "video" || post.media_type === "image") ? (
+                  <SocialMediaRenderer
+                    mediaType={post.media_type}
+                    imageUrl={post.image_url}
+                    videoUrl={post.video_url}
+                    postUrl={post.post_url}
+                    linkClassName={styles.socialPostLink}
+                  />
+                ) : (
+                  <a
+                    href={post.post_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.socialPostLink}
+                  >
+                    View on X →
+                  </a>
+                )}
                 <div className={styles.socialPostMeta}>
                   {new Date(post.posted_at).toLocaleString()}
                 </div>

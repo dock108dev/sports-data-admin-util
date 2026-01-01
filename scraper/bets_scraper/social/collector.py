@@ -364,13 +364,31 @@ class PlaywrightXCollector(XCollectorStrategy):
                     image_url = None
                     media_type = "none"
 
-                    # Try to get video source
-                    video_el = article.query_selector("video source")
+                    # Try to get video source (direct <video> or <video><source>)
+                    video_el = article.query_selector("video source") or article.query_selector("video")
                     if video_el:
-                        video_url = video_el.get_attribute("src")
-                        if video_url:
+                        src_candidate = video_el.get_attribute("src")
+                        if src_candidate:
+                            video_url = src_candidate
                             media_type = "video"
-                    
+
+                    # Try additional X test id hooks for video containers
+                    if not video_url:
+                        vp = article.query_selector('[data-testid="videoPlayer"] source') or article.query_selector('[data-testid="videoPlayer"]')
+                        if vp:
+                            src_candidate = vp.get_attribute("src")
+                            if src_candidate:
+                                video_url = src_candidate
+                                media_type = "video"
+
+                    if not video_url:
+                        vt = article.query_selector('[data-testid="videoThumbnail"] source') or article.query_selector('[data-testid="videoThumbnail"]')
+                        if vt:
+                            src_candidate = vt.get_attribute("src")
+                            if src_candidate:
+                                video_url = src_candidate
+                                media_type = "video"
+
                     # Try to get video poster or image
                     if not video_url:
                         video_poster = article.query_selector("video")
@@ -385,6 +403,11 @@ class PlaywrightXCollector(XCollectorStrategy):
                             image_url = img_el.get_attribute("src")
                             if not media_type or media_type == "none":
                                 media_type = "image"
+
+                    # If we detected video presence but couldn't extract media URLs,
+                    # still mark the post as video so downstream UI can handle it.
+                    if has_video and media_type == "none":
+                        media_type = "video"
 
                     posts.append(
                         CollectedPost(
