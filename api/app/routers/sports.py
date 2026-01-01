@@ -22,45 +22,42 @@ router = APIRouter(prefix="/api/admin/sports", tags=["sports-data"])
 
 
 class ScrapeRunConfig(BaseModel):
+    """Simplified scraper configuration."""
     model_config = ConfigDict(populate_by_name=True)
 
     league_code: str = Field(..., alias="leagueCode")
-    scraper_type: str = Field("boxscore_and_odds", alias="scraperType")
     season: int | None = Field(None, alias="season")
     season_type: str = Field("regular", alias="seasonType")
     start_date: date | None = Field(None, alias="startDate")
     end_date: date | None = Field(None, alias="endDate")
-    include_boxscores: bool = Field(True, alias="includeBoxscores")
-    include_odds: bool = Field(True, alias="includeOdds")
-    include_social: bool = Field(False, alias="includeSocial")
-    include_pbp: bool = Field(False, alias="includePbp")
-    include_books: list[str] | None = Field(None, alias="books")
-    rescrape_existing: bool = Field(False, alias="rescrapeExisting")
+
+    # Data type toggles
+    boxscores: bool = Field(True, alias="boxscores")
+    odds: bool = Field(True, alias="odds")
+    social: bool = Field(False, alias="social")
+    pbp: bool = Field(False, alias="pbp")
+
+    # Shared filters
     only_missing: bool = Field(False, alias="onlyMissing")
-    backfill_player_stats: bool = Field(False, alias="backfillPlayerStats")
-    backfill_odds: bool = Field(False, alias="backfillOdds")
-    backfill_social: bool = Field(False, alias="backfillSocial")
-    backfill_pbp: bool = Field(False, alias="backfillPbp")
+    updated_before: date | None = Field(None, alias="updatedBefore")
+
+    # Optional book filter
+    include_books: list[str] | None = Field(None, alias="books")
 
     def to_worker_payload(self) -> dict[str, Any]:
         return {
-            "scraper_type": self.scraper_type,
             "league_code": self.league_code.upper(),
             "season": self.season,
             "season_type": self.season_type,
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "end_date": self.end_date.isoformat() if self.end_date else None,
-            "include_boxscores": self.include_boxscores,
-            "include_odds": self.include_odds,
-            "include_social": self.include_social,
-            "include_pbp": self.include_pbp,
-            "include_books": self.include_books,
-            "rescrape_existing": self.rescrape_existing,
+            "boxscores": self.boxscores,
+            "odds": self.odds,
+            "social": self.social,
+            "pbp": self.pbp,
             "only_missing": self.only_missing,
-            "backfill_player_stats": self.backfill_player_stats,
-            "backfill_odds": self.backfill_odds,
-            "backfill_social": self.backfill_social,
-            "backfill_pbp": self.backfill_pbp,
+            "updated_before": self.updated_before.isoformat() if self.updated_before else None,
+            "include_books": self.include_books,
         }
 
 
@@ -262,7 +259,7 @@ async def create_scrape_run(payload: ScrapeRunCreateRequest, session: AsyncSessi
         config_dict["end_date"] = config_dict["end_date"].isoformat()
     
     run = db_models.SportsScrapeRun(
-        scraper_type=payload.config.scraper_type,
+        scraper_type="scrape",  # Simplified - no longer configurable
         league_id=league.id,
         season=payload.config.season,
         season_type=payload.config.season_type,

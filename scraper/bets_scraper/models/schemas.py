@@ -122,22 +122,28 @@ class NormalizedPlayByPlay(BaseModel):
 
 
 class IngestionConfig(BaseModel):
-    scraper_type: ScraperType = "boxscore_and_odds"
+    """Simplified scraper configuration.
+    
+    Data type toggles control what to scrape.
+    Filters control which games to process.
+    """
     league_code: SportCode
     season: int | None = None
     season_type: str = "regular"
     start_date: date | None = None
     end_date: date | None = None
-    include_boxscores: bool = True
-    include_odds: bool = True
-    include_social: bool = False  # Scrape X posts for games
-    include_pbp: bool = False  # Scrape play-by-play for games
-    rescrape_existing: bool = False
-    only_missing: bool = False
+    
+    # Data type toggles (on/off)
+    boxscores: bool = True  # Scrape boxscores (team + player stats)
+    odds: bool = True  # Fetch odds from API
+    social: bool = False  # Scrape X posts for games
+    pbp: bool = False  # Scrape play-by-play
+    
+    # Shared filters
+    only_missing: bool = False  # Skip games that already have this data
+    updated_before: date | None = None  # Only process if last updated before this date
+    
+    # Optional book filter for odds
     include_books: list[str] | None = None
-    backfill_player_stats: bool = False  # Re-scrape games missing player boxscores
-    backfill_odds: bool = False  # Fetch odds for games missing odds data
-    backfill_social: bool = False  # Fetch social posts for games missing them
-    backfill_pbp: bool = False  # Fetch play-by-play for games missing it
 
 

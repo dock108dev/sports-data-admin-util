@@ -13,7 +13,7 @@ collection strategies.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, List, Optional, Set
 
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -507,6 +507,7 @@ class XPostCollector:
                     existing.video_url = post.video_url
                     existing.image_url = post.image_url
                     existing.media_type = post.media_type or "none"
+                    existing.updated_at = datetime.now(timezone.utc)
                     posts_updated += 1
                 else:
                     # Create new post with all content fields
@@ -521,6 +522,7 @@ class XPostCollector:
                         video_url=post.video_url,
                         image_url=post.image_url,
                         media_type=post.media_type or "none",
+                        updated_at=datetime.now(timezone.utc),
                     )
                     session.add(db_post)
                     result.posts_saved += 1

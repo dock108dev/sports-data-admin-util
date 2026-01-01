@@ -15,8 +15,9 @@ interface ScrapeRunFormProps {
 }
 
 /**
- * Form component for creating scrape runs.
- * Handles league selection, season/date input, and feature toggles.
+ * Simplified form for creating scrape runs.
+ * - Data type toggles: boxscores, odds, social, pbp
+ * - Shared filters: only_missing, updated_before
  */
 export function ScrapeRunForm({ onSubmit, loading = false, error, success }: ScrapeRunFormProps) {
   const [form, setForm] = useState<ScrapeRunFormData>(DEFAULT_SCRAPE_RUN_FORM);
@@ -100,97 +101,68 @@ export function ScrapeRunForm({ onSubmit, loading = false, error, success }: Scr
         </div>
         {form.season && !form.startDate && !form.endDate && (
           <p className={styles.hint}>
-            Dates will be auto-filled for the full {form.season} season (including playoffs/championships)
+            Dates will be auto-filled for the full {form.season} season
           </p>
         )}
 
+        <h3 className={styles.sectionTitle}>Data Types</h3>
         <div className={styles.toggles}>
           <label>
             <input
               type="checkbox"
-              checked={form.includeBoxscores}
-              onChange={(e) => setForm((prev) => ({ ...prev, includeBoxscores: e.target.checked }))}
+              checked={form.boxscores}
+              onChange={(e) => setForm((prev) => ({ ...prev, boxscores: e.target.checked }))}
             />
-            Include boxscores
+            Boxscores
           </label>
           <label>
             <input
               type="checkbox"
-              checked={form.includeOdds}
-              onChange={(e) => setForm((prev) => ({ ...prev, includeOdds: e.target.checked }))}
+              checked={form.odds}
+              onChange={(e) => setForm((prev) => ({ ...prev, odds: e.target.checked }))}
             />
-            Include odds
+            Odds
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={form.social}
+              onChange={(e) => setForm((prev) => ({ ...prev, social: e.target.checked }))}
+            />
+            Social / X Posts
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={form.pbp}
+              onChange={(e) => setForm((prev) => ({ ...prev, pbp: e.target.checked }))}
+            />
+            Play-by-Play
           </label>
         </div>
 
-        <h3 className={styles.sectionTitle}>Play-by-Play</h3>
+        <h3 className={styles.sectionTitle}>Filters</h3>
         <div className={styles.toggles}>
           <label>
             <input
               type="checkbox"
-              checked={form.includePbp}
-              onChange={(e) => setForm((prev) => ({ ...prev, includePbp: e.target.checked }))}
+              checked={form.onlyMissing}
+              onChange={(e) => setForm((prev) => ({ ...prev, onlyMissing: e.target.checked }))}
             />
-            Include play-by-play
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={form.backfillPbp}
-              onChange={(e) => setForm((prev) => ({ ...prev, backfillPbp: e.target.checked }))}
-            />
-            Backfill missing PBP
+            Only missing data
           </label>
         </div>
-        {(form.includePbp || form.backfillPbp) && (
-          <p className={styles.hint}>
-            Scrapes play-by-play from Sports Reference (one request per game; cached after first fetch)
-          </p>
-        )}
-
-        <div className={styles.toggles}>
-          <label>
-            <input
-              type="checkbox"
-              checked={form.backfillPlayerStats}
-              onChange={(e) => setForm((prev) => ({ ...prev, backfillPlayerStats: e.target.checked }))}
-            />
-            Backfill missing player stats
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={form.backfillOdds}
-              onChange={(e) => setForm((prev) => ({ ...prev, backfillOdds: e.target.checked }))}
-            />
-            Backfill missing odds
-          </label>
-        </div>
-
-        <h3 className={styles.sectionTitle}>Social / X Posts</h3>
-        <div className={styles.toggles}>
-          <label>
-            <input
-              type="checkbox"
-              checked={form.includeSocial}
-              onChange={(e) => setForm((prev) => ({ ...prev, includeSocial: e.target.checked }))}
-            />
-            Include social posts
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={form.backfillSocial}
-              onChange={(e) => setForm((prev) => ({ ...prev, backfillSocial: e.target.checked }))}
-            />
-            Backfill missing social
-          </label>
-        </div>
-        {(form.includeSocial || form.backfillSocial) && (
-          <p className={styles.hint}>
-            Collects team posts from 5am ET game day through 5am ET next day (24hr window)
-          </p>
-        )}
+        <label>
+          Updated before (only scrape if last updated before this date)
+          <input
+            type="date"
+            value={form.updatedBefore}
+            onChange={(e) => setForm((prev) => ({ ...prev, updatedBefore: e.target.value }))}
+          />
+        </label>
+        <p className={styles.hint}>
+          Leave blank to scrape all games in range. Set a date to only rescrape stale data.
+        </p>
 
         <button type="submit" disabled={loading}>
           {loading ? "Scheduling..." : "Schedule Run"}
@@ -199,4 +171,3 @@ export function ScrapeRunForm({ onSubmit, loading = false, error, success }: Scr
     </section>
   );
 }
-

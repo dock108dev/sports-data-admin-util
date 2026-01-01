@@ -215,6 +215,7 @@ class SportsGamePlay(Base):
     away_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     raw_data: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     game: Mapped["SportsGame"] = relationship("SportsGame", back_populates="plays")
 
@@ -272,6 +273,7 @@ class GameSocialPost(Base):
     source_handle: Mapped[str | None] = mapped_column(String(100), nullable=True)
     media_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     game: Mapped[SportsGame] = relationship("SportsGame", back_populates="social_posts")
     team: Mapped[SportsTeam] = relationship("SportsTeam")

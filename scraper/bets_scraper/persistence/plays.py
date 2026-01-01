@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from ..db import db_models
 from ..logging import logger
+from ..utils.datetime_utils import utcnow
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -70,6 +71,7 @@ def upsert_plays(session: Session, game_id: int, plays: Sequence[NormalizedPlay]
                 home_score=play.home_score,
                 away_score=play.away_score,
                 raw_data=play.raw_data,
+                updated_at=utcnow(),
             )
             .on_conflict_do_update(
                 index_elements=["game_id", "play_index"],
@@ -84,6 +86,7 @@ def upsert_plays(session: Session, game_id: int, plays: Sequence[NormalizedPlay]
                     "home_score": play.home_score,
                     "away_score": play.away_score,
                     "raw_data": play.raw_data,
+                    "updated_at": utcnow(),
                 },
             )
         )

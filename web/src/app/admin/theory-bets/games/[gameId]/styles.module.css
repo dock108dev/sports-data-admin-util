@@ -176,6 +176,14 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+/* Constrain Twitter embed width */
+.socialPostCard > div {
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .socialPostHeader {
@@ -208,6 +216,13 @@
 
 .socialPostLink:hover {
   text-decoration: underline;
+}
+
+.socialPostImage {
+  width: 100%;
+  border-radius: 8px;
+  max-height: 300px;
+  object-fit: cover;
 }
 
 .handleBadge {
@@ -321,4 +336,40 @@
 
 .pbpDescription {
   max-width: 400px;
+}
+
+/* Pagination controls */
+.paginationControls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.paginationButton {
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.paginationButton:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.paginationButton:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+.paginationInfo {
+  color: #64748b;
+  font-size: 0.9rem;
 }

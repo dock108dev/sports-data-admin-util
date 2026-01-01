@@ -676,19 +676,18 @@ export async function createScrapeRun(payload: {
   requestedBy?: string;
   config: {
     leagueCode: string;
-    scraperType?: string;
     season?: number;
     seasonType?: string;
     startDate?: string;
     endDate?: string;
-    includeBoxscores?: boolean;
-    includeOdds?: boolean;
-    includeSocial?: boolean;
-    includePbp?: boolean;
-    backfillPlayerStats?: boolean;
-    backfillOdds?: boolean;
-    backfillSocial?: boolean;
-    backfillPbp?: boolean;
+    // Data type toggles
+    boxscores?: boolean;
+    odds?: boolean;
+    social?: boolean;
+    pbp?: boolean;
+    // Shared filters
+    onlyMissing?: boolean;
+    updatedBefore?: string;
     books?: string[];
   };
 }): Promise<ScrapeRunResponse> {

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { fetchGame, rescrapeGame, resyncOdds, type AdminGameDetail } from "@/lib/api/sportsAdmin";
-import { SocialMediaRenderer } from "@/components/social/SocialMediaRenderer";
+import { TwitterEmbed } from "@/components/social/TwitterEmbed";
 import styles from "./styles.module.css";
 
 /** Collapsible section component */
@@ -115,8 +115,8 @@ function PbpSection({ plays }: { plays: PlayEntry[] }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPlays.map((play) => (
-                      <tr key={play.id}>
+                    {filteredPlays.map((play, idx) => (
+                      <tr key={play.id ?? `play-${play.play_index}-${idx}`}>
                         <td>{play.game_clock ?? "—"}</td>
                         <td>{play.team_abbreviation ?? "—"}</td>
                         <td className={styles.pbpDescription}>{play.description ?? "—"}</td>
@@ -135,6 +135,122 @@ function PbpSection({ plays }: { plays: PlayEntry[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+const POSTS_PER_PAGE = 10;
+
+/** Paginated social posts section */
+function SocialPostsSection({ posts }: { posts: AdminGameDetail["social_posts"] }) {
+  const [page, setPage] = useState(0);
+
+  // Filter and sort posts
+  const filteredPosts = useMemo(() => {
+    return [...(posts || [])]
+      .sort((a, b) => new Date(a.posted_at).getTime() - new Date(b.posted_at).getTime())
+      .filter(
+        (post) =>
+          post.tweet_text ||
+          post.image_url ||
+          post.video_url ||
+          post.media_type === "video" ||
+          post.media_type === "image"
+      );
+  }, [posts]);
+
+  const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE);
+  const paginatedPosts = filteredPosts.slice(
+    page * POSTS_PER_PAGE,
+    (page + 1) * POSTS_PER_PAGE
+  );
+
+  return (
+    <CollapsibleSection title="Social Posts" defaultOpen={false}>
+      {filteredPosts.length === 0 ? (
+        <div style={{ color: "#475569" }}>No social posts found for this game.</div>
+      ) : (
+        <>
+          <div style={{ marginBottom: "1rem", color: "#64748b", fontSize: "0.9rem" }}>
+            Showing {page * POSTS_PER_PAGE + 1}–{Math.min((page + 1) * POSTS_PER_PAGE, filteredPosts.length)} of {filteredPosts.length} posts
+          </div>
+
+          <div className={styles.socialPostsGrid}>
+            {paginatedPosts.map((post) => (
+              <div key={post.id} className={styles.socialPostCard}>
+                <div className={styles.socialPostHeader}>
+                  <span className={styles.badge}>{post.team_abbreviation}</span>
+                  {post.source_handle && (
+                    <span className={styles.handleBadge}>@{post.source_handle}</span>
+                  )}
+                  {post.media_type === "video" && (
+                    <span className={styles.videoBadge}>🎥 Video</span>
+                  )}
+                  {post.media_type === "image" && (
+                    <span className={styles.imageBadge}>🖼️ Image</span>
+                  )}
+                </div>
+
+                {/* HYBRID RENDERING: Video posts use Twitter embed, others use custom display */}
+                {post.media_type === "video" ? (
+                  <TwitterEmbed tweetUrl={post.post_url} />
+                ) : (
+                  <>
+                    {post.tweet_text && (
+                      <div className={styles.tweetText}>{post.tweet_text}</div>
+                    )}
+                    {post.image_url && (
+                      <img
+                        src={post.image_url}
+                        alt="Post media"
+                        className={styles.socialPostImage}
+                        loading="lazy"
+                      />
+                    )}
+                    <a
+                      href={post.post_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.socialPostLink}
+                    >
+                      View on X →
+                    </a>
+                  </>
+                )}
+
+                <div className={styles.socialPostMeta}>
+                  {new Date(post.posted_at).toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Pagination controls */}
+          {totalPages > 1 && (
+            <div className={styles.paginationControls}>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className={styles.paginationButton}
+              >
+                ← Previous
+              </button>
+              <span className={styles.paginationInfo}>
+                Page {page + 1} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={page === totalPages - 1}
+                className={styles.paginationButton}
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </CollapsibleSection>
   );
 }
 
@@ -490,62 +606,7 @@ export default function GameDetailClient() {
         )}
       </CollapsibleSection>
 
-      <CollapsibleSection title="Social Posts" defaultOpen={false}>
-        {/* #region agent log */}
-        {game.social_posts && game.social_posts.length > 0 && (() => { fetch('http://127.0.0.1:7242/ingest/bbcc1fde-07f2-48ee-a458-9336304655ab',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GameDetailClient.tsx:socialPosts',message:'Raw social posts from API',data:{postCount:game.social_posts.length,samplePosts:game.social_posts.slice(0,3).map(p=>({id:p.id,media_type:p.media_type,has_video_url:!!p.video_url,has_image_url:!!p.image_url}))},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{}); return null; })()}
-        {/* #endregion */}
-        {!game.social_posts || game.social_posts.length === 0 ? (
-          <div style={{ color: "#475569" }}>No social posts found for this game.</div>
-        ) : (
-          <div className={styles.socialPostsGrid}>
-            {([...game.social_posts]
-              .sort(
-                (a, b) =>
-                  new Date(a.posted_at).getTime() - new Date(b.posted_at).getTime()
-              )).map((post) => (
-              <div key={post.id} className={styles.socialPostCard}>
-                <div className={styles.socialPostHeader}>
-                  <span className={styles.badge}>{post.team_abbreviation}</span>
-                  {post.source_handle && (
-                    <span className={styles.handleBadge}>@{post.source_handle}</span>
-                  )}
-                  {post.media_type === "video" && (
-                    <span className={styles.videoBadge}>🎥 Video</span>
-                  )}
-                  {post.media_type === "image" && (
-                    <span className={styles.imageBadge}>🖼️ Image</span>
-                  )}
-                </div>
-                {post.tweet_text && (
-                  <div className={styles.tweetText}>{post.tweet_text}</div>
-                )}
-                {/* Only render media component if there's actual media */}
-                {(post.image_url || post.video_url || post.media_type === "video" || post.media_type === "image") ? (
-                  <SocialMediaRenderer
-                    mediaType={post.media_type}
-                    imageUrl={post.image_url}
-                    videoUrl={post.video_url}
-                    postUrl={post.post_url}
-                    linkClassName={styles.socialPostLink}
-                  />
-                ) : (
-                  <a
-                    href={post.post_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={styles.socialPostLink}
-                  >
-                    View on X →
-                  </a>
-                )}
-                <div className={styles.socialPostMeta}>
-                  {new Date(post.posted_at).toLocaleString()}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CollapsibleSection>
+      <SocialPostsSection posts={game.social_posts || []} />
 
       <PbpSection plays={game.plays || []} />
 

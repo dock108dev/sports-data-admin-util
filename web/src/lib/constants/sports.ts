@@ -21,21 +21,21 @@ export const SCRAPE_RUN_STATUS_COLORS: Record<string, string> = {
 } as const;
 
 /**
- * Type for scrape run form state.
+ * Simplified scrape run form state.
  */
 export type ScrapeRunForm = {
   leagueCode: LeagueCode;
   season: string;
   startDate: string;
   endDate: string;
-  includeBoxscores: boolean;
-  includeOdds: boolean;
-  includeSocial: boolean;
-  includePbp: boolean;
-  backfillPlayerStats: boolean;
-  backfillOdds: boolean;
-  backfillSocial: boolean;
-  backfillPbp: boolean;
+  // Data type toggles
+  boxscores: boolean;
+  odds: boolean;
+  social: boolean;
+  pbp: boolean;
+  // Shared filters
+  onlyMissing: boolean;
+  updatedBefore: string; // ISO date string or empty
   requestedBy: string;
 };
 
@@ -47,14 +47,12 @@ export const DEFAULT_SCRAPE_RUN_FORM: ScrapeRunForm = {
   season: "",
   startDate: "",
   endDate: "",
-  includeBoxscores: true,
-  includeOdds: true,
-  includeSocial: false,
-  includePbp: false,
-  backfillPlayerStats: false,
-  backfillOdds: false,
-  backfillSocial: false,
-  backfillPbp: false,
+  boxscores: true,
+  odds: true,
+  social: false,
+  pbp: false,
+  onlyMissing: false,
+  updatedBefore: "",
   requestedBy: "admin@dock108.ai",
 };
 

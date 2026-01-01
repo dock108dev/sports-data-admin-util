@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Dict, List, Tuple
 
-from sqlalchemy import exists, not_, or_
+from sqlalchemy import exists, func, not_
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -21,71 +21,9 @@ from ..utils.datetime_utils import utcnow
 
 class ScrapeRunManager:
     def __init__(self) -> None:
-        # Use scraper registry instead of hardcoding all imports
         self.scrapers = get_all_scrapers()
         self.odds_sync = OddsSynchronizer()
         self.social_collector = XPostCollector()
-
-    def _get_incomplete_games(
-        self,
-        session: Session,
-        league_code: str,
-        start_date: date,
-        end_date: date,
-        missing_players: bool = False,
-        missing_odds: bool = False,
-    ) -> List[Tuple[int, str, date]]:
-        """Return list of (game_id, source_game_key, game_date) for incomplete games.
-        
-        Finds games that are missing player boxscores and/or odds data.
-        """
-        # Get league ID
-        league = session.query(db_models.SportsLeague).filter(
-            db_models.SportsLeague.code == league_code
-        ).first()
-        if not league:
-            logger.warning("league_not_found_for_backfill", league=league_code)
-            return []
-
-        # Build base query
-        query = session.query(
-            db_models.SportsGame.id,
-            db_models.SportsGame.source_game_key,
-            db_models.SportsGame.game_date,
-        ).filter(
-            db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time()),
-            db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time()),
-            db_models.SportsGame.source_game_key.isnot(None),  # Need source key for re-scraping
-        )
-
-        # Build filter conditions
-        conditions = []
-        if missing_players:
-            has_players = exists().where(
-                db_models.SportsPlayerBoxscore.game_id == db_models.SportsGame.id
-            )
-            conditions.append(not_(has_players))
-        if missing_odds:
-            has_odds = exists().where(
-                db_models.SportsGameOdds.game_id == db_models.SportsGame.id
-            )
-            conditions.append(not_(has_odds))
-
-        if conditions:
-            query = query.filter(or_(*conditions))
-
-        results = query.all()
-        logger.info(
-            "incomplete_games_query",
-            league=league_code,
-            start=str(start_date),
-            end=str(end_date),
-            missing_players=missing_players,
-            missing_odds=missing_odds,
-            found_count=len(results),
-        )
-        return [(r.id, r.source_game_key, r.game_date.date() if r.game_date else None) for r in results]
 
     def _update_run(self, run_id: int, **updates) -> None:
         try:
@@ -109,6 +47,82 @@ class ScrapeRunManager:
             logger.exception("failed_to_update_run", run_id=run_id, error=str(exc), exc_info=True)
             raise
 
+    def _get_games_for_boxscores(
+        self,
+        session: Session,
+        league_code: str,
+        start_date: date,
+        end_date: date,
+        only_missing: bool = False,
+        updated_before: datetime | None = None,
+    ) -> List[Tuple[int, str, date]]:
+        """Get games for boxscore scraping with filters."""
+        league = session.query(db_models.SportsLeague).filter(
+            db_models.SportsLeague.code == league_code
+        ).first()
+        if not league:
+            return []
+
+        query = session.query(
+            db_models.SportsGame.id,
+            db_models.SportsGame.source_game_key,
+            db_models.SportsGame.game_date,
+        ).filter(
+            db_models.SportsGame.league_id == league.id,
+            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time()),
+            db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time()),
+            db_models.SportsGame.source_game_key.isnot(None),
+        )
+
+        if only_missing:
+            has_boxscores = exists().where(
+                db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id
+            )
+            query = query.filter(not_(has_boxscores))
+
+        if updated_before:
+            query = query.filter(db_models.SportsGame.updated_at < updated_before)
+
+        results = query.all()
+        return [(r.id, r.source_game_key, r.game_date.date() if r.game_date else None) for r in results]
+
+    def _get_games_for_odds(
+        self,
+        session: Session,
+        league_code: str,
+        start_date: date,
+        end_date: date,
+        only_missing: bool = False,
+        updated_before: datetime | None = None,
+    ) -> List[date]:
+        """Get unique dates needing odds fetch."""
+        league = session.query(db_models.SportsLeague).filter(
+            db_models.SportsLeague.code == league_code
+        ).first()
+        if not league:
+            return []
+
+        query = session.query(
+            func.date(db_models.SportsGame.game_date).label("game_day")
+        ).filter(
+            db_models.SportsGame.league_id == league.id,
+            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time()),
+            db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time()),
+        ).distinct()
+
+        if only_missing:
+            # Games with no odds
+            has_odds = exists().where(
+                db_models.SportsGameOdds.game_id == db_models.SportsGame.id
+            )
+            query = query.filter(not_(has_odds))
+
+        # For updated_before on odds, we'd need to track per-game odds updated_at
+        # For now, just return all dates in range if not only_missing
+
+        results = query.all()
+        return [r.game_day for r in results if r.game_day]
+
     def _get_games_for_social(
         self,
         session: Session,
@@ -116,8 +130,9 @@ class ScrapeRunManager:
         start_date: date,
         end_date: date,
         only_missing: bool = False,
+        updated_before: datetime | None = None,
     ) -> List[int]:
-        """Get game IDs for social scraping."""
+        """Get game IDs for social scraping with filters."""
         league = session.query(db_models.SportsLeague).filter(
             db_models.SportsLeague.code == league_code
         ).first()
@@ -131,11 +146,18 @@ class ScrapeRunManager:
         )
 
         if only_missing:
-            # Only games without any social posts
             has_posts = exists().where(
                 db_models.GameSocialPost.game_id == db_models.SportsGame.id
             )
             query = query.filter(not_(has_posts))
+
+        if updated_before:
+            # Include games where ALL posts are older than cutoff
+            has_fresh = exists().where(
+                db_models.GameSocialPost.game_id == db_models.SportsGame.id,
+                db_models.GameSocialPost.updated_at >= updated_before,
+            )
+            query = query.filter(not_(has_fresh))
 
         return [r[0] for r in query.all()]
 
@@ -145,9 +167,10 @@ class ScrapeRunManager:
         league_code: str,
         start_date: date,
         end_date: date,
-        only_missing: bool = True,
+        only_missing: bool = False,
+        updated_before: datetime | None = None,
     ) -> List[Tuple[int, str, date]]:
-        """Get games for play-by-play scraping."""
+        """Get games for play-by-play scraping with filters."""
         league = session.query(db_models.SportsLeague).filter(
             db_models.SportsLeague.code == league_code
         ).first()
@@ -171,6 +194,14 @@ class ScrapeRunManager:
             )
             query = query.filter(not_(has_pbp))
 
+        if updated_before:
+            # Include games where ALL plays are older than cutoff
+            has_fresh = exists().where(
+                db_models.SportsGamePlay.game_id == db_models.SportsGame.id,
+                db_models.SportsGamePlay.updated_at >= updated_before,
+            )
+            query = query.filter(not_(has_fresh))
+
         results = query.all()
         return [(r.id, r.source_game_key, r.game_date.date() if r.game_date else None) for r in results]
 
@@ -178,138 +209,166 @@ class ScrapeRunManager:
         summary: Dict[str, int | str] = {
             "games": 0,
             "odds": 0,
-            "backfilled_players": 0,
-            "backfilled_odds": 0,
             "social_posts": 0,
             "pbp_games": 0,
         }
         start = config.start_date or date.today()
         end = config.end_date or start
         scraper = self.scrapers.get(config.league_code)
-        
-        # Log configuration for debugging
+
+        # Convert updated_before date to datetime if provided
+        updated_before_dt = (
+            datetime.combine(config.updated_before, datetime.min.time()).replace(tzinfo=timezone.utc)
+            if config.updated_before
+            else None
+        )
+
         logger.info(
             "scrape_run_config",
             run_id=run_id,
             league=config.league_code,
-            include_boxscores=config.include_boxscores,
-            include_odds=config.include_odds,
-            scraper_found=scraper is not None,
+            boxscores=config.boxscores,
+            odds=config.odds,
+            social=config.social,
+            pbp=config.pbp,
+            only_missing=config.only_missing,
+            updated_before=str(config.updated_before) if config.updated_before else None,
             start_date=str(start),
             end_date=str(end),
         )
-        
-        if not scraper and (config.include_boxscores or config.backfill_player_stats):
+
+        if not scraper and (config.boxscores or config.pbp):
             raise RuntimeError(f"No scraper implemented for {config.league_code}")
 
         self._update_run(run_id, status="running", started_at=utcnow())
 
         try:
-            # Standard boxscore scraping
-            if config.include_boxscores and scraper:
+            # Boxscore scraping
+            if config.boxscores and scraper:
                 logger.info(
                     "boxscore_scraping_start",
                     run_id=run_id,
                     league=config.league_code,
                     start_date=str(start),
                     end_date=str(end),
+                    only_missing=config.only_missing,
                 )
-                game_count = 0
-                for game_payload in scraper.fetch_date_range(start, end):
-                    try:
-                        with get_session() as session:
-                            persist_game_payload(session, game_payload)
-                            session.commit()
-                            game_count += 1
-                            summary["games"] += 1
-                    except Exception as exc:
-                        logger.exception("game_persist_failed", error=str(exc), game_date=game_payload.identity.game_date, run_id=run_id)
-                        continue
-                logger.info("games_persisted", count=game_count, run_id=run_id, league=config.league_code)
-            elif config.include_boxscores and not scraper:
-                logger.warning("boxscore_scraping_skipped_no_scraper", run_id=run_id, league=config.league_code)
 
-            # Standard odds scraping
-            if config.include_odds:
-                summary["odds"] = self.odds_sync.sync(config)
+                if config.only_missing or updated_before_dt:
+                    # Filter games by criteria
+                    with get_session() as session:
+                        games_to_scrape = self._get_games_for_boxscores(
+                            session, config.league_code, start, end,
+                            only_missing=config.only_missing,
+                            updated_before=updated_before_dt,
+                        )
+                    logger.info("found_games_for_boxscores", count=len(games_to_scrape), run_id=run_id)
 
-            # Backfill player stats for games missing them
-            if config.backfill_player_stats and scraper:
-                logger.info("starting_player_backfill", run_id=run_id, league=config.league_code, start=str(start), end=str(end))
-                with get_session() as session:
-                    incomplete = self._get_incomplete_games(
-                        session, config.league_code, start, end,
-                        missing_players=True, missing_odds=False
-                    )
-                logger.info("found_games_missing_players", count=len(incomplete), run_id=run_id)
-
-                for game_id, source_key, game_date in incomplete:
-                    if not source_key or not game_date:
-                        logger.debug("skipping_game_no_source_key", game_id=game_id)
-                        continue
-                    logger.debug("backfilling_player_stats", game_id=game_id, source_key=source_key, game_date=str(game_date))
-                    try:
-                        game_payload = scraper.fetch_single_boxscore(source_key, game_date)
-                        if game_payload and game_payload.player_boxscores:
+                    for game_id, source_key, game_date in games_to_scrape:
+                        if not source_key or not game_date:
+                            continue
+                        try:
+                            game_payload = scraper.fetch_single_boxscore(source_key, game_date)
+                            if game_payload:
+                                with get_session() as session:
+                                    persist_game_payload(session, game_payload)
+                                    session.commit()
+                                    summary["games"] += 1
+                        except Exception as exc:
+                            logger.warning("boxscore_scrape_failed", game_id=game_id, error=str(exc))
+                else:
+                    # Scrape all games in date range
+                    for game_payload in scraper.fetch_date_range(start, end):
+                        try:
                             with get_session() as session:
-                                upsert_player_boxscores(session, game_id, game_payload.player_boxscores)
+                                persist_game_payload(session, game_payload)
                                 session.commit()
-                                summary["backfilled_players"] += len(game_payload.player_boxscores)
-                                logger.info(
-                                    "player_backfill_success",
-                                    game_id=game_id,
-                                    source_key=source_key,
-                                    players=len(game_payload.player_boxscores),
-                                )
-                        else:
-                            logger.warning("player_backfill_no_data", game_id=game_id, source_key=source_key)
-                    except Exception as e:
-                        logger.warning("player_backfill_failed", game_id=game_id, source_key=source_key, error=str(e))
+                                summary["games"] += 1
+                        except Exception as exc:
+                            logger.exception("game_persist_failed", error=str(exc), run_id=run_id)
 
-            # Backfill odds for games missing them
-            if config.backfill_odds:
-                logger.info("starting_odds_backfill", run_id=run_id, league=config.league_code, start=str(start), end=str(end))
-                with get_session() as session:
-                    incomplete = self._get_incomplete_games(
-                        session, config.league_code, start, end,
-                        missing_players=False, missing_odds=True
-                    )
-                logger.info("found_games_missing_odds", count=len(incomplete), run_id=run_id)
+                logger.info("boxscores_complete", count=summary["games"], run_id=run_id)
 
-                # Group by date to minimize API calls
-                dates_to_fetch = sorted(set(g[2] for g in incomplete if g[2]))
-                for fetch_date in dates_to_fetch:
-                    logger.debug("backfilling_odds_for_date", date=str(fetch_date), league=config.league_code)
-                    try:
-                        odds_count = self.odds_sync.sync_single_date(config.league_code, fetch_date)
-                        summary["backfilled_odds"] += odds_count
-                        logger.info("odds_backfill_date_complete", date=str(fetch_date), odds_inserted=odds_count)
-                    except Exception as e:
-                        logger.warning("odds_backfill_date_failed", date=str(fetch_date), error=str(e))
-
-            # Play-by-play scraping
-            if config.include_pbp or config.backfill_pbp:
+            # Odds scraping
+            if config.odds:
                 logger.info(
-                    "starting_pbp_scraping",
+                    "odds_scraping_start",
                     run_id=run_id,
                     league=config.league_code,
-                    start=str(start),
-                    end=str(end),
-                    only_missing=config.backfill_pbp,
+                    start_date=str(start),
+                    end_date=str(end),
+                    only_missing=config.only_missing,
                 )
+
+                if config.only_missing:
+                    with get_session() as session:
+                        dates_to_fetch = self._get_games_for_odds(
+                            session, config.league_code, start, end,
+                            only_missing=True,
+                        )
+                    for fetch_date in dates_to_fetch:
+                        try:
+                            odds_count = self.odds_sync.sync_single_date(config.league_code, fetch_date)
+                            summary["odds"] += odds_count
+                        except Exception as e:
+                            logger.warning("odds_fetch_failed", date=str(fetch_date), error=str(e))
+                else:
+                    summary["odds"] = self.odds_sync.sync(config)
+
+                logger.info("odds_complete", count=summary["odds"], run_id=run_id)
+
+            # Social scraping
+            if config.social:
+                logger.info(
+                    "social_scraping_start",
+                    run_id=run_id,
+                    league=config.league_code,
+                    start_date=str(start),
+                    end_date=str(end),
+                    only_missing=config.only_missing,
+                    updated_before=str(updated_before_dt) if updated_before_dt else None,
+                )
+
+                with get_session() as session:
+                    game_ids = self._get_games_for_social(
+                        session, config.league_code, start, end,
+                        only_missing=config.only_missing,
+                        updated_before=updated_before_dt,
+                    )
+                logger.info("found_games_for_social", count=len(game_ids), run_id=run_id)
+
+                for game_id in game_ids:
+                    try:
+                        with get_session() as session:
+                            results = self.social_collector.collect_for_game(session, game_id)
+                            for result in results:
+                                summary["social_posts"] += result.posts_saved
+                    except Exception as e:
+                        logger.warning("social_collection_failed", game_id=game_id, error=str(e))
+
+                logger.info("social_complete", count=summary["social_posts"], run_id=run_id)
+
+            # Play-by-play scraping
+            if config.pbp and scraper:
+                logger.info(
+                    "pbp_scraping_start",
+                    run_id=run_id,
+                    league=config.league_code,
+                    start_date=str(start),
+                    end_date=str(end),
+                    only_missing=config.only_missing,
+                )
+
                 with get_session() as session:
                     games_for_pbp = self._get_games_for_pbp(
-                        session,
-                        config.league_code,
-                        start,
-                        end,
-                        only_missing=config.backfill_pbp,
+                        session, config.league_code, start, end,
+                        only_missing=config.only_missing,
+                        updated_before=updated_before_dt,
                     )
                 logger.info("found_games_for_pbp", count=len(games_for_pbp), run_id=run_id)
 
                 for game_id, source_key, game_date in games_for_pbp:
                     if not source_key or not game_date:
-                        logger.debug("pbp_skip_no_key", game_id=game_id)
                         continue
                     try:
                         pbp_payload = scraper.fetch_play_by_play(source_key, game_date)
@@ -318,76 +377,31 @@ class ScrapeRunManager:
                                 upsert_plays(session, game_id, pbp_payload.plays)
                                 session.commit()
                                 summary["pbp_games"] += 1
-                        else:
-                            logger.debug("pbp_no_data", game_id=game_id, source_key=source_key)
                     except Exception as e:
-                        logger.warning(
-                            "pbp_scrape_failed",
-                            game_id=game_id,
-                            source_key=source_key,
-                            error=str(e),
-                        )
+                        logger.warning("pbp_scrape_failed", game_id=game_id, error=str(e))
 
-            # Social post scraping
-            if config.include_social or config.backfill_social:
-                # include_social: only scrape games without posts
-                # backfill_social: rescrape all games to refresh/upsert data
-                skip_existing = config.include_social and not config.backfill_social
-                logger.info(
-                    "starting_social_scraping",
-                    run_id=run_id,
-                    league=config.league_code,
-                    start=str(start),
-                    end=str(end),
-                    skip_existing=skip_existing,
-                )
-                with get_session() as session:
-                    game_ids = self._get_games_for_social(
-                        session,
-                        config.league_code,
-                        start,
-                        end,
-                        only_missing=skip_existing,
-                    )
-                logger.info("found_games_for_social", count=len(game_ids), run_id=run_id)
-
-                for game_id in game_ids:
-                    try:
-                        with get_session() as session:
-                            results = self.social_collector.collect_for_game(
-                                session,
-                                game_id,
-                            )
-                            # Note: commits happen inside run_job for each team
-                            # so posts are persisted immediately after collection
-                            for result in results:
-                                summary["social_posts"] += result.posts_saved
-                    except Exception as e:
-                        logger.warning(
-                            "social_collection_failed",
-                            game_id=game_id,
-                            error=str(e),
-                        )
+                logger.info("pbp_complete", count=summary["pbp_games"], run_id=run_id)
 
             # Build summary string
-            summary_parts = [f'Games: {summary["games"]}', f'Odds: {summary["odds"]}']
-            if summary["backfilled_players"]:
-                summary_parts.append(f'Backfilled players: {summary["backfilled_players"]}')
-            if summary["backfilled_odds"]:
-                summary_parts.append(f'Backfilled odds: {summary["backfilled_odds"]}')
+            summary_parts = []
+            if summary["games"]:
+                summary_parts.append(f'Games: {summary["games"]}')
+            if summary["odds"]:
+                summary_parts.append(f'Odds: {summary["odds"]}')
             if summary["social_posts"]:
-                summary_parts.append(f'Social posts: {summary["social_posts"]}')
+                summary_parts.append(f'Social: {summary["social_posts"]}')
             if summary["pbp_games"]:
-                summary_parts.append(f'PBP games: {summary["pbp_games"]}')
+                summary_parts.append(f'PBP: {summary["pbp_games"]}')
 
             self._update_run(
                 run_id,
                 status="success",
                 finished_at=utcnow(),
-                summary=", ".join(summary_parts),
+                summary=", ".join(summary_parts) or "No data processed",
             )
             logger.info("scrape_run_complete", run_id=run_id, summary=summary)
-        except Exception as exc:  # pragma: no cover
+
+        except Exception as exc:
             logger.exception("scrape_run_failed", run_id=run_id, error=str(exc))
             self._update_run(
                 run_id,
@@ -398,5 +412,3 @@ class ScrapeRunManager:
             raise
 
         return summary
-
-
