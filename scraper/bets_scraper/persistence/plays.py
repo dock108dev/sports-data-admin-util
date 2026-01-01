@@ -93,3 +93,4 @@ def upsert_plays(session: Session, game_id: int, plays: Sequence[NormalizedPlay]
     logger.info("plays_upserted", game_id=game_id, count=upserted)
     return upserted
 
+
