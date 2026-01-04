@@ -27,6 +27,8 @@ class _MomentSummaryCacheEntry:
 
 
 _moment_summary_cache: dict[tuple[int, int], _MomentSummaryCacheEntry] = {}
+_summary_cache_hits = 0
+_summary_cache_misses = 0
 
 
 _FINAL_SCORE_PATTERN = re.compile(r"\bfinal\s+score\b", re.IGNORECASE)
@@ -39,16 +41,10 @@ async def summarize_moment(game_id: int, moment_id: int, session: AsyncSession) 
     cache_key = (game_id, moment_id)
     cached = _get_cached_summary(cache_key)
     if cached:
-        logger.info(
-            "moment_summary_cache_hit",
-            extra={"game_id": game_id, "moment_id": moment_id},
-        )
+        _record_cache_hit(game_id, moment_id)
         return cached
 
-    logger.info(
-        "moment_summary_cache_miss",
-        extra={"game_id": game_id, "moment_id": moment_id},
-    )
+    _record_cache_miss(game_id, moment_id)
 
     plays: Sequence[db_models.SportsGamePlay] = []
     try:
@@ -104,6 +100,38 @@ def _store_cached_summary(cache_key: tuple[int, int], summary: str) -> None:
     _moment_summary_cache[cache_key] = _MomentSummaryCacheEntry(
         summary=summary,
         expires_at=now_utc() + _SUMMARY_CACHE_TTL,
+    )
+
+
+def _summary_cache_stats() -> tuple[int, int, float]:
+    total = _summary_cache_hits + _summary_cache_misses
+    hit_rate = _summary_cache_hits / total if total else 0.0
+    return _summary_cache_hits, _summary_cache_misses, hit_rate
+
+
+def _record_cache_hit(game_id: int, moment_id: int) -> None:
+    global _summary_cache_hits
+    _summary_cache_hits += 1
+    _log_cache_metrics("moment_summary_cache_hit", game_id, moment_id)
+
+
+def _record_cache_miss(game_id: int, moment_id: int) -> None:
+    global _summary_cache_misses
+    _summary_cache_misses += 1
+    _log_cache_metrics("moment_summary_cache_miss", game_id, moment_id)
+
+
+def _log_cache_metrics(event: str, game_id: int, moment_id: int) -> None:
+    hits, misses, hit_rate = _summary_cache_stats()
+    logger.info(
+        event,
+        extra={
+            "game_id": game_id,
+            "moment_id": moment_id,
+            "cache_hits": hits,
+            "cache_misses": misses,
+            "cache_hit_rate": hit_rate,
+        },
     )
 
 
@@ -228,21 +256,26 @@ def _contains_type(play_types: set[str], targets: set[str]) -> bool:
 
 
 def _sanitize_text(text: str) -> str:
-    cleaned = redact_scores(text)
-    cleaned = _FINAL_SCORE_PATTERN.sub("", cleaned)
-    cleaned = _BANNED_PHRASES_PATTERN.sub("", cleaned)
-    cleaned = cleaned.replace("  ", " ")
-    cleaned = _WHITESPACE_PATTERN.sub(" ", cleaned).strip()
-    if cleaned and cleaned[-1] not in ".!?":
-        cleaned = f"{cleaned}."
-    return cleaned
+    return _apply_spoiler_filters(text)
 
 
 def _redact_summary(text: str) -> str:
+    return _apply_spoiler_filters(text)
+
+
+def _apply_spoiler_filters(text: str) -> str:
     cleaned = redact_scores(text)
-    cleaned = _FINAL_SCORE_PATTERN.sub("", cleaned)
-    cleaned = _BANNED_PHRASES_PATTERN.sub("", cleaned)
+    cleaned, final_score_count = _FINAL_SCORE_PATTERN.subn("", cleaned)
+    cleaned, banned_phrase_count = _BANNED_PHRASES_PATTERN.subn("", cleaned)
     cleaned = _WHITESPACE_PATTERN.sub(" ", cleaned).strip()
+    if final_score_count or banned_phrase_count:
+        logger.info(
+            "moment_summary_spoiler_redaction",
+            extra={
+                "final_score_redactions": final_score_count,
+                "banned_phrase_redactions": banned_phrase_count,
+            },
+        )
     if cleaned and cleaned[-1] not in ".!?":
         cleaned = f"{cleaned}."
     return cleaned
@@ -257,3 +290,6 @@ def _limit_to_sentence(text: str | None) -> str | None:
 
 def _clear_summary_cache() -> None:
     _moment_summary_cache.clear()
+    global _summary_cache_hits, _summary_cache_misses
+    _summary_cache_hits = 0
+    _summary_cache_misses = 0

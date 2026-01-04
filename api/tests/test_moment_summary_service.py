@@ -112,6 +112,30 @@ class TestMomentSummaryService(unittest.TestCase):
         self.assertTrue(summary)
         self.assertNotRegex(summary, r"\\d")
 
+    def test_summary_cache_hit_rate_tracking(self) -> None:
+        play = SimpleNamespace(
+            id=40,
+            game_id=5,
+            play_index=3,
+            play_type="shot",
+            description="Quick catch and shoot.",
+            raw_data={"team_abbreviation": "NYC"},
+        )
+        session = _FakeSession(
+            [
+                _FakeResult(scalar_value=play),
+                _FakeResult(scalar_value=None),
+                _FakeResult(scalars_value=[play]),
+            ]
+        )
+
+        asyncio.run(moment_summaries.summarize_moment(5, 3, session))
+        asyncio.run(moment_summaries.summarize_moment(5, 3, _FakeSession([])))
+        hits, misses, hit_rate = moment_summaries._summary_cache_stats()
+        self.assertEqual(hits, 1)
+        self.assertEqual(misses, 1)
+        self.assertAlmostEqual(hit_rate, 0.5)
+
 
 if __name__ == "__main__":
     unittest.main()
