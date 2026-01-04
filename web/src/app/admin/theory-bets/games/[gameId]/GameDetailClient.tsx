@@ -553,27 +553,27 @@ export default function GameDetailClient() {
               <h3>Total</h3>
               {oddsByMarket.total.length === 0 ? (
                 <div className={styles.subtle}>No total odds for {selectedBook}</div>
-        ) : (
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Side</th>
-                <th>Line</th>
-                <th>Price</th>
-                <th>Observed</th>
-              </tr>
-            </thead>
-            <tbody>
+              ) : (
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Side</th>
+                      <th>Line</th>
+                      <th>Price</th>
+                      <th>Observed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {oddsByMarket.total.map((o, idx) => (
                       <tr key={`${o.side}-${idx}`}>
-                  <td>{o.side ?? "—"}</td>
-                  <td>{o.line ?? "—"}</td>
-                  <td>{o.price ?? "—"}</td>
-                  <td>{o.observed_at ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        <td>{o.side ?? "—"}</td>
+                        <td>{o.line ?? "—"}</td>
+                        <td>{o.price ?? "—"}</td>
+                        <td>{o.observed_at ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
 

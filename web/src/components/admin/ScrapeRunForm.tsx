@@ -160,9 +160,9 @@ export function ScrapeRunForm({ onSubmit, loading = false, error, success }: Scr
             onChange={(e) => setForm((prev) => ({ ...prev, updatedBefore: e.target.value }))}
           />
         </label>
-          <p className={styles.hint}>
+        <p className={styles.hint}>
           Leave blank to scrape all games in range. Set a date to only rescrape stale data.
-          </p>
+        </p>
 
         <button type="submit" disabled={loading}>
           {loading ? "Scheduling..." : "Schedule Run"}

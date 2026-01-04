@@ -215,7 +215,7 @@ class ScrapeRunManager:
         start = config.start_date or date.today()
         end = config.end_date or start
         scraper = self.scrapers.get(config.league_code)
-        
+
         # Convert updated_before date to datetime if provided
         updated_before_dt = (
             datetime.combine(config.updated_before, datetime.min.time()).replace(tzinfo=timezone.utc)
@@ -236,7 +236,7 @@ class ScrapeRunManager:
             start_date=str(start),
             end_date=str(end),
         )
-        
+
         if not scraper and (config.boxscores or config.pbp):
             raise RuntimeError(f"No scraper implemented for {config.league_code}")
 
@@ -270,11 +270,11 @@ class ScrapeRunManager:
                         try:
                             game_payload = scraper.fetch_single_boxscore(source_key, game_date)
                             if game_payload:
-                        with get_session() as session:
-                            persist_game_payload(session, game_payload)
-                            session.commit()
-                            summary["games"] += 1
-                    except Exception as exc:
+                                with get_session() as session:
+                                    persist_game_payload(session, game_payload)
+                                    session.commit()
+                                    summary["games"] += 1
+                        except Exception as exc:
                             logger.warning("boxscore_scrape_failed", game_id=game_id, error=str(exc))
                 else:
                     # Scrape all games in date range
@@ -291,7 +291,7 @@ class ScrapeRunManager:
 
             # Odds scraping
             if config.odds:
-                                logger.info(
+                logger.info(
                     "odds_scraping_start",
                     run_id=run_id,
                     league=config.league_code,
@@ -301,16 +301,16 @@ class ScrapeRunManager:
                 )
 
                 if config.only_missing:
-                with get_session() as session:
+                    with get_session() as session:
                         dates_to_fetch = self._get_games_for_odds(
-                        session, config.league_code, start, end,
+                            session, config.league_code, start, end,
                             only_missing=True,
-                    )
-                for fetch_date in dates_to_fetch:
-                    try:
-                        odds_count = self.odds_sync.sync_single_date(config.league_code, fetch_date)
+                        )
+                    for fetch_date in dates_to_fetch:
+                        try:
+                            odds_count = self.odds_sync.sync_single_date(config.league_code, fetch_date)
                             summary["odds"] += odds_count
-                    except Exception as e:
+                        except Exception as e:
                             logger.warning("odds_fetch_failed", date=str(fetch_date), error=str(e))
                 else:
                     summary["odds"] = self.odds_sync.sync(config)
