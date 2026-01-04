@@ -1,0 +1,16 @@
+[
+  {
+    "team_id": "team-001",
+    "conference": "Atlantic",
+    "elo": 1675.4,
+    "kenpom_adj_eff": 23.1,
+    "projected_seed": 2
+  },
+  {
+    "team_id": "team-002",
+    "conference": "Atlantic",
+    "elo": 1612.8,
+    "kenpom_adj_eff": null,
+    "projected_seed": null
+  }
+]

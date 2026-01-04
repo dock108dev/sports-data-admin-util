@@ -1,0 +1,14 @@
+[
+  {
+    "team_id": "team-001",
+    "conference_rank": 1,
+    "wins": 24,
+    "losses": 4
+  },
+  {
+    "team_id": "team-002",
+    "conference_rank": 2,
+    "wins": 22,
+    "losses": 6
+  }
+]
