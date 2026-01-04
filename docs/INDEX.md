@@ -1,6 +1,7 @@
 # Documentation Index
 
 - [Platform Overview](PLATFORM_OVERVIEW.md)
+- [Scoring Logic & Scraper Integration](SCORE_LOGIC_AND_SCRAPERS.md)
 - [Local Development](LOCAL_DEVELOPMENT.md)
 - [API Service](API.md)
 - [Infrastructure](INFRA.md)
