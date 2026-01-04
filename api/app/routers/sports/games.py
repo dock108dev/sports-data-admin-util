@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta
 from typing import Sequence
 
@@ -13,6 +14,10 @@ from sqlalchemy.sql import or_
 from ... import db_models
 from ...celery_client import get_celery_app
 from ...db import AsyncSession, get_db
+from ...game_metadata.models import GameContext, StandingsEntry, TeamRatings
+from ...game_metadata.nuggets import generate_nugget
+from ...game_metadata.scoring import excitement_score, quality_score
+from ...game_metadata.services import RatingsService, StandingsService
 from ...services.derived_metrics import compute_derived_metrics
 from ...services.moment_summaries import summarize_moment
 from .common import (
@@ -37,6 +42,7 @@ from .schemas import (
     GameDetailResponse,
     GameListResponse,
     GameMeta,
+    GamePreviewScoreResponse,
     GameSummary,
     JobResponse,
     OddsEntry,
@@ -45,6 +51,19 @@ from .schemas import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+PREVIEW_TOP25_ELO_THRESHOLD = 1600.0
+PREVIEW_TOP_RATED_SEED_THRESHOLD = 4
+PREVIEW_BIG_NAME_SEED_THRESHOLD = 5
+PREVIEW_SEEDING_BATTLE_SEED_THRESHOLD = 8
+PREVIEW_NATIONAL_ELO_THRESHOLD = 1650.0
+PREVIEW_ELO_SPREAD_DIVISOR = 30.0
+PREVIEW_TOTAL_BASE = 135.0
+PREVIEW_TOTAL_ELO_BASELINE = 1500.0
+PREVIEW_TOTAL_ELO_DIVISOR = 20.0
+PREVIEW_TOTAL_MIN = 100.0
+PREVIEW_TOTAL_MAX = 180.0
 
 
 def _apply_game_filters(
@@ -105,6 +124,107 @@ def _apply_game_filters(
             )
         )
     return stmt
+
+
+def _clamp_score(value: float, minimum: float = 0.0, maximum: float = 100.0) -> float:
+    return max(minimum, min(maximum, value))
+
+
+def _normalize_score(value: float) -> int:
+    return int(round(_clamp_score(value)))
+
+
+def _resolve_team_key(team: db_models.SportsTeam) -> str:
+    if team.external_ref:
+        return team.external_ref
+    for code in team.external_codes.values():
+        if isinstance(code, str) and code.strip():
+            return code
+    return str(team.id)
+
+
+def _select_preview_entry(
+    entries: Sequence[StandingsEntry] | Sequence[TeamRatings],
+    team_key: str,
+    fallback_index: int,
+    entry_label: str,
+) -> StandingsEntry | TeamRatings:
+    for entry in entries:
+        if entry.team_id == team_key:
+            return entry
+    if entries and 0 <= fallback_index < len(entries):
+        logger.warning(
+            "Preview score falling back to mock %s data",
+            entry_label,
+            extra={"team_key": team_key, "fallback_index": fallback_index},
+        )
+        return entries[fallback_index]
+    raise ValueError(f"Preview score missing {entry_label} data")
+
+
+def _projected_spread(home_rating: TeamRatings, away_rating: TeamRatings) -> float:
+    return (home_rating.elo - away_rating.elo) / PREVIEW_ELO_SPREAD_DIVISOR
+
+
+def _projected_total(home_rating: TeamRatings, away_rating: TeamRatings) -> float:
+    average_elo = (home_rating.elo + away_rating.elo) / 2
+    raw_total = PREVIEW_TOTAL_BASE + (
+        (average_elo - PREVIEW_TOTAL_ELO_BASELINE) / PREVIEW_TOTAL_ELO_DIVISOR
+    )
+    return _clamp_score(raw_total, PREVIEW_TOTAL_MIN, PREVIEW_TOTAL_MAX)
+
+
+def _preview_tags(
+    home_rating: TeamRatings,
+    away_rating: TeamRatings,
+    home_standing: StandingsEntry,
+    away_standing: StandingsEntry,
+) -> list[str]:
+    tags: set[str] = set()
+    top_two = max(home_standing.conference_rank, away_standing.conference_rank) <= 2
+    if top_two:
+        tags.update({"conference_lead", "top_two_conference"})
+
+    if min(home_rating.elo, away_rating.elo) >= PREVIEW_TOP25_ELO_THRESHOLD:
+        tags.add("top25_matchup")
+
+    seeds = [seed for seed in (home_rating.projected_seed, away_rating.projected_seed) if seed is not None]
+    if len(seeds) == 2:
+        if max(seeds) <= PREVIEW_TOP_RATED_SEED_THRESHOLD:
+            tags.update({"top_rated", "tournament_preview"})
+        if max(seeds) <= PREVIEW_SEEDING_BATTLE_SEED_THRESHOLD:
+            tags.add("seeding_battle")
+
+    return sorted(tags)
+
+
+def _build_preview_context(game: db_models.SportsGame, home_rating: TeamRatings, away_rating: TeamRatings) -> GameContext:
+    rivalry = home_rating.conference == away_rating.conference
+    projected_spread = _projected_spread(home_rating, away_rating)
+    projected_total = _projected_total(home_rating, away_rating)
+    has_big_name_players = any(
+        seed is not None and seed <= PREVIEW_BIG_NAME_SEED_THRESHOLD
+        for seed in (home_rating.projected_seed, away_rating.projected_seed)
+    )
+    playoff_implications = all(
+        seed is not None for seed in (home_rating.projected_seed, away_rating.projected_seed)
+    )
+    national_broadcast = (home_rating.elo + away_rating.elo) / 2 >= PREVIEW_NATIONAL_ELO_THRESHOLD
+
+    return GameContext(
+        game_id=str(game.id),
+        home_team=game.home_team.name if game.home_team else "Unknown",
+        away_team=game.away_team.name if game.away_team else "Unknown",
+        league=game.league.code if game.league else "UNKNOWN",
+        start_time=game.game_date,
+        rivalry=rivalry,
+        projected_spread=projected_spread,
+        has_big_name_players=has_big_name_players,
+        coach_vs_former_team=False,
+        playoff_implications=playoff_implications,
+        national_broadcast=national_broadcast,
+        projected_total=projected_total,
+    )
 
 
 def _summarize_game(game: db_models.SportsGame) -> GameSummary:
@@ -445,6 +565,64 @@ async def get_game_compact_summary(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return CompactMomentSummaryResponse(summary=summary)
+
+
+@router.get("/games/{game_id}/preview-score", response_model=GamePreviewScoreResponse)
+async def get_game_preview_score(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> GamePreviewScoreResponse:
+    result = await session.execute(
+        select(db_models.SportsGame)
+        .options(
+            selectinload(db_models.SportsGame.league),
+            selectinload(db_models.SportsGame.home_team),
+            selectinload(db_models.SportsGame.away_team),
+        )
+        .where(db_models.SportsGame.id == game_id)
+    )
+    game = result.scalar_one_or_none()
+    if not game:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+    if not game.home_team or not game.away_team:
+        logger.error("Preview score missing team data", extra={"game_id": game_id})
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Game missing team data",
+        )
+
+    league_code = game.league.code if game.league else "UNKNOWN"
+    ratings_service = RatingsService()
+    standings_service = StandingsService()
+
+    try:
+        ratings = ratings_service.get_ratings(league_code)
+        standings = standings_service.get_standings(league_code)
+        home_key = _resolve_team_key(game.home_team)
+        away_key = _resolve_team_key(game.away_team)
+        home_rating = _select_preview_entry(ratings, home_key, 0, "ratings")
+        away_rating = _select_preview_entry(ratings, away_key, 1, "ratings")
+        home_standing = _select_preview_entry(standings, home_key, 0, "standings")
+        away_standing = _select_preview_entry(standings, away_key, 1, "standings")
+    except Exception as exc:
+        logger.exception("Failed to build preview score", extra={"game_id": game_id})
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Preview score unavailable",
+        ) from exc
+
+    context = _build_preview_context(game, home_rating, away_rating)
+    tags = _preview_tags(home_rating, away_rating, home_standing, away_standing)
+    preview = GamePreviewScoreResponse(
+        game_id=str(game.id),
+        excitement_score=_normalize_score(excitement_score(context)),
+        quality_score=_normalize_score(
+            quality_score(home_rating, away_rating, home_standing, away_standing)
+        ),
+        tags=tags,
+        nugget=generate_nugget(context, tags),
+    )
+    return preview
 
 
 @router.get("/games/{game_id}", response_model=GameDetailResponse)

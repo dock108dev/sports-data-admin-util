@@ -46,6 +46,10 @@ def _context_tags(context: GameContext) -> set[str]:
 
 TEMPLATES: tuple[NuggetTemplate, ...] = (
     NuggetTemplate(
+        text="Likely conference championship preview.",
+        required_tags=frozenset({"conference_lead", "top25_matchup"}),
+    ),
+    NuggetTemplate(
         text="First place vs second place — conference lead on the line.",
         required_tags=frozenset({"conference_lead", "top_two_conference"}),
     ),

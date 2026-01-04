@@ -159,6 +159,14 @@ class GameMeta(BaseModel):
     away_team_x_handle: str | None = None
 
 
+class GamePreviewScoreResponse(BaseModel):
+    game_id: str
+    excitement_score: int
+    quality_score: int
+    tags: list[str]
+    nugget: str
+
+
 class SocialPostEntry(BaseModel):
     id: int
     post_url: str

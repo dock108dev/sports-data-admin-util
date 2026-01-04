@@ -7,3 +7,4 @@
 - Split sports admin router modules and scraper helpers to keep files under the size target.
 - Consolidated sports admin API client types into modular helpers.
 - Moved root docs into /docs and added a local development guide.
+- Added a game preview score endpoint for admin games.
