@@ -16,8 +16,12 @@ PROJECTED_SEED_MIN = 1
 PROJECTED_SEED_MAX = 16
 CONFERENCE_RANK_MAX = 16
 TOTAL_WEIGHT = 3.0
-
-NOT_IMPLEMENTED_MESSAGE = "Game metadata scoring is not implemented yet."
+EXCITEMENT_WEIGHT = 4.0
+STORYLINE_FLAGS_MAX = 3.0
+BUZZ_FLAGS_MAX = 2.0
+SPREAD_CLOSE_MAX = 20.0
+TOTAL_POINTS_MIN = 100.0
+TOTAL_POINTS_MAX = 180.0
 
 
 def _normalize(value: float, minimum: float, maximum: float) -> float:
@@ -63,6 +67,67 @@ def _team_strength(rating: TeamRatings) -> float:
         return normalized_elo
     normalized_eff = _normalize_efficiency(rating.kenpom_adj_eff)
     return (normalized_elo + normalized_eff) / 2
+
+
+def _close_game_probability(projected_spread: float | None) -> float:
+    """Estimate close-game likelihood from a projected spread."""
+    if projected_spread is None:
+        return 0.0
+    clamped_spread = min(abs(projected_spread), SPREAD_CLOSE_MAX)
+    return _normalize(SPREAD_CLOSE_MAX - clamped_spread, 0.0, SPREAD_CLOSE_MAX)
+
+
+def _high_total_score(projected_total: float | None) -> float:
+    """Estimate high-scoring likelihood from a projected total."""
+    if projected_total is None:
+        return 0.0
+    return _normalize(projected_total, TOTAL_POINTS_MIN, TOTAL_POINTS_MAX)
+
+
+def _storyline_score(context: GameContext) -> float:
+    """Aggregate storyline flags into a normalized score."""
+    storyline_flags = sum(
+        [
+            context.has_big_name_players,
+            context.coach_vs_former_team,
+            context.playoff_implications,
+        ]
+    )
+    return _normalize(float(storyline_flags), 0.0, STORYLINE_FLAGS_MAX)
+
+
+def _buzz_score(context: GameContext) -> float:
+    """Aggregate buzz signals into a normalized score."""
+    buzz_flags = float(context.national_broadcast) + _high_total_score(
+        context.projected_total
+    )
+    return _normalize(buzz_flags, 0.0, BUZZ_FLAGS_MAX)
+
+
+def excitement_score(context: GameContext) -> float:
+    """Score pregame excitement from context signals."""
+    rivalry_score = float(context.rivalry)
+    storyline_flags = _storyline_score(context)
+    buzz = _buzz_score(context)
+    close_game_probability = _close_game_probability(context.projected_spread)
+
+    raw_score = rivalry_score + storyline_flags + buzz + close_game_probability
+    normalized_score = _normalize(raw_score, 0.0, EXCITEMENT_WEIGHT) * 100
+
+    logger.debug(
+        "Computed excitement score",
+        extra={
+            "game_id": context.game_id,
+            "rivalry_score": rivalry_score,
+            "storyline_flags": storyline_flags,
+            "buzz": buzz,
+            "close_game_probability": close_game_probability,
+            "raw_score": raw_score,
+            "normalized_score": normalized_score,
+        },
+    )
+
+    return normalized_score
 
 
 def quality_score(
@@ -114,10 +179,5 @@ def quality_score(
 
 
 def score_game_context(context: GameContext) -> float:
-    """Score a game context for metadata ordering.
-
-    Raises:
-        NotImplementedError: Until scoring rules are defined.
-    """
-    logger.error(NOT_IMPLEMENTED_MESSAGE, extra={"game_id": context.game_id})
-    raise NotImplementedError(NOT_IMPLEMENTED_MESSAGE)
+    """Score a game context for metadata ordering (pregame only)."""
+    return excitement_score(context)

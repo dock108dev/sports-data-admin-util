@@ -28,3 +28,10 @@ class GameContext(BaseModel):
     away_team: str
     league: str
     start_time: datetime
+    rivalry: bool = False
+    projected_spread: float | None = None
+    has_big_name_players: bool = False
+    coach_vs_former_team: bool = False
+    playoff_implications: bool = False
+    national_broadcast: bool = False
+    projected_total: float | None = None
