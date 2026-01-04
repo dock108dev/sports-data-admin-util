@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from typing import Any, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -19,6 +20,17 @@ from ..services.derived_metrics import compute_derived_metrics
 from ..utils.datetime_utils import now_utc
 
 router = APIRouter(prefix="/api/admin/sports", tags=["sports-data"])
+
+COMPACT_CACHE_TTL = timedelta(seconds=30)
+
+
+@dataclass
+class _CompactCacheEntry:
+    response: "CompactMomentsResponse"
+    expires_at: datetime
+
+
+_compact_cache: dict[int, _CompactCacheEntry] = {}
 
 
 class ScrapeRunConfig(BaseModel):
@@ -196,6 +208,19 @@ class PlayEntry(BaseModel):
     away_score: int | None = None
 
 
+class CompactMoment(BaseModel):
+    play_index: int = Field(alias="playIndex")
+    quarter: int | None = None
+    game_clock: str | None = Field(None, alias="gameClock")
+    moment_type: str = Field(alias="momentType")
+    hint: str | None = None
+
+
+class CompactMomentsResponse(BaseModel):
+    moments: list[CompactMoment]
+    moment_types: list[str] = Field(alias="momentTypes")
+
+
 class GameDetailResponse(BaseModel):
     game: GameMeta
     team_stats: list[TeamStat]
@@ -211,6 +236,36 @@ class JobResponse(BaseModel):
     run_id: int
     job_id: str | None
     message: str
+
+
+def _get_compact_cache(game_id: int) -> CompactMomentsResponse | None:
+    entry = _compact_cache.get(game_id)
+    if not entry:
+        return None
+    if entry.expires_at <= now_utc():
+        _compact_cache.pop(game_id, None)
+        return None
+    return entry.response
+
+
+def _store_compact_cache(game_id: int, response: CompactMomentsResponse) -> None:
+    _compact_cache[game_id] = _CompactCacheEntry(
+        response=response,
+        expires_at=now_utc() + COMPACT_CACHE_TTL,
+    )
+
+
+def _build_compact_hint(play: db_models.SportsGamePlay, moment_type: str) -> str | None:
+    hint_parts: list[str] = []
+    if isinstance(play.raw_data, dict):
+        team_abbr = play.raw_data.get("team_abbreviation")
+        if team_abbr:
+            hint_parts.append(str(team_abbr))
+    if play.player_name:
+        hint_parts.append(play.player_name)
+    if not hint_parts and moment_type != "unknown":
+        hint_parts.append(moment_type.replace("_", " ").title())
+    return " - ".join(hint_parts) if hint_parts else None
 
 
 async def _get_league(session: AsyncSession, code: str) -> db_models.SportsLeague:
@@ -616,6 +671,45 @@ def _serialize_player_stat(player: db_models.SportsPlayerBoxscore) -> PlayerStat
         source=player.source,
         updated_at=player.updated_at,
     )
+
+
+@router.get("/games/{game_id}/compact", response_model=CompactMomentsResponse)
+async def get_game_compact(game_id: int, session: AsyncSession = Depends(get_db)) -> CompactMomentsResponse:
+    cached = _get_compact_cache(game_id)
+    if cached:
+        return cached
+
+    game = await session.get(db_models.SportsGame, game_id)
+    if not game:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+
+    plays_result = await session.execute(
+        select(db_models.SportsGamePlay)
+        .where(db_models.SportsGamePlay.game_id == game_id)
+        .order_by(db_models.SportsGamePlay.play_index)
+    )
+    plays = plays_result.scalars().all()
+
+    moments: list[CompactMoment] = []
+    moment_types: list[str] = []
+
+    for play in plays:
+        moment_type = play.play_type or "unknown"
+        if moment_type not in moment_types:
+            moment_types.append(moment_type)
+        moments.append(
+            CompactMoment(
+                playIndex=play.play_index,
+                quarter=play.quarter,
+                gameClock=play.game_clock,
+                momentType=moment_type,
+                hint=_build_compact_hint(play, moment_type),
+            )
+        )
+
+    response = CompactMomentsResponse(moments=moments, momentTypes=moment_types)
+    _store_compact_cache(game_id, response)
+    return response
 
 
 @router.get("/games/{game_id}", response_model=GameDetailResponse)
@@ -1069,5 +1163,3 @@ async def get_team_social_info(team_id: int, session: AsyncSession = Depends(get
         xHandle=team.x_handle,
         xProfileUrl=f"https://x.com/{team.x_handle}" if team.x_handle else None,
     )
-
-
