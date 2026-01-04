@@ -18,6 +18,7 @@ from .. import db_models
 from ..celery_client import get_celery_app
 from ..db import AsyncSession, get_db
 from ..services.derived_metrics import compute_derived_metrics
+from ..services.moment_summaries import summarize_moment
 from ..utils.datetime_utils import now_utc
 
 router = APIRouter(prefix="/api/admin/sports", tags=["sports-data"])
@@ -242,6 +243,10 @@ class CompactPbpResponse(BaseModel):
 
 class CompactPostsResponse(BaseModel):
     posts: list[CompactPostEntry]
+
+
+class CompactMomentSummaryResponse(BaseModel):
+    summary: str
 
 
 class GameDetailResponse(BaseModel):
@@ -920,6 +925,19 @@ async def get_game_compact_posts(
         )
 
     return CompactPostsResponse(posts=entries)
+
+
+@router.get("/games/{game_id}/compact/{moment_id}/summary", response_model=CompactMomentSummaryResponse)
+async def get_game_compact_summary(
+    game_id: int,
+    moment_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> CompactMomentSummaryResponse:
+    try:
+        summary = await summarize_moment(game_id, moment_id, session)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return CompactMomentSummaryResponse(summary=summary)
 
 
 @router.get("/games/{game_id}", response_model=GameDetailResponse)
