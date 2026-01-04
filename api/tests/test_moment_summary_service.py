@@ -32,6 +32,11 @@ class _FakeSession:
         return self._results.pop(0)
 
 
+class _ErrorSession:
+    async def execute(self, statement):
+        raise RuntimeError("db error")
+
+
 class TestMomentSummaryService(unittest.TestCase):
     def tearDown(self) -> None:
         moment_summaries._clear_summary_cache()
@@ -79,8 +84,12 @@ class TestMomentSummaryService(unittest.TestCase):
         summary = asyncio.run(moment_summaries.summarize_moment(2, 9, session))
         self.assertEqual(
             summary,
-            "Momentum swung as the sequence unfolded, with each possession shaping the pace.",
+            "Moment recap unavailable.",
         )
+
+    def test_fallback_when_session_errors(self) -> None:
+        summary = asyncio.run(moment_summaries.summarize_moment(3, 12, _ErrorSession()))
+        self.assertEqual(summary, "Moment recap unavailable.")
 
 
 if __name__ == "__main__":

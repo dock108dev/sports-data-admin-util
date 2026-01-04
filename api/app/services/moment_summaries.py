@@ -40,21 +40,55 @@ async def summarize_moment(game_id: int, moment_id: int, session: AsyncSession) 
     cache_key = (game_id, moment_id)
     cached = _get_cached_summary(cache_key)
     if cached:
+        logger.info(
+            "moment_summary_cache_hit",
+            extra={"game_id": game_id, "moment_id": moment_id},
+        )
         return cached
 
-    play = await _get_play_by_index(game_id, moment_id, session)
-    if not play:
-        raise ValueError(f"Moment not found for play_index={moment_id}")
+    logger.info(
+        "moment_summary_cache_miss",
+        extra={"game_id": game_id, "moment_id": moment_id},
+    )
 
-    plays = await _fetch_moment_plays(play, session)
+    plays: Sequence[db_models.SportsGamePlay] = []
     try:
-        summary = _generate_ai_summary(plays)
-    except Exception as exc:  # pragma: no cover - safety net
-        logger.warning("moment_summary_ai_failed: %s", str(exc), exc_info=True)
-        summary = _fallback_summary(plays)
+        play = await _get_play_by_index(game_id, moment_id, session)
+        if not play:
+            raise ValueError(f"Moment not found for play_index={moment_id}")
 
-    _store_cached_summary(cache_key, summary)
-    return summary
+        plays = await _fetch_moment_plays(play, session)
+        try:
+            logger.info(
+                "moment_summary_ai_used",
+                extra={
+                    "game_id": game_id,
+                    "moment_id": moment_id,
+                    "play_count": len(plays),
+                },
+            )
+            summary = _generate_ai_summary(plays)
+        except Exception as exc:  # pragma: no cover - safety net
+            logger.warning(
+                "moment_summary_ai_failed: %s",
+                str(exc),
+                exc_info=True,
+                extra={"game_id": game_id, "moment_id": moment_id},
+            )
+            summary = _fallback_summary(plays)
+
+        _store_cached_summary(cache_key, summary)
+        return summary
+    except ValueError:
+        raise
+    except Exception as exc:  # pragma: no cover - safety net
+        logger.error(
+            "moment_summary_unexpected_error: %s",
+            str(exc),
+            exc_info=True,
+            extra={"game_id": game_id, "moment_id": moment_id},
+        )
+        return _fallback_summary(plays)
 
 
 def _get_cached_summary(cache_key: tuple[int, int]) -> str | None:
