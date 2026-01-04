@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.routers import sports, social
+from app.routers import reading_positions, social, sports
 
 app = FastAPI(title="sports-data-admin", version="1.0.0")
 
@@ -22,9 +22,9 @@ app.add_middleware(
 
 app.include_router(sports.router)
 app.include_router(social.router)
+app.include_router(reading_positions.router)
 
 
 @app.get("/healthz")
 async def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
-
