@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+import re
 from typing import Any, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -196,6 +197,20 @@ class SocialPostEntry(BaseModel):
     media_type: str | None = None
 
 
+class CompactPostEntry(BaseModel):
+    id: int
+    post_url: str
+    posted_at: datetime
+    has_video: bool
+    team_abbreviation: str
+    tweet_text: str | None = None
+    video_url: str | None = None
+    image_url: str | None = None
+    source_handle: str | None = None
+    media_type: str | None = None
+    contains_score: bool = Field(alias="containsScore")
+
+
 class PlayEntry(BaseModel):
     play_index: int
     quarter: int | None = None
@@ -223,6 +238,10 @@ class CompactMomentsResponse(BaseModel):
 
 class CompactPbpResponse(BaseModel):
     plays: list[PlayEntry]
+
+
+class CompactPostsResponse(BaseModel):
+    posts: list[CompactPostEntry]
 
 
 class GameDetailResponse(BaseModel):
@@ -284,6 +303,44 @@ def _serialize_play_entry(play: db_models.SportsGamePlay) -> PlayEntry:
         home_score=play.home_score,
         away_score=play.away_score,
     )
+
+
+_SCORE_PATTERN = re.compile(r"\b\d{1,3}\s*[-–:]\s*\d{1,3}\b")
+_SCORE_WORD_PATTERN = re.compile(r"\b(final|score|halftime|ft|full\s*time)\b", re.IGNORECASE)
+_SCORE_ALT_PATTERN = re.compile(r"\b\d{1,3}\s*(?:to|at)\s*\d{1,3}\b", re.IGNORECASE)
+_URL_PATTERN = re.compile(r"https?://\S+")
+
+
+def _post_contains_score(text: str | None) -> bool:
+    if not text:
+        return False
+    if _SCORE_PATTERN.search(text):
+        return True
+    if _SCORE_ALT_PATTERN.search(text) and _SCORE_WORD_PATTERN.search(text):
+        return True
+    return False
+
+
+def _normalize_post_text(text: str | None) -> str | None:
+    if not text:
+        return None
+    cleaned = _URL_PATTERN.sub("", text.lower())
+    cleaned = re.sub(r"[^a-z0-9\s]", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned or None
+
+
+def _dedupe_social_posts(posts: Sequence[db_models.GameSocialPost]) -> list[db_models.GameSocialPost]:
+    seen: set[tuple[str, int]] = set()
+    deduped: list[db_models.GameSocialPost] = []
+    for post in posts:
+        normalized = _normalize_post_text(post.tweet_text) or post.post_url
+        key = (normalized, post.team_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(post)
+    return deduped
 
 
 def _find_compact_moment_bounds(
@@ -779,6 +836,90 @@ async def get_game_compact_pbp(
     plays = plays_result.scalars().all()
     plays_entries = [_serialize_play_entry(play) for play in plays]
     return CompactPbpResponse(plays=plays_entries)
+
+
+@router.get("/games/{game_id}/compact/{moment_id}/posts", response_model=CompactPostsResponse)
+async def get_game_compact_posts(
+    game_id: int,
+    moment_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> CompactPostsResponse:
+    compact_response = _get_compact_cache(game_id)
+    if compact_response is None:
+        compact_response = await get_game_compact(game_id, session)
+
+    try:
+        start_index, end_index = _find_compact_moment_bounds(compact_response.moments, moment_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if end_index is None:
+        max_index_stmt = select(func.max(db_models.SportsGamePlay.play_index)).where(
+            db_models.SportsGamePlay.game_id == game_id
+        )
+        end_index = (await session.execute(max_index_stmt)).scalar_one_or_none()
+
+    if end_index is None or end_index < start_index:
+        return CompactPostsResponse(posts=[])
+
+    bounds_stmt = select(
+        func.min(db_models.SportsGamePlay.created_at),
+        func.max(db_models.SportsGamePlay.created_at),
+    ).where(
+        db_models.SportsGamePlay.game_id == game_id,
+        db_models.SportsGamePlay.play_index >= start_index,
+        db_models.SportsGamePlay.play_index <= end_index,
+    )
+    bounds_result = await session.execute(bounds_stmt)
+    bounds = bounds_result.one_or_none()
+    if not bounds or bounds[0] is None or bounds[1] is None:
+        return CompactPostsResponse(posts=[])
+
+    start_time, end_time = bounds
+    if end_time < start_time:
+        start_time, end_time = end_time, start_time
+
+    if end_time - start_time < timedelta(seconds=30):
+        padding = timedelta(minutes=5)
+        start_time -= padding
+        end_time += padding
+
+    posts_stmt = (
+        select(db_models.GameSocialPost)
+        .options(selectinload(db_models.GameSocialPost.team))
+        .where(
+            db_models.GameSocialPost.game_id == game_id,
+            db_models.GameSocialPost.posted_at >= start_time,
+            db_models.GameSocialPost.posted_at <= end_time,
+        )
+        .order_by(db_models.GameSocialPost.posted_at)
+    )
+    posts_result = await session.execute(posts_stmt)
+    posts = posts_result.scalars().all()
+    deduped_posts = _dedupe_social_posts(posts)
+
+    entries: list[CompactPostEntry] = []
+    for post in deduped_posts:
+        team_abbr = "UNK"
+        if post.team and post.team.abbreviation:
+            team_abbr = post.team.abbreviation
+        entries.append(
+            CompactPostEntry(
+                id=post.id,
+                post_url=post.post_url,
+                posted_at=post.posted_at,
+                has_video=post.has_video,
+                team_abbreviation=team_abbr,
+                tweet_text=post.tweet_text,
+                video_url=post.video_url,
+                image_url=post.image_url,
+                source_handle=post.source_handle,
+                media_type=post.media_type,
+                containsScore=_post_contains_score(post.tweet_text),
+            )
+        )
+
+    return CompactPostsResponse(posts=entries)
 
 
 @router.get("/games/{game_id}", response_model=GameDetailResponse)
