@@ -117,7 +117,6 @@ def _summarize_game(game: db_models.SportsGame) -> GameSummary:
     plays = getattr(game, "plays", []) or []
     has_pbp = bool(plays)
     play_count = len(plays)
-    season_type = getattr(game, "season_type", None)
     return GameSummary(
         id=game.id,
         league_code=game.league.code if game.league else "UNKNOWN",

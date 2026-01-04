@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import List, Optional
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 
