@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 _SCORE_PATTERNS = [
     re.compile(r"\b\d{1,3}\s*[-–—:]\s*\d{1,3}\b"),
@@ -24,7 +27,18 @@ def redact_scores(text: str, mask: str = "") -> str:
     if not text:
         return text
     cleaned = text
+    redaction_count = 0
     for pattern in _SCORE_PATTERNS:
-        cleaned = pattern.sub(mask, cleaned)
+        cleaned, count = pattern.subn(mask, cleaned)
+        redaction_count += count
     cleaned = _WHITESPACE_PATTERN.sub(" ", cleaned).strip()
+    if redaction_count:
+        logger.info(
+            "score_redaction_applied",
+            extra={
+                "redaction_count": redaction_count,
+                "original_length": len(text),
+                "redacted_length": len(cleaned),
+            },
+        )
     return cleaned
