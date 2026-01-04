@@ -283,7 +283,6 @@ async def enqueue_single_game_run(
     scraper_type: str,
 ) -> JobResponse:
     """Create a scrape run and enqueue it for a single game."""
-    from ...db import AsyncSession
 
     await session.refresh(game, attribute_names=["league"])
     if not game.league:
