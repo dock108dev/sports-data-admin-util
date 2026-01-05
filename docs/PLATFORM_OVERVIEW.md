@@ -1,5 +1,9 @@
 # Platform Overview
 
+Sports Data Admin is the **internal data infrastructure** for Scroll Down Sports. It is not user-facing—it serves downstream apps (iOS, Web) via a REST API.
+
+---
+
 ## Features
 
 ### Data Collection
