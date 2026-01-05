@@ -3,7 +3,7 @@ uvicorn[standard]==0.40.0
 SQLAlchemy==2.0.45
 asyncpg==0.31.0
 alembic==1.17.2
-celery==5.6.1
+celery==5.6.2
 redis>=5.0.0
 pydantic==2.12.5
 pydantic-settings==2.12.0
