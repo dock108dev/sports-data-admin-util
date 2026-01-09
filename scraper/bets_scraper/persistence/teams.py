@@ -26,6 +26,47 @@ def _should_log(event_key: str, sample: int = _LOG_SAMPLE) -> bool:
     _LOG_COUNTERS[event_key] = count
     return count % sample == 1
 
+# Some feeds (especially NCAAB) may omit abbreviations. Our DB schema requires
+# a non-null abbreviation, so we derive a deterministic fallback when missing.
+_ABBR_STOPWORDS = {"of", "the", "and", "at"}
+
+
+def _derive_abbreviation(team_name: str) -> str:
+    """Derive a deterministic, non-empty team abbreviation from a team name.
+
+    This is a fallback for feeds that omit abbreviations. It is NOT intended to
+    be perfect; it is intended to be stable and satisfy DB constraints.
+    """
+    cleaned = re.sub(r"[^A-Za-z0-9]+", " ", (team_name or "")).strip()
+    if not cleaned:
+        return "UNK"
+
+    tokens = [t for t in cleaned.split() if t and t.lower() not in _ABBR_STOPWORDS]
+    if not tokens:
+        tokens = cleaned.split()
+
+    # Common patterns like "UC-Irvine" -> "UCI"
+    first = tokens[0].upper()
+    if first in {"UC", "UNC"} and len(tokens) > 1:
+        second = tokens[1].upper()
+        return (first + second[:2])[:6]
+
+    # Prefer initials for multi-token names.
+    abbr = "".join(t[0].upper() for t in tokens[:6])
+
+    # Ensure minimum length of 3 when possible by extending with more letters.
+    if len(abbr) < 3:
+        last = tokens[-1].upper()
+        i = 1
+        while len(abbr) < 3 and i < len(last):
+            abbr += last[i]
+            i += 1
+
+    if not abbr:
+        abbr = tokens[0].upper()[:3] or "UNK"
+
+    return abbr[:6]
+
 # Known tricky NCAAB name overrides (requested -> canonical DB name)
 _NCAAB_OVERRIDES = {
     "george washington colonials": "George Washington",
@@ -119,17 +160,23 @@ def _normalize_ncaab_name_for_matching(name: str) -> str:
 def _upsert_team(session: Session, league_id: int, identity: TeamIdentity) -> int:
     """Upsert a team, creating or updating as needed.
     
-    For NCAAB, abbreviations are optional (None) to avoid collisions.
-    For other leagues, abbreviations are required.
+    Note: abbreviations must be non-null in the DB schema. If a feed omits an
+    abbreviation (common in some NCAAB sources), we derive a deterministic
+    fallback to satisfy the constraint.
     """
     team_name = identity.name
     short_name = identity.short_name or team_name
     league = session.get(db_models.SportsLeague, league_id)
     league_code = league.code if league else None
     
-    if not identity.abbreviation and league_code != "NCAAB":
-        raise ValueError(f"Team identity must have abbreviation: {team_name}")
-    abbreviation = identity.abbreviation
+    abbreviation = identity.abbreviation or _derive_abbreviation(team_name)
+    if identity.abbreviation is None and _should_log("team_abbreviation_derived", sample=25):
+        logger.warning(
+            "team_abbreviation_derived",
+            league_code=league_code,
+            team_name=team_name,
+            derived_abbreviation=abbreviation,
+        )
     
     stmt = (
         insert(db_models.SportsTeam)
