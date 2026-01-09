@@ -18,6 +18,8 @@ from ..persistence import persist_game_payload, upsert_player_boxscores
 from ..scrapers import get_all_scrapers
 from ..social import XPostCollector
 from ..utils.datetime_utils import utcnow
+from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
+from .job_runs import complete_job_run, start_job_run
 
 
 class ScrapeRunManager:
@@ -218,7 +220,12 @@ class ScrapeRunManager:
 
         self._update_run(run_id, status="running", started_at=utcnow())
 
+        ingest_run_id: int | None = None
+        ingest_run_completed = False
         try:
+            if config.boxscores or config.odds:
+                ingest_run_id = start_job_run("ingest", [config.league_code])
+
             # Boxscore scraping
             if config.boxscores and scraper:
                 logger.info(
@@ -313,9 +320,13 @@ class ScrapeRunManager:
                     summary["odds"] = self.odds_sync.sync(config)
 
                 logger.info("odds_complete", count=summary["odds"], run_id=run_id)
+            if ingest_run_id is not None:
+                complete_job_run(ingest_run_id, "success")
+                ingest_run_completed = True
 
             # Play-by-play scraping
             if config.pbp:
+                pbp_run_id = start_job_run("pbp", [config.league_code])
                 logger.info(
                     "pbp_scraping_start",
                     run_id=run_id,
@@ -333,6 +344,7 @@ class ScrapeRunManager:
                         )
                         session.commit()
                     summary["pbp_games"] += live_summary.pbp_games
+                    complete_job_run(pbp_run_id, "success")
                 except Exception as exc:
                     logger.exception(
                         "pbp_live_feed_failed",
@@ -340,11 +352,13 @@ class ScrapeRunManager:
                         league=config.league_code,
                         error=str(exc),
                     )
+                    complete_job_run(pbp_run_id, "error", str(exc))
 
                 logger.info("pbp_complete", count=summary["pbp_games"], run_id=run_id)
 
             # Social scraping (runs after PBP ingestion to ensure timestamps are available)
             if config.social:
+                social_run_id = start_job_run("social", [config.league_code])
                 if config.league_code not in ("NBA", "NHL"):
                     logger.info(
                         "social_scraping_skipped_league",
@@ -380,6 +394,11 @@ class ScrapeRunManager:
                             logger.warning("social_collection_failed", game_id=game_id, error=str(e))
 
                     logger.info("social_complete", count=summary["social_posts"], run_id=run_id)
+                complete_job_run(social_run_id, "success")
+
+            with get_session() as session:
+                detect_missing_pbp(session, league_code=config.league_code)
+                detect_external_id_conflicts(session, league_code=config.league_code, source="live_feed")
 
             # Build summary string
             summary_parts = []
@@ -403,6 +422,8 @@ class ScrapeRunManager:
             logger.info("scrape_run_complete", run_id=run_id, summary=summary)
 
         except Exception as exc:
+            if ingest_run_id is not None and not ingest_run_completed:
+                complete_job_run(ingest_run_id, "error", str(exc))
             logger.exception("scrape_run_failed", run_id=run_id, error=str(exc))
             self._update_run(
                 run_id,

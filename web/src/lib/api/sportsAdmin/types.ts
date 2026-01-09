@@ -32,6 +32,9 @@ export type GameSummary = {
   has_required_data: boolean;
   scrape_version: number | null;
   last_scraped_at: string | null;
+  last_ingested_at: string | null;
+  last_pbp_at: string | null;
+  last_social_at: string | null;
 };
 
 export type GameListResponse = {
@@ -114,6 +117,9 @@ export type AdminGameDetail = {
     status: string;
     scrape_version: number | null;
     last_scraped_at: string | null;
+    last_ingested_at: string | null;
+    last_pbp_at: string | null;
+    last_social_at: string | null;
     has_boxscore: boolean;
     has_player_stats: boolean;
     has_odds: boolean;

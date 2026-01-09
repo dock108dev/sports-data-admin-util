@@ -82,5 +82,7 @@ def upsert_plays(session: Session, game_id: int, plays: Sequence[NormalizedPlay]
             upserted += result.rowcount
 
     logger.info("plays_upserted", game_id=game_id, count=upserted)
+    if upserted:
+        game.last_pbp_at = utcnow()
+        session.flush()
     return upserted
-

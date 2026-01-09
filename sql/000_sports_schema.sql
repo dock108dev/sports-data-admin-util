@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS sports_games (
     source_game_key VARCHAR(100) UNIQUE,
     scrape_version INTEGER NOT NULL DEFAULT 1,
     last_scraped_at TIMESTAMPTZ,
+    last_ingested_at TIMESTAMPTZ,
+    last_pbp_at TIMESTAMPTZ,
+    last_social_at TIMESTAMPTZ,
     external_ids JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
@@ -136,6 +139,55 @@ CREATE TABLE IF NOT EXISTS sports_scrape_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_scrape_runs_league_status ON sports_scrape_runs(league_id, status);
 CREATE INDEX IF NOT EXISTS idx_scrape_runs_created ON sports_scrape_runs(created_at);
+
+-- Job runs (phase-level execution tracking)
+CREATE TABLE IF NOT EXISTS sports_job_runs (
+    id SERIAL PRIMARY KEY,
+    phase VARCHAR(50) NOT NULL,
+    leagues JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status VARCHAR(20) NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    finished_at TIMESTAMPTZ,
+    duration_seconds DOUBLE PRECISION,
+    error_summary TEXT,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_job_runs_phase_started ON sports_job_runs(phase, started_at);
+CREATE INDEX IF NOT EXISTS ix_sports_job_runs_phase ON sports_job_runs(phase);
+CREATE INDEX IF NOT EXISTS ix_sports_job_runs_status ON sports_job_runs(status);
+
+-- Conflict tracking for duplicate external IDs
+CREATE TABLE IF NOT EXISTS sports_game_conflicts (
+    id SERIAL PRIMARY KEY,
+    league_id INTEGER NOT NULL REFERENCES sports_leagues(id) ON DELETE CASCADE,
+    game_id INTEGER NOT NULL REFERENCES sports_games(id) ON DELETE CASCADE,
+    conflict_game_id INTEGER NOT NULL REFERENCES sports_games(id) ON DELETE CASCADE,
+    external_id VARCHAR(100) NOT NULL,
+    source VARCHAR(50) NOT NULL,
+    conflict_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    resolved_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_game_conflict ON sports_game_conflicts(game_id, conflict_game_id, external_id, source);
+CREATE INDEX IF NOT EXISTS idx_game_conflicts_league_created ON sports_game_conflicts(league_id, created_at);
+CREATE INDEX IF NOT EXISTS ix_sports_game_conflicts_game_id ON sports_game_conflicts(game_id);
+CREATE INDEX IF NOT EXISTS ix_sports_game_conflicts_conflict_game_id ON sports_game_conflicts(conflict_game_id);
+CREATE INDEX IF NOT EXISTS ix_sports_game_conflicts_league_id ON sports_game_conflicts(league_id);
+
+-- Missing PBP detector table
+CREATE TABLE IF NOT EXISTS sports_missing_pbp (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER NOT NULL REFERENCES sports_games(id) ON DELETE CASCADE,
+    league_id INTEGER NOT NULL REFERENCES sports_leagues(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL,
+    reason VARCHAR(50) NOT NULL,
+    detected_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_missing_pbp_game ON sports_missing_pbp(game_id);
+CREATE INDEX IF NOT EXISTS idx_missing_pbp_league_status ON sports_missing_pbp(league_id, status);
+CREATE INDEX IF NOT EXISTS ix_sports_missing_pbp_game_id ON sports_missing_pbp(game_id);
+CREATE INDEX IF NOT EXISTS ix_sports_missing_pbp_league_id ON sports_missing_pbp(league_id);
 
 -- Game social posts (X/Twitter embeds for timeline)
 DO $$

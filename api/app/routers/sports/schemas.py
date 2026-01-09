@@ -88,6 +88,9 @@ class GameSummary(BaseModel):
     has_required_data: bool
     scrape_version: int | None
     last_scraped_at: datetime | None
+    last_ingested_at: datetime | None
+    last_pbp_at: datetime | None
+    last_social_at: datetime | None
 
 
 class GameListResponse(BaseModel):
@@ -148,6 +151,9 @@ class GameMeta(BaseModel):
     status: str
     scrape_version: int | None
     last_scraped_at: datetime | None
+    last_ingested_at: datetime | None
+    last_pbp_at: datetime | None
+    last_social_at: datetime | None
     has_boxscore: bool
     has_player_stats: bool
     has_odds: bool
@@ -254,6 +260,38 @@ class JobResponse(BaseModel):
     run_id: int
     job_id: str | None
     message: str
+
+
+class JobRunResponse(BaseModel):
+    id: int
+    phase: str
+    leagues: list[str]
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
+    duration_seconds: float | None
+    error_summary: str | None
+    created_at: datetime
+
+
+class MissingPbpEntry(BaseModel):
+    game_id: int
+    league_code: str
+    status: str
+    reason: str
+    detected_at: datetime
+    updated_at: datetime
+
+
+class GameConflictEntry(BaseModel):
+    league_code: str
+    game_id: int
+    conflict_game_id: int
+    external_id: str
+    source: str
+    conflict_fields: dict[str, Any]
+    created_at: datetime
+    resolved_at: datetime | None
 
 
 class TeamSummary(BaseModel):

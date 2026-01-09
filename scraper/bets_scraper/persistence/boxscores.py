@@ -81,30 +81,35 @@ def _build_player_stats(payload: NormalizedPlayerBoxscore) -> dict:
 
 def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[NormalizedTeamBoxscore]) -> None:
     """Upsert team boxscores for a game."""
+    updated = False
     for payload in payloads:
         league_id = get_league_id(session, payload.team.league_code)
         team_id = _upsert_team(session, league_id, payload.team)
         stats = _build_team_stats(payload)
         # psycopg3 requires explicit JSONB casting for dicts in raw SQL
         stats_json = cast(text(f"'{json.dumps(stats)}'"), JSONB)
-        stmt = (
-            insert(db_models.SportsTeamBoxscore)
-            .values(
-                game_id=game_id,
-                team_id=team_id,
-                is_home=payload.is_home,
-                raw_stats_json=stats,
-                source="sports_reference",
-            )
-            .on_conflict_do_update(
-                constraint="uq_team_boxscore_game_team",
-                set_={
-                    "raw_stats_json": stats_json,
-                    "updated_at": utcnow(),
-                },
-            )
+        stmt = insert(db_models.SportsTeamBoxscore).values(
+            game_id=game_id,
+            team_id=team_id,
+            is_home=payload.is_home,
+            raw_stats_json=stats,
+            source="sports_reference",
         )
-        session.execute(stmt)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_team_boxscore_game_team",
+            set_={
+                "raw_stats_json": stats_json,
+                "updated_at": utcnow(),
+            },
+            where=stmt.excluded.raw_stats_json.is_distinct_from(db_models.SportsTeamBoxscore.stats),
+        )
+        result = session.execute(stmt)
+        if result.rowcount:
+            updated = True
+    if updated:
+        session.query(db_models.SportsGame).filter(db_models.SportsGame.id == game_id).update(
+            {db_models.SportsGame.last_ingested_at: utcnow()}
+        )
 
 
 def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[NormalizedPlayerBoxscore]) -> None:
@@ -118,6 +123,7 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
     inserted_count = 0
     error_count = 0
     
+    updated = False
     for payload in payloads:
         try:
             league_id = get_league_id(session, payload.team.league_code)
@@ -125,25 +131,25 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
             stats = _build_player_stats(payload)
             # psycopg3 requires explicit JSONB casting for dicts in raw SQL
             stats_json = cast(text(f"'{json.dumps(stats)}'"), JSONB)
-            stmt = (
-                insert(db_models.SportsPlayerBoxscore)
-                .values(
-                    game_id=game_id,
-                    team_id=team_id,
-                    player_external_ref=payload.player_id,
-                    player_name=payload.player_name,
-                    raw_stats_json=stats,
-                    source="sports_reference",
-                )
-                .on_conflict_do_update(
-                    constraint="uq_player_boxscore_identity",
-                    set_={
-                        "raw_stats_json": stats_json,
-                        "updated_at": utcnow(),
-                    },
-                )
+            stmt = insert(db_models.SportsPlayerBoxscore).values(
+                game_id=game_id,
+                team_id=team_id,
+                player_external_ref=payload.player_id,
+                player_name=payload.player_name,
+                raw_stats_json=stats,
+                source="sports_reference",
             )
-            session.execute(stmt)
+            stmt = stmt.on_conflict_do_update(
+                constraint="uq_player_boxscore_identity",
+                set_={
+                    "raw_stats_json": stats_json,
+                    "updated_at": utcnow(),
+                },
+                where=stmt.excluded.raw_stats_json.is_distinct_from(db_models.SportsPlayerBoxscore.stats),
+            )
+            result = session.execute(stmt)
+            if result.rowcount:
+                updated = True
             inserted_count += 1
         except Exception as exc:
             logger.error(
@@ -161,6 +167,10 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
         inserted_count=inserted_count,
         error_count=error_count,
     )
+    if updated:
+        session.query(db_models.SportsGame).filter(db_models.SportsGame.id == game_id).update(
+            {db_models.SportsGame.last_ingested_at: utcnow()}
+        )
 
 
 @dataclass(frozen=True)

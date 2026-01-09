@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import logging
 from typing import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -17,6 +18,7 @@ from ..services.reveal_levels import RevealLevel, parse_reveal_level
 from ..utils.reveal_filter import classify_reveal_risk
 
 router = APIRouter(tags=["game-snapshots"])
+logger = logging.getLogger(__name__)
 
 _VALID_RANGES = {"last2", "current", "next24"}
 
@@ -147,6 +149,29 @@ def _post_reveal_level(post: db_models.GameSocialPost) -> RevealLevel:
     return RevealLevel.pre
 
 
+async def _record_snapshot_job_run(
+    session: AsyncSession,
+    *,
+    started_at: datetime,
+    status_value: str,
+    leagues: list[str],
+    error_summary: str | None = None,
+) -> None:
+    finished_at = datetime.now(timezone.utc)
+    duration = (finished_at - started_at).total_seconds()
+    session.add(
+        db_models.SportsJobRun(
+            phase="snapshot",
+            leagues=leagues,
+            status=status_value,
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_seconds=duration,
+            error_summary=error_summary,
+        )
+    )
+
+
 @router.get("/games", response_model=GameSnapshotResponse)
 async def list_games(
     range: str = Query("current"),
@@ -176,6 +201,7 @@ async def list_games(
         }
     """
     _validate_range(range)
+    started_at = datetime.now(timezone.utc)
     now = datetime.now(timezone.utc)
     window_start: datetime
     window_end: datetime
@@ -208,32 +234,82 @@ async def list_games(
     has_pbp = exists(select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id))
     has_social = exists(select(1).where(db_models.GameSocialPost.game_id == db_models.SportsGame.id))
 
-    stmt = (
-        select(
-            db_models.SportsGame,
-            has_pbp.label("has_pbp"),
-            has_social.label("has_social"),
+    conflict_exists = exists(
+        select(1)
+        .where(db_models.SportsGameConflict.resolved_at.is_(None))
+        .where(
+            or_(
+                db_models.SportsGameConflict.game_id == db_models.SportsGame.id,
+                db_models.SportsGameConflict.conflict_game_id == db_models.SportsGame.id,
+            )
         )
-        .options(
-            selectinload(db_models.SportsGame.league),
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
-        )
-        .where(filters)
-        .order_by(db_models.SportsGame.game_date.asc())
     )
-    results = await session.execute(stmt)
-    rows = results.all()
+
+    try:
+        stmt = (
+            select(
+                db_models.SportsGame,
+                has_pbp.label("has_pbp"),
+                has_social.label("has_social"),
+                conflict_exists.label("has_conflict"),
+            )
+            .options(
+                selectinload(db_models.SportsGame.league),
+                selectinload(db_models.SportsGame.home_team),
+                selectinload(db_models.SportsGame.away_team),
+            )
+            .where(filters)
+            .order_by(db_models.SportsGame.game_date.asc())
+        )
+        results = await session.execute(stmt)
+        rows = results.all()
+    except Exception as exc:
+        await _record_snapshot_job_run(
+            session,
+            started_at=started_at,
+            status_value="error",
+            leagues=[],
+            error_summary=str(exc),
+        )
+        await session.commit()
+        raise
 
     games: list[GameSnapshot] = []
-    for game, has_pbp_value, has_social_value in rows:
-        last_updated = max(
-            dt for dt in [game.updated_at, game.last_scraped_at] if dt is not None
-        )
+    excluded = 0
+    league_codes: set[str] = set()
+    for game, has_pbp_value, has_social_value, has_conflict in rows:
+        league_code = game.league.code if game.league else "UNK"
+        league_codes.add(league_code)
+        unsafe_reason: str | None = None
+        if has_conflict:
+            unsafe_reason = "conflict"
+        elif not game.home_team or not game.away_team:
+            # Safety exclusion: missing team mappings means we cannot guarantee identity.
+            unsafe_reason = "team_mapping_missing"
+        # Derived safety flag: exclude unsafe games from snapshot responses.
+        safe_to_serve = unsafe_reason is None
+        if not safe_to_serve:
+            excluded += 1
+            logger.warning(
+                "snapshot_game_excluded",
+                league=league_code,
+                game_id=game.id,
+                external_id=game.source_game_key,
+                reason=unsafe_reason,
+            )
+            continue
+        timestamps = [
+            game.last_ingested_at,
+            game.last_pbp_at,
+            game.last_social_at,
+            game.last_scraped_at,
+            game.updated_at,
+        ]
+        last_updated = max([dt for dt in timestamps if dt is not None], default=game.game_date)
         games.append(
             GameSnapshot(
                 id=game.id,
-                league=game.league.code if game.league else "UNK",
+                league=league_code,
                 status=game.status,
                 start_time=game.game_date,
                 home_team=_team_snapshot(game.home_team, fallback_id=game.home_team_id),
@@ -244,6 +320,15 @@ async def list_games(
             )
         )
 
+    if excluded:
+        logger.info("snapshot_games_excluded", range=range, excluded=excluded)
+
+    await _record_snapshot_job_run(
+        session,
+        started_at=started_at,
+        status_value="success",
+        leagues=sorted(league_codes),
+    )
     return GameSnapshotResponse(range=range, games=games)
 
 

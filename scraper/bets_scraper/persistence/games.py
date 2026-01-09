@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, literal_column
+from sqlalchemy import case, func, literal_column, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from ..db import db_models
+from ..logging import logger
 from ..models import NormalizedGame
 from ..utils.db_queries import get_league_id
 from ..utils.datetime_utils import utcnow
@@ -91,16 +92,30 @@ def upsert_game_stub(
 
     if existing:
         updated_status = resolve_status_transition(existing.status, normalized_status)
-        existing.status = updated_status
-        existing.home_score = home_score if home_score is not None else existing.home_score
-        existing.away_score = away_score if away_score is not None else existing.away_score
-        if venue:
+        updated = False
+        if updated_status != existing.status:
+            existing.status = updated_status
+            updated = True
+        if home_score is not None and home_score != existing.home_score:
+            existing.home_score = home_score
+            updated = True
+        if away_score is not None and away_score != existing.away_score:
+            existing.away_score = away_score
+            updated = True
+        if venue and venue != existing.venue:
             existing.venue = venue
+            updated = True
         if external_ids:
-            existing.external_ids = merge_external_ids(existing.external_ids, external_ids)
+            merged_external_ids = merge_external_ids(existing.external_ids, external_ids)
+            if merged_external_ids != existing.external_ids:
+                existing.external_ids = merged_external_ids
+                updated = True
         if updated_status == db_models.GameStatus.final.value and existing.end_time is None:
             existing.end_time = utcnow()
-        existing.updated_at = utcnow()
+            updated = True
+        if updated:
+            existing.updated_at = utcnow()
+            existing.last_ingested_at = utcnow()
         session.flush()
         return existing.id, False
 
@@ -121,6 +136,7 @@ def upsert_game_stub(
         source_game_key=None,
         scrape_version=1,
         last_scraped_at=None,
+        last_ingested_at=utcnow(),
         external_ids=external_ids or {},
     )
     session.add(game)
@@ -164,6 +180,7 @@ def update_game_from_live_feed(
 
     if updated:
         game.updated_at = utcnow()
+        game.last_ingested_at = utcnow()
         session.flush()
     return updated
 
@@ -178,24 +195,6 @@ def upsert_game(session: Session, normalized: NormalizedGame) -> tuple[int, bool
     away_team_id = _upsert_team(session, league_id, normalized.identity.away_team)
     normalized_status = _normalize_status(normalized.status)
     end_time_value = utcnow() if normalized_status == db_models.GameStatus.final.value else None
-
-    conflict_updates = {
-        "home_score": normalized.home_score,
-        "away_score": normalized.away_score,
-        "status": normalized_status,
-        "venue": normalized.venue,
-        "scrape_version": db_models.SportsGame.scrape_version + 1,
-        "last_scraped_at": utcnow(),
-        "updated_at": utcnow(),
-        "end_time": func.coalesce(
-            db_models.SportsGame.end_time,
-            end_time_value,
-        )
-        if end_time_value
-        else db_models.SportsGame.end_time,
-        # Only set source_game_key if the existing row doesn't have one; avoid clobber.
-        "source_game_key": func.coalesce(db_models.SportsGame.source_game_key, normalized.identity.source_game_key),
-    }
 
     base_stmt = insert(db_models.SportsGame).values(
         league_id=league_id,
@@ -212,8 +211,41 @@ def upsert_game(session: Session, normalized: NormalizedGame) -> tuple[int, bool
         source_game_key=normalized.identity.source_game_key,
         scrape_version=1,
         last_scraped_at=utcnow(),
+        last_ingested_at=utcnow(),
         external_ids={},
     )
+    excluded = base_stmt.excluded
+    ingest_checks = [
+        excluded.home_score.is_distinct_from(db_models.SportsGame.home_score),
+        excluded.away_score.is_distinct_from(db_models.SportsGame.away_score),
+        excluded.status.is_distinct_from(db_models.SportsGame.status),
+        excluded.venue.is_distinct_from(db_models.SportsGame.venue),
+    ]
+    if end_time_value:
+        ingest_checks.append(excluded.end_time.is_distinct_from(db_models.SportsGame.end_time))
+    ingest_changed = or_(*ingest_checks)
+
+    conflict_updates = {
+        "home_score": normalized.home_score,
+        "away_score": normalized.away_score,
+        "status": normalized_status,
+        "venue": normalized.venue,
+        "scrape_version": db_models.SportsGame.scrape_version + 1,
+        "last_scraped_at": utcnow(),
+        "last_ingested_at": case(
+            (ingest_changed, utcnow()),
+            else_=db_models.SportsGame.last_ingested_at,
+        ),
+        "updated_at": utcnow(),
+        "end_time": func.coalesce(
+            db_models.SportsGame.end_time,
+            end_time_value,
+        )
+        if end_time_value
+        else db_models.SportsGame.end_time,
+        # Only set source_game_key if the existing row doesn't have one; avoid clobber.
+        "source_game_key": func.coalesce(db_models.SportsGame.source_game_key, normalized.identity.source_game_key),
+    }
 
     # Prefer identity constraint to avoid duplicate-key violations when the same game is seen
     # under a different source_game_key.
@@ -230,5 +262,12 @@ def upsert_game(session: Session, normalized: NormalizedGame) -> tuple[int, bool
     if not result:
         raise RuntimeError("Failed to upsert game")
     game_id, inserted = result
+    logger.info(
+        "game_resolution",
+        league=normalized.identity.league_code,
+        game_id=int(game_id),
+        external_id=normalized.identity.source_game_key,
+        inserted=bool(inserted),
+    )
     # Idempotent upsert: game_date is immutable, and end_time only set on final status.
     return int(game_id), bool(inserted)
