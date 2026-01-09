@@ -92,6 +92,12 @@ class LiveFeedManager:
 
                 # Live feeds keep game status/timelines accurate; post-game boxscores remain Sports Reference only.
                 games_touched += 1
+                logger.info(
+                    "live_game_resolution",
+                    league=config.league_code,
+                    game_id=game.id,
+                    external_id=live_game.game_id,
+                )
                 updated = update_game_from_live_feed(
                     session,
                     game=game,
@@ -104,7 +110,13 @@ class LiveFeedManager:
                     logger.info("nba_live_game_updated", game_id=game.id, status=game.status)
 
                 if _should_skip_pbp(session, game.id, config.only_missing, updated_before):
-                    logger.info("pbp_game_skipped", game_id=game.id, reason="already_ingested")
+                    logger.info(
+                        "pbp_game_skipped",
+                        league=config.league_code,
+                        game_id=game.id,
+                        external_id=live_game.game_id,
+                        reason="already_ingested",
+                    )
                     continue
 
                 pbp_result = self._ingest_pbp_for_game(
@@ -146,6 +158,12 @@ class LiveFeedManager:
             )
             games_touched += 1
             logger.info(
+                "live_game_resolution",
+                league=config.league_code,
+                game_id=game_id,
+                external_id=live_game.game_id,
+            )
+            logger.info(
                 "nhl_live_game_upserted",
                 game_id=game_id,
                 created=created,
@@ -157,7 +175,13 @@ class LiveFeedManager:
                 continue
 
             if _should_skip_pbp(session, game_id, config.only_missing, updated_before):
-                logger.info("pbp_game_skipped", game_id=game_id, reason="already_ingested")
+                logger.info(
+                    "pbp_game_skipped",
+                    league=config.league_code,
+                    game_id=game_id,
+                    external_id=live_game.game_id,
+                    reason="already_ingested",
+                )
                 continue
 
             pbp_result = self._ingest_pbp_for_game(

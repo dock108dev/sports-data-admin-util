@@ -86,6 +86,9 @@ class TestGameSnapshotEndpoints(unittest.TestCase):
             away_team_id=away_team.id,
             updated_at=now,
             last_scraped_at=None,
+            last_ingested_at=None,
+            last_pbp_at=None,
+            last_social_at=None,
             home_score=100,
             away_score=98,
         )
@@ -93,7 +96,7 @@ class TestGameSnapshotEndpoints(unittest.TestCase):
     def test_list_games_last2_returns_games(self) -> None:
         game = self._build_game()
         session = _FakeSession(
-            execute_results=[_FakeResult(rows=[(game, True, False)])],
+            execute_results=[_FakeResult(rows=[(game, True, False, False)])],
             get_result=None,
         )
         self._override_db(session)
@@ -109,7 +112,7 @@ class TestGameSnapshotEndpoints(unittest.TestCase):
     def test_list_games_current_live_game(self) -> None:
         game = self._build_game(status="live")
         session = _FakeSession(
-            execute_results=[_FakeResult(rows=[(game, False, True)])],
+            execute_results=[_FakeResult(rows=[(game, False, True, False)])],
             get_result=None,
         )
         self._override_db(session)

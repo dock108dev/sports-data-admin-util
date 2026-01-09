@@ -235,6 +235,9 @@ def summarize_game(game: db_models.SportsGame) -> "GameSummary":
         has_required_data=has_boxscore and has_odds,
         scrape_version=getattr(game, "scrape_version", None),
         last_scraped_at=game.last_scraped_at,
+        last_ingested_at=game.last_ingested_at,
+        last_pbp_at=game.last_pbp_at,
+        last_social_at=game.last_social_at,
     )
 
 

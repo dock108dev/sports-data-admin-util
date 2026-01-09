@@ -376,6 +376,9 @@ class XPostCollector:
                 posts_found=result.posts_found,
             )
             if result.posts_saved > 0 or posts_updated > 0:
+                game = session.get(db_models.SportsGame, job.game_id)
+                if game:
+                    game.last_social_at = utcnow()
                 session.commit()
                 logger.debug(
                     "x_posts_committed",
