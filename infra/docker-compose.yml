@@ -133,7 +133,10 @@ services:
     container_name: sports-web
     profiles: ["dev", "prod"]
     environment:
+      # Browser requests should hit the host-mapped API port.
       NEXT_PUBLIC_SPORTS_API_URL: ${NEXT_PUBLIC_SPORTS_API_URL:-http://localhost:8000}
+      # Server-side Next.js fetches run inside the web container; use the internal service name.
+      SPORTS_API_INTERNAL_URL: ${SPORTS_API_INTERNAL_URL:-http://api:8000}
     depends_on:
       - api
     networks:

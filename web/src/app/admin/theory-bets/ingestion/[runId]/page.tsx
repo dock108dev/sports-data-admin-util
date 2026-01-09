@@ -3,9 +3,9 @@ import styles from "./styles.module.css";
 import { fetchScrapeRun } from "@/lib/api/sportsAdmin";
 
 type Params = {
-  params: {
+  params: Promise<{
     runId: string;
-  };
+  }>;
 };
 
 /**
@@ -19,7 +19,8 @@ type Params = {
  * This is a server component that fetches run data at request time.
  */
 export default async function RunDetailPage({ params }: Params) {
-  const runId = Number(params.runId);
+  const { runId: runIdParam } = await params;
+  const runId = Number(runIdParam);
   const run = await fetchScrapeRun(runId);
 
   return (

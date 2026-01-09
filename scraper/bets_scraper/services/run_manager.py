@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Tuple
 
-from sqlalchemy import exists, func, not_
+from sqlalchemy import and_, exists, func, not_, or_
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -14,7 +14,7 @@ from ..logging import logger
 from ..models import IngestionConfig
 from ..live import LiveFeedManager
 from ..odds.synchronizer import OddsSynchronizer
-from ..persistence import persist_game_payload, upsert_player_boxscores
+from ..persistence import persist_game_payload
 from ..scrapers import get_all_scrapers
 from ..social import XPostCollector
 from ..utils.datetime_utils import utcnow
@@ -28,6 +28,11 @@ class ScrapeRunManager:
         self.odds_sync = OddsSynchronizer()
         self.social_collector = XPostCollector()
         self.live_feed_manager = LiveFeedManager()
+
+        # Feature support varies by league. When a toggle is enabled for an unsupported
+        # league, we must NOT fail the run; we log and continue.
+        self._supported_social_leagues = ("NBA", "NHL")
+        self._supported_live_pbp_leagues = ("NBA", "NHL")
 
     def _update_run(self, run_id: int, **updates) -> None:
         try:
@@ -157,11 +162,13 @@ class ScrapeRunManager:
         live_status = db_models.GameStatus.live.value
         final_statuses = [db_models.GameStatus.final.value, db_models.GameStatus.completed.value]
         query = query.filter(
-            (db_models.SportsGame.status == live_status)
-            | (
-                db_models.SportsGame.status.in_(final_statuses)
-                & db_models.SportsGame.end_time.isnot(None)
-                & (db_models.SportsGame.end_time >= recent_cutoff)
+            or_(
+                db_models.SportsGame.status == live_status,
+                and_(
+                    db_models.SportsGame.status.in_(final_statuses),
+                    db_models.SportsGame.end_time.isnot(None),
+                    db_models.SportsGame.end_time >= recent_cutoff,
+                ),
             )
         )
 
@@ -335,36 +342,48 @@ class ScrapeRunManager:
                     end_date=str(end),
                     only_missing=config.only_missing,
                 )
-                try:
-                    with get_session() as session:
-                        live_summary = self.live_feed_manager.ingest_live_data(
-                            session,
-                            config=config,
-                            updated_before=updated_before_dt,
-                        )
-                        session.commit()
-                    summary["pbp_games"] += live_summary.pbp_games
-                    complete_job_run(pbp_run_id, "success")
-                except Exception as exc:
-                    logger.exception(
-                        "pbp_live_feed_failed",
+                if config.league_code not in self._supported_live_pbp_leagues:
+                    # PBP not implemented for this league in the live feed pipeline.
+                    logger.info(
+                        "pbp_not_implemented",
                         run_id=run_id,
                         league=config.league_code,
-                        error=str(exc),
+                        message="Play-by-play is not yet implemented for this league; skipping.",
                     )
-                    complete_job_run(pbp_run_id, "error", str(exc))
+                    complete_job_run(pbp_run_id, "success", "pbp_not_implemented")
+                else:
+                    try:
+                        with get_session() as session:
+                            live_summary = self.live_feed_manager.ingest_live_data(
+                                session,
+                                config=config,
+                                updated_before=updated_before_dt,
+                            )
+                            session.commit()
+                        summary["pbp_games"] += live_summary.pbp_games
+                        complete_job_run(pbp_run_id, "success")
+                    except Exception as exc:
+                        logger.exception(
+                            "pbp_live_feed_failed",
+                            run_id=run_id,
+                            league=config.league_code,
+                            error=str(exc),
+                        )
+                        complete_job_run(pbp_run_id, "error", str(exc))
 
                 logger.info("pbp_complete", count=summary["pbp_games"], run_id=run_id)
 
             # Social scraping (runs after PBP ingestion to ensure timestamps are available)
             if config.social:
                 social_run_id = start_job_run("social", [config.league_code])
-                if config.league_code not in ("NBA", "NHL"):
+                if config.league_code not in self._supported_social_leagues:
                     logger.info(
-                        "social_scraping_skipped_league",
+                        "x_social_not_implemented",
                         run_id=run_id,
                         league=config.league_code,
+                        message="X/social scraping is not yet implemented for this league; skipping.",
                     )
+                    complete_job_run(social_run_id, "success", "x_social_not_implemented")
                 else:
                     logger.info(
                         "social_scraping_start",
@@ -394,7 +413,7 @@ class ScrapeRunManager:
                             logger.warning("social_collection_failed", game_id=game_id, error=str(e))
 
                     logger.info("social_complete", count=summary["social_posts"], run_id=run_id)
-                complete_job_run(social_run_id, "success")
+                    complete_job_run(social_run_id, "success")
 
             with get_session() as session:
                 detect_missing_pbp(session, league_code=config.league_code)

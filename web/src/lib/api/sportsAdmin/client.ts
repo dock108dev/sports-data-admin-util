@@ -1,8 +1,19 @@
 function getApiBase(): string {
-  const base = process.env.NEXT_PUBLIC_SPORTS_API_URL || process.env.NEXT_PUBLIC_THEORY_ENGINE_URL;
+  const isBrowser = typeof window !== "undefined";
+
+  // When rendering on the server (inside Docker), localhost points at the web container,
+  // not the API container. Allow an internal base URL for server-side fetches.
+  const serverBase =
+    process.env.SPORTS_API_INTERNAL_URL ||
+    process.env.NEXT_PUBLIC_SPORTS_API_URL ||
+    process.env.NEXT_PUBLIC_THEORY_ENGINE_URL;
+
+  const clientBase = process.env.NEXT_PUBLIC_SPORTS_API_URL || process.env.NEXT_PUBLIC_THEORY_ENGINE_URL;
+
+  const base = isBrowser ? clientBase : serverBase;
   if (!base) {
     throw new Error(
-      "Set NEXT_PUBLIC_SPORTS_API_URL (or NEXT_PUBLIC_THEORY_ENGINE_URL) to the sports-data-admin API base URL"
+      "Set NEXT_PUBLIC_SPORTS_API_URL (and optionally SPORTS_API_INTERNAL_URL for server-side Docker requests)"
     );
   }
   return base;
