@@ -1,4 +1,16 @@
-"""SQLAlchemy models for sports-data-admin."""
+"""SQLAlchemy models for sports-data-admin.
+
+Beta Phase 0 Canonical Schema
+=============================
+This module defines the canonical data model for game identity.
+
+Key Rules:
+1. games.id is the ONLY identifier used internally
+2. source_game_key stores external IDs for reference only
+3. game_date (start_time) is immutable after creation
+4. end_time is set only when status becomes 'final'
+5. Status lifecycle: scheduled -> live -> final
+"""
 
 from __future__ import annotations
 
@@ -51,6 +63,7 @@ class SportsTeam(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     league_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_leagues.id", ondelete="CASCADE"), nullable=False, index=True)
+    # DEPRECATED: Use external_codes for new provider mappings
     external_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     short_name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -87,8 +100,12 @@ class CompactModeThreshold(Base):
 
 
 class GameStatus(str, Enum):
+    """Canonical game status lifecycle."""
+
     scheduled = "scheduled"
-    completed = "completed"
+    live = "live"
+    final = "final"
+    completed = "completed"  # DEPRECATED: Use 'final' for new games
     postponed = "postponed"
     canceled = "canceled"
 
@@ -102,13 +119,17 @@ class SportsGame(Base):
     league_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_leagues.id", ondelete="CASCADE"), nullable=False, index=True)
     season: Mapped[int] = mapped_column(Integer, nullable=False)
     season_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # game_date is the scheduled start time (IMMUTABLE - never changes after creation)
     game_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    # end_time is set only when status becomes 'final' or 'completed'
+    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     home_team_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_teams.id", ondelete="CASCADE"), nullable=False, index=True)
     away_team_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_teams.id", ondelete="CASCADE"), nullable=False, index=True)
     home_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     away_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     venue: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default=GameStatus.scheduled, nullable=False, index=True)
+    # source_game_key is the external ID from the data provider
     source_game_key: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
     scrape_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     last_scraped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -129,7 +150,18 @@ class SportsGame(Base):
         UniqueConstraint("league_id", "season", "game_date", "home_team_id", "away_team_id", name="uq_game_identity"),
         Index("idx_games_league_season_date", "league_id", "season", "game_date"),
         Index("idx_games_teams", "home_team_id", "away_team_id"),
+        Index("idx_games_league_status", "league_id", "status"),
     )
+
+    @property
+    def is_final(self) -> bool:
+        """Check if game is in a final state."""
+        return self.status in (GameStatus.final.value, GameStatus.completed.value)
+
+    @property
+    def start_time(self) -> datetime:
+        """Alias for game_date to match canonical naming."""
+        return self.game_date
 
 
 class SportsTeamBoxscore(Base):
@@ -278,8 +310,8 @@ class GameSocialPost(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     game_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False, index=True)
     team_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_teams.id", ondelete="CASCADE"), nullable=False, index=True)
-    # Column is named tweet_url in DB for backwards compatibility, but we use post_url in code
     post_url: Mapped[str] = mapped_column("tweet_url", Text, nullable=False, unique=True)
+    external_post_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     has_video: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     tweet_text: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -287,6 +319,7 @@ class GameSocialPost(Base):
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_handle: Mapped[str | None] = mapped_column(String(100), nullable=True)
     media_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    spoiler_risk: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -298,6 +331,7 @@ class GameSocialPost(Base):
         Index("idx_social_posts_team", "team_id"),
         Index("idx_social_posts_posted_at", "posted_at"),
         Index("idx_social_posts_media_type", "media_type"),
+        Index("idx_social_posts_external_id", "external_post_id"),
     )
 
 
