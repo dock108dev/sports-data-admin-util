@@ -12,6 +12,8 @@ from sqlalchemy import cast, text
 from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Session
 
+from dataclasses import dataclass
+
 from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedGame, NormalizedPlayerBoxscore, NormalizedTeamBoxscore
@@ -161,12 +163,18 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
     )
 
 
-def persist_game_payload(session: Session, payload: NormalizedGame) -> int:
+@dataclass(frozen=True)
+class GamePersistResult:
+    game_id: int
+    created: bool
+
+
+def persist_game_payload(session: Session, payload: NormalizedGame) -> GamePersistResult:
     """Persist a complete game payload including game, team boxscores, and player boxscores.
     
-    Returns the game ID.
+    Returns the game ID and creation status.
     """
-    game_id = upsert_game(session, payload)
+    game_id, created = upsert_game(session, payload)
     upsert_team_boxscores(session, game_id, payload.team_boxscores)
     
     logger.info(
@@ -192,5 +200,4 @@ def persist_game_payload(session: Session, payload: NormalizedGame) -> int:
     else:
         logger.warning("no_player_boxscores_to_persist", game_id=game_id, game_key=payload.identity.source_game_key)
     
-    return game_id
-
+    return GamePersistResult(game_id=game_id, created=created)

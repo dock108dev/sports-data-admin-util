@@ -7,6 +7,7 @@ from datetime import timedelta
 from .utils.datetime_utils import utcnow
 
 from celery import Celery, signals
+from celery.schedules import crontab
 
 from .config import settings
 from .db import db_models, get_session
@@ -37,6 +38,13 @@ app = Celery(
 app.conf.update(**celery_config)
 app.conf.task_routes = {
     "run_scrape_job": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
+}
+app.conf.beat_schedule = {
+    "scheduled-ingestion-every-15-min": {
+        "task": "run_scheduled_ingestion",
+        "schedule": crontab(minute="*/15", hour="13-23,0-2"),
+        "options": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
+    }
 }
 
 
@@ -112,5 +120,3 @@ def on_worker_shutting_down(sender=None, **kwargs):
                 logger.info("runs_marked_interrupted_on_shutdown", count=len(running_runs))
     except Exception as exc:
         logger.exception("failed_to_mark_runs_on_shutdown", error=str(exc))
-
-

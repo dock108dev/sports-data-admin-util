@@ -100,6 +100,32 @@ services:
       timeout: 10s
       retries: 5
 
+  scraper-beat:
+    build:
+      context: ..
+      dockerfile: infra/scraper.Dockerfile
+    container_name: sports-scraper-beat
+    profiles: ["dev", "prod"]
+    command: ["celery", "-A", "bets_scraper.celery_app.app", "beat", "--loglevel=info"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
+      REDIS_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/2
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: "2"
+      ODDS_API_KEY: ${ODDS_API_KEY:-}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      X_AUTH_TOKEN: ${X_AUTH_TOKEN:-}
+      X_CT0: ${X_CT0:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+      - app
+
   web:
     build:
       context: ..

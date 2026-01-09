@@ -208,6 +208,8 @@ class ScrapeRunManager:
     def run(self, run_id: int, config: IngestionConfig) -> dict:
         summary: Dict[str, int | str] = {
             "games": 0,
+            "games_created": 0,
+            "games_updated": 0,
             "odds": 0,
             "social_posts": 0,
             "pbp_games": 0,
@@ -271,8 +273,12 @@ class ScrapeRunManager:
                             game_payload = scraper.fetch_single_boxscore(source_key, game_date)
                             if game_payload:
                                 with get_session() as session:
-                                    persist_game_payload(session, game_payload)
+                                    result = persist_game_payload(session, game_payload)
                                     session.commit()
+                                    if result.created:
+                                        summary["games_created"] += 1
+                                    else:
+                                        summary["games_updated"] += 1
                                     summary["games"] += 1
                         except Exception as exc:
                             logger.warning("boxscore_scrape_failed", game_id=game_id, error=str(exc))
@@ -280,14 +286,31 @@ class ScrapeRunManager:
                     # Scrape all games in date range
                     for game_payload in scraper.fetch_date_range(start, end):
                         try:
+                            if not game_payload.identity.source_game_key:
+                                logger.warning(
+                                    "game_normalization_missing_external_id",
+                                    league=config.league_code,
+                                    game_date=str(game_payload.identity.game_date),
+                                )
+                                continue
                             with get_session() as session:
-                                persist_game_payload(session, game_payload)
+                                result = persist_game_payload(session, game_payload)
                                 session.commit()
+                                if result.created:
+                                    summary["games_created"] += 1
+                                else:
+                                    summary["games_updated"] += 1
                                 summary["games"] += 1
                         except Exception as exc:
                             logger.exception("game_persist_failed", error=str(exc), run_id=run_id)
 
-                logger.info("boxscores_complete", count=summary["games"], run_id=run_id)
+                logger.info(
+                    "boxscores_complete",
+                    count=summary["games"],
+                    created=summary["games_created"],
+                    updated=summary["games_updated"],
+                    run_id=run_id,
+                )
 
             # Odds scraping
             if config.odds:
@@ -385,7 +408,9 @@ class ScrapeRunManager:
             # Build summary string
             summary_parts = []
             if summary["games"]:
-                summary_parts.append(f'Games: {summary["games"]}')
+                summary_parts.append(
+                    f'Games: {summary["games"]} (created {summary["games_created"]}, updated {summary["games_updated"]})'
+                )
             if summary["odds"]:
                 summary_parts.append(f'Odds: {summary["odds"]}')
             if summary["social_posts"]:
