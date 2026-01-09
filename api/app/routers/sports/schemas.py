@@ -59,10 +59,12 @@ class ScrapeRunResponse(BaseModel):
     league_code: str
     status: str
     scraper_type: str
+    job_id: str | None = None
     season: int | None
     start_date: date | None
     end_date: date | None
     summary: str | None
+    error_details: str | None = None
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None

@@ -3,10 +3,12 @@ export type ScrapeRunResponse = {
   league_code: string;
   status: string;
   scraper_type: string;
+  job_id: string | null;
   season: number | null;
   start_date: string | null;
   end_date: string | null;
   summary: string | null;
+  error_details: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

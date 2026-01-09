@@ -24,7 +24,7 @@ export default async function RunDetailPage({ params }: Params) {
 
   return (
     <div className={styles.container}>
-      <Link href="/admin/ingestion" className={styles.backLink}>
+      <Link href="/admin/theory-bets/ingestion" className={styles.backLink}>
         ← Back to runs
       </Link>
 
@@ -38,6 +38,10 @@ export default async function RunDetailPage({ params }: Params) {
           <div>
             <span className={styles.label}>Status</span>
             <p className={styles.status}>{run.status}</p>
+          </div>
+          <div>
+            <span className={styles.label}>Job ID</span>
+            <p>{run.job_id ?? "—"}</p>
           </div>
           <div>
             <span className={styles.label}>Season</span>
@@ -61,6 +65,12 @@ export default async function RunDetailPage({ params }: Params) {
           <h2>Config</h2>
           <pre>{JSON.stringify(run.config ?? {}, null, 2)}</pre>
         </div>
+        {run.error_details && (
+          <div className={styles.summary}>
+            <h2>Error</h2>
+            <pre>{run.error_details}</pre>
+          </div>
+        )}
         {run.summary && (
           <div className={styles.summary}>
             <h2>Summary</h2>
