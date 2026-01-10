@@ -24,6 +24,7 @@
 | Guide | Description |
 |-------|-------------|
 | [Operator Runbook](OPERATOR_RUNBOOK.md) | Production operations, backups, monitoring |
+| [Deployment](DEPLOYMENT.md) | Production deploy flow, environment variables, rollbacks |
 | [Feature Flags](feature-flags.md) | Environment toggles and behavior switches |
 | [Changelog](CHANGELOG.md) | Recent changes and releases |
 
