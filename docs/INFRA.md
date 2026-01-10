@@ -186,6 +186,8 @@ docker compose ps
 docker inspect --format='{{.State.Health.Status}}' sports-api
 ```
 
+The API container health check calls `GET /healthz`, which performs a lightweight database connectivity check and returns `503` when the database is unavailable. Use the same endpoint for deploy verification.
+
 ## Troubleshooting
 
 ### Postgres connection refused

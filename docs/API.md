@@ -13,7 +13,7 @@ uvicorn main:app --reload --port 8000
 
 ## Endpoints
 
-- `GET /healthz` — Health check
+- `GET /healthz` — Liveness + database readiness check (returns 503 when dependencies fail)
 - `GET /docs` — OpenAPI documentation
 - `GET /api/admin/sports/games` — List games
 - `GET /api/admin/sports/games/{id}` — Game detail
@@ -28,3 +28,13 @@ uvicorn main:app --reload --port 8000
 | `REDIS_URL` | Yes | Redis for Celery broker |
 
 See the [root README](../README.md) for setup details and the [docs index](INDEX.md) for more guides.
+
+### Health Response Shape
+
+```json
+{
+  "status": "ok",
+  "app": "ok",
+  "db": "ok"
+}
+```
