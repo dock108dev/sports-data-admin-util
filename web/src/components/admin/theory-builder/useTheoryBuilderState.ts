@@ -225,30 +225,28 @@ export function useTheoryBuilderState(
   const runModel = useCallback(async () => {
     setModelLoading(true);
     setModelError(null);
+    setModelResult(null);
     try {
-      // TODO: Implement model endpoint
-      await new Promise((r) => setTimeout(r, 1000));
-      setModelResult({ placeholder: true });
+      throw new Error("Model building is not available yet.");
     } catch (err) {
       setModelError(err instanceof Error ? err.message : String(err));
     } finally {
       setModelLoading(false);
     }
-  }, [draft]);
+  }, []);
 
   const runMonteCarlo = useCallback(async () => {
     setMcLoading(true);
     setMcError(null);
+    setMcResult(null);
     try {
-      // TODO: Implement MC endpoint
-      await new Promise((r) => setTimeout(r, 1000));
-      setMcResult({ placeholder: true });
+      throw new Error("Monte Carlo simulations are not available yet.");
     } catch (err) {
       setMcError(err instanceof Error ? err.message : String(err));
     } finally {
       setMcLoading(false);
     }
-  }, [draft]);
+  }, []);
 
   const reset = useCallback(() => {
     setDraft(createDefaultTheoryDraft(draft.league));
@@ -344,4 +342,3 @@ export function useTheoryBuilderState(
 
   return [state, actions];
 }
-
