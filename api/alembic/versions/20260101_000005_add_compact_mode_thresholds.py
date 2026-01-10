@@ -19,22 +19,24 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "compact_mode_thresholds",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("sport_id", sa.Integer(), sa.ForeignKey("sports_leagues.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("thresholds", postgresql.JSONB(), nullable=False),
-        sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.UniqueConstraint("sport_id", name="uq_compact_mode_thresholds_sport_id"),
-    )
-    op.create_index(
-        "idx_compact_mode_thresholds_sport_id",
-        "compact_mode_thresholds",
-        ["sport_id"],
-        unique=True,
-    )
+    inspector = sa.inspect(op.get_bind())
+    if "compact_mode_thresholds" not in set(inspector.get_table_names()):
+        op.create_table(
+            "compact_mode_thresholds",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("sport_id", sa.Integer(), sa.ForeignKey("sports_leagues.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("thresholds", postgresql.JSONB(), nullable=False),
+            sa.Column("description", sa.Text(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+            sa.UniqueConstraint("sport_id", name="uq_compact_mode_thresholds_sport_id"),
+        )
+        op.create_index(
+            "idx_compact_mode_thresholds_sport_id",
+            "compact_mode_thresholds",
+            ["sport_id"],
+            unique=True,
+        )
 
     op.execute(
         """
