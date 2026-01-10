@@ -10,6 +10,9 @@ Key Rules:
 3. game_date (start_time) is immutable after creation
 4. end_time is set only when status becomes 'final'
 5. Status lifecycle: scheduled -> live -> final
+
+Note: Models remain co-located to keep the canonical schema easy to audit,
+even though this module sits slightly above 500 lines.
 """
 
 from __future__ import annotations

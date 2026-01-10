@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
-from typing import Dict, List, Tuple
-
-from sqlalchemy import and_, exists, func, not_, or_
-from sqlalchemy.orm import Session
+from datetime import date, datetime, timezone
+from typing import Dict
 
 from ..config import settings
 from ..db import db_models, get_session
@@ -16,13 +13,18 @@ from ..live import LiveFeedManager
 from ..odds.synchronizer import OddsSynchronizer
 from ..persistence import persist_game_payload, upsert_player_season_stats, upsert_team_season_stats
 from ..season_stats import NHLHockeyReferenceSeasonStatsScraper
-from ..persistence.plays import upsert_plays
 from ..scrapers import get_all_scrapers
 from ..social import XPostCollector
 from ..utils.date_utils import season_from_date
 from ..utils.datetime_utils import utcnow
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
 from .job_runs import complete_job_run, start_job_run
+from .run_manager_helpers import (
+    ingest_pbp_via_sportsref,
+    select_games_for_boxscores,
+    select_games_for_odds,
+    select_games_for_social,
+)
 
 
 class ScrapeRunManager:
@@ -58,249 +60,6 @@ class ScrapeRunManager:
         except Exception as exc:
             logger.exception("failed_to_update_run", run_id=run_id, error=str(exc), exc_info=True)
             raise
-
-    def _get_games_for_boxscores(
-        self,
-        session: Session,
-        league_code: str,
-        start_date: date,
-        end_date: date,
-        only_missing: bool = False,
-        updated_before: datetime | None = None,
-    ) -> List[Tuple[int, str, date]]:
-        """Get games for boxscore scraping with filters."""
-        league = session.query(db_models.SportsLeague).filter(
-            db_models.SportsLeague.code == league_code
-        ).first()
-        if not league:
-            return []
-
-        query = session.query(
-            db_models.SportsGame.id,
-            db_models.SportsGame.source_game_key,
-            db_models.SportsGame.game_date,
-        ).filter(
-            db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time()),
-            db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time()),
-            db_models.SportsGame.source_game_key.isnot(None),
-        )
-
-        if only_missing:
-            has_boxscores = exists().where(
-                db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id
-            )
-            query = query.filter(not_(has_boxscores))
-
-        if updated_before:
-            query = query.filter(db_models.SportsGame.updated_at < updated_before)
-
-        results = query.all()
-        return [(r.id, r.source_game_key, r.game_date.date() if r.game_date else None) for r in results]
-
-    def _get_games_for_odds(
-        self,
-        session: Session,
-        league_code: str,
-        start_date: date,
-        end_date: date,
-        only_missing: bool = False,
-        updated_before: datetime | None = None,
-    ) -> List[date]:
-        """Get unique dates needing odds fetch."""
-        league = session.query(db_models.SportsLeague).filter(
-            db_models.SportsLeague.code == league_code
-        ).first()
-        if not league:
-            return []
-
-        query = session.query(
-            func.date(db_models.SportsGame.game_date).label("game_day")
-        ).filter(
-            db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time()),
-            db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time()),
-        ).distinct()
-
-        if only_missing:
-            # Games with no odds
-            has_odds = exists().where(
-                db_models.SportsGameOdds.game_id == db_models.SportsGame.id
-            )
-            query = query.filter(not_(has_odds))
-
-        # For updated_before on odds, we'd need to track per-game odds updated_at
-        # For now, just return all dates in range if not only_missing
-
-        results = query.all()
-        return [r.game_day for r in results if r.game_day]
-
-    def _get_games_for_social(
-        self,
-        session: Session,
-        league_code: str,
-        start_date: date,
-        end_date: date,
-        only_missing: bool = False,
-        updated_before: datetime | None = None,
-    ) -> List[int]:
-        """Get game IDs for social scraping with filters."""
-        league = session.query(db_models.SportsLeague).filter(
-            db_models.SportsLeague.code == league_code
-        ).first()
-        if not league:
-            return []
-
-        now = utcnow()
-        recent_cutoff = now - timedelta(hours=settings.social_config.recent_game_window_hours)
-        start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-        end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
-
-        query = session.query(db_models.SportsGame.id).filter(
-            db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.game_date >= start_dt,
-            db_models.SportsGame.game_date <= end_dt,
-        )
-
-        live_status = db_models.GameStatus.live.value
-        final_statuses = [db_models.GameStatus.final.value, db_models.GameStatus.completed.value]
-        query = query.filter(
-            or_(
-                db_models.SportsGame.status == live_status,
-                and_(
-                    db_models.SportsGame.status.in_(final_statuses),
-                    db_models.SportsGame.end_time.isnot(None),
-                    db_models.SportsGame.end_time >= recent_cutoff,
-                ),
-            )
-        )
-
-        if only_missing:
-            has_posts = exists().where(
-                db_models.GameSocialPost.game_id == db_models.SportsGame.id
-            )
-            query = query.filter(not_(has_posts))
-
-        if updated_before:
-            # Include games where ALL posts are older than cutoff
-            has_fresh = exists().where(
-                db_models.GameSocialPost.game_id == db_models.SportsGame.id,
-                db_models.GameSocialPost.updated_at >= updated_before,
-            )
-            query = query.filter(not_(has_fresh))
-
-        return [r[0] for r in query.all()]
-
-    def _get_games_for_pbp_sportsref(
-        self,
-        session: Session,
-        *,
-        league_code: str,
-        start_date: date,
-        end_date: date,
-        only_missing: bool,
-        updated_before: datetime | None,
-    ) -> list[tuple[int, str, date]]:
-        league = session.query(db_models.SportsLeague).filter(
-            db_models.SportsLeague.code == league_code
-        ).first()
-        if not league:
-            return []
-
-        query = session.query(
-            db_models.SportsGame.id,
-            db_models.SportsGame.source_game_key,
-            db_models.SportsGame.game_date,
-        ).filter(
-            db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
-            db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
-            db_models.SportsGame.source_game_key.isnot(None),
-        )
-
-        if only_missing:
-            has_pbp = exists().where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
-            query = query.filter(not_(has_pbp))
-
-        if updated_before:
-            has_fresh = exists().where(
-                db_models.SportsGamePlay.game_id == db_models.SportsGame.id,
-                db_models.SportsGamePlay.updated_at >= updated_before,
-            )
-            query = query.filter(not_(has_fresh))
-
-        rows = query.all()
-        return [(gid, str(source_key), game_dt.date()) for gid, source_key, game_dt in rows if source_key]
-
-    def _ingest_pbp_via_sportsref(
-        self,
-        session: Session,
-        *,
-        run_id: int,
-        league_code: str,
-        start_date: date,
-        end_date: date,
-        only_missing: bool,
-        updated_before: datetime | None,
-    ) -> tuple[int, int]:
-        """Ingest PBP using Sports Reference scraper implementations (non-live mode)."""
-        scraper = self.scrapers.get(league_code)
-        if not scraper:
-            logger.info(
-                "pbp_sportsref_not_supported",
-                run_id=run_id,
-                league=league_code,
-                reason="no_sportsref_scraper",
-            )
-            return (0, 0)
-
-        games = self._get_games_for_pbp_sportsref(
-            session,
-            league_code=league_code,
-            start_date=start_date,
-            end_date=end_date,
-            only_missing=only_missing,
-            updated_before=updated_before,
-        )
-        logger.info(
-            "pbp_sportsref_games_selected",
-            run_id=run_id,
-            league=league_code,
-            games=len(games),
-            only_missing=only_missing,
-            updated_before=str(updated_before) if updated_before else None,
-        )
-
-        pbp_games = 0
-        pbp_events = 0
-        for game_id, source_game_key, game_date in games:
-            try:
-                payload = scraper.fetch_play_by_play(source_game_key, game_date)
-            except NotImplementedError:
-                logger.info(
-                    "pbp_sportsref_not_supported",
-                    run_id=run_id,
-                    league=league_code,
-                    reason="fetch_play_by_play_not_implemented",
-                )
-                return (0, 0)
-            except Exception as exc:
-                logger.warning(
-                    "pbp_sportsref_fetch_failed",
-                    run_id=run_id,
-                    league=league_code,
-                    game_id=game_id,
-                    source_game_key=source_game_key,
-                    error=str(exc),
-                )
-                continue
-
-            inserted = upsert_plays(session, game_id, payload.plays)
-            if inserted:
-                pbp_games += 1
-                pbp_events += inserted
-
-        return (pbp_games, pbp_events)
 
     def run(self, run_id: int, config: IngestionConfig) -> dict:
         summary: Dict[str, int | str] = {
@@ -363,7 +122,7 @@ class ScrapeRunManager:
                 if config.only_missing or updated_before_dt:
                     # Filter games by criteria
                     with get_session() as session:
-                        games_to_scrape = self._get_games_for_boxscores(
+                        games_to_scrape = select_games_for_boxscores(
                             session, config.league_code, start, end,
                             only_missing=config.only_missing,
                             updated_before=updated_before_dt,
@@ -457,7 +216,7 @@ class ScrapeRunManager:
 
                 if config.only_missing:
                     with get_session() as session:
-                        dates_to_fetch = self._get_games_for_odds(
+                        dates_to_fetch = select_games_for_odds(
                             session, config.league_code, start, end,
                             only_missing=True,
                         )
@@ -521,10 +280,11 @@ class ScrapeRunManager:
                     pbp_events = 0
                     try:
                         with get_session() as session:
-                            pbp_games, pbp_events = self._ingest_pbp_via_sportsref(
+                            pbp_games, pbp_events = ingest_pbp_via_sportsref(
                                 session,
                                 run_id=run_id,
                                 league_code=config.league_code,
+                                scraper=self.scrapers.get(config.league_code),
                                 start_date=start,
                                 end_date=end,
                                 only_missing=config.only_missing,
@@ -567,7 +327,7 @@ class ScrapeRunManager:
                     )
 
                     with get_session() as session:
-                        game_ids = self._get_games_for_social(
+                        game_ids = select_games_for_social(
                             session, config.league_code, start, end,
                             only_missing=config.only_missing,
                             updated_before=updated_before_dt,

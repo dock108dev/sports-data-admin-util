@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import logging
-from typing import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
 from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import selectinload
 
@@ -15,90 +13,23 @@ from .. import db_models
 from ..config import settings
 from ..db import AsyncSession, get_db
 from ..services.recap_generator import build_recap
-from ..services.reveal_levels import RevealLevel, parse_reveal_level
-from ..utils.reveal_filter import classify_reveal_risk
+from ..services.reveal_levels import parse_reveal_level
+from .game_snapshot_models import (
+    GameSnapshot,
+    GameSnapshotResponse,
+    PbpResponse,
+    RecapResponse,
+    SocialPostSnapshot,
+    SocialResponse,
+    chunk_plays_by_period,
+    post_reveal_level,
+    team_snapshot,
+)
 
 router = APIRouter(tags=["game-snapshots"])
 logger = logging.getLogger(__name__)
 
 _VALID_RANGES = {"last2", "current", "next24"}
-
-
-class TeamSnapshot(BaseModel):
-    """Minimal team identity for snapshot responses."""
-
-    id: int
-    name: str
-    abbreviation: str | None
-
-
-class GameSnapshot(BaseModel):
-    """Minimal game record for app snapshots."""
-
-    id: int
-    league: str
-    status: str
-    start_time: datetime
-    home_team: TeamSnapshot
-    away_team: TeamSnapshot
-    has_pbp: bool
-    has_social: bool
-    last_updated_at: datetime
-
-
-class GameSnapshotResponse(BaseModel):
-    """List response for snapshot games."""
-
-    range: str
-    games: list[GameSnapshot]
-
-
-class PbpEvent(BaseModel):
-    """Play-by-play entry with raw description."""
-
-    index: int
-    clock: str | None
-    description: str | None
-    play_type: str | None
-
-
-class PbpPeriod(BaseModel):
-    """Play-by-play entries grouped by period."""
-
-    period: int | None
-    events: list[PbpEvent]
-
-
-class PbpResponse(BaseModel):
-    """Response wrapper for grouped play-by-play."""
-
-    periods: list[PbpPeriod]
-
-
-class SocialPostSnapshot(BaseModel):
-    """Social post entry with reveal classification."""
-
-    id: int
-    team: TeamSnapshot
-    content: str | None
-    posted_at: datetime
-    reveal_level: RevealLevel
-
-
-class SocialResponse(BaseModel):
-    """Response wrapper for social posts."""
-
-    posts: list[SocialPostSnapshot]
-
-
-class RecapResponse(BaseModel):
-    """Recap response for a game."""
-
-    game_id: int
-    reveal: RevealLevel
-    available: bool
-    summary: str | None = None
-    reason: str | None = None
 
 
 def _validate_range(range_value: str) -> None:
@@ -107,47 +38,6 @@ def _validate_range(range_value: str) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid range value",
         )
-
-
-def _team_snapshot(team: db_models.SportsTeam | None, fallback_id: int | None = None) -> TeamSnapshot:
-    if team is None:
-        return TeamSnapshot(
-            id=fallback_id or 0,
-            name="Unknown",
-            abbreviation=None,
-        )
-    return TeamSnapshot(
-        id=team.id,
-        name=team.name,
-        abbreviation=team.abbreviation,
-    )
-
-
-def _chunk_by_period(plays: Iterable[db_models.SportsGamePlay]) -> list[PbpPeriod]:
-    periods: dict[int | None, list[PbpEvent]] = {}
-    for play in plays:
-        period_key = play.quarter
-        periods.setdefault(period_key, []).append(
-            PbpEvent(
-                index=play.play_index,
-                clock=play.game_clock,
-                description=play.description,
-                play_type=play.play_type,
-            )
-        )
-    return [
-        PbpPeriod(period=period, events=events)
-        for period, events in sorted(periods.items(), key=lambda item: (item[0] is None, item[0] or 0))
-    ]
-
-
-def _post_reveal_level(post: db_models.GameSocialPost) -> RevealLevel:
-    if post.reveal_risk:
-        return RevealLevel.post
-    classification = classify_reveal_risk(post.tweet_text)
-    if classification.reveal_risk:
-        return RevealLevel.post
-    return RevealLevel.pre
 
 
 async def _record_snapshot_job_run(
@@ -353,8 +243,8 @@ async def list_games(
                 league=league_code,
                 status=game.status,
                 start_time=game.game_date,
-                home_team=_team_snapshot(game.home_team, fallback_id=game.home_team_id),
-                away_team=_team_snapshot(game.away_team, fallback_id=game.away_team_id),
+                home_team=team_snapshot(game.home_team, fallback_id=game.home_team_id),
+                away_team=team_snapshot(game.away_team, fallback_id=game.away_team_id),
                 has_pbp=bool(has_pbp_value),
                 has_social=bool(has_social_value),
                 last_updated_at=last_updated,
@@ -408,7 +298,7 @@ async def get_game_pbp(
     if not plays:
         return PbpResponse(periods=[])
 
-    return PbpResponse(periods=_chunk_by_period(plays))
+    return PbpResponse(periods=chunk_plays_by_period(plays))
 
 
 @router.get("/games/{game_id}/social", response_model=SocialResponse)
@@ -449,10 +339,10 @@ async def get_game_social(
         posts=[
             SocialPostSnapshot(
                 id=post.id,
-                team=_team_snapshot(post.team, fallback_id=post.team_id),
+                team=team_snapshot(post.team, fallback_id=post.team_id),
                 content=post.tweet_text,
                 posted_at=post.posted_at,
-                reveal_level=_post_reveal_level(post),
+                reveal_level=post_reveal_level(post),
             )
             for post in posts
         ]
