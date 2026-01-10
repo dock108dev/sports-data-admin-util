@@ -213,6 +213,64 @@ class SportsPlayerBoxscore(Base):
     )
 
 
+class SportsTeamSeasonStat(Base):
+    """Season-level team stats stored as JSONB for flexibility across sports."""
+
+    __tablename__ = "sports_team_season_stats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    season: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    season_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    stats: Mapped[dict[str, Any]] = mapped_column("raw_stats_json", JSONB, server_default=text("'{}'::jsonb"), nullable=False)
+    source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    team: Mapped[SportsTeam] = relationship("SportsTeam")
+
+    __table_args__ = (
+        UniqueConstraint("team_id", "season", "season_type", "source", name="uq_team_season_stat_identity"),
+        Index("idx_team_season_stats_team_season", "team_id", "season"),
+    )
+
+
+class SportsPlayerSeasonStat(Base):
+    """Season-level player stats stored as JSONB for flexibility across sports."""
+
+    __tablename__ = "sports_player_season_stats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    league_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_leagues.id", ondelete="CASCADE"), nullable=False, index=True)
+    team_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sports_teams.id", ondelete="SET NULL"), nullable=True, index=True)
+    team_abbreviation: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    player_external_ref: Mapped[str] = mapped_column(String(100), nullable=False)
+    player_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    position: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    season: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    season_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    stats: Mapped[dict[str, Any]] = mapped_column("raw_stats_json", JSONB, server_default=text("'{}'::jsonb"), nullable=False)
+    source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    league: Mapped[SportsLeague] = relationship("SportsLeague")
+    team: Mapped[SportsTeam | None] = relationship("SportsTeam")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "league_id",
+            "player_external_ref",
+            "season",
+            "season_type",
+            "team_abbreviation",
+            "source",
+            name="uq_player_season_stat_identity",
+        ),
+        Index("idx_player_season_stats_league_season", "league_id", "season"),
+    )
+
+
 class SportsGameOdds(Base):
     """Odds data for games (multiple books/markets per game)."""
 
