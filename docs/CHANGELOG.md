@@ -22,6 +22,7 @@ All notable changes to Sports Data Admin.
 - Live feed polling for NBA/NHL status updates
 - Live play-by-play ingestion with append-only event storage
 - NHL team X handle registry with validation helper
+- NHL play-by-play ingestion via Hockey-Reference
 
 ### Changed
 - Docker compose now connects to host database via `host.docker.internal`
