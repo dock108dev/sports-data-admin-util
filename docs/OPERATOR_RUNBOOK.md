@@ -82,11 +82,17 @@ Then visit `http://localhost:9000` locally.
 
 ## API Readiness
 
-* Health endpoint: `GET /healthz`
+* Health endpoint: `GET /healthz` (returns 503 if database connectivity fails).
 * CORS is restricted via `ALLOWED_CORS_ORIGINS` (comma-separated list).
 * Structured logging: JSON access logs emitted per request.
 * Rate limiting: `RATE_LIMIT_REQUESTS` per `RATE_LIMIT_WINDOW_SECONDS`.
 * Runtime validation: production/staging requires `ALLOWED_CORS_ORIGINS`.
+
+Use the health endpoint for deploy verification:
+
+```bash
+curl -f http://localhost:8000/healthz
+```
 
 ## Database Migrations
 
