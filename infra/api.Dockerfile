@@ -1,27 +1,37 @@
-FROM python:3.14-slim
+FROM python:3.13.3-slim AS builder
 
 WORKDIR /app
 
-# Install system deps
-RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install
 COPY api/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
 
-# Copy application code (preserving structure)
+FROM python:3.13.3-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    ENVIRONMENT=production
+
+WORKDIR /app
+
+RUN useradd --system --uid 10001 --create-home appuser
+
+COPY --from=builder /install /usr/local
 COPY api/app ./app
 COPY api/alembic ./alembic
 COPY api/alembic.ini ./alembic.ini
 COPY api/main.py ./main.py
 COPY infra/api-entrypoint.sh /usr/local/bin/api-entrypoint
 
-# Verify the module structure is correct
-RUN python -c "from main import app; print('Import OK')"
-RUN chmod +x /usr/local/bin/api-entrypoint
+RUN chmod +x /usr/local/bin/api-entrypoint \
+    && chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 8000
 
-# main.py is at root, not inside app/
 ENTRYPOINT ["api-entrypoint"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

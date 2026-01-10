@@ -1,26 +1,44 @@
-FROM node:25-alpine
+FROM node:20.18-alpine AS base
+
+WORKDIR /app
+
+FROM base AS deps
+
+COPY web/package.json web/package-lock.json ./web/
+COPY packages ./packages
 
 WORKDIR /app/web
+RUN npm ci
 
-# Copy web app files
-COPY web/package.json web/tsconfig.json web/next.config.ts web/next-env.d.ts ./
+FROM deps AS build
+
+COPY web/tsconfig.json web/next.config.ts web/next-env.d.ts ./
 COPY web/src ./src
 COPY web/public ./public
 
-# Create a clean package.json without workspace deps for initial install
-RUN node -e "const pkg = require('./package.json'); const deps = {...pkg.dependencies}; delete deps['@dock108/js-core']; delete deps['@dock108/ui']; delete deps['@dock108/ui-kit']; pkg.dependencies = deps; pkg.scripts.dev = 'next dev -p 3000 -H 0.0.0.0'; require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2));"
+RUN npm run build
 
-# Install core dependencies
-RUN npm install --legacy-peer-deps
+FROM base AS runner
 
-# Copy workspace packages directly into node_modules
-COPY packages/js-core ./node_modules/@dock108/js-core
-COPY packages/ui ./node_modules/@dock108/ui
-COPY packages/ui-kit ./node_modules/@dock108/ui-kit
+ENV NODE_ENV=production \
+    HOSTNAME=0.0.0.0 \
+    PORT=3000
 
-# Show what we have
-RUN echo "=== @dock108 packages ===" && ls -la node_modules/@dock108/
+WORKDIR /app/web
+
+COPY web/package.json web/package-lock.json ./
+COPY packages ./packages
+RUN npm ci --omit=dev
+
+COPY --from=build /app/web/.next ./.next
+COPY --from=build /app/web/public ./public
+
+RUN addgroup -S appgroup \
+    && adduser -S appuser -G appgroup \
+    && chown -R appuser:appgroup /app/web
+
+USER appuser
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev"]
+CMD ["npm", "run", "start"]
