@@ -8,7 +8,6 @@ Logs include environment context for better filtering in production.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import structlog
 
@@ -27,7 +26,7 @@ def _normalize_log_level(level: str | None, environment: str) -> int:
 def configure_logging() -> None:
     """
     Configure structlog with JSON output.
-    
+
     Uses the same processor chain as the API service for consistency.
     All logs are output as JSON to stdout for easy aggregation.
     """

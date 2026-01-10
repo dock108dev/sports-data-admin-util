@@ -69,7 +69,9 @@ def _build_player_season_stats(payload: NormalizedPlayerSeasonStats) -> dict:
     return stats
 
 
-def upsert_team_season_stats(session: Session, payloads: Sequence[NormalizedTeamSeasonStats]) -> int:
+def upsert_team_season_stats(
+    session: Session, payloads: Sequence[NormalizedTeamSeasonStats]
+) -> int:
     updated = 0
     for payload in payloads:
         league_id = get_league_id(session, payload.team.league_code)
@@ -89,7 +91,9 @@ def upsert_team_season_stats(session: Session, payloads: Sequence[NormalizedTeam
                 "raw_stats_json": stats_json,
                 "updated_at": utcnow(),
             },
-            where=stmt.excluded.raw_stats_json.is_distinct_from(db_models.SportsTeamSeasonStat.stats),
+            where=stmt.excluded.raw_stats_json.is_distinct_from(
+                db_models.SportsTeamSeasonStat.__table__.c.raw_stats_json
+            ),
         )
         result = session.execute(stmt)
         if result.rowcount:
@@ -98,7 +102,9 @@ def upsert_team_season_stats(session: Session, payloads: Sequence[NormalizedTeam
     return updated
 
 
-def upsert_player_season_stats(session: Session, payloads: Sequence[NormalizedPlayerSeasonStats]) -> int:
+def upsert_player_season_stats(
+    session: Session, payloads: Sequence[NormalizedPlayerSeasonStats]
+) -> int:
     updated = 0
     for payload in payloads:
         league_code = payload.team.league_code if payload.team else "NHL"
@@ -106,7 +112,9 @@ def upsert_player_season_stats(session: Session, payloads: Sequence[NormalizedPl
         team_id = None
         if payload.team:
             team_id = _upsert_team(session, league_id, payload.team)
-        team_abbreviation = payload.team_abbreviation or (payload.team.abbreviation if payload.team else None)
+        team_abbreviation = payload.team_abbreviation or (
+            payload.team.abbreviation if payload.team else None
+        )
 
         stats = _build_player_season_stats(payload)
         stats_json = cast(text(f"'{json.dumps(stats)}'"), JSONB)
@@ -131,7 +139,9 @@ def upsert_player_season_stats(session: Session, payloads: Sequence[NormalizedPl
                 "team_id": team_id,
                 "updated_at": utcnow(),
             },
-            where=stmt.excluded.raw_stats_json.is_distinct_from(db_models.SportsPlayerSeasonStat.stats),
+            where=stmt.excluded.raw_stats_json.is_distinct_from(
+                db_models.SportsPlayerSeasonStat.__table__.c.raw_stats_json
+            ),
         )
         result = session.execute(stmt)
         if result.rowcount:
