@@ -14,6 +14,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .validate_env import validate_env
+
 
 class OddsProviderConfig(BaseModel):
     base_url: str = Field(default="https://api.the-odds-api.com/v4")
@@ -134,6 +136,7 @@ def get_settings() -> Settings:
     on every access. This is safe because environment variables
     don't change during runtime.
     """
+    validate_env()
     return Settings()
 
 

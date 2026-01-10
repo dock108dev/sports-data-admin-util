@@ -150,3 +150,28 @@ Deploys only the changed services and restarts them with `docker compose up -d <
 | `RUN_MIGRATIONS` | Run Alembic on container start (`true`/`false`) |
 | `BACKUP_S3_URI` | S3 destination for backups |
 | `BACKUP_RCLONE_REMOTE` | Rclone destination for backups |
+
+### Startup Environment Validation (Fail-Fast)
+
+The API and scraper now validate required environment variables at startup. Missing or invalid
+configuration causes the container to exit before serving traffic or starting workers.
+
+**API required**
+- `ENVIRONMENT` (must be `development`, `staging`, or `production`)
+- `DATABASE_URL`
+- `ALLOWED_CORS_ORIGINS` (production only, must not include `localhost` or `127.0.0.1`)
+
+**Scraper/worker required**
+- `ENVIRONMENT` (must be `development`, `staging`, or `production`)
+- `DATABASE_URL`
+- `REDIS_URL`
+- `ODDS_API_KEY` (production only)
+- `X_BEARER_TOKEN` **or** `X_AUTH_TOKEN` + `X_CT0` (production only)
+
+**Production-only constraints**
+- `DATABASE_URL` and `REDIS_URL` must not point at `localhost` or `127.0.0.1`.
+- `DATABASE_URL` must not use default `postgres:postgres` credentials.
+
+**Tradeoff**
+- Local development now requires explicit environment variables (typically via `.env`). This avoids
+  accidental reliance on unsafe defaults in production.

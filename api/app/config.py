@@ -8,6 +8,8 @@ from functools import lru_cache
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.validate_env import validate_env
+
 
 class Settings(BaseSettings):
     """Environment-driven settings with sensible defaults for local/Hetzner."""
@@ -70,8 +72,8 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    validate_env()
     return Settings()
 
 
 settings = get_settings()
-
