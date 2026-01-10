@@ -24,6 +24,12 @@ node_modules/
 out/
 .turbo/
 *.tsbuildinfo
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# But track web/package-lock.json for Docker builds
+!web/package-lock.json
 
 # IDE
 .idea/
