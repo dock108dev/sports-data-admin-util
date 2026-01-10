@@ -9,9 +9,16 @@ from starlette.responses import JSONResponse
 
 from app.config import settings
 from app.db import engine
+from app.logging_config import configure_logging
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.routers import game_snapshots, reading_positions, social, sports
+
+configure_logging(
+    service="sports-data-admin-api",
+    environment=settings.environment,
+    log_level=settings.log_level,
+)
 
 app = FastAPI(title="sports-data-admin", version="1.0.0")
 logger = logging.getLogger(__name__)

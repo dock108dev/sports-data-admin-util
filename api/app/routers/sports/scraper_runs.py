@@ -71,7 +71,11 @@ async def create_scrape_run(
         from ...logging_config import get_logger
 
         logger = get_logger(__name__)
-        logger.error("failed_to_enqueue_scrape", error=str(exc), exc_info=True)
+        logger.error(
+            "failed_to_enqueue_scrape",
+            extra={"error": str(exc)},
+            exc_info=True,
+        )
         run.status = "error"
         run.error_details = f"Failed to enqueue scrape: {exc}"
         raise HTTPException(status_code=500, detail="Failed to enqueue scrape job") from exc
@@ -152,9 +156,11 @@ async def cancel_scrape_run(run_id: int, session: AsyncSession = Depends(get_db)
             logger = get_logger(__name__)
             logger.warning(
                 "failed_to_revoke_scrape_job",
-                run_id=run.id,
-                job_id=run.job_id,
-                error=str(exc),
+                extra={
+                    "run_id": run.id,
+                    "job_id": run.job_id,
+                    "error": str(exc),
+                },
             )
 
     cancel_message = "Canceled by user via admin UI"
