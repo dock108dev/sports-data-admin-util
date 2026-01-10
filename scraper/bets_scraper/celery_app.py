@@ -90,14 +90,18 @@ def mark_stale_runs_interrupted():
 @signals.worker_ready.connect
 def on_worker_ready(sender=None, **kwargs):
     """Called when Celery worker is ready. Mark any stale runs as interrupted."""
-    logger.info("celery_worker_ready", worker=sender.hostname if sender else "unknown")
+    # sender is the worker Consumer object with .hostname attribute
+    worker_name = getattr(sender, "hostname", None) or str(sender) if sender else "unknown"
+    logger.info("celery_worker_ready", worker=worker_name)
     mark_stale_runs_interrupted()
 
 
 @signals.worker_shutting_down.connect
 def on_worker_shutting_down(sender=None, **kwargs):
     """Called when Celery worker is shutting down. Mark currently running tasks as interrupted."""
-    logger.info("celery_worker_shutting_down", worker=sender.hostname if sender else "unknown")
+    # sender for this signal is a string (the worker hostname), not an object
+    worker_name = str(sender) if sender else "unknown"
+    logger.info("celery_worker_shutting_down", worker=worker_name)
     try:
         with get_session() as session:
             # Mark any runs that are currently running as interrupted
