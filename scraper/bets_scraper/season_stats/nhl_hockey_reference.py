@@ -14,7 +14,6 @@ from ..normalization import normalize_team_name
 from ..scrapers.base import BaseSportsReferenceScraper
 from ..utils.parsing import (
     extract_all_stats_from_row,
-    get_stat_from_row,
     parse_float,
     parse_int,
     parse_time_to_minutes,
