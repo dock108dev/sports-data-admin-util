@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { fetchGame, rescrapeGame, resyncOdds, type AdminGameDetail } from "@/lib/api/sportsAdmin";
@@ -20,7 +20,7 @@ export default function GameDetailClient() {
   const [actionLoading, setActionLoading] = useState<"rescrape" | "odds" | null>(null);
   const [selectedBook, setSelectedBook] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -31,14 +31,13 @@ export default function GameDetailClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [gameIdParam]);
 
   useEffect(() => {
     if (isNumericId) {
       load();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNumericId, gameIdParam]);
+  }, [isNumericId, load]);
 
   const flags = useMemo(() => {
     if (!game) return [];

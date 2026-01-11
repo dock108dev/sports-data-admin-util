@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 import { useGameFilters } from "@/lib/hooks/useGameFilters";
@@ -51,17 +51,7 @@ export default function UnifiedBrowserPage() {
   const startItem = (appliedFilters.offset || 0) + 1;
   const endItem = Math.min((appliedFilters.offset || 0) + (appliedFilters.limit || 25), total);
 
-  // Load teams/runs when view mode changes
-  useEffect(() => {
-    if (viewMode === "teams") {
-      loadTeams();
-    } else if (viewMode === "runs") {
-      loadRuns();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, teamLeague, teamSearch, teamOffset]);
-
-  async function loadTeams() {
+  const loadTeams = useCallback(async () => {
     setTeamsLoading(true);
     setTeamsError(null);
     try {
@@ -78,9 +68,9 @@ export default function UnifiedBrowserPage() {
     } finally {
       setTeamsLoading(false);
     }
-  }
+  }, [teamLeague, teamSearch, teamLimit, teamOffset]);
 
-  async function loadRuns() {
+  const loadRuns = useCallback(async () => {
     setRunsLoading(true);
     setRunsError(null);
     try {
@@ -91,7 +81,16 @@ export default function UnifiedBrowserPage() {
     } finally {
       setRunsLoading(false);
     }
-  }
+  }, []);
+
+  // Load teams/runs when view mode changes
+  useEffect(() => {
+    if (viewMode === "teams") {
+      loadTeams();
+    } else if (viewMode === "runs") {
+      loadRuns();
+    }
+  }, [viewMode, loadTeams, loadRuns]);
 
   const handlePageChange = (newPage: number) => {
     const limit = appliedFilters.limit || 25;
@@ -385,4 +384,3 @@ export default function UnifiedBrowserPage() {
     </div>
   );
 }
-

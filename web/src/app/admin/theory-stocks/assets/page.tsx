@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 import {
@@ -10,6 +10,20 @@ import {
 } from "@/lib/api/stocksAdmin";
 
 const EXCHANGES = ["", "NYSE", "NASDAQ"];
+
+type AssetFilters = {
+  exchange: string;
+  tickerPrefix: string;
+  sector: string;
+  industry: string;
+};
+
+const EMPTY_FILTERS: AssetFilters = {
+  exchange: "",
+  tickerPrefix: "",
+  sector: "",
+  industry: "",
+};
 
 export default function StocksAssetsPage() {
   const [assetsResponse, setAssetsResponse] = useState<EquityAssetListResponse | null>(null);
@@ -22,14 +36,14 @@ export default function StocksAssetsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadAssets = async (newOffset = 0) => {
+  const loadAssets = useCallback(async (filters: AssetFilters, newOffset = 0) => {
     try {
       setLoading(true);
       const data = await listEquityAssets({
-        exchange: exchange || undefined,
-        tickerPrefix: tickerPrefix || undefined,
-        sector: sector || undefined,
-        industry: industry || undefined,
+        exchange: filters.exchange || undefined,
+        tickerPrefix: filters.tickerPrefix || undefined,
+        sector: filters.sector || undefined,
+        industry: filters.industry || undefined,
         limit,
         offset: newOffset,
       });
@@ -41,15 +55,14 @@ export default function StocksAssetsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [limit]);
 
   useEffect(() => {
-    loadAssets(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    loadAssets(EMPTY_FILTERS, 0);
+  }, [loadAssets]);
 
   const handleApplyFilters = () => {
-    loadAssets(0);
+    loadAssets({ exchange, tickerPrefix, sector, industry }, 0);
   };
 
   const handleReset = () => {
@@ -57,7 +70,7 @@ export default function StocksAssetsPage() {
     setTickerPrefix("");
     setSector("");
     setIndustry("");
-    loadAssets(0);
+    loadAssets(EMPTY_FILTERS, 0);
   };
 
   const pageCount =
@@ -157,13 +170,18 @@ export default function StocksAssetsPage() {
           </span>
           <div>
             <button
-              onClick={() => loadAssets(Math.max(0, offset - limit))}
+              onClick={() =>
+                loadAssets(
+                  { exchange, tickerPrefix, sector, industry },
+                  Math.max(0, offset - limit),
+                )
+              }
               disabled={offset === 0 || loading}
             >
               Previous
             </button>
             <button
-              onClick={() => loadAssets(offset + limit)}
+              onClick={() => loadAssets({ exchange, tickerPrefix, sector, industry }, offset + limit)}
               disabled={
                 loading || !assetsResponse || offset + limit >= assetsResponse.total
               }
@@ -176,5 +194,3 @@ export default function StocksAssetsPage() {
     </div>
   );
 }
-
-
