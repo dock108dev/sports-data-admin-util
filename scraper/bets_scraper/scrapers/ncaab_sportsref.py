@@ -9,7 +9,7 @@ from typing import Sequence
 from ..utils.datetime_utils import date_to_utc_datetime
 from urllib.parse import urljoin
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 
 from ..logging import logger
 from ..models import (
@@ -288,6 +288,72 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
 
     # _season_from_date now inherited from base class
 
+    def fetch_game_stubs_for_date(self, day: date) -> Sequence[NormalizedGame]:
+        """Fetch minimal game stubs from the scoreboard page.
+
+        This is used to seed `source_game_key` for play-by-play ingestion without
+        fetching each individual boxscore page (which is much heavier).
+        """
+        soup = self.fetch_html(self.scoreboard_url(day))
+        game_divs = soup.select("div.game_summary")
+        games: list[NormalizedGame] = []
+        for div in game_divs:
+            div_classes = div.get("class", [])
+            is_gender_f = "gender-f" in div_classes
+            team_rows = div.select("table.teams tr")
+            if len(team_rows) < 2:
+                continue
+            try:
+                away_identity, away_score = self._parse_team_row(team_rows[0])
+                home_identity, home_score = self._parse_team_row(team_rows[1])
+            except ScraperError:
+                # Scheduled / postponed / invalid rows are not PBP-eligible; skip.
+                continue
+
+            # Try multiple selectors for boxscore link (HTML structure may vary)
+            boxscore_link = (
+                div.select_one("p.links a[href*='/boxscores/']")
+                or div.select_one("p.links a[href*='boxscores']")
+                or div.select_one("a[href*='/boxscores/']")
+                or div.select_one("a[href*='boxscores']")
+            )
+            if not boxscore_link:
+                continue
+
+            boxscore_href = boxscore_link["href"]
+            source_game_key = boxscore_href.split("/")[-1].replace(".html", "")
+
+            is_womens, _reason = self._is_probable_womens_game(
+                boxscore_href,
+                source_game_key,
+                home_identity.name,
+                away_identity.name,
+                is_gender_f=is_gender_f,
+            )
+            if is_womens:
+                continue
+
+            identity = GameIdentification(
+                league_code=self.league_code,
+                season=self._season_from_date(day),
+                season_type="regular",
+                game_date=date_to_utc_datetime(day),
+                home_team=home_identity,
+                away_team=away_identity,
+                source_game_key=source_game_key,
+            )
+            games.append(
+                NormalizedGame(
+                    identity=identity,
+                    status="completed",
+                    home_score=home_score,
+                    away_score=away_score,
+                    team_boxscores=[],
+                    player_boxscores=[],
+                )
+            )
+        return games
+
     def fetch_games_for_date(self, day: date) -> Sequence[NormalizedGame]:
         soup = self.fetch_html(self.scoreboard_url(day))
         game_divs = soup.select("div.game_summary")
@@ -450,7 +516,17 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
 
         table = soup.find("table", id="pbp")
         if not table:
-            logger.warning("pbp_table_not_found", game_key=source_game_key)
+            # Sports Reference often wraps the PBP table inside HTML comments.
+            # Recover it by scanning comment nodes for a table with id="pbp".
+            for node in soup.find_all(string=lambda text: isinstance(text, Comment)):
+                if "id=\"pbp\"" not in node and "id='pbp'" not in node:
+                    continue
+                fragment = BeautifulSoup(node, "lxml")
+                table = fragment.find("table", id="pbp")
+                if table:
+                    break
+        if not table:
+            logger.warning("pbp_table_not_found", game_key=source_game_key, url=url)
             return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)
 
         current_period = 0

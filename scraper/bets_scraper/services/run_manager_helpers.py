@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import db_models
 from ..logging import logger
+from ..persistence.games import upsert_game
 from ..persistence.plays import upsert_plays
 from ..utils.datetime_utils import now_utc
 
@@ -228,6 +229,31 @@ def ingest_pbp_via_sportsref(
             reason="no_sportsref_scraper",
         )
         return (0, 0)
+
+    # PBP requires `sports_games.source_game_key`. For pbp-only runs, those keys may not exist
+    # yet because boxscore ingestion was skipped. If the scraper can provide lightweight
+    # scoreboard stubs, seed the DB first (without pulling full boxscores).
+    if hasattr(scraper, "fetch_game_stubs_for_date"):
+        seeded = 0
+        try:
+            for day in scraper.iter_dates(start_date, end_date):
+                for stub_game in scraper.fetch_game_stubs_for_date(day):
+                    _game_id, created = upsert_game(session, stub_game)
+                    seeded += 1 if created else 0
+            if seeded:
+                logger.info(
+                    "pbp_sportsref_seeded_games",
+                    run_id=run_id,
+                    league=league_code,
+                    created=seeded,
+                )
+        except Exception as exc:
+            logger.warning(
+                "pbp_sportsref_seed_failed",
+                run_id=run_id,
+                league=league_code,
+                error=str(exc),
+            )
 
     games = select_games_for_pbp_sportsref(
         session,
