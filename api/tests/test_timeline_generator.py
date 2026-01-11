@@ -71,9 +71,9 @@ class TestTimelineGenerator(unittest.TestCase):
 
         timestamps = [datetime.fromisoformat(event["synthetic_timestamp"]) for event in timeline]
         self.assertEqual(timestamps[0], game.start_time)
-        self.assertEqual(timestamps[1], game.start_time + timedelta(minutes=7, seconds=30))
-        self.assertEqual(timestamps[2], game.start_time + timedelta(minutes=15))
-        self.assertEqual(game_end, game.start_time + timedelta(minutes=75))
+        self.assertEqual(timestamps[1], game.start_time + timedelta(minutes=9, seconds=22, milliseconds=500))
+        self.assertEqual(timestamps[2], game.start_time + timedelta(minutes=18, seconds=45))
+        self.assertEqual(game_end, game.start_time + timedelta(minutes=90))
 
     def test_build_nba_timeline_extends_for_overtime(self) -> None:
         game = self._build_game()
@@ -93,7 +93,7 @@ class TestTimelineGenerator(unittest.TestCase):
         ]
 
         _, _, game_end = build_nba_timeline(game, plays, [])
-        self.assertEqual(game_end, game.start_time + timedelta(minutes=105))
+        self.assertEqual(game_end, game.start_time + timedelta(minutes=120))
 
 
 if __name__ == "__main__":

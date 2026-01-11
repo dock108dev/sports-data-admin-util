@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 NBA_REGULATION_REAL_SECONDS = 75 * 60
 NBA_HALFTIME_REAL_SECONDS = 15 * 60
-NBA_QUARTER_REAL_SECONDS = (NBA_REGULATION_REAL_SECONDS - NBA_HALFTIME_REAL_SECONDS) // 4
+NBA_QUARTER_REAL_SECONDS = NBA_REGULATION_REAL_SECONDS // 4
 NBA_QUARTER_GAME_SECONDS = 12 * 60
 NBA_PREGAME_REAL_SECONDS = 10 * 60
 NBA_OVERTIME_PADDING_SECONDS = 30 * 60
@@ -85,7 +85,7 @@ def _nba_quarter_start(game_start: datetime, quarter: int) -> datetime:
 
 
 def _nba_regulation_end(game_start: datetime) -> datetime:
-    return game_start + timedelta(seconds=NBA_REGULATION_REAL_SECONDS)
+    return game_start + timedelta(seconds=NBA_REGULATION_REAL_SECONDS + NBA_HALFTIME_REAL_SECONDS)
 
 
 def _nba_game_end(game_start: datetime, plays: Sequence[db_models.SportsGamePlay]) -> datetime:
