@@ -33,6 +33,7 @@ All notable changes to Sports Data Admin.
 - Destructive restore utilities now require `CONFIRM_DESTRUCTIVE=true`
 - Social scraper performs upsert (updates existing posts)
 - Ingestion config simplified to data type toggles + shared filters
+- NBA timeline synthesis now treats regulation and halftime as separate fixed blocks when mapping PBP timestamps
 
 ### Fixed
 - Fixed compact mode threshold model restoration
