@@ -101,6 +101,18 @@ class TimelineArtifactResponse(BaseModel):
     game_analysis: dict[str, Any]
 
 
+class TimelineArtifactStoredResponse(BaseModel):
+    """Stored timeline artifact payload for read-only responses."""
+
+    game_id: int
+    sport: str
+    timeline_version: str
+    generated_at: datetime
+    timeline_json: list[dict[str, Any]]
+    game_analysis_json: dict[str, Any]
+    summary_json: dict[str, Any]
+
+
 def team_snapshot(team: db_models.SportsTeam | None, fallback_id: int | None = None) -> TeamSnapshot:
     """Return a minimal team snapshot with safe defaults."""
     if team is None:
