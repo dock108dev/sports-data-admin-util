@@ -1,8 +1,8 @@
 """Add timeline artifact storage for games.
 
-Revision ID: 20260218_000001
+Revision ID: 20260210_000002
 Revises: 20260210_000001
-Create Date: 2026-02-18
+Create Date: 2026-02-10
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
-revision = "20260218_000001"
+revision = "20260210_000002"
 down_revision = "20260210_000001"
 branch_labels = None
 depends_on = None
