@@ -13,6 +13,7 @@ All notable changes to Sports Data Admin.
 - Compact moment posts endpoint
 - Compact moment PBP slice endpoint
 - Compact moments endpoint (`GET /games/{id}/compact`)
+- Finalized game timeline artifacts with NBA timeline generation + read endpoint
 - `game_reading_positions` table for storing user read positions
 - `compact_mode_thresholds` table with per-sport defaults
 - `updated_at` columns on `game_social_posts` and `sports_game_plays`

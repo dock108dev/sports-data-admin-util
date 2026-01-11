@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Iterable
+from typing import Any, Iterable
 
 from pydantic import BaseModel
 
@@ -87,6 +87,17 @@ class RecapResponse(BaseModel):
     available: bool
     summary: str | None = None
     reason: str | None = None
+
+
+class TimelineArtifactResponse(BaseModel):
+    """Finalized timeline artifact response."""
+
+    game_id: int
+    sport: str
+    timeline_version: str
+    generated_at: datetime
+    timeline: list[dict[str, Any]]
+    summary: dict[str, Any]
 
 
 def team_snapshot(team: db_models.SportsTeam | None, fallback_id: int | None = None) -> TeamSnapshot:

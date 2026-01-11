@@ -48,6 +48,10 @@ This review covers the existing NBA PBP ingestion paths, including historical sc
 - **Sports Reference:** raw `game_clock` string is preserved as-is from the table.
 - **Live feed:** `_parse_nba_clock` converts `PT#M#S` strings to `M:SS`.
 
+## Timestamp Notes
+- **No real-world timestamps per play.** NBA PBP sources only provide `quarter` + `game_clock`, so downstream consumers must synthesize wall-clock timing from period/clock context.
+- **Game clock is authoritative.** The stored `game_clock` values reflect remaining time in the period; they are not synchronized to any real-world timestamp.
+
 ## Representation of Key Event Types
 - **Substitutions, fouls, timeouts, reviews, etc.:** captured in `description` (Sports Reference) or `description` + `play_type` (live feed). No structured parsing or event-type normalization is performed for NBA PBP beyond what the source provides.
 

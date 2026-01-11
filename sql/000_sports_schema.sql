@@ -257,6 +257,22 @@ CREATE INDEX IF NOT EXISTS idx_social_posts_external_id ON game_social_posts(ext
 CREATE UNIQUE INDEX IF NOT EXISTS uq_social_posts_platform_external_id ON game_social_posts(platform, external_post_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_social_posts_url ON game_social_posts(tweet_url);
 
+-- Finalized game timeline artifacts
+CREATE TABLE IF NOT EXISTS sports_game_timeline_artifacts (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER NOT NULL REFERENCES sports_games(id) ON DELETE CASCADE,
+    sport VARCHAR(20) NOT NULL,
+    timeline_version VARCHAR(20) NOT NULL,
+    generated_at TIMESTAMPTZ NOT NULL,
+    timeline_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    UNIQUE (game_id, sport, timeline_version)
+);
+CREATE INDEX IF NOT EXISTS idx_game_timeline_artifacts_game ON sports_game_timeline_artifacts(game_id);
+CREATE INDEX IF NOT EXISTS idx_game_timeline_artifacts_sport ON sports_game_timeline_artifacts(sport);
+
 -- Team social account registry
 CREATE TABLE IF NOT EXISTS team_social_accounts (
     id SERIAL PRIMARY KEY,

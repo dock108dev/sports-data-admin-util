@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from ... import db_models
@@ -84,7 +82,7 @@ async def get_game_compact_pbp(
         compact_response = await get_game_compact(game_id, session)
 
     try:
-        start_index, end_index = find_compact_moment_bounds(compact_response.moments, moment_id)
+        find_compact_moment_bounds(compact_response.moments, moment_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -123,48 +121,15 @@ async def get_game_compact_posts(
         compact_response = await get_game_compact(game_id, session)
 
     try:
-        start_index, end_index = find_compact_moment_bounds(compact_response.moments, moment_id)
+        find_compact_moment_bounds(compact_response.moments, moment_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    if end_index is None:
-        max_index_stmt = select(func.max(db_models.SportsGamePlay.play_index)).where(
-            db_models.SportsGamePlay.game_id == game_id
-        )
-        end_index = (await session.execute(max_index_stmt)).scalar_one_or_none()
-
-    if end_index is None or end_index < start_index:
-        return CompactPostsResponse(posts=[])
-
-    bounds_stmt = select(
-        func.min(db_models.SportsGamePlay.created_at),
-        func.max(db_models.SportsGamePlay.created_at),
-    ).where(
-        db_models.SportsGamePlay.game_id == game_id,
-        db_models.SportsGamePlay.play_index >= start_index,
-        db_models.SportsGamePlay.play_index <= end_index,
-    )
-    bounds_result = await session.execute(bounds_stmt)
-    bounds = bounds_result.one_or_none()
-    if not bounds or bounds[0] is None or bounds[1] is None:
-        return CompactPostsResponse(posts=[])
-
-    start_time, end_time = bounds
-    if end_time < start_time:
-        start_time, end_time = end_time, start_time
-
-    if end_time - start_time < timedelta(seconds=30):
-        padding = timedelta(minutes=5)
-        start_time -= padding
-        end_time += padding
 
     posts_stmt = (
         select(db_models.GameSocialPost)
         .options(selectinload(db_models.GameSocialPost.team))
         .where(
             db_models.GameSocialPost.game_id == game_id,
-            db_models.GameSocialPost.posted_at >= start_time,
-            db_models.GameSocialPost.posted_at <= end_time,
         )
         .order_by(db_models.GameSocialPost.posted_at)
     )
