@@ -10,7 +10,6 @@ date_utils.py.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
-from app.utils.datetime_utils import now_utc, date_to_utc_datetime
 
 
 def date_to_datetime_range(day: date) -> tuple[datetime, datetime]:

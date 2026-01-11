@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from ..utils.datetime_utils import now_utc, date_to_utc_datetime
 from typing import Sequence
+
+from ..utils.datetime_utils import date_to_utc_datetime
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup

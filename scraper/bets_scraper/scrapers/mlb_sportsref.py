@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from ..utils.datetime_utils import now_utc, date_to_utc_datetime
 from typing import Sequence
+
+from ..utils.datetime_utils import date_to_utc_datetime
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -18,7 +19,7 @@ from ..models import (
     TeamIdentity,
 )
 from ..normalization import normalize_team_name
-from ..utils import extract_all_stats_from_row, get_stat_from_row, parse_float, parse_int
+from ..utils import extract_all_stats_from_row
 from .base import BaseSportsReferenceScraper, ScraperError
 
 

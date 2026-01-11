@@ -21,9 +21,8 @@ from .models import PostCollectionJob, PostCollectionResult
 from .playwright_collector import PlaywrightXCollector, playwright_available
 from .rate_limit import PlatformRateLimiter
 from .registry import fetch_team_accounts
+from .reveal_filter import classify_reveal_risk
 from .strategies import MockXCollector
-from ..db import db_models, get_session
-from app.utils.reveal_utils import classify_reveal_risk
 from .utils import extract_x_post_id
 
 if TYPE_CHECKING:
