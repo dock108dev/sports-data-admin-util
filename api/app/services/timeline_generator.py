@@ -762,15 +762,22 @@ def build_nba_timeline(
 
     pbp_events = _build_pbp_events(plays, game_start)
     social_events = _build_social_events(social_posts)
-    merged = pbp_events + social_events
+    timeline = _merge_timeline_events(pbp_events, social_events)
+    summary = build_nba_summary(game)
+    return timeline, summary, game_end
+
+
+def _merge_timeline_events(
+    pbp_events: Sequence[tuple[datetime, dict[str, Any]]],
+    social_events: Sequence[tuple[datetime, dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    merged = list(pbp_events) + list(social_events)
 
     def sort_key(item: tuple[datetime, dict[str, Any]]) -> datetime:
         event_time, _ = item
         return event_time
 
-    timeline = [payload for _, payload in sorted(merged, key=sort_key)]
-    summary = build_nba_summary(game)
-    return timeline, summary, game_end
+    return [payload for _, payload in sorted(merged, key=sort_key)]
 
 
 async def generate_timeline_artifact(
@@ -778,94 +785,172 @@ async def generate_timeline_artifact(
     game_id: int,
     timeline_version: str = DEFAULT_TIMELINE_VERSION,
 ) -> TimelineArtifactPayload:
-    result = await session.execute(
-        select(db_models.SportsGame)
-        .options(
-            selectinload(db_models.SportsGame.league),
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
+    logger.info(
+        "timeline_artifact_generation_started",
+        extra={"game_id": game_id, "timeline_version": timeline_version},
+    )
+    try:
+        result = await session.execute(
+            select(db_models.SportsGame)
+            .options(
+                selectinload(db_models.SportsGame.league),
+                selectinload(db_models.SportsGame.home_team),
+                selectinload(db_models.SportsGame.away_team),
+            )
+            .where(db_models.SportsGame.id == game_id)
         )
-        .where(db_models.SportsGame.id == game_id)
-    )
-    game = result.scalar_one_or_none()
-    if not game:
-        raise TimelineGenerationError("Game not found", status_code=404)
+        game = result.scalar_one_or_none()
+        if not game:
+            raise TimelineGenerationError("Game not found", status_code=404)
 
-    league_code = game.league.code if game.league else ""
-    if league_code != "NBA":
-        raise TimelineGenerationError("Timeline generation only supported for NBA", status_code=422)
+        if not game.is_final:
+            raise TimelineGenerationError("Game is not final", status_code=409)
 
-    plays_result = await session.execute(
-        select(db_models.SportsGamePlay)
-        .where(db_models.SportsGamePlay.game_id == game_id)
-        .order_by(db_models.SportsGamePlay.play_index)
-    )
-    plays = plays_result.scalars().all()
+        league_code = game.league.code if game.league else ""
+        if league_code != "NBA":
+            raise TimelineGenerationError("Timeline generation only supported for NBA", status_code=422)
 
-    game_start = game.start_time
-    game_end = _nba_game_end(game_start, plays)
-
-    posts_result = await session.execute(
-        select(db_models.GameSocialPost)
-        .where(
-            db_models.GameSocialPost.game_id == game_id,
-            db_models.GameSocialPost.posted_at >= game_start,
-            db_models.GameSocialPost.posted_at <= game_end,
+        plays_result = await session.execute(
+            select(db_models.SportsGamePlay)
+            .where(db_models.SportsGamePlay.game_id == game_id)
+            .order_by(db_models.SportsGamePlay.play_index)
         )
-        .order_by(db_models.GameSocialPost.posted_at)
-    )
-    posts = posts_result.scalars().all()
+        plays = plays_result.scalars().all()
+        if not plays:
+            raise TimelineGenerationError("Missing play-by-play data", status_code=422)
 
-    timeline, summary, _ = build_nba_timeline(game, plays, posts)
-    game_analysis = build_nba_game_analysis(timeline, summary)
-    summary_json = build_nba_summary_json(summary, game_analysis)
-    generated_at = now_utc()
+        game_start = game.start_time
+        game_end = _nba_game_end(game_start, plays)
 
-    artifact_result = await session.execute(
-        select(db_models.SportsGameTimelineArtifact).where(
-            db_models.SportsGameTimelineArtifact.game_id == game_id,
-            db_models.SportsGameTimelineArtifact.sport == "NBA",
-            db_models.SportsGameTimelineArtifact.timeline_version == timeline_version,
+        posts_result = await session.execute(
+            select(db_models.GameSocialPost)
+            .where(
+                db_models.GameSocialPost.game_id == game_id,
+                db_models.GameSocialPost.posted_at >= game_start,
+                db_models.GameSocialPost.posted_at <= game_end,
+            )
+            .order_by(db_models.GameSocialPost.posted_at)
         )
-    )
-    artifact = artifact_result.scalar_one_or_none()
+        posts = posts_result.scalars().all()
 
-    if artifact is None:
-        artifact = db_models.SportsGameTimelineArtifact(
+        logger.info(
+            "timeline_artifact_phase_started",
+            extra={"game_id": game_id, "phase": "build_synthetic_timeline"},
+        )
+        pbp_events = _build_pbp_events(plays, game_start)
+        if not pbp_events:
+            raise TimelineGenerationError("Missing play-by-play data", status_code=422)
+        logger.info(
+            "timeline_artifact_phase_completed",
+            extra={
+                "game_id": game_id,
+                "phase": "build_synthetic_timeline",
+                "events": len(pbp_events),
+            },
+        )
+
+        logger.info(
+            "timeline_artifact_phase_started",
+            extra={"game_id": game_id, "phase": "merge_social_events"},
+        )
+        social_events = _build_social_events(posts)
+        timeline = _merge_timeline_events(pbp_events, social_events)
+        logger.info(
+            "timeline_artifact_phase_completed",
+            extra={
+                "game_id": game_id,
+                "phase": "merge_social_events",
+                "timeline_events": len(timeline),
+                "social_posts": len(posts),
+            },
+        )
+
+        logger.info(
+            "timeline_artifact_phase_started",
+            extra={"game_id": game_id, "phase": "game_segmentation"},
+        )
+        summary = build_nba_summary(game)
+        game_analysis = build_nba_game_analysis(timeline, summary)
+        logger.info(
+            "timeline_artifact_phase_completed",
+            extra={
+                "game_id": game_id,
+                "phase": "game_segmentation",
+                "segments": len(game_analysis.get("segments", [])),
+                "highlights": len(game_analysis.get("highlights", [])),
+            },
+        )
+
+        logger.info(
+            "timeline_artifact_phase_started",
+            extra={"game_id": game_id, "phase": "narrative_summary"},
+        )
+        summary_json = build_nba_summary_json(summary, game_analysis)
+        logger.info(
+            "timeline_artifact_phase_completed",
+            extra={"game_id": game_id, "phase": "narrative_summary"},
+        )
+
+        logger.info(
+            "timeline_artifact_phase_started",
+            extra={"game_id": game_id, "phase": "persist_artifact"},
+        )
+        generated_at = now_utc()
+        artifact_result = await session.execute(
+            select(db_models.SportsGameTimelineArtifact).where(
+                db_models.SportsGameTimelineArtifact.game_id == game_id,
+                db_models.SportsGameTimelineArtifact.sport == "NBA",
+                db_models.SportsGameTimelineArtifact.timeline_version == timeline_version,
+            )
+        )
+        artifact = artifact_result.scalar_one_or_none()
+
+        if artifact is None:
+            artifact = db_models.SportsGameTimelineArtifact(
+                game_id=game_id,
+                sport="NBA",
+                timeline_version=timeline_version,
+                generated_at=generated_at,
+                timeline_json=timeline,
+                game_analysis_json=game_analysis,
+                summary_json=summary_json,
+            )
+            session.add(artifact)
+        else:
+            artifact.generated_at = generated_at
+            artifact.timeline_json = timeline
+            artifact.game_analysis_json = game_analysis
+            artifact.summary_json = summary_json
+
+        await session.flush()
+        logger.info(
+            "timeline_artifact_phase_completed",
+            extra={"game_id": game_id, "phase": "persist_artifact"},
+        )
+
+        logger.info(
+            "timeline_artifact_generated",
+            extra={
+                "game_id": game_id,
+                "timeline_version": timeline_version,
+                "timeline_events": len(timeline),
+                "social_posts": len(posts),
+                "plays": len(plays),
+            },
+        )
+
+        return TimelineArtifactPayload(
             game_id=game_id,
             sport="NBA",
             timeline_version=timeline_version,
             generated_at=generated_at,
-            timeline_json=timeline,
-            game_analysis_json=game_analysis,
-            summary_json=summary_json,
+            timeline=timeline,
+            summary=summary_json,
+            game_analysis=game_analysis,
         )
-        session.add(artifact)
-    else:
-        artifact.generated_at = generated_at
-        artifact.timeline_json = timeline
-        artifact.game_analysis_json = game_analysis
-        artifact.summary_json = summary_json
-
-    await session.flush()
-
-    logger.info(
-        "timeline_artifact_generated",
-        extra={
-            "game_id": game_id,
-            "timeline_version": timeline_version,
-            "timeline_events": len(timeline),
-            "social_posts": len(posts),
-            "plays": len(plays),
-        },
-    )
-
-    return TimelineArtifactPayload(
-        game_id=game_id,
-        sport="NBA",
-        timeline_version=timeline_version,
-        generated_at=generated_at,
-        timeline=timeline,
-        summary=summary_json,
-        game_analysis=game_analysis,
-    )
+    except Exception:
+        logger.exception(
+            "timeline_artifact_generation_failed",
+            extra={"game_id": game_id, "timeline_version": timeline_version},
+        )
+        raise
