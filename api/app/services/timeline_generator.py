@@ -591,6 +591,167 @@ def build_nba_summary(
     }
 
 
+def _format_score_context(score: dict[str, int], home_name: str, away_name: str) -> str:
+    return f"{away_name} {score['away']}, {home_name} {score['home']}"
+
+
+def _winner_info(summary: dict[str, Any]) -> tuple[str | None, int | None, int | None]:
+    home_score = summary["final_score"]["home"]
+    away_score = summary["final_score"]["away"]
+    if home_score is None or away_score is None:
+        return None, None, None
+    if home_score > away_score:
+        return summary["teams"]["home"]["name"], home_score, away_score
+    if away_score > home_score:
+        return summary["teams"]["away"]["name"], away_score, home_score
+    return None, home_score, away_score
+
+
+def _segment_narrative(
+    segment: dict[str, Any],
+    home_id: int,
+    away_id: int,
+    home_name: str,
+    away_name: str,
+) -> str:
+    segment_type = segment["segment_type"]
+    teams_involved = segment["teams_involved"]
+    start_score = segment["score_start"]
+    end_score = segment["score_end"]
+    score_delta = segment["score_delta"]
+    start_context = _format_score_context(start_score, home_name, away_name)
+    end_context = _format_score_context(end_score, home_name, away_name)
+
+    if len(teams_involved) == 1:
+        team_id = teams_involved[0]
+        if team_id == home_id:
+            team_name = home_name
+            opponent_name = away_name
+            team_delta = score_delta["home"]
+            opponent_delta = score_delta["away"]
+        elif team_id == away_id:
+            team_name = away_name
+            opponent_name = home_name
+            team_delta = score_delta["away"]
+            opponent_delta = score_delta["home"]
+        else:
+            team_name = "One side"
+            opponent_name = "the opponent"
+            team_delta = score_delta["home"] + score_delta["away"]
+            opponent_delta = 0
+        delta_phrase = f"{team_delta}-{opponent_delta}"
+    else:
+        team_name = "Both teams"
+        opponent_name = "each other"
+        delta_phrase = f"{score_delta['home']}-{score_delta['away']}"
+
+    if segment_type == "opening":
+        return (
+            f"The opening stretch set the tone as {team_name} pushed the pace. "
+            f"The score moved from {start_context} to {end_context}."
+        )
+    if segment_type == "run":
+        return (
+            f"{team_name} went on a run, outscoring {opponent_name} {delta_phrase} "
+            f"from {start_context} to {end_context}."
+        )
+    if segment_type == "swing":
+        return (
+            f"Momentum swung as the lead changed hands in this stretch. "
+            f"The score flipped from {start_context} to {end_context}."
+        )
+    if segment_type == "close":
+        return (
+            f"The finish tightened up, keeping the margin within striking distance. "
+            f"The score inched from {start_context} to {end_context}."
+        )
+    if segment_type == "blowout":
+        return (
+            f"A lopsided burst opened the gap, pushing the score from {start_context} to {end_context}."
+        )
+    if segment_type == "garbage_time":
+        return (
+            f"With the outcome largely decided, the closing minutes drifted from {start_context} "
+            f"to {end_context}."
+        )
+    return (
+        f"The game stayed steady in this stretch, moving from {start_context} to {end_context}."
+    )
+
+
+def build_nba_summary_json(summary: dict[str, Any], game_analysis: dict[str, Any]) -> dict[str, Any]:
+    home_name = summary["teams"]["home"]["name"]
+    away_name = summary["teams"]["away"]["name"]
+    home_id = summary["teams"]["home"]["id"]
+    away_id = summary["teams"]["away"]["id"]
+
+    winner_name, winner_score, loser_score = _winner_info(summary)
+    overall_sentences: list[str] = []
+    if summary["final_score"]["home"] is not None and summary["final_score"]["away"] is not None:
+        overall_sentences.append(
+            f"{away_name} at {home_name} finished {summary['final_score']['home']}-"
+            f"{summary['final_score']['away']}."
+        )
+    if summary["flow"] != "unknown":
+        overall_sentences.append(f"It was a {summary['flow']} game from start to finish.")
+
+    deciding_highlight = next(
+        (
+            highlight
+            for highlight in game_analysis.get("highlights", [])
+            if highlight.get("highlight_type") == "game_deciding_stretch"
+        ),
+        None,
+    )
+    if deciding_highlight:
+        start_context = _format_score_context(
+            deciding_highlight["score_context"]["start_score"], home_name, away_name
+        )
+        end_context = _format_score_context(
+            deciding_highlight["score_context"]["end_score"], home_name, away_name
+        )
+        overall_sentences.append(
+            f"The decisive stretch ran from {start_context} to {end_context}."
+        )
+
+    overall_summary = " ".join(overall_sentences[:4])
+
+    segment_narratives: list[dict[str, Any]] = []
+    for segment in game_analysis.get("segments", []):
+        segment_narratives.append(
+            {
+                "segment_id": segment["segment_id"],
+                "teams_involved": segment["teams_involved"],
+                "score_start": segment["score_start"],
+                "score_end": segment["score_end"],
+                "narrative": _segment_narrative(segment, home_id, away_id, home_name, away_name),
+            }
+        )
+
+    if deciding_highlight and winner_name:
+        start_context = _format_score_context(
+            deciding_highlight["score_context"]["start_score"], home_name, away_name
+        )
+        end_context = _format_score_context(
+            deciding_highlight["score_context"]["end_score"], home_name, away_name
+        )
+        closing_summary = (
+            f"From {start_context} to {end_context}, {winner_name} controlled the final push. "
+            f"They closed out the {winner_score}-{loser_score} win."
+        )
+    elif winner_name:
+        closing_summary = f"{winner_name} protected the edge late to secure the win."
+    else:
+        closing_summary = "The final minutes decided the outcome."
+
+    return {
+        **summary,
+        "overall_summary": overall_summary,
+        "segments": segment_narratives,
+        "closing_summary": closing_summary,
+    }
+
+
 def build_nba_timeline(
     game: db_models.SportsGame,
     plays: Sequence[db_models.SportsGamePlay],
@@ -657,6 +818,7 @@ async def generate_timeline_artifact(
 
     timeline, summary, _ = build_nba_timeline(game, plays, posts)
     game_analysis = build_nba_game_analysis(timeline, summary)
+    summary_json = build_nba_summary_json(summary, game_analysis)
     generated_at = now_utc()
 
     artifact_result = await session.execute(
@@ -676,14 +838,14 @@ async def generate_timeline_artifact(
             generated_at=generated_at,
             timeline_json=timeline,
             game_analysis_json=game_analysis,
-            summary_json=summary,
+            summary_json=summary_json,
         )
         session.add(artifact)
     else:
         artifact.generated_at = generated_at
         artifact.timeline_json = timeline
         artifact.game_analysis_json = game_analysis
-        artifact.summary_json = summary
+        artifact.summary_json = summary_json
 
     await session.flush()
 
@@ -704,6 +866,6 @@ async def generate_timeline_artifact(
         timeline_version=timeline_version,
         generated_at=generated_at,
         timeline=timeline,
-        summary=summary,
+        summary=summary_json,
         game_analysis=game_analysis,
     )
