@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import db_models
 from ..logging import logger
-from ..persistence.games import upsert_game
 from ..persistence.plays import upsert_plays
 from ..utils.datetime_utils import now_utc
 
@@ -230,31 +229,6 @@ def ingest_pbp_via_sportsref(
         )
         return (0, 0)
 
-    # PBP requires `sports_games.source_game_key`. For pbp-only runs, those keys may not exist
-    # yet because boxscore ingestion was skipped. If the scraper can provide lightweight
-    # scoreboard stubs, seed the DB first (without pulling full boxscores).
-    if hasattr(scraper, "fetch_game_stubs_for_date"):
-        seeded = 0
-        try:
-            for day in scraper.iter_dates(start_date, end_date):
-                for stub_game in scraper.fetch_game_stubs_for_date(day):
-                    _game_id, created = upsert_game(session, stub_game)
-                    seeded += 1 if created else 0
-            if seeded:
-                logger.info(
-                    "pbp_sportsref_seeded_games",
-                    run_id=run_id,
-                    league=league_code,
-                    created=seeded,
-                )
-        except Exception as exc:
-            logger.warning(
-                "pbp_sportsref_seed_failed",
-                run_id=run_id,
-                league=league_code,
-                error=str(exc),
-            )
-
     games = select_games_for_pbp_sportsref(
         session,
         league_code=league_code,
@@ -278,12 +252,7 @@ def ingest_pbp_via_sportsref(
         try:
             payload = scraper.fetch_play_by_play(source_game_key, game_date)
         except NotImplementedError:
-            logger.info(
-                "pbp_sportsref_not_supported",
-                run_id=run_id,
-                league=league_code,
-                reason="fetch_play_by_play_not_implemented",
-            )
+            logger.warning("pbp_unavailable_sportsref", run_id=run_id, league=league_code, reason="source_unavailable")
             return (0, 0)
         except Exception as exc:
             logger.warning(

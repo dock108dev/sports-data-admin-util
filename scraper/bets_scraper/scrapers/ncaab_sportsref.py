@@ -9,7 +9,7 @@ from typing import Sequence
 from ..utils.datetime_utils import date_to_utc_datetime
 from urllib.parse import urljoin
 
-from bs4 import BeautifulSoup, Comment
+from bs4 import BeautifulSoup
 
 from ..logging import logger
 from ..models import (
@@ -288,72 +288,6 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
 
     # _season_from_date now inherited from base class
 
-    def fetch_game_stubs_for_date(self, day: date) -> Sequence[NormalizedGame]:
-        """Fetch minimal game stubs from the scoreboard page.
-
-        This is used to seed `source_game_key` for play-by-play ingestion without
-        fetching each individual boxscore page (which is much heavier).
-        """
-        soup = self.fetch_html(self.scoreboard_url(day))
-        game_divs = soup.select("div.game_summary")
-        games: list[NormalizedGame] = []
-        for div in game_divs:
-            div_classes = div.get("class", [])
-            is_gender_f = "gender-f" in div_classes
-            team_rows = div.select("table.teams tr")
-            if len(team_rows) < 2:
-                continue
-            try:
-                away_identity, away_score = self._parse_team_row(team_rows[0])
-                home_identity, home_score = self._parse_team_row(team_rows[1])
-            except ScraperError:
-                # Scheduled / postponed / invalid rows are not PBP-eligible; skip.
-                continue
-
-            # Try multiple selectors for boxscore link (HTML structure may vary)
-            boxscore_link = (
-                div.select_one("p.links a[href*='/boxscores/']")
-                or div.select_one("p.links a[href*='boxscores']")
-                or div.select_one("a[href*='/boxscores/']")
-                or div.select_one("a[href*='boxscores']")
-            )
-            if not boxscore_link:
-                continue
-
-            boxscore_href = boxscore_link["href"]
-            source_game_key = boxscore_href.split("/")[-1].replace(".html", "")
-
-            is_womens, _reason = self._is_probable_womens_game(
-                boxscore_href,
-                source_game_key,
-                home_identity.name,
-                away_identity.name,
-                is_gender_f=is_gender_f,
-            )
-            if is_womens:
-                continue
-
-            identity = GameIdentification(
-                league_code=self.league_code,
-                season=self._season_from_date(day),
-                season_type="regular",
-                game_date=date_to_utc_datetime(day),
-                home_team=home_identity,
-                away_team=away_identity,
-                source_game_key=source_game_key,
-            )
-            games.append(
-                NormalizedGame(
-                    identity=identity,
-                    status="completed",
-                    home_score=home_score,
-                    away_score=away_score,
-                    team_boxscores=[],
-                    player_boxscores=[],
-                )
-            )
-        return games
-
     def fetch_games_for_date(self, day: date) -> Sequence[NormalizedGame]:
         soup = self.fetch_html(self.scoreboard_url(day))
         game_divs = soup.select("div.game_summary")
@@ -505,59 +439,11 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
         return games
 
     def fetch_play_by_play(self, source_game_key: str, game_date: date) -> NormalizedPlayByPlay:
-        """Fetch and parse play-by-play for a single NCAAB game."""
+        """Play-by-play is not available from Sports Reference for NCAAB.
+
+        Sports Reference CBB boxscore pages do not include a play-by-play table for many games,
+        so we explicitly mark this ingestion path as unsupported to avoid silent no-op runs.
+        """
         url = self.pbp_url(source_game_key)
-        soup = self.fetch_html(url, game_date=game_date)
-
-        away_abbr, home_abbr = self._parse_scorebox_abbreviations(soup)
-
-        plays: list[NormalizedPlay] = []
-        play_index = 0
-
-        table = soup.find("table", id="pbp")
-        if not table:
-            # Sports Reference often wraps the PBP table inside HTML comments.
-            # Recover it by scanning comment nodes for a table with id="pbp".
-            for node in soup.find_all(string=lambda text: isinstance(text, Comment)):
-                if "id=\"pbp\"" not in node and "id='pbp'" not in node:
-                    continue
-                fragment = BeautifulSoup(node, "lxml")
-                table = fragment.find("table", id="pbp")
-                if table:
-                    break
-        if not table:
-            logger.warning("pbp_table_not_found", game_key=source_game_key, url=url)
-            return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)
-
-        current_period = 0
-        for row in table.find_all("tr"):
-            row_classes = row.get("class", [])
-            if "thead" in row_classes:
-                period_marker = self._parse_pbp_period_marker(row)
-                if period_marker:
-                    current_period = period_marker
-                continue
-
-            cells = row.find_all("td")
-            if not cells:
-                period_marker = self._parse_pbp_period_marker(row)
-                if period_marker:
-                    current_period = period_marker
-                continue
-
-            if current_period == 0:
-                continue
-
-            play = self._parse_pbp_row(row, current_period, away_abbr, home_abbr, play_index)
-            if play:
-                plays.append(play)
-                play_index += 1
-
-        logger.info(
-            "pbp_parsed",
-            game_key=source_game_key,
-            game_date=str(game_date),
-            plays=len(plays),
-        )
-
-        return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)
+        logger.warning("pbp_unavailable_sportsref", league=self.league_code, game_key=source_game_key, url=url)
+        raise NotImplementedError("NCAAB play-by-play is unavailable from Sports Reference.")
