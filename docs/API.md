@@ -347,6 +347,47 @@ Fetch social posts ordered by posted time.
 
 ---
 
+### `GET /api/games/{game_id}/timeline`
+
+Fetch the stored finalized timeline artifact for a game.
+
+**Response:** `TimelineArtifactResponse`
+```json
+{
+  "game_id": 123,
+  "sport": "NBA",
+  "timeline_version": "v1",
+  "generated_at": "2026-01-15T04:30:00Z",
+  "timeline": [
+    {
+      "event_type": "pbp",
+      "play_index": 1,
+      "quarter": 1,
+      "game_clock": "12:00",
+      "description": "Tipoff",
+      "synthetic_timestamp": "2026-01-15T02:00:00Z",
+      "timeline_block": "q1"
+    },
+    {
+      "event_type": "tweet",
+      "post_url": "https://x.com/warriors/status/123",
+      "tweet_text": "Game day.",
+      "synthetic_timestamp": "2026-01-15T02:10:00Z"
+    }
+  ],
+  "summary": {
+    "teams": {
+      "home": {"id": 1, "name": "Warriors"},
+      "away": {"id": 2, "name": "Lakers"}
+    },
+    "final_score": {"home": 110, "away": 103},
+    "flow": "competitive"
+  }
+}
+```
+
+---
+
 ### `GET /api/games/{game_id}/recap`
 
 Generate a recap for a game at a reveal level.

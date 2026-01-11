@@ -22,6 +22,7 @@ from .game_snapshot_models import (
     RecapResponse,
     SocialPostSnapshot,
     SocialResponse,
+    TimelineArtifactResponse,
     chunk_plays_by_period,
     post_reveal_level,
     team_snapshot,
@@ -347,6 +348,31 @@ async def get_game_social(
             )
             for post in posts
         ]
+    )
+
+
+@router.get("/games/{game_id}/timeline", response_model=TimelineArtifactResponse)
+async def get_game_timeline(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> TimelineArtifactResponse:
+    """Return the stored timeline artifact for a game."""
+    artifact_result = await session.execute(
+        select(db_models.SportsGameTimelineArtifact)
+        .where(db_models.SportsGameTimelineArtifact.game_id == game_id)
+        .order_by(db_models.SportsGameTimelineArtifact.generated_at.desc())
+    )
+    artifact = artifact_result.scalar_one_or_none()
+    if artifact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found")
+
+    return TimelineArtifactResponse(
+        game_id=artifact.game_id,
+        sport=artifact.sport,
+        timeline_version=artifact.timeline_version,
+        generated_at=artifact.generated_at,
+        timeline=artifact.timeline_json,
+        summary=artifact.summary_json,
     )
 
 

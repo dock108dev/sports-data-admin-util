@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import AsyncGenerator
 
@@ -18,24 +18,14 @@ class _FakeResult:
     def __init__(
         self,
         posts: list[SimpleNamespace] | None = None,
-        scalar_value: int | None = None,
-        row: tuple[datetime, datetime] | None = None,
     ) -> None:
         self._posts = posts or []
-        self._scalar_value = scalar_value
-        self._row = row
 
     def scalars(self) -> "_FakeResult":
         return self
 
     def all(self) -> list[SimpleNamespace]:
         return self._posts
-
-    def scalar_one_or_none(self) -> int | None:
-        return self._scalar_value
-
-    def one_or_none(self) -> tuple[datetime, datetime] | None:
-        return self._row
 
 
 class _FakeSession:
@@ -64,7 +54,6 @@ class TestCompactPostsEndpoint(unittest.TestCase):
 
     def test_compact_posts_dedupes_and_scores(self) -> None:
         start_time = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
-        end_time = start_time + timedelta(minutes=2)
 
         team = SimpleNamespace(abbreviation="CAT")
         posts = [
@@ -108,10 +97,7 @@ class TestCompactPostsEndpoint(unittest.TestCase):
                 team=team,
             ),
         ]
-        session = _FakeSession([
-            _FakeResult(row=(start_time, end_time)),
-            _FakeResult(posts=posts),
-        ])
+        session = _FakeSession([_FakeResult(posts=posts)])
 
         async def override_get_db() -> AsyncGenerator[_FakeSession, None]:
             yield session

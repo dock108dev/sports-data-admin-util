@@ -15,6 +15,7 @@ from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
 from ...services.derived_metrics import compute_derived_metrics
+from ...services.timeline_generator import TimelineGenerationError, generate_timeline_artifact
 from .common import (
     serialize_play_entry,
     serialize_player_stat,
@@ -39,6 +40,7 @@ from .schemas import (
     JobResponse,
     OddsEntry,
 )
+from ..game_snapshot_models import TimelineArtifactResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -389,4 +391,26 @@ async def resync_game_odds(game_id: int, session: AsyncSession = Depends(get_db)
         include_boxscores=False,
         include_odds=True,
         scraper_type="odds_resync",
+    )
+
+
+@router.post("/games/{game_id}/timeline/generate", response_model=TimelineArtifactResponse)
+async def generate_game_timeline(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> TimelineArtifactResponse:
+    """Generate and store a finalized NBA timeline artifact."""
+    try:
+        artifact = await generate_timeline_artifact(session, game_id)
+    except TimelineGenerationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    await session.commit()
+    return TimelineArtifactResponse(
+        game_id=artifact.game_id,
+        sport=artifact.sport,
+        timeline_version=artifact.timeline_version,
+        generated_at=artifact.generated_at,
+        timeline=artifact.timeline,
+        summary=artifact.summary,
     )
