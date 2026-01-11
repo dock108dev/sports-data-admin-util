@@ -373,6 +373,7 @@ async def get_game_timeline(
         generated_at=artifact.generated_at,
         timeline=artifact.timeline_json,
         summary=artifact.summary_json,
+        game_analysis=artifact.game_analysis_json,
     )
 
 

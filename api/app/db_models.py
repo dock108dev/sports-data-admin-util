@@ -483,6 +483,11 @@ class SportsGameTimelineArtifact(Base):
         server_default=text("'[]'::jsonb"),
         nullable=False,
     )
+    game_analysis_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
     summary_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         server_default=text("'{}'::jsonb"),

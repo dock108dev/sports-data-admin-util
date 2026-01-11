@@ -98,6 +98,7 @@ class TimelineArtifactResponse(BaseModel):
     generated_at: datetime
     timeline: list[dict[str, Any]]
     summary: dict[str, Any]
+    game_analysis: dict[str, Any]
 
 
 def team_snapshot(team: db_models.SportsTeam | None, fallback_id: int | None = None) -> TeamSnapshot:

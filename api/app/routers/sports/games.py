@@ -413,4 +413,5 @@ async def generate_game_timeline(
         generated_at=artifact.generated_at,
         timeline=artifact.timeline,
         summary=artifact.summary,
+        game_analysis=artifact.game_analysis,
     )
