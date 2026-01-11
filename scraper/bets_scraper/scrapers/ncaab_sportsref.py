@@ -49,7 +49,8 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
     _OT_NUMBER_PATTERN = re.compile(r"(?:ot|overtime)\s*(\d+)|(\d+)\s*(?:ot|overtime)")
 
     def pbp_url(self, source_game_key: str) -> str:
-        return f"https://www.sports-reference.com/cbb/boxscores/pbp/{source_game_key}.html"
+        """NCAAB PBP is embedded in the main boxscore page, not in a separate /pbp/ directory."""
+        return f"https://www.sports-reference.com/cbb/boxscores/{source_game_key}.html"
 
     def _parse_team_row(self, row) -> tuple[TeamIdentity, int]:
         """
