@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 import {
@@ -10,6 +10,20 @@ import {
 } from "@/lib/api/cryptoAdmin";
 
 const EXCHANGES = ["", "BINANCE", "COINBASE", "BYBIT"];
+
+type AssetFilters = {
+  exchange: string;
+  symbolPrefix: string;
+  base: string;
+  quote: string;
+};
+
+const EMPTY_FILTERS: AssetFilters = {
+  exchange: "",
+  symbolPrefix: "",
+  base: "",
+  quote: "",
+};
 
 export default function CryptoAssetsPage() {
   const [assetsResponse, setAssetsResponse] = useState<CryptoAssetListResponse | null>(null);
@@ -22,14 +36,14 @@ export default function CryptoAssetsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadAssets = async (newOffset = 0) => {
+  const loadAssets = useCallback(async (filters: AssetFilters, newOffset = 0) => {
     try {
       setLoading(true);
       const data = await listCryptoAssets({
-        exchange: exchange || undefined,
-        symbolPrefix: symbolPrefix || undefined,
-        base: base || undefined,
-        quote: quote || undefined,
+        exchange: filters.exchange || undefined,
+        symbolPrefix: filters.symbolPrefix || undefined,
+        base: filters.base || undefined,
+        quote: filters.quote || undefined,
         limit,
         offset: newOffset,
       });
@@ -41,15 +55,14 @@ export default function CryptoAssetsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [limit]);
 
   useEffect(() => {
-    loadAssets(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    loadAssets(EMPTY_FILTERS, 0);
+  }, [loadAssets]);
 
   const handleApplyFilters = () => {
-    loadAssets(0);
+    loadAssets({ exchange, symbolPrefix, base, quote }, 0);
   };
 
   const handleReset = () => {
@@ -57,7 +70,7 @@ export default function CryptoAssetsPage() {
     setSymbolPrefix("");
     setBase("");
     setQuote("");
-    loadAssets(0);
+    loadAssets(EMPTY_FILTERS, 0);
   };
 
   const pageCount =
@@ -155,13 +168,18 @@ export default function CryptoAssetsPage() {
           </span>
           <div>
             <button
-              onClick={() => loadAssets(Math.max(0, offset - limit))}
+              onClick={() =>
+                loadAssets(
+                  { exchange, symbolPrefix, base, quote },
+                  Math.max(0, offset - limit),
+                )
+              }
               disabled={offset === 0 || loading}
             >
               Previous
             </button>
             <button
-              onClick={() => loadAssets(offset + limit)}
+              onClick={() => loadAssets({ exchange, symbolPrefix, base, quote }, offset + limit)}
               disabled={
                 loading || !assetsResponse || offset + limit >= assetsResponse.total
               }
@@ -174,5 +192,3 @@ export default function CryptoAssetsPage() {
     </div>
   );
 }
-
-
