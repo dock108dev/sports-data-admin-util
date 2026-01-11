@@ -144,7 +144,7 @@ For downstream apps consuming social posts:
 | `image` | Display `image_url` directly with `<img>` |
 | `none` | Display `tweet_text` with link to original post |
 
-See [Social Posts Integration Guide](../README.md) for detailed downstream implementation.
+See `docs/PLATFORM_OVERVIEW.md` for a high-level view of how social posts fit into the platform.
 
 ## Rate Limiting
 

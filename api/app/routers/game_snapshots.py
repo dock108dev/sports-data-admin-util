@@ -27,7 +27,7 @@ from .game_snapshot_models import (
     team_snapshot,
 )
 
-router = APIRouter(tags=["game-snapshots"])
+router = APIRouter(prefix="/api", tags=["game-snapshots"])
 logger = logging.getLogger(__name__)
 
 _VALID_RANGES = {"last2", "current", "next24"}
@@ -75,9 +75,9 @@ async def list_games(
     List games by time window.
 
     Example request:
-        GET /games?range=current
+        GET /api/games?range=current
     Example request (single league):
-        GET /games?range=current&league=NBA
+        GET /api/games?range=current&league=NBA
     Example response:
         {
           "range": "current",

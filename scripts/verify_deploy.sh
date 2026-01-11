@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.prod.yml}
+COMPOSE_FILE=${COMPOSE_FILE:-infra/docker-compose.yml}
+COMPOSE_PROFILE=${COMPOSE_PROFILE:-prod}
 API_BASE_URL=${API_BASE_URL:-http://localhost:8000}
 
 required_services=(
-  db
   api
-  worker
+  postgres
+  redis
+  scraper
+  web
 )
 
 log() {
@@ -22,7 +25,7 @@ fail() {
 check_service_running() {
   local service="$1"
   local container_id
-  container_id=$(docker compose -f "$COMPOSE_FILE" ps -q "$service")
+  container_id=$(docker compose -f "$COMPOSE_FILE" --profile "$COMPOSE_PROFILE" ps -q "$service")
   if [[ -z "$container_id" ]]; then
     fail "Service '$service' is not running (no container found)."
   fi
@@ -48,7 +51,7 @@ check_service_running() {
 
 check_db_connectivity() {
   log "Checking database connectivity..."
-  if ! docker compose -f "$COMPOSE_FILE" exec -T db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null; then
+  if ! docker compose -f "$COMPOSE_FILE" --profile "$COMPOSE_PROFILE" exec -T postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null; then
     fail "Database connectivity check failed."
   fi
   log "OK: database is reachable"
@@ -67,6 +70,7 @@ check_endpoint() {
 
 log "Starting post-deploy verification..."
 log "Using compose file: $COMPOSE_FILE"
+log "Using compose profile: $COMPOSE_PROFILE"
 log "Using API base URL: $API_BASE_URL"
 
 log "Checking required services..."
@@ -78,6 +82,6 @@ check_db_connectivity
 
 log "Checking API endpoints..."
 check_endpoint "/healthz"
-check_endpoint "/games"
+check_endpoint "/api/admin/sports/games?limit=1"
 
 log "All checks passed."

@@ -1,11 +1,16 @@
-"""NBA scraper powered by Basketball Reference."""
+"""NBA scraper powered by Basketball Reference.
+
+Note:
+This module is intentionally a bit "wide" (≈500 LOC) because the parsing logic is
+most readable when kept close together and ordered to match the source HTML.
+If/when it grows further, split helpers into a sibling `_nba_sportsref_parse.py`
+module.
+"""
 
 from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Sequence
-
-from ..utils.datetime_utils import date_to_utc_datetime
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -21,6 +26,7 @@ from ..models import (
     TeamIdentity,
 )
 from ..normalization import normalize_team_name
+from ..utils.datetime_utils import date_to_utc_datetime
 from ..utils import (
     extract_all_stats_from_row,
     get_stat_from_row,

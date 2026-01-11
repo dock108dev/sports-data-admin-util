@@ -126,7 +126,7 @@ export function BaseStatsSelector({
       </div>
 
       {filtered.length === 0 && search && (
-        <div className={styles.emptyMessage}>No stats match "{search}"</div>
+        <div className={styles.emptyMessage}>No stats match “{search}”</div>
       )}
     </div>
   );

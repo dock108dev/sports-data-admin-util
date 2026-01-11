@@ -9,7 +9,7 @@ from sqlalchemy import select
 from .. import db_models
 from ..db import AsyncSession, get_db
 
-router = APIRouter(tags=["reading-position"])
+router = APIRouter(prefix="/api", tags=["reading-position"])
 
 
 class ReadingPositionRequest(BaseModel):
