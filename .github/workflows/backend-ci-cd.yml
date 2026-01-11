@@ -81,43 +81,44 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -euo pipefail
-  
+          
             BASE_DIR="${{ secrets.DEPLOY_PATH }}"
             REPO_URL="https://github.com/${{ github.repository }}.git"
             BRANCH="main"
-  
+          
             echo "Ensuring base directory exists..."
             mkdir -p "$BASE_DIR"
             cd "$BASE_DIR"
-  
+          
             if [ ! -d ".git" ]; then
-              echo "Repo not found. Cloning..."
-              git clone "$REPO_URL" .
-            else
-              echo "Repo exists. Updating..."
-              git fetch origin
+              echo "No git repo found. Initializing..."
+              git init
+              git remote add origin "$REPO_URL"
             fi
-  
-            echo "Resetting repo to $BRANCH..."
-            git checkout "$BRANCH"
+          
+            echo "Fetching latest code..."
+            git fetch origin
+          
+            echo "Resetting to origin/$BRANCH..."
+            git checkout -B "$BRANCH" "origin/$BRANCH"
             git reset --hard "origin/$BRANCH"
-  
+          
             if [ ! -f ".env" ]; then
               echo "ERROR: .env file missing in $BASE_DIR"
               exit 1
             fi
-  
+          
             echo "Logging into GHCR..."
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-  
+          
             echo "Pulling images..."
             docker compose -f infra/docker-compose.yml --profile prod pull
-  
+          
             echo "Running migrations..."
             docker compose -f infra/docker-compose.yml --profile prod run --rm migrate
-  
+          
             echo "Starting services..."
             docker compose -f infra/docker-compose.yml --profile prod up -d
-  
+          
             echo "Deployment status:"
             docker compose -f infra/docker-compose.yml --profile prod ps
