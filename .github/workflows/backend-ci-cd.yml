@@ -9,70 +9,48 @@ permissions:
   contents: read
 
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/main' }}
-    outputs:
-      api: ${{ steps.filter.outputs.api }}
-      web: ${{ steps.filter.outputs.web }}
-      scraper: ${{ steps.filter.outputs.scraper }}
-      infra: ${{ steps.filter.outputs.infra }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Detect changes
-        id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            api:
-              - 'api/**'
-            web:
-              - 'web/**'
-              - 'packages/**'
-            scraper:
-              - 'scraper/**'
-            infra:
-              - 'infra/**'
-
   test:
     runs-on: ubuntu-latest
-    needs: changes
-    if: ${{ github.ref == 'refs/heads/main' && (needs.changes.outputs.api == 'true' || needs.changes.outputs.scraper == 'true') }}
+    env:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+      REDIS_URL: redis://localhost:6379/0
+      PYTHONPATH: api:scraper
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r api/requirements.txt pytest
+          uv venv --python 3.12
+          uv pip install -r api/requirements.txt
+          uv pip install -e ./scraper
+          uv pip install pytest
       - name: Run unit tests
         run: |
-          python -m pytest
+          uv run pytest
 
   build:
     runs-on: ubuntu-latest
-    needs: [changes, test]
-    if: ${{ github.ref == 'refs/heads/main' && (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.scraper == 'true' || needs.changes.outputs.infra == 'true') }}
+    needs: test
     permissions:
       contents: read
       packages: write
     strategy:
       matrix:
+        service: [api, web, scraper]
         include:
           - service: api
             dockerfile: infra/api.Dockerfile
-            context: .
-            changed: ${{ needs.changes.outputs.api }}
           - service: web
             dockerfile: infra/web.Dockerfile
-            context: .
-            changed: ${{ needs.changes.outputs.web }}
           - service: scraper
             dockerfile: infra/scraper.Dockerfile
-            context: .
-            changed: ${{ needs.changes.outputs.scraper }}
     steps:
       - uses: actions/checkout@v4
       - name: Log in to GHCR
@@ -82,10 +60,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
       - name: Build and push
-        if: ${{ matrix.changed == 'true' || needs.changes.outputs.infra == 'true' }}
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.context }}
+          context: .
           file: ${{ matrix.dockerfile }}
           push: true
           tags: |
@@ -94,8 +71,7 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [changes, build]
-    if: ${{ github.ref == 'refs/heads/main' && needs.build.result == 'success' }}
+    needs: build
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.4
@@ -105,47 +81,44 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -euo pipefail
-            cd "${{ secrets.DEPLOY_PATH }}/infra"
-            
-            # Login to GHCR
+          
+            BASE_DIR="${{ secrets.DEPLOY_PATH }}"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+            BRANCH="main"
+          
+            echo "Ensuring base directory exists..."
+            mkdir -p "$BASE_DIR"
+            cd "$BASE_DIR"
+          
+            if [ ! -d ".git" ]; then
+              echo "No git repo found. Initializing..."
+              git init
+              git remote add origin "$REPO_URL"
+            fi
+          
+            echo "Fetching latest code..."
+            git fetch origin
+          
+            echo "Resetting to origin/$BRANCH..."
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+            git reset --hard "origin/$BRANCH"
+          
+            if [ ! -f ".env" ]; then
+              echo "ERROR: .env file missing in $BASE_DIR"
+              exit 1
+            fi
+          
+            echo "Logging into GHCR..."
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # Run migrations if API or infra changed
-            if [[ "${{ needs.changes.outputs.api }}" == "true" || "${{ needs.changes.outputs.infra }}" == "true" ]]; then
-              echo "Running database migrations..."
-              docker compose -f docker-compose.yml --profile prod pull migrate
-              docker compose -f docker-compose.yml --profile prod run --rm migrate
-            fi
-            
-            # Deploy API
-            if [[ "${{ needs.changes.outputs.api }}" == "true" || "${{ needs.changes.outputs.infra }}" == "true" ]]; then
-              echo "Deploying API..."
-              docker compose -f docker-compose.yml --profile prod pull api
-              docker compose -f docker-compose.yml --profile prod up -d api
-              echo "Waiting for API health check..."
-              sleep 5
-              docker compose -f docker-compose.yml --profile prod exec -T api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')" || echo "Warning: API health check failed"
-            fi
-            
-            # Deploy Web
-            if [[ "${{ needs.changes.outputs.web }}" == "true" || "${{ needs.changes.outputs.infra }}" == "true" ]]; then
-              echo "Deploying Web..."
-              docker compose -f docker-compose.yml --profile prod pull web
-              docker compose -f docker-compose.yml --profile prod up -d web
-              echo "Waiting for Web health check..."
-              sleep 5
-              docker compose -f docker-compose.yml --profile prod exec -T web node -e "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" || echo "Warning: Web health check failed"
-            fi
-            
-            # Deploy Scraper workers
-            if [[ "${{ needs.changes.outputs.scraper }}" == "true" || "${{ needs.changes.outputs.infra }}" == "true" ]]; then
-              echo "Deploying Scraper workers..."
-              docker compose -f docker-compose.yml --profile prod pull scraper
-              docker compose -f docker-compose.yml --profile prod up -d scraper scraper-beat
-              echo "Waiting for Scraper health check..."
-              sleep 10
-              docker compose -f docker-compose.yml --profile prod exec -T scraper celery -A bets_scraper.celery_app.app inspect ping -d celery@$(docker compose -f docker-compose.yml --profile prod exec -T scraper hostname) --timeout=5 | grep -q pong || echo "Warning: Scraper health check failed"
-            fi
-            
-            echo "Deployment complete. Checking service status..."
-            docker compose -f docker-compose.yml --profile prod ps
+          
+            echo "Pulling images..."
+            docker compose -f infra/docker-compose.yml --profile prod pull
+          
+            echo "Running migrations..."
+            docker compose -f infra/docker-compose.yml --profile prod run --rm migrate
+          
+            echo "Starting services..."
+            docker compose -f infra/docker-compose.yml --profile prod up -d
+          
+            echo "Deployment status:"
+            docker compose -f infra/docker-compose.yml --profile prod ps

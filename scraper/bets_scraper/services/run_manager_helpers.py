@@ -252,12 +252,7 @@ def ingest_pbp_via_sportsref(
         try:
             payload = scraper.fetch_play_by_play(source_game_key, game_date)
         except NotImplementedError:
-            logger.info(
-                "pbp_sportsref_not_supported",
-                run_id=run_id,
-                league=league_code,
-                reason="fetch_play_by_play_not_implemented",
-            )
+            logger.warning("pbp_unavailable_sportsref", run_id=run_id, league=league_code, reason="source_unavailable")
             return (0, 0)
         except Exception as exc:
             logger.warning(

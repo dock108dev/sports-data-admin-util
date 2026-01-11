@@ -13,6 +13,7 @@ from .. import db_models
 from ..config import settings
 from ..db import AsyncSession, get_db
 from ..services.recap_generator import build_recap
+from ..services.reveal_levels import parse_reveal_level
 from ..utils.datetime_utils import now_utc
 from .game_snapshot_models import (
     GameSnapshot,

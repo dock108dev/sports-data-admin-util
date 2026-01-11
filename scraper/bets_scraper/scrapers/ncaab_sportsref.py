@@ -439,49 +439,11 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
         return games
 
     def fetch_play_by_play(self, source_game_key: str, game_date: date) -> NormalizedPlayByPlay:
-        """Fetch and parse play-by-play for a single NCAAB game."""
+        """Play-by-play is not available from Sports Reference for NCAAB.
+
+        Sports Reference CBB boxscore pages do not include a play-by-play table for many games,
+        so we explicitly mark this ingestion path as unsupported to avoid silent no-op runs.
+        """
         url = self.pbp_url(source_game_key)
-        soup = self.fetch_html(url, game_date=game_date)
-
-        away_abbr, home_abbr = self._parse_scorebox_abbreviations(soup)
-
-        plays: list[NormalizedPlay] = []
-        play_index = 0
-
-        table = soup.find("table", id="pbp")
-        if not table:
-            logger.warning("pbp_table_not_found", game_key=source_game_key)
-            return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)
-
-        current_period = 0
-        for row in table.find_all("tr"):
-            row_classes = row.get("class", [])
-            if "thead" in row_classes:
-                period_marker = self._parse_pbp_period_marker(row)
-                if period_marker:
-                    current_period = period_marker
-                continue
-
-            cells = row.find_all("td")
-            if not cells:
-                period_marker = self._parse_pbp_period_marker(row)
-                if period_marker:
-                    current_period = period_marker
-                continue
-
-            if current_period == 0:
-                continue
-
-            play = self._parse_pbp_row(row, current_period, away_abbr, home_abbr, play_index)
-            if play:
-                plays.append(play)
-                play_index += 1
-
-        logger.info(
-            "pbp_parsed",
-            game_key=source_game_key,
-            game_date=str(game_date),
-            plays=len(plays),
-        )
-
-        return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)
+        logger.warning("pbp_unavailable_sportsref", league=self.league_code, game_key=source_game_key, url=url)
+        raise NotImplementedError("NCAAB play-by-play is unavailable from Sports Reference.")
