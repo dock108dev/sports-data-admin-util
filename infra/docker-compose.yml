@@ -39,6 +39,7 @@ services:
       retries: 5
 
   api:
+    image: ghcr.io/dock108/sports-data-admin-util-api:latest
     build:
       context: ..
       dockerfile: infra/api.Dockerfile
@@ -69,6 +70,7 @@ services:
       retries: 5
 
   scraper:
+    image: ghcr.io/dock108/sports-data-admin-util-scraper:latest
     build:
       context: ..
       dockerfile: infra/scraper.Dockerfile
@@ -101,6 +103,7 @@ services:
       retries: 5
 
   scraper-beat:
+    image: ghcr.io/dock108/sports-data-admin-util-scraper:latest
     build:
       context: ..
       dockerfile: infra/scraper.Dockerfile
@@ -127,6 +130,7 @@ services:
       - app
 
   migrate:
+    image: ghcr.io/dock108/sports-data-admin-util-api:latest
     build:
       context: ..
       dockerfile: infra/api.Dockerfile
@@ -143,6 +147,7 @@ services:
       - internal
 
   web:
+    image: ghcr.io/dock108/sports-data-admin-util-web:latest
     build:
       context: ..
       dockerfile: infra/web.Dockerfile

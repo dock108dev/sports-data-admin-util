@@ -105,17 +105,47 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -euo pipefail
-            cd "${{ secrets.DEPLOY_PATH }}"
-            export COMPOSE_PROFILES=prod
+            cd "${{ secrets.DEPLOY_PATH }}/infra"
+            
+            # Login to GHCR
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Run migrations if API or infra changed
             if [[ "${{ needs.changes.outputs.api }}" == "true" || "${{ needs.changes.outputs.infra }}" == "true" ]]; then
-              docker compose pull api
-              docker compose up -d api
+              echo "Running database migrations..."
+              docker compose -f docker-compose.yml --profile prod pull migrate
+              docker compose -f docker-compose.yml --profile prod run --rm migrate
             fi
+            
+            # Deploy API
+            if [[ "${{ needs.changes.outputs.api }}" == "true" || "${{ needs.changes.outputs.infra }}" == "true" ]]; then
+              echo "Deploying API..."
+              docker compose -f docker-compose.yml --profile prod pull api
+              docker compose -f docker-compose.yml --profile prod up -d api
+              echo "Waiting for API health check..."
+              sleep 5
+              docker compose -f docker-compose.yml --profile prod exec -T api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')" || echo "Warning: API health check failed"
+            fi
+            
+            # Deploy Web
             if [[ "${{ needs.changes.outputs.web }}" == "true" || "${{ needs.changes.outputs.infra }}" == "true" ]]; then
-              docker compose pull web
-              docker compose up -d web
+              echo "Deploying Web..."
+              docker compose -f docker-compose.yml --profile prod pull web
+              docker compose -f docker-compose.yml --profile prod up -d web
+              echo "Waiting for Web health check..."
+              sleep 5
+              docker compose -f docker-compose.yml --profile prod exec -T web node -e "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" || echo "Warning: Web health check failed"
             fi
+            
+            # Deploy Scraper workers
             if [[ "${{ needs.changes.outputs.scraper }}" == "true" || "${{ needs.changes.outputs.infra }}" == "true" ]]; then
-              docker compose pull scraper
-              docker compose up -d scraper
+              echo "Deploying Scraper workers..."
+              docker compose -f docker-compose.yml --profile prod pull scraper
+              docker compose -f docker-compose.yml --profile prod up -d scraper scraper-beat
+              echo "Waiting for Scraper health check..."
+              sleep 10
+              docker compose -f docker-compose.yml --profile prod exec -T scraper celery -A bets_scraper.celery_app.app inspect ping -d celery@$(docker compose -f docker-compose.yml --profile prod exec -T scraper hostname) --timeout=5 | grep -q pong || echo "Warning: Scraper health check failed"
             fi
+            
+            echo "Deployment complete. Checking service status..."
+            docker compose -f docker-compose.yml --profile prod ps
