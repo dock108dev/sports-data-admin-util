@@ -375,6 +375,36 @@ Fetch the stored finalized timeline artifact for a game.
       "synthetic_timestamp": "2026-01-15T02:10:00Z"
     }
   ],
+  "game_analysis": {
+    "segments": [
+      {
+        "segment_id": "segment_1",
+        "start_timestamp": "2026-01-15T02:00:00Z",
+        "end_timestamp": "2026-01-15T02:10:00Z",
+        "segment_type": "opening",
+        "teams_involved": [1],
+        "score_start": {"home": 2, "away": 0},
+        "score_end": {"home": 12, "away": 8},
+        "score_delta": {"home": 10, "away": 8},
+        "key_event_ids": [0, 1, 2]
+      }
+    ],
+    "highlights": [
+      {
+        "highlight_type": "scoring_run",
+        "start_timestamp": "2026-01-15T02:00:00Z",
+        "end_timestamp": "2026-01-15T02:04:00Z",
+        "teams_involved": [1],
+        "score_context": {
+          "points": 8,
+          "start_score": {"home": 2, "away": 0},
+          "end_score": {"home": 10, "away": 0},
+          "team_id": 1
+        },
+        "related_segment_id": "segment_1"
+      }
+    ]
+  },
   "summary": {
     "teams": {
       "home": {"id": 1, "name": "Warriors"},

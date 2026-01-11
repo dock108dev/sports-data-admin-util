@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 import unittest
 
-from app.services.timeline_generator import build_nba_timeline
+from app.services.timeline_generator import build_nba_game_analysis, build_nba_timeline
 
 
 class TestTimelineGenerator(unittest.TestCase):
@@ -120,6 +120,95 @@ class TestTimelineGenerator(unittest.TestCase):
             {"event_type", "author", "handle", "text", "role", "synthetic_timestamp"},
         )
         self.assertEqual(timeline[0]["role"], None)
+
+    def test_build_nba_game_analysis_segments_and_highlights(self) -> None:
+        timeline = [
+            {
+                "event_type": "pbp",
+                "home_score": 2,
+                "away_score": 0,
+                "quarter": 1,
+                "game_clock": "12:00",
+                "synthetic_timestamp": "2026-01-15T02:00:00Z",
+            },
+            {
+                "event_type": "pbp",
+                "home_score": 4,
+                "away_score": 0,
+                "quarter": 1,
+                "game_clock": "10:30",
+                "synthetic_timestamp": "2026-01-15T02:01:00Z",
+            },
+            {
+                "event_type": "pbp",
+                "home_score": 6,
+                "away_score": 0,
+                "quarter": 1,
+                "game_clock": "9:00",
+                "synthetic_timestamp": "2026-01-15T02:02:00Z",
+            },
+            {
+                "event_type": "pbp",
+                "home_score": 8,
+                "away_score": 0,
+                "quarter": 1,
+                "game_clock": "8:00",
+                "synthetic_timestamp": "2026-01-15T02:03:00Z",
+            },
+            {
+                "event_type": "pbp",
+                "home_score": 8,
+                "away_score": 3,
+                "quarter": 1,
+                "game_clock": "5:00",
+                "synthetic_timestamp": "2026-01-15T02:05:00Z",
+            },
+            {
+                "event_type": "pbp",
+                "home_score": 8,
+                "away_score": 9,
+                "quarter": 1,
+                "game_clock": "2:00",
+                "synthetic_timestamp": "2026-01-15T02:08:00Z",
+            },
+            {
+                "event_type": "pbp",
+                "home_score": 10,
+                "away_score": 9,
+                "quarter": 2,
+                "game_clock": "11:00",
+                "synthetic_timestamp": "2026-01-15T02:16:00Z",
+            },
+            {
+                "event_type": "pbp",
+                "home_score": 100,
+                "away_score": 95,
+                "quarter": 4,
+                "game_clock": "0:30",
+                "synthetic_timestamp": "2026-01-15T03:10:00Z",
+            },
+        ]
+        summary = {
+            "teams": {"home": {"id": 1, "name": "Home"}, "away": {"id": 2, "name": "Away"}},
+            "final_score": {"home": 100, "away": 95},
+            "flow": "close",
+        }
+
+        analysis = build_nba_game_analysis(timeline, summary)
+
+        segments = analysis["segments"]
+        highlights = analysis["highlights"]
+
+        self.assertGreaterEqual(len(segments), 3)
+        segment_types = {segment["segment_type"] for segment in segments}
+        self.assertIn("opening", segment_types)
+        self.assertIn("close", segment_types)
+
+        highlight_types = {highlight["highlight_type"] for highlight in highlights}
+        self.assertIn("scoring_run", highlight_types)
+        self.assertIn("lead_change", highlight_types)
+        self.assertIn("quarter_shift", highlight_types)
+        self.assertIn("game_deciding_stretch", highlight_types)
 
 
 if __name__ == "__main__":
