@@ -1,9 +1,14 @@
 import { TheoryRunRequest, TheoryRunResult } from "../types/theoryRuns";
 
-const API_BASE = process.env.NEXT_PUBLIC_THEORY_ENGINE_URL || "http://localhost:8000";
+import { getApiBase } from "./apiBase";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const apiBase = getApiBase({
+    serverInternalBaseEnv: process.env.SPORTS_API_INTERNAL_URL,
+    serverPublicBaseEnv: process.env.NEXT_PUBLIC_THEORY_ENGINE_URL,
+    localhostPort: 8000,
+  });
+  const res = await fetch(`${apiBase}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

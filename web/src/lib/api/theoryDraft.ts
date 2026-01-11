@@ -5,6 +5,8 @@
  * UI emits this shape, backend persists this shape.
  */
 
+import { getApiBase as resolveApiBase } from "./apiBase";
+
 // -----------------------------------------------------------------------------
 // Time Window
 // -----------------------------------------------------------------------------
@@ -438,11 +440,14 @@ export interface TheoryAnalysisResponse {
 // -----------------------------------------------------------------------------
 
 function getApiBase(): string {
-  const base = process.env.NEXT_PUBLIC_THEORY_ENGINE_URL;
-  if (!base) {
-    throw new Error("NEXT_PUBLIC_THEORY_ENGINE_URL environment variable is required");
-  }
-  return base;
+  // IMPORTANT: Do not rely on `NEXT_PUBLIC_*` for production base URLs. Those values
+  // are inlined at build time into the browser bundle, and CI builds the `web` image
+  // without production-specific build args. Use runtime resolution instead.
+  return resolveApiBase({
+    serverInternalBaseEnv: process.env.SPORTS_API_INTERNAL_URL,
+    serverPublicBaseEnv: process.env.NEXT_PUBLIC_THEORY_ENGINE_URL,
+    localhostPort: 8000,
+  });
 }
 
 export async function analyzeTheory(draft: TheoryDraft): Promise<TheoryAnalysisResponse> {

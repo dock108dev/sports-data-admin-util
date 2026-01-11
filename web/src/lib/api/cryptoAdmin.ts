@@ -4,13 +4,7 @@
  * Mirrors the sports admin client but targets /api/admin/crypto routes.
  */
 
-function getApiBase(): string {
-  const base = process.env.NEXT_PUBLIC_THEORY_ENGINE_URL;
-  if (!base) {
-    throw new Error("NEXT_PUBLIC_THEORY_ENGINE_URL environment variable is required");
-  }
-  return base;
-}
+import { getApiBase } from "./apiBase";
 
 export type CryptoIngestionRunResponse = {
   id: number;
@@ -71,7 +65,11 @@ export type CryptoCandleListResponse = {
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const apiBase = getApiBase();
+  const apiBase = getApiBase({
+    serverInternalBaseEnv: process.env.SPORTS_API_INTERNAL_URL,
+    serverPublicBaseEnv: process.env.NEXT_PUBLIC_THEORY_ENGINE_URL,
+    localhostPort: 8000,
+  });
   const url = `${apiBase}${path}`;
 
   try {

@@ -103,22 +103,25 @@ jobs:
             git checkout -B "$BRANCH" "origin/$BRANCH"
             git reset --hard "origin/$BRANCH"
           
-            if [ ! -f ".env" ]; then
-              echo "ERROR: .env file missing in $BASE_DIR"
+            if [ ! -f "infra/.env" ]; then
+              echo "ERROR: infra/.env file missing in $BASE_DIR"
               exit 1
             fi
+
+            echo "Changing to infra directory (loads .env + correct relative volume mounts)..."
+            cd infra
           
             echo "Logging into GHCR..."
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           
             echo "Pulling images..."
-            docker compose -f infra/docker-compose.yml --profile prod pull
+            docker compose --profile prod pull
           
             echo "Running migrations..."
-            docker compose -f infra/docker-compose.yml --profile prod run --rm migrate
+            docker compose --profile prod run --rm migrate
           
             echo "Starting services..."
-            docker compose -f infra/docker-compose.yml --profile prod up -d
+            docker compose --profile prod up -d
           
             echo "Deployment status:"
-            docker compose -f infra/docker-compose.yml --profile prod ps
+            docker compose --profile prod ps

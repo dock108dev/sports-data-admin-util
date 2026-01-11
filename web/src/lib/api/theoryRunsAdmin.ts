@@ -24,10 +24,15 @@ export type TheoryRunAdminResponse = {
   completed_at: string | null;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_THEORY_ENGINE_URL || "http://localhost:8000";
+import { getApiBase } from "./apiBase";
 
 async function request<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
+  const apiBase = getApiBase({
+    serverInternalBaseEnv: process.env.SPORTS_API_INTERNAL_URL,
+    serverPublicBaseEnv: process.env.NEXT_PUBLIC_THEORY_ENGINE_URL,
+    localhostPort: 8000,
+  });
+  const res = await fetch(`${apiBase}${path}`);
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Request failed (${res.status}): ${body}`);
@@ -36,7 +41,12 @@ async function request<T>(path: string): Promise<T> {
 }
 
 export async function listTheoryRuns(params: { sport?: string; status?: string; limit?: number; offset?: number }) {
-  const url = new URL(`${API_BASE}/api/admin/theory-runs`);
+  const apiBase = getApiBase({
+    serverInternalBaseEnv: process.env.SPORTS_API_INTERNAL_URL,
+    serverPublicBaseEnv: process.env.NEXT_PUBLIC_THEORY_ENGINE_URL,
+    localhostPort: 8000,
+  });
+  const url = new URL(`${apiBase}/api/admin/theory-runs`);
   if (params.sport) url.searchParams.set("sport", params.sport);
   if (params.status) url.searchParams.set("status", params.status);
   url.searchParams.set("limit", String(params.limit ?? 50));
