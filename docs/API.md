@@ -252,13 +252,24 @@ Get AI-generated summary for a moment.
 
 ## Games — Snapshots (App Consumption)
 
-Base path: `/` (root level, not under `/api/admin`)
+Base path: `/api`
 
 These endpoints are designed for mobile/web app consumption.
 
-### `GET /games`
+### `GET /api/games`
 
 List games by time window for app display.
+
+List games by time window for app display.
+
+**Example requests:**
+```bash
+# Current day's games
+curl "https://sports-data-admin.dock108.ai/api/games?range=current"
+
+# Filter by league
+curl "https://sports-data-admin.dock108.ai/api/games?range=current&league=NBA"
+```
 
 **Query Parameters:**
 | Parameter | Type | Default | Description |
@@ -293,7 +304,7 @@ List games by time window for app display.
 
 ---
 
-### `GET /games/{game_id}/pbp`
+### `GET /api/games/{game_id}/pbp`
 
 Fetch play-by-play grouped by period.
 
@@ -313,7 +324,7 @@ Fetch play-by-play grouped by period.
 
 ---
 
-### `GET /games/{game_id}/social`
+### `GET /api/games/{game_id}/social`
 
 Fetch social posts ordered by posted time.
 
@@ -336,7 +347,7 @@ Fetch social posts ordered by posted time.
 
 ---
 
-### `GET /games/{game_id}/recap`
+### `GET /api/games/{game_id}/recap`
 
 Generate a recap for a game at a reveal level.
 
@@ -712,9 +723,11 @@ Create or update a social account registry entry.
 
 ## Reading Positions
 
+Base path: `/api`
+
 Track user reading positions for game timelines.
 
-### `POST /users/{user_id}/games/{game_id}/reading-position`
+### `POST /api/users/{user_id}/games/{game_id}/reading-position`
 
 Create or update a user's last-read position.
 
@@ -735,7 +748,7 @@ Create or update a user's last-read position.
 
 ---
 
-### `GET /users/{user_id}/games/{game_id}/resume`
+### `GET /api/users/{user_id}/games/{game_id}/resume`
 
 Get the last-read position for a user/game pair.
 

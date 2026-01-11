@@ -110,7 +110,7 @@ class TestGameSnapshotEndpoints(unittest.TestCase):
         self._override_db(session)
         client = TestClient(app)
 
-        response = client.get("/games?range=last2")
+        response = client.get("/api/games?range=last2")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["range"], "last2")
@@ -126,7 +126,7 @@ class TestGameSnapshotEndpoints(unittest.TestCase):
         self._override_db(session)
         client = TestClient(app)
 
-        response = client.get("/games?range=current")
+        response = client.get("/api/games?range=current")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["games"][0]["status"], "live")
@@ -137,7 +137,7 @@ class TestGameSnapshotEndpoints(unittest.TestCase):
         self._override_db(session)
         client = TestClient(app)
 
-        response = client.get("/games?range=bad")
+        response = client.get("/api/games?range=bad")
         self.assertEqual(response.status_code, 400)
 
     def test_list_games_filters_by_league_param(self) -> None:
@@ -150,7 +150,7 @@ class TestGameSnapshotEndpoints(unittest.TestCase):
         self._override_db(session)
         client = TestClient(app)
 
-        response = client.get("/games?range=last2&league=NBA")
+        response = client.get("/api/games?range=last2&league=NBA")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual([game["league"] for game in payload["games"]], ["NBA"])
@@ -164,7 +164,7 @@ class TestGameSnapshotEndpoints(unittest.TestCase):
         self._override_db(session)
         client = TestClient(app)
 
-        response = client.get("/games/123/pbp")
+        response = client.get("/api/games/123/pbp")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["periods"], [])
@@ -186,7 +186,7 @@ class TestGameSnapshotEndpoints(unittest.TestCase):
         self._override_db(session)
         client = TestClient(app)
 
-        response = client.get("/games/123/social")
+        response = client.get("/api/games/123/social")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["posts"][0]["reveal_level"], "pre")
@@ -200,7 +200,7 @@ class TestGameSnapshotEndpoints(unittest.TestCase):
         self._override_db(session)
         client = TestClient(app)
 
-        response = client.get("/games/123/recap?reveal=bad")
+        response = client.get("/api/games/123/recap?reveal=bad")
         self.assertEqual(response.status_code, 400)
 
     def test_unknown_game_returns_404(self) -> None:
@@ -211,5 +211,5 @@ class TestGameSnapshotEndpoints(unittest.TestCase):
         self._override_db(session)
         client = TestClient(app)
 
-        response = client.get("/games/404/pbp")
+        response = client.get("/api/games/404/pbp")
         self.assertEqual(response.status_code, 404)

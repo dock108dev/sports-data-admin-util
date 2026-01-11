@@ -52,7 +52,7 @@ Introduced the read-only API surface for iOS app consumption:
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /games?range=` | Games by time window (`last2`, `current`, `next24`) |
+| `GET /api/games?range=` | Games by time window (`last2`, `current`, `next24`) |
 | `GET /games/{id}/pbp` | Play-by-play events by period |
 | `GET /games/{id}/social` | Social posts with reveal levels |
 | `GET /games/{id}/recap` | AI-generated summaries |
