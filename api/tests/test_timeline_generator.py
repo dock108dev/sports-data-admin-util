@@ -95,6 +95,32 @@ class TestTimelineGenerator(unittest.TestCase):
         _, _, game_end = build_nba_timeline(game, plays, [])
         self.assertEqual(game_end, game.start_time + timedelta(minutes=120))
 
+    def test_build_nba_timeline_orders_social_events_by_timestamp(self) -> None:
+        game = self._build_game()
+        posts = [
+            SimpleNamespace(
+                posted_at=game.start_time + timedelta(minutes=4),
+                source_handle="@home",
+                tweet_text="Late post",
+            ),
+            SimpleNamespace(
+                posted_at=game.start_time + timedelta(minutes=1),
+                source_handle="@away",
+                tweet_text="Early post",
+            ),
+        ]
+
+        timeline, _, _ = build_nba_timeline(game, [], posts)
+
+        self.assertEqual(len(timeline), 2)
+        self.assertEqual(timeline[0]["text"], "Early post")
+        self.assertEqual(timeline[1]["text"], "Late post")
+        self.assertEqual(
+            set(timeline[0].keys()),
+            {"event_type", "author", "handle", "text", "role", "synthetic_timestamp"},
+        )
+        self.assertEqual(timeline[0]["role"], None)
+
 
 if __name__ == "__main__":
     unittest.main()

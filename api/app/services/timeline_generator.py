@@ -154,13 +154,10 @@ def _build_social_events(posts: Iterable[db_models.GameSocialPost]) -> list[tupl
         event_time = post.posted_at
         event_payload = {
             "event_type": "tweet",
-            "id": post.id,
-            "post_url": post.post_url,
-            "tweet_text": post.tweet_text,
-            "posted_at": post.posted_at.isoformat(),
-            "team_id": post.team_id,
-            "source_handle": post.source_handle,
-            "media_type": post.media_type,
+            "author": post.source_handle,
+            "handle": post.source_handle,
+            "text": post.tweet_text,
+            "role": None,
             "synthetic_timestamp": event_time.isoformat(),
         }
         events.append((event_time, event_payload))
@@ -209,11 +206,9 @@ def build_nba_timeline(
     social_events = _build_social_events(social_posts)
     merged = pbp_events + social_events
 
-    def sort_key(item: tuple[datetime, dict[str, Any]]) -> tuple[datetime, int, int]:
-        event_time, payload = item
-        type_order = 0 if payload.get("event_type") == "pbp" else 1
-        play_index = payload.get("play_index") or 0
-        return (event_time, type_order, play_index)
+    def sort_key(item: tuple[datetime, dict[str, Any]]) -> datetime:
+        event_time, _ = item
+        return event_time
 
     timeline = [payload for _, payload in sorted(merged, key=sort_key)]
     summary = build_nba_summary(game)
