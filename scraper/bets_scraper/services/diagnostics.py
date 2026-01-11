@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
-from ..utils.datetime_utils import utcnow
+from ..utils.datetime_utils import now_utc
 
 
 PBP_SUPPORTED_LEAGUES = {"NBA", "NHL"}
@@ -36,7 +36,7 @@ def detect_missing_pbp(
     final_statuses = [db_models.GameStatus.final.value, db_models.GameStatus.completed.value]
     status_filter = [live_status, *final_statuses]
     reason = "not_supported" if league_code not in PBP_SUPPORTED_LEAGUES else "no_feed"
-    now = utcnow()
+    now = now_utc()
 
     external_key = EXTERNAL_ID_KEYS.get(league_code)
     external_id_expr = (

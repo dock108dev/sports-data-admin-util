@@ -11,7 +11,7 @@ from ..config import settings
 from ..logging import logger
 from ..models import NormalizedPlay, NormalizedPlayByPlay, TeamIdentity
 from ..normalization import normalize_team_name
-from ..utils.datetime_utils import utcnow
+from ..utils.datetime_utils import now_utc
 
 NHL_SCHEDULE_URL = "https://statsapi.web.nhl.com/api/v1/schedule"
 NHL_PBP_URL = "https://statsapi.web.nhl.com/api/v1/game/{game_id}/feed/live"
@@ -174,11 +174,11 @@ def _map_nhl_status(state: str | None, detailed: str | None) -> str:
 
 def _parse_datetime(value: str | None) -> datetime:
     if not value:
-        return utcnow()
+        return now_utc()
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
     except ValueError:
-        return utcnow()
+        return now_utc()
 
 
 def _parse_int(value: str | int | None) -> int | None:

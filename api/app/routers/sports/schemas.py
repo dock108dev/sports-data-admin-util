@@ -24,6 +24,8 @@ class ScrapeRunConfig(BaseModel):
     odds: bool = Field(True, alias="odds")
     social: bool = Field(False, alias="social")
     pbp: bool = Field(False, alias="pbp")
+    team_stats: bool = Field(False, alias="teamStats")
+    player_stats: bool = Field(False, alias="playerStats")
 
     # Shared filters
     only_missing: bool = Field(False, alias="onlyMissing")
@@ -43,6 +45,8 @@ class ScrapeRunConfig(BaseModel):
             "odds": self.odds,
             "social": self.social,
             "pbp": self.pbp,
+            "team_stats": self.team_stats,
+            "player_stats": self.player_stats,
             "only_missing": self.only_missing,
             "updated_before": self.updated_before.isoformat() if self.updated_before else None,
             "include_books": self.include_books,

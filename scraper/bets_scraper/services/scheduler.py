@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from ..db import db_models, get_session
 from ..logging import logger
 from ..models import IngestionConfig
-from ..utils.datetime_utils import utcnow
+from ..utils.datetime_utils import now_utc
 
 
 SCHEDULED_INGESTION_LEAGUES = ("NBA", "NHL", "NCAAB")
@@ -28,7 +28,7 @@ class ScheduledIngestionSummary:
 
 def build_scheduled_window(now: datetime | None = None) -> tuple[datetime, datetime]:
     """Build the scheduled ingestion window (yesterday -> now + 24h in UTC)."""
-    anchor = now or utcnow()
+    anchor = now or now_utc()
     start = (anchor - timedelta(days=1)).replace(tzinfo=timezone.utc)
     end = (anchor + timedelta(hours=24)).replace(tzinfo=timezone.utc)
     return start, end
@@ -82,7 +82,7 @@ def schedule_ingestion_runs(
     start_dt, end_dt = build_scheduled_window(now)
     start_date = start_dt.date()
     end_date = end_dt.date()
-    cutoff = utcnow() - timedelta(minutes=14)
+    cutoff = now_utc() - timedelta(minutes=14)
     runs_created = 0
     runs_skipped = 0
     run_failures = 0
@@ -179,7 +179,7 @@ def schedule_ingestion_runs(
         runs_skipped=runs_skipped,
         run_failures=run_failures,
         enqueue_failures=enqueue_failures,
-        last_run_at=utcnow(),
+        last_run_at=now_utc(),
     )
     logger.info(
         "scheduled_ingestion_complete",

@@ -48,11 +48,14 @@ async def get_async_session():
 
 async def init_db() -> None:
     """Create tables if they don't exist (dev only; migrations preferred)."""
+    if settings.environment in {"production", "staging"}:
+        raise RuntimeError(
+            "init_db is disabled in production/staging. Run Alembic migrations instead."
+        )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
 
 async def close_db() -> None:
     await engine.dispose()
-
 

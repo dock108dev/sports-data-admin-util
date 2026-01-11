@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from ..logging import logger
 from ..models import NormalizedPlayerBoxscore, TeamIdentity
 from ..utils.html_parsing import extract_team_stats_from_table
-from ..utils.parsing import extract_all_stats_from_row, get_stat_from_row, parse_float, parse_int
+from ..utils import extract_all_stats_from_row, get_stat_from_row, parse_float, parse_int
 
 
 def extract_team_stats(soup: BeautifulSoup, team_identity: TeamIdentity, is_home: bool) -> dict:

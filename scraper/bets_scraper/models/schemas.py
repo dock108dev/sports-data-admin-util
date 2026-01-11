@@ -64,6 +64,43 @@ class NormalizedPlayerBoxscore(BaseModel):
     raw_stats: dict = Field(default_factory=dict)
 
 
+class NormalizedTeamSeasonStats(BaseModel):
+    team: TeamIdentity
+    season: int
+    season_type: str = "regular"
+    games_played: int | None = None
+    wins: int | None = None
+    losses: int | None = None
+    overtime_losses: int | None = None
+    points: int | None = None
+    goals_for: int | None = None
+    goals_against: int | None = None
+    goal_diff: int | None = None
+    shots_for: int | None = None
+    shots_against: int | None = None
+    penalty_minutes: int | None = None
+    power_play_pct: float | None = None
+    penalty_kill_pct: float | None = None
+    raw_stats: dict = Field(default_factory=dict)
+
+
+class NormalizedPlayerSeasonStats(BaseModel):
+    player_id: str
+    player_name: str
+    team: TeamIdentity | None = None
+    team_abbreviation: str | None = None
+    season: int
+    season_type: str = "regular"
+    position: str | None = None
+    games_played: int | None = None
+    goals: int | None = None
+    assists: int | None = None
+    points: int | None = None
+    time_on_ice: float | None = None
+    player_type: str | None = None
+    raw_stats: dict = Field(default_factory=dict)
+
+
 class NormalizedGame(BaseModel):
     identity: GameIdentification
     status: str = "completed"
@@ -138,6 +175,8 @@ class IngestionConfig(BaseModel):
     odds: bool = True  # Fetch odds from API
     social: bool = False  # Scrape X posts for games
     pbp: bool = False  # Scrape play-by-play
+    team_stats: bool = False  # Scrape season-level team stats
+    player_stats: bool = False  # Scrape season-level player stats
     # Live mode toggle. When false, ingestion must NOT call live endpoints (e.g. cdn.nba.com).
     # This keeps local testing focused on historical/upcoming games.
     live: bool = False
@@ -148,4 +187,3 @@ class IngestionConfig(BaseModel):
     
     # Optional book filter for odds
     include_books: list[str] | None = None
-

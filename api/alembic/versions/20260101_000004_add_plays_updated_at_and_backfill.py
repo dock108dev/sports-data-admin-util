@@ -19,10 +19,13 @@ depends_on = None
 
 def upgrade() -> None:
     # Add updated_at to sports_game_plays
-    op.add_column(
-        "sports_game_plays",
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-    )
+    inspector = sa.inspect(op.get_bind())
+    plays_cols = {col["name"] for col in inspector.get_columns("sports_game_plays")}
+    if "updated_at" not in plays_cols:
+        op.add_column(
+            "sports_game_plays",
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        )
     # Backfill plays
     op.execute("UPDATE sports_game_plays SET updated_at = '2025-12-26 00:00:00+00' WHERE updated_at IS NULL")
     # Make non-nullable

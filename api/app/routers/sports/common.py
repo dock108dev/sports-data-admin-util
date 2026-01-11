@@ -13,7 +13,7 @@ from sqlalchemy import select
 from ... import db_models
 from ...db import AsyncSession
 from ...utils.datetime_utils import now_utc
-from ...utils.score_redaction import contains_explicit_score
+from ...utils.reveal_utils import contains_explicit_score
 from .schemas import (
     CompactMoment,
     CompactMomentsResponse,

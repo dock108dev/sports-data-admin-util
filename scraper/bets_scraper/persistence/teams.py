@@ -16,7 +16,7 @@ from ..db import db_models
 from ..logging import logger
 from ..normalization import normalize_team_name
 from ..utils.db_queries import count_team_games
-from ..utils.datetime_utils import utcnow
+from ..utils.datetime_utils import now_utc
 _LOG_COUNTERS: dict[str, int] = {}
 _LOG_SAMPLE = 50
 
@@ -200,7 +200,7 @@ def _upsert_team(session: Session, league_id: int, identity: TeamIdentity) -> in
                 "short_name": short_name,
                 "abbreviation": abbreviation_update_value,
                 "external_ref": identity.external_ref,
-                "updated_at": utcnow(),
+                "updated_at": now_utc(),
             },
         )
         .returning(db_models.SportsTeam.id)

@@ -38,14 +38,12 @@ flowchart LR
 From `infra/`:
 
 ```bash
-docker compose --env-file ../.env -f docker-compose.yml --profile dev up --build
+cd infra
+# Compose auto-loads infra/.env when run from this directory
+docker compose --profile dev up -d --build
 ```
 
-Use `docker-compose.local.yml` if you want to connect to an existing localhost Postgres:
-
-```bash
-docker compose --env-file ../.env -f docker-compose.local.yml up --build
-```
+If you need non-default networking (e.g. host Postgres), use a compose override file (not provided by default).
 
 ## Production Deployment
 
@@ -82,20 +80,28 @@ Then visit `http://localhost:9000` locally.
 
 ## API Readiness
 
-* Health endpoint: `GET /healthz`
+* Health endpoint: `GET /healthz` (returns 503 if database connectivity fails).
 * CORS is restricted via `ALLOWED_CORS_ORIGINS` (comma-separated list).
 * Structured logging: JSON access logs emitted per request.
 * Rate limiting: `RATE_LIMIT_REQUESTS` per `RATE_LIMIT_WINDOW_SECONDS`.
 * Runtime validation: production/staging requires `ALLOWED_CORS_ORIGINS`.
 
+Use the health endpoint for deploy verification:
+
+```bash
+curl -f http://localhost:8000/healthz
+```
+
 ## Database Migrations
 
-Alembic is configured in `api/alembic/`. Migrations run on container startup.
+Alembic is configured in `api/alembic/`. Migrations are run explicitly as a separate
+step (recommended for production).
 
 Manual migration steps:
 
 ```bash
 export DATABASE_URL=postgresql+asyncpg://...
+docker compose --profile prod run --rm migrate
 alembic -c api/alembic.ini revision --autogenerate -m "describe change"
 alembic -c api/alembic.ini upgrade head
 ```
@@ -122,6 +128,13 @@ Upload options:
 ```bash
 gzip -cd sports_YYYYMMDDTHHMMSSZ.sql.gz | psql "${DATABASE_URL}"
 ```
+For container restores, set `CONFIRM_DESTRUCTIVE=true` when running `/scripts/restore.sh`.
+Note: restore uses `DROP DATABASE ... WITH (FORCE)` on Postgres 16+ so you don’t need to stop app containers first.
+
+### Destructive Operation Guardrails
+
+- `init_db` (SQLAlchemy `create_all`) is blocked in production/staging.
+- `/scripts/restore.sh` and `scripts/migrate_sports_data.sh` require `CONFIRM_DESTRUCTIVE=true`.
 
 ## CI/CD
 
@@ -148,5 +161,31 @@ Deploys only the changed services and restarts them with `docker compose up -d <
 | `RATE_LIMIT_WINDOW_SECONDS` | Rate limit window size |
 | `ENVIRONMENT` | `development`, `staging`, or `production` |
 | `RUN_MIGRATIONS` | Run Alembic on container start (`true`/`false`) |
+| `CONFIRM_DESTRUCTIVE` | Required to run destructive restore/reset scripts |
 | `BACKUP_S3_URI` | S3 destination for backups |
 | `BACKUP_RCLONE_REMOTE` | Rclone destination for backups |
+
+### Startup Environment Validation (Fail-Fast)
+
+The API and scraper now validate required environment variables at startup. Missing or invalid
+configuration causes the container to exit before serving traffic or starting workers.
+
+**API required**
+- `ENVIRONMENT` (must be `development`, `staging`, or `production`)
+- `DATABASE_URL`
+- `ALLOWED_CORS_ORIGINS` (production only, must not include `localhost` or `127.0.0.1`)
+
+**Scraper/worker required**
+- `ENVIRONMENT` (must be `development`, `staging`, or `production`)
+- `DATABASE_URL`
+- `REDIS_URL`
+- `ODDS_API_KEY` (production only)
+- `X_BEARER_TOKEN` **or** `X_AUTH_TOKEN` + `X_CT0` (production only)
+
+**Production-only constraints**
+- `DATABASE_URL` and `REDIS_URL` must not point at `localhost` or `127.0.0.1`.
+- `DATABASE_URL` must not use default `postgres:postgres` credentials.
+
+**Tradeoff**
+- Local development now requires explicit environment variables (typically via `.env`). This avoids
+  accidental reliance on unsafe defaults in production.

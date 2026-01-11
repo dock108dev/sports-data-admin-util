@@ -19,6 +19,11 @@ TABLES=(
 
 : "${SRC_DB:?Set SRC_DB to source Postgres URL}"
 : "${DEST_DB:?Set DEST_DB to destination Postgres URL}"
+if [[ "${CONFIRM_DESTRUCTIVE:-false}" != "true" ]]; then
+  echo "ERROR: Destructive restore blocked."
+  echo "Set CONFIRM_DESTRUCTIVE=true to proceed."
+  exit 1
+fi
 
 TMP_DUMP=${TMP_DUMP:-/tmp/sports-data.dump}
 
@@ -30,5 +35,4 @@ pg_restore --no-owner --no-privileges --clean --if-exists -d "$DEST_DB" "$TMP_DU
 
 echo "Done. Verify row counts on destination:"
 printf '%s\n' "${TABLES[@]}" | sed 's/^/  - /'
-
 

@@ -1,16 +1,15 @@
-"""Shared datetime utilities."""
+"""
+Low-level timezone and timestamp utilities.
+
+This module provides helpers for timezone-aware UTC datetime operations,
+conversion, and window generation. It is domain-agnostic and should NOT
+contain sports-specific logic (e.g., season boundaries), which belongs in
+date_utils.py.
+"""
 
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
-
-
-def utcnow() -> datetime:
-    """Get current UTC datetime.
-    
-    Centralized utility to ensure consistent timezone handling.
-    """
-    return datetime.now(timezone.utc)
 
 
 def date_to_datetime_range(day: date) -> tuple[datetime, datetime]:

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Sequence
+
+from ..utils.datetime_utils import date_to_utc_datetime
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -13,20 +16,31 @@ from ..models import (
     GameIdentification,
     NormalizedGame,
     NormalizedPlayerBoxscore,
+    NormalizedPlayByPlay,
     NormalizedTeamBoxscore,
     TeamIdentity,
 )
-from ..normalization import normalize_team_name
-from ..utils.parsing import extract_all_stats_from_row, get_stat_from_row, parse_float, parse_int
+from ..utils import extract_all_stats_from_row, get_stat_from_row, parse_float, parse_int
 from .base import BaseSportsReferenceScraper, ScraperError
+from .nhl_sportsref_helpers import (
+    parse_pbp_period_marker,
+    parse_pbp_row,
+    parse_scorebox_abbreviations,
+    parse_scorebox_team,
+)
 
 
 class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
     sport = "nhl"
     league_code = "NHL"
     base_url = "https://www.hockey-reference.com/boxscores/"
+    _OT_NUMBER_PATTERN = re.compile(r"(?:ot|overtime)\s*(\d+)|(\d+)\s*(?:ot|overtime)")
+    _SCORE_PATTERN = re.compile(r"^(\d+)\s*-\s*(\d+)$")
 
     # _parse_team_row now inherited from base class
+
+    def pbp_url(self, source_game_key: str) -> str:
+        return f"https://www.hockey-reference.com/boxscores/pbp/{source_game_key}.html"
 
     def _extract_team_stats(self, soup: BeautifulSoup, team_abbr: str) -> dict:
         """Extract team stats from boxscore table."""
@@ -167,7 +181,7 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
                 league_code=self.league_code,
                 season=self._season_from_date(day),
                 season_type="regular",
-                game_date=datetime.combine(day, datetime.min.time()),
+                game_date=date_to_utc_datetime(day),
                 home_team=home_identity,
                 away_team=away_identity,
                 source_game_key=source_game_key,
@@ -189,6 +203,63 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
                 )
             )
         return games
+
+    def fetch_play_by_play(self, source_game_key: str, game_date: date) -> NormalizedPlayByPlay:
+        """Fetch and parse play-by-play for a single game.
+
+        Hockey Reference PBP pages are expected to include a single table with id="pbp".
+        Period headers are identified from thead rows and mapped to sequential periods
+        (1-3 regulation, 4+ overtime, shootout handled as the next period).
+        """
+        url = self.pbp_url(source_game_key)
+        soup = self.fetch_html(url, game_date=game_date)
+
+        away_abbr, home_abbr = parse_scorebox_abbreviations(soup, self.league_code)
+
+        plays: list[NormalizedPlay] = []
+        play_index = 0
+
+        table = soup.find("table", id="pbp")
+        if not table:
+            logger.warning("pbp_table_not_found", game_key=source_game_key)
+            return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)
+
+        current_period = 0
+        for row in table.find_all("tr"):
+            row_classes = row.get("class", [])
+            if "thead" in row_classes:
+                period_marker, is_shootout = parse_pbp_period_marker(row, self._OT_NUMBER_PATTERN)
+                if is_shootout:
+                    current_period = max(current_period, 3) + 1
+                    continue
+                if period_marker:
+                    current_period = period_marker
+                continue
+
+            if current_period == 0:
+                continue
+
+            play = parse_pbp_row(
+                row,
+                period=current_period,
+                away_abbr=away_abbr,
+                home_abbr=home_abbr,
+                play_index=play_index,
+                league_code=self.league_code,
+                score_pattern=self._SCORE_PATTERN,
+            )
+            if play:
+                plays.append(play)
+                play_index += 1
+
+        logger.info(
+            "pbp_parsed",
+            game_key=source_game_key,
+            game_date=str(game_date),
+            plays=len(plays),
+        )
+
+        return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)
 
     def fetch_single_boxscore(self, source_game_key: str, game_date: date) -> NormalizedGame | None:
         """Fetch boxscore for a single game by its source key.
@@ -215,38 +286,8 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
             logger.warning("team_divs_not_found", game_key=source_game_key, found=len(team_divs))
             return None
 
-        def parse_scorebox_team(div) -> tuple[TeamIdentity, int] | None:
-            team_link = div.find("a", itemprop="name")
-            if not team_link:
-                strong = div.find("strong")
-                team_link = strong.find("a") if strong else None
-            if not team_link:
-                return None
-
-            team_name = team_link.text.strip()
-            # Normalize team name to canonical form
-            canonical_name, abbreviation = normalize_team_name(self.league_code, team_name)
-
-            score_div = div.find("div", class_="score")
-            if not score_div:
-                return None
-            
-            try:
-                score = int(score_div.text.strip())
-            except ValueError:
-                return None
-
-            identity = TeamIdentity(
-                league_code=self.league_code,
-                name=canonical_name,
-                short_name=canonical_name,
-                abbreviation=abbreviation,
-                external_ref=abbreviation.upper(),
-            )
-            return identity, score
-
-        away_result = parse_scorebox_team(team_divs[0])
-        home_result = parse_scorebox_team(team_divs[1])
+        away_result = parse_scorebox_team(team_divs[0], self.league_code)
+        home_result = parse_scorebox_team(team_divs[1], self.league_code)
 
         if not away_result or not home_result:
             logger.warning("could_not_parse_scorebox_teams", game_key=source_game_key)
@@ -269,7 +310,7 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
             league_code=self.league_code,
             season=self._season_from_date(game_date),
             season_type="regular",
-            game_date=datetime.combine(game_date, datetime.min.time()),
+            game_date=date_to_utc_datetime(game_date),
             home_team=home_identity,
             away_team=away_identity,
             source_game_key=source_game_key,
@@ -289,4 +330,3 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
             team_boxscores=team_boxscores,
             player_boxscores=player_boxscores,
         )
-

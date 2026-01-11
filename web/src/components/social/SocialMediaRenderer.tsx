@@ -35,13 +35,6 @@ export function SocialMediaRenderer({
   const title = mediaType ? `X post media (${mediaType})` : "X post media";
   const showVideoOverlay = showImage && isVideoPost;
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/bbcc1fde-07f2-48ee-a458-9336304655ab',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SocialMediaRenderer.tsx:render',message:'SocialMediaRenderer props and computed values',data:{mediaType,imageUrl:imageUrl?.substring(0,50),videoUrl:videoUrl?.substring(0,50),hasImage,hasVideo,isVideoPost,shouldRenderVideo,showImage,showVideoPlaceholder,showPlaceholder,showVideoOverlay,ENABLE_INLINE_X_VIDEO},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-H4'})}).catch(()=>{});
-  // #endregion
-
-  // TODO: Handle expiring X CDN URLs with refresh logic.
-  // TODO: Support multi-media posts (multiple images/videos) in future.
-  // TODO: Revisit autoplay behavior across browsers and user settings.
   return (
     <div className={styles.container}>
       <div className={styles.aspectContainer} aria-label={title}>

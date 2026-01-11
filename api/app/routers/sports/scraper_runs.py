@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 from ... import db_models
 from ...celery_client import get_celery_app
 from ...db import AsyncSession, get_db
-from ...utils.datetime_utils import now_utc
+from ...utils.datetime_utils import now_utc, date_to_utc_datetime
 from .common import get_league, serialize_run
 from .schemas import ScrapeRunCreateRequest, ScrapeRunResponse
 
@@ -22,7 +22,7 @@ router = APIRouter()
 def _coerce_date_to_datetime(value: date | None) -> datetime | None:
     if not value:
         return None
-    return datetime.combine(value, datetime.min.time())
+    return date_to_utc_datetime(value)
 
 
 def _serialize_config_payload(payload: ScrapeRunCreateRequest) -> dict[str, Any]:
@@ -71,7 +71,11 @@ async def create_scrape_run(
         from ...logging_config import get_logger
 
         logger = get_logger(__name__)
-        logger.error("failed_to_enqueue_scrape", error=str(exc), exc_info=True)
+        logger.error(
+            "failed_to_enqueue_scrape",
+            extra={"error": str(exc)},
+            exc_info=True,
+        )
         run.status = "error"
         run.error_details = f"Failed to enqueue scrape: {exc}"
         raise HTTPException(status_code=500, detail="Failed to enqueue scrape job") from exc
@@ -152,9 +156,11 @@ async def cancel_scrape_run(run_id: int, session: AsyncSession = Depends(get_db)
             logger = get_logger(__name__)
             logger.warning(
                 "failed_to_revoke_scrape_job",
-                run_id=run.id,
-                job_id=run.job_id,
-                error=str(exc),
+                extra={
+                    "run_id": run.id,
+                    "job_id": run.job_id,
+                    "error": str(exc),
+                },
             )
 
     cancel_message = "Canceled by user via admin UI"

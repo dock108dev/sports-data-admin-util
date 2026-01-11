@@ -14,6 +14,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .validate_env import validate_env
+
 
 class OddsProviderConfig(BaseModel):
     base_url: str = Field(default="https://api.the-odds-api.com/v4")
@@ -48,6 +50,11 @@ class SocialConfig(BaseModel):
     recent_game_window_hours: int = Field(default=12)
     pregame_window_minutes: int = Field(default=180)
     postgame_window_minutes: int = Field(default=180)
+    # Gameday window: defines when posts can be linked to games on that date.
+    # A "gameday" runs from gameday_start_hour ET to gameday_end_hour ET the next day.
+    # Default: 10 AM ET to 2 AM ET next day (16-hour window covering all game times)
+    gameday_start_hour: int = Field(default=10)  # 10 AM ET
+    gameday_end_hour: int = Field(default=2)     # 2 AM ET next day
 
 
 class Settings(BaseSettings):
@@ -105,6 +112,7 @@ class Settings(BaseSettings):
     
     odds_api_key: str | None = Field(None, alias="ODDS_API_KEY")
     environment: str = Field("development", alias="ENVIRONMENT")
+    log_level: str | None = Field(None, alias="LOG_LEVEL")
     scraper_config: ScraperConfig = Field(default_factory=ScraperConfig)
     odds_config: OddsProviderConfig = Field(default_factory=OddsProviderConfig)
     social_config: SocialConfig = Field(default_factory=SocialConfig)
@@ -134,6 +142,7 @@ def get_settings() -> Settings:
     on every access. This is safe because environment variables
     don't change during runtime.
     """
+    validate_env()
     return Settings()
 
 

@@ -7,9 +7,8 @@ from typing import Iterable
 import re
 
 from .. import db_models
-from ..utils.score_redaction import redact_scores
+from ..utils.reveal_utils import classify_reveal_risk, redact_scores
 from .reveal_levels import RevealLevel
-from ..utils.reveal_filter import classify_reveal_risk
 
 _OUTCOME_PATTERN = re.compile(
     r"\b(win|wins|won|defeat|defeats|defeated|beat|beats|victory|loss|loses|lost)\b",

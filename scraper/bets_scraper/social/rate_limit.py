@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from ..utils.datetime_utils import now_utc
 
 from ..logging import logger
 
@@ -26,7 +27,7 @@ class PlatformRateLimiter:
         self._blocked_until: datetime | None = None
 
     def allow(self, now: datetime | None = None) -> RateLimitDecision:
-        current = now or datetime.now(timezone.utc)
+        current = now or now_utc()
         if self._blocked_until and current < self._blocked_until:
             retry_after = int((self._blocked_until - current).total_seconds())
             return RateLimitDecision(False, reason="backoff", retry_after=retry_after)
@@ -41,11 +42,11 @@ class PlatformRateLimiter:
         return RateLimitDecision(True)
 
     def record(self, now: datetime | None = None) -> None:
-        current = now or datetime.now(timezone.utc)
+        current = now or now_utc()
         self._requests.append(current)
 
     def backoff(self, retry_after_seconds: int) -> None:
-        current = datetime.now(timezone.utc)
+        current = now_utc()
         self._blocked_until = current + timedelta(seconds=retry_after_seconds)
         logger.warning(
             "social_rate_limited",

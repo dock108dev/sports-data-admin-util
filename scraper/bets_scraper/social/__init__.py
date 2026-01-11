@@ -12,7 +12,7 @@ from .models import CollectedPost, PostCollectionJob, PostCollectionResult
 from .playwright_collector import PlaywrightXCollector
 from .rate_limit import PlatformRateLimiter
 from .cache import SocialRequestCache
-from .strategies import MockXCollector, XApiCollector
+from .strategies import MockXCollector
 
 __all__ = [
     "CollectedPost",
@@ -21,7 +21,6 @@ __all__ = [
     "XPostCollector",
     "XCollectorStrategy",
     "MockXCollector",
-    "XApiCollector",
     "PlaywrightXCollector",
     "SocialRateLimitError",
     "PlatformRateLimiter",

@@ -1,10 +1,42 @@
-"""Shared HTML parsing utilities for scrapers."""
+"""
+Shared HTML / DOM-specific parsing utilities for scrapers.
+
+Contains helpers that depend on BeautifulSoup or other HTML-specific structures.
+Generic data-type conversion (ints, floats) should live in parsing.py.
+"""
 
 from __future__ import annotations
 
 from bs4 import BeautifulSoup, Tag
 
 from ..logging import logger
+
+
+def get_stat_from_row(row: Tag, stat_name: str) -> str | None:
+    """
+    Extract a stat value from a table row by data-stat attribute.
+    
+    This is an HTML-specific helper for Sports Reference style tables.
+    """
+    cell = row.find("td", {"data-stat": stat_name})
+    if cell:
+        text = cell.text.strip()
+        return text if text and text != "" else None
+    return None
+
+
+def extract_all_stats_from_row(row: Tag) -> dict[str, str]:
+    """
+    Extract all stats from a table row as a dictionary.
+    
+    Iterates through all td cells and extracts data-stat attributes.
+    """
+    raw_stats = {}
+    for cell in row.find_all("td"):
+        stat_name = cell.get("data-stat")
+        if stat_name:
+            raw_stats[stat_name] = cell.text.strip()
+    return raw_stats
 
 
 def find_table_by_id(soup: BeautifulSoup, table_id: str, alternate_ids: list[str] | None = None) -> Tag | None:

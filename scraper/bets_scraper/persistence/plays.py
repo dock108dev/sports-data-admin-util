@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from ..db import db_models
 from ..logging import logger
-from ..utils.datetime_utils import utcnow
+from ..utils.datetime_utils import now_utc
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -71,7 +71,7 @@ def upsert_plays(session: Session, game_id: int, plays: Sequence[NormalizedPlay]
                 home_score=play.home_score,
                 away_score=play.away_score,
                 raw_data=play.raw_data,
-                updated_at=utcnow(),
+                updated_at=now_utc(),
             )
             .on_conflict_do_nothing(
                 index_elements=["game_id", "play_index"],
@@ -83,6 +83,6 @@ def upsert_plays(session: Session, game_id: int, plays: Sequence[NormalizedPlay]
 
     logger.info("plays_upserted", game_id=game_id, count=upserted)
     if upserted:
-        game.last_pbp_at = utcnow()
+        game.last_pbp_at = now_utc()
         session.flush()
     return upserted

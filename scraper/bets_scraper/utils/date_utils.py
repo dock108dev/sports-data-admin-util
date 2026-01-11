@@ -1,4 +1,10 @@
-"""Date and season calculation utilities."""
+"""
+Domain-level date and season calculation utilities.
+
+This module handles sports-specific calendar logic, such as season boundaries
+and year inference. It operates on 'date' objects and should NOT contain
+time-of-day or timezone-specific logic (which belongs in datetime_utils.py).
+"""
 
 from __future__ import annotations
 

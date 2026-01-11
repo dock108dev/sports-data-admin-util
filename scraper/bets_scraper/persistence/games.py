@@ -12,7 +12,7 @@ from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedGame
 from ..utils.db_queries import get_league_id
-from ..utils.datetime_utils import utcnow
+from ..utils.datetime_utils import now_utc
 from ..utils.date_utils import season_from_date
 from .teams import _upsert_team
 
@@ -111,16 +111,16 @@ def upsert_game_stub(
                 existing.external_ids = merged_external_ids
                 updated = True
         if updated_status == db_models.GameStatus.final.value and existing.end_time is None:
-            existing.end_time = utcnow()
+            existing.end_time = now_utc()
             updated = True
         if updated:
-            existing.updated_at = utcnow()
-            existing.last_ingested_at = utcnow()
+            existing.updated_at = now_utc()
+            existing.last_ingested_at = now_utc()
         session.flush()
         return existing.id, False
 
     season = season_from_date(game_date.date(), league_code)
-    end_time_value = utcnow() if normalized_status == db_models.GameStatus.final.value else None
+    end_time_value = now_utc() if normalized_status == db_models.GameStatus.final.value else None
     game = db_models.SportsGame(
         league_id=league_id,
         season=season,
@@ -136,7 +136,7 @@ def upsert_game_stub(
         source_game_key=None,
         scrape_version=1,
         last_scraped_at=None,
-        last_ingested_at=utcnow(),
+        last_ingested_at=now_utc(),
         external_ids=external_ids or {},
     )
     session.add(game)
@@ -175,12 +175,12 @@ def update_game_from_live_feed(
         game.external_ids = merged_external_ids
         updated = True
     if updated_status == db_models.GameStatus.final.value and game.end_time is None:
-        game.end_time = utcnow()
+        game.end_time = now_utc()
         updated = True
 
     if updated:
-        game.updated_at = utcnow()
-        game.last_ingested_at = utcnow()
+        game.updated_at = now_utc()
+        game.last_ingested_at = now_utc()
         session.flush()
     return updated
 
@@ -194,7 +194,7 @@ def upsert_game(session: Session, normalized: NormalizedGame) -> tuple[int, bool
     home_team_id = _upsert_team(session, league_id, normalized.identity.home_team)
     away_team_id = _upsert_team(session, league_id, normalized.identity.away_team)
     normalized_status = _normalize_status(normalized.status)
-    end_time_value = utcnow() if normalized_status == db_models.GameStatus.final.value else None
+    end_time_value = now_utc() if normalized_status == db_models.GameStatus.final.value else None
 
     base_stmt = insert(db_models.SportsGame).values(
         league_id=league_id,
@@ -210,8 +210,8 @@ def upsert_game(session: Session, normalized: NormalizedGame) -> tuple[int, bool
         end_time=end_time_value,
         source_game_key=normalized.identity.source_game_key,
         scrape_version=1,
-        last_scraped_at=utcnow(),
-        last_ingested_at=utcnow(),
+        last_scraped_at=now_utc(),
+        last_ingested_at=now_utc(),
         external_ids={},
     )
     excluded = base_stmt.excluded
@@ -231,12 +231,12 @@ def upsert_game(session: Session, normalized: NormalizedGame) -> tuple[int, bool
         "status": normalized_status,
         "venue": normalized.venue,
         "scrape_version": db_models.SportsGame.scrape_version + 1,
-        "last_scraped_at": utcnow(),
+        "last_scraped_at": now_utc(),
         "last_ingested_at": case(
-            (ingest_changed, utcnow()),
+            (ingest_changed, now_utc()),
             else_=db_models.SportsGame.last_ingested_at,
         ),
-        "updated_at": utcnow(),
+        "updated_at": now_utc(),
         "end_time": func.coalesce(
             db_models.SportsGame.end_time,
             end_time_value,

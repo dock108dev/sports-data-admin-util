@@ -15,6 +15,8 @@
 | [Database Integration](DATABASE_INTEGRATION.md) | How to query the sports database |
 | [Scoring Logic & Scrapers](SCORE_LOGIC_AND_SCRAPERS.md) | How data ingestion works |
 | [X Integration](X_INTEGRATION.md) | Social media scraping from X/Twitter |
+| [NBA Social Review](social-nba-review.md) | Audit of NBA X/Twitter social ingestion |
+| [NHL Social Integration](social-nhl.md) | NHL X/Twitter account scope and validation checklist |
 | [API Reference](API.md) | FastAPI endpoints and usage |
 
 ## Operations
@@ -22,6 +24,7 @@
 | Guide | Description |
 |-------|-------------|
 | [Operator Runbook](OPERATOR_RUNBOOK.md) | Production operations, backups, monitoring |
+| [Deployment](DEPLOYMENT.md) | Production deploy flow, environment variables, rollbacks |
 | [Feature Flags](feature-flags.md) | Environment toggles and behavior switches |
 | [Changelog](CHANGELOG.md) | Recent changes and releases |
 

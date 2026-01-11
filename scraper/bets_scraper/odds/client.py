@@ -36,6 +36,8 @@ MARKET_TYPES = {
     "h2h": "moneyline",
 }
 
+# NHL uses "spreads" for puck lines; keep the canonical "spread" market type.
+
 # Default snapshot times for closing lines (in UTC)
 # Evening games typically close around these times
 CLOSING_LINE_HOURS = {
@@ -59,6 +61,13 @@ class OddsAPIClient:
         )
         # Cache directory for odds responses
         self._cache_dir = Path(settings.scraper_config.html_cache_dir) / "odds"
+
+    def _truncate_body(self, body: str | None, limit: int = 500) -> str | None:
+        if not body:
+            return None
+        if len(body) <= limit:
+            return body
+        return f"{body[:limit]}..."
 
     # -------------------------------------------------------------------------
     # Cache helpers
@@ -136,7 +145,11 @@ class OddsAPIClient:
 
         response = self.client.get(f"/sports/{sport_key}/odds", params=params)
         if response.status_code != 200:
-            logger.error("odds_api_error", status=response.status_code, body=response.text)
+            logger.error(
+                "odds_api_error",
+                status=response.status_code,
+                body=self._truncate_body(response.text),
+            )
             return []
 
         payload = response.json()
@@ -218,7 +231,7 @@ class OddsAPIClient:
             logger.error(
                 "historical_odds_api_error",
                 status=response.status_code,
-                body=response.text[:500] if response.text else None,
+                body=self._truncate_body(response.text),
             )
             return []
 
@@ -325,14 +338,36 @@ class OddsAPIClient:
                     if not market_type:
                         continue
                     for outcome in market.get("outcomes", []):
+                        side = outcome.get("name")
+                        price = outcome.get("price")
+                        line = outcome.get("point")
+                        if not side or price is None:
+                            logger.debug(
+                                "odds_outcome_skipped",
+                                league=league_code,
+                                book=bookmaker.get("title"),
+                                market=market.get("key"),
+                                reason="missing_side_or_price",
+                            )
+                            continue
+                        if market_type in ("spread", "total") and line is None:
+                            logger.debug(
+                                "odds_outcome_skipped",
+                                league=league_code,
+                                book=bookmaker.get("title"),
+                                market=market.get("key"),
+                                side=side,
+                                reason="missing_line",
+                            )
+                            continue
                         snapshots.append(
                             NormalizedOddsSnapshot(
                                 league_code=league_code,
                                 book=bookmaker["title"],
                                 market_type=market_type,  # type: ignore[arg-type]
-                                side=outcome.get("name"),
-                                line=outcome.get("point"),
-                                price=outcome.get("price"),
+                                side=side,
+                                line=line,
+                                price=price,
                                 observed_at=datetime.fromisoformat(
                                     bookmaker["last_update"].replace("Z", "+00:00")
                                 ),

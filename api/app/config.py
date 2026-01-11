@@ -8,6 +8,8 @@ from functools import lru_cache
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.validate_env import validate_env
+
 
 class Settings(BaseSettings):
     """Environment-driven settings with sensible defaults for local/Hetzner."""
@@ -28,6 +30,7 @@ class Settings(BaseSettings):
     celery_default_queue: str = Field(default="bets-scraper", alias="CELERY_DEFAULT_QUEUE")
     sql_echo: bool = Field(default=False, alias="SQL_ECHO")
     environment: str = Field(default="development", alias="ENVIRONMENT")
+    log_level: str | None = Field(default=None, alias="LOG_LEVEL")
     allowed_cors_origins_raw: str | None = Field(default=None, alias="ALLOWED_CORS_ORIGINS")
     rate_limit_requests: int = Field(default=120, alias="RATE_LIMIT_REQUESTS")
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
@@ -70,8 +73,8 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    validate_env()
     return Settings()
 
 
 settings = get_settings()
-

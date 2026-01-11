@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from .. import db_models
 from ..db import AsyncSession
 from ..utils.datetime_utils import now_utc
-from ..utils.score_redaction import redact_scores
+from ..utils.reveal_utils import redact_scores
 
 logger = logging.getLogger(__name__)
 

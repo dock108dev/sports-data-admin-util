@@ -15,7 +15,7 @@ from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedOddsSnapshot
 from ..utils.db_queries import get_league_id
-from ..utils.datetime_utils import utcnow
+from ..utils.datetime_utils import now_utc
 from .odds_matching import (
     cache_get,
     cache_set,
@@ -110,7 +110,7 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
                     "observed_at": snapshot.observed_at,
                     "source_key": snapshot.source_key,
                     "raw_payload": snapshot.raw_payload,
-                    "updated_at": utcnow(),
+                    "updated_at": now_utc(),
                 },
             )
         )
@@ -323,7 +323,7 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
                 "observed_at": snapshot.observed_at,
                 "source_key": snapshot.source_key,
                 "raw_payload": snapshot.raw_payload,
-                "updated_at": utcnow(),
+                "updated_at": now_utc(),
             },
         )
     )

@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from app.utils.datetime_utils import now_utc as _now_utc
 from typing import Iterable
 
 from ..db import db_models, get_session
 from ..logging import logger
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def start_job_run(phase: str, leagues: Iterable[str]) -> int:
@@ -21,7 +17,7 @@ def start_job_run(phase: str, leagues: Iterable[str]) -> int:
             phase=phase,
             leagues=leagues_list,
             status="running",
-            started_at=_utcnow(),
+            started_at=_now_utc(),
         )
         session.add(run)
         session.flush()
@@ -37,7 +33,7 @@ def complete_job_run(run_id: int, status: str, error_summary: str | None = None)
         if not run:
             logger.error("job_run_missing", run_id=run_id)
             return
-        finished_at = _utcnow()
+        finished_at = _now_utc()
         run.status = status
         run.finished_at = finished_at
         run.duration_seconds = (finished_at - run.started_at).total_seconds()

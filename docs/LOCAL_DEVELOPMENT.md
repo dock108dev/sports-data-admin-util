@@ -21,19 +21,20 @@ docker compose --profile dev up -d --build
 
 ### Using an Existing Database
 
-If you have an existing Postgres database on your host machine (not Docker), the stack is configured to connect to it via `host.docker.internal`.
-
-The default `docker-compose.yml` connects to:
-- Host: `host.docker.internal:5432`
-- Database: `${POSTGRES_DB}` from `.env`
+By default, `infra/docker-compose.yml` runs Postgres **inside Docker** and the API connects to it via the `postgres` service name.
+If you want to connect to a host Postgres instead, you’ll need to override the compose config (not provided by default).
 
 ### Migrations
 
-Migrations run automatically on container startup when `RUN_MIGRATIONS=true`.
+Migrations are run explicitly (not on every container startup). Use the dedicated
+`migrate` service or run Alembic in the API container.
 
 To run migrations manually:
 
 ```bash
+# Recommended (explicit) migration job
+docker compose --profile dev run --rm migrate
+
 # Check current version
 docker exec sports-api alembic current
 
@@ -123,7 +124,7 @@ pnpm dev
 | X_AUTH_TOKEN | No | X auth cookie for social scraping |
 | X_CT0 | No | X csrf cookie for social scraping |
 | NEXT_PUBLIC_SPORTS_API_URL | Yes (web) | API base URL for frontend |
-| RUN_MIGRATIONS | No | Run Alembic on startup (default: true) |
+| RUN_MIGRATIONS | No | Run Alembic on startup (default: false) |
 
 ## Troubleshooting
 
@@ -151,3 +152,8 @@ For social scraping:
 - Ensure postgres is running: docker ps | grep postgres
 - Check the host: Docker uses host.docker.internal for host machine
 - Verify credentials in .env
+
+### Restoring a DB backup (local)
+
+The `infra/scripts/restore.sh` helper is **destructive** and guarded by `CONFIRM_DESTRUCTIVE=true`.
+On Postgres 16+ it uses `DROP DATABASE ... WITH (FORCE)` so you typically don’t need to stop services first.

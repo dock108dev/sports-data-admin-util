@@ -11,7 +11,7 @@ import httpx
 from ..config import settings
 from ..logging import logger
 from ..models import NormalizedPlay, NormalizedPlayByPlay
-from ..utils.datetime_utils import utcnow
+from ..utils.datetime_utils import now_utc
 
 NBA_SCOREBOARD_URL = "https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_{date}.json"
 NBA_PBP_URL = "https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
@@ -127,12 +127,12 @@ class NBALiveFeedClient:
 
 def _parse_nba_game_datetime(value: str | None) -> datetime:
     if not value:
-        return utcnow()
+        return now_utc()
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         return parsed.astimezone(timezone.utc)
     except ValueError:
-        return utcnow()
+        return now_utc()
 
 
 def _parse_nba_clock(value: str | None) -> str | None:

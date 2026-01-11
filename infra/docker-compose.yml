@@ -39,6 +39,7 @@ services:
       retries: 5
 
   api:
+    image: ghcr.io/dock108/sports-data-admin-util-api:latest
     build:
       context: ..
       dockerfile: infra/api.Dockerfile
@@ -51,7 +52,7 @@ services:
       CELERY_RESULT_BACKEND: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/2
       ALLOWED_CORS_ORIGINS: ${ALLOWED_CORS_ORIGINS:-}
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,6 +70,7 @@ services:
       retries: 5
 
   scraper:
+    image: ghcr.io/dock108/sports-data-admin-util-scraper:latest
     build:
       context: ..
       dockerfile: infra/scraper.Dockerfile
@@ -101,6 +103,7 @@ services:
       retries: 5
 
   scraper-beat:
+    image: ghcr.io/dock108/sports-data-admin-util-scraper:latest
     build:
       context: ..
       dockerfile: infra/scraper.Dockerfile
@@ -126,10 +129,32 @@ services:
       - internal
       - app
 
+  migrate:
+    image: ghcr.io/dock108/sports-data-admin-util-api:latest
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    container_name: sports-migrate
+    profiles: ["dev", "prod"]
+    command: ["alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
   web:
+    image: ghcr.io/dock108/sports-data-admin-util-web:latest
     build:
       context: ..
       dockerfile: infra/web.Dockerfile
+      args:
+        NEXT_PUBLIC_SPORTS_API_URL: ${NEXT_PUBLIC_SPORTS_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_THEORY_ENGINE_URL: ${NEXT_PUBLIC_THEORY_ENGINE_URL:-http://localhost:8000}
+        SPORTS_API_INTERNAL_URL: ${SPORTS_API_INTERNAL_URL:-http://api:8000}
     container_name: sports-web
     profiles: ["dev", "prod"]
     environment:

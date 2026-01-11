@@ -155,7 +155,7 @@ class PlaywrightXCollector(XCollectorStrategy):
                 search_url = self._build_search_url(x_handle, window_start, window_end)
                 logger.debug("x_playwright_search_url", url=search_url)
 
-                page.goto(search_url, timeout=self.timeout_ms)
+                page.goto(search_url, timeout=self.timeout_ms, wait_until="domcontentloaded")
                 page.wait_for_timeout(self.wait_ms)
 
                 # Scroll to load more posts

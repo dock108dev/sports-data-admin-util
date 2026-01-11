@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from ..utils.datetime_utils import now_utc
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -35,7 +36,7 @@ class SocialRequestCache:
         window_end: datetime,
         now: datetime | None = None,
     ) -> CacheDecision:
-        current = now or datetime.now(timezone.utc)
+        current = now or now_utc()
 
         recent_poll = (
             session.query(db_models.SocialAccountPoll)

@@ -18,7 +18,7 @@ from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedGame, NormalizedPlayerBoxscore, NormalizedTeamBoxscore
 from ..utils.db_queries import get_league_id
-from ..utils.datetime_utils import utcnow
+from ..utils.datetime_utils import now_utc
 from .games import upsert_game
 from .teams import _upsert_team
 
@@ -99,7 +99,7 @@ def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[Nor
             constraint="uq_team_boxscore_game_team",
             set_={
                 "raw_stats_json": stats_json,
-                "updated_at": utcnow(),
+                "updated_at": now_utc(),
             },
             where=stmt.excluded.raw_stats_json.is_distinct_from(db_models.SportsTeamBoxscore.stats),
         )
@@ -108,7 +108,7 @@ def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[Nor
             updated = True
     if updated:
         session.query(db_models.SportsGame).filter(db_models.SportsGame.id == game_id).update(
-            {db_models.SportsGame.last_ingested_at: utcnow()}
+            {db_models.SportsGame.last_ingested_at: now_utc()}
         )
 
 
@@ -143,7 +143,7 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
                 constraint="uq_player_boxscore_identity",
                 set_={
                     "raw_stats_json": stats_json,
-                    "updated_at": utcnow(),
+                    "updated_at": now_utc(),
                 },
                 where=stmt.excluded.raw_stats_json.is_distinct_from(db_models.SportsPlayerBoxscore.stats),
             )
@@ -169,7 +169,7 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
     )
     if updated:
         session.query(db_models.SportsGame).filter(db_models.SportsGame.id == game_id).update(
-            {db_models.SportsGame.last_ingested_at: utcnow()}
+            {db_models.SportsGame.last_ingested_at: now_utc()}
         )
 
 

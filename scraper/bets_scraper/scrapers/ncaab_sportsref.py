@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Sequence
+
+from ..utils.datetime_utils import date_to_utc_datetime
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -13,6 +16,8 @@ from ..models import (
     GameIdentification,
     NormalizedGame,
     NormalizedPlayerBoxscore,
+    NormalizedPlay,
+    NormalizedPlayByPlay,
     NormalizedTeamBoxscore,
     TeamIdentity,
 )
@@ -41,6 +46,12 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
         "TBD",
         "PPD",
     }
+
+    _OT_NUMBER_PATTERN = re.compile(r"(?:ot|overtime)\s*(\d+)|(\d+)\s*(?:ot|overtime)")
+
+    def pbp_url(self, source_game_key: str) -> str:
+        """NCAAB PBP is embedded in the main boxscore page, not in a separate /pbp/ directory."""
+        return f"https://www.sports-reference.com/cbb/boxscores/{source_game_key}.html"
 
     def _parse_team_row(self, row) -> tuple[TeamIdentity, int]:
         """
@@ -77,6 +88,144 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
             external_ref=abbreviation.upper() if abbreviation else None,
         )
         return identity, score
+
+    def _parse_scorebox_abbreviations(self, soup: BeautifulSoup) -> tuple[str | None, str | None]:
+        """Extract away/home abbreviations from the scorebox."""
+        scorebox = soup.find("div", class_="scorebox")
+        if not scorebox:
+            return None, None
+
+        team_divs = scorebox.find_all("div", recursive=False)
+        if len(team_divs) < 2:
+            return None, None
+
+        def parse_abbr(div: BeautifulSoup) -> str | None:
+            team_link = div.find("a", itemprop="name")
+            if not team_link:
+                strong = div.find("strong")
+                team_link = strong.find("a") if strong else None
+            if not team_link:
+                return None
+            team_name = team_link.text.strip()
+            _, abbr = normalize_team_name(self.league_code, team_name)
+            return abbr
+
+        away_abbr = parse_abbr(team_divs[0])
+        home_abbr = parse_abbr(team_divs[1])
+        return away_abbr, home_abbr
+
+    def _parse_pbp_period_marker(self, row: BeautifulSoup) -> int | None:
+        """Parse PBP header rows into a normalized period number.
+
+        NCAAB uses halves plus overtime. We map:
+        - 1st half => period 1
+        - 2nd half => period 2
+        - OT => period 3 (or higher for OT2/OT3/etc.)
+        """
+        row_id = (row.get("id") or "").strip().lower()
+        header_text = row.get_text(" ", strip=True).lower()
+        marker = " ".join(value for value in (row_id, header_text) if value)
+        if not marker:
+            return None
+
+        if "1st half" in marker or "first half" in marker or row_id in {"h1", "1st", "first"}:
+            return 1
+        if "2nd half" in marker or "second half" in marker or row_id in {"h2", "2nd", "second"}:
+            return 2
+
+        if "ot" in marker or "overtime" in marker:
+            match = self._OT_NUMBER_PATTERN.search(marker)
+            if match:
+                for group in match.groups():
+                    if group:
+                        ot_number = parse_int(group)
+                        if ot_number:
+                            return 2 + ot_number
+            return 3
+
+        if row_id.startswith("q") and len(row_id) == 2 and row_id[1].isdigit():
+            return int(row_id[1])
+
+        return None
+
+    def _parse_pbp_row(
+        self,
+        row: BeautifulSoup,
+        period: int,
+        away_abbr: str | None,
+        home_abbr: str | None,
+        play_index: int,
+    ) -> NormalizedPlay | None:
+        """Parse a single NCAAB play-by-play row."""
+        cells = row.find_all("td")
+        if not cells:
+            return None
+
+        game_clock = cells[0].text.strip() or None
+
+        # Colspan rows are neutral plays (e.g. jump ball, end of half).
+        if len(cells) == 2:
+            description = cells[1].text.strip()
+            return NormalizedPlay(
+                play_index=play_index,
+                quarter=period,
+                game_clock=game_clock,
+                play_type=None,
+                team_abbreviation=None,
+                player_id=None,
+                player_name=None,
+                description=description,
+                home_score=None,
+                away_score=None,
+                raw_data={"full_description": description},
+            )
+
+        # Some CBB PBP pages use 4 columns (Time | Away | Score | Home).
+        if len(cells) >= 6:
+            away_action = cells[1].text.strip()
+            score_text = cells[3].text.strip()
+            home_action = cells[5].text.strip()
+        elif len(cells) >= 4:
+            away_action = cells[1].text.strip()
+            score_text = cells[2].text.strip()
+            home_action = cells[3].text.strip()
+        else:
+            return None
+
+        description_parts = []
+        if away_action:
+            description_parts.append(away_action)
+        if home_action:
+            description_parts.append(home_action)
+        description = " | ".join(description_parts) if description_parts else None
+
+        team_abbr = None
+        if away_action:
+            team_abbr = away_abbr
+        elif home_action:
+            team_abbr = home_abbr
+
+        away_score = None
+        home_score = None
+        if score_text and "-" in score_text:
+            parts = score_text.split("-")
+            if len(parts) == 2:
+                away_score = parse_int(parts[0].strip())
+                home_score = parse_int(parts[1].strip())
+
+        return NormalizedPlay(
+            play_index=play_index,
+            quarter=period,
+            game_clock=game_clock,
+            play_type=None,
+            team_abbreviation=team_abbr,
+            player_id=None,
+            player_name=None,
+            description=description,
+            home_score=home_score,
+            away_score=away_score,
+            raw_data={"away_action": away_action, "home_action": home_action, "score": score_text},
+        )
 
     def _extract_team_stats(self, soup: BeautifulSoup, team_identity: TeamIdentity, is_home: bool) -> dict:
         """Extract team totals from NCAAB boxscore tables."""
@@ -258,7 +407,7 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
                 league_code=self.league_code,
                 season=self._season_from_date(day),
                 season_type="regular",
-                game_date=datetime.combine(day, datetime.min.time()),
+                game_date=date_to_utc_datetime(day),
                 home_team=home_identity,
                 away_team=away_identity,
                 source_game_key=source_game_key,
@@ -288,3 +437,51 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
             games_error=error_count,
             )
         return games
+
+    def fetch_play_by_play(self, source_game_key: str, game_date: date) -> NormalizedPlayByPlay:
+        """Fetch and parse play-by-play for a single NCAAB game."""
+        url = self.pbp_url(source_game_key)
+        soup = self.fetch_html(url, game_date=game_date)
+
+        away_abbr, home_abbr = self._parse_scorebox_abbreviations(soup)
+
+        plays: list[NormalizedPlay] = []
+        play_index = 0
+
+        table = soup.find("table", id="pbp")
+        if not table:
+            logger.warning("pbp_table_not_found", game_key=source_game_key)
+            return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)
+
+        current_period = 0
+        for row in table.find_all("tr"):
+            row_classes = row.get("class", [])
+            if "thead" in row_classes:
+                period_marker = self._parse_pbp_period_marker(row)
+                if period_marker:
+                    current_period = period_marker
+                continue
+
+            cells = row.find_all("td")
+            if not cells:
+                period_marker = self._parse_pbp_period_marker(row)
+                if period_marker:
+                    current_period = period_marker
+                continue
+
+            if current_period == 0:
+                continue
+
+            play = self._parse_pbp_row(row, current_period, away_abbr, home_abbr, play_index)
+            if play:
+                plays.append(play)
+                play_index += 1
+
+        logger.info(
+            "pbp_parsed",
+            game_key=source_game_key,
+            game_date=str(game_date),
+            plays=len(plays),
+        )
+
+        return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)

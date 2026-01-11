@@ -22,39 +22,39 @@ depends_on = None
 
 def upgrade() -> None:
     # 1) Widen side so it can store team names / "Over" / "Under" safely.
-    op.alter_column(
-        "sports_game_odds",
-        "side",
-        existing_type=sa.String(length=20),
-        type_=sa.String(length=100),
-        existing_nullable=True,
+    # Some baselines already have a wider column; keep it safe/idempotent.
+    op.execute(
+        """
+        DO $$
+        DECLARE
+          current_len integer;
+        BEGIN
+          SELECT character_maximum_length
+          INTO current_len
+          FROM information_schema.columns
+          WHERE table_name = 'sports_game_odds'
+            AND column_name = 'side';
+
+          -- If it's a varchar and smaller than 100, widen it.
+          IF current_len IS NOT NULL AND current_len < 100 THEN
+            ALTER TABLE sports_game_odds ALTER COLUMN side TYPE varchar(100);
+          END IF;
+        END $$;
+        """
     )
 
     # 2) Align unique index with upsert ON CONFLICT target.
-    # Existing index name is uq_sports_game_odds_identity, but it currently omits `side`.
-    op.drop_index("uq_sports_game_odds_identity", table_name="sports_game_odds")
-    op.create_index(
-        "uq_sports_game_odds_identity",
-        "sports_game_odds",
-        ["game_id", "book", "market_type", "side", "is_closing_line"],
-        unique=True,
+    # Drop/recreate safely; if it's already correct, CREATE INDEX IF NOT EXISTS is a no-op.
+    op.execute("DROP INDEX IF EXISTS uq_sports_game_odds_identity")
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_sports_game_odds_identity ON sports_game_odds(game_id, book, market_type, side, is_closing_line)"
     )
 
 
 def downgrade() -> None:
-    # Revert unique index (drop side from uniqueness) and shrink side length.
-    op.drop_index("uq_sports_game_odds_identity", table_name="sports_game_odds")
-    op.create_index(
-        "uq_sports_game_odds_identity",
-        "sports_game_odds",
-        ["game_id", "book", "market_type", "is_closing_line"],
-        unique=True,
-    )
-    op.alter_column(
-        "sports_game_odds",
-        "side",
-        existing_type=sa.String(length=100),
-        type_=sa.String(length=20),
-        existing_nullable=True,
+    # Best-effort downgrade (dev only): re-create the older index shape.
+    op.execute("DROP INDEX IF EXISTS uq_sports_game_odds_identity")
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_sports_game_odds_identity ON sports_game_odds(game_id, book, market_type, is_closing_line)"
     )
 

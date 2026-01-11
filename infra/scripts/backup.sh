@@ -25,8 +25,10 @@ if [ -f "$BACKUP_FILE" ]; then
     SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
     echo "Backup complete: $BACKUP_FILE ($SIZE)"
     
-    # Create/update latest symlink
-    ln -sf "$BACKUP_FILE" "${BACKUP_DIR}/latest.sql.gz"
+    # Create/update latest symlink.
+    # Use a relative link so it works both inside the container (/backups/...)
+    # and on the host filesystem (infra/backups/...).
+    ln -sf "$(basename "$BACKUP_FILE")" "${BACKUP_DIR}/latest.sql.gz"
     
     # Keep only last 7 days of backups
     find "$BACKUP_DIR" -name "sports_*.sql.gz" -mtime +7 -delete
