@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getFullSeasonDates, shouldAutoFillDates, type LeagueCode } from "@/lib/utils/seasonDates";
 import { SUPPORTED_LEAGUES, DEFAULT_SCRAPE_RUN_FORM } from "@/lib/constants/sports";
 import styles from "./ScrapeRunForm.module.css";
@@ -22,19 +22,17 @@ interface ScrapeRunFormProps {
 export function ScrapeRunForm({ onSubmit, loading = false, error, success }: ScrapeRunFormProps) {
   const [form, setForm] = useState<ScrapeRunFormData>(DEFAULT_SCRAPE_RUN_FORM);
 
-  useEffect(() => {
-    if (shouldAutoFillDates(form.leagueCode as LeagueCode, form.season, form.startDate, form.endDate)) {
-      const seasonYear = Number(form.season);
-      if (!isNaN(seasonYear) && seasonYear >= 2000 && seasonYear <= 2100) {
-        const dates = getFullSeasonDates(form.leagueCode as LeagueCode, seasonYear);
-        setForm((prev) => ({
-          ...prev,
-          startDate: dates.startDate,
-          endDate: dates.endDate,
-        }));
-      }
+  const maybeAutofillDates = (next: ScrapeRunFormData): ScrapeRunFormData => {
+    if (!shouldAutoFillDates(next.leagueCode as LeagueCode, next.season, next.startDate, next.endDate)) {
+      return next;
     }
-  }, [form.leagueCode, form.season]);
+    const seasonYear = Number(next.season);
+    if (Number.isNaN(seasonYear) || seasonYear < 2000 || seasonYear > 2100) {
+      return next;
+    }
+    const dates = getFullSeasonDates(next.leagueCode as LeagueCode, seasonYear);
+    return { ...next, startDate: dates.startDate, endDate: dates.endDate };
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -61,7 +59,9 @@ export function ScrapeRunForm({ onSubmit, loading = false, error, success }: Scr
           League
           <select
             value={form.leagueCode}
-            onChange={(e) => setForm((prev) => ({ ...prev, leagueCode: e.target.value as LeagueCode }))}
+            onChange={(e) =>
+              setForm((prev) => maybeAutofillDates({ ...prev, leagueCode: e.target.value as LeagueCode }))
+            }
           >
             {SUPPORTED_LEAGUES.map((code) => (
               <option key={code} value={code}>
@@ -76,7 +76,7 @@ export function ScrapeRunForm({ onSubmit, loading = false, error, success }: Scr
           <input
             type="number"
             value={form.season}
-            onChange={(e) => setForm((prev) => ({ ...prev, season: e.target.value }))}
+            onChange={(e) => setForm((prev) => maybeAutofillDates({ ...prev, season: e.target.value }))}
             placeholder="2024"
           />
         </label>

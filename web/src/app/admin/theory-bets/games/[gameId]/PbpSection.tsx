@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { AdminGameDetail } from "@/lib/api/sportsAdmin";
 import styles from "./styles.module.css";
 
@@ -18,16 +18,16 @@ export function PbpSection({ plays }: { plays: AdminGameDetail["plays"] }) {
     return qs.sort((a, b) => a - b);
   }, [plays]);
 
-  useEffect(() => {
-    if (quarters.length > 0 && selectedQuarter === null) {
-      setSelectedQuarter(quarters[0]);
-    }
+  const effectiveQuarter = useMemo(() => {
+    if (quarters.length === 0) return null;
+    if (selectedQuarter === null) return quarters[0];
+    return quarters.includes(selectedQuarter) ? selectedQuarter : quarters[0];
   }, [quarters, selectedQuarter]);
 
   const filteredPlays = useMemo(() => {
-    if (selectedQuarter === null) return plays;
-    return plays.filter((p) => p.quarter === selectedQuarter);
-  }, [plays, selectedQuarter]);
+    if (effectiveQuarter === null) return plays;
+    return plays.filter((p) => p.quarter === effectiveQuarter);
+  }, [plays, effectiveQuarter]);
 
   return (
     <div className={styles.card}>
@@ -50,7 +50,7 @@ export function PbpSection({ plays }: { plays: AdminGameDetail["plays"] }) {
                   <button
                     key={q}
                     type="button"
-                    className={`${styles.quarterTab} ${selectedQuarter === q ? styles.quarterTabActive : ""}`}
+                    className={`${styles.quarterTab} ${effectiveQuarter === q ? styles.quarterTabActive : ""}`}
                     onClick={() => setSelectedQuarter(q)}
                   >
                     {getQuarterLabel(q)}

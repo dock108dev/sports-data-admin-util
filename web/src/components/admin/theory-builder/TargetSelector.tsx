@@ -123,7 +123,7 @@ export function TargetSelector({ value, onChange }: Props) {
             </select>
           </label>
           <p className={styles.sideHint}>
-            Leave as "Any" unless your theory is specifically about home/away.
+            Leave as “Any” unless your theory is specifically about home/away.
           </p>
         </div>
       )}

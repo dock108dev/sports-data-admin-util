@@ -74,7 +74,7 @@ The CI/CD pipeline requires the following secrets to be configured in the GitHub
 
 ## Environment Variables
 
-Production secrets live only on the server in a `.env` file located at `infra/.env` within the project directory. The compose file loads this via environment variable substitution. See `infra/.env` for the production configuration.
+Production secrets live only on the server in a `.env` file located at `infra/.env` within the project directory. The compose file loads this via environment variable substitution. Use `infra/.env.example` as the template (do not commit `infra/.env`).
 
 Required variable categories include:
 
@@ -119,7 +119,7 @@ Note: database migrations are not rolled back automatically. If a deploy include
 ### Service health checks fail after deployment
 
 - Check service logs: `docker compose -f docker-compose.yml --profile prod logs <service>`
-- Verify environment variables in `infra/.env` are correct
+- Verify environment variables in `infra/.env` are correct (compare against `infra/.env.example`)
 - Check database connectivity: `docker compose -f docker-compose.yml --profile prod exec api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"`
 - Ensure migrations ran successfully: `docker compose -f docker-compose.yml --profile prod logs migrate`
 

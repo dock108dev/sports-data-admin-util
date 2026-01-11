@@ -23,7 +23,7 @@ All notable changes to Sports Data Admin.
 - Live play-by-play ingestion with append-only event storage
 - NHL team X handle registry with validation helper
 - NHL play-by-play ingestion via Hockey-Reference
-- Authoritative production `docker-compose.prod.yml` for Hetzner deployment
+- Production Docker Compose profile (`infra/docker-compose.yml` with `--profile prod`) for Hetzner deployment
 
 ### Changed
 - Docker compose now connects to host database via `host.docker.internal`

@@ -112,7 +112,7 @@ export function CohortRuleSelector({ rule, selectedStats, onRuleChange, onModeCh
       {rule.mode === "quantile" && (
         <div className={styles.ruleBuilder}>
           <p className={styles.ruleBuilderHint}>
-            Define which games are "in the cohort" based on stat percentiles.
+            Define which games are “in the cohort” based on stat percentiles.
           </p>
           {(rule.quantile_rules ?? []).map((qr, idx) => (
             <div key={idx} className={styles.ruleRow}>
@@ -174,7 +174,7 @@ export function CohortRuleSelector({ rule, selectedStats, onRuleChange, onModeCh
       {rule.mode === "threshold" && (
         <div className={styles.ruleBuilder}>
           <p className={styles.ruleBuilderHint}>
-            Define which games are "in the cohort" based on stat thresholds.
+            Define which games are “in the cohort” based on stat thresholds.
           </p>
           {(rule.threshold_rules ?? []).map((tr, idx) => (
             <div key={idx} className={styles.ruleRow}>

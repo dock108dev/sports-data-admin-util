@@ -66,7 +66,7 @@ export function DefinePanel({ state, actions, defineComplete }: Props) {
         <h3 className={styles.sectionTitle}>
           4. Rule <span className={styles.required}>*</span>
         </h3>
-        <p className={styles.hint}>How do we decide a game is "in the cohort"?</p>
+        <p className={styles.hint}>How do we decide a game is “in the cohort”?</p>
         <CohortRuleSelector
           rule={draft.cohort_rule}
           selectedStats={draft.inputs.base_stats}

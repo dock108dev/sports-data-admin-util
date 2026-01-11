@@ -25,6 +25,8 @@
 |-------|-------------|
 | [Operator Runbook](OPERATOR_RUNBOOK.md) | Production operations, backups, monitoring |
 | [Deployment](DEPLOYMENT.md) | Production deploy flow, environment variables, rollbacks |
+| [Deployment Setup (One-Time)](DEPLOYMENT_SETUP.md) | Initial server setup checklist |
+| [Edge Proxy (Caddy)](EDGE_PROXY.md) | Route `/api/*` to FastAPI and `/` to Next.js |
 | [Feature Flags](feature-flags.md) | Environment toggles and behavior switches |
 | [Changelog](CHANGELOG.md) | Recent changes and releases |
 
