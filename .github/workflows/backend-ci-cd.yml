@@ -12,8 +12,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      ENVIRONMENT: production
+      ENVIRONMENT: test
       DATABASE_URL: postgresql://test:test@localhost:5432/test
+      REDIS_URL: redis://localhost:6379/0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
