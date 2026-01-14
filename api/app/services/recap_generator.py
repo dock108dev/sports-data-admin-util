@@ -1,4 +1,11 @@
-"""Recap generation service for game snapshots."""
+"""
+Recap generation service for game snapshots.
+
+Generates template-based recaps from play-by-play and social data.
+Uses pattern matching and predefined sentence templates - NOT AI-powered.
+
+The recaps respect reveal levels (pre/post) to avoid spoilers.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,19 @@
-"""Timeline artifact generation for finalized games."""
+"""
+Timeline artifact generation for finalized games.
+
+This module is the core timeline generator. It:
+1. Builds PBP events from game plays (with phase assignment)
+2. Builds social events from posts (with phase and role assignment)
+3. Merges events using phase-first ordering
+4. Generates summaries from the assembled timeline
+
+Related modules:
+- game_analysis.py: Segment detection and highlight extraction
+- compact_mode.py: Timeline compression for compact view
+- timeline_validation.py: Validation and sanity checks
+
+See docs/TIMELINE_ASSEMBLY.md for the assembly contract.
+"""
 
 from __future__ import annotations
 
@@ -15,8 +30,14 @@ from .. import db_models
 from ..db import AsyncSession
 from ..utils.datetime_utils import now_utc
 from .timeline_validation import validate_and_log, TimelineValidationError
+from .game_analysis import build_nba_game_analysis
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# CONSTANTS
+# =============================================================================
 
 NBA_REGULATION_REAL_SECONDS = 75 * 60
 NBA_HALFTIME_REAL_SECONDS = 15 * 60
@@ -82,24 +103,13 @@ class TimelineGenerationError(Exception):
         self.status_code = status_code
 
 
-@dataclass(frozen=True)
-class _ScoringEvent:
-    timeline_index: int
-    timestamp: str
-    quarter: int | None
-    game_clock: str | None
-    home_score: int
-    away_score: int
-    home_delta: int
-    away_delta: int
-    scoring_team_id: int | None
-    points: int
-    lead_team_id: int | None
-    margin: int
-    signed_margin: int
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
 
 
 def _parse_clock_to_seconds(clock: str | None) -> int | None:
+    """Parse game clock (MM:SS) to seconds remaining."""
     if not clock:
         return None
     parts = clock.split(":")
@@ -116,379 +126,16 @@ def _parse_clock_to_seconds(clock: str | None) -> int | None:
 
 
 def _progress_from_index(index: int, total: int) -> float:
+    """Calculate progress through a sequence as a 0-1 float."""
     if total <= 1:
         return 0.5
     return index / (total - 1)
 
 
-def _score_delta(previous: tuple[int, int] | None, current: tuple[int, int]) -> tuple[int, int]:
-    if previous is None:
-        return current[0], current[1]
-    return current[0] - previous[0], current[1] - previous[1]
-
-
-def _lead_team_id(home_score: int, away_score: int, home_team_id: int, away_team_id: int) -> int | None:
-    if home_score > away_score:
-        return home_team_id
-    if away_score > home_score:
-        return away_team_id
-    return None
-
-
-def _scoring_team_id(
-    home_delta: int,
-    away_delta: int,
-    home_team_id: int,
-    away_team_id: int,
-) -> tuple[int | None, int]:
-    if home_delta > 0 and away_delta == 0:
-        return home_team_id, home_delta
-    if away_delta > 0 and home_delta == 0:
-        return away_team_id, away_delta
-    if home_delta > 0 or away_delta > 0:
-        return None, home_delta + away_delta
-    return None, 0
-
-
-def _extract_scoring_events(
-    timeline: Sequence[dict[str, Any]],
-    summary: dict[str, Any],
-) -> list[_ScoringEvent]:
-    home_team_id = summary["teams"]["home"]["id"]
-    away_team_id = summary["teams"]["away"]["id"]
-    scoring_events: list[_ScoringEvent] = []
-    previous_score: tuple[int, int] | None = None
-    for index, event in enumerate(timeline):
-        if event.get("event_type") != "pbp":
-            continue
-        home_score = event.get("home_score")
-        away_score = event.get("away_score")
-        if home_score is None or away_score is None:
-            continue
-        current_score = (home_score, away_score)
-        home_delta, away_delta = _score_delta(previous_score, current_score)
-        if home_delta == 0 and away_delta == 0:
-            previous_score = current_score
-            continue
-        scoring_team, points = _scoring_team_id(home_delta, away_delta, home_team_id, away_team_id)
-        lead_team = _lead_team_id(home_score, away_score, home_team_id, away_team_id)
-        margin = abs(home_score - away_score)
-        signed_margin = home_score - away_score
-        scoring_events.append(
-            _ScoringEvent(
-                timeline_index=index,
-                timestamp=event["synthetic_timestamp"],
-                quarter=event.get("quarter"),
-                game_clock=event.get("game_clock"),
-                home_score=home_score,
-                away_score=away_score,
-                home_delta=home_delta,
-                away_delta=away_delta,
-                scoring_team_id=scoring_team,
-                points=points,
-                lead_team_id=lead_team,
-                margin=margin,
-                signed_margin=signed_margin,
-            )
-        )
-        previous_score = current_score
-    return scoring_events
-
-
-def _segment_for_event_index(segments: list[dict[str, Any]], event_index: int) -> str | None:
-    for segment in segments:
-        key_event_ids = segment["key_event_ids"]
-        if not key_event_ids:
-            continue
-        if key_event_ids[0] <= event_index <= key_event_ids[-1]:
-            return segment["segment_id"]
-    return None
-
-
-def build_nba_game_analysis(timeline: Sequence[dict[str, Any]], summary: dict[str, Any]) -> dict[str, Any]:
-    scoring_events = _extract_scoring_events(timeline, summary)
-    if not scoring_events:
-        return {"segments": [], "highlights": []}
-
-    home_team_id = summary["teams"]["home"]["id"]
-    away_team_id = summary["teams"]["away"]["id"]
-
-    segments: list[dict[str, Any]] = []
-    run_team_id: int | None = None
-    run_points = 0
-    current_segment_start = 0
-    current_segment_type: str | None = None
-    opening_active = True
-    previous_lead_team: int | None = None
-
-    for index, event in enumerate(scoring_events):
-        if event.scoring_team_id is None:
-            run_team_id = None
-            run_points = 0
-        elif run_team_id is None or event.scoring_team_id != run_team_id:
-            run_team_id = event.scoring_team_id
-            run_points = event.points
-        else:
-            run_points += event.points
-
-        clock_remaining = _parse_clock_to_seconds(event.game_clock)
-        is_opening = (
-            opening_active
-            and event.quarter == 1
-            and index < NBA_OPENING_EVENT_LIMIT
-            and (clock_remaining is None or clock_remaining >= NBA_OPENING_WINDOW_SECONDS)
-        )
-        if not is_opening:
-            opening_active = False
-
-        is_garbage_time = (
-            event.quarter == 4
-            and clock_remaining is not None
-            and clock_remaining <= NBA_GARBAGE_WINDOW_SECONDS
-            and event.margin >= NBA_GARBAGE_MARGIN_THRESHOLD
-        )
-        is_blowout = event.margin >= NBA_BLOWOUT_MARGIN_THRESHOLD
-        is_close = (
-            event.quarter == 4
-            and clock_remaining is not None
-            and clock_remaining <= NBA_CLOSE_WINDOW_SECONDS
-            and event.margin <= NBA_CLOSE_MARGIN_THRESHOLD
-        )
-        lead_changed = (
-            previous_lead_team is not None
-            and event.lead_team_id is not None
-            and event.lead_team_id != previous_lead_team
-        )
-        if event.lead_team_id is not None:
-            previous_lead_team = event.lead_team_id
-
-        if is_opening:
-            segment_type = "opening"
-        elif is_garbage_time:
-            segment_type = "garbage_time"
-        elif is_blowout:
-            segment_type = "blowout"
-        elif lead_changed:
-            segment_type = "swing"
-        elif run_points >= NBA_RUN_POINTS_THRESHOLD:
-            segment_type = "run"
-        elif is_close:
-            segment_type = "close"
-        else:
-            segment_type = "steady"
-
-        if current_segment_type is None:
-            current_segment_type = segment_type
-        elif segment_type != current_segment_type:
-            segment_events = scoring_events[current_segment_start:index]
-            segments.append(_build_segment(segment_events, current_segment_type, len(segments) + 1))
-            current_segment_start = index
-            current_segment_type = segment_type
-
-    segment_events = scoring_events[current_segment_start:]
-    if segment_events:
-        segments.append(_build_segment(segment_events, current_segment_type or "steady", len(segments) + 1))
-
-    highlights: list[dict[str, Any]] = []
-
-    highlights.extend(_build_run_highlights(scoring_events, segments))
-    highlights.extend(_build_lead_change_highlights(scoring_events, segments, [home_team_id, away_team_id]))
-    highlights.extend(_build_quarter_shift_highlights(scoring_events, segments))
-    highlights.append(_build_game_deciding_highlight(scoring_events, segments, summary))
-
-    return {"segments": segments, "highlights": [highlight for highlight in highlights if highlight]}
-
-
-def _build_segment(events: Sequence[_ScoringEvent], segment_type: str, segment_number: int) -> dict[str, Any]:
-    start_event = events[0]
-    end_event = events[-1]
-    teams_involved = sorted({event.scoring_team_id for event in events if event.scoring_team_id is not None})
-    return {
-        "segment_id": f"segment_{segment_number}",
-        "start_timestamp": start_event.timestamp,
-        "end_timestamp": end_event.timestamp,
-        "segment_type": segment_type,
-        "teams_involved": teams_involved,
-        "score_start": {"home": start_event.home_score, "away": start_event.away_score},
-        "score_end": {"home": end_event.home_score, "away": end_event.away_score},
-        "score_delta": {
-            "home": end_event.home_score - start_event.home_score,
-            "away": end_event.away_score - start_event.away_score,
-        },
-        "key_event_ids": [event.timeline_index for event in events],
-    }
-
-
-def _build_run_highlights(
-    scoring_events: Sequence[_ScoringEvent],
-    segments: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    highlights: list[dict[str, Any]] = []
-    run_team_id: int | None = None
-    run_points = 0
-    run_start_index = 0
-
-    for index, event in enumerate(scoring_events):
-        if event.scoring_team_id is None:
-            continue
-        if run_team_id is None or event.scoring_team_id != run_team_id:
-            if run_team_id is not None and run_points >= NBA_RUN_POINTS_THRESHOLD:
-                end_event = scoring_events[index - 1]
-                start_event = scoring_events[run_start_index]
-                highlights.append(
-                    {
-                        "highlight_type": "scoring_run",
-                        "start_timestamp": start_event.timestamp,
-                        "end_timestamp": end_event.timestamp,
-                        "teams_involved": [run_team_id],
-                        "score_context": {
-                            "points": run_points,
-                            "start_score": {"home": start_event.home_score, "away": start_event.away_score},
-                            "end_score": {"home": end_event.home_score, "away": end_event.away_score},
-                            "team_id": run_team_id,
-                        },
-                        "related_segment_id": _segment_for_event_index(segments, start_event.timeline_index),
-                    }
-                )
-            run_team_id = event.scoring_team_id
-            run_points = event.points
-            run_start_index = index
-        else:
-            run_points += event.points
-
-    if run_team_id is not None and run_points >= NBA_RUN_POINTS_THRESHOLD:
-        end_event = scoring_events[-1]
-        start_event = scoring_events[run_start_index]
-        highlights.append(
-            {
-                "highlight_type": "scoring_run",
-                "start_timestamp": start_event.timestamp,
-                "end_timestamp": end_event.timestamp,
-                "teams_involved": [run_team_id],
-                "score_context": {
-                    "points": run_points,
-                    "start_score": {"home": start_event.home_score, "away": start_event.away_score},
-                    "end_score": {"home": end_event.home_score, "away": end_event.away_score},
-                    "team_id": run_team_id,
-                },
-                "related_segment_id": _segment_for_event_index(segments, start_event.timeline_index),
-            }
-        )
-
-    return highlights
-
-
-def _build_lead_change_highlights(
-    scoring_events: Sequence[_ScoringEvent],
-    segments: list[dict[str, Any]],
-    teams_involved: list[int],
-) -> list[dict[str, Any]]:
-    highlights: list[dict[str, Any]] = []
-    previous_lead_team: int | None = None
-    for event in scoring_events:
-        if event.lead_team_id is not None and previous_lead_team is not None and event.lead_team_id != previous_lead_team:
-            highlights.append(
-                {
-                    "highlight_type": "lead_change",
-                    "start_timestamp": event.timestamp,
-                    "end_timestamp": event.timestamp,
-                    "teams_involved": teams_involved,
-                    "score_context": {
-                        "score": {"home": event.home_score, "away": event.away_score},
-                        "lead_team_id": event.lead_team_id,
-                    },
-                    "related_segment_id": _segment_for_event_index(segments, event.timeline_index),
-                }
-            )
-        if event.lead_team_id is not None:
-            previous_lead_team = event.lead_team_id
-    return highlights
-
-
-def _build_quarter_shift_highlights(
-    scoring_events: Sequence[_ScoringEvent],
-    segments: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    first_per_quarter: dict[int, _ScoringEvent] = {}
-    last_per_quarter: dict[int, _ScoringEvent] = {}
-    for event in scoring_events:
-        if event.quarter is None:
-            continue
-        first_per_quarter.setdefault(event.quarter, event)
-        last_per_quarter[event.quarter] = event
-
-    highlights: list[dict[str, Any]] = []
-    quarters = sorted(first_per_quarter)
-    for quarter in quarters:
-        next_quarter = quarter + 1
-        if next_quarter not in first_per_quarter or quarter not in last_per_quarter:
-            continue
-        start_event = last_per_quarter[quarter]
-        end_event = first_per_quarter[next_quarter]
-        margin_change = abs(end_event.signed_margin - start_event.signed_margin)
-        lead_changed = start_event.lead_team_id != end_event.lead_team_id
-        if margin_change >= NBA_SWING_MARGIN_THRESHOLD or lead_changed:
-            highlights.append(
-                {
-                    "highlight_type": "quarter_shift",
-                    "start_timestamp": start_event.timestamp,
-                    "end_timestamp": end_event.timestamp,
-                    "teams_involved": [
-                        team_id
-                        for team_id in (start_event.lead_team_id, end_event.lead_team_id)
-                        if team_id
-                    ],
-                    "score_context": {
-                        "start_score": {"home": start_event.home_score, "away": start_event.away_score},
-                        "end_score": {"home": end_event.home_score, "away": end_event.away_score},
-                        "margin_change": margin_change,
-                    },
-                    "related_segment_id": _segment_for_event_index(segments, start_event.timeline_index),
-                }
-            )
-    return highlights
-
-
-def _build_game_deciding_highlight(
-    scoring_events: Sequence[_ScoringEvent],
-    segments: list[dict[str, Any]],
-    summary: dict[str, Any],
-) -> dict[str, Any] | None:
-    home_score = summary["final_score"]["home"]
-    away_score = summary["final_score"]["away"]
-    if home_score is None or away_score is None:
-        return None
-    winner_id = summary["teams"]["home"]["id"] if home_score > away_score else summary["teams"]["away"]["id"]
-    deciding_start_index: int | None = None
-    previous_lead: int | None = None
-    for index, event in enumerate(scoring_events):
-        if event.lead_team_id is not None and event.lead_team_id != previous_lead:
-            if event.lead_team_id == winner_id:
-                deciding_start_index = index
-            previous_lead = event.lead_team_id
-
-    if deciding_start_index is None:
-        for index, event in enumerate(scoring_events):
-            if event.quarter == 4:
-                deciding_start_index = index
-                break
-    if deciding_start_index is None:
-        deciding_start_index = 0
-
-    start_event = scoring_events[deciding_start_index]
-    end_event = scoring_events[-1]
-    return {
-        "highlight_type": "game_deciding_stretch",
-        "start_timestamp": start_event.timestamp,
-        "end_timestamp": end_event.timestamp,
-        "teams_involved": [winner_id],
-        "score_context": {
-            "start_score": {"home": start_event.home_score, "away": start_event.away_score},
-            "end_score": {"home": end_event.home_score, "away": end_event.away_score},
-            "final_margin": abs(home_score - away_score),
-        },
-        "related_segment_id": _segment_for_event_index(segments, start_event.timeline_index),
-    }
+# =============================================================================
+# PHASE ASSIGNMENT
+# Maps events to narrative phases (q1, q2, halftime, etc.)
+# =============================================================================
 
 
 def _nba_phase_for_quarter(quarter: int | None) -> str:
@@ -533,6 +180,12 @@ def _nba_game_end(game_start: datetime, plays: Sequence[db_models.SportsGamePlay
     if has_overtime:
         end_time += timedelta(seconds=NBA_OVERTIME_PADDING_SECONDS)
     return end_time
+
+
+# =============================================================================
+# PBP EVENT BUILDING
+# Transforms raw plays into timeline events with phases
+# =============================================================================
 
 
 def _build_pbp_events(
@@ -659,6 +312,12 @@ def _assign_social_phase(posted_at: datetime, boundaries: dict[str, tuple[dateti
     return "postgame"
 
 
+# =============================================================================
+# SOCIAL EVENT BUILDING
+# Transforms posts into timeline events with phases and roles
+# =============================================================================
+
+
 # Role assignment patterns (compiled once at module load)
 _ROLE_PATTERNS = {
     # Pregame patterns
@@ -718,21 +377,9 @@ def _assign_social_role(text: str | None, phase: str, has_media: bool = False) -
     
     See docs/SOCIAL_EVENT_ROLES.md for the full taxonomy.
     """
-    # Default roles by phase
-    if phase == "pregame":
-        default_role = "hype"
-    elif phase == "postgame":
-        default_role = "result"
-    elif phase == "halftime":
-        default_role = "commentary"
-    else:
-        default_role = "reaction"
-    
     # If no text, use media type or ambient
     if not text or not text.strip():
         return "highlight" if has_media else "ambient"
-    
-    text_lower = text.lower()
     
     # Check for media/highlight first (highest priority)
     if has_media:
@@ -847,6 +494,12 @@ def _build_social_events(
         )
     
     return events
+
+
+# =============================================================================
+# SUMMARY GENERATION
+# Produces reading guides from timeline artifacts
+# =============================================================================
 
 
 def build_nba_summary(
@@ -1032,14 +685,11 @@ def build_summary_from_timeline(
     
     # Determine winner
     winner_name: str | None = None
-    loser_name: str | None = None
     if final_home_score is not None and final_away_score is not None:
         if final_home_score > final_away_score:
             winner_name = home_name
-            loser_name = away_name
         elif final_away_score > final_home_score:
             winner_name = away_name
-            loser_name = home_name
     
     # Analyze phases and social distribution
     phases_present = sorted(set(e.get("phase") for e in timeline if e.get("phase")))
@@ -1052,11 +702,9 @@ def build_summary_from_timeline(
     
     # Analyze highlights for attention points
     highlights = game_analysis.get("highlights", [])
-    segments = game_analysis.get("segments", [])
     
     # Find key narrative moments
     scoring_runs = [h for h in highlights if h.get("highlight_type") == "scoring_run"]
-    lead_changes = [h for h in highlights if h.get("highlight_type") == "lead_change"]
     deciding_stretch = next(
         (h for h in highlights if h.get("highlight_type") == "game_deciding_stretch"),
         None,
@@ -1078,7 +726,7 @@ def build_summary_from_timeline(
         )
     elif flow == "competitive":
         overview_parts.append(
-            f"Back and forth for most of it, with stretches where either team could take over."
+            "Back and forth for most of it, with stretches where either team could take over."
         )
     elif flow == "close":
         if has_overtime:
@@ -1183,11 +831,26 @@ def build_summary_from_timeline(
     }
 
 
+# =============================================================================
+# TIMELINE ASSEMBLY
+# Merges PBP and social into unified phase-ordered timeline
+# =============================================================================
+
+
 def build_nba_timeline(
     game: db_models.SportsGame,
     plays: Sequence[db_models.SportsGamePlay],
     social_posts: Sequence[db_models.GameSocialPost],
 ) -> tuple[list[dict[str, Any]], dict[str, Any], datetime]:
+    """
+    Build a complete timeline for an NBA game.
+    
+    This is the main entry point for timeline construction. It:
+    1. Builds PBP events with phases
+    2. Builds social events with phases and roles
+    3. Merges them using phase-first ordering
+    4. Returns timeline, summary metadata, and computed game end time
+    """
     game_start = game.start_time
     game_end = _nba_game_end(game_start, plays)
     has_overtime = any((play.quarter or 0) > 4 for play in plays)
@@ -1249,6 +912,12 @@ def _merge_timeline_events(
         result.append(output)
     
     return result
+
+
+# =============================================================================
+# ARTIFACT PERSISTENCE
+# Stores and retrieves timeline artifacts from database
+# =============================================================================
 
 
 async def generate_timeline_artifact(
