@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import selectinload
 
@@ -374,6 +376,75 @@ async def get_game_timeline(
         timeline_json=artifact.timeline_json,
         game_analysis_json=artifact.game_analysis_json,
         summary_json=artifact.summary_json,
+    )
+
+
+class TimelineDiagnosticResponse(BaseModel):
+    """Diagnostic breakdown of timeline artifact contents."""
+
+    game_id: int
+    sport: str
+    timeline_version: str
+    generated_at: datetime
+    total_events: int
+    event_type_counts: dict[str, int]
+    first_5_events: list[dict[str, Any]]
+    last_5_events: list[dict[str, Any]]
+    tweet_timestamps: list[str]
+    pbp_timestamp_range: dict[str, str | None]
+
+
+@router.get("/games/{game_id}/timeline/diagnostic")
+async def get_game_timeline_diagnostic(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> TimelineDiagnosticResponse:
+    """
+    Diagnostic endpoint to inspect timeline artifact contents.
+
+    Use this to confirm what the backend is actually serving before debugging app issues.
+    Returns: event type breakdown, first/last 5 events, and tweet timestamps.
+    """
+    artifact_result = await session.execute(
+        select(db_models.SportsGameTimelineArtifact)
+        .where(db_models.SportsGameTimelineArtifact.game_id == game_id)
+        .order_by(db_models.SportsGameTimelineArtifact.generated_at.desc())
+    )
+    artifact = artifact_result.scalar_one_or_none()
+    if artifact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found")
+
+    timeline = artifact.timeline_json or []
+
+    # Count by event_type
+    event_type_counts: dict[str, int] = {}
+    for event in timeline:
+        event_type = event.get("event_type", "unknown")
+        event_type_counts[event_type] = event_type_counts.get(event_type, 0) + 1
+
+    # Extract tweet timestamps
+    tweet_timestamps = [
+        event.get("synthetic_timestamp", "no-timestamp")
+        for event in timeline
+        if event.get("event_type") == "tweet"
+    ]
+
+    # PBP timestamp range
+    pbp_events = [e for e in timeline if e.get("event_type") == "pbp"]
+    pbp_start = pbp_events[0].get("synthetic_timestamp") if pbp_events else None
+    pbp_end = pbp_events[-1].get("synthetic_timestamp") if pbp_events else None
+
+    return TimelineDiagnosticResponse(
+        game_id=artifact.game_id,
+        sport=artifact.sport,
+        timeline_version=artifact.timeline_version,
+        generated_at=artifact.generated_at,
+        total_events=len(timeline),
+        event_type_counts=event_type_counts,
+        first_5_events=timeline[:5],
+        last_5_events=timeline[-5:] if len(timeline) > 5 else timeline,
+        tweet_timestamps=tweet_timestamps,
+        pbp_timestamp_range={"start": pbp_start, "end": pbp_end},
     )
 
 
