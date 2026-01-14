@@ -95,7 +95,12 @@ class TestTimelineGenerator(unittest.TestCase):
         _, _, game_end = build_nba_timeline(game, plays, [])
         self.assertEqual(game_end, game.start_time + timedelta(minutes=120))
 
-    def test_build_nba_timeline_orders_social_events_by_timestamp(self) -> None:
+    def test_build_nba_timeline_orders_social_within_phase(self) -> None:
+        """Social events within the same phase are ordered by intra-phase order.
+        
+        IMPORTANT: This tests intra-phase ordering, NOT global timestamp ordering.
+        Backend order is the single source of truth. Clients must NOT re-sort.
+        """
         game = self._build_game()
         posts = [
             SimpleNamespace(
@@ -113,13 +118,18 @@ class TestTimelineGenerator(unittest.TestCase):
         timeline, _, _ = build_nba_timeline(game, [], posts)
 
         self.assertEqual(len(timeline), 2)
+        # Both posts are in Q1 phase; ordered by posted_at within phase
         self.assertEqual(timeline[0]["text"], "Early post")
         self.assertEqual(timeline[1]["text"], "Late post")
+        # Verify phase is assigned
+        self.assertEqual(timeline[0]["phase"], "q1")
+        self.assertEqual(timeline[1]["phase"], "q1")
+        # Role is assigned based on phase (q1 = in-game → reaction)
+        self.assertEqual(timeline[0]["role"], "reaction")
         self.assertEqual(
             set(timeline[0].keys()),
-            {"event_type", "author", "handle", "text", "role", "synthetic_timestamp"},
+            {"event_type", "author", "handle", "text", "role", "phase", "synthetic_timestamp"},
         )
-        self.assertEqual(timeline[0]["role"], None)
 
     def test_build_nba_game_analysis_segments_and_highlights(self) -> None:
         timeline = [
