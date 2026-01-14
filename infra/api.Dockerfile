@@ -1,4 +1,4 @@
-FROM python:3.13.3-slim AS builder
+FROM python:3.14.2-slim AS builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ RUN apt-get update \
 COPY api/requirements.txt ./requirements.txt
 RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
 
-FROM python:3.13.3-slim
+FROM python:3.14.2-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
