@@ -4,14 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import selectinload
 
 from .. import db_models
 from ..config import settings
 from ..db import AsyncSession, get_db
+from ..services.compact_mode import get_compact_timeline
 from ..services.recap_generator import build_recap
 from ..services.reveal_levels import parse_reveal_level
 from ..utils.datetime_utils import now_utc
@@ -373,6 +376,140 @@ async def get_game_timeline(
         generated_at=artifact.generated_at,
         timeline_json=artifact.timeline_json,
         game_analysis_json=artifact.game_analysis_json,
+        summary_json=artifact.summary_json,
+    )
+
+
+class TimelineDiagnosticResponse(BaseModel):
+    """Diagnostic breakdown of timeline artifact contents."""
+
+    game_id: int
+    sport: str
+    timeline_version: str
+    generated_at: datetime
+    total_events: int
+    event_type_counts: dict[str, int]
+    first_5_events: list[dict[str, Any]]
+    last_5_events: list[dict[str, Any]]
+    tweet_timestamps: list[str]
+    pbp_timestamp_range: dict[str, str | None]
+
+
+@router.get("/games/{game_id}/timeline/diagnostic")
+async def get_game_timeline_diagnostic(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> TimelineDiagnosticResponse:
+    """
+    Diagnostic endpoint to inspect timeline artifact contents.
+
+    Use this to confirm what the backend is actually serving before debugging app issues.
+    Returns: event type breakdown, first/last 5 events, and tweet timestamps.
+    """
+    artifact_result = await session.execute(
+        select(db_models.SportsGameTimelineArtifact)
+        .where(db_models.SportsGameTimelineArtifact.game_id == game_id)
+        .order_by(db_models.SportsGameTimelineArtifact.generated_at.desc())
+    )
+    artifact = artifact_result.scalar_one_or_none()
+    if artifact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found")
+
+    timeline = artifact.timeline_json or []
+
+    # Count by event_type
+    event_type_counts: dict[str, int] = {}
+    for event in timeline:
+        event_type = event.get("event_type", "unknown")
+        event_type_counts[event_type] = event_type_counts.get(event_type, 0) + 1
+
+    # Extract tweet timestamps
+    tweet_timestamps = [
+        event.get("synthetic_timestamp", "no-timestamp")
+        for event in timeline
+        if event.get("event_type") == "tweet"
+    ]
+
+    # PBP timestamp range
+    pbp_events = [e for e in timeline if e.get("event_type") == "pbp"]
+    pbp_start = pbp_events[0].get("synthetic_timestamp") if pbp_events else None
+    pbp_end = pbp_events[-1].get("synthetic_timestamp") if pbp_events else None
+
+    return TimelineDiagnosticResponse(
+        game_id=artifact.game_id,
+        sport=artifact.sport,
+        timeline_version=artifact.timeline_version,
+        generated_at=artifact.generated_at,
+        total_events=len(timeline),
+        event_type_counts=event_type_counts,
+        first_5_events=timeline[:5],
+        last_5_events=timeline[-5:] if len(timeline) > 5 else timeline,
+        tweet_timestamps=tweet_timestamps,
+        pbp_timestamp_range={"start": pbp_start, "end": pbp_end},
+    )
+
+
+class CompactTimelineResponse(BaseModel):
+    """Compact timeline with semantic compression applied."""
+
+    game_id: int
+    sport: str
+    timeline_version: str
+    compression_level: int
+    original_event_count: int
+    compressed_event_count: int
+    retention_rate: float
+    timeline_json: list[dict[str, Any]]
+    summary_json: dict[str, Any] | None
+
+
+@router.get("/games/{game_id}/timeline/compact", response_model=CompactTimelineResponse)
+async def get_game_timeline_compact(
+    game_id: int,
+    level: int = Query(2, ge=1, le=3, description="Compression level: 1=highlights, 2=standard, 3=detailed"),
+    session: AsyncSession = Depends(get_db),
+) -> CompactTimelineResponse:
+    """
+    Return compact timeline with semantic compression.
+
+    Compact mode operates on semantic groups, not individual events:
+    - Social posts are NEVER dropped
+    - PBP groups collapse to summary markers
+    - Higher excitement periods retain more detail
+
+    Compression levels:
+    - 1 (highlights): ~15-20% PBP retention
+    - 2 (standard): ~40-50% PBP retention (default)
+    - 3 (detailed): ~70-80% PBP retention
+
+    Example request:
+        GET /games/98948/timeline/compact?level=2
+    """
+    artifact_result = await session.execute(
+        select(db_models.SportsGameTimelineArtifact)
+        .where(db_models.SportsGameTimelineArtifact.game_id == game_id)
+        .order_by(db_models.SportsGameTimelineArtifact.generated_at.desc())
+    )
+    artifact = artifact_result.scalar_one_or_none()
+    if artifact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found")
+
+    original_timeline = artifact.timeline_json or []
+    compressed_timeline = get_compact_timeline(original_timeline, level)
+
+    original_count = len(original_timeline)
+    compressed_count = len(compressed_timeline)
+    retention = compressed_count / original_count if original_count > 0 else 1.0
+
+    return CompactTimelineResponse(
+        game_id=artifact.game_id,
+        sport=artifact.sport,
+        timeline_version=artifact.timeline_version,
+        compression_level=level,
+        original_event_count=original_count,
+        compressed_event_count=compressed_count,
+        retention_rate=round(retention, 3),
+        timeline_json=compressed_timeline,
         summary_json=artifact.summary_json,
     )
 
