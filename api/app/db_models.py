@@ -495,6 +495,9 @@ class SportsGameTimelineArtifact(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    # Audit columns for tracking generation source
+    generated_by: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    generation_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     game: Mapped[SportsGame] = relationship("SportsGame", back_populates="timeline_artifacts")
 

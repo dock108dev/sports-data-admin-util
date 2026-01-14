@@ -784,6 +784,8 @@ async def generate_timeline_artifact(
     session: AsyncSession,
     game_id: int,
     timeline_version: str = DEFAULT_TIMELINE_VERSION,
+    generated_by: str = "api",
+    generation_reason: str | None = None,
 ) -> TimelineArtifactPayload:
     logger.info(
         "timeline_artifact_generation_started",
@@ -914,6 +916,8 @@ async def generate_timeline_artifact(
                 timeline_json=timeline,
                 game_analysis_json=game_analysis,
                 summary_json=summary_json,
+                generated_by=generated_by,
+                generation_reason=generation_reason,
             )
             session.add(artifact)
         else:
@@ -921,6 +925,8 @@ async def generate_timeline_artifact(
             artifact.timeline_json = timeline
             artifact.game_analysis_json = game_analysis
             artifact.summary_json = summary_json
+            artifact.generated_by = generated_by
+            artifact.generation_reason = generation_reason
 
         await session.flush()
         logger.info(
