@@ -53,6 +53,13 @@ services:
       ALLOWED_CORS_ORIGINS: ${ALLOWED_CORS_ORIGINS:-}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-false}
+      # OpenAI configuration for AI-enhanced timeline generation
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL_CLASSIFICATION: ${OPENAI_MODEL_CLASSIFICATION:-gpt-4o-mini}
+      OPENAI_MODEL_SUMMARY: ${OPENAI_MODEL_SUMMARY:-gpt-4o}
+      ENABLE_AI_SOCIAL_ROLES: ${ENABLE_AI_SOCIAL_ROLES:-true}
+      ENABLE_AI_SEGMENT_ENRICHMENT: ${ENABLE_AI_SEGMENT_ENRICHMENT:-true}
+      ENABLE_AI_SUMMARY: ${ENABLE_AI_SUMMARY:-true}
     depends_on:
       postgres:
         condition: service_healthy

@@ -4,13 +4,23 @@ Game analysis: segments, highlights, and scoring run detection.
 This module analyzes timeline events to identify narrative segments
 (runs, swings, blowouts) and highlights (lead changes, scoring runs).
 
+AI Integration (Optional):
+    Segments can be enriched with AI-generated labels and tone.
+    This is OPTIONAL and cached. The core segment detection logic
+    remains purely deterministic.
+
 Extracted from timeline_generator.py for maintainability.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Sequence
+
+from .ai_client import enrich_segment, is_ai_available
+
+logger = logging.getLogger(__name__)
 
 # Analysis thresholds (could be configurable per sport)
 NBA_OPENING_WINDOW_SECONDS = 6 * 60
@@ -526,3 +536,94 @@ def build_nba_game_analysis(
         "segments": segments,
         "highlights": [highlight for highlight in highlights if highlight],
     }
+
+
+async def enrich_segments_with_ai(
+    segments: list[dict[str, Any]],
+    game_id: int,
+    sport: str = "NBA",
+) -> list[dict[str, Any]]:
+    """
+    Enrich segments with AI-generated labels and tone.
+    
+    This is OPTIONAL and adds human-readable descriptions.
+    The core structure (type, boundaries, scores) is unchanged.
+    
+    AI outputs are cached per (game_id, segment_id).
+    """
+    if not is_ai_available():
+        logger.debug(
+            "segment_enrichment_skipped",
+            extra={"reason": "ai_unavailable"},
+        )
+        return segments
+    
+    enriched_segments = []
+    for segment in segments:
+        try:
+            # Extract phase info from timestamps or segment data
+            segment_id = segment.get("segment_id", "unknown")
+            segment_type = segment.get("segment_type", "steady")
+            
+            # Infer start/end phases from key_event_ids or use generic
+            start_phase = "early"
+            end_phase = "mid"
+            play_count = len(segment.get("key_event_ids", []))
+            
+            # Call AI enrichment (cached)
+            enrichment = await enrich_segment(
+                game_id=game_id,
+                segment_id=segment_id,
+                segment_type=segment_type,
+                start_phase=start_phase,
+                end_phase=end_phase,
+                play_count=play_count,
+                sport=sport,
+            )
+            
+            # Add AI labels without changing structure
+            enriched = {**segment}
+            enriched["ai_label"] = enrichment.get("label")
+            enriched["ai_tone"] = enrichment.get("tone")
+            enriched_segments.append(enriched)
+            
+        except Exception as e:
+            logger.warning(
+                "segment_enrichment_failed segment_id=%s error=%s",
+                segment.get("segment_id"),
+                str(e),
+            )
+            enriched_segments.append(segment)
+    
+    logger.info(
+        "segments_enriched",
+        extra={"count": len(enriched_segments), "game_id": game_id},
+    )
+    return enriched_segments
+
+
+async def build_nba_game_analysis_async(
+    timeline: Sequence[dict[str, Any]],
+    summary: dict[str, Any],
+    game_id: int,
+    sport: str = "NBA",
+) -> dict[str, Any]:
+    """
+    Analyze a timeline with optional AI enrichment.
+    
+    Same as build_nba_game_analysis but with async AI enrichment
+    of segment labels. The core analysis (segment detection, highlights)
+    remains deterministic.
+    """
+    # Run deterministic analysis first
+    analysis = build_nba_game_analysis(timeline, summary)
+    
+    # Optionally enrich segments with AI
+    if analysis["segments"] and is_ai_available():
+        analysis["segments"] = await enrich_segments_with_ai(
+            segments=analysis["segments"],
+            game_id=game_id,
+            sport=sport,
+        )
+    
+    return analysis

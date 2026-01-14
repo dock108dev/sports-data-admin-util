@@ -8,20 +8,26 @@ This module is the core timeline generator. It:
 4. Generates summaries from the assembled timeline
 
 Related modules:
+- social_events.py: Social post processing and role assignment
+- summary_builder.py: Reading guide generation
 - game_analysis.py: Segment detection and highlight extraction
 - compact_mode.py: Timeline compression for compact view
 - timeline_validation.py: Validation and sanity checks
+- ai_client.py: OpenAI integration for interpretation (not ordering)
+
+AI Usage Principle:
+    OpenAI is used ONLY for interpretation and narration - never for
+    ordering, filtering, or correctness. See docs/TECHNICAL_FLOW.md.
 
 See docs/TIMELINE_ASSEMBLY.md for the assembly contract.
 """
 
 from __future__ import annotations
 
-import re
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Iterable, Sequence
-import logging
+from typing import Any, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -30,7 +36,9 @@ from .. import db_models
 from ..db import AsyncSession
 from ..utils.datetime_utils import now_utc
 from .timeline_validation import validate_and_log, TimelineValidationError
-from .game_analysis import build_nba_game_analysis
+from .game_analysis import build_nba_game_analysis_async
+from .social_events import build_social_events, build_social_events_async
+from .summary_builder import build_nba_summary, build_summary_from_timeline_async
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +59,6 @@ DEFAULT_TIMELINE_VERSION = "v1"
 # These define how far before/after the game we include social posts
 SOCIAL_PREGAME_WINDOW_SECONDS = 2 * 60 * 60   # 2 hours before game start
 SOCIAL_POSTGAME_WINDOW_SECONDS = 2 * 60 * 60  # 2 hours after game end
-NBA_OPENING_WINDOW_SECONDS = 6 * 60
-NBA_OPENING_EVENT_LIMIT = 4
-NBA_RUN_POINTS_THRESHOLD = 8
-NBA_SWING_MARGIN_THRESHOLD = 10
-NBA_CLOSE_MARGIN_THRESHOLD = 5
-NBA_CLOSE_WINDOW_SECONDS = 5 * 60
-NBA_BLOWOUT_MARGIN_THRESHOLD = 20
-NBA_GARBAGE_MARGIN_THRESHOLD = 18
-NBA_GARBAGE_WINDOW_SECONDS = 5 * 60
 
 # Canonical phase ordering - this is the source of truth for timeline order
 PHASE_ORDER: dict[str, int] = {
@@ -78,14 +77,20 @@ PHASE_ORDER: dict[str, int] = {
 
 
 def _phase_sort_order(phase: str | None) -> int:
-    """Return canonical sort order for a phase. Unknown phases sort late."""
+    """Get sort order for a phase. Unknown phases sort after postgame."""
     if phase is None:
-        return 50
-    return PHASE_ORDER.get(phase, 50)
+        return 100
+    return PHASE_ORDER.get(phase, 100)
 
 
-@dataclass(frozen=True)
+# =============================================================================
+# DATA CLASSES
+# =============================================================================
+
+
+@dataclass
 class TimelineArtifactPayload:
+    """Payload for a generated timeline artifact."""
     game_id: int
     sport: str
     timeline_version: str
@@ -96,9 +101,9 @@ class TimelineArtifactPayload:
 
 
 class TimelineGenerationError(Exception):
-    """Raised when timeline generation fails due to invalid input."""
+    """Raised when timeline generation fails."""
 
-    def __init__(self, message: str, *, status_code: int = 400) -> None:
+    def __init__(self, message: str, status_code: int = 500) -> None:
         super().__init__(message)
         self.status_code = status_code
 
@@ -109,44 +114,42 @@ class TimelineGenerationError(Exception):
 
 
 def _parse_clock_to_seconds(clock: str | None) -> int | None:
-    """Parse game clock (MM:SS) to seconds remaining."""
+    """
+    Parse game clock string (e.g. "11:45", "5:30.0") to seconds remaining.
+
+    Returns None if clock is invalid or None.
+    """
     if not clock:
         return None
-    parts = clock.split(":")
-    if len(parts) != 2:
-        return None
     try:
-        minutes = int(parts[0])
-        seconds = int(parts[1])
-    except ValueError:
+        parts = clock.replace(".", ":").split(":")
+        if len(parts) >= 2:
+            return int(parts[0]) * 60 + int(float(parts[1]))
+        return int(float(parts[0]))
+    except (ValueError, IndexError):
         return None
-    if minutes < 0 or seconds < 0 or seconds >= 60:
-        return None
-    return minutes * 60 + seconds
 
 
 def _progress_from_index(index: int, total: int) -> float:
-    """Calculate progress through a sequence as a 0-1 float."""
+    """
+    Calculate progress through the game based on play index.
+
+    Returns 0.0 at start, 1.0 at end.
+    """
     if total <= 1:
-        return 0.5
+        return 0.0
     return index / (total - 1)
 
 
 # =============================================================================
-# PHASE ASSIGNMENT
-# Maps events to narrative phases (q1, q2, halftime, etc.)
+# PHASE UTILITIES
 # =============================================================================
 
 
 def _nba_phase_for_quarter(quarter: int | None) -> str:
-    """
-    Map quarter number to narrative phase.
-    
-    This is the canonical phase assignment for PBP events.
-    Phase determines ordering, not timestamp.
-    """
+    """Map quarter number to narrative phase."""
     if quarter is None:
-        return "pregame"
+        return "unknown"
     if quarter == 1:
         return "q1"
     if quarter == 2:
@@ -155,36 +158,129 @@ def _nba_phase_for_quarter(quarter: int | None) -> str:
         return "q3"
     if quarter == 4:
         return "q4"
-    # Overtime periods: q5 -> ot1, q6 -> ot2, etc.
-    ot_number = quarter - 4
-    return f"ot{ot_number}"
+    if quarter == 5:
+        return "ot1"
+    if quarter == 6:
+        return "ot2"
+    if quarter == 7:
+        return "ot3"
+    if quarter == 8:
+        return "ot4"
+    return f"ot{quarter - 4}" if quarter > 4 else "unknown"
 
 
 def _nba_block_for_quarter(quarter: int | None) -> str:
-    """Alias for backwards compatibility with timeline_block field."""
-    return _nba_phase_for_quarter(quarter)
+    """Map quarter to game block (first_half, second_half, overtime)."""
+    if quarter is None:
+        return "unknown"
+    if quarter <= 2:
+        return "first_half"
+    if quarter <= 4:
+        return "second_half"
+    return "overtime"
 
 
 def _nba_quarter_start(game_start: datetime, quarter: int) -> datetime:
-    halftime_offset = NBA_HALFTIME_REAL_SECONDS if quarter >= 3 else 0
-    return game_start + timedelta(seconds=(quarter - 1) * NBA_QUARTER_REAL_SECONDS + halftime_offset)
+    """Calculate when a quarter starts in real time."""
+    if quarter == 1:
+        return game_start
+    if quarter == 2:
+        return game_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
+    if quarter == 3:
+        return game_start + timedelta(
+            seconds=2 * NBA_QUARTER_REAL_SECONDS + NBA_HALFTIME_REAL_SECONDS
+        )
+    if quarter == 4:
+        return game_start + timedelta(
+            seconds=3 * NBA_QUARTER_REAL_SECONDS + NBA_HALFTIME_REAL_SECONDS
+        )
+    # Overtime quarters
+    ot_num = quarter - 4
+    return game_start + timedelta(
+        seconds=NBA_REGULATION_REAL_SECONDS + ot_num * 15 * 60
+    )
 
 
 def _nba_regulation_end(game_start: datetime) -> datetime:
-    return game_start + timedelta(seconds=NBA_REGULATION_REAL_SECONDS + NBA_HALFTIME_REAL_SECONDS)
+    """Calculate when regulation ends."""
+    return game_start + timedelta(seconds=NBA_REGULATION_REAL_SECONDS)
 
 
-def _nba_game_end(game_start: datetime, plays: Sequence[db_models.SportsGamePlay]) -> datetime:
-    has_overtime = any((play.quarter or 0) > 4 for play in plays)
-    end_time = _nba_regulation_end(game_start)
+def _nba_game_end(
+    game_start: datetime, plays: Sequence[db_models.SportsGamePlay]
+) -> datetime:
+    """Calculate actual game end time based on plays."""
+    max_quarter = 4
+    for play in plays:
+        if play.quarter and play.quarter > max_quarter:
+            max_quarter = play.quarter
+
+    if max_quarter <= 4:
+        return _nba_regulation_end(game_start)
+
+    # Has overtime
+    ot_count = max_quarter - 4
+    return game_start + timedelta(
+        seconds=NBA_REGULATION_REAL_SECONDS + ot_count * 15 * 60
+    )
+
+
+def _compute_phase_boundaries(
+    game_start: datetime, has_overtime: bool = False
+) -> dict[str, tuple[datetime, datetime]]:
+    """
+    Compute start/end times for each narrative phase.
+
+    These boundaries are used to assign social posts to phases.
+    The pregame and postgame phases extend beyond the game itself.
+    """
+    boundaries: dict[str, tuple[datetime, datetime]] = {}
+
+    # Pregame: 2 hours before to game start
+    pregame_start = game_start - timedelta(seconds=SOCIAL_PREGAME_WINDOW_SECONDS)
+    boundaries["pregame"] = (pregame_start, game_start)
+
+    # Q1
+    q1_start = game_start
+    q1_end = game_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
+    boundaries["q1"] = (q1_start, q1_end)
+
+    # Q2
+    q2_start = q1_end
+    q2_end = q2_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
+    boundaries["q2"] = (q2_start, q2_end)
+
+    # Halftime
+    halftime_start = q2_end
+    halftime_end = halftime_start + timedelta(seconds=NBA_HALFTIME_REAL_SECONDS)
+    boundaries["halftime"] = (halftime_start, halftime_end)
+
+    # Q3
+    q3_start = halftime_end
+    q3_end = q3_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
+    boundaries["q3"] = (q3_start, q3_end)
+
+    # Q4
+    q4_start = q3_end
+    q4_end = q4_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
+    boundaries["q4"] = (q4_start, q4_end)
+
+    # Overtime periods (if applicable)
     if has_overtime:
-        end_time += timedelta(seconds=NBA_OVERTIME_PADDING_SECONDS)
-    return end_time
+        ot_start = q4_end
+        for i in range(1, 5):  # Up to 4 OT periods
+            ot_end = ot_start + timedelta(seconds=15 * 60)
+            boundaries[f"ot{i}"] = (ot_start, ot_end)
+            ot_start = ot_end
+        boundaries["postgame"] = (ot_start, ot_start + timedelta(hours=2))
+    else:
+        boundaries["postgame"] = (q4_end, q4_end + timedelta(hours=2))
+
+    return boundaries
 
 
 # =============================================================================
 # PBP EVENT BUILDING
-# Transforms raw plays into timeline events with phases
 # =============================================================================
 
 
@@ -193,647 +289,62 @@ def _build_pbp_events(
     game_start: datetime,
 ) -> list[tuple[datetime, dict[str, Any]]]:
     """
-    Build PBP events with phase assignment.
-    
-    Each event gets:
-    - phase: The narrative phase (q1, q2, etc.) - controls ordering
-    - intra_phase_order: Sort key within phase (from game clock)
-    - synthetic_timestamp: For display/debugging only, NOT for ordering
+    Build PBP events with phase assignment and synthetic timestamps.
+
+    Each event includes:
+    - phase: Narrative phase (q1, q2, etc.)
+    - intra_phase_order: Sort key within phase (clock-based)
+    - synthetic_timestamp: Computed wall-clock time for display
     """
-    grouped: dict[int | None, list[db_models.SportsGamePlay]] = {}
+    events: list[tuple[datetime, dict[str, Any]]] = []
+    total_plays = len(plays)
+
     for play in plays:
-        grouped.setdefault(play.quarter, []).append(play)
-
-    events: list[tuple[datetime, dict[str, Any]]] = []
-    for quarter, quarter_plays in sorted(grouped.items(), key=lambda item: (item[0] is None, item[0] or 0)):
-        sorted_plays = sorted(quarter_plays, key=lambda play: play.play_index)
+        quarter = play.quarter or 1
         phase = _nba_phase_for_quarter(quarter)
+        block = _nba_block_for_quarter(quarter)
 
-        if quarter is None:
-            window_start = game_start - timedelta(seconds=NBA_PREGAME_REAL_SECONDS)
-            window_seconds = NBA_PREGAME_REAL_SECONDS
-        elif quarter <= 4:
-            window_start = _nba_quarter_start(game_start, quarter)
-            window_seconds = NBA_QUARTER_REAL_SECONDS
+        # Parse game clock
+        clock_seconds = _parse_clock_to_seconds(play.game_clock)
+        if clock_seconds is None:
+            # Fallback: use play index for ordering
+            intra_phase_order = play.play_index
+            progress = _progress_from_index(play.play_index, total_plays)
         else:
-            window_start = _nba_regulation_end(game_start)
-            window_seconds = NBA_OVERTIME_PADDING_SECONDS
+            # Invert clock: 12:00 (720s) -> 0, 0:00 -> 720
+            # So earlier in quarter has lower order (comes first)
+            intra_phase_order = NBA_QUARTER_GAME_SECONDS - clock_seconds
+            progress = (quarter - 1 + (1 - clock_seconds / 720)) / 4
 
-        for index, play in enumerate(sorted_plays):
-            remaining_seconds = _parse_clock_to_seconds(play.game_clock)
-            if quarter and quarter <= 4 and remaining_seconds is not None:
-                progress = (NBA_QUARTER_GAME_SECONDS - remaining_seconds) / NBA_QUARTER_GAME_SECONDS
-            else:
-                progress = _progress_from_index(index, len(sorted_plays))
+        # Compute synthetic timestamp
+        quarter_start = _nba_quarter_start(game_start, quarter)
+        elapsed_in_quarter = NBA_QUARTER_GAME_SECONDS - (clock_seconds or 0)
+        # Scale game time to real time (roughly 1.5x)
+        real_elapsed = elapsed_in_quarter * (NBA_QUARTER_REAL_SECONDS / NBA_QUARTER_GAME_SECONDS)
+        synthetic_ts = quarter_start + timedelta(seconds=real_elapsed)
 
-            progress = min(max(progress, 0.0), 1.0)
-            event_time = window_start + timedelta(seconds=window_seconds * progress)
-            
-            # Compute intra-phase order from game clock (inverted: 12:00 -> 0, 0:00 -> 720)
-            if remaining_seconds is not None:
-                intra_phase_order = NBA_QUARTER_GAME_SECONDS - remaining_seconds
-            else:
-                intra_phase_order = int(progress * NBA_QUARTER_GAME_SECONDS)
-            
-            event_payload = {
-                "event_type": "pbp",
-                "phase": phase,
-                "intra_phase_order": intra_phase_order,
-                "play_index": play.play_index,
-                "quarter": play.quarter,
-                "game_clock": play.game_clock,
-                "play_type": play.play_type,
-                "team_id": play.team_id,
-                "player_id": play.player_id,
-                "player_name": play.player_name,
-                "description": play.description,
-                "home_score": play.home_score,
-                "away_score": play.away_score,
-                "synthetic_timestamp": event_time.isoformat(),
-                "timeline_block": phase,  # Kept for backwards compatibility
-            }
-            events.append((event_time, event_payload))
-
-    return events
-
-
-def _compute_phase_boundaries(game_start: datetime, has_overtime: bool = False) -> dict[str, tuple[datetime, datetime]]:
-    """
-    Compute time boundaries for each narrative phase.
-    
-    Returns dict of phase -> (start_time, end_time).
-    These boundaries are used to assign social posts to phases.
-    """
-    pregame_start = game_start - timedelta(hours=2)
-    q1_start = game_start
-    q1_end = game_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    q2_end = game_start + timedelta(seconds=2 * NBA_QUARTER_REAL_SECONDS)
-    halftime_end = q2_end + timedelta(seconds=NBA_HALFTIME_REAL_SECONDS)
-    q3_end = halftime_end + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    q4_end = halftime_end + timedelta(seconds=2 * NBA_QUARTER_REAL_SECONDS)
-    
-    boundaries = {
-        "pregame": (pregame_start, q1_start),
-        "q1": (q1_start, q1_end),
-        "q2": (q1_end, q2_end),
-        "halftime": (q2_end, halftime_end),
-        "q3": (halftime_end, q3_end),
-        "q4": (q3_end, q4_end),
-    }
-    
-    if has_overtime:
-        ot_start = q4_end
-        ot_end = q4_end + timedelta(seconds=NBA_OVERTIME_PADDING_SECONDS)
-        boundaries["ot1"] = (ot_start, ot_end)
-        boundaries["postgame"] = (ot_end, ot_end + timedelta(hours=2))
-    else:
-        boundaries["postgame"] = (q4_end, q4_end + timedelta(hours=2))
-    
-    return boundaries
-
-
-def _assign_social_phase(posted_at: datetime, boundaries: dict[str, tuple[datetime, datetime]]) -> str:
-    """
-    Assign a social post to a narrative phase based on posting time.
-    
-    Phase determines ordering. Timestamp is secondary.
-    """
-    for phase in ["pregame", "q1", "q2", "halftime", "q3", "q4", "ot1", "ot2", "postgame"]:
-        if phase not in boundaries:
-            continue
-        start, end = boundaries[phase]
-        if start <= posted_at < end:
-            return phase
-    
-    # Fallback: if before all phases, pregame; if after all, postgame
-    earliest_start = min(b[0] for b in boundaries.values())
-    if posted_at < earliest_start:
-        return "pregame"
-    return "postgame"
-
-
-# =============================================================================
-# SOCIAL EVENT BUILDING
-# Transforms posts into timeline events with phases and roles
-# =============================================================================
-
-
-# Role assignment patterns (compiled once at module load)
-_ROLE_PATTERNS = {
-    # Pregame patterns
-    "context": [
-        re.compile(r"\b(starting|lineup|injury|out tonight|questionable|doubtful|inactive)\b", re.I),
-        re.compile(r"\b(report|update|status)\b", re.I),
-    ],
-    "hype": [
-        re.compile(r"\b(game\s*day|let'?s\s*go|tip[- ]?off|ready|tonight)\b", re.I),
-        re.compile(r"🔥|💪|⬆️|🏀", re.I),
-    ],
-    # In-game patterns
-    "momentum": [
-        re.compile(r"\d+-\d+\s*(run|lead|up\s+by)", re.I),
-        re.compile(r"\b(run|streak|straight)\b", re.I),
-    ],
-    "milestone": [
-        re.compile(r"\b(triple[- ]?double|double[- ]?double|career[- ]?high)\b", re.I),
-        re.compile(r"\b(\d+th|first|record)\b.*\b(of the season|in franchise)\b", re.I),
-    ],
-    # Postgame patterns
-    "result": [
-        re.compile(r"\b(final|win|loss|victory|defeat)\b", re.I),
-        re.compile(r"\bGG\b", re.I),
-        re.compile(r"\d+\s*-\s*\d+\s*(final|$)", re.I),
-    ],
-    "reflection": [
-        re.compile(r"\b(on to the next|tough loss|great win|back at it)\b", re.I),
-        re.compile(r"\b(next game|wednesday|tomorrow)\b", re.I),
-    ],
-    # Universal patterns
-    "highlight": [
-        # Video/media indicators - typically these have media attachments
-        re.compile(r"👀|🎥|📹|watch|replay", re.I),
-    ],
-    "ambient": [
-        re.compile(r"\b(crowd|arena|atmosphere|loud)\b", re.I),
-    ],
-}
-
-
-def _assign_social_role(text: str | None, phase: str, has_media: bool = False) -> str:
-    """
-    Assign a narrative role to a social post.
-    
-    Roles define WHY a post is in the timeline:
-    - hype: Build anticipation (pregame)
-    - context: Provide information (pregame, early game)
-    - reaction: Respond to action (in-game)
-    - momentum: Mark a shift (in-game)
-    - milestone: Celebrate achievement (any)
-    - highlight: Share video/clip (any)
-    - commentary: General observation (in-game)
-    - result: Announce outcome (postgame)
-    - reflection: Post-game takeaway (postgame)
-    - ambient: Atmosphere content (any)
-    
-    See docs/SOCIAL_EVENT_ROLES.md for the full taxonomy.
-    """
-    # If no text, use media type or ambient
-    if not text or not text.strip():
-        return "highlight" if has_media else "ambient"
-    
-    # Check for media/highlight first (highest priority)
-    if has_media:
-        for pattern in _ROLE_PATTERNS.get("highlight", []):
-            if pattern.search(text):
-                return "highlight"
-    
-    # Phase-specific refinements
-    if phase == "pregame":
-        # Check context patterns
-        for pattern in _ROLE_PATTERNS.get("context", []):
-            if pattern.search(text):
-                return "context"
-        # Default to hype for pregame
-        return "hype"
-    
-    elif phase == "postgame":
-        # Check result patterns
-        for pattern in _ROLE_PATTERNS.get("result", []):
-            if pattern.search(text):
-                return "result"
-        # Check reflection patterns
-        for pattern in _ROLE_PATTERNS.get("reflection", []):
-            if pattern.search(text):
-                return "reflection"
-        return "result"
-    
-    else:
-        # In-game phases (q1, q2, q3, q4, halftime, ot)
-        # Check milestone first (can appear anytime)
-        for pattern in _ROLE_PATTERNS.get("milestone", []):
-            if pattern.search(text):
-                return "milestone"
-        
-        # Check momentum
-        for pattern in _ROLE_PATTERNS.get("momentum", []):
-            if pattern.search(text):
-                return "momentum"
-        
-        # Short exclamatory posts are reactions
-        if len(text) < 30 and (text.endswith("!") or "!" in text or any(c in text for c in "🔥💪👏🙌")):
-            return "reaction"
-        
-        # Default to commentary for longer in-game posts
-        if len(text) > 50:
-            return "commentary"
-        
-        return "reaction"
-
-
-def _build_social_events(
-    posts: Iterable[db_models.GameSocialPost],
-    phase_boundaries: dict[str, tuple[datetime, datetime]],
-) -> list[tuple[datetime, dict[str, Any]]]:
-    """
-    Build social events with phase and role assignment.
-    
-    Each event gets:
-    - phase: The narrative phase - controls ordering
-    - role: The narrative intent - why it's in the timeline
-    - intra_phase_order: Sort key within phase
-    - synthetic_timestamp: The actual posted_at time
-    
-    Events with null or empty text are DROPPED (not included in timeline).
-    See docs/SOCIAL_EVENT_ROLES.md for role taxonomy.
-    """
-    events: list[tuple[datetime, dict[str, Any]]] = []
-    dropped_count = 0
-    
-    for post in posts:
-        # Filter: Drop posts with null or empty text
-        text = post.tweet_text
-        if text is None or text.strip() == "":
-            dropped_count += 1
-            logger.debug(
-                "social_post_dropped_empty_text",
-                extra={"post_id": getattr(post, "id", None), "author": post.source_handle},
-            )
-            continue
-        
-        event_time = post.posted_at
-        phase = _assign_social_phase(event_time, phase_boundaries)
-        
-        # Assign role based on phase and content
-        # TODO: Pass has_media=True if post has video/image attachment
-        has_media = False  # Placeholder until media detection is implemented
-        role = _assign_social_role(text, phase, has_media)
-        
-        # Compute intra-phase order as seconds since phase start
-        if phase in phase_boundaries:
-            phase_start = phase_boundaries[phase][0]
-            intra_phase_order = (event_time - phase_start).total_seconds()
-        else:
-            intra_phase_order = 0
-        
         event_payload = {
-            "event_type": "tweet",
+            "event_type": "pbp",
             "phase": phase,
-            "role": role,
             "intra_phase_order": intra_phase_order,
-            "author": post.source_handle,
-            "handle": post.source_handle,
-            "text": text,
-            "synthetic_timestamp": event_time.isoformat(),
+            "play_index": play.play_index,
+            "quarter": quarter,
+            "block": block,
+            "game_clock": play.game_clock,
+            "description": play.description,
+            "play_type": play.play_type,
+            "home_score": play.home_score,
+            "away_score": play.away_score,
+            "synthetic_timestamp": synthetic_ts.isoformat(),
+            "game_progress": round(progress, 3),
         }
-        events.append((event_time, event_payload))
-    
-    if dropped_count > 0:
-        logger.info(
-            "social_posts_filtered",
-            extra={"dropped_empty_text": dropped_count, "included": len(events)},
-        )
-    
+        events.append((synthetic_ts, event_payload))
+
     return events
-
-
-# =============================================================================
-# SUMMARY GENERATION
-# Produces reading guides from timeline artifacts
-# =============================================================================
-
-
-def build_nba_summary(
-    game: db_models.SportsGame,
-) -> dict[str, Any]:
-    """
-    Extract basic game metadata for internal use.
-    
-    INTERNAL ONLY: This function provides team IDs, names, and final scores
-    for use by build_summary_from_timeline(). It does NOT generate narrative
-    content. All narrative must come from the timeline artifact.
-    
-    Returns:
-        dict with teams (id/name), final_score, and flow classification
-    """
-    home_name = game.home_team.name if game.home_team else "Home"
-    away_name = game.away_team.name if game.away_team else "Away"
-    home_score = game.home_score
-    away_score = game.away_score
-
-    flow = "unknown"
-    if home_score is not None and away_score is not None:
-        diff = abs(home_score - away_score)
-        if diff <= 5:
-            flow = "close"
-        elif diff <= 12:
-            flow = "competitive"
-        elif diff <= 20:
-            flow = "comfortable"
-        else:
-            flow = "blowout"
-
-    return {
-        "teams": {
-            "home": {"id": game.home_team_id, "name": home_name},
-            "away": {"id": game.away_team_id, "name": away_name},
-        },
-        "final_score": {"home": home_score, "away": away_score},
-        "flow": flow,
-    }
-
-
-def _format_score_context(score: dict[str, int], home_name: str, away_name: str) -> str:
-    return f"{away_name} {score['away']}, {home_name} {score['home']}"
-
-
-def _winner_info(summary: dict[str, Any]) -> tuple[str | None, int | None, int | None]:
-    home_score = summary["final_score"]["home"]
-    away_score = summary["final_score"]["away"]
-    if home_score is None or away_score is None:
-        return None, None, None
-    if home_score > away_score:
-        return summary["teams"]["home"]["name"], home_score, away_score
-    if away_score > home_score:
-        return summary["teams"]["away"]["name"], away_score, home_score
-    return None, home_score, away_score
-
-
-def _segment_narrative(
-    segment: dict[str, Any],
-    home_id: int,
-    away_id: int,
-    home_name: str,
-    away_name: str,
-) -> str:
-    segment_type = segment["segment_type"]
-    teams_involved = segment["teams_involved"]
-    start_score = segment["score_start"]
-    end_score = segment["score_end"]
-    score_delta = segment["score_delta"]
-    start_context = _format_score_context(start_score, home_name, away_name)
-    end_context = _format_score_context(end_score, home_name, away_name)
-
-    if len(teams_involved) == 1:
-        team_id = teams_involved[0]
-        if team_id == home_id:
-            team_name = home_name
-            opponent_name = away_name
-            team_delta = score_delta["home"]
-            opponent_delta = score_delta["away"]
-        elif team_id == away_id:
-            team_name = away_name
-            opponent_name = home_name
-            team_delta = score_delta["away"]
-            opponent_delta = score_delta["home"]
-        else:
-            team_name = "One side"
-            opponent_name = "the opponent"
-            team_delta = score_delta["home"] + score_delta["away"]
-            opponent_delta = 0
-        delta_phrase = f"{team_delta}-{opponent_delta}"
-    else:
-        team_name = "Both teams"
-        opponent_name = "each other"
-        delta_phrase = f"{score_delta['home']}-{score_delta['away']}"
-
-    if segment_type == "opening":
-        return (
-            f"The opening stretch set the tone as {team_name} pushed the pace. "
-            f"The score moved from {start_context} to {end_context}."
-        )
-    if segment_type == "run":
-        return (
-            f"{team_name} went on a run, outscoring {opponent_name} {delta_phrase} "
-            f"from {start_context} to {end_context}."
-        )
-    if segment_type == "swing":
-        return (
-            f"Momentum swung as the lead changed hands in this stretch. "
-            f"The score flipped from {start_context} to {end_context}."
-        )
-    if segment_type == "close":
-        return (
-            f"The finish tightened up, keeping the margin within striking distance. "
-            f"The score inched from {start_context} to {end_context}."
-        )
-    if segment_type == "blowout":
-        return (
-            f"A lopsided burst opened the gap, pushing the score from {start_context} to {end_context}."
-        )
-    if segment_type == "garbage_time":
-        return (
-            f"With the outcome largely decided, the closing minutes drifted from {start_context} "
-            f"to {end_context}."
-        )
-    return (
-        f"The game stayed steady in this stretch, moving from {start_context} to {end_context}."
-    )
-
-
-def build_summary_from_timeline(
-    timeline: Sequence[dict[str, Any]],
-    game_analysis: dict[str, Any],
-) -> dict[str, Any]:
-    """
-    Build a READING GUIDE for the timeline, not a traditional recap.
-    
-    This summary:
-    - Sets expectations for what kind of game this was
-    - Points out where attention should increase while scrolling
-    - Explains how the story unfolds as the timeline progresses
-    
-    It should feel incomplete without the timeline.
-    Its purpose is to guide how the timeline is read, not replace it.
-    
-    See docs/SUMMARY_GENERATION.md for the contract.
-    """
-    # Extract basic info from timeline
-    pbp_events = [e for e in timeline if e.get("event_type") == "pbp"]
-    social_events = [e for e in timeline if e.get("event_type") == "tweet"]
-    
-    # Find final scores
-    final_home_score: int | None = None
-    final_away_score: int | None = None
-    
-    for event in reversed(pbp_events):
-        if event.get("home_score") is not None and final_home_score is None:
-            final_home_score = event["home_score"]
-        if event.get("away_score") is not None and final_away_score is None:
-            final_away_score = event["away_score"]
-        if final_home_score is not None and final_away_score is not None:
-            break
-    
-    # Extract team info from game_analysis
-    summary_data = game_analysis.get("summary", {})
-    home_name = summary_data.get("teams", {}).get("home", {}).get("name", "Home")
-    away_name = summary_data.get("teams", {}).get("away", {}).get("name", "Away")
-    home_team_id = summary_data.get("teams", {}).get("home", {}).get("id")
-    away_team_id = summary_data.get("teams", {}).get("away", {}).get("id")
-    
-    # Compute flow classification
-    flow = "unknown"
-    if final_home_score is not None and final_away_score is not None:
-        diff = abs(final_home_score - final_away_score)
-        if diff <= 5:
-            flow = "close"
-        elif diff <= 12:
-            flow = "competitive"
-        elif diff <= 20:
-            flow = "comfortable"
-        else:
-            flow = "blowout"
-    
-    # Determine winner
-    winner_name: str | None = None
-    if final_home_score is not None and final_away_score is not None:
-        if final_home_score > final_away_score:
-            winner_name = home_name
-        elif final_away_score > final_home_score:
-            winner_name = away_name
-    
-    # Analyze phases and social distribution
-    phases_present = sorted(set(e.get("phase") for e in timeline if e.get("phase")))
-    has_overtime = any(p.startswith("ot") for p in phases_present)
-    
-    social_by_phase: dict[str, int] = {}
-    for event in social_events:
-        phase = event.get("phase", "unknown")
-        social_by_phase[phase] = social_by_phase.get(phase, 0) + 1
-    
-    # Analyze highlights for attention points
-    highlights = game_analysis.get("highlights", [])
-    
-    # Find key narrative moments
-    scoring_runs = [h for h in highlights if h.get("highlight_type") == "scoring_run"]
-    deciding_stretch = next(
-        (h for h in highlights if h.get("highlight_type") == "game_deciding_stretch"),
-        None,
-    )
-    
-    # === BUILD THE READING GUIDE ===
-    
-    # Overview: 1-2 paragraphs setting expectations
-    overview_parts: list[str] = []
-    
-    # Opening sentence - tone setting
-    if flow == "blowout":
-        overview_parts.append(
-            f"This one gets away early. {winner_name} takes control and never really lets go."
-        )
-    elif flow == "comfortable":
-        overview_parts.append(
-            f"A game that looks closer on paper than it felt. {winner_name} stays in command through the middle quarters."
-        )
-    elif flow == "competitive":
-        overview_parts.append(
-            "Back and forth for most of it, with stretches where either team could take over."
-        )
-    elif flow == "close":
-        if has_overtime:
-            overview_parts.append(
-                "This one needs extra time. The tension builds steadily, especially in the final minutes of regulation."
-            )
-        else:
-            overview_parts.append(
-                "Tight throughout. The kind of game where every possession in the fourth starts to matter."
-            )
-    else:
-        overview_parts.append("A game worth scrolling through from start to finish.")
-    
-    # Second sentence - where to focus
-    if scoring_runs:
-        run_phases = set()
-        for run in scoring_runs[:3]:
-            # Infer phase from score context
-            if run.get("score_context", {}).get("start_score"):
-                run_phases.add("mid-game")
-        if run_phases:
-            overview_parts.append(
-                "Watch for the runs — there are stretches where momentum clearly swings."
-            )
-    
-    # Third sentence - social atmosphere
-    total_social = len(social_events)
-    if total_social > 0:
-        if social_by_phase.get("q4", 0) > 0 or social_by_phase.get("postgame", 0) > 3:
-            overview_parts.append(
-                "Reactions pick up as it winds down — you'll feel when the energy shifts."
-            )
-        elif social_by_phase.get("pregame", 0) > 0:
-            overview_parts.append(
-                "Some pre-game buzz sets the tone before things get going."
-            )
-    
-    overview = " ".join(overview_parts)
-    
-    # Attention Points: Where to increase focus
-    attention_points: list[str] = []
-    
-    # Opening stretch
-    attention_points.append("The first few minutes set the early tempo")
-    
-    # Mid-game momentum
-    if scoring_runs:
-        if flow in ["blowout", "comfortable"]:
-            attention_points.append(
-                "A stretch in the second or third where the gap starts to open"
-            )
-        else:
-            attention_points.append(
-                "Mid-game swings where control changes hands"
-            )
-    
-    # Late game
-    if flow == "close":
-        attention_points.append("The final minutes are where everything tightens")
-    elif flow == "competitive":
-        attention_points.append("Watch the fourth — there's still something to play for")
-    elif deciding_stretch:
-        attention_points.append("A decisive run that effectively ends it")
-    else:
-        attention_points.append("The closing stretch confirms the outcome")
-    
-    # Social clustering
-    postgame_count = social_by_phase.get("postgame", 0)
-    ingame_count = sum(
-        social_by_phase.get(p, 0) 
-        for p in ["q1", "q2", "q3", "q4"] + [f"ot{i}" for i in range(1, 5)]
-    )
-    
-    if ingame_count > 0:
-        attention_points.append("In-game reactions mark the moments that landed")
-    if postgame_count > 3:
-        attention_points.append("Postgame reactions capture the aftermath")
-    
-    # === RETURN STRUCTURE ===
-    return {
-        # Metadata (preserved for compatibility)
-        "teams": {
-            "home": {"id": home_team_id, "name": home_name},
-            "away": {"id": away_team_id, "name": away_name},
-        },
-        "final_score": {"home": final_home_score, "away": final_away_score},
-        "flow": flow,
-        "phases_in_timeline": phases_present,
-        "social_counts": {
-            "total": total_social,
-            "by_phase": social_by_phase,
-        },
-        
-        # Reading Guide (new primary output)
-        "overview": overview,
-        "attention_points": attention_points,
-        
-        # Legacy fields (deprecated but kept for compatibility)
-        "overall_summary": overview,  # Alias for overview
-        "closing_summary": "",        # Deprecated: reading guides don't "close"
-        "segments": [],               # Deprecated: attention_points replaces this
-    }
 
 
 # =============================================================================
 # TIMELINE ASSEMBLY
-# Merges PBP and social into unified phase-ordered timeline
 # =============================================================================
 
 
@@ -844,7 +355,7 @@ def build_nba_timeline(
 ) -> tuple[list[dict[str, Any]], dict[str, Any], datetime]:
     """
     Build a complete timeline for an NBA game.
-    
+
     This is the main entry point for timeline construction. It:
     1. Builds PBP events with phases
     2. Builds social events with phases and roles
@@ -859,7 +370,7 @@ def build_nba_timeline(
     phase_boundaries = _compute_phase_boundaries(game_start, has_overtime)
 
     pbp_events = _build_pbp_events(plays, game_start)
-    social_events = _build_social_events(social_posts, phase_boundaries)
+    social_events = build_social_events(social_posts, phase_boundaries)
     timeline = _merge_timeline_events(pbp_events, social_events)
     summary = build_nba_summary(game)
     return timeline, summary, game_end
@@ -871,52 +382,51 @@ def _merge_timeline_events(
 ) -> list[dict[str, Any]]:
     """
     Merge PBP and social events using PHASE-FIRST ordering.
-    
+
     Ordering is determined by:
     1. phase_order (from PHASE_ORDER constant) - PRIMARY
     2. intra_phase_order (clock progress for PBP, seconds for social) - SECONDARY
     3. event_type tiebreaker (pbp before tweet at same position) - TERTIARY
-    
+
     synthetic_timestamp is NOT used for ordering. It is retained for
     display/debugging purposes only.
-    
+
     See docs/TIMELINE_ASSEMBLY.md for the canonical assembly recipe.
     """
     merged = list(pbp_events) + list(social_events)
 
-    def sort_key(item: tuple[datetime, dict[str, Any]]) -> tuple[int, float, int, int]:
+    def sort_key(
+        item: tuple[datetime, dict[str, Any]]
+    ) -> tuple[int, float, int, int]:
         _, payload = item
-        
+
         # Primary: phase order
         phase = payload.get("phase", "unknown")
         phase_order = _phase_sort_order(phase)
-        
+
         # Secondary: intra-phase order
         intra_order = payload.get("intra_phase_order", 0)
-        
+
         # Tertiary: event type (pbp=0, tweet=1) so PBP comes first at ties
         event_type_order = 0 if payload.get("event_type") == "pbp" else 1
-        
+
         # Quaternary: play_index for PBP stability
         play_index = payload.get("play_index", 0)
-        
+
         return (phase_order, intra_order, event_type_order, play_index)
 
     sorted_events = sorted(merged, key=sort_key)
-    
-    # Extract payloads, removing internal sort keys from output
+
+    # Extract payloads, keeping intra_phase_order for compact mode
     result = []
     for _, payload in sorted_events:
-        # Remove intra_phase_order from output (internal use only)
-        output = {k: v for k, v in payload.items() if k != "intra_phase_order"}
-        result.append(output)
-    
+        result.append(payload)
+
     return result
 
 
 # =============================================================================
-# ARTIFACT PERSISTENCE
-# Stores and retrieves timeline artifacts from database
+# ARTIFACT GENERATION
 # =============================================================================
 
 
@@ -927,11 +437,22 @@ async def generate_timeline_artifact(
     generated_by: str = "api",
     generation_reason: str | None = None,
 ) -> TimelineArtifactPayload:
+    """
+    Generate and persist a complete timeline artifact for a game.
+
+    This is the main async entry point. It:
+    1. Fetches game, plays, and social posts from DB
+    2. Builds PBP and social events with phases
+    3. Merges into unified timeline
+    4. Runs game analysis and summary generation
+    5. Validates and persists the artifact
+    """
     logger.info(
         "timeline_artifact_generation_started",
         extra={"game_id": game_id, "timeline_version": timeline_version},
     )
     try:
+        # Fetch game with relations
         result = await session.execute(
             select(db_models.SportsGame)
             .options(
@@ -950,8 +471,11 @@ async def generate_timeline_artifact(
 
         league_code = game.league.code if game.league else ""
         if league_code != "NBA":
-            raise TimelineGenerationError("Timeline generation only supported for NBA", status_code=422)
+            raise TimelineGenerationError(
+                "Timeline generation only supported for NBA", status_code=422
+            )
 
+        # Fetch plays
         plays_result = await session.execute(
             select(db_models.SportsGamePlay)
             .where(db_models.SportsGamePlay.game_id == game_id)
@@ -959,20 +483,25 @@ async def generate_timeline_artifact(
         )
         plays = plays_result.scalars().all()
         if not plays:
-            raise TimelineGenerationError("Missing play-by-play data", status_code=422)
+            raise TimelineGenerationError(
+                "Missing play-by-play data", status_code=422
+            )
 
         game_start = game.start_time
         game_end = _nba_game_end(game_start, plays)
         has_overtime = any((play.quarter or 0) > 4 for play in plays)
-        
+
         # Compute phase boundaries for social event assignment
         phase_boundaries = _compute_phase_boundaries(game_start, has_overtime)
 
-        # Expanded social post window: include pregame and postgame
-        # Posts are assigned to phases by _assign_social_phase(), not filtered out
-        social_window_start = game_start - timedelta(seconds=SOCIAL_PREGAME_WINDOW_SECONDS)
-        social_window_end = game_end + timedelta(seconds=SOCIAL_POSTGAME_WINDOW_SECONDS)
-        
+        # Expanded social post window
+        social_window_start = game_start - timedelta(
+            seconds=SOCIAL_PREGAME_WINDOW_SECONDS
+        )
+        social_window_end = game_end + timedelta(
+            seconds=SOCIAL_POSTGAME_WINDOW_SECONDS
+        )
+
         posts_result = await session.execute(
             select(db_models.GameSocialPost)
             .where(
@@ -983,7 +512,7 @@ async def generate_timeline_artifact(
             .order_by(db_models.GameSocialPost.posted_at)
         )
         posts = posts_result.scalars().all()
-        
+
         logger.info(
             "social_posts_window",
             extra={
@@ -994,71 +523,89 @@ async def generate_timeline_artifact(
             },
         )
 
+        # Build PBP events
         logger.info(
             "timeline_artifact_phase_started",
-            extra={"game_id": game_id, "phase": "build_synthetic_timeline"},
+            extra={"game_id": game_id, "phase": "build_pbp_events"},
         )
         pbp_events = _build_pbp_events(plays, game_start)
         if not pbp_events:
-            raise TimelineGenerationError("Missing play-by-play data", status_code=422)
+            raise TimelineGenerationError(
+                "Missing play-by-play data", status_code=422
+            )
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
                 "game_id": game_id,
-                "phase": "build_synthetic_timeline",
+                "phase": "build_pbp_events",
                 "events": len(pbp_events),
             },
         )
 
+        # Build social events with AI-enhanced roles
         logger.info(
             "timeline_artifact_phase_started",
-            extra={"game_id": game_id, "phase": "merge_social_events"},
+            extra={"game_id": game_id, "phase": "build_social_events"},
         )
-        social_events = _build_social_events(posts, phase_boundaries)
+        social_events = await build_social_events_async(
+            posts, phase_boundaries, league_code
+        )
         timeline = _merge_timeline_events(pbp_events, social_events)
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
                 "game_id": game_id,
-                "phase": "merge_social_events",
+                "phase": "build_social_events",
                 "timeline_events": len(timeline),
                 "social_posts": len(posts),
             },
         )
 
+        # Game analysis
         logger.info(
             "timeline_artifact_phase_started",
-            extra={"game_id": game_id, "phase": "game_segmentation"},
+            extra={"game_id": game_id, "phase": "game_analysis"},
         )
-        # Build basic summary for game_analysis (team IDs, final scores)
         base_summary = build_nba_summary(game)
-        game_analysis = build_nba_game_analysis(timeline, base_summary)
+        game_analysis = await build_nba_game_analysis_async(
+            timeline=timeline,
+            summary=base_summary,
+            game_id=game_id,
+            sport=league_code,
+        )
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
                 "game_id": game_id,
-                "phase": "game_segmentation",
+                "phase": "game_analysis",
                 "segments": len(game_analysis.get("segments", [])),
                 "highlights": len(game_analysis.get("highlights", [])),
             },
         )
 
+        # Summary generation
         logger.info(
             "timeline_artifact_phase_started",
-            extra={"game_id": game_id, "phase": "narrative_summary"},
+            extra={"game_id": game_id, "phase": "summary_generation"},
         )
-        # Build summary from timeline artifact only (timeline-anchored)
-        # This ensures summary reflects what's in the feed, not raw data
-        # Pass base_summary for team names (not re-querying, just cached metadata)
         game_analysis_with_summary = {**game_analysis, "summary": base_summary}
-        summary_json = build_summary_from_timeline(timeline, game_analysis_with_summary)
+        summary_json = await build_summary_from_timeline_async(
+            timeline=timeline,
+            game_analysis=game_analysis_with_summary,
+            game_id=game_id,
+            timeline_version=timeline_version,
+            sport=league_code,
+        )
         logger.info(
             "timeline_artifact_phase_completed",
-            extra={"game_id": game_id, "phase": "narrative_summary"},
+            extra={
+                "game_id": game_id,
+                "phase": "summary_generation",
+                "ai_generated": summary_json.get("ai_generated", False),
+            },
         )
 
-        # VALIDATION GATE: Validate timeline before persistence
-        # Bad timelines never ship. See docs/TIMELINE_VALIDATION.md
+        # Validation
         logger.info(
             "timeline_artifact_phase_started",
             extra={"game_id": game_id, "phase": "validation"},
@@ -1089,6 +636,7 @@ async def generate_timeline_artifact(
                 status_code=422,
             ) from exc
 
+        # Persist artifact
         logger.info(
             "timeline_artifact_phase_started",
             extra={"game_id": game_id, "phase": "persist_artifact"},

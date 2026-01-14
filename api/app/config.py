@@ -35,6 +35,20 @@ class Settings(BaseSettings):
     rate_limit_requests: int = Field(default=120, alias="RATE_LIMIT_REQUESTS")
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
 
+    # OpenAI Configuration
+    # AI is used for interpretation/narration only, never for ordering/filtering
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_model_classification: str = Field(
+        default="gpt-4o-mini", alias="OPENAI_MODEL_CLASSIFICATION"
+    )
+    openai_model_summary: str = Field(
+        default="gpt-4o", alias="OPENAI_MODEL_SUMMARY"
+    )
+    # Feature flags for AI usage
+    enable_ai_social_roles: bool = Field(default=True, alias="ENABLE_AI_SOCIAL_ROLES")
+    enable_ai_segment_enrichment: bool = Field(default=True, alias="ENABLE_AI_SEGMENT_ENRICHMENT")
+    enable_ai_summary: bool = Field(default=True, alias="ENABLE_AI_SUMMARY")
+
     @property
     def allowed_cors_origins(self) -> list[str]:
         """Allow local dev ports for the web UI."""

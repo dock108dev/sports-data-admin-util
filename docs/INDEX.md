@@ -12,6 +12,7 @@
 
 | Guide | Description |
 |-------|-------------|
+| [Technical Flow](TECHNICAL_FLOW.md) | **Start here:** Complete flow from PBP to compact timeline |
 | [Narrative Time Model](NARRATIVE_TIME_MODEL.md) | Core ordering model: narrative time vs wall-clock time |
 | [Timeline Assembly](TIMELINE_ASSEMBLY.md) | Step-by-step timeline generation recipe |
 | [PBP Timestamp Usage](PBP_TIMESTAMP_USAGE.md) | How PBP timestamps are used (and not used) |
