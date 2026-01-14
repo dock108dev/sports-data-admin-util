@@ -311,16 +311,13 @@ async def enrich_segment(
 # Summary Generation
 # ---------------------------------------------------------------------------
 
-SUMMARY_GENERATION_PROMPT = """Sports broadcaster previewing a game for fans about to scroll the timeline.
+SUMMARY_GENERATION_PROMPT = """Tell someone HOW to read this timeline. Not what happened.
 
-BANNED (never use):
-dynamic, thrilling, engaging, narrative, journey, rollercoaster, captivating, pivotal, unfold, witness, tension, nail-biter, tight, close, guessing, momentum shifts, energy, crucial, key, significant, numerous, intense, on their toes, anyone's game, electric, off the charts, explosion, em-dashes (—)
-
-STYLE:
-- Talk like you're telling a buddy about the game
-- State facts. "Three lead changes." "One team ran it up early."
-- Be blunt. If it was boring, say it got interesting late.
-- Each game should sound DIFFERENT
+DO NOT:
+- Summarize the game
+- Use words: pivotal, critical, defining, crucial, dramatic, dynamic, momentum shifts
+- Make it feel complete without scrolling
+- Use em-dashes
 
 GAME DATA:
 Phases: {phases}
@@ -328,18 +325,23 @@ Stretches: {segment_summaries}
 Highlights: {highlights}
 Social: {social_counts}
 
-INSTRUCTIONS:
-Count the lead changes in the data. State the number.
-Did one team dominate? Say which quarters.
-When did social activity spike? Name the phase.
-What was the biggest run or swing?
+YOUR JOB:
+Point to where the timeline gets interesting. Be specific about WHEN.
+Examples of good guidance:
+- "This stays flat until the third"
+- "The first quarter is where it opens up"
+- "Most of the action is late"
+- "Skip to the second half if you want the real game"
 
-Write 2-3 SHORT sentences. Facts only.
-2-3 attention points. Just fragments.
+Use the stretch labels to guide where to look. If there's a "swing" or "run" stretch, tell them where.
+If social clusters postgame, mention it briefly.
+
+2-3 sentences. Be direct. Each game should sound different.
+2-3 attention points as quick fragments.
 
 JSON only:
 {{
-  "overview": "factual, specific to this game",
+  "overview": "direct guidance on how to read this timeline",
   "attention_points": ["fragment 1", "fragment 2", "fragment 3"]
 }}"""
 

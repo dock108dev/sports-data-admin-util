@@ -401,21 +401,39 @@ async def build_summary_from_timeline_async(
     phases_present = template_summary.get("phases_in_timeline", [])
     social_counts = template_summary.get("social_counts", {}).get("by_phase", {})
 
-    # Build segment summaries from game_analysis
+    # Build segment summaries from game_analysis with actual context
     segments = game_analysis.get("segments", [])
     segment_summaries = []
-    for seg in segments[:5]:  # Limit to 5
+    for seg in segments[:6]:  # Limit to 6
         seg_type = seg.get("segment_type", "steady")
-        seg_summaries_str = f"{seg_type} stretch"
-        segment_summaries.append(seg_summaries_str)
+        ai_label = seg.get("ai_label", "")
+        score_start = seg.get("score_start", {})
+        score_end = seg.get("score_end", {})
+        
+        # Build a descriptive summary
+        if ai_label:
+            desc = f"{seg_type}: {ai_label}"
+        else:
+            start_str = f"{score_start.get('away', 0)}-{score_start.get('home', 0)}"
+            end_str = f"{score_end.get('away', 0)}-{score_end.get('home', 0)}"
+            desc = f"{seg_type} ({start_str} to {end_str})"
+        segment_summaries.append(desc)
 
-    # Build highlight summaries
+    # Build highlight summaries with descriptions
     highlights = game_analysis.get("highlights", [])
     highlight_summaries = []
     for h in highlights[:5]:  # Limit to 5
         h_type = h.get("highlight_type", "moment")
-        h_desc = h.get("description", h_type)
-        highlight_summaries.append(h_desc[:50])  # Truncate
+        h_desc = h.get("description")
+        if h_desc:
+            highlight_summaries.append(h_desc[:60])
+        else:
+            # Build from score context if available
+            score_ctx = h.get("score_context", {})
+            if score_ctx:
+                highlight_summaries.append(
+                    f"{h_type} at {score_ctx.get('margin', 0)} pt margin"
+                )
 
     try:
         # Call AI for reading guide generation (cached)
