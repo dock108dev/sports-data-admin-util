@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ScrapeRunConfig(BaseModel):
@@ -18,6 +18,19 @@ class ScrapeRunConfig(BaseModel):
     season_type: str = Field("regular", alias="seasonType")
     start_date: date | None = Field(None, alias="startDate")
     end_date: date | None = Field(None, alias="endDate")
+
+    @field_validator("end_date", mode="after")
+    @classmethod
+    def cap_end_date_to_today(cls, v: date | None) -> date:
+        """Ensure end_date is never null or in the future.
+        
+        If end_date is None or in the future, cap it to today.
+        This prevents scraper from trying to query future games.
+        """
+        today = date.today()
+        if v is None or v > today:
+            return today
+        return v
 
     # Data type toggles
     boxscores: bool = Field(True, alias="boxscores")
