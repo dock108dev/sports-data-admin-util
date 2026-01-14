@@ -16,13 +16,13 @@ export function SocialPostsSection({ posts }: { posts: AdminGameDetail["social_p
     // Trust backend order. See docs/NARRATIVE_TIME_MODEL.md
     // Timestamps do not imply causality or reading order.
     return [...(posts || [])].filter(
-      (post) =>
-        post.tweet_text ||
-        post.image_url ||
-        post.video_url ||
-        post.media_type === "video" ||
-        post.media_type === "image"
-    );
+        (post) =>
+          post.tweet_text ||
+          post.image_url ||
+          post.video_url ||
+          post.media_type === "video" ||
+          post.media_type === "image"
+      );
   }, [posts]);
 
   const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE);
