@@ -5,12 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
  * Uses Web Crypto API's subtle.digest which is available in Edge Runtime.
  */
 async function timingSafeCompare(a: string, b: string): Promise<boolean> {
-  // If lengths differ, always return false (constant time for same-length check)
-  if (a.length !== b.length) {
-    return false;
-  }
-  
   // Use Web Crypto API to create hashes for constant-time comparison
+  // Hashing ensures comparison time is independent of input content and length
   const encoder = new TextEncoder();
   const aBuffer = encoder.encode(a);
   const bBuffer = encoder.encode(b);
@@ -21,7 +17,7 @@ async function timingSafeCompare(a: string, b: string): Promise<boolean> {
     crypto.subtle.digest('SHA-256', bBuffer),
   ]);
   
-  // Compare hashes byte by byte
+  // Compare hashes byte by byte in constant time
   const aArray = new Uint8Array(aHash);
   const bArray = new Uint8Array(bHash);
   

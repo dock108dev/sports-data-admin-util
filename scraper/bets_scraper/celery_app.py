@@ -40,8 +40,8 @@ app.conf.task_routes = {
     "run_scrape_job": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
 }
 # Daily NBA ingestion at 8 AM US Eastern (12:00 UTC during EDT, 13:00 UTC during EST)
-# Using 12:00 UTC to align with 8 AM during daylight saving time (March-November).
-# During standard time (November-March), this will run at 7 AM EST.
+# Using 12:00 UTC to align with 8 AM during Eastern Daylight Time (March-November).
+# During Eastern Standard Time (November-March), this will run at 7 AM EST.
 app.conf.beat_schedule = {
     "daily-nba-ingestion-8am-eastern": {
         "task": "run_scheduled_ingestion",
