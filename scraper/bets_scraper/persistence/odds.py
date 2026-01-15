@@ -299,6 +299,19 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
         cache_set(cache_key, None)
         return False
 
+    # Update game's tip_time if null and we have commence_time from Odds API
+    # snapshot.game_date is the commence_time (actual tip time)
+    game = session.get(db_models.SportsGame, game_id)
+    if game and game.tip_time is None and snapshot.game_date:
+        # Only set tip_time if the Odds API time has an actual time component (not midnight)
+        if snapshot.game_date.hour != 0 or snapshot.game_date.minute != 0:
+            game.tip_time = snapshot.game_date
+            logger.debug(
+                "odds_set_tip_time",
+                game_id=game_id,
+                tip_time=str(snapshot.game_date),
+            )
+
     side_value = snapshot.side if snapshot.side else None
 
     stmt = (
