@@ -152,6 +152,11 @@ class SportsGame(Base):
     odds: Mapped[list["SportsGameOdds"]] = relationship("SportsGameOdds", back_populates="game", cascade="all, delete-orphan")
     social_posts: Mapped[list["GameSocialPost"]] = relationship("GameSocialPost", back_populates="game", cascade="all, delete-orphan")
     plays: Mapped[list["SportsGamePlay"]] = relationship("SportsGamePlay", back_populates="game", cascade="all, delete-orphan")
+    timeline_artifacts: Mapped[list["SportsGameTimelineArtifact"]] = relationship(
+        "SportsGameTimelineArtifact",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         UniqueConstraint("league_id", "season", "game_date", "home_team_id", "away_team_id", name="uq_game_identity"),
@@ -460,6 +465,45 @@ class GameSocialPost(Base):
         Index("idx_social_posts_media_type", "media_type"),
         Index("idx_social_posts_external_id", "external_post_id"),
         UniqueConstraint("platform", "external_post_id", name="uq_social_posts_platform_external_id"),
+    )
+
+
+class SportsGameTimelineArtifact(Base):
+    """Finalized timeline artifacts for games."""
+
+    __tablename__ = "sports_game_timeline_artifacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False, index=True)
+    sport: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    timeline_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    timeline_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        server_default=text("'[]'::jsonb"),
+        nullable=False,
+    )
+    game_analysis_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
+    summary_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    # Audit columns for tracking generation source
+    generated_by: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    generation_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    game: Mapped[SportsGame] = relationship("SportsGame", back_populates="timeline_artifacts")
+
+    __table_args__ = (
+        UniqueConstraint("game_id", "sport", "timeline_version", name="uq_game_timeline_artifact_version"),
+        Index("idx_game_timeline_artifacts_game", "game_id"),
     )
 
 

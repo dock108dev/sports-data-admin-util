@@ -1,5 +1,5 @@
 """
-Centralized structlog configuration for the bets scraper service.
+Centralized structlog configuration for the sports scraper service.
 
 Provides JSON-formatted logs consistent with other dock108 services.
 Logs include environment context for better filtering in production.
@@ -52,7 +52,7 @@ def configure_logging() -> None:
 configure_logging()
 
 # Global logger instance with service context
-logger = structlog.get_logger("bets-scraper").bind(
-    service="bets-scraper",
+logger = structlog.get_logger("sports-scraper").bind(
+    service="sports-scraper",
     environment=settings.environment,
 )

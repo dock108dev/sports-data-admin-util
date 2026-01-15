@@ -326,20 +326,30 @@ class ScrapeRunManager:
                         updated_before=str(updated_before_dt) if updated_before_dt else None,
                     )
 
-                    # Detect if this is a backfill operation. If the end date is older
-                    # than the recent_game_window, we're doing historical backfill and should
-                    # skip the recency filter.
+                    # Detect if this is a backfill operation.
+                    # Backfill = broad date range OR historical end date.
+                    # In backfill mode, we skip the recency filter and process all final games.
                     now = now_utc()
                     recent_window = timedelta(hours=settings.social_config.recent_game_window_hours)
+                    start_dt = datetime.combine(start, datetime.min.time()).replace(tzinfo=timezone.utc)
                     end_dt = datetime.combine(end, datetime.max.time()).replace(tzinfo=timezone.utc)
-                    is_backfill = (now - end_dt) > recent_window
+                    
+                    # Check conditions for backfill mode:
+                    # 1. Date range spans more than 7 days (broad catch-all run)
+                    # 2. End date is in the past beyond recent_window
+                    date_range_days = (end - start).days
+                    is_broad_range = date_range_days > 7
+                    is_historical_end = (now - end_dt) > recent_window
+                    is_backfill = is_broad_range or is_historical_end
                     
                     if is_backfill:
+                        reason = "broad date range" if is_broad_range else "historical end date"
                         logger.info(
                             "social_backfill_mode",
                             run_id=run_id,
                             league=config.league_code,
-                            reason="end_date is older than recent_game_window",
+                            reason=reason,
+                            date_range_days=date_range_days,
                         )
                     
                     with get_session() as session:

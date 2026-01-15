@@ -1,7 +1,7 @@
 [project]
 name = "theory-bets-scraper"
 version = "0.1.0"
-description = "Configurable boxscore + odds ingestion service for dock108 sports theory engine."
+description = "Sports data ingestion service for Scroll Down Sports."
 requires-python = ">=3.11"
 dependencies = [
   "pydantic>=2.8.0,<3.0.0",

@@ -60,6 +60,7 @@ These are defined in `sql/000_sports_schema.sql` + related migrations and mapped
 - **Spoiler filtering is conservative** and uses the shared reveal filter.
 - **No cross-sport data mixing** because posts are attached to game/team IDs, not a league field on the social posts.
 - **Polling only if PBP exists**, to ensure game timelines are real and recent.
+- **No PBP ↔ social matching.** Social posts are stored independently and are not aligned to specific play-by-play events.
 
 ## Required Parity for NHL
 

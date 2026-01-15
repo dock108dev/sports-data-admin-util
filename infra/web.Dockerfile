@@ -1,4 +1,4 @@
-FROM node:20.18-alpine AS base
+FROM node:25.2-alpine AS base
 
 # Install pnpm.
 # Corepack signature verification has intermittently failed in CI/buildkit environments;

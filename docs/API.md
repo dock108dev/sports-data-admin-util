@@ -347,6 +347,77 @@ Fetch social posts ordered by posted time.
 
 ---
 
+### `GET /api/games/{game_id}/timeline`
+
+Fetch the stored finalized timeline artifact for a game.
+
+**Response:** `TimelineArtifactResponse`
+```json
+{
+  "game_id": 123,
+  "sport": "NBA",
+  "timeline_version": "v1",
+  "generated_at": "2026-01-15T04:30:00Z",
+  "timeline": [
+    {
+      "event_type": "pbp",
+      "play_index": 1,
+      "quarter": 1,
+      "game_clock": "12:00",
+      "description": "Tipoff",
+      "synthetic_timestamp": "2026-01-15T02:00:00Z",
+      "timeline_block": "q1"
+    },
+    {
+      "event_type": "tweet",
+      "post_url": "https://x.com/warriors/status/123",
+      "tweet_text": "Game day.",
+      "synthetic_timestamp": "2026-01-15T02:10:00Z"
+    }
+  ],
+  "game_analysis": {
+    "segments": [
+      {
+        "segment_id": "segment_1",
+        "start_timestamp": "2026-01-15T02:00:00Z",
+        "end_timestamp": "2026-01-15T02:10:00Z",
+        "segment_type": "opening",
+        "teams_involved": [1],
+        "score_start": {"home": 2, "away": 0},
+        "score_end": {"home": 12, "away": 8},
+        "score_delta": {"home": 10, "away": 8},
+        "key_event_ids": [0, 1, 2]
+      }
+    ],
+    "highlights": [
+      {
+        "highlight_type": "scoring_run",
+        "start_timestamp": "2026-01-15T02:00:00Z",
+        "end_timestamp": "2026-01-15T02:04:00Z",
+        "teams_involved": [1],
+        "score_context": {
+          "points": 8,
+          "start_score": {"home": 2, "away": 0},
+          "end_score": {"home": 10, "away": 0},
+          "team_id": 1
+        },
+        "related_segment_id": "segment_1"
+      }
+    ]
+  },
+  "summary": {
+    "teams": {
+      "home": {"id": 1, "name": "Warriors"},
+      "away": {"id": 2, "name": "Lakers"}
+    },
+    "final_score": {"home": 110, "away": 103},
+    "flow": "competitive"
+  }
+}
+```
+
+---
+
 ### `GET /api/games/{game_id}/recap`
 
 Generate a recap for a game at a reveal level.

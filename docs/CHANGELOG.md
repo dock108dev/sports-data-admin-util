@@ -13,6 +13,8 @@ All notable changes to Sports Data Admin.
 - Compact moment posts endpoint
 - Compact moment PBP slice endpoint
 - Compact moments endpoint (`GET /games/{id}/compact`)
+- Finalized game timeline artifacts with NBA timeline generation + read endpoint
+- Game analysis JSON for segmented timelines and highlight extraction
 - `game_reading_positions` table for storing user read positions
 - `compact_mode_thresholds` table with per-sport defaults
 - `updated_at` columns on `game_social_posts` and `sports_game_plays`
@@ -32,6 +34,7 @@ All notable changes to Sports Data Admin.
 - Destructive restore utilities now require `CONFIRM_DESTRUCTIVE=true`
 - Social scraper performs upsert (updates existing posts)
 - Ingestion config simplified to data type toggles + shared filters
+- NBA timeline synthesis now treats regulation and halftime as separate fixed blocks when mapping PBP timestamps
 
 ### Fixed
 - Fixed compact mode threshold model restoration

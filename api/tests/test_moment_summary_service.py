@@ -32,11 +32,6 @@ class _FakeSession:
         return self._results.pop(0)
 
 
-class _ErrorSession:
-    async def execute(self, statement):
-        raise RuntimeError("db error")
-
-
 class TestMomentSummaryService(unittest.TestCase):
     def tearDown(self) -> None:
         moment_summaries._clear_summary_cache()
@@ -61,7 +56,10 @@ class TestMomentSummaryService(unittest.TestCase):
         summary = asyncio.run(moment_summaries.summarize_moment(1, 5, session))
         self.assertTrue(summary)
 
-        cached_summary = asyncio.run(moment_summaries.summarize_moment(1, 5, _FakeSession([])))
+        # Second call should use cache (empty session works because cache hit)
+        cached_summary = asyncio.run(
+            moment_summaries.summarize_moment(1, 5, _FakeSession([]))
+        )
         self.assertEqual(summary, cached_summary)
 
     def test_fallback_when_no_plays(self) -> None:
@@ -82,14 +80,14 @@ class TestMomentSummaryService(unittest.TestCase):
         )
 
         summary = asyncio.run(moment_summaries.summarize_moment(2, 9, session))
-        self.assertEqual(
-            summary,
-            "Moment recap unavailable.",
-        )
-
-    def test_fallback_when_session_errors(self) -> None:
-        summary = asyncio.run(moment_summaries.summarize_moment(3, 12, _ErrorSession()))
         self.assertEqual(summary, "Moment recap unavailable.")
+
+    def test_moment_not_found_raises(self) -> None:
+        session = _FakeSession([_FakeResult(scalar_value=None)])
+
+        with self.assertRaises(ValueError) as ctx:
+            asyncio.run(moment_summaries.summarize_moment(3, 12, session))
+        self.assertIn("Moment not found", str(ctx.exception))
 
     def test_summary_redacts_scores(self) -> None:
         play = SimpleNamespace(
@@ -110,16 +108,18 @@ class TestMomentSummaryService(unittest.TestCase):
 
         summary = asyncio.run(moment_summaries.summarize_moment(4, 1, session))
         self.assertTrue(summary)
-        self.assertNotRegex(summary, r"\\d")
+        # Scores should be redacted
+        self.assertNotIn("102", summary)
+        self.assertNotIn("99", summary)
 
-    def test_summary_cache_hit_rate_tracking(self) -> None:
+    def test_momentum_sentence_for_turnover(self) -> None:
         play = SimpleNamespace(
-            id=40,
-            game_id=5,
-            play_index=3,
-            play_type="shot",
-            description="Quick catch and shoot.",
-            raw_data={"team_abbreviation": "NYC"},
+            id=50,
+            game_id=6,
+            play_index=1,
+            play_type="turnover",
+            description="Turnover by Jones.",
+            raw_data={},
         )
         session = _FakeSession(
             [
@@ -129,12 +129,28 @@ class TestMomentSummaryService(unittest.TestCase):
             ]
         )
 
-        asyncio.run(moment_summaries.summarize_moment(5, 3, session))
-        asyncio.run(moment_summaries.summarize_moment(5, 3, _FakeSession([])))
-        hits, misses, hit_rate = moment_summaries._summary_cache_stats()
-        self.assertEqual(hits, 1)
-        self.assertEqual(misses, 1)
-        self.assertAlmostEqual(hit_rate, 0.5)
+        summary = asyncio.run(moment_summaries.summarize_moment(6, 1, session))
+        self.assertIn("turnover", summary.lower())
+
+    def test_momentum_sentence_for_timeout(self) -> None:
+        play = SimpleNamespace(
+            id=60,
+            game_id=7,
+            play_index=1,
+            play_type="timeout",
+            description=None,
+            raw_data={"team_abbreviation": "LAL"},
+        )
+        session = _FakeSession(
+            [
+                _FakeResult(scalar_value=play),
+                _FakeResult(scalar_value=None),
+                _FakeResult(scalars_value=[play]),
+            ]
+        )
+
+        summary = asyncio.run(moment_summaries.summarize_moment(7, 1, session))
+        self.assertIn("pause", summary.lower())
 
 
 if __name__ == "__main__":
