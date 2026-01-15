@@ -203,7 +203,9 @@ services:
     command:
       - -c
       - |
-        echo "Backup service started. Daily backup at 14:00 UTC (9 AM EST)..."
+        echo "Backup service started. Running initial backup..."
+        /scripts/backup.sh
+        echo "Daily backup scheduled at 14:00 UTC (9 AM EST)..."
         while true; do
           # Calculate seconds until next 14:00 UTC
           NOW=$(date +%s)
