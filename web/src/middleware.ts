@@ -28,7 +28,14 @@ export function middleware(request: NextRequest) {
   }
 
   const decoded = Buffer.from(encoded, "base64").toString("utf-8");
-  const [username, password] = decoded.split(":");
+  
+  // Split only on first colon to handle passwords containing colons
+  const colonIndex = decoded.indexOf(":");
+  if (colonIndex === -1) {
+    return unauthorizedResponse();
+  }
+  const username = decoded.substring(0, colonIndex);
+  const password = decoded.substring(colonIndex + 1);
 
   // Fixed username "admin", password from env
   if (username === "admin" && password === adminPassword) {

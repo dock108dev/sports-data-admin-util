@@ -1,141 +1,49 @@
-# AI Coding Rules
+# Cursor Rules for Sports Data Admin
 
-## Universal Standards
+## Core Principles
+1. **Stability over speed** — Downstream apps depend on this
+2. **Predictable schemas** — No silent changes
+3. **Zero silent failures** — Log everything
+4. **Traceable changes** — Every transformation explainable
 
-### Code Quality
-- Write clear, self-documenting code. Comments explain WHY, not WHAT.
-- Small, focused functions. One responsibility per function.
-- No magic numbers or hardcoded strings—use constants.
-- Fail fast. Validate inputs early, handle errors explicitly.
-- No silent failures. Log or surface all errors.
+## Tech Stack
+- API: Python, FastAPI, PostgreSQL
+- Scraper: Python, uv
+- Web Admin: React, TypeScript
 
-### Change Philosophy
-- Prefer minimal, incremental changes over rewrites.
-- Don't refactor unrelated code while fixing bugs.
-- If something works, don't "improve" it without reason.
-- Leave code cleaner than you found it, but don't go overboard.
+## Coding Standards
 
-### Dependencies
-- Don't add new dependencies casually.
-- Justify any new package inline.
-- Prefer standard library solutions when reasonable.
-
-### Testing
-- Add tests for new logic.
-- If fixing a bug, add a regression test.
-- Tests should be deterministic and fast.
-
-### Documentation
-- Update README if behavior changes.
-- Add CHANGELOG entries for user-facing changes.
-- Document breaking changes explicitly.
-
-### What NOT to Do
-- Don't over-engineer or over-abstract.
-- Don't add features that weren't requested.
-- Don't guess—ask or leave a TODO.
-- Don't use print/console.log in production code.
-
----
-
-## Tech Stack: Python (FastAPI + Scraper)
-
-### Python Conventions
-- Python 3.11+
-- Type hints on all function signatures
-- Use `uv` for package management (scraper)
-- Use `pip` with requirements.txt (api)
-
-### FastAPI Practices
-- Pydantic models for request/response validation
-- Dependency injection for services
-- Async endpoints where beneficial
-- Proper HTTP status codes
-
-### Code Style
-- Follow PEP 8
-- Use `snake_case` for functions/variables
-- Use `PascalCase` for classes
-- Docstrings for public functions
-
-### Error Handling
-- Use proper exception types
+### Python
+- Type hints on all functions
+- Pydantic models for validation
 - Log errors with context
-- Return meaningful error responses
-- Never swallow exceptions silently
+- Never swallow exceptions
 
-### File Structure (API)
-```
-api/
-├── app/
-│   ├── models/      # Pydantic models
-│   ├── routes/      # API endpoints
-│   ├── services/    # Business logic
-│   └── db/          # Database access
-├── alembic/         # Migrations
-└── main.py          # Entry point
-```
+### TypeScript (Web)
+- No `any` types
+- Functional components
 
-### File Structure (Scraper)
-```
-scraper/
-├── bets_scraper/    # Scraping logic
-├── scripts/         # CLI scripts
-└── pyproject.toml   # Dependencies
-```
-
----
-
-## Tech Stack: React / TypeScript (Web Admin)
-
-### Architecture
-- Functional components with hooks
-- TypeScript strictly—no `any` types
-- Prefer composition over inheritance
-
-### File Structure
-```
-web/
-├── src/
-│   ├── components/  # UI components
-│   ├── pages/       # Route pages
-│   └── utils/       # Utilities
-```
-
----
-
-## Project: Sports Data Admin
-
-### Purpose
-Backend infrastructure for Scroll Down Sports: API, data scraper, admin UI.
-
-### Core Principles
-- **Stability over speed**: Downstream apps depend on this
-- **Predictable schemas**: No silent changes
-- **Zero silent failures**: Log everything
-- **Traceable changes**: Every transformation explainable
-
-### Key Directories
-- `api/` — FastAPI backend implementing the API spec
-- `scraper/` — Python scraper for sports data
+## Directory Structure
+- `api/` — FastAPI backend
+- `scraper/` — Python data scraper
 - `web/` — Admin UI (React/TypeScript)
 - `sql/` — Database schema and migrations
-- `infra/` — Docker and deployment configs
+- `infra/` — Docker and deployment
 
-### Data Rules
-- Normalize all ingested data before storage
-- Validate at ingestion time
-- Log all failures with context
+## Contract
+This API implements `scroll-down-api-spec`. Schema changes require:
+1. Update spec first
+2. Then update implementation
+3. Document breaking changes
 
-### Breaking Changes
-- Document in CHANGELOG
-- Bump versions when appropriate
-- Never break consumers silently
+## Testing
+- Add comprehensive tests for API endpoints
+- Test data transformation logic
+- Mock external dependencies
 
-### Consumers
-- `scroll-down-app` (iOS)
-- `scroll-down-sports-ui` (Web)
-
-### Contract
-- API implements `scroll-down-api-spec`
-- Schema changes require spec update first
+## Do NOT
+- **Auto-commit changes** — Wait for user to review and commit manually
+- Make breaking API changes without spec update
+- Ignore or swallow errors
+- Add dependencies casually
+- Modify data schemas without migration
