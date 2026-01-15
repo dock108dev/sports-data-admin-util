@@ -203,10 +203,18 @@ services:
     command:
       - -c
       - |
-        echo "Backup service started. Running daily backups..."
+        echo "Backup service started. Daily backup at 14:00 UTC (9 AM EST)..."
         while true; do
+          # Calculate seconds until next 14:00 UTC
+          NOW=$(date +%s)
+          TARGET=$(date -d "today 14:00" +%s 2>/dev/null || date -j -f "%H:%M" "14:00" +%s 2>/dev/null)
+          if [ "$NOW" -ge "$TARGET" ]; then
+            TARGET=$(date -d "tomorrow 14:00" +%s 2>/dev/null || echo $((TARGET + 86400)))
+          fi
+          SLEEP_SECS=$((TARGET - NOW))
+          echo "Next backup in $((SLEEP_SECS / 3600))h $((SLEEP_SECS % 3600 / 60))m at 14:00 UTC"
+          sleep "$SLEEP_SECS"
           /scripts/backup.sh
-          sleep 86400
         done
 
 volumes:
