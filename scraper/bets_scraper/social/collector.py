@@ -307,12 +307,11 @@ class XPostCollector:
         """
         Collect posts for both teams in a game.
 
-        Uses a gameday window for linking posts to games:
-        - Start: gameday_start_hour ET on game day (default 10 AM)
-        - End: gameday_end_hour ET the next day (default 2 AM)
-
-        This 16-hour window covers all US game times and captures
-        pre-game hype through post-game celebration.
+        Window calculation:
+        - Uses tip_time if available (actual scheduled start from Odds API/Live Feed)
+        - Falls back to game_date + 19h offset if only midnight date available
+        - Window: [tip_time - pregame_minutes] to [tip_time + 3h game + postgame_minutes]
+        - Default pregame/postgame: 180 minutes (3 hours) each
 
         Args:
             session: Database session
@@ -397,14 +396,21 @@ class XPostCollector:
                 logger.debug("x_collect_no_handle", team=team.abbreviation)
                 continue
 
+            # Estimate game_end from tip_time + ~2.5h if not set
+            game_end = game.end_time
+            if game_end is None and game.tip_time:
+                game_end = game.tip_time + timedelta(hours=2, minutes=30)
+            elif game_end is None:
+                game_end = game_start_utc + timedelta(hours=2, minutes=30)
+            
             job = PostCollectionJob(
                 game_id=game_id,
                 team_abbreviation=team.abbreviation,
                 x_handle=handle,
                 window_start=window_start,
                 window_end=window_end,
-                game_start=game.game_date,
-                game_end=game.end_time,
+                game_start=game_start_utc,  # Use calculated tip time
+                game_end=game_end,
             )
 
             result = self.run_job(job, session)
