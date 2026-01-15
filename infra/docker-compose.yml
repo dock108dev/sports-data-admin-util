@@ -179,8 +179,8 @@ services:
     ports:
       - "3000:3000"
     healthcheck:
-      # Skip auth check for healthcheck
-      test: ["CMD-SHELL", "curl -sf http://localhost:3000/_next/static || exit 0"]
+      # Healthcheck: verify main application is responsive
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/"]
       interval: 10s
       timeout: 5s
       retries: 5

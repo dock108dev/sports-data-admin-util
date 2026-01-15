@@ -39,11 +39,13 @@ app.conf.update(**celery_config)
 app.conf.task_routes = {
     "run_scrape_job": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
 }
-# Daily NBA ingestion at 8 AM EST (13:00 UTC)
+# Daily NBA ingestion at 8 AM US Eastern (12:00 UTC during EDT, 13:00 UTC during EST)
+# Using 12:00 UTC to align with 8 AM during Eastern Daylight Time (March-November).
+# During Eastern Standard Time (November-March), this will run at 7 AM EST.
 app.conf.beat_schedule = {
-    "daily-nba-ingestion-8am-est": {
+    "daily-nba-ingestion-8am-eastern": {
         "task": "run_scheduled_ingestion",
-        "schedule": crontab(minute=0, hour=13),  # 8 AM EST = 13:00 UTC
+        "schedule": crontab(minute=0, hour=12),  # 8 AM EDT = 12:00 UTC (DST most of year)
         "options": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
     }
 }
