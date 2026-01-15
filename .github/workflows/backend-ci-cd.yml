@@ -76,7 +76,6 @@ jobs:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.4
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GH_ACTOR: ${{ github.actor }}
           GH_REPO: ${{ github.repository }}
@@ -85,12 +84,12 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: GH_TOKEN,GHCR_TOKEN,GH_ACTOR,GH_REPO,DEPLOY_PATH
+          envs: GHCR_TOKEN,GH_ACTOR,GH_REPO,DEPLOY_PATH
           script: |
             set -euo pipefail
           
             BASE_DIR="$DEPLOY_PATH"
-            REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git"
+            REPO_URL="https://x-access-token:${GHCR_TOKEN}@github.com/${GH_REPO}.git"
             BRANCH="main"
           
             echo "Ensuring base directory exists..."
