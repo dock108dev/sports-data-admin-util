@@ -55,6 +55,8 @@ This API implements `scroll-down-api-spec`. Schema changes require:
 ## Do NOT
 
 - **Auto-commit changes** — Wait for user to review and commit manually
+- Run commands that require interactive input to quit
+- Run long-running commands (>5 seconds) without verbose logging (use logging that outputs every 30 seconds or so)
 - Make breaking API changes without spec update
 - Ignore or swallow errors
 - Add dependencies casually

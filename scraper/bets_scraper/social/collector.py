@@ -85,6 +85,7 @@ class XPostCollector:
                 handle=job.x_handle,
                 window_start=job.window_start,
                 window_end=job.window_end,
+                is_backfill=job.is_backfill,
             )
             if not window_decision.allowed:
                 logger.info(
@@ -303,6 +304,7 @@ class XPostCollector:
         self,
         session: Session,
         game_id: int,
+        is_backfill: bool = False,
     ) -> list[PostCollectionResult]:
         """
         Collect posts for both teams in a game.
@@ -402,7 +404,7 @@ class XPostCollector:
                 game_end = game.tip_time + timedelta(hours=2, minutes=30)
             elif game_end is None:
                 game_end = game_start_utc + timedelta(hours=2, minutes=30)
-            
+
             job = PostCollectionJob(
                 game_id=game_id,
                 team_abbreviation=team.abbreviation,
@@ -411,6 +413,7 @@ class XPostCollector:
                 window_end=window_end,
                 game_start=game_start_utc,  # Use calculated tip time
                 game_end=game_end,
+                is_backfill=is_backfill,
             )
 
             result = self.run_job(job, session)

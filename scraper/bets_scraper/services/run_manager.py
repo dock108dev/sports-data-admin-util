@@ -364,7 +364,9 @@ class ScrapeRunManager:
                     for game_id in game_ids:
                         try:
                             with get_session() as session:
-                                results = self.social_collector.collect_for_game(session, game_id)
+                                results = self.social_collector.collect_for_game(
+                                    session, game_id, is_backfill=is_backfill
+                                )
                                 for result in results:
                                     summary["social_posts"] += result.posts_saved
                         except Exception as e:
