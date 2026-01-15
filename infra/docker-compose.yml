@@ -169,6 +169,9 @@ services:
       NEXT_PUBLIC_SPORTS_API_URL: ${NEXT_PUBLIC_SPORTS_API_URL:-http://localhost:8000}
       # Server-side Next.js fetches run inside the web container; use the internal service name.
       SPORTS_API_INTERNAL_URL: ${SPORTS_API_INTERNAL_URL:-http://api:8000}
+      # Basic auth for production (uses same password as postgres)
+      ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     depends_on:
       - api
     networks:
@@ -176,7 +179,8 @@ services:
     ports:
       - "3000:3000"
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      # Healthcheck: verify main application is responsive
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -203,10 +207,29 @@ services:
     command:
       - -c
       - |
-        echo "Backup service started. Running daily backups..."
+        # Ensure we're using UTC for all time calculations
+        export TZ=UTC
+        echo "Backup service started (TZ=UTC). Running initial backup..."
+        /scripts/backup.sh
+        echo "Daily backup scheduled at 14:00 UTC (9 AM EST / 10 AM EDT)..."
         while true; do
+          # Calculate seconds until next 14:00 UTC
+          CURRENT_HOUR=$$(date +%H)
+          CURRENT_MIN=$$(date +%M)
+          CURRENT_SEC=$$(date +%S)
+          # Seconds since midnight
+          NOW_SECS=$$((CURRENT_HOUR * 3600 + CURRENT_MIN * 60 + CURRENT_SEC))
+          # Target: 14:00 = 50400 seconds since midnight
+          TARGET_SECS=50400
+          if [ "$$NOW_SECS" -ge "$$TARGET_SECS" ]; then
+            # Already past 14:00, wait until tomorrow
+            SLEEP_SECS=$$((86400 - NOW_SECS + TARGET_SECS))
+          else
+            SLEEP_SECS=$$((TARGET_SECS - NOW_SECS))
+          fi
+          echo "Next backup in $$((SLEEP_SECS / 3600))h $$((SLEEP_SECS % 3600 / 60))m at 14:00 UTC"
+          sleep "$$SLEEP_SECS"
           /scripts/backup.sh
-          sleep 86400
         done
 
 volumes:

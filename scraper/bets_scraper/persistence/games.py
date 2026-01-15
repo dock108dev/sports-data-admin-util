@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import case, func, literal_column, or_
+from sqlalchemy import case, cast, Date, func, literal_column, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -74,19 +75,31 @@ def upsert_game_stub(
     away_score: int | None = None,
     venue: str | None = None,
     external_ids: dict[str, Any] | None = None,
+    tip_time: datetime | None = None,
 ) -> tuple[int, bool]:
-    """Upsert a game without boxscores (used for live schedule feeds)."""
+    """Upsert a game without boxscores (used for live schedule feeds).
+    
+    Game matching uses DATE only (not exact datetime) to prevent duplicates
+    when different sources provide different times for the same game.
+    
+    Args:
+        tip_time: Actual scheduled start time (from Odds API or Live Feed).
+                  If provided and game_date has no time component, tip_time is used.
+    """
     league_id = get_league_id(session, league_code)
     home_team_id = _upsert_team(session, league_id, home_team)
     away_team_id = _upsert_team(session, league_id, away_team)
     normalized_status = _normalize_status(status)
 
+    # Match games by DATE only (not exact datetime) to prevent duplicates
+    # when Sports Reference (midnight) vs Odds API (actual time) create the same game
+    game_date_only = game_date.date()
     existing = (
         session.query(db_models.SportsGame)
         .filter(db_models.SportsGame.league_id == league_id)
         .filter(db_models.SportsGame.home_team_id == home_team_id)
         .filter(db_models.SportsGame.away_team_id == away_team_id)
-        .filter(db_models.SportsGame.game_date == game_date)
+        .filter(cast(db_models.SportsGame.game_date, Date) == game_date_only)
         .first()
     )
 
@@ -110,29 +123,34 @@ def upsert_game_stub(
             if merged_external_ids != existing.external_ids:
                 existing.external_ids = merged_external_ids
                 updated = True
-        if updated_status == db_models.GameStatus.final.value and existing.end_time is None:
-            existing.end_time = now_utc()
+        # Update tip_time if provided and not already set (or if new one is more specific)
+        if tip_time and existing.tip_time is None:
+            existing.tip_time = tip_time
             updated = True
+        # Don't set end_time to now_utc() - it should come from PBP data
         if updated:
             existing.updated_at = now_utc()
             existing.last_ingested_at = now_utc()
         session.flush()
         return existing.id, False
 
-    season = season_from_date(game_date.date(), league_code)
-    end_time_value = now_utc() if normalized_status == db_models.GameStatus.final.value else None
+    # Normalize game_date to midnight UTC for storage (matching uses date only)
+    normalized_game_date = datetime.combine(game_date_only, datetime.min.time(), tzinfo=timezone.utc)
+    season = season_from_date(game_date_only, league_code)
+    
     game = db_models.SportsGame(
         league_id=league_id,
         season=season,
         season_type="regular",
-        game_date=game_date,
+        game_date=normalized_game_date,
+        tip_time=tip_time,  # Actual start time (from Odds API or Live Feed)
         home_team_id=home_team_id,
         away_team_id=away_team_id,
         home_score=home_score,
         away_score=away_score,
         venue=venue,
         status=normalized_status,
-        end_time=end_time_value,
+        end_time=None,  # Will be set from PBP data when game is final
         source_game_key=None,
         scrape_version=1,
         last_scraped_at=None,
@@ -153,6 +171,7 @@ def update_game_from_live_feed(
     away_score: int | None,
     venue: str | None = None,
     external_ids: dict[str, Any] | None = None,
+    tip_time: datetime | None = None,
 ) -> bool:
     """Apply live feed updates while preventing status regression."""
     updated_status = resolve_status_transition(game.status, status)
@@ -174,9 +193,11 @@ def update_game_from_live_feed(
     if merged_external_ids != game.external_ids:
         game.external_ids = merged_external_ids
         updated = True
-    if updated_status == db_models.GameStatus.final.value and game.end_time is None:
-        game.end_time = now_utc()
+    # Update tip_time if provided and not already set
+    if tip_time and game.tip_time is None:
+        game.tip_time = tip_time
         updated = True
+    # Don't set end_time to now_utc() - it should come from PBP data
 
     if updated:
         game.updated_at = now_utc()
@@ -185,29 +206,37 @@ def update_game_from_live_feed(
     return updated
 
 
-def upsert_game(session: Session, normalized: NormalizedGame) -> tuple[int, bool]:
+def upsert_game(session: Session, normalized: NormalizedGame, tip_time: datetime | None = None) -> tuple[int, bool]:
     """Upsert a game, creating or updating as needed.
 
     Returns the game ID and whether it was newly created.
+    
+    Args:
+        tip_time: Actual scheduled start time (from Odds API or Live Feed).
     """
     league_id = get_league_id(session, normalized.identity.league_code)
     home_team_id = _upsert_team(session, league_id, normalized.identity.home_team)
     away_team_id = _upsert_team(session, league_id, normalized.identity.away_team)
     normalized_status = _normalize_status(normalized.status)
-    end_time_value = now_utc() if normalized_status == db_models.GameStatus.final.value else None
+    # Don't set end_time to now_utc() - it should come from PBP data
+
+    # Normalize game_date to midnight UTC for storage
+    game_date_only = normalized.identity.game_date.date()
+    normalized_game_date = datetime.combine(game_date_only, datetime.min.time(), tzinfo=timezone.utc)
 
     base_stmt = insert(db_models.SportsGame).values(
         league_id=league_id,
         season=normalized.identity.season,
         season_type=normalized.identity.season_type,
-        game_date=normalized.identity.game_date,
+        game_date=normalized_game_date,
+        tip_time=tip_time,
         home_team_id=home_team_id,
         away_team_id=away_team_id,
         home_score=normalized.home_score,
         away_score=normalized.away_score,
         venue=normalized.venue,
         status=normalized_status,
-        end_time=end_time_value,
+        end_time=None,  # Will be set from PBP data
         source_game_key=normalized.identity.source_game_key,
         scrape_version=1,
         last_scraped_at=now_utc(),
@@ -221,8 +250,6 @@ def upsert_game(session: Session, normalized: NormalizedGame) -> tuple[int, bool
         excluded.status.is_distinct_from(db_models.SportsGame.status),
         excluded.venue.is_distinct_from(db_models.SportsGame.venue),
     ]
-    if end_time_value:
-        ingest_checks.append(excluded.end_time.is_distinct_from(db_models.SportsGame.end_time))
     ingest_changed = or_(*ingest_checks)
 
     conflict_updates = {
@@ -237,12 +264,9 @@ def upsert_game(session: Session, normalized: NormalizedGame) -> tuple[int, bool
             else_=db_models.SportsGame.last_ingested_at,
         ),
         "updated_at": now_utc(),
-        "end_time": func.coalesce(
-            db_models.SportsGame.end_time,
-            end_time_value,
-        )
-        if end_time_value
-        else db_models.SportsGame.end_time,
+        # Preserve tip_time if provided, don't overwrite existing
+        "tip_time": func.coalesce(db_models.SportsGame.tip_time, tip_time),
+        # Don't touch end_time - it comes from PBP data
         # Only set source_game_key if the existing row doesn't have one; avoid clobber.
         "source_game_key": func.coalesce(db_models.SportsGame.source_game_key, normalized.identity.source_game_key),
     }

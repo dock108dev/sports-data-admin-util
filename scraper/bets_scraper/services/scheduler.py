@@ -14,7 +14,7 @@ from ..models import IngestionConfig
 from ..utils.datetime_utils import now_utc
 
 
-SCHEDULED_INGESTION_LEAGUES = ("NBA", "NHL", "NCAAB")
+SCHEDULED_INGESTION_LEAGUES = ("NBA",)  # NBA only for now
 
 
 @dataclass(frozen=True)

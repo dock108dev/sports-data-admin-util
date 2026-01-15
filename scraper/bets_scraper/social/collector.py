@@ -307,12 +307,11 @@ class XPostCollector:
         """
         Collect posts for both teams in a game.
 
-        Uses a gameday window for linking posts to games:
-        - Start: gameday_start_hour ET on game day (default 10 AM)
-        - End: gameday_end_hour ET the next day (default 2 AM)
-
-        This 16-hour window covers all US game times and captures
-        pre-game hype through post-game celebration.
+        Window calculation:
+        - Uses tip_time if available (actual scheduled start from Odds API/Live Feed)
+        - Falls back to game_date + 19h offset if only midnight date available
+        - Window: [tip_time - pregame_minutes] to [tip_time + 3h game + postgame_minutes]
+        - Default pregame/postgame: 180 minutes (3 hours) each
 
         Args:
             session: Database session
@@ -321,8 +320,6 @@ class XPostCollector:
         Returns:
             List of PostCollectionResult for each team
         """
-        from datetime import time as dt_time
-        from zoneinfo import ZoneInfo
         from ..db import db_models
         from sqlalchemy import func
 
@@ -350,30 +347,39 @@ class XPostCollector:
             logger.warning("x_collect_missing_pbp", game_id=game_id)
             return []
 
-        # Calculate gameday window in Eastern Time
-        et_tz = ZoneInfo("America/New_York")
-        game_date_utc = game.game_date.replace(tzinfo=timezone.utc) if game.game_date.tzinfo is None else game.game_date
-        game_date_et = game_date_utc.astimezone(et_tz)
+        # Use tip_time if available (actual scheduled start), otherwise fall back to game_date
+        if game.tip_time:
+            game_start_utc = game.tip_time.replace(tzinfo=timezone.utc) if game.tip_time.tzinfo is None else game.tip_time
+        else:
+            game_start_utc = game.game_date.replace(tzinfo=timezone.utc) if game.game_date.tzinfo is None else game.game_date
+            # Detect if we only have a date (midnight) instead of actual tip time
+            # If so, assume 7 PM ET = midnight UTC + 19 hours
+            if game_start_utc.hour == 0 and game_start_utc.minute == 0:
+                game_start_utc = game_start_utc + timedelta(hours=19)
+                logger.debug(
+                    "x_using_estimated_tip_time",
+                    game_id=game_id,
+                    estimated_start=str(game_start_utc),
+                )
         
-        # Gameday window: e.g., 10 AM ET same day to 2 AM ET next day
-        start_hour = settings.social_config.gameday_start_hour
-        end_hour = settings.social_config.gameday_end_hour
+        # Use pregame/postgame windows from config (default: 3 hours each)
+        pregame_minutes = settings.social_config.pregame_window_minutes
+        postgame_minutes = settings.social_config.postgame_window_minutes
         
-        gameday_start_et = datetime.combine(game_date_et.date(), dt_time(start_hour, 0), tzinfo=et_tz)
-        gameday_end_et = datetime.combine(game_date_et.date() + timedelta(days=1), dt_time(end_hour, 0), tzinfo=et_tz)
-        
-        # Convert to UTC for storage/comparison
-        window_start = gameday_start_et.astimezone(timezone.utc)
-        window_end = gameday_end_et.astimezone(timezone.utc)
+        # Window: pregame_minutes before game start to ~3h game duration + postgame buffer
+        window_start = game_start_utc - timedelta(minutes=pregame_minutes)
+        # Don't trust end_time (it's often set to scrape time, not actual end)
+        # Estimate 3 hours for game duration + postgame buffer
+        window_end = game_start_utc + timedelta(hours=3) + timedelta(minutes=postgame_minutes)
 
         logger.debug(
-            "x_gameday_window_calculated",
+            "x_game_window_calculated",
             game_id=game_id,
-            game_date_et=str(game_date_et.date()),
-            window_start_et=str(gameday_start_et),
-            window_end_et=str(gameday_end_et),
-            window_start_utc=str(window_start),
-            window_end_utc=str(window_end),
+            game_start=str(game_start_utc),
+            pregame_minutes=pregame_minutes,
+            postgame_minutes=postgame_minutes,
+            window_start=str(window_start),
+            window_end=str(window_end),
         )
 
         results = []
@@ -390,14 +396,21 @@ class XPostCollector:
                 logger.debug("x_collect_no_handle", team=team.abbreviation)
                 continue
 
+            # Estimate game_end from tip_time + ~2.5h if not set
+            game_end = game.end_time
+            if game_end is None and game.tip_time:
+                game_end = game.tip_time + timedelta(hours=2, minutes=30)
+            elif game_end is None:
+                game_end = game_start_utc + timedelta(hours=2, minutes=30)
+            
             job = PostCollectionJob(
                 game_id=game_id,
                 team_abbreviation=team.abbreviation,
                 x_handle=handle,
                 window_start=window_start,
                 window_end=window_end,
-                game_start=game.game_date,
-                game_end=game.end_time,
+                game_start=game_start_utc,  # Use calculated tip time
+                game_end=game_end,
             )
 
             result = self.run_job(job, session)

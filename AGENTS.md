@@ -54,6 +54,7 @@ This API implements `scroll-down-api-spec`. Schema changes require:
 
 ## Do NOT
 
+- **Auto-commit changes** — Wait for user to review and commit manually
 - Make breaking API changes without spec update
 - Ignore or swallow errors
 - Add dependencies casually
