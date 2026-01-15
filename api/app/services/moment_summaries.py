@@ -66,19 +66,19 @@ async def summarize_moment(
     if cached:
         return cached
 
-        play = await _get_play_by_index(game_id, moment_id, session)
-        if not play:
-            raise ValueError(f"Moment not found for play_index={moment_id}")
+    play = await _get_play_by_index(game_id, moment_id, session)
+    if not play:
+        raise ValueError(f"Moment not found for play_index={moment_id}")
 
-        plays = await _fetch_moment_plays(play, session)
+    plays = await _fetch_moment_plays(play, session)
     summary = _build_summary(plays)
 
-        _store_cached_summary(cache_key, summary)
+    _store_cached_summary(cache_key, summary)
     logger.debug(
         "moment_summary_generated",
         extra={"game_id": game_id, "moment_id": moment_id, "play_count": len(plays)},
     )
-        return summary
+    return summary
 
 
 # =============================================================================
@@ -162,7 +162,7 @@ async def _fetch_moment_plays(
 def _build_summary(plays: Sequence[db_models.SportsGamePlay]) -> str:
     """Build a template-based summary from plays."""
     if not plays:
-    return "Moment recap unavailable."
+        return "Moment recap unavailable."
 
     sentences: list[str] = []
 
