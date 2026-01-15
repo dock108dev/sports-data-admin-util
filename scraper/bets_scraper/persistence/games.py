@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import case, cast, Date, func, literal_column, or_
@@ -135,7 +135,7 @@ def upsert_game_stub(
         return existing.id, False
 
     # Normalize game_date to midnight UTC for storage (matching uses date only)
-    normalized_game_date = datetime.combine(game_date_only, datetime.min.time())
+    normalized_game_date = datetime.combine(game_date_only, datetime.min.time(), tzinfo=timezone.utc)
     season = season_from_date(game_date_only, league_code)
     
     game = db_models.SportsGame(
@@ -222,7 +222,7 @@ def upsert_game(session: Session, normalized: NormalizedGame, tip_time: datetime
 
     # Normalize game_date to midnight UTC for storage
     game_date_only = normalized.identity.game_date.date()
-    normalized_game_date = datetime.combine(game_date_only, datetime.min.time())
+    normalized_game_date = datetime.combine(game_date_only, datetime.min.time(), tzinfo=timezone.utc)
 
     base_stmt = insert(db_models.SportsGame).values(
         league_id=league_id,
