@@ -348,21 +348,20 @@ class XPostCollector:
             logger.warning("x_collect_missing_pbp", game_id=game_id)
             return []
 
-        # Calculate window centered on actual game time
-        game_start_utc = game.game_date.replace(tzinfo=timezone.utc) if game.game_date.tzinfo is None else game.game_date
-        
-        # Detect if we only have a date (midnight) instead of actual tip time
-        # If so, assume 7 PM ET (midnight UTC = 7 PM ET previous day, so add 24h to get to ~7 PM ET)
-        if game_start_utc.hour == 0 and game_start_utc.minute == 0:
-            # game_date is midnight UTC = 7 PM ET previous day
-            # Most NBA games are 7-10 PM ET, so use 7 PM ET = midnight UTC (same day in ET terms)
-            # Add 19 hours to get to 7 PM UTC (which is roughly evening ET)
-            game_start_utc = game_start_utc + timedelta(hours=19)
-            logger.debug(
-                "x_using_estimated_tip_time",
-                game_id=game_id,
-                estimated_start=str(game_start_utc),
-            )
+        # Use tip_time if available (actual scheduled start), otherwise fall back to game_date
+        if game.tip_time:
+            game_start_utc = game.tip_time.replace(tzinfo=timezone.utc) if game.tip_time.tzinfo is None else game.tip_time
+        else:
+            game_start_utc = game.game_date.replace(tzinfo=timezone.utc) if game.game_date.tzinfo is None else game.game_date
+            # Detect if we only have a date (midnight) instead of actual tip time
+            # If so, assume 7 PM ET = midnight UTC + 19 hours
+            if game_start_utc.hour == 0 and game_start_utc.minute == 0:
+                game_start_utc = game_start_utc + timedelta(hours=19)
+                logger.debug(
+                    "x_using_estimated_tip_time",
+                    game_id=game_id,
+                    estimated_start=str(game_start_utc),
+                )
         
         # Use pregame/postgame windows from config (default: 3 hours each)
         pregame_minutes = settings.social_config.pregame_window_minutes

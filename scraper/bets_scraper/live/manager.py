@@ -105,6 +105,7 @@ class LiveFeedManager:
                     home_score=live_game.home_score,
                     away_score=live_game.away_score,
                     external_ids={"nba_game_id": live_game.game_id},
+                    tip_time=live_game.game_date,  # Actual tip time from gameEt
                 )
                 if updated:
                     logger.info("nba_live_game_updated", game_id=game.id, status=game.status)
@@ -155,6 +156,7 @@ class LiveFeedManager:
                 home_score=live_game.home_score,
                 away_score=live_game.away_score,
                 external_ids={"nhl_game_pk": live_game.game_id},
+                tip_time=live_game.game_date,  # Actual scheduled start time
             )
             games_touched += 1
             logger.info(

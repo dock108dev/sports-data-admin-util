@@ -123,9 +123,11 @@ class SportsGame(Base):
     league_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_leagues.id", ondelete="CASCADE"), nullable=False, index=True)
     season: Mapped[int] = mapped_column(Integer, nullable=False)
     season_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    # game_date is the scheduled start time (IMMUTABLE - never changes after creation)
+    # game_date is the calendar date at midnight UTC (used for matching/deduplication)
     game_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    # end_time is set only when status becomes 'final' or 'completed'
+    # tip_time is the actual scheduled start time (from Odds API commence_time or NBA Live gameEt)
+    tip_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    # end_time is calculated from last PBP play when game is final
     end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     home_team_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_teams.id", ondelete="CASCADE"), nullable=False, index=True)
     away_team_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_teams.id", ondelete="CASCADE"), nullable=False, index=True)

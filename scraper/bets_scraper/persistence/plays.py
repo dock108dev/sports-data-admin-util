@@ -84,5 +84,19 @@ def upsert_plays(session: Session, game_id: int, plays: Sequence[NormalizedPlay]
     logger.info("plays_upserted", game_id=game_id, count=upserted)
     if upserted:
         game.last_pbp_at = now_utc()
+        
+        # Set end_time if game is final and we have tip_time
+        # Estimate: tip_time + 2.5 hours for typical NBA/NHL game
+        if game.status == db_models.GameStatus.final.value and game.end_time is None:
+            if game.tip_time:
+                from datetime import timedelta
+                game.end_time = game.tip_time + timedelta(hours=2, minutes=30)
+                logger.info(
+                    "game_end_time_estimated",
+                    game_id=game_id,
+                    tip_time=str(game.tip_time),
+                    end_time=str(game.end_time),
+                )
+        
         session.flush()
     return upserted
