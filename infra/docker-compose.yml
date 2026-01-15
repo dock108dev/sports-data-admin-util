@@ -214,21 +214,21 @@ services:
         echo "Daily backup scheduled at 14:00 UTC (9 AM EST / 10 AM EDT)..."
         while true; do
           # Calculate seconds until next 14:00 UTC
-          CURRENT_HOUR=$(date +%H)
-          CURRENT_MIN=$(date +%M)
-          CURRENT_SEC=$(date +%S)
+          CURRENT_HOUR=$$(date +%H)
+          CURRENT_MIN=$$(date +%M)
+          CURRENT_SEC=$$(date +%S)
           # Seconds since midnight
-          NOW_SECS=$((CURRENT_HOUR * 3600 + CURRENT_MIN * 60 + CURRENT_SEC))
+          NOW_SECS=$$((CURRENT_HOUR * 3600 + CURRENT_MIN * 60 + CURRENT_SEC))
           # Target: 14:00 = 50400 seconds since midnight
           TARGET_SECS=50400
-          if [ "$NOW_SECS" -ge "$TARGET_SECS" ]; then
+          if [ "$$NOW_SECS" -ge "$$TARGET_SECS" ]; then
             # Already past 14:00, wait until tomorrow
-            SLEEP_SECS=$((86400 - NOW_SECS + TARGET_SECS))
+            SLEEP_SECS=$$((86400 - NOW_SECS + TARGET_SECS))
           else
-            SLEEP_SECS=$((TARGET_SECS - NOW_SECS))
+            SLEEP_SECS=$$((TARGET_SECS - NOW_SECS))
           fi
-          echo "Next backup in $((SLEEP_SECS / 3600))h $((SLEEP_SECS % 3600 / 60))m at 14:00 UTC"
-          sleep "$SLEEP_SECS"
+          echo "Next backup in $$((SLEEP_SECS / 3600))h $$((SLEEP_SECS % 3600 / 60))m at 14:00 UTC"
+          sleep "$$SLEEP_SECS"
           /scripts/backup.sh
         done
 
