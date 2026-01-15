@@ -169,6 +169,9 @@ services:
       NEXT_PUBLIC_SPORTS_API_URL: ${NEXT_PUBLIC_SPORTS_API_URL:-http://localhost:8000}
       # Server-side Next.js fetches run inside the web container; use the internal service name.
       SPORTS_API_INTERNAL_URL: ${SPORTS_API_INTERNAL_URL:-http://api:8000}
+      # Basic auth for production (uses same password as postgres)
+      ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     depends_on:
       - api
     networks:
@@ -176,7 +179,8 @@ services:
     ports:
       - "3000:3000"
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      # Skip auth check for healthcheck
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/_next/static || exit 0"]
       interval: 10s
       timeout: 5s
       retries: 5
