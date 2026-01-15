@@ -39,13 +39,14 @@ app.conf.update(**celery_config)
 app.conf.task_routes = {
     "run_scrape_job": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
 }
-# app.conf.beat_schedule = {
-#     "scheduled-ingestion-every-15-min": {
-#         "task": "run_scheduled_ingestion",
-#         "schedule": crontab(minute="*/15", hour="13-23,0-2"),
-#         "options": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
-#     }
-# }
+# Daily NBA ingestion at 8 AM EST (13:00 UTC)
+app.conf.beat_schedule = {
+    "daily-nba-ingestion-8am-est": {
+        "task": "run_scheduled_ingestion",
+        "schedule": crontab(minute=0, hour=13),  # 8 AM EST = 13:00 UTC
+        "options": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
+    }
+}
 
 
 def mark_stale_runs_interrupted():
