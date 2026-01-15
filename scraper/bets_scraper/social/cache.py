@@ -35,6 +35,7 @@ class SocialRequestCache:
         window_start: datetime,
         window_end: datetime,
         now: datetime | None = None,
+        is_backfill: bool = False,
     ) -> CacheDecision:
         current = now or now_utc()
 
@@ -46,9 +47,11 @@ class SocialRequestCache:
             .first()
         )
         if recent_poll and recent_poll.created_at:
+            # Always respect rate limits (X API throttling)
             if recent_poll.rate_limited_until and recent_poll.rate_limited_until > current:
                 return CacheDecision(False, reason="rate_limited", retry_at=recent_poll.rate_limited_until)
-            if current - recent_poll.created_at < self.poll_interval:
+            # Skip poll interval check for backfills (historical data collection)
+            if not is_backfill and current - recent_poll.created_at < self.poll_interval:
                 retry_at = recent_poll.created_at + self.poll_interval
                 return CacheDecision(False, reason="poll_interval", retry_at=retry_at)
 

@@ -30,6 +30,7 @@ class PostCollectionJob(BaseModel):
     window_end: datetime = Field(..., description="End of collection window")
     game_start: datetime = Field(..., description="Game start time for attachment rules")
     game_end: datetime | None = Field(default=None, description="Game end time for attachment rules")
+    is_backfill: bool = Field(default=False, description="Skip poll interval for historical data")
 
 
 class PostCollectionResult(BaseModel):
