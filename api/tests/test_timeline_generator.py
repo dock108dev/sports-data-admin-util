@@ -6,7 +6,8 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 import unittest
 
-from app.services.timeline_generator import build_nba_game_analysis, build_nba_timeline
+from app.services.game_analysis import build_nba_game_analysis
+from app.services.timeline_generator import build_nba_timeline
 
 
 class TestTimelineGenerator(unittest.TestCase):
