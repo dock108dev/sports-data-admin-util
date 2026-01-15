@@ -323,21 +323,21 @@ def _build_pbp_events(
         real_elapsed = elapsed_in_quarter * (NBA_QUARTER_REAL_SECONDS / NBA_QUARTER_GAME_SECONDS)
         synthetic_ts = quarter_start + timedelta(seconds=real_elapsed)
 
-            event_payload = {
-                "event_type": "pbp",
+        event_payload = {
+            "event_type": "pbp",
             "phase": phase,
             "intra_phase_order": intra_phase_order,
-                "play_index": play.play_index,
+            "play_index": play.play_index,
             "quarter": quarter,
             "block": block,
-                "game_clock": play.game_clock,
+            "game_clock": play.game_clock,
             "description": play.description,
-                "play_type": play.play_type,
-                "home_score": play.home_score,
-                "away_score": play.away_score,
+            "play_type": play.play_type,
+            "home_score": play.home_score,
+            "away_score": play.away_score,
             "synthetic_timestamp": synthetic_ts.isoformat(),
             "game_progress": round(progress, 3),
-            }
+        }
         events.append((synthetic_ts, event_payload))
 
     return events
