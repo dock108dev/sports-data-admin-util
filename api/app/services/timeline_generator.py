@@ -494,34 +494,46 @@ async def generate_timeline_artifact(
         # Compute phase boundaries for social event assignment
         phase_boundaries = _compute_phase_boundaries(game_start, has_overtime)
 
-        # Expanded social post window
-        social_window_start = game_start - timedelta(
-            seconds=SOCIAL_PREGAME_WINDOW_SECONDS
-        )
-        social_window_end = game_end + timedelta(
-            seconds=SOCIAL_POSTGAME_WINDOW_SECONDS
-        )
-
-        posts_result = await session.execute(
-            select(db_models.GameSocialPost)
-            .where(
-                db_models.GameSocialPost.game_id == game_id,
-                db_models.GameSocialPost.posted_at >= social_window_start,
-                db_models.GameSocialPost.posted_at <= social_window_end,
+        # Only include social posts if we have a reliable tip_time
+        # Without tip_time, social post windows would be based on midnight UTC
+        # which produces incorrect/meaningless results
+        posts: list[db_models.GameSocialPost] = []
+        if game.has_reliable_start_time:
+            social_window_start = game_start - timedelta(
+                seconds=SOCIAL_PREGAME_WINDOW_SECONDS
             )
-            .order_by(db_models.GameSocialPost.posted_at)
-        )
-        posts = posts_result.scalars().all()
+            social_window_end = game_end + timedelta(
+                seconds=SOCIAL_POSTGAME_WINDOW_SECONDS
+            )
 
-        logger.info(
-            "social_posts_window",
-            extra={
-                "game_id": game_id,
-                "window_start": social_window_start.isoformat(),
-                "window_end": social_window_end.isoformat(),
-                "posts_found": len(posts),
-            },
-        )
+            posts_result = await session.execute(
+                select(db_models.GameSocialPost)
+                .where(
+                    db_models.GameSocialPost.game_id == game_id,
+                    db_models.GameSocialPost.posted_at >= social_window_start,
+                    db_models.GameSocialPost.posted_at <= social_window_end,
+                )
+                .order_by(db_models.GameSocialPost.posted_at)
+            )
+            posts = list(posts_result.scalars().all())
+
+            logger.info(
+                "social_posts_window",
+                extra={
+                    "game_id": game_id,
+                    "window_start": social_window_start.isoformat(),
+                    "window_end": social_window_end.isoformat(),
+                    "posts_found": len(posts),
+                },
+            )
+        else:
+            logger.warning(
+                "social_posts_skipped_no_tip_time",
+                extra={
+                    "game_id": game_id,
+                    "reason": "No reliable tip_time available, social posts excluded from timeline",
+                },
+            )
 
         # Build PBP events
         logger.info(
@@ -621,7 +633,7 @@ async def generate_timeline_artifact(
                     "critical_passed": validation_report.critical_passed,
                     "warnings": validation_report.warnings_count,
                 },
-        )
+            )
         except TimelineValidationError as exc:
             logger.error(
                 "timeline_artifact_validation_blocked",

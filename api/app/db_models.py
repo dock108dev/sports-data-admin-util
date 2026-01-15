@@ -174,8 +174,17 @@ class SportsGame(Base):
 
     @property
     def start_time(self) -> datetime:
-        """Alias for game_date to match canonical naming."""
-        return self.game_date
+        """Return actual game start time, preferring tip_time over game_date.
+        
+        tip_time is the actual scheduled start from Odds API commence_time.
+        game_date is often just midnight UTC (date only, no time component).
+        """
+        return self.tip_time if self.tip_time else self.game_date
+    
+    @property
+    def has_reliable_start_time(self) -> bool:
+        """Return True if we have an actual tip time, not just a date."""
+        return self.tip_time is not None
 
 
 class SportsTeamBoxscore(Base):
