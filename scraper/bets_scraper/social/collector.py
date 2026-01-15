@@ -348,22 +348,31 @@ class XPostCollector:
             logger.warning("x_collect_missing_pbp", game_id=game_id)
             return []
 
-        # Calculate window centered on actual game time, not a fixed daily window
+        # Calculate window centered on actual game time
         game_start_utc = game.game_date.replace(tzinfo=timezone.utc) if game.game_date.tzinfo is None else game.game_date
+        
+        # Detect if we only have a date (midnight) instead of actual tip time
+        # If so, assume 7 PM ET (midnight UTC = 7 PM ET previous day, so add 24h to get to ~7 PM ET)
+        if game_start_utc.hour == 0 and game_start_utc.minute == 0:
+            # game_date is midnight UTC = 7 PM ET previous day
+            # Most NBA games are 7-10 PM ET, so use 7 PM ET = midnight UTC (same day in ET terms)
+            # Add 19 hours to get to 7 PM UTC (which is roughly evening ET)
+            game_start_utc = game_start_utc + timedelta(hours=19)
+            logger.debug(
+                "x_using_estimated_tip_time",
+                game_id=game_id,
+                estimated_start=str(game_start_utc),
+            )
         
         # Use pregame/postgame windows from config (default: 3 hours each)
         pregame_minutes = settings.social_config.pregame_window_minutes
         postgame_minutes = settings.social_config.postgame_window_minutes
         
-        # Window: pregame_minutes before game start to postgame_minutes after game end
+        # Window: pregame_minutes before game start to ~3h game duration + postgame buffer
         window_start = game_start_utc - timedelta(minutes=pregame_minutes)
-        
-        if game.end_time:
-            game_end_utc = game.end_time.replace(tzinfo=timezone.utc) if game.end_time.tzinfo is None else game.end_time
-            window_end = game_end_utc + timedelta(minutes=postgame_minutes)
-        else:
-            # No end time yet - estimate 3 hours for game + postgame buffer
-            window_end = game_start_utc + timedelta(hours=3) + timedelta(minutes=postgame_minutes)
+        # Don't trust end_time (it's often set to scrape time, not actual end)
+        # Estimate 3 hours for game duration + postgame buffer
+        window_end = game_start_utc + timedelta(hours=3) + timedelta(minutes=postgame_minutes)
 
         logger.debug(
             "x_game_window_calculated",
