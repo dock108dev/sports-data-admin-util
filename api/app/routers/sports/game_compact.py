@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from ... import db_models
@@ -82,7 +82,7 @@ async def get_game_compact_pbp(
         compact_response = await get_game_compact(game_id, session)
 
     try:
-        find_compact_moment_bounds(compact_response.moments, moment_id)
+        start_index, end_index = find_compact_moment_bounds(compact_response.moments, moment_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

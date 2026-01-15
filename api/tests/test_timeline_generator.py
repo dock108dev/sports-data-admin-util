@@ -6,7 +6,8 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 import unittest
 
-from app.services.timeline_generator import build_nba_game_analysis, build_nba_timeline
+from app.services.game_analysis import build_nba_game_analysis
+from app.services.timeline_generator import build_nba_timeline
 
 
 class TestTimelineGenerator(unittest.TestCase):
@@ -73,7 +74,8 @@ class TestTimelineGenerator(unittest.TestCase):
         self.assertEqual(timestamps[0], game.start_time)
         self.assertEqual(timestamps[1], game.start_time + timedelta(minutes=9, seconds=22, milliseconds=500))
         self.assertEqual(timestamps[2], game.start_time + timedelta(minutes=18, seconds=45))
-        self.assertEqual(game_end, game.start_time + timedelta(minutes=90))
+        # NBA_REGULATION_REAL_SECONDS = 75 * 60 = 75 minutes
+        self.assertEqual(game_end, game.start_time + timedelta(minutes=75))
 
     def test_build_nba_timeline_extends_for_overtime(self) -> None:
         game = self._build_game()
@@ -93,7 +95,8 @@ class TestTimelineGenerator(unittest.TestCase):
         ]
 
         _, _, game_end = build_nba_timeline(game, plays, [])
-        self.assertEqual(game_end, game.start_time + timedelta(minutes=120))
+        # 75 min regulation + 15 min OT1 = 90 min
+        self.assertEqual(game_end, game.start_time + timedelta(minutes=90))
 
     def test_build_nba_timeline_orders_social_within_phase(self) -> None:
         """Social events within the same phase are ordered by intra-phase order.
@@ -128,7 +131,7 @@ class TestTimelineGenerator(unittest.TestCase):
         self.assertEqual(timeline[0]["role"], "reaction")
         self.assertEqual(
             set(timeline[0].keys()),
-            {"event_type", "author", "handle", "text", "role", "phase", "synthetic_timestamp"},
+            {"event_type", "author", "handle", "text", "role", "phase", "synthetic_timestamp", "intra_phase_order"},
         )
 
     def test_build_nba_game_analysis_segments_and_highlights(self) -> None:
