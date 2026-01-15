@@ -321,8 +321,6 @@ class XPostCollector:
         Returns:
             List of PostCollectionResult for each team
         """
-        from datetime import time as dt_time
-        from zoneinfo import ZoneInfo
         from ..db import db_models
         from sqlalchemy import func
 
@@ -350,30 +348,31 @@ class XPostCollector:
             logger.warning("x_collect_missing_pbp", game_id=game_id)
             return []
 
-        # Calculate gameday window in Eastern Time
-        et_tz = ZoneInfo("America/New_York")
-        game_date_utc = game.game_date.replace(tzinfo=timezone.utc) if game.game_date.tzinfo is None else game.game_date
-        game_date_et = game_date_utc.astimezone(et_tz)
+        # Calculate window centered on actual game time, not a fixed daily window
+        game_start_utc = game.game_date.replace(tzinfo=timezone.utc) if game.game_date.tzinfo is None else game.game_date
         
-        # Gameday window: e.g., 10 AM ET same day to 2 AM ET next day
-        start_hour = settings.social_config.gameday_start_hour
-        end_hour = settings.social_config.gameday_end_hour
+        # Use pregame/postgame windows from config (default: 3 hours each)
+        pregame_minutes = settings.social_config.pregame_window_minutes
+        postgame_minutes = settings.social_config.postgame_window_minutes
         
-        gameday_start_et = datetime.combine(game_date_et.date(), dt_time(start_hour, 0), tzinfo=et_tz)
-        gameday_end_et = datetime.combine(game_date_et.date() + timedelta(days=1), dt_time(end_hour, 0), tzinfo=et_tz)
+        # Window: pregame_minutes before game start to postgame_minutes after game end
+        window_start = game_start_utc - timedelta(minutes=pregame_minutes)
         
-        # Convert to UTC for storage/comparison
-        window_start = gameday_start_et.astimezone(timezone.utc)
-        window_end = gameday_end_et.astimezone(timezone.utc)
+        if game.end_time:
+            game_end_utc = game.end_time.replace(tzinfo=timezone.utc) if game.end_time.tzinfo is None else game.end_time
+            window_end = game_end_utc + timedelta(minutes=postgame_minutes)
+        else:
+            # No end time yet - estimate 3 hours for game + postgame buffer
+            window_end = game_start_utc + timedelta(hours=3) + timedelta(minutes=postgame_minutes)
 
         logger.debug(
-            "x_gameday_window_calculated",
+            "x_game_window_calculated",
             game_id=game_id,
-            game_date_et=str(game_date_et.date()),
-            window_start_et=str(gameday_start_et),
-            window_end_et=str(gameday_end_et),
-            window_start_utc=str(window_start),
-            window_end_utc=str(window_end),
+            game_start=str(game_start_utc),
+            pregame_minutes=pregame_minutes,
+            postgame_minutes=postgame_minutes,
+            window_start=str(window_start),
+            window_end=str(window_end),
         )
 
         results = []
