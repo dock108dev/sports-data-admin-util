@@ -193,7 +193,7 @@ def build_preview_context(
         home_team=game.home_team.name if game.home_team else "Unknown",
         away_team=game.away_team.name if game.away_team else "Unknown",
         league=game.league.code if game.league else "UNKNOWN",
-        start_time=game.game_date,
+        start_time=game.start_time,  # Use start_time which prioritizes tip_time
         rivalry=rivalry,
         projected_spread=projected_spread_value,
         has_big_name_players=has_big_name_players,
@@ -220,7 +220,7 @@ def summarize_game(game: db_models.SportsGame) -> "GameSummary":
     return GameSummary(
         id=game.id,
         league_code=game.league.code if game.league else "UNKNOWN",
-        game_date=game.game_date,
+        game_date=game.start_time,  # Use start_time which prioritizes tip_time
         home_team=game.home_team.name if game.home_team else "Unknown",
         away_team=game.away_team.name if game.away_team else "Unknown",
         home_score=game.home_score,
