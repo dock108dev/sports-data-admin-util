@@ -87,6 +87,18 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
         game_id = cached  # type: ignore[assignment]
         if game_id is None:
             return False
+        
+        # Update tip_time even on cache hit if not yet set
+        game = session.get(db_models.SportsGame, game_id)
+        if game and game.tip_time is None and snapshot.game_date:
+            if snapshot.game_date.hour != 0 or snapshot.game_date.minute != 0:
+                game.tip_time = snapshot.game_date
+                logger.debug(
+                    "odds_set_tip_time_cached",
+                    game_id=game_id,
+                    tip_time=str(snapshot.game_date),
+                )
+        
         side_value = snapshot.side if snapshot.side else None
         stmt = (
             insert(db_models.SportsGameOdds)
