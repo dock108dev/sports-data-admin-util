@@ -37,6 +37,7 @@ class TestPreviewScoreEndpoint(unittest.TestCase):
         game = SimpleNamespace(
             id=123,
             game_date=datetime(2024, 1, 1),
+            start_time=datetime(2024, 1, 1),  # Matches start_time property behavior
             league=SimpleNamespace(code="NCAAB"),
             home_team=SimpleNamespace(
                 id=1,
