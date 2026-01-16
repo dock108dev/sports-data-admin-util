@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Any, Sequence
 
 from .ai_client import enrich_segment, is_ai_available
+from ..utils.datetime_utils import parse_clock_to_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -53,21 +54,7 @@ class ScoringEvent:
     signed_margin: int
 
 
-def _parse_clock_to_seconds(clock: str | None) -> int | None:
-    """Parse game clock (MM:SS) to seconds remaining."""
-    if not clock:
-        return None
-    parts = clock.split(":")
-    if len(parts) != 2:
-        return None
-    try:
-        minutes = int(parts[0])
-        seconds = int(parts[1])
-    except ValueError:
-        return None
-    if minutes < 0 or seconds < 0 or seconds >= 60:
-        return None
-    return minutes * 60 + seconds
+# Clock parsing moved to utils/datetime_utils.py (parse_clock_to_seconds)
 
 
 def _score_delta(
@@ -453,7 +440,7 @@ def build_nba_game_analysis(
         else:
             run_points += event.points
 
-        clock_remaining = _parse_clock_to_seconds(event.game_clock)
+        clock_remaining = parse_clock_to_seconds(event.game_clock)
         opening_window = NBA_OPENING_WINDOW_SECONDS
         clock_ok = clock_remaining is None or clock_remaining >= opening_window
         is_opening = (

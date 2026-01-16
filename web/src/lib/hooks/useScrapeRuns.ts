@@ -2,7 +2,7 @@
  * Shared hook for fetching scrape runs.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { listScrapeRuns, type ScrapeRunResponse } from "@/lib/api/sportsAdmin";
 
 interface UseScrapeRunsOptions {
@@ -17,7 +17,7 @@ export function useScrapeRuns(options: UseScrapeRunsOptions = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchRuns = async () => {
+  const fetchRuns = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -28,13 +28,13 @@ export function useScrapeRuns(options: UseScrapeRunsOptions = {}) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [league, status]);
 
   useEffect(() => {
     if (autoFetch) {
       fetchRuns();
     }
-  }, [autoFetch, league, status]);
+  }, [autoFetch, fetchRuns]);
 
   return {
     runs,
