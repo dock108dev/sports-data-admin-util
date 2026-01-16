@@ -270,6 +270,32 @@ class CompactMomentSummaryResponse(BaseModel):
 
 
 class HighlightEntry(BaseModel):
+    """Grounded highlight with play references and context."""
+    highlight_id: str
+    type: str  # SCORING_RUN, LEAD_CHANGE, MOMENTUM_SHIFT, etc.
+    title: str
+    description: str
+    start_play_id: str
+    end_play_id: str
+    key_play_ids: list[str] = Field(default_factory=list)
+    involved_teams: list[str] = Field(default_factory=list)
+    involved_players: list[str] = Field(default_factory=list)
+    score_change: str = ""  # "92–96 → 98–96"
+    game_clock_range: str = ""  # "Q4 7:42–5:58"
+    game_phase: str = "mid"  # early, mid, late, closing
+    importance_score: float = 0.5
+
+
+class HighlightsResponse(BaseModel):
+    """Response for GET /games/{game_id}/highlights endpoint."""
+    game_id: int
+    generated_at: datetime | None = None
+    highlights: list[HighlightEntry]
+    total_count: int
+
+
+class LegacyHighlightEntry(BaseModel):
+    """Legacy highlight format for backward compatibility."""
     type: str
     segment_id: str | int | None
     description: str
@@ -283,7 +309,8 @@ class GameDetailResponse(BaseModel):
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry]
     plays: list[PlayEntry]
-    highlights: list[HighlightEntry]
+    highlights: list[HighlightEntry]  # New grounded highlights
+    highlights_legacy: list[LegacyHighlightEntry] = Field(default_factory=list)  # Backward compat
     derived_metrics: dict[str, Any]
     raw_payloads: dict[str, Any]
 

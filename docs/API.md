@@ -13,14 +13,15 @@
 2. [Games — Admin](#games--admin)
 3. [Games — Compact Mode](#games--compact-mode)
 4. [Games — Snapshots (App Consumption)](#games--snapshots-app-consumption)
-5. [Teams](#teams)
-6. [Scraper Runs](#scraper-runs)
-7. [Job Runs](#job-runs)
-8. [Diagnostics](#diagnostics)
-9. [Social](#social)
-10. [Reading Positions](#reading-positions)
-11. [Environment Variables](#environment-variables)
-12. [Response Models](#response-models)
+5. [Timeline Generation (Admin)](#timeline-generation-admin)
+6. [Teams](#teams)
+7. [Scraper Runs](#scraper-runs)
+8. [Job Runs](#job-runs)
+9. [Diagnostics](#diagnostics)
+10. [Social](#social)
+11. [Reading Positions](#reading-positions)
+12. [Environment Variables](#environment-variables)
+13. [Response Models](#response-models)
 
 ---
 
@@ -79,7 +80,8 @@ List games with filtering and pagination.
   "with_player_stats_count": 950,
   "with_odds_count": 800,
   "with_social_count": 600,
-  "with_pbp_count": 500
+  "with_pbp_count": 500,
+  "with_highlights_count": 450
 }
 ```
 
@@ -101,6 +103,8 @@ Get detailed game data including stats, odds, social posts, and plays.
   "odds": [OddsEntry],
   "social_posts": [SocialPostEntry],
   "plays": [PlayEntry],
+  "highlights": [HighlightEntry],
+  "highlights_legacy": [LegacyHighlightEntry],
   "derived_metrics": {},
   "raw_payloads": {}
 }
@@ -162,6 +166,95 @@ Trigger a resync of odds data for a specific game.
 - `game_id` (int, required): Game ID
 
 **Response:** `JobResponse`
+
+---
+
+### `POST /games/{game_id}/timeline/generate`
+
+Generate and store a finalized timeline artifact for a game.
+
+**Path Parameters:**
+- `game_id` (int, required): Game ID
+
+**Response:** `TimelineArtifactResponse`
+```json
+{
+  "game_id": 123,
+  "sport": "NBA",
+  "timeline_version": "v1",
+  "generated_at": "2026-01-16T04:30:00Z",
+  "timeline": [...],
+  "summary": {...},
+  "game_analysis": {...}
+}
+```
+
+**Status Codes:**
+- `404` — Game not found
+- `422` — Timeline generation failed (missing data)
+
+---
+
+### `GET /games/{game_id}/highlights`
+
+Get grounded highlights for a game.
+
+**Path Parameters:**
+- `game_id` (int, required): Game ID
+
+**Response:** `HighlightsResponse`
+```json
+{
+  "game_id": 12345,
+  "generated_at": "2026-01-16T19:42:00Z",
+  "highlights": [
+    {
+      "highlight_id": "hl_a1b2c3d4",
+      "type": "SCORING_RUN",
+      "title": "Denver opens the game on an 8–0 run",
+      "description": "Denver set the tone early, forcing a quick timeout.",
+      "start_play_id": "21",
+      "end_play_id": "34",
+      "key_play_ids": ["23", "29"],
+      "involved_teams": ["DEN", "BOS"],
+      "involved_players": ["N. Jokic"],
+      "score_change": "12–9 → 18–9",
+      "game_clock_range": "Q1 9:12–7:48",
+      "game_phase": "early",
+      "importance_score": 0.72
+    }
+  ],
+  "total_count": 5
+}
+```
+
+**Highlight Types:**
+| Type | Description |
+|------|-------------|
+| `SCORING_RUN` | Team goes on a scoring streak (≥8 unanswered points) |
+| `LEAD_CHANGE` | Lead swings from one team to another |
+| `MOMENTUM_SHIFT` | Significant margin change or quarter-end swing |
+| `GAME_DECIDING_STRETCH` | Final stretch that determined the outcome |
+| `COMEBACK` | Team erases significant deficit |
+| `STAR_TAKEOVER` | Star player dominates a stretch |
+
+**Design Notes:**
+- `start_play_id`, `end_play_id`, `key_play_ids` are join keys to `/timeline`
+- `key_play_ids` lets the UI jump directly to pivotal moments
+- `type` is enum-stable for filtering
+- Ordering is by `importance_score` (editorial), not strictly chronological
+
+**Highlights Concept:**
+
+Highlights represent high-signal narrative moments extracted from the game timeline. Each highlight is:
+- Grounded in real play-by-play events
+- Traceable to specific play IDs
+- Enriched with contextual information (score, timing, players)
+
+Highlights are NOT a replacement for the full timeline. They are curated entry points into the most important moments of the game. Consumers may:
+- Display highlights as a summary feed
+- Link highlights to the timeline using `play_id` references
+- Use highlight types to group or filter moments
 
 ---
 
@@ -418,6 +511,64 @@ Fetch the stored finalized timeline artifact for a game.
 
 ---
 
+### `GET /api/games/{game_id}/timeline/diagnostic`
+
+Get diagnostic information about timeline generation for a game.
+
+**Path Parameters:**
+- `game_id` (int, required): Game ID
+
+**Response:**
+```json
+{
+  "game_id": 123,
+  "has_artifact": true,
+  "artifact_version": "v1",
+  "generated_at": "2026-01-15T04:30:00Z",
+  "pbp_count": 250,
+  "social_count": 15,
+  "timeline_event_count": 265,
+  "segment_count": 8,
+  "highlight_count": 5
+}
+```
+
+---
+
+### `GET /api/games/{game_id}/timeline/compact`
+
+Get a compact version of the timeline optimized for app consumption.
+
+**Path Parameters:**
+- `game_id` (int, required): Game ID
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `compression` | `string` | `STANDARD` | Compression level: `HIGHLIGHTS`, `STANDARD`, `DETAILED` |
+
+**Response:** `CompactTimelineResponse`
+```json
+{
+  "game_id": 123,
+  "compression_level": "STANDARD",
+  "events": [
+    {
+      "event_type": "pbp",
+      "play_index": 1,
+      "quarter": 1,
+      "game_clock": "12:00",
+      "description": "Tipoff",
+      "is_highlight": false
+    }
+  ],
+  "event_count": 50,
+  "original_count": 265
+}
+```
+
+---
+
 ### `GET /api/games/{game_id}/recap`
 
 Generate a recap for a game at a reveal level.
@@ -435,6 +586,165 @@ Generate a recap for a game at a reveal level.
   "available": true,
   "summary": "The game featured momentum swings and key stretches.",
   "reason": null
+}
+```
+
+---
+
+## Timeline Generation (Admin)
+
+Base path: `/api/admin/sports`
+
+Endpoints for managing timeline artifact generation and regeneration.
+
+### `POST /timelines/generate/{game_id}`
+
+Generate timeline artifact for a specific game.
+
+**Path Parameters:**
+- `game_id` (int, required): Game ID
+
+**Request Body:**
+```json
+{
+  "timeline_version": "v1"
+}
+```
+
+**Response:** `TimelineGenerationResponse`
+```json
+{
+  "game_id": 123,
+  "timeline_version": "v1",
+  "success": true,
+  "message": "Timeline generated successfully"
+}
+```
+
+**Status Codes:**
+- `400` — Game not completed or missing PBP data
+- `404` — Game not found
+- `500` — Timeline generation failed
+
+---
+
+### `GET /timelines/missing`
+
+List games that have play-by-play data but are missing timeline artifacts.
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `league_code` | `string` | `NBA` | League code to filter by |
+| `days_back` | `int` | `7` | Days back to check (1-90) |
+
+**Response:** `MissingTimelinesResponse`
+```json
+{
+  "games": [
+    {
+      "game_id": 123,
+      "game_date": "2026-01-15",
+      "league": "NBA",
+      "home_team": "Warriors",
+      "away_team": "Lakers",
+      "status": "final",
+      "has_pbp": true
+    }
+  ],
+  "total_count": 5
+}
+```
+
+---
+
+### `POST /timelines/generate-batch`
+
+Synchronously generate timelines for multiple games.
+
+**Request Body:**
+```json
+{
+  "league_code": "NBA",
+  "days_back": 7,
+  "max_games": 10
+}
+```
+
+**Response:** `SyncBatchGenerationResponse`
+```json
+{
+  "games_processed": 10,
+  "games_successful": 8,
+  "games_failed": 2,
+  "failed_game_ids": [456, 789],
+  "message": "Batch generation complete"
+}
+```
+
+---
+
+### `GET /timelines/existing`
+
+List games that have timeline artifacts, with staleness detection.
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `league_code` | `string` | `NBA` | League code to filter by |
+| `days_back` | `int` | `7` | Days back to check (1-90) |
+| `only_stale` | `bool` | `false` | Only show stale timelines |
+
+**Response:** `ExistingTimelinesResponse`
+```json
+{
+  "games": [
+    {
+      "game_id": 123,
+      "game_date": "2026-01-15",
+      "league": "NBA",
+      "home_team": "Warriors",
+      "away_team": "Lakers",
+      "status": "final",
+      "has_pbp": true,
+      "generated_at": "2026-01-15T04:30:00Z",
+      "last_social_at": "2026-01-15T06:00:00Z",
+      "is_stale": true
+    }
+  ],
+  "total_count": 20,
+  "stale_count": 3
+}
+```
+
+**Staleness Detection:**
+
+A timeline is considered "stale" when `last_social_at > generated_at`, indicating that new social posts have been added since the timeline was generated.
+
+---
+
+### `POST /timelines/regenerate-batch`
+
+Regenerate timeline artifacts for games that already have them.
+
+**Request Body:**
+```json
+{
+  "league_code": "NBA",
+  "days_back": 7,
+  "max_games": null,
+  "only_stale": true
+}
+```
+
+**Response:** `SyncBatchGenerationResponse`
+```json
+{
+  "games_processed": 5,
+  "games_successful": 5,
+  "games_failed": 0,
+  "failed_game_ids": [],
+  "message": "Regeneration complete"
 }
 ```
 
@@ -865,8 +1175,10 @@ Get the last-read position for a user/game pair.
   has_odds: boolean;
   has_social: boolean;
   has_pbp: boolean;
+  has_highlights: boolean;
   play_count: number;
   social_post_count: number;
+  highlight_count: number;
   has_required_data: boolean;
   scrape_version: number | null;
   last_scraped_at: datetime | null;
@@ -899,8 +1211,10 @@ Get the last-read position for a user/game pair.
   has_odds: boolean;
   has_social: boolean;
   has_pbp: boolean;
+  has_highlights: boolean;
   play_count: number;
   social_post_count: number;
+  highlight_count: number;
   home_team_x_handle: string | null;
   away_team_x_handle: string | null;
 }
@@ -960,6 +1274,35 @@ Get the last-read position for a user/game pair.
   onlyMissing: boolean;
   updatedBefore: date | null;
   books: string[] | null;
+}
+```
+
+### HighlightEntry (Grounded)
+```typescript
+{
+  highlight_id: string;
+  type: string; // "SCORING_RUN" | "LEAD_CHANGE" | "MOMENTUM_SHIFT" | "GAME_DECIDING_STRETCH" | "COMEBACK" | "STAR_TAKEOVER"
+  title: string;
+  description: string;
+  start_play_id: string;
+  end_play_id: string;
+  key_play_ids: string[];
+  involved_teams: string[];
+  involved_players: string[];
+  score_change: string; // "92–96 → 98–96"
+  game_clock_range: string; // "Q4 7:42–5:58"
+  game_phase: string; // "early" | "mid" | "late" | "closing"
+  importance_score: number; // 0-1
+}
+```
+
+### LegacyHighlightEntry
+```typescript
+{
+  type: string;
+  segment_id: string | number | null;
+  description: string;
+  importance: string | null;
 }
 ```
 

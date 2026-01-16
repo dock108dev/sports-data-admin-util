@@ -5,7 +5,7 @@ import type { HighlightEntry } from "@/lib/api/sportsAdmin";
 import { CollapsibleSection } from "./CollapsibleSection";
 import styles from "./styles.module.css";
 
-const HIGHLIGHTS_PER_PAGE = 15;
+const HIGHLIGHTS_PER_PAGE = 10;
 
 interface HighlightsSectionProps {
   highlights: HighlightEntry[];
@@ -14,19 +14,10 @@ interface HighlightsSectionProps {
 export function HighlightsSection({ highlights }: HighlightsSectionProps) {
   const [page, setPage] = useState(0);
 
+  // Sort by importance score (highest first)
   const sortedHighlights = useMemo(() => {
-    // Sort by segment_id to maintain chronological order
-    // segment_id can be a string like "segment_2" or a number
-    const extractSegmentNum = (id: string | number | null): number => {
-      if (id === null) return 0;
-      if (typeof id === "number") return id;
-      const match = id.match(/(\d+)/);
-      return match ? parseInt(match[1], 10) : 0;
-    };
     return [...(highlights || [])].sort((a, b) => {
-      const segA = extractSegmentNum(a.segment_id);
-      const segB = extractSegmentNum(b.segment_id);
-      return segA - segB;
+      return (b.importance_score ?? 0.5) - (a.importance_score ?? 0.5);
     });
   }, [highlights]);
 
@@ -36,76 +27,149 @@ export function HighlightsSection({ highlights }: HighlightsSectionProps) {
     (page + 1) * HIGHLIGHTS_PER_PAGE
   );
 
-  const getImportanceColor = (importance: string | null) => {
-    switch (importance) {
-      case "high":
-        return "#dc2626";
-      case "medium":
-        return "#f59e0b";
-      case "low":
-        return "#22c55e";
-      default:
-        return "#64748b";
-    }
-  };
-
   const getTypeIcon = (type: string) => {
-    switch (type) {
-      case "scoring_run":
+    switch (type.toUpperCase()) {
+      case "SCORING_RUN":
         return "🏃";
-      case "momentum_shift":
+      case "LEAD_CHANGE":
+        return "🔄";
+      case "MOMENTUM_SHIFT":
         return "📈";
-      case "key_play":
+      case "STAR_TAKEOVER":
         return "⭐";
-      case "clutch_moment":
+      case "GAME_DECIDING_STRETCH":
+        return "🏆";
+      case "COMEBACK":
         return "🔥";
-      case "defensive_stop":
-        return "🛡️";
-      case "quarter_end":
-        return "⏱️";
-      case "overtime":
-        return "⚡";
+      case "BLOWOUT_START":
+        return "💨";
       default:
         return "📌";
     }
   };
 
+  const getPhaseLabel = (phase: string) => {
+    switch (phase) {
+      case "early":
+        return "Early Game";
+      case "mid":
+        return "Mid Game";
+      case "late":
+        return "Late Game";
+      case "closing":
+        return "Closing Stretch";
+      default:
+        return phase;
+    }
+  };
+
+  const getPhaseColor = (phase: string) => {
+    switch (phase) {
+      case "early":
+        return "#22c55e";
+      case "mid":
+        return "#3b82f6";
+      case "late":
+        return "#f59e0b";
+      case "closing":
+        return "#dc2626";
+      default:
+        return "#64748b";
+    }
+  };
+
   return (
-    <CollapsibleSection title="Highlights" defaultOpen={false}>
+    <CollapsibleSection title="Highlights" defaultOpen={true}>
       {sortedHighlights.length === 0 ? (
-        <div style={{ color: "#475569" }}>
-          No highlights generated for this game yet.{" "}
-          <span style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
-            (Timeline artifacts may need to be generated)
-          </span>
+        <div className={styles.emptyHighlights}>
+          <div className={styles.emptyIcon}>📊</div>
+          <div>No highlights generated for this game yet.</div>
+          <div className={styles.emptyHint}>
+            Timeline artifacts may need to be generated or regenerated.
+          </div>
         </div>
       ) : (
         <>
-          <div style={{ marginBottom: "1rem", color: "#64748b", fontSize: "0.9rem" }}>
-            Showing {page * HIGHLIGHTS_PER_PAGE + 1}–
-            {Math.min((page + 1) * HIGHLIGHTS_PER_PAGE, sortedHighlights.length)} of{" "}
-            {sortedHighlights.length} highlights
+          <div className={styles.highlightsSummary}>
+            <span>{sortedHighlights.length} highlights detected</span>
+            <span className={styles.highlightsSummaryDivider}>•</span>
+            <span>Sorted by importance</span>
           </div>
 
           <div className={styles.highlightsGrid}>
             {paginatedHighlights.map((highlight, idx) => (
-              <div key={`${highlight.segment_id}-${idx}`} className={styles.highlightCard}>
+              <div
+                key={highlight.highlight_id || `hl-${idx}`}
+                className={styles.highlightCard}
+              >
+                {/* Header: Type icon + Title + Phase badge */}
                 <div className={styles.highlightHeader}>
-                  <span className={styles.highlightIcon}>{getTypeIcon(highlight.type)}</span>
-                  <span className={styles.highlightType}>{highlight.type.replace(/_/g, " ")}</span>
-                  {highlight.segment_id !== null && (
-                    <span className={styles.segmentBadge}>Seg #{highlight.segment_id}</span>
+                  <span className={styles.highlightIcon}>
+                    {getTypeIcon(highlight.type)}
+                  </span>
+                  <span className={styles.highlightTitle}>{highlight.title}</span>
+                  <span
+                    className={styles.phaseBadge}
+                    style={{ backgroundColor: getPhaseColor(highlight.game_phase) }}
+                  >
+                    {getPhaseLabel(highlight.game_phase)}
+                  </span>
+                </div>
+
+                {/* Description */}
+                <div className={styles.highlightDescription}>
+                  {highlight.description}
+                </div>
+
+                {/* Context row: Score change + Clock range */}
+                <div className={styles.highlightContext}>
+                  {highlight.score_change && (
+                    <div className={styles.scoreChange}>
+                      <span className={styles.contextLabel}>Score:</span>
+                      <span className={styles.contextValue}>{highlight.score_change}</span>
+                    </div>
                   )}
-                  {highlight.importance && (
-                    <span
-                      className={styles.importanceBadge}
-                      style={{ backgroundColor: getImportanceColor(highlight.importance) }}
-                    >
-                      {highlight.importance}
+                  {highlight.game_clock_range && (
+                    <div className={styles.clockRange}>
+                      <span className={styles.contextLabel}>When:</span>
+                      <span className={styles.contextValue}>{highlight.game_clock_range}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Participants row: Teams + Players */}
+                <div className={styles.highlightParticipants}>
+                  {highlight.involved_teams.length > 0 && (
+                    <div className={styles.teamsInvolved}>
+                      {highlight.involved_teams.map((team) => (
+                        <span key={team} className={styles.teamBadge}>
+                          {team}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {highlight.involved_players.length > 0 && (
+                    <div className={styles.playersInvolved}>
+                      {highlight.involved_players.map((player) => (
+                        <span key={player} className={styles.playerBadge}>
+                          {player}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer: Play links */}
+                <div className={styles.highlightFooter}>
+                  <span className={styles.playLink}>
+                    Plays #{highlight.start_play_id}–#{highlight.end_play_id}
+                  </span>
+                  {highlight.key_play_ids.length > 0 && (
+                    <span className={styles.keyPlays}>
+                      Key: {highlight.key_play_ids.map((id) => `#${id}`).join(", ")}
                     </span>
                   )}
                 </div>
-                <div className={styles.highlightDescription}>{highlight.description}</div>
               </div>
             ))}
           </div>

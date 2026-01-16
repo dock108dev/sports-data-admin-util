@@ -39,6 +39,8 @@ from .schemas import (
     GameMeta,
     GamePreviewScoreResponse,
     HighlightEntry,
+    HighlightsResponse,
+    LegacyHighlightEntry,
     ScrapeRunConfig,
     JobResponse,
     OddsEntry,
@@ -346,18 +348,47 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         ],
     }
 
-    # Serialize highlights
-    # Note: game_analysis.py uses "highlight_type" and "related_segment_id"
-    highlight_entries = [
-        HighlightEntry(
-            type=h.get("highlight_type", h.get("type", "unknown")),
-            segment_id=h.get("related_segment_id", h.get("segment_id")),
-            description=_format_highlight_description(h),
-            importance=h.get("importance"),
-        )
-        for h in highlights_list
-        if isinstance(h, dict)
-    ]
+    # Serialize grounded highlights (new format)
+    grounded_highlights_list = []
+    legacy_highlights_list = []
+    if timeline_artifacts:
+        artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
+        game_analysis = artifact.game_analysis_json or {}
+        
+        # Prefer grounded_highlights if available
+        grounded_raw = game_analysis.get("grounded_highlights", [])
+        for h in grounded_raw:
+            if isinstance(h, dict):
+                grounded_highlights_list.append(
+                    HighlightEntry(
+                        highlight_id=h.get("highlight_id", ""),
+                        type=h.get("type", "UNKNOWN"),
+                        title=h.get("title", ""),
+                        description=h.get("description", ""),
+                        start_play_id=h.get("start_play_id", "0"),
+                        end_play_id=h.get("end_play_id", "0"),
+                        key_play_ids=h.get("key_play_ids", []),
+                        involved_teams=h.get("involved_teams", []),
+                        involved_players=h.get("involved_players", []),
+                        score_change=h.get("score_change", ""),
+                        game_clock_range=h.get("game_clock_range", ""),
+                        game_phase=h.get("game_phase", "mid"),
+                        importance_score=h.get("importance_score", 0.5),
+                    )
+                )
+        
+        # Also populate legacy format for backward compatibility
+        legacy_raw = game_analysis.get("highlights_legacy", game_analysis.get("highlights", []))
+        for h in legacy_raw:
+            if isinstance(h, dict):
+                legacy_highlights_list.append(
+                    LegacyHighlightEntry(
+                        type=h.get("highlight_type", h.get("type", "unknown")),
+                        segment_id=h.get("related_segment_id", h.get("segment_id")),
+                        description=_format_highlight_description(h),
+                        importance=h.get("importance"),
+                    )
+                )
 
     return GameDetailResponse(
         game=meta,
@@ -366,7 +397,8 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,
-        highlights=highlight_entries,
+        highlights=grounded_highlights_list,
+        highlights_legacy=legacy_highlights_list,
         derived_metrics=derived,
         raw_payloads=raw_payloads,
     )
@@ -475,4 +507,72 @@ async def generate_game_timeline(
         timeline=artifact.timeline,
         summary=artifact.summary,
         game_analysis=artifact.game_analysis,
+    )
+
+
+@router.get("/games/{game_id}/highlights", response_model=HighlightsResponse)
+async def get_game_highlights(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> HighlightsResponse:
+    """
+    Get grounded highlights for a game.
+    
+    Highlights are labeled windows of play, backed by specific events, with contextual meaning.
+    Each highlight includes:
+    - Play references (start_play_id, end_play_id, key_play_ids)
+    - Context (score_change, game_clock_range, game_phase)
+    - Participants (involved_teams, involved_players)
+    
+    Use play_id fields to link highlights to the timeline.
+    """
+    result = await session.execute(
+        select(db_models.SportsGame)
+        .options(selectinload(db_models.SportsGame.timeline_artifacts))
+        .where(db_models.SportsGame.id == game_id)
+    )
+    game = result.scalar_one_or_none()
+    if not game:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+    
+    timeline_artifacts = game.timeline_artifacts or []
+    if not timeline_artifacts:
+        return HighlightsResponse(
+            game_id=game_id,
+            generated_at=None,
+            highlights=[],
+            total_count=0,
+        )
+    
+    # Get most recent artifact
+    artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
+    game_analysis = artifact.game_analysis_json or {}
+    
+    # Use grounded_highlights if available
+    grounded_raw = game_analysis.get("grounded_highlights", [])
+    highlights = [
+        HighlightEntry(
+            highlight_id=h.get("highlight_id", ""),
+            type=h.get("type", "UNKNOWN"),
+            title=h.get("title", ""),
+            description=h.get("description", ""),
+            start_play_id=h.get("start_play_id", "0"),
+            end_play_id=h.get("end_play_id", "0"),
+            key_play_ids=h.get("key_play_ids", []),
+            involved_teams=h.get("involved_teams", []),
+            involved_players=h.get("involved_players", []),
+            score_change=h.get("score_change", ""),
+            game_clock_range=h.get("game_clock_range", ""),
+            game_phase=h.get("game_phase", "mid"),
+            importance_score=h.get("importance_score", 0.5),
+        )
+        for h in grounded_raw
+        if isinstance(h, dict)
+    ]
+    
+    return HighlightsResponse(
+        game_id=game_id,
+        generated_at=artifact.generated_at,
+        highlights=highlights,
+        total_count=len(highlights),
     )

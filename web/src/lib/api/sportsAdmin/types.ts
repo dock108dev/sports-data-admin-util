@@ -108,11 +108,44 @@ export type PlayEntry = {
   away_score: number | null;
 };
 
+/**
+ * Grounded highlight with play references and context.
+ * Each highlight is traceable to specific plays in the timeline.
+ */
 export type HighlightEntry = {
+  highlight_id: string;
+  type: string; // SCORING_RUN, LEAD_CHANGE, MOMENTUM_SHIFT, etc.
+  title: string;
+  description: string;
+  start_play_id: string;
+  end_play_id: string;
+  key_play_ids: string[];
+  involved_teams: string[];
+  involved_players: string[];
+  score_change: string; // "92–96 → 98–96"
+  game_clock_range: string; // "Q4 7:42–5:58"
+  game_phase: "early" | "mid" | "late" | "closing";
+  importance_score: number;
+};
+
+/**
+ * Legacy highlight format for backward compatibility.
+ */
+export type LegacyHighlightEntry = {
   type: string;
   segment_id: string | number | null;
   description: string;
   importance: string | null;
+};
+
+/**
+ * Response from GET /games/{game_id}/highlights
+ */
+export type HighlightsResponse = {
+  game_id: number;
+  generated_at: string | null;
+  highlights: HighlightEntry[];
+  total_count: number;
 };
 
 export type AdminGameDetail = {
@@ -148,6 +181,7 @@ export type AdminGameDetail = {
   social_posts: SocialPost[];
   plays: PlayEntry[];
   highlights: HighlightEntry[];
+  highlights_legacy?: LegacyHighlightEntry[];
   derived_metrics: Record<string, unknown>;
   raw_payloads: Record<string, unknown>;
 };

@@ -601,7 +601,11 @@ async def build_nba_game_analysis_async(
     Same as build_nba_game_analysis but with async AI enrichment
     of segment labels. The core analysis (segment detection, highlights)
     remains deterministic.
+    
+    Highlights are grounded with play references, player info, and context.
     """
+    from .highlights import build_grounded_highlights
+    
     # Run deterministic analysis first
     analysis = build_nba_game_analysis(timeline, summary)
     
@@ -612,5 +616,17 @@ async def build_nba_game_analysis_async(
             game_id=game_id,
             sport=sport,
         )
+    
+    # Transform raw highlights into grounded highlights
+    raw_highlights = analysis.get("highlights", [])
+    grounded_highlights = build_grounded_highlights(
+        timeline=timeline,
+        summary=summary,
+        raw_highlights=raw_highlights,
+    )
+    analysis["grounded_highlights"] = [h.to_dict() for h in grounded_highlights]
+    
+    # Keep raw_highlights for backward compatibility, but mark deprecated
+    analysis["highlights_legacy"] = raw_highlights
     
     return analysis
