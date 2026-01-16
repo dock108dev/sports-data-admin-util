@@ -17,6 +17,11 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def today_utc() -> date:
+    """Return the current date in UTC timezone."""
+    return now_utc().date()
+
+
 def date_to_utc_datetime(day: date) -> datetime:
     """Convert a date to a timezone-aware UTC datetime at midnight."""
     return datetime.combine(day, datetime.min.time()).replace(tzinfo=timezone.utc)

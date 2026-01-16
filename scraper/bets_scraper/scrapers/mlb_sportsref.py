@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Sequence
 
 from ..utils.datetime_utils import date_to_utc_datetime
@@ -53,7 +53,6 @@ class MLBSportsReferenceScraper(BaseSportsReferenceScraper):
         # MLB has separate tables for batting and pitching
         table_types = ["batting", "pitching"]
         
-        from ..utils.html_parsing import find_player_table
         
         for table_type in table_types:
             table_id = f"{team_abbr.upper()}_{table_type}"

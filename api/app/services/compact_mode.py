@@ -14,9 +14,7 @@ See docs/COMPACT_MODE.md for the canonical specification.
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
 from typing import Any, Sequence
 

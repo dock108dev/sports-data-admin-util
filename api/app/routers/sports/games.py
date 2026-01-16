@@ -10,6 +10,7 @@ from sqlalchemy import desc, exists, func, select
 from sqlalchemy.orm import selectinload
 
 from ... import db_models
+from ...celery_client import get_celery_app
 from ...db import AsyncSession, get_db
 from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
@@ -37,6 +38,8 @@ from .schemas import (
     GameListResponse,
     GameMeta,
     GamePreviewScoreResponse,
+    HighlightEntry,
+    ScrapeRunConfig,
     JobResponse,
     OddsEntry,
 )
@@ -44,6 +47,29 @@ from ..game_snapshot_models import TimelineArtifactResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _format_highlight_description(highlight: dict) -> str:
+    """Format a human-readable description from highlight data."""
+    highlight_type = highlight.get("highlight_type", highlight.get("type", "unknown"))
+    score_context = highlight.get("score_context", {})
+    
+    if highlight_type == "scoring_run":
+        points = score_context.get("points", 0)
+        start_score = score_context.get("start_score", {})
+        end_score = score_context.get("end_score", {})
+        return f"{points}-0 run ({start_score.get('home', 0)}-{start_score.get('away', 0)} → {end_score.get('home', 0)}-{end_score.get('away', 0)})"
+    elif highlight_type == "lead_change":
+        return "Lead changed hands"
+    elif highlight_type == "quarter_shift":
+        margin_change = score_context.get("margin_change", 0)
+        return f"Momentum shift ({margin_change} point swing)"
+    elif highlight_type == "game_deciding_stretch":
+        final_margin = score_context.get("final_margin", 0)
+        return f"Game-deciding stretch (final margin: {final_margin})"
+    else:
+        # Fallback to any description field or type
+        return highlight.get("description", highlight_type.replace("_", " ").title())
 
 
 @router.get("/games", response_model=GameListResponse)
@@ -71,6 +97,7 @@ async def list_games(
         selectinload(db_models.SportsGame.odds),
         selectinload(db_models.SportsGame.social_posts),
         selectinload(db_models.SportsGame.plays),
+        selectinload(db_models.SportsGame.timeline_artifacts),
     )
 
     base_stmt = apply_game_filters(
@@ -122,12 +149,16 @@ async def list_games(
     with_pbp_count_stmt = count_stmt.where(
         exists(select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id))
     )
+    with_highlights_count_stmt = count_stmt.where(
+        exists(select(1).where(db_models.SportsGameTimelineArtifact.game_id == db_models.SportsGame.id))
+    )
 
     with_boxscore_count = (await session.execute(with_boxscore_count_stmt)).scalar_one()
     with_player_stats_count = (await session.execute(with_player_stats_count_stmt)).scalar_one()
     with_odds_count = (await session.execute(with_odds_count_stmt)).scalar_one()
     with_social_count = (await session.execute(with_social_count_stmt)).scalar_one()
     with_pbp_count = (await session.execute(with_pbp_count_stmt)).scalar_one()
+    with_highlights_count = (await session.execute(with_highlights_count_stmt)).scalar_one()
 
     next_offset = offset + limit if offset + limit < total else None
     summaries = [summarize_game(game) for game in games]
@@ -141,6 +172,7 @@ async def list_games(
         with_odds_count=with_odds_count,
         with_social_count=with_social_count,
         with_pbp_count=with_pbp_count,
+        with_highlights_count=with_highlights_count,
     )
 
 
@@ -215,6 +247,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             selectinload(db_models.SportsGame.odds),
             selectinload(db_models.SportsGame.social_posts).selectinload(db_models.GameSocialPost.team),
             selectinload(db_models.SportsGame.plays),
+            selectinload(db_models.SportsGame.timeline_artifacts),
         )
         .where(db_models.SportsGame.id == game_id)
     )
@@ -238,6 +271,18 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     ]
 
     plays_entries = [serialize_play_entry(play) for play in sorted(game.plays, key=lambda p: p.play_index)]
+    
+    # Extract highlights from timeline artifact
+    timeline_artifacts = game.timeline_artifacts or []
+    has_highlights = bool(timeline_artifacts)
+    highlights_list: list[dict] = []
+    if timeline_artifacts:
+        # Get most recent artifact
+        artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
+        game_analysis = artifact.game_analysis_json or {}
+        highlights_list = game_analysis.get("highlights", [])
+    
+    highlight_count = len(highlights_list) if isinstance(highlights_list, list) else 0
 
     meta = GameMeta(
         id=game.id,
@@ -260,8 +305,10 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         has_odds=bool(game.odds),
         has_social=bool(game.social_posts),
         has_pbp=bool(game.plays),
+        has_highlights=has_highlights,
         play_count=len(game.plays) if game.plays else 0,
         social_post_count=len(game.social_posts) if game.social_posts else 0,
+        highlight_count=highlight_count,
         home_team_x_handle=game.home_team.x_handle if game.home_team else None,
         away_team_x_handle=game.away_team.x_handle if game.away_team else None,
     )
@@ -299,6 +346,19 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         ],
     }
 
+    # Serialize highlights
+    # Note: game_analysis.py uses "highlight_type" and "related_segment_id"
+    highlight_entries = [
+        HighlightEntry(
+            type=h.get("highlight_type", h.get("type", "unknown")),
+            segment_id=h.get("related_segment_id", h.get("segment_id")),
+            description=_format_highlight_description(h),
+            importance=h.get("importance"),
+        )
+        for h in highlights_list
+        if isinstance(h, dict)
+    ]
+
     return GameDetailResponse(
         game=meta,
         team_stats=team_stats,
@@ -306,6 +366,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,
+        highlights=highlight_entries,
         derived_metrics=derived,
         raw_payloads=raw_payloads,
     )

@@ -7,6 +7,7 @@ from celery import shared_task
 from ..logging import logger
 from ..services.ingestion import run_ingestion
 from ..services.scheduler import schedule_ingestion_runs
+from ..services.timeline_generator import generate_missing_timelines
 
 
 @shared_task(name="run_scrape_job")
@@ -33,3 +34,133 @@ def run_scheduled_ingestion() -> dict:
         "enqueue_failures": summary.enqueue_failures,
         "last_run_at": summary.last_run_at.isoformat(),
     }
+
+
+@shared_task(
+    name="generate_missing_timelines",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def generate_missing_timelines_task(
+    league_code: str = "NBA",
+    days_back: int = 7,
+    max_games: int | None = None,
+) -> dict:
+    """
+    Generate timeline artifacts for games missing them.
+    
+    This task finds completed games with play-by-play data but no timeline
+    artifacts, and triggers timeline generation for each one.
+    
+    Args:
+        league_code: League to process (default: NBA)
+        days_back: How many days back to check (default: 7)
+        max_games: Maximum number of games to process (default: None = all)
+        
+    Returns:
+        Summary dict with counts of processed/successful/failed games
+    """
+    logger.info(
+        "timeline_gen_task_started",
+        league=league_code,
+        days_back=days_back,
+        max_games=max_games,
+    )
+    
+    summary = generate_missing_timelines(
+        league_code=league_code,
+        days_back=days_back,
+        max_games=max_games,
+    )
+    
+    logger.info("timeline_gen_task_completed", **summary)
+    
+    return summary
+
+
+@shared_task(
+    name="regenerate_timeline",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def regenerate_timeline_task(
+    game_id: int,
+    reason: str = "manual",
+) -> dict:
+    """
+    Regenerate timeline artifact for a specific game.
+    
+    This task calls the API endpoint to regenerate the timeline for a single game.
+    Used by auto-regeneration after social backfill or manual regeneration requests.
+    
+    Args:
+        game_id: Game ID to regenerate timeline for
+        reason: Reason for regeneration (e.g., "social_backfill", "manual")
+        
+    Returns:
+        Result dict with success/failure status
+    """
+    import httpx
+    from ..config import settings
+    
+    logger.info(
+        "timeline_regen_task_started",
+        game_id=game_id,
+        reason=reason,
+    )
+    
+    api_url = f"{settings.api_internal_url}/api/admin/sports/timelines/generate/{game_id}"
+    
+    try:
+        response = httpx.post(
+            api_url,
+            json={"timeline_version": "v1"},
+            timeout=600,  # 10 minute timeout for large games
+        )
+        response.raise_for_status()
+        result = response.json()
+        
+        logger.info(
+            "timeline_regen_task_completed",
+            game_id=game_id,
+            reason=reason,
+            success=True,
+        )
+        
+        return {
+            "game_id": game_id,
+            "success": True,
+            "reason": reason,
+            "result": result,
+        }
+        
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            "timeline_regen_task_failed",
+            game_id=game_id,
+            reason=reason,
+            status_code=exc.response.status_code,
+            error=exc.response.text,
+        )
+        return {
+            "game_id": game_id,
+            "success": False,
+            "reason": reason,
+            "error": f"HTTP {exc.response.status_code}: {exc.response.text}",
+        }
+        
+    except Exception as exc:
+        logger.error(
+            "timeline_regen_task_failed",
+            game_id=game_id,
+            reason=reason,
+            error=str(exc),
+        )
+        return {
+            "game_id": game_id,
+            "success": False,
+            "reason": reason,
+            "error": str(exc),
+        }

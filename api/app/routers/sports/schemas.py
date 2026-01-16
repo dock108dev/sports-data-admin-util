@@ -102,8 +102,10 @@ class GameSummary(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
+    has_highlights: bool
     play_count: int
     social_post_count: int
+    highlight_count: int
     has_required_data: bool
     scrape_version: int | None
     last_scraped_at: datetime | None
@@ -121,6 +123,7 @@ class GameListResponse(BaseModel):
     with_odds_count: int | None = 0
     with_social_count: int | None = 0
     with_pbp_count: int | None = 0
+    with_highlights_count: int | None = 0
 
 
 class TeamStat(BaseModel):
@@ -178,8 +181,10 @@ class GameMeta(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
+    has_highlights: bool
     play_count: int
     social_post_count: int
+    highlight_count: int
     home_team_x_handle: str | None = None
     away_team_x_handle: str | None = None
 
@@ -264,6 +269,13 @@ class CompactMomentSummaryResponse(BaseModel):
     summary: str
 
 
+class HighlightEntry(BaseModel):
+    type: str
+    segment_id: str | int | None
+    description: str
+    importance: str | None
+
+
 class GameDetailResponse(BaseModel):
     game: GameMeta
     team_stats: list[TeamStat]
@@ -271,6 +283,7 @@ class GameDetailResponse(BaseModel):
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry]
     plays: list[PlayEntry]
+    highlights: list[HighlightEntry]
     derived_metrics: dict[str, Any]
     raw_payloads: dict[str, Any]
 

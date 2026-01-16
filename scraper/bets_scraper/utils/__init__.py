@@ -39,6 +39,7 @@ __all__ = [
     "find_table_by_id",
     "find_player_table",
     "extract_team_stats_from_table",
+    "extract_all_stats_from_row",
     "get_table_ids_on_page",
     # Database queries
     "get_league_id",

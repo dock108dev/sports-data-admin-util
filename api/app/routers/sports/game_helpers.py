@@ -12,8 +12,9 @@ from sqlalchemy.sql import or_
 
 from ... import db_models
 from ...celery_client import get_celery_app
+from ...db import AsyncSession
 from ...game_metadata.models import GameContext, StandingsEntry, TeamRatings
-from .schemas import JobResponse, ScrapeRunConfig, SocialPostEntry
+from .schemas import GameSummary, JobResponse, ScrapeRunConfig, SocialPostEntry
 
 logger = logging.getLogger(__name__)
 
@@ -204,10 +205,8 @@ def build_preview_context(
     )
 
 
-def summarize_game(game: db_models.SportsGame) -> "GameSummary":
+def summarize_game(game: db_models.SportsGame) -> GameSummary:
     """Summarize game fields for list responses."""
-    from .schemas import GameSummary
-
     has_boxscore = bool(game.team_boxscores)
     has_player_stats = bool(game.player_boxscores)
     has_odds = bool(game.odds)
@@ -217,6 +216,18 @@ def summarize_game(game: db_models.SportsGame) -> "GameSummary":
     plays = getattr(game, "plays", []) or []
     has_pbp = bool(plays)
     play_count = len(plays)
+    
+    # Check for timeline artifacts (highlights)
+    timeline_artifacts = getattr(game, "timeline_artifacts", []) or []
+    has_highlights = bool(timeline_artifacts)
+    # Count highlights from the first (most recent) timeline artifact
+    highlight_count = 0
+    if timeline_artifacts:
+        artifact = timeline_artifacts[0]
+        game_analysis = getattr(artifact, "game_analysis_json", {}) or {}
+        highlights_list = game_analysis.get("highlights", [])
+        highlight_count = len(highlights_list) if isinstance(highlights_list, list) else 0
+    
     return GameSummary(
         id=game.id,
         league_code=game.league.code if game.league else "UNKNOWN",
@@ -230,8 +241,10 @@ def summarize_game(game: db_models.SportsGame) -> "GameSummary":
         has_odds=has_odds,
         has_social=has_social,
         has_pbp=has_pbp,
+        has_highlights=has_highlights,
         play_count=play_count,
         social_post_count=social_post_count,
+        highlight_count=highlight_count,
         has_required_data=has_boxscore and has_odds,
         scrape_version=getattr(game, "scrape_version", None),
         last_scraped_at=game.last_scraped_at,
