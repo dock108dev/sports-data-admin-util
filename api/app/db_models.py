@@ -345,6 +345,7 @@ class SportsGamePlay(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     game: Mapped["SportsGame"] = relationship("SportsGame", back_populates="plays")
+    team: Mapped["SportsTeam | None"] = relationship("SportsTeam", foreign_keys=[team_id])
 
     __table_args__ = (
         Index("idx_game_plays_game", "game_id"),

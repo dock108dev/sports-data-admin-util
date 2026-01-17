@@ -147,6 +147,7 @@ async def build_game_analysis_async(
     game_id: int,
     sport: str = "NBA",
     timeline_version: str | None = None,
+    game_context: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     Analyze a game timeline into moments with AI enrichment.
@@ -161,6 +162,7 @@ async def build_game_analysis_async(
         game_id: Database game ID (for caching/logging)
         sport: Sport code (NBA, NHL, NFL, etc.)
         timeline_version: Version string for cache invalidation
+        game_context: Team names and abbreviations for resolution
         
     Returns:
         {
@@ -178,7 +180,12 @@ async def build_game_analysis_async(
     
     # Step 1: Partition game into moments
     thresholds = get_thresholds_for_sport(sport)
-    moments = partition_game(timeline, summary_with_sport, thresholds=thresholds)
+    moments = partition_game(
+        timeline, 
+        summary_with_sport, 
+        thresholds=thresholds,
+        game_context=game_context or {},
+    )
     
     if not moments:
         logger.warning("game_analysis_no_moments", extra={"game_id": game_id})

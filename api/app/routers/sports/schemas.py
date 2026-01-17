@@ -246,11 +246,9 @@ class MomentEntry(BaseModel):
     - FLIP: Leader changed
     - CLOSING_CONTROL: Late-game lock-in
     - HIGH_IMPACT: Ejection, injury, etc.
-    - OPENER: First plays of a period
     - NEUTRAL: Normal flow
     
     Moments are aggressively merged to stay within sport-specific budgets.
-    A typical NBA game has ~25-35 moments, not 60-70.
     """
     id: str                           # "m_001"
     type: str                         # See MomentTypes above
@@ -258,11 +256,13 @@ class MomentEntry(BaseModel):
     end_play: int                     # Last play index
     play_count: int                   # Number of plays
     teams: list[str] = Field(default_factory=list)
+    primary_team: str | None = None
     players: list[PlayerContribution] = Field(default_factory=list)
     score_start: str = ""             # "12–15"
     score_end: str = ""               # "18–15"
     clock: str = ""                   # "Q2 8:45–6:12"
     is_notable: bool = False          # True for notable moments (key game events)
+    is_period_start: bool = False     # True if this moment starts a new period
     note: str | None = None           # "7-0 run"
     
     # Lead Ladder state

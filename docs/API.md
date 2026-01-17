@@ -128,7 +128,6 @@ Get all moments for a game.
 | `FLIP` | Leader changed | Always |
 | `CLOSING_CONTROL` | Late-game lock-in (dagger) | Always |
 | `HIGH_IMPACT` | Ejection, injury, flagrant | Always |
-| `OPENER` | First plays of a period | If strong lead |
 | `NEUTRAL` | Normal flow, no tier changes | Never |
 
 **Optional Fields:**
@@ -342,16 +341,18 @@ Get reading position.
 ```typescript
 {
   id: string;           // "m_001"
-  type: string;         // LEAD_BUILD, CUT, TIE, FLIP, CLOSING_CONTROL, HIGH_IMPACT, OPENER, NEUTRAL
+  type: string;         // LEAD_BUILD, CUT, TIE, FLIP, CLOSING_CONTROL, HIGH_IMPACT, NEUTRAL
   start_play: number;
   end_play: number;
   play_count: number;
   teams: string[];
+  primary_team: string | null;   // The team that drove the narrative
   players: PlayerContribution[];
   score_start: string;  // "12–15"
   score_end: string;
   clock: string;        // "Q2 8:45–6:12"
   is_notable: boolean;  // Filter by this for highlights
+  is_period_start: boolean; // True if this moment starts a new period
   note: string | null;
   
   // Optional fields

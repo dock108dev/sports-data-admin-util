@@ -154,17 +154,6 @@ COMPRESSION_BEHAVIOR: dict[MomentType, CompressionBehavior] = {
         description="Comeback attempt - show most, trim routine",
     ),
     
-    # === MODERATE COMPRESSION ===
-    
-    MomentType.OPENER: CompressionBehavior(
-        collapse_allowed=True,
-        base_retention=0.5,
-        min_events=2,
-        description="Period start - condense after opening plays",
-    ),
-    
-    # === HEAVY COMPRESSION ===
-    
     MomentType.NEUTRAL: CompressionBehavior(
         collapse_allowed=True,
         base_retention=0.3,

@@ -72,9 +72,6 @@ logger = logging.getLogger(__name__)
 class MomentType(str, Enum):
     """
     Types of narrative moments based on Lead Ladder crossings.
-
-    These replace the old RUN/BATTLE/CLOSING types with more precise
-    lead-change-based classifications.
     """
     # Lead Ladder crossing types (primary)
     LEAD_BUILD = "LEAD_BUILD"      # Lead tier increased
@@ -85,7 +82,6 @@ class MomentType(str, Enum):
     # Special context types
     CLOSING_CONTROL = "CLOSING_CONTROL"  # Late-game lock-in (dagger)
     HIGH_IMPACT = "HIGH_IMPACT"    # Non-scoring event changing control
-    OPENER = "OPENER"              # First plays of a period
     NEUTRAL = "NEUTRAL"            # Normal flow, no tier changes
 
 
@@ -212,9 +208,6 @@ class Moment:
 
     Every play in the timeline belongs to exactly one Moment.
     Moments are always chronologically ordered by start_play.
-    
-    A moment only exists when something meaningfully changes.
-    If nothing meaningful changed, extend the current moment.
     """
     id: str
     type: MomentType
@@ -233,24 +226,26 @@ class Moment:
     ladder_tier_after: int = 0
     team_in_control: str | None = None  # "home", "away", or None
 
-    # Context
+    # Context (RESOLVED DURING RESOLUTION PASS)
     teams: list[str] = field(default_factory=list)
+    primary_team: str | None = None  # "home" or "away"
     players: list[PlayerContribution] = field(default_factory=list)
     key_play_ids: list[int] = field(default_factory=list)
     clock: str = ""
 
-    # WHY THIS MOMENT EXISTS - mandatory for narrative clarity
+    # WHY THIS MOMENT EXISTS
     reason: MomentReason | None = None
     
     # Metadata
     is_notable: bool = False
+    is_period_start: bool = False # Flag for period boundaries
     note: str | None = None
     run_info: RunInfo | None = None  # If a run contributed to this moment
     bucket: str = ""  # "early", "mid", "late" (derived from clock)
 
     # AI-generated content (populated by enrich_game_moments)
-    headline: str = ""   # max 60 chars, SportsCenter-style
-    summary: str = ""    # max 150 chars, captures momentum/pressure
+    headline: str = ""   # max 60 chars
+    summary: str = ""    # max 150 chars
 
     @property
     def display_weight(self) -> str:
@@ -261,7 +256,7 @@ class Moment:
             return "medium"
         if self.type in (MomentType.CUT,):
             return "medium"
-        return "low"  # NEUTRAL, OPENER
+        return "low"  # NEUTRAL
 
     @property
     def display_icon(self) -> str:
@@ -273,7 +268,6 @@ class Moment:
             MomentType.CUT: "trending-down",
             MomentType.CLOSING_CONTROL: "lock",
             MomentType.HIGH_IMPACT: "zap",
-            MomentType.OPENER: "play",
             MomentType.NEUTRAL: "minus",
         }
         return icons.get(self.type, "circle")
@@ -287,10 +281,6 @@ class Moment:
             return "positive"
         if self.type == MomentType.HIGH_IMPACT:
             return "highlight"
-        if self.type in (MomentType.LEAD_BUILD, MomentType.CUT):
-            # Depends on who's in control vs home/away preference
-            # For now, neutral - frontend can decide based on team_in_control
-            return "neutral"
         return "neutral"
 
     def to_dict(self) -> dict[str, Any]:
@@ -302,20 +292,20 @@ class Moment:
             "end_play": self.end_play,
             "play_count": self.play_count,
             "teams": self.teams,
+            "primary_team": self.primary_team,
             "players": [p.to_dict() for p in self.players],
             "score_start": self.score_start,
             "score_end": self.score_end,
             "clock": self.clock,
             "is_notable": self.is_notable,
+            "is_period_start": self.is_period_start,
             "note": self.note,
             "ladder_tier_before": self.ladder_tier_before,
             "ladder_tier_after": self.ladder_tier_after,
             "team_in_control": self.team_in_control,
             "key_play_ids": self.key_play_ids,
-            # AI-generated content
             "headline": self.headline,
             "summary": self.summary,
-            # Display hints (frontend doesn't need to guess)
             "display_weight": self.display_weight,
             "display_icon": self.display_icon,
             "display_color_hint": self.display_color_hint,
@@ -674,6 +664,14 @@ def _detect_boundaries(
 ) -> list[BoundaryEvent]:
     """
     Detect all moment boundaries using the canonical PBP stream.
+
+    MOMENTS MUST HAVE CAUSAL TRIGGERS:
+    - tier_up / tier_down
+    - tie / flip
+    - closing_lock
+    - high_impact_event
+
+    OPENER is no longer a moment type.
     """
     boundaries: list[BoundaryEvent] = []
 
@@ -685,22 +683,12 @@ def _detect_boundaries(
     pending_crossing: TierCrossing | None = None
     pending_index: int = 0
     persistence_count: int = 0
-    prev_event: dict[str, Any] | None = None
+    # prev_event removed - period start is metadata during partitioning
 
     for i in pbp_indices:
         event = events[i]
         home_score, away_score = _get_score(event)
         curr_state = compute_lead_state(home_score, away_score, thresholds)
-
-        # === PERIOD OPENER ===
-        if _is_period_opener(event, prev_event):
-            boundaries.append(BoundaryEvent(
-                index=i,
-                moment_type=MomentType.OPENER,
-                prev_state=prev_state or curr_state,
-                curr_state=curr_state,
-                note=f"Period {event.get('quarter', '?')} start",
-            ))
 
         # === LEAD LADDER CROSSING ===
         if prev_state is not None:
@@ -800,7 +788,6 @@ def _detect_boundaries(
             ))
 
         prev_state = curr_state
-        prev_event = event
 
     return boundaries
 
@@ -819,47 +806,34 @@ def is_valid_moment(moment: Moment) -> bool:
     """
     HARD VALIDITY GATE: A moment must represent a narrative state change.
 
-    A moment is valid if it shows ANY meaningful change:
-    - Score changed
-    - Control changed (leader changed)
-    - Ladder tier changed
-    - Is high impact event
-    - Represents a significant narrative shift
-
-    If none of these are true, the moment should not exist as a standalone entity.
-    It should be merged into an adjacent moment.
+    A moment is valid if:
+    1. It has a causal trigger (not 'unknown' or 'stable' with no change)
+    2. It has participants (teams)
+    3. It represents a meaningful state change (score, control, ladder)
+    4. It is NOT a micro-moment (< 2 plays) unless it's a high-impact transition (flip, tie, lock)
     """
-    # Score changed
-    if moment.score_before != moment.score_after:
+    # Rule 0: Must have a causal trigger
+    if not moment.reason or moment.reason.trigger in ("unknown", "stable"):
+        # Stable moments are only valid if they actually have a score change (merged in later)
+        if moment.score_before == moment.score_after:
+            return False
+
+    # Rule 1: Must have teams
+    if not moment.teams:
+        return False
+
+    # Rule 2: Micro-moment protection
+    if moment.play_count < 2:
+        # Only allow single-play moments for high-impact transitions
+        if moment.type not in (MomentType.FLIP, MomentType.TIE, MomentType.CLOSING_CONTROL, MomentType.HIGH_IMPACT):
+            return False
+
+    # Rule 3: Narrative change
+    if (moment.score_before != moment.score_after or 
+        moment.ladder_tier_before != moment.ladder_tier_after or
+        moment.type in (MomentType.FLIP, MomentType.TIE, MomentType.CLOSING_CONTROL, MomentType.HIGH_IMPACT)):
         return True
 
-    # Control changed (different leader)
-    if moment.team_in_control is not None:
-        # Check if this represents a control change from previous state
-        # For now, assume any moment with control assigned represents a change
-        return True
-
-    # Ladder tier changed
-    if moment.ladder_tier_before != moment.ladder_tier_after:
-        return True
-
-    # High impact event (always valid)
-    if moment.type == MomentType.HIGH_IMPACT:
-        return True
-
-    # Significant narrative shifts (always valid)
-    if moment.type in (MomentType.FLIP, MomentType.TIE, MomentType.CLOSING_CONTROL):
-        return True
-
-    # Has a run (represents scoring momentum)
-    if moment.run_info is not None:
-        return True
-
-    # Has key plays (significant actions)
-    if moment.key_play_ids:
-        return True
-
-    # Default: invalid - represents no narrative change
     return False
 
 
@@ -910,10 +884,6 @@ def _can_merge_moments(m1: Moment, m2: Moment) -> bool:
     if m1.type == MomentType.TIE or m2.type == MomentType.TIE:
         return False
 
-    # OPENER can merge with following NEUTRAL/LEAD_BUILD
-    if m1.type == MomentType.OPENER and m2.type in {MomentType.NEUTRAL, MomentType.LEAD_BUILD}:
-        return True
-
     return False
 
 
@@ -935,7 +905,6 @@ def _merge_two_moments(m1: Moment, m2: Moment) -> Moment:
         MomentType.TIE: 7,
         MomentType.CUT: 6,
         MomentType.LEAD_BUILD: 5,
-        MomentType.OPENER: 3,
         MomentType.NEUTRAL: 1,
     }
     
@@ -968,11 +937,13 @@ def _merge_two_moments(m1: Moment, m2: Moment) -> Moment:
         ladder_tier_after=m2.ladder_tier_after,
         team_in_control=m2.team_in_control,
         teams=list(set(m1.teams + m2.teams)),
+        primary_team=m2.primary_team or m1.primary_team,
         players=m1.players + m2.players,  # Combine player contributions
         key_play_ids=combined_key_plays,
         clock=f"{m1.clock.split('–')[0]}–{m2.clock.split('–')[-1]}" if m1.clock and m2.clock else m1.clock or m2.clock,
         reason=dominant_reason,
         is_notable=m1.is_notable or m2.is_notable,
+        is_period_start=m1.is_period_start,
         note=m2.note or m1.note,
         run_info=m2.run_info or m1.run_info,
         bucket=m2.bucket or m1.bucket,
@@ -1105,8 +1076,6 @@ def _enforce_quarter_limits(
                     priority = 0
                 elif m.type in (MomentType.LEAD_BUILD, MomentType.CUT):
                     priority = 1
-                elif m.type == MomentType.OPENER:
-                    priority = 2
                 elif m.type == MomentType.TIE:
                     priority = 3
                 else:
@@ -1153,8 +1122,7 @@ def _enforce_budget(moments: list[Moment], budget: int) -> list[Moment]:
     1. Consecutive NEUTRAL moments
     2. Consecutive LEAD_BUILD moments  
     3. Consecutive CUT moments
-    4. OPENER + following moment
-    5. (HARD CLAMP) Any consecutive same-type moments
+    4. (HARD CLAMP) Any consecutive same-type moments
     6. (HARD CLAMP) Any consecutive moments (last resort)
     
     The budget IS enforced. No exceptions.
@@ -1211,15 +1179,7 @@ def _enforce_budget(moments: list[Moment], budget: int) -> list[Moment]:
         if merged or len(moments) <= budget:
             continue
         
-        # Fourth pass: merge OPENER with following non-protected moment
-        for i in range(len(moments) - 1):
-            if i >= len(moments) - 1:
-                break
-            if moments[i].type == MomentType.OPENER and moments[i + 1].type not in PROTECTED_TYPES:
-                moments[i] = _merge_two_moments(moments[i], moments[i + 1])
-                moments.pop(i + 1)
-                merged = True
-                break
+        # Fourth pass: merge any consecutive moments if needed
         
         if not merged:
             break  # Move to hard clamp phase
@@ -1269,6 +1229,245 @@ def _enforce_budget(moments: list[Moment], budget: int) -> list[Moment]:
 
 
 # =============================================================================
+# BACK-AND-FORTH DETECTION AND MEGA-MOMENT SPLITTING
+# =============================================================================
+
+
+def _detect_back_and_forth_phase(
+    events: list[dict[str, Any]],
+    start_idx: int,
+    end_idx: int,
+    thresholds: Sequence[int],
+) -> bool:
+    """
+    Detect if a moment represents a back-and-forth phase.
+    
+    Criteria:
+    - Multiple small lead changes within the moment
+    - Score stays within tier 0-1 (close game)
+    - No sustained runs (no 8+ point unanswered runs)
+    
+    Returns True if this is a volatile back-and-forth sequence.
+    """
+    if end_idx - start_idx < 20:  # Too short to be back-and-forth
+        return False
+    
+    lead_changes = 0
+    ties = 0
+    max_tier = 0
+    prev_leader = None
+    prev_score = None
+    max_run_length = 0
+    current_run_length = 0
+    last_scoring_team = None
+    
+    for i in range(start_idx, end_idx + 1):
+        event = events[i]
+        if event.get("event_type") != "pbp":
+            continue
+        
+        home_score = event.get("home_score") or 0
+        away_score = event.get("away_score") or 0
+        
+        if prev_score is not None:
+            # Check for scoring
+            if home_score > prev_score[0] or away_score > prev_score[1]:
+                scoring_team = "home" if home_score > prev_score[0] else "away"
+                
+                # Track runs
+                if scoring_team == last_scoring_team:
+                    current_run_length += 1
+                    max_run_length = max(max_run_length, current_run_length)
+                else:
+                    current_run_length = 1
+                    last_scoring_team = scoring_team
+        
+        # Compute lead state
+        state = compute_lead_state(home_score, away_score, thresholds)
+        max_tier = max(max_tier, state.tier)
+        
+        # Track lead changes
+        if prev_leader is not None and state.leader != prev_leader and state.leader != Leader.TIED:
+            lead_changes += 1
+        
+        # Track ties
+        if state.leader == Leader.TIED and (prev_leader is None or prev_leader != Leader.TIED):
+            ties += 1
+        
+        prev_leader = state.leader
+        prev_score = (home_score, away_score)
+    
+    # Back-and-forth criteria:
+    # - At least 3 lead changes OR 3 ties
+    # - Stays within tier 0-1 (close game)
+    # - No sustained run of 8+ consecutive scores
+    is_volatile = (lead_changes >= 3 or ties >= 3)
+    is_close = max_tier <= 1
+    no_sustained_run = max_run_length < 8
+    
+    return is_volatile and is_close and no_sustained_run
+
+
+def _find_quarter_boundaries(
+    events: list[dict[str, Any]],
+    start_idx: int,
+    end_idx: int,
+) -> list[int]:
+    """
+    Find quarter boundary indices within a moment.
+    
+    Returns indices where the quarter changes.
+    """
+    boundaries = []
+    prev_quarter = None
+    
+    for i in range(start_idx, end_idx + 1):
+        event = events[i]
+        if event.get("event_type") != "pbp":
+            continue
+        
+        quarter = event.get("quarter")
+        if prev_quarter is not None and quarter != prev_quarter:
+            boundaries.append(i)
+        prev_quarter = quarter
+    
+    return boundaries
+
+
+def _split_mega_moment(
+    moment: Moment,
+    events: list[dict[str, Any]],
+    thresholds: Sequence[int],
+    game_context: dict[str, str],
+    max_plays: int = 50,
+) -> list[Moment]:
+    """
+    Split a mega-moment into smaller chunks at natural break points.
+    
+    Break points (in priority order):
+    1. Quarter boundaries
+    2. Every max_plays if no quarter boundaries available
+    
+    Preserves score continuity and moment IDs.
+    """
+    # Check if moment is actually a mega-moment
+    if moment.play_count <= max_plays:
+        return [moment]
+    
+    # Find quarter boundaries within this moment
+    quarter_boundaries = _find_quarter_boundaries(events, moment.start_play, moment.end_play)
+    
+    # If no quarter boundaries, split at regular intervals
+    if not quarter_boundaries:
+        # Split into chunks of max_plays
+        split_points = []
+        current = moment.start_play + max_plays
+        while current < moment.end_play:
+            split_points.append(current)
+            current += max_plays
+    else:
+        split_points = quarter_boundaries
+    
+    # Create sub-moments
+    sub_moments = []
+    current_start = moment.start_play
+    moment_id_counter = 0
+    
+    # Get initial score before the moment starts
+    if current_start > 0:
+        current_score_before = _get_score(events[current_start - 1])
+    else:
+        current_score_before = (0, 0)
+    
+    for split_idx in split_points:
+        if split_idx <= current_start:
+            continue
+        
+        # Score before is the score AFTER the previous sub-moment
+        score_before = current_score_before
+        
+        # Find the last valid score before the split point
+        # (skip quarter boundary events which have None scores)
+        end_idx_for_sub = split_idx - 1
+        score_after = _get_score(events[end_idx_for_sub])
+        
+        # If score is (0, 0), try to find the last valid score before this
+        if score_after == (0, 0) and end_idx_for_sub > current_start:
+            for j in range(end_idx_for_sub - 1, current_start - 1, -1):
+                temp_score = _get_score(events[j])
+                if temp_score != (0, 0):
+                    score_after = temp_score
+                    end_idx_for_sub = j
+                    break
+        
+        start_state = compute_lead_state(score_before[0], score_before[1], thresholds)
+        end_state = compute_lead_state(score_after[0], score_after[1], thresholds)
+        
+        # Inherit type from parent or determine from states
+        if start_state.leader != end_state.leader:
+            sub_type = MomentType.FLIP if end_state.leader != Leader.TIED else MomentType.TIE
+        elif end_state.tier > start_state.tier:
+            sub_type = MomentType.LEAD_BUILD
+        elif end_state.tier < start_state.tier:
+            sub_type = MomentType.CUT
+        else:
+            sub_type = MomentType.NEUTRAL
+        
+        # Create sub-moment
+        sub_moment = _create_moment(
+            moment_id=moment_id_counter,
+            events=events,
+            start_idx=current_start,
+            end_idx=end_idx_for_sub,
+            moment_type=sub_type,
+            thresholds=thresholds,
+            boundary=None,
+            score_before=score_before,
+            game_context=game_context,
+        )
+        
+        # Preserve some metadata from parent
+        sub_moment.id = f"{moment.id}_sub{moment_id_counter}"
+        sub_moments.append(sub_moment)
+        
+        # Update for next iteration - skip the quarter boundary event
+        current_start = split_idx
+        current_score_before = score_after  # Score after this sub-moment becomes score before next
+        moment_id_counter += 1
+    
+    # Create final sub-moment
+    if current_start <= moment.end_play:
+        score_before = current_score_before
+        
+        sub_moment = _create_moment(
+            moment_id=moment_id_counter,
+            events=events,
+            start_idx=current_start,
+            end_idx=moment.end_play,
+            moment_type=moment.type,  # Last chunk keeps original type
+            thresholds=thresholds,
+            boundary=None,
+            score_before=score_before,
+            game_context=game_context,
+        )
+        
+        sub_moment.id = f"{moment.id}_sub{moment_id_counter}"
+        sub_moments.append(sub_moment)
+    
+    logger.info(
+        "mega_moment_split",
+        extra={
+            "original_id": moment.id,
+            "original_plays": moment.play_count,
+            "sub_moments": len(sub_moments),
+            "split_points": len(split_points),
+        },
+    )
+    
+    return sub_moments
+
+
+# =============================================================================
 # MOMENT PARTITIONING
 # =============================================================================
 
@@ -1278,6 +1477,7 @@ def partition_game(
     summary: dict[str, Any],
     thresholds: Sequence[int] | None = None,
     hysteresis_plays: int = DEFAULT_HYSTERESIS_PLAYS,
+    game_context: dict[str, str] | None = None,
 ) -> list[Moment]:
     """
     Partition a game timeline into moments based on Lead Ladder.
@@ -1288,11 +1488,22 @@ def partition_game(
     3. Moments are chronologically ordered by start_play
     4. Moment count stays within sport-specific budget
     5. Every moment has a reason for existing
-    6. Score continuity is preserved (moment score_before == prev score_after)
+    6. Score continuity is preserved
+    7. Participants are RESOLVED and FROZEN on the moment
+    
+    Args:
+        timeline: Full timeline events (PBP + social)
+        summary: Game summary metadata
+        thresholds: Lead Ladder tier thresholds
+        hysteresis_plays: Number of plays to confirm tier changes
+        game_context: Team names and abbreviations for resolution
     """
     events = list(timeline)
     if not events:
         return []
+    
+    # Store game context for later use
+    _game_context = game_context or {}
 
     # 1. Get CANONICAL PBP event indices (filter out junk)
     pbp_indices = get_canonical_pbp_indices(events)
@@ -1321,12 +1532,19 @@ def partition_game(
     current_start: int | None = None
     current_type: MomentType = MomentType.NEUTRAL
     current_boundary: BoundaryEvent | None = None
+    current_is_period_start = False
 
     moment_start_score = (0, 0)
     current_score = (0, 0) # Score after previous play
+    prev_event: dict[str, Any] | None = None
 
     for idx, i in enumerate(pbp_indices):
         event = events[i]
+        
+        # Check if this play is a period opener
+        is_opener = _is_period_opener(event, prev_event)
+        if is_opener:
+            current_is_period_start = True
 
         # Check if this is a boundary
         if i in boundary_at:
@@ -1344,20 +1562,30 @@ def partition_game(
                     thresholds=thresholds,
                     boundary=current_boundary,
                     score_before=moment_start_score,
+                    game_context=_game_context,
                 )
+                moment.is_period_start = current_is_period_start
                 moments.append(moment)
                 moment_id += 1
 
-                # The score before the NEW moment is the score AFTER the previous moment
+                # Reset metadata for next moment
                 moment_start_score = current_score
+                current_is_period_start = is_opener # If the boundary IS the opener
 
             # Start new moment at this boundary
             current_start = i
             current_type = boundary.moment_type
             current_boundary = boundary
+        else:
+            # Continue current moment
+            if current_start is None:
+                current_start = i
+                current_type = MomentType.NEUTRAL
+                current_is_period_start = is_opener
 
         # Track what the score is after THIS play
         current_score = _get_score(event)
+        prev_event = event
 
     # Close final moment
     if current_start is not None:
@@ -1370,11 +1598,12 @@ def partition_game(
             thresholds=thresholds,
             boundary=current_boundary,
             score_before=moment_start_score,
+            game_context=_game_context,
         )
+        moment.is_period_start = current_is_period_start
         moments.append(moment)
 
     # Detect runs and attach to moments as metadata
-    # We still use the full event stream for run detection but only attach to moments
     runs = _detect_runs(events)
     _attach_runs_to_moments(moments, runs)
 
@@ -1385,8 +1614,84 @@ def partition_game(
     # PER-QUARTER ENFORCEMENT: Prevent chaotic quarters
     moments = _enforce_quarter_limits(moments, events)
 
-    # VALIDITY ENFORCEMENT: Log invalid moments
+    # VALIDITY ENFORCEMENT: Merge invalid moments (Hard Gate)
     moments = _merge_invalid_moments(moments)
+
+    # MEGA-MOMENT SPLITTING: Break up oversized moments created by merging
+    # This happens AFTER merging to split the resulting mega-moments
+    split_moments = []
+    mega_moment_count = 0
+    for moment in moments:
+        # Check if this is a mega-moment that should be split
+        if moment.play_count > 50 and moment.type in (MomentType.NEUTRAL, MomentType.CUT, MomentType.LEAD_BUILD):
+            mega_moment_count += 1
+            logger.info(
+                "mega_moment_detected",
+                extra={
+                    "moment_id": moment.id,
+                    "type": moment.type.value,
+                    "play_count": moment.play_count,
+                    "score_range": f"{moment.score_start} → {moment.score_end}",
+                },
+            )
+            
+            # Check if it's a back-and-forth phase
+            is_back_and_forth = _detect_back_and_forth_phase(
+                events, moment.start_play, moment.end_play, thresholds
+            )
+            
+            logger.info(
+                "back_and_forth_check",
+                extra={
+                    "moment_id": moment.id,
+                    "is_back_and_forth": is_back_and_forth,
+                },
+            )
+            
+            if is_back_and_forth:
+                # Split at quarter boundaries or regular intervals
+                sub_moments = _split_mega_moment(
+                    moment, events, thresholds, _game_context, max_plays=40
+                )
+                split_moments.extend(sub_moments)
+                
+                # Reclassify as NEUTRAL back-and-forth if appropriate
+                for sub in sub_moments:
+                    if sub.type in (MomentType.CUT, MomentType.LEAD_BUILD) and sub.play_count > 20:
+                        sub.type = MomentType.NEUTRAL
+                        if sub.reason:
+                            sub.reason.narrative_delta = "back and forth"
+            else:
+                # Not back-and-forth, but still too large - split at quarter boundaries only
+                quarter_boundaries = _find_quarter_boundaries(events, moment.start_play, moment.end_play)
+                logger.info(
+                    "quarter_boundaries_found",
+                    extra={
+                        "moment_id": moment.id,
+                        "boundary_count": len(quarter_boundaries),
+                    },
+                )
+                if quarter_boundaries:
+                    sub_moments = _split_mega_moment(
+                        moment, events, thresholds, _game_context, max_plays=100  # More lenient
+                    )
+                    split_moments.extend(sub_moments)
+                else:
+                    split_moments.append(moment)
+        else:
+            split_moments.append(moment)
+    
+    if mega_moment_count > 0:
+        logger.info(
+            "mega_moment_splitting_complete",
+            extra={
+                "mega_moments_detected": mega_moment_count,
+                "moments_before": len(moments),
+                "moments_after": len(split_moments),
+            },
+        )
+    
+    moments = split_moments
 
     # BUDGET ENFORCEMENT: If still over budget, merge more aggressively
     sport = summary.get("sport", "NBA") if isinstance(summary, dict) else "NBA"
@@ -1412,13 +1717,9 @@ def partition_game(
         extra={
             "pre_merge_count": pre_merge_count,
             "post_merge_count": len(moments),
-            "merge_reduction_pct": round((1 - len(moments) / pre_merge_count) * 100, 1) if pre_merge_count > 0 else 0,
             "budget": budget,
             "within_budget": len(moments) <= budget,
-            "moment_types": [m.type.value for m in moments],
             "notable_count": sum(1 for m in moments if m.is_notable),
-            "runs_detected": len(runs),
-            "runs_promoted": sum(1 for m in moments if m.run_info is not None),
         },
     )
 
@@ -1483,71 +1784,114 @@ def _extract_moment_context(
     events: list[dict[str, Any]],
     start_idx: int,
     end_idx: int,
-) -> tuple[list[str], list[PlayerContribution], list[int]]:
+    game_context: dict[str, str],
+) -> tuple[list[str], str | None, list[PlayerContribution], list[int]]:
     """
-    Extract factual context from events in a moment.
-
+    MOMENT RESOLUTION PASS: Deeply inspect plays to extract participants.
+    
     Returns:
-        - teams: List of team abbreviations involved
-        - players: List of PlayerContribution with stats
-        - key_play_ids: List of important play indices
+        - teams_involved: All teams with plays in this moment (resolved to full names)
+        - primary_team: The team that drove the narrative (resolved to full name)
+        - players: Top 1-3 players by impact
+        - key_play_ids: Play indices for significant actions
     """
-    teams = set()
-    player_stats: dict[str, dict[str, int]] = {}
+    teams_involved = set()
+    player_impact: dict[str, int] = {} # player -> impact score
+    player_data: dict[str, dict[str, int]] = {}
+    team_impact: dict[str, int] = {} # team_abbrev -> impact score
     key_play_ids = []
+
+    # Track score deltas to determine which team drove the narrative
+    start_score = None
+    end_score = None
 
     for i in range(start_idx, end_idx + 1):
         event = events[i]
         if event.get("event_type") != "pbp":
             continue
 
-        # Track teams involved
+        # Capture score range
+        if start_score is None:
+            start_score = (event.get("home_score", 0), event.get("away_score", 0))
+        end_score = (event.get("home_score", 0), event.get("away_score", 0))
+
         team_abbrev = event.get("team_abbreviation")
         if team_abbrev:
-            teams.add(team_abbrev)
-
-        # Track player involvement and stats
+            teams_involved.add(team_abbrev)
+        
+        # Extract stats/impact
         player_name = event.get("player_name")
+        description = (event.get("description") or "").lower()
+        impact = 0
+
+        if "made" in description:
+            impact += 10
+            if "three" in description or "3pt" in description:
+                impact += 5
+        if "assist" in description: impact += 5
+        if "block" in description: impact += 7
+        if "steal" in description: impact += 7
+        if "rebound" in description: impact += 3
+        
         if player_name:
-            if player_name not in player_stats:
-                player_stats[player_name] = {}
-
-            # Extract stats from play description or structured data
-            play_type = event.get("play_type", "")
-            description = event.get("description", "").lower()
-
-            # Count common stats
-            if "point" in description or "made" in description:
-                if "free throw" in description:
-                    player_stats[player_name]["fta"] = player_stats[player_name].get("fta", 0) + 1
-                    if "made" in description:
-                        player_stats[player_name]["ftm"] = player_stats[player_name].get("ftm", 0) + 1
-                elif "three" in description or "3pt" in description:
-                    player_stats[player_name]["fg3a"] = player_stats[player_name].get("fg3a", 0) + 1
-                    if "made" in description:
-                        player_stats[player_name]["fg3m"] = player_stats[player_name].get("fg3m", 0) + 1
-                else:
-                    player_stats[player_name]["fga"] = player_stats[player_name].get("fga", 0) + 1
-                    if "made" in description:
-                        player_stats[player_name]["fgm"] = player_stats[player_name].get("fgm", 0) + 1
-
-            # Track key actions
-            if any(keyword in description for keyword in ["block", "steal", "assist", "rebound", "turnover"]):
+            player_impact[player_name] = player_impact.get(player_name, 0) + impact
+            if player_name not in player_data:
+                player_data[player_name] = {}
+            if impact > 0:
                 key_play_ids.append(i)
 
-    # Convert to PlayerContribution objects (top contributors only)
-    players = []
-    for player_name, stats in sorted(
-        player_stats.items(),
-        key=lambda x: sum(x[1].values()),
-        reverse=True
-    )[:3]:  # Top 3 players
-        players.append(PlayerContribution(
-            name=player_name,
-            stats=stats,
-        ))
+        # Track team impact
+        if team_abbrev and impact > 0:
+            team_impact[team_abbrev] = team_impact.get(team_abbrev, 0) + impact
 
-    return list(teams), players, key_play_ids
+    # Build team name resolution map
+    team_name_map = {}
+    if game_context:
+        home_abbrev = game_context.get("home_team_abbrev", "HOME")
+        away_abbrev = game_context.get("away_team_abbrev", "AWAY")
+        home_name = game_context.get("home_team_name", "Home")
+        away_name = game_context.get("away_team_name", "Away")
+        
+        team_name_map[home_abbrev] = home_name
+        team_name_map[away_abbrev] = away_name
+        team_name_map["home"] = home_name
+        team_name_map["away"] = away_name
+        team_name_map["HOME"] = home_name
+        team_name_map["AWAY"] = away_name
+
+    # Resolve primary team by score delta if possible
+    primary_team = None
+    if start_score and end_score:
+        # Handle None values in scores
+        home_start = start_score[0] if start_score[0] is not None else 0
+        away_start = start_score[1] if start_score[1] is not None else 0
+        home_end = end_score[0] if end_score[0] is not None else 0
+        away_end = end_score[1] if end_score[1] is not None else 0
+        
+        home_delta = home_end - home_start
+        away_delta = away_end - away_start
+        
+        # Primary team is the one that scored more in this moment
+        if home_delta > away_delta:
+            primary_team = team_name_map.get("home", "home")
+        elif away_delta > home_delta:
+            primary_team = team_name_map.get("away", "away")
+        # If tied, use impact score
+        elif team_impact:
+            top_abbrev = max(team_impact.items(), key=lambda x: x[1])[0]
+            primary_team = team_name_map.get(top_abbrev, top_abbrev)
+
+    # Resolve team names
+    resolved_teams = [team_name_map.get(abbrev, abbrev) for abbrev in teams_involved]
+
+    # Resolve players
+    sorted_players = sorted(player_impact.items(), key=lambda x: x[1], reverse=True)[:3]
+    players = [
+        PlayerContribution(name=name, stats=player_data.get(name, {}))
+        for name, _ in sorted_players
+    ]
+
+    return resolved_teams, primary_team, players, key_play_ids
 
 
 def _create_moment_reason(
@@ -1559,19 +1903,21 @@ def _create_moment_reason(
     """
     Create a reason explaining WHY this moment exists.
     """
-    # Determine trigger - use strings for robust mapping
+    # Determine trigger - MUST be one of the allowed causal triggers
     trigger_map = {
         "FLIP": "flip",
         "TIE": "tie",
         "CLOSING_CONTROL": "closing_lock",
         "HIGH_IMPACT": "high_impact",
-        "OPENER": "opener",
         "LEAD_BUILD": "tier_cross",
         "CUT": "tier_cross",
         "NEUTRAL": "stable",
     }
     type_str = moment_type.value if hasattr(moment_type, 'value') else str(moment_type)
     trigger = trigger_map.get(type_str, "unknown")
+
+    if trigger == "unknown":
+        logger.error(f"moment_creation_failed: unknown_trigger_for_type_{type_str}")
 
     # Determine control shift
     control_shift: str | None = None
@@ -1598,8 +1944,6 @@ def _create_moment_reason(
         narrative_delta = "pressure relieved" if team_in_control else "momentum shift"
     elif type_str == "HIGH_IMPACT":
         narrative_delta = "context changed"
-    elif type_str == "OPENER":
-        narrative_delta = "period started"
     else:
         narrative_delta = "stable flow"
 
@@ -1619,12 +1963,14 @@ def _create_moment(
     thresholds: Sequence[int],
     boundary: BoundaryEvent | None,
     score_before: tuple[int, int],
+    game_context: dict[str, str] | None = None,
 ) -> Moment:
-    """Create a Moment from a range of events."""
+    """
+    Create a Moment and run the RESOLUTION PASS.
+    """
     start_event = events[start_idx]
     end_event = events[end_idx]
 
-    # score_before is passed in (score at end of PREVIOUS canonical play)
     score_after = _get_score(end_event)
 
     # Compute lead states
@@ -1656,14 +2002,16 @@ def _create_moment(
     else:
         clock = f"Q{start_quarter} {start_clock} – Q{end_quarter} {end_clock}"
 
+    # RESOLUTION PASS: Extract factual context from events
+    teams, primary_team, players, key_play_ids = _extract_moment_context(
+        events, start_idx, end_idx, game_context or {}
+    )
+
     # Count plays
     play_count = sum(
         1 for i in range(start_idx, end_idx + 1)
         if events[i].get("event_type") == "pbp"
     )
-
-    # Extract factual context from events
-    teams, players, key_play_ids = _extract_moment_context(events, start_idx, end_idx)
 
     return Moment(
         id=f"m_{moment_id + 1:03d}",
@@ -1679,6 +2027,7 @@ def _create_moment(
         ladder_tier_after=end_state.tier,
         team_in_control=team_in_control,
         teams=teams,
+        primary_team=primary_team,
         players=players,
         key_play_ids=key_play_ids,
         clock=clock,
@@ -1719,10 +2068,6 @@ def _is_moment_notable(
     if moment_type in (MomentType.LEAD_BUILD, MomentType.CUT):
         tier_change = abs(end_state.tier - start_state.tier)
         return tier_change >= 2
-
-    # OPENER is notable if it sets a strong early lead
-    if moment_type == MomentType.OPENER:
-        return end_state.tier >= 2
 
     return False
 

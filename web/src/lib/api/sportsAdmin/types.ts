@@ -132,7 +132,6 @@ export type RunInfo = {
  * - FLIP: Leader changed
  * - CLOSING_CONTROL: Late-game lock-in
  * - HIGH_IMPACT: Ejection, injury, etc.
- * - OPENER: First plays of a period
  * - NEUTRAL: Normal flow
  */
 export type MomentType =
@@ -142,7 +141,6 @@ export type MomentType =
   | "FLIP"
   | "CLOSING_CONTROL"
   | "HIGH_IMPACT"
-  | "OPENER"
   | "NEUTRAL";
 
 /**
@@ -161,11 +159,13 @@ export type MomentEntry = {
   end_play: number;                     // Last play index
   play_count: number;                   // Number of plays
   teams: string[];
+  primary_team: string | null;
   players: PlayerContribution[];
   score_start: string;                  // "12–15"
   score_end: string;                    // "18–15"
   clock: string;                        // "Q2 8:45–6:12"
   is_notable: boolean;                  // True for notable moments (key game events)
+  is_period_start: boolean;             // True if this moment starts a new period
   note: string | null;                  // "7-0 run"
   
   // Lead Ladder state
@@ -195,7 +195,7 @@ export type MomentEntry = {
  * Every moment must have a reason. If you can't explain it, don't create it.
  */
 export type MomentReason = {
-  trigger: "tier_cross" | "flip" | "tie" | "closing_lock" | "high_impact" | "opener" | "stable";
+  trigger: "tier_cross" | "flip" | "tie" | "closing_lock" | "high_impact" | "stable";
   control_shift: "home" | "away" | null;
   narrative_delta: string;  // "tension ↑" | "control gained" | "pressure relieved" | etc.
 };

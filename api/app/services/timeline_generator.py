@@ -281,6 +281,8 @@ def _build_pbp_events(
     - phase: Narrative phase (q1, q2, etc.)
     - intra_phase_order: Sort key within phase (clock-based)
     - synthetic_timestamp: Computed wall-clock time for display
+    - team_abbreviation: Team abbreviation (if team_id is present)
+    - player_name: Player name (if available)
     """
     events: list[tuple[datetime, dict[str, Any]]] = []
     total_plays = len(plays)
@@ -309,6 +311,11 @@ def _build_pbp_events(
         real_elapsed = elapsed_in_quarter * (NBA_QUARTER_REAL_SECONDS / NBA_QUARTER_GAME_SECONDS)
         synthetic_ts = quarter_start + timedelta(seconds=real_elapsed)
 
+        # Extract team abbreviation from relationship
+        team_abbrev = None
+        if hasattr(play, 'team') and play.team:
+            team_abbrev = play.team.abbreviation
+
         event_payload = {
             "event_type": "pbp",
             "phase": phase,
@@ -319,6 +326,8 @@ def _build_pbp_events(
             "game_clock": play.game_clock,
             "description": play.description,
             "play_type": play.play_type,
+            "team_abbreviation": team_abbrev,
+            "player_name": play.player_name,
             "home_score": play.home_score,
             "away_score": play.away_score,
             "synthetic_timestamp": synthetic_ts.isoformat(),
@@ -461,9 +470,10 @@ async def generate_timeline_artifact(
                 "Timeline generation only supported for NBA", status_code=422
             )
 
-        # Fetch plays
+        # Fetch plays with team relationship for team_abbreviation
         plays_result = await session.execute(
             select(db_models.SportsGamePlay)
+            .options(selectinload(db_models.SportsGamePlay.team))
             .where(db_models.SportsGamePlay.game_id == game_id)
             .order_by(db_models.SportsGamePlay.play_index)
         )
@@ -565,12 +575,22 @@ async def generate_timeline_artifact(
             extra={"game_id": game_id, "phase": "game_analysis"},
         )
         base_summary = build_nba_summary(game)
+        
+        # Build game context for team name resolution
+        game_context = {
+            "home_team_name": game.home_team.name if game.home_team else "Home",
+            "away_team_name": game.away_team.name if game.away_team else "Away",
+            "home_team_abbrev": game.home_team.abbreviation if game.home_team else "HOME",
+            "away_team_abbrev": game.away_team.abbreviation if game.away_team else "AWAY",
+        }
+        
         game_analysis = await build_game_analysis_async(
             timeline=timeline,
             summary=base_summary,
             game_id=game_id,
             sport=league_code,
             timeline_version=timeline_version,
+            game_context=game_context,
         )
         moment_count = len(game_analysis.get("moments", []))
         logger.info(

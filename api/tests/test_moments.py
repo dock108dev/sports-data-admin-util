@@ -55,7 +55,6 @@ class TestMomentType(unittest.TestCase):
             "CLOSING_CONTROL",
             "HIGH_IMPACT",
             "NEUTRAL",
-            "OPENER",
         ]
         for type_name in required_types:
             self.assertTrue(hasattr(MomentType, type_name))
@@ -71,10 +70,10 @@ class TestPartitionGame(unittest.TestCase):
 
     def test_single_event(self) -> None:
         """Single event creates one moment."""
-        timeline = [make_pbp_event(0, 0, 0)]
+        timeline = [make_pbp_event(0, 2, 0)] # Must have score change to be valid
         moments = partition_game(timeline, {}, NBA_THRESHOLDS)
         self.assertEqual(len(moments), 1)
-        self.assertEqual(moments[0].type, MomentType.OPENER)
+        self.assertTrue(moments[0].is_period_start)
 
     def test_all_plays_covered(self) -> None:
         """Every PBP play belongs to exactly one moment."""
@@ -178,8 +177,8 @@ class TestPartitionGame(unittest.TestCase):
         high_impact = [m for m in moments if m.type == MomentType.HIGH_IMPACT]
         self.assertGreaterEqual(len(high_impact), 1)
 
-    def test_period_opener_creates_boundary(self) -> None:
-        """New period creates an OPENER boundary."""
+    def test_period_opener_is_flagged(self) -> None:
+        """New period flags the moment as is_period_start."""
         timeline = [
             make_pbp_event(0, 25, 22, quarter=1, game_clock="0:30"),
             make_pbp_event(1, 27, 22, quarter=2, game_clock="12:00"),  # Q2 start
@@ -187,10 +186,9 @@ class TestPartitionGame(unittest.TestCase):
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
 
-        # Should detect period opener
-        openers = [m for m in moments if m.type == MomentType.OPENER]
-        # At least one opener (Q2 start)
-        self.assertGreaterEqual(len(openers), 1)
+        # Should have a moment starting in Q2 flagged as period start
+        q2_moments = [m for m in moments if m.is_period_start and m.start_play >= 1]
+        self.assertGreaterEqual(len(q2_moments), 1)
 
     def test_hysteresis_prevents_flicker(self) -> None:
         """Hysteresis prevents momentary tier changes from creating boundaries."""

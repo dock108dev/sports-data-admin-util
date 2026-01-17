@@ -50,8 +50,6 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
         return "🔒";
       case "HIGH_IMPACT":
         return "⚡";
-      case "OPENER":
-        return "🎬";
       case "NEUTRAL":
         return "📊";
       default:
@@ -73,8 +71,6 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
         return "Game Control";
       case "HIGH_IMPACT":
         return "Key Moment";
-      case "OPENER":
-        return "Period Start";
       case "NEUTRAL":
         return "Game Flow";
       default:
@@ -96,8 +92,6 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
         return "#22c55e"; // Green - offense
       case "CUT":
         return "#3b82f6"; // Blue - defense/comeback
-      case "OPENER":
-        return "#6366f1"; // Indigo
       case "NEUTRAL":
         return "#64748b"; // Gray
       default:
@@ -166,6 +160,11 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
                   <span className={styles.highlightTitle}>
                     {getTypeLabel(moment.type)}
                   </span>
+                  {moment.is_period_start && (
+                    <span className={styles.phaseBadge} style={{ backgroundColor: "#6366f1" }}>
+                      Period Start
+                    </span>
+                  )}
                   {moment.note && (
                     <span
                       className={styles.phaseBadge}
@@ -195,6 +194,14 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
                       <span className={styles.contextLabel}>Control:</span>
                       <span className={styles.contextValue}>
                         {moment.team_in_control.toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                  {moment.primary_team && (
+                    <div className={styles.clockRange}>
+                      <span className={styles.contextLabel}>Driver:</span>
+                      <span className={styles.contextValue}>
+                        {moment.primary_team.toUpperCase()}
                       </span>
                     </div>
                   )}
@@ -321,11 +328,6 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
                             // Check for score reset (0-0 unless first moment)
                             if (globalIndex > 0 && moment.score_start === "0–0") {
                               issues.push("❌ Score reset (not first moment)");
-                            }
-
-                            // Check for OPENER moments that shouldn't exist
-                            if (moment.type === "OPENER" && moment.play_count <= 3) {
-                              issues.push("❌ OPENER moment (should be merged)");
                             }
 
                             return issues.length > 0 ? (

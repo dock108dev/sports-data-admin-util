@@ -46,7 +46,6 @@ Runs do NOT create moments. A 10-0 run that doesn't cross a tier threshold is ju
 
 | Type | Meaning | When Created |
 |------|---------|--------------|
-| OPENER | First plays of a period | Start of Q1, Q2, Q3, Q4, OT |
 | LEAD_BUILD | Lead tier increased | Tier went up |
 | CUT | Lead tier decreased | Tier went down (comeback) |
 | TIE | Game returned to even | Score became equal |
@@ -81,9 +80,8 @@ When merging is needed:
 1. Consecutive NEUTRAL moments (always merge)
 2. Consecutive LEAD_BUILD moments
 3. Consecutive CUT moments
-4. OPENER + following non-protected moment
-5. Any consecutive same-type moments (hard clamp)
-6. Any consecutive moments (nuclear option)
+4. Any consecutive same-type moments (hard clamp)
+5. Any consecutive moments (nuclear option)
 
 **Protected types** (prefer not to merge): FLIP, TIE, CLOSING_CONTROL, HIGH_IMPACT
 
@@ -114,7 +112,7 @@ Input:
 {
   "game": { "home_team": "...", "away_team": "...", "final_score": "..." },
   "moments": [
-    { "id": "m_001", "type": "OPENER", "score_swing": "0-0 → 2-0", ... }
+    { "id": "m_001", "type": "LEAD_BUILD", "score_swing": "0-0 → 5-0", ... }
   ]
 }
 ```

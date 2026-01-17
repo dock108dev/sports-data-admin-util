@@ -85,7 +85,7 @@ class GameContext:
 class MomentEnrichmentInput:
     """Single moment input for batch enrichment."""
     id: str
-    type: str  # OPENER, LEAD_BUILD, CUT, TIE, FLIP, CLOSING_CONTROL, HIGH_IMPACT, NEUTRAL
+    type: str  # LEAD_BUILD, CUT, TIE, FLIP, CLOSING_CONTROL, HIGH_IMPACT, NEUTRAL
     score_before: str  # "45-42"
     score_after: str   # "52-48"
     time_window: str   # "Q1 12:00-11:18"
@@ -261,9 +261,6 @@ FORMAT RULES:
 ---
 
 WRITE EACH MOMENT ACCORDING TO ITS TYPE:
-
-OPENER:
-Light tone, scene-setting only. "Game underway", "Early exchanges"
 
 LEAD_BUILD:
 Momentum growing, pressure rising. "Magic start to stretch it", "A quick burst opens things up"
