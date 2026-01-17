@@ -29,8 +29,10 @@ export type GameSummary = {
   has_odds: boolean;
   has_social: boolean;
   has_pbp: boolean;
+  has_highlights: boolean;
   play_count: number;
   social_post_count: number;
+  highlight_count: number;
   has_required_data: boolean;
   scrape_version: number | null;
   last_scraped_at: string | null;
@@ -48,6 +50,7 @@ export type GameListResponse = {
   with_odds_count?: number;
   with_social_count?: number;
   with_pbp_count?: number;
+  with_highlights_count?: number;
 };
 
 export type TeamStat = {
@@ -105,6 +108,47 @@ export type PlayEntry = {
   away_score: number | null;
 };
 
+/**
+ * Player contribution in a highlight stretch.
+ */
+export type PlayerContribution = {
+  name: string;
+  stats: { pts?: number; stl?: number; blk?: number; ast?: number };
+  summary: string | null; // "6 pts, 1 stl"
+};
+
+/**
+ * The single narrative unit.
+ * 
+ * Every play belongs to exactly one moment.
+ * Moments are always chronological.
+ */
+export type MomentEntry = {
+  id: string;                           // "m_001"
+  type: "NEUTRAL" | "RUN" | "BATTLE" | "CLOSING";
+  start_play: number;                   // First play index
+  end_play: number;                     // Last play index
+  play_count: number;                   // Number of plays
+  teams: string[];
+  players: PlayerContribution[];
+  score_start: string;                  // "12–15"
+  score_end: string;                    // "18–15"
+  clock: string;                        // "Q2 8:45–6:12"
+  is_notable: boolean;                  // This IS highlights
+  note: string | null;                  // "7-0 run"
+};
+
+/**
+ * Response from GET /games/{game_id}/moments
+ */
+export type MomentsResponse = {
+  game_id: number;
+  generated_at: string | null;
+  moments: MomentEntry[];
+  total_count: number;
+  highlight_count: number;
+};
+
 export type AdminGameDetail = {
   game: {
     id: number;
@@ -127,14 +171,17 @@ export type AdminGameDetail = {
     has_odds: boolean;
     has_social: boolean;
     has_pbp: boolean;
+    has_highlights: boolean;
     play_count: number;
     social_post_count: number;
+    highlight_count: number;
   };
   team_stats: TeamStat[];
   player_stats: PlayerStat[];
   odds: OddsEntry[];
   social_posts: SocialPost[];
   plays: PlayEntry[];
+  moments: MomentEntry[];  // Full game coverage; filter by is_notable for highlights
   derived_metrics: Record<string, unknown>;
   raw_payloads: Record<string, unknown>;
 };

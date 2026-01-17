@@ -29,6 +29,44 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 
+def _check_and_queue_timeline_regen(session: "Session", game_id: int) -> bool:
+    """
+    Check if game has an existing timeline artifact and queue regeneration if so.
+    
+    Returns True if regeneration was queued, False otherwise.
+    """
+    from ..db import db_models
+    
+    # Check if timeline artifact exists for this game
+    artifact = (
+        session.query(db_models.SportsGameTimelineArtifact)
+        .filter(db_models.SportsGameTimelineArtifact.game_id == game_id)
+        .first()
+    )
+    
+    if artifact:
+        # Queue timeline regeneration via Celery task
+        try:
+            from ..jobs.tasks import regenerate_timeline_task
+            regenerate_timeline_task.apply_async(
+                kwargs={"game_id": game_id, "reason": "social_backfill"},
+                countdown=60,  # Wait 60 seconds before regenerating
+            )
+            logger.info(
+                "timeline_regen_queued",
+                game_id=game_id,
+                reason="social_backfill",
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "timeline_regen_queue_failed",
+                game_id=game_id,
+                error=str(exc),
+            )
+    return False
+
+
 class XPostCollector:
     """
     Main X post collector that orchestrates collection and storage.
@@ -241,6 +279,8 @@ class XPostCollector:
                     saved=result.posts_saved,
                     updated=posts_updated,
                 )
+                # Queue timeline regeneration if game already has a timeline artifact
+                _check_and_queue_timeline_regen(session, job.game_id)
             else:
                 session.commit()
 

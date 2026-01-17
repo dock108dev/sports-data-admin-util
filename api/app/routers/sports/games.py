@@ -10,6 +10,7 @@ from sqlalchemy import desc, exists, func, select
 from sqlalchemy.orm import selectinload
 
 from ... import db_models
+from ...celery_client import get_celery_app
 from ...db import AsyncSession, get_db
 from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
@@ -37,6 +38,9 @@ from .schemas import (
     GameListResponse,
     GameMeta,
     GamePreviewScoreResponse,
+    MomentEntry,
+    MomentsResponse,
+    ScrapeRunConfig,
     JobResponse,
     OddsEntry,
 )
@@ -71,6 +75,7 @@ async def list_games(
         selectinload(db_models.SportsGame.odds),
         selectinload(db_models.SportsGame.social_posts),
         selectinload(db_models.SportsGame.plays),
+        selectinload(db_models.SportsGame.timeline_artifacts),
     )
 
     base_stmt = apply_game_filters(
@@ -122,12 +127,16 @@ async def list_games(
     with_pbp_count_stmt = count_stmt.where(
         exists(select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id))
     )
+    with_highlights_count_stmt = count_stmt.where(
+        exists(select(1).where(db_models.SportsGameTimelineArtifact.game_id == db_models.SportsGame.id))
+    )
 
     with_boxscore_count = (await session.execute(with_boxscore_count_stmt)).scalar_one()
     with_player_stats_count = (await session.execute(with_player_stats_count_stmt)).scalar_one()
     with_odds_count = (await session.execute(with_odds_count_stmt)).scalar_one()
     with_social_count = (await session.execute(with_social_count_stmt)).scalar_one()
     with_pbp_count = (await session.execute(with_pbp_count_stmt)).scalar_one()
+    with_highlights_count = (await session.execute(with_highlights_count_stmt)).scalar_one()
 
     next_offset = offset + limit if offset + limit < total else None
     summaries = [summarize_game(game) for game in games]
@@ -141,6 +150,7 @@ async def list_games(
         with_odds_count=with_odds_count,
         with_social_count=with_social_count,
         with_pbp_count=with_pbp_count,
+        with_highlights_count=with_highlights_count,
     )
 
 
@@ -215,6 +225,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             selectinload(db_models.SportsGame.odds),
             selectinload(db_models.SportsGame.social_posts).selectinload(db_models.GameSocialPost.team),
             selectinload(db_models.SportsGame.plays),
+            selectinload(db_models.SportsGame.timeline_artifacts),
         )
         .where(db_models.SportsGame.id == game_id)
     )
@@ -238,6 +249,18 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     ]
 
     plays_entries = [serialize_play_entry(play) for play in sorted(game.plays, key=lambda p: p.play_index)]
+    
+    # Extract highlights from timeline artifact
+    timeline_artifacts = game.timeline_artifacts or []
+    has_highlights = bool(timeline_artifacts)
+    highlights_list: list[dict] = []
+    if timeline_artifacts:
+        # Get most recent artifact
+        artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
+        game_analysis = artifact.game_analysis_json or {}
+        highlights_list = game_analysis.get("highlights", [])
+    
+    highlight_count = len(highlights_list) if isinstance(highlights_list, list) else 0
 
     meta = GameMeta(
         id=game.id,
@@ -260,8 +283,10 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         has_odds=bool(game.odds),
         has_social=bool(game.social_posts),
         has_pbp=bool(game.plays),
+        has_highlights=has_highlights,
         play_count=len(game.plays) if game.plays else 0,
         social_post_count=len(game.social_posts) if game.social_posts else 0,
+        highlight_count=highlight_count,
         home_team_x_handle=game.home_team.x_handle if game.home_team else None,
         away_team_x_handle=game.away_team.x_handle if game.away_team else None,
     )
@@ -299,6 +324,30 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         ],
     }
 
+    # Serialize moments (highlights = moments where is_notable=True, filter client-side)
+    moments_list: list[MomentEntry] = []
+    if timeline_artifacts:
+        artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
+        game_analysis = artifact.game_analysis_json or {}
+        
+        for m in game_analysis.get("moments", []):
+            if isinstance(m, dict):
+                moment = MomentEntry(
+                    id=m.get("id", ""),
+                    type=m.get("type", "NEUTRAL"),
+                    start_play=m.get("start_play", 0),
+                    end_play=m.get("end_play", 0),
+                    play_count=m.get("play_count", 0),
+                    teams=m.get("teams", []),
+                    players=m.get("players", []),
+                    score_start=m.get("score_start", ""),
+                    score_end=m.get("score_end", ""),
+                    clock=m.get("clock", ""),
+                    is_notable=m.get("is_notable", False),
+                    note=m.get("note"),
+                )
+                moments_list.append(moment)
+
     return GameDetailResponse(
         game=meta,
         team_stats=team_stats,
@@ -306,6 +355,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,
+        moments=moments_list,
         derived_metrics=derived,
         raw_payloads=raw_payloads,
     )
@@ -414,4 +464,70 @@ async def generate_game_timeline(
         timeline=artifact.timeline,
         summary=artifact.summary,
         game_analysis=artifact.game_analysis,
+    )
+
+
+@router.get("/games/{game_id}/moments", response_model=MomentsResponse)
+async def get_game_moments(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> MomentsResponse:
+    """
+    Get all moments for a game, ordered chronologically.
+    
+    The game timeline is fully partitioned into contiguous, non-overlapping moments.
+    Every play belongs to exactly one moment. Moments are ordered by start_play_id.
+    
+    Use this endpoint for:
+    - Full game coverage
+    - Expandable/collapsible moment UI
+    - Timeline linking
+    """
+    result = await session.execute(
+        select(db_models.SportsGame)
+        .options(selectinload(db_models.SportsGame.timeline_artifacts))
+        .where(db_models.SportsGame.id == game_id)
+    )
+    game = result.scalar_one_or_none()
+    if not game:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+    
+    timeline_artifacts = game.timeline_artifacts or []
+    if not timeline_artifacts:
+        return MomentsResponse(
+            game_id=game_id,
+            generated_at=None,
+            moments=[],
+            total_count=0,
+            highlight_count=0,
+        )
+    
+    artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
+    game_analysis = artifact.game_analysis_json or {}
+    
+    moments = [
+        MomentEntry(
+            id=m.get("id", ""),
+            type=m.get("type", "NEUTRAL"),
+            start_play=m.get("start_play", 0),
+            end_play=m.get("end_play", 0),
+            play_count=m.get("play_count", 0),
+            teams=m.get("teams", []),
+            players=m.get("players", []),
+            score_start=m.get("score_start", ""),
+            score_end=m.get("score_end", ""),
+            clock=m.get("clock", ""),
+            is_notable=m.get("is_notable", False),
+            note=m.get("note"),
+        )
+        for m in game_analysis.get("moments", [])
+        if isinstance(m, dict)
+    ]
+    
+    return MomentsResponse(
+        game_id=game_id,
+        generated_at=artifact.generated_at,
+        moments=moments,
+        total_count=len(moments),
+        highlight_count=sum(1 for m in moments if m.is_notable),
     )

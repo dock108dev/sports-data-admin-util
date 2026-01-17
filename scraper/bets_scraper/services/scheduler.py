@@ -12,9 +12,7 @@ from ..db import db_models, get_session
 from ..logging import logger
 from ..models import IngestionConfig
 from ..utils.datetime_utils import now_utc
-
-
-SCHEDULED_INGESTION_LEAGUES = ("NBA",)  # NBA only for now
+from ..config_sports import get_scheduled_leagues, get_league_config
 
 
 @dataclass(frozen=True)
@@ -74,11 +72,16 @@ def create_scrape_run(
 
 def schedule_ingestion_runs(
     *,
-    leagues: Iterable[str] = SCHEDULED_INGESTION_LEAGUES,
+    leagues: Iterable[str] | None = None,
     requested_by: str = "scheduler",
     now: datetime | None = None,
 ) -> ScheduledIngestionSummary:
     """Create scheduled scrape runs and enqueue them for execution."""
+    # Use SSOT if no leagues specified
+    if leagues is None:
+        leagues = get_scheduled_leagues()
+    leagues = list(leagues)
+    
     start_dt, end_dt = build_scheduled_window(now)
     start_date = start_dt.date()
     end_date = end_dt.date()
@@ -90,7 +93,7 @@ def schedule_ingestion_runs(
 
     logger.info(
         "scheduled_ingestion_start",
-        leagues=list(leagues),
+        leagues=leagues,
         window_start=str(start_dt),
         window_end=str(end_dt),
     )
@@ -124,14 +127,17 @@ def schedule_ingestion_runs(
                 runs_skipped += 1
                 continue
 
+            # Get per-league config from SSOT
+            league_cfg = get_league_config(league_code)
+            
             config = IngestionConfig(
                 league_code=league_code,
                 start_date=start_date,
                 end_date=end_date,
-                boxscores=True,
-                odds=True,
-                social=league_code in ("NBA", "NHL"),
-                pbp=True,
+                boxscores=league_cfg.boxscores_enabled,
+                odds=league_cfg.odds_enabled,
+                social=league_cfg.social_enabled,
+                pbp=league_cfg.pbp_enabled,
                 only_missing=False,
             )
 
@@ -189,4 +195,8 @@ def schedule_ingestion_runs(
         enqueue_failures=summary.enqueue_failures,
         last_run_at=str(summary.last_run_at),
     )
+    
+    # Note: Timeline generation is triggered at the END of each scrape job,
+    # not here. See run_scrape_job task for the trigger.
+    
     return summary

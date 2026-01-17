@@ -7,7 +7,7 @@ import time
 from urllib.parse import parse_qs
 from typing import Callable
 
-from fastapi import Request, Response
+from fastapi import Request
 
 
 class StructuredLoggingMiddleware:

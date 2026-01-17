@@ -13,6 +13,7 @@ from ..db import get_session
 from ..logging import logger
 from ..models import IngestionConfig
 from ..persistence import upsert_odds
+from ..utils.datetime_utils import today_utc
 from .client import OddsAPIClient
 
 
@@ -30,9 +31,9 @@ class OddsSynchronizer:
         if not config.odds:
             return 0
             
-        start = config.start_date or date.today()
+        start = config.start_date or today_utc()
         end = config.end_date or start
-        today = date.today()
+        today = today_utc()
 
         # Determine which API to use based on date range
         if end < today:
@@ -130,7 +131,7 @@ class OddsSynchronizer:
         
         Automatically chooses historical vs live API based on whether date is past or present.
         """
-        today = date.today()
+        today = today_utc()
         logger.info("sync_single_date_start", league=league_code, date=str(game_date))
 
         if game_date < today:

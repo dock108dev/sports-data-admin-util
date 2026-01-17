@@ -116,6 +116,12 @@ export default function AdminDashboardPage() {
               <div className={styles.quickLinkDesc}>View and trace user theory evaluations</div>
             </div>
           </Link>
+          <Link href="/admin/theory-bets/timelines" className={styles.quickLink}>
+            <div className={styles.quickLinkContent}>
+              <div className={styles.quickLinkTitle}>Generate timelines</div>
+              <div className={styles.quickLinkDesc}>Generate compact highlights for games</div>
+            </div>
+          </Link>
         </div>
       </AdminCard>
 

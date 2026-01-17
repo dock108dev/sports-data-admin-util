@@ -34,7 +34,7 @@ from sqlalchemy.orm import selectinload
 
 from .. import db_models
 from ..db import AsyncSession
-from ..utils.datetime_utils import now_utc
+from ..utils.datetime_utils import now_utc, parse_clock_to_seconds
 from .timeline_validation import validate_and_log, TimelineValidationError
 from .game_analysis import build_nba_game_analysis_async
 from .social_events import build_social_events, build_social_events_async
@@ -113,21 +113,7 @@ class TimelineGenerationError(Exception):
 # =============================================================================
 
 
-def _parse_clock_to_seconds(clock: str | None) -> int | None:
-    """
-    Parse game clock string (e.g. "11:45", "5:30.0") to seconds remaining.
-
-    Returns None if clock is invalid or None.
-    """
-    if not clock:
-        return None
-    try:
-        parts = clock.replace(".", ":").split(":")
-        if len(parts) >= 2:
-            return int(parts[0]) * 60 + int(float(parts[1]))
-        return int(float(parts[0]))
-    except (ValueError, IndexError):
-        return None
+# Clock parsing moved to utils/datetime_utils.py
 
 
 def _progress_from_index(index: int, total: int) -> float:
@@ -305,7 +291,7 @@ def _build_pbp_events(
         block = _nba_block_for_quarter(quarter)
 
         # Parse game clock
-        clock_seconds = _parse_clock_to_seconds(play.game_clock)
+        clock_seconds = parse_clock_to_seconds(play.game_clock)
         if clock_seconds is None:
             # Fallback: use play index for ordering
             intra_phase_order = play.play_index
@@ -590,7 +576,7 @@ async def generate_timeline_artifact(
             extra={
                 "game_id": game_id,
                 "phase": "game_analysis",
-                "segments": len(game_analysis.get("segments", [])),
+                "moments": len(game_analysis.get("moments", [])),
                 "highlights": len(game_analysis.get("highlights", [])),
             },
         )

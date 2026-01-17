@@ -28,13 +28,14 @@ Sports Data Admin is the central data platform for Scroll Down Sports. It ingest
 |--------|----------|-------------|
 | GET | `/api/admin/sports/games` | List games with filters |
 | GET | `/api/admin/sports/games/{id}` | Game detail with all data |
-| GET | `/api/admin/sports/games/{id}/compact` | Compact moments for game |
-| GET | `/api/admin/sports/games/{id}/compact/{moment}/pbp` | PBP slice for moment |
-| GET | `/api/admin/sports/games/{id}/compact/{moment}/posts` | Posts for moment |
-| GET | `/api/admin/sports/games/{id}/compact/{moment}/summary` | AI summary for moment |
+| GET | `/api/admin/sports/games/{id}/moments` | All moments (full timeline coverage) |
+| GET | `/api/admin/sports/games/{id}/highlights` | Notable moments only |
 | GET | `/api/admin/sports/teams` | List teams |
 | POST | `/api/admin/sports/scraper/runs` | Create scrape job |
 | GET | `/api/admin/sports/scraper/runs` | List scrape runs |
+| GET | `/api/admin/sports/timelines/missing` | Games missing timeline artifacts |
+| POST | `/api/admin/sports/timelines/generate/{id}` | Generate timeline for a game |
+| POST | `/api/admin/sports/timelines/regenerate-batch` | Regenerate timelines in batch |
 
 ### Reading Position Endpoints
 
@@ -104,13 +105,22 @@ X_AUTH_TOKEN=your_auth_token_here
 X_CT0=your_ct0_token_here
 ```
 
-## Compact Moments
+## Moments & Highlights
 
-The platform generates "compact moments" — key points in a game where the score margin changes significantly. These are used for reveal-safe game recaps.
+The platform partitions each game timeline into contiguous, non-overlapping **moments**:
 
-Each moment includes:
-- PBP events leading to the moment
-- Relevant social posts
-- AI-generated summary (via OpenAI or fallback)
+| Moment Type | Description |
+|-------------|-------------|
+| NEUTRAL | Normal play, no significant pattern |
+| RUN | Scoring run (8+ consecutive points by one team) |
+| LEAD_BATTLE | Multiple lead changes in a short stretch |
+| CLOSING_STRETCH | Final 2 minutes of close game |
 
-Threshold configurations per sport are stored in `compact_mode_thresholds`.
+**Highlights** are moments where `is_notable=True`. Each moment includes:
+- Play IDs (start, end, all plays in range)
+- Teams and players involved
+- Player stats within the moment (pts, ast, blk, stl)
+- Score before/after
+- Game clock range
+
+Moments are generated post-scrape and stored in `sports_game_timeline_artifacts`.

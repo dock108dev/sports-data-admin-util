@@ -13,6 +13,7 @@ from app.logging_config import configure_logging
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.routers import game_snapshots, reading_positions, social, sports
+from app.routers.admin import timeline_jobs
 
 configure_logging(
     service="sports-data-admin-api",
@@ -37,6 +38,7 @@ app.include_router(sports.router)
 app.include_router(social.router)
 app.include_router(reading_positions.router)
 app.include_router(game_snapshots.router)
+app.include_router(timeline_jobs.router, prefix="/api/admin/sports", tags=["admin"])
 
 
 @app.get("/healthz")

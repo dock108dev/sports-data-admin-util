@@ -86,81 +86,6 @@ def _winner_info(
     return None, home_score, away_score
 
 
-def _segment_narrative(
-    segment: dict[str, Any],
-    home_id: int,
-    away_id: int,
-    home_name: str,
-    away_name: str,
-) -> str:
-    """Generate narrative text for a game segment."""
-    segment_type = segment["segment_type"]
-    teams_involved = segment["teams_involved"]
-    start_score = segment["score_start"]
-    end_score = segment["score_end"]
-    score_delta = segment["score_delta"]
-    start_context = _format_score_context(start_score, home_name, away_name)
-    end_context = _format_score_context(end_score, home_name, away_name)
-
-    if len(teams_involved) == 1:
-        team_id = teams_involved[0]
-        if team_id == home_id:
-            team_name = home_name
-            opponent_name = away_name
-            team_delta = score_delta["home"]
-            opponent_delta = score_delta["away"]
-        elif team_id == away_id:
-            team_name = away_name
-            opponent_name = home_name
-            team_delta = score_delta["away"]
-            opponent_delta = score_delta["home"]
-        else:
-            team_name = "One side"
-            opponent_name = "the opponent"
-            team_delta = score_delta["home"] + score_delta["away"]
-            opponent_delta = 0
-        delta_phrase = f"{team_delta}-{opponent_delta}"
-    else:
-        team_name = "Both teams"
-        opponent_name = "each other"
-        delta_phrase = f"{score_delta['home']}-{score_delta['away']}"
-
-    if segment_type == "opening":
-        return (
-            f"The opening stretch set the tone as {team_name} pushed the pace. "
-            f"The score moved from {start_context} to {end_context}."
-        )
-    if segment_type == "run":
-        return (
-            f"{team_name} went on a run, outscoring {opponent_name} {delta_phrase} "
-            f"from {start_context} to {end_context}."
-        )
-    if segment_type == "swing":
-        return (
-            "Momentum swung as the lead changed hands in this stretch. "
-            f"The score flipped from {start_context} to {end_context}."
-        )
-    if segment_type == "close":
-        return (
-            "The finish tightened up, keeping the margin within striking distance. "
-            f"The score inched from {start_context} to {end_context}."
-        )
-    if segment_type == "blowout":
-        return (
-            f"A lopsided burst opened the gap, pushing the score "
-            f"from {start_context} to {end_context}."
-        )
-    if segment_type == "garbage_time":
-        return (
-            f"With the outcome largely decided, the closing minutes drifted "
-            f"from {start_context} to {end_context}."
-        )
-    return (
-        f"The game stayed steady in this stretch, moving "
-        f"from {start_context} to {end_context}."
-    )
-
-
 # =============================================================================
 # MAIN SUMMARY BUILDERS
 # =============================================================================
@@ -401,39 +326,31 @@ async def build_summary_from_timeline_async(
     phases_present = template_summary.get("phases_in_timeline", [])
     social_counts = template_summary.get("social_counts", {}).get("by_phase", {})
 
-    # Build segment summaries from game_analysis with actual context
-    segments = game_analysis.get("segments", [])
-    segment_summaries = []
-    for seg in segments[:6]:  # Limit to 6
-        seg_type = seg.get("segment_type", "steady")
-        ai_label = seg.get("ai_label", "")
-        score_start = seg.get("score_start", {})
-        score_end = seg.get("score_end", {})
+    # Build moment summaries from game_analysis
+    moments = game_analysis.get("moments", [])
+    moment_summaries = []
+    for m in moments[:8]:  # Limit to 8
+        m_type = m.get("type", "NEUTRAL")
+        note = m.get("note", "")
+        score_start = m.get("score_start", "")
+        score_end = m.get("score_end", "")
         
-        # Build a descriptive summary
-        if ai_label:
-            desc = f"{seg_type}: {ai_label}"
+        if note:
+            desc = f"{m_type}: {note}"
         else:
-            start_str = f"{score_start.get('away', 0)}-{score_start.get('home', 0)}"
-            end_str = f"{score_end.get('away', 0)}-{score_end.get('home', 0)}"
-            desc = f"{seg_type} ({start_str} to {end_str})"
-        segment_summaries.append(desc)
+            desc = f"{m_type} ({score_start} → {score_end})"
+        moment_summaries.append(desc)
 
-    # Build highlight summaries with descriptions
+    # Build highlight summaries (moments where is_notable=True)
     highlights = game_analysis.get("highlights", [])
     highlight_summaries = []
     for h in highlights[:5]:  # Limit to 5
-        h_type = h.get("highlight_type", "moment")
-        h_desc = h.get("description")
-        if h_desc:
-            highlight_summaries.append(h_desc[:60])
+        h_type = h.get("type", "")
+        note = h.get("note", "")
+        if note:
+            highlight_summaries.append(f"{h_type}: {note}"[:60])
         else:
-            # Build from score context if available
-            score_ctx = h.get("score_context", {})
-            if score_ctx:
-                highlight_summaries.append(
-                    f"{h_type} at {score_ctx.get('margin', 0)} pt margin"
-                )
+            highlight_summaries.append(f"{h_type} ({h.get('score_start', '')} → {h.get('score_end', '')})"[:60])
 
     try:
         # Call AI for reading guide generation (cached)
@@ -441,7 +358,7 @@ async def build_summary_from_timeline_async(
             game_id=game_id,
             timeline_version=timeline_version,
             phases=phases_present,
-            segment_summaries=segment_summaries,
+            segment_summaries=moment_summaries,
             highlights=highlight_summaries,
             social_counts=social_counts,
             sport=sport,

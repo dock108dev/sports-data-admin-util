@@ -373,3 +373,216 @@
   color: #64748b;
   font-size: 0.9rem;
 }
+
+/* Highlights section */
+.emptyHighlights {
+  text-align: center;
+  padding: 2rem;
+  color: #64748b;
+}
+
+.emptyIcon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.emptyHint {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-top: 0.5rem;
+}
+
+.highlightsSummary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.highlightsSummaryDivider {
+  color: #cbd5e1;
+}
+
+.highlightsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 1rem;
+}
+
+.highlightCard {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.highlightCard:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border-color: #3b82f6;
+}
+
+.highlightHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.highlightIcon {
+  font-size: 1.4rem;
+}
+
+.highlightTitle {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 1rem;
+  flex: 1;
+}
+
+.highlightType {
+  font-weight: 600;
+  color: #1e293b;
+  text-transform: capitalize;
+  font-size: 0.9rem;
+}
+
+.phaseBadge {
+  color: white;
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.segmentBadge {
+  background: #e0e7ff;
+  color: #4338ca;
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  font-weight: 600;
+  font-size: 0.7rem;
+}
+
+.importanceBadge {
+  color: white;
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  font-weight: 700;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.highlightDescription {
+  color: #475569;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.highlightContext {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.scoreChange,
+.clockRange {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.contextLabel {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.contextValue {
+  font-size: 0.9rem;
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.highlightParticipants {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.teamsInvolved,
+.playersInvolved {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.teamBadge {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.playerBadge {
+  background: #f1f5f9;
+  color: #475569;
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  font-weight: 500;
+  font-size: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.playerName {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.playerStats {
+  font-size: 0.7rem;
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.highlightFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.5rem;
+  border-top: 1px solid #f1f5f9;
+  margin-top: auto;
+}
+
+.playLink {
+  font-size: 0.8rem;
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.playCount {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-left: 0.5rem;
+}
+
+.keyPlays {
+  font-size: 0.75rem;
+  color: #64748b;
+}

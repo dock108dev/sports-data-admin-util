@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta
 import re
 from typing import Any, Sequence
 
@@ -12,61 +10,13 @@ from sqlalchemy import select
 
 from ... import db_models
 from ...db import AsyncSession
-from ...utils.datetime_utils import now_utc
 from ...utils.reveal_utils import contains_explicit_score
 from .schemas import (
-    CompactMoment,
-    CompactMomentsResponse,
     PlayEntry,
-    ScoreChip,
     ScrapeRunResponse,
     TeamStat,
     PlayerStat,
 )
-
-COMPACT_CACHE_TTL = timedelta(seconds=30)
-
-
-@dataclass
-class _CompactCacheEntry:
-    response: CompactMomentsResponse
-    expires_at: datetime
-
-
-_compact_cache: dict[int, _CompactCacheEntry] = {}
-
-
-def get_compact_cache(game_id: int) -> CompactMomentsResponse | None:
-    """Return cached compact moments response when still fresh."""
-    entry = _compact_cache.get(game_id)
-    if not entry:
-        return None
-    if entry.expires_at <= now_utc():
-        _compact_cache.pop(game_id, None)
-        return None
-    return entry.response
-
-
-def store_compact_cache(game_id: int, response: CompactMomentsResponse) -> None:
-    """Store compact moments response for brief reuse."""
-    _compact_cache[game_id] = _CompactCacheEntry(
-        response=response,
-        expires_at=now_utc() + COMPACT_CACHE_TTL,
-    )
-
-
-def build_compact_hint(play: db_models.SportsGamePlay, moment_type: str) -> str | None:
-    """Create a short hint for compact moment listing."""
-    hint_parts: list[str] = []
-    if isinstance(play.raw_data, dict):
-        team_abbr = play.raw_data.get("team_abbreviation")
-        if team_abbr:
-            hint_parts.append(str(team_abbr))
-    if play.player_name:
-        hint_parts.append(play.player_name)
-    if not hint_parts and moment_type != "unknown":
-        hint_parts.append(moment_type.replace("_", " ").title())
-    return " - ".join(hint_parts) if hint_parts else None
 
 
 def serialize_play_entry(play: db_models.SportsGamePlay) -> PlayEntry:
@@ -82,58 +32,6 @@ def serialize_play_entry(play: db_models.SportsGamePlay) -> PlayEntry:
         home_score=play.home_score,
         away_score=play.away_score,
     )
-
-
-_SCORE_CHIP_LABELS = {
-    1: "End Q1",
-    2: "Halftime",
-    3: "End Q3",
-}
-
-
-def build_score_chips(plays: Sequence[db_models.SportsGamePlay]) -> list[ScoreChip]:
-    """Build score chips that mark quarter boundaries and current score."""
-    score_chips: list[ScoreChip] = []
-    boundary_play_indices: set[int] = set()
-
-    for index, play in enumerate(plays[:-1]):
-        quarter = play.quarter
-        if quarter not in _SCORE_CHIP_LABELS:
-            continue
-        next_quarter = plays[index + 1].quarter
-        if next_quarter is None or next_quarter == quarter:
-            continue
-        if play.home_score is None or play.away_score is None:
-            continue
-        score_chips.append(
-            ScoreChip(
-                playIndex=play.play_index,
-                label=_SCORE_CHIP_LABELS[quarter],
-                homeScore=play.home_score,
-                awayScore=play.away_score,
-            )
-        )
-        boundary_play_indices.add(play.play_index)
-
-    last_scored_play = next(
-        (
-            play
-            for play in reversed(plays)
-            if play.home_score is not None and play.away_score is not None
-        ),
-        None,
-    )
-    if last_scored_play and last_scored_play.play_index not in boundary_play_indices:
-        score_chips.append(
-            ScoreChip(
-                playIndex=last_scored_play.play_index,
-                label="Current score",
-                homeScore=last_scored_play.home_score,
-                awayScore=last_scored_play.away_score,
-            )
-        )
-
-    return score_chips
 
 
 _URL_PATTERN = re.compile(r"https?://\S+")
@@ -166,19 +64,6 @@ def dedupe_social_posts(posts: Sequence[db_models.GameSocialPost]) -> list[db_mo
         seen.add(key)
         deduped.append(post)
     return deduped
-
-
-def find_compact_moment_bounds(
-    moments: Sequence[CompactMoment],
-    moment_id: int,
-) -> tuple[int, int | None]:
-    """Return start/end play indices for the requested compact moment."""
-    for index, moment in enumerate(moments):
-        if moment.play_index == moment_id:
-            next_play_index = moments[index + 1].play_index if index + 1 < len(moments) else None
-            end_index = next_play_index - 1 if next_play_index is not None else None
-            return moment.play_index, end_index
-    raise ValueError(f"Moment not found for play_index={moment_id}")
 
 
 async def get_league(session: AsyncSession, code: str) -> db_models.SportsLeague:

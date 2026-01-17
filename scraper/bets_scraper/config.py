@@ -57,6 +57,16 @@ class SocialConfig(BaseModel):
     gameday_end_hour: int = Field(default=2)     # 2 AM ET next day
 
 
+class TimelineConfig(BaseModel):
+    """Configuration for timeline generation jobs.
+    
+    Note: Post-scrape scheduled runs process ALL games missing timelines (no date limit).
+    The days_back setting is only used for manual/admin API calls.
+    """
+    enable_timeline_generation: bool = Field(default=True)
+    timeline_generation_max_games: int | None = Field(default=None)  # None = all games
+
+
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
@@ -116,7 +126,9 @@ class Settings(BaseSettings):
     scraper_config: ScraperConfig = Field(default_factory=ScraperConfig)
     odds_config: OddsProviderConfig = Field(default_factory=OddsProviderConfig)
     social_config: SocialConfig = Field(default_factory=SocialConfig)
+    timeline_config: TimelineConfig = Field(default_factory=TimelineConfig)
     theory_engine_app_path: str | None = Field(None, alias="THEORY_ENGINE_APP_PATH")
+    api_internal_url: str = Field("http://api:8000", alias="API_INTERNAL_URL")
     scraper_html_cache_dir_override: str | None = Field(None, alias="SCRAPER_HTML_CACHE_DIR")
     scraper_force_cache_refresh_override: bool | None = Field(None, alias="SCRAPER_FORCE_CACHE_REFRESH")
 

@@ -102,8 +102,10 @@ class GameSummary(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
+    has_highlights: bool
     play_count: int
     social_post_count: int
+    highlight_count: int
     has_required_data: bool
     scrape_version: int | None
     last_scraped_at: datetime | None
@@ -121,6 +123,7 @@ class GameListResponse(BaseModel):
     with_odds_count: int | None = 0
     with_social_count: int | None = 0
     with_pbp_count: int | None = 0
+    with_highlights_count: int | None = 0
 
 
 class TeamStat(BaseModel):
@@ -178,8 +181,10 @@ class GameMeta(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
+    has_highlights: bool
     play_count: int
     social_post_count: int
+    highlight_count: int
     home_team_x_handle: str | None = None
     away_team_x_handle: str | None = None
 
@@ -205,20 +210,6 @@ class SocialPostEntry(BaseModel):
     media_type: str | None = None
 
 
-class CompactPostEntry(BaseModel):
-    id: int
-    post_url: str
-    posted_at: datetime
-    has_video: bool
-    team_abbreviation: str
-    tweet_text: str | None = None
-    video_url: str | None = None
-    image_url: str | None = None
-    source_handle: str | None = None
-    media_type: str | None = None
-    contains_score: bool = Field(alias="containsScore")
-
-
 class PlayEntry(BaseModel):
     play_index: int
     quarter: int | None = None
@@ -231,37 +222,46 @@ class PlayEntry(BaseModel):
     away_score: int | None = None
 
 
-class CompactMoment(BaseModel):
-    play_index: int = Field(alias="playIndex")
-    quarter: int | None = None
-    game_clock: str | None = Field(None, alias="gameClock")
-    moment_type: str = Field(alias="momentType")
-    hint: str | None = None
+class PlayerContribution(BaseModel):
+    """Player with their stats in a moment."""
+    name: str
+    stats: dict[str, int] = Field(default_factory=dict)
+    summary: str | None = None
 
 
-class ScoreChip(BaseModel):
-    play_index: int = Field(alias="playIndex")
-    label: str
-    home_score: int = Field(alias="homeScore")
-    away_score: int = Field(alias="awayScore")
+class MomentEntry(BaseModel):
+    """
+    The single narrative unit.
+    
+    Every play belongs to exactly one moment.
+    Moments are always chronological.
+    """
+    id: str                           # "m_001"
+    type: str                         # NEUTRAL, RUN, BATTLE, CLOSING
+    start_play: int                   # First play index
+    end_play: int                     # Last play index
+    play_count: int                   # Number of plays
+    teams: list[str] = Field(default_factory=list)
+    players: list[PlayerContribution] = Field(default_factory=list)
+    score_start: str = ""             # "12–15"
+    score_end: str = ""               # "18–15"
+    clock: str = ""                   # "Q2 8:45–6:12"
+    is_notable: bool = False          # This IS highlights
+    note: str | None = None           # "7-0 run"
 
 
-class CompactMomentsResponse(BaseModel):
-    moments: list[CompactMoment]
-    moment_types: list[str] = Field(alias="momentTypes")
-    score_chips: list[ScoreChip] = Field(default_factory=list, alias="scoreChips")
-
-
-class CompactPbpResponse(BaseModel):
-    plays: list[PlayEntry]
-
-
-class CompactPostsResponse(BaseModel):
-    posts: list[CompactPostEntry]
-
-
-class CompactMomentSummaryResponse(BaseModel):
-    summary: str
+class MomentsResponse(BaseModel):
+    """
+    Response for GET /games/{game_id}/moments endpoint.
+    
+    Contains ALL moments (full timeline coverage).
+    Highlights are moments where is_notable=True - filter client-side.
+    """
+    game_id: int
+    generated_at: datetime | None = None
+    moments: list[MomentEntry]
+    total_count: int
+    highlight_count: int  # Count of moments where is_notable=True
 
 
 class GameDetailResponse(BaseModel):
@@ -271,6 +271,7 @@ class GameDetailResponse(BaseModel):
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry]
     plays: list[PlayEntry]
+    moments: list[MomentEntry]  # Full coverage; filter by is_notable for highlights
     derived_metrics: dict[str, Any]
     raw_payloads: dict[str, Any]
 

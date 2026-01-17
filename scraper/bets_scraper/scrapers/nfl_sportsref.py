@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Sequence
 
 from ..utils.datetime_utils import date_to_utc_datetime

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict
 
 from ..config import settings
@@ -16,7 +16,7 @@ from ..season_stats import NHLHockeyReferenceSeasonStatsScraper
 from ..scrapers import get_all_scrapers
 from ..social import XPostCollector
 from ..utils.date_utils import season_from_date
-from ..utils.datetime_utils import now_utc
+from ..utils.datetime_utils import now_utc, today_utc
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
 from .job_runs import complete_job_run, start_job_run
 from .run_manager_helpers import (
@@ -72,7 +72,7 @@ class ScrapeRunManager:
             "team_stats": 0,
             "player_stats": 0,
         }
-        start = config.start_date or date.today()
+        start = config.start_date or today_utc()
         end = config.end_date or start
         scraper = self.scrapers.get(config.league_code)
 
@@ -331,7 +331,6 @@ class ScrapeRunManager:
                     # In backfill mode, we skip the recency filter and process all final games.
                     now = now_utc()
                     recent_window = timedelta(hours=settings.social_config.recent_game_window_hours)
-                    start_dt = datetime.combine(start, datetime.min.time()).replace(tzinfo=timezone.utc)
                     end_dt = datetime.combine(end, datetime.max.time()).replace(tzinfo=timezone.utc)
                     
                     # Check conditions for backfill mode:
