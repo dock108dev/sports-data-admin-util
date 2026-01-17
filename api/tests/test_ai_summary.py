@@ -167,7 +167,7 @@ class TestAttentionPoints(unittest.TestCase):
                 self.type = t
 
         moments = [
-            SimpleMoment(MomentType.OPENER),
+            SimpleMoment(MomentType.NEUTRAL),  # OPENER was removed in 2026-01 refactor
             SimpleMoment(MomentType.LEAD_BUILD),
             SimpleMoment(MomentType.FLIP),
             SimpleMoment(MomentType.NEUTRAL),
@@ -189,7 +189,7 @@ class TestAttentionPoints(unittest.TestCase):
             def __init__(self, t: MomentType) -> None:
                 self.type = t
 
-        moments = [SimpleMoment(MomentType.OPENER), SimpleMoment(MomentType.NEUTRAL)]
+        moments = [SimpleMoment(MomentType.NEUTRAL), SimpleMoment(MomentType.NEUTRAL)]
 
         points = generate_attention_points(
             moments,
@@ -207,7 +207,7 @@ class TestAttentionPoints(unittest.TestCase):
             def __init__(self, t: MomentType) -> None:
                 self.type = t
 
-        moments = [SimpleMoment(MomentType.OPENER)]
+        moments = [SimpleMoment(MomentType.NEUTRAL)]
 
         points = generate_attention_points(
             moments,
@@ -274,10 +274,8 @@ class TestBuildSummaryFromTimeline(unittest.TestCase):
         self.assertIn("headline", result)
         self.assertIn("subhead", result)
         self.assertIn("attention_points", result)
-        self.assertIn("ai_generated", result)
-
-        # ai_generated should be False for sync version
-        self.assertFalse(result["ai_generated"])
+        # Note: ai_generated field was removed in 2026-01 refactor
+        # AI enrichment is now always required
 
     def test_summary_no_ai_influence_on_structure(self) -> None:
         """AI cannot affect structural fields."""

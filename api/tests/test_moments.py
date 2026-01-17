@@ -39,6 +39,7 @@ def make_pbp_event(
         "quarter": quarter,
         "game_clock": game_clock,
         "play_type": play_type,
+        "description": f"Test {play_type} by Player #{index}",  # Required for canonical PBP filter
     }
 
 
