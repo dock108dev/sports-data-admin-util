@@ -153,6 +153,9 @@ export type MomentType =
  * 
  * Every play belongs to exactly one moment.
  * Moments are always chronological.
+ * 
+ * Moments are aggressively merged to stay within sport-specific budgets.
+ * A typical NBA game has ~25-35 moments, not 60-70.
  */
 export type MomentEntry = {
   id: string;                           // "m_001"
@@ -168,23 +171,40 @@ export type MomentEntry = {
   is_notable: boolean;                  // True for notable moments (key game events)
   note: string | null;                  // "7-0 run"
   
-  // New Lead Ladder fields (optional)
+  // Lead Ladder state
+  ladder_tier_before: number;
+  ladder_tier_after: number;
+  team_in_control: "home" | "away" | null;
+  key_play_ids: number[];
+  
+  // WHY THIS MOMENT EXISTS - mandatory for narrative clarity
+  reason?: MomentReason;
+  
+  // Run metadata if a run contributed
   run_info?: RunInfo;
-  ladder_tier_before?: number;
-  ladder_tier_after?: number;
-  team_in_control?: "home" | "away" | null;
-  key_play_ids?: number[];
+};
+
+/**
+ * Explains WHY a moment exists.
+ * Every moment must have a reason. If you can't explain it, don't create it.
+ */
+export type MomentReason = {
+  trigger: "tier_cross" | "flip" | "tie" | "closing_lock" | "high_impact" | "opener" | "stable";
+  control_shift: "home" | "away" | null;
+  narrative_delta: string;  // "tension ↑" | "control gained" | "pressure relieved" | etc.
 };
 
 /**
  * Response from GET /games/{game_id}/moments
+ * 
+ * Moments are already merged and within sport-specific budgets (e.g., NBA: 30 max).
+ * Each moment has a 'reason' field explaining why it exists.
  */
 export type MomentsResponse = {
   game_id: number;
   generated_at: string | null;
   moments: MomentEntry[];
   total_count: number;
-  highlight_count: number;
 };
 
 export type AdminGameDetail = {

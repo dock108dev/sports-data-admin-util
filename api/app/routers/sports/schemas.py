@@ -244,7 +244,7 @@ class MomentEntry(BaseModel):
     Every play belongs to exactly one moment.
     Moments are always chronological.
     
-    MomentTypes (Lead Ladder v2):
+    MomentTypes:
     - LEAD_BUILD: Lead tier increased
     - CUT: Lead tier decreased (comeback)
     - TIE: Game returned to even
@@ -253,6 +253,9 @@ class MomentEntry(BaseModel):
     - HIGH_IMPACT: Ejection, injury, etc.
     - OPENER: First plays of a period
     - NEUTRAL: Normal flow
+    
+    Moments are aggressively merged to stay within sport-specific budgets.
+    A typical NBA game has ~25-35 moments, not 60-70.
     """
     id: str                           # "m_001"
     type: str                         # See MomentTypes above
@@ -267,20 +270,32 @@ class MomentEntry(BaseModel):
     is_notable: bool = False          # True for notable moments (key game events)
     note: str | None = None           # "7-0 run"
     
-    # New Lead Ladder fields (optional)
-    run_info: RunInfo | None = None   # If a run contributed to this moment
-    ladder_tier_before: int | None = None
-    ladder_tier_after: int | None = None
+    # Lead Ladder state
+    ladder_tier_before: int = 0
+    ladder_tier_after: int = 0
     team_in_control: str | None = None  # "home", "away", or None
     key_play_ids: list[int] = Field(default_factory=list)
+    
+    # WHY THIS MOMENT EXISTS - mandatory for narrative clarity
+    reason: dict | None = None  # {trigger, control_shift, narrative_delta}
+    
+    # Run metadata if a run contributed
+    run_info: RunInfo | None = None
+
+
+class MomentReasonEntry(BaseModel):
+    """Explains WHY a moment exists."""
+    trigger: str  # "tier_cross" | "flip" | "tie" | "closing_lock" | "high_impact" | "opener"
+    control_shift: str | None = None  # "home" | "away" | None
+    narrative_delta: str  # "tension ↑" | "control gained" | "pressure relieved" | etc.
 
 
 class MomentsResponse(BaseModel):
     """
     Response for GET /games/{game_id}/moments endpoint.
     
-    Contains ALL moments (full timeline coverage).
-    Notable moments (is_notable=True) are key game events - filter client-side.
+    Moments are already merged and within sport-specific budgets (e.g., NBA: 30 max).
+    Each moment has a 'reason' field explaining why it exists.
     """
     game_id: int
     generated_at: datetime | None = None

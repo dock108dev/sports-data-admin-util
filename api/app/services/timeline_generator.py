@@ -36,7 +36,7 @@ from .. import db_models
 from ..db import AsyncSession
 from ..utils.datetime_utils import now_utc, parse_clock_to_seconds
 from .timeline_validation import validate_and_log, TimelineValidationError
-from .game_analysis import build_nba_game_analysis_async
+from .game_analysis import build_game_analysis_async
 from .social_events import build_social_events, build_social_events_async
 from .summary_builder import build_nba_summary, build_summary_from_timeline_async
 
@@ -565,18 +565,19 @@ async def generate_timeline_artifact(
             extra={"game_id": game_id, "phase": "game_analysis"},
         )
         base_summary = build_nba_summary(game)
-        game_analysis = await build_nba_game_analysis_async(
+        game_analysis = await build_game_analysis_async(
             timeline=timeline,
             summary=base_summary,
             game_id=game_id,
             sport=league_code,
         )
+        moment_count = len(game_analysis.get("moments", []))
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
                 "game_id": game_id,
                 "phase": "game_analysis",
-                "moments": len(game_analysis.get("moments", [])),
+                "moment_count": moment_count,
             },
         )
 

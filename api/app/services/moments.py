@@ -108,6 +108,35 @@ HIGH_IMPACT_PLAY_TYPES = frozenset({
     "injury",  # Context-critical
 })
 
+# =============================================================================
+# MOMENT BUDGET (HARD CONSTRAINT)
+# =============================================================================
+# If you exceed these, the system is broken.
+# These are NOT guidelines - they are enforcement limits.
+
+MOMENT_BUDGET: dict[str, int] = {
+    "NBA": 30,
+    "NCAAB": 32,
+    "NFL": 22,
+    "NHL": 28,
+    "MLB": 26,
+}
+DEFAULT_MOMENT_BUDGET = 30
+
+# Moment types that can NEVER be merged (dramatic moments)
+PROTECTED_TYPES = frozenset({
+    MomentType.FLIP,
+    MomentType.CLOSING_CONTROL,
+    MomentType.HIGH_IMPACT,
+})
+
+# Moment types that should always be merged when consecutive
+ALWAYS_MERGE_TYPES = frozenset({
+    MomentType.NEUTRAL,
+    MomentType.LEAD_BUILD,
+    MomentType.CUT,
+})
+
 
 # =============================================================================
 # DATA CLASSES
@@ -126,6 +155,26 @@ class PlayerContribution:
             "name": self.name,
             "stats": self.stats,
             "summary": self.summary,
+        }
+
+
+@dataclass
+class MomentReason:
+    """
+    Explains WHY a moment exists.
+    
+    Every moment must have a reason. If you can't populate this,
+    the moment should not exist.
+    """
+    trigger: str  # "tier_cross" | "flip" | "tie" | "closing_lock" | "high_impact" | "opener"
+    control_shift: str | None  # "home" | "away" | None
+    narrative_delta: str  # "tension ↑" | "control gained" | "pressure relieved" | etc.
+    
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "trigger": self.trigger,
+            "control_shift": self.control_shift,
+            "narrative_delta": self.narrative_delta,
         }
 
 
@@ -159,6 +208,9 @@ class Moment:
 
     Every play in the timeline belongs to exactly one Moment.
     Moments are always chronologically ordered by start_play.
+    
+    A moment only exists when something meaningfully changes.
+    If nothing meaningful changed, extend the current moment.
     """
     id: str
     type: MomentType
@@ -183,6 +235,9 @@ class Moment:
     key_play_ids: list[int] = field(default_factory=list)
     clock: str = ""
 
+    # WHY THIS MOMENT EXISTS - mandatory for narrative clarity
+    reason: MomentReason | None = None
+    
     # Metadata
     is_notable: bool = False
     note: str | None = None
@@ -204,15 +259,14 @@ class Moment:
             "clock": self.clock,
             "is_notable": self.is_notable,
             "note": self.note,
+            "ladder_tier_before": self.ladder_tier_before,
+            "ladder_tier_after": self.ladder_tier_after,
+            "team_in_control": self.team_in_control,
+            "key_play_ids": self.key_play_ids,
         }
-        # Include new fields if present
-        if self.ladder_tier_before or self.ladder_tier_after:
-            result["ladder_tier_before"] = self.ladder_tier_before
-            result["ladder_tier_after"] = self.ladder_tier_after
-        if self.team_in_control:
-            result["team_in_control"] = self.team_in_control
-        if self.key_play_ids:
-            result["key_play_ids"] = self.key_play_ids
+        # Reason is critical for AI and narrative
+        if self.reason:
+            result["reason"] = self.reason.to_dict()
         if self.run_info:
             result["run_info"] = {
                 "team": self.run_info.team,
@@ -674,6 +728,236 @@ def _detect_boundaries(
 # =============================================================================
 
 
+# =============================================================================
+# MOMENT MERGING (Critical for budget enforcement)
+# =============================================================================
+
+
+def _can_merge_moments(m1: Moment, m2: Moment) -> bool:
+    """
+    Determine if two adjacent moments can be merged.
+    
+    MERGE RULES (from spec):
+    - Same MomentType → ALWAYS merge
+    - Same team_in_control → MERGE (unless protected type)
+    - No intervening FLIP, TIE, or CLOSING_CONTROL
+    
+    Protected types (FLIP, CLOSING_CONTROL, HIGH_IMPACT) are NEVER merged.
+    """
+    # Never merge protected types
+    if m1.type in PROTECTED_TYPES or m2.type in PROTECTED_TYPES:
+        return False
+    
+    # Always merge same type + same control
+    if m1.type == m2.type:
+        return True
+    
+    # Merge NEUTRAL with anything except protected
+    if m1.type == MomentType.NEUTRAL or m2.type == MomentType.NEUTRAL:
+        return True
+    
+    # Merge consecutive LEAD_BUILD or CUT if same control
+    if m1.type in ALWAYS_MERGE_TYPES and m2.type in ALWAYS_MERGE_TYPES:
+        if m1.team_in_control == m2.team_in_control:
+            return True
+    
+    # Don't merge TIE with other types (TIE is a narrative pivot)
+    if m1.type == MomentType.TIE or m2.type == MomentType.TIE:
+        return False
+    
+    # OPENER can merge with following NEUTRAL/LEAD_BUILD
+    if m1.type == MomentType.OPENER and m2.type in {MomentType.NEUTRAL, MomentType.LEAD_BUILD}:
+        return True
+    
+    return False
+
+
+def _merge_two_moments(m1: Moment, m2: Moment) -> Moment:
+    """
+    Merge two adjacent moments into one.
+    
+    The resulting moment:
+    - Spans from m1.start_play to m2.end_play
+    - Takes the more significant type
+    - Combines key_play_ids
+    - Takes the final control state
+    """
+    # Determine the dominant type (more significant)
+    type_priority = {
+        MomentType.FLIP: 10,
+        MomentType.CLOSING_CONTROL: 9,
+        MomentType.HIGH_IMPACT: 8,
+        MomentType.TIE: 7,
+        MomentType.CUT: 6,
+        MomentType.LEAD_BUILD: 5,
+        MomentType.OPENER: 3,
+        MomentType.NEUTRAL: 1,
+    }
+    
+    if type_priority.get(m2.type, 0) > type_priority.get(m1.type, 0):
+        dominant_type = m2.type
+        dominant_reason = m2.reason
+    else:
+        dominant_type = m1.type
+        dominant_reason = m1.reason
+    
+    # Combine key plays
+    combined_key_plays = list(set(m1.key_play_ids + m2.key_play_ids))
+    combined_key_plays.sort()
+    
+    # Build merged reason if needed
+    if dominant_reason is None and m1.reason:
+        dominant_reason = m1.reason
+    
+    merged = Moment(
+        id=m1.id,  # Will be renumbered later
+        type=dominant_type,
+        start_play=m1.start_play,
+        end_play=m2.end_play,
+        play_count=m2.end_play - m1.start_play + 1,
+        score_before=m1.score_before,
+        score_after=m2.score_after,
+        score_start=m1.score_start,
+        score_end=m2.score_end,
+        ladder_tier_before=m1.ladder_tier_before,
+        ladder_tier_after=m2.ladder_tier_after,
+        team_in_control=m2.team_in_control,
+        teams=list(set(m1.teams + m2.teams)),
+        players=m1.players + m2.players,  # Combine player contributions
+        key_play_ids=combined_key_plays,
+        clock=f"{m1.clock.split('–')[0]}–{m2.clock.split('–')[-1]}" if m1.clock and m2.clock else m1.clock or m2.clock,
+        reason=dominant_reason,
+        is_notable=m1.is_notable or m2.is_notable,
+        note=m2.note or m1.note,
+        run_info=m2.run_info or m1.run_info,
+        bucket=m2.bucket or m1.bucket,
+    )
+    
+    return merged
+
+
+def _merge_consecutive_moments(moments: list[Moment]) -> list[Moment]:
+    """
+    Merge consecutive same-type moments aggressively.
+    
+    This is the PRIMARY mechanism for reducing moment count.
+    
+    These should NEVER be separate moments:
+    - LEAD_BUILD → LEAD_BUILD
+    - CUT → CUT  
+    - NEUTRAL → NEUTRAL
+    
+    If control didn't change, the moment didn't change.
+    """
+    if len(moments) <= 1:
+        return moments
+    
+    merged: list[Moment] = [moments[0]]
+    
+    for current in moments[1:]:
+        prev = merged[-1]
+        
+        if _can_merge_moments(prev, current):
+            # Merge into previous
+            merged[-1] = _merge_two_moments(prev, current)
+        else:
+            merged.append(current)
+    
+    return merged
+
+
+def _enforce_budget(moments: list[Moment], budget: int) -> list[Moment]:
+    """
+    Force moments under budget by progressively merging.
+    
+    Priority for merging (least important first):
+    1. Consecutive NEUTRAL moments
+    2. Consecutive LEAD_BUILD moments  
+    3. Consecutive CUT moments
+    4. OPENER + following moment
+    
+    We NEVER merge: FLIP, CLOSING_CONTROL, HIGH_IMPACT, TIE
+    """
+    if len(moments) <= budget:
+        return moments
+    
+    # Keep trying until we're under budget
+    iterations = 0
+    max_iterations = 10  # Safety valve
+    
+    while len(moments) > budget and iterations < max_iterations:
+        iterations += 1
+        merged = False
+        
+        # First pass: merge any remaining NEUTRAL sequences
+        for i in range(len(moments) - 1):
+            if i >= len(moments) - 1:
+                break
+            if moments[i].type == MomentType.NEUTRAL and moments[i + 1].type == MomentType.NEUTRAL:
+                moments[i] = _merge_two_moments(moments[i], moments[i + 1])
+                moments.pop(i + 1)
+                merged = True
+                break
+        
+        if merged or len(moments) <= budget:
+            continue
+        
+        # Second pass: merge LEAD_BUILD sequences
+        for i in range(len(moments) - 1):
+            if i >= len(moments) - 1:
+                break
+            if moments[i].type == MomentType.LEAD_BUILD and moments[i + 1].type == MomentType.LEAD_BUILD:
+                moments[i] = _merge_two_moments(moments[i], moments[i + 1])
+                moments.pop(i + 1)
+                merged = True
+                break
+        
+        if merged or len(moments) <= budget:
+            continue
+        
+        # Third pass: merge CUT sequences
+        for i in range(len(moments) - 1):
+            if i >= len(moments) - 1:
+                break
+            if moments[i].type == MomentType.CUT and moments[i + 1].type == MomentType.CUT:
+                moments[i] = _merge_two_moments(moments[i], moments[i + 1])
+                moments.pop(i + 1)
+                merged = True
+                break
+        
+        if merged or len(moments) <= budget:
+            continue
+        
+        # Fourth pass: merge OPENER with following non-protected moment
+        for i in range(len(moments) - 1):
+            if i >= len(moments) - 1:
+                break
+            if moments[i].type == MomentType.OPENER and moments[i + 1].type not in PROTECTED_TYPES:
+                moments[i] = _merge_two_moments(moments[i], moments[i + 1])
+                moments.pop(i + 1)
+                merged = True
+                break
+        
+        if not merged:
+            # Can't merge anymore without touching protected types
+            logger.warning(
+                "budget_enforcement_incomplete",
+                extra={
+                    "target_budget": budget,
+                    "current_count": len(moments),
+                    "protected_count": sum(1 for m in moments if m.type in PROTECTED_TYPES),
+                },
+            )
+            break
+    
+    return moments
+
+
+# =============================================================================
+# MOMENT PARTITIONING
+# =============================================================================
+
+
 def partition_game(
     timeline: Sequence[dict[str, Any]],
     summary: dict[str, Any],
@@ -687,7 +971,8 @@ def partition_game(
     1. Every PBP play belongs to exactly ONE moment
     2. Moments are contiguous (no gaps)
     3. Moments are chronologically ordered by start_play
-    4. Moment boundaries occur only on tier crossings
+    4. Moment count stays within sport-specific budget
+    5. Every moment has a reason for existing
 
     Args:
         timeline: Full timeline events (PBP + social)
@@ -780,13 +1065,31 @@ def partition_game(
     runs = _detect_runs(events)
     _attach_runs_to_moments(moments, runs)
 
-    # Validate coverage
+    # AGGRESSIVE MERGE: Collapse consecutive same-type moments
+    pre_merge_count = len(moments)
+    moments = _merge_consecutive_moments(moments)
+    
+    # BUDGET ENFORCEMENT: If still over budget, merge more aggressively
+    sport = summary.get("sport", "NBA") if isinstance(summary, dict) else "NBA"
+    budget = MOMENT_BUDGET.get(sport, DEFAULT_MOMENT_BUDGET)
+    if len(moments) > budget:
+        moments = _enforce_budget(moments, budget)
+
+    # Re-validate coverage after merging
     _validate_moment_coverage(moments, pbp_indices)
+
+    # Renumber moment IDs after merging
+    for i, m in enumerate(moments):
+        m.id = f"m_{i + 1:03d}"
 
     logger.info(
         "partition_game_complete",
         extra={
-            "moment_count": len(moments),
+            "pre_merge_count": pre_merge_count,
+            "post_merge_count": len(moments),
+            "merge_reduction_pct": round((1 - len(moments) / pre_merge_count) * 100, 1) if pre_merge_count > 0 else 0,
+            "budget": budget,
+            "within_budget": len(moments) <= budget,
             "moment_types": [m.type.value for m in moments],
             "notable_count": sum(1 for m in moments if m.is_notable),
             "runs_detected": len(runs),
@@ -851,6 +1154,67 @@ def _attach_runs_to_moments(
             attached_runs.add(run_idx)
 
 
+def _create_moment_reason(
+    moment_type: MomentType,
+    start_state: LeadState,
+    end_state: LeadState,
+    team_in_control: str | None,
+) -> MomentReason:
+    """
+    Create a reason explaining WHY this moment exists.
+    
+    Every moment must have a reason. If you can't explain it, don't create it.
+    """
+    # Determine trigger
+    trigger_map = {
+        MomentType.FLIP: "flip",
+        MomentType.TIE: "tie",
+        MomentType.CLOSING_CONTROL: "closing_lock",
+        MomentType.HIGH_IMPACT: "high_impact",
+        MomentType.OPENER: "opener",
+        MomentType.LEAD_BUILD: "tier_cross",
+        MomentType.CUT: "tier_cross",
+        MomentType.NEUTRAL: "stable",
+    }
+    trigger = trigger_map.get(moment_type, "unknown")
+    
+    # Determine control shift
+    control_shift: str | None = None
+    if start_state.leader != end_state.leader:
+        if end_state.leader == Leader.HOME:
+            control_shift = "home"
+        elif end_state.leader == Leader.AWAY:
+            control_shift = "away"
+    
+    # Determine narrative delta
+    if moment_type == MomentType.FLIP:
+        narrative_delta = "control changed"
+    elif moment_type == MomentType.TIE:
+        narrative_delta = "tension ↑"
+    elif moment_type == MomentType.CLOSING_CONTROL:
+        narrative_delta = "game locked"
+    elif moment_type == MomentType.LEAD_BUILD:
+        tier_diff = end_state.tier - start_state.tier
+        if tier_diff >= 2:
+            narrative_delta = "control solidified"
+        else:
+            narrative_delta = "lead extended"
+    elif moment_type == MomentType.CUT:
+        narrative_delta = "pressure relieved" if team_in_control else "momentum shift"
+    elif moment_type == MomentType.HIGH_IMPACT:
+        narrative_delta = "context changed"
+    elif moment_type == MomentType.OPENER:
+        narrative_delta = "period started"
+    else:
+        narrative_delta = "stable flow"
+    
+    return MomentReason(
+        trigger=trigger,
+        control_shift=control_shift,
+        narrative_delta=narrative_delta,
+    )
+
+
 def _create_moment(
     moment_id: int,
     events: list[dict[str, Any]],
@@ -879,6 +1243,9 @@ def _create_moment(
         team_in_control = "away"
     else:
         team_in_control = None
+
+    # Create reason for this moment's existence
+    reason = _create_moment_reason(moment_type, start_state, end_state, team_in_control)
 
     # Determine if notable
     is_notable = _is_moment_notable(moment_type, start_state, end_state, boundary)
@@ -914,6 +1281,7 @@ def _create_moment(
         ladder_tier_after=end_state.tier,
         team_in_control=team_in_control,
         clock=clock,
+        reason=reason,
         is_notable=is_notable,
         note=boundary.note if boundary else None,
         bucket=_get_bucket(start_event),

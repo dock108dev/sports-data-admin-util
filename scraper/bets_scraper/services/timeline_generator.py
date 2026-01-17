@@ -68,10 +68,7 @@ def find_games_missing_timelines(
         )
         .filter(
             db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.status.in_([
-                db_models.GameStatus.final.value,
-                db_models.GameStatus.completed.value,
-            ]),
+            db_models.SportsGame.status == db_models.GameStatus.final.value,
         )
         .filter(
             # Has PBP data

@@ -33,7 +33,7 @@ def detect_missing_pbp(
         return []
 
     live_status = db_models.GameStatus.live.value
-    final_statuses = [db_models.GameStatus.final.value, db_models.GameStatus.completed.value]
+    final_statuses = [db_models.GameStatus.final.value]
     status_filter = [live_status, *final_statuses]
     reason = "not_supported" if league_code not in PBP_SUPPORTED_LEAGUES else "no_feed"
     now = now_utc()

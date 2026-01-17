@@ -4,8 +4,12 @@ Game Analysis: Timeline partitioning into narrative moments.
 This module provides the entry point for analyzing a game timeline.
 All narrative logic lives in moments.py.
 
-The output is a simple structure:
-- moments: list of all moments (full coverage)
+Moments are:
+- The primary structure of the game
+- Aggressively merged to stay within sport-specific budgets (e.g., NBA: 30 max)
+- Every moment has a 'reason' explaining why it exists
+
+NO LEGACY FALLBACKS. If the new system fails, it fails loudly.
 """
 
 from __future__ import annotations
@@ -53,11 +57,14 @@ def build_game_analysis(
 
     Returns:
         {
-            "moments": [Moment.to_dict(), ...],  # Full coverage
+            "moments": [...],  # Already merged and within budget
         }
     """
+    # Add sport to summary for budget enforcement
+    summary_with_sport = {**summary, "sport": sport}
+    
     thresholds = get_thresholds_for_sport(sport)
-    moments = partition_game(timeline, summary, thresholds=thresholds)
+    moments = partition_game(timeline, summary_with_sport, thresholds=thresholds)
 
     return {
         "moments": [m.to_dict() for m in moments],
