@@ -29,10 +29,8 @@ export type GameSummary = {
   has_odds: boolean;
   has_social: boolean;
   has_pbp: boolean;
-  has_highlights: boolean;
   play_count: number;
   social_post_count: number;
-  highlight_count: number;
   has_required_data: boolean;
   scrape_version: number | null;
   last_scraped_at: string | null;
@@ -50,7 +48,6 @@ export type GameListResponse = {
   with_odds_count?: number;
   with_social_count?: number;
   with_pbp_count?: number;
-  with_highlights_count?: number;
 };
 
 export type TeamStat = {
@@ -214,7 +211,6 @@ export type MomentsResponse = {
   generated_at: string | null;
   moments: MomentEntry[];
   total_count: number;
-  highlight_count?: number;
   
   // AI-generated game-level copy (SportsCenter-style, spoiler-safe)
   game_headline: string;   // max 80 chars
@@ -243,10 +239,8 @@ export type AdminGameDetail = {
     has_odds: boolean;
     has_social: boolean;
     has_pbp: boolean;
-    has_highlights: boolean;
     play_count: number;
     social_post_count: number;
-    highlight_count: number;
   };
   team_stats: TeamStat[];
   player_stats: PlayerStat[];

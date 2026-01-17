@@ -102,10 +102,8 @@ class GameSummary(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
-    has_highlights: bool
     play_count: int
     social_post_count: int
-    highlight_count: int
     has_required_data: bool
     scrape_version: int | None
     last_scraped_at: datetime | None
@@ -123,7 +121,6 @@ class GameListResponse(BaseModel):
     with_odds_count: int | None = 0
     with_social_count: int | None = 0
     with_pbp_count: int | None = 0
-    with_highlights_count: int | None = 0
 
 
 class TeamStat(BaseModel):
@@ -181,10 +178,8 @@ class GameMeta(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
-    has_highlights: bool
     play_count: int
     social_post_count: int
-    highlight_count: int
     home_team_x_handle: str | None = None
     away_team_x_handle: str | None = None
 
@@ -310,7 +305,6 @@ class MomentsResponse(BaseModel):
     generated_at: datetime | None = None
     moments: list[MomentEntry]
     total_count: int
-    highlight_count: int  # Count of moments where is_notable=True
     
     # AI-generated game-level copy (SportsCenter-style, spoiler-safe)
     game_headline: str = ""   # max 80 chars

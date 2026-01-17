@@ -645,7 +645,7 @@ SOCIAL_ROLE_PROMPT = """Classify this sports social media post into exactly one 
 - context (pregame info, lineup, injury)
 - reaction (in-game response)
 - momentum (run commentary)
-- highlight (notable play)
+- notable (notable play)
 - result (score update)
 - reflection (postgame)
 - ambient (atmosphere, general)
@@ -699,7 +699,7 @@ async def classify_social_role(
         )
         
         role = response.choices[0].message.content.strip().lower()
-        valid_roles = {"hype", "context", "reaction", "momentum", "highlight", "result", "reflection", "ambient"}
+        valid_roles = {"hype", "context", "reaction", "momentum", "notable", "result", "reflection", "ambient"}
         
         if role in valid_roles:
             return role

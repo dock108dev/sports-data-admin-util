@@ -228,10 +228,10 @@ class TestMomentValidation(unittest.TestCase):
         self.assertTrue(validate_moments([], []))
 
 
-class TestGetHighlights(unittest.TestCase):
+class TestGetNotableMoments(unittest.TestCase):
     """Tests for get_notable_moments() function."""
 
-    def test_highlights_filters_by_is_notable(self) -> None:
+    def test_notable_moments_filters_by_is_notable(self) -> None:
         """Highlights returns only moments where is_notable=True."""
         timeline = [
             make_pbp_event(0, 0, 0, game_clock="12:00"),
@@ -240,14 +240,14 @@ class TestGetHighlights(unittest.TestCase):
             make_pbp_event(3, 5, 10, game_clock="9:00"),
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
-        highlights = get_notable_moments(moments)
+        notable_moments = get_notable_moments(moments)
 
-        # All highlights should have is_notable=True
-        for h in highlights:
-            self.assertTrue(h.is_notable)
+        # All notable moments should have is_notable=True
+        for m in notable_moments:
+            self.assertTrue(m.is_notable)
 
-        # Highlights should be subset of moments
-        self.assertLessEqual(len(highlights), len(moments))
+        # Notable moments should be subset of moments
+        self.assertLessEqual(len(notable_moments), len(moments))
 
 
 class TestMomentToDict(unittest.TestCase):
@@ -578,7 +578,7 @@ class TestInvariantChronologicalOrdering(unittest.TestCase):
         for i in range(1, len(moments)):
             self.assertGreater(moments[i].start_play, moments[i - 1].start_play)
 
-    def test_highlights_preserve_order(self) -> None:
+    def test_notable_moments_preserve_order(self) -> None:
         """get_notable_moments() preserves chronological order."""
         timeline = [
             make_pbp_event(0, 0, 0),
@@ -588,14 +588,14 @@ class TestInvariantChronologicalOrdering(unittest.TestCase):
             make_pbp_event(4, 10, 15),  # Flip - notable
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
-        highlights = get_notable_moments(moments)
-        
-        # Highlights should be in chronological order
-        for i in range(1, len(highlights)):
+        notable_moments = get_notable_moments(moments)
+
+        # Notable moments should be in chronological order
+        for i in range(1, len(notable_moments)):
             self.assertGreater(
-                highlights[i].start_play,
-                highlights[i - 1].start_play,
-                "Highlights not in chronological order"
+                notable_moments[i].start_play,
+                notable_moments[i - 1].start_play,
+                "Notable moments not in chronological order"
             )
 
 

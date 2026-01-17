@@ -114,8 +114,7 @@ Get all moments for a game.
       }
     }
   ],
-  "total_count": 15,
-  "highlight_count": 5
+  "total_count": 15
 }
 ```
 
@@ -146,7 +145,7 @@ Get all moments for a game.
 | `team_in_control` | string | "home", "away", or null |
 
 **Key Fields:**
-- `is_notable` — True for highlights (**unchanged, still the primary filter**)
+- `is_notable` — True for notable moments (key game events)
 - `start_play` / `end_play` — Play indices
 - `players` — Stats within this moment (pts, ast, blk, stl)
 
@@ -185,7 +184,7 @@ Compressed timeline for efficient app display.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `level` | `int` | 1=highlights, 2=standard, 3=detailed |
+| `level` | `int` | 1=notable moments, 2=standard, 3=detailed |
 
 ### `GET /api/games/{game_id}/recap`
 

@@ -1,4 +1,4 @@
-"""Timeline generation service for missing game highlights.
+"""Timeline generation service for missing game moments.
 
 This service identifies games with play-by-play data but missing timeline artifacts,
 and triggers timeline generation via the API's timeline generator.

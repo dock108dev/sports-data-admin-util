@@ -10,7 +10,7 @@ This module is the core timeline generator. It:
 Related modules:
 - social_events.py: Social post processing and role assignment
 - summary_builder.py: Reading guide generation
-- game_analysis.py: Segment detection and highlight extraction
+- game_analysis.py: Moment partitioning and AI enrichment
 - compact_mode.py: Timeline compression for compact view
 - timeline_validation.py: Validation and sanity checks
 - ai_client.py: OpenAI integration for interpretation (not ordering)

@@ -789,42 +789,77 @@ def _detect_boundaries(
 # =============================================================================
 
 
+def _is_moment_low_value(moment: Moment) -> bool:
+    """
+    Determine if a moment has no narrative value and should be merged.
+
+    LOW-VALUE CRITERIA:
+    - score_before == score_after (no score change)
+    - Only 1 play (micro-moment)
+    - OPENER moments with no significant score change (< 3 points)
+
+    These moments represent no real narrative state change.
+    """
+    # No score change
+    if moment.score_before == moment.score_after:
+        return True
+
+    # Micro-moment (single play)
+    if moment.play_count == 1:
+        return True
+
+    # OPENER with minimal scoring (< 3 points total)
+    if moment.type == MomentType.OPENER:
+        score_change = abs(moment.score_after[0] - moment.score_before[0]) + abs(moment.score_after[1] - moment.score_before[1])
+        if score_change < 3:
+            return True
+
+    return False
+
+
 def _can_merge_moments(m1: Moment, m2: Moment) -> bool:
     """
     Determine if two adjacent moments can be merged.
-    
+
     MERGE RULES (from spec):
     - Same MomentType → ALWAYS merge
     - Same team_in_control → MERGE (unless protected type)
     - No intervening FLIP, TIE, or CLOSING_CONTROL
-    
+    - Low-value moments → ALWAYS merge (they have no narrative value)
+
     Protected types (FLIP, CLOSING_CONTROL, HIGH_IMPACT) are NEVER merged.
     """
+    # Low-value moments can always be merged (they have no narrative value)
+    if _is_moment_low_value(m1) or _is_moment_low_value(m2):
+        # But don't merge low-value moments with protected types
+        if not (m1.type in PROTECTED_TYPES or m2.type in PROTECTED_TYPES):
+            return True
+
     # Never merge protected types
     if m1.type in PROTECTED_TYPES or m2.type in PROTECTED_TYPES:
         return False
-    
+
     # Always merge same type + same control
     if m1.type == m2.type:
         return True
-    
+
     # Merge NEUTRAL with anything except protected
     if m1.type == MomentType.NEUTRAL or m2.type == MomentType.NEUTRAL:
         return True
-    
+
     # Merge consecutive LEAD_BUILD or CUT if same control
     if m1.type in ALWAYS_MERGE_TYPES and m2.type in ALWAYS_MERGE_TYPES:
         if m1.team_in_control == m2.team_in_control:
             return True
-    
+
     # Don't merge TIE with other types (TIE is a narrative pivot)
     if m1.type == MomentType.TIE or m2.type == MomentType.TIE:
         return False
-    
+
     # OPENER can merge with following NEUTRAL/LEAD_BUILD
     if m1.type == MomentType.OPENER and m2.type in {MomentType.NEUTRAL, MomentType.LEAD_BUILD}:
         return True
-    
+
     return False
 
 
@@ -1333,6 +1368,77 @@ def _attach_runs_to_moments(
             attached_runs.add(run_idx)
 
 
+def _extract_moment_context(
+    events: list[dict[str, Any]],
+    start_idx: int,
+    end_idx: int,
+) -> tuple[list[str], list[PlayerContribution], list[int]]:
+    """
+    Extract factual context from events in a moment.
+
+    Returns:
+        - teams: List of team abbreviations involved
+        - players: List of PlayerContribution with stats
+        - key_play_ids: List of important play indices
+    """
+    teams = set()
+    player_stats: dict[str, dict[str, int]] = {}
+    key_play_ids = []
+
+    for i in range(start_idx, end_idx + 1):
+        event = events[i]
+        if event.get("event_type") != "pbp":
+            continue
+
+        # Track teams involved
+        team_abbrev = event.get("team_abbreviation")
+        if team_abbrev:
+            teams.add(team_abbrev)
+
+        # Track player involvement and stats
+        player_name = event.get("player_name")
+        if player_name:
+            if player_name not in player_stats:
+                player_stats[player_name] = {}
+
+            # Extract stats from play description or structured data
+            play_type = event.get("play_type", "")
+            description = event.get("description", "").lower()
+
+            # Count common stats
+            if "point" in description or "made" in description:
+                if "free throw" in description:
+                    player_stats[player_name]["fta"] = player_stats[player_name].get("fta", 0) + 1
+                    if "made" in description:
+                        player_stats[player_name]["ftm"] = player_stats[player_name].get("ftm", 0) + 1
+                elif "three" in description or "3pt" in description:
+                    player_stats[player_name]["fg3a"] = player_stats[player_name].get("fg3a", 0) + 1
+                    if "made" in description:
+                        player_stats[player_name]["fg3m"] = player_stats[player_name].get("fg3m", 0) + 1
+                else:
+                    player_stats[player_name]["fga"] = player_stats[player_name].get("fga", 0) + 1
+                    if "made" in description:
+                        player_stats[player_name]["fgm"] = player_stats[player_name].get("fgm", 0) + 1
+
+            # Track key actions
+            if any(keyword in description for keyword in ["block", "steal", "assist", "rebound", "turnover"]):
+                key_play_ids.append(i)
+
+    # Convert to PlayerContribution objects (top contributors only)
+    players = []
+    for player_name, stats in sorted(
+        player_stats.items(),
+        key=lambda x: sum(x[1].values()),
+        reverse=True
+    )[:3]:  # Top 3 players
+        players.append(PlayerContribution(
+            name=player_name,
+            stats=stats,
+        ))
+
+    return list(teams), players, key_play_ids
+
+
 def _create_moment_reason(
     moment_type: MomentType,
     start_state: LeadState,
@@ -1446,6 +1552,9 @@ def _create_moment(
         if events[i].get("event_type") == "pbp"
     )
 
+    # Extract factual context from events
+    teams, players, key_play_ids = _extract_moment_context(events, start_idx, end_idx)
+
     return Moment(
         id=f"m_{moment_id + 1:03d}",
         type=moment_type,
@@ -1459,6 +1568,9 @@ def _create_moment(
         ladder_tier_before=start_state.tier,
         ladder_tier_after=end_state.tier,
         team_in_control=team_in_control,
+        teams=teams,
+        players=players,
+        key_play_ids=key_play_ids,
         clock=clock,
         reason=reason,
         is_notable=is_notable,

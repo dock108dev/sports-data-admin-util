@@ -127,16 +127,12 @@ async def list_games(
     with_pbp_count_stmt = count_stmt.where(
         exists(select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id))
     )
-    with_highlights_count_stmt = count_stmt.where(
-        exists(select(1).where(db_models.SportsGameTimelineArtifact.game_id == db_models.SportsGame.id))
-    )
 
     with_boxscore_count = (await session.execute(with_boxscore_count_stmt)).scalar_one()
     with_player_stats_count = (await session.execute(with_player_stats_count_stmt)).scalar_one()
     with_odds_count = (await session.execute(with_odds_count_stmt)).scalar_one()
     with_social_count = (await session.execute(with_social_count_stmt)).scalar_one()
     with_pbp_count = (await session.execute(with_pbp_count_stmt)).scalar_one()
-    with_highlights_count = (await session.execute(with_highlights_count_stmt)).scalar_one()
 
     next_offset = offset + limit if offset + limit < total else None
     summaries = [summarize_game(game) for game in games]
@@ -150,7 +146,6 @@ async def list_games(
         with_odds_count=with_odds_count,
         with_social_count=with_social_count,
         with_pbp_count=with_pbp_count,
-        with_highlights_count=with_highlights_count,
     )
 
 
@@ -250,17 +245,14 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
 
     plays_entries = [serialize_play_entry(play) for play in sorted(game.plays, key=lambda p: p.play_index)]
     
-    # Extract highlights from timeline artifact
+    # Extract moments from timeline artifact
     timeline_artifacts = game.timeline_artifacts or []
-    has_highlights = bool(timeline_artifacts)
     moments_list: list[dict] = []
     if timeline_artifacts:
         # Get most recent artifact
         artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
         game_analysis = artifact.game_analysis_json or {}
         moments_list = game_analysis.get("moments", [])
-    
-    highlight_count = len(moments_list) if isinstance(moments_list, list) else 0
 
     meta = GameMeta(
         id=game.id,
@@ -283,10 +275,8 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         has_odds=bool(game.odds),
         has_social=bool(game.social_posts),
         has_pbp=bool(game.plays),
-        has_highlights=has_highlights,
         play_count=len(game.plays) if game.plays else 0,
         social_post_count=len(game.social_posts) if game.social_posts else 0,
-        highlight_count=highlight_count,
         home_team_x_handle=game.home_team.x_handle if game.home_team else None,
         away_team_x_handle=game.away_team.x_handle if game.away_team else None,
     )
@@ -324,7 +314,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         ],
     }
 
-    # Serialize moments (highlights = moments where is_notable=True, filter client-side)
+    # Serialize moments (filter by is_notable client-side if needed)
     moments_list: list[MomentEntry] = []
     if timeline_artifacts:
         artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
@@ -517,7 +507,6 @@ async def get_game_moments(
             generated_at=None,
             moments=[],
             total_count=0,
-            highlight_count=0,
         )
     
     artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
@@ -560,7 +549,6 @@ async def get_game_moments(
         generated_at=artifact.generated_at,
         moments=moments,
         total_count=len(moments),
-        highlight_count=sum(1 for m in moments if m.is_notable),
         # AI-generated game-level copy
         game_headline=game_analysis.get("game_headline", ""),
         game_subhead=game_analysis.get("game_subhead", ""),
