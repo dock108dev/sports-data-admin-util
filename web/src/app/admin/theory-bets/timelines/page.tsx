@@ -136,7 +136,7 @@ export default function TimelinesAdminPage() {
     setSuccess(null);
 
     try {
-      const result = await regenerateTimelines({ gameIds: Array.from(selectedGameIds) });
+      const result = await regenerateTimelines({ gameIds: Array.from(selectedGameIds), leagueCode });
       setSuccess(
         `Regenerated ${result.games_successful}/${result.games_processed} timelines.` +
           (result.games_failed > 0 ? ` (${result.games_failed} failed)` : "")
