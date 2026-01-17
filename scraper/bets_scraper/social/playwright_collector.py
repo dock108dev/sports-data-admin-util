@@ -50,7 +50,7 @@ class PlaywrightXCollector(XCollectorStrategy):
     def __init__(
         self,
         max_scrolls: int = 3,
-        wait_ms: int = 800,
+        wait_ms: int = 2000,  # Increased from 800ms - X's JS needs more time
         timeout_ms: int = 30000,
         auth_token: str | None = None,
         ct0: str | None = None,
@@ -156,6 +156,25 @@ class PlaywrightXCollector(XCollectorStrategy):
                 logger.debug("x_playwright_search_url", url=search_url)
 
                 page.goto(search_url, timeout=self.timeout_ms, wait_until="domcontentloaded")
+                
+                # Wait for tweets to appear (up to 10 seconds)
+                try:
+                    page.wait_for_selector(
+                        'article[data-testid="tweet"]',
+                        timeout=10000,
+                        state="attached"
+                    )
+                except Exception:
+                    # No tweets found - check for error conditions
+                    content = page.content()
+                    if "Something went wrong" in content:
+                        logger.warning("x_page_error", handle=x_handle, error="something_went_wrong")
+                    elif "Log in" in content or "Sign in" in content:
+                        logger.warning("x_page_error", handle=x_handle, error="login_wall")
+                    elif "No results" in content:
+                        logger.debug("x_page_no_results", handle=x_handle)
+                    # Continue anyway - might be legitimately no tweets
+                
                 page.wait_for_timeout(self.wait_ms)
 
                 # Scroll to load more posts
