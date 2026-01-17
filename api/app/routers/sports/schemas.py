@@ -281,6 +281,15 @@ class MomentEntry(BaseModel):
     
     # Run metadata if a run contributed
     run_info: RunInfo | None = None
+    
+    # AI-generated content (SportsCenter-style, spoiler-safe)
+    headline: str = ""   # max 60 chars
+    summary: str = ""    # max 150 chars
+    
+    # Display hints (frontend doesn't need to guess)
+    display_weight: str = "low"      # "high" | "medium" | "low"
+    display_icon: str = "circle"     # Icon name suggestion
+    display_color_hint: str = "neutral"  # "tension" | "positive" | "neutral" | "highlight"
 
 
 class MomentReasonEntry(BaseModel):
@@ -302,6 +311,10 @@ class MomentsResponse(BaseModel):
     moments: list[MomentEntry]
     total_count: int
     highlight_count: int  # Count of moments where is_notable=True
+    
+    # AI-generated game-level copy (SportsCenter-style, spoiler-safe)
+    game_headline: str = ""   # max 80 chars
+    game_subhead: str = ""    # max 120 chars
 
 
 class GameDetailResponse(BaseModel):

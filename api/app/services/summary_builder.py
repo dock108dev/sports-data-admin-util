@@ -5,29 +5,20 @@ Summary generation for game timelines.
 DESIGN PHILOSOPHY (2026-01 Refactor)
 =============================================================================
 
-Summary generation is a TWO-LAYER system:
+Summary generation is purely DETERMINISTIC structure extraction.
 
-1. STRUCTURE (deterministic, from Moments):
-   - Flow classification
-   - Phase presence
-   - Social distribution
-   - Attention points (where to focus)
+AI-generated copy (headline/subhead) now comes from game_analysis.py via
+the batch enrichment call. This module DOES NOT call AI.
 
-2. COPY (AI or fallback):
-   - headline: One-line game description
-   - subhead: Brief supporting context
-
-AI CANNOT AFFECT STRUCTURE. It only writes copy based on
-structured Moment data. This separation ensures:
-- Deterministic behavior when AI fails
-- No AI influence on importance or ordering
-- Consistent results across regenerations
+Outputs:
+- flow: Classification based on score difference
+- phases_in_timeline: Which periods are present
+- social_counts: Social distribution by phase
+- attention_points: Where to focus (derived from Moments)
 
 Related modules:
 - moments.py: Lead Ladder-based partitioning
-- ai_client.py: AI copy generation (headline/subhead only)
-
-See docs/SUMMARY_GENERATION.md for the contract.
+- game_analysis.py: AI enrichment (batch call for all moments + game copy)
 """
 
 from __future__ import annotations
@@ -36,13 +27,7 @@ import logging
 from typing import Any, Sequence
 
 from .. import db_models
-from .ai_client import (
-    GameSummaryInput,
-    generate_fallback_headline,
-    generate_headline,
-    is_ai_available,
-)
-from .moments import Moment, MomentType
+from .moments import MomentType
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +57,7 @@ def classify_game_flow(score_diff: int) -> str:
 # =============================================================================
 
 def generate_attention_points(
-    moments: list[Moment],
+    moments: list[Any],
     social_by_phase: dict[str, int],
     flow: str,
     has_overtime: bool,
@@ -90,7 +75,13 @@ def generate_attention_points(
     # Get moment type counts
     type_counts: dict[MomentType, int] = {}
     for m in moments:
-        type_counts[m.type] = type_counts.get(m.type, 0) + 1
+        m_type = m.type if hasattr(m, 'type') else m.get('type')
+        if isinstance(m_type, str):
+            try:
+                m_type = MomentType(m_type)
+            except ValueError:
+                m_type = MomentType.NEUTRAL
+        type_counts[m_type] = type_counts.get(m_type, 0) + 1
     
     # Opening
     points.append("Opening minutes set the pace")
@@ -162,7 +153,7 @@ def build_nba_summary(game: db_models.SportsGame) -> dict[str, Any]:
 
 
 # =============================================================================
-# MAIN SUMMARY BUILDER (Synchronous, deterministic)
+# MAIN SUMMARY BUILDER
 # =============================================================================
 
 def build_summary_from_timeline(
@@ -173,9 +164,9 @@ def build_summary_from_timeline(
     Build summary metadata from timeline (DETERMINISTIC).
     
     This function extracts structural information from the timeline
-    and Moments. It does NOT call AI. All output is deterministic.
+    and Moments. It does NOT call AI.
     
-    For AI-generated copy (headline/subhead), use build_summary_from_timeline_async().
+    AI-generated headline/subhead comes from game_analysis (via batch enrichment).
     """
     # Extract basic info
     pbp_events = [e for e in timeline if e.get("event_type") == "pbp"]
@@ -218,42 +209,15 @@ def build_summary_from_timeline(
 
     # Get moments from game_analysis
     moments_data = game_analysis.get("moments", [])
-    moments = []
-    for m in moments_data:
-        # Convert dict to minimal Moment-like object for attention points
-        # We only need the type field
-        m_type_str = m.get("type", "NEUTRAL")
-        try:
-            m_type = MomentType(m_type_str)
-        except ValueError:
-            m_type = MomentType.NEUTRAL
-        
-        # Create a simple object with type attribute
-        class SimpleMoment:
-            def __init__(self, t: MomentType) -> None:
-                self.type = t
-        moments.append(SimpleMoment(m_type))
 
     # Generate attention points (DETERMINISTIC from Moments)
     attention_points = generate_attention_points(
-        moments, social_by_phase, flow, has_overtime
+        moments_data, social_by_phase, flow, has_overtime
     )
 
-    # Generate fallback headline/subhead (DETERMINISTIC)
-    moment_types = [m.get("type", "NEUTRAL") for m in moments_data]
-    notable_count = sum(1 for m in moments_data if m.get("is_notable"))
-    
-    fallback_input = GameSummaryInput(
-        home_team=home_name,
-        away_team=away_name,
-        final_score_home=final_home_score or 0,
-        final_score_away=final_away_score or 0,
-        flow=flow,
-        has_overtime=has_overtime,
-        moment_types=moment_types,
-        notable_count=notable_count,
-    )
-    fallback = generate_fallback_headline(fallback_input)
+    # Get headline/subhead from game_analysis (from batch enrichment)
+    headline = game_analysis.get("game_headline", "")
+    subhead = game_analysis.get("game_subhead", "")
 
     return {
         # Metadata
@@ -268,18 +232,13 @@ def build_summary_from_timeline(
             "total": len(social_events),
             "by_phase": social_by_phase,
         },
-        # Copy (fallback - can be replaced by AI)
-        "headline": fallback.headline,
-        "subhead": fallback.subhead,
+        # AI-generated copy (from batch enrichment)
+        "headline": headline,
+        "subhead": subhead,
         # Structure (DETERMINISTIC from Moments)
         "attention_points": attention_points,
-        "ai_generated": False,
     }
 
-
-# =============================================================================
-# ASYNC SUMMARY BUILDER (With AI copy generation)
-# =============================================================================
 
 async def build_summary_from_timeline_async(
     timeline: Sequence[dict[str, Any]],
@@ -289,79 +248,9 @@ async def build_summary_from_timeline_async(
     sport: str = "NBA",
 ) -> dict[str, Any]:
     """
-    Build summary with AI-generated headline/subhead.
+    Build summary (async version).
     
-    This function:
-    1. Builds deterministic structure (same as sync version)
-    2. Calls AI ONLY for headline/subhead (copy)
-    3. Falls back gracefully if AI unavailable
-    
-    AI CANNOT AFFECT:
-    - attention_points (from Moments)
-    - flow classification
-    - social distribution
-    - anything structural
-    
-    AI ONLY WRITES:
-    - headline
-    - subhead
+    Now identical to sync version since AI enrichment happens in game_analysis.
+    Kept for API compatibility.
     """
-    # Get deterministic base summary
-    base_summary = build_summary_from_timeline(timeline, game_analysis)
-    
-    # If AI unavailable, return base summary
-    if not is_ai_available():
-        logger.info(
-            "summary_using_fallback",
-            extra={"game_id": game_id, "reason": "ai_unavailable"},
-        )
-        return base_summary
-    
-    # Build structured input for AI
-    moments_data = game_analysis.get("moments", [])
-    moment_types = [m.get("type", "NEUTRAL") for m in moments_data]
-    notable_count = sum(1 for m in moments_data if m.get("is_notable"))
-    
-    phases_present = base_summary.get("phases_in_timeline", [])
-    has_overtime = any(p.startswith("ot") for p in phases_present)
-    
-    ai_input = GameSummaryInput(
-        home_team=base_summary["teams"]["home"]["name"],
-        away_team=base_summary["teams"]["away"]["name"],
-        final_score_home=base_summary["final_score"]["home"] or 0,
-        final_score_away=base_summary["final_score"]["away"] or 0,
-        flow=base_summary["flow"],
-        has_overtime=has_overtime,
-        moment_types=moment_types,
-        notable_count=notable_count,
-    )
-    
-    try:
-        # Call AI for headline/subhead ONLY
-        ai_output = await generate_headline(
-            game_id=game_id,
-            timeline_version=timeline_version,
-            input_data=ai_input,
-        )
-        
-        # Merge AI copy with deterministic structure
-        result = {**base_summary}
-        result["headline"] = ai_output.headline
-        result["subhead"] = ai_output.subhead
-        result["ai_generated"] = True
-        
-        logger.info(
-            "summary_using_ai",
-            extra={
-                "game_id": game_id,
-                "headline_len": len(ai_output.headline),
-            },
-        )
-        return result
-        
-    except Exception as e:
-        logger.warning(
-            "summary_ai_fallback",
-            extra={"game_id": game_id, "error": str(e)},
-        )
-        return base_summary
+    return build_summary_from_timeline(timeline, game_analysis)

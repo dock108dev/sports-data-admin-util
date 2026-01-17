@@ -570,6 +570,7 @@ async def generate_timeline_artifact(
             summary=base_summary,
             game_id=game_id,
             sport=league_code,
+            timeline_version=timeline_version,
         )
         moment_count = len(game_analysis.get("moments", []))
         logger.info(

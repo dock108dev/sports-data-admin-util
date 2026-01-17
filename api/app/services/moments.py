@@ -123,6 +123,10 @@ MOMENT_BUDGET: dict[str, int] = {
 }
 DEFAULT_MOMENT_BUDGET = 30
 
+# Per-quarter/period limits prevent "chaotic quarter" bloat
+# A quarter with 10+ moments is narratively confusing
+QUARTER_MOMENT_LIMIT = 7  # Max moments per quarter/period
+
 # Moment types that can NEVER be merged (dramatic moments)
 PROTECTED_TYPES = frozenset({
     MomentType.FLIP,
@@ -244,6 +248,51 @@ class Moment:
     run_info: RunInfo | None = None  # If a run contributed to this moment
     bucket: str = ""  # "early", "mid", "late" (derived from clock)
 
+    # AI-generated content (populated by enrich_game_moments)
+    headline: str = ""   # max 60 chars, SportsCenter-style
+    summary: str = ""    # max 150 chars, captures momentum/pressure
+
+    @property
+    def display_weight(self) -> str:
+        """How prominent to render this moment: high, medium, low."""
+        if self.type in (MomentType.FLIP, MomentType.TIE, MomentType.HIGH_IMPACT):
+            return "high"
+        if self.type in (MomentType.CLOSING_CONTROL, MomentType.LEAD_BUILD):
+            return "medium"
+        if self.type in (MomentType.CUT,):
+            return "medium"
+        return "low"  # NEUTRAL, OPENER
+
+    @property
+    def display_icon(self) -> str:
+        """Suggested icon for this moment type."""
+        icons = {
+            MomentType.FLIP: "swap",
+            MomentType.TIE: "equals",
+            MomentType.LEAD_BUILD: "trending-up",
+            MomentType.CUT: "trending-down",
+            MomentType.CLOSING_CONTROL: "lock",
+            MomentType.HIGH_IMPACT: "zap",
+            MomentType.OPENER: "play",
+            MomentType.NEUTRAL: "minus",
+        }
+        return icons.get(self.type, "circle")
+
+    @property
+    def display_color_hint(self) -> str:
+        """Color intent: tension, positive, negative, neutral."""
+        if self.type in (MomentType.FLIP, MomentType.TIE):
+            return "tension"
+        if self.type == MomentType.CLOSING_CONTROL:
+            return "positive"
+        if self.type == MomentType.HIGH_IMPACT:
+            return "highlight"
+        if self.type in (MomentType.LEAD_BUILD, MomentType.CUT):
+            # Depends on who's in control vs home/away preference
+            # For now, neutral - frontend can decide based on team_in_control
+            return "neutral"
+        return "neutral"
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for API responses."""
         result = {
@@ -263,6 +312,13 @@ class Moment:
             "ladder_tier_after": self.ladder_tier_after,
             "team_in_control": self.team_in_control,
             "key_play_ids": self.key_play_ids,
+            # AI-generated content
+            "headline": self.headline,
+            "summary": self.summary,
+            # Display hints (frontend doesn't need to guess)
+            "display_weight": self.display_weight,
+            "display_icon": self.display_icon,
+            "display_color_hint": self.display_color_hint,
         }
         # Reason is critical for AI and narrative
         if self.reason:
@@ -866,24 +922,112 @@ def _merge_consecutive_moments(moments: list[Moment]) -> list[Moment]:
     return merged
 
 
+def _get_quarter_for_play(play_idx: int, events: Sequence[dict[str, Any]]) -> int | None:
+    """Get quarter number for a play index."""
+    if play_idx < 0 or play_idx >= len(events):
+        return None
+    event = events[play_idx]
+    return event.get("quarter")
+
+
+def _enforce_quarter_limits(
+    moments: list[Moment], 
+    events: Sequence[dict[str, Any]],
+) -> list[Moment]:
+    """
+    Enforce per-quarter moment limits to prevent chaotic quarters.
+    
+    A quarter with 10+ moments is narratively confusing.
+    This merges excess moments within each quarter.
+    """
+    if not moments:
+        return moments
+    
+    # Group moments by quarter
+    quarter_moments: dict[int, list[int]] = {}  # quarter -> list of moment indices
+    for i, m in enumerate(moments):
+        q = _get_quarter_for_play(m.start_play, events)
+        if q is not None:
+            if q not in quarter_moments:
+                quarter_moments[q] = []
+            quarter_moments[q].append(i)
+    
+    # Find quarters over limit
+    to_merge: set[int] = set()  # moment indices to merge with previous
+    for q, indices in quarter_moments.items():
+        if len(indices) > QUARTER_MOMENT_LIMIT:
+            excess = len(indices) - QUARTER_MOMENT_LIMIT
+            # Mark the least important moments for merging
+            # Prefer merging NEUTRAL, LEAD_BUILD, CUT in that order
+            scored = []
+            for idx in indices[1:]:  # Skip first moment in quarter
+                m = moments[idx]
+                if m.type == MomentType.NEUTRAL:
+                    priority = 0
+                elif m.type in (MomentType.LEAD_BUILD, MomentType.CUT):
+                    priority = 1
+                elif m.type == MomentType.OPENER:
+                    priority = 2
+                elif m.type == MomentType.TIE:
+                    priority = 3
+                else:
+                    priority = 4  # Protected types
+                scored.append((priority, m.play_count, idx))
+            
+            # Sort by priority (lowest first) then play_count (lowest first)
+            scored.sort(key=lambda x: (x[0], x[1]))
+            
+            # Mark top 'excess' for merging
+            for _, _, idx in scored[:excess]:
+                to_merge.add(idx)
+    
+    if not to_merge:
+        return moments
+    
+    # Merge marked moments into previous
+    result = []
+    for i, m in enumerate(moments):
+        if i in to_merge and result:
+            # Merge into previous
+            result[-1] = _merge_two_moments(result[-1], m)
+        else:
+            result.append(m)
+    
+    if len(result) < len(moments):
+        logger.info(
+            "quarter_limits_enforced",
+            extra={
+                "original_count": len(moments),
+                "final_count": len(result),
+                "merged_count": len(moments) - len(result),
+            },
+        )
+    
+    return result
+
+
 def _enforce_budget(moments: list[Moment], budget: int) -> list[Moment]:
     """
-    Force moments under budget by progressively merging.
+    Force moments under budget. This is a HARD CLAMP.
     
     Priority for merging (least important first):
     1. Consecutive NEUTRAL moments
     2. Consecutive LEAD_BUILD moments  
     3. Consecutive CUT moments
     4. OPENER + following moment
+    5. (HARD CLAMP) Any consecutive same-type moments
+    6. (HARD CLAMP) Any consecutive moments (last resort)
     
-    We NEVER merge: FLIP, CLOSING_CONTROL, HIGH_IMPACT, TIE
+    The budget IS enforced. No exceptions.
     """
     if len(moments) <= budget:
         return moments
     
-    # Keep trying until we're under budget
+    initial_count = len(moments)
+    
+    # Phase 1: Soft merges (preferred)
     iterations = 0
-    max_iterations = 10  # Safety valve
+    max_iterations = 20
     
     while len(moments) > budget and iterations < max_iterations:
         iterations += 1
@@ -939,16 +1083,48 @@ def _enforce_budget(moments: list[Moment], budget: int) -> list[Moment]:
                 break
         
         if not merged:
-            # Can't merge anymore without touching protected types
-            logger.warning(
-                "budget_enforcement_incomplete",
-                extra={
-                    "target_budget": budget,
-                    "current_count": len(moments),
-                    "protected_count": sum(1 for m in moments if m.type in PROTECTED_TYPES),
-                },
-            )
+            break  # Move to hard clamp phase
+    
+    # Phase 2: HARD CLAMP - merge any consecutive same-type moments
+    while len(moments) > budget:
+        merged = False
+        for i in range(len(moments) - 2):  # Don't merge the last moment
+            if moments[i].type == moments[i + 1].type:
+                moments[i] = _merge_two_moments(moments[i], moments[i + 1])
+                moments.pop(i + 1)
+                merged = True
+                break
+        if not merged:
             break
+    
+    # Phase 3: NUCLEAR OPTION - merge any consecutive moments
+    while len(moments) > budget:
+        # Find the smallest moment to absorb
+        if len(moments) <= 2:
+            break
+        
+        # Merge the moment with fewest plays into its neighbor
+        min_plays = float('inf')
+        merge_idx = 1  # Default to second moment
+        for i in range(1, len(moments) - 1):  # Skip first and last
+            if moments[i].play_count < min_plays:
+                min_plays = moments[i].play_count
+                merge_idx = i
+        
+        # Merge into previous
+        moments[merge_idx - 1] = _merge_two_moments(moments[merge_idx - 1], moments[merge_idx])
+        moments.pop(merge_idx)
+    
+    if len(moments) < initial_count:
+        logger.info(
+            "budget_enforced",
+            extra={
+                "initial_count": initial_count,
+                "final_count": len(moments),
+                "budget": budget,
+                "hard_clamp_used": len(moments) != initial_count,
+            },
+        )
     
     return moments
 
@@ -1068,6 +1244,9 @@ def partition_game(
     # AGGRESSIVE MERGE: Collapse consecutive same-type moments
     pre_merge_count = len(moments)
     moments = _merge_consecutive_moments(moments)
+    
+    # PER-QUARTER ENFORCEMENT: Prevent chaotic quarters
+    moments = _enforce_quarter_limits(moments, events)
     
     # BUDGET ENFORCEMENT: If still over budget, merge more aggressively
     sport = summary.get("sport", "NBA") if isinstance(summary, dict) else "NBA"

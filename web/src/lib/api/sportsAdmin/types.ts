@@ -182,6 +182,15 @@ export type MomentEntry = {
   
   // Run metadata if a run contributed
   run_info?: RunInfo;
+  
+  // AI-generated content (SportsCenter-style, spoiler-safe)
+  headline: string;   // max 60 chars
+  summary: string;    // max 150 chars
+  
+  // Display hints (frontend doesn't need to guess)
+  display_weight: "high" | "medium" | "low";
+  display_icon: string;  // Icon name suggestion
+  display_color_hint: "tension" | "positive" | "neutral" | "highlight";
 };
 
 /**
@@ -205,6 +214,11 @@ export type MomentsResponse = {
   generated_at: string | null;
   moments: MomentEntry[];
   total_count: number;
+  highlight_count?: number;
+  
+  // AI-generated game-level copy (SportsCenter-style, spoiler-safe)
+  game_headline: string;   // max 80 chars
+  game_subhead: string;    // max 120 chars
 };
 
 export type AdminGameDetail = {

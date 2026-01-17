@@ -537,6 +537,19 @@ async def get_game_moments(
             clock=m.get("clock", ""),
             is_notable=m.get("is_notable", False),
             note=m.get("note"),
+            ladder_tier_before=m.get("ladder_tier_before", 0),
+            ladder_tier_after=m.get("ladder_tier_after", 0),
+            team_in_control=m.get("team_in_control"),
+            key_play_ids=m.get("key_play_ids", []),
+            reason=m.get("reason"),
+            run_info=m.get("run_info"),
+            # AI-generated content
+            headline=m.get("headline", ""),
+            summary=m.get("summary", ""),
+            # Display hints
+            display_weight=m.get("display_weight", "low"),
+            display_icon=m.get("display_icon", "circle"),
+            display_color_hint=m.get("display_color_hint", "neutral"),
         )
         for m in game_analysis.get("moments", [])
         if isinstance(m, dict)
@@ -548,4 +561,7 @@ async def get_game_moments(
         moments=moments,
         total_count=len(moments),
         highlight_count=sum(1 for m in moments if m.is_notable),
+        # AI-generated game-level copy
+        game_headline=game_analysis.get("game_headline", ""),
+        game_subhead=game_analysis.get("game_subhead", ""),
     )
