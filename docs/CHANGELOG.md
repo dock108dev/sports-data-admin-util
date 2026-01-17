@@ -54,17 +54,9 @@ All notable changes to Sports Data Admin.
 - NEUTRAL heavily collapsed
 
 #### API Response Changes
-- `type` field values changed (see deprecation notes below)
+- `type` field values changed: `RUN`, `BATTLE`, `CLOSING` removed
 - New optional fields: `run_info`, `ladder_tier_before`, `ladder_tier_after`, `team_in_control`
 - `is_notable` still works as primary highlight filter (unchanged)
-
-### Deprecated
-
-| Old Type | Replacement | Migration |
-|----------|-------------|-----------|
-| `RUN` | ❌ Removed | Check `run_info` on LEAD_BUILD/CUT/FLIP moments |
-| `BATTLE` | `FLIP`, `TIE`, `CUT` | Use specific crossing types |
-| `CLOSING` | `CLOSING_CONTROL` | Rename in filters |
 
 ### Removed
 - `RUN`, `BATTLE`, `CLOSING` MomentTypes

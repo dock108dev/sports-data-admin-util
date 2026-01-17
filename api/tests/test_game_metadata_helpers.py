@@ -114,26 +114,27 @@ class TestGameMetadataHelpers(unittest.TestCase):
 
         self.assertEqual(fallback, DEFAULT_NUGGET)
 
-    def test_select_preview_entry_falls_back_or_errors(self) -> None:
+    def test_select_preview_entry_fails_fast_when_missing(self) -> None:
+        """select_preview_entry fails fast when team not found - no fallbacks."""
         entries = [
             StandingsEntry(team_id="team-1", conference_rank=1, wins=10, losses=2),
             StandingsEntry(team_id="team-2", conference_rank=2, wins=9, losses=3),
         ]
 
-        fallback = _select_preview_entry(
-            entries,
-            team_key="missing",
-            fallback_index=1,
-            entry_label="standings",
-        )
+        # Should fail fast when team not found
+        with self.assertRaises(ValueError) as ctx:
+            _select_preview_entry(
+                entries,
+                team_key="missing",
+                entry_label="standings",
+            )
+        self.assertIn("missing", str(ctx.exception))
 
-        self.assertEqual(fallback.team_id, "team-2")
-
+        # Should fail fast when entries empty
         with self.assertRaises(ValueError):
             _select_preview_entry(
                 [],
                 team_key="missing",
-                fallback_index=0,
                 entry_label="standings",
             )
 

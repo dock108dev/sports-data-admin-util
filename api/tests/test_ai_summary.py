@@ -4,24 +4,13 @@ Tests for AI summary generation.
 These tests verify that:
 1. AI only writes copy (headline, subhead)
 2. AI cannot affect structure (attention_points, flow, etc.)
-3. Fallbacks work when AI is disabled
-4. Structured inputs are correctly formatted
+3. Structured inputs are correctly formatted
 """
 
 from __future__ import annotations
 
 import unittest
 
-# Note: AIHeadlineOutput, generate_fallback_headline, generate_fallback_moment_label
-# were removed during the 2026-01 refactoring. AI enrichment is now required.
-# These tests are disabled until we add tests for the new enrichment system.
-
-# from app.services.ai_client import (
-#     AIHeadlineOutput,
-#     GameSummaryInput,
-#     generate_fallback_headline,
-#     generate_fallback_moment_label,
-# )
 from app.services.summary_builder import (
     build_summary_from_timeline,
     classify_game_flow,
@@ -52,108 +41,6 @@ class TestFlowClassification(unittest.TestCase):
         """Score diff > 20 is blowout."""
         self.assertEqual(classify_game_flow(21), "blowout")
         self.assertEqual(classify_game_flow(35), "blowout")
-
-
-@unittest.skip("Fallback functions removed - AI enrichment now required")
-class TestFallbackHeadline(unittest.TestCase):
-    """Tests for deterministic fallback headline generation.
-    
-    DISABLED: These tests are for fallback functions that were removed in 2026-01 refactoring.
-    """
-
-    def test_fallback_headline_blowout(self) -> None:
-        """Blowout generates appropriate headline."""
-        input_data = GameSummaryInput(
-            home_team="Lakers",
-            away_team="Celtics",
-            final_score_home=120,
-            final_score_away=85,
-            flow="blowout",
-            has_overtime=False,
-            moment_types=["OPENER", "LEAD_BUILD", "NEUTRAL"],
-            notable_count=2,
-        )
-        result = generate_fallback_headline(input_data)
-
-        self.assertIsInstance(result, AIHeadlineOutput)
-        self.assertIn("Lakers", result.headline)
-        self.assertIn("rolls", result.headline.lower())
-        self.assertIn("120", result.subhead)
-
-    def test_fallback_headline_close_ot(self) -> None:
-        """Close OT game generates appropriate headline."""
-        input_data = GameSummaryInput(
-            home_team="Heat",
-            away_team="Bulls",
-            final_score_home=108,
-            final_score_away=105,
-            flow="close",
-            has_overtime=True,
-            moment_types=["OPENER", "FLIP", "TIE", "CLOSING_CONTROL"],
-            notable_count=4,
-        )
-        result = generate_fallback_headline(input_data)
-
-        self.assertIn("Heat", result.headline)
-        self.assertIn("OT", result.headline)
-        self.assertIn("108", result.subhead)
-
-    def test_fallback_headline_with_flip(self) -> None:
-        """Game with FLIP gets mentioned in subhead."""
-        input_data = GameSummaryInput(
-            home_team="Warriors",
-            away_team="Nuggets",
-            final_score_home=115,
-            final_score_away=110,
-            flow="competitive",
-            has_overtime=False,
-            moment_types=["OPENER", "FLIP", "LEAD_BUILD"],
-            notable_count=2,
-        )
-        result = generate_fallback_headline(input_data)
-
-        self.assertIn("Lead changed", result.subhead)
-
-    def test_fallback_headline_max_length(self) -> None:
-        """Headlines respect max length."""
-        input_data = GameSummaryInput(
-            home_team="Los Angeles Lakers",
-            away_team="Boston Celtics",
-            final_score_home=100,
-            final_score_away=98,
-            flow="close",
-            has_overtime=False,
-            moment_types=[],
-            notable_count=0,
-        )
-        result = generate_fallback_headline(input_data)
-
-        self.assertLessEqual(len(result.headline), 80)
-        self.assertLessEqual(len(result.subhead), 120)
-
-
-@unittest.skip("Fallback functions removed - AI enrichment now required")
-class TestFallbackMomentLabel(unittest.TestCase):
-    """Tests for deterministic moment label generation.
-    
-    DISABLED: These tests are for fallback functions that were removed in 2026-01 refactoring.
-    """
-
-    def test_flip_label(self) -> None:
-        """FLIP generates lead change label."""
-        label = generate_fallback_moment_label("FLIP", None)
-        self.assertIn("Lead changes", label)
-
-    def test_lead_build_with_note(self) -> None:
-        """LEAD_BUILD with note includes note."""
-        label = generate_fallback_moment_label("LEAD_BUILD", "12-0 run")
-        self.assertIn("Lead extended", label)
-        self.assertIn("12-0 run", label)
-
-    def test_neutral_label(self) -> None:
-        """NEUTRAL generates back and forth label."""
-        label = generate_fallback_moment_label("NEUTRAL", None)
-        self.assertIn("Back and forth", label)
 
 
 class TestAttentionPoints(unittest.TestCase):

@@ -58,20 +58,14 @@ class TestNoHardcodedNBAInMoments(unittest.TestCase):
             )
 
     def test_no_old_moment_types(self) -> None:
-        """Old moment types (RUN, BATTLE, CLOSING) are not present."""
-        from app.services import moments
-        source = inspect.getsource(moments)
-        
-        # These old types should not exist as enum members
-        # They may exist in comments explaining the migration
-        self.assertNotIn("class MomentType", source.split("NEUTRAL")[0].split("RUN =")[0] if "RUN =" in source else source[:0])
-        
-        # Check enum definition doesn't have old types
+        """Verify old moment types (RUN, BATTLE, CLOSING) don't exist in enum."""
         from app.services.moments import MomentType
-        self.assertFalse(hasattr(MomentType, "RUN"))
-        self.assertFalse(hasattr(MomentType, "BATTLE"))
-        # CLOSING is replaced with CLOSING_CONTROL
-        self.assertFalse(hasattr(MomentType, "CLOSING"))
+        
+        # Guardrail: These types were removed in Lead Ladder refactor
+        # If they reappear, it's a regression
+        self.assertFalse(hasattr(MomentType, "RUN"), "RUN type should not exist")
+        self.assertFalse(hasattr(MomentType, "BATTLE"), "BATTLE type should not exist")
+        self.assertFalse(hasattr(MomentType, "CLOSING"), "CLOSING type should not exist (use CLOSING_CONTROL)")
 
 
 class TestNoHardcodedNBAInLeadLadder(unittest.TestCase):

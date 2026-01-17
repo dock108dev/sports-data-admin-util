@@ -113,14 +113,8 @@ class TimelineArtifactStoredResponse(BaseModel):
     summary_json: dict[str, Any]
 
 
-def team_snapshot(team: db_models.SportsTeam | None, fallback_id: int | None = None) -> TeamSnapshot:
-    """Return a minimal team snapshot with safe defaults."""
-    if team is None:
-        return TeamSnapshot(
-            id=fallback_id or 0,
-            name="Unknown",
-            abbreviation=None,
-        )
+def team_snapshot(team: db_models.SportsTeam) -> TeamSnapshot:
+    """Return a minimal team snapshot. Fails fast if team is None."""
     return TeamSnapshot(
         id=team.id,
         name=team.name,

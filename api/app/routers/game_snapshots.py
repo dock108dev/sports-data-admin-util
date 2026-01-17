@@ -249,8 +249,8 @@ async def list_games(
                 league=league_code,
                 status=game.status,
                 start_time=game.game_date,
-                home_team=team_snapshot(game.home_team, fallback_id=game.home_team_id),
-                away_team=team_snapshot(game.away_team, fallback_id=game.away_team_id),
+                home_team=team_snapshot(game.home_team),
+                away_team=team_snapshot(game.away_team),
                 has_pbp=bool(has_pbp_value),
                 has_social=bool(has_social_value),
                 last_updated_at=last_updated,
@@ -345,7 +345,7 @@ async def get_game_social(
         posts=[
             SocialPostSnapshot(
                 id=post.id,
-                team=team_snapshot(post.team, fallback_id=post.team_id),
+                team=team_snapshot(post.team),
                 content=post.tweet_text,
                 posted_at=post.posted_at,
                 reveal_level=post_reveal_level(post),

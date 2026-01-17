@@ -115,21 +115,13 @@ def resolve_team_key(team: db_models.SportsTeam) -> str:
 def select_preview_entry(
     entries: Sequence[StandingsEntry] | Sequence[TeamRatings],
     team_key: str,
-    fallback_index: int,
     entry_label: str,
 ) -> StandingsEntry | TeamRatings:
-    """Select rating/standings entry for a team or fallback entry."""
+    """Select rating/standings entry for a team. Fails fast if not found."""
     for entry in entries:
         if entry.team_id == team_key:
             return entry
-    if entries and 0 <= fallback_index < len(entries):
-        logger.warning(
-            "Preview score falling back to mock %s data",
-            entry_label,
-            extra={"team_key": team_key, "fallback_index": fallback_index},
-        )
-        return entries[fallback_index]
-    raise ValueError(f"Preview score missing {entry_label} data")
+    raise ValueError(f"Preview score missing {entry_label} data for team {team_key}")
 
 
 def projected_spread(home_rating: TeamRatings, away_rating: TeamRatings) -> float:
@@ -176,7 +168,12 @@ def build_preview_context(
     home_rating: TeamRatings,
     away_rating: TeamRatings,
 ) -> GameContext:
-    """Assemble a GameContext to generate preview scores."""
+    """Assemble a GameContext to generate preview scores. Fails fast if teams/league missing."""
+    if not game.home_team or not game.away_team:
+        raise ValueError(f"Game {game.id} missing team mappings")
+    if not game.league:
+        raise ValueError(f"Game {game.id} missing league")
+    
     rivalry = home_rating.conference == away_rating.conference
     projected_spread_value = projected_spread(home_rating, away_rating)
     projected_total_value = projected_total(home_rating, away_rating)
@@ -191,10 +188,10 @@ def build_preview_context(
 
     return GameContext(
         game_id=str(game.id),
-        home_team=game.home_team.name if game.home_team else "Unknown",
-        away_team=game.away_team.name if game.away_team else "Unknown",
-        league=game.league.code if game.league else "UNKNOWN",
-        start_time=game.start_time,  # Use start_time which prioritizes tip_time
+        home_team=game.home_team.name,
+        away_team=game.away_team.name,
+        league=game.league.code,
+        start_time=game.start_time,
         rivalry=rivalry,
         projected_spread=projected_spread_value,
         has_big_name_players=has_big_name_players,
@@ -206,26 +203,31 @@ def build_preview_context(
 
 
 def summarize_game(game: db_models.SportsGame) -> GameSummary:
-    """Summarize game fields for list responses."""
+    """Summarize game fields for list responses. Fails fast if core data missing."""
+    if not game.league:
+        raise ValueError(f"Game {game.id} missing league")
+    if not game.home_team or not game.away_team:
+        raise ValueError(f"Game {game.id} missing team mappings")
+    
     has_boxscore = bool(game.team_boxscores)
     has_player_stats = bool(game.player_boxscores)
     has_odds = bool(game.odds)
-    social_posts = getattr(game, "social_posts", []) or []
+    social_posts = getattr(game, "social_posts", [])
     has_social = bool(social_posts)
     social_post_count = len(social_posts)
-    plays = getattr(game, "plays", []) or []
+    plays = getattr(game, "plays", [])
     has_pbp = bool(plays)
     play_count = len(plays)
     
     # Check for timeline artifacts (moments)
-    timeline_artifacts = getattr(game, "timeline_artifacts", []) or []
+    timeline_artifacts = getattr(game, "timeline_artifacts", [])
 
     return GameSummary(
         id=game.id,
-        league_code=game.league.code if game.league else "UNKNOWN",
-        game_date=game.start_time,  # Use start_time which prioritizes tip_time
-        home_team=game.home_team.name if game.home_team else "Unknown",
-        away_team=game.away_team.name if game.away_team else "Unknown",
+        league_code=game.league.code,
+        game_date=game.start_time,
+        home_team=game.home_team.name,
+        away_team=game.away_team.name,
         home_score=game.home_score,
         away_score=game.away_score,
         has_boxscore=has_boxscore,
@@ -245,7 +247,7 @@ def summarize_game(game: db_models.SportsGame) -> GameSummary:
 
 
 def resolve_team_abbreviation(game: db_models.SportsGame, post: db_models.GameSocialPost) -> str:
-    """Resolve a team's abbreviation for a social post entry."""
+    """Resolve a team's abbreviation for a social post entry. Fails fast if not resolvable."""
     if hasattr(post, "team") and post.team and post.team.abbreviation:
         return post.team.abbreviation
     if hasattr(post, "team_id"):
@@ -253,7 +255,7 @@ def resolve_team_abbreviation(game: db_models.SportsGame, post: db_models.GameSo
             return game.home_team.abbreviation
         if game.away_team and game.away_team.id == post.team_id:
             return game.away_team.abbreviation
-    return "UNK"
+    raise ValueError(f"Cannot resolve team abbreviation for post {post.id} in game {game.id}")
 
 
 def serialize_social_posts(
