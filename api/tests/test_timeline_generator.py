@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 import unittest
 
-from app.services.game_analysis import build_nba_game_analysis
+from app.services.game_analysis import build_game_analysis
 from app.services.timeline_generator import build_nba_timeline
 
 
@@ -210,7 +210,7 @@ class TestTimelineGenerator(unittest.TestCase):
             "flow": "close",
         }
 
-        analysis = build_nba_game_analysis(timeline, summary)
+        analysis = build_game_analysis(timeline, summary)
 
         moments = analysis["moments"]
 

@@ -12,12 +12,16 @@ from __future__ import annotations
 
 import unittest
 
-from app.services.ai_client import (
-    AIHeadlineOutput,
-    GameSummaryInput,
-    generate_fallback_headline,
-    generate_fallback_moment_label,
-)
+# Note: AIHeadlineOutput, generate_fallback_headline, generate_fallback_moment_label
+# were removed during the 2026-01 refactoring. AI enrichment is now required.
+# These tests are disabled until we add tests for the new enrichment system.
+
+# from app.services.ai_client import (
+#     AIHeadlineOutput,
+#     GameSummaryInput,
+#     generate_fallback_headline,
+#     generate_fallback_moment_label,
+# )
 from app.services.summary_builder import (
     build_summary_from_timeline,
     classify_game_flow,
@@ -50,8 +54,12 @@ class TestFlowClassification(unittest.TestCase):
         self.assertEqual(classify_game_flow(35), "blowout")
 
 
+@unittest.skip("Fallback functions removed - AI enrichment now required")
 class TestFallbackHeadline(unittest.TestCase):
-    """Tests for deterministic fallback headline generation."""
+    """Tests for deterministic fallback headline generation.
+    
+    DISABLED: These tests are for fallback functions that were removed in 2026-01 refactoring.
+    """
 
     def test_fallback_headline_blowout(self) -> None:
         """Blowout generates appropriate headline."""
@@ -124,8 +132,12 @@ class TestFallbackHeadline(unittest.TestCase):
         self.assertLessEqual(len(result.subhead), 120)
 
 
+@unittest.skip("Fallback functions removed - AI enrichment now required")
 class TestFallbackMomentLabel(unittest.TestCase):
-    """Tests for deterministic moment label generation."""
+    """Tests for deterministic moment label generation.
+    
+    DISABLED: These tests are for fallback functions that were removed in 2026-01 refactoring.
+    """
 
     def test_flip_label(self) -> None:
         """FLIP generates lead change label."""
