@@ -10,13 +10,14 @@ from __future__ import annotations
 import unittest
 
 from app.services.moments import (
-    Moment,
     MomentType,
-    MomentValidationError,
     partition_game,
-    get_highlights,
+    get_notable_moments,
     validate_moments,
 )
+
+# Legacy alias used in tests below
+get_highlights = get_notable_moments
 
 
 # Sample thresholds for testing
@@ -406,9 +407,7 @@ class TestRunMetadata(unittest.TestCase):
         moment_types = {m.type for m in moments}
         self.assertNotIn("RUN", [t.value for t in moment_types])
 
-        # Runs should be metadata on tier-crossing moments
-        # At least some moments should have run_info
-        moments_with_runs = [m for m in moments if m.run_info is not None]
+        # Runs should be metadata on tier-crossing moments, not separate moments
         # We can't guarantee runs are attached (depends on tier crossings)
         # but we CAN guarantee no RUN type exists
         for m in moments:
@@ -446,11 +445,11 @@ class TestInvariantFullPlayCoverage(unittest.TestCase):
         """Game with tier crossings still has full coverage."""
         timeline = [
             make_pbp_event(0, 0, 0),
-            make_pbp_event(1, 5, 0),   # Tier 1
-            make_pbp_event(2, 10, 0),  # Tier 3
-            make_pbp_event(3, 10, 8),  # Cut
-            make_pbp_event(4, 10, 12), # Flip
-            make_pbp_event(5, 15, 12), # Back
+            make_pbp_event(1, 5, 0),    # Tier 1
+            make_pbp_event(2, 10, 0),   # Tier 3
+            make_pbp_event(3, 10, 8),   # Cut
+            make_pbp_event(4, 10, 12),  # Flip
+            make_pbp_event(5, 15, 12),  # Back
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
         
@@ -523,10 +522,10 @@ class TestInvariantNoOverlappingMoments(unittest.TestCase):
         timeline = [
             make_pbp_event(0, 0, 0),
             make_pbp_event(1, 5, 0, play_type="ejection"),  # High impact
-            make_pbp_event(2, 5, 5),   # Tie
-            make_pbp_event(3, 5, 10),  # Flip
-            make_pbp_event(4, 10, 10), # Tie
-            make_pbp_event(5, 15, 10), # Lead build
+            make_pbp_event(2, 5, 5),    # Tie
+            make_pbp_event(3, 5, 10),   # Flip
+            make_pbp_event(4, 10, 10),  # Tie
+            make_pbp_event(5, 15, 10),  # Lead build
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
         
@@ -587,9 +586,9 @@ class TestInvariantChronologicalOrdering(unittest.TestCase):
         timeline = [
             make_pbp_event(0, 0, 0),
             make_pbp_event(1, 5, 0),
-            make_pbp_event(2, 5, 8),   # Flip - notable
+            make_pbp_event(2, 5, 8),    # Flip - notable
             make_pbp_event(3, 10, 8),
-            make_pbp_event(4, 10, 15), # Flip - notable
+            make_pbp_event(4, 10, 15),  # Flip - notable
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
         highlights = get_highlights(moments)
@@ -642,10 +641,7 @@ class TestInvariantNoHardcodedLeagueDefaults(unittest.TestCase):
         # Loose thresholds (fewer boundaries)
         moments_loose = partition_game(timeline, {}, [5, 10, 15], hysteresis_plays=1)
         
-        # Results should differ
-        tight_types = [m.type for m in moments_tight]
-        loose_types = [m.type for m in moments_loose]
-        # Both should work, potentially with different results
+        # Both should work with different thresholds
         self.assertGreater(len(moments_tight), 0)
         self.assertGreater(len(moments_loose), 0)
 
@@ -698,10 +694,10 @@ class TestMultiSportConfigRegression(unittest.TestCase):
         thresholds = [1, 2, 3, 5]  # NFL: TD margins matter
         timeline = [
             make_pbp_event(0, 0, 0),
-            make_pbp_event(1, 7, 0),   # TD
-            make_pbp_event(2, 7, 7),   # Tie
-            make_pbp_event(3, 14, 7),  # TD
-            make_pbp_event(4, 14, 14), # Tie
+            make_pbp_event(1, 7, 0),    # TD
+            make_pbp_event(2, 7, 7),    # Tie
+            make_pbp_event(3, 14, 7),   # TD
+            make_pbp_event(4, 14, 14),  # Tie
         ]
         moments = partition_game(timeline, {}, thresholds, hysteresis_plays=1)
         

@@ -194,7 +194,6 @@ class TestSourceCodeInvariants(unittest.TestCase):
     def test_partition_game_signature(self) -> None:
         """partition_game() requires thresholds parameter."""
         from app.services.moments import partition_game
-        import inspect
         
         sig = inspect.signature(partition_game)
         params = list(sig.parameters.keys())

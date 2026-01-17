@@ -12,8 +12,6 @@ import unittest
 from app.services.compact_mode_thresholds import get_lead_tier, get_tier_label
 from app.services.lead_ladder import (
     Leader,
-    LeadState,
-    TierCrossing,
     TierCrossingType,
     compute_lead_state,
     detect_tier_crossing,
