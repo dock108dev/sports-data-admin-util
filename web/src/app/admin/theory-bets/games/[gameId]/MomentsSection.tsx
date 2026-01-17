@@ -37,7 +37,6 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
 
   const getTypeIcon = (type: string) => {
     switch (type.toUpperCase()) {
-      // Lead Ladder types
       case "LEAD_BUILD":
         return "📈";
       case "CUT":
@@ -54,13 +53,6 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
         return "🎬";
       case "NEUTRAL":
         return "📊";
-      // Legacy types (cached data)
-      case "RUN":
-        return "🏃";
-      case "BATTLE":
-        return "🔄";
-      case "CLOSING":
-        return "⏱️";
       default:
         return "📌";
     }
@@ -68,7 +60,6 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
 
   const getTypeLabel = (type: string) => {
     switch (type.toUpperCase()) {
-      // Lead Ladder types
       case "LEAD_BUILD":
         return "Lead Extended";
       case "CUT":
@@ -85,13 +76,6 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
         return "Period Start";
       case "NEUTRAL":
         return "Game Flow";
-      // Legacy types (cached data)
-      case "RUN":
-        return "Scoring Run";
-      case "BATTLE":
-        return "Lead Battle";
-      case "CLOSING":
-        return "Closing Stretch";
       default:
         return type.replace(/_/g, " ");
     }
@@ -99,7 +83,6 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
 
   const getTypeColor = (type: string) => {
     switch (type.toUpperCase()) {
-      // Notable types (always significant)
       case "FLIP":
         return "#8b5cf6"; // Purple - most dramatic
       case "TIE":
@@ -108,7 +91,6 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
         return "#dc2626"; // Red - clutch
       case "HIGH_IMPACT":
         return "#ef4444"; // Red
-      // Conditionally notable types
       case "LEAD_BUILD":
         return "#22c55e"; // Green - offense
       case "CUT":
@@ -117,13 +99,6 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
         return "#6366f1"; // Indigo
       case "NEUTRAL":
         return "#64748b"; // Gray
-      // Legacy types (cached data)
-      case "RUN":
-        return "#22c55e"; // Green
-      case "BATTLE":
-        return "#f59e0b"; // Orange
-      case "CLOSING":
-        return "#dc2626"; // Red
       default:
         return "#64748b"; // Gray
     }

@@ -132,7 +132,7 @@ def generate_attention_points(
 
 
 # =============================================================================
-# SUMMARY FROM GAME MODEL (Legacy helper)
+# SUMMARY FROM GAME MODEL
 # =============================================================================
 
 def build_nba_summary(game: db_models.SportsGame) -> dict[str, Any]:
@@ -273,11 +273,6 @@ def build_summary_from_timeline(
         "subhead": fallback.subhead,
         # Structure (DETERMINISTIC from Moments)
         "attention_points": attention_points,
-        # Legacy aliases
-        "overview": fallback.headline,  # Legacy
-        "overall_summary": fallback.headline,  # Legacy
-        "closing_summary": "",  # Deprecated
-        "segments": [],  # Deprecated
         "ai_generated": False,
     }
 
@@ -353,8 +348,6 @@ async def build_summary_from_timeline_async(
         result = {**base_summary}
         result["headline"] = ai_output.headline
         result["subhead"] = ai_output.subhead
-        result["overview"] = ai_output.headline  # Legacy alias
-        result["overall_summary"] = ai_output.headline  # Legacy alias
         result["ai_generated"] = True
         
         logger.info(

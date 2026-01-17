@@ -16,9 +16,6 @@ from app.services.moments import (
     validate_moments,
 )
 
-# Legacy alias used in tests below
-get_highlights = get_notable_moments
-
 
 # Sample thresholds for testing
 NBA_THRESHOLDS = [3, 6, 10, 16]
@@ -232,7 +229,7 @@ class TestMomentValidation(unittest.TestCase):
 
 
 class TestGetHighlights(unittest.TestCase):
-    """Tests for get_highlights() function."""
+    """Tests for get_notable_moments() function."""
 
     def test_highlights_filters_by_is_notable(self) -> None:
         """Highlights returns only moments where is_notable=True."""
@@ -243,7 +240,7 @@ class TestGetHighlights(unittest.TestCase):
             make_pbp_event(3, 5, 10, game_clock="9:00"),
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
-        highlights = get_highlights(moments)
+        highlights = get_notable_moments(moments)
 
         # All highlights should have is_notable=True
         for h in highlights:
@@ -582,7 +579,7 @@ class TestInvariantChronologicalOrdering(unittest.TestCase):
             self.assertGreater(moments[i].start_play, moments[i - 1].start_play)
 
     def test_highlights_preserve_order(self) -> None:
-        """get_highlights() preserves chronological order."""
+        """get_notable_moments() preserves chronological order."""
         timeline = [
             make_pbp_event(0, 0, 0),
             make_pbp_event(1, 5, 0),
@@ -591,7 +588,7 @@ class TestInvariantChronologicalOrdering(unittest.TestCase):
             make_pbp_event(4, 10, 15),  # Flip - notable
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
-        highlights = get_highlights(moments)
+        highlights = get_notable_moments(moments)
         
         # Highlights should be in chronological order
         for i in range(1, len(highlights)):

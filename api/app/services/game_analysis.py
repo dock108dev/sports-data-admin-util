@@ -77,8 +77,3 @@ async def build_game_analysis_async(
     for future AI enrichment if needed.
     """
     return build_game_analysis(timeline, summary, sport=sport)
-    
-
-# Backwards compatibility aliases
-build_nba_game_analysis = build_game_analysis
-build_nba_game_analysis_async = build_game_analysis_async

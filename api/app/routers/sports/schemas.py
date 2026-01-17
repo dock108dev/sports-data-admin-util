@@ -286,7 +286,7 @@ class MomentsResponse(BaseModel):
     generated_at: datetime | None = None
     moments: list[MomentEntry]
     total_count: int
-    highlight_count: int  # Count of moments where is_notable=True (legacy field name)
+    highlight_count: int  # Count of moments where is_notable=True
 
 
 class GameDetailResponse(BaseModel):

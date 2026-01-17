@@ -66,7 +66,6 @@ class SportsTeam(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     league_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_leagues.id", ondelete="CASCADE"), nullable=False, index=True)
-    # DEPRECATED: Use external_codes for new provider mappings
     external_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     short_name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -109,7 +108,6 @@ class GameStatus(str, Enum):
     scheduled = "scheduled"
     live = "live"
     final = "final"
-    completed = "completed"  # DEPRECATED: Use 'final' for new games
     postponed = "postponed"
     canceled = "canceled"
 
@@ -170,7 +168,7 @@ class SportsGame(Base):
     @property
     def is_final(self) -> bool:
         """Check if game is in a final state."""
-        return self.status in (GameStatus.final.value, GameStatus.completed.value)
+        return self.status == GameStatus.final.value
 
     @property
     def start_time(self) -> datetime:

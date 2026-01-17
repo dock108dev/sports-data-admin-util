@@ -169,8 +169,8 @@ class Moment:
     # Score tracking
     score_before: tuple[int, int] = (0, 0)  # (home, away) at start
     score_after: tuple[int, int] = (0, 0)   # (home, away) at end
-    score_start: str = ""  # Legacy format "away–home"
-    score_end: str = ""    # Legacy format "away–home"
+    score_start: str = ""  # Format "away–home"
+    score_end: str = ""    # Format "away–home"
 
     # Lead Ladder state
     ladder_tier_before: int = 0
@@ -229,7 +229,7 @@ class Moment:
 
 
 def _format_score(home: int | None, away: int | None) -> str:
-    """Format score as 'away–home' for legacy compatibility."""
+    """Format score as 'away–home'."""
     if home is None or away is None:
         return ""
     return f"{away}–{home}"
@@ -1076,7 +1076,3 @@ def get_notable_moments(moments: list[Moment]) -> list[Moment]:
     They are filtered client-side or server-side from the full moment list.
     """
     return [m for m in moments if m.is_notable]
-
-
-# Legacy alias for backward compatibility
-get_highlights = get_notable_moments

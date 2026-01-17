@@ -128,7 +128,7 @@ export type RunInfo = {
 };
 
 /**
- * MomentType values (Lead Ladder v2):
+ * MomentType values (Lead Ladder):
  * - LEAD_BUILD: Lead tier increased
  * - CUT: Lead tier decreased (comeback)
  * - TIE: Game returned to even
@@ -146,11 +146,7 @@ export type MomentType =
   | "CLOSING_CONTROL"
   | "HIGH_IMPACT"
   | "OPENER"
-  | "NEUTRAL"
-  // Legacy types (for cached data)
-  | "RUN"
-  | "BATTLE"
-  | "CLOSING";
+  | "NEUTRAL";
 
 /**
  * The single narrative unit.

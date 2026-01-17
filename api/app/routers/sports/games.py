@@ -260,7 +260,6 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         game_analysis = artifact.game_analysis_json or {}
         moments_list = game_analysis.get("moments", [])
     
-    # Count all moments (highlight_count kept for backward compat)
     highlight_count = len(moments_list) if isinstance(moments_list, list) else 0
 
     meta = GameMeta(

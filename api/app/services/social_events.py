@@ -210,7 +210,6 @@ def assign_social_role(text: str | None, phase: str, has_media: bool = False) ->
     Synchronous role assignment (heuristic only).
 
     Use assign_social_role_with_ai for AI-enhanced classification.
-    This is kept for backwards compatibility with sync code paths.
     """
     role, _ = assign_social_role_heuristic(text, phase, has_media)
     return role
