@@ -229,15 +229,33 @@ class PlayerContribution(BaseModel):
     summary: str | None = None
 
 
+class RunInfo(BaseModel):
+    """Run metadata when a run contributed to a moment."""
+    team: str  # "home" or "away"
+    points: int
+    unanswered: bool = True
+    play_ids: list[int] = Field(default_factory=list)
+
+
 class MomentEntry(BaseModel):
     """
     The single narrative unit.
     
     Every play belongs to exactly one moment.
     Moments are always chronological.
+    
+    MomentTypes (Lead Ladder v2):
+    - LEAD_BUILD: Lead tier increased
+    - CUT: Lead tier decreased (comeback)
+    - TIE: Game returned to even
+    - FLIP: Leader changed
+    - CLOSING_CONTROL: Late-game lock-in
+    - HIGH_IMPACT: Ejection, injury, etc.
+    - OPENER: First plays of a period
+    - NEUTRAL: Normal flow
     """
     id: str                           # "m_001"
-    type: str                         # NEUTRAL, RUN, BATTLE, CLOSING
+    type: str                         # See MomentTypes above
     start_play: int                   # First play index
     end_play: int                     # Last play index
     play_count: int                   # Number of plays
@@ -246,8 +264,15 @@ class MomentEntry(BaseModel):
     score_start: str = ""             # "12–15"
     score_end: str = ""               # "18–15"
     clock: str = ""                   # "Q2 8:45–6:12"
-    is_notable: bool = False          # This IS highlights
+    is_notable: bool = False          # True for notable moments (key game events)
     note: str | None = None           # "7-0 run"
+    
+    # New Lead Ladder fields (optional)
+    run_info: RunInfo | None = None   # If a run contributed to this moment
+    ladder_tier_before: int | None = None
+    ladder_tier_after: int | None = None
+    team_in_control: str | None = None  # "home", "away", or None
+    key_play_ids: list[int] = Field(default_factory=list)
 
 
 class MomentsResponse(BaseModel):
@@ -255,13 +280,13 @@ class MomentsResponse(BaseModel):
     Response for GET /games/{game_id}/moments endpoint.
     
     Contains ALL moments (full timeline coverage).
-    Highlights are moments where is_notable=True - filter client-side.
+    Notable moments (is_notable=True) are key game events - filter client-side.
     """
     game_id: int
     generated_at: datetime | None = None
     moments: list[MomentEntry]
     total_count: int
-    highlight_count: int  # Count of moments where is_notable=True
+    highlight_count: int  # Count of moments where is_notable=True (legacy field name)
 
 
 class GameDetailResponse(BaseModel):
@@ -271,7 +296,7 @@ class GameDetailResponse(BaseModel):
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry]
     plays: list[PlayEntry]
-    moments: list[MomentEntry]  # Full coverage; filter by is_notable for highlights
+    moments: list[MomentEntry]  # Full coverage; filter by is_notable for key moments
     derived_metrics: dict[str, Any]
     raw_payloads: dict[str, Any]
 

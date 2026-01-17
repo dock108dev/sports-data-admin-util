@@ -65,7 +65,7 @@ async def list_games(
     missingAny: bool = Query(False, alias="missingAny"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    ) -> GameListResponse:
+) -> GameListResponse:
     base_stmt = select(db_models.SportsGame).options(
         selectinload(db_models.SportsGame.league),
         selectinload(db_models.SportsGame.home_team),
@@ -332,6 +332,18 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         
         for m in game_analysis.get("moments", []):
             if isinstance(m, dict):
+                # Build run_info if present
+                run_info_data = m.get("run_info")
+                run_info = None
+                if run_info_data and isinstance(run_info_data, dict):
+                    from .schemas import RunInfo
+                    run_info = RunInfo(
+                        team=run_info_data.get("team", "home"),
+                        points=run_info_data.get("points", 0),
+                        unanswered=run_info_data.get("unanswered", True),
+                        play_ids=run_info_data.get("play_ids", []),
+                    )
+                
                 moment = MomentEntry(
                     id=m.get("id", ""),
                     type=m.get("type", "NEUTRAL"),
@@ -345,6 +357,12 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
                     clock=m.get("clock", ""),
                     is_notable=m.get("is_notable", False),
                     note=m.get("note"),
+                    # New Lead Ladder fields
+                    run_info=run_info,
+                    ladder_tier_before=m.get("ladder_tier_before"),
+                    ladder_tier_after=m.get("ladder_tier_after"),
+                    team_in_control=m.get("team_in_control"),
+                    key_play_ids=m.get("key_play_ids", []),
                 )
                 moments_list.append(moment)
 

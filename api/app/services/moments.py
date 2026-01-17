@@ -26,7 +26,7 @@ KEY DESIGN PRINCIPLES:
 5. Importance is metadata only - never controls ordering
 6. No sport-specific hardcoding - thresholds come from Lead Ladder config
 
-Highlights are moments where is_notable=True.
+Notable moments (is_notable=True) are the key game events.
 
 FILE STRUCTURE (~1000 LOC)
 --------------------------
@@ -41,7 +41,7 @@ The sections are:
 6. BOUNDARY DETECTION (Lead Ladder crossings)
 7. MOMENT PARTITIONING (main algorithm)
 8. VALIDATION (coverage and ordering checks)
-9. PUBLIC API (partition_game, get_highlights, validate_moments)
+9. PUBLIC API (partition_game, get_notable_moments, validate_moments)
 """
 
 from __future__ import annotations
@@ -927,7 +927,7 @@ def _is_moment_notable(
     boundary: BoundaryEvent | None,
 ) -> bool:
     """
-    Determine if a moment is notable (a "highlight").
+    Determine if a moment is notable (a key game event).
 
     Notable moments are those that significantly changed game control:
     - All FLIPs (leader changed)
@@ -1068,11 +1068,15 @@ def validate_moments(
 # =============================================================================
 
 
-def get_highlights(moments: list[Moment]) -> list[Moment]:
+def get_notable_moments(moments: list[Moment]) -> list[Moment]:
     """
     Return moments that are notable (is_notable=True).
 
-    Highlights are a VIEW of moments, not a separate entity.
+    Notable moments are a VIEW of moments, not a separate entity.
     They are filtered client-side or server-side from the full moment list.
     """
     return [m for m in moments if m.is_notable]
+
+
+# Legacy alias for backward compatibility
+get_highlights = get_notable_moments

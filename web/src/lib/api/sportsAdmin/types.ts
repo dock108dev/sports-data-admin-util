@@ -109,13 +109,48 @@ export type PlayEntry = {
 };
 
 /**
- * Player contribution in a highlight stretch.
+ * Player contribution within a moment.
  */
 export type PlayerContribution = {
   name: string;
   stats: { pts?: number; stl?: number; blk?: number; ast?: number };
   summary: string | null; // "6 pts, 1 stl"
 };
+
+/**
+ * Run metadata when a run contributed to a moment.
+ */
+export type RunInfo = {
+  team: "home" | "away";
+  points: number;
+  unanswered: boolean;
+  play_ids: number[];
+};
+
+/**
+ * MomentType values (Lead Ladder v2):
+ * - LEAD_BUILD: Lead tier increased
+ * - CUT: Lead tier decreased (comeback)
+ * - TIE: Game returned to even
+ * - FLIP: Leader changed
+ * - CLOSING_CONTROL: Late-game lock-in
+ * - HIGH_IMPACT: Ejection, injury, etc.
+ * - OPENER: First plays of a period
+ * - NEUTRAL: Normal flow
+ */
+export type MomentType =
+  | "LEAD_BUILD"
+  | "CUT"
+  | "TIE"
+  | "FLIP"
+  | "CLOSING_CONTROL"
+  | "HIGH_IMPACT"
+  | "OPENER"
+  | "NEUTRAL"
+  // Legacy types (for cached data)
+  | "RUN"
+  | "BATTLE"
+  | "CLOSING";
 
 /**
  * The single narrative unit.
@@ -125,7 +160,7 @@ export type PlayerContribution = {
  */
 export type MomentEntry = {
   id: string;                           // "m_001"
-  type: "NEUTRAL" | "RUN" | "BATTLE" | "CLOSING";
+  type: MomentType;
   start_play: number;                   // First play index
   end_play: number;                     // Last play index
   play_count: number;                   // Number of plays
@@ -134,8 +169,15 @@ export type MomentEntry = {
   score_start: string;                  // "12–15"
   score_end: string;                    // "18–15"
   clock: string;                        // "Q2 8:45–6:12"
-  is_notable: boolean;                  // This IS highlights
+  is_notable: boolean;                  // True for notable moments (key game events)
   note: string | null;                  // "7-0 run"
+  
+  // New Lead Ladder fields (optional)
+  run_info?: RunInfo;
+  ladder_tier_before?: number;
+  ladder_tier_after?: number;
+  team_in_control?: "home" | "away" | null;
+  key_play_ids?: number[];
 };
 
 /**
@@ -181,7 +223,7 @@ export type AdminGameDetail = {
   odds: OddsEntry[];
   social_posts: SocialPost[];
   plays: PlayEntry[];
-  moments: MomentEntry[];  // Full game coverage; filter by is_notable for highlights
+  moments: MomentEntry[];  // Full game coverage; filter by is_notable for key moments
   derived_metrics: Record<string, unknown>;
   raw_payloads: Record<string, unknown>;
 };
