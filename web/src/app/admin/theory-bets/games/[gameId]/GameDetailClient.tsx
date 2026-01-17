@@ -363,7 +363,7 @@ export default function GameDetailClient() {
 
       <SocialPostsSection posts={game.social_posts || []} />
 
-      <MomentsSection moments={game.moments || []} notableOnly={true} />
+      <MomentsSection moments={game.moments || []} />
 
       <PbpSection plays={game.plays || []} />
 

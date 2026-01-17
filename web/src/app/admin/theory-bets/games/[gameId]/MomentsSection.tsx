@@ -9,15 +9,13 @@ const MOMENTS_PER_PAGE = 10;
 
 interface MomentsSectionProps {
   moments: MomentEntry[];
-  /** If true, only show notable moments. If false, show all moments. */
-  notableOnly?: boolean;
 }
 
 /**
  * Displays game moments (narrative segments).
  * 
- * Moments partition the entire game timeline. Each moment has a type
- * indicating what kind of game control change occurred:
+ * Moments partition the entire game timeline into key narrative units.
+ * Each moment has a type indicating what kind of game control change occurred:
  * - FLIP: Leader changed
  * - TIE: Game returned to even
  * - LEAD_BUILD: Lead tier increased
@@ -26,16 +24,10 @@ interface MomentsSectionProps {
  * - HIGH_IMPACT: Key non-scoring event
  * - OPENER: Period start
  * - NEUTRAL: Normal flow
- * 
- * Notable moments (is_notable=true) are the "highlights" of the game.
  */
-export function MomentsSection({ moments: allMoments, notableOnly = true }: MomentsSectionProps) {
+export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
   const [page, setPage] = useState(0);
-  
-  // Filter to notable moments if requested
-  const moments = notableOnly 
-    ? (allMoments || []).filter(m => m.is_notable)
-    : (allMoments || []);
+  const moments = allMoments || [];
 
   const totalPages = Math.ceil(moments.length / MOMENTS_PER_PAGE);
   const paginatedMoments = moments.slice(
@@ -137,14 +129,12 @@ export function MomentsSection({ moments: allMoments, notableOnly = true }: Mome
     }
   };
 
-  const sectionTitle = notableOnly ? "Notable Moments" : "All Moments";
-
   return (
-    <CollapsibleSection title={sectionTitle} defaultOpen={true}>
+    <CollapsibleSection title="Moments" defaultOpen={true}>
       {moments.length === 0 ? (
         <div className={styles.emptyHighlights}>
           <div className={styles.emptyIcon}>📊</div>
-          <div>No {notableOnly ? "notable " : ""}moments generated for this game yet.</div>
+          <div>No moments generated for this game yet.</div>
           <div className={styles.emptyHint}>
             Timeline artifacts may need to be generated or regenerated.
           </div>
@@ -152,7 +142,7 @@ export function MomentsSection({ moments: allMoments, notableOnly = true }: Mome
       ) : (
         <>
           <div className={styles.highlightsSummary}>
-            <span>{moments.length} {notableOnly ? "notable " : ""}moments</span>
+            <span>{moments.length} moments</span>
             <span className={styles.highlightsSummaryDivider}>•</span>
             <span>Chronological</span>
           </div>
