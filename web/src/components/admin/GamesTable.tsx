@@ -97,9 +97,9 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/theory-bets/games
                       </span>
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.has_highlights ? styles.dotOk : styles.dotMissing}`} />
+                      <span className={`${styles.statusDot} ${game.has_pbp ? styles.dotOk : styles.dotMissing}`} />
                       <span className={styles.statusLabel}>
-                        {game.highlight_count > 0 ? `${game.highlight_count}` : "—"}
+                        Moments
                       </span>
                     </td>
                   </>

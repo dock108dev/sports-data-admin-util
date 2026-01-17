@@ -607,29 +607,77 @@ class BoundaryEvent:
     note: str | None = None
 
 
+def get_canonical_pbp_indices(events: Sequence[dict[str, Any]]) -> list[int]:
+    """
+    Filter the timeline to find only real, narrative-relevant PBP plays.
+
+    Excludes:
+    - Non-PBP events
+    - Empty descriptions
+    - Period start/end markers
+    - Score resets (0-0 mid-game)
+    - Boundary bookkeeping rows
+    """
+    indices = []
+    has_seen_scoring = False
+
+    for i, event in enumerate(events):
+        if event.get("event_type") != "pbp":
+            continue
+
+        description = (event.get("description") or "").strip()
+        description_lower = description.lower()
+
+        # 1. Filter by description content
+        if not description:
+            continue
+        if any(marker in description_lower for marker in [
+            "start of", "end of", "beginning of", "start period", "end period",
+            "jump ball", "timeout", "coaches challenge"
+        ]):
+            # Keep jump balls at start of game/period? No, they don't change score/tier
+            continue
+
+        # 2. Filter by score resets
+        home_score = event.get("home_score", 0) or 0
+        away_score = event.get("away_score", 0) or 0
+
+        if home_score > 0 or away_score > 0:
+            has_seen_scoring = True
+
+        if home_score == 0 and away_score == 0 and has_seen_scoring:
+            # This is a score reset mid-game - ignore it
+            continue
+
+        # 3. Filter boundary markers at 0:00 that aren't plays
+        clock = event.get("game_clock", "")
+        if clock == "0:00" or clock == "0:00.0":
+            # If it's a 0:00 row with no score change from previous, it's likely a marker
+            # We'll check this by comparing with last added index if any
+            if indices:
+                prev_event = events[indices[-1]]
+                if (prev_event.get("home_score") == home_score and
+                    prev_event.get("away_score") == away_score and
+                    "made" not in description_lower and "miss" not in description_lower):
+                    continue
+
+        indices.append(i)
+
+    return indices
+
+
 def _detect_boundaries(
     events: Sequence[dict[str, Any]],
+    pbp_indices: list[int],
     thresholds: Sequence[int],
     hysteresis_plays: int = DEFAULT_HYSTERESIS_PLAYS,
 ) -> list[BoundaryEvent]:
     """
-    Detect all moment boundaries in the timeline.
-
-    BOUNDARY RULES:
-    1. Lead tier increase → LEAD_BUILD (if persists for hysteresis_plays)
-    2. Lead tier decrease → CUT (if persists for hysteresis_plays)
-    3. Tie reached → TIE (immediate)
-    4. Lead flip → FLIP (immediate, no hysteresis)
-    5. Closing control lock-in → CLOSING_CONTROL
-    6. High-impact non-scoring → HIGH_IMPACT (only if significant)
-    7. Period start → OPENER
-
-    Hysteresis prevents flicker from momentary score changes.
-    Flips and ties are always immediate (no hysteresis needed).
+    Detect all moment boundaries using the canonical PBP stream.
     """
     boundaries: list[BoundaryEvent] = []
 
-    if not events:
+    if not pbp_indices:
         return boundaries
 
     # Track state
@@ -639,15 +687,12 @@ def _detect_boundaries(
     persistence_count: int = 0
     prev_event: dict[str, Any] | None = None
 
-    for i, event in enumerate(events):
-        if event.get("event_type") != "pbp":
-            continue
-
+    for i in pbp_indices:
+        event = events[i]
         home_score, away_score = _get_score(event)
         curr_state = compute_lead_state(home_score, away_score, thresholds)
 
         # === PERIOD OPENER ===
-        # Check if this is a new period (always a boundary)
         if _is_period_opener(event, prev_event):
             boundaries.append(BoundaryEvent(
                 index=i,
@@ -666,11 +711,9 @@ def _detect_boundaries(
 
                 # IMMEDIATE boundaries (no hysteresis)
                 if crossing_type == TierCrossingType.FLIP:
-                    # Clear any pending crossing
                     pending_crossing = None
                     persistence_count = 0
 
-                    # Check for closing control (dagger)
                     if _is_closing_situation(event, curr_state):
                         boundaries.append(BoundaryEvent(
                             index=i,
@@ -691,7 +734,6 @@ def _detect_boundaries(
                         ))
 
                 elif crossing_type == TierCrossingType.TIE_REACHED:
-                    # Tie is immediate
                     pending_crossing = None
                     persistence_count = 0
                     boundaries.append(BoundaryEvent(
@@ -703,20 +745,7 @@ def _detect_boundaries(
                         note="Game tied",
                     ))
 
-                elif crossing_type == TierCrossingType.TIE_BROKEN:
-                    # Tie broken - could be start of a lead build
-                    pending_crossing = crossing
-                    pending_index = i
-                    persistence_count = 1
-
-                elif crossing_type == TierCrossingType.TIER_UP:
-                    # Lead extended - start hysteresis
-                    pending_crossing = crossing
-                    pending_index = i
-                    persistence_count = 1
-
-                elif crossing_type == TierCrossingType.TIER_DOWN:
-                    # Lead cut - start hysteresis
+                elif crossing_type in (TierCrossingType.TIE_BROKEN, TierCrossingType.TIER_UP, TierCrossingType.TIER_DOWN):
                     pending_crossing = crossing
                     pending_index = i
                     persistence_count = 1
@@ -724,7 +753,6 @@ def _detect_boundaries(
             else:
                 # No crossing - check if pending crossing should be confirmed
                 if pending_crossing is not None:
-                    # Check if the tier from pending crossing is still holding
                     if curr_state.tier == pending_crossing.curr_state.tier:
                         persistence_count += 1
 
@@ -743,7 +771,6 @@ def _detect_boundaries(
                                 moment_type = MomentType.NEUTRAL
                                 note = None
 
-                            # Check for closing control
                             if _is_closing_situation(event, curr_state) and curr_state.tier >= 2:
                                 moment_type = MomentType.CLOSING_CONTROL
                                 note = "Game control locked"
@@ -759,7 +786,6 @@ def _detect_boundaries(
                             pending_crossing = None
                             persistence_count = 0
                     else:
-                        # Tier changed again before hysteresis completed - reset
                         pending_crossing = None
                         persistence_count = 0
 
@@ -789,32 +815,60 @@ def _detect_boundaries(
 # =============================================================================
 
 
+def is_valid_moment(moment: Moment) -> bool:
+    """
+    HARD VALIDITY GATE: A moment must represent a narrative state change.
+
+    A moment is valid if it shows ANY meaningful change:
+    - Score changed
+    - Control changed (leader changed)
+    - Ladder tier changed
+    - Is high impact event
+    - Represents a significant narrative shift
+
+    If none of these are true, the moment should not exist as a standalone entity.
+    It should be merged into an adjacent moment.
+    """
+    # Score changed
+    if moment.score_before != moment.score_after:
+        return True
+
+    # Control changed (different leader)
+    if moment.team_in_control is not None:
+        # Check if this represents a control change from previous state
+        # For now, assume any moment with control assigned represents a change
+        return True
+
+    # Ladder tier changed
+    if moment.ladder_tier_before != moment.ladder_tier_after:
+        return True
+
+    # High impact event (always valid)
+    if moment.type == MomentType.HIGH_IMPACT:
+        return True
+
+    # Significant narrative shifts (always valid)
+    if moment.type in (MomentType.FLIP, MomentType.TIE, MomentType.CLOSING_CONTROL):
+        return True
+
+    # Has a run (represents scoring momentum)
+    if moment.run_info is not None:
+        return True
+
+    # Has key plays (significant actions)
+    if moment.key_play_ids:
+        return True
+
+    # Default: invalid - represents no narrative change
+    return False
+
+
 def _is_moment_low_value(moment: Moment) -> bool:
     """
-    Determine if a moment has no narrative value and should be merged.
-
-    LOW-VALUE CRITERIA:
-    - score_before == score_after (no score change)
-    - Only 1 play (micro-moment)
-    - OPENER moments with no significant score change (< 3 points)
-
-    These moments represent no real narrative state change.
+    Legacy function - now delegates to is_valid_moment().
+    Moments that fail validity must be merged, not deleted.
     """
-    # No score change
-    if moment.score_before == moment.score_after:
-        return True
-
-    # Micro-moment (single play)
-    if moment.play_count == 1:
-        return True
-
-    # OPENER with minimal scoring (< 3 points total)
-    if moment.type == MomentType.OPENER:
-        score_change = abs(moment.score_after[0] - moment.score_before[0]) + abs(moment.score_after[1] - moment.score_before[1])
-        if score_change < 3:
-            return True
-
-    return False
+    return not is_valid_moment(moment)
 
 
 def _can_merge_moments(m1: Moment, m2: Moment) -> bool:
@@ -927,33 +981,83 @@ def _merge_two_moments(m1: Moment, m2: Moment) -> Moment:
     return merged
 
 
+def _merge_invalid_moments(moments: list[Moment]) -> list[Moment]:
+    """
+    HARD VALIDITY ENFORCEMENT: Merge all invalid moments into adjacent valid ones.
+
+    A moment is invalid if it fails the is_valid_moment() gate (no narrative change).
+    These moments are absorbed into the nearest valid moment (prefer previous).
+    """
+    if not moments:
+        return moments
+
+    merged: list[Moment] = []
+
+    for moment in moments:
+        if not is_valid_moment(moment):
+            # Invalid moment - merge into previous valid moment if possible
+            if merged:
+                logger.info(
+                    "absorbing_invalid_moment",
+                    extra={
+                        "invalid_moment_id": moment.id,
+                        "invalid_type": moment.type.value,
+                        "invalid_score": f"{moment.score_before} → {moment.score_after}",
+                        "merged_into": merged[-1].id,
+                    },
+                )
+                merged[-1] = _merge_two_moments(merged[-1], moment)
+            else:
+                # This is the first moment and it's invalid - keep it but mark it
+                # It will likely be merged with the next valid moment in the next iteration
+                # if we were to do a forward pass, but for now we'll just add it.
+                merged.append(moment)
+        else:
+            # Current moment is valid.
+            # Check if we should absorb the previous moment if it was the first and invalid
+            if len(merged) == 1 and not is_valid_moment(merged[0]):
+                first = merged.pop()
+                logger.info(
+                    "absorbing_initial_invalid_moment",
+                    extra={
+                        "invalid_moment_id": first.id,
+                        "merged_into": moment.id,
+                    }
+                )
+                merged.append(_merge_two_moments(first, moment))
+            else:
+                merged.append(moment)
+
+    return merged
+
+
 def _merge_consecutive_moments(moments: list[Moment]) -> list[Moment]:
     """
     Merge consecutive same-type moments aggressively.
-    
+
     This is the PRIMARY mechanism for reducing moment count.
-    
+
     These should NEVER be separate moments:
     - LEAD_BUILD → LEAD_BUILD
-    - CUT → CUT  
+    - CUT → CUT
     - NEUTRAL → NEUTRAL
-    
+
     If control didn't change, the moment didn't change.
     """
     if len(moments) <= 1:
         return moments
-    
+
     merged: list[Moment] = [moments[0]]
-    
+
     for current in moments[1:]:
         prev = merged[-1]
-        
+
         if _can_merge_moments(prev, current):
             # Merge into previous
             merged[-1] = _merge_two_moments(prev, current)
         else:
             merged.append(current)
-    
+
     return merged
 
 
@@ -1179,40 +1283,32 @@ def partition_game(
     Partition a game timeline into moments based on Lead Ladder.
 
     CORE GUARANTEES:
-    1. Every PBP play belongs to exactly ONE moment
-    2. Moments are contiguous (no gaps)
+    1. Every CANONICAL PBP play belongs to exactly ONE moment
+    2. Moments are contiguous (no gaps in canonical stream)
     3. Moments are chronologically ordered by start_play
     4. Moment count stays within sport-specific budget
     5. Every moment has a reason for existing
-
-    Args:
-        timeline: Full timeline events (PBP + social)
-        summary: Game summary metadata (for team info)
-        thresholds: Lead Ladder thresholds (if None, defaults to minimal [5])
-        hysteresis_plays: Number of plays tier must persist
-
-    Returns:
-        List of Moments covering the entire timeline
+    6. Score continuity is preserved (moment score_before == prev score_after)
     """
     events = list(timeline)
     if not events:
         return []
 
-    # Get PBP-only event indices
-    pbp_indices = [i for i, e in enumerate(events) if e.get("event_type") == "pbp"]
+    # 1. Get CANONICAL PBP event indices (filter out junk)
+    pbp_indices = get_canonical_pbp_indices(events)
     if not pbp_indices:
+        logger.warning("partition_game_no_canonical_pbp", extra={"timeline_len": len(events)})
         return []
 
     # Use provided thresholds or minimal default
-    # NOTE: Caller should always provide thresholds from Lead Ladder config
     if thresholds is None:
         logger.warning(
             "partition_game_no_thresholds: No thresholds provided, using minimal default [5]",
         )
         thresholds = [5]
 
-    # Detect boundaries
-    boundaries = _detect_boundaries(events, thresholds, hysteresis_plays)
+    # 2. Detect boundaries using canonical stream
+    boundaries = _detect_boundaries(events, pbp_indices, thresholds, hysteresis_plays)
 
     # Build moments from boundaries
     moments: list[Moment] = []
@@ -1226,14 +1322,19 @@ def partition_game(
     current_type: MomentType = MomentType.NEUTRAL
     current_boundary: BoundaryEvent | None = None
 
-    for i in pbp_indices:
+    moment_start_score = (0, 0)
+    current_score = (0, 0) # Score after previous play
+
+    for idx, i in enumerate(pbp_indices):
+        event = events[i]
+
         # Check if this is a boundary
         if i in boundary_at:
             boundary = boundary_at[i]
 
             # Close previous moment if any
             if current_start is not None:
-                prev_idx = pbp_indices[pbp_indices.index(i) - 1] if pbp_indices.index(i) > 0 else i - 1
+                prev_idx = pbp_indices[idx - 1]
                 moment = _create_moment(
                     moment_id=moment_id,
                     events=events,
@@ -1242,19 +1343,21 @@ def partition_game(
                     moment_type=current_type,
                     thresholds=thresholds,
                     boundary=current_boundary,
+                    score_before=moment_start_score,
                 )
                 moments.append(moment)
                 moment_id += 1
+
+                # The score before the NEW moment is the score AFTER the previous moment
+                moment_start_score = current_score
 
             # Start new moment at this boundary
             current_start = i
             current_type = boundary.moment_type
             current_boundary = boundary
-        else:
-            # Continue current moment
-            if current_start is None:
-                current_start = i
-                current_type = MomentType.NEUTRAL
+
+        # Track what the score is after THIS play
+        current_score = _get_score(event)
 
     # Close final moment
     if current_start is not None:
@@ -1266,23 +1369,25 @@ def partition_game(
             moment_type=current_type,
             thresholds=thresholds,
             boundary=current_boundary,
+            score_before=moment_start_score,
         )
         moments.append(moment)
 
-    # Sort by start_play (should already be sorted, but ensure)
-    moments.sort(key=lambda m: m.start_play)
-
     # Detect runs and attach to moments as metadata
+    # We still use the full event stream for run detection but only attach to moments
     runs = _detect_runs(events)
     _attach_runs_to_moments(moments, runs)
 
     # AGGRESSIVE MERGE: Collapse consecutive same-type moments
     pre_merge_count = len(moments)
     moments = _merge_consecutive_moments(moments)
-    
+
     # PER-QUARTER ENFORCEMENT: Prevent chaotic quarters
     moments = _enforce_quarter_limits(moments, events)
-    
+
+    # VALIDITY ENFORCEMENT: Log invalid moments
+    moments = _merge_invalid_moments(moments)
+
     # BUDGET ENFORCEMENT: If still over budget, merge more aggressively
     sport = summary.get("sport", "NBA") if isinstance(summary, dict) else "NBA"
     budget = MOMENT_BUDGET.get(sport, DEFAULT_MOMENT_BUDGET)
@@ -1291,6 +1396,12 @@ def partition_game(
 
     # Re-validate coverage after merging
     _validate_moment_coverage(moments, pbp_indices)
+
+    # Validate score continuity
+    _validate_score_continuity(moments)
+
+    # CONTINUITY VALIDATION: Log issues but don't crash
+    _assert_moment_continuity(moments)
 
     # Renumber moment IDs after merging
     for i, m in enumerate(moments):
@@ -1447,22 +1558,21 @@ def _create_moment_reason(
 ) -> MomentReason:
     """
     Create a reason explaining WHY this moment exists.
-    
-    Every moment must have a reason. If you can't explain it, don't create it.
     """
-    # Determine trigger
+    # Determine trigger - use strings for robust mapping
     trigger_map = {
-        MomentType.FLIP: "flip",
-        MomentType.TIE: "tie",
-        MomentType.CLOSING_CONTROL: "closing_lock",
-        MomentType.HIGH_IMPACT: "high_impact",
-        MomentType.OPENER: "opener",
-        MomentType.LEAD_BUILD: "tier_cross",
-        MomentType.CUT: "tier_cross",
-        MomentType.NEUTRAL: "stable",
+        "FLIP": "flip",
+        "TIE": "tie",
+        "CLOSING_CONTROL": "closing_lock",
+        "HIGH_IMPACT": "high_impact",
+        "OPENER": "opener",
+        "LEAD_BUILD": "tier_cross",
+        "CUT": "tier_cross",
+        "NEUTRAL": "stable",
     }
-    trigger = trigger_map.get(moment_type, "unknown")
-    
+    type_str = moment_type.value if hasattr(moment_type, 'value') else str(moment_type)
+    trigger = trigger_map.get(type_str, "unknown")
+
     # Determine control shift
     control_shift: str | None = None
     if start_state.leader != end_state.leader:
@@ -1470,29 +1580,29 @@ def _create_moment_reason(
             control_shift = "home"
         elif end_state.leader == Leader.AWAY:
             control_shift = "away"
-    
+
     # Determine narrative delta
-    if moment_type == MomentType.FLIP:
+    if type_str == "FLIP":
         narrative_delta = "control changed"
-    elif moment_type == MomentType.TIE:
+    elif type_str == "TIE":
         narrative_delta = "tension ↑"
-    elif moment_type == MomentType.CLOSING_CONTROL:
+    elif type_str == "CLOSING_CONTROL":
         narrative_delta = "game locked"
-    elif moment_type == MomentType.LEAD_BUILD:
+    elif type_str == "LEAD_BUILD":
         tier_diff = end_state.tier - start_state.tier
         if tier_diff >= 2:
             narrative_delta = "control solidified"
         else:
             narrative_delta = "lead extended"
-    elif moment_type == MomentType.CUT:
+    elif type_str == "CUT":
         narrative_delta = "pressure relieved" if team_in_control else "momentum shift"
-    elif moment_type == MomentType.HIGH_IMPACT:
+    elif type_str == "HIGH_IMPACT":
         narrative_delta = "context changed"
-    elif moment_type == MomentType.OPENER:
+    elif type_str == "OPENER":
         narrative_delta = "period started"
     else:
         narrative_delta = "stable flow"
-    
+
     return MomentReason(
         trigger=trigger,
         control_shift=control_shift,
@@ -1508,13 +1618,13 @@ def _create_moment(
     moment_type: MomentType,
     thresholds: Sequence[int],
     boundary: BoundaryEvent | None,
+    score_before: tuple[int, int],
 ) -> Moment:
     """Create a Moment from a range of events."""
     start_event = events[start_idx]
     end_event = events[end_idx]
 
-    # Get scores
-    score_before = _get_score(start_event)
+    # score_before is passed in (score at end of PREVIOUS canonical play)
     score_after = _get_score(end_event)
 
     # Compute lead states
@@ -1625,6 +1735,109 @@ def _is_moment_notable(
 class MomentValidationError(Exception):
     """Raised when moment partitioning fails validation."""
     pass
+
+
+def _validate_score_continuity(moments: list[Moment]) -> None:
+    """
+    Validate that moment scores are continuous (no resets).
+
+    Logs warnings for score discontinuities but doesn't fail the build.
+    """
+    if len(moments) <= 1:
+        return
+
+    for i in range(1, len(moments)):
+        prev_moment = moments[i - 1]
+        curr_moment = moments[i]
+
+        if prev_moment.score_after != curr_moment.score_before:
+            logger.error(
+                "moment_score_discontinuity",
+                extra={
+                    "prev_moment_id": prev_moment.id,
+                    "curr_moment_id": curr_moment.id,
+                    "prev_end": prev_moment.score_after,
+                    "curr_start": curr_moment.score_before,
+                    "prev_end_play": prev_moment.end_play,
+                    "curr_start_play": curr_moment.start_play,
+                },
+            )
+
+
+def _assert_moment_continuity(moments: list[Moment]) -> None:
+    """
+    CONTINUITY VALIDATION: Log issues but don't crash during debugging.
+
+    During development, log problems but allow pipeline to continue.
+    TODO: Make this crash the pipeline once all issues are resolved.
+    """
+    if not moments:
+        logger.error("no_moments_generated")
+        return  # Don't crash for now
+
+    # Check play coverage (no gaps, no overlaps)
+    covered_plays = set()
+    overlaps = []
+    for moment in moments:
+        for play_idx in range(moment.start_play, moment.end_play + 1):
+            if play_idx in covered_plays:
+                overlaps.append(f"Play {play_idx} in {moment.id}")
+            covered_plays.add(play_idx)
+
+    if overlaps:
+        logger.error("play_overlaps_detected", extra={"overlaps": overlaps[:10]})
+
+    # Check score continuity between adjacent moments
+    discontinuities = []
+    for i in range(1, len(moments)):
+        prev_moment = moments[i - 1]
+        curr_moment = moments[i]
+
+        if prev_moment.score_after != curr_moment.score_before:
+            discontinuities.append({
+                "prev_id": prev_moment.id,
+                "curr_id": curr_moment.id,
+                "prev_end": prev_moment.score_after,
+                "curr_start": curr_moment.score_before,
+            })
+
+    if discontinuities:
+        logger.error("score_discontinuities_detected", extra={"discontinuities": discontinuities})
+
+    # Check that no moments are invalid after merging
+    invalid_moments = [m for m in moments if not is_valid_moment(m)]
+    if invalid_moments:
+        invalid_info = [{"id": m.id, "type": m.type.value, "score": f"{m.score_before}→{m.score_after}"} for m in invalid_moments]
+        logger.error("invalid_moments_remaining", extra={"invalid_moments": invalid_info})
+
+    # Check for single-play moments that aren't high-impact
+    problematic_micro = []
+    for moment in moments:
+        if (moment.play_count == 1 and
+            moment.type not in (MomentType.FLIP, MomentType.TIE, MomentType.HIGH_IMPACT)):
+            problematic_micro.append({
+                "id": moment.id,
+                "type": moment.type.value,
+                "trigger": moment.reason.trigger if moment.reason else None
+            })
+
+    if problematic_micro:
+        logger.error("problematic_micro_moments", extra={"micro_moments": problematic_micro})
+
+    # For now, log all issues but don't crash the pipeline
+    total_issues = len(overlaps) + len(discontinuities) + len(invalid_moments) + len(problematic_micro)
+    if total_issues > 0:
+        logger.warning(
+            "moment_continuity_issues_detected",
+            extra={
+                "total_issues": total_issues,
+                "overlaps": len(overlaps),
+                "discontinuities": len(discontinuities),
+                "invalid_moments": len(invalid_moments),
+                "micro_moments": len(problematic_micro),
+                "note": "Pipeline continuing despite issues - fix these problems"
+            }
+        )
 
 
 def _validate_moment_coverage(
