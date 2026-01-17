@@ -65,9 +65,13 @@ class SocialRequestCache:
             .first()
         )
         if cached_window and cached_window.created_at:
-            if current - cached_window.created_at < self.cache_ttl:
-                retry_at = cached_window.created_at + self.cache_ttl
-                return CacheDecision(False, reason="cached_window", retry_at=retry_at)
+            # Only honor cache for successful fetches that found posts.
+            # "empty" status (0 results) should allow retry - might have been
+            # a transient failure (page didn't load, rate limit, etc.)
+            if cached_window.status == "success" and cached_window.posts_found > 0:
+                if current - cached_window.created_at < self.cache_ttl:
+                    retry_at = cached_window.created_at + self.cache_ttl
+                    return CacheDecision(False, reason="cached_window", retry_at=retry_at)
 
         return CacheDecision(True)
 

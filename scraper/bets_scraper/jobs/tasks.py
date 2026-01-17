@@ -220,4 +220,4 @@ def regenerate_timeline_task(
             "success": False,
             "reason": reason,
             "error": str(exc),
-        }
+    }

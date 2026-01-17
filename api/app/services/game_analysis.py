@@ -25,9 +25,9 @@ def build_game_analysis(
 ) -> dict[str, Any]:
     """
     Analyze a game timeline into moments.
-    
+
     This is the single entry point for game narrative analysis.
-    
+
     Returns:
         {
             "moments": [Moment.to_dict(), ...],  # Full coverage
@@ -36,7 +36,7 @@ def build_game_analysis(
     """
     moments = partition_game(timeline, summary)
     highlights = get_highlights(moments)
-    
+
     return {
         "moments": [m.to_dict() for m in moments],
         "highlights": [m.to_dict() for m in highlights],
@@ -56,7 +56,7 @@ async def build_game_analysis_async(
     for future AI enrichment if needed.
     """
     return build_game_analysis(timeline, summary)
-
+    
 
 # Backwards compatibility aliases
 build_nba_game_analysis = build_game_analysis

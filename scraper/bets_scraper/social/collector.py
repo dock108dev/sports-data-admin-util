@@ -258,13 +258,17 @@ class XPostCollector:
                     session.add(db_post)
                     result.posts_saved += 1
 
+            # Only cache as "success" if we found posts - 0 results might be
+            # a transient failure (page didn't load, rate limited, etc.)
+            # "empty" status allows retry on next run
+            cache_status = "success" if result.posts_found > 0 else "empty"
             self.request_cache.record(
                 session,
                 platform=self.platform,
                 handle=job.x_handle,
                 window_start=job.window_start,
                 window_end=job.window_end,
-                status="success",
+                status=cache_status,
                 posts_found=result.posts_found,
             )
             if result.posts_saved > 0 or posts_updated > 0:
