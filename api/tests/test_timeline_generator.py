@@ -134,7 +134,17 @@ class TestTimelineGenerator(unittest.TestCase):
             {"event_type", "author", "handle", "text", "role", "phase", "synthetic_timestamp", "intra_phase_order"},
         )
 
-    def test_build_nba_game_analysis_segments_and_highlights(self) -> None:
+    def test_build_nba_game_analysis_moments_and_highlights(self) -> None:
+        """Test that game analysis produces moments and highlights.
+        
+        The new moments system partitions the timeline into:
+        - NEUTRAL: Normal play
+        - RUN: Scoring run (≥8 unanswered points)
+        - BATTLE: Back-and-forth lead changes
+        - CLOSING: Final minutes of close game
+        
+        Highlights are moments where is_notable=True.
+        """
         timeline = [
             {
                 "event_type": "pbp",
@@ -170,27 +180,19 @@ class TestTimelineGenerator(unittest.TestCase):
             },
             {
                 "event_type": "pbp",
-                "home_score": 8,
-                "away_score": 3,
+                "home_score": 10,
+                "away_score": 0,
                 "quarter": 1,
-                "game_clock": "5:00",
+                "game_clock": "6:00",
                 "synthetic_timestamp": "2026-01-15T02:05:00Z",
             },
             {
                 "event_type": "pbp",
-                "home_score": 8,
-                "away_score": 9,
-                "quarter": 1,
-                "game_clock": "2:00",
-                "synthetic_timestamp": "2026-01-15T02:08:00Z",
-            },
-            {
-                "event_type": "pbp",
                 "home_score": 10,
-                "away_score": 9,
-                "quarter": 2,
-                "game_clock": "11:00",
-                "synthetic_timestamp": "2026-01-15T02:16:00Z",
+                "away_score": 3,
+                "quarter": 1,
+                "game_clock": "5:00",
+                "synthetic_timestamp": "2026-01-15T02:06:00Z",
             },
             {
                 "event_type": "pbp",
@@ -209,19 +211,31 @@ class TestTimelineGenerator(unittest.TestCase):
 
         analysis = build_nba_game_analysis(timeline, summary)
 
-        segments = analysis["segments"]
+        # New format uses "moments" and "highlights"
+        moments = analysis["moments"]
         highlights = analysis["highlights"]
 
-        self.assertGreaterEqual(len(segments), 3)
-        segment_types = {segment["segment_type"] for segment in segments}
-        self.assertIn("opening", segment_types)
-        self.assertIn("close", segment_types)
+        # Should have at least one moment
+        self.assertGreaterEqual(len(moments), 1)
 
-        highlight_types = {highlight["highlight_type"] for highlight in highlights}
-        self.assertIn("scoring_run", highlight_types)
-        self.assertIn("lead_change", highlight_types)
-        self.assertIn("quarter_shift", highlight_types)
-        self.assertIn("game_deciding_stretch", highlight_types)
+        # Check moment structure
+        for moment in moments:
+            self.assertIn("id", moment)
+            self.assertIn("type", moment)
+            self.assertIn("start_play", moment)
+            self.assertIn("end_play", moment)
+            self.assertIn("is_notable", moment)
+
+        # Check that we detected the 10-0 run as notable
+        moment_types = {m["type"] for m in moments}
+        self.assertIn("RUN", moment_types)
+
+        # Highlights are moments where is_notable=True
+        notable_moments = [m for m in moments if m["is_notable"]]
+        self.assertEqual(len(highlights), len(notable_moments))
+
+        # At least one highlight (the scoring run)
+        self.assertGreaterEqual(len(highlights), 1)
 
 
 if __name__ == "__main__":
