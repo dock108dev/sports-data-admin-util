@@ -219,15 +219,7 @@ def summarize_game(game: db_models.SportsGame) -> GameSummary:
     
     # Check for timeline artifacts (moments)
     timeline_artifacts = getattr(game, "timeline_artifacts", []) or []
-    has_highlights = bool(timeline_artifacts)
-    # Count moments from the first (most recent) timeline artifact
-    highlight_count = 0
-    if timeline_artifacts:
-        artifact = timeline_artifacts[0]
-        game_analysis = getattr(artifact, "game_analysis_json", {}) or {}
-        moments_list = game_analysis.get("moments", [])
-        highlight_count = len(moments_list) if isinstance(moments_list, list) else 0
-    
+
     return GameSummary(
         id=game.id,
         league_code=game.league.code if game.league else "UNKNOWN",
@@ -241,10 +233,8 @@ def summarize_game(game: db_models.SportsGame) -> GameSummary:
         has_odds=has_odds,
         has_social=has_social,
         has_pbp=has_pbp,
-        has_highlights=has_highlights,
         play_count=play_count,
         social_post_count=social_post_count,
-        highlight_count=highlight_count,
         has_required_data=has_boxscore and has_odds,
         scrape_version=getattr(game, "scrape_version", None),
         last_scraped_at=game.last_scraped_at,

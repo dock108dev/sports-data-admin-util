@@ -405,7 +405,6 @@
   white-space: nowrap;
 }
 
-/* Legacy checkbox styles (keeping for backwards compat) */
 .statCheckbox {
   display: flex;
   align-items: center;

@@ -256,7 +256,7 @@ export interface PatternAnalysis {
 }
 
 export interface StrategyInterpretation {
-  interpretation?: string; // Keep for backward compatibility, now optional
+  interpretation?: string;
   playbookText?: PlaybookText;
   catalystAnalysis?: CatalystAnalysis;
   assetBreakdown?: AssetBreakdownItem[];

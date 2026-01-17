@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 import unittest
 
-from app.services.game_analysis import build_nba_game_analysis
+from app.services.game_analysis import build_game_analysis
 from app.services.timeline_generator import build_nba_timeline
 
 
@@ -138,13 +138,15 @@ class TestTimelineGenerator(unittest.TestCase):
         """Test that game analysis produces moments.
         
         The Lead Ladder-based moments system partitions the timeline into:
-        - OPENER: First plays of a period
         - LEAD_BUILD: Lead tier increased
         - CUT: Lead tier decreased (opponent cutting in)
         - TIE: Game returned to even
         - FLIP: Leader changed
         - CLOSING_CONTROL: Late-game lock-in
+        - HIGH_IMPACT: High-impact events (ejections, etc.)
         - NEUTRAL: Normal flow
+        
+        Note: OPENER was removed in 2026-01 refactor, replaced by is_period_start flag.
         """
         timeline = [
             {
@@ -154,6 +156,7 @@ class TestTimelineGenerator(unittest.TestCase):
                 "quarter": 1,
                 "game_clock": "12:00",
                 "synthetic_timestamp": "2026-01-15T02:00:00Z",
+                "description": "Home scores layup",
             },
             {
                 "event_type": "pbp",
@@ -162,6 +165,7 @@ class TestTimelineGenerator(unittest.TestCase):
                 "quarter": 1,
                 "game_clock": "10:30",
                 "synthetic_timestamp": "2026-01-15T02:01:00Z",
+                "description": "Home scores layup",
             },
             {
                 "event_type": "pbp",
@@ -170,6 +174,7 @@ class TestTimelineGenerator(unittest.TestCase):
                 "quarter": 1,
                 "game_clock": "9:00",
                 "synthetic_timestamp": "2026-01-15T02:02:00Z",
+                "description": "Home scores three pointer",
             },
             {
                 "event_type": "pbp",
@@ -178,6 +183,7 @@ class TestTimelineGenerator(unittest.TestCase):
                 "quarter": 1,
                 "game_clock": "8:00",
                 "synthetic_timestamp": "2026-01-15T02:03:00Z",
+                "description": "Home scores layup",
             },
             {
                 "event_type": "pbp",
@@ -186,6 +192,7 @@ class TestTimelineGenerator(unittest.TestCase):
                 "quarter": 1,
                 "game_clock": "6:00",
                 "synthetic_timestamp": "2026-01-15T02:05:00Z",
+                "description": "Home scores layup",
             },
             {
                 "event_type": "pbp",
@@ -194,6 +201,7 @@ class TestTimelineGenerator(unittest.TestCase):
                 "quarter": 1,
                 "game_clock": "5:00",
                 "synthetic_timestamp": "2026-01-15T02:06:00Z",
+                "description": "Away scores three pointer",
             },
             {
                 "event_type": "pbp",
@@ -202,6 +210,7 @@ class TestTimelineGenerator(unittest.TestCase):
                 "quarter": 4,
                 "game_clock": "0:30",
                 "synthetic_timestamp": "2026-01-15T03:10:00Z",
+                "description": "Home makes free throw",
             },
         ]
         summary = {
@@ -210,7 +219,7 @@ class TestTimelineGenerator(unittest.TestCase):
             "flow": "close",
         }
 
-        analysis = build_nba_game_analysis(timeline, summary)
+        analysis = build_game_analysis(timeline, summary)
 
         moments = analysis["moments"]
 
@@ -225,11 +234,11 @@ class TestTimelineGenerator(unittest.TestCase):
             self.assertIn("end_play", moment)
             self.assertIn("is_notable", moment)
 
-        # Check that we detected tier crossings - should have LEAD_BUILD or OPENER
+        # Check that we detected tier crossings - should have valid moment types
         moment_types = {m["type"] for m in moments}
-        # New system uses LEAD_BUILD for extending leads, OPENER for period starts
+        # Note: OPENER was removed in 2026-01 refactor, replaced by is_period_start flag
         valid_new_types = {"LEAD_BUILD", "CUT", "TIE", "FLIP", "CLOSING_CONTROL", 
-                          "HIGH_IMPACT", "NEUTRAL", "OPENER"}
+                          "HIGH_IMPACT", "NEUTRAL"}
         self.assertTrue(moment_types.issubset(valid_new_types))
 
 

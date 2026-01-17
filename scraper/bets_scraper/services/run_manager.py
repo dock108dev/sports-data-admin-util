@@ -276,7 +276,7 @@ class ScrapeRunManager:
                             )
                             complete_job_run(pbp_run_id, "error", str(exc))
                 else:
-                    # DEPRECATED (for current testing): do not call live endpoints unless live=true.
+                    # Non-live PBP scraping via SportsReference
                     pbp_events = 0
                     try:
                         with get_session() as session:

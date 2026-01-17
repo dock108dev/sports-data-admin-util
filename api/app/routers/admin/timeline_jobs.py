@@ -80,7 +80,7 @@ async def generate_timeline_for_game(
         )
     
     # Check if game is completed
-    if game.status not in [db_models.GameStatus.final.value, db_models.GameStatus.completed.value]:
+    if game.status != db_models.GameStatus.final.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Game {game_id} is not completed (status: {game.status})"
@@ -172,10 +172,7 @@ async def list_missing_timelines(
         )
         .where(
             db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.status.in_([
-                db_models.GameStatus.final.value,
-                db_models.GameStatus.completed.value,
-            ]),
+            db_models.SportsGame.status == db_models.GameStatus.final.value,
             db_models.SportsGame.game_date >= cutoff_date,
         )
         .where(
@@ -280,10 +277,7 @@ async def generate_timelines_batch(
         select(db_models.SportsGame.id)
         .where(
             db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.status.in_([
-                db_models.GameStatus.final.value,
-                db_models.GameStatus.completed.value,
-            ]),
+            db_models.SportsGame.status == db_models.GameStatus.final.value,
             db_models.SportsGame.game_date >= cutoff_date,
         )
         .where(

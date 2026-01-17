@@ -29,10 +29,8 @@ export type GameSummary = {
   has_odds: boolean;
   has_social: boolean;
   has_pbp: boolean;
-  has_highlights: boolean;
   play_count: number;
   social_post_count: number;
-  highlight_count: number;
   has_required_data: boolean;
   scrape_version: number | null;
   last_scraped_at: string | null;
@@ -50,7 +48,6 @@ export type GameListResponse = {
   with_odds_count?: number;
   with_social_count?: number;
   with_pbp_count?: number;
-  with_highlights_count?: number;
 };
 
 export type TeamStat = {
@@ -128,14 +125,13 @@ export type RunInfo = {
 };
 
 /**
- * MomentType values (Lead Ladder v2):
+ * MomentType values (Lead Ladder):
  * - LEAD_BUILD: Lead tier increased
  * - CUT: Lead tier decreased (comeback)
  * - TIE: Game returned to even
  * - FLIP: Leader changed
  * - CLOSING_CONTROL: Late-game lock-in
  * - HIGH_IMPACT: Ejection, injury, etc.
- * - OPENER: First plays of a period
  * - NEUTRAL: Normal flow
  */
 export type MomentType =
@@ -145,18 +141,16 @@ export type MomentType =
   | "FLIP"
   | "CLOSING_CONTROL"
   | "HIGH_IMPACT"
-  | "OPENER"
-  | "NEUTRAL"
-  // Legacy types (for cached data)
-  | "RUN"
-  | "BATTLE"
-  | "CLOSING";
+  | "NEUTRAL";
 
 /**
  * The single narrative unit.
  * 
  * Every play belongs to exactly one moment.
  * Moments are always chronological.
+ * 
+ * Moments are aggressively merged to stay within sport-specific budgets.
+ * A typical NBA game has ~25-35 moments, not 60-70.
  */
 export type MomentEntry = {
   id: string;                           // "m_001"
@@ -165,30 +159,62 @@ export type MomentEntry = {
   end_play: number;                     // Last play index
   play_count: number;                   // Number of plays
   teams: string[];
+  primary_team: string | null;
   players: PlayerContribution[];
   score_start: string;                  // "12–15"
   score_end: string;                    // "18–15"
   clock: string;                        // "Q2 8:45–6:12"
   is_notable: boolean;                  // True for notable moments (key game events)
+  is_period_start: boolean;             // True if this moment starts a new period
   note: string | null;                  // "7-0 run"
   
-  // New Lead Ladder fields (optional)
+  // Lead Ladder state
+  ladder_tier_before: number;
+  ladder_tier_after: number;
+  team_in_control: "home" | "away" | null;
+  key_play_ids: number[];
+  
+  // WHY THIS MOMENT EXISTS - mandatory for narrative clarity
+  reason?: MomentReason;
+  
+  // Run metadata if a run contributed
   run_info?: RunInfo;
-  ladder_tier_before?: number;
-  ladder_tier_after?: number;
-  team_in_control?: "home" | "away" | null;
-  key_play_ids?: number[];
+  
+  // AI-generated content (SportsCenter-style, spoiler-safe)
+  headline: string;   // max 60 chars
+  summary: string;    // max 150 chars
+  
+  // Display hints (frontend doesn't need to guess)
+  display_weight: "high" | "medium" | "low";
+  display_icon: string;  // Icon name suggestion
+  display_color_hint: "tension" | "positive" | "neutral" | "highlight";
+};
+
+/**
+ * Explains WHY a moment exists.
+ * Every moment must have a reason. If you can't explain it, don't create it.
+ */
+export type MomentReason = {
+  trigger: "tier_cross" | "flip" | "tie" | "closing_lock" | "high_impact" | "stable";
+  control_shift: "home" | "away" | null;
+  narrative_delta: string;  // "tension ↑" | "control gained" | "pressure relieved" | etc.
 };
 
 /**
  * Response from GET /games/{game_id}/moments
+ * 
+ * Moments are already merged and within sport-specific budgets (e.g., NBA: 30 max).
+ * Each moment has a 'reason' field explaining why it exists.
  */
 export type MomentsResponse = {
   game_id: number;
   generated_at: string | null;
   moments: MomentEntry[];
   total_count: number;
-  highlight_count: number;
+  
+  // AI-generated game-level copy (SportsCenter-style, spoiler-safe)
+  game_headline: string;   // max 80 chars
+  game_subhead: string;    // max 120 chars
 };
 
 export type AdminGameDetail = {
@@ -213,10 +239,8 @@ export type AdminGameDetail = {
     has_odds: boolean;
     has_social: boolean;
     has_pbp: boolean;
-    has_highlights: boolean;
     play_count: number;
     social_post_count: number;
-    highlight_count: number;
   };
   team_stats: TeamStat[];
   player_stats: PlayerStat[];

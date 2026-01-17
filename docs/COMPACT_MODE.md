@@ -80,11 +80,6 @@ Compact mode operates on **Moments**, not individual plays. A Moment is a contig
 | **OPENER** | First plays of a period | Moderate compression |
 | **NEUTRAL** | Normal flow, no tier changes | Heavy compression |
 
-> **Deprecated Types:** `RUN`, `BATTLE`, `CLOSING` have been removed.
-> - `RUN` → Runs are now `run_info` metadata on LEAD_BUILD/CUT/FLIP moments
-> - `BATTLE` → Replaced by `FLIP`, `TIE`, `CUT` (specific crossing types)
-> - `CLOSING` → Renamed to `CLOSING_CONTROL`
-
 ### Moment Detection (Lead Ladder)
 
 ```python

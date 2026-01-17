@@ -127,7 +127,7 @@ def select_games_for_social(
     )
 
     live_status = db_models.GameStatus.live.value
-    final_statuses = [db_models.GameStatus.final.value, db_models.GameStatus.completed.value]
+    final_statuses = [db_models.GameStatus.final.value]
     
     if is_backfill:
         # Backfill mode: include all completed/final games regardless of when they ended

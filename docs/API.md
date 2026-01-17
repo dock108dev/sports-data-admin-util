@@ -114,15 +114,11 @@ Get all moments for a game.
       }
     }
   ],
-  "total_count": 15,
-  "highlight_count": 5
+  "total_count": 15
 }
 ```
 
-**Moment Types (Lead Ladder v2):**
-
-> ⚠️ **MIGRATION (2026-01):** MomentTypes changed from the old system to Lead Ladder-based types.
-> See [Migration Notes](#moment-type-migration) below.
+**Moment Types:**
 
 | Type | Description | Notable? |
 |------|-------------|----------|
@@ -132,10 +128,9 @@ Get all moments for a game.
 | `FLIP` | Leader changed | Always |
 | `CLOSING_CONTROL` | Late-game lock-in (dagger) | Always |
 | `HIGH_IMPACT` | Ejection, injury, flagrant | Always |
-| `OPENER` | First plays of a period | If strong lead |
 | `NEUTRAL` | Normal flow, no tier changes | Never |
 
-**New Optional Fields (v2):**
+**Optional Fields:**
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -149,26 +144,9 @@ Get all moments for a game.
 | `team_in_control` | string | "home", "away", or null |
 
 **Key Fields:**
-- `is_notable` — True for highlights (**unchanged, still the primary filter**)
+- `is_notable` — True for notable moments (key game events)
 - `start_play` / `end_play` — Play indices
 - `players` — Stats within this moment (pts, ast, blk, stl)
-
-### Moment Type Migration
-
-**Deprecated Types (removed in v2):**
-
-| Old Type | New Equivalent | Notes |
-|----------|---------------|-------|
-| `RUN` | ❌ Removed | Runs are now `run_info` metadata on LEAD_BUILD/CUT/FLIP moments |
-| `BATTLE` | `FLIP`, `TIE`, `CUT` | Replaced by specific Lead Ladder crossing types |
-| `CLOSING` | `CLOSING_CONTROL` | Renamed for clarity |
-
-**Consumer Migration:**
-
-1. **If filtering by `type`**: Update filters to handle new types
-2. **If filtering by `is_notable`**: ✅ No changes needed (still works)
-3. **If displaying `type`**: Update UI labels for new types
-4. **New fields are additive**: Existing parsing will continue to work
 
 ---
 
@@ -205,7 +183,7 @@ Compressed timeline for efficient app display.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `level` | `int` | 1=highlights, 2=standard, 3=detailed |
+| `level` | `int` | 1=notable moments, 2=standard, 3=detailed |
 
 ### `GET /api/games/{game_id}/recap`
 
@@ -363,19 +341,21 @@ Get reading position.
 ```typescript
 {
   id: string;           // "m_001"
-  type: string;         // LEAD_BUILD, CUT, TIE, FLIP, CLOSING_CONTROL, HIGH_IMPACT, OPENER, NEUTRAL
+  type: string;         // LEAD_BUILD, CUT, TIE, FLIP, CLOSING_CONTROL, HIGH_IMPACT, NEUTRAL
   start_play: number;
   end_play: number;
   play_count: number;
   teams: string[];
+  primary_team: string | null;   // The team that drove the narrative
   players: PlayerContribution[];
   score_start: string;  // "12–15"
   score_end: string;
   clock: string;        // "Q2 8:45–6:12"
   is_notable: boolean;  // Filter by this for highlights
+  is_period_start: boolean; // True if this moment starts a new period
   note: string | null;
   
-  // New in v2 (optional, may not be present on older timelines)
+  // Optional fields
   run_info?: RunInfo;            // If a run contributed to this moment
   ladder_tier_before?: number;   // Lead Ladder tier at moment start
   ladder_tier_after?: number;    // Lead Ladder tier at moment end

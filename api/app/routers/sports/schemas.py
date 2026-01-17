@@ -102,10 +102,8 @@ class GameSummary(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
-    has_highlights: bool
     play_count: int
     social_post_count: int
-    highlight_count: int
     has_required_data: bool
     scrape_version: int | None
     last_scraped_at: datetime | None
@@ -123,7 +121,6 @@ class GameListResponse(BaseModel):
     with_odds_count: int | None = 0
     with_social_count: int | None = 0
     with_pbp_count: int | None = 0
-    with_highlights_count: int | None = 0
 
 
 class TeamStat(BaseModel):
@@ -181,10 +178,8 @@ class GameMeta(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
-    has_highlights: bool
     play_count: int
     social_post_count: int
-    highlight_count: int
     home_team_x_handle: str | None = None
     away_team_x_handle: str | None = None
 
@@ -244,15 +239,16 @@ class MomentEntry(BaseModel):
     Every play belongs to exactly one moment.
     Moments are always chronological.
     
-    MomentTypes (Lead Ladder v2):
+    MomentTypes:
     - LEAD_BUILD: Lead tier increased
     - CUT: Lead tier decreased (comeback)
     - TIE: Game returned to even
     - FLIP: Leader changed
     - CLOSING_CONTROL: Late-game lock-in
     - HIGH_IMPACT: Ejection, injury, etc.
-    - OPENER: First plays of a period
     - NEUTRAL: Normal flow
+    
+    Moments are aggressively merged to stay within sport-specific budgets.
     """
     id: str                           # "m_001"
     type: str                         # See MomentTypes above
@@ -260,33 +256,59 @@ class MomentEntry(BaseModel):
     end_play: int                     # Last play index
     play_count: int                   # Number of plays
     teams: list[str] = Field(default_factory=list)
+    primary_team: str | None = None
     players: list[PlayerContribution] = Field(default_factory=list)
     score_start: str = ""             # "12–15"
     score_end: str = ""               # "18–15"
     clock: str = ""                   # "Q2 8:45–6:12"
     is_notable: bool = False          # True for notable moments (key game events)
+    is_period_start: bool = False     # True if this moment starts a new period
     note: str | None = None           # "7-0 run"
     
-    # New Lead Ladder fields (optional)
-    run_info: RunInfo | None = None   # If a run contributed to this moment
-    ladder_tier_before: int | None = None
-    ladder_tier_after: int | None = None
+    # Lead Ladder state
+    ladder_tier_before: int = 0
+    ladder_tier_after: int = 0
     team_in_control: str | None = None  # "home", "away", or None
     key_play_ids: list[int] = Field(default_factory=list)
+    
+    # WHY THIS MOMENT EXISTS - mandatory for narrative clarity
+    reason: dict | None = None  # {trigger, control_shift, narrative_delta}
+    
+    # Run metadata if a run contributed
+    run_info: RunInfo | None = None
+    
+    # AI-generated content (SportsCenter-style, spoiler-safe)
+    headline: str = ""   # max 60 chars
+    summary: str = ""    # max 150 chars
+    
+    # Display hints (frontend doesn't need to guess)
+    display_weight: str = "low"      # "high" | "medium" | "low"
+    display_icon: str = "circle"     # Icon name suggestion
+    display_color_hint: str = "neutral"  # "tension" | "positive" | "neutral" | "highlight"
+
+
+class MomentReasonEntry(BaseModel):
+    """Explains WHY a moment exists."""
+    trigger: str  # "tier_cross" | "flip" | "tie" | "closing_lock" | "high_impact" | "opener"
+    control_shift: str | None = None  # "home" | "away" | None
+    narrative_delta: str  # "tension ↑" | "control gained" | "pressure relieved" | etc.
 
 
 class MomentsResponse(BaseModel):
     """
     Response for GET /games/{game_id}/moments endpoint.
     
-    Contains ALL moments (full timeline coverage).
-    Notable moments (is_notable=True) are key game events - filter client-side.
+    Moments are already merged and within sport-specific budgets (e.g., NBA: 30 max).
+    Each moment has a 'reason' field explaining why it exists.
     """
     game_id: int
     generated_at: datetime | None = None
     moments: list[MomentEntry]
     total_count: int
-    highlight_count: int  # Count of moments where is_notable=True (legacy field name)
+    
+    # AI-generated game-level copy (SportsCenter-style, spoiler-safe)
+    game_headline: str = ""   # max 80 chars
+    game_subhead: str = ""    # max 120 chars
 
 
 class GameDetailResponse(BaseModel):

@@ -212,19 +212,3 @@ async def get_thresholds_for_league(
         record = await _fetch_thresholds_by_league_code(local_session, league_code)
         return list(record.thresholds)
 
-
-# =============================================================================
-# BACKWARDS COMPATIBILITY
-# =============================================================================
-
-# Legacy alias - prefer get_thresholds_for_sport()
-async def getThresholdsForSport(
-    sport_id: int,
-    session: AsyncSession | None = None,
-) -> db_models.CompactModeThreshold:
-    """
-    Return compact mode thresholds for the requested sport.
-
-    DEPRECATED: Use get_thresholds_for_sport() or get_thresholds_for_league() instead.
-    """
-    return await get_thresholds_for_sport(sport_id, session)

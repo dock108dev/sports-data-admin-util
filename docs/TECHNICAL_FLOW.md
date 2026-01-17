@@ -62,7 +62,6 @@ This document traces a game's journey from raw play-by-play data through to the 
 │                                                                             │
 │  GET /games/{id}/timeline          ──▶  Full timeline artifact              │
 │  GET /games/{id}/timeline/compact  ──▶  Compressed timeline                 │
-│  GET /games/{id}/compact           ──▶  Compact moments (legacy)            │
 │  GET /games/{id}/compact/{id}/summary ──▶ Moment summary                    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -682,15 +681,6 @@ Generates and stores a new timeline artifact. Only works for final NBA games.
 GET /api/games/{game_id}/timeline/diagnostic
 ```
 Debug endpoint showing event counts, phases, and sample events.
-
-### Legacy Compact Moments
-```
-GET /api/games/{game_id}/compact
-GET /api/games/{game_id}/compact/{moment_id}/pbp
-GET /api/games/{game_id}/compact/{moment_id}/posts
-GET /api/games/{game_id}/compact/{moment_id}/summary
-```
-Older compact mode implementation (may be deprecated).
 
 ---
 

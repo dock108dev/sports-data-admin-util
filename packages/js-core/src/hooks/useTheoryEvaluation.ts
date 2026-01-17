@@ -7,13 +7,9 @@ import { TheoryAPI, createClient } from "../api";
 import type {
   TheoryRequest,
   TheoryResponse,
-  BetsRequest,
-  BetsResponse,
   CryptoResponse,
   StocksResponse,
   ConspiraciesResponse,
-  APIError,
-  NetworkError,
 } from "../types";
 
 interface UseTheoryEvaluationState<T extends TheoryResponse> {
@@ -26,7 +22,7 @@ interface UseTheoryEvaluationReturn<T extends TheoryResponse> {
   data: T | null;
   loading: boolean;
   error: Error | null;
-  evaluate: (request: TheoryRequest | BetsRequest) => Promise<T | null>;
+  evaluate: (request: TheoryRequest) => Promise<T | null>;
   reset: () => void;
 }
 
@@ -34,7 +30,7 @@ interface UseTheoryEvaluationReturn<T extends TheoryResponse> {
  * Hook for evaluating theories with loading and error states.
  */
 export function useTheoryEvaluation<T extends TheoryResponse = TheoryResponse>(
-  domain: "bets" | "crypto" | "stocks" | "conspiracies" | "playlist",
+  domain: "crypto" | "stocks" | "conspiracies" | "playlist",
   baseURL?: string
 ): UseTheoryEvaluationReturn<T> {
   const [state, setState] = useState<UseTheoryEvaluationState<T>>({
@@ -47,15 +43,13 @@ export function useTheoryEvaluation<T extends TheoryResponse = TheoryResponse>(
   const api = new TheoryAPI(client);
 
   const evaluate = useCallback(
-    async (request: TheoryRequest | BetsRequest): Promise<T | null> => {
+    async (request: TheoryRequest): Promise<T | null> => {
       setState({ data: null, loading: true, error: null });
 
       try {
         let response: TheoryResponse;
 
         switch (domain) {
-          case "bets":
-            throw new Error("Deprecated: /api/theory/bets was removed. Use /api/theory-runs from the web client.");
           case "crypto":
             response = await api.evaluateCrypto(request);
             break;
@@ -98,15 +92,6 @@ export function useTheoryEvaluation<T extends TheoryResponse = TheoryResponse>(
 }
 
 /**
- * Hook specifically for bets domain (includes BetsRequest type).
- */
-export function useBetsEvaluation(
-  baseURL?: string
-): UseTheoryEvaluationReturn<BetsResponse> {
-  return useTheoryEvaluation<BetsResponse>("bets", baseURL);
-}
-
-/**
  * Hook specifically for crypto domain.
  */
 export function useCryptoEvaluation(
@@ -132,4 +117,3 @@ export function useConspiraciesEvaluation(
 ): UseTheoryEvaluationReturn<ConspiraciesResponse> {
   return useTheoryEvaluation<ConspiraciesResponse>("conspiracies", baseURL);
 }
-
