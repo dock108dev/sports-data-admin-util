@@ -1,16 +1,13 @@
 """
-Game Moments: The single narrative primitive.
+Moments: Partition game timeline into narrative segments.
 
-A Moment is a contiguous segment of plays that share a narrative character.
-Every play belongs to exactly one Moment. Moments are chronological.
+A Moment is a contiguous stretch of plays forming a narrative unit.
+- NEUTRAL: Normal flow
+- RUN: One team scores unanswered (≥8 pts)
+- BATTLE: Back-and-forth lead changes
+- CLOSING: Final minutes of close game
 
-Key invariants:
-- Full coverage: union of all moment.plays == all plays in game
-- Non-overlapping: no play appears in multiple moments
-- Chronological: moments ordered by start_play_id
-
-Highlights are simply moments where is_notable=True.
-This is a property, not a separate pipeline.
+Highlights are moments where is_notable=True.
 """
 
 from __future__ import annotations
@@ -24,49 +21,51 @@ logger = logging.getLogger(__name__)
 
 
 class MomentType(str, Enum):
-    """
-    Moment classification. Minimal set, easily extensible.
-    
-    Adding a new type requires only adding it here.
-    No other layers need modification.
-    """
-    NEUTRAL = "NEUTRAL"   # No special pattern detected
-    RUN = "RUN"           # One team scoring unanswered
-    BATTLE = "BATTLE"     # Frequent lead changes / ties
-    CLOSING = "CLOSING"   # Final minutes of game
+    NEUTRAL = "NEUTRAL"
+    RUN = "RUN"
+    BATTLE = "BATTLE"
+    CLOSING = "CLOSING"
+
+
+# Thresholds
+RUN_POINTS_THRESHOLD = 8  # Unanswered points to detect a run
+RUN_NOTABLE_THRESHOLD = 8  # Points for run to be notable
+BATTLE_LEAD_CHANGES = 2  # Min lead changes for a battle
+CLOSING_MINUTES = 5  # Last N minutes of Q4
+CLOSING_MARGIN = 10  # Max margin for close game
+
+
+@dataclass
+class PlayerContribution:
+    """Player stats within a moment."""
+    name: str
+    stats: dict[str, int] = field(default_factory=dict)
+    summary: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "stats": self.stats,
+            "summary": self.summary,
+        }
 
 
 @dataclass
 class Moment:
-    """
-    The single narrative unit.
-    
-    Every play belongs to exactly one Moment.
-    Moments are always chronological.
-    """
-    # Identity
-    id: str                           # "m_001"
-    type: MomentType                  # What kind of moment
-    
-    # Play coverage (the core relationship)
-    start_play: int                   # First play index
-    end_play: int                     # Last play index (inclusive)
-    
-    # Context (derived, not controlling)
+    """A contiguous segment of plays forming a narrative unit."""
+    id: str
+    type: MomentType
+    start_play: int
+    end_play: int
+    play_count: int
     teams: list[str] = field(default_factory=list)
-    players: list[dict[str, Any]] = field(default_factory=list)
-    score_start: str = ""             # "12–15"
-    score_end: str = ""               # "18–15"
-    clock: str = ""                   # "Q2 8:45–6:12"
-    
-    # Notable flag (this IS highlights - not a separate concept)
+    players: list[PlayerContribution] = field(default_factory=list)
+    score_start: str = ""
+    score_end: str = ""
+    clock: str = ""
     is_notable: bool = False
-    note: str | None = None           # "7-0 run" or "3 lead changes"
-    
-    @property
-    def play_count(self) -> int:
-        return self.end_play - self.start_play + 1
-    
+    note: str | None = None
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -75,7 +74,7 @@ class Moment:
             "end_play": self.end_play,
             "play_count": self.play_count,
             "teams": self.teams,
-            "players": self.players,
+            "players": [p.to_dict() for p in self.players],
             "score_start": self.score_start,
             "score_end": self.score_end,
             "clock": self.clock,
@@ -84,431 +83,271 @@ class Moment:
         }
 
 
+def _parse_clock_to_seconds(clock: str | None) -> int | None:
+    """Parse game clock (MM:SS) to seconds remaining."""
+    if not clock:
+        return None
+    try:
+        parts = clock.replace(".", ":").split(":")
+        if len(parts) >= 2:
+            return int(parts[0]) * 60 + int(float(parts[1]))
+        return int(float(parts[0]))
+    except (ValueError, IndexError):
+        return None
+
+
+def _format_score(home: int | None, away: int | None) -> str:
+    """Format score as 'away–home'."""
+    if home is None or away is None:
+        return ""
+    return f"{away}–{home}"
+
+
+def _detect_runs(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Detect scoring runs in the timeline."""
+    runs = []
+    current_run_team: int | None = None
+    current_run_points = 0
+    current_run_start = 0
+
+    for i, event in enumerate(events):
+        if event.get("event_type") != "pbp":
+            continue
+
+        home_score = event.get("home_score", 0) or 0
+        away_score = event.get("away_score", 0) or 0
+
+        # Determine which team scored (compare to previous)
+        if i > 0:
+            prev = events[i - 1]
+            prev_home = prev.get("home_score", 0) or 0
+            prev_away = prev.get("away_score", 0) or 0
+            home_delta = home_score - prev_home
+            away_delta = away_score - prev_away
+
+            if home_delta > 0 and away_delta == 0:
+                scoring_team = 1  # Home
+                points = home_delta
+            elif away_delta > 0 and home_delta == 0:
+                scoring_team = 2  # Away
+                points = away_delta
+            else:
+                # Both scored or neither - reset run
+                if current_run_points >= RUN_POINTS_THRESHOLD:
+                    runs.append({
+                        "start": current_run_start,
+                        "end": i - 1,
+                        "points": current_run_points,
+                        "team": current_run_team,
+                    })
+                current_run_team = None
+                current_run_points = 0
+                continue
+
+            if scoring_team != current_run_team:
+                # New team scored - save previous run if significant
+                if current_run_points >= RUN_POINTS_THRESHOLD:
+                    runs.append({
+                        "start": current_run_start,
+                        "end": i - 1,
+                        "points": current_run_points,
+                        "team": current_run_team,
+                    })
+                current_run_team = scoring_team
+                current_run_points = points
+                current_run_start = i
+            else:
+                current_run_points += points
+
+    # Close any open run
+    if current_run_points >= RUN_POINTS_THRESHOLD:
+        runs.append({
+            "start": current_run_start,
+            "end": len(events) - 1,
+            "points": current_run_points,
+            "team": current_run_team,
+        })
+
+    return runs
+
+
+def _detect_closing_stretch(events: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Detect closing stretch of a close game."""
+    q4_events = [
+        (i, e) for i, e in enumerate(events)
+        if e.get("event_type") == "pbp" and e.get("quarter") == 4
+    ]
+
+    if not q4_events:
+        return None
+
+    # Find events in last CLOSING_MINUTES
+    closing_events = []
+    for i, event in q4_events:
+        clock = _parse_clock_to_seconds(event.get("game_clock"))
+        if clock is not None and clock <= CLOSING_MINUTES * 60:
+            home = event.get("home_score", 0) or 0
+            away = event.get("away_score", 0) or 0
+            margin = abs(home - away)
+            if margin <= CLOSING_MARGIN:
+                closing_events.append((i, event))
+
+    if len(closing_events) < 3:
+        return None
+
+    return {
+        "start": closing_events[0][0],
+        "end": closing_events[-1][0],
+    }
+
+
 def partition_game(
     timeline: Sequence[dict[str, Any]],
     summary: dict[str, Any],
 ) -> list[Moment]:
     """
-    Partition the entire game into moments.
-    
-    This is the only entry point. It produces a complete,
-    chronological list of moments covering all plays.
-    
-    Args:
-        timeline: Full timeline events
-        summary: Game summary with team info
-        
-    Returns:
-        List of Moments, ordered chronologically
+    Partition a game timeline into moments.
+
+    Every play belongs to exactly one moment.
+    Moments are contiguous and chronologically ordered.
     """
-    plays = [e for e in timeline if e.get("event_type") == "pbp"]
-    if not plays:
+    events = list(timeline)
+    if not events:
         return []
-    
-    plays = sorted(plays, key=lambda e: e.get("play_index", 0))
-    
-    # Team info
-    home = summary.get("teams", {}).get("home", {})
-    away = summary.get("teams", {}).get("away", {})
-    home_abbr = home.get("abbreviation", "HOME")
-    away_abbr = away.get("abbreviation", "AWAY")
-    
-    # Detect patterns and build moments
-    moments = _build_moments(plays, home_abbr, away_abbr)
-    
-    # Verify invariant: full coverage
-    _verify_coverage(moments, len(plays))
-    
+
+    # Get PBP-only events for analysis
+    pbp_indices = [i for i, e in enumerate(events) if e.get("event_type") == "pbp"]
+    if not pbp_indices:
+        return []
+
+    # Detect patterns
+    runs = _detect_runs(events)
+    closing = _detect_closing_stretch(events)
+
+    # Build moments from patterns
+    moments: list[Moment] = []
+    used_indices: set[int] = set()
+    moment_id = 0
+
+    # Add run moments
+    for run in runs:
+        start_idx = run["start"]
+        end_idx = run["end"]
+        start_event = events[start_idx]
+        end_event = events[end_idx]
+
+        moment_id += 1
+        moments.append(Moment(
+            id=f"m_{moment_id:03d}",
+            type=MomentType.RUN,
+            start_play=start_idx,
+            end_play=end_idx,
+            play_count=end_idx - start_idx + 1,
+            teams=["HOME" if run["team"] == 1 else "AWAY"],
+            score_start=_format_score(
+                start_event.get("home_score"),
+                start_event.get("away_score"),
+            ),
+            score_end=_format_score(
+                end_event.get("home_score"),
+                end_event.get("away_score"),
+            ),
+            clock=f"Q{start_event.get('quarter', '?')} {start_event.get('game_clock', '')}–{end_event.get('game_clock', '')}",
+            is_notable=run["points"] >= RUN_NOTABLE_THRESHOLD,
+            note=f"{run['points']}-0 run",
+        ))
+        for i in range(start_idx, end_idx + 1):
+            used_indices.add(i)
+
+    # Add closing stretch if not overlapping
+    if closing:
+        start_idx = closing["start"]
+        end_idx = closing["end"]
+        if not any(i in used_indices for i in range(start_idx, end_idx + 1)):
+            start_event = events[start_idx]
+            end_event = events[end_idx]
+
+            moment_id += 1
+            moments.append(Moment(
+                id=f"m_{moment_id:03d}",
+                type=MomentType.CLOSING,
+                start_play=start_idx,
+                end_play=end_idx,
+                play_count=end_idx - start_idx + 1,
+                score_start=_format_score(
+                    start_event.get("home_score"),
+                    start_event.get("away_score"),
+                ),
+                score_end=_format_score(
+                    end_event.get("home_score"),
+                    end_event.get("away_score"),
+                ),
+                clock=f"Q4 {start_event.get('game_clock', '')}–{end_event.get('game_clock', '')}",
+                is_notable=True,
+                note="Closing stretch",
+            ))
+            for i in range(start_idx, end_idx + 1):
+                used_indices.add(i)
+
+    # Fill gaps with NEUTRAL moments
+    current_start: int | None = None
+    for i in pbp_indices:
+        if i in used_indices:
+            if current_start is not None:
+                # Close neutral stretch
+                start_event = events[current_start]
+                end_event = events[i - 1]
+                moment_id += 1
+                moments.append(Moment(
+                    id=f"m_{moment_id:03d}",
+                    type=MomentType.NEUTRAL,
+                    start_play=current_start,
+                    end_play=i - 1,
+                    play_count=i - current_start,
+                    score_start=_format_score(
+                        start_event.get("home_score"),
+                        start_event.get("away_score"),
+                    ),
+                    score_end=_format_score(
+                        end_event.get("home_score"),
+                        end_event.get("away_score"),
+                    ),
+                    is_notable=False,
+                ))
+                current_start = None
+        else:
+            if current_start is None:
+                current_start = i
+
+    # Close any trailing neutral
+    if current_start is not None:
+        last_idx = pbp_indices[-1]
+        start_event = events[current_start]
+        end_event = events[last_idx]
+        moment_id += 1
+        moments.append(Moment(
+            id=f"m_{moment_id:03d}",
+            type=MomentType.NEUTRAL,
+            start_play=current_start,
+            end_play=last_idx,
+            play_count=last_idx - current_start + 1,
+            score_start=_format_score(
+                start_event.get("home_score"),
+                start_event.get("away_score"),
+            ),
+            score_end=_format_score(
+                end_event.get("home_score"),
+                end_event.get("away_score"),
+            ),
+            is_notable=False,
+        ))
+
+    # Sort by start_play
+    moments.sort(key=lambda m: m.start_play)
+
     return moments
 
 
 def get_highlights(moments: list[Moment]) -> list[Moment]:
-    """
-    Get highlights as a filtered view.
-    
-    Highlights = moments where is_notable=True.
-    This is a view, not a transformation.
-    """
+    """Return moments that are notable (is_notable=True)."""
     return [m for m in moments if m.is_notable]
-
-
-# --- Internal Implementation ---
-
-
-def _build_moments(
-    plays: list[dict[str, Any]],
-    home_abbr: str,
-    away_abbr: str,
-) -> list[Moment]:
-    """Build moments by detecting patterns and filling gaps."""
-    if not plays:
-        return []
-    
-    # Detect patterns (runs, battles, closing)
-    patterns = _detect_patterns(plays, home_abbr, away_abbr)
-    
-    # Build moments from patterns, filling gaps with NEUTRAL
-    moments: list[Moment] = []
-    current = 0
-    counter = 0
-    
-    for pattern in sorted(patterns, key=lambda p: (p["start"], -p["end"])):
-        # Skip patterns that overlap with already processed plays
-        if pattern["start"] < current:
-            continue
-        
-        # Fill gap before this pattern
-        if pattern["start"] > current:
-            moments.append(_make_moment(
-                plays, current, pattern["start"] - 1,
-                MomentType.NEUTRAL, counter, home_abbr, away_abbr
-            ))
-            counter += 1
-        
-        # Create moment for pattern
-        moments.append(_make_moment(
-            plays, pattern["start"], pattern["end"],
-            pattern["type"], counter, home_abbr, away_abbr,
-            is_notable=pattern.get("notable", False),
-            note=pattern.get("note")
-        ))
-        counter += 1
-        current = pattern["end"] + 1
-    
-    # Fill remaining
-    if current < len(plays):
-        moments.append(_make_moment(
-            plays, current, len(plays) - 1,
-            MomentType.NEUTRAL, counter, home_abbr, away_abbr
-        ))
-    
-    return moments
-
-
-def _detect_patterns(
-    plays: list[dict[str, Any]],
-    home_abbr: str,
-    away_abbr: str,
-) -> list[dict[str, Any]]:
-    """
-    Detect narrative patterns in play sequence.
-    
-    Returns non-overlapping patterns. Patterns may leave gaps
-    (filled by NEUTRAL moments later).
-    """
-    patterns: list[dict[str, Any]] = []
-    used = set()  # Track which play indices are claimed
-    
-    # 1. Detect runs (one team scoring unanswered)
-    i = 0
-    while i < len(plays):
-        if i in used:
-            i += 1
-            continue
-        run = _detect_run(plays, i, home_abbr, away_abbr)
-        if run:
-            patterns.append(run)
-            for j in range(run["start"], run["end"] + 1):
-                used.add(j)
-            i = run["end"] + 1
-        else:
-            i += 1
-    
-    # 2. Detect battles (lead changes in short span)
-    i = 0
-    while i < len(plays):
-        if i in used:
-            i += 1
-            continue
-        battle = _detect_battle(plays, i)
-        if battle:
-            patterns.append(battle)
-            for j in range(battle["start"], battle["end"] + 1):
-                used.add(j)
-            i = battle["end"] + 1
-        else:
-            i += 1
-    
-    # 3. Detect closing stretch (final 3 minutes of Q4)
-    closing = _detect_closing(plays)
-    if closing:
-        # Only add if not overlapping significantly
-        overlap = sum(1 for j in range(closing["start"], closing["end"] + 1) if j in used)
-        if overlap < (closing["end"] - closing["start"]) / 2:
-            patterns.append(closing)
-    
-    return patterns
-
-
-def _detect_run(
-    plays: list[dict[str, Any]],
-    start: int,
-    home_abbr: str,
-    away_abbr: str,
-    min_points: int = 6,
-) -> dict[str, Any] | None:
-    """Detect a scoring run (one team scoring unanswered)."""
-    if start >= len(plays):
-        return None
-    
-    start_play = plays[start]
-    start_home = start_play.get("home_score") or 0
-    start_away = start_play.get("away_score") or 0
-    
-    home_pts = 0
-    away_pts = 0
-    end = start
-    
-    for i in range(start, min(start + 40, len(plays))):
-        play = plays[i]
-        curr_home = play.get("home_score") or 0
-        curr_away = play.get("away_score") or 0
-        
-        new_home = curr_home - start_home
-        new_away = curr_away - start_away
-        
-        # Check if other team scored
-        if home_pts > 0 and new_away > away_pts:
-            break
-        if away_pts > 0 and new_home > home_pts:
-            break
-        
-        home_pts = new_home
-        away_pts = new_away
-        end = i
-    
-    # Qualify as run?
-    if home_pts >= min_points and away_pts == 0:
-        return {
-            "type": MomentType.RUN,
-            "start": start,
-            "end": end,
-            "notable": home_pts >= 8,
-            "note": f"{home_pts}-0 run" if home_pts >= 8 else None,
-            "team": home_abbr,
-        }
-    if away_pts >= min_points and home_pts == 0:
-        return {
-            "type": MomentType.RUN,
-            "start": start,
-            "end": end,
-            "notable": away_pts >= 8,
-            "note": f"{away_pts}-0 run" if away_pts >= 8 else None,
-            "team": away_abbr,
-        }
-    
-    return None
-
-
-def _detect_battle(
-    plays: list[dict[str, Any]],
-    start: int,
-    min_changes: int = 3,
-    max_span: int = 35,
-) -> dict[str, Any] | None:
-    """Detect a lead battle (multiple lead changes)."""
-    if start >= len(plays):
-        return None
-    
-    start_play = plays[start]
-    start_home = start_play.get("home_score") or 0
-    start_away = start_play.get("away_score") or 0
-    
-    leader = "tie" if start_home == start_away else ("home" if start_home > start_away else "away")
-    changes = 0
-    end = start
-    
-    for i in range(start, min(start + max_span, len(plays))):
-        play = plays[i]
-        curr_home = play.get("home_score") or 0
-        curr_away = play.get("away_score") or 0
-        
-        new_leader = "tie" if curr_home == curr_away else ("home" if curr_home > curr_away else "away")
-        
-        if new_leader != "tie" and new_leader != leader and leader != "tie":
-            changes += 1
-        
-        if new_leader != "tie":
-            leader = new_leader
-        end = i
-        
-        if changes >= min_changes:
-            break
-    
-    if changes >= min_changes:
-        return {
-            "type": MomentType.BATTLE,
-            "start": start,
-            "end": end,
-            "notable": changes >= 4,
-            "note": f"{changes} lead changes" if changes >= 4 else None,
-        }
-    
-    return None
-
-
-def _detect_closing(
-    plays: list[dict[str, Any]],
-    minutes: float = 3.0,
-) -> dict[str, Any] | None:
-    """Detect closing stretch (final minutes of Q4)."""
-    q4 = [(i, p) for i, p in enumerate(plays) if p.get("quarter") == 4]
-    if not q4:
-        return None
-    
-    closing_plays = []
-    for i, p in q4:
-        clock = p.get("game_clock", "")
-        if not clock:
-            continue
-        try:
-            parts = clock.replace(".", ":").split(":")
-            mins = float(parts[0]) + float(parts[1]) / 60 if len(parts) >= 2 else float(parts[0])
-            if mins <= minutes:
-                closing_plays.append(i)
-        except (ValueError, IndexError):
-            continue
-    
-    if len(closing_plays) >= 10:
-        # Check if game was close
-        first = plays[closing_plays[0]]
-        margin = abs((first.get("home_score") or 0) - (first.get("away_score") or 0))
-        is_close = margin <= 10
-        
-        return {
-            "type": MomentType.CLOSING,
-            "start": closing_plays[0],
-            "end": closing_plays[-1],
-            "notable": is_close,
-            "note": "Close finish" if is_close else None,
-        }
-    
-    return None
-
-
-def _make_moment(
-    plays: list[dict[str, Any]],
-    start: int,
-    end: int,
-    mtype: MomentType,
-    counter: int,
-    home_abbr: str,
-    away_abbr: str,
-    is_notable: bool = False,
-    note: str | None = None,
-) -> Moment:
-    """Create a Moment from a play range."""
-    start_play = plays[start]
-    end_play = plays[end]
-    
-    # Get scores (search for valid scores if endpoints are None)
-    start_home, start_away = _get_score(plays, start, end, forward=True)
-    end_home, end_away = _get_score(plays, start, end, forward=False)
-    
-    # Clock range
-    s_q = start_play.get("quarter", 1)
-    e_q = end_play.get("quarter", 1)
-    s_c = start_play.get("game_clock", "")
-    e_c = end_play.get("game_clock", "")
-    
-    clock = f"Q{s_q} {s_c}–{e_c}" if s_q == e_q else f"Q{s_q} {s_c} – Q{e_q} {e_c}"
-    
-    # Extract notable players
-    players = _extract_players(plays, start, end)
-    
-    return Moment(
-        id=f"m_{counter:03d}",
-        type=mtype,
-        start_play=start_play.get("play_index", start),
-        end_play=end_play.get("play_index", end),
-        teams=[home_abbr, away_abbr],
-        players=players,
-        score_start=f"{start_away}–{start_home}",
-        score_end=f"{end_away}–{end_home}",
-        clock=clock,
-        is_notable=is_notable,
-        note=note,
-    )
-
-
-def _get_score(
-    plays: list[dict[str, Any]],
-    start: int,
-    end: int,
-    forward: bool,
-) -> tuple[int, int]:
-    """Get score from play range, searching for valid scores."""
-    rng = range(start, end + 1) if forward else range(end, start - 1, -1)
-    for i in rng:
-        if plays[i].get("home_score") is not None:
-            return plays[i].get("home_score", 0), plays[i].get("away_score", 0)
-    return 0, 0
-
-
-def _extract_players(
-    plays: list[dict[str, Any]],
-    start: int,
-    end: int,
-) -> list[dict[str, Any]]:
-    """Extract players with notable contributions."""
-    import re
-    
-    stats: dict[str, dict[str, int]] = {}
-    
-    for i in range(start, min(end + 1, len(plays))):
-        play = plays[i]
-        desc = (play.get("description") or "").lower()
-        name = play.get("player_name")
-        
-        if not name:
-            match = re.search(r'([A-Z]\.\s*[A-Z][a-zA-Z]+)', play.get("description", ""))
-            if match:
-                name = re.sub(r'[(),:;]+$', '', match.group(1)).strip()
-        
-        if not name or len(name) < 3:
-            continue
-        
-        if name not in stats:
-            stats[name] = {"pts": 0, "stl": 0, "blk": 0}
-        
-        if any(w in desc for w in ["makes", "made", "scores"]):
-            pts = 3 if "three" in desc or "3-pt" in desc else (1 if "free throw" in desc else 2)
-            stats[name]["pts"] += pts
-        if "steal" in desc:
-            stats[name]["stl"] += 1
-        if "block" in desc:
-            stats[name]["blk"] += 1
-    
-    # Filter to notable
-    result = []
-    for name, s in stats.items():
-        if s["pts"] >= 4 or s["stl"] >= 1 or s["blk"] >= 1:
-            parts = []
-            if s["pts"]:
-                parts.append(f"{s['pts']} pts")
-            if s["stl"]:
-                parts.append(f"{s['stl']} stl")
-            if s["blk"]:
-                parts.append(f"{s['blk']} blk")
-            result.append({"name": name, "stats": s, "summary": ", ".join(parts)})
-    
-    result.sort(key=lambda p: p["stats"]["pts"] + 2 * p["stats"]["stl"] + 2 * p["stats"]["blk"], reverse=True)
-    return result[:3]
-
-
-def _verify_coverage(moments: list[Moment], total_plays: int) -> None:
-    """Verify that moments cover all plays exactly once."""
-    if not moments:
-        return
-    
-    covered = set()
-    for m in moments:
-        for p in range(m.start_play, m.end_play + 1):
-            if p in covered:
-                logger.warning(f"Play {p} covered by multiple moments")
-            covered.add(p)
-    
-    expected = set(range(total_plays))
-    missing = expected - covered
-    if missing:
-        logger.warning(f"Plays not covered: {missing}")
