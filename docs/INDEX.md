@@ -15,6 +15,7 @@
 |-------|-------------|
 | [Local Development](LOCAL_DEVELOPMENT.md) | Detailed local setup and troubleshooting |
 | [Adding New Sports](ADDING_NEW_SPORTS.md) | How to enable a new league |
+| [NHL Implementation Guide](NHL_IMPLEMENTATION_GUIDE.md) | **Comprehensive NHL parity reference** |
 | [Database Integration](DATABASE_INTEGRATION.md) | Querying the sports database |
 
 ## Timeline System
