@@ -14,7 +14,8 @@ from sqlalchemy.orm import selectinload
 from .. import db_models
 from ..config import settings
 from ..db import AsyncSession, get_db
-from ..services.compact_mode import get_compact_timeline
+from ..services.compact_mode import apply_compact_mode, CompressionLevel
+from ..services.moments import partition_game
 from ..services.recap_generator import build_recap
 from ..services.reveal_levels import parse_reveal_level
 from ..utils.datetime_utils import now_utc
@@ -495,7 +496,18 @@ async def get_game_timeline_compact(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found")
 
     original_timeline = artifact.timeline_json or []
-    compressed_timeline = get_compact_timeline(original_timeline, level)
+    
+    # Compact Mode is a pure transformation on pre-computed Moments
+    # Step 1: Partition timeline into Moments (detection)
+    # Step 2: Apply compression (presentation)
+    compression_level = {
+        1: CompressionLevel.HIGHLIGHTS,
+        2: CompressionLevel.STANDARD,
+        3: CompressionLevel.DETAILED,
+    }.get(level, CompressionLevel.STANDARD)
+    
+    moments = partition_game(original_timeline, summary=artifact.summary_json or {})
+    compressed_timeline = apply_compact_mode(original_timeline, moments, compression_level)
 
     original_count = len(original_timeline)
     compressed_count = len(compressed_timeline)

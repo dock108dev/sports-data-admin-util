@@ -7,13 +7,35 @@ import styles from "./styles.module.css";
 
 const MOMENTS_PER_PAGE = 10;
 
-interface HighlightsSectionProps {
-  highlights: MomentEntry[];
+interface MomentsSectionProps {
+  moments: MomentEntry[];
+  /** If true, only show notable moments. If false, show all moments. */
+  notableOnly?: boolean;
 }
 
-export function HighlightsSection({ highlights }: HighlightsSectionProps) {
+/**
+ * Displays game moments (narrative segments).
+ * 
+ * Moments partition the entire game timeline. Each moment has a type
+ * indicating what kind of game control change occurred:
+ * - FLIP: Leader changed
+ * - TIE: Game returned to even
+ * - LEAD_BUILD: Lead tier increased
+ * - CUT: Lead tier decreased (comeback)
+ * - CLOSING_CONTROL: Late-game lock-in
+ * - HIGH_IMPACT: Key non-scoring event
+ * - OPENER: Period start
+ * - NEUTRAL: Normal flow
+ * 
+ * Notable moments (is_notable=true) are the "highlights" of the game.
+ */
+export function MomentsSection({ moments: allMoments, notableOnly = true }: MomentsSectionProps) {
   const [page, setPage] = useState(0);
-  const moments = highlights || [];
+  
+  // Filter to notable moments if requested
+  const moments = notableOnly 
+    ? (allMoments || []).filter(m => m.is_notable)
+    : (allMoments || []);
 
   const totalPages = Math.ceil(moments.length / MOMENTS_PER_PAGE);
   const paginatedMoments = moments.slice(
@@ -23,6 +45,24 @@ export function HighlightsSection({ highlights }: HighlightsSectionProps) {
 
   const getTypeIcon = (type: string) => {
     switch (type.toUpperCase()) {
+      // Lead Ladder types
+      case "LEAD_BUILD":
+        return "📈";
+      case "CUT":
+        return "✂️";
+      case "TIE":
+        return "⚖️";
+      case "FLIP":
+        return "🔄";
+      case "CLOSING_CONTROL":
+        return "🔒";
+      case "HIGH_IMPACT":
+        return "⚡";
+      case "OPENER":
+        return "🎬";
+      case "NEUTRAL":
+        return "📊";
+      // Legacy types (cached data)
       case "RUN":
         return "🏃";
       case "BATTLE":
@@ -36,21 +76,56 @@ export function HighlightsSection({ highlights }: HighlightsSectionProps) {
 
   const getTypeLabel = (type: string) => {
     switch (type.toUpperCase()) {
+      // Lead Ladder types
+      case "LEAD_BUILD":
+        return "Lead Extended";
+      case "CUT":
+        return "Comeback";
+      case "TIE":
+        return "Game Tied";
+      case "FLIP":
+        return "Lead Change";
+      case "CLOSING_CONTROL":
+        return "Game Control";
+      case "HIGH_IMPACT":
+        return "Key Moment";
+      case "OPENER":
+        return "Period Start";
+      case "NEUTRAL":
+        return "Game Flow";
+      // Legacy types (cached data)
       case "RUN":
         return "Scoring Run";
       case "BATTLE":
         return "Lead Battle";
       case "CLOSING":
         return "Closing Stretch";
-      case "NEUTRAL":
-        return "Neutral";
       default:
-        return type;
+        return type.replace(/_/g, " ");
     }
   };
 
   const getTypeColor = (type: string) => {
     switch (type.toUpperCase()) {
+      // Notable types (always significant)
+      case "FLIP":
+        return "#8b5cf6"; // Purple - most dramatic
+      case "TIE":
+        return "#f59e0b"; // Orange
+      case "CLOSING_CONTROL":
+        return "#dc2626"; // Red - clutch
+      case "HIGH_IMPACT":
+        return "#ef4444"; // Red
+      // Conditionally notable types
+      case "LEAD_BUILD":
+        return "#22c55e"; // Green - offense
+      case "CUT":
+        return "#3b82f6"; // Blue - defense/comeback
+      case "OPENER":
+        return "#6366f1"; // Indigo
+      case "NEUTRAL":
+        return "#64748b"; // Gray
+      // Legacy types (cached data)
       case "RUN":
         return "#22c55e"; // Green
       case "BATTLE":
@@ -62,12 +137,14 @@ export function HighlightsSection({ highlights }: HighlightsSectionProps) {
     }
   };
 
+  const sectionTitle = notableOnly ? "Notable Moments" : "All Moments";
+
   return (
-    <CollapsibleSection title="Highlights" defaultOpen={true}>
+    <CollapsibleSection title={sectionTitle} defaultOpen={true}>
       {moments.length === 0 ? (
         <div className={styles.emptyHighlights}>
           <div className={styles.emptyIcon}>📊</div>
-          <div>No highlights generated for this game yet.</div>
+          <div>No {notableOnly ? "notable " : ""}moments generated for this game yet.</div>
           <div className={styles.emptyHint}>
             Timeline artifacts may need to be generated or regenerated.
           </div>
@@ -75,7 +152,7 @@ export function HighlightsSection({ highlights }: HighlightsSectionProps) {
       ) : (
         <>
           <div className={styles.highlightsSummary}>
-            <span>{moments.length} highlights</span>
+            <span>{moments.length} {notableOnly ? "notable " : ""}moments</span>
             <span className={styles.highlightsSummaryDivider}>•</span>
             <span>Chronological</span>
           </div>
@@ -113,6 +190,22 @@ export function HighlightsSection({ highlights }: HighlightsSectionProps) {
                     <div className={styles.clockRange}>
                       <span className={styles.contextLabel}>When:</span>
                       <span className={styles.contextValue}>{moment.clock}</span>
+                    </div>
+                  )}
+                  {moment.team_in_control && (
+                    <div className={styles.clockRange}>
+                      <span className={styles.contextLabel}>Control:</span>
+                      <span className={styles.contextValue}>
+                        {moment.team_in_control.toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                  {moment.run_info && (
+                    <div className={styles.clockRange}>
+                      <span className={styles.contextLabel}>Run:</span>
+                      <span className={styles.contextValue}>
+                        {moment.run_info.points}-0 {moment.run_info.team}
+                      </span>
                     </div>
                   )}
                 </div>

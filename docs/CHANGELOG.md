@@ -2,7 +2,80 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-01-17]
+## [2026-01-17] - Lead Ladder Refactor
+
+### Added
+
+#### Lead Ladder Infrastructure
+- **Lead Ladder module** (`lead_ladder.py`): Pure functions for lead state tracking
+  - `LeadState`: Immutable snapshot of game control
+  - `TierCrossing`: Detected tier crossing events
+  - `compute_lead_state()`, `detect_tier_crossing()`: Core utilities
+  - Sport-agnostic: thresholds are passed in, no hardcoded defaults
+- **New MomentTypes** based on Lead Ladder crossings:
+  - `LEAD_BUILD`: Lead tier increased
+  - `CUT`: Lead tier decreased (comeback)
+  - `TIE`: Game returned to even
+  - `FLIP`: Leader changed
+  - `CLOSING_CONTROL`: Late-game lock-in
+  - `HIGH_IMPACT`: Ejection, injury, etc.
+  - `OPENER`: First plays of a period
+  - `NEUTRAL`: Normal flow
+- **Run metadata** (`run_info`): Runs are now metadata on moments, not separate moments
+  - `team`, `points`, `unanswered`, `play_ids`
+  - Attached to LEAD_BUILD, CUT, FLIP moments when a run contributed
+- **Validation guardrails**: 119 tests covering invariants
+  - Full play coverage assertion
+  - No overlapping moments
+  - Chronological ordering
+  - No hardcoded league defaults
+  - Multi-sport config regression tests
+  - Source code scanning for NBA literals
+
+#### AI Summary Refactor
+- AI now only writes copy (headline, subhead) - no structural influence
+- Deterministic fallbacks for all AI paths
+- Structured `GameSummaryInput` for AI prompts
+- `attention_points` derived from Moments (deterministic)
+
+### Changed
+
+#### Moment Detection (Breaking)
+- **Moment boundaries** now determined by Lead Ladder tier crossings, not pattern matching
+- **Hysteresis** added to prevent tier flicker (default: 2 plays)
+- **Runs downgraded**: Scoring runs no longer create moments by themselves
+  - Runs become `run_info` metadata on tier-crossing moments
+  - Runs that didn't move control become `key_play_ids`
+
+#### Compact Mode
+- Compact Mode is now a **pure transformation** - no detection logic
+- Compression behavior defined by `COMPRESSION_BEHAVIOR` map
+- FLIP, TIE, CLOSING_CONTROL never collapsed
+- NEUTRAL heavily collapsed
+
+#### API Response Changes
+- `type` field values changed (see deprecation notes below)
+- New optional fields: `run_info`, `ladder_tier_before`, `ladder_tier_after`, `team_in_control`
+- `is_notable` still works as primary highlight filter (unchanged)
+
+### Deprecated
+
+| Old Type | Replacement | Migration |
+|----------|-------------|-----------|
+| `RUN` | ❌ Removed | Check `run_info` on LEAD_BUILD/CUT/FLIP moments |
+| `BATTLE` | `FLIP`, `TIE`, `CUT` | Use specific crossing types |
+| `CLOSING` | `CLOSING_CONTROL` | Rename in filters |
+
+### Removed
+- `RUN`, `BATTLE`, `CLOSING` MomentTypes
+- Hardcoded NBA thresholds (8 pts for run, 10 margin for closing)
+- `detect_semantic_groups()` from compact_mode.py
+- `SemanticGroup`, `GroupType` abstractions
+- AI-generated `overview` and `attention_points` (now deterministic)
+
+---
+
+## [2026-01-16]
 
 ### Added
 - **Moments/Highlights system**: Replaced legacy segments with grounded moments

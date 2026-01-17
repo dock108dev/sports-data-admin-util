@@ -7,6 +7,7 @@ and triggers timeline generation via the API's timeline generator.
 from __future__ import annotations
 
 import httpx
+import time
 from datetime import datetime, timedelta
 from sqlalchemy import exists
 from sqlalchemy.orm import Session
@@ -46,17 +47,24 @@ def find_games_missing_timelines(
     # 1. Are completed/final
     # 2. Have play-by-play data
     # 3. Don't have timeline artifacts
+    from sqlalchemy.orm import aliased
+    HomeTeam = aliased(db_models.SportsTeam)
+    AwayTeam = aliased(db_models.SportsTeam)
+    
     query = (
         session.query(
             db_models.SportsGame.id,
             db_models.SportsGame.game_date,
-            db_models.SportsTeam.name.label("home_team"),
-            db_models.SportsTeam.name.label("away_team"),
+            HomeTeam.name.label("home_team"),
+            AwayTeam.name.label("away_team"),
         )
         .join(
-            db_models.SportsTeam,
-            db_models.SportsGame.home_team_id == db_models.SportsTeam.id,
-            isouter=False,
+            HomeTeam,
+            db_models.SportsGame.home_team_id == HomeTeam.id,
+        )
+        .join(
+            AwayTeam,
+            db_models.SportsGame.away_team_id == AwayTeam.id,
         )
         .filter(
             db_models.SportsGame.league_id == league.id,
@@ -208,6 +216,9 @@ def generate_missing_timelines(
             successful += 1
         else:
             failed += 1
+        
+        # Throttle requests to stay under rate limit (120 req/60s = 2/sec)
+        time.sleep(0.6)
     
     summary = {
         "games_found": len(games),

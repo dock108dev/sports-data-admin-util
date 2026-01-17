@@ -1,19 +1,34 @@
 """
 OpenAI client wrapper with caching for sports timeline AI features.
 
-Design Principle:
-    OpenAI is used ONLY for interpretation and narration — never for
-    ordering, filtering, or correctness decisions.
+=============================================================================
+DESIGN PHILOSOPHY (2026-01 Refactor)
+=============================================================================
 
-Three AI Use Cases:
-    1. Social Role Classification - Improve role accuracy beyond heuristics
-    2. Segment Enrichment - Label game segments more naturally
-    3. Summary Generation - Produce timeline "reading guide" text
+AI is PURELY DESCRIPTIVE. It cannot affect:
+- Moment boundaries (determined by Lead Ladder)
+- Importance (determined by MomentType)
+- Ordering (determined by chronology)
+- What gets shown (determined by Compact Mode)
+
+AI ONLY writes copy:
+- headline: One-line game description
+- subhead: Brief supporting context
+
+This is enforced by:
+1. Structured Moment input only (no raw timeline)
+2. No structural fields in output
+3. Deterministic fallbacks for all paths
+4. Graceful degradation when AI unavailable
+
+=============================================================================
+CACHING
+=============================================================================
 
 All outputs are:
-    - Idempotent (same input → same output)
-    - Cached aggressively (no AI on read paths)
-    - Regenerable only on version bump or cache miss
+- Idempotent (same input → same output)
+- Cached aggressively (no AI on read paths)
+- Regenerable only on version bump or cache miss
 """
 
 from __future__ import annotations
@@ -21,7 +36,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Literal
 
 from openai import AsyncOpenAI
 
@@ -29,25 +45,69 @@ from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
+
+# =============================================================================
+# TYPE DEFINITIONS
+# =============================================================================
+
 # Valid social roles for classification
 SOCIAL_ROLES = Literal[
     "hype", "context", "reaction", "momentum",
     "highlight", "result", "reflection", "ambient"
 ]
 
-# Valid segment tones
-SEGMENT_TONES = Literal["calm", "tense", "decisive", "flat"]
+
+@dataclass(frozen=True)
+class MomentSummaryInput:
+    """
+    Structured input for AI moment summarization.
+    
+    This is EXACTLY what AI receives - no more, no less.
+    AI cannot infer structure from this; it can only describe.
+    """
+    moment_type: str      # e.g., "FLIP", "LEAD_BUILD"
+    score_before: str     # e.g., "45-42"
+    score_after: str      # e.g., "52-48"
+    team_in_control: str | None  # "home", "away", or None
+    note: str | None      # e.g., "12-0 run"
 
 
-# ---------------------------------------------------------------------------
-# In-Memory Cache (Production should use Redis)
-# ---------------------------------------------------------------------------
-# TTL: 30 days for roles, permanent for summaries/segments
-# In production, replace with Redis-backed cache
+@dataclass(frozen=True)
+class GameSummaryInput:
+    """
+    Structured input for AI game headline/subhead generation.
+    
+    This is the ONLY data AI receives about the game.
+    It cannot affect structure - only describe what happened.
+    """
+    home_team: str
+    away_team: str
+    final_score_home: int
+    final_score_away: int
+    flow: str  # "close", "competitive", "comfortable", "blowout"
+    has_overtime: bool
+    moment_types: list[str]  # e.g., ["OPENER", "LEAD_BUILD", "FLIP", "CLOSING_CONTROL"]
+    notable_count: int  # Number of notable moments
+
+
+@dataclass(frozen=True)
+class AIHeadlineOutput:
+    """
+    What AI returns. ONLY headline and subhead.
+    
+    No structural fields. No importance. No ordering.
+    AI writes copy, nothing else.
+    """
+    headline: str  # One-line summary (max 80 chars)
+    subhead: str   # Supporting context (max 120 chars)
+
+
+# =============================================================================
+# IN-MEMORY CACHE (Production should use Redis)
+# =============================================================================
 
 _role_cache: dict[str, str] = {}
-_segment_cache: dict[str, dict[str, str]] = {}
-_summary_cache: dict[str, dict[str, Any]] = {}
+_headline_cache: dict[str, AIHeadlineOutput] = {}
 
 
 def _cache_key_role(text: str, phase: str) -> str:
@@ -56,19 +116,14 @@ def _cache_key_role(text: str, phase: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
-def _cache_key_segment(game_id: int, segment_id: str) -> str:
-    """Generate cache key for segment enrichment."""
-    return f"seg:{game_id}:{segment_id}"
+def _cache_key_headline(game_id: int, timeline_version: str) -> str:
+    """Generate cache key for headline generation."""
+    return f"hl:{game_id}:{timeline_version}"
 
 
-def _cache_key_summary(game_id: int, timeline_version: str) -> str:
-    """Generate cache key for summary generation."""
-    return f"sum:{game_id}:{timeline_version}"
-
-
-# ---------------------------------------------------------------------------
-# OpenAI Client
-# ---------------------------------------------------------------------------
+# =============================================================================
+# OPENAI CLIENT
+# =============================================================================
 
 _client: AsyncOpenAI | None = None
 
@@ -90,9 +145,95 @@ def is_ai_available() -> bool:
     return bool(settings.openai_api_key)
 
 
-# ---------------------------------------------------------------------------
-# Social Role Classification
-# ---------------------------------------------------------------------------
+# =============================================================================
+# DETERMINISTIC FALLBACKS
+# =============================================================================
+
+def generate_fallback_headline(input_data: GameSummaryInput) -> AIHeadlineOutput:
+    """
+    Generate deterministic headline when AI is unavailable.
+    
+    This function produces consistent, reasonable output
+    without any AI involvement. It's the safety net.
+    """
+    # Determine winner
+    if input_data.final_score_home > input_data.final_score_away:
+        winner = input_data.home_team
+        loser = input_data.away_team
+        winner_score = input_data.final_score_home
+        loser_score = input_data.final_score_away
+    elif input_data.final_score_away > input_data.final_score_home:
+        winner = input_data.away_team
+        loser = input_data.home_team
+        winner_score = input_data.final_score_away
+        loser_score = input_data.final_score_home
+    else:
+        # Tie (rare in most sports)
+        return AIHeadlineOutput(
+            headline=f"{input_data.home_team} and {input_data.away_team} end in a draw",
+            subhead=f"Final: {input_data.final_score_home}-{input_data.final_score_away}",
+        )
+    
+    # Generate headline based on flow
+    if input_data.flow == "blowout":
+        headline = f"{winner} rolls past {loser}"
+    elif input_data.flow == "comfortable":
+        headline = f"{winner} handles {loser}"
+    elif input_data.flow == "competitive":
+        headline = f"{winner} holds off {loser}"
+    elif input_data.flow == "close":
+        if input_data.has_overtime:
+            headline = f"{winner} survives {loser} in OT"
+        else:
+            headline = f"{winner} edges {loser} in a tight one"
+    else:
+        headline = f"{winner} defeats {loser}"
+    
+    # Generate subhead
+    score_text = f"Final: {winner_score}-{loser_score}"
+    if input_data.has_overtime:
+        score_text += " (OT)"
+    
+    # Add moment context if available
+    if "FLIP" in input_data.moment_types:
+        subhead = f"{score_text}. Lead changed hands."
+    elif "CLOSING_CONTROL" in input_data.moment_types:
+        subhead = f"{score_text}. Decided late."
+    elif input_data.notable_count >= 3:
+        subhead = f"{score_text}. Several key swings."
+    else:
+        subhead = score_text
+    
+    return AIHeadlineOutput(
+        headline=headline[:80],
+        subhead=subhead[:120],
+    )
+
+
+def generate_fallback_moment_label(moment_type: str, note: str | None) -> str:
+    """
+    Generate deterministic moment label when AI is unavailable.
+    """
+    labels = {
+        "LEAD_BUILD": "Lead extended",
+        "CUT": "Opponent cuts in",
+        "TIE": "Game tied",
+        "FLIP": "Lead changes hands",
+        "CLOSING_CONTROL": "Game control locked",
+        "HIGH_IMPACT": "High-impact moment",
+        "OPENER": "Period begins",
+        "NEUTRAL": "Back and forth",
+    }
+    base_label = labels.get(moment_type, moment_type)
+    
+    if note:
+        return f"{base_label}: {note}"
+    return base_label
+
+
+# =============================================================================
+# SOCIAL ROLE CLASSIFICATION
+# =============================================================================
 
 ROLE_CLASSIFICATION_PROMPT = """You are classifying a sports-related social media post.
 
@@ -126,38 +267,24 @@ async def classify_social_role(
 ) -> str:
     """
     Classify social post role using AI, with caching.
-
-    Args:
-        text: The tweet/post text
-        phase: Narrative phase (pregame, q1, q2, halftime, q3, q4, postgame)
-        sport: Sport name for context
-        heuristic_role: Role from heuristic classification (if available)
-        heuristic_confidence: Confidence of heuristic (0.0-1.0)
-
-    Returns:
-        Role string (one of SOCIAL_ROLES)
+    
+    AI classifies the role but cannot affect:
+    - When the post appears in timeline (chronological)
+    - Whether the post is shown (always shown)
+    - The post's importance (determined by phase)
     """
     settings = get_settings()
 
     # Skip AI if disabled or high-confidence heuristic
     if not settings.enable_ai_social_roles or not is_ai_available():
-        logger.debug(
-            "ai_social_role_skipped",
-            extra={"reason": "disabled_or_unavailable"},
-        )
         return heuristic_role or "ambient"
 
     if heuristic_confidence >= 0.8 and heuristic_role:
-        logger.debug(
-            "ai_social_role_skipped",
-            extra={"reason": "high_confidence_heuristic", "role": heuristic_role},
-        )
         return heuristic_role
 
     # Check cache
     cache_key = _cache_key_role(text, phase)
     if cached := _role_cache.get(cache_key):
-        logger.debug("ai_social_role_cache_hit", extra={"role": cached})
         return cached
 
     # Call OpenAI
@@ -166,7 +293,7 @@ async def classify_social_role(
         prompt = ROLE_CLASSIFICATION_PROMPT.format(
             sport=sport,
             phase=phase,
-            tweet_text=text[:500],  # Truncate for safety
+            tweet_text=text[:500],
         )
 
         response = await client.chat.completions.create(
@@ -192,7 +319,6 @@ async def classify_social_role(
 
         # Cache result
         _role_cache[cache_key] = role
-        logger.info("ai_social_role_classified", extra={"role": role})
         return role
 
     except Exception as e:
@@ -200,278 +326,149 @@ async def classify_social_role(
         return heuristic_role or "ambient"
 
 
-# ---------------------------------------------------------------------------
-# Segment Enrichment
-# ---------------------------------------------------------------------------
+# =============================================================================
+# HEADLINE GENERATION (Primary AI Use Case)
+# =============================================================================
 
-SEGMENT_ENRICHMENT_PROMPT = """You are labeling stretches of an {sport} game for a timeline-based app.
+HEADLINE_GENERATION_PROMPT = """Write a headline and subhead for this game.
 
-Each segment already has:
-- start phase
-- end phase
-- segment_type (run, swing, steady, etc.)
-
-Your job:
-- Add a short, neutral label describing what this stretch *felt like*
-- Do NOT invent events
-- Do NOT restate scores
-- Do NOT use flowery language
-
-Segment type: {segment_type}
-Phases: {start_phase} → {end_phase}
-Play count: {play_count}
-
-Respond with valid JSON only:
-{{"label": "short phrase", "tone": "calm | tense | decisive | flat"}}"""
-
-
-async def enrich_segment(
-    game_id: int,
-    segment_id: str,
-    segment_type: str,
-    start_phase: str,
-    end_phase: str,
-    play_count: int,
-    sport: str = "NBA",
-) -> dict[str, str]:
-    """
-    Enrich a game segment with AI-generated label and tone.
-
-    Args:
-        game_id: Game identifier
-        segment_id: Unique segment identifier
-        segment_type: Type of segment (run, swing, steady, etc.)
-        start_phase: Starting phase
-        end_phase: Ending phase
-        play_count: Number of plays in segment
-        sport: Sport name
-
-    Returns:
-        Dict with 'label' and 'tone' keys
-    """
-    settings = get_settings()
-    default = {"label": segment_type.replace("_", " ").title(), "tone": "calm"}
-
-    # Skip AI if disabled
-    if not settings.enable_ai_segment_enrichment or not is_ai_available():
-        return default
-
-    # Check cache
-    cache_key = _cache_key_segment(game_id, segment_id)
-    if cached := _segment_cache.get(cache_key):
-        logger.debug("ai_segment_cache_hit", extra={"segment_id": segment_id})
-        return cached
-
-    # Call OpenAI
-    try:
-        client = _get_client()
-        prompt = SEGMENT_ENRICHMENT_PROMPT.format(
-            sport=sport,
-            segment_type=segment_type,
-            start_phase=start_phase,
-            end_phase=end_phase,
-            play_count=play_count,
-        )
-
-        response = await client.chat.completions.create(
-            model=settings.openai_model_classification,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            max_tokens=50,
-        )
-
-        content = response.choices[0].message.content.strip()
-        result = json.loads(content)
-
-        # Validate
-        if "label" not in result or "tone" not in result:
-            raise ValueError("Invalid response structure")
-
-        valid_tones = {"calm", "tense", "decisive", "flat"}
-        if result["tone"] not in valid_tones:
-            result["tone"] = "calm"
-
-        # Cache result
-        _segment_cache[cache_key] = result
-        logger.info(
-            "ai_segment_enriched",
-            extra={"segment_id": segment_id, "label": result["label"]},
-        )
-        return result
-
-    except Exception as e:
-        logger.error(
-            "ai_segment_error",
-            extra={"error": str(e), "segment_id": segment_id},
-        )
-        return default
-
-
-# ---------------------------------------------------------------------------
-# Summary Generation
-# ---------------------------------------------------------------------------
-
-SUMMARY_GENERATION_PROMPT = """Tell someone HOW to read this timeline. Not what happened.
-
-DO NOT:
-- Summarize the game
-- Use words: pivotal, critical, defining, crucial, dramatic, dynamic, momentum shifts
-- Make it feel complete without scrolling
-- Use em-dashes
+RULES:
+- Headline: ONE sentence, max 80 characters
+- Subhead: ONE sentence, max 120 characters
+- Be direct and specific
+- NO: pivotal, critical, defining, crucial, dramatic, dynamic, momentum shifts
+- NO: em-dashes, exclamation points
+- State what happened, not what it meant
 
 GAME DATA:
-Phases: {phases}
-Stretches: {segment_summaries}
-Highlights: {highlights}
-Social: {social_counts}
-
-YOUR JOB:
-Point to where the timeline gets interesting. Be specific about WHEN.
-Examples of good guidance:
-- "This stays flat until the third"
-- "The first quarter is where it opens up"
-- "Most of the action is late"
-- "Skip to the second half if you want the real game"
-
-Use the stretch labels to guide where to look. If there's a "swing" or "run" stretch, tell them where.
-If social clusters postgame, mention it briefly.
-
-2-3 sentences. Be direct. Each game should sound different.
-2-3 attention points as quick fragments.
+{home_team} vs {away_team}
+Final: {final_score_home}-{final_score_away}
+Flow: {flow}
+Overtime: {has_overtime}
+Key moments: {moment_types}
 
 JSON only:
-{{
-  "overview": "direct guidance on how to read this timeline",
-  "attention_points": ["fragment 1", "fragment 2", "fragment 3"]
-}}"""
+{{"headline": "...", "subhead": "..."}}"""
 
 
-async def generate_summary(
+async def generate_headline(
     game_id: int,
     timeline_version: str,
-    phases: list[str],
-    segment_summaries: list[str],
-    highlights: list[str],
-    social_counts: dict[str, int],
-    sport: str = "NBA",
-) -> dict[str, Any]:
+    input_data: GameSummaryInput,
+) -> AIHeadlineOutput:
     """
-    Generate a timeline reading guide using AI.
-
+    Generate headline and subhead for a game using AI.
+    
+    AI ONLY WRITES COPY. It cannot affect:
+    - Moment boundaries (from Lead Ladder)
+    - Moment importance (from MomentType)
+    - What gets shown (from Compact Mode)
+    - Timeline ordering (chronological)
+    
     Args:
-        game_id: Game identifier
-        timeline_version: Version string for cache keying
-        phases: List of phases present in timeline
-        segment_summaries: Brief descriptions of key segments
-        highlights: Notable moments
-        social_counts: Social activity counts by phase
-        sport: Sport name
-
+        game_id: Game identifier (for caching)
+        timeline_version: Version string (for cache invalidation)
+        input_data: Structured game data
+        
     Returns:
-        Dict with 'overview' and 'attention_points' keys
+        AIHeadlineOutput with headline and subhead
     """
     settings = get_settings()
-    default = {
-        "overview": "Scroll through the timeline to experience the game.",
-        "attention_points": [],
-    }
-
-    # Skip AI if disabled
-    if not settings.enable_ai_summary or not is_ai_available():
-        return default
-
+    
+    # Fallback if AI disabled
+    if not getattr(settings, 'enable_ai_summary', True) or not is_ai_available():
+        logger.info(
+            "ai_headline_fallback",
+            extra={"game_id": game_id, "reason": "ai_unavailable"},
+        )
+        return generate_fallback_headline(input_data)
+    
     # Check cache
-    cache_key = _cache_key_summary(game_id, timeline_version)
-    if cached := _summary_cache.get(cache_key):
-        logger.debug("ai_summary_cache_hit", extra={"game_id": game_id})
+    cache_key = _cache_key_headline(game_id, timeline_version)
+    if cached := _headline_cache.get(cache_key):
+        logger.debug("ai_headline_cache_hit", extra={"game_id": game_id})
         return cached
-
-    # Call OpenAI
+    
+    # Build prompt with structured data only
     try:
         client = _get_client()
-        prompt = SUMMARY_GENERATION_PROMPT.format(
-            phases=", ".join(phases),
-            segment_summaries="; ".join(segment_summaries[:5]),  # Limit
-            highlights="; ".join(highlights[:5]),  # Limit
-            social_counts=json.dumps(social_counts),
+        prompt = HEADLINE_GENERATION_PROMPT.format(
+            home_team=input_data.home_team,
+            away_team=input_data.away_team,
+            final_score_home=input_data.final_score_home,
+            final_score_away=input_data.final_score_away,
+            flow=input_data.flow,
+            has_overtime="Yes" if input_data.has_overtime else "No",
+            moment_types=", ".join(input_data.moment_types[:5]),  # Limit
         )
-
+        
         response = await client.chat.completions.create(
             model=settings.openai_model_summary,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,  # Higher for more variety
-            max_tokens=180,
+            temperature=0.5,  # Moderate creativity
+            max_tokens=100,
         )
-
+        
         content = response.choices[0].message.content.strip()
-
+        
         # Handle potential markdown code blocks
         if content.startswith("```"):
             content = content.split("```")[1]
             if content.startswith("json"):
                 content = content[4:]
             content = content.strip()
-
+        
         result = json.loads(content)
-
-        # Validate structure
-        if "overview" not in result:
-            result["overview"] = default["overview"]
-        if "attention_points" not in result:
-            result["attention_points"] = []
-
-        # Ensure attention_points is a list
-        if not isinstance(result["attention_points"], list):
-            result["attention_points"] = []
-
-        # Cache result (permanent)
-        _summary_cache[cache_key] = result
+        
+        # Validate and sanitize
+        headline = result.get("headline", "")[:80]
+        subhead = result.get("subhead", "")[:120]
+        
+        if not headline:
+            # AI returned empty headline - use fallback
+            return generate_fallback_headline(input_data)
+        
+        output = AIHeadlineOutput(headline=headline, subhead=subhead)
+        
+        # Cache result
+        _headline_cache[cache_key] = output
+        
         logger.info(
-            "ai_summary_generated",
+            "ai_headline_generated",
             extra={
                 "game_id": game_id,
-                "overview_len": len(result["overview"]),
-                "attention_points": len(result["attention_points"]),
+                "headline_len": len(headline),
             },
         )
-        return result
-
+        
+        return output
+        
     except Exception as e:
         logger.error(
-            "ai_summary_error",
+            "ai_headline_error",
             extra={"error": str(e), "game_id": game_id},
         )
-        return default
+        return generate_fallback_headline(input_data)
 
 
-# ---------------------------------------------------------------------------
-# Cache Management (for testing/admin)
-# ---------------------------------------------------------------------------
+# =============================================================================
+# CACHE MANAGEMENT (for testing/admin)
+# =============================================================================
 
 def clear_cache(cache_type: str | None = None) -> dict[str, int]:
     """
     Clear AI caches. For testing/admin use.
-
-    Args:
-        cache_type: 'role', 'segment', 'summary', or None for all
-
-    Returns:
-        Dict with cleared counts per cache type
     """
-    global _role_cache, _segment_cache, _summary_cache
+    global _role_cache, _headline_cache
     cleared = {}
 
     if cache_type in (None, "role"):
         cleared["role"] = len(_role_cache)
         _role_cache = {}
 
-    if cache_type in (None, "segment"):
-        cleared["segment"] = len(_segment_cache)
-        _segment_cache = {}
-
-    if cache_type in (None, "summary"):
-        cleared["summary"] = len(_summary_cache)
-        _summary_cache = {}
+    if cache_type in (None, "headline"):
+        cleared["headline"] = len(_headline_cache)
+        _headline_cache = {}
 
     logger.info("ai_cache_cleared", extra={"cleared": cleared})
     return cleared
@@ -481,6 +478,5 @@ def get_cache_stats() -> dict[str, int]:
     """Get current cache sizes."""
     return {
         "role": len(_role_cache),
-        "segment": len(_segment_cache),
-        "summary": len(_summary_cache),
+        "headline": len(_headline_cache),
     }

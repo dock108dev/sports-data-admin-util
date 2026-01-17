@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { fetchGame, rescrapeGame, resyncOdds, type AdminGameDetail } from "@/lib/api/sportsAdmin";
 import { CollapsibleSection } from "./CollapsibleSection";
-import { HighlightsSection } from "./HighlightsSection";
+import { MomentsSection } from "./MomentsSection";
 import { PbpSection } from "./PbpSection";
 import { SocialPostsSection } from "./SocialPostsSection";
 import styles from "./styles.module.css";
@@ -48,7 +48,7 @@ export default function GameDetailClient() {
       { label: "Odds", ok: game.game.has_odds },
       { label: `Social (${game.game.social_post_count || 0})`, ok: game.game.has_social },
       { label: `PBP (${game.game.play_count || 0})`, ok: game.game.has_pbp },
-      { label: `Highlights (${game.game.highlight_count || 0})`, ok: game.game.has_highlights },
+      { label: `Moments (${game.moments?.length || 0})`, ok: (game.moments?.length || 0) > 0 },
     ];
   }, [game]);
 
@@ -363,7 +363,7 @@ export default function GameDetailClient() {
 
       <SocialPostsSection posts={game.social_posts || []} />
 
-      <HighlightsSection highlights={(game.moments || []).filter(m => m.is_notable)} />
+      <MomentsSection moments={game.moments || []} notableOnly={true} />
 
       <PbpSection plays={game.plays || []} />
 

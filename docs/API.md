@@ -93,7 +93,7 @@ Get all moments for a game.
   "moments": [
     {
       "id": "m_003",
-      "type": "RUN",
+      "type": "FLIP",
       "start_play": 21,
       "end_play": 34,
       "play_count": 14,
@@ -105,7 +105,13 @@ Get all moments for a game.
       "score_end": "9–18",
       "clock": "Q1 9:12–7:48",
       "is_notable": true,
-      "note": "8-0 run"
+      "note": "Lead changes hands",
+      "run_info": {
+        "team": "away",
+        "points": 10,
+        "unanswered": true,
+        "play_ids": [22, 25, 28, 31]
+      }
     }
   ],
   "total_count": 15,
@@ -113,18 +119,56 @@ Get all moments for a game.
 }
 ```
 
-**Moment Types:**
-| Type | Description |
-|------|-------------|
-| `RUN` | One team scores unanswered (≥8 pts to be notable) |
-| `BATTLE` | Frequent lead changes |
-| `CLOSING` | Final minutes of close game |
-| `NEUTRAL` | Normal play (not notable) |
+**Moment Types (Lead Ladder v2):**
+
+> ⚠️ **MIGRATION (2026-01):** MomentTypes changed from the old system to Lead Ladder-based types.
+> See [Migration Notes](#moment-type-migration) below.
+
+| Type | Description | Notable? |
+|------|-------------|----------|
+| `LEAD_BUILD` | Lead tier increased (team extending control) | If tier change ≥ 2 |
+| `CUT` | Lead tier decreased (opponent cutting in) | If tier change ≥ 2 |
+| `TIE` | Game returned to even | Always |
+| `FLIP` | Leader changed | Always |
+| `CLOSING_CONTROL` | Late-game lock-in (dagger) | Always |
+| `HIGH_IMPACT` | Ejection, injury, flagrant | Always |
+| `OPENER` | First plays of a period | If strong lead |
+| `NEUTRAL` | Normal flow, no tier changes | Never |
+
+**New Optional Fields (v2):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `run_info` | object | Run metadata if a run contributed to this moment |
+| `run_info.team` | string | "home" or "away" |
+| `run_info.points` | int | Points scored in run |
+| `run_info.unanswered` | bool | Always true (runs are unanswered by definition) |
+| `run_info.play_ids` | int[] | Indices of scoring plays in run |
+| `ladder_tier_before` | int | Lead Ladder tier at start (optional) |
+| `ladder_tier_after` | int | Lead Ladder tier at end (optional) |
+| `team_in_control` | string | "home", "away", or null |
 
 **Key Fields:**
-- `is_notable` — True for highlights
+- `is_notable` — True for highlights (**unchanged, still the primary filter**)
 - `start_play` / `end_play` — Play indices
 - `players` — Stats within this moment (pts, ast, blk, stl)
+
+### Moment Type Migration
+
+**Deprecated Types (removed in v2):**
+
+| Old Type | New Equivalent | Notes |
+|----------|---------------|-------|
+| `RUN` | ❌ Removed | Runs are now `run_info` metadata on LEAD_BUILD/CUT/FLIP moments |
+| `BATTLE` | `FLIP`, `TIE`, `CUT` | Replaced by specific Lead Ladder crossing types |
+| `CLOSING` | `CLOSING_CONTROL` | Renamed for clarity |
+
+**Consumer Migration:**
+
+1. **If filtering by `type`**: Update filters to handle new types
+2. **If filtering by `is_notable`**: ✅ No changes needed (still works)
+3. **If displaying `type`**: Update UI labels for new types
+4. **New fields are additive**: Existing parsing will continue to work
 
 ---
 
@@ -319,7 +363,7 @@ Get reading position.
 ```typescript
 {
   id: string;           // "m_001"
-  type: string;         // NEUTRAL, RUN, BATTLE, CLOSING
+  type: string;         // LEAD_BUILD, CUT, TIE, FLIP, CLOSING_CONTROL, HIGH_IMPACT, OPENER, NEUTRAL
   start_play: number;
   end_play: number;
   play_count: number;
@@ -330,6 +374,24 @@ Get reading position.
   clock: string;        // "Q2 8:45–6:12"
   is_notable: boolean;  // Filter by this for highlights
   note: string | null;
+  
+  // New in v2 (optional, may not be present on older timelines)
+  run_info?: RunInfo;            // If a run contributed to this moment
+  ladder_tier_before?: number;   // Lead Ladder tier at moment start
+  ladder_tier_after?: number;    // Lead Ladder tier at moment end
+  team_in_control?: string;      // "home", "away", or null
+  key_play_ids?: number[];       // Notable plays within moment
+}
+```
+
+### RunInfo
+
+```typescript
+{
+  team: string;         // "home" or "away"
+  points: number;       // Points scored in the run
+  unanswered: boolean;  // Always true (runs are unanswered)
+  play_ids: number[];   // Indices of scoring plays in the run
 }
 ```
 

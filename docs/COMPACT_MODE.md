@@ -59,54 +59,67 @@ A timeline in compact mode should feel like watching highlights with context, no
 
 ---
 
-## Semantic Groups
+## Moments (Narrative Units)
 
-Compact mode operates on **semantic groups**, not individual plays. A semantic group is a sequence of plays that form a coherent narrative unit.
+> **LEAD LADDER REWRITE (2026-01):** Moment detection is now based on **Lead Ladder**
+> tier crossings, not pattern matching. The old `RUN`, `BATTLE`, `CLOSING` types have
+> been replaced with more precise crossing-based types.
 
-### Group Types
+Compact mode operates on **Moments**, not individual plays. A Moment is a contiguous sequence of plays that form a coherent narrative unit.
 
-| Group | Definition | Compression Behavior |
-|-------|------------|---------------------|
-| **Scoring Run** | 3+ consecutive scores by one team | Show all scoring plays, compress between |
-| **Swing** | Lead change or tie-breaking sequence | Show pivot plays, compress setup |
-| **Drought** | 2+ min without scoring | Collapse to summary marker |
-| **Finish** | Final 2 min of any period | Never compress |
-| **Opener** | First 2 min of any period | Light compression only |
-| **Routine** | No scoring, no drama | Heavy compression |
+### Moment Types (Lead Ladder v2)
 
-### Group Detection
+| MomentType | Definition | Compression Behavior |
+|------------|------------|---------------------|
+| **LEAD_BUILD** | Lead tier increased | Light compression (show key plays) |
+| **CUT** | Lead tier decreased (comeback) | Light compression (show key plays) |
+| **TIE** | Game returned to even | Never compress |
+| **FLIP** | Leader changed | Never compress |
+| **CLOSING_CONTROL** | Late-game lock-in (dagger) | Never compress |
+| **HIGH_IMPACT** | Ejection, injury, etc. | Never compress |
+| **OPENER** | First plays of a period | Moderate compression |
+| **NEUTRAL** | Normal flow, no tier changes | Heavy compression |
+
+> **Deprecated Types:** `RUN`, `BATTLE`, `CLOSING` have been removed.
+> - `RUN` → Runs are now `run_info` metadata on LEAD_BUILD/CUT/FLIP moments
+> - `BATTLE` → Replaced by `FLIP`, `TIE`, `CUT` (specific crossing types)
+> - `CLOSING` → Renamed to `CLOSING_CONTROL`
+
+### Moment Detection (Lead Ladder)
 
 ```python
-def detect_groups(plays):
+# moments.py - Lead Ladder-based partitioning
+def partition_game(timeline, summary, thresholds):
     """
-    Analyze PBP sequence and tag semantic groups.
+    Partition timeline into Moments based on Lead Ladder tier crossings.
+    
+    GUARANTEES:
+    1. Every play belongs to exactly one Moment
+    2. Moments are contiguous (no gaps)
+    3. Moments are chronologically ordered
+    4. Boundaries occur only on tier crossings
+    
+    Args:
+        timeline: Full timeline events
+        summary: Game summary metadata
+        thresholds: Lead Ladder thresholds (sport-specific, e.g., [3,6,10,16] for NBA)
     """
-    groups = []
-    current_group = None
+    # Detect tier crossings using Lead Ladder
+    boundaries = _detect_boundaries(timeline, thresholds)
     
-    for i, play in enumerate(plays):
-        if is_scoring_play(play):
-            if current_group and current_group.type == "scoring_run":
-                if same_team_scoring(current_group, play):
-                    current_group.extend(play)
-                else:
-                    groups.append(current_group)
-                    current_group = Group(type="swing", plays=[play])
-            else:
-                if current_group:
-                    groups.append(current_group)
-                current_group = Group(type="scoring_run", plays=[play])
-        
-        elif is_final_minutes(play):
-            if current_group and current_group.type != "finish":
-                groups.append(current_group)
-                current_group = Group(type="finish", plays=[play])
-            else:
-                current_group.extend(play)
-        
-        # ... other group detection logic
+    # Create moments from boundaries
+    # Types are determined by crossing type:
+    # - TIER_UP → LEAD_BUILD
+    # - TIER_DOWN → CUT
+    # - FLIP → FLIP
+    # - TIE_REACHED → TIE
+    # ...
     
-    return groups
+    # Attach runs as metadata (not separate moments)
+    runs = _detect_runs(timeline)
+    _attach_runs_to_moments(moments, runs)
+    
+    return moments
 ```
 
 ---

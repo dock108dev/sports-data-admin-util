@@ -14,7 +14,7 @@ from ..odds.synchronizer import OddsSynchronizer
 from ..persistence import persist_game_payload, upsert_player_season_stats, upsert_team_season_stats
 from ..season_stats import NHLHockeyReferenceSeasonStatsScraper
 from ..scrapers import get_all_scrapers
-from ..social import XPostCollector
+from ..social import XPostCollector, XCircuitBreakerError
 from ..utils.date_utils import season_from_date
 from ..utils.datetime_utils import now_utc, today_utc
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
@@ -360,6 +360,7 @@ class ScrapeRunManager:
                         )
                     logger.info("found_games_for_social", count=len(game_ids), run_id=run_id)
 
+                    circuit_breaker_triggered = False
                     for game_id in game_ids:
                         try:
                             with get_session() as session:
@@ -368,11 +369,24 @@ class ScrapeRunManager:
                                 )
                                 for result in results:
                                     summary["social_posts"] += result.posts_saved
+                        except XCircuitBreakerError as e:
+                            logger.error(
+                                "social_circuit_breaker_stop",
+                                game_id=game_id,
+                                error=str(e),
+                                retry_after_seconds=e.retry_after_seconds,
+                            )
+                            circuit_breaker_triggered = True
+                            break  # Stop processing more games
                         except Exception as e:
                             logger.warning("social_collection_failed", game_id=game_id, error=str(e))
 
-                    logger.info("social_complete", count=summary["social_posts"], run_id=run_id)
-                    complete_job_run(social_run_id, "success")
+                    if circuit_breaker_triggered:
+                        logger.error("social_run_aborted_circuit_breaker", run_id=run_id)
+                        complete_job_run(social_run_id, "error")
+                    else:
+                        logger.info("social_complete", count=summary["social_posts"], run_id=run_id)
+                        complete_job_run(social_run_id, "success")
 
             with get_session() as session:
                 detect_missing_pbp(session, league_code=config.league_code)
