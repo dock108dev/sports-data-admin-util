@@ -114,7 +114,14 @@ class TimelineArtifactStoredResponse(BaseModel):
 
 
 def team_snapshot(team: db_models.SportsTeam) -> TeamSnapshot:
-    """Return a minimal team snapshot. Fails fast if team is None."""
+    """
+    Return a minimal team snapshot.
+
+    Raises:
+        ValueError: If team is None
+    """
+    if team is None:
+        raise ValueError("Team cannot be None")
     return TeamSnapshot(
         id=team.id,
         name=team.name,

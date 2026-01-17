@@ -341,8 +341,17 @@ async def get_game_social(
         .order_by(db_models.GameSocialPost.posted_at.asc())
     )
     posts = posts_result.scalars().all()
-    return SocialResponse(
-        posts=[
+
+    # Filter and validate posts - skip any without team mapping
+    valid_posts = []
+    for post in posts:
+        if post.team is None:
+            logger.warning(
+                "social_post_missing_team",
+                extra={"post_id": post.id, "game_id": game_id},
+            )
+            continue
+        valid_posts.append(
             SocialPostSnapshot(
                 id=post.id,
                 team=team_snapshot(post.team),
@@ -350,9 +359,9 @@ async def get_game_social(
                 posted_at=post.posted_at,
                 reveal_level=post_reveal_level(post),
             )
-            for post in posts
-        ]
-    )
+        )
+
+    return SocialResponse(posts=valid_posts)
 
 
 @router.get("/games/{game_id}/timeline", response_model=TimelineArtifactStoredResponse)

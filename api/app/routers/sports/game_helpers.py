@@ -218,9 +218,6 @@ def summarize_game(game: db_models.SportsGame) -> GameSummary:
     plays = getattr(game, "plays", [])
     has_pbp = bool(plays)
     play_count = len(plays)
-    
-    # Check for timeline artifacts (moments)
-    timeline_artifacts = getattr(game, "timeline_artifacts", [])
 
     return GameSummary(
         id=game.id,

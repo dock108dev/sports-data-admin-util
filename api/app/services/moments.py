@@ -79,7 +79,6 @@ from .moments_validation import (
     validate_score_continuity,
     assert_moment_continuity,
     validate_moment_coverage,
-    validate_moments,
 )
 
 logger = logging.getLogger(__name__)
