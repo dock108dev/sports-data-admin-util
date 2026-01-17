@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import time
+from collections import deque
 from datetime import datetime, timedelta
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 
+from ..config import settings
 from ..logging import logger
 from .collector_base import XCollectorStrategy
 from .exceptions import XCircuitBreakerError
@@ -29,6 +31,7 @@ def playwright_available() -> bool:
 _INITIAL_BACKOFF_MINUTES = 5
 _MAX_BACKOFF_HOURS = 6
 _MAX_CONSECUTIVE_ERRORS = 3
+_HOURLY_WINDOW_SECONDS = 3600
 
 
 class PlaywrightXCollector(XCollectorStrategy):
@@ -53,17 +56,22 @@ class PlaywrightXCollector(XCollectorStrategy):
     Rate Limiting:
         - Polite delay of 10-15 seconds between requests
         - Random jitter to appear more human-like
+        - Global hourly request cap (default: 100/hour)
 
     Circuit Breaker:
         - After 3 consecutive "something went wrong" errors, backs off exponentially
+        - After N consecutive 0-result responses (soft block detection), backs off
         - Starts at 5 minutes, doubles each time, maxes at 6 hours
         - After hitting 6 hour max, raises XCircuitBreakerError to fail the scrape
     """
 
     # Class-level circuit breaker state (shared across instances in same worker)
     _consecutive_errors: int = 0
+    _consecutive_empty_results: int = 0
     _current_backoff_minutes: float = _INITIAL_BACKOFF_MINUTES
     _circuit_open_until: float = 0.0
+    # Hourly request tracking (sliding window)
+    _hourly_requests: deque = deque()
 
     def __init__(
         self,
@@ -103,6 +111,36 @@ class PlaywrightXCollector(XCollectorStrategy):
                 f"Circuit breaker open, retry in {remaining}s",
                 retry_after_seconds=remaining,
             )
+
+    def _check_hourly_cap(self) -> None:
+        """Check if hourly request cap is exceeded and raise if so."""
+        now = time.time()
+        hourly_cap = settings.social_config.hourly_request_cap
+        
+        # Prune requests older than 1 hour
+        cutoff = now - _HOURLY_WINDOW_SECONDS
+        while PlaywrightXCollector._hourly_requests and PlaywrightXCollector._hourly_requests[0] < cutoff:
+            PlaywrightXCollector._hourly_requests.popleft()
+        
+        current_count = len(PlaywrightXCollector._hourly_requests)
+        if current_count >= hourly_cap:
+            # Calculate when oldest request will expire
+            oldest = PlaywrightXCollector._hourly_requests[0]
+            retry_after = int(oldest + _HOURLY_WINDOW_SECONDS - now) + 1
+            logger.warning(
+                "x_hourly_cap_exceeded",
+                current_count=current_count,
+                hourly_cap=hourly_cap,
+                retry_after_seconds=retry_after,
+            )
+            raise XCircuitBreakerError(
+                f"Hourly request cap ({hourly_cap}) exceeded, retry in {retry_after}s",
+                retry_after_seconds=retry_after,
+            )
+
+    def _record_hourly_request(self) -> None:
+        """Record a request for hourly cap tracking."""
+        PlaywrightXCollector._hourly_requests.append(time.time())
 
     def _record_error(self) -> None:
         """Record an error and potentially trigger circuit breaker."""
@@ -146,7 +184,7 @@ class PlaywrightXCollector(XCollectorStrategy):
                 retry_after_seconds=int(backoff_seconds),
             )
 
-    def _record_success(self) -> None:
+    def _record_success(self, posts_found: int) -> None:
         """Record a successful request and reset circuit breaker state."""
         if PlaywrightXCollector._consecutive_errors > 0:
             logger.info(
@@ -155,6 +193,52 @@ class PlaywrightXCollector(XCollectorStrategy):
             )
         PlaywrightXCollector._consecutive_errors = 0
         PlaywrightXCollector._current_backoff_minutes = _INITIAL_BACKOFF_MINUTES
+        
+        # Track consecutive empty results for soft block detection
+        if posts_found == 0:
+            PlaywrightXCollector._consecutive_empty_results += 1
+            max_empty = settings.social_config.max_consecutive_empty_results
+            logger.debug(
+                "x_empty_result",
+                consecutive_empty=PlaywrightXCollector._consecutive_empty_results,
+                max_empty=max_empty,
+            )
+            if PlaywrightXCollector._consecutive_empty_results >= max_empty:
+                logger.warning(
+                    "x_soft_block_detected",
+                    consecutive_empty=PlaywrightXCollector._consecutive_empty_results,
+                    message="Too many consecutive 0-result responses, possible silent block",
+                )
+                # Trigger a soft backoff (use same circuit breaker mechanism)
+                self._trigger_soft_block_backoff()
+        else:
+            # Reset empty counter on any successful fetch with results
+            if PlaywrightXCollector._consecutive_empty_results > 0:
+                logger.debug(
+                    "x_empty_streak_reset",
+                    previous_empty=PlaywrightXCollector._consecutive_empty_results,
+                    posts_found=posts_found,
+                )
+            PlaywrightXCollector._consecutive_empty_results = 0
+
+    def _trigger_soft_block_backoff(self) -> None:
+        """Trigger circuit breaker due to suspected soft block (consecutive empty results)."""
+        # Use a shorter initial backoff for soft blocks (2 minutes instead of 5)
+        soft_block_backoff_minutes = 2
+        backoff_seconds = soft_block_backoff_minutes * 60
+        PlaywrightXCollector._circuit_open_until = time.time() + backoff_seconds
+        PlaywrightXCollector._consecutive_empty_results = 0  # Reset counter
+        
+        logger.warning(
+            "x_soft_block_backoff",
+            backoff_minutes=soft_block_backoff_minutes,
+            retry_at=datetime.fromtimestamp(PlaywrightXCollector._circuit_open_until).isoformat(),
+        )
+        
+        raise XCircuitBreakerError(
+            f"Soft block detected (consecutive empty results), backing off {soft_block_backoff_minutes} minutes",
+            retry_after_seconds=int(backoff_seconds),
+        )
 
     def _polite_delay(self) -> None:
         """Wait between requests to be a good citizen (5-9 seconds like sports reference)."""
@@ -212,8 +296,9 @@ class PlaywrightXCollector(XCollectorStrategy):
             logger.warning("x_playwright_missing", handle=x_handle)
             return []
 
-        # Check circuit breaker before making request
+        # Check circuit breaker and hourly cap before making request
         self._check_circuit_breaker()
+        self._check_hourly_cap()
 
         posts: list[CollectedPost] = []
         page_had_error = False
@@ -357,11 +442,14 @@ class PlaywrightXCollector(XCollectorStrategy):
             finally:
                 browser.close()
 
+        # Record this request for hourly cap tracking
+        self._record_hourly_request()
+
         # Update circuit breaker state based on result
         if page_had_error:
             self._record_error()
         else:
-            self._record_success()
+            self._record_success(posts_found=len(posts))
 
         logger.info("x_playwright_collect_done", handle=x_handle, count=len(posts))
         return posts
