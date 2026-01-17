@@ -129,7 +129,7 @@ def schedule_ingestion_runs(
 
             # Get per-league config from SSOT
             league_cfg = get_league_config(league_code)
-            
+
             config = IngestionConfig(
                 league_code=league_code,
                 start_date=start_date,
