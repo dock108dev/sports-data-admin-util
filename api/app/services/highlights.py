@@ -61,7 +61,7 @@ class GroundedHighlight:
     
     # Context
     involved_teams: list[str] = field(default_factory=list)  # Team abbreviations
-    involved_players: list[str] = field(default_factory=list)  # Player names
+    involved_players: list[dict[str, Any]] = field(default_factory=list)  # Player with stats
     score_change: str = ""  # "92–96 → 98–96"
     game_clock_range: str = ""  # "Q4 7:42–5:58"
     game_phase: GamePhase = GamePhase.MID
@@ -81,7 +81,7 @@ class GroundedHighlight:
             "end_play_id": self.end_play_id,
             "key_play_ids": self.key_play_ids,
             "involved_teams": self.involved_teams,
-            "involved_players": self.involved_players,
+            "involved_players": self.involved_players,  # Now includes stats
             "score_change": self.score_change,
             "game_clock_range": self.game_clock_range,
             "game_phase": self.game_phase.value,
@@ -143,38 +143,103 @@ def _format_clock_range(start_quarter: int | None, start_clock: str | None,
         return f"{start_q} {start_c} – {end_q} {end_c}"
 
 
-def _extract_players_from_plays(
+import re
+
+def _clean_player_name(name: str) -> str:
+    """Clean up player name by removing artifacts like trailing parentheses."""
+    # Remove trailing punctuation and parentheses
+    name = re.sub(r'[(),:;]+$', '', name.strip())
+    # Remove leading punctuation
+    name = re.sub(r'^[(),:;]+', '', name)
+    return name.strip()
+
+
+def _extract_players_with_stats(
     plays: Sequence[dict[str, Any]], 
     start_idx: int, 
     end_idx: int,
-    team_id: int | None = None
-) -> list[str]:
+    min_pts: int = 4,
+) -> list[dict[str, Any]]:
     """
-    Extract player names from play descriptions within a range.
+    Extract players with their stats from plays within a range.
     
-    This is a heuristic - looks for common patterns like "J. Tatum makes..."
+    Returns players with significant contributions:
+    - min_pts+ points scored (default 4, lower for short stretches)
+    - 1+ steals
+    - 1+ blocks
+    - 1+ assists (if we can detect)
     """
-    players: set[str] = set()
+    player_stats: dict[str, dict[str, int]] = {}
     
-    for i, play in enumerate(plays):
-        if play.get("play_index", i) < start_idx or play.get("play_index", i) > end_idx:
+    for play in plays:
+        play_idx = play.get("play_index", 0)
+        if play_idx < start_idx or play_idx > end_idx:
             continue
         
-        description = play.get("description", "")
-        if not description:
+        description = (play.get("description") or "").lower()
+        player_name = play.get("player_name")
+        
+        if not player_name:
+            # Try to extract from description
+            desc_upper = play.get("description", "")
+            match = re.search(r'([A-Z]\.\s*[A-Z][a-zA-Z]+)', desc_upper)
+            if match:
+                player_name = _clean_player_name(match.group(1))
+        
+        if not player_name:
+            continue
+            
+        player_name = _clean_player_name(player_name)
+        if not player_name or len(player_name) < 3:
             continue
         
-        # Look for player name patterns (e.g., "J. Tatum", "LeBron James")
-        # This is a simple heuristic - could be improved with NER
-        words = description.split()
-        for j, word in enumerate(words):
-            # Pattern: Initial. LastName (e.g., "J. Tatum")
-            if len(word) == 2 and word[1] == "." and j + 1 < len(words):
-                next_word = words[j + 1]
-                if next_word[0].isupper() and len(next_word) > 2:
-                    players.add(f"{word} {next_word}")
+        if player_name not in player_stats:
+            player_stats[player_name] = {"pts": 0, "stl": 0, "blk": 0, "ast": 0}
+        
+        # Detect scoring plays
+        if any(word in description for word in ["makes", "made", "scores"]):
+            if "three" in description or "3-pt" in description or "3pt" in description:
+                player_stats[player_name]["pts"] += 3
+            elif "free throw" in description or "ft" in description:
+                player_stats[player_name]["pts"] += 1
+            else:
+                player_stats[player_name]["pts"] += 2
+        
+        # Detect other stats
+        if "steal" in description:
+            player_stats[player_name]["stl"] += 1
+        if "block" in description:
+            player_stats[player_name]["blk"] += 1
+        if "assist" in description:
+            player_stats[player_name]["ast"] += 1
     
-    return list(players)[:3]  # Limit to top 3
+    # Filter to players with significant contributions
+    significant_players = []
+    for name, stats in player_stats.items():
+        if stats["pts"] >= min_pts or stats["stl"] >= 1 or stats["blk"] >= 1:
+            stat_parts = []
+            if stats["pts"] > 0:
+                stat_parts.append(f"{stats['pts']} pts")
+            if stats["stl"] > 0:
+                stat_parts.append(f"{stats['stl']} stl")
+            if stats["blk"] > 0:
+                stat_parts.append(f"{stats['blk']} blk")
+            if stats["ast"] > 0:
+                stat_parts.append(f"{stats['ast']} ast")
+            
+            significant_players.append({
+                "name": name,
+                "stats": stats,
+                "summary": ", ".join(stat_parts) if stat_parts else None,
+            })
+    
+    # Sort by total contribution (pts + 2*stl + 2*blk)
+    significant_players.sort(
+        key=lambda p: p["stats"]["pts"] + 2 * p["stats"]["stl"] + 2 * p["stats"]["blk"],
+        reverse=True
+    )
+    
+    return significant_players[:3]  # Top 3 contributors
 
 
 def build_grounded_highlights(
@@ -227,10 +292,10 @@ def build_grounded_highlights(
         except ValueError:
             continue
         
-        # Extract score context
+        # Extract score context from raw highlight
         score_ctx = raw.get("score_context", {})
-        start_score = score_ctx.get("start_score", {})
-        end_score = score_ctx.get("end_score", {})
+        raw_start_score = score_ctx.get("start_score", {})
+        raw_end_score = score_ctx.get("end_score", {})
         
         # Find corresponding play indices from timeline
         start_ts = raw.get("start_timestamp")
@@ -243,25 +308,100 @@ def build_grounded_highlights(
         start_clock = None
         end_clock = None
         
-        # Match timestamps to play indices
+        # Match timestamps to play indices and extract actual scores
+        start_home_score = 0
+        start_away_score = 0
+        end_home_score = 0
+        end_away_score = 0
+        
         for i, event in enumerate(pbp_events):
             event_ts = event.get("synthetic_timestamp")
             if event_ts == start_ts:
                 start_play_idx = event.get("play_index", i)
                 start_quarter = event.get("quarter")
                 start_clock = event.get("game_clock")
+                if event.get("home_score") is not None:
+                    start_home_score = event.get("home_score")
+                    start_away_score = event.get("away_score", 0)
             if event_ts == end_ts:
                 end_play_idx = event.get("play_index", i)
                 end_quarter = event.get("quarter")
                 end_clock = event.get("game_clock")
+                if event.get("home_score") is not None:
+                    end_home_score = event.get("home_score")
+                    end_away_score = event.get("away_score", 0)
+        
+        # Use raw scores if available, otherwise use extracted
+        if raw_start_score.get("home") is not None or raw_start_score.get("away") is not None:
+            start_home_score = raw_start_score.get("home", start_home_score) or 0
+            start_away_score = raw_start_score.get("away", start_away_score) or 0
+        if raw_end_score.get("home") is not None or raw_end_score.get("away") is not None:
+            end_home_score = raw_end_score.get("home", end_home_score) or 0
+            end_away_score = raw_end_score.get("away", end_away_score) or 0
+            
+        # If we still don't have scores, try to find them from nearby plays
+        if start_home_score == 0 and start_away_score == 0:
+            # Find the first play in range with valid scores
+            for event in pbp_events:
+                idx = event.get("play_index", 0)
+                if idx >= start_play_idx and event.get("home_score") is not None:
+                    start_home_score = event.get("home_score", 0)
+                    start_away_score = event.get("away_score", 0)
+                    break
+                    
+        if end_home_score == 0 and end_away_score == 0:
+            # Find the last play in range with valid scores
+            for event in reversed(pbp_events):
+                idx = event.get("play_index", 0)
+                if idx <= end_play_idx and event.get("home_score") is not None:
+                    end_home_score = event.get("home_score", 0)
+                    end_away_score = event.get("away_score", 0)
+                    break
+        
+        # For game_deciding_stretch, constrain to a reasonable window
+        # Find the last competitive stretch (Q4 plays where margin was close)
+        if hl_type == HighlightType.GAME_DECIDING_STRETCH:
+            # Get Q4 plays with valid scores
+            q4_with_scores = [
+                e for e in pbp_events
+                if e.get("quarter") == 4 
+                and e.get("home_score") is not None
+                and e.get("away_score") is not None
+            ]
+            
+            if q4_with_scores:
+                # Find the last stretch where margin was <= 10 (competitive)
+                q4_close_plays = [
+                    e for e in q4_with_scores
+                    if abs(e.get("home_score", 0) - e.get("away_score", 0)) <= 10
+                ]
+                
+                # If game was close in Q4, use those plays
+                if len(q4_close_plays) >= 5:
+                    stretch_plays = q4_close_plays[-30:] if len(q4_close_plays) > 30 else q4_close_plays
+                else:
+                    # Game wasn't close - use final 25 plays of Q4 with scores
+                    stretch_plays = q4_with_scores[-25:] if len(q4_with_scores) > 25 else q4_with_scores
+                
+                if stretch_plays:
+                    start_play_idx = stretch_plays[0].get("play_index", start_play_idx)
+                    end_play_idx = stretch_plays[-1].get("play_index", end_play_idx)
+                    start_quarter = stretch_plays[0].get("quarter")
+                    start_clock = stretch_plays[0].get("game_clock")
+                    end_quarter = stretch_plays[-1].get("quarter")
+                    end_clock = stretch_plays[-1].get("game_clock")
+                    start_home_score = stretch_plays[0].get("home_score", 0)
+                    start_away_score = stretch_plays[0].get("away_score", 0)
+                    end_home_score = stretch_plays[-1].get("home_score", 0)
+                    end_away_score = stretch_plays[-1].get("away_score", 0)
         
         # Determine game phase
         phase = _determine_game_phase(end_quarter, end_clock)
         
         # Format score change
         score_change = _format_score_change(
-            start_score.get("home", 0), start_score.get("away", 0),
-            end_score.get("home", 0), end_score.get("away", 0)
+            start_home_score, start_away_score,
+            end_home_score, end_away_score
         )
         
         # Format clock range
@@ -278,10 +418,12 @@ def build_grounded_highlights(
         if not team_abbrs:
             team_abbrs = [home_abbr, away_abbr]
         
-        # Extract players from plays
-        players = _extract_players_from_plays(
-            pbp_events, start_play_idx, end_play_idx,
-            teams_involved[0] if teams_involved else None
+        # Extract players with stats from plays
+        # Use lower threshold for short highlights (like lead changes)
+        play_count = end_play_idx - start_play_idx + 1
+        min_pts = 2 if play_count < 20 else 4
+        players_with_stats = _extract_players_with_stats(
+            pbp_events, start_play_idx, end_play_idx, min_pts=min_pts
         )
         
         # Find key plays (scoring plays within the window)
@@ -289,8 +431,9 @@ def build_grounded_highlights(
         for event in pbp_events:
             idx = event.get("play_index", 0)
             if start_play_idx <= idx <= end_play_idx:
-                play_type = event.get("play_type", "")
-                if play_type and "score" in play_type.lower() or event.get("home_score") != event.get("away_score"):
+                desc = (event.get("description") or "").lower()
+                # Look for significant plays
+                if any(word in desc for word in ["makes", "scores", "dunk", "three", "block", "steal"]):
                     key_play_ids.append(str(idx))
                     if len(key_play_ids) >= 3:
                         break
@@ -301,7 +444,8 @@ def build_grounded_highlights(
         )
         
         # Calculate importance score
-        importance = _calculate_importance(hl_type, phase, score_ctx, end_score)
+        computed_end_score = {"home": end_home_score, "away": end_away_score}
+        importance = _calculate_importance(hl_type, phase, score_ctx, computed_end_score)
         
         grounded.append(GroundedHighlight(
             highlight_id=_generate_highlight_id(),
@@ -312,7 +456,7 @@ def build_grounded_highlights(
             end_play_id=str(end_play_idx),
             key_play_ids=key_play_ids,
             involved_teams=team_abbrs,
-            involved_players=players,
+            involved_players=players_with_stats,  # Now includes stats
             score_change=score_change,
             game_clock_range=clock_range,
             game_phase=phase,
@@ -450,6 +594,30 @@ def _deduplicate_highlights(highlights: list[GroundedHighlight]) -> list[Grounde
             h.highlight_type == HighlightType.LEAD_CHANGE):
             # Check if they're close (within ~30 play indices)
             if abs(int(h.start_play_id) - int(prev.end_play_id)) < 30:
+                # Merge players (now dicts) - combine by name
+                merged_players: dict[str, dict[str, Any]] = {}
+                for p in prev.involved_players + h.involved_players:
+                    if isinstance(p, dict):
+                        name = p.get("name", "")
+                        if name not in merged_players:
+                            merged_players[name] = p
+                        else:
+                            # Merge stats
+                            existing = merged_players[name]
+                            for stat in ["pts", "stl", "blk", "ast"]:
+                                existing["stats"][stat] = existing["stats"].get(stat, 0) + p.get("stats", {}).get(stat, 0)
+                            # Rebuild summary
+                            stat_parts = []
+                            if existing["stats"].get("pts", 0) > 0:
+                                stat_parts.append(f"{existing['stats']['pts']} pts")
+                            if existing["stats"].get("stl", 0) > 0:
+                                stat_parts.append(f"{existing['stats']['stl']} stl")
+                            if existing["stats"].get("blk", 0) > 0:
+                                stat_parts.append(f"{existing['stats']['blk']} blk")
+                            if existing["stats"].get("ast", 0) > 0:
+                                stat_parts.append(f"{existing['stats']['ast']} ast")
+                            existing["summary"] = ", ".join(stat_parts) if stat_parts else None
+                
                 # Merge: extend prev to include h
                 prev = GroundedHighlight(
                     highlight_id=prev.highlight_id,
@@ -460,7 +628,7 @@ def _deduplicate_highlights(highlights: list[GroundedHighlight]) -> list[Grounde
                     end_play_id=h.end_play_id,
                     key_play_ids=prev.key_play_ids + h.key_play_ids,
                     involved_teams=list(set(prev.involved_teams + h.involved_teams)),
-                    involved_players=list(set(prev.involved_players + h.involved_players)),
+                    involved_players=list(merged_players.values()),
                     score_change=f"{prev.score_change.split('→')[0].strip()} → {h.score_change.split('→')[-1].strip()}",
                     game_clock_range=f"{prev.game_clock_range.split('–')[0]}–{h.game_clock_range.split('–')[-1]}",
                     game_phase=h.game_phase,  # Use later phase

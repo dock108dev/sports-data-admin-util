@@ -626,7 +626,5 @@ async def build_nba_game_analysis_async(
     )
     analysis["grounded_highlights"] = [h.to_dict() for h in grounded_highlights]
     
-    # Keep raw_highlights for backward compatibility, but mark deprecated
-    analysis["highlights_legacy"] = raw_highlights
     
     return analysis

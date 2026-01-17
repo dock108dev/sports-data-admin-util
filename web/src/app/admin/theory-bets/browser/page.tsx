@@ -180,27 +180,27 @@ export default function UnifiedBrowserPage() {
               <>
                 <div className={styles.stat}>
                   <span className={styles.statValue}>{aggregateStats.boxscorePercent}%</span>
-                  <span className={styles.statLabel}>W/ Boxscores</span>
+                  <span className={styles.statLabel}>Boxscores</span>
                 </div>
                 <div className={styles.stat}>
                   <span className={styles.statValue}>{aggregateStats.playerStatsPercent}%</span>
-                  <span className={styles.statLabel}>W/ Player Stats</span>
+                  <span className={styles.statLabel}>Player Stats</span>
                 </div>
                 <div className={styles.stat}>
                   <span className={styles.statValue}>{aggregateStats.oddsPercent}%</span>
-                  <span className={styles.statLabel}>W/ Odds</span>
+                  <span className={styles.statLabel}>Odds</span>
                 </div>
                 <div className={styles.stat}>
                   <span className={styles.statValue}>{aggregateStats.socialPercent}%</span>
-                  <span className={styles.statLabel}>W/ Social</span>
+                  <span className={styles.statLabel}>Social</span>
                 </div>
                 <div className={styles.stat}>
                   <span className={styles.statValue}>{aggregateStats.pbpPercent}%</span>
-                  <span className={styles.statLabel}>W/ PBP</span>
+                  <span className={styles.statLabel}>Play-by-Play</span>
                 </div>
                 <div className={styles.stat}>
                   <span className={styles.statValue}>{aggregateStats.highlightsPercent}%</span>
-                  <span className={styles.statLabel}>W/ Highlights</span>
+                  <span className={styles.statLabel}>Highlights</span>
                 </div>
               </>
             )}

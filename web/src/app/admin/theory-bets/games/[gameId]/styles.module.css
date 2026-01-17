@@ -542,9 +542,23 @@
   background: #f1f5f9;
   color: #475569;
   border-radius: 6px;
-  padding: 0.25rem 0.6rem;
+  padding: 0.35rem 0.6rem;
   font-weight: 500;
   font-size: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.playerName {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.playerStats {
+  font-size: 0.7rem;
+  color: #3b82f6;
+  font-weight: 600;
 }
 
 .highlightFooter {

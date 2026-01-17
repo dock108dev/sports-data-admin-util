@@ -269,6 +269,13 @@ class CompactMomentSummaryResponse(BaseModel):
     summary: str
 
 
+class PlayerContribution(BaseModel):
+    """Player with their stats in a highlight stretch."""
+    name: str
+    stats: dict[str, int] = Field(default_factory=dict)  # {"pts": 6, "stl": 1, "blk": 0, "ast": 1}
+    summary: str | None = None  # "6 pts, 1 stl"
+
+
 class HighlightEntry(BaseModel):
     """Grounded highlight with play references and context."""
     highlight_id: str
@@ -279,7 +286,7 @@ class HighlightEntry(BaseModel):
     end_play_id: str
     key_play_ids: list[str] = Field(default_factory=list)
     involved_teams: list[str] = Field(default_factory=list)
-    involved_players: list[str] = Field(default_factory=list)
+    involved_players: list[PlayerContribution] = Field(default_factory=list)  # Players with stats
     score_change: str = ""  # "92–96 → 98–96"
     game_clock_range: str = ""  # "Q4 7:42–5:58"
     game_phase: str = "mid"  # early, mid, late, closing
@@ -294,14 +301,6 @@ class HighlightsResponse(BaseModel):
     total_count: int
 
 
-class LegacyHighlightEntry(BaseModel):
-    """Legacy highlight format for backward compatibility."""
-    type: str
-    segment_id: str | int | None
-    description: str
-    importance: str | None
-
-
 class GameDetailResponse(BaseModel):
     game: GameMeta
     team_stats: list[TeamStat]
@@ -309,8 +308,7 @@ class GameDetailResponse(BaseModel):
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry]
     plays: list[PlayEntry]
-    highlights: list[HighlightEntry]  # New grounded highlights
-    highlights_legacy: list[LegacyHighlightEntry] = Field(default_factory=list)  # Backward compat
+    highlights: list[HighlightEntry]
     derived_metrics: dict[str, Any]
     raw_payloads: dict[str, Any]
 

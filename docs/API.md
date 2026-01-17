@@ -104,7 +104,6 @@ Get detailed game data including stats, odds, social posts, and plays.
   "social_posts": [SocialPostEntry],
   "plays": [PlayEntry],
   "highlights": [HighlightEntry],
-  "highlights_legacy": [LegacyHighlightEntry],
   "derived_metrics": {},
   "raw_payloads": {}
 }
@@ -1288,7 +1287,7 @@ Get the last-read position for a user/game pair.
   end_play_id: string;
   key_play_ids: string[];
   involved_teams: string[];
-  involved_players: string[];
+  involved_players: PlayerContribution[];
   score_change: string; // "92–96 → 98–96"
   game_clock_range: string; // "Q4 7:42–5:58"
   game_phase: string; // "early" | "mid" | "late" | "closing"
@@ -1296,13 +1295,12 @@ Get the last-read position for a user/game pair.
 }
 ```
 
-### LegacyHighlightEntry
+### PlayerContribution
 ```typescript
 {
-  type: string;
-  segment_id: string | number | null;
-  description: string;
-  importance: string | null;
+  name: string; // Player name
+  stats: { pts?: number; stl?: number; blk?: number; ast?: number };
+  summary: string | null; // "6 pts, 1 stl"
 }
 ```
 

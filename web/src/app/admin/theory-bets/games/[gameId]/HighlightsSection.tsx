@@ -137,7 +137,7 @@ export function HighlightsSection({ highlights }: HighlightsSectionProps) {
                   )}
                 </div>
 
-                {/* Participants row: Teams + Players */}
+                {/* Participants row: Teams + Players with stats */}
                 <div className={styles.highlightParticipants}>
                   {highlight.involved_teams.length > 0 && (
                     <div className={styles.teamsInvolved}>
@@ -151,8 +151,11 @@ export function HighlightsSection({ highlights }: HighlightsSectionProps) {
                   {highlight.involved_players.length > 0 && (
                     <div className={styles.playersInvolved}>
                       {highlight.involved_players.map((player) => (
-                        <span key={player} className={styles.playerBadge}>
-                          {player}
+                        <span key={player.name} className={styles.playerBadge}>
+                          <span className={styles.playerName}>{player.name}</span>
+                          {player.summary && (
+                            <span className={styles.playerStats}>{player.summary}</span>
+                          )}
                         </span>
                       ))}
                     </div>

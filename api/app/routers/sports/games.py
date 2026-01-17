@@ -40,7 +40,6 @@ from .schemas import (
     GamePreviewScoreResponse,
     HighlightEntry,
     HighlightsResponse,
-    LegacyHighlightEntry,
     ScrapeRunConfig,
     JobResponse,
     OddsEntry,
@@ -348,18 +347,16 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         ],
     }
 
-    # Serialize grounded highlights (new format)
-    grounded_highlights_list = []
-    legacy_highlights_list = []
+    # Serialize grounded highlights
+    highlights_list: list[HighlightEntry] = []
     if timeline_artifacts:
         artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
         game_analysis = artifact.game_analysis_json or {}
         
-        # Prefer grounded_highlights if available
         grounded_raw = game_analysis.get("grounded_highlights", [])
         for h in grounded_raw:
             if isinstance(h, dict):
-                grounded_highlights_list.append(
+                highlights_list.append(
                     HighlightEntry(
                         highlight_id=h.get("highlight_id", ""),
                         type=h.get("type", "UNKNOWN"),
@@ -376,19 +373,6 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
                         importance_score=h.get("importance_score", 0.5),
                     )
                 )
-        
-        # Also populate legacy format for backward compatibility
-        legacy_raw = game_analysis.get("highlights_legacy", game_analysis.get("highlights", []))
-        for h in legacy_raw:
-            if isinstance(h, dict):
-                legacy_highlights_list.append(
-                    LegacyHighlightEntry(
-                        type=h.get("highlight_type", h.get("type", "unknown")),
-                        segment_id=h.get("related_segment_id", h.get("segment_id")),
-                        description=_format_highlight_description(h),
-                        importance=h.get("importance"),
-                    )
-                )
 
     return GameDetailResponse(
         game=meta,
@@ -397,8 +381,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,
-        highlights=grounded_highlights_list,
-        highlights_legacy=legacy_highlights_list,
+        highlights=highlights_list,
         derived_metrics=derived,
         raw_payloads=raw_payloads,
     )

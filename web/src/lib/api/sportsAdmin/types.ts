@@ -109,6 +109,15 @@ export type PlayEntry = {
 };
 
 /**
+ * Player contribution in a highlight stretch.
+ */
+export type PlayerContribution = {
+  name: string;
+  stats: { pts?: number; stl?: number; blk?: number; ast?: number };
+  summary: string | null; // "6 pts, 1 stl"
+};
+
+/**
  * Grounded highlight with play references and context.
  * Each highlight is traceable to specific plays in the timeline.
  */
@@ -121,21 +130,11 @@ export type HighlightEntry = {
   end_play_id: string;
   key_play_ids: string[];
   involved_teams: string[];
-  involved_players: string[];
+  involved_players: PlayerContribution[];
   score_change: string; // "92–96 → 98–96"
   game_clock_range: string; // "Q4 7:42–5:58"
   game_phase: "early" | "mid" | "late" | "closing";
   importance_score: number;
-};
-
-/**
- * Legacy highlight format for backward compatibility.
- */
-export type LegacyHighlightEntry = {
-  type: string;
-  segment_id: string | number | null;
-  description: string;
-  importance: string | null;
 };
 
 /**
@@ -181,7 +180,6 @@ export type AdminGameDetail = {
   social_posts: SocialPost[];
   plays: PlayEntry[];
   highlights: HighlightEntry[];
-  highlights_legacy?: LegacyHighlightEntry[];
   derived_metrics: Record<string, unknown>;
   raw_payloads: Record<string, unknown>;
 };
