@@ -60,6 +60,27 @@ from .lead_ladder import (
     compute_lead_state,
     detect_tier_crossing,
 )
+from .moments_runs import (
+    DetectedRun,
+    RunInfo,
+    detect_runs,
+    find_run_for_moment,
+    run_to_info,
+)
+from .moments_merging import (
+    is_valid_moment,
+    merge_invalid_moments,
+    merge_consecutive_moments,
+    enforce_quarter_limits,
+    enforce_budget,
+)
+from .moments_validation import (
+    MomentValidationError,
+    validate_score_continuity,
+    assert_moment_continuity,
+    validate_moment_coverage,
+    validate_moments,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -406,174 +427,10 @@ def _is_closing_situation(
 # =============================================================================
 # RUN DETECTION (Metadata, not boundaries)
 # =============================================================================
-
-
-@dataclass
-class DetectedRun:
-    """
-    A detected scoring run (before assignment to a moment).
-    
-    Runs are sequences of unanswered scoring by one team.
-    They do NOT create moment boundaries by themselves.
-    """
-    team: str  # "home" or "away"
-    points: int
-    start_idx: int  # Timeline index where run started
-    end_idx: int    # Timeline index where run ended
-    play_ids: list[int] = field(default_factory=list)  # All scoring play indices
-
-
-# Minimum points for a run to be considered significant
-# This is sport-agnostic - the caller should provide appropriate threshold
-DEFAULT_RUN_THRESHOLD = 6
-
-
-def _detect_runs(
-    events: Sequence[dict[str, Any]],
-    min_points: int = DEFAULT_RUN_THRESHOLD,
-) -> list[DetectedRun]:
-    """
-    Detect scoring runs in the timeline.
-    
-    A run is a sequence of unanswered scoring by one team.
-    Runs are detected but do NOT create moment boundaries.
-    They become metadata attached to the owning moment.
-    
-    Args:
-        events: Timeline events
-        min_points: Minimum points to qualify as a run
-        
-    Returns:
-        List of detected runs (not yet assigned to moments)
-    """
-    runs: list[DetectedRun] = []
-    
-    # Track current run state
-    current_run_team: str | None = None
-    current_run_points = 0
-    current_run_start = 0
-    current_run_plays: list[int] = []
-    
-    prev_home = 0
-    prev_away = 0
-    
-    for i, event in enumerate(events):
-        if event.get("event_type") != "pbp":
-            continue
-            
-        home_score = event.get("home_score", 0) or 0
-        away_score = event.get("away_score", 0) or 0
-        
-        # Calculate score deltas
-        home_delta = home_score - prev_home
-        away_delta = away_score - prev_away
-        
-        # Determine which team scored
-        if home_delta > 0 and away_delta == 0:
-            scoring_team = "home"
-            points_scored = home_delta
-        elif away_delta > 0 and home_delta == 0:
-            scoring_team = "away"
-            points_scored = away_delta
-        elif home_delta > 0 or away_delta > 0:
-            # Both teams scored - end any current run
-            if current_run_points >= min_points:
-                runs.append(DetectedRun(
-                    team=current_run_team or "home",
-                    points=current_run_points,
-                    start_idx=current_run_start,
-                    end_idx=i - 1,
-                    play_ids=current_run_plays.copy(),
-                ))
-            current_run_team = None
-            current_run_points = 0
-            current_run_plays = []
-            prev_home = home_score
-            prev_away = away_score
-            continue
-        else:
-            # No scoring - continue current run
-            prev_home = home_score
-            prev_away = away_score
-            continue
-        
-        # Handle scoring by one team
-        if scoring_team == current_run_team:
-            # Extend current run
-            current_run_points += points_scored
-            current_run_plays.append(i)
-        else:
-            # New team scored - close previous run if significant
-            if current_run_points >= min_points:
-                runs.append(DetectedRun(
-                    team=current_run_team or "home",
-                    points=current_run_points,
-                    start_idx=current_run_start,
-                    end_idx=i - 1,
-                    play_ids=current_run_plays.copy(),
-                ))
-            # Start new run
-            current_run_team = scoring_team
-            current_run_points = points_scored
-            current_run_start = i
-            current_run_plays = [i]
-        
-        prev_home = home_score
-        prev_away = away_score
-    
-    # Close any open run
-    if current_run_points >= min_points and current_run_plays:
-        runs.append(DetectedRun(
-            team=current_run_team or "home",
-            points=current_run_points,
-            start_idx=current_run_start,
-            end_idx=current_run_plays[-1],
-            play_ids=current_run_plays.copy(),
-        ))
-    
-    return runs
-
-
-def _find_run_for_moment(
-    runs: list[DetectedRun],
-    moment_start: int,
-    moment_end: int,
-) -> DetectedRun | None:
-    """
-    Find the best run that contributed to a moment.
-    
-    A run "contributed" to a moment if:
-    - The run overlaps with the moment's play range
-    - The run ended at or before the moment boundary
-    
-    Returns the largest run that fits, or None.
-    """
-    best_run: DetectedRun | None = None
-    best_points = 0
-    
-    for run in runs:
-        # Check if run overlaps with moment
-        if run.end_idx < moment_start or run.start_idx > moment_end:
-            continue
-        
-        # This run contributed to the moment - take the largest
-        if run.points > best_points:
-            best_run = run
-            best_points = run.points
-    
-    return best_run
-
-
-def _run_to_info(run: DetectedRun) -> RunInfo:
-    """Convert a DetectedRun to RunInfo for attachment to a Moment."""
-    return RunInfo(
-        team=run.team,
-        points=run.points,
-        unanswered=True,  # By definition, runs are unanswered
-        play_ids=run.play_ids.copy(),
-        start_idx=run.start_idx,
-        end_idx=run.end_idx,
-    )
+# NOTE: Run detection logic has been extracted to moments_runs.py
+# Functions: detect_runs(), find_run_for_moment(), run_to_info()
+# This keeps the core partitioning algorithm focused while allowing
+# independent testing and maintenance of run detection logic.
 
 
 # =============================================================================
@@ -800,435 +657,8 @@ def _detect_boundaries(
 # =============================================================================
 # MOMENT MERGING (Critical for budget enforcement)
 # =============================================================================
+# NOTE: Merging logic has been extracted to moments_merging.py
 
-
-def is_valid_moment(moment: Moment) -> bool:
-    """
-    HARD VALIDITY GATE: A moment must represent a narrative state change.
-
-    A moment is valid if:
-    1. It has a causal trigger (not 'unknown' or 'stable' with no change)
-    2. It has participants (teams)
-    3. It represents a meaningful state change (score, control, ladder)
-    4. It is NOT a micro-moment (< 2 plays) unless it's a high-impact transition (flip, tie, lock)
-    """
-    # Rule 0: Must have a causal trigger
-    if not moment.reason or moment.reason.trigger in ("unknown", "stable"):
-        # Stable moments are only valid if they actually have a score change (merged in later)
-        if moment.score_before == moment.score_after:
-            return False
-
-    # Rule 1: Must have teams
-    if not moment.teams:
-        return False
-
-    # Rule 2: Micro-moment protection
-    if moment.play_count < 2:
-        # Only allow single-play moments for high-impact transitions
-        if moment.type not in (MomentType.FLIP, MomentType.TIE, MomentType.CLOSING_CONTROL, MomentType.HIGH_IMPACT):
-            return False
-
-    # Rule 3: Narrative change
-    if (moment.score_before != moment.score_after or 
-        moment.ladder_tier_before != moment.ladder_tier_after or
-        moment.type in (MomentType.FLIP, MomentType.TIE, MomentType.CLOSING_CONTROL, MomentType.HIGH_IMPACT)):
-        return True
-
-    return False
-
-
-def _is_moment_low_value(moment: Moment) -> bool:
-    """
-    Legacy function - now delegates to is_valid_moment().
-    Moments that fail validity must be merged, not deleted.
-    """
-    return not is_valid_moment(moment)
-
-
-def _can_merge_moments(m1: Moment, m2: Moment) -> bool:
-    """
-    Determine if two adjacent moments can be merged.
-
-    MERGE RULES (from spec):
-    - Same MomentType → ALWAYS merge
-    - Same team_in_control → MERGE (unless protected type)
-    - No intervening FLIP, TIE, or CLOSING_CONTROL
-    - Low-value moments → ALWAYS merge (they have no narrative value)
-
-    Protected types (FLIP, CLOSING_CONTROL, HIGH_IMPACT) are NEVER merged.
-    """
-    # Low-value moments can always be merged (they have no narrative value)
-    if _is_moment_low_value(m1) or _is_moment_low_value(m2):
-        # But don't merge low-value moments with protected types
-        if not (m1.type in PROTECTED_TYPES or m2.type in PROTECTED_TYPES):
-            return True
-
-    # Never merge protected types
-    if m1.type in PROTECTED_TYPES or m2.type in PROTECTED_TYPES:
-        return False
-
-    # Always merge same type + same control
-    if m1.type == m2.type:
-        return True
-
-    # Merge NEUTRAL with anything except protected
-    if m1.type == MomentType.NEUTRAL or m2.type == MomentType.NEUTRAL:
-        return True
-
-    # Merge consecutive LEAD_BUILD or CUT if same control
-    if m1.type in ALWAYS_MERGE_TYPES and m2.type in ALWAYS_MERGE_TYPES:
-        if m1.team_in_control == m2.team_in_control:
-            return True
-
-    # Don't merge TIE with other types (TIE is a narrative pivot)
-    if m1.type == MomentType.TIE or m2.type == MomentType.TIE:
-        return False
-
-    return False
-
-
-def _merge_two_moments(m1: Moment, m2: Moment) -> Moment:
-    """
-    Merge two adjacent moments into one.
-    
-    The resulting moment:
-    - Spans from m1.start_play to m2.end_play
-    - Takes the more significant type
-    - Combines key_play_ids
-    - Takes the final control state
-    """
-    # Determine the dominant type (more significant)
-    type_priority = {
-        MomentType.FLIP: 10,
-        MomentType.CLOSING_CONTROL: 9,
-        MomentType.HIGH_IMPACT: 8,
-        MomentType.TIE: 7,
-        MomentType.CUT: 6,
-        MomentType.LEAD_BUILD: 5,
-        MomentType.NEUTRAL: 1,
-    }
-    
-    if type_priority.get(m2.type, 0) > type_priority.get(m1.type, 0):
-        dominant_type = m2.type
-        dominant_reason = m2.reason
-    else:
-        dominant_type = m1.type
-        dominant_reason = m1.reason
-    
-    # Combine key plays
-    combined_key_plays = list(set(m1.key_play_ids + m2.key_play_ids))
-    combined_key_plays.sort()
-    
-    # Build merged reason if needed
-    if dominant_reason is None and m1.reason:
-        dominant_reason = m1.reason
-    
-    merged = Moment(
-        id=m1.id,  # Will be renumbered later
-        type=dominant_type,
-        start_play=m1.start_play,
-        end_play=m2.end_play,
-        play_count=m2.end_play - m1.start_play + 1,
-        score_before=m1.score_before,
-        score_after=m2.score_after,
-        score_start=m1.score_start,
-        score_end=m2.score_end,
-        ladder_tier_before=m1.ladder_tier_before,
-        ladder_tier_after=m2.ladder_tier_after,
-        team_in_control=m2.team_in_control,
-        teams=list(set(m1.teams + m2.teams)),
-        primary_team=m2.primary_team or m1.primary_team,
-        players=m1.players + m2.players,  # Combine player contributions
-        key_play_ids=combined_key_plays,
-        clock=f"{m1.clock.split('–')[0]}–{m2.clock.split('–')[-1]}" if m1.clock and m2.clock else m1.clock or m2.clock,
-        reason=dominant_reason,
-        is_notable=m1.is_notable or m2.is_notable,
-        is_period_start=m1.is_period_start,
-        note=m2.note or m1.note,
-        run_info=m2.run_info or m1.run_info,
-        bucket=m2.bucket or m1.bucket,
-    )
-    
-    return merged
-
-
-def _merge_invalid_moments(moments: list[Moment]) -> list[Moment]:
-    """
-    HARD VALIDITY ENFORCEMENT: Merge all invalid moments into adjacent valid ones.
-
-    A moment is invalid if it fails the is_valid_moment() gate (no narrative change).
-    These moments are absorbed into the nearest valid moment (prefer previous).
-    """
-    if not moments:
-        return moments
-
-    merged: list[Moment] = []
-
-    for moment in moments:
-        if not is_valid_moment(moment):
-            # Invalid moment - merge into previous valid moment if possible
-            if merged:
-                logger.info(
-                    "absorbing_invalid_moment",
-                    extra={
-                        "invalid_moment_id": moment.id,
-                        "invalid_type": moment.type.value,
-                        "invalid_score": f"{moment.score_before} → {moment.score_after}",
-                        "merged_into": merged[-1].id,
-                    },
-                )
-                merged[-1] = _merge_two_moments(merged[-1], moment)
-            else:
-                # This is the first moment and it's invalid - keep it but mark it
-                # It will likely be merged with the next valid moment in the next iteration
-                # if we were to do a forward pass, but for now we'll just add it.
-                merged.append(moment)
-        else:
-            # Current moment is valid.
-            # Check if we should absorb the previous moment if it was the first and invalid
-            if len(merged) == 1 and not is_valid_moment(merged[0]):
-                first = merged.pop()
-                logger.info(
-                    "absorbing_initial_invalid_moment",
-                    extra={
-                        "invalid_moment_id": first.id,
-                        "merged_into": moment.id,
-                    }
-                )
-                merged.append(_merge_two_moments(first, moment))
-            else:
-                merged.append(moment)
-
-    return merged
-
-
-def _merge_consecutive_moments(moments: list[Moment]) -> list[Moment]:
-    """
-    Merge consecutive same-type moments aggressively.
-
-    This is the PRIMARY mechanism for reducing moment count.
-
-    These should NEVER be separate moments:
-    - LEAD_BUILD → LEAD_BUILD
-    - CUT → CUT
-    - NEUTRAL → NEUTRAL
-
-    If control didn't change, the moment didn't change.
-    """
-    if len(moments) <= 1:
-        return moments
-
-    merged: list[Moment] = [moments[0]]
-
-    for current in moments[1:]:
-        prev = merged[-1]
-
-        if _can_merge_moments(prev, current):
-            # Merge into previous
-            merged[-1] = _merge_two_moments(prev, current)
-        else:
-            merged.append(current)
-
-    return merged
-
-
-def _get_quarter_for_play(play_idx: int, events: Sequence[dict[str, Any]]) -> int | None:
-    """Get quarter number for a play index."""
-    if play_idx < 0 or play_idx >= len(events):
-        return None
-    event = events[play_idx]
-    return event.get("quarter")
-
-
-def _enforce_quarter_limits(
-    moments: list[Moment], 
-    events: Sequence[dict[str, Any]],
-) -> list[Moment]:
-    """
-    Enforce per-quarter moment limits to prevent chaotic quarters.
-    
-    A quarter with 10+ moments is narratively confusing.
-    This merges excess moments within each quarter.
-    """
-    if not moments:
-        return moments
-    
-    # Group moments by quarter
-    quarter_moments: dict[int, list[int]] = {}  # quarter -> list of moment indices
-    for i, m in enumerate(moments):
-        q = _get_quarter_for_play(m.start_play, events)
-        if q is not None:
-            if q not in quarter_moments:
-                quarter_moments[q] = []
-            quarter_moments[q].append(i)
-    
-    # Find quarters over limit
-    to_merge: set[int] = set()  # moment indices to merge with previous
-    for q, indices in quarter_moments.items():
-        if len(indices) > QUARTER_MOMENT_LIMIT:
-            excess = len(indices) - QUARTER_MOMENT_LIMIT
-            # Mark the least important moments for merging
-            # Prefer merging NEUTRAL, LEAD_BUILD, CUT in that order
-            scored = []
-            for idx in indices[1:]:  # Skip first moment in quarter
-                m = moments[idx]
-                if m.type == MomentType.NEUTRAL:
-                    priority = 0
-                elif m.type in (MomentType.LEAD_BUILD, MomentType.CUT):
-                    priority = 1
-                elif m.type == MomentType.TIE:
-                    priority = 3
-                else:
-                    priority = 4  # Protected types
-                scored.append((priority, m.play_count, idx))
-            
-            # Sort by priority (lowest first) then play_count (lowest first)
-            scored.sort(key=lambda x: (x[0], x[1]))
-            
-            # Mark top 'excess' for merging
-            for _, _, idx in scored[:excess]:
-                to_merge.add(idx)
-    
-    if not to_merge:
-        return moments
-    
-    # Merge marked moments into previous
-    result = []
-    for i, m in enumerate(moments):
-        if i in to_merge and result:
-            # Merge into previous
-            result[-1] = _merge_two_moments(result[-1], m)
-        else:
-            result.append(m)
-    
-    if len(result) < len(moments):
-        logger.info(
-            "quarter_limits_enforced",
-            extra={
-                "original_count": len(moments),
-                "final_count": len(result),
-                "merged_count": len(moments) - len(result),
-            },
-        )
-    
-    return result
-
-
-def _enforce_budget(moments: list[Moment], budget: int) -> list[Moment]:
-    """
-    Force moments under budget. This is a HARD CLAMP.
-    
-    Priority for merging (least important first):
-    1. Consecutive NEUTRAL moments
-    2. Consecutive LEAD_BUILD moments  
-    3. Consecutive CUT moments
-    4. (HARD CLAMP) Any consecutive same-type moments
-    6. (HARD CLAMP) Any consecutive moments (last resort)
-    
-    The budget IS enforced. No exceptions.
-    """
-    if len(moments) <= budget:
-        return moments
-    
-    initial_count = len(moments)
-    
-    # Phase 1: Soft merges (preferred)
-    iterations = 0
-    max_iterations = 20
-    
-    while len(moments) > budget and iterations < max_iterations:
-        iterations += 1
-        merged = False
-        
-        # First pass: merge any remaining NEUTRAL sequences
-        for i in range(len(moments) - 1):
-            if i >= len(moments) - 1:
-                break
-            if moments[i].type == MomentType.NEUTRAL and moments[i + 1].type == MomentType.NEUTRAL:
-                moments[i] = _merge_two_moments(moments[i], moments[i + 1])
-                moments.pop(i + 1)
-                merged = True
-                break
-        
-        if merged or len(moments) <= budget:
-            continue
-        
-        # Second pass: merge LEAD_BUILD sequences
-        for i in range(len(moments) - 1):
-            if i >= len(moments) - 1:
-                break
-            if moments[i].type == MomentType.LEAD_BUILD and moments[i + 1].type == MomentType.LEAD_BUILD:
-                moments[i] = _merge_two_moments(moments[i], moments[i + 1])
-                moments.pop(i + 1)
-                merged = True
-                break
-        
-        if merged or len(moments) <= budget:
-            continue
-        
-        # Third pass: merge CUT sequences
-        for i in range(len(moments) - 1):
-            if i >= len(moments) - 1:
-                break
-            if moments[i].type == MomentType.CUT and moments[i + 1].type == MomentType.CUT:
-                moments[i] = _merge_two_moments(moments[i], moments[i + 1])
-                moments.pop(i + 1)
-                merged = True
-                break
-        
-        if merged or len(moments) <= budget:
-            continue
-        
-        # Fourth pass: merge any consecutive moments if needed
-        
-        if not merged:
-            break  # Move to hard clamp phase
-    
-    # Phase 2: HARD CLAMP - merge any consecutive same-type moments
-    while len(moments) > budget:
-        merged = False
-        for i in range(len(moments) - 2):  # Don't merge the last moment
-            if moments[i].type == moments[i + 1].type:
-                moments[i] = _merge_two_moments(moments[i], moments[i + 1])
-                moments.pop(i + 1)
-                merged = True
-                break
-        if not merged:
-            break
-    
-    # Phase 3: NUCLEAR OPTION - merge any consecutive moments
-    while len(moments) > budget:
-        # Find the smallest moment to absorb
-        if len(moments) <= 2:
-            break
-        
-        # Merge the moment with fewest plays into its neighbor
-        min_plays = float('inf')
-        merge_idx = 1  # Default to second moment
-        for i in range(1, len(moments) - 1):  # Skip first and last
-            if moments[i].play_count < min_plays:
-                min_plays = moments[i].play_count
-                merge_idx = i
-        
-        # Merge into previous
-        moments[merge_idx - 1] = _merge_two_moments(moments[merge_idx - 1], moments[merge_idx])
-        moments.pop(merge_idx)
-    
-    if len(moments) < initial_count:
-        logger.info(
-            "budget_enforced",
-            extra={
-                "initial_count": initial_count,
-                "final_count": len(moments),
-                "budget": budget,
-                "hard_clamp_used": len(moments) != initial_count,
-            },
-        )
-    
-    return moments
-
-
-# =============================================================================
 # BACK-AND-FORTH DETECTION AND MEGA-MOMENT SPLITTING
 # =============================================================================
 
@@ -1604,18 +1034,18 @@ def partition_game(
         moments.append(moment)
 
     # Detect runs and attach to moments as metadata
-    runs = _detect_runs(events)
+    runs = detect_runs(events)  # From moments_runs module
     _attach_runs_to_moments(moments, runs)
 
     # AGGRESSIVE MERGE: Collapse consecutive same-type moments
     pre_merge_count = len(moments)
-    moments = _merge_consecutive_moments(moments)
+    moments = merge_consecutive_moments(moments)  # From moments_merging module
 
     # PER-QUARTER ENFORCEMENT: Prevent chaotic quarters
-    moments = _enforce_quarter_limits(moments, events)
+    moments = enforce_quarter_limits(moments, events)  # From moments_merging module
 
     # VALIDITY ENFORCEMENT: Merge invalid moments (Hard Gate)
-    moments = _merge_invalid_moments(moments)
+    moments = merge_invalid_moments(moments)  # From moments_merging module
 
     # MEGA-MOMENT SPLITTING: Break up oversized moments created by merging
     # This happens AFTER merging to split the resulting mega-moments
@@ -1697,16 +1127,16 @@ def partition_game(
     sport = summary.get("sport", "NBA") if isinstance(summary, dict) else "NBA"
     budget = MOMENT_BUDGET.get(sport, DEFAULT_MOMENT_BUDGET)
     if len(moments) > budget:
-        moments = _enforce_budget(moments, budget)
+        moments = enforce_budget(moments, budget)  # From moments_merging module
 
     # Re-validate coverage after merging
-    _validate_moment_coverage(moments, pbp_indices)
+    validate_moment_coverage(moments, pbp_indices)  # From moments_validation module
 
     # Validate score continuity
-    _validate_score_continuity(moments)
+    validate_score_continuity(moments)  # From moments_validation module
 
     # CONTINUITY VALIDATION: Log issues but don't crash
-    _assert_moment_continuity(moments)
+    assert_moment_continuity(moments, is_valid_moment)  # From moments_validation module
 
     # Renumber moment IDs after merging
     for i, m in enumerate(moments):
@@ -1752,7 +1182,7 @@ def _attach_runs_to_moments(
     
     for moment in moments:
         # Find the best run for this moment
-        run = _find_run_for_moment(runs, moment.start_play, moment.end_play)
+        run = find_run_for_moment(runs, moment.start_play, moment.end_play)  # From moments_runs module
         
         if run is None:
             continue
@@ -1764,7 +1194,7 @@ def _attach_runs_to_moments(
             
         # PROMOTE: Attach as run_info if moment type is promotable
         if moment.type in PROMOTABLE_TYPES:
-            moment.run_info = _run_to_info(run)
+            moment.run_info = run_to_info(run)  # From moments_runs module
             attached_runs.add(run_idx)
             
             # Enhance the note with run info

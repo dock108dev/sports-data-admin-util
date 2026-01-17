@@ -107,20 +107,25 @@ X_CT0=your_ct0_token_here
 
 ## Moments & Highlights
 
-The platform partitions each game timeline into contiguous, non-overlapping **moments**:
+The platform partitions each game timeline into contiguous, non-overlapping **moments** based on Lead Ladder tier crossings:
 
 | Moment Type | Description |
 |-------------|-------------|
-| NEUTRAL | Normal play, no significant pattern |
-| RUN | Scoring run (8+ consecutive points by one team) |
-| LEAD_BATTLE | Multiple lead changes in a short stretch |
-| CLOSING_STRETCH | Final 2 minutes of close game |
+| LEAD_BUILD | Lead tier increased (team extending control) |
+| CUT | Lead tier decreased (opponent cutting into lead) |
+| TIE | Game returned to even |
+| FLIP | Leader changed hands |
+| CLOSING_CONTROL | Late-game control lock-in (Q4 <5min, lead stabilized) |
+| HIGH_IMPACT | Dramatic non-scoring event (ejection, injury, technical) |
+| NEUTRAL | Normal flow, no tier changes |
 
 **Highlights** are moments where `is_notable=True`. Each moment includes:
 - Play IDs (start, end, all plays in range)
 - Teams and players involved
-- Player stats within the moment (pts, ast, blk, stl)
+- Player stats within the moment
 - Score before/after
+- Lead Ladder tier before/after
 - Game clock range
+- Optional run info (if a scoring run contributed to the tier crossing)
 
-Moments are generated post-scrape and stored in `sports_game_timeline_artifacts`.
+Moments are generated post-scrape and stored in `sports_game_timeline_artifacts`. See [MOMENT_SYSTEM_CONTRACT.md](MOMENT_SYSTEM_CONTRACT.md) for the complete specification.

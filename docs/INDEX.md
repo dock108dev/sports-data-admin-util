@@ -4,8 +4,10 @@
 
 | Guide | Description |
 |-------|-------------|
+| [Quick Start](QUICK_START.md) | **Start here:** Run locally in 2 minutes |
 | [Platform Overview](PLATFORM_OVERVIEW.md) | What this platform does, key features, API endpoints |
-| [Local Development](LOCAL_DEVELOPMENT.md) | How to run the stack locally |
+| [Architecture](ARCHITECTURE.md) | System components, data flow, database schema |
+| [Local Development](LOCAL_DEVELOPMENT.md) | Detailed development setup |
 | [Infrastructure](INFRA.md) | Docker configuration, deployment, profiles |
 
 ## Timeline System
@@ -25,24 +27,27 @@
 
 | Guide | Description |
 |-------|-------------|
+| [Data Sources](DATA_SOURCES.md) | **Start here:** Where data comes from and how it's ingested |
 | [Database Integration](DATABASE_INTEGRATION.md) | How to query the sports database |
-| [Scoring Logic & Scrapers](SCORE_LOGIC_AND_SCRAPERS.md) | How data ingestion works |
+| [Scoring Logic & Scrapers](SCORE_LOGIC_AND_SCRAPERS.md) | Scraper architecture and execution |
 | [X Integration](X_INTEGRATION.md) | Social media scraping from X/Twitter |
 | [API Reference](API.md) | FastAPI endpoints and usage |
 
-## Sport-Specific References
+## Implementation References
+
+Sport-specific implementation details for developers:
 
 | Guide | Description |
 |-------|-------------|
 | [PBP: NBA Patterns](pbp-nba-patterns.md) | NBA play-by-play parsing patterns |
-| [PBP: NBA Review](pbp-nba-review.md) | NBA PBP data audit |
-| [PBP: NHL Hockey Reference](pbp-nhl-hockey-reference.md) | NHL PBP source details |
-| [PBP: NCAAB Sports Reference](pbp-ncaab-sports-reference.md) | NCAAB PBP source details |
+| [PBP: NBA Review](pbp-nba-review.md) | NBA PBP implementation details |
+| [PBP: NHL Hockey Reference](pbp-nhl-hockey-reference.md) | NHL PBP source and parsing |
+| [PBP: NCAAB Sports Reference](pbp-ncaab-sports-reference.md) | NCAAB PBP source and parsing |
 | [NHL Overview](nhl-hockey-reference-overview.md) | NHL data source overview |
-| [Odds: NBA/NCAAB Review](odds-nba-ncaab-review.md) | Odds data validation for NBA/NCAAB |
+| [Odds: NBA/NCAAB Review](odds-nba-ncaab-review.md) | NBA/NCAAB odds implementation |
 | [Odds: NHL Validation](odds-nhl-validation.md) | NHL odds validation |
-| [Social: NBA Review](social-nba-review.md) | NBA X/Twitter social audit |
-| [Social: NHL](social-nhl.md) | NHL social account scope |
+| [Social: NBA Review](social-nba-review.md) | NBA social implementation |
+| [Social: NHL](social-nhl.md) | NHL social accounts |
 
 ## Operations
 
@@ -51,7 +56,6 @@
 | [Operator Runbook](OPERATOR_RUNBOOK.md) | Production operations, backups, monitoring |
 | [Deployment](DEPLOYMENT.md) | Server setup, deploy flow, rollbacks, troubleshooting |
 | [Edge Proxy](EDGE_PROXY.md) | Route `/api/*` to FastAPI and `/` to Next.js |
-| [Feature Flags](feature-flags.md) | Environment toggles and behavior switches |
 | [Changelog](CHANGELOG.md) | Recent changes and releases |
 
 ## Development
@@ -59,5 +63,3 @@
 | Guide | Description |
 |-------|-------------|
 | [Adding New Sports](ADDING_NEW_SPORTS.md) | How to enable a new league (SSOT config) |
-| [Development History](DEVELOPMENT_HISTORY.md) | Summary of beta phases 0-5 |
-| [Codex Task Rules](CODEX_TASK_RULES.md) | How to define tasks for AI agents |

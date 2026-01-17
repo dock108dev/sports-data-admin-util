@@ -17,10 +17,10 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class LeagueConfig:
     """Configuration for a single league/sport."""
-    
+
     code: str                       # "NBA", "NHL", "NCAAB"
     display_name: str               # "NBA Basketball"
-    
+
     # Pipeline feature flags
     boxscores_enabled: bool = True
     player_stats_enabled: bool = True
@@ -29,7 +29,7 @@ class LeagueConfig:
     social_enabled: bool = True     # X/Twitter integration
     pbp_enabled: bool = True        # Play-by-play
     timeline_enabled: bool = True   # Timeline/moments generation
-    
+
     # Scheduling
     scheduled_ingestion: bool = True  # Include in daily scheduled runs
 
@@ -78,7 +78,7 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
 def get_league_config(league_code: str) -> LeagueConfig:
     """
     Get configuration for a specific league.
-    
+
     Raises:
         ValueError: If league_code is not in LEAGUE_CONFIG
     """
@@ -111,7 +111,7 @@ def get_timeline_enabled_leagues() -> list[str]:
 def validate_league_code(league_code: str) -> str:
     """
     Validate and return league code.
-    
+
     Raises:
         ValueError: If league_code is not valid
     """

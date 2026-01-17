@@ -30,4 +30,4 @@ Start with the docs index: [docs/INDEX.md](docs/INDEX.md).
 
 ## Contributing
 
-See [AGENTS.md](AGENTS.md) and [docs/CODEX_TASK_RULES.md](docs/CODEX_TASK_RULES.md).
+See [AGENTS.md](AGENTS.md) for coding standards and principles.
