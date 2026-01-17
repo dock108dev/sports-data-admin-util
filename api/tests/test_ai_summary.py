@@ -237,7 +237,7 @@ class TestBuildSummaryFromTimeline(unittest.TestCase):
                 },
             },
             "moments": [
-                {"type": "OPENER", "is_notable": False},
+                {"type": "NEUTRAL", "is_notable": False},
                 {"type": "FLIP", "is_notable": True},
             ],
         }

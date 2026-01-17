@@ -71,7 +71,7 @@ class TestPartitionGame(unittest.TestCase):
 
     def test_single_event(self) -> None:
         """Single event creates one moment."""
-        timeline = [make_pbp_event(0, 2, 0)] # Must have score change to be valid
+        timeline = [make_pbp_event(0, 2, 0)]  # Must have score change to be valid
         moments = partition_game(timeline, {}, NBA_THRESHOLDS)
         self.assertEqual(len(moments), 1)
         self.assertTrue(moments[0].is_period_start)

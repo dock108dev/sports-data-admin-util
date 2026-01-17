@@ -234,11 +234,11 @@ class TestTimelineGenerator(unittest.TestCase):
             self.assertIn("end_play", moment)
             self.assertIn("is_notable", moment)
 
-        # Check that we detected tier crossings - should have LEAD_BUILD or OPENER
+        # Check that we detected tier crossings - should have valid moment types
         moment_types = {m["type"] for m in moments}
-        # New system uses LEAD_BUILD for extending leads, OPENER for period starts
+        # Note: OPENER was removed in 2026-01 refactor, replaced by is_period_start flag
         valid_new_types = {"LEAD_BUILD", "CUT", "TIE", "FLIP", "CLOSING_CONTROL", 
-                          "HIGH_IMPACT", "NEUTRAL", "OPENER"}
+                          "HIGH_IMPACT", "NEUTRAL"}
         self.assertTrue(moment_types.issubset(valid_new_types))
 
 
