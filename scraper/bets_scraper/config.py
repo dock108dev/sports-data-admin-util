@@ -47,7 +47,9 @@ class SocialConfig(BaseModel):
     platform_rate_limit_window_seconds: int = Field(default=900)
     team_poll_interval_seconds: int = Field(default=900)
     request_cache_ttl_seconds: int = Field(default=900)
-    recent_game_window_hours: int = Field(default=12)
+    # For scheduled runs, only scrape social for games that ended in the last 7 days
+    # This prevents hitting X with hundreds of requests for old games
+    recent_game_window_hours: int = Field(default=168)  # 7 days
     pregame_window_minutes: int = Field(default=180)
     postgame_window_minutes: int = Field(default=180)
     # Gameday window: defines when posts can be linked to games on that date.

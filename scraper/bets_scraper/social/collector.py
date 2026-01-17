@@ -16,7 +16,7 @@ from ..config import settings
 from ..utils.datetime_utils import now_utc
 from .cache import SocialRequestCache
 from .collector_base import XCollectorStrategy
-from .exceptions import SocialRateLimitError
+from .exceptions import SocialRateLimitError, XCircuitBreakerError
 from .models import PostCollectionJob, PostCollectionResult
 from .playwright_collector import PlaywrightXCollector, playwright_available
 from .rate_limit import PlatformRateLimiter

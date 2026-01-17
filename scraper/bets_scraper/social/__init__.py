@@ -7,7 +7,7 @@ social posts from team X accounts.
 
 from .collector import XPostCollector
 from .collector_base import XCollectorStrategy
-from .exceptions import SocialRateLimitError
+from .exceptions import SocialRateLimitError, XCircuitBreakerError
 from .models import CollectedPost, PostCollectionJob, PostCollectionResult
 from .playwright_collector import PlaywrightXCollector
 from .rate_limit import PlatformRateLimiter
@@ -23,6 +23,7 @@ __all__ = [
     "MockXCollector",
     "PlaywrightXCollector",
     "SocialRateLimitError",
+    "XCircuitBreakerError",
     "PlatformRateLimiter",
     "SocialRequestCache",
 ]

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 from ..logging import logger
 from .collector_base import XCollectorStrategy
+from .exceptions import XCircuitBreakerError
 from .models import CollectedPost
 from .utils import extract_x_post_id
 
@@ -21,6 +23,12 @@ else:  # pragma: no cover - optional dependency
 
 def playwright_available() -> bool:
     return sync_playwright is not None
+
+
+# Circuit breaker constants
+_INITIAL_BACKOFF_MINUTES = 5
+_MAX_BACKOFF_HOURS = 6
+_MAX_CONSECUTIVE_ERRORS = 3
 
 
 class PlaywrightXCollector(XCollectorStrategy):
@@ -43,19 +51,29 @@ class PlaywrightXCollector(XCollectorStrategy):
         3. Copy the values of 'auth_token' and 'ct0' cookies
 
     Rate Limiting:
-        - Polite delay of 5-9 seconds between requests (like sports reference scraping)
+        - Polite delay of 10-15 seconds between requests
         - Random jitter to appear more human-like
+
+    Circuit Breaker:
+        - After 3 consecutive "something went wrong" errors, backs off exponentially
+        - Starts at 5 minutes, doubles each time, maxes at 6 hours
+        - After hitting 6 hour max, raises XCircuitBreakerError to fail the scrape
     """
+
+    # Class-level circuit breaker state (shared across instances in same worker)
+    _consecutive_errors: int = 0
+    _current_backoff_minutes: float = _INITIAL_BACKOFF_MINUTES
+    _circuit_open_until: float = 0.0
 
     def __init__(
         self,
         max_scrolls: int = 3,
-        wait_ms: int = 2000,  # Increased from 800ms - X's JS needs more time
+        wait_ms: int = 2000,  # X's JS needs time to render
         timeout_ms: int = 30000,
         auth_token: str | None = None,
         ct0: str | None = None,
-        min_delay_seconds: float = 5.0,
-        max_delay_seconds: float = 9.0,
+        min_delay_seconds: float = 10.0,  # Increased from 5.0
+        max_delay_seconds: float = 15.0,  # Increased from 9.0
     ):
         import os
 
@@ -71,6 +89,72 @@ class PlaywrightXCollector(XCollectorStrategy):
 
         if not self.auth_token:
             logger.warning("x_auth_missing", message="X_AUTH_TOKEN not set - search may not work")
+
+    def _check_circuit_breaker(self) -> None:
+        """Check if circuit breaker is open and raise if so."""
+        if time.time() < PlaywrightXCollector._circuit_open_until:
+            remaining = int(PlaywrightXCollector._circuit_open_until - time.time())
+            logger.warning(
+                "x_circuit_open",
+                remaining_seconds=remaining,
+                retry_at=datetime.fromtimestamp(PlaywrightXCollector._circuit_open_until).isoformat(),
+            )
+            raise XCircuitBreakerError(
+                f"Circuit breaker open, retry in {remaining}s",
+                retry_after_seconds=remaining,
+            )
+
+    def _record_error(self) -> None:
+        """Record an error and potentially trigger circuit breaker."""
+        PlaywrightXCollector._consecutive_errors += 1
+        logger.warning(
+            "x_consecutive_error",
+            count=PlaywrightXCollector._consecutive_errors,
+            max=_MAX_CONSECUTIVE_ERRORS,
+        )
+
+        if PlaywrightXCollector._consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+            # Check if we've hit max backoff - if so, fail the scrape
+            max_backoff_minutes = _MAX_BACKOFF_HOURS * 60
+            if PlaywrightXCollector._current_backoff_minutes >= max_backoff_minutes:
+                logger.error(
+                    "x_circuit_breaker_max_reached",
+                    max_backoff_hours=_MAX_BACKOFF_HOURS,
+                )
+                raise XCircuitBreakerError(
+                    f"Circuit breaker hit max backoff ({_MAX_BACKOFF_HOURS}h), failing scrape",
+                    retry_after_seconds=int(max_backoff_minutes * 60),
+                )
+
+            # Open circuit with exponential backoff
+            backoff_seconds = PlaywrightXCollector._current_backoff_minutes * 60
+            PlaywrightXCollector._circuit_open_until = time.time() + backoff_seconds
+            logger.error(
+                "x_circuit_breaker_triggered",
+                backoff_minutes=PlaywrightXCollector._current_backoff_minutes,
+                retry_at=datetime.fromtimestamp(PlaywrightXCollector._circuit_open_until).isoformat(),
+            )
+
+            # Double backoff for next time (exponential)
+            PlaywrightXCollector._current_backoff_minutes = min(
+                PlaywrightXCollector._current_backoff_minutes * 2,
+                max_backoff_minutes,
+            )
+
+            raise XCircuitBreakerError(
+                f"Too many errors, backing off {backoff_seconds/60:.0f} minutes",
+                retry_after_seconds=int(backoff_seconds),
+            )
+
+    def _record_success(self) -> None:
+        """Record a successful request and reset circuit breaker state."""
+        if PlaywrightXCollector._consecutive_errors > 0:
+            logger.info(
+                "x_circuit_breaker_reset",
+                previous_errors=PlaywrightXCollector._consecutive_errors,
+            )
+        PlaywrightXCollector._consecutive_errors = 0
+        PlaywrightXCollector._current_backoff_minutes = _INITIAL_BACKOFF_MINUTES
 
     def _polite_delay(self) -> None:
         """Wait between requests to be a good citizen (5-9 seconds like sports reference)."""
@@ -128,7 +212,11 @@ class PlaywrightXCollector(XCollectorStrategy):
             logger.warning("x_playwright_missing", handle=x_handle)
             return []
 
+        # Check circuit breaker before making request
+        self._check_circuit_breaker()
+
         posts: list[CollectedPost] = []
+        page_had_error = False
         logger.info(
             "x_playwright_collect_start",
             handle=x_handle,
@@ -156,7 +244,7 @@ class PlaywrightXCollector(XCollectorStrategy):
                 logger.debug("x_playwright_search_url", url=search_url)
 
                 page.goto(search_url, timeout=self.timeout_ms, wait_until="domcontentloaded")
-                
+
                 # Wait for tweets to appear (up to 10 seconds)
                 try:
                     page.wait_for_selector(
@@ -169,12 +257,14 @@ class PlaywrightXCollector(XCollectorStrategy):
                     content = page.content()
                     if "Something went wrong" in content:
                         logger.warning("x_page_error", handle=x_handle, error="something_went_wrong")
+                        page_had_error = True
                     elif "Log in" in content or "Sign in" in content:
                         logger.warning("x_page_error", handle=x_handle, error="login_wall")
+                        page_had_error = True
                     elif "No results" in content:
                         logger.debug("x_page_no_results", handle=x_handle)
                     # Continue anyway - might be legitimately no tweets
-                
+
                 page.wait_for_timeout(self.wait_ms)
 
                 # Scroll to load more posts
@@ -266,6 +356,12 @@ class PlaywrightXCollector(XCollectorStrategy):
 
             finally:
                 browser.close()
+
+        # Update circuit breaker state based on result
+        if page_had_error:
+            self._record_error()
+        else:
+            self._record_success()
 
         logger.info("x_playwright_collect_done", handle=x_handle, count=len(posts))
         return posts
