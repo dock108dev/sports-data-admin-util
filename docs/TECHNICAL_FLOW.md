@@ -556,40 +556,43 @@ def compute_excitement(group):
 
 ### 3.5 Compression Algorithm
 
+> **TERMINOLOGY NOTE (2026-01):** Compact Mode now operates on **Moments** (defined in 
+> `moments.py`). There is no separate "SemanticGroup" — Moment is the single narrative unit.
+
 ```python
 def get_compact_timeline(timeline, level):
-    # 1. Separate events
-    pbp_events = [e for e in timeline if e["event_type"] == "pbp"]
-    social_events = [e for e in timeline if e["event_type"] == "tweet"]
+    # 1. Compute Moments using the unified partition_game()
+    # Moment is the SINGLE narrative unit (from moments.py)
+    moments = partition_game(timeline, summary={})
     
-    # 2. Detect semantic groups
-    groups = detect_semantic_groups(pbp_events)
-    
-    # 3. Compute excitement for each group
-    for group in groups:
-        group.excitement = compute_excitement(group, social_events)
-    
-    # 4. Apply compression based on level + excitement
-    compressed_pbp = []
-    for group in groups:
-        if group.group_type == GroupType.FINISH:
-            # Never compress final minutes
-            compressed_pbp.extend(group.events)
-        elif group.excitement > 0.7:
+    # 2. For each Moment, compute excitement and apply compression
+    compressed = []
+    for moment in moments:
+        # Extract events belonging to this moment
+        moment_events = extract_moment_events(timeline, moment)
+        
+        # Compute excitement (internal only, never exposed)
+        excitement = compute_excitement_for_moment(moment, moment_events)
+        
+        # Apply compression based on MomentType + excitement + level
+        if moment.type == MomentType.CLOSING:
+            # Never compress closing moments (final minutes)
+            compressed.extend(moment_events)
+        elif excitement > 0.7:
             # High excitement: show all
-            compressed_pbp.extend(group.events)
+            compressed.extend(moment_events)
         elif level == 1:
-            # Highlights only: show scoring plays
-            compressed_pbp.extend(scoring_plays_only(group))
+            # Highlights only: heavy compression
+            compressed.extend(compress_moment(moment, moment_events, keep_every_nth=5))
         elif level == 2:
-            # Standard: show ~50%
-            compressed_pbp.extend(sample_events(group, ratio=0.5))
+            # Standard: moderate compression
+            compressed.extend(compress_moment(moment, moment_events, keep_every_nth=3))
         else:
-            # Detailed: show ~80%
-            compressed_pbp.extend(sample_events(group, ratio=0.8))
+            # Detailed: light compression
+            compressed.extend(compress_moment(moment, moment_events, keep_every_nth=2))
     
-    # 5. Re-merge with ALL social posts (never dropped)
-    return merge_and_sort(compressed_pbp, social_events)
+    # Social posts are NEVER dropped (handled inside compress_moment)
+    return compressed
 ```
 
 ### 3.6 Summary Markers
