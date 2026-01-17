@@ -149,18 +149,6 @@ export type MomentsResponse = {
   highlight_count: number;
 };
 
-/**
- * Response from GET /games/{game_id}/highlights
- * 
- * Highlights = moments where is_notable=true.
- */
-export type HighlightsResponse = {
-  game_id: number;
-  generated_at: string | null;
-  highlights: MomentEntry[];
-  total_count: number;
-};
-
 export type AdminGameDetail = {
   game: {
     id: number;
@@ -193,8 +181,7 @@ export type AdminGameDetail = {
   odds: OddsEntry[];
   social_posts: SocialPost[];
   plays: PlayEntry[];
-  moments: MomentEntry[];    // Full game coverage
-  highlights: MomentEntry[]; // = moments.filter(is_notable)
+  moments: MomentEntry[];  // Full game coverage; filter by is_notable for highlights
   derived_metrics: Record<string, unknown>;
   raw_payloads: Record<string, unknown>;
 };

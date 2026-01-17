@@ -363,7 +363,7 @@ export default function GameDetailClient() {
 
       <SocialPostsSection posts={game.social_posts || []} />
 
-      <HighlightsSection highlights={game.highlights || []} />
+      <HighlightsSection highlights={(game.moments || []).filter(m => m.is_notable)} />
 
       <PbpSection plays={game.plays || []} />
 

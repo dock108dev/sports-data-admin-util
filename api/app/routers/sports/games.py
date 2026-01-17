@@ -40,7 +40,6 @@ from .schemas import (
     GamePreviewScoreResponse,
     MomentEntry,
     MomentsResponse,
-    HighlightsResponse,
     ScrapeRunConfig,
     JobResponse,
     OddsEntry,
@@ -49,29 +48,6 @@ from ..game_snapshot_models import TimelineArtifactResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-def _format_highlight_description(highlight: dict) -> str:
-    """Format a human-readable description from highlight data."""
-    highlight_type = highlight.get("highlight_type", highlight.get("type", "unknown"))
-    score_context = highlight.get("score_context", {})
-    
-    if highlight_type == "scoring_run":
-        points = score_context.get("points", 0)
-        start_score = score_context.get("start_score", {})
-        end_score = score_context.get("end_score", {})
-        return f"{points}-0 run ({start_score.get('home', 0)}-{start_score.get('away', 0)} → {end_score.get('home', 0)}-{end_score.get('away', 0)})"
-    elif highlight_type == "lead_change":
-        return "Lead changed hands"
-    elif highlight_type == "quarter_shift":
-        margin_change = score_context.get("margin_change", 0)
-        return f"Momentum shift ({margin_change} point swing)"
-    elif highlight_type == "game_deciding_stretch":
-        final_margin = score_context.get("final_margin", 0)
-        return f"Game-deciding stretch (final margin: {final_margin})"
-    else:
-        # Fallback to any description field or type
-        return highlight.get("description", highlight_type.replace("_", " ").title())
 
 
 @router.get("/games", response_model=GameListResponse)
@@ -348,9 +324,8 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         ],
     }
 
-    # Serialize moments and highlights
+    # Serialize moments (highlights = moments where is_notable=True, filter client-side)
     moments_list: list[MomentEntry] = []
-    highlights_list: list[MomentEntry] = []
     if timeline_artifacts:
         artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
         game_analysis = artifact.game_analysis_json or {}
@@ -372,8 +347,6 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
                     note=m.get("note"),
                 )
                 moments_list.append(moment)
-                if moment.is_notable:
-                    highlights_list.append(moment)
 
     return GameDetailResponse(
         game=meta,
@@ -383,7 +356,6 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         social_posts=social_posts_entries,
         plays=plays_entries,
         moments=moments_list,
-        highlights=highlights_list,
         derived_metrics=derived,
         raw_payloads=raw_payloads,
     )
@@ -558,67 +530,4 @@ async def get_game_moments(
         moments=moments,
         total_count=len(moments),
         highlight_count=sum(1 for m in moments if m.is_notable),
-    )
-
-
-@router.get("/games/{game_id}/highlights", response_model=HighlightsResponse)
-async def get_game_highlights(
-    game_id: int,
-    session: AsyncSession = Depends(get_db),
-) -> HighlightsResponse:
-    """
-    Get highlights for a game (filtered view of moments).
-    
-    Highlights are moments where is_highlight=True.
-    Ordered chronologically (by start_play_id), NOT by importance.
-    
-    This is a VIEW of the moments data, not separate entities.
-    For full coverage, use GET /games/{game_id}/moments.
-    """
-    result = await session.execute(
-        select(db_models.SportsGame)
-        .options(selectinload(db_models.SportsGame.timeline_artifacts))
-        .where(db_models.SportsGame.id == game_id)
-    )
-    game = result.scalar_one_or_none()
-    if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
-    
-    timeline_artifacts = game.timeline_artifacts or []
-    if not timeline_artifacts:
-        return HighlightsResponse(
-            game_id=game_id,
-            generated_at=None,
-            highlights=[],
-            total_count=0,
-        )
-    
-    artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
-    game_analysis = artifact.game_analysis_json or {}
-    
-    # Highlights = moments where is_notable=True
-    highlights = [
-        MomentEntry(
-            id=m.get("id", ""),
-            type=m.get("type", "NEUTRAL"),
-            start_play=m.get("start_play", 0),
-            end_play=m.get("end_play", 0),
-            play_count=m.get("play_count", 0),
-            teams=m.get("teams", []),
-            players=m.get("players", []),
-            score_start=m.get("score_start", ""),
-            score_end=m.get("score_end", ""),
-            clock=m.get("clock", ""),
-            is_notable=True,
-            note=m.get("note"),
-        )
-        for m in game_analysis.get("moments", [])
-        if isinstance(m, dict) and m.get("is_notable", False)
-    ]
-    
-    return HighlightsResponse(
-        game_id=game_id,
-        generated_at=artifact.generated_at,
-        highlights=highlights,
-        total_count=len(highlights),
     )

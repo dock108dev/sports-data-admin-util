@@ -210,20 +210,6 @@ class SocialPostEntry(BaseModel):
     media_type: str | None = None
 
 
-class CompactPostEntry(BaseModel):
-    id: int
-    post_url: str
-    posted_at: datetime
-    has_video: bool
-    team_abbreviation: str
-    tweet_text: str | None = None
-    video_url: str | None = None
-    image_url: str | None = None
-    source_handle: str | None = None
-    media_type: str | None = None
-    contains_score: bool = Field(alias="containsScore")
-
-
 class PlayEntry(BaseModel):
     play_index: int
     quarter: int | None = None
@@ -234,39 +220,6 @@ class PlayEntry(BaseModel):
     description: str | None = None
     home_score: int | None = None
     away_score: int | None = None
-
-
-class CompactMoment(BaseModel):
-    play_index: int = Field(alias="playIndex")
-    quarter: int | None = None
-    game_clock: str | None = Field(None, alias="gameClock")
-    moment_type: str = Field(alias="momentType")
-    hint: str | None = None
-
-
-class ScoreChip(BaseModel):
-    play_index: int = Field(alias="playIndex")
-    label: str
-    home_score: int = Field(alias="homeScore")
-    away_score: int = Field(alias="awayScore")
-
-
-class CompactMomentsResponse(BaseModel):
-    moments: list[CompactMoment]
-    moment_types: list[str] = Field(alias="momentTypes")
-    score_chips: list[ScoreChip] = Field(default_factory=list, alias="scoreChips")
-
-
-class CompactPbpResponse(BaseModel):
-    plays: list[PlayEntry]
-
-
-class CompactPostsResponse(BaseModel):
-    posts: list[CompactPostEntry]
-
-
-class CompactMomentSummaryResponse(BaseModel):
-    summary: str
 
 
 class PlayerContribution(BaseModel):
@@ -298,23 +251,17 @@ class MomentEntry(BaseModel):
 
 
 class MomentsResponse(BaseModel):
-    """Response for GET /games/{game_id}/moments endpoint."""
+    """
+    Response for GET /games/{game_id}/moments endpoint.
+    
+    Contains ALL moments (full timeline coverage).
+    Highlights are moments where is_notable=True - filter client-side.
+    """
     game_id: int
     generated_at: datetime | None = None
     moments: list[MomentEntry]
     total_count: int
-    highlight_count: int
-
-
-class HighlightsResponse(BaseModel):
-    """
-    Highlights = moments where is_notable=True.
-    A view, not separate data.
-    """
-    game_id: int
-    generated_at: datetime | None = None
-    highlights: list[MomentEntry]
-    total_count: int
+    highlight_count: int  # Count of moments where is_notable=True
 
 
 class GameDetailResponse(BaseModel):
@@ -324,8 +271,7 @@ class GameDetailResponse(BaseModel):
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry]
     plays: list[PlayEntry]
-    moments: list[MomentEntry]
-    highlights: list[MomentEntry]  # = moments.filter(is_notable)
+    moments: list[MomentEntry]  # Full coverage; filter by is_notable for highlights
     derived_metrics: dict[str, Any]
     raw_payloads: dict[str, Any]
 
