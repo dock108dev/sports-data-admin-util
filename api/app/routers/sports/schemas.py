@@ -270,34 +270,50 @@ class CompactMomentSummaryResponse(BaseModel):
 
 
 class PlayerContribution(BaseModel):
-    """Player with their stats in a highlight stretch."""
+    """Player with their stats in a moment."""
     name: str
-    stats: dict[str, int] = Field(default_factory=dict)  # {"pts": 6, "stl": 1, "blk": 0, "ast": 1}
-    summary: str | None = None  # "6 pts, 1 stl"
+    stats: dict[str, int] = Field(default_factory=dict)
+    summary: str | None = None
 
 
-class HighlightEntry(BaseModel):
-    """Grounded highlight with play references and context."""
-    highlight_id: str
-    type: str  # SCORING_RUN, LEAD_CHANGE, MOMENTUM_SHIFT, etc.
-    title: str
-    description: str
-    start_play_id: str
-    end_play_id: str
-    key_play_ids: list[str] = Field(default_factory=list)
-    involved_teams: list[str] = Field(default_factory=list)
-    involved_players: list[PlayerContribution] = Field(default_factory=list)  # Players with stats
-    score_change: str = ""  # "92–96 → 98–96"
-    game_clock_range: str = ""  # "Q4 7:42–5:58"
-    game_phase: str = "mid"  # early, mid, late, closing
-    importance_score: float = 0.5
+class MomentEntry(BaseModel):
+    """
+    The single narrative unit.
+    
+    Every play belongs to exactly one moment.
+    Moments are always chronological.
+    """
+    id: str                           # "m_001"
+    type: str                         # NEUTRAL, RUN, BATTLE, CLOSING
+    start_play: int                   # First play index
+    end_play: int                     # Last play index
+    play_count: int                   # Number of plays
+    teams: list[str] = Field(default_factory=list)
+    players: list[PlayerContribution] = Field(default_factory=list)
+    score_start: str = ""             # "12–15"
+    score_end: str = ""               # "18–15"
+    clock: str = ""                   # "Q2 8:45–6:12"
+    is_notable: bool = False          # This IS highlights
+    note: str | None = None           # "7-0 run"
+
+
+class MomentsResponse(BaseModel):
+    """Response for GET /games/{game_id}/moments endpoint."""
+    game_id: int
+    generated_at: datetime | None = None
+    moments: list[MomentEntry]
+    total_count: int
+    highlight_count: int
 
 
 class HighlightsResponse(BaseModel):
-    """Response for GET /games/{game_id}/highlights endpoint."""
+    """
+    Highlights = moments where is_notable=True.
+    A view, not separate data.
+    """
     game_id: int
     generated_at: datetime | None = None
-    highlights: list[HighlightEntry]
+    highlights: list[MomentEntry]
     total_count: int
 
 
@@ -308,7 +324,8 @@ class GameDetailResponse(BaseModel):
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry]
     plays: list[PlayEntry]
-    highlights: list[HighlightEntry]
+    moments: list[MomentEntry]
+    highlights: list[MomentEntry]  # = moments.filter(is_notable)
     derived_metrics: dict[str, Any]
     raw_payloads: dict[str, Any]
 

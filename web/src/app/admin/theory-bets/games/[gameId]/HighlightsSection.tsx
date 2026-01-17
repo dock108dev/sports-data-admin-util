@@ -1,86 +1,70 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { HighlightEntry } from "@/lib/api/sportsAdmin";
+import { useState } from "react";
+import type { MomentEntry } from "@/lib/api/sportsAdmin";
 import { CollapsibleSection } from "./CollapsibleSection";
 import styles from "./styles.module.css";
 
-const HIGHLIGHTS_PER_PAGE = 10;
+const MOMENTS_PER_PAGE = 10;
 
 interface HighlightsSectionProps {
-  highlights: HighlightEntry[];
+  highlights: MomentEntry[];
 }
 
 export function HighlightsSection({ highlights }: HighlightsSectionProps) {
   const [page, setPage] = useState(0);
+  const moments = highlights || [];
 
-  // Sort by importance score (highest first)
-  const sortedHighlights = useMemo(() => {
-    return [...(highlights || [])].sort((a, b) => {
-      return (b.importance_score ?? 0.5) - (a.importance_score ?? 0.5);
-    });
-  }, [highlights]);
-
-  const totalPages = Math.ceil(sortedHighlights.length / HIGHLIGHTS_PER_PAGE);
-  const paginatedHighlights = sortedHighlights.slice(
-    page * HIGHLIGHTS_PER_PAGE,
-    (page + 1) * HIGHLIGHTS_PER_PAGE
+  const totalPages = Math.ceil(moments.length / MOMENTS_PER_PAGE);
+  const paginatedMoments = moments.slice(
+    page * MOMENTS_PER_PAGE,
+    (page + 1) * MOMENTS_PER_PAGE
   );
 
   const getTypeIcon = (type: string) => {
     switch (type.toUpperCase()) {
-      case "SCORING_RUN":
+      case "RUN":
         return "🏃";
-      case "LEAD_CHANGE":
+      case "BATTLE":
         return "🔄";
-      case "MOMENTUM_SHIFT":
-        return "📈";
-      case "STAR_TAKEOVER":
-        return "⭐";
-      case "GAME_DECIDING_STRETCH":
-        return "🏆";
-      case "COMEBACK":
-        return "🔥";
-      case "BLOWOUT_START":
-        return "💨";
+      case "CLOSING":
+        return "⏱️";
       default:
         return "📌";
     }
   };
 
-  const getPhaseLabel = (phase: string) => {
-    switch (phase) {
-      case "early":
-        return "Early Game";
-      case "mid":
-        return "Mid Game";
-      case "late":
-        return "Late Game";
-      case "closing":
+  const getTypeLabel = (type: string) => {
+    switch (type.toUpperCase()) {
+      case "RUN":
+        return "Scoring Run";
+      case "BATTLE":
+        return "Lead Battle";
+      case "CLOSING":
         return "Closing Stretch";
+      case "NEUTRAL":
+        return "Neutral";
       default:
-        return phase;
+        return type;
     }
   };
 
-  const getPhaseColor = (phase: string) => {
-    switch (phase) {
-      case "early":
-        return "#22c55e";
-      case "mid":
-        return "#3b82f6";
-      case "late":
-        return "#f59e0b";
-      case "closing":
-        return "#dc2626";
+  const getTypeColor = (type: string) => {
+    switch (type.toUpperCase()) {
+      case "RUN":
+        return "#22c55e"; // Green
+      case "BATTLE":
+        return "#f59e0b"; // Orange
+      case "CLOSING":
+        return "#dc2626"; // Red
       default:
-        return "#64748b";
+        return "#64748b"; // Gray
     }
   };
 
   return (
     <CollapsibleSection title="Highlights" defaultOpen={true}>
-      {sortedHighlights.length === 0 ? (
+      {moments.length === 0 ? (
         <div className={styles.emptyHighlights}>
           <div className={styles.emptyIcon}>📊</div>
           <div>No highlights generated for this game yet.</div>
@@ -91,66 +75,62 @@ export function HighlightsSection({ highlights }: HighlightsSectionProps) {
       ) : (
         <>
           <div className={styles.highlightsSummary}>
-            <span>{sortedHighlights.length} highlights detected</span>
+            <span>{moments.length} highlights</span>
             <span className={styles.highlightsSummaryDivider}>•</span>
-            <span>Sorted by importance</span>
+            <span>Chronological</span>
           </div>
 
           <div className={styles.highlightsGrid}>
-            {paginatedHighlights.map((highlight, idx) => (
-              <div
-                key={highlight.highlight_id || `hl-${idx}`}
-                className={styles.highlightCard}
-              >
-                {/* Header: Type icon + Title + Phase badge */}
+            {paginatedMoments.map((moment, idx) => (
+              <div key={moment.id || `moment-${idx}`} className={styles.highlightCard}>
+                {/* Header: Type + Note */}
                 <div className={styles.highlightHeader}>
                   <span className={styles.highlightIcon}>
-                    {getTypeIcon(highlight.type)}
+                    {getTypeIcon(moment.type)}
                   </span>
-                  <span className={styles.highlightTitle}>{highlight.title}</span>
-                  <span
-                    className={styles.phaseBadge}
-                    style={{ backgroundColor: getPhaseColor(highlight.game_phase) }}
-                  >
-                    {getPhaseLabel(highlight.game_phase)}
+                  <span className={styles.highlightTitle}>
+                    {getTypeLabel(moment.type)}
                   </span>
-                </div>
-
-                {/* Description */}
-                <div className={styles.highlightDescription}>
-                  {highlight.description}
-                </div>
-
-                {/* Context row: Score change + Clock range */}
-                <div className={styles.highlightContext}>
-                  {highlight.score_change && (
-                    <div className={styles.scoreChange}>
-                      <span className={styles.contextLabel}>Score:</span>
-                      <span className={styles.contextValue}>{highlight.score_change}</span>
-                    </div>
+                  {moment.note && (
+                    <span
+                      className={styles.phaseBadge}
+                      style={{ backgroundColor: getTypeColor(moment.type) }}
+                    >
+                      {moment.note}
+                    </span>
                   )}
-                  {highlight.game_clock_range && (
+                </div>
+
+                {/* Score context */}
+                <div className={styles.highlightContext}>
+                  <div className={styles.scoreChange}>
+                    <span className={styles.contextLabel}>Score:</span>
+                    <span className={styles.contextValue}>
+                      {moment.score_start} → {moment.score_end}
+                    </span>
+                  </div>
+                  {moment.clock && (
                     <div className={styles.clockRange}>
                       <span className={styles.contextLabel}>When:</span>
-                      <span className={styles.contextValue}>{highlight.game_clock_range}</span>
+                      <span className={styles.contextValue}>{moment.clock}</span>
                     </div>
                   )}
                 </div>
 
-                {/* Participants row: Teams + Players with stats */}
+                {/* Participants */}
                 <div className={styles.highlightParticipants}>
-                  {highlight.involved_teams.length > 0 && (
+                  {moment.teams.length > 0 && (
                     <div className={styles.teamsInvolved}>
-                      {highlight.involved_teams.map((team) => (
+                      {moment.teams.map((team) => (
                         <span key={team} className={styles.teamBadge}>
                           {team}
                         </span>
                       ))}
                     </div>
                   )}
-                  {highlight.involved_players.length > 0 && (
+                  {moment.players.length > 0 && (
                     <div className={styles.playersInvolved}>
-                      {highlight.involved_players.map((player) => (
+                      {moment.players.map((player) => (
                         <span key={player.name} className={styles.playerBadge}>
                           <span className={styles.playerName}>{player.name}</span>
                           {player.summary && (
@@ -162,16 +142,14 @@ export function HighlightsSection({ highlights }: HighlightsSectionProps) {
                   )}
                 </div>
 
-                {/* Footer: Play links */}
+                {/* Footer: Play range */}
                 <div className={styles.highlightFooter}>
                   <span className={styles.playLink}>
-                    Plays #{highlight.start_play_id}–#{highlight.end_play_id}
+                    Plays #{moment.start_play}–#{moment.end_play}
                   </span>
-                  {highlight.key_play_ids.length > 0 && (
-                    <span className={styles.keyPlays}>
-                      Key: {highlight.key_play_ids.map((id) => `#${id}`).join(", ")}
-                    </span>
-                  )}
+                  <span className={styles.playCount}>
+                    ({moment.play_count} plays)
+                  </span>
                 </div>
               </div>
             ))}

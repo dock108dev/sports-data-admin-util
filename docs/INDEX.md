@@ -49,8 +49,7 @@
 | Guide | Description |
 |-------|-------------|
 | [Operator Runbook](OPERATOR_RUNBOOK.md) | Production operations, backups, monitoring |
-| [Deployment](DEPLOYMENT.md) | Production deploy flow, environment variables, rollbacks |
-| [Deployment Setup](DEPLOYMENT_SETUP.md) | Initial server setup checklist |
+| [Deployment](DEPLOYMENT.md) | Server setup, deploy flow, rollbacks, troubleshooting |
 | [Edge Proxy](EDGE_PROXY.md) | Route `/api/*` to FastAPI and `/` to Next.js |
 | [Feature Flags](feature-flags.md) | Environment toggles and behavior switches |
 | [Changelog](CHANGELOG.md) | Recent changes and releases |
@@ -59,5 +58,6 @@
 
 | Guide | Description |
 |-------|-------------|
+| [Adding New Sports](ADDING_NEW_SPORTS.md) | How to enable a new league (SSOT config) |
 | [Development History](DEVELOPMENT_HISTORY.md) | Summary of beta phases 0-5 |
 | [Codex Task Rules](CODEX_TASK_RULES.md) | How to define tasks for AI agents |

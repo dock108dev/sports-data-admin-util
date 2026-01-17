@@ -576,6 +576,12 @@
   font-weight: 500;
 }
 
+.playCount {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-left: 0.5rem;
+}
+
 .keyPlays {
   font-size: 0.75rem;
   color: #64748b;

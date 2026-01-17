@@ -12,9 +12,7 @@ from ..db import db_models, get_session
 from ..logging import logger
 from ..models import IngestionConfig
 from ..utils.datetime_utils import now_utc
-
-
-SCHEDULED_INGESTION_LEAGUES = ("NBA",)  # NBA only for now
+from ..config_sports import get_scheduled_leagues, get_league_config
 
 
 @dataclass(frozen=True)
@@ -72,65 +70,18 @@ def create_scrape_run(
     return run
 
 
-def schedule_timeline_generation(
-    *,
-    leagues: Iterable[str] = SCHEDULED_INGESTION_LEAGUES,
-) -> dict[str, int]:
-    """
-    Schedule timeline generation for games missing artifacts.
-    
-    This runs after the daily scraper to generate timelines for any
-    completed games that have PBP data but no timeline artifacts.
-    """
-    from ..config import settings
-    
-    if not settings.timeline_config.enable_timeline_generation:
-        logger.info("timeline_generation_disabled")
-        return {"timelines_scheduled": 0}
-    
-    timelines_scheduled = 0
-    
-    for league_code in leagues:
-        try:
-            from ..celery_app import app as celery_app
-            
-            async_result = celery_app.send_task(
-                "generate_missing_timelines",
-                kwargs={
-                    "league_code": league_code,
-                    "days_back": settings.timeline_config.timeline_generation_days_back,
-                    "max_games": settings.timeline_config.timeline_generation_max_games,
-                },
-                queue="bets-scraper",
-                routing_key="bets-scraper",
-            )
-            
-            logger.info(
-                "timeline_generation_scheduled",
-                league=league_code,
-                job_id=async_result.id,
-                days_back=settings.timeline_config.timeline_generation_days_back,
-            )
-            timelines_scheduled += 1
-            
-        except Exception as exc:
-            logger.exception(
-                "timeline_generation_schedule_failed",
-                league=league_code,
-                error=str(exc),
-            )
-    
-    return {"timelines_scheduled": timelines_scheduled}
-
-
 def schedule_ingestion_runs(
     *,
-    leagues: Iterable[str] = SCHEDULED_INGESTION_LEAGUES,
+    leagues: Iterable[str] | None = None,
     requested_by: str = "scheduler",
     now: datetime | None = None,
-    schedule_timelines: bool = True,
 ) -> ScheduledIngestionSummary:
     """Create scheduled scrape runs and enqueue them for execution."""
+    # Use SSOT if no leagues specified
+    if leagues is None:
+        leagues = get_scheduled_leagues()
+    leagues = list(leagues)
+    
     start_dt, end_dt = build_scheduled_window(now)
     start_date = start_dt.date()
     end_date = end_dt.date()
@@ -142,7 +93,7 @@ def schedule_ingestion_runs(
 
     logger.info(
         "scheduled_ingestion_start",
-        leagues=list(leagues),
+        leagues=leagues,
         window_start=str(start_dt),
         window_end=str(end_dt),
     )
@@ -176,14 +127,17 @@ def schedule_ingestion_runs(
                 runs_skipped += 1
                 continue
 
+            # Get per-league config from SSOT
+            league_cfg = get_league_config(league_code)
+            
             config = IngestionConfig(
                 league_code=league_code,
                 start_date=start_date,
                 end_date=end_date,
-                boxscores=True,
-                odds=True,
-                social=league_code in ("NBA", "NHL"),
-                pbp=True,
+                boxscores=league_cfg.boxscores_enabled,
+                odds=league_cfg.odds_enabled,
+                social=league_cfg.social_enabled,
+                pbp=league_cfg.pbp_enabled,
                 only_missing=False,
             )
 
@@ -242,10 +196,7 @@ def schedule_ingestion_runs(
         last_run_at=str(summary.last_run_at),
     )
     
-    # Schedule timeline generation after scraper completes
-    if schedule_timelines and runs_created > 0:
-        logger.info("scheduling_timeline_generation_after_scraper")
-        timeline_summary = schedule_timeline_generation(leagues=leagues)
-        logger.info("timeline_generation_scheduled", **timeline_summary)
+    # Note: Timeline generation is triggered at the END of each scrape job,
+    # not here. See run_scrape_job task for the trigger.
     
     return summary

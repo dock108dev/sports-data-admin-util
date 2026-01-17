@@ -118,32 +118,46 @@ export type PlayerContribution = {
 };
 
 /**
- * Grounded highlight with play references and context.
- * Each highlight is traceable to specific plays in the timeline.
+ * The single narrative unit.
+ * 
+ * Every play belongs to exactly one moment.
+ * Moments are always chronological.
  */
-export type HighlightEntry = {
-  highlight_id: string;
-  type: string; // SCORING_RUN, LEAD_CHANGE, MOMENTUM_SHIFT, etc.
-  title: string;
-  description: string;
-  start_play_id: string;
-  end_play_id: string;
-  key_play_ids: string[];
-  involved_teams: string[];
-  involved_players: PlayerContribution[];
-  score_change: string; // "92–96 → 98–96"
-  game_clock_range: string; // "Q4 7:42–5:58"
-  game_phase: "early" | "mid" | "late" | "closing";
-  importance_score: number;
+export type MomentEntry = {
+  id: string;                           // "m_001"
+  type: "NEUTRAL" | "RUN" | "BATTLE" | "CLOSING";
+  start_play: number;                   // First play index
+  end_play: number;                     // Last play index
+  play_count: number;                   // Number of plays
+  teams: string[];
+  players: PlayerContribution[];
+  score_start: string;                  // "12–15"
+  score_end: string;                    // "18–15"
+  clock: string;                        // "Q2 8:45–6:12"
+  is_notable: boolean;                  // This IS highlights
+  note: string | null;                  // "7-0 run"
+};
+
+/**
+ * Response from GET /games/{game_id}/moments
+ */
+export type MomentsResponse = {
+  game_id: number;
+  generated_at: string | null;
+  moments: MomentEntry[];
+  total_count: number;
+  highlight_count: number;
 };
 
 /**
  * Response from GET /games/{game_id}/highlights
+ * 
+ * Highlights = moments where is_notable=true.
  */
 export type HighlightsResponse = {
   game_id: number;
   generated_at: string | null;
-  highlights: HighlightEntry[];
+  highlights: MomentEntry[];
   total_count: number;
 };
 
@@ -179,7 +193,8 @@ export type AdminGameDetail = {
   odds: OddsEntry[];
   social_posts: SocialPost[];
   plays: PlayEntry[];
-  highlights: HighlightEntry[];
+  moments: MomentEntry[];    // Full game coverage
+  highlights: MomentEntry[]; // = moments.filter(is_notable)
   derived_metrics: Record<string, unknown>;
   raw_payloads: Record<string, unknown>;
 };

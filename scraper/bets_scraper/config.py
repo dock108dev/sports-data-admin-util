@@ -58,9 +58,12 @@ class SocialConfig(BaseModel):
 
 
 class TimelineConfig(BaseModel):
-    """Configuration for timeline generation jobs."""
+    """Configuration for timeline generation jobs.
+    
+    Note: Post-scrape scheduled runs process ALL games missing timelines (no date limit).
+    The days_back setting is only used for manual/admin API calls.
+    """
     enable_timeline_generation: bool = Field(default=True)
-    timeline_generation_days_back: int = Field(default=7)
     timeline_generation_max_games: int | None = Field(default=None)  # None = all games
 
 

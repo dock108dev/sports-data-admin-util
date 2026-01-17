@@ -45,7 +45,7 @@ class MissingTimelinesResponse(BaseModel):
 
 class BatchGenerationRequest(BaseModel):
     """Request to generate timelines for multiple games."""
-    league_code: str = Field(default="NBA", description="League to process")
+    league_code: str = Field(..., description="League to process (NBA, NHL, NCAAB)")
     days_back: int = Field(default=7, ge=1, le=30, description="Days back to check")
     max_games: int | None = Field(default=None, description="Max games to process")
 
@@ -120,7 +120,7 @@ async def generate_timeline_for_game(
 
 @router.get("/timelines/missing", response_model=MissingTimelinesResponse)
 async def list_missing_timelines(
-    league_code: str = Query("NBA", description="League code to filter by"),
+    league_code: str = Query(..., description="League code (NBA, NHL, NCAAB)"),
     days_back: int = Query(7, ge=1, le=90, description="Days back to check"),
     session: AsyncSession = Depends(get_db),
 ) -> MissingTimelinesResponse:
@@ -225,9 +225,8 @@ class SyncBatchGenerationResponse(BaseModel):
 class RegenerateBatchRequest(BaseModel):
     """Request to regenerate timelines for specific games or all games with existing timelines."""
     game_ids: list[int] | None = Field(default=None, description="Specific game IDs to regenerate (None = all)")
-    league_code: str = Field(default="NBA", description="League to filter by")
+    league_code: str = Field(..., description="League to filter by (NBA, NHL, NCAAB)")
     days_back: int = Field(default=7, ge=1, le=90, description="Days back to check")
-    only_stale: bool = Field(default=False, description="Only regenerate if social posts are newer than timeline")
 
 
 class ExistingTimelineGame(BaseModel):
@@ -239,15 +238,12 @@ class ExistingTimelineGame(BaseModel):
     away_team: str
     status: str
     timeline_generated_at: str
-    last_social_at: str | None
-    is_stale: bool  # True if last_social_at > timeline_generated_at
 
 
 class ExistingTimelinesResponse(BaseModel):
     """List of games with existing timeline artifacts."""
     games: list[ExistingTimelineGame]
     total_count: int
-    stale_count: int
 
 
 @router.post("/timelines/generate-batch", response_model=SyncBatchGenerationResponse)
@@ -351,16 +347,12 @@ async def generate_timelines_batch(
 
 @router.get("/timelines/existing", response_model=ExistingTimelinesResponse)
 async def list_existing_timelines(
-    league_code: str = Query("NBA", description="League code to filter by"),
+    league_code: str = Query(..., description="League code (NBA, NHL, NCAAB)"),
     days_back: int = Query(7, ge=1, le=90, description="Days back to check"),
-    only_stale: bool = Query(False, description="Only show stale timelines"),
     session: AsyncSession = Depends(get_db),
 ) -> ExistingTimelinesResponse:
     """
     List games that have existing timeline artifacts.
-    
-    Returns games with timeline artifacts, including staleness indicator
-    based on whether social posts were added after timeline generation.
     """
     from datetime import timedelta
     from sqlalchemy.orm import aliased
@@ -389,7 +381,6 @@ async def list_existing_timelines(
             db_models.SportsGame.id,
             db_models.SportsGame.game_date,
             db_models.SportsGame.status,
-            db_models.SportsGame.last_social_at,
             db_models.SportsLeague.code.label("league_code"),
             HomeTeam.name.label("home_team"),
             AwayTeam.name.label("away_team"),
@@ -412,38 +403,22 @@ async def list_existing_timelines(
     result = await session.execute(query)
     rows = result.all()
     
-    games = []
-    stale_count = 0
-    for row in rows:
-        # Determine staleness: last_social_at > timeline_generated_at
-        is_stale = False
-        if row.last_social_at and row.timeline_generated_at:
-            is_stale = row.last_social_at > row.timeline_generated_at
-        
-        if only_stale and not is_stale:
-            continue
-        
-        if is_stale:
-            stale_count += 1
-        
-        games.append(
-            ExistingTimelineGame(
-                game_id=row.id,
-                game_date=row.game_date.isoformat(),
-                league=row.league_code,
-                home_team=row.home_team,
-                away_team=row.away_team,
-                status=row.status,
-                timeline_generated_at=row.timeline_generated_at.isoformat(),
-                last_social_at=row.last_social_at.isoformat() if row.last_social_at else None,
-                is_stale=is_stale,
-            )
+    games = [
+        ExistingTimelineGame(
+            game_id=row.id,
+            game_date=row.game_date.isoformat(),
+            league=row.league_code,
+            home_team=row.home_team,
+            away_team=row.away_team,
+            status=row.status,
+            timeline_generated_at=row.timeline_generated_at.isoformat(),
         )
+        for row in rows
+    ]
     
     return ExistingTimelinesResponse(
         games=games,
         total_count=len(games),
-        stale_count=stale_count,
     )
 
 
@@ -486,7 +461,7 @@ async def regenerate_timelines_batch(
         cutoff_date = now_utc() - timedelta(days=request.days_back)
         
         query = (
-            select(db_models.SportsGame.id, db_models.SportsGame.last_social_at)
+            select(db_models.SportsGame.id)
             .join(
                 db_models.SportsGameTimelineArtifact,
                 db_models.SportsGameTimelineArtifact.game_id == db_models.SportsGame.id,
@@ -496,12 +471,6 @@ async def regenerate_timelines_batch(
                 db_models.SportsGame.game_date >= cutoff_date,
             )
         )
-        
-        if request.only_stale:
-            # Only include games where last_social_at > timeline generated_at
-            query = query.where(
-                db_models.SportsGame.last_social_at > db_models.SportsGameTimelineArtifact.generated_at
-            )
         
         result = await session.execute(query)
         game_ids = [row[0] for row in result.all()]

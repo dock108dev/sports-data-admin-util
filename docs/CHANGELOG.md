@@ -2,6 +2,37 @@
 
 All notable changes to Sports Data Admin.
 
+## [2026-01-17]
+
+### Added
+- **Moments/Highlights system**: Replaced legacy segments with grounded moments
+  - Each game timeline is partitioned into contiguous, non-overlapping moments
+  - Moments are typed: NEUTRAL, RUN, LEAD_BATTLE, CLOSING_STRETCH
+  - Notable moments (is_notable=True) become highlights
+  - Player stats (pts, ast, blk, stl) extracted per moment
+- **Timeline management UI**: Admin page for generating and regenerating timelines
+  - List games missing timelines
+  - List existing timelines with regeneration options
+  - Batch generation and per-game regeneration
+- **Sports SSOT configuration**: Centralized league config in `config_sports.py`
+  - Eliminated hardcoded "NBA" defaults throughout codebase
+  - Per-league feature flags (pbp, social, timeline, odds)
+  - Required `league_code` parameters with validation
+- **Post-scrape timeline generation**: Automatically generates timelines for all games missing them after each scrape job completes (no date limit)
+
+### Changed
+- Moments API returns chronological order (by start_play_id), not importance ranking
+- `GET /games/{id}/highlights` returns filtered view of moments (is_notable=True)
+- `GET /games/{id}/moments` returns all moments (full timeline coverage)
+- Timeline generation processes ALL games missing timelines (removed 7-day lookback limit)
+- Consolidated DEPLOYMENT.md and DEPLOYMENT_SETUP.md
+
+### Removed
+- Legacy segments/highlights terminology
+- "Stale timeline" concept (timelines don't go stale after game is final)
+- Hardcoded "NBA" defaults in scheduler, tasks, and API endpoints
+- Empty directories and unused files
+
 ## [Unreleased]
 
 ### Added
@@ -25,7 +56,7 @@ All notable changes to Sports Data Admin.
 - Live play-by-play ingestion with append-only event storage
 - NHL team X handle registry with validation helper
 - NHL play-by-play ingestion via Hockey-Reference
-- Production Docker Compose profile (`infra/docker-compose.yml` with `--profile prod`) for Hetzner deployment
+- Production Docker Compose profile
 
 ### Changed
 - Docker compose now connects to host database via `host.docker.internal`
@@ -34,7 +65,7 @@ All notable changes to Sports Data Admin.
 - Destructive restore utilities now require `CONFIRM_DESTRUCTIVE=true`
 - Social scraper performs upsert (updates existing posts)
 - Ingestion config simplified to data type toggles + shared filters
-- NBA timeline synthesis now treats regulation and halftime as separate fixed blocks when mapping PBP timestamps
+- NBA timeline synthesis now treats regulation and halftime as separate fixed blocks
 
 ### Fixed
 - Fixed compact mode threshold model restoration

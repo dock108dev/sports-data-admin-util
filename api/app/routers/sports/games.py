@@ -38,7 +38,8 @@ from .schemas import (
     GameListResponse,
     GameMeta,
     GamePreviewScoreResponse,
-    HighlightEntry,
+    MomentEntry,
+    MomentsResponse,
     HighlightsResponse,
     ScrapeRunConfig,
     JobResponse,
@@ -347,32 +348,32 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         ],
     }
 
-    # Serialize grounded highlights
-    highlights_list: list[HighlightEntry] = []
+    # Serialize moments and highlights
+    moments_list: list[MomentEntry] = []
+    highlights_list: list[MomentEntry] = []
     if timeline_artifacts:
         artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
         game_analysis = artifact.game_analysis_json or {}
         
-        grounded_raw = game_analysis.get("grounded_highlights", [])
-        for h in grounded_raw:
-            if isinstance(h, dict):
-                highlights_list.append(
-                    HighlightEntry(
-                        highlight_id=h.get("highlight_id", ""),
-                        type=h.get("type", "UNKNOWN"),
-                        title=h.get("title", ""),
-                        description=h.get("description", ""),
-                        start_play_id=h.get("start_play_id", "0"),
-                        end_play_id=h.get("end_play_id", "0"),
-                        key_play_ids=h.get("key_play_ids", []),
-                        involved_teams=h.get("involved_teams", []),
-                        involved_players=h.get("involved_players", []),
-                        score_change=h.get("score_change", ""),
-                        game_clock_range=h.get("game_clock_range", ""),
-                        game_phase=h.get("game_phase", "mid"),
-                        importance_score=h.get("importance_score", 0.5),
-                    )
+        for m in game_analysis.get("moments", []):
+            if isinstance(m, dict):
+                moment = MomentEntry(
+                    id=m.get("id", ""),
+                    type=m.get("type", "NEUTRAL"),
+                    start_play=m.get("start_play", 0),
+                    end_play=m.get("end_play", 0),
+                    play_count=m.get("play_count", 0),
+                    teams=m.get("teams", []),
+                    players=m.get("players", []),
+                    score_start=m.get("score_start", ""),
+                    score_end=m.get("score_end", ""),
+                    clock=m.get("clock", ""),
+                    is_notable=m.get("is_notable", False),
+                    note=m.get("note"),
                 )
+                moments_list.append(moment)
+                if moment.is_notable:
+                    highlights_list.append(moment)
 
     return GameDetailResponse(
         game=meta,
@@ -381,6 +382,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,
+        moments=moments_list,
         highlights=highlights_list,
         derived_metrics=derived,
         raw_payloads=raw_payloads,
@@ -493,21 +495,85 @@ async def generate_game_timeline(
     )
 
 
+@router.get("/games/{game_id}/moments", response_model=MomentsResponse)
+async def get_game_moments(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> MomentsResponse:
+    """
+    Get all moments for a game, ordered chronologically.
+    
+    The game timeline is fully partitioned into contiguous, non-overlapping moments.
+    Every play belongs to exactly one moment. Moments are ordered by start_play_id.
+    
+    Use this endpoint for:
+    - Full game coverage
+    - Expandable/collapsible moment UI
+    - Timeline linking
+    """
+    result = await session.execute(
+        select(db_models.SportsGame)
+        .options(selectinload(db_models.SportsGame.timeline_artifacts))
+        .where(db_models.SportsGame.id == game_id)
+    )
+    game = result.scalar_one_or_none()
+    if not game:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+    
+    timeline_artifacts = game.timeline_artifacts or []
+    if not timeline_artifacts:
+        return MomentsResponse(
+            game_id=game_id,
+            generated_at=None,
+            moments=[],
+            total_count=0,
+            highlight_count=0,
+        )
+    
+    artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
+    game_analysis = artifact.game_analysis_json or {}
+    
+    moments = [
+        MomentEntry(
+            id=m.get("id", ""),
+            type=m.get("type", "NEUTRAL"),
+            start_play=m.get("start_play", 0),
+            end_play=m.get("end_play", 0),
+            play_count=m.get("play_count", 0),
+            teams=m.get("teams", []),
+            players=m.get("players", []),
+            score_start=m.get("score_start", ""),
+            score_end=m.get("score_end", ""),
+            clock=m.get("clock", ""),
+            is_notable=m.get("is_notable", False),
+            note=m.get("note"),
+        )
+        for m in game_analysis.get("moments", [])
+        if isinstance(m, dict)
+    ]
+    
+    return MomentsResponse(
+        game_id=game_id,
+        generated_at=artifact.generated_at,
+        moments=moments,
+        total_count=len(moments),
+        highlight_count=sum(1 for m in moments if m.is_notable),
+    )
+
+
 @router.get("/games/{game_id}/highlights", response_model=HighlightsResponse)
 async def get_game_highlights(
     game_id: int,
     session: AsyncSession = Depends(get_db),
 ) -> HighlightsResponse:
     """
-    Get grounded highlights for a game.
+    Get highlights for a game (filtered view of moments).
     
-    Highlights are labeled windows of play, backed by specific events, with contextual meaning.
-    Each highlight includes:
-    - Play references (start_play_id, end_play_id, key_play_ids)
-    - Context (score_change, game_clock_range, game_phase)
-    - Participants (involved_teams, involved_players)
+    Highlights are moments where is_highlight=True.
+    Ordered chronologically (by start_play_id), NOT by importance.
     
-    Use play_id fields to link highlights to the timeline.
+    This is a VIEW of the moments data, not separate entities.
+    For full coverage, use GET /games/{game_id}/moments.
     """
     result = await session.execute(
         select(db_models.SportsGame)
@@ -527,30 +593,27 @@ async def get_game_highlights(
             total_count=0,
         )
     
-    # Get most recent artifact
     artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
     game_analysis = artifact.game_analysis_json or {}
     
-    # Use grounded_highlights if available
-    grounded_raw = game_analysis.get("grounded_highlights", [])
+    # Highlights = moments where is_notable=True
     highlights = [
-        HighlightEntry(
-            highlight_id=h.get("highlight_id", ""),
-            type=h.get("type", "UNKNOWN"),
-            title=h.get("title", ""),
-            description=h.get("description", ""),
-            start_play_id=h.get("start_play_id", "0"),
-            end_play_id=h.get("end_play_id", "0"),
-            key_play_ids=h.get("key_play_ids", []),
-            involved_teams=h.get("involved_teams", []),
-            involved_players=h.get("involved_players", []),
-            score_change=h.get("score_change", ""),
-            game_clock_range=h.get("game_clock_range", ""),
-            game_phase=h.get("game_phase", "mid"),
-            importance_score=h.get("importance_score", 0.5),
+        MomentEntry(
+            id=m.get("id", ""),
+            type=m.get("type", "NEUTRAL"),
+            start_play=m.get("start_play", 0),
+            end_play=m.get("end_play", 0),
+            play_count=m.get("play_count", 0),
+            teams=m.get("teams", []),
+            players=m.get("players", []),
+            score_start=m.get("score_start", ""),
+            score_end=m.get("score_end", ""),
+            clock=m.get("clock", ""),
+            is_notable=True,
+            note=m.get("note"),
         )
-        for h in grounded_raw
-        if isinstance(h, dict)
+        for m in game_analysis.get("moments", [])
+        if isinstance(m, dict) and m.get("is_notable", False)
     ]
     
     return HighlightsResponse(

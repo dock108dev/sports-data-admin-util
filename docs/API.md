@@ -103,7 +103,8 @@ Get detailed game data including stats, odds, social posts, and plays.
   "odds": [OddsEntry],
   "social_posts": [SocialPostEntry],
   "plays": [PlayEntry],
-  "highlights": [HighlightEntry],
+  "moments": [MomentEntry],
+  "highlights": [MomentEntry],  // = moments.filter(is_notable)
   "derived_metrics": {},
   "raw_payloads": {}
 }
@@ -196,7 +197,7 @@ Generate and store a finalized timeline artifact for a game.
 
 ### `GET /games/{game_id}/highlights`
 
-Get grounded highlights for a game.
+Get notable moments for a game. Highlights are moments where `is_notable=true`.
 
 **Path Parameters:**
 - `game_id` (int, required): Game ID
@@ -208,52 +209,44 @@ Get grounded highlights for a game.
   "generated_at": "2026-01-16T19:42:00Z",
   "highlights": [
     {
-      "highlight_id": "hl_a1b2c3d4",
-      "type": "SCORING_RUN",
-      "title": "Denver opens the game on an 8–0 run",
-      "description": "Denver set the tone early, forcing a quick timeout.",
-      "start_play_id": "21",
-      "end_play_id": "34",
-      "key_play_ids": ["23", "29"],
-      "involved_teams": ["DEN", "BOS"],
-      "involved_players": ["N. Jokic"],
-      "score_change": "12–9 → 18–9",
-      "game_clock_range": "Q1 9:12–7:48",
-      "game_phase": "early",
-      "importance_score": 0.72
+      "id": "m_003",
+      "type": "RUN",
+      "start_play": 21,
+      "end_play": 34,
+      "play_count": 14,
+      "teams": ["DEN", "BOS"],
+      "players": [
+        { "name": "N. Jokic", "stats": { "pts": 8 }, "summary": "8 pts" }
+      ],
+      "score_start": "9–12",
+      "score_end": "9–18",
+      "clock": "Q1 9:12–7:48",
+      "is_notable": true,
+      "note": "8-0 run"
     }
   ],
   "total_count": 5
 }
 ```
 
-**Highlight Types:**
+**Moment Types:**
 | Type | Description |
 |------|-------------|
-| `SCORING_RUN` | Team goes on a scoring streak (≥8 unanswered points) |
-| `LEAD_CHANGE` | Lead swings from one team to another |
-| `MOMENTUM_SHIFT` | Significant margin change or quarter-end swing |
-| `GAME_DECIDING_STRETCH` | Final stretch that determined the outcome |
-| `COMEBACK` | Team erases significant deficit |
-| `STAR_TAKEOVER` | Star player dominates a stretch |
+| `RUN` | One team scores unanswered (≥6 points to detect, ≥8 to be notable) |
+| `BATTLE` | Frequent lead changes in short span |
+| `CLOSING` | Final minutes of Q4, notable if close |
+| `NEUTRAL` | No special pattern (not notable) |
 
 **Design Notes:**
-- `start_play_id`, `end_play_id`, `key_play_ids` are join keys to `/timeline`
-- `key_play_ids` lets the UI jump directly to pivotal moments
-- `type` is enum-stable for filtering
-- Ordering is by `importance_score` (editorial), not strictly chronological
+- `start_play`, `end_play` are play indices into the timeline
+- `play_count` is the number of plays in the moment
+- Ordering is chronological (by `start_play`)
+- `note` provides a brief description ("7-0 run", "3 lead changes")
 
-**Highlights Concept:**
+**Concept:**
 
-Highlights represent high-signal narrative moments extracted from the game timeline. Each highlight is:
-- Grounded in real play-by-play events
-- Traceable to specific play IDs
-- Enriched with contextual information (score, timing, players)
-
-Highlights are NOT a replacement for the full timeline. They are curated entry points into the most important moments of the game. Consumers may:
-- Display highlights as a summary feed
-- Link highlights to the timeline using `play_id` references
-- Use highlight types to group or filter moments
+Moments partition the entire game timeline. Every play belongs to exactly one moment.
+Highlights are simply moments with `is_notable=true`. This is a view, not separate data.
 
 ---
 

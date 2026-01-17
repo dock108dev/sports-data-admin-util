@@ -21,7 +21,7 @@ from ..utils.datetime_utils import now_utc
 def find_games_missing_timelines(
     session: Session,
     league_code: str,
-    days_back: int = 7,
+    days_back: int | None = None,
 ) -> Sequence[tuple[int, datetime, str, str]]:
     """
     Find completed games with PBP data but missing timeline artifacts.
@@ -29,7 +29,7 @@ def find_games_missing_timelines(
     Args:
         session: Database session
         league_code: League to check (e.g., "NBA", "NHL")
-        days_back: How many days back to check
+        days_back: How many days back to check (None = ALL games, no limit)
         
     Returns:
         List of (game_id, game_date, home_team, away_team) tuples
@@ -42,13 +42,10 @@ def find_games_missing_timelines(
         logger.warning("timeline_gen_unknown_league", league=league_code)
         return []
     
-    cutoff_date = now_utc() - timedelta(days=days_back)
-    
     # Find games that:
     # 1. Are completed/final
     # 2. Have play-by-play data
     # 3. Don't have timeline artifacts
-    # 4. Are within the date range
     query = (
         session.query(
             db_models.SportsGame.id,
@@ -67,7 +64,6 @@ def find_games_missing_timelines(
                 db_models.GameStatus.final.value,
                 db_models.GameStatus.completed.value,
             ]),
-            db_models.SportsGame.game_date >= cutoff_date,
         )
         .filter(
             # Has PBP data
@@ -84,12 +80,17 @@ def find_games_missing_timelines(
         .order_by(db_models.SportsGame.game_date.desc())
     )
     
+    # Apply date filter only if days_back is specified
+    if days_back is not None:
+        cutoff_date = now_utc() - timedelta(days=days_back)
+        query = query.filter(db_models.SportsGame.game_date >= cutoff_date)
+    
     results = query.all()
     
     logger.info(
         "timeline_gen_games_found",
         league=league_code,
-        days_back=days_back,
+        days_back=days_back if days_back else "ALL",
         count=len(results),
     )
     
@@ -153,8 +154,8 @@ def generate_timeline_for_game(
 
 
 def generate_missing_timelines(
-    league_code: str = "NBA",
-    days_back: int = 7,
+    league_code: str,
+    days_back: int | None = None,
     max_games: int | None = None,
     timeline_version: str = "v1",
 ) -> dict[str, int]:
@@ -162,8 +163,8 @@ def generate_missing_timelines(
     Find and generate timelines for games missing artifacts.
     
     Args:
-        league_code: League to process
-        days_back: How many days back to check
+        league_code: League to process (required)
+        days_back: How many days back to check (None = ALL games)
         max_games: Maximum number of games to process (None = all)
         timeline_version: Timeline version identifier
         
@@ -173,7 +174,7 @@ def generate_missing_timelines(
     logger.info(
         "timeline_gen_batch_start",
         league=league_code,
-        days_back=days_back,
+        days_back=days_back if days_back else "ALL",
         max_games=max_games,
     )
     

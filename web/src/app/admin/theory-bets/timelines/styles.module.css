@@ -313,44 +313,6 @@
   transform: none;
 }
 
-/* Stale indicators */
-.staleBadge {
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
-  background: #fef3c7;
-  color: #b45309;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.freshBadge {
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
-  background: #dcfce7;
-  color: #16a34a;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.staleRow {
-  background: #fffbeb;
-}
-
-.staleRow:hover {
-  background: #fef3c7;
-}
-
-/* Stat warning color */
-.statWarning {
-  color: #f59e0b;
-}
-
-/* Checkbox styling in filter group */
-.filterGroup input[type="checkbox"] {
-  margin-right: 0.25rem;
-}
 
 /* Table checkbox column */
 .table th:first-child,

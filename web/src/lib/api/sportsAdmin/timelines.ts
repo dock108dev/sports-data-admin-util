@@ -38,22 +38,19 @@ export interface ExistingTimelineGame {
   away_team: string;
   status: string;
   timeline_generated_at: string;
-  last_social_at: string | null;
-  is_stale: boolean;
 }
 
 export interface ExistingTimelinesResponse {
   games: ExistingTimelineGame[];
   total_count: number;
-  stale_count: number;
 }
 
 export async function listMissingTimelines(params: {
-  leagueCode?: string;
+  leagueCode: string;  // Required
   daysBack?: number;
 }): Promise<MissingTimelinesResponse> {
   const searchParams = new URLSearchParams();
-  if (params.leagueCode) searchParams.set("league_code", params.leagueCode);
+  searchParams.set("league_code", params.leagueCode);  // Always required
   if (params.daysBack) searchParams.set("days_back", params.daysBack.toString());
 
   return request(`/api/admin/sports/timelines/missing?${searchParams.toString()}`);
@@ -85,31 +82,27 @@ export async function generateMissingTimelines(params: {
 }
 
 export async function listExistingTimelines(params: {
-  leagueCode?: string;
+  leagueCode: string;  // Required
   daysBack?: number;
-  onlyStale?: boolean;
 }): Promise<ExistingTimelinesResponse> {
   const searchParams = new URLSearchParams();
-  if (params.leagueCode) searchParams.set("league_code", params.leagueCode);
+  searchParams.set("league_code", params.leagueCode);  // Always required
   if (params.daysBack) searchParams.set("days_back", params.daysBack.toString());
-  if (params.onlyStale) searchParams.set("only_stale", "true");
 
   return request(`/api/admin/sports/timelines/existing?${searchParams.toString()}`);
 }
 
 export async function regenerateTimelines(params: {
   gameIds?: number[];
-  leagueCode?: string;
+  leagueCode: string;  // Required
   daysBack?: number;
-  onlyStale?: boolean;
 }): Promise<BatchGenerationResponse> {
   return request("/api/admin/sports/timelines/regenerate-batch", {
     method: "POST",
     body: JSON.stringify({
       game_ids: params.gameIds || null,
-      league_code: params.leagueCode || "NBA",
+      league_code: params.leagueCode,
       days_back: params.daysBack || 7,
-      only_stale: params.onlyStale || false,
     }),
   });
 }

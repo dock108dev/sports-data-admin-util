@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import styles from "./styles.module.css";
 import {
   generateMissingTimelines,
@@ -18,8 +18,7 @@ type TabMode = "missing" | "existing";
  *
  * Allows administrators to:
  * - View games missing timeline artifacts and generate them
- * - View games with existing timelines and regenerate them
- * - Identify stale timelines (social posts added after generation)
+ * - View games with existing timelines and regenerate them (for fixes)
  */
 export default function TimelinesAdminPage() {
   // Tab state
@@ -28,12 +27,10 @@ export default function TimelinesAdminPage() {
   // Filters
   const [leagueCode, setLeagueCode] = useState("NBA");
   const [daysBack, setDaysBack] = useState(7);
-  const [onlyStale, setOnlyStale] = useState(false);
 
   // Data state
   const [missingGames, setMissingGames] = useState<MissingTimelineGame[]>([]);
   const [existingGames, setExistingGames] = useState<ExistingTimelineGame[]>([]);
-  const [staleCount, setStaleCount] = useState(0);
 
   // Selection state
   const [selectedGameIds, setSelectedGameIds] = useState<Set<number>>(new Set());
@@ -63,15 +60,14 @@ export default function TimelinesAdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await listExistingTimelines({ leagueCode, daysBack, onlyStale });
+      const response = await listExistingTimelines({ leagueCode, daysBack });
       setExistingGames(response.games);
-      setStaleCount(response.stale_count);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [leagueCode, daysBack, onlyStale]);
+  }, [leagueCode, daysBack]);
 
   // Fetch data when tab or filters change
   useEffect(() => {
@@ -117,7 +113,7 @@ export default function TimelinesAdminPage() {
     setSuccess(null);
 
     try {
-      const result = await regenerateTimelines({ leagueCode, daysBack, onlyStale });
+      const result = await regenerateTimelines({ leagueCode, daysBack });
       setSuccess(
         `Regenerated ${result.games_successful}/${result.games_processed} timelines.` +
           (result.games_failed > 0 ? ` (${result.games_failed} failed)` : "")
@@ -249,21 +245,6 @@ export default function TimelinesAdminPage() {
             </select>
           </div>
 
-          {activeTab === "existing" && (
-            <div className={styles.filterGroup}>
-              <label htmlFor="onlyStale">
-                <input
-                  type="checkbox"
-                  id="onlyStale"
-                  checked={onlyStale}
-                  onChange={(e) => setOnlyStale(e.target.checked)}
-                  disabled={loading || processing}
-                />
-                {" "}Only stale
-              </label>
-            </div>
-          )}
-
           <button
             onClick={activeTab === "missing" ? fetchMissingGames : fetchExistingGames}
             disabled={loading || processing}
@@ -309,25 +290,14 @@ export default function TimelinesAdminPage() {
 
       {/* Stats */}
       <div className={styles.stats}>
-        {activeTab === "missing" ? (
-          <div className={styles.statCard}>
-            <div className={styles.statValue}>{missingGames.length}</div>
-            <div className={styles.statLabel}>Games Missing Timelines</div>
+        <div className={styles.statCard}>
+          <div className={styles.statValue}>
+            {activeTab === "missing" ? missingGames.length : existingGames.length}
           </div>
-        ) : (
-          <>
-            <div className={styles.statCard}>
-              <div className={styles.statValue}>{existingGames.length}</div>
-              <div className={styles.statLabel}>Games with Timelines</div>
-            </div>
-            <div className={styles.statCard}>
-              <div className={`${styles.statValue} ${staleCount > 0 ? styles.statWarning : ""}`}>
-                {staleCount}
-              </div>
-              <div className={styles.statLabel}>Stale Timelines</div>
-            </div>
-          </>
-        )}
+          <div className={styles.statLabel}>
+            {activeTab === "missing" ? "Games Missing Timelines" : "Games with Timelines"}
+          </div>
+        </div>
       </div>
 
       {/* Table */}
@@ -358,13 +328,7 @@ export default function TimelinesAdminPage() {
                 <th>Date</th>
                 <th>Matchup</th>
                 <th>Status</th>
-                {activeTab === "existing" && (
-                  <>
-                    <th>Generated</th>
-                    <th>Last Social</th>
-                    <th>Stale</th>
-                  </>
-                )}
+                {activeTab === "existing" && <th>Generated</th>}
               </tr>
             </thead>
             <tbody>
@@ -378,7 +342,7 @@ export default function TimelinesAdminPage() {
                     </tr>
                   ))
                 : existingGames.map((game) => (
-                    <tr key={game.game_id} className={game.is_stale ? styles.staleRow : ""}>
+                    <tr key={game.game_id}>
                       <td>
                         <input
                           type="checkbox"
@@ -392,14 +356,6 @@ export default function TimelinesAdminPage() {
                       <td>{game.away_team} @ {game.home_team}</td>
                       <td><span className={styles.statusBadge}>{game.status}</span></td>
                       <td>{formatRelativeTime(game.timeline_generated_at)}</td>
-                      <td>{game.last_social_at ? formatRelativeTime(game.last_social_at) : "—"}</td>
-                      <td>
-                        {game.is_stale ? (
-                          <span className={styles.staleBadge}>Stale</span>
-                        ) : (
-                          <span className={styles.freshBadge}>Fresh</span>
-                        )}
-                      </td>
                     </tr>
                   ))}
             </tbody>
