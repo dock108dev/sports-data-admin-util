@@ -134,8 +134,8 @@ class TestTimelineGenerator(unittest.TestCase):
             {"event_type", "author", "handle", "text", "role", "phase", "synthetic_timestamp", "intra_phase_order"},
         )
 
-    def test_build_nba_game_analysis_moments_and_highlights(self) -> None:
-        """Test that game analysis produces moments and highlights.
+    def test_build_nba_game_analysis_moments(self) -> None:
+        """Test that game analysis produces moments.
         
         The Lead Ladder-based moments system partitions the timeline into:
         - OPENER: First plays of a period
@@ -145,8 +145,6 @@ class TestTimelineGenerator(unittest.TestCase):
         - FLIP: Leader changed
         - CLOSING_CONTROL: Late-game lock-in
         - NEUTRAL: Normal flow
-        
-        Highlights are moments where is_notable=True.
         """
         timeline = [
             {
@@ -214,9 +212,7 @@ class TestTimelineGenerator(unittest.TestCase):
 
         analysis = build_nba_game_analysis(timeline, summary)
 
-        # New format uses "moments" and "highlights"
         moments = analysis["moments"]
-        highlights = analysis["highlights"]
 
         # Should have at least one moment
         self.assertGreaterEqual(len(moments), 1)
@@ -235,10 +231,6 @@ class TestTimelineGenerator(unittest.TestCase):
         valid_new_types = {"LEAD_BUILD", "CUT", "TIE", "FLIP", "CLOSING_CONTROL", 
                           "HIGH_IMPACT", "NEUTRAL", "OPENER"}
         self.assertTrue(moment_types.issubset(valid_new_types))
-
-        # Highlights are moments where is_notable=True
-        notable_moments = [m for m in moments if m["is_notable"]]
-        self.assertEqual(len(highlights), len(notable_moments))
 
 
 if __name__ == "__main__":

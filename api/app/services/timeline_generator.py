@@ -577,7 +577,6 @@ async def generate_timeline_artifact(
                 "game_id": game_id,
                 "phase": "game_analysis",
                 "moments": len(game_analysis.get("moments", [])),
-                "highlights": len(game_analysis.get("highlights", [])),
             },
         )
 

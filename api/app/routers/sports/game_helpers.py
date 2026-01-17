@@ -217,16 +217,16 @@ def summarize_game(game: db_models.SportsGame) -> GameSummary:
     has_pbp = bool(plays)
     play_count = len(plays)
     
-    # Check for timeline artifacts (highlights)
+    # Check for timeline artifacts (moments)
     timeline_artifacts = getattr(game, "timeline_artifacts", []) or []
     has_highlights = bool(timeline_artifacts)
-    # Count highlights from the first (most recent) timeline artifact
+    # Count moments from the first (most recent) timeline artifact
     highlight_count = 0
     if timeline_artifacts:
         artifact = timeline_artifacts[0]
         game_analysis = getattr(artifact, "game_analysis_json", {}) or {}
-        highlights_list = game_analysis.get("highlights", [])
-        highlight_count = len(highlights_list) if isinstance(highlights_list, list) else 0
+        moments_list = game_analysis.get("moments", [])
+        highlight_count = len(moments_list) if isinstance(moments_list, list) else 0
     
     return GameSummary(
         id=game.id,

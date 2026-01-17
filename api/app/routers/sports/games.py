@@ -253,14 +253,15 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     # Extract highlights from timeline artifact
     timeline_artifacts = game.timeline_artifacts or []
     has_highlights = bool(timeline_artifacts)
-    highlights_list: list[dict] = []
+    moments_list: list[dict] = []
     if timeline_artifacts:
         # Get most recent artifact
         artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
         game_analysis = artifact.game_analysis_json or {}
-        highlights_list = game_analysis.get("highlights", [])
+        moments_list = game_analysis.get("moments", [])
     
-    highlight_count = len(highlights_list) if isinstance(highlights_list, list) else 0
+    # Count all moments (highlight_count kept for backward compat)
+    highlight_count = len(moments_list) if isinstance(moments_list, list) else 0
 
     meta = GameMeta(
         id=game.id,
