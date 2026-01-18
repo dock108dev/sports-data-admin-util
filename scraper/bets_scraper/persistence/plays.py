@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 from sqlalchemy.dialects.postgresql import insert
 
@@ -16,22 +16,141 @@ if TYPE_CHECKING:
     from ..models import NormalizedPlay
 
 
-def upsert_plays(session: Session, game_id: int, plays: Sequence[NormalizedPlay]) -> int:
+def create_raw_pbp_snapshot(
+    session: Session,
+    game_id: int,
+    plays: Sequence[NormalizedPlay],
+    source: str,
+    scrape_run_id: int | None = None,
+) -> int | None:
+    """Create a raw PBP snapshot for auditability.
+    
+    This stores the raw plays BEFORE team ID resolution, preserving
+    the original data as received from the source.
+    
+    Args:
+        session: Database session
+        game_id: ID of the game
+        plays: Raw play data
+        source: Data source (e.g., 'nba_live', 'nhl_api')
+        scrape_run_id: Optional scrape run ID
+        
+    Returns:
+        Snapshot ID if created, None if no plays
     """
-    Insert play-by-play events for a game.
+    if not plays:
+        return None
+    
+    # Convert plays to JSON-serializable format
+    plays_json: list[dict[str, Any]] = [
+        {
+            "play_index": p.play_index,
+            "quarter": p.quarter,
+            "game_clock": p.game_clock,
+            "play_type": p.play_type,
+            "team_abbreviation": p.team_abbreviation,
+            "player_id": p.player_id,
+            "player_name": p.player_name,
+            "description": p.description,
+            "home_score": p.home_score,
+            "away_score": p.away_score,
+            "raw_data": p.raw_data,
+        }
+        for p in plays
+    ]
+    
+    # Compute resolution stats on raw data
+    teams_with_abbrev = sum(1 for p in plays if p.team_abbreviation)
+    players_with_name = sum(1 for p in plays if p.player_name)
+    plays_with_score = sum(1 for p in plays if p.home_score is not None)
+    clock_missing = sum(1 for p in plays if not p.game_clock)
+    
+    resolution_stats = {
+        "total_plays": len(plays),
+        "teams_with_abbreviation": teams_with_abbrev,
+        "teams_without_abbreviation": len(plays) - teams_with_abbrev,
+        "players_with_name": players_with_name,
+        "players_without_name": len(plays) - players_with_name,
+        "plays_with_score": plays_with_score,
+        "plays_without_score": len(plays) - plays_with_score,
+        "clock_missing": clock_missing,
+    }
+    
+    # Check if PBPSnapshot model exists in db_models
+    if not hasattr(db_models, 'PBPSnapshot'):
+        logger.warning(
+            "pbp_snapshot_model_missing",
+            game_id=game_id,
+            note="PBPSnapshot table not available; skipping snapshot creation",
+        )
+        return None
+    
+    try:
+        snapshot = db_models.PBPSnapshot(
+            game_id=game_id,
+            scrape_run_id=scrape_run_id,
+            snapshot_type="raw",
+            source=source,
+            play_count=len(plays),
+            plays_json=plays_json,
+            metadata_json={
+                "source": source,
+                "scrape_run_id": scrape_run_id,
+            },
+            resolution_stats=resolution_stats,
+        )
+        session.add(snapshot)
+        session.flush()
+        
+        logger.info(
+            "raw_pbp_snapshot_created",
+            game_id=game_id,
+            snapshot_id=snapshot.id,
+            play_count=len(plays),
+            source=source,
+        )
+        
+        return snapshot.id
+    except Exception as e:
+        logger.warning(
+            "raw_pbp_snapshot_failed",
+            game_id=game_id,
+            error=str(e),
+        )
+        return None
+
+
+def upsert_plays(
+    session: Session,
+    game_id: int,
+    plays: Sequence[NormalizedPlay],
+    *,
+    source: str = "unknown",
+    scrape_run_id: int | None = None,
+    create_snapshot: bool = True,
+) -> int:
+    """Insert play-by-play events for a game.
 
     Uses PostgreSQL ON CONFLICT DO NOTHING to append new plays without overwriting.
+    Optionally creates a raw PBP snapshot for auditability.
 
     Args:
         session: Database session
         game_id: ID of the game
         plays: List of normalized play events
+        source: Data source (e.g., 'nba_live', 'nhl_api')
+        scrape_run_id: Optional scrape run ID for tracking
+        create_snapshot: Whether to create a raw PBP snapshot
 
     Returns:
         Number of plays inserted
     """
     if not plays:
         return 0
+
+    # Create raw PBP snapshot BEFORE team resolution
+    if create_snapshot:
+        create_raw_pbp_snapshot(session, game_id, plays, source, scrape_run_id)
 
     # Get the game to look up team IDs
     game = session.query(db_models.SportsGame).filter(

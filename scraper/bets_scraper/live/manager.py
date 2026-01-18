@@ -125,6 +125,7 @@ class LiveFeedManager:
                     game,
                     live_game.game_id,
                     self._nba_client.fetch_play_by_play,
+                    source="nba_live",
                 )
                 if pbp_result > 0:
                     pbp_games += 1
@@ -191,6 +192,7 @@ class LiveFeedManager:
                 game,
                 live_game.game_id,
                 self._nhl_client.fetch_play_by_play,
+                source="nhl_api",
             )
             if pbp_result > 0:
                 pbp_games += 1
@@ -204,6 +206,7 @@ class LiveFeedManager:
         game: db_models.SportsGame,
         source_key: str | int,
         fetcher,
+        source: str = "live_feed",
     ) -> int:
         max_index = _max_play_index(session, game.id)
         pbp_payload = fetcher(source_key)
@@ -216,7 +219,7 @@ class LiveFeedManager:
             logger.info("pbp_no_new_events", game_id=game.id, max_index=max_index)
             return 0
 
-        inserted = upsert_plays(session, game.id, new_plays)
+        inserted = upsert_plays(session, game.id, new_plays, source=source)
         if inserted:
             update_game_from_live_feed(
                 session,

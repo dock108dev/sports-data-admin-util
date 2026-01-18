@@ -1,32 +1,30 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import styles from "./styles.module.css";
+import styles from "../styles.module.css";
 import {
   generateMissingTimelines,
   listMissingTimelines,
   listExistingTimelines,
   regenerateTimelines,
+  runPipelineBatch,
   type MissingTimelineGame,
   type ExistingTimelineGame,
 } from "@/lib/api/sportsAdmin";
 
-type TabMode = "missing" | "existing";
+type SubTab = "missing" | "existing";
+
+interface GenerationTabProps {
+  leagueCode: string;
+  daysBack: number;
+}
 
 /**
- * Timeline generation admin page.
- *
- * Allows administrators to:
- * - View games missing timeline artifacts and generate them
- * - View games with existing timelines and regenerate them (for fixes)
+ * Tab for generating and regenerating moments.
+ * Reuses the timelines generation API.
  */
-export default function TimelinesAdminPage() {
-  // Tab state
-  const [activeTab, setActiveTab] = useState<TabMode>("missing");
-
-  // Filters
-  const [leagueCode, setLeagueCode] = useState("NBA");
-  const [daysBack, setDaysBack] = useState(7);
+export function GenerationTab({ leagueCode, daysBack }: GenerationTabProps) {
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>("missing");
 
   // Data state
   const [missingGames, setMissingGames] = useState<MissingTimelineGame[]>([]);
@@ -72,17 +70,17 @@ export default function TimelinesAdminPage() {
   // Fetch data when tab or filters change
   useEffect(() => {
     setSelectedGameIds(new Set());
-    if (activeTab === "missing") {
+    if (activeSubTab === "missing") {
       fetchMissingGames();
     } else {
       fetchExistingGames();
     }
-  }, [activeTab, fetchMissingGames, fetchExistingGames]);
+  }, [activeSubTab, fetchMissingGames, fetchExistingGames]);
 
   // Handle generate missing timelines
   const handleGenerateMissing = async () => {
     if (missingGames.length === 0) return;
-    if (!window.confirm(`Generate timelines for ${missingGames.length} games?`)) return;
+    if (!window.confirm(`Generate moments for ${missingGames.length} games?`)) return;
 
     setProcessing(true);
     setError(null);
@@ -91,7 +89,7 @@ export default function TimelinesAdminPage() {
     try {
       const result = await generateMissingTimelines({ leagueCode, daysBack });
       setSuccess(
-        `Generated ${result.games_successful}/${result.games_processed} timelines.` +
+        `Generated ${result.games_successful}/${result.games_processed} games.` +
           (result.games_failed > 0 ? ` (${result.games_failed} failed)` : "")
       );
       fetchMissingGames();
@@ -106,7 +104,7 @@ export default function TimelinesAdminPage() {
   const handleRegenerateAll = async () => {
     const count = existingGames.length;
     if (count === 0) return;
-    if (!window.confirm(`Regenerate ALL ${count} timelines? This may take a while.`)) return;
+    if (!window.confirm(`Regenerate ALL ${count} games? This may take a while.`)) return;
 
     setProcessing(true);
     setError(null);
@@ -115,7 +113,7 @@ export default function TimelinesAdminPage() {
     try {
       const result = await regenerateTimelines({ leagueCode, daysBack });
       setSuccess(
-        `Regenerated ${result.games_successful}/${result.games_processed} timelines.` +
+        `Regenerated ${result.games_successful}/${result.games_processed} games.` +
           (result.games_failed > 0 ? ` (${result.games_failed} failed)` : "")
       );
       fetchExistingGames();
@@ -126,10 +124,10 @@ export default function TimelinesAdminPage() {
     }
   };
 
-  // Handle regenerate selected games
+  // Handle regenerate selected games (old system - no traces)
   const handleRegenerateSelected = async () => {
     if (selectedGameIds.size === 0) return;
-    if (!window.confirm(`Regenerate ${selectedGameIds.size} selected timelines?`)) return;
+    if (!window.confirm(`Regenerate ${selectedGameIds.size} selected games?`)) return;
 
     setProcessing(true);
     setError(null);
@@ -138,8 +136,33 @@ export default function TimelinesAdminPage() {
     try {
       const result = await regenerateTimelines({ gameIds: Array.from(selectedGameIds), leagueCode });
       setSuccess(
-        `Regenerated ${result.games_successful}/${result.games_processed} timelines.` +
+        `Regenerated ${result.games_successful}/${result.games_processed} games.` +
           (result.games_failed > 0 ? ` (${result.games_failed} failed)` : "")
+      );
+      setSelectedGameIds(new Set());
+      fetchExistingGames();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // Handle run pipeline for selected games (new system - with traces)
+  const handleRunPipelineSelected = async () => {
+    if (selectedGameIds.size === 0) return;
+    if (!window.confirm(`Run pipeline for ${selectedGameIds.size} selected games? This creates traces and payload versions.`)) return;
+
+    setProcessing(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const result = await runPipelineBatch(Array.from(selectedGameIds));
+      setSuccess(
+        `Pipeline completed: ${result.successful}/${result.total} games.` +
+          (result.failed > 0 ? ` (${result.failed} failed)` : "") +
+          " Traces and payload versions created."
       );
       setSelectedGameIds(new Set());
       fetchExistingGames();
@@ -172,9 +195,6 @@ export default function TimelinesAdminPage() {
     }
   };
 
-  // Current games based on tab
-  const currentGames = activeTab === "missing" ? missingGames : existingGames;
-
   // Format relative time
   const formatRelativeTime = (isoDate: string) => {
     const date = new Date(isoDate);
@@ -187,101 +207,73 @@ export default function TimelinesAdminPage() {
     return `${diffDays}d ago`;
   };
 
+  const currentGames = activeSubTab === "missing" ? missingGames : existingGames;
+
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <h1>Timeline Management</h1>
-        <p>Generate and regenerate timeline artifacts for games</p>
-      </div>
-
-      {/* Tabs */}
-      <div className={styles.tabs}>
+    <div>
+      {/* Sub-tabs */}
+      <div className={styles.tabs} style={{ marginBottom: "1.5rem" }}>
         <button
-          className={`${styles.tab} ${activeTab === "missing" ? styles.tabActive : ""}`}
-          onClick={() => setActiveTab("missing")}
+          className={`${styles.tab} ${activeSubTab === "missing" ? styles.tabActive : ""}`}
+          onClick={() => setActiveSubTab("missing")}
           disabled={processing}
         >
-          Missing Timelines
+          Missing Moments
         </button>
         <button
-          className={`${styles.tab} ${activeTab === "existing" ? styles.tabActive : ""}`}
-          onClick={() => setActiveTab("existing")}
+          className={`${styles.tab} ${activeSubTab === "existing" ? styles.tabActive : ""}`}
+          onClick={() => setActiveSubTab("existing")}
           disabled={processing}
         >
-          Existing Timelines
+          Existing Moments
         </button>
       </div>
 
-      {/* Filters */}
-      <div className={styles.controls}>
-        <div className={styles.filters}>
-          <div className={styles.filterGroup}>
-            <label htmlFor="league">League</label>
-            <select
-              id="league"
-              value={leagueCode}
-              onChange={(e) => setLeagueCode(e.target.value)}
-              disabled={loading || processing}
-            >
-              <option value="NBA">NBA</option>
-              <option value="NHL">NHL</option>
-              <option value="NCAAB">NCAAB</option>
-            </select>
-          </div>
-
-          <div className={styles.filterGroup}>
-            <label htmlFor="daysBack">Days Back</label>
-            <select
-              id="daysBack"
-              value={daysBack}
-              onChange={(e) => setDaysBack(Number(e.target.value))}
-              disabled={loading || processing}
-            >
-              <option value="3">3 days</option>
-              <option value="7">7 days</option>
-              <option value="14">14 days</option>
-              <option value="30">30 days</option>
-              <option value="60">60 days</option>
-            </select>
-          </div>
-
+      {/* Actions */}
+      <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.5rem" }}>
+        {activeSubTab === "missing" ? (
           <button
-            onClick={activeTab === "missing" ? fetchMissingGames : fetchExistingGames}
-            disabled={loading || processing}
-            className={styles.refreshButton}
+            onClick={handleGenerateMissing}
+            disabled={loading || processing || missingGames.length === 0}
+            className={styles.generateButton}
           >
-            {loading ? "Loading..." : "Refresh"}
+            {processing ? "Generating..." : `Generate All (${missingGames.length})`}
           </button>
-        </div>
-
-        <div className={styles.actions}>
-          {activeTab === "missing" ? (
+        ) : (
+          <>
             <button
-              onClick={handleGenerateMissing}
-              disabled={loading || processing || missingGames.length === 0}
+              onClick={handleRunPipelineSelected}
+              disabled={loading || processing || selectedGameIds.size === 0}
               className={styles.generateButton}
+              title="Run full pipeline with traces and payload versions"
             >
-              {processing ? "Generating..." : `Generate All (${missingGames.length})`}
+              {processing ? "Processing..." : `Run Pipeline (${selectedGameIds.size})`}
             </button>
-          ) : (
-            <>
-              <button
-                onClick={handleRegenerateSelected}
-                disabled={loading || processing || selectedGameIds.size === 0}
-                className={styles.regenerateButton}
-              >
-                {processing ? "Processing..." : `Regenerate Selected (${selectedGameIds.size})`}
-              </button>
-              <button
-                onClick={handleRegenerateAll}
-                disabled={loading || processing || existingGames.length === 0}
-                className={styles.generateButton}
-              >
-                {processing ? "Processing..." : `Regenerate All (${existingGames.length})`}
-              </button>
-            </>
-          )}
-        </div>
+            <button
+              onClick={handleRegenerateSelected}
+              disabled={loading || processing || selectedGameIds.size === 0}
+              className={styles.regenerateButton}
+              title="Quick regenerate without traces"
+            >
+              {processing ? "Processing..." : `Quick Regen (${selectedGameIds.size})`}
+            </button>
+            <button
+              onClick={handleRegenerateAll}
+              disabled={loading || processing || existingGames.length === 0}
+              className={styles.regenerateButton}
+              title="Quick regenerate all without traces"
+            >
+              {processing ? "Processing..." : `Quick Regen All (${existingGames.length})`}
+            </button>
+          </>
+        )}
+        <button
+          onClick={activeSubTab === "missing" ? fetchMissingGames : fetchExistingGames}
+          disabled={loading || processing}
+          className={styles.refreshButton}
+        >
+          {loading ? "Loading..." : "Refresh"}
+        </button>
       </div>
 
       {/* Status messages */}
@@ -291,11 +283,9 @@ export default function TimelinesAdminPage() {
       {/* Stats */}
       <div className={styles.stats}>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>
-            {activeTab === "missing" ? missingGames.length : existingGames.length}
-          </div>
+          <div className={styles.statValue}>{currentGames.length}</div>
           <div className={styles.statLabel}>
-            {activeTab === "missing" ? "Games Missing Timelines" : "Games with Timelines"}
+            {activeSubTab === "missing" ? "Games Missing Moments" : "Games with Moments"}
           </div>
         </div>
       </div>
@@ -305,16 +295,16 @@ export default function TimelinesAdminPage() {
         <div className={styles.loading}>Loading games...</div>
       ) : currentGames.length === 0 ? (
         <div className={styles.empty}>
-          {activeTab === "missing"
-            ? `No games found missing timeline artifacts in the last ${daysBack} days.`
-            : `No games found with timeline artifacts in the last ${daysBack} days.`}
+          {activeSubTab === "missing"
+            ? `No games found missing moments in the last ${daysBack} days.`
+            : `No games found with moments in the last ${daysBack} days.`}
         </div>
       ) : (
         <div className={styles.tableContainer}>
           <table className={styles.table}>
             <thead>
               <tr>
-                {activeTab === "existing" && (
+                {activeSubTab === "existing" && (
                   <th>
                     <input
                       type="checkbox"
@@ -328,11 +318,11 @@ export default function TimelinesAdminPage() {
                 <th>Date</th>
                 <th>Matchup</th>
                 <th>Status</th>
-                {activeTab === "existing" && <th>Generated</th>}
+                {activeSubTab === "existing" && <th>Generated</th>}
               </tr>
             </thead>
             <tbody>
-              {activeTab === "missing"
+              {activeSubTab === "missing"
                 ? missingGames.map((game) => (
                     <tr key={game.game_id}>
                       <td>{game.game_id}</td>

@@ -265,7 +265,7 @@ def ingest_pbp_via_sportsref(
             )
             continue
 
-        inserted = upsert_plays(session, game_id, payload.plays)
+        inserted = upsert_plays(session, game_id, payload.plays, source="sportsref")
         if inserted:
             pbp_games += 1
             pbp_events += inserted

@@ -30,6 +30,48 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# DEFAULT THRESHOLDS BY SPORT (Synchronous access - no DB required)
+# =============================================================================
+
+# These are the canonical Lead Ladder values by sport.
+# Used when database access is not available or as fallbacks.
+DEFAULT_THRESHOLDS: dict[str, list[int]] = {
+    "NBA": [3, 6, 10, 16],
+    "NCAAB": [3, 6, 10, 16],
+    "NFL": [3, 7, 10, 14],  # ~1 FG, 1 TD, 1.5 TD, 2 TD
+    "NCAAF": [3, 7, 10, 14],
+    "NHL": [1, 2, 3],
+    "MLB": [1, 2, 3, 5],
+}
+
+
+def get_sport_thresholds(sport: str) -> list[int]:
+    """
+    Get default lead thresholds for a sport (synchronous, no DB access).
+    
+    This is used when database access is not available or as a fallback.
+    For authoritative thresholds, use get_thresholds_for_league() with async.
+    
+    Args:
+        sport: Sport code like "NBA", "NHL", "NFL", etc.
+        
+    Returns:
+        List of threshold values
+        
+    Raises:
+        KeyError: If sport is not recognized
+        
+    Example:
+        >>> get_sport_thresholds("NBA")
+        [3, 6, 10, 16]
+    """
+    sport_upper = sport.upper()
+    if sport_upper not in DEFAULT_THRESHOLDS:
+        raise KeyError(f"No default thresholds for sport: {sport}")
+    return DEFAULT_THRESHOLDS[sport_upper].copy()
+
+
+# =============================================================================
 # PURE FUNCTIONS (No DB access - can be used anywhere)
 # =============================================================================
 
