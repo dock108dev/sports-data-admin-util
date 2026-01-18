@@ -265,7 +265,7 @@ class MomentEntry(BaseModel):
     is_period_start: bool = False     # True if this moment starts a new period
     note: str | None = None           # "7-0 run"
     
-    # Lead Ladder state (may be None in legacy data)
+    # Lead Ladder state
     ladder_tier_before: int | None = 0
     ladder_tier_after: int | None = 0
     team_in_control: str | None = None  # "home", "away", or None

@@ -250,7 +250,6 @@ async def build_summary_from_timeline_async(
     """
     Build summary (async version).
     
-    Now identical to sync version since AI enrichment happens in game_analysis.
-    Kept for API compatibility.
+    Wraps the sync build_summary_from_timeline for use in async contexts.
     """
     return build_summary_from_timeline(timeline, game_analysis)

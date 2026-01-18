@@ -53,84 +53,65 @@ def validate_score_continuity(moments: list[Moment]) -> None:
 
 def assert_moment_continuity(moments: list[Moment], is_valid_moment_func) -> None:
     """
-    CONTINUITY VALIDATION: Log issues but don't crash during debugging.
+    CONTINUITY VALIDATION: Fail fast on any structural issues.
 
-    During development, log problems but allow pipeline to continue.
-    TODO: Make this crash the pipeline once all issues are resolved.
+    This is a hard gate - if moments have structural problems, the pipeline fails.
 
     Args:
         moments: List of moments to validate
         is_valid_moment_func: Function to check if a moment is valid
+
+    Raises:
+        MomentValidationError: If any structural issues are detected
     """
     # Import MomentType here to avoid circular import
     from .moments import MomentType
 
     if not moments:
-        logger.error("no_moments_generated")
-        return  # Don't crash for now
+        raise MomentValidationError("No moments generated - cannot proceed with empty moment list")
+
+    issues: list[str] = []
 
     # Check play coverage (no gaps, no overlaps)
     covered_plays = set()
-    overlaps = []
     for moment in moments:
         for play_idx in range(moment.start_play, moment.end_play + 1):
             if play_idx in covered_plays:
-                overlaps.append(f"Play {play_idx} in {moment.id}")
+                issues.append(f"Play {play_idx} covered by multiple moments (overlaps in {moment.id})")
             covered_plays.add(play_idx)
 
-    if overlaps:
-        logger.error("play_overlaps_detected", extra={"overlaps": overlaps[:10]})
-
     # Check score continuity between adjacent moments
-    discontinuities = []
     for i in range(1, len(moments)):
         prev_moment = moments[i - 1]
         curr_moment = moments[i]
 
         if prev_moment.score_after != curr_moment.score_before:
-            discontinuities.append({
-                "prev_id": prev_moment.id,
-                "curr_id": curr_moment.id,
-                "prev_end": prev_moment.score_after,
-                "curr_start": curr_moment.score_before,
-            })
-
-    if discontinuities:
-        logger.error("score_discontinuities_detected", extra={"discontinuities": discontinuities})
+            issues.append(
+                f"Score discontinuity: {prev_moment.id} ends at {prev_moment.score_after} "
+                f"but {curr_moment.id} starts at {curr_moment.score_before}"
+            )
 
     # Check that no moments are invalid after merging
     invalid_moments = [m for m in moments if not is_valid_moment_func(m)]
-    if invalid_moments:
-        invalid_info = [{"id": m.id, "type": m.type.value, "score": f"{m.score_before}→{m.score_after}"} for m in invalid_moments]
-        logger.error("invalid_moments_remaining", extra={"invalid_moments": invalid_info})
+    for m in invalid_moments:
+        issues.append(f"Invalid moment remaining after merge: {m.id} (type={m.type.value})")
 
     # Check for single-play moments that aren't high-impact
-    problematic_micro = []
     for moment in moments:
         if (moment.play_count == 1 and
             moment.type not in (MomentType.FLIP, MomentType.TIE, MomentType.HIGH_IMPACT)):
-            problematic_micro.append({
-                "id": moment.id,
-                "type": moment.type.value,
-                "trigger": moment.reason.trigger if moment.reason else None
-            })
+            issues.append(
+                f"Problematic single-play moment: {moment.id} (type={moment.type.value})"
+            )
 
-    if problematic_micro:
-        logger.error("problematic_micro_moments", extra={"micro_moments": problematic_micro})
-
-    # For now, log all issues but don't crash the pipeline
-    total_issues = len(overlaps) + len(discontinuities) + len(invalid_moments) + len(problematic_micro)
-    if total_issues > 0:
-        logger.warning(
-            "moment_continuity_issues_detected",
-            extra={
-                "total_issues": total_issues,
-                "overlaps": len(overlaps),
-                "discontinuities": len(discontinuities),
-                "invalid_moments": len(invalid_moments),
-                "micro_moments": len(problematic_micro),
-                "note": "Pipeline continuing despite issues - fix these problems"
-            }
+    # FAIL FAST: Any issues = hard failure
+    if issues:
+        logger.error(
+            "moment_continuity_validation_failed",
+            extra={"issue_count": len(issues), "first_issues": issues[:5]},
+        )
+        raise MomentValidationError(
+            f"Moment continuity validation failed with {len(issues)} issues: {issues[0]}"
         )
 
 

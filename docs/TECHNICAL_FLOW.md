@@ -450,15 +450,6 @@ Respond with JSON: {"overview": "...", "attention_points": ["...", "...", "..."]
 }
 ```
 
-**Fallback Templates (when AI unavailable):**
-
-| Flow | Overview Template |
-|------|-------------------|
-| `blowout` | "This one gets away early. {winner} takes control..." |
-| `comfortable` | "A game that looks closer on paper than it felt..." |
-| `competitive` | "Back and forth for most of it..." |
-| `close` | "Tight throughout. Every possession matters..." |
-
 ### 2.7 Validation
 
 **Function:** `validate_and_log(timeline, summary, game_id)`  
@@ -611,48 +602,6 @@ When plays are compressed, a summary marker may be inserted:
 
 ---
 
-## Phase 4: Moment Summaries
-
-**Entry Point:** `GET /api/games/{game_id}/compact/{moment_id}/summary`  
-**Source:** `api/app/services/moment_summaries.py`
-
-Generates a template-based narrative for a specific moment (play sequence).
-
-### 4.1 Process
-
-```python
-async def summarize_moment(game_id, moment_id, session):
-    # 1. Check cache
-    if cached := get_cache(game_id, moment_id):
-        return cached
-    
-    # 2. Fetch the play
-    play = await get_play_by_index(game_id, moment_id, session)
-    
-    # 3. Fetch surrounding plays
-    plays = await fetch_moment_plays(play, session)
-    
-    # 4. Build template-based summary
-    summary = build_summary(plays)
-    
-    # 5. Cache and return
-    store_cache(game_id, moment_id, summary)
-    return summary
-```
-
-### 4.2 Template Examples
-
-| Play Type | Template |
-|-----------|----------|
-| turnover | "A turnover shifted possession and tilted the momentum." |
-| timeout | "A pause in play reset the tempo and forced adjustments." |
-| scoring | "A strong push sparked the momentum shift." |
-| foul | "Stops in play slowed the pace and shaped the next approach." |
-
-**Note:** This is NOT AI-powered. All summaries are template-based.
-
----
-
 ## API Endpoints
 
 ### Full Timeline
@@ -752,7 +701,6 @@ All OpenAI outputs are idempotent, cacheable, and regenerable only on version bu
 | `api/app/services/game_analysis.py` | Segment/highlight detection |
 | `api/app/services/ai_client.py` | OpenAI integration + caching |
 | `api/app/services/compact_mode.py` | Semantic compression |
-| `api/app/services/moment_summaries.py` | Moment narratives (template-based) |
 | `api/app/services/timeline_validation.py` | Quality validation |
 | `api/app/routers/game_snapshots.py` | Timeline API endpoints |
 

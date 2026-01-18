@@ -504,10 +504,8 @@ def apply_compact_mode(
         return []
     
     if not moments:
-        # No moments provided - caller should always provide moments
-        # Return timeline as-is as a fallback
-        logger.warning("compact_mode_no_moments: returning uncompressed timeline")
-        return list(timeline)
+        # Moments are required for compact mode compression
+        raise ValueError("Compact mode requires moments - caller must provide pre-computed moments")
     
     logger.info(
         "compact_mode_start",

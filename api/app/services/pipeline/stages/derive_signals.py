@@ -26,8 +26,6 @@ from ..models import DerivedSignalsOutput, StageInput, StageOutput
 
 logger = logging.getLogger(__name__)
 
-# Default thresholds for NBA (fallback)
-DEFAULT_NBA_THRESHOLDS = [3, 6, 10, 16]
 
 
 def _get_score(event: dict[str, Any]) -> tuple[int, int]:
@@ -159,13 +157,8 @@ async def execute_derive_signals(
     output.add_log(f"Processing {len(pbp_events)} PBP events")
     
     # Get thresholds for this sport
-    # For now, assume NBA. In the future, this should come from game context.
     sport = stage_input.game_context.get("sport", "NBA")
-    try:
-        thresholds = get_sport_thresholds(sport)
-    except Exception:
-        output.add_log(f"Could not get thresholds for {sport}, using NBA defaults", "warning")
-        thresholds = DEFAULT_NBA_THRESHOLDS
+    thresholds = get_sport_thresholds(sport)  # Fails fast if sport not configured
     
     output.add_log(f"Using thresholds: {thresholds}")
     
