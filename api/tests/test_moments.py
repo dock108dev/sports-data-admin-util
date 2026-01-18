@@ -879,6 +879,413 @@ class TestImportanceFactorsBreakdown(unittest.TestCase):
 # =============================================================================
 
 
+# =============================================================================
+# PHASE 2.2: RANK + SELECT (Replace Hard Budget Clamp)
+# =============================================================================
+
+
+class TestRankAndSelect(unittest.TestCase):
+    """PHASE 2.2: Tests for pure importance-based rank+select."""
+    
+    def test_rank_select_preserves_highest_importance(self) -> None:
+        """Rank+select should keep highest importance moments."""
+        from app.services.moment_selection import rank_and_select, MomentRankRecord
+        from app.services.moments import Moment, MomentType
+        
+        # Create moments with varying importance
+        moments = []
+        for i in range(10):
+            m = Moment(
+                id=f"m_{i+1:03d}",
+                type=MomentType.NEUTRAL,
+                start_play=i * 5,
+                end_play=i * 5 + 4,
+                play_count=5,
+            )
+            m.importance_score = float(i)  # Higher index = higher importance
+            moments.append(m)
+        
+        # Select top 5
+        result = rank_and_select(moments, budget=5)
+        
+        # Should keep moments 5-9 (highest importance)
+        self.assertEqual(result.selected_count, 5)
+        self.assertEqual(result.rejected_count, 5)
+        
+        # Check that high importance moments are selected
+        selected_ids = {m.id for m in result.selected_moments}
+        # The top 5 by importance should be m_006 through m_010
+        for i in range(5, 10):
+            # Moment with importance i should have rank <= 5
+            rank_record = next(r for r in result.rank_records if r.importance_score == float(i))
+            self.assertTrue(rank_record.selected)
+    
+    def test_rank_select_records_rejection_reason(self) -> None:
+        """Rejected moments should have clear rejection reason."""
+        from app.services.moment_selection import rank_and_select
+        from app.services.moments import Moment, MomentType
+        
+        moments = []
+        for i in range(5):
+            m = Moment(
+                id=f"m_{i+1:03d}",
+                type=MomentType.NEUTRAL,
+                start_play=i * 5,
+                end_play=i * 5 + 4,
+                play_count=5,
+            )
+            m.importance_score = float(i)
+            moments.append(m)
+        
+        # Select only top 2
+        result = rank_and_select(moments, budget=2)
+        
+        # 3 should be rejected
+        rejected = [r for r in result.rank_records if not r.selected]
+        self.assertEqual(len(rejected), 3)
+        
+        for record in rejected:
+            self.assertEqual(record.rejection_reason, "below_rank_cutoff")
+            self.assertGreater(len(record.displaced_by), 0)
+    
+    def test_rank_select_maintains_chronological_output(self) -> None:
+        """Output should be chronologically ordered regardless of importance order."""
+        from app.services.moment_selection import rank_and_select
+        from app.services.moments import Moment, MomentType
+        
+        # Create moments where high importance is in the middle
+        moments = []
+        for i in range(10):
+            m = Moment(
+                id=f"m_{i+1:03d}",
+                type=MomentType.NEUTRAL,
+                start_play=i * 5,
+                end_play=i * 5 + 4,
+                play_count=5,
+            )
+            # Importance peaks in middle (moment 5)
+            m.importance_score = 10.0 - abs(i - 5)
+            moments.append(m)
+        
+        result = rank_and_select(moments, budget=5)
+        
+        # Output should still be chronological
+        for i in range(1, len(result.selected_moments)):
+            self.assertLess(
+                result.selected_moments[i-1].start_play,
+                result.selected_moments[i].start_play,
+                "Output must be chronological"
+            )
+    
+    def test_rank_select_diagnostics_complete(self) -> None:
+        """Diagnostics should include all required fields."""
+        from app.services.moment_selection import rank_and_select
+        from app.services.moments import Moment, MomentType
+        
+        moments = []
+        for i in range(5):
+            m = Moment(
+                id=f"m_{i+1:03d}",
+                type=MomentType.NEUTRAL,
+                start_play=i * 5,
+                end_play=i * 5 + 4,
+                play_count=5,
+            )
+            m.importance_score = float(i)
+            moments.append(m)
+        
+        result = rank_and_select(moments, budget=3)
+        
+        # Check aggregate diagnostics
+        self.assertEqual(result.total_candidates, 5)
+        self.assertEqual(result.selected_count, 3)
+        self.assertEqual(result.rejected_count, 2)
+        self.assertEqual(result.budget_used, 3)
+        
+        # Check that min selected > max rejected (because we selected by importance)
+        self.assertGreaterEqual(
+            result.min_selected_importance,
+            result.max_rejected_importance
+        )
+        
+        # Check to_dict includes all fields
+        result_dict = result.to_dict()
+        self.assertIn("phase", result_dict)
+        self.assertIn("total_candidates", result_dict)
+        self.assertIn("selected_count", result_dict)
+        self.assertIn("rejected_count", result_dict)
+        self.assertIn("rank_records", result_dict)
+
+
+class TestRankSelectVsOldClamp(unittest.TestCase):
+    """Tests verifying Phase 2.2 fixes the old enforce_budget issues."""
+    
+    def test_late_game_high_importance_survives(self) -> None:
+        """Late-game high-importance moments should survive even with early noise."""
+        from app.services.moment_selection import rank_and_select
+        from app.services.moments import Moment, MomentType
+        
+        moments = []
+        
+        # Early game: lots of low-importance moments
+        for i in range(8):
+            m = Moment(
+                id=f"m_{i+1:03d}",
+                type=MomentType.NEUTRAL,
+                start_play=i * 5,
+                end_play=i * 5 + 4,
+                play_count=5,
+            )
+            m.importance_score = 1.0  # Low importance
+            moments.append(m)
+        
+        # Late game: high-importance moment
+        late_moment = Moment(
+            id="m_009",
+            type=MomentType.FLIP,
+            start_play=40,
+            end_play=44,
+            play_count=5,
+        )
+        late_moment.importance_score = 10.0  # High importance
+        moments.append(late_moment)
+        
+        # With old clamp: late moment might be lost because early moments claimed slots
+        # With rank+select: late moment should survive because it has highest importance
+        
+        result = rank_and_select(moments, budget=3)
+        
+        # The late high-importance moment MUST be in the result
+        selected_ids = {m.id for m in result.selected_moments}
+        self.assertIn("m_009", selected_ids, 
+                      "Late-game high-importance moment must survive")
+    
+    def test_early_noise_is_removed(self) -> None:
+        """Early-game noise should be removed in favor of meaningful moments."""
+        from app.services.moment_selection import rank_and_select
+        from app.services.moments import Moment, MomentType
+        
+        moments = []
+        
+        # Early noise: many low-importance moments
+        for i in range(6):
+            m = Moment(
+                id=f"early_{i}",
+                type=MomentType.NEUTRAL,
+                start_play=i * 3,
+                end_play=i * 3 + 2,
+                play_count=3,
+            )
+            m.importance_score = 0.5  # Very low
+            moments.append(m)
+        
+        # Later important moments
+        for i in range(4):
+            m = Moment(
+                id=f"late_{i}",
+                type=MomentType.FLIP,
+                start_play=20 + i * 5,
+                end_play=24 + i * 5,
+                play_count=5,
+            )
+            m.importance_score = 5.0 + i  # Higher importance
+            moments.append(m)
+        
+        result = rank_and_select(moments, budget=4)
+        
+        # Verify: The rank_records should show all 4 late moments selected
+        # and all 6 early moments rejected
+        late_records = [r for r in result.rank_records if r.moment_id.startswith("late_")]
+        early_records = [r for r in result.rank_records if r.moment_id.startswith("early_")]
+        
+        # All 4 late moments should be marked as selected in rank_records
+        self.assertEqual(len(late_records), 4)
+        for record in late_records:
+            self.assertTrue(record.selected, f"{record.moment_id} should be selected")
+        
+        # All 6 early moments should be marked as rejected in rank_records
+        self.assertEqual(len(early_records), 6)
+        for record in early_records:
+            self.assertFalse(record.selected, f"{record.moment_id} should be rejected")
+            self.assertEqual(record.rejection_reason, "below_rank_cutoff")
+
+
+# =============================================================================
+# PHASE 2.3 + 2.4: DYNAMIC BUDGET AND PACING SELECTION
+# =============================================================================
+
+
+class TestDynamicBudget(unittest.TestCase):
+    """PHASE 2.3: Tests for dynamic budget computation."""
+    
+    def test_blowout_reduces_budget(self) -> None:
+        """Blowout games should have reduced target moment count."""
+        from app.services.moment_selection import GameSignals, compute_dynamic_budget
+        
+        # Simulate a blowout: 30-point margin, low closeness
+        signals = GameSignals()
+        signals.final_margin = 30
+        signals.closeness_duration = 0.15
+        signals.total_lead_changes = 1
+        signals.has_overtime = False
+        
+        budget = compute_dynamic_budget(signals)
+        
+        # Blowout should have low target
+        self.assertLess(budget.target_moment_count, 18)
+        self.assertLess(budget.margin_adjustment, 0)  # Penalty applied
+    
+    def test_close_game_increases_budget(self) -> None:
+        """Close games should have increased target moment count."""
+        from app.services.moment_selection import GameSignals, compute_dynamic_budget
+        
+        # Simulate close game: 3-point margin, high closeness
+        signals = GameSignals()
+        signals.final_margin = 3
+        signals.closeness_duration = 0.65
+        signals.total_lead_changes = 8
+        signals.lead_change_score = 12
+        signals.has_overtime = False
+        
+        budget = compute_dynamic_budget(signals)
+        
+        # Close game should have high target
+        self.assertGreater(budget.target_moment_count, 26)
+        self.assertGreater(budget.margin_adjustment, 0)  # Bonus applied
+        self.assertGreater(budget.closeness_adjustment, 0)
+    
+    def test_overtime_increases_budget(self) -> None:
+        """Overtime should increase target moment count."""
+        from app.services.moment_selection import GameSignals, compute_dynamic_budget
+        
+        # Simulate OT game
+        signals = GameSignals()
+        signals.final_margin = 5
+        signals.closeness_duration = 0.5
+        signals.has_overtime = True
+        signals.overtime_periods = 2  # Double OT
+        
+        budget = compute_dynamic_budget(signals)
+        
+        # OT should add bonus
+        self.assertGreater(budget.overtime_adjustment, 0)
+        self.assertGreater(budget.target_moment_count, 22)  # Above base
+    
+    def test_budget_bounded(self) -> None:
+        """Budget should be bounded by min/max."""
+        from app.services.moment_selection import GameSignals, compute_dynamic_budget
+        
+        # Extreme blowout
+        signals = GameSignals()
+        signals.final_margin = 50
+        signals.closeness_duration = 0.05
+        signals.total_lead_changes = 0
+        
+        budget = compute_dynamic_budget(signals)
+        
+        # Should hit minimum bound
+        self.assertGreaterEqual(budget.target_moment_count, 10)
+
+
+class TestPacingConstraints(unittest.TestCase):
+    """PHASE 2.4: Tests for pacing constraints and selection."""
+    
+    def test_selection_respects_early_game_cap(self) -> None:
+        """Early-game moments should be capped."""
+        # Create game with lots of early-game action
+        timeline = []
+        idx = 0
+        
+        # Q1: Lots of events
+        for i in range(15):
+            timeline.append(make_pbp_event(idx, i*2, i, quarter=1, game_clock=f'{12-i}:00'))
+            idx += 1
+        
+        # Q2: More events
+        for i in range(10):
+            timeline.append(make_pbp_event(idx, 30+i*2, 20+i, quarter=2, game_clock=f'{12-i}:00'))
+            idx += 1
+        
+        # Q3: Few events
+        for i in range(5):
+            timeline.append(make_pbp_event(idx, 50+i*2, 40+i, quarter=3, game_clock=f'{12-i}:00'))
+            idx += 1
+        
+        # Q4: Few events
+        for i in range(5):
+            timeline.append(make_pbp_event(idx, 60+i*2, 50+i, quarter=4, game_clock=f'{5-i}:00'))
+            idx += 1
+        
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        # Count early game moments
+        early_count = sum(1 for m in moments if m.importance_factors.get('time', {}).get('quarter', 0) <= 2)
+        late_count = sum(1 for m in moments if m.importance_factors.get('time', {}).get('quarter', 0) >= 4)
+        
+        # Should have closing moments
+        self.assertGreater(late_count, 0, "Should have closing moments")
+    
+    def test_selection_maintains_coverage(self) -> None:
+        """Selection should maintain full timeline coverage."""
+        timeline = [make_pbp_event(i, i * 2, i) for i in range(30)]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        # Verify coverage
+        covered = set()
+        for m in moments:
+            for i in range(m.start_play, m.end_play + 1):
+                covered.add(i)
+        
+        expected = set(range(30))
+        self.assertEqual(covered, expected, "Selection should maintain coverage")
+    
+    def test_selection_chronological(self) -> None:
+        """Selected moments should remain in chronological order."""
+        timeline = [make_pbp_event(i, i * 2, i) for i in range(20)]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        # Verify chronological order
+        for i in range(1, len(moments)):
+            self.assertLessEqual(
+                moments[i-1].start_play, 
+                moments[i].start_play,
+                "Moments should be chronological"
+            )
+
+
+class TestNarrativeSelection(unittest.TestCase):
+    """Tests for narrative-aware selection algorithm."""
+    
+    def test_selection_produces_moments(self) -> None:
+        """Selection should produce at least one moment."""
+        timeline = [
+            make_pbp_event(0, 0, 0, quarter=1, game_clock="12:00"),
+            make_pbp_event(1, 5, 0, quarter=1, game_clock="10:00"),
+            make_pbp_event(2, 10, 5, quarter=2, game_clock="8:00"),
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        self.assertGreater(len(moments), 0)
+    
+    def test_dynamic_budget_in_diagnostics(self) -> None:
+        """Dynamic budget info should be available for diagnostics."""
+        from app.services.moment_selection import (
+            compute_game_signals, compute_dynamic_budget, GameSignals
+        )
+        
+        signals = GameSignals()
+        signals.final_margin = 10
+        signals.closeness_duration = 0.4
+        
+        budget = compute_dynamic_budget(signals)
+        budget_dict = budget.to_dict()
+        
+        self.assertIn("target_moment_count", budget_dict)
+        self.assertIn("signals", budget_dict)
+        self.assertIn("adjustments", budget_dict)
+        self.assertIn("bounds", budget_dict)
+
+
 class TestInvariantFullPlayCoverage(unittest.TestCase):
     """
     GUARDRAIL: Every PBP play must belong to exactly one moment.

@@ -71,7 +71,6 @@ from .moments_merging import (
     merge_invalid_moments,
     merge_consecutive_moments,
     enforce_quarter_limits,
-    enforce_budget,
 )
 from .moments_validation import (
     MomentValidationError,
@@ -1789,27 +1788,14 @@ def partition_game(
         )
     
     moments = split_moments
-
-    # BUDGET ENFORCEMENT: If still over budget, merge more aggressively
+    
     sport = summary.get("sport", "NBA") if isinstance(summary, dict) else "NBA"
-    budget = MOMENT_BUDGET.get(sport, DEFAULT_MOMENT_BUDGET)
-    if len(moments) > budget:
-        moments = enforce_budget(moments, budget)  # From moments_merging module
 
-    # Re-validate coverage after merging
-    validate_moment_coverage(moments, pbp_indices)  # From moments_validation module
-
-    # Validate score continuity
-    validate_score_continuity(moments)  # From moments_validation module
-
-    # CONTINUITY VALIDATION: Structural integrity check
-    assert_moment_continuity(moments)  # From moments_validation module
-
-    # Renumber moment IDs after merging
+    # Renumber moment IDs before scoring (needed for traceability)
     for i, m in enumerate(moments):
         m.id = f"m_{i + 1:03d}"
 
-    # PHASE 2.1: Compute importance scores for all moments
+    # PHASE 2.1: Compute importance scores for all moments BEFORE selection
     from .moment_importance import score_all_moments, log_importance_summary
     
     importance_factors_list = score_all_moments(moments, events, thresholds)
@@ -1818,14 +1804,65 @@ def partition_game(
         moment.importance_factors = factors.to_dict()
     
     log_importance_summary(moments, importance_factors_list)
+    
+    pre_selection_count = len(moments)
+
+    # PHASE 2.2 + 2.3 + 2.4: NARRATIVE SELECTION (replaces fixed budget enforcement)
+    # Phase 2.2: Pure rank+select based on importance
+    # Phase 2.3+2.4: Dynamic budget + pacing constraints (builds on 2.2)
+    from .moment_selection import apply_narrative_selection
+    
+    moments, selection_result = apply_narrative_selection(
+        moments, events, thresholds, sport
+    )
+    
+    # Log Phase 2.2 rank+select details
+    if selection_result.rank_select:
+        logger.info(
+            "phase_2_2_rank_select_applied",
+            extra={
+                "candidates": selection_result.rank_select.total_candidates,
+                "selected": selection_result.rank_select.selected_count,
+                "rejected": selection_result.rank_select.rejected_count,
+                "min_selected_importance": selection_result.rank_select.min_selected_importance,
+                "max_rejected_importance": selection_result.rank_select.max_rejected_importance,
+            },
+        )
+    
+    # Log Phase 2.3+2.4 selection details
+    logger.info(
+        "narrative_selection_applied",
+        extra={
+            "pre_selection": pre_selection_count,
+            "post_selection": len(moments),
+            "target_budget": selection_result.budget.target_moment_count,
+            "early_game_count": selection_result.early_game_count,
+            "closing_count": selection_result.closing_count,
+            "swaps_performed": selection_result.swaps_performed,
+        },
+    )
+
+    # Re-validate coverage after selection
+    # NOTE: Selection may reduce moments, so we validate the selected set
+    validate_moment_coverage(moments, pbp_indices)  # From moments_validation module
+
+    # Validate score continuity
+    validate_score_continuity(moments)  # From moments_validation module
+
+    # CONTINUITY VALIDATION: Structural integrity check
+    assert_moment_continuity(moments)  # From moments_validation module
+
+    # Renumber moment IDs after selection
+    for i, m in enumerate(moments):
+        m.id = f"m_{i + 1:03d}"
 
     logger.info(
         "partition_game_complete",
         extra={
             "pre_merge_count": pre_merge_count,
-            "post_merge_count": len(moments),
-            "budget": budget,
-            "within_budget": len(moments) <= budget,
+            "post_selection_count": len(moments),
+            "target_budget": selection_result.budget.target_moment_count,
+            "dynamic_budget_signals": selection_result.budget.signals.to_dict(),
             "notable_count": sum(1 for m in moments if m.is_notable),
         },
     )
