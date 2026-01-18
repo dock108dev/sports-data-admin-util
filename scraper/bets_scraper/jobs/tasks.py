@@ -7,72 +7,134 @@ from celery import shared_task
 from ..logging import logger
 from ..services.ingestion import run_ingestion
 from ..services.scheduler import schedule_ingestion_runs
-from ..services.timeline_generator import generate_missing_timelines
+from ..services.timeline_generator import (
+    generate_missing_timelines,
+    generate_all_needed_timelines,
+    SCHEDULED_DAYS_BACK,
+)
 
 
 @shared_task(name="run_scrape_job")
 def run_scrape_job(run_id: int, config_payload: dict) -> dict:
-    from ..config_sports import validate_league_code, is_timeline_enabled
+    """Run a scrape job.
     
+    NOTE: Timeline generation is now DECOUPLED from scraping.
+    Use trigger_game_pipelines task or the pipeline API endpoints
+    to generate timelines after scraping completes.
+    
+    For prod auto-chain behavior, call trigger_game_pipelines_task
+    separately after this task completes.
+    """
     logger.info("scrape_job_started", run_id=run_id)
     result = run_ingestion(run_id, config_payload)
     logger.info("scrape_job_completed", run_id=run_id, result=result)
     
-    # After scrape completes, trigger timeline generation for any games now ready
-    league_code = config_payload.get("league_code")
-    if not league_code:
-        logger.error("scrape_job_missing_league_code", run_id=run_id)
-        return result
-    
-    try:
-        validate_league_code(league_code)
-    except ValueError as exc:
-        logger.error("scrape_job_invalid_league_code", run_id=run_id, error=str(exc))
-        return result
-    
-    # Only trigger timeline generation if enabled for this league
-    if is_timeline_enabled(league_code):
-        _trigger_timeline_generation_after_scrape(league_code)
-    else:
-        logger.info("timeline_generation_not_enabled_for_league", league=league_code)
+    # NOTE: Timeline generation has been decoupled.
+    # The scraper now ONLY handles data ingestion.
+    # Timeline/moment generation is triggered separately via:
+    # 1. trigger_game_pipelines_task for prod auto-chain
+    # 2. Pipeline API endpoints for admin/manual control
+    # This allows dev/admin to inspect scraped data before processing.
     
     return result
 
 
-def _trigger_timeline_generation_after_scrape(league_code: str) -> None:
-    """Trigger timeline generation for ALL games missing moments/highlights."""
+@shared_task(
+    name="trigger_game_pipelines",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def trigger_game_pipelines_task(
+    league_code: str,
+    days_back: int | None = None,
+    max_games: int | None = None,
+    auto_chain: bool = True,
+) -> dict:
+    """Trigger pipeline runs for games missing timeline artifacts.
+    
+    This is the production task for triggering game pipelines after scraping.
+    It finds games with PBP data but no timeline artifacts and starts
+    pipeline runs for them.
+    
+    Args:
+        league_code: League to process (required)
+        days_back: How many days back to check (None = ALL games)
+        max_games: Maximum number of games to process (None = all)
+        auto_chain: Whether pipelines should auto-proceed through stages
+        
+    Returns:
+        Summary dict with counts of pipelines started
+    """
+    import httpx
     from ..config import settings
-    from ..celery_app import app as celery_app
+    from ..db import get_session
     
-    if not settings.timeline_config.enable_timeline_generation:
-        logger.info("timeline_generation_disabled_skipping_post_scrape")
-        return
+    logger.info(
+        "trigger_game_pipelines_started",
+        league=league_code,
+        days_back=days_back,
+        max_games=max_games,
+        auto_chain=auto_chain,
+    )
     
-    try:
-        # days_back=None means find ALL games missing timelines (no date limit)
-        # This is important for backfill scenarios
-        async_result = celery_app.send_task(
-            "generate_missing_timelines",
-            kwargs={
-                "league_code": league_code,
-                "days_back": None,  # ALL games, not limited by date
-                "max_games": settings.timeline_config.timeline_generation_max_games,
-            },
-            queue="bets-scraper",
-            routing_key="bets-scraper",
-        )
+    # Find games missing timelines (reuse existing logic)
+    from ..services.timeline_generator import find_games_missing_timelines
+    
+    with get_session() as session:
+        games = find_games_missing_timelines(session, league_code, days_back)
+    
+    if not games:
+        logger.info("trigger_game_pipelines_no_games", league=league_code)
+        return {
+            "games_found": 0,
+            "pipelines_started": 0,
+            "pipelines_failed": 0,
+        }
+    
+    # Limit games if specified
+    games_to_process = games[:max_games] if max_games else games
+    
+    started = 0
+    failed = 0
+    
+    api_base = settings.api_internal_url
+    
+    for game_id, game_date, home_team, away_team in games_to_process:
         logger.info(
-            "timeline_generation_triggered_post_scrape",
-            league=league_code,
-            job_id=async_result.id,
-            days_back="ALL",
+            "trigger_game_pipeline",
+            game_id=game_id,
+            game_date=str(game_date),
+            matchup=f"{away_team} @ {home_team}",
         )
-    except Exception as exc:
-        logger.error(
-            "timeline_generation_trigger_failed",
-            league=league_code,
-            error=str(exc),
-        )
+        
+        try:
+            # Call the pipeline API to run the full pipeline
+            response = httpx.post(
+                f"{api_base}/api/admin/sports/pipeline/{game_id}/run-full",
+                json={"triggered_by": "prod_auto"},
+                timeout=600,  # 10 minute timeout per game
+            )
+            response.raise_for_status()
+            started += 1
+            
+        except Exception as e:
+            logger.error(
+                "trigger_game_pipeline_failed",
+                game_id=game_id,
+                error=str(e),
+            )
+            failed += 1
+    
+    summary = {
+        "games_found": len(games),
+        "pipelines_started": started,
+        "pipelines_failed": failed,
+    }
+    
+    logger.info("trigger_game_pipelines_completed", **summary)
+    
+    return summary
 
 
 @shared_task(
@@ -220,4 +282,112 @@ def regenerate_timeline_task(
             "success": False,
             "reason": reason,
             "error": str(exc),
+        }
+
+
+@shared_task(
+    name="run_scheduled_timeline_generation",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def run_scheduled_timeline_generation() -> dict:
+    """
+    Scheduled task to generate/regenerate timelines for all games that need them.
+    
+    This runs after the scheduled ingestion (90 minutes later) and processes:
+    - Games that completed and are missing timeline artifacts
+    - Games where PBP or social data was updated after timeline was generated
+    
+    Uses the same lookback window as the scheduler (96 hours / 4 days).
+    """
+    from ..config_sports import get_scheduled_leagues
+    
+    leagues = get_scheduled_leagues()
+    
+    total_summary = {
+        "leagues_processed": 0,
+        "total_games_found": 0,
+        "total_games_missing": 0,
+        "total_games_stale": 0,
+        "total_games_processed": 0,
+        "total_games_successful": 0,
+        "total_games_failed": 0,
+    }
+    
+    logger.info(
+        "scheduled_timeline_gen_start",
+        leagues=list(leagues),
+        days_back=SCHEDULED_DAYS_BACK,
+    )
+    
+    for league_code in leagues:
+        try:
+            summary = generate_all_needed_timelines(
+                league_code=league_code,
+                days_back=SCHEDULED_DAYS_BACK,
+                max_games=None,  # Process all games
+            )
+            
+            total_summary["leagues_processed"] += 1
+            total_summary["total_games_found"] += summary.get("games_found", 0)
+            total_summary["total_games_missing"] += summary.get("games_missing", 0)
+            total_summary["total_games_stale"] += summary.get("games_stale", 0)
+            total_summary["total_games_processed"] += summary.get("games_processed", 0)
+            total_summary["total_games_successful"] += summary.get("games_successful", 0)
+            total_summary["total_games_failed"] += summary.get("games_failed", 0)
+            
+        except Exception as exc:
+            logger.exception(
+                "scheduled_timeline_gen_league_failed",
+                league=league_code,
+                error=str(exc),
+            )
+    
+    logger.info("scheduled_timeline_gen_complete", **total_summary)
+    
+    return total_summary
+
+
+@shared_task(name="clear_scraper_cache")
+def clear_scraper_cache_task(league_code: str, days: int = 7) -> dict:
+    """Clear cached scoreboard HTML files for the last N days.
+    
+    This allows manually refreshing recent data before a scrape run.
+    Only clears scoreboard pages (not boxscores or PBP which are immutable).
+    
+    Args:
+        league_code: League to clear cache for (e.g., "NBA", "NHL")
+        days: Number of days back to clear (default 7)
+        
+    Returns:
+        Summary dict with count of deleted files
+    """
+    from ..config import settings
+    from ..utils.cache import HTMLCache
+    
+    logger.info(
+        "clear_cache_started",
+        league=league_code,
+        days=days,
+    )
+    
+    cache = HTMLCache(
+        settings.scraper_config.html_cache_dir,
+        league_code,
+    )
+    
+    result = cache.clear_recent_scoreboards(days=days)
+    
+    logger.info(
+        "clear_cache_completed",
+        league=league_code,
+        days=days,
+        deleted_count=result["deleted_count"],
+    )
+    
+    return {
+        "league": league_code,
+        "days": days,
+        **result,
     }

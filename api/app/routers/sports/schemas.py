@@ -266,8 +266,8 @@ class MomentEntry(BaseModel):
     note: str | None = None           # "7-0 run"
     
     # Lead Ladder state
-    ladder_tier_before: int = 0
-    ladder_tier_after: int = 0
+    ladder_tier_before: int | None = 0
+    ladder_tier_after: int | None = 0
     team_in_control: str | None = None  # "home", "away", or None
     key_play_ids: list[int] = Field(default_factory=list)
     

@@ -77,13 +77,12 @@ Compact mode operates on **Moments**, not individual plays. A Moment is a contig
 | **FLIP** | Leader changed | Never compress |
 | **CLOSING_CONTROL** | Late-game lock-in (dagger) | Never compress |
 | **HIGH_IMPACT** | Ejection, injury, etc. | Never compress |
-| **OPENER** | First plays of a period | Moderate compression |
 | **NEUTRAL** | Normal flow, no tier changes | Heavy compression |
 
 ### Moment Detection (Lead Ladder)
 
 ```python
-# moments.py - Lead Ladder-based partitioning
+# moments/ package - Lead Ladder-based partitioning
 def partition_game(timeline, summary, thresholds):
     """
     Partition timeline into Moments based on Lead Ladder tier crossings.

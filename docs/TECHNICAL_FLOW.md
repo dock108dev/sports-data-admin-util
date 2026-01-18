@@ -304,11 +304,11 @@ Analyzes the timeline to identify:
 # After deterministic analysis:
 analysis = build_nba_game_analysis(timeline, summary)
 
-if ENABLE_AI_SEGMENT_ENRICHMENT:
-    analysis["segments"] = await enrich_segments_with_ai(
-        segments=analysis["segments"],
-        game_id=game_id
-    )
+# AI enrichment adds labels and tone to segments
+analysis["segments"] = await enrich_segments_with_ai(
+    segments=analysis["segments"],
+    game_id=game_id
+)
 ```
 
 #### OpenAI Prompt (Segment Enrichment)
@@ -450,15 +450,6 @@ Respond with JSON: {"overview": "...", "attention_points": ["...", "...", "..."]
 }
 ```
 
-**Fallback Templates (when AI unavailable):**
-
-| Flow | Overview Template |
-|------|-------------------|
-| `blowout` | "This one gets away early. {winner} takes control..." |
-| `comfortable` | "A game that looks closer on paper than it felt..." |
-| `competitive` | "Back and forth for most of it..." |
-| `close` | "Tight throughout. Every possession matters..." |
-
 ### 2.7 Validation
 
 **Function:** `validate_and_log(timeline, summary, game_id)`  
@@ -556,12 +547,12 @@ def compute_excitement(group):
 ### 3.5 Compression Algorithm
 
 > **TERMINOLOGY NOTE (2026-01):** Compact Mode now operates on **Moments** (defined in 
-> `moments.py`). There is no separate "SemanticGroup" — Moment is the single narrative unit.
+> `moments/`). There is no separate "SemanticGroup" — Moment is the single narrative unit.
 
 ```python
 def get_compact_timeline(timeline, level):
     # 1. Compute Moments using the unified partition_game()
-    # Moment is the SINGLE narrative unit (from moments.py)
+    # Moment is the SINGLE narrative unit (from moments/ package)
     moments = partition_game(timeline, summary={})
     
     # 2. For each Moment, compute excitement and apply compression
@@ -608,48 +599,6 @@ When plays are compressed, a summary marker may be inserted:
     "description": "Back-and-forth possession play"
 }
 ```
-
----
-
-## Phase 4: Moment Summaries
-
-**Entry Point:** `GET /api/games/{game_id}/compact/{moment_id}/summary`  
-**Source:** `api/app/services/moment_summaries.py`
-
-Generates a template-based narrative for a specific moment (play sequence).
-
-### 4.1 Process
-
-```python
-async def summarize_moment(game_id, moment_id, session):
-    # 1. Check cache
-    if cached := get_cache(game_id, moment_id):
-        return cached
-    
-    # 2. Fetch the play
-    play = await get_play_by_index(game_id, moment_id, session)
-    
-    # 3. Fetch surrounding plays
-    plays = await fetch_moment_plays(play, session)
-    
-    # 4. Build template-based summary
-    summary = build_summary(plays)
-    
-    # 5. Cache and return
-    store_cache(game_id, moment_id, summary)
-    return summary
-```
-
-### 4.2 Template Examples
-
-| Play Type | Template |
-|-----------|----------|
-| turnover | "A turnover shifted possession and tilted the momentum." |
-| timeout | "A pause in play reset the tempo and forced adjustments." |
-| scoring | "A strong push sparked the momentum shift." |
-| foul | "Stops in play slowed the pace and shaped the next approach." |
-
-**Note:** This is NOT AI-powered. All summaries are template-based.
 
 ---
 
@@ -737,8 +686,6 @@ All OpenAI outputs are idempotent, cacheable, and regenerable only on version bu
 | `OPENAI_MODEL_CLASSIFICATION` | `gpt-4o-mini` | Model for role/segment classification |
 | `OPENAI_MODEL_SUMMARY` | `gpt-4o` | Model for summary generation |
 | `ENABLE_AI_SOCIAL_ROLES` | `true` | Enable AI role classification |
-| `ENABLE_AI_SEGMENT_ENRICHMENT` | `true` | Enable AI segment labels |
-| `ENABLE_AI_SUMMARY` | `true` | Enable AI summary generation |
 
 ---
 
@@ -749,10 +696,10 @@ All OpenAI outputs are idempotent, cacheable, and regenerable only on version bu
 | `scraper/bets_scraper/scrapers/nba_sportsref.py` | PBP scraping |
 | `scraper/bets_scraper/persistence/plays.py` | PBP persistence |
 | `api/app/services/timeline_generator.py` | Timeline assembly |
+| `api/app/services/moments/` | Lead Ladder-based moment detection |
 | `api/app/services/game_analysis.py` | Segment/highlight detection |
 | `api/app/services/ai_client.py` | OpenAI integration + caching |
 | `api/app/services/compact_mode.py` | Semantic compression |
-| `api/app/services/moment_summaries.py` | Moment narratives (template-based) |
 | `api/app/services/timeline_validation.py` | Quality validation |
 | `api/app/routers/game_snapshots.py` | Timeline API endpoints |
 

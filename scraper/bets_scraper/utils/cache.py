@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
 from ..logging import logger
+
+# Minimum file size (bytes) for a valid scoreboard cache entry
+# Empty scoreboards are typically < 5KB, valid ones with games are > 20KB
+MIN_SCOREBOARD_SIZE_BYTES = 5000
 
 
 class HTMLCache:
@@ -53,9 +57,19 @@ class HTMLCache:
         # Drop year/season directory to avoid mis-bucketing when season differs from current year
         return self.cache_dir / self.league_code / filename
     
+    def _is_scoreboard_url(self, url: str) -> bool:
+        """Check if the URL is a scoreboard page (vs boxscore or PBP)."""
+        return "boxscores" in url and "?" in url and "month=" in url
+
     def get(self, url: str, game_date: date | None = None) -> str | None:
-        """Load HTML from cache if it exists."""
+        """Load HTML from cache if it exists.
+        
+        Cache is bypassed (returns None) in these cases:
+        1. force_refresh is True
+        2. Cached scoreboard file is too small (likely empty/no games)
+        """
         cache_path = self._get_cache_path(url, game_date)
+        
         if cache_path.exists():
             if self.force_refresh:
                 logger.info(
@@ -65,6 +79,20 @@ class HTMLCache:
                     league=self.league_code,
                 )
                 return None
+            
+            # Check if cached scoreboard is too small (likely empty)
+            file_stat = cache_path.stat()
+            if self._is_scoreboard_url(url) and file_stat.st_size < MIN_SCOREBOARD_SIZE_BYTES:
+                logger.info(
+                    "cache_skip_small_scoreboard",
+                    url=url,
+                    path=str(cache_path),
+                    size_bytes=file_stat.st_size,
+                    min_size=MIN_SCOREBOARD_SIZE_BYTES,
+                    league=self.league_code,
+                )
+                return None
+            
             logger.info(
                 "cache_hit",
                 url=url,
@@ -75,11 +103,78 @@ class HTMLCache:
         logger.debug("cache_miss", url=url, path=str(cache_path), league=self.league_code)
         return None
     
-    def put(self, url: str, html: str, game_date: date | None = None) -> Path:
-        """Save HTML to cache."""
+    def put(self, url: str, html: str, game_date: date | None = None) -> Path | None:
+        """Save HTML to cache.
+        
+        Returns None without saving if:
+        - Scoreboard page is too small (likely empty, no games)
+        """
+        # Don't cache small scoreboards (likely empty/no games)
+        if self._is_scoreboard_url(url) and len(html) < MIN_SCOREBOARD_SIZE_BYTES:
+            logger.info(
+                "cache_skip_save_small_scoreboard",
+                url=url,
+                size_bytes=len(html),
+                min_size=MIN_SCOREBOARD_SIZE_BYTES,
+                league=self.league_code,
+            )
+            return None
+        
         cache_path = self._get_cache_path(url, game_date)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(html, encoding="utf-8")
         logger.info("cache_saved", url=url, path=str(cache_path), size_kb=len(html) // 1024)
         return cache_path
+
+    def clear_recent_scoreboards(self, days: int = 7) -> dict:
+        """Clear cached scoreboard files for the last N days.
+        
+        This allows manually refreshing recent data before a scrape.
+        
+        Args:
+            days: Number of days back to clear (default 7)
+            
+        Returns:
+            Dict with count of deleted files and list of deleted paths
+        """
+        today = date.today()
+        deleted_files = []
+        
+        league_cache_dir = self.cache_dir / self.league_code
+        if not league_cache_dir.exists():
+            logger.info("cache_clear_no_directory", path=str(league_cache_dir))
+            return {"deleted_count": 0, "deleted_files": []}
+        
+        for i in range(days + 1):
+            target_date = today - timedelta(days=i)
+            # Scoreboard cache filename pattern: scoreboard_monthX_dayY_year20XX.html
+            filename = f"scoreboard_month{target_date.month}_day{target_date.day}_year{target_date.year}.html"
+            cache_path = league_cache_dir / filename
+            
+            if cache_path.exists():
+                try:
+                    cache_path.unlink()
+                    deleted_files.append(str(cache_path))
+                    logger.info(
+                        "cache_file_deleted",
+                        path=str(cache_path),
+                        date=str(target_date),
+                        league=self.league_code,
+                    )
+                except Exception as e:
+                    logger.error(
+                        "cache_file_delete_failed",
+                        path=str(cache_path),
+                        error=str(e),
+                        league=self.league_code,
+                    )
+        
+        logger.info(
+            "cache_clear_complete",
+            league=self.league_code,
+            days=days,
+            deleted_count=len(deleted_files),
+        )
+        
+        return {"deleted_count": len(deleted_files), "deleted_files": deleted_files}
 

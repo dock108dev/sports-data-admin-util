@@ -70,7 +70,35 @@ This review covers the existing NBA PBP ingestion paths, including historical sc
 - No structured event taxonomy is required for downstream consumers; raw text is preserved.
 
 ## Replication Requirements for NCAAB
+
 - Preserve the same storage model and `play_index` ordering behavior.
 - Use half/OT-aware period mapping while keeping the `quarter` field for compatibility.
 - Preserve raw text when structured fields are unavailable.
 - Keep NCAAB logic isolated under its own scraper module.
+
+---
+
+## NBA Patterns to Mirror (for NHL Parity)
+
+This section summarizes NBA PBP behaviors that other sport implementations must mirror.
+
+### Must Mirror (Behavioral Guarantees)
+
+- **Deterministic ordering:** PBP events are stored in chronological order with a stable `play_index`. Sports Reference HTML order is used to assign monotonic indices, while live feed uses `period * 10000 + sequence`.
+- **Period handling:** The PBP parser relies on explicit period headers (e.g., `q1`, `q2`) and skips rows until a period is identified.
+- **Clock parsing:** The PBP `game_clock` value is preserved as raw text from the source.
+- **Raw text preservation:** When the event row does not fit a structured format, the full description is stored in `raw_data` and `description` without additional inference.
+- **Append-only storage:** Plays are written via `upsert_plays` with `ON CONFLICT DO NOTHING`, so ordering is stable and no prior events are overwritten.
+
+### Acceptable Divergences (for NHL/NCAAB)
+
+- **Period semantics:** NHL uses three regulation periods, overtime, and shootouts. The `quarter` field is reused for period numbering.
+- **Event taxonomy:** Sport-specific event types differ. `play_type` can contain sport-specific strings without mapping to NBA enums.
+- **Score availability:** Not all rows include a score column; parsing can leave `home_score`/`away_score` unset when not present.
+- **Player attribution:** Some sources do not reliably expose player IDs; `player_id`/`player_name` can remain unset.
+
+### Non-Goals
+
+- No possession modeling or derived possessions.
+- No normalization of event text into a shared cross-sport taxonomy.
+- No attempt to infer missing data (teams, players, or timestamps) beyond what the source provides.

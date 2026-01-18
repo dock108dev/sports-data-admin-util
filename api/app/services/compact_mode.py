@@ -137,6 +137,13 @@ COMPRESSION_BEHAVIOR: dict[MomentType, CompressionBehavior] = {
         description="High-impact events (ejections, etc.) - always show in full",
     ),
     
+    MomentType.MOMENTUM_SHIFT: CompressionBehavior(
+        collapse_allowed=False,
+        base_retention=1.0,
+        min_events=999,
+        description="Run-based momentum shifts - always show in full",
+    ),
+    
     # === LIGHT COMPRESSION ===
     # These types are important but can have routine plays trimmed.
     
@@ -504,10 +511,8 @@ def apply_compact_mode(
         return []
     
     if not moments:
-        # No moments provided - caller should always provide moments
-        # Return timeline as-is as a fallback
-        logger.warning("compact_mode_no_moments: returning uncompressed timeline")
-        return list(timeline)
+        # Moments are required for compact mode compression
+        raise ValueError("Compact mode requires moments - caller must provide pre-computed moments")
     
     logger.info(
         "compact_mode_start",

@@ -44,10 +44,15 @@ class Settings(BaseSettings):
     openai_model_summary: str = Field(
         default="gpt-4o", alias="OPENAI_MODEL_SUMMARY"
     )
-    # Feature flags for AI usage
+    # Feature flag for AI social role classification
     enable_ai_social_roles: bool = Field(default=True, alias="ENABLE_AI_SOCIAL_ROLES")
-    enable_ai_segment_enrichment: bool = Field(default=True, alias="ENABLE_AI_SEGMENT_ENRICHMENT")
-    enable_ai_summary: bool = Field(default=True, alias="ENABLE_AI_SUMMARY")
+
+    # Pipeline validation settings
+    # When True: Score discontinuities FAIL validation and block persistence
+    # When False: Score discontinuities are flagged as DEGRADED but allowed
+    strict_score_continuity: bool = Field(
+        default=False, alias="STRICT_SCORE_CONTINUITY"
+    )
 
     @property
     def allowed_cors_origins(self) -> list[str]:

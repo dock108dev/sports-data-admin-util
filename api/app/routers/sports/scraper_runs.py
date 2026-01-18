@@ -129,6 +129,51 @@ async def fetch_run(run_id: int, session: AsyncSession = Depends(get_db)) -> Scr
     return serialize_run(run, league_code)
 
 
+@router.post("/scraper/cache/clear")
+async def clear_scraper_cache(
+    league: str = Query(..., description="League code (e.g., NBA, NHL)"),
+    days: int = Query(7, ge=1, le=30, description="Days of cache to clear"),
+) -> dict:
+    """Clear cached scoreboard HTML files for the last N days.
+    
+    This is useful before running a manual scrape to ensure fresh data is fetched.
+    Only clears scoreboard pages (not boxscores or PBP which are immutable).
+    """
+    from ...logging_config import get_logger
+    
+    logger = get_logger(__name__)
+    
+    try:
+        celery_app = get_celery_app()
+        async_result = celery_app.send_task(
+            "clear_scraper_cache",
+            args=[league.upper(), days],
+            queue="bets-scraper",
+            routing_key="bets-scraper",
+        )
+        
+        # Wait for the result (short timeout since this is fast)
+        result = async_result.get(timeout=30)
+        
+        return {
+            "status": "success",
+            "league": league.upper(),
+            "days": days,
+            "deleted_count": result.get("deleted_count", 0),
+            "deleted_files": result.get("deleted_files", []),
+        }
+    except Exception as exc:
+        logger.error(
+            "clear_cache_failed",
+            extra={"league": league, "days": days, "error": str(exc)},
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to clear cache: {exc}",
+        ) from exc
+
+
 @router.post("/scraper/runs/{run_id}/cancel", response_model=ScrapeRunResponse)
 async def cancel_scrape_run(run_id: int, session: AsyncSession = Depends(get_db)) -> ScrapeRunResponse:
     result = await session.execute(

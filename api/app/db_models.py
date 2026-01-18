@@ -20,6 +20,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
@@ -33,7 +34,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
@@ -583,3 +584,370 @@ class GameReadingPosition(Base):
         UniqueConstraint("user_id", "game_id", name="uq_reading_position_user_game"),
         Index("idx_reading_positions_user_game", "user_id", "game_id"),
     )
+
+
+# =============================================================================
+# GAME PIPELINE MODELS
+# =============================================================================
+# These models support the replayable game pipeline that decouples
+# data scraping from moment generation.
+
+
+class PipelineStage(str, Enum):
+    """Pipeline stages for game processing.
+    
+    Each stage has clear input/output contracts:
+    - NORMALIZE_PBP: Build normalized PBP events with phases
+    - DERIVE_SIGNALS: Compute lead ladder states and tier crossings
+    - GENERATE_MOMENTS: Partition game into narrative moments
+    - VALIDATE_MOMENTS: Run validation checks
+    - FINALIZE_MOMENTS: Persist final timeline artifact
+    """
+
+    NORMALIZE_PBP = "NORMALIZE_PBP"
+    DERIVE_SIGNALS = "DERIVE_SIGNALS"
+    GENERATE_MOMENTS = "GENERATE_MOMENTS"
+    VALIDATE_MOMENTS = "VALIDATE_MOMENTS"
+    FINALIZE_MOMENTS = "FINALIZE_MOMENTS"
+
+
+class PipelineRunStatus(str, Enum):
+    """Status of a pipeline run."""
+
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+    paused = "paused"
+
+
+class PipelineStageStatus(str, Enum):
+    """Status of a pipeline stage execution."""
+
+    pending = "pending"
+    running = "running"
+    success = "success"
+    failed = "failed"
+    skipped = "skipped"
+
+
+class PipelineTrigger(str, Enum):
+    """Who/what triggered the pipeline run."""
+
+    prod_auto = "prod_auto"  # Automatic production trigger
+    admin = "admin"          # Admin UI trigger
+    manual = "manual"        # Manual/CLI trigger
+    backfill = "backfill"    # Backfill operation
+
+
+class GamePipelineRun(Base):
+    """Tracks a pipeline execution for a single game.
+    
+    A pipeline run represents one attempt to process a game through the
+    moment generation pipeline. Each run has multiple stage executions.
+    
+    Key behaviors:
+    - auto_chain=True: Automatically proceeds to next stage on success
+    - auto_chain=False: Pauses after each stage, requires explicit continue
+    - Admin/manual triggers always set auto_chain=False
+    """
+
+    __tablename__ = "sports_game_pipeline_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_uuid: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, server_default=text("gen_random_uuid()"))
+    game_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False, index=True)
+    triggered_by: Mapped[str] = mapped_column(String(20), nullable=False)
+    auto_chain: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    current_stage: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending", index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    game: Mapped[SportsGame] = relationship("SportsGame")
+    stages: Mapped[list["GamePipelineStage"]] = relationship("GamePipelineStage", back_populates="run", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_pipeline_runs_uuid", "run_uuid", unique=True),
+    )
+
+    @property
+    def is_complete(self) -> bool:
+        """Check if the pipeline run has completed (success or failure)."""
+        return self.status in (PipelineRunStatus.completed.value, PipelineRunStatus.failed.value)
+
+    @property
+    def can_continue(self) -> bool:
+        """Check if the pipeline can be continued."""
+        return self.status in (PipelineRunStatus.pending.value, PipelineRunStatus.paused.value, PipelineRunStatus.running.value)
+
+
+class GamePipelineStage(Base):
+    """Tracks execution of a single stage within a pipeline run.
+    
+    Each stage stores:
+    - output_json: Stage-specific output data for the next stage
+    - logs_json: Array of log entries with timestamps
+    - error_details: Error message if stage failed
+    
+    The output_json format varies by stage but is consumed by the next stage.
+    """
+
+    __tablename__ = "sports_game_pipeline_stages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_game_pipeline_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(String(30), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending", index=True)
+    output_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    logs_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=True, server_default=text("'[]'::jsonb"))
+    error_details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    run: Mapped[GamePipelineRun] = relationship("GamePipelineRun", back_populates="stages")
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "stage", name="uq_pipeline_stages_run_stage"),
+    )
+
+    @property
+    def is_complete(self) -> bool:
+        """Check if the stage has completed (success or failure)."""
+        return self.status in (PipelineStageStatus.success.value, PipelineStageStatus.failed.value, PipelineStageStatus.skipped.value)
+
+    def add_log(self, message: str, level: str = "info") -> None:
+        """Add a log entry to this stage."""
+        from datetime import datetime, timezone
+        if self.logs_json is None:
+            self.logs_json = []
+        self.logs_json.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": level,
+            "message": message,
+        })
+
+
+class PBPSnapshotType(str, Enum):
+    """Type of PBP snapshot."""
+
+    raw = "raw"              # Raw PBP as received from source
+    normalized = "normalized"  # After normalization (phases, timestamps)
+    resolved = "resolved"    # After team/player resolution
+
+
+class PBPSnapshot(Base):
+    """Snapshot of play-by-play data for inspectability.
+    
+    This table stores PBP data at different processing stages:
+    
+    - RAW: Original data from the source (NBA Live API, NHL API, etc.)
+    - NORMALIZED: After phase assignment and timestamp computation
+    - RESOLVED: After team and player ID resolution
+    
+    Snapshots are tied to either a scrape run (for raw) or a pipeline run
+    (for normalized/resolved), enabling full auditability.
+    
+    EDGE CASES DOCUMENTED:
+    
+    1. Missing Teams (resolution_stats.teams_unresolved):
+       - Team abbreviation in PBP doesn't match any team in database
+       - team_id will be null, team_abbreviation preserved
+       - Common cause: Abbreviation mismatches (e.g., "PHX" vs "PHO")
+    
+    2. Missing Players (resolution_stats.players_unresolved):
+       - Player ID or name not found in player database
+       - player_id preserved as string, player_name from source
+       - Note: We don't have a players table; player resolution is name-only
+    
+    3. Missing Scores (resolution_stats.plays_without_score):
+       - Some plays don't update the score (timeouts, substitutions)
+       - home_score/away_score may be null for non-scoring plays
+       - Score is carried forward from last scoring play
+    
+    4. Clock Parsing Failures (resolution_stats.clock_parse_failures):
+       - Game clock couldn't be parsed (e.g., malformed "12:3" instead of "12:03")
+       - Falls back to play_index ordering
+    """
+
+    __tablename__ = "sports_pbp_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False, index=True)
+    pipeline_run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sports_game_pipeline_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    scrape_run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sports_scrape_runs.id", ondelete="SET NULL"), nullable=True)
+    snapshot_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    play_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    plays_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, server_default=text("'{}'::jsonb"))
+    resolution_stats: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    game: Mapped[SportsGame] = relationship("SportsGame")
+    pipeline_run: Mapped[GamePipelineRun | None] = relationship("GamePipelineRun")
+    scrape_run: Mapped["SportsScrapeRun | None"] = relationship("SportsScrapeRun")
+
+    __table_args__ = (
+        Index("idx_pbp_snapshots_game_type", "game_id", "snapshot_type"),
+    )
+
+
+class ResolutionStatus(str, Enum):
+    """Status of entity resolution."""
+
+    success = "success"       # Entity resolved successfully
+    failed = "failed"         # Resolution failed (no match)
+    ambiguous = "ambiguous"   # Multiple candidates, picked one
+    partial = "partial"       # Partial resolution (e.g., name but no ID)
+
+
+class EntityResolution(Base):
+    """Tracks how teams and players are resolved from source identifiers.
+    
+    This table enables full auditability of the resolution process:
+    
+    1. TEAM RESOLUTION
+       - Source: team_abbreviation from PBP data (e.g., "LAL", "BOS")
+       - Target: team_id in sports_teams table
+       - Methods: exact_match, abbreviation_lookup, fuzzy_match
+    
+    2. PLAYER RESOLUTION
+       - Source: player_name from PBP data
+       - Target: Currently just name normalization (no player table)
+       - Methods: exact_match, name_normalization
+    
+    EDGE CASES:
+    
+    1. UNRESOLVED TEAMS (resolution_status = 'failed')
+       - team_abbreviation doesn't match any known team
+       - Common cause: Abbreviation variations (PHX vs PHO)
+       - Action: Check source_identifier and compare with sports_teams
+    
+    2. AMBIGUOUS TEAMS (resolution_status = 'ambiguous')
+       - Multiple teams match the abbreviation
+       - Common cause: Same abbrev in different leagues
+       - Action: Check candidates field for alternatives
+    
+    3. UNRESOLVED PLAYERS (resolution_status = 'failed')
+       - Player name couldn't be normalized
+       - Note: We don't have a players table, so this is rare
+    
+    4. PARTIAL RESOLUTION (resolution_status = 'partial')
+       - Some information resolved but not all
+       - Example: Team name found but team_id missing
+    """
+
+    __tablename__ = "sports_entity_resolutions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False, index=True)
+    pipeline_run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sports_game_pipeline_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    entity_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # "team" or "player"
+    
+    # Source identifiers
+    source_identifier: Mapped[str] = mapped_column(String(200), nullable=False)
+    source_context: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    
+    # Resolution result
+    resolved_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    resolved_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    resolution_status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    resolution_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    
+    # Failure/ambiguity details
+    failure_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    candidates: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    
+    # Occurrence tracking
+    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    first_play_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_play_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    game: Mapped[SportsGame] = relationship("SportsGame")
+    pipeline_run: Mapped[GamePipelineRun | None] = relationship("GamePipelineRun")
+
+    __table_args__ = (
+        Index("idx_entity_resolutions_game_type", "game_id", "entity_type"),
+    )
+
+
+class FrontendPayloadVersion(Base):
+    """Immutable versioned frontend payloads.
+    
+    This table stores immutable snapshots of exactly what the frontend receives.
+    Each pipeline run creates a NEW version - payloads are NEVER mutated.
+    
+    IMMUTABILITY GUARANTEE
+    ======================
+    Once a FrontendPayloadVersion is created, it is NEVER modified:
+    - No UPDATE operations on this table
+    - New pipeline runs create new versions
+    - Historical versions preserved forever
+    
+    VERSIONING
+    ==========
+    - version_number: Auto-incremented per game (1, 2, 3, ...)
+    - is_active: Exactly ONE version per game is active at any time
+    - When a new version is created, the old active is deactivated
+    
+    CHANGE DETECTION
+    ================
+    - payload_hash: SHA-256 of (timeline_json + moments_json + summary_json)
+    - diff_from_previous: Summary of what changed from the previous version
+    
+    FRONTEND CONTRACT
+    =================
+    The frontend expects exactly this structure:
+    - timeline_json: Array of timeline events (PBP + social)
+    - moments_json: Array of moment objects
+    - summary_json: Game summary object
+    
+    These fields match what SportsGameTimelineArtifact provides but with
+    full version history and immutability guarantees.
+    """
+
+    __tablename__ = "sports_frontend_payload_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False, index=True)
+    pipeline_run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sports_game_pipeline_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    # Version tracking
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"), index=True)
+    
+    # Payload content (IMMUTABLE once created)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    timeline_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    moments_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    summary_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    
+    # Metadata
+    event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    moment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    generation_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    generation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    # Change tracking
+    diff_from_previous: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    
+    # Timestamps (NO updated_at - payloads are IMMUTABLE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    game: Mapped[SportsGame] = relationship("SportsGame")
+    pipeline_run: Mapped[GamePipelineRun | None] = relationship("GamePipelineRun")
+
+    __table_args__ = (
+        Index("idx_frontend_payload_version", "game_id", "version_number"),
+    )
+
+    @property
+    def is_latest(self) -> bool:
+        """Check if this is the active version."""
+        return self.is_active

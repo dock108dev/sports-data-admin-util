@@ -25,10 +25,10 @@ class ScheduledIngestionSummary:
 
 
 def build_scheduled_window(now: datetime | None = None) -> tuple[datetime, datetime]:
-    """Build the scheduled ingestion window (yesterday -> now + 24h in UTC)."""
+    """Build the scheduled ingestion window (96 hours back -> 48 hours forward in UTC)."""
     anchor = now or now_utc()
-    start = (anchor - timedelta(days=1)).replace(tzinfo=timezone.utc)
-    end = (anchor + timedelta(hours=24)).replace(tzinfo=timezone.utc)
+    start = (anchor - timedelta(hours=96)).replace(tzinfo=timezone.utc)
+    end = (anchor + timedelta(hours=48)).replace(tzinfo=timezone.utc)
     return start, end
 
 

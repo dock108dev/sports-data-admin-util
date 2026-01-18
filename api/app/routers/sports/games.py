@@ -182,10 +182,10 @@ async def get_game_preview_score(
         standings = standings_service.get_standings(league_code)
         home_key = resolve_team_key(game.home_team)
         away_key = resolve_team_key(game.away_team)
-        home_rating = select_preview_entry(ratings, home_key, 0, "ratings")
-        away_rating = select_preview_entry(ratings, away_key, 1, "ratings")
-        home_standing = select_preview_entry(standings, home_key, 0, "standings")
-        away_standing = select_preview_entry(standings, away_key, 1, "standings")
+        home_rating = select_preview_entry(ratings, home_key, "ratings")
+        away_rating = select_preview_entry(ratings, away_key, "ratings")
+        home_standing = select_preview_entry(standings, home_key, "standings")
+        away_standing = select_preview_entry(standings, away_key, "standings")
     except Exception as exc:
         logger.exception("Failed to build preview score", extra={"game_id": game_id})
         raise HTTPException(

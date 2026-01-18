@@ -249,8 +249,8 @@ async def list_games(
                 league=league_code,
                 status=game.status,
                 start_time=game.game_date,
-                home_team=team_snapshot(game.home_team, fallback_id=game.home_team_id),
-                away_team=team_snapshot(game.away_team, fallback_id=game.away_team_id),
+                home_team=team_snapshot(game.home_team),
+                away_team=team_snapshot(game.away_team),
                 has_pbp=bool(has_pbp_value),
                 has_social=bool(has_social_value),
                 last_updated_at=last_updated,
@@ -341,18 +341,27 @@ async def get_game_social(
         .order_by(db_models.GameSocialPost.posted_at.asc())
     )
     posts = posts_result.scalars().all()
-    return SocialResponse(
-        posts=[
+
+    # Filter and validate posts - skip any without team mapping
+    valid_posts = []
+    for post in posts:
+        if post.team is None:
+            logger.warning(
+                "social_post_missing_team",
+                extra={"post_id": post.id, "game_id": game_id},
+            )
+            continue
+        valid_posts.append(
             SocialPostSnapshot(
                 id=post.id,
-                team=team_snapshot(post.team, fallback_id=post.team_id),
+                team=team_snapshot(post.team),
                 content=post.tweet_text,
                 posted_at=post.posted_at,
                 reveal_level=post_reveal_level(post),
             )
-            for post in posts
-        ]
-    )
+        )
+
+    return SocialResponse(posts=valid_posts)
 
 
 @router.get("/games/{game_id}/timeline", response_model=TimelineArtifactStoredResponse)

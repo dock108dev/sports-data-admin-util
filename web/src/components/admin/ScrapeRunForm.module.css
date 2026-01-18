@@ -124,3 +124,17 @@
   border-top: 1px solid #e2e8f0;
 }
 
+.buttonRow {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.secondaryButton {
+  background: #64748b !important;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: #475569 !important;
+}
+

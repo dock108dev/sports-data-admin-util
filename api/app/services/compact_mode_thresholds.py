@@ -11,8 +11,8 @@ Lead Ladder values by sport (stored in compact_mode_thresholds table):
 - MLB: [1, 2, 3, 5] runs
 - NHL: [1, 2, 3] goals
 
-IMPORTANT: This module fails loudly if thresholds are missing.
-There are NO hardcoded fallbacks. All leagues must have configured thresholds.
+IMPORTANT: This module fails fast if thresholds are missing.
+All leagues must have configured thresholds in the database.
 """
 
 from __future__ import annotations
@@ -27,6 +27,48 @@ from .. import db_models
 from ..db import get_async_session
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# DEFAULT THRESHOLDS BY SPORT (Synchronous access)
+# =============================================================================
+
+# Canonical Lead Ladder values by sport.
+# Used for synchronous code paths where async DB access is not available.
+DEFAULT_THRESHOLDS: dict[str, list[int]] = {
+    "NBA": [3, 6, 10, 16],
+    "NCAAB": [3, 6, 10, 16],
+    "NFL": [3, 7, 10, 14],  # ~1 FG, 1 TD, 1.5 TD, 2 TD
+    "NCAAF": [3, 7, 10, 14],
+    "NHL": [1, 2, 3],
+    "MLB": [1, 2, 3, 5],
+}
+
+
+def get_sport_thresholds(sport: str) -> list[int]:
+    """
+    Get lead thresholds for a sport (synchronous, no DB access).
+    
+    For synchronous code paths. For async contexts with DB access,
+    use get_thresholds_for_league() instead.
+    
+    Args:
+        sport: Sport code like "NBA", "NHL", "NFL", etc.
+        
+    Returns:
+        List of threshold values
+        
+    Raises:
+        KeyError: If sport is not recognized
+        
+    Example:
+        >>> get_sport_thresholds("NBA")
+        [3, 6, 10, 16]
+    """
+    sport_upper = sport.upper()
+    if sport_upper not in DEFAULT_THRESHOLDS:
+        raise KeyError(f"No default thresholds for sport: {sport}")
+    return DEFAULT_THRESHOLDS[sport_upper].copy()
 
 
 # =============================================================================
@@ -159,8 +201,7 @@ async def get_thresholds_for_sport(
     """
     Return lead thresholds for the requested sport by ID.
 
-    FAILS LOUDLY if thresholds are not configured.
-    There are no default fallbacks.
+    Fails fast if thresholds are not configured.
 
     Args:
         sport_id: The sports_leagues.id value
@@ -187,7 +228,7 @@ async def get_thresholds_for_league(
     Return lead threshold values for the requested league by code.
 
     This is the primary entry point for Lead Ladder access.
-    FAILS LOUDLY if thresholds are not configured.
+    Fails fast if thresholds are not configured.
 
     Args:
         league_code: League code like "NBA", "NHL", "NCAAB"

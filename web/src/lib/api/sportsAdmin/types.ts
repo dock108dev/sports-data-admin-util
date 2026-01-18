@@ -201,6 +201,64 @@ export type MomentReason = {
 };
 
 /**
+ * Quality status of validated moments.
+ * Provides clear signal about data integrity beyond pass/fail.
+ */
+export type QualityStatus = "PASSED" | "DEGRADED" | "FAILED" | "OVERRIDDEN";
+
+/**
+ * Score continuity issue record.
+ * Captures where score jumped unexpectedly between moments.
+ */
+export type ScoreContinuityIssue = {
+  prev_moment_id: string;
+  curr_moment_id: string;
+  prev_score_after: [number, number];
+  curr_score_before: [number, number];
+  delta: { home: number; away: number };
+  position_in_sequence: number;
+  prev_end_play: number;
+  curr_start_play: number;
+};
+
+/**
+ * Score continuity override audit record.
+ */
+export type ScoreContinuityOverride = {
+  enabled: boolean;
+  reason: string | null;
+  overridden_by: string | null;
+  overridden_at: string | null;
+};
+
+/**
+ * Moment distribution metrics for pacing analysis.
+ * Enables instant detection of pacing problems (e.g., Q1 spam).
+ */
+export type MomentDistribution = {
+  moments_per_quarter: Record<string, number>;  // e.g., { Q1: 7, Q2: 6, Q3: 5, Q4: 3 }
+  moments_by_trigger_type: Record<string, number>;  // e.g., { flip: 5, tier_cross: 12 }
+  moments_by_tier: Record<string, number>;  // Tier at end of moment, keyed as strings
+  average_plays_per_moment: number;
+  first_half_vs_second_half: {
+    first_half: number;
+    second_half: number;
+    overtime: number;
+    first_half_percentage: number;
+  };
+  budget_utilization: {
+    total_moments: number;
+    budget: number;
+    utilization_percentage: number;
+  };
+  merge_statistics: {
+    total_before_merge: number;
+    total_merged: number;
+    merge_ratio: number;
+  };
+};
+
+/**
  * Response from GET /games/{game_id}/moments
  * 
  * Moments are already merged and within sport-specific budgets (e.g., NBA: 30 max).
@@ -215,6 +273,26 @@ export type MomentsResponse = {
   // AI-generated game-level copy (SportsCenter-style, spoiler-safe)
   game_headline: string;   // max 80 chars
   game_subhead: string;    // max 120 chars
+  
+  // Phase 0: Quality and observability data
+  quality_status?: QualityStatus;
+  moment_distribution?: MomentDistribution;
+  score_continuity_issues?: ScoreContinuityIssue[];
+  score_continuity_override?: ScoreContinuityOverride;
+};
+
+/**
+ * Game analysis from the pipeline.
+ * Contains moments plus Phase 0 observability data.
+ */
+export type GameAnalysis = {
+  moments: MomentEntry[];
+  notable_moments: MomentEntry[];
+  moment_count: number;
+  quality_status: QualityStatus;
+  moment_distribution?: MomentDistribution;
+  score_continuity_issues?: ScoreContinuityIssue[];
+  score_continuity_override?: ScoreContinuityOverride;
 };
 
 export type AdminGameDetail = {
@@ -250,6 +328,8 @@ export type AdminGameDetail = {
   moments: MomentEntry[];  // Full game coverage; filter by is_notable for key moments
   derived_metrics: Record<string, unknown>;
   raw_payloads: Record<string, unknown>;
+  // Phase 0: Game analysis with observability data
+  game_analysis?: GameAnalysis;
 };
 
 export type GameFilters = {

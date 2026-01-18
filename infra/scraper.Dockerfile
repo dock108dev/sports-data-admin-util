@@ -39,6 +39,7 @@ RUN apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --system --uid 10001 --create-home appuser \
+    && mkdir -p /app/scraper/game_data \
     && chown -R appuser:appuser /app /ms-playwright
 
 USER appuser
