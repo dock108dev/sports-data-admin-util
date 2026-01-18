@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-# Static budgets per sport (legacy values, used as Phase 2.2 baseline)
+# Static budgets per sport
 STATIC_BUDGET = {
     "NBA": 30,
     "NHL": 25,

@@ -5,9 +5,6 @@ a game timeline into contiguous narrative segments based on control changes.
 
 Usage:
     from app.services.moments import partition_game, Moment, MomentType
-
-The package maintains backwards compatibility with the original moments.py
-module through re-exports.
 """
 
 # Types and data classes
@@ -49,12 +46,9 @@ from .helpers import (
     get_game_progress,
 )
 
-# Re-export from sibling modules for backwards compatibility
+# Re-export from sibling modules
 from ..moments_validation import MomentValidationError
 from ..moments_normalization import normalize_scores
-
-# Backwards compatibility: alias private functions
-_get_game_progress = get_game_progress
 
 __all__ = [
     # Types
@@ -85,5 +79,4 @@ __all__ = [
     "validate_moments",
     "normalize_scores",
     "get_game_progress",
-    "_get_game_progress",  # backwards compatibility
 ]

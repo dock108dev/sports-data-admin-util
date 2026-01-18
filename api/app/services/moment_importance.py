@@ -442,7 +442,7 @@ def compute_importance(
     Returns:
         ImportanceFactors with score and full breakdown
     """
-    from .moments import _get_game_progress
+    from .moments import get_game_progress
     from ..utils.datetime_utils import parse_clock_to_seconds
     
     factors = ImportanceFactors()
@@ -457,7 +457,7 @@ def compute_importance(
     end_event = events[end_idx] if 0 <= end_idx < len(events) else {}
     
     # === 1. TIME WEIGHT ===
-    game_progress = _get_game_progress(end_event)
+    game_progress = get_game_progress(end_event)
     quarter = end_event.get("quarter")
     clock = end_event.get("game_clock", "")
     seconds_remaining = parse_clock_to_seconds(clock)

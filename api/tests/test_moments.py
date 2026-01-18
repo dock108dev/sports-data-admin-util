@@ -2254,7 +2254,7 @@ class TestLLMFeatureFlags(unittest.TestCase):
     
     def test_all_disabled_by_default(self) -> None:
         """Feature flags should be disabled by default."""
-        from app.services.moment_llm_augmentation import LLMFeatureFlags
+        from app.services.moment_llm import LLMFeatureFlags
         
         flags = LLMFeatureFlags()
         
@@ -2264,7 +2264,7 @@ class TestLLMFeatureFlags(unittest.TestCase):
     
     def test_all_enabled_helper(self) -> None:
         """all_enabled() should enable all features."""
-        from app.services.moment_llm_augmentation import LLMFeatureFlags
+        from app.services.moment_llm import LLMFeatureFlags
         
         flags = LLMFeatureFlags.all_enabled()
         
@@ -2274,7 +2274,7 @@ class TestLLMFeatureFlags(unittest.TestCase):
     
     def test_game_override(self) -> None:
         """Game-level overrides should take priority."""
-        from app.services.moment_llm_augmentation import LLMFeatureFlags
+        from app.services.moment_llm import LLMFeatureFlags
         
         base = LLMFeatureFlags()
         game_flags = LLMFeatureFlags(enable_moment_rewrite=True)
@@ -2286,7 +2286,7 @@ class TestLLMFeatureFlags(unittest.TestCase):
     
     def test_league_override(self) -> None:
         """League-level overrides should apply when no game override."""
-        from app.services.moment_llm_augmentation import LLMFeatureFlags
+        from app.services.moment_llm import LLMFeatureFlags
         
         base = LLMFeatureFlags()
         nba_flags = LLMFeatureFlags(enable_transitions=True)
@@ -2302,7 +2302,7 @@ class TestToneProfiles(unittest.TestCase):
     
     def test_neutral_profile(self) -> None:
         """Neutral profile should have balanced settings."""
-        from app.services.moment_llm_augmentation import ToneProfile, ToneConfig
+        from app.services.moment_llm import ToneProfile, ToneConfig
         
         config = ToneConfig.from_profile(ToneProfile.NEUTRAL)
         
@@ -2312,7 +2312,7 @@ class TestToneProfiles(unittest.TestCase):
     
     def test_fan_profile(self) -> None:
         """Fan profile should be energetic."""
-        from app.services.moment_llm_augmentation import ToneProfile, ToneConfig
+        from app.services.moment_llm import ToneProfile, ToneConfig
         
         config = ToneConfig.from_profile(ToneProfile.FAN)
         
@@ -2322,7 +2322,7 @@ class TestToneProfiles(unittest.TestCase):
     
     def test_tone_to_prompt_instructions(self) -> None:
         """Tone config should generate prompt instructions."""
-        from app.services.moment_llm_augmentation import ToneProfile, ToneConfig
+        from app.services.moment_llm import ToneProfile, ToneConfig
         
         config = ToneConfig.from_profile(ToneProfile.ANALYST)
         instructions = config.to_prompt_instructions()
@@ -2335,7 +2335,7 @@ class TestStatVerification(unittest.TestCase):
     
     def test_preserves_stats(self) -> None:
         """Validation should pass when stats are preserved."""
-        from app.services.moment_llm_augmentation import validate_stat_preservation
+        from app.services.moment_llm import validate_stat_preservation
         
         original = "LeBron scored 10 points."
         rewritten = "LeBron James put up 10 points in the stretch."
@@ -2347,7 +2347,7 @@ class TestStatVerification(unittest.TestCase):
     
     def test_detects_missing_stats(self) -> None:
         """Validation should fail when stats are missing."""
-        from app.services.moment_llm_augmentation import validate_stat_preservation
+        from app.services.moment_llm import validate_stat_preservation
         
         original = "LeBron scored 10 points."
         rewritten = "LeBron had a great stretch."  # Missing "10"
@@ -2360,7 +2360,7 @@ class TestStatVerification(unittest.TestCase):
     
     def test_detects_invented_stats(self) -> None:
         """Validation should fail when stats are invented."""
-        from app.services.moment_llm_augmentation import validate_stat_preservation
+        from app.services.moment_llm import validate_stat_preservation
         
         original = "LeBron scored 10 points."
         rewritten = "LeBron scored 15 points with 5 assists."  # Added 15, 5
@@ -2376,7 +2376,7 @@ class TestSentenceEnforcement(unittest.TestCase):
     
     def test_within_limit(self) -> None:
         """Should pass when sentence count is within limit."""
-        from app.services.moment_llm_augmentation import validate_sentence_count
+        from app.services.moment_llm import validate_sentence_count
         
         text = "First sentence. Second sentence. Third sentence."
         result = validate_sentence_count(text, max_sentences=3)
@@ -2385,7 +2385,7 @@ class TestSentenceEnforcement(unittest.TestCase):
     
     def test_exceeds_limit(self) -> None:
         """Should fail when sentence count exceeds limit."""
-        from app.services.moment_llm_augmentation import validate_sentence_count
+        from app.services.moment_llm import validate_sentence_count
         
         text = "One. Two. Three. Four. Five."
         result = validate_sentence_count(text, max_sentences=3)
@@ -2398,7 +2398,7 @@ class TestMomentRewrite(unittest.TestCase):
     
     def test_rewrite_with_fallback_on_failure(self) -> None:
         """Should fall back to template when LLM fails."""
-        from app.services.moment_llm_augmentation import (
+        from app.services.moment_llm import (
             rewrite_moment_with_llm, create_mock_llm
         )
         from app.services.moments import Moment, MomentType
@@ -2426,7 +2426,7 @@ class TestMomentRewrite(unittest.TestCase):
     
     def test_rewrite_preserves_template_on_low_confidence(self) -> None:
         """Should use template when confidence is too low."""
-        from app.services.moment_llm_augmentation import (
+        from app.services.moment_llm import (
             rewrite_moment_with_llm, create_mock_llm
         )
         from app.services.moments import Moment, MomentType
@@ -2457,7 +2457,7 @@ class TestGameAugmentation(unittest.TestCase):
     
     def test_skips_when_disabled(self) -> None:
         """Should skip augmentation when flags are disabled."""
-        from app.services.moment_llm_augmentation import (
+        from app.services.moment_llm import (
             augment_game_narrative, LLMFeatureFlags, create_mock_llm
         )
         from app.services.moments import Moment, MomentType
@@ -2476,7 +2476,7 @@ class TestGameAugmentation(unittest.TestCase):
     
     def test_augments_when_enabled(self) -> None:
         """Should augment when flags are enabled."""
-        from app.services.moment_llm_augmentation import (
+        from app.services.moment_llm import (
             augment_game_narrative, LLMFeatureFlags, create_mock_llm
         )
         from app.services.moments import Moment, MomentType
