@@ -1,0 +1,321 @@
+"""Pipeline router request and response models.
+
+This module contains all Pydantic models used by the pipeline endpoints.
+"""
+
+from __future__ import annotations
+
+from enum import Enum
+from pydantic import BaseModel, Field
+from typing import Any
+
+
+# =============================================================================
+# ENUMS FOR FRONTEND
+# =============================================================================
+
+
+class PipelineRunStatusEnum(str, Enum):
+    """Pipeline run status values."""
+
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+    paused = "paused"
+
+
+class StageStatusEnum(str, Enum):
+    """Stage execution status values."""
+
+    pending = "pending"
+    running = "running"
+    success = "success"
+    failed = "failed"
+    skipped = "skipped"
+
+
+# =============================================================================
+# REQUEST MODELS
+# =============================================================================
+
+
+class StartPipelineRequest(BaseModel):
+    """Request to start a new pipeline run for a game."""
+
+    triggered_by: str = Field(
+        default="admin",
+        description="Who triggered the run: admin, manual, backfill, prod_auto",
+    )
+    auto_chain: bool | None = Field(
+        default=None,
+        description="Auto-proceed to next stage on success.",
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "triggered_by": "admin",
+                "auto_chain": False,
+            }
+        }
+    }
+
+
+class RerunPipelineRequest(BaseModel):
+    """Request to re-run a pipeline for a game."""
+
+    triggered_by: str = Field(
+        default="admin",
+        description="Who triggered the re-run",
+    )
+    execute_through_stage: str | None = Field(
+        default=None,
+        description="Execute all stages up to and including this stage.",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Optional reason for re-running (for audit trail)",
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "triggered_by": "admin",
+                "execute_through_stage": "GENERATE_MOMENTS",
+                "reason": "Testing new threshold values",
+            }
+        }
+    }
+
+
+class ExecuteStageRequest(BaseModel):
+    """Request to execute a specific stage."""
+
+    force: bool = Field(
+        default=False,
+        description="If True, re-execute even if already succeeded",
+    )
+
+
+class RunFullPipelineRequest(BaseModel):
+    """Request to run the complete pipeline."""
+
+    triggered_by: str = Field(
+        default="admin",
+        description="Who triggered the run",
+    )
+
+
+# =============================================================================
+# RESPONSE MODELS - Stage Level
+# =============================================================================
+
+
+class StageStatusResponse(BaseModel):
+    """Status of a single pipeline stage."""
+
+    stage: str = Field(description="Stage name (e.g., NORMALIZE_PBP)")
+    stage_order: int = Field(description="Execution order (1-5)")
+    status: str = Field(description="pending, running, success, failed, skipped")
+    started_at: str | None = Field(description="ISO timestamp when stage started")
+    finished_at: str | None = Field(description="ISO timestamp when stage finished")
+    duration_seconds: float | None = Field(description="Execution time in seconds")
+    error_details: str | None = Field(description="Error message if failed")
+    has_output: bool = Field(description="Whether stage has output data")
+    output_summary: dict[str, Any] | None = Field(
+        description="Summary of output (counts, key metrics)"
+    )
+    log_count: int = Field(description="Number of log entries")
+    can_execute: bool = Field(
+        description="Whether this stage can be executed now"
+    )
+
+
+class StageOutputResponse(BaseModel):
+    """Full output from a pipeline stage."""
+
+    run_id: int
+    run_uuid: str
+    stage: str
+    status: str
+    output_json: dict[str, Any] | None = Field(description="Full stage output data")
+    output_summary: dict[str, Any] = Field(description="Summary metrics from output")
+    generated_at: str | None = Field(description="When output was generated")
+
+
+class StageLogsResponse(BaseModel):
+    """Logs from a pipeline stage."""
+
+    run_id: int
+    run_uuid: str
+    stage: str
+    status: str
+    logs: list[dict[str, Any]] = Field(
+        description="Array of log entries with timestamp, level, message"
+    )
+    log_count: int
+
+
+# =============================================================================
+# RESPONSE MODELS - Run Level
+# =============================================================================
+
+
+class PipelineRunResponse(BaseModel):
+    """Full status of a pipeline run."""
+
+    run_id: int
+    run_uuid: str
+    game_id: int
+    triggered_by: str
+    auto_chain: bool
+    status: str
+    current_stage: str | None
+    started_at: str | None
+    finished_at: str | None
+    duration_seconds: float | None
+    created_at: str
+    stages: list[StageStatusResponse]
+    stages_completed: int
+    stages_failed: int
+    stages_pending: int
+    progress_percent: int = Field(description="Overall progress as percentage (0-100)")
+    can_continue: bool = Field(description="Whether pipeline can be continued")
+    next_stage: str | None = Field(description="Next stage to execute, if any")
+
+
+class PipelineRunSummary(BaseModel):
+    """Summary of a pipeline run for listing."""
+
+    run_id: int
+    run_uuid: str
+    game_id: int
+    triggered_by: str
+    status: str
+    current_stage: str | None
+    created_at: str
+    started_at: str | None
+    finished_at: str | None
+    stages_completed: int
+    stages_total: int
+    progress_percent: int
+
+
+class StartPipelineResponse(BaseModel):
+    """Response after starting a pipeline run."""
+
+    run_id: int
+    run_uuid: str
+    game_id: int
+    status: str
+    auto_chain: bool
+    stages: list[StageStatusResponse]
+    next_stage: str
+    message: str
+
+
+class ExecuteStageResponse(BaseModel):
+    """Response after executing a stage."""
+
+    run_id: int
+    run_uuid: str
+    stage: str
+    status: str
+    success: bool
+    duration_seconds: float
+    error: str | None = None
+    output_summary: dict[str, Any] | None = None
+    next_stage: str | None = None
+    pipeline_status: str
+    message: str
+
+
+class ContinuePipelineResponse(BaseModel):
+    """Response after continuing a pipeline."""
+
+    run_id: int
+    run_uuid: str
+    stage_executed: str | None
+    success: bool
+    duration_seconds: float | None
+    pipeline_status: str
+    stages_completed: int
+    stages_remaining: int
+    next_stage: str | None
+    message: str
+
+
+class RerunPipelineResponse(BaseModel):
+    """Response after re-running a pipeline."""
+
+    new_run_id: int
+    new_run_uuid: str
+    game_id: int
+    previous_runs_count: int
+    status: str
+    stages_executed: list[str]
+    stages_pending: list[str]
+    message: str
+
+
+class RunFullPipelineResponse(BaseModel):
+    """Response after running the full pipeline."""
+
+    run_id: int
+    run_uuid: str
+    game_id: int
+    status: str
+    stages_completed: int
+    stages_failed: int
+    duration_seconds: float | None
+    artifact_id: int | None = Field(
+        description="Timeline artifact ID if finalization succeeded"
+    )
+    message: str
+
+
+# =============================================================================
+# RESPONSE MODELS - Game Level
+# =============================================================================
+
+
+class GamePipelineRunsResponse(BaseModel):
+    """List of pipeline runs for a game."""
+
+    game_id: int
+    game_info: dict[str, Any] = Field(description="Basic game info")
+    runs: list[PipelineRunSummary]
+    total_runs: int
+    has_successful_run: bool
+    latest_artifact_at: str | None = Field(
+        description="When the latest timeline artifact was generated"
+    )
+
+
+class GamePipelineSummary(BaseModel):
+    """Quick summary of pipeline state for a game."""
+
+    game_id: int
+    game_date: str
+    home_team: str
+    away_team: str
+    game_status: str
+    has_pbp: bool
+    has_timeline_artifact: bool
+    latest_artifact_at: str | None
+    total_pipeline_runs: int
+    latest_run: PipelineRunSummary | None
+    can_run_pipeline: bool = Field(
+        description="Whether a new pipeline can be started"
+    )
+
+
+class StageComparisonResponse(BaseModel):
+    """Compare a stage's output between two runs."""
+
+    game_id: int
+    stage: str
+    run_a: dict[str, Any]
+    run_b: dict[str, Any]
+    differences: dict[str, Any] = Field(description="Key differences between outputs")

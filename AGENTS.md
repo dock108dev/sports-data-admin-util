@@ -84,5 +84,3 @@ cd web && npm install && npm run dev
 # Run migrations
 cd api && alembic upgrade head
 ```
-
-
