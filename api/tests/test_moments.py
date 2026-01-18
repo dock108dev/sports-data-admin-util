@@ -2172,5 +2172,162 @@ class TestMultiSportConfigRegression(unittest.TestCase):
         self.assertTrue(validate_moments(timeline, moments))
 
 
+# =============================================================================
+# PHASE 5: UI & WORKFLOW SUPPORT
+# =============================================================================
+
+
+class TestVersionComparison(unittest.TestCase):
+    """PHASE 5.1: Tests for version comparison."""
+    
+    def test_compare_computes_high_level_summary(self) -> None:
+        """Comparison should compute high-level summary metrics."""
+        from app.services.moment_comparison import compare_moment_versions
+        from app.services.moments import Moment, MomentType
+        
+        old_moments = [
+            Moment(id="m_001", type=MomentType.FLIP, start_play=0, end_play=10, play_count=11),
+            Moment(id="m_002", type=MomentType.NEUTRAL, start_play=11, end_play=50, play_count=40),
+        ]
+        
+        new_moments = [
+            Moment(id="m_001", type=MomentType.FLIP, start_play=0, end_play=10, play_count=11),
+            Moment(id="m_002", type=MomentType.LEAD_BUILD, start_play=11, end_play=30, play_count=20),
+            Moment(id="m_003", type=MomentType.NEUTRAL, start_play=31, end_play=50, play_count=20),
+        ]
+        
+        result = compare_moment_versions(old_moments, new_moments, 25, 30)
+        
+        self.assertEqual(result.old_summary.total_moments, 2)
+        self.assertEqual(result.new_summary.total_moments, 3)
+        self.assertEqual(result.moment_count_delta, 1)
+    
+    def test_compare_aligns_timeline(self) -> None:
+        """Comparison should align moments by play range."""
+        from app.services.moment_comparison import compare_moment_versions
+        from app.services.moments import Moment, MomentType
+        
+        old_moments = [
+            Moment(id="m_001", type=MomentType.FLIP, start_play=0, end_play=10, play_count=11),
+        ]
+        
+        new_moments = [
+            Moment(id="m_001", type=MomentType.NEUTRAL, start_play=0, end_play=10, play_count=11),
+        ]
+        
+        result = compare_moment_versions(old_moments, new_moments)
+        
+        # Should have one timeline row showing the modification
+        self.assertEqual(len(result.timeline), 1)
+        self.assertEqual(result.timeline[0].status, "modified")
+    
+    def test_compare_tracks_displacements(self) -> None:
+        """Comparison should track displaced/dropped moments."""
+        from app.services.moment_comparison import compare_moment_versions
+        from app.services.moments import Moment, MomentType
+        
+        old_moments = [
+            Moment(id="m_001", type=MomentType.FLIP, start_play=0, end_play=10, play_count=11),
+        ]
+        
+        new_moments = [
+            Moment(id="m_001", type=MomentType.FLIP, start_play=0, end_play=10, play_count=11),
+        ]
+        
+        rank_records = [
+            {"moment_id": "m_dropped", "selected": False, "importance_rank": 5, "importance_score": 0.2}
+        ]
+        
+        result = compare_moment_versions(old_moments, new_moments, rank_records=rank_records)
+        
+        self.assertEqual(len(result.displacements), 1)
+        self.assertEqual(result.displacements[0].reason, "rank_select_dropped")
+
+
+class TestNarrativeQualityFlags(unittest.TestCase):
+    """PHASE 5.2: Tests for narrative quality flags."""
+    
+    def test_detects_q1_flip_spam(self) -> None:
+        """Should flag Q1 flip spam."""
+        from app.services.moment_comparison import run_narrative_quality_checks, NarrativeCheckConfig
+        from app.services.moments import Moment, MomentType
+        
+        # Create 5 FLIP moments in Q1 (first 100 plays)
+        moments = [
+            Moment(id=f"m_{i}", type=MomentType.FLIP, start_play=i*10, end_play=i*10+5, play_count=6)
+            for i in range(5)
+        ]
+        
+        config = NarrativeCheckConfig(q1_flip_max_count=4)
+        result = run_narrative_quality_checks(moments, final_margin=5, config=config)
+        
+        flag_ids = [f.flag_id for f in result.flags]
+        self.assertIn("q1_flip_spam", flag_ids)
+    
+    def test_detects_q4_underrepresented(self) -> None:
+        """Should flag thin Q4 coverage in close games."""
+        from app.services.moment_comparison import run_narrative_quality_checks, NarrativeCheckConfig
+        from app.services.moments import Moment, MomentType
+        
+        # All moments in first half, none in Q4
+        moments = [
+            Moment(id=f"m_{i}", type=MomentType.NEUTRAL, start_play=i*10, end_play=i*10+9, play_count=10)
+            for i in range(10)
+        ]
+        
+        config = NarrativeCheckConfig(q4_min_count_close_game=4)
+        result = run_narrative_quality_checks(moments, final_margin=3, config=config)
+        
+        flag_ids = [f.flag_id for f in result.flags]
+        self.assertIn("q4_underrepresented", flag_ids)
+    
+    def test_detects_mega_moments(self) -> None:
+        """Should flag mega-moments."""
+        from app.services.moment_comparison import run_narrative_quality_checks, NarrativeCheckConfig
+        from app.services.moments import Moment, MomentType
+        
+        moments = [
+            Moment(id="m_001", type=MomentType.NEUTRAL, start_play=0, end_play=59, play_count=60),
+        ]
+        
+        config = NarrativeCheckConfig(mega_moment_threshold=50)
+        result = run_narrative_quality_checks(moments, config=config)
+        
+        flag_ids = [f.flag_id for f in result.flags]
+        self.assertIn("mega_moment_detected", flag_ids)
+    
+    def test_flags_have_severity(self) -> None:
+        """All flags should have severity (info or warn)."""
+        from app.services.moment_comparison import run_narrative_quality_checks
+        from app.services.moments import Moment, MomentType
+        
+        # Create conditions that trigger multiple flags
+        moments = [
+            Moment(id=f"m_{i}", type=MomentType.FLIP, start_play=i*10, end_play=i*10+5, play_count=6)
+            for i in range(5)
+        ]
+        
+        result = run_narrative_quality_checks(moments, final_margin=3)
+        
+        for flag in result.flags:
+            self.assertIn(flag.severity.value, ["info", "warn"])
+    
+    def test_quality_check_to_dict(self) -> None:
+        """Quality check result should serialize correctly."""
+        from app.services.moment_comparison import run_narrative_quality_checks
+        from app.services.moments import Moment, MomentType
+        
+        moments = [
+            Moment(id="m_001", type=MomentType.NEUTRAL, start_play=0, end_play=10, play_count=11),
+        ]
+        
+        result = run_narrative_quality_checks(moments)
+        result_dict = result.to_dict()
+        
+        self.assertIn("flags", result_dict)
+        self.assertIn("checks_run", result_dict)
+        self.assertIn("has_warnings", result_dict)
+
+
 if __name__ == "__main__":
     unittest.main()

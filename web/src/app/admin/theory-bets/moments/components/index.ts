@@ -3,3 +3,13 @@ export { GenerationTab } from "./GenerationTab";
 export { VersionsTab } from "./VersionsTab";
 export { MomentCard } from "./MomentCard";
 export { PlayTrace } from "./PlayTrace";
+export { CompareVersions } from "./CompareVersions";
+export type {
+  ComparisonData,
+  QualityCheckData,
+  HighLevelSummary,
+  DistributionMetrics,
+  TimelineRow,
+  DisplacementEntry,
+  NarrativeFlag,
+} from "./CompareVersions";
