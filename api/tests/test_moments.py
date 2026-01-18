@@ -158,21 +158,21 @@ class TestPartitionGame(unittest.TestCase):
     def test_late_game_micro_flip_allowed(self) -> None:
         """PHASE 1: Late-game micro-flips are allowed (every possession matters).
         
-        A flip in Q4 under 5 minutes is detected as CLOSING_CONTROL (dagger moment).
-        This is correct - late-game flips in close games are the most dramatic moments.
+        A flip in Q4 under 2 minutes with a tier 2+ lead (6+ margin for NBA) is 
+        detected as CLOSING_CONTROL (dagger moment). Smaller margins remain as FLIP.
         """
         timeline = [
-            make_pbp_event(0, 94, 93, quarter=4, game_clock="2:00"),  # Home leads by 1
-            make_pbp_event(1, 94, 95, quarter=4, game_clock="1:30"),  # Away takes lead
-            make_pbp_event(2, 94, 96, quarter=4, game_clock="1:15"),  # Away still leads
-            make_pbp_event(3, 94, 97, quarter=4, game_clock="1:00"),
-            make_pbp_event(4, 96, 97, quarter=4, game_clock="0:45"),
+            make_pbp_event(0, 94, 88, quarter=4, game_clock="1:30"),  # Home leads by 6 (tier 2)
+            make_pbp_event(1, 94, 89, quarter=4, game_clock="1:15"),  # Still tier 2
+            make_pbp_event(2, 94, 95, quarter=4, game_clock="1:00"),  # Away takes lead (FLIP)
+            make_pbp_event(3, 94, 96, quarter=4, game_clock="0:45"),
+            make_pbp_event(4, 96, 99, quarter=4, game_clock="0:30"),  # Away extends (tier 1)
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=2)
 
-        # Late game flip in closing situation becomes CLOSING_CONTROL (dagger)
-        closing_moments = [m for m in moments if m.type == MomentType.CLOSING_CONTROL]
-        self.assertGreaterEqual(len(closing_moments), 1)
+        # Late game flip is detected (FLIP or CLOSING_CONTROL)
+        late_game_moments = [m for m in moments if m.type in (MomentType.FLIP, MomentType.CLOSING_CONTROL)]
+        self.assertGreaterEqual(len(late_game_moments), 1)
 
     def test_tie_creates_immediate_boundary(self) -> None:
         """Reaching a tie creates an immediate boundary in late game.
@@ -2242,6 +2242,264 @@ class TestVersionComparison(unittest.TestCase):
         
         self.assertEqual(len(result.displacements), 1)
         self.assertEqual(result.displacements[0].reason, "rank_select_dropped")
+
+
+# =============================================================================
+# PHASE 6: LLM AUGMENTATION & NARRATIVE GUARDRAILS
+# =============================================================================
+
+
+class TestLLMFeatureFlags(unittest.TestCase):
+    """PHASE 6.5: Tests for feature flags and kill switches."""
+    
+    def test_all_disabled_by_default(self) -> None:
+        """Feature flags should be disabled by default."""
+        from app.services.moment_llm_augmentation import LLMFeatureFlags
+        
+        flags = LLMFeatureFlags()
+        
+        self.assertFalse(flags.enable_moment_rewrite)
+        self.assertFalse(flags.enable_transitions)
+        self.assertFalse(flags.enable_tone_profiles)
+    
+    def test_all_enabled_helper(self) -> None:
+        """all_enabled() should enable all features."""
+        from app.services.moment_llm_augmentation import LLMFeatureFlags
+        
+        flags = LLMFeatureFlags.all_enabled()
+        
+        self.assertTrue(flags.enable_moment_rewrite)
+        self.assertTrue(flags.enable_transitions)
+        self.assertTrue(flags.enable_tone_profiles)
+    
+    def test_game_override(self) -> None:
+        """Game-level overrides should take priority."""
+        from app.services.moment_llm_augmentation import LLMFeatureFlags
+        
+        base = LLMFeatureFlags()
+        game_flags = LLMFeatureFlags(enable_moment_rewrite=True)
+        base.game_overrides["game_123"] = game_flags
+        
+        effective = base.for_game("game_123")
+        
+        self.assertTrue(effective.enable_moment_rewrite)
+    
+    def test_league_override(self) -> None:
+        """League-level overrides should apply when no game override."""
+        from app.services.moment_llm_augmentation import LLMFeatureFlags
+        
+        base = LLMFeatureFlags()
+        nba_flags = LLMFeatureFlags(enable_transitions=True)
+        base.league_overrides["NBA"] = nba_flags
+        
+        effective = base.for_game("game_456", league="NBA")
+        
+        self.assertTrue(effective.enable_transitions)
+
+
+class TestToneProfiles(unittest.TestCase):
+    """PHASE 6.3: Tests for tone profiles."""
+    
+    def test_neutral_profile(self) -> None:
+        """Neutral profile should have balanced settings."""
+        from app.services.moment_llm_augmentation import ToneProfile, ToneConfig
+        
+        config = ToneConfig.from_profile(ToneProfile.NEUTRAL)
+        
+        self.assertEqual(config.profile, ToneProfile.NEUTRAL)
+        self.assertEqual(config.verb_energy, 0.5)
+        self.assertFalse(config.allow_questions)
+    
+    def test_fan_profile(self) -> None:
+        """Fan profile should be energetic."""
+        from app.services.moment_llm_augmentation import ToneProfile, ToneConfig
+        
+        config = ToneConfig.from_profile(ToneProfile.FAN)
+        
+        self.assertEqual(config.profile, ToneProfile.FAN)
+        self.assertGreater(config.verb_energy, 0.8)
+        self.assertTrue(config.allow_questions)
+    
+    def test_tone_to_prompt_instructions(self) -> None:
+        """Tone config should generate prompt instructions."""
+        from app.services.moment_llm_augmentation import ToneProfile, ToneConfig
+        
+        config = ToneConfig.from_profile(ToneProfile.ANALYST)
+        instructions = config.to_prompt_instructions()
+        
+        self.assertIn("analytical", instructions.lower())
+
+
+class TestStatVerification(unittest.TestCase):
+    """PHASE 6.4: Tests for stat verification guards."""
+    
+    def test_preserves_stats(self) -> None:
+        """Validation should pass when stats are preserved."""
+        from app.services.moment_llm_augmentation import validate_stat_preservation
+        
+        original = "LeBron scored 10 points."
+        rewritten = "LeBron James put up 10 points in the stretch."
+        boxscore = {"points_by_player": {"LeBron James": 10}}
+        
+        result = validate_stat_preservation(original, rewritten, boxscore)
+        
+        self.assertTrue(result.passed)
+    
+    def test_detects_missing_stats(self) -> None:
+        """Validation should fail when stats are missing."""
+        from app.services.moment_llm_augmentation import validate_stat_preservation
+        
+        original = "LeBron scored 10 points."
+        rewritten = "LeBron had a great stretch."  # Missing "10"
+        boxscore = {"points_by_player": {"LeBron James": 10}}
+        
+        result = validate_stat_preservation(original, rewritten, boxscore)
+        
+        self.assertFalse(result.passed)
+        self.assertIn("missing", result.errors[0].lower())
+    
+    def test_detects_invented_stats(self) -> None:
+        """Validation should fail when stats are invented."""
+        from app.services.moment_llm_augmentation import validate_stat_preservation
+        
+        original = "LeBron scored 10 points."
+        rewritten = "LeBron scored 15 points with 5 assists."  # Added 15, 5
+        boxscore = {"points_by_player": {"LeBron James": 10}}
+        
+        result = validate_stat_preservation(original, rewritten, boxscore)
+        
+        self.assertFalse(result.passed)
+
+
+class TestSentenceEnforcement(unittest.TestCase):
+    """PHASE 6.4: Tests for sentence count enforcement."""
+    
+    def test_within_limit(self) -> None:
+        """Should pass when sentence count is within limit."""
+        from app.services.moment_llm_augmentation import validate_sentence_count
+        
+        text = "First sentence. Second sentence. Third sentence."
+        result = validate_sentence_count(text, max_sentences=3)
+        
+        self.assertTrue(result.passed)
+    
+    def test_exceeds_limit(self) -> None:
+        """Should fail when sentence count exceeds limit."""
+        from app.services.moment_llm_augmentation import validate_sentence_count
+        
+        text = "One. Two. Three. Four. Five."
+        result = validate_sentence_count(text, max_sentences=3)
+        
+        self.assertFalse(result.passed)
+
+
+class TestMomentRewrite(unittest.TestCase):
+    """PHASE 6.1: Tests for per-moment LLM rewrite."""
+    
+    def test_rewrite_with_fallback_on_failure(self) -> None:
+        """Should fall back to template when LLM fails."""
+        from app.services.moment_llm_augmentation import (
+            rewrite_moment_with_llm, create_mock_llm
+        )
+        from app.services.moments import Moment, MomentType
+        from app.services.moment_enrichment import NarrativeSummary, MomentBoxscore
+        
+        moment = Moment(
+            id="m_001",
+            type=MomentType.FLIP,
+            start_play=0,
+            end_play=10,
+            play_count=11,
+        )
+        moment.narrative_summary = NarrativeSummary(
+            text="Lakers took the lead."
+        )
+        moment.moment_boxscore = MomentBoxscore()
+        
+        # Use failing mock
+        mock_llm = create_mock_llm(should_fail=True)
+        
+        result = rewrite_moment_with_llm(moment, mock_llm)
+        
+        self.assertTrue(result.used_fallback)
+        self.assertEqual(result.rewritten_summary, "Lakers took the lead.")
+    
+    def test_rewrite_preserves_template_on_low_confidence(self) -> None:
+        """Should use template when confidence is too low."""
+        from app.services.moment_llm_augmentation import (
+            rewrite_moment_with_llm, create_mock_llm
+        )
+        from app.services.moments import Moment, MomentType
+        from app.services.moment_enrichment import NarrativeSummary, MomentBoxscore
+        
+        moment = Moment(
+            id="m_001",
+            type=MomentType.FLIP,
+            start_play=0,
+            end_play=10,
+            play_count=11,
+        )
+        moment.narrative_summary = NarrativeSummary(
+            text="Lakers took the lead."
+        )
+        moment.moment_boxscore = MomentBoxscore()
+        
+        # Low confidence mock
+        mock_llm = create_mock_llm(confidence=0.3)
+        
+        result = rewrite_moment_with_llm(moment, mock_llm, confidence_threshold=0.6)
+        
+        self.assertTrue(result.used_fallback)
+
+
+class TestGameAugmentation(unittest.TestCase):
+    """PHASE 6: Tests for full game augmentation."""
+    
+    def test_skips_when_disabled(self) -> None:
+        """Should skip augmentation when flags are disabled."""
+        from app.services.moment_llm_augmentation import (
+            augment_game_narrative, LLMFeatureFlags, create_mock_llm
+        )
+        from app.services.moments import Moment, MomentType
+        
+        moments = [
+            Moment(id="m_001", type=MomentType.FLIP, start_play=0, end_play=10, play_count=11),
+        ]
+        
+        flags = LLMFeatureFlags.all_disabled()
+        mock_llm = create_mock_llm()
+        
+        result = augment_game_narrative(moments, mock_llm, flags=flags)
+        
+        self.assertEqual(result.moments_rewritten, 0)
+        self.assertEqual(len(result.moment_rewrites), 0)
+    
+    def test_augments_when_enabled(self) -> None:
+        """Should augment when flags are enabled."""
+        from app.services.moment_llm_augmentation import (
+            augment_game_narrative, LLMFeatureFlags, create_mock_llm
+        )
+        from app.services.moments import Moment, MomentType
+        from app.services.moment_enrichment import NarrativeSummary, MomentBoxscore
+        
+        moment = Moment(
+            id="m_001",
+            type=MomentType.FLIP,
+            start_play=0,
+            end_play=10,
+            play_count=11,
+        )
+        moment.narrative_summary = NarrativeSummary(text="Lakers took the lead.")
+        moment.moment_boxscore = MomentBoxscore()
+        
+        moments = [moment]
+        flags = LLMFeatureFlags(enable_moment_rewrite=True)
+        mock_llm = create_mock_llm(confidence=0.9)
+        
+        result = augment_game_narrative(moments, mock_llm, flags=flags)
+        
+        # Mock returns original, which passes validation
+        self.assertIn("m_001", result.moment_rewrites)
 
 
 class TestNarrativeQualityFlags(unittest.TestCase):

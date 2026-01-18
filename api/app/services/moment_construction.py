@@ -943,7 +943,6 @@ def find_split_points(
     
     # Track state
     prev_tier = moment.ladder_tier_before
-    prev_leader: str | None = None
     run_tracker: dict[str, int] = {"home": 0, "away": 0}
     last_scorer: str | None = None
     
@@ -1178,7 +1177,7 @@ def apply_mega_moment_splitting(
     Returns:
         SplittingResult with split moments
     """
-    from .moments import Moment, MomentType, MomentReason
+    from .moments import Moment, MomentReason
     
     result = SplittingResult()
     output_moments: list[Moment] = []

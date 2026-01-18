@@ -263,7 +263,6 @@ def _compute_margin_weight(
     # Use the ENDING tier to determine current game state
     # A moment that ends in tier 3+ is less interesting regardless of where it started
     end_tier = tier_after
-    start_tier = tier_before
     
     # Tier-based bonuses (close games matter more)
     if end_tier == 0:
