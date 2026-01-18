@@ -28,8 +28,6 @@ from .config import (
     EARLY_GAME_PROGRESS_THRESHOLD,
     MID_GAME_PROGRESS_THRESHOLD,
     EARLY_GAME_MIN_TIER_FOR_IMMEDIATE,
-    DEFAULT_CLOSING_SECONDS,
-    DEFAULT_CLOSING_TIER,
     HIGH_IMPACT_PLAY_TYPES,
 )
 
@@ -92,14 +90,12 @@ def get_game_progress(event: dict[str, Any], sport: str | None = None) -> float:
 
     Uses quarter/period and game clock to determine how far into the game we are.
     Used for time-aware gating of FLIP/TIE triggers.
-    
+
     SPORT-AGNOSTIC: Uses unified game structure.
     - NBA: 4 quarters × 12 min
     - NCAAB: 2 halves × 20 min
     - NHL: 3 periods × 20 min
     - NFL: 4 quarters × 15 min
-    
-    When a GamePhaseContext is available, uses that for consistency.
 
     Args:
         event: Timeline event with quarter/period and game_clock
@@ -108,17 +104,8 @@ def get_game_progress(event: dict[str, Any], sport: str | None = None) -> float:
     Returns:
         Float from 0.0 (game start) to 1.0 (end of regulation), >1.0 in OT
     """
-    from .game_structure import compute_game_progress, get_current_phase_context
-    
-    # Use global context if available for consistency
-    context = get_current_phase_context()
-    if context is not None:
-        # Get event index if available
-        event_idx = event.get("_original_index")
-        if event_idx is not None:
-            # Need events list - fall back to direct computation
-            pass
-    
+    from .game_structure import compute_game_progress
+
     return compute_game_progress(event, sport)
 
 
@@ -222,40 +209,6 @@ def should_gate_early_tie(
         return False
 
     return True
-
-
-def is_closing_situation(
-    event: dict[str, Any],
-    lead_state: LeadState,
-    closing_seconds: int = DEFAULT_CLOSING_SECONDS,
-    closing_max_tier: int = DEFAULT_CLOSING_TIER,
-) -> bool:
-    """Check if we're in a closing situation (late game, close score).
-
-    DEPRECATED: Use classify_closing_situation() from moments.closing for
-    the unified closing taxonomy with explicit categories.
-
-    This function returns True for CLOSE_GAME_CLOSING situations.
-    For the full classification including DECIDED_GAME_CLOSING, use
-    the new unified API.
-
-    Closing is defined as:
-    - Late in the game (configurable threshold)
-    - Lead tier is at or below closing_max_tier
-
-    Used to detect CLOSING_CONTROL moments (daggers).
-    """
-    from .closing import classify_closing_situation, ClosingCategory
-    
-    classification = classify_closing_situation(
-        event=event,
-        lead_state=lead_state,
-        closing_window_seconds=closing_seconds,
-        close_game_max_tier=closing_max_tier,
-    )
-    
-    # Legacy behavior: return True for close game closing
-    return classification.category == ClosingCategory.CLOSE_GAME_CLOSING
 
 
 def extract_moment_context(

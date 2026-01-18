@@ -171,7 +171,7 @@ NFL_STRUCTURE = GameStructure(
     late_game_window_seconds=120,  # 2 min warning
 )
 
-# Default structure (NBA-like for backward compatibility)
+# Default structure (NBA)
 DEFAULT_STRUCTURE = NBA_STRUCTURE
 
 # Registry of sport structures
@@ -794,33 +794,3 @@ def build_game_phase_context(
     )
     
     return context
-
-
-# =============================================================================
-# LEGACY COMPATIBILITY HELPERS
-# =============================================================================
-# These functions maintain backward compatibility while delegating to the
-# new authoritative context when available.
-
-_current_context: GamePhaseContext | None = None
-
-
-def set_current_phase_context(context: GamePhaseContext | None) -> None:
-    """Set the current game phase context for legacy functions.
-    
-    This allows legacy functions to use the authoritative context
-    without requiring signature changes everywhere.
-    """
-    global _current_context
-    _current_context = context
-
-
-def get_current_phase_context() -> GamePhaseContext | None:
-    """Get the current game phase context."""
-    return _current_context
-
-
-def clear_phase_context() -> None:
-    """Clear the current phase context (call after game processing)."""
-    global _current_context
-    _current_context = None

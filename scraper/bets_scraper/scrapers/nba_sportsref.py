@@ -504,4 +504,3 @@ class NBASportsReferenceScraper(BaseSportsReferenceScraper):
         )
 
         return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)
-

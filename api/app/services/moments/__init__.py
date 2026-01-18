@@ -19,8 +19,6 @@ from .types import (
 # Configuration
 from .config import (
     ALWAYS_MERGE_TYPES,
-    DEFAULT_CLOSING_SECONDS,
-    DEFAULT_CLOSING_TIER,
     DEFAULT_FLIP_HYSTERESIS_PLAYS,
     DEFAULT_HYSTERESIS_PLAYS,
     DEFAULT_MOMENT_BUDGET,
@@ -89,9 +87,6 @@ from .game_structure import (
     is_late_game,
     is_closing_window,
     get_phase_label,
-    set_current_phase_context,
-    get_current_phase_context,
-    clear_phase_context,
     # Phase thresholds
     DEFAULT_EARLY_GAME_THRESHOLD,
     DEFAULT_MID_GAME_THRESHOLD,
@@ -149,9 +144,6 @@ __all__ = [
     "is_late_game",
     "is_closing_window",
     "get_phase_label",
-    "set_current_phase_context",
-    "get_current_phase_context",
-    "clear_phase_context",
     "DEFAULT_EARLY_GAME_THRESHOLD",
     "DEFAULT_MID_GAME_THRESHOLD",
     "DEFAULT_LATE_GAME_THRESHOLD",
@@ -164,8 +156,6 @@ __all__ = [
     "SPORT_STRUCTURES",
     # Configuration
     "ALWAYS_MERGE_TYPES",
-    "DEFAULT_CLOSING_SECONDS",
-    "DEFAULT_CLOSING_TIER",
     "CLOSING_WINDOW_SECONDS",
     "CLOSE_GAME_MAX_TIER",
     "CLOSE_GAME_POSSESSION_THRESHOLD",

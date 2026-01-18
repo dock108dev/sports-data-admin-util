@@ -20,9 +20,6 @@ DEFAULT_TIE_HYSTERESIS_PLAYS = 1
 # =============================================================================
 # TIME-AWARE GATING CONFIGURATION
 # =============================================================================
-# NOTE: These thresholds are also defined in game_structure.py as the
-# authoritative source. These are kept for backward compatibility.
-# See game_structure.DEFAULT_*_THRESHOLD for the canonical values.
 
 # Game progress thresholds for phase detection (percentage-based)
 EARLY_GAME_PROGRESS_THRESHOLD = 0.35  # First ~35% = early game
@@ -57,10 +54,6 @@ CLOSE_GAME_POSSESSION_THRESHOLD = 6  # Margin <= this = within one possession
 # DECIDED_GAME_CLOSING thresholds  
 DECIDED_GAME_MIN_TIER = 2  # Tier >= this = game decided
 DECIDED_GAME_SAFE_MARGIN = 10  # Margin > this = safe lead
-
-# Legacy aliases (for backward compatibility)
-DEFAULT_CLOSING_SECONDS = CLOSING_WINDOW_SECONDS
-DEFAULT_CLOSING_TIER = CLOSE_GAME_MAX_TIER
 
 # =============================================================================
 # HIGH-IMPACT PLAY TYPES

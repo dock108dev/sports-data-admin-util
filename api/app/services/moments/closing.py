@@ -138,12 +138,6 @@ class ClosingClassification:
     def is_decided_game(self) -> bool:
         """True if in decided game closing (compression mode)."""
         return self.category == ClosingCategory.DECIDED_GAME_CLOSING
-    
-    # Backward compatibility
-    @property
-    def quarter(self) -> int:
-        """Alias for phase_number (backward compatibility)."""
-        return self.phase_number
 
 
 def classify_closing_situation(

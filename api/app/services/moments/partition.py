@@ -42,8 +42,6 @@ from .helpers import create_moment, get_score, is_period_opener
 from .mega_moments import detect_back_and_forth_phase, find_quarter_boundaries, split_mega_moment
 from .game_structure import (
     build_game_phase_context,
-    set_current_phase_context,
-    clear_phase_context,
     GamePhaseContext,
 )
 
@@ -100,10 +98,9 @@ def partition_game(
     # Determine sport from summary
     sport = summary.get("sport", "NBA") if isinstance(summary, dict) else "NBA"
 
-    # Build authoritative game phase context (SINGLE SOURCE OF TRUTH)
+    # Build authoritative game phase context
     phase_context = build_game_phase_context(events, sport=sport)
-    set_current_phase_context(phase_context)
-    
+
     logger.info(
         "game_phase_context_initialized",
         extra=phase_context.to_dict(),
@@ -533,9 +530,6 @@ def partition_game(
             "phase_context": phase_context.to_dict(),
         },
     )
-
-    # Clear the global phase context after processing
-    clear_phase_context()
 
     return moments
 
