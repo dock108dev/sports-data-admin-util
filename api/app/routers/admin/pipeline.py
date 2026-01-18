@@ -97,13 +97,14 @@ class StartPipelineRequest(BaseModel):
                     "None = infer from triggered_by (admin/manual always False)",
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "triggered_by": "admin",
                 "auto_chain": False,
             }
         }
+    }
 
 
 class RerunPipelineRequest(BaseModel):
@@ -126,14 +127,15 @@ class RerunPipelineRequest(BaseModel):
         description="Optional reason for re-running (for audit trail)",
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "triggered_by": "admin",
                 "execute_through_stage": "GENERATE_MOMENTS",
                 "reason": "Testing new threshold values",
             }
         }
+    }
 
 
 class ExecuteStageRequest(BaseModel):

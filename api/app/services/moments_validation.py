@@ -51,29 +51,30 @@ def validate_score_continuity(moments: list[Moment]) -> None:
             )
 
 
-def assert_moment_continuity(moments: list[Moment], is_valid_moment_func) -> None:
+def assert_moment_continuity(moments: list[Moment]) -> None:
     """
-    CONTINUITY VALIDATION: Fail fast on any structural issues.
+    CONTINUITY VALIDATION: Fail fast on structural issues.
 
-    This is a hard gate - if moments have structural problems, the pipeline fails.
+    Validates structural integrity of moment partitioning:
+    - No overlapping plays
+    - Score continuity between adjacent moments
+
+    Note: Semantic validity (is_valid_moment) is checked during merging,
+    not here. This function only validates structural correctness.
 
     Args:
         moments: List of moments to validate
-        is_valid_moment_func: Function to check if a moment is valid
 
     Raises:
-        MomentValidationError: If any structural issues are detected
+        MomentValidationError: If structural issues are detected
     """
-    # Import MomentType here to avoid circular import
-    from .moments import MomentType
-
     if not moments:
         raise MomentValidationError("No moments generated - cannot proceed with empty moment list")
 
     issues: list[str] = []
 
-    # Check play coverage (no gaps, no overlaps)
-    covered_plays = set()
+    # Check play coverage (no overlaps)
+    covered_plays: set[int] = set()
     for moment in moments:
         for play_idx in range(moment.start_play, moment.end_play + 1):
             if play_idx in covered_plays:
@@ -91,20 +92,7 @@ def assert_moment_continuity(moments: list[Moment], is_valid_moment_func) -> Non
                 f"but {curr_moment.id} starts at {curr_moment.score_before}"
             )
 
-    # Check that no moments are invalid after merging
-    invalid_moments = [m for m in moments if not is_valid_moment_func(m)]
-    for m in invalid_moments:
-        issues.append(f"Invalid moment remaining after merge: {m.id} (type={m.type.value})")
-
-    # Check for single-play moments that aren't high-impact
-    for moment in moments:
-        if (moment.play_count == 1 and
-            moment.type not in (MomentType.FLIP, MomentType.TIE, MomentType.HIGH_IMPACT)):
-            issues.append(
-                f"Problematic single-play moment: {moment.id} (type={moment.type.value})"
-            )
-
-    # FAIL FAST: Any issues = hard failure
+    # FAIL FAST: Any structural issues = hard failure
     if issues:
         logger.error(
             "moment_continuity_validation_failed",

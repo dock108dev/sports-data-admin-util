@@ -7,7 +7,7 @@ and individual stage implementations.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -89,7 +89,7 @@ class StageOutput:
     def add_log(self, message: str, level: str = "info") -> None:
         """Add a log entry."""
         self.logs.append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": level,
             "message": message,
         })

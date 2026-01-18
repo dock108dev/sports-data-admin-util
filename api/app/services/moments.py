@@ -1134,8 +1134,8 @@ def partition_game(
     # Validate score continuity
     validate_score_continuity(moments)  # From moments_validation module
 
-    # CONTINUITY VALIDATION: Log issues but don't crash
-    assert_moment_continuity(moments, is_valid_moment)  # From moments_validation module
+    # CONTINUITY VALIDATION: Structural integrity check
+    assert_moment_continuity(moments)  # From moments_validation module
 
     # Renumber moment IDs after merging
     for i, m in enumerate(moments):
