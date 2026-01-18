@@ -40,6 +40,12 @@ from .types import Moment, MomentType, RunInfo
 from .config import DEFAULT_HYSTERESIS_PLAYS, DEFAULT_FLIP_HYSTERESIS_PLAYS, DEFAULT_TIE_HYSTERESIS_PLAYS
 from .helpers import create_moment, get_score, is_period_opener
 from .mega_moments import detect_back_and_forth_phase, find_quarter_boundaries, split_mega_moment
+from .game_structure import (
+    build_game_phase_context,
+    set_current_phase_context,
+    clear_phase_context,
+    GamePhaseContext,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +97,18 @@ def partition_game(
             },
         )
 
+    # Determine sport from summary
+    sport = summary.get("sport", "NBA") if isinstance(summary, dict) else "NBA"
+
+    # Build authoritative game phase context (SINGLE SOURCE OF TRUTH)
+    phase_context = build_game_phase_context(events, sport=sport)
+    set_current_phase_context(phase_context)
+    
+    logger.info(
+        "game_phase_context_initialized",
+        extra=phase_context.to_dict(),
+    )
+
     # Get CANONICAL PBP event indices
     pbp_indices = get_canonical_pbp_indices(events)
     if not pbp_indices:
@@ -106,7 +124,7 @@ def partition_game(
         thresholds = [5]
 
     # Detect tier-based boundaries
-    tier_boundaries = detect_boundaries(
+    tier_boundaries, density_gate_decisions, tier_false_drama = detect_boundaries(
         events,
         pbp_indices,
         thresholds,
@@ -115,11 +133,78 @@ def partition_game(
         tie_hysteresis_plays,
     )
 
+    # Log density gating results if any FLIP/TIE events were processed
+    if density_gate_decisions:
+        suppressed = [d for d in density_gate_decisions if d.density_gate_applied]
+        if suppressed:
+            logger.info(
+                "flip_tie_density_gating_applied",
+                extra={
+                    "total_evaluated": len(density_gate_decisions),
+                    "suppressed_count": len(suppressed),
+                    "suppressed_events": [
+                        {
+                            "index": d.event_index,
+                            "type": d.crossing_type,
+                            "reason": d.reason,
+                            "plays_since_last": (
+                                d.current_canonical_pos - d.last_flip_tie_canonical_pos
+                                if d.last_flip_tie_canonical_pos is not None else None
+                            ),
+                        }
+                        for d in suppressed
+                    ],
+                },
+            )
+
+    # Log late false drama suppression for tier boundaries
+    if tier_false_drama:
+        suppressed = [d for d in tier_false_drama if d.suppressed]
+        if suppressed:
+            logger.info(
+                "late_false_drama_tier_suppression",
+                extra={
+                    "total_evaluated": len(tier_false_drama),
+                    "suppressed_count": len(suppressed),
+                    "suppressed_events": [
+                        {
+                            "index": d.event_index,
+                            "type": d.crossing_type,
+                            "margin": d.margin_after,
+                            "tier": d.tier_after,
+                            "seconds": d.seconds_remaining,
+                        }
+                        for d in suppressed
+                    ],
+                },
+            )
+
     # Detect runs and evaluate for boundary creation
     runs = detect_runs(events)
-    run_boundaries, run_decisions = detect_run_boundaries(
+    run_boundaries, run_decisions, run_false_drama = detect_run_boundaries(
         events, runs, thresholds, tier_boundaries
     )
+    
+    # Log late false drama suppression for run boundaries
+    if run_false_drama:
+        suppressed = [d for d in run_false_drama if d.suppressed]
+        if suppressed:
+            logger.info(
+                "late_false_drama_run_suppression",
+                extra={
+                    "total_evaluated": len(run_false_drama),
+                    "suppressed_count": len(suppressed),
+                    "suppressed_runs": [
+                        {
+                            "index": d.event_index,
+                            "margin": d.margin_after,
+                            "tier": d.tier_after,
+                            "seconds": d.seconds_remaining,
+                        }
+                        for d in suppressed
+                    ],
+                },
+            )
 
     if run_boundaries:
         logger.info(
@@ -307,7 +392,7 @@ def partition_game(
 
     moments = split_moments
 
-    sport = summary.get("sport", "NBA") if isinstance(summary, dict) else "NBA"
+    # sport already determined at start of function
 
     # Renumber moment IDs
     for i, m in enumerate(moments):
@@ -445,8 +530,12 @@ def partition_game(
                 else 0
             ),
             "notable_count": sum(1 for m in moments if m.is_notable),
+            "phase_context": phase_context.to_dict(),
         },
     )
+
+    # Clear the global phase context after processing
+    clear_phase_context()
 
     return moments
 

@@ -93,9 +93,14 @@ def compute_game_signals(
     events: Sequence[dict[str, Any]],
     moments: list["Moment"],
     thresholds: Sequence[int],
+    sport: str | None = None,
 ) -> GameSignals:
-    """Extract game-level signals from timeline and moments."""
+    """Extract game-level signals from timeline and moments.
+    
+    SPORT-AGNOSTIC: Uses unified game structure for late-game detection.
+    """
     from ..lead_ladder import compute_lead_state, Leader
+    from ..moments.game_structure import compute_game_phase_state
 
     signals = GameSignals()
 
@@ -112,9 +117,11 @@ def compute_game_signals(
     for i, event in enumerate(pbp_events):
         home = event.get("home_score", 0) or 0
         away = event.get("away_score", 0) or 0
-        quarter = event.get("quarter", 1) or 1
 
         state = compute_lead_state(home, away, thresholds)
+        
+        # Use sport-agnostic phase detection
+        phase_state = compute_game_phase_state(event, sport)
 
         if state.tier <= 1:
             signals.plays_in_close_range += 1
@@ -122,7 +129,8 @@ def compute_game_signals(
         if prev_leader is not None and state.leader != prev_leader:
             if prev_leader != Leader.TIED and state.leader != Leader.TIED:
                 signals.total_lead_changes += 1
-                if quarter >= 4:
+                # Use is_final_phase instead of quarter >= 4
+                if phase_state.is_final_phase:
                     signals.late_lead_changes += 1
 
         margin = home - away

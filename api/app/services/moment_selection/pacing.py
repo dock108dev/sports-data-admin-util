@@ -14,7 +14,7 @@ from typing import Any, Sequence, TYPE_CHECKING
 
 from .config import BudgetConfig, PacingConfig, DEFAULT_BUDGET_CONFIG, DEFAULT_PACING_CONFIG
 from .rank_select import RankSelectResult, rank_and_select
-from .dynamic_budget import GameSignals, DynamicBudget, compute_game_signals, compute_dynamic_budget
+from .dynamic_budget import DynamicBudget, compute_game_signals, compute_dynamic_budget
 
 if TYPE_CHECKING:
     from ..moments import Moment
@@ -108,30 +108,43 @@ class SelectionResult:
 def classify_moment_act(
     moment: "Moment",
     events: Sequence[dict[str, Any]],
+    sport: str | None = None,
 ) -> tuple[str, int | None, bool, bool]:
     """Classify a moment into narrative acts.
+    
+    SPORT-AGNOSTIC: Uses game progress instead of quarter numbers.
+    Works for NBA (quarters), NCAAB (halves), NHL (periods), etc.
 
     Returns:
-        Tuple of (act, quarter, is_early_game, is_closing)
+        Tuple of (act, phase_number, is_early_game, is_closing)
     """
+    from ..moments.game_structure import compute_game_phase_state
+    
     start_idx = moment.start_play
-    quarter = None
+    phase_number = None
+    
     if 0 <= start_idx < len(events):
-        quarter = events[start_idx].get("quarter")
-
-    is_early_game = quarter is not None and quarter <= 2
-    is_closing = quarter is not None and quarter >= 4
-
-    if quarter is None:
-        act = "unknown"
-    elif quarter == 1:
-        act = "opening"
-    elif quarter in (2, 3):
-        act = "middle"
+        event = events[start_idx]
+        phase_state = compute_game_phase_state(event, sport)
+        phase_number = phase_state.phase_number
+        
+        # Use progress-based classification (sport-agnostic)
+        is_early_game = phase_state.game_progress <= 0.35
+        is_closing = phase_state.is_final_phase
+        
+        # Classify into narrative acts based on progress
+        if phase_state.game_progress <= 0.25:
+            act = "opening"
+        elif phase_state.game_progress <= 0.75:
+            act = "middle"
+        else:
+            act = "closing"
     else:
-        act = "closing"
+        is_early_game = False
+        is_closing = False
+        act = "unknown"
 
-    return act, quarter, is_early_game, is_closing
+    return act, phase_number, is_early_game, is_closing
 
 
 def select_moments_with_pacing(

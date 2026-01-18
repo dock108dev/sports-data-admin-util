@@ -20,10 +20,13 @@ DEFAULT_TIE_HYSTERESIS_PLAYS = 1
 # =============================================================================
 # TIME-AWARE GATING CONFIGURATION
 # =============================================================================
+# NOTE: These thresholds are also defined in game_structure.py as the
+# authoritative source. These are kept for backward compatibility.
+# See game_structure.DEFAULT_*_THRESHOLD for the canonical values.
 
-# Game progress thresholds for phase detection
-EARLY_GAME_PROGRESS_THRESHOLD = 0.35  # First ~35% (Q1 + early Q2)
-MID_GAME_PROGRESS_THRESHOLD = 0.75  # Mid-game ends at ~75% (late Q3)
+# Game progress thresholds for phase detection (percentage-based)
+EARLY_GAME_PROGRESS_THRESHOLD = 0.35  # First ~35% = early game
+MID_GAME_PROGRESS_THRESHOLD = 0.75  # 35-75% = mid game (late game starts at 75%+)
 
 # Minimum tier for early-game FLIP/TIE to bypass hysteresis
 EARLY_GAME_MIN_TIER_FOR_IMMEDIATE = 1
@@ -31,10 +34,33 @@ EARLY_GAME_MIN_TIER_FOR_IMMEDIATE = 1
 # =============================================================================
 # CLOSING SITUATION CONFIGURATION
 # =============================================================================
+# UNIFIED CLOSING TAXONOMY:
+# There are TWO types of closing situations with different behaviors:
+#
+# 1. CLOSE_GAME_CLOSING (expansion mode)
+#    - Q4/OT with limited time remaining
+#    - Game is competitive (tier <= 1 OR margin <= possession threshold)
+#    - Behavior: expand, allow micro-moments, relax density gating
+#
+# 2. DECIDED_GAME_CLOSING (compression mode)
+#    - Q4/OT with limited time remaining
+#    - Game is decided (tier >= 2 AND margin > safe margin)
+#    - Behavior: suppress cuts, absorb runs, no semantic escalation
 
-# Default thresholds for closing detection
-DEFAULT_CLOSING_SECONDS = 300  # 5 minutes
-DEFAULT_CLOSING_TIER = 1  # Max tier for "close" game
+# Shared window - both closing types use the same time window
+CLOSING_WINDOW_SECONDS = 300  # 5 minutes (final window for closing checks)
+
+# CLOSE_GAME_CLOSING thresholds
+CLOSE_GAME_MAX_TIER = 1  # Tier <= this = close game
+CLOSE_GAME_POSSESSION_THRESHOLD = 6  # Margin <= this = within one possession
+
+# DECIDED_GAME_CLOSING thresholds  
+DECIDED_GAME_MIN_TIER = 2  # Tier >= this = game decided
+DECIDED_GAME_SAFE_MARGIN = 10  # Margin > this = safe lead
+
+# Legacy aliases (for backward compatibility)
+DEFAULT_CLOSING_SECONDS = CLOSING_WINDOW_SECONDS
+DEFAULT_CLOSING_TIER = CLOSE_GAME_MAX_TIER
 
 # =============================================================================
 # HIGH-IMPACT PLAY TYPES

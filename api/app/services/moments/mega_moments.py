@@ -4,6 +4,11 @@ This module handles:
 - Back-and-forth phase detection
 - Quarter boundary finding
 - Splitting oversized moments into smaller chunks
+
+IMPORTANT INVARIANT:
+Split moments must NEVER be typed as FLIP or TIE.
+FLIP and TIE moments can ONLY originate from boundary detection
+(`detect_boundaries()`), never from splitting.
 """
 
 from __future__ import annotations
@@ -17,6 +22,14 @@ from .types import Moment, MomentType
 from .helpers import create_moment, get_score
 
 logger = logging.getLogger(__name__)
+
+
+# Types that are FORBIDDEN for split moments
+# These can only originate from boundary detection
+FORBIDDEN_SPLIT_TYPES: frozenset[str] = frozenset({
+    "FLIP",
+    "TIE",
+})
 
 
 def detect_back_and_forth_phase(
@@ -173,16 +186,29 @@ def split_mega_moment(
         start_state = compute_lead_state(score_before[0], score_before[1], thresholds)
         end_state = compute_lead_state(score_after[0], score_after[1], thresholds)
 
-        if start_state.leader != end_state.leader:
-            sub_type = (
-                MomentType.FLIP if end_state.leader != Leader.TIED else MomentType.TIE
-            )
-        elif end_state.tier > start_state.tier:
+        # INVARIANT: Split moments must NEVER be FLIP or TIE
+        # These types can only originate from boundary detection
+        # Determine type based on tier change instead of leader change
+        if end_state.tier > start_state.tier:
             sub_type = MomentType.LEAD_BUILD
         elif end_state.tier < start_state.tier:
             sub_type = MomentType.CUT
         else:
             sub_type = MomentType.NEUTRAL
+        
+        # Log if we would have created a forbidden type
+        if start_state.leader != end_state.leader:
+            would_be_type = "FLIP" if end_state.leader != Leader.TIED else "TIE"
+            logger.debug(
+                "split_moment_type_normalized",
+                extra={
+                    "parent_moment_id": moment.id,
+                    "segment_index": moment_id_counter,
+                    "would_be_type": would_be_type,
+                    "actual_type": sub_type.value,
+                    "reason": "split_moments_cannot_be_flip_or_tie",
+                },
+            )
 
         sub_moment = create_moment(
             moment_id=moment_id_counter,
@@ -206,13 +232,39 @@ def split_mega_moment(
     # Create final sub-moment
     if current_start <= moment.end_play:
         score_before = current_score_before
+        
+        # INVARIANT: Split moments must NEVER be FLIP or TIE
+        # If the parent moment is FLIP or TIE, normalize to tier-based type
+        parent_type_value = moment.type.value if hasattr(moment.type, 'value') else str(moment.type)
+        if parent_type_value in FORBIDDEN_SPLIT_TYPES:
+            # Determine replacement type based on tier dynamics
+            tier_delta = moment.ladder_tier_after - moment.ladder_tier_before
+            if tier_delta > 0:
+                final_type = MomentType.LEAD_BUILD
+            elif tier_delta < 0:
+                final_type = MomentType.CUT
+            else:
+                final_type = MomentType.NEUTRAL
+            
+            logger.debug(
+                "split_moment_type_normalized",
+                extra={
+                    "parent_moment_id": moment.id,
+                    "segment_index": moment_id_counter,
+                    "would_be_type": parent_type_value,
+                    "actual_type": final_type.value,
+                    "reason": "split_moments_cannot_be_flip_or_tie",
+                },
+            )
+        else:
+            final_type = moment.type
 
         sub_moment = create_moment(
             moment_id=moment_id_counter,
             events=events,
             start_idx=current_start,
             end_idx=moment.end_play,
-            moment_type=moment.type,
+            moment_type=final_type,
             thresholds=thresholds,
             boundary=None,
             score_before=score_before,
