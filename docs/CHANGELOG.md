@@ -98,45 +98,6 @@ All notable changes to Sports Data Admin.
 - Hardcoded "NBA" defaults in scheduler, tasks, and API endpoints
 - Empty directories and unused files
 
-## [Unreleased]
-
-### Added
-- Reading position storage endpoints for tracking user progress through games
-- Score redaction filter for reveal-safe summaries and posts
-- Score checkpoint integration to API
-- AI summary retrieval endpoint for compact moments
-- AI summary generator service for moments (OpenAI with fallback)
-- Compact moment posts endpoint
-- Compact moment PBP slice endpoint
-- Compact moments endpoint (`GET /games/{id}/compact`)
-- Finalized game timeline artifacts with NBA timeline generation + read endpoint
-- Game analysis JSON for segmented timelines and highlight extraction
-- `game_reading_positions` table for storing user read positions
-- `compact_mode_thresholds` table with per-sport defaults
-- `updated_at` columns on `game_social_posts` and `sports_game_plays`
-- Social post content fields: `tweet_text`, `video_url`, `image_url`, `source_handle`, `media_type`
-- Twitter embed widget for video posts in admin UI
-- Pagination for social posts (10 per page)
-- Live feed polling for NBA/NHL status updates
-- Live play-by-play ingestion with append-only event storage
-- NHL team X handle registry with validation helper
-- NHL play-by-play ingestion via Hockey-Reference
-- Production Docker Compose profile
-
-### Changed
-- Docker compose now connects to host database via `host.docker.internal`
-- Auto-migrations disabled by default (`RUN_MIGRATIONS=false`)
-- Migrations are now run explicitly via the `migrate` compose service
-- Destructive restore utilities now require `CONFIRM_DESTRUCTIVE=true`
-- Social scraper performs upsert (updates existing posts)
-- Ingestion config simplified to data type toggles + shared filters
-- NBA timeline synthesis now treats regulation and halftime as separate fixed blocks
-
-### Fixed
-- Fixed compact mode threshold model restoration
-- Fixed timezone handling in social scraper
-- Fixed duplicate Twitter embeds in React StrictMode
-
 ## [2024-12-30]
 
 ### Added
