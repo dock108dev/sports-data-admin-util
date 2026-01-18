@@ -42,12 +42,22 @@ app.conf.task_routes = {
 # Daily NBA ingestion at 8 AM US Eastern (12:00 UTC during EDT, 13:00 UTC during EST)
 # Using 12:00 UTC to align with 8 AM during Eastern Daylight Time (March-November).
 # During Eastern Standard Time (November-March), this will run at 7 AM EST.
+#
+# Timeline generation runs 90 minutes after ingestion to allow scraping to complete.
+# It processes:
+# - Games missing timelines (newly completed games with PBP data)
+# - Games needing regeneration (PBP or social updated after timeline was generated)
 app.conf.beat_schedule = {
     "daily-nba-ingestion-8am-eastern": {
         "task": "run_scheduled_ingestion",
         "schedule": crontab(minute=0, hour=12),  # 8 AM EDT = 12:00 UTC (DST most of year)
         "options": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
-    }
+    },
+    "daily-timeline-generation-930am-eastern": {
+        "task": "run_scheduled_timeline_generation",
+        "schedule": crontab(minute=30, hour=13),  # 9:30 AM EDT = 13:30 UTC (90 min after ingestion)
+        "options": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
+    },
 }
 
 

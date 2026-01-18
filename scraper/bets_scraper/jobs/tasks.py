@@ -7,7 +7,11 @@ from celery import shared_task
 from ..logging import logger
 from ..services.ingestion import run_ingestion
 from ..services.scheduler import schedule_ingestion_runs
-from ..services.timeline_generator import generate_missing_timelines
+from ..services.timeline_generator import (
+    generate_missing_timelines,
+    generate_all_needed_timelines,
+    SCHEDULED_DAYS_BACK,
+)
 
 
 @shared_task(name="run_scrape_job")
@@ -279,3 +283,67 @@ def regenerate_timeline_task(
             "reason": reason,
             "error": str(exc),
     }
+
+
+@shared_task(
+    name="run_scheduled_timeline_generation",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def run_scheduled_timeline_generation() -> dict:
+    """
+    Scheduled task to generate/regenerate timelines for all games that need them.
+    
+    This runs after the scheduled ingestion (90 minutes later) and processes:
+    - Games that completed and are missing timeline artifacts
+    - Games where PBP or social data was updated after timeline was generated
+    
+    Uses the same lookback window as the scheduler (96 hours / 4 days).
+    """
+    from ..config_sports import get_scheduled_leagues
+    
+    leagues = get_scheduled_leagues()
+    
+    total_summary = {
+        "leagues_processed": 0,
+        "total_games_found": 0,
+        "total_games_missing": 0,
+        "total_games_stale": 0,
+        "total_games_processed": 0,
+        "total_games_successful": 0,
+        "total_games_failed": 0,
+    }
+    
+    logger.info(
+        "scheduled_timeline_gen_start",
+        leagues=list(leagues),
+        days_back=SCHEDULED_DAYS_BACK,
+    )
+    
+    for league_code in leagues:
+        try:
+            summary = generate_all_needed_timelines(
+                league_code=league_code,
+                days_back=SCHEDULED_DAYS_BACK,
+                max_games=None,  # Process all games
+            )
+            
+            total_summary["leagues_processed"] += 1
+            total_summary["total_games_found"] += summary.get("games_found", 0)
+            total_summary["total_games_missing"] += summary.get("games_missing", 0)
+            total_summary["total_games_stale"] += summary.get("games_stale", 0)
+            total_summary["total_games_processed"] += summary.get("games_processed", 0)
+            total_summary["total_games_successful"] += summary.get("games_successful", 0)
+            total_summary["total_games_failed"] += summary.get("games_failed", 0)
+            
+        except Exception as exc:
+            logger.exception(
+                "scheduled_timeline_gen_league_failed",
+                league=league_code,
+                error=str(exc),
+            )
+    
+    logger.info("scheduled_timeline_gen_complete", **total_summary)
+    
+    return total_summary
