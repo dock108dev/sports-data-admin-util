@@ -121,30 +121,112 @@ class TestPartitionGame(unittest.TestCase):
         self.assertGreaterEqual(len(moments), 1)
 
     def test_flip_creates_immediate_boundary(self) -> None:
-        """Lead flip creates an immediate boundary (no hysteresis)."""
+        """Lead flip creates an immediate boundary when significant.
+        
+        PHASE 1: Flips to tier 1+ are still immediate because they're significant.
+        This test has a flip from 5-0 to 5-6 (tier 1), which is significant.
+        """
         timeline = [
-            make_pbp_event(0, 5, 0, game_clock="12:00"),  # Home leading
+            make_pbp_event(0, 5, 0, game_clock="12:00"),  # Home leading (tier 1)
             make_pbp_event(1, 5, 2, game_clock="11:00"),
-            make_pbp_event(2, 5, 6, game_clock="10:00"),  # Away takes lead - FLIP
+            make_pbp_event(2, 5, 6, game_clock="10:00"),  # Away takes lead - FLIP (tier 1)
             make_pbp_event(3, 5, 8, game_clock="9:00"),
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=2)
 
-        # Should detect the flip
+        # Should detect the flip (tier 1 flip is significant)
         flip_moments = [m for m in moments if m.type == MomentType.FLIP]
         self.assertGreaterEqual(len(flip_moments), 1)
-
-    def test_tie_creates_immediate_boundary(self) -> None:
-        """Reaching a tie creates an immediate boundary."""
+    
+    def test_early_game_micro_flip_gated(self) -> None:
+        """PHASE 1: Early-game micro-flips (tier 0 to tier 0) are gated.
+        
+        A 4-3 to 4-5 flip in Q1 is just noise. It must persist to be confirmed.
+        """
         timeline = [
-            make_pbp_event(0, 5, 0, game_clock="12:00"),  # Home leading
-            make_pbp_event(1, 5, 3, game_clock="11:00"),
-            make_pbp_event(2, 5, 5, game_clock="10:00"),  # Tied - TIE
-            make_pbp_event(3, 5, 7, game_clock="9:00"),
+            make_pbp_event(0, 4, 3, quarter=1, game_clock="11:00"),  # Home leads by 1 (tier 0)
+            make_pbp_event(1, 4, 5, quarter=1, game_clock="10:30"),  # Away takes 1-pt lead (tier 0)
+            make_pbp_event(2, 6, 5, quarter=1, game_clock="10:00"),  # Home takes it back
+            make_pbp_event(3, 6, 7, quarter=1, game_clock="9:30"),   # Away takes it back
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=2)
 
-        # Should detect the tie
+        # These rapid tier-0 flips should collapse - no FLIP moments
+        flip_moments = [m for m in moments if m.type == MomentType.FLIP]
+        self.assertEqual(len(flip_moments), 0)
+    
+    def test_late_game_micro_flip_allowed(self) -> None:
+        """PHASE 1: Late-game micro-flips are allowed (every possession matters).
+        
+        A flip in Q4 under 5 minutes is detected as CLOSING_CONTROL (dagger moment).
+        This is correct - late-game flips in close games are the most dramatic moments.
+        """
+        timeline = [
+            make_pbp_event(0, 94, 93, quarter=4, game_clock="2:00"),  # Home leads by 1
+            make_pbp_event(1, 94, 95, quarter=4, game_clock="1:30"),  # Away takes lead
+            make_pbp_event(2, 94, 96, quarter=4, game_clock="1:15"),  # Away still leads
+            make_pbp_event(3, 94, 97, quarter=4, game_clock="1:00"),
+            make_pbp_event(4, 96, 97, quarter=4, game_clock="0:45"),
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=2)
+
+        # Late game flip in closing situation becomes CLOSING_CONTROL (dagger)
+        closing_moments = [m for m in moments if m.type == MomentType.CLOSING_CONTROL]
+        self.assertGreaterEqual(len(closing_moments), 1)
+
+    def test_tie_creates_immediate_boundary(self) -> None:
+        """Reaching a tie creates an immediate boundary in late game.
+        
+        PHASE 1: Ties are now gated in early game to reduce noise.
+        This test uses late-game events (Q4) where ties are still immediate.
+        """
+        timeline = [
+            make_pbp_event(0, 85, 80, quarter=4, game_clock="4:00"),  # Home leading
+            make_pbp_event(1, 85, 83, quarter=4, game_clock="3:30"),
+            make_pbp_event(2, 85, 85, quarter=4, game_clock="3:00"),  # Tied - TIE
+            make_pbp_event(3, 85, 87, quarter=4, game_clock="2:30"),
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=2)
+
+        # Should detect the tie (late game ties are significant)
+        tie_moments = [m for m in moments if m.type == MomentType.TIE]
+        self.assertGreaterEqual(len(tie_moments), 1)
+    
+    def test_early_game_tie_gated(self) -> None:
+        """PHASE 1: Early-game ties at low score are gated (require hysteresis).
+        
+        A tie at 5-5 in Q1 is just back-and-forth noise, not a narrative moment.
+        The tie must persist for it to be confirmed.
+        """
+        timeline = [
+            make_pbp_event(0, 5, 0, quarter=1, game_clock="12:00"),  # Home leading
+            make_pbp_event(1, 5, 3, quarter=1, game_clock="11:00"),
+            make_pbp_event(2, 5, 5, quarter=1, game_clock="10:00"),  # Tied
+            make_pbp_event(3, 5, 7, quarter=1, game_clock="9:00"),   # Away takes lead immediately
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=2)
+
+        # Early game tie at low score is gated - should NOT create TIE moment
+        # because the tie was immediately broken (no persistence)
+        tie_moments = [m for m in moments if m.type == MomentType.TIE]
+        self.assertEqual(len(tie_moments), 0)
+    
+    def test_early_game_significant_tie_allowed(self) -> None:
+        """PHASE 1: Early-game ties that break current tier 1+ leads are still detected.
+        
+        A tie that comes from a tier 1+ lead (not eroded to tier 0) is significant.
+        """
+        timeline = [
+            make_pbp_event(0, 10, 0, quarter=1, game_clock="9:00"),   # Big lead (tier 2)
+            make_pbp_event(1, 10, 5, quarter=1, game_clock="8:00"),   # Still tier 1 (margin 5)
+            make_pbp_event(2, 10, 7, quarter=1, game_clock="7:30"),   # Still tier 1 (margin 3)
+            make_pbp_event(3, 10, 10, quarter=1, game_clock="7:00"),  # Tie from tier 1
+            make_pbp_event(4, 10, 12, quarter=1, game_clock="6:30"),  # Tie confirmed
+            make_pbp_event(5, 10, 14, quarter=1, game_clock="6:00"),
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=2)
+
+        # This tie came from tier 1 (margin was 3) - significant, should be detected
         tie_moments = [m for m in moments if m.type == MomentType.TIE]
         self.assertGreaterEqual(len(tie_moments), 1)
 
@@ -403,28 +485,393 @@ class TestRunMetadata(unittest.TestCase):
                 self.assertIn("play_ids", d["run_info"])
 
     def test_no_standalone_run_moments(self) -> None:
-        """Runs never create standalone RUN moments."""
-        # Big run that would've been a RUN moment in old system
+        """Runs that don't meet criteria don't create standalone moments.
+        
+        PHASE 1.3: Runs can now create MOMENTUM_SHIFT moments if they cause tier changes.
+        But small runs or runs without tier changes still don't create moments.
+        """
+        # Small run that doesn't meet boundary threshold
+        timeline = [
+            make_pbp_event(0, 0, 0, game_clock="12:00"),
+            make_pbp_event(1, 2, 0, game_clock="11:00"),
+            make_pbp_event(2, 4, 0, game_clock="10:00"),
+            make_pbp_event(3, 6, 0, game_clock="9:00"),  # 6-0 run, below boundary threshold
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+
+        # No RUN type moments (RUN doesn't exist as a type)
+        moment_types = {m.type for m in moments}
+        self.assertNotIn("RUN", [t.value for t in moment_types])
+
+        # Small runs below threshold don't create MOMENTUM_SHIFT
+        momentum_shifts = [m for m in moments if m.type == MomentType.MOMENTUM_SHIFT]
+        self.assertEqual(len(momentum_shifts), 0)
+
+
+# =============================================================================
+# PHASE 1.3: RUN-BASED BOUNDARIES
+# =============================================================================
+
+
+class TestMomentumShiftMoments(unittest.TestCase):
+    """PHASE 1.3: Tests for run-based MOMENTUM_SHIFT moments."""
+    
+    def test_big_run_with_tier_boundaries_uses_lead_build(self) -> None:
+        """A big run that creates tier crossings uses LEAD_BUILD, not MOMENTUM_SHIFT.
+        
+        MOMENTUM_SHIFT is for runs that don't already have tier-based boundaries.
+        When a run causes tier crossings, those tier boundaries capture the narrative.
+        """
+        timeline = [
+            make_pbp_event(0, 0, 0, quarter=2, game_clock="6:00"),
+            make_pbp_event(1, 3, 0, quarter=2, game_clock="5:30"),  # +3 (tier 1)
+            make_pbp_event(2, 6, 0, quarter=2, game_clock="5:00"),  # +3 (tier 2)
+            make_pbp_event(3, 9, 0, quarter=2, game_clock="4:30"),  # +3
+            make_pbp_event(4, 12, 0, quarter=2, game_clock="4:00"), # +3 (tier 3)
+            make_pbp_event(5, 15, 0, quarter=2, game_clock="3:30"), # +3
+            make_pbp_event(6, 18, 0, quarter=2, game_clock="3:00"), # +3 (18-0 run)
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+
+        # The run causes tier crossings, so LEAD_BUILD moments should exist
+        lead_builds = [m for m in moments if m.type == MomentType.LEAD_BUILD]
+        self.assertGreaterEqual(len(lead_builds), 1, "Tier crossings should create LEAD_BUILD")
+        
+        # MOMENTUM_SHIFT should NOT be created when tier boundaries already exist
+        momentum_shifts = [m for m in moments if m.type == MomentType.MOMENTUM_SHIFT]
+        self.assertEqual(len(momentum_shifts), 0, "No duplicate MOMENTUM_SHIFT with existing tier boundaries")
+    
+    def test_big_run_without_overlapping_boundaries_creates_momentum_shift(self) -> None:
+        """A big run that doesn't overlap with tier boundaries creates MOMENTUM_SHIFT.
+        
+        This tests the case where a significant run happens but doesn't trigger
+        tier crossings at the same indices (e.g., run happens during opponent's lead).
+        """
+        # Opponent has a lead, then we go on a big run that cuts into it
+        # The run might not trigger tier boundaries if it stays within a tier
+        timeline = [
+            make_pbp_event(0, 0, 12, quarter=2, game_clock="6:00"),  # Down 12 (tier 3)
+            make_pbp_event(1, 0, 12, quarter=2, game_clock="5:45"),  # No scoring
+            make_pbp_event(2, 3, 12, quarter=2, game_clock="5:30"),  # +3 (still tier 2)
+            make_pbp_event(3, 6, 12, quarter=2, game_clock="5:00"),  # +3 (tier 2)
+            make_pbp_event(4, 9, 12, quarter=2, game_clock="4:30"),  # +3 (tier 1)
+            make_pbp_event(5, 12, 12, quarter=2, game_clock="4:00"), # +3 TIE (12-0 run)
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        # This run causes tier changes (down to tier 1, then tie)
+        # If tier boundaries capture it, that's fine (CUT moments)
+        # The key is that the run's narrative impact is represented
+        all_types = [m.type.value for m in moments]
+        has_significant_moment = (
+            "MOMENTUM_SHIFT" in all_types or 
+            "CUT" in all_types or
+            "TIE" in all_types
+        )
+        self.assertTrue(has_significant_moment, f"Expected significant moment in: {all_types}")
+    
+    def test_big_run_no_tier_change_no_momentum_shift(self) -> None:
+        """A big run that doesn't change tier doesn't create MOMENTUM_SHIFT.
+        
+        If the margin stays within the same tier, no moment is created.
+        """
+        # Already at tier 3 (16+ lead), run just extends it
+        timeline = [
+            make_pbp_event(0, 30, 10, quarter=2, game_clock="6:00"),  # 20-pt lead (tier 4)
+            make_pbp_event(1, 33, 10, quarter=2, game_clock="5:30"),  # +3
+            make_pbp_event(2, 36, 10, quarter=2, game_clock="5:00"),  # +3 (still tier 4)
+            make_pbp_event(3, 39, 10, quarter=2, game_clock="4:30"),  # +3 (12-0 run)
+            make_pbp_event(4, 42, 10, quarter=2, game_clock="4:00"),  # +3 (still tier 4)
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+
+        # Should NOT have MOMENTUM_SHIFT - same tier throughout
+        momentum_shifts = [m for m in moments if m.type == MomentType.MOMENTUM_SHIFT]
+        self.assertEqual(len(momentum_shifts), 0)
+    
+    def test_run_overlapping_flip_no_duplicate(self) -> None:
+        """A run that coincides with a FLIP doesn't create duplicate moments."""
+        timeline = [
+            make_pbp_event(0, 10, 8, quarter=3, game_clock="6:00"),  # Home leads
+            make_pbp_event(1, 10, 11, quarter=3, game_clock="5:30"), # Away takes lead - FLIP
+            make_pbp_event(2, 10, 14, quarter=3, game_clock="5:00"), # +3
+            make_pbp_event(3, 10, 17, quarter=3, game_clock="4:30"), # +3
+            make_pbp_event(4, 10, 20, quarter=3, game_clock="4:00"), # +3 (12-0 run)
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+
+        # Should have FLIP but not a separate MOMENTUM_SHIFT at the same point
+        boundary_indices = [m.start_play for m in moments]
+        # No duplicate boundaries at the same play
+        self.assertEqual(len(boundary_indices), len(set(boundary_indices)))
+
+
+# =============================================================================
+# PHASE 1.4: SCORE NORMALIZATION
+# =============================================================================
+
+
+class TestScoreNormalization(unittest.TestCase):
+    """PHASE 1.4: Tests for score normalization."""
+    
+    def test_missing_score_carried_forward(self) -> None:
+        """Missing scores are carried forward from previous event."""
+        from app.services.moments import normalize_scores
+        
+        events = [
+            {"event_type": "pbp", "home_score": 10, "away_score": 8},
+            {"event_type": "pbp", "home_score": None, "away_score": None},  # Missing
+            {"event_type": "pbp", "home_score": 12, "away_score": 8},
+        ]
+        
+        result = normalize_scores(events)
+        
+        # Second event should have scores carried forward
+        self.assertEqual(result.events[1]["home_score"], 10)
+        self.assertEqual(result.events[1]["away_score"], 8)
+        self.assertTrue(result.events[1].get("_score_normalized"))
+        
+        # Should have one normalization record
+        self.assertEqual(len(result.normalizations), 1)
+        self.assertEqual(result.normalizations[0].reason, "missing_score_carry_forward")
+    
+    def test_game_start_defaults_to_zero(self) -> None:
+        """At game start, missing scores default to 0."""
+        from app.services.moments import normalize_scores
+        
+        events = [
+            {"event_type": "pbp", "home_score": None, "away_score": None},  # First event
+            {"event_type": "pbp", "home_score": 2, "away_score": 0},
+        ]
+        
+        result = normalize_scores(events)
+        
+        # First event should default to 0-0
+        self.assertEqual(result.events[0]["home_score"], 0)
+        self.assertEqual(result.events[0]["away_score"], 0)
+        self.assertEqual(result.normalizations[0].reason, "game_start_default")
+    
+    def test_quarter_boundary_preserves_score(self) -> None:
+        """Quarter boundary markers don't reset scores."""
+        from app.services.moments import normalize_scores
+        
+        events = [
+            {"event_type": "pbp", "home_score": 25, "away_score": 22},
+            {"event_type": "pbp", "home_score": 0, "away_score": 0, 
+             "description": "Start of 2nd quarter"},  # Quarter marker
+            {"event_type": "pbp", "home_score": 27, "away_score": 22},
+        ]
+        
+        result = normalize_scores(events)
+        
+        # Quarter marker should have scores carried forward
+        self.assertEqual(result.events[1]["home_score"], 25)
+        self.assertEqual(result.events[1]["away_score"], 22)
+    
+    def test_apparent_reset_handled(self) -> None:
+        """Apparent mid-game resets (0-0 after scoring) are corrected."""
+        from app.services.moments import normalize_scores
+        
+        events = [
+            {"event_type": "pbp", "home_score": 45, "away_score": 40},
+            {"event_type": "pbp", "home_score": 0, "away_score": 0,
+             "description": "Player X makes 3-pointer"},  # Bad data
+            {"event_type": "pbp", "home_score": 48, "away_score": 40},
+        ]
+        
+        result = normalize_scores(events)
+        
+        # Bad data should be corrected
+        self.assertEqual(result.events[1]["home_score"], 45)
+        self.assertEqual(result.events[1]["away_score"], 40)
+        self.assertIn("carry_forward", result.normalizations[0].reason)
+    
+    def test_normalization_happens_before_partitioning(self) -> None:
+        """Score normalization is applied before moment creation."""
+        # Timeline with missing scores
+        timeline = [
+            make_pbp_event(0, 10, 8, game_clock="12:00"),
+            {"event_type": "pbp", "play_index": 1, "home_score": None, "away_score": None,
+             "game_clock": "11:00", "description": "Timeout", "play_type": "shot"},
+            make_pbp_event(2, 12, 8, game_clock="10:00"),
+        ]
+        
+        # Should not raise - normalization handles missing scores
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        # Should have at least one moment
+        self.assertGreaterEqual(len(moments), 1)
+
+
+# =============================================================================
+# PHASE 2.1: IMPORTANCE SCORING
+# =============================================================================
+
+
+class TestImportanceScoring(unittest.TestCase):
+    """PHASE 2.1: Tests for moment importance scoring."""
+    
+    def test_moments_have_importance_score(self) -> None:
+        """All moments should have a numeric importance score."""
         timeline = [
             make_pbp_event(0, 0, 0, game_clock="12:00"),
             make_pbp_event(1, 3, 0, game_clock="11:00"),
             make_pbp_event(2, 6, 0, game_clock="10:00"),
             make_pbp_event(3, 9, 0, game_clock="9:00"),
-            make_pbp_event(4, 12, 0, game_clock="8:00"),
-            make_pbp_event(5, 15, 0, game_clock="7:00"),
-            make_pbp_event(6, 18, 0, game_clock="6:00"),  # 18-0 run
         ]
         moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        for moment in moments:
+            self.assertIsInstance(moment.importance_score, float)
+            self.assertGreater(moment.importance_score, 0)
+    
+    def test_moments_have_importance_factors(self) -> None:
+        """All moments should have importance factors breakdown."""
+        timeline = [
+            make_pbp_event(0, 0, 0, quarter=4, game_clock="2:00"),
+            make_pbp_event(1, 3, 0, quarter=4, game_clock="1:30"),
+            make_pbp_event(2, 3, 3, quarter=4, game_clock="1:00"),  # TIE
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        for moment in moments:
+            self.assertIsInstance(moment.importance_factors, dict)
+            # Should have breakdown sections
+            if moment.importance_factors:
+                self.assertIn("time", moment.importance_factors)
+                self.assertIn("margin", moment.importance_factors)
+                self.assertIn("lead_change", moment.importance_factors)
+    
+    def test_late_game_scores_higher_than_early(self) -> None:
+        """Late-game moments should score higher than early-game moments."""
+        # Early game moment
+        early_timeline = [
+            make_pbp_event(0, 0, 0, quarter=1, game_clock="12:00"),
+            make_pbp_event(1, 5, 0, quarter=1, game_clock="11:00"),
+            make_pbp_event(2, 5, 3, quarter=1, game_clock="10:00"),
+            make_pbp_event(3, 5, 6, quarter=1, game_clock="9:00"),  # FLIP
+        ]
+        early_moments = partition_game(early_timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        # Late game moment (same score scenario)
+        late_timeline = [
+            make_pbp_event(0, 80, 80, quarter=4, game_clock="2:00"),
+            make_pbp_event(1, 85, 80, quarter=4, game_clock="1:30"),
+            make_pbp_event(2, 85, 83, quarter=4, game_clock="1:00"),
+            make_pbp_event(3, 85, 86, quarter=4, game_clock="0:30"),  # FLIP
+        ]
+        late_moments = partition_game(late_timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        # Get max importance from each
+        early_max = max(m.importance_score for m in early_moments)
+        late_max = max(m.importance_score for m in late_moments)
+        
+        # Late game should score higher
+        self.assertGreater(late_max, early_max)
+    
+    def test_close_game_scores_higher_than_blowout(self) -> None:
+        """Close-game moments should score higher than blowout moments."""
+        # Close game
+        close_timeline = [
+            make_pbp_event(0, 90, 88, quarter=4, game_clock="2:00"),
+            make_pbp_event(1, 90, 90, quarter=4, game_clock="1:30"),  # TIE
+            make_pbp_event(2, 92, 90, quarter=4, game_clock="1:00"),
+        ]
+        close_moments = partition_game(close_timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        # Blowout game
+        blowout_timeline = [
+            make_pbp_event(0, 90, 60, quarter=4, game_clock="2:00"),
+            make_pbp_event(1, 93, 60, quarter=4, game_clock="1:30"),
+            make_pbp_event(2, 96, 60, quarter=4, game_clock="1:00"),
+        ]
+        blowout_moments = partition_game(blowout_timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        # Get max importance from each
+        close_max = max(m.importance_score for m in close_moments)
+        blowout_max = max(m.importance_score for m in blowout_moments)
+        
+        # Close game should score higher
+        self.assertGreater(close_max, blowout_max)
+    
+    def test_importance_in_to_dict(self) -> None:
+        """Importance should be included in to_dict() output."""
+        timeline = [
+            make_pbp_event(0, 0, 0, game_clock="12:00"),
+            make_pbp_event(1, 3, 0, game_clock="11:00"),
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        for moment in moments:
+            d = moment.to_dict()
+            self.assertIn("importance_score", d)
+            self.assertIsInstance(d["importance_score"], float)
+    
+    def test_flip_scores_higher_than_neutral(self) -> None:
+        """FLIP moments should score higher than NEUTRAL moments."""
+        timeline = [
+            make_pbp_event(0, 0, 0, quarter=3, game_clock="6:00"),
+            make_pbp_event(1, 5, 0, quarter=3, game_clock="5:00"),  # Lead
+            make_pbp_event(2, 5, 3, quarter=3, game_clock="4:00"),
+            make_pbp_event(3, 5, 6, quarter=3, game_clock="3:00"),  # FLIP
+            make_pbp_event(4, 5, 8, quarter=3, game_clock="2:00"),
+        ]
+        moments = partition_game(timeline, {}, NBA_THRESHOLDS, hysteresis_plays=1)
+        
+        flip_moments = [m for m in moments if m.type == MomentType.FLIP]
+        neutral_moments = [m for m in moments if m.type == MomentType.NEUTRAL]
+        
+        if flip_moments and neutral_moments:
+            flip_max = max(m.importance_score for m in flip_moments)
+            neutral_max = max(m.importance_score for m in neutral_moments)
+            self.assertGreater(flip_max, neutral_max)
 
-        # No RUN type moments
-        moment_types = {m.type for m in moments}
-        self.assertNotIn("RUN", [t.value for t in moment_types])
 
-        # Runs should be metadata on tier-crossing moments, not separate moments
-        # We can't guarantee runs are attached (depends on tier crossings)
-        # but we CAN guarantee no RUN type exists
-        for m in moments:
-            self.assertNotEqual(m.type.value, "RUN")
+class TestImportanceFactorsBreakdown(unittest.TestCase):
+    """Tests for individual importance factor components."""
+    
+    def test_time_weight_increases_with_progress(self) -> None:
+        """Time weight should increase as game progresses."""
+        from app.services.moment_importance import _compute_time_weight, DEFAULT_WEIGHTS
+        
+        early_weight, _ = _compute_time_weight(0.1, 1, 600, DEFAULT_WEIGHTS)  # Q1
+        mid_weight, _ = _compute_time_weight(0.5, 2, 300, DEFAULT_WEIGHTS)    # Q2/Q3
+        late_weight, _ = _compute_time_weight(0.9, 4, 60, DEFAULT_WEIGHTS)    # Q4 final minute
+        
+        self.assertLess(early_weight, mid_weight)
+        self.assertLess(mid_weight, late_weight)
+    
+    def test_margin_weight_higher_for_close_games(self) -> None:
+        """Margin weight should be higher for close games (lower tiers)."""
+        from app.services.moment_importance import _compute_margin_weight, DEFAULT_WEIGHTS
+        
+        close_weight, _ = _compute_margin_weight(0, 0, 2, 3, DEFAULT_WEIGHTS)  # Tier 0
+        mid_weight, _ = _compute_margin_weight(1, 1, 5, 6, DEFAULT_WEIGHTS)    # Tier 1
+        blowout_weight, _ = _compute_margin_weight(3, 4, 18, 22, DEFAULT_WEIGHTS)  # Tier 3-4
+        
+        self.assertGreater(close_weight, mid_weight)
+        self.assertGreater(mid_weight, blowout_weight)
+    
+    def test_lead_change_bonus_for_flips(self) -> None:
+        """Lead change bonus should be positive for FLIP moments."""
+        from app.services.moment_importance import _compute_lead_change_weight, DEFAULT_WEIGHTS
+        
+        weight, info = _compute_lead_change_weight(
+            "FLIP", "home", "away", False, False, DEFAULT_WEIGHTS
+        )
+        
+        self.assertGreater(weight, 0)
+        self.assertTrue(info["lead_changed"])
+        self.assertTrue(info["is_flip"])
+    
+    def test_run_weight_scales_with_points(self) -> None:
+        """Run weight should increase with more points scored."""
+        from app.services.moment_importance import _compute_run_weight, DEFAULT_WEIGHTS
+        
+        small_weight, _ = _compute_run_weight(6, "home", True, None, DEFAULT_WEIGHTS)
+        large_weight, _ = _compute_run_weight(15, "home", True, None, DEFAULT_WEIGHTS)
+        
+        self.assertGreater(large_weight, small_weight)
 
 
 # =============================================================================

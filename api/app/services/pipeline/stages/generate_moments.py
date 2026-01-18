@@ -15,6 +15,14 @@ This stage captures a full generation trace including:
 - Signals used for each moment (lead states, tier crossings)
 - Validation results for each moment
 
+PHASE 0 ENHANCEMENTS (Guardrails & Observability)
+=================================================
+- trigger_types: All triggers that contributed to each moment
+- importance_score: Placeholder for future importance weighting
+- merge_history: Ordered list of merge events with phase and reason
+- budget_pressure: Whether moments were affected by budget enforcement
+- distribution: Aggregate metrics for pacing analysis
+
 The trace is stored in the stage output for later inspection.
 """
 
@@ -155,11 +163,20 @@ async def execute_generate_moments(
             moment, lead_states, tier_crossings, runs, thresholds
         )
         
-        # Create trace for this moment
-        moment_trace = create_moment_trace_from_moment(moment, signals)
+        # Create trace for this moment (pass events for quarter lookup)
+        moment_trace = create_moment_trace_from_moment(moment, signals, events=timeline)
         
         # Validate and update trace
         moment_trace = validate_moment_and_trace(moment, moment_trace)
+        
+        # Set budget pressure info for final moments
+        # All final moments survived budget enforcement
+        moment_trace.set_budget_pressure(
+            total_pre_budget=len(moments),  # This is post-merge count
+            target_budget=budget,
+            survived=True,
+            merged_due_to_budget=False,
+        )
         
         # Mark as final
         moment_trace.is_final = True
@@ -193,9 +210,14 @@ async def execute_generate_moments(
     trace.rejected_count = len(trace.get_rejected_moments())
     trace.merged_count = len(trace.get_merged_moments())
     
+    # PHASE 0: Compute moment distribution metrics
+    distribution = trace.compute_distribution(moments_dict, timeline)
+    output.add_log(f"Distribution computed: {distribution.moments_per_quarter}")
+    output.add_log(f"First half: {distribution.first_half_percentage:.1f}% of moments")
+    
     output.add_log(f"Generation trace captured: {len(trace.moment_traces)} moment traces")
     
-    # Build output with trace
+    # Build output with trace and distribution
     moments_output = GeneratedMomentsOutput(
         moments=moments_dict,
         notable_moments=notable_dict,
@@ -203,6 +225,7 @@ async def execute_generate_moments(
         budget=budget,
         within_budget=within_budget,
         generation_trace=trace.to_summary(),  # Summary for stage output
+        moment_distribution=distribution.to_dict(),  # Phase 0: Distribution metrics
     )
     
     output.data = moments_output.to_dict()

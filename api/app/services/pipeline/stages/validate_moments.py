@@ -5,14 +5,29 @@ they meet quality requirements before finalization.
 
 Input: GeneratedMomentsOutput from GENERATE_MOMENTS stage
 Output: ValidationOutput with passed status and any errors/warnings
+
+PHASE 0 ENHANCEMENTS (Guardrails & Observability)
+=================================================
+- Score continuity failures can now block validation (strict mode)
+- Quality status (PASSED/DEGRADED/FAILED/OVERRIDDEN) provides clear signal
+- Score continuity issues are captured with full detail
+- Override mechanism allows manual override with audit trail
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
-from ..models import ValidationOutput, StageInput, StageOutput
+from ....config import settings
+from ..models import (
+    QualityStatus,
+    ScoreContinuityOverride,
+    ValidationOutput,
+    StageInput,
+    StageOutput,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +78,21 @@ def _validate_no_overlaps(moments: list[dict[str, Any]]) -> list[str]:
     return errors
 
 
-def _validate_score_continuity(moments: list[dict[str, Any]]) -> list[str]:
-    """Validate score is continuous between moments."""
-    warnings = []
+def _validate_score_continuity_detailed(
+    moments: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Validate score is continuous between moments.
+    
+    Returns detailed issue records instead of just warning strings.
+    Each issue includes:
+    - prev_moment_id: ID of the moment ending before the gap
+    - curr_moment_id: ID of the moment starting after the gap
+    - prev_score_after: Score at end of previous moment
+    - curr_score_before: Score at start of current moment
+    - delta: The unexpected score change
+    - position_in_sequence: Which boundary (1-indexed)
+    """
+    issues: list[dict[str, Any]] = []
     
     for i in range(1, len(moments)):
         prev = moments[i - 1]
@@ -74,16 +101,32 @@ def _validate_score_continuity(moments: list[dict[str, Any]]) -> list[str]:
         prev_end = prev.get("score_after", (0, 0))
         curr_start = curr.get("score_before", (0, 0))
         
+        # Normalize to tuple
+        if isinstance(prev_end, list):
+            prev_end = tuple(prev_end)
+        if isinstance(curr_start, list):
+            curr_start = tuple(curr_start)
+        
         # Handle tuple or list format
-        if isinstance(prev_end, (list, tuple)) and isinstance(curr_start, (list, tuple)):
+        if isinstance(prev_end, tuple) and isinstance(curr_start, tuple):
             if len(prev_end) >= 2 and len(curr_start) >= 2:
                 if prev_end[0] != curr_start[0] or prev_end[1] != curr_start[1]:
-                    warnings.append(
-                        f"Score discontinuity between {prev.get('id')} and {curr.get('id')}: "
-                        f"{prev_end} -> {curr_start}"
-                    )
+                    # Calculate the delta
+                    home_delta = curr_start[0] - prev_end[0]
+                    away_delta = curr_start[1] - prev_end[1]
+                    
+                    issues.append({
+                        "prev_moment_id": prev.get("id"),
+                        "curr_moment_id": curr.get("id"),
+                        "prev_score_after": list(prev_end),
+                        "curr_score_before": list(curr_start),
+                        "delta": {"home": home_delta, "away": away_delta},
+                        "position_in_sequence": i,
+                        "prev_end_play": prev.get("end_play"),
+                        "curr_start_play": curr.get("start_play"),
+                    })
     
-    return warnings
+    return issues
 
 
 def _validate_budget(moments: list[dict[str, Any]], budget: int) -> list[str]:
@@ -111,6 +154,9 @@ def _validate_reason_present(moments: list[dict[str, Any]]) -> list[str]:
 
 async def execute_validate_moments(
     stage_input: StageInput,
+    override_score_continuity: bool = False,
+    override_reason: str | None = None,
+    override_by: str | None = None,
 ) -> StageOutput:
     """Execute the VALIDATE_MOMENTS stage.
     
@@ -118,20 +164,27 @@ async def execute_validate_moments(
     - Structure validation (required fields)
     - Ordering validation (chronological)
     - Overlap detection
-    - Score continuity
+    - Score continuity (can be blocking in strict mode)
     - Budget compliance
     - Reason presence
     
     Args:
         stage_input: Input containing previous_output from GENERATE_MOMENTS
+        override_score_continuity: If True, allows score discontinuities to pass
+        override_reason: Required reason when override is enabled
+        override_by: Identifier of who/what requested the override
         
     Returns:
-        StageOutput with ValidationOutput data
+        StageOutput with ValidationOutput data including quality_status
     """
     output = StageOutput(data={})
     game_id = stage_input.game_id
     
     output.add_log(f"Starting VALIDATE_MOMENTS for game {game_id}")
+    
+    # Log configuration state
+    strict_mode = settings.strict_score_continuity
+    output.add_log(f"Strict score continuity mode: {strict_mode}")
     
     # Get input from previous stage
     prev_output = stage_input.previous_output
@@ -150,7 +203,7 @@ async def execute_validate_moments(
     warnings: list[str] = []
     validation_details: dict[str, Any] = {}
     
-    # Run validations
+    # Run structural validations (always critical)
     output.add_log("Checking moment structure...")
     for moment in moments:
         structure_errors = _validate_moment_structure(moment)
@@ -167,11 +220,56 @@ async def execute_validate_moments(
     errors.extend(overlap_errors)
     validation_details["overlap_errors"] = len(overlap_errors)
     
+    # Score continuity validation - detailed capture
     output.add_log("Checking score continuity...")
-    continuity_warnings = _validate_score_continuity(moments)
-    warnings.extend(continuity_warnings)
-    validation_details["score_discontinuities"] = len(continuity_warnings)
+    score_continuity_issues = _validate_score_continuity_detailed(moments)
+    validation_details["score_discontinuities"] = len(score_continuity_issues)
     
+    # Handle score continuity based on mode and override
+    score_continuity_override: ScoreContinuityOverride | None = None
+    has_score_issues = len(score_continuity_issues) > 0
+    
+    if has_score_issues:
+        if override_score_continuity:
+            # Override requested - record it
+            if not override_reason:
+                override_reason = "No reason provided"
+            
+            score_continuity_override = ScoreContinuityOverride(
+                enabled=True,
+                reason=override_reason,
+                overridden_by=override_by or "unknown",
+                overridden_at=datetime.now(timezone.utc).isoformat(),
+            )
+            output.add_log(
+                f"Score continuity override enabled: {override_reason}",
+                "warning"
+            )
+        elif strict_mode:
+            # Strict mode - score issues are errors
+            for issue in score_continuity_issues:
+                errors.append(
+                    f"STRICT: Score discontinuity between {issue['prev_moment_id']} and "
+                    f"{issue['curr_moment_id']}: {issue['prev_score_after']} -> {issue['curr_score_before']}"
+                )
+            validation_details["score_continuity_blocking"] = True
+            output.add_log(
+                f"Score continuity check FAILED (strict mode): {len(score_continuity_issues)} discontinuities",
+                "error"
+            )
+        else:
+            # Non-strict mode - score issues are warnings but mark as DEGRADED
+            for issue in score_continuity_issues:
+                warnings.append(
+                    f"Score discontinuity between {issue['prev_moment_id']} and "
+                    f"{issue['curr_moment_id']}: {issue['prev_score_after']} -> {issue['curr_score_before']}"
+                )
+            output.add_log(
+                f"Score continuity issues detected: {len(score_continuity_issues)} (non-blocking, DEGRADED status)",
+                "warning"
+            )
+    
+    # Budget and reason checks
     output.add_log("Checking budget compliance...")
     budget_warnings = _validate_budget(moments, budget)
     warnings.extend(budget_warnings)
@@ -182,13 +280,25 @@ async def execute_validate_moments(
     warnings.extend(reason_warnings)
     validation_details["missing_reasons"] = len(reason_warnings)
     
-    # Determine pass/fail
-    # Critical errors: structure, ordering, overlaps
+    # Determine pass/fail and quality status
+    # Critical errors: structure, ordering, overlaps, and score continuity in strict mode
     critical_passed = len(errors) == 0
-    # Overall pass includes warnings (but they don't block)
     passed = critical_passed
     
+    # Determine quality status
+    if not critical_passed:
+        quality_status = QualityStatus.FAILED
+    elif has_score_issues:
+        if override_score_continuity:
+            quality_status = QualityStatus.OVERRIDDEN
+        else:
+            # Non-strict mode with issues = DEGRADED
+            quality_status = QualityStatus.DEGRADED
+    else:
+        quality_status = QualityStatus.PASSED
+    
     output.add_log(f"Validation complete: {len(errors)} errors, {len(warnings)} warnings")
+    output.add_log(f"Quality status: {quality_status.value}")
     
     if errors:
         for error in errors[:5]:  # Log first 5 errors
@@ -206,12 +316,26 @@ async def execute_validate_moments(
         errors=errors,
         warnings=warnings,
         validation_details=validation_details,
+        quality_status=quality_status,
+        score_continuity_issues=score_continuity_issues,
+        score_continuity_override=score_continuity_override,
     )
     
     output.data = validation_output.to_dict()
     
     if passed:
-        output.add_log("VALIDATE_MOMENTS passed successfully")
+        if quality_status == QualityStatus.DEGRADED:
+            output.add_log(
+                "VALIDATE_MOMENTS passed with DEGRADED status - score continuity issues present",
+                "warning"
+            )
+        elif quality_status == QualityStatus.OVERRIDDEN:
+            output.add_log(
+                "VALIDATE_MOMENTS passed with OVERRIDDEN status - manual override applied",
+                "warning"
+            )
+        else:
+            output.add_log("VALIDATE_MOMENTS passed successfully")
     else:
         output.add_log("VALIDATE_MOMENTS FAILED - see errors above", "error")
     

@@ -5,6 +5,12 @@ It merges PBP events with social posts and generates the summary.
 
 Input: ValidationOutput from VALIDATE_MOMENTS stage (plus accumulated context)
 Output: FinalizedOutput with artifact reference
+
+PHASE 0 ENHANCEMENTS (Guardrails & Observability)
+=================================================
+- quality_status: Included in game_analysis for visibility (PASSED/DEGRADED/FAILED/OVERRIDDEN)
+- moment_distribution: Aggregate pacing metrics in game_analysis
+- score_continuity_issues: Tracked in game_analysis if present
 """
 
 from __future__ import annotations
@@ -202,12 +208,35 @@ async def execute_finalize_moments(
     timeline = _merge_timeline_events(pbp_events, social_events)
     output.add_log(f"Merged timeline: {len(timeline)} total events")
     
-    # Build game analysis
-    game_analysis = {
+    # Build game analysis with Phase 0 observability data
+    game_analysis: dict[str, Any] = {
         "moments": moments,
         "notable_moments": prev_output.get("notable_moments", []),
         "moment_count": len(moments),
     }
+    
+    # Phase 0: Include quality status for visibility
+    quality_status = prev_output.get("quality_status", "PASSED")
+    game_analysis["quality_status"] = quality_status
+    output.add_log(f"Quality status: {quality_status}")
+    
+    # Phase 0: Include moment distribution for pacing analysis
+    moment_distribution = prev_output.get("moment_distribution")
+    if moment_distribution:
+        game_analysis["moment_distribution"] = moment_distribution
+        output.add_log(f"Moment distribution included in game_analysis")
+    
+    # Phase 0: Include score continuity issues if present
+    score_continuity_issues = prev_output.get("score_continuity_issues", [])
+    if score_continuity_issues:
+        game_analysis["score_continuity_issues"] = score_continuity_issues
+        output.add_log(f"Score continuity issues: {len(score_continuity_issues)}", "warning")
+    
+    # Phase 0: Include score continuity override if present
+    score_continuity_override = prev_output.get("score_continuity_override")
+    if score_continuity_override:
+        game_analysis["score_continuity_override"] = score_continuity_override
+        output.add_log("Score continuity override applied", "warning")
     
     # Build summary
     output.add_log("Generating summary...")
@@ -294,12 +323,14 @@ async def execute_finalize_moments(
     except Exception as e:
         output.add_log(f"Warning: Failed to create frontend payload version: {e}", "warning")
     
-    # Build output
+    # Build output with Phase 0 observability data
     finalized_output = FinalizedOutput(
         artifact_id=artifact_id,
         timeline_events=len(timeline),
         moment_count=len(moments),
         generated_at=generated_at.isoformat(),
+        quality_status=quality_status,
+        moment_distribution=moment_distribution,
     )
     
     output.data = finalized_output.to_dict()

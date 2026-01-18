@@ -102,6 +102,9 @@ class MomentType(str, Enum):
     CLOSING_CONTROL = "CLOSING_CONTROL"  # Late-game lock-in (dagger)
     HIGH_IMPACT = "HIGH_IMPACT"    # Non-scoring event changing control
     NEUTRAL = "NEUTRAL"            # Normal flow, no tier changes
+    
+    # PHASE 1.3: Run-based moment type
+    MOMENTUM_SHIFT = "MOMENTUM_SHIFT"  # Significant scoring run that caused tier change
 
 
 # =============================================================================
@@ -111,6 +114,21 @@ class MomentType(str, Enum):
 # Default hysteresis: number of plays a tier must persist to register
 # This prevents flicker from momentary score changes
 DEFAULT_HYSTERESIS_PLAYS = 2
+
+# PHASE 1: FLIP/TIE hysteresis configuration
+# FLIPs were previously immediate; now require persistence to prevent spam
+DEFAULT_FLIP_HYSTERESIS_PLAYS = 2  # Leader must hold for N plays to confirm FLIP
+DEFAULT_TIE_HYSTERESIS_PLAYS = 1   # TIE can be slightly more lenient
+
+# PHASE 1: Time-aware gating configuration
+# Early-game triggers have stricter requirements to reduce noise
+EARLY_GAME_PROGRESS_THRESHOLD = 0.35  # First ~35% of game (roughly Q1 + early Q2)
+MID_GAME_PROGRESS_THRESHOLD = 0.75    # Mid-game ends at ~75% (late Q3)
+# Late game: progress > 0.75 (Q4 and OT)
+
+# Minimum margin (in tier) for early-game FLIP/TIE to be immediately significant
+# In early game, a flip from tier 0 to tier 0 (e.g., 5-4 → 4-5) is noise
+EARLY_GAME_MIN_TIER_FOR_IMMEDIATE = 1  # Must be tier 1+ to bypass hysteresis in early game
 
 # Default thresholds for closing detection (in game seconds remaining)
 # These are configurable per-sport but we need defaults for the algorithm
@@ -122,6 +140,20 @@ HIGH_IMPACT_PLAY_TYPES = frozenset({
     "ejection", "flagrant", "technical",  # Discipline
     "injury",  # Context-critical
 })
+
+# =============================================================================
+# PHASE 1.3: RUN-BASED BOUNDARY CONFIGURATION
+# =============================================================================
+# Runs can create MOMENTUM_SHIFT moments if they cause significant tier changes
+
+# Minimum run points to be considered for boundary creation
+# Uses DEFAULT_RUN_THRESHOLD from moments_runs (typically 6)
+# Larger runs (12+) get priority for boundary creation
+RUN_BOUNDARY_MIN_POINTS = 8  # Minimum points for a run to create a boundary
+
+# Minimum tier change for a run to create a boundary
+# A run that goes from tier 0 to tier 0 doesn't create a boundary
+RUN_BOUNDARY_MIN_TIER_CHANGE = 1  # Must change at least 1 tier
 
 # =============================================================================
 # MOMENT BUDGET (HARD CONSTRAINT)
@@ -147,6 +179,7 @@ PROTECTED_TYPES = frozenset({
     MomentType.FLIP,
     MomentType.CLOSING_CONTROL,
     MomentType.HIGH_IMPACT,
+    MomentType.MOMENTUM_SHIFT,  # PHASE 1.3: Run-based moments are significant
 })
 
 # Moment types that should always be merged when consecutive
@@ -261,6 +294,12 @@ class Moment:
     note: str | None = None
     run_info: RunInfo | None = None  # If a run contributed to this moment
     bucket: str = ""  # "early", "mid", "late" (derived from clock)
+    
+    # PHASE 2.1: Importance scoring
+    # Numeric importance score for narrative prioritization
+    importance_score: float = 0.0
+    # Breakdown of importance factors (ImportanceFactors.to_dict())
+    importance_factors: dict[str, Any] = field(default_factory=dict)
 
     # AI-generated content (populated by enrich_game_moments)
     headline: str = ""   # max 60 chars
@@ -339,6 +378,10 @@ class Moment:
                 "unanswered": self.run_info.unanswered,
                 "play_ids": self.run_info.play_ids,
             }
+        # PHASE 2.1: Include importance scoring
+        result["importance_score"] = round(self.importance_score, 2)
+        if self.importance_factors:
+            result["importance_factors"] = self.importance_factors
         return result
 
 
@@ -392,6 +435,136 @@ def _is_high_impact_event(event: dict[str, Any]) -> bool:
     return play_type in HIGH_IMPACT_PLAY_TYPES
 
 
+def _get_game_progress(event: dict[str, Any]) -> float:
+    """
+    Calculate game progress (0.0 to 1.0) from event context.
+    
+    Uses quarter and game clock to determine how far into the game we are.
+    This is used for time-aware gating of FLIP/TIE triggers.
+    
+    Returns:
+        Float from 0.0 (game start) to 1.0+ (OT)
+    """
+    quarter = event.get("quarter", 1) or 1
+    clock_seconds = parse_clock_to_seconds(event.get("game_clock"))
+    
+    # Default to middle of quarter if clock not available
+    if clock_seconds is None:
+        clock_seconds = 360  # 6:00 remaining (middle of quarter)
+    
+    # NBA: 12 min quarters (720 seconds)
+    quarter_seconds = 720
+    
+    # Calculate progress within regulation (4 quarters)
+    if quarter <= 4:
+        # Invert clock: 12:00 (720s) -> start of quarter, 0:00 -> end
+        elapsed_in_quarter = quarter_seconds - clock_seconds
+        total_elapsed = (quarter - 1) * quarter_seconds + elapsed_in_quarter
+        total_game = 4 * quarter_seconds
+        return total_elapsed / total_game
+    else:
+        # Overtime: return > 1.0 to indicate OT
+        ot_number = quarter - 4
+        # Each OT is 5 minutes (300 seconds)
+        ot_quarter_seconds = 300
+        elapsed_in_ot = ot_quarter_seconds - min(clock_seconds, ot_quarter_seconds)
+        return 1.0 + (ot_number - 1) * 0.1 + (elapsed_in_ot / ot_quarter_seconds) * 0.1
+
+
+def _get_game_phase(game_progress: float) -> str:
+    """
+    Determine game phase from progress.
+    
+    Returns:
+        "early" - First ~35% of game (Q1 + early Q2)
+        "mid" - Middle portion (late Q2 through Q3)
+        "late" - Final stretch (Q4 and OT)
+    """
+    if game_progress <= EARLY_GAME_PROGRESS_THRESHOLD:
+        return "early"
+    elif game_progress <= MID_GAME_PROGRESS_THRESHOLD:
+        return "mid"
+    else:
+        return "late"
+
+
+def _should_gate_early_flip(
+    event: dict[str, Any],
+    curr_state: LeadState,
+    prev_state: LeadState,
+) -> bool:
+    """
+    Determine if a FLIP should be gated (require hysteresis) in early game.
+    
+    In early game, micro-flips (tier 0 to tier 0) are noise.
+    Only significant flips (higher tier) bypass hysteresis.
+    
+    Returns:
+        True if this FLIP should require hysteresis (is not significant enough)
+        False if this FLIP is significant and can be immediate
+    """
+    game_progress = _get_game_progress(event)
+    phase = _get_game_phase(game_progress)
+    
+    # Late game: all flips are potentially significant
+    if phase == "late":
+        return False  # Don't gate - allow immediate
+    
+    # Early/mid game: check if the flip involves significant margin
+    # A flip TO tier 1+ is significant (team took meaningful lead)
+    if curr_state.tier >= EARLY_GAME_MIN_TIER_FOR_IMMEDIATE:
+        return False  # Significant flip - allow immediate
+    
+    # In early game, tier 0 flips (1-2 point swings) should require hysteresis
+    if phase == "early":
+        return True  # Gate it - require hysteresis
+    
+    # Mid game: slight relaxation but still gate tier 0 flips
+    # Allow if combined score suggests game is "real" (not just opening minutes)
+    total_score = curr_state.home_score + curr_state.away_score
+    if total_score > 30:  # Past early scoring, game has developed
+        return False
+    
+    return True  # Gate it
+
+
+def _should_gate_early_tie(
+    event: dict[str, Any],
+    prev_state: LeadState,
+) -> bool:
+    """
+    Determine if a TIE should be gated (require hysteresis) in early game.
+    
+    In early game, ties at 2-2, 4-4, etc. are noise.
+    Only ties that break significant leads matter.
+    
+    Returns:
+        True if this TIE should require hysteresis
+        False if this TIE is significant and can be immediate
+    """
+    game_progress = _get_game_progress(event)
+    phase = _get_game_phase(game_progress)
+    
+    # Late game: all ties are dramatic
+    if phase == "late":
+        return False  # Don't gate
+    
+    # Early game: a tie that breaks a tier 1+ lead is significant
+    if prev_state.tier >= EARLY_GAME_MIN_TIER_FOR_IMMEDIATE:
+        return False  # Someone erased a real lead - significant
+    
+    # In early game, tier 0 → tie is just back and forth
+    if phase == "early":
+        return True  # Gate it
+    
+    # Mid game: similar logic
+    total_score = prev_state.home_score + prev_state.away_score
+    if total_score > 40:  # Game has developed
+        return False
+    
+    return True
+
+
 def _is_closing_situation(
     event: dict[str, Any],
     lead_state: LeadState,
@@ -432,6 +605,317 @@ def _is_closing_situation(
 
 
 # =============================================================================
+# PHASE 1.4: SCORE NORMALIZATION
+# =============================================================================
+
+
+@dataclass
+class ScoreNormalization:
+    """Record of a score normalization decision for traceability."""
+    index: int
+    original_home: int | None
+    original_away: int | None
+    normalized_home: int
+    normalized_away: int
+    reason: str  # e.g., "missing_score_carry_forward", "quarter_boundary", "game_start"
+
+
+@dataclass
+class NormalizedTimeline:
+    """Result of score normalization with full traceability."""
+    events: list[dict[str, Any]]
+    normalizations: list[ScoreNormalization]
+    
+    def had_corrections(self) -> bool:
+        """Returns True if any scores were corrected."""
+        return len(self.normalizations) > 0
+
+
+def normalize_scores(events: Sequence[dict[str, Any]]) -> NormalizedTimeline:
+    """
+    Normalize scores in the timeline by carrying forward the most recent valid score.
+    
+    PHASE 1.4: This ensures score continuity is structurally reliable.
+    
+    Rules:
+    1. At game start (no prior events), default to (0, 0)
+    2. For any event with missing score (None), carry forward the previous valid score
+    3. For quarter boundaries, preserve the last valid score from previous quarter
+    4. Never silently drop score information
+    
+    All normalization decisions are recorded for auditability.
+    
+    Args:
+        events: Original timeline events
+        
+    Returns:
+        NormalizedTimeline with events (potentially modified) and normalization records
+    """
+    normalizations: list[ScoreNormalization] = []
+    normalized_events: list[dict[str, Any]] = []
+    
+    # Track the last valid score
+    last_valid_home: int = 0
+    last_valid_away: int = 0
+    has_seen_valid_score = False
+    
+    for i, event in enumerate(events):
+        # Create a shallow copy to avoid modifying the original
+        normalized_event = dict(event)
+        
+        # Only process PBP events for score normalization
+        if event.get("event_type") != "pbp":
+            normalized_events.append(normalized_event)
+            continue
+        
+        original_home = event.get("home_score")
+        original_away = event.get("away_score")
+        
+        # Determine the normalized scores
+        needs_normalization = False
+        reason = ""
+        
+        if original_home is None or original_away is None:
+            # Missing score - carry forward
+            needs_normalization = True
+            if has_seen_valid_score:
+                reason = "missing_score_carry_forward"
+            else:
+                reason = "game_start_default"
+            normalized_home = last_valid_home
+            normalized_away = last_valid_away
+        elif original_home == 0 and original_away == 0 and has_seen_valid_score:
+            # Potential score reset - check if it's a real reset or data issue
+            # Real resets happen at quarter boundaries with specific markers
+            description = (event.get("description") or "").lower()
+            is_quarter_marker = any(m in description for m in [
+                "start of", "end of", "beginning of", "start period", "end period"
+            ])
+            
+            if is_quarter_marker:
+                # This is a quarter marker with reset score - carry forward
+                needs_normalization = True
+                reason = "quarter_boundary_carry_forward"
+                normalized_home = last_valid_home
+                normalized_away = last_valid_away
+            else:
+                # Check if this is actually a data anomaly (0-0 after significant scoring)
+                total_points = last_valid_home + last_valid_away
+                if total_points > 10:  # Significant scoring happened, this is likely bad data
+                    needs_normalization = True
+                    reason = "apparent_reset_carry_forward"
+                    normalized_home = last_valid_home
+                    normalized_away = last_valid_away
+                else:
+                    # Early game, could be legitimate (e.g., replay correction)
+                    normalized_home = original_home
+                    normalized_away = original_away
+        else:
+            # Valid score - use as-is and update tracking
+            normalized_home = original_home
+            normalized_away = original_away
+            last_valid_home = normalized_home
+            last_valid_away = normalized_away
+            has_seen_valid_score = True
+        
+        # Record normalization if applied
+        if needs_normalization:
+            normalizations.append(ScoreNormalization(
+                index=i,
+                original_home=original_home,
+                original_away=original_away,
+                normalized_home=normalized_home,
+                normalized_away=normalized_away,
+                reason=reason,
+            ))
+            normalized_event["home_score"] = normalized_home
+            normalized_event["away_score"] = normalized_away
+            normalized_event["_score_normalized"] = True
+            normalized_event["_normalization_reason"] = reason
+        
+        normalized_events.append(normalized_event)
+    
+    return NormalizedTimeline(events=normalized_events, normalizations=normalizations)
+
+
+# =============================================================================
+# PHASE 1.3: RUN-BASED BOUNDARY DETECTION
+# =============================================================================
+
+
+@dataclass
+class RunBoundaryDecision:
+    """Record of a run boundary decision for diagnostics."""
+    run_start_idx: int
+    run_end_idx: int
+    run_points: int
+    run_team: str
+    created_boundary: bool
+    reason: str  # e.g., "run_created_boundary", "run_no_tier_change", "run_overlaps_existing"
+    tier_before: int | None = None
+    tier_after: int | None = None
+
+
+def _evaluate_run_for_boundary(
+    run: DetectedRun,
+    events: Sequence[dict[str, Any]],
+    thresholds: Sequence[int],
+    existing_boundary_indices: set[int],
+) -> RunBoundaryDecision:
+    """
+    Evaluate whether a detected run should create a MOMENTUM_SHIFT boundary.
+    
+    A run creates a boundary only if:
+    1. Run points >= RUN_BOUNDARY_MIN_POINTS (default 8)
+    2. The run causes a tier change (margin crosses a tier boundary)
+    3. The run does not overlap with an existing boundary
+    
+    Returns a RunBoundaryDecision with the result and reason.
+    """
+    # Check minimum points
+    if run.points < RUN_BOUNDARY_MIN_POINTS:
+        return RunBoundaryDecision(
+            run_start_idx=run.start_idx,
+            run_end_idx=run.end_idx,
+            run_points=run.points,
+            run_team=run.team,
+            created_boundary=False,
+            reason="run_below_threshold",
+        )
+    
+    # Check for overlap with existing boundaries
+    for boundary_idx in existing_boundary_indices:
+        if run.start_idx <= boundary_idx <= run.end_idx:
+            return RunBoundaryDecision(
+                run_start_idx=run.start_idx,
+                run_end_idx=run.end_idx,
+                run_points=run.points,
+                run_team=run.team,
+                created_boundary=False,
+                reason="run_overlaps_existing_boundary",
+            )
+    
+    # Calculate tier change caused by the run
+    start_event = events[run.start_idx]
+    end_event = events[run.end_idx]
+    
+    # Get scores at start and end of run
+    # Use event before run start for "before" state
+    if run.start_idx > 0:
+        before_event = events[run.start_idx - 1]
+        home_before = before_event.get("home_score", 0) or 0
+        away_before = before_event.get("away_score", 0) or 0
+    else:
+        home_before = 0
+        away_before = 0
+    
+    home_after = end_event.get("home_score", 0) or 0
+    away_after = end_event.get("away_score", 0) or 0
+    
+    # Compute lead states
+    state_before = compute_lead_state(home_before, away_before, thresholds)
+    state_after = compute_lead_state(home_after, away_after, thresholds)
+    
+    # Check for tier change
+    tier_change = abs(state_after.tier - state_before.tier)
+    leader_changed = state_before.leader != state_after.leader
+    
+    if tier_change < RUN_BOUNDARY_MIN_TIER_CHANGE and not leader_changed:
+        return RunBoundaryDecision(
+            run_start_idx=run.start_idx,
+            run_end_idx=run.end_idx,
+            run_points=run.points,
+            run_team=run.team,
+            created_boundary=False,
+            reason="run_no_tier_change",
+            tier_before=state_before.tier,
+            tier_after=state_after.tier,
+        )
+    
+    # Check for garbage time (very late in game with large margin)
+    game_progress = _get_game_progress(end_event)
+    if game_progress > 0.9 and state_after.tier >= 3:  # Late game, blowout
+        return RunBoundaryDecision(
+            run_start_idx=run.start_idx,
+            run_end_idx=run.end_idx,
+            run_points=run.points,
+            run_team=run.team,
+            created_boundary=False,
+            reason="run_garbage_time",
+            tier_before=state_before.tier,
+            tier_after=state_after.tier,
+        )
+    
+    # Run qualifies for boundary creation
+    return RunBoundaryDecision(
+        run_start_idx=run.start_idx,
+        run_end_idx=run.end_idx,
+        run_points=run.points,
+        run_team=run.team,
+        created_boundary=True,
+        reason="run_created_boundary",
+        tier_before=state_before.tier,
+        tier_after=state_after.tier,
+    )
+
+
+def _detect_run_boundaries(
+    events: Sequence[dict[str, Any]],
+    runs: list[DetectedRun],
+    thresholds: Sequence[int],
+    existing_boundaries: list["BoundaryEvent"],
+) -> tuple[list["BoundaryEvent"], list[RunBoundaryDecision]]:
+    """
+    Detect run-based boundaries that should become MOMENTUM_SHIFT moments.
+    
+    Returns:
+        Tuple of (new_boundaries, decisions) for diagnostics
+    """
+    # Get existing boundary indices for overlap check
+    existing_indices = {b.index for b in existing_boundaries}
+    
+    new_boundaries: list[BoundaryEvent] = []
+    decisions: list[RunBoundaryDecision] = []
+    
+    for run in runs:
+        decision = _evaluate_run_for_boundary(run, events, thresholds, existing_indices)
+        decisions.append(decision)
+        
+        if decision.created_boundary:
+            # Create boundary at start of run
+            start_event = events[run.start_idx]
+            
+            # Get state before and after
+            if run.start_idx > 0:
+                before_event = events[run.start_idx - 1]
+                home_before = before_event.get("home_score", 0) or 0
+                away_before = before_event.get("away_score", 0) or 0
+            else:
+                home_before = 0
+                away_before = 0
+            
+            home_after = events[run.end_idx].get("home_score", 0) or 0
+            away_after = events[run.end_idx].get("away_score", 0) or 0
+            
+            prev_state = compute_lead_state(home_before, away_before, thresholds)
+            curr_state = compute_lead_state(home_after, away_after, thresholds)
+            
+            boundary = BoundaryEvent(
+                index=run.start_idx,
+                moment_type=MomentType.MOMENTUM_SHIFT,
+                prev_state=prev_state,
+                curr_state=curr_state,
+                note=f"{run.points}-0 {run.team} run",
+            )
+            new_boundaries.append(boundary)
+            
+            # Add to existing indices to prevent duplicate runs creating boundaries
+            existing_indices.add(run.start_idx)
+    
+    return new_boundaries, decisions
+
+
+# =============================================================================
 # BOUNDARY DETECTION
 # =============================================================================
 
@@ -452,19 +936,32 @@ class BoundaryEvent:
     note: str | None = None
 
 
-def get_canonical_pbp_indices(events: Sequence[dict[str, Any]]) -> list[int]:
+def get_canonical_pbp_indices(
+    events: Sequence[dict[str, Any]],
+    require_description: bool = True,
+) -> list[int]:
     """
     Filter the timeline to find only real, narrative-relevant PBP plays.
 
+    PHASE 1.4: This function now expects score-normalized events.
+    Score reset heuristics have been removed - use normalize_scores() before calling.
+
     Excludes:
     - Non-PBP events
-    - Empty descriptions
-    - Period start/end markers
-    - Score resets (0-0 mid-game)
-    - Boundary bookkeeping rows
+    - Period start/end markers (descriptive only, no game action)
+    - Boundary bookkeeping rows (0:00 with no score change)
+    
+    Includes:
+    - All scoring events (even if description is minimal)
+    - All events that could affect game state
+    
+    Args:
+        events: Timeline events (should be score-normalized)
+        require_description: If False, includes events without descriptions if they have score changes
     """
     indices = []
-    has_seen_scoring = False
+    prev_home: int | None = None
+    prev_away: int | None = None
 
     for i, event in enumerate(events):
         if event.get("event_type") != "pbp":
@@ -473,40 +970,55 @@ def get_canonical_pbp_indices(events: Sequence[dict[str, Any]]) -> list[int]:
         description = (event.get("description") or "").strip()
         description_lower = description.lower()
 
-        # 1. Filter by description content
-        if not description:
-            continue
+        # Get score (should be normalized if normalize_scores() was called)
+        home_score = event.get("home_score")
+        away_score = event.get("away_score")
+        
+        # Convert None to 0 only for comparison purposes
+        home_for_compare = home_score if home_score is not None else 0
+        away_for_compare = away_score if away_score is not None else 0
+
+        # Check if this event has a score change
+        has_score_change = (
+            prev_home is not None and 
+            (home_for_compare != prev_home or away_for_compare != prev_away)
+        )
+        
+        # 1. Filter explicit period markers (never include these)
         if any(marker in description_lower for marker in [
             "start of", "end of", "beginning of", "start period", "end period",
+        ]):
+            # Even period markers should update our score tracking
+            prev_home = home_for_compare
+            prev_away = away_for_compare
+            continue
+        
+        # 2. Filter non-play events that don't affect game state
+        if not description and require_description and not has_score_change:
+            # No description and no score change - skip
+            continue
+            
+        if any(marker in description_lower for marker in [
             "jump ball", "timeout", "coaches challenge"
         ]):
-            # Keep jump balls at start of game/period? No, they don't change score/tier
+            # These don't change score/tier, but update tracking
+            prev_home = home_for_compare
+            prev_away = away_for_compare
             continue
 
-        # 2. Filter by score resets
-        home_score = event.get("home_score", 0) or 0
-        away_score = event.get("away_score", 0) or 0
-
-        if home_score > 0 or away_score > 0:
-            has_seen_scoring = True
-
-        if home_score == 0 and away_score == 0 and has_seen_scoring:
-            # This is a score reset mid-game - ignore it
-            continue
-
-        # 3. Filter boundary markers at 0:00 that aren't plays
+        # 3. Filter boundary markers at 0:00 that aren't actual plays
         clock = event.get("game_clock", "")
-        if clock == "0:00" or clock == "0:00.0":
-            # If it's a 0:00 row with no score change from previous, it's likely a marker
-            # We'll check this by comparing with last added index if any
-            if indices:
-                prev_event = events[indices[-1]]
-                if (prev_event.get("home_score") == home_score and
-                    prev_event.get("away_score") == away_score and
-                    "made" not in description_lower and "miss" not in description_lower):
+        if clock in ("0:00", "0:00.0"):
+            # If it's a 0:00 row with no score change, it's likely just a marker
+            if not has_score_change:
+                if "made" not in description_lower and "miss" not in description_lower:
+                    prev_home = home_for_compare
+                    prev_away = away_for_compare
                     continue
 
         indices.append(i)
+        prev_home = home_for_compare
+        prev_away = away_for_compare
 
     return indices
 
@@ -516,6 +1028,8 @@ def _detect_boundaries(
     pbp_indices: list[int],
     thresholds: Sequence[int],
     hysteresis_plays: int = DEFAULT_HYSTERESIS_PLAYS,
+    flip_hysteresis_plays: int = DEFAULT_FLIP_HYSTERESIS_PLAYS,
+    tie_hysteresis_plays: int = DEFAULT_TIE_HYSTERESIS_PLAYS,
 ) -> list[BoundaryEvent]:
     """
     Detect all moment boundaries using the canonical PBP stream.
@@ -526,6 +1040,11 @@ def _detect_boundaries(
     - closing_lock
     - high_impact_event
 
+    PHASE 1 ENHANCEMENTS:
+    - FLIP and TIE now have configurable hysteresis
+    - Early-game triggers are gated to reduce noise
+    - Only significant early-game flips (tier 1+) bypass hysteresis
+
     OPENER is no longer a moment type.
     """
     boundaries: list[BoundaryEvent] = []
@@ -533,17 +1052,86 @@ def _detect_boundaries(
     if not pbp_indices:
         return boundaries
 
-    # Track state
+    # Track state for tier crossings (TIER_UP, TIER_DOWN, TIE_BROKEN)
     prev_state: LeadState | None = None
     pending_crossing: TierCrossing | None = None
     pending_index: int = 0
     persistence_count: int = 0
-    # prev_event removed - period start is metadata during partitioning
+    
+    # PHASE 1: Track state for FLIP hysteresis
+    pending_flip: TierCrossing | None = None
+    pending_flip_index: int = 0
+    pending_flip_prev_state: LeadState | None = None
+    flip_persistence_count: int = 0
+    
+    # PHASE 1: Track state for TIE hysteresis
+    pending_tie: TierCrossing | None = None
+    pending_tie_index: int = 0
+    pending_tie_prev_state: LeadState | None = None
+    tie_persistence_count: int = 0
 
     for i in pbp_indices:
         event = events[i]
         home_score, away_score = _get_score(event)
         curr_state = compute_lead_state(home_score, away_score, thresholds)
+
+        # === CHECK PENDING FLIP CONFIRMATION ===
+        if pending_flip is not None:
+            # Check if the new leader still leads
+            if curr_state.leader == pending_flip.curr_state.leader:
+                flip_persistence_count += 1
+                
+                if flip_persistence_count >= flip_hysteresis_plays:
+                    # Confirmed FLIP - leader held
+                    pending_flip_event = events[pending_flip_index]
+                    if _is_closing_situation(pending_flip_event, pending_flip.curr_state):
+                        boundaries.append(BoundaryEvent(
+                            index=pending_flip_index,
+                            moment_type=MomentType.CLOSING_CONTROL,
+                            prev_state=pending_flip_prev_state or pending_flip.prev_state,
+                            curr_state=curr_state,
+                            crossing=pending_flip,
+                            note="Late lead change (confirmed)",
+                        ))
+                    else:
+                        boundaries.append(BoundaryEvent(
+                            index=pending_flip_index,
+                            moment_type=MomentType.FLIP,
+                            prev_state=pending_flip_prev_state or pending_flip.prev_state,
+                            curr_state=curr_state,
+                            crossing=pending_flip,
+                            note="Lead change (confirmed)",
+                        ))
+                    pending_flip = None
+                    flip_persistence_count = 0
+            else:
+                # Leader changed again before confirmation - cancel pending
+                # This collapses rapid flip-flip-flip sequences
+                pending_flip = None
+                flip_persistence_count = 0
+        
+        # === CHECK PENDING TIE CONFIRMATION ===
+        if pending_tie is not None:
+            # Check if still tied
+            if curr_state.leader == Leader.TIED:
+                tie_persistence_count += 1
+                
+                if tie_persistence_count >= tie_hysteresis_plays:
+                    # Confirmed TIE
+                    boundaries.append(BoundaryEvent(
+                        index=pending_tie_index,
+                        moment_type=MomentType.TIE,
+                        prev_state=pending_tie_prev_state or pending_tie.prev_state,
+                        curr_state=curr_state,
+                        crossing=pending_tie,
+                        note="Game tied (confirmed)",
+                    ))
+                    pending_tie = None
+                    tie_persistence_count = 0
+            else:
+                # Tie was broken before confirmation - cancel
+                pending_tie = None
+                tie_persistence_count = 0
 
         # === LEAD LADDER CROSSING ===
         if prev_state is not None:
@@ -552,12 +1140,17 @@ def _detect_boundaries(
             if crossing is not None:
                 crossing_type = crossing.crossing_type
 
-                # IMMEDIATE boundaries (no hysteresis)
+                # === FLIP: Now with time-aware gating and hysteresis ===
                 if crossing_type == TierCrossingType.FLIP:
+                    # Cancel any pending tier crossing (FLIP supersedes)
                     pending_crossing = None
                     persistence_count = 0
-
+                    
+                    # Check if this is a closing situation (always immediate)
                     if _is_closing_situation(event, curr_state):
+                        # Cancel any pending flip - this one takes precedence
+                        pending_flip = None
+                        flip_persistence_count = 0
                         boundaries.append(BoundaryEvent(
                             index=i,
                             moment_type=MomentType.CLOSING_CONTROL,
@@ -566,7 +1159,17 @@ def _detect_boundaries(
                             crossing=crossing,
                             note="Late lead change",
                         ))
+                    # Check if this flip should be gated (early game, low tier)
+                    elif _should_gate_early_flip(event, curr_state, prev_state):
+                        # Early game, tier 0 flip - require hysteresis
+                        pending_flip = crossing
+                        pending_flip_index = i
+                        pending_flip_prev_state = prev_state
+                        flip_persistence_count = 1
                     else:
+                        # Significant flip or late game - immediate boundary
+                        pending_flip = None
+                        flip_persistence_count = 0
                         boundaries.append(BoundaryEvent(
                             index=i,
                             moment_type=MomentType.FLIP,
@@ -576,17 +1179,30 @@ def _detect_boundaries(
                             note="Lead change",
                         ))
 
+                # === TIE_REACHED: Now with time-aware gating and hysteresis ===
                 elif crossing_type == TierCrossingType.TIE_REACHED:
                     pending_crossing = None
                     persistence_count = 0
-                    boundaries.append(BoundaryEvent(
-                        index=i,
-                        moment_type=MomentType.TIE,
-                        prev_state=prev_state,
-                        curr_state=curr_state,
-                        crossing=crossing,
-                        note="Game tied",
-                    ))
+                    
+                    # Check if this tie should be gated (early game, low significance)
+                    if _should_gate_early_tie(event, prev_state):
+                        # Early game tie at low score - require hysteresis
+                        pending_tie = crossing
+                        pending_tie_index = i
+                        pending_tie_prev_state = prev_state
+                        tie_persistence_count = 1
+                    else:
+                        # Significant tie or late game - immediate boundary
+                        pending_tie = None
+                        tie_persistence_count = 0
+                        boundaries.append(BoundaryEvent(
+                            index=i,
+                            moment_type=MomentType.TIE,
+                            prev_state=prev_state,
+                            curr_state=curr_state,
+                            crossing=crossing,
+                            note="Game tied",
+                        ))
 
                 elif crossing_type in (TierCrossingType.TIE_BROKEN, TierCrossingType.TIER_UP, TierCrossingType.TIER_DOWN):
                     pending_crossing = crossing
@@ -905,6 +1521,8 @@ def partition_game(
     summary: dict[str, Any],
     thresholds: Sequence[int] | None = None,
     hysteresis_plays: int = DEFAULT_HYSTERESIS_PLAYS,
+    flip_hysteresis_plays: int = DEFAULT_FLIP_HYSTERESIS_PLAYS,
+    tie_hysteresis_plays: int = DEFAULT_TIE_HYSTERESIS_PLAYS,
     game_context: dict[str, str] | None = None,
 ) -> list[Moment]:
     """
@@ -919,19 +1537,40 @@ def partition_game(
     6. Score continuity is preserved
     7. Participants are RESOLVED and FROZEN on the moment
     
+    PHASE 1 ENHANCEMENTS:
+    - FLIP and TIE triggers now have configurable hysteresis
+    - Early-game triggers are gated to reduce noise
+    - Rapid flip-flip-flip sequences collapse
+    - Scores are normalized before processing (PHASE 1.4)
+    - Significant runs can create MOMENTUM_SHIFT boundaries (PHASE 1.3)
+    
     Args:
         timeline: Full timeline events (PBP + social)
         summary: Game summary metadata
         thresholds: Lead Ladder tier thresholds
-        hysteresis_plays: Number of plays to confirm tier changes
+        hysteresis_plays: Number of plays to confirm tier changes (TIER_UP/DOWN)
+        flip_hysteresis_plays: Number of plays leader must hold to confirm FLIP
+        tie_hysteresis_plays: Number of plays to confirm TIE
         game_context: Team names and abbreviations for resolution
     """
-    events = list(timeline)
-    if not events:
+    if not timeline:
         return []
     
     # Store game context for later use
     _game_context = game_context or {}
+
+    # PHASE 1.4: Normalize scores before any processing
+    normalized = normalize_scores(timeline)
+    events = normalized.events
+    
+    if normalized.had_corrections():
+        logger.info(
+            "score_normalization_applied",
+            extra={
+                "corrections_count": len(normalized.normalizations),
+                "reasons": [n.reason for n in normalized.normalizations],
+            },
+        )
 
     # 1. Get CANONICAL PBP event indices (filter out junk)
     pbp_indices = get_canonical_pbp_indices(events)
@@ -946,8 +1585,39 @@ def partition_game(
         )
         thresholds = [5]
 
-    # 2. Detect boundaries using canonical stream
-    boundaries = _detect_boundaries(events, pbp_indices, thresholds, hysteresis_plays)
+    # 2. Detect tier-based boundaries using canonical stream (with Phase 1 hysteresis)
+    tier_boundaries = _detect_boundaries(
+        events, 
+        pbp_indices, 
+        thresholds, 
+        hysteresis_plays,
+        flip_hysteresis_plays,
+        tie_hysteresis_plays,
+    )
+    
+    # PHASE 1.3: Detect runs and evaluate for boundary creation
+    runs = detect_runs(events)  # Detect runs early for boundary evaluation
+    run_boundaries, run_decisions = _detect_run_boundaries(
+        events, runs, thresholds, tier_boundaries
+    )
+    
+    # Log run boundary decisions for diagnostics
+    if run_boundaries:
+        logger.info(
+            "run_boundaries_created",
+            extra={
+                "run_boundaries_count": len(run_boundaries),
+                "total_runs_evaluated": len(runs),
+                "decisions": [
+                    {"points": d.run_points, "reason": d.reason, "created": d.created_boundary}
+                    for d in run_decisions
+                ],
+            },
+        )
+    
+    # Merge all boundaries and sort by index
+    boundaries = tier_boundaries + run_boundaries
+    boundaries.sort(key=lambda b: b.index)
 
     # Build moments from boundaries
     moments: list[Moment] = []
@@ -1031,8 +1701,7 @@ def partition_game(
         moment.is_period_start = current_is_period_start
         moments.append(moment)
 
-    # Detect runs and attach to moments as metadata
-    runs = detect_runs(events)  # From moments_runs module
+    # Attach runs to moments as metadata (runs were detected earlier for boundary evaluation)
     _attach_runs_to_moments(moments, runs)
 
     # AGGRESSIVE MERGE: Collapse consecutive same-type moments
@@ -1139,6 +1808,16 @@ def partition_game(
     # Renumber moment IDs after merging
     for i, m in enumerate(moments):
         m.id = f"m_{i + 1:03d}"
+
+    # PHASE 2.1: Compute importance scores for all moments
+    from .moment_importance import score_all_moments, log_importance_summary
+    
+    importance_factors_list = score_all_moments(moments, events, thresholds)
+    for moment, factors in zip(moments, importance_factors_list):
+        moment.importance_score = factors.importance_score
+        moment.importance_factors = factors.to_dict()
+    
+    log_importance_summary(moments, importance_factors_list)
 
     logger.info(
         "partition_game_complete",

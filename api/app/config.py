@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     enable_ai_segment_enrichment: bool = Field(default=True, alias="ENABLE_AI_SEGMENT_ENRICHMENT")
     enable_ai_summary: bool = Field(default=True, alias="ENABLE_AI_SUMMARY")
 
+    # Pipeline validation settings
+    # When True: Score discontinuities FAIL validation and block persistence
+    # When False: Score discontinuities are flagged as DEGRADED but allowed
+    strict_score_continuity: bool = Field(
+        default=False, alias="STRICT_SCORE_CONTINUITY"
+    )
+
     @property
     def allowed_cors_origins(self) -> list[str]:
         """Allow local dev ports for the web UI."""

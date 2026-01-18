@@ -177,6 +177,8 @@ class GeneratedMomentsOutput:
     within_budget: bool
     # Generation trace for explainability
     generation_trace: dict[str, Any] | None = None
+    # Phase 0: Moment distribution metrics for pacing analysis
+    moment_distribution: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = {
@@ -188,7 +190,41 @@ class GeneratedMomentsOutput:
         }
         if self.generation_trace is not None:
             result["generation_trace"] = self.generation_trace
+        if self.moment_distribution is not None:
+            result["moment_distribution"] = self.moment_distribution
         return result
+
+
+class QualityStatus(str, Enum):
+    """Quality status of the validated moments.
+    
+    This provides a clear signal about data integrity beyond pass/fail.
+    """
+    PASSED = "PASSED"           # All checks passed, no issues
+    DEGRADED = "DEGRADED"       # Passed with known issues (e.g., score discontinuity in non-strict mode)
+    FAILED = "FAILED"           # Critical validation failures
+    OVERRIDDEN = "OVERRIDDEN"   # Would have failed but manually overridden
+
+
+@dataclass
+class ScoreContinuityOverride:
+    """Audit record for manual score continuity override.
+    
+    When score continuity issues are manually overridden, this captures
+    the override metadata for auditability.
+    """
+    enabled: bool = False
+    reason: str | None = None
+    overridden_by: str | None = None
+    overridden_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "reason": self.reason,
+            "overridden_by": self.overridden_by,
+            "overridden_at": self.overridden_at,
+        }
 
 
 @dataclass
@@ -203,16 +239,26 @@ class ValidationOutput:
     errors: list[str]
     warnings: list[str]
     validation_details: dict[str, Any]
+    # Quality status provides clearer signal than just pass/fail
+    quality_status: QualityStatus = QualityStatus.PASSED
+    # Score continuity specific tracking
+    score_continuity_issues: list[dict[str, Any]] = field(default_factory=list)
+    score_continuity_override: ScoreContinuityOverride | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "passed": self.passed,
             "critical_passed": self.critical_passed,
             "warnings_count": self.warnings_count,
             "errors": self.errors,
             "warnings": self.warnings,
             "validation_details": self.validation_details,
+            "quality_status": self.quality_status.value,
+            "score_continuity_issues": self.score_continuity_issues,
         }
+        if self.score_continuity_override:
+            result["score_continuity_override"] = self.score_continuity_override.to_dict()
+        return result
 
 
 @dataclass
@@ -225,11 +271,19 @@ class FinalizedOutput:
     timeline_events: int
     moment_count: int
     generated_at: str  # ISO format datetime
+    # Phase 0: Quality status for visibility
+    quality_status: str = "PASSED"
+    # Phase 0: Moment distribution summary
+    moment_distribution: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "artifact_id": self.artifact_id,
             "timeline_events": self.timeline_events,
             "moment_count": self.moment_count,
             "generated_at": self.generated_at,
+            "quality_status": self.quality_status,
         }
+        if self.moment_distribution:
+            result["moment_distribution"] = self.moment_distribution
+        return result
