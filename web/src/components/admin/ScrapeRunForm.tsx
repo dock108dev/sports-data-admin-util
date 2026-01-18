@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { getFullSeasonDates, shouldAutoFillDates, type LeagueCode } from "@/lib/utils/seasonDates";
 import { SUPPORTED_LEAGUES, DEFAULT_SCRAPE_RUN_FORM } from "@/lib/constants/sports";
+import { clearScraperCache } from "@/lib/api/sportsAdmin";
 import styles from "./ScrapeRunForm.module.css";
 
 export type ScrapeRunFormData = typeof DEFAULT_SCRAPE_RUN_FORM;
@@ -21,6 +22,22 @@ interface ScrapeRunFormProps {
  */
 export function ScrapeRunForm({ onSubmit, loading = false, error, success }: ScrapeRunFormProps) {
   const [form, setForm] = useState<ScrapeRunFormData>(DEFAULT_SCRAPE_RUN_FORM);
+  const [clearingCache, setClearingCache] = useState(false);
+  const [cacheMessage, setCacheMessage] = useState<string | null>(null);
+
+  const handleClearCache = async () => {
+    if (clearingCache) return;
+    setClearingCache(true);
+    setCacheMessage(null);
+    try {
+      const result = await clearScraperCache(form.leagueCode, 7);
+      setCacheMessage(`Cleared ${result.deleted_count} cached scoreboard files for ${result.league}`);
+    } catch (err) {
+      setCacheMessage(`Failed to clear cache: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setClearingCache(false);
+    }
+  };
 
   const maybeAutofillDates = (next: ScrapeRunFormData): ScrapeRunFormData => {
     if (!shouldAutoFillDates(next.leagueCode as LeagueCode, next.season, next.startDate, next.endDate)) {
@@ -164,9 +181,24 @@ export function ScrapeRunForm({ onSubmit, loading = false, error, success }: Scr
           Leave blank to scrape all games in range. Set a date to only rescrape stale data.
         </p>
 
-        <button type="submit" disabled={loading}>
-          {loading ? "Scheduling..." : "Schedule Run"}
-        </button>
+        <div className={styles.buttonRow}>
+          <button type="submit" disabled={loading}>
+            {loading ? "Scheduling..." : "Schedule Run"}
+          </button>
+          <button
+            type="button"
+            onClick={handleClearCache}
+            disabled={clearingCache}
+            className={styles.secondaryButton}
+          >
+            {clearingCache ? "Clearing..." : "Clear Recent Cache (7 days)"}
+          </button>
+        </div>
+        {cacheMessage && (
+          <p className={cacheMessage.includes("Failed") ? styles.error : styles.success}>
+            {cacheMessage}
+          </p>
+        )}
       </form>
     </section>
   );

@@ -45,3 +45,17 @@ export async function cancelScrapeRun(runId: number): Promise<ScrapeRunResponse>
     method: "POST",
   });
 }
+
+export type ClearCacheResponse = {
+  status: string;
+  league: string;
+  days: number;
+  deleted_count: number;
+  deleted_files: string[];
+};
+
+export async function clearScraperCache(league: string, days: number = 7): Promise<ClearCacheResponse> {
+  return request(`/api/admin/sports/scraper/cache/clear?league=${league}&days=${days}`, {
+    method: "POST",
+  });
+}

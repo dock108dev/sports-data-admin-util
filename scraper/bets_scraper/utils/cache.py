@@ -9,9 +9,6 @@ from urllib.parse import urlparse
 
 from ..logging import logger
 
-# Scoreboards within this many days of today are always re-fetched
-RECENT_DAYS_THRESHOLD = 7
-
 # Minimum file size (bytes) for a valid scoreboard cache entry
 # Empty scoreboards are typically < 5KB, valid ones with games are > 20KB
 MIN_SCOREBOARD_SIZE_BYTES = 5000
@@ -60,13 +57,6 @@ class HTMLCache:
         # Drop year/season directory to avoid mis-bucketing when season differs from current year
         return self.cache_dir / self.league_code / filename
     
-    def _is_recent_date(self, game_date: date | None) -> bool:
-        """Check if the game_date is within RECENT_DAYS_THRESHOLD of today."""
-        if game_date is None:
-            return False
-        today = date.today()
-        return abs((today - game_date).days) <= RECENT_DAYS_THRESHOLD
-
     def _is_scoreboard_url(self, url: str) -> bool:
         """Check if the URL is a scoreboard page (vs boxscore or PBP)."""
         return "boxscores" in url and "?" in url and "month=" in url
@@ -76,21 +66,9 @@ class HTMLCache:
         
         Cache is bypassed (returns None) in these cases:
         1. force_refresh is True
-        2. game_date is within RECENT_DAYS_THRESHOLD days of today
-        3. Cached scoreboard file is too small (likely empty/no games)
+        2. Cached scoreboard file is too small (likely empty/no games)
         """
         cache_path = self._get_cache_path(url, game_date)
-        
-        # Check if this is a recent date that should always be refreshed
-        if self._is_recent_date(game_date):
-            logger.info(
-                "cache_skip_recent_date",
-                url=url,
-                game_date=str(game_date),
-                threshold_days=RECENT_DAYS_THRESHOLD,
-                league=self.league_code,
-            )
-            return None
         
         if cache_path.exists():
             if self.force_refresh:
@@ -129,20 +107,8 @@ class HTMLCache:
         """Save HTML to cache.
         
         Returns None without saving if:
-        1. game_date is within RECENT_DAYS_THRESHOLD (would be skipped on read anyway)
-        2. Scoreboard page is too small (likely empty, no games)
+        - Scoreboard page is too small (likely empty, no games)
         """
-        # Don't cache recent dates - they'll be refreshed on next read anyway
-        if self._is_recent_date(game_date):
-            logger.info(
-                "cache_skip_save_recent_date",
-                url=url,
-                game_date=str(game_date),
-                threshold_days=RECENT_DAYS_THRESHOLD,
-                league=self.league_code,
-            )
-            return None
-        
         # Don't cache small scoreboards (likely empty/no games)
         if self._is_scoreboard_url(url) and len(html) < MIN_SCOREBOARD_SIZE_BYTES:
             logger.info(
@@ -159,4 +125,56 @@ class HTMLCache:
         cache_path.write_text(html, encoding="utf-8")
         logger.info("cache_saved", url=url, path=str(cache_path), size_kb=len(html) // 1024)
         return cache_path
+
+    def clear_recent_scoreboards(self, days: int = 7) -> dict:
+        """Clear cached scoreboard files for the last N days.
+        
+        This allows manually refreshing recent data before a scrape.
+        
+        Args:
+            days: Number of days back to clear (default 7)
+            
+        Returns:
+            Dict with count of deleted files and list of deleted paths
+        """
+        today = date.today()
+        deleted_files = []
+        
+        league_cache_dir = self.cache_dir / self.league_code
+        if not league_cache_dir.exists():
+            logger.info("cache_clear_no_directory", path=str(league_cache_dir))
+            return {"deleted_count": 0, "deleted_files": []}
+        
+        for i in range(days + 1):
+            target_date = today - timedelta(days=i)
+            # Scoreboard cache filename pattern: scoreboard_monthX_dayY_year20XX.html
+            filename = f"scoreboard_month{target_date.month}_day{target_date.day}_year{target_date.year}.html"
+            cache_path = league_cache_dir / filename
+            
+            if cache_path.exists():
+                try:
+                    cache_path.unlink()
+                    deleted_files.append(str(cache_path))
+                    logger.info(
+                        "cache_file_deleted",
+                        path=str(cache_path),
+                        date=str(target_date),
+                        league=self.league_code,
+                    )
+                except Exception as e:
+                    logger.error(
+                        "cache_file_delete_failed",
+                        path=str(cache_path),
+                        error=str(e),
+                        league=self.league_code,
+                    )
+        
+        logger.info(
+            "cache_clear_complete",
+            league=self.league_code,
+            days=days,
+            deleted_count=len(deleted_files),
+        )
+        
+        return {"deleted_count": len(deleted_files), "deleted_files": deleted_files}
 
