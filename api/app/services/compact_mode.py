@@ -137,6 +137,13 @@ COMPRESSION_BEHAVIOR: dict[MomentType, CompressionBehavior] = {
         description="High-impact events (ejections, etc.) - always show in full",
     ),
     
+    MomentType.MOMENTUM_SHIFT: CompressionBehavior(
+        collapse_allowed=False,
+        base_retention=1.0,
+        min_events=999,
+        description="Run-based momentum shifts - always show in full",
+    ),
+    
     # === LIGHT COMPRESSION ===
     # These types are important but can have routine plays trimmed.
     
