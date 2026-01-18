@@ -14,7 +14,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Sequence
 
 if TYPE_CHECKING:
-    from .moments import Moment, MomentType
+    from .moments import Moment
 
 logger = logging.getLogger(__name__)
 

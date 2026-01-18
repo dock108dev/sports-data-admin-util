@@ -68,7 +68,6 @@ from .moments_runs import (
     run_to_info,
 )
 from .moments_merging import (
-    is_valid_moment,
     merge_invalid_moments,
     merge_consecutive_moments,
     enforce_quarter_limits,
