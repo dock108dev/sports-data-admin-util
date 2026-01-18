@@ -304,11 +304,11 @@ Analyzes the timeline to identify:
 # After deterministic analysis:
 analysis = build_nba_game_analysis(timeline, summary)
 
-if ENABLE_AI_SEGMENT_ENRICHMENT:
-    analysis["segments"] = await enrich_segments_with_ai(
-        segments=analysis["segments"],
-        game_id=game_id
-    )
+# AI enrichment adds labels and tone to segments
+analysis["segments"] = await enrich_segments_with_ai(
+    segments=analysis["segments"],
+    game_id=game_id
+)
 ```
 
 #### OpenAI Prompt (Segment Enrichment)
@@ -547,12 +547,12 @@ def compute_excitement(group):
 ### 3.5 Compression Algorithm
 
 > **TERMINOLOGY NOTE (2026-01):** Compact Mode now operates on **Moments** (defined in 
-> `moments.py`). There is no separate "SemanticGroup" — Moment is the single narrative unit.
+> `moments/`). There is no separate "SemanticGroup" — Moment is the single narrative unit.
 
 ```python
 def get_compact_timeline(timeline, level):
     # 1. Compute Moments using the unified partition_game()
-    # Moment is the SINGLE narrative unit (from moments.py)
+    # Moment is the SINGLE narrative unit (from moments/ package)
     moments = partition_game(timeline, summary={})
     
     # 2. For each Moment, compute excitement and apply compression
@@ -686,8 +686,6 @@ All OpenAI outputs are idempotent, cacheable, and regenerable only on version bu
 | `OPENAI_MODEL_CLASSIFICATION` | `gpt-4o-mini` | Model for role/segment classification |
 | `OPENAI_MODEL_SUMMARY` | `gpt-4o` | Model for summary generation |
 | `ENABLE_AI_SOCIAL_ROLES` | `true` | Enable AI role classification |
-| `ENABLE_AI_SEGMENT_ENRICHMENT` | `true` | Enable AI segment labels |
-| `ENABLE_AI_SUMMARY` | `true` | Enable AI summary generation |
 
 ---
 
@@ -698,6 +696,7 @@ All OpenAI outputs are idempotent, cacheable, and regenerable only on version bu
 | `scraper/bets_scraper/scrapers/nba_sportsref.py` | PBP scraping |
 | `scraper/bets_scraper/persistence/plays.py` | PBP persistence |
 | `api/app/services/timeline_generator.py` | Timeline assembly |
+| `api/app/services/moments/` | Lead Ladder-based moment detection |
 | `api/app/services/game_analysis.py` | Segment/highlight detection |
 | `api/app/services/ai_client.py` | OpenAI integration + caching |
 | `api/app/services/compact_mode.py` | Semantic compression |

@@ -133,7 +133,7 @@ async def generate_timeline_artifact(...):
 ## 4. Moment Detection
 
 ### Current State
-**File:** `api/app/services/moments.py`
+**File:** `api/app/services/moments/`
 
 Moment detection is largely sport-agnostic because it uses Lead Ladder thresholds from config.
 
@@ -504,7 +504,7 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 | File | Changes |
 |------|---------|
 | `api/app/services/timeline_generator.py` | Add NHL functions, update dispatch |
-| `api/app/services/moments.py` | Add NHL high-impact types |
+| `api/app/services/moments/` | Add NHL high-impact types to config |
 | `api/app/services/summary_builder.py` | Add `build_nhl_summary()` |
 | `api/app/services/game_analysis.py` | Add NHL thresholds reference |
 | `api/app/config_sports.py` | Already has NHL config ✅ |

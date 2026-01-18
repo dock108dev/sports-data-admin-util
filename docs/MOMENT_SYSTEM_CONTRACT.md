@@ -202,7 +202,7 @@ You are done when:
 
 | File | Responsibility |
 |------|----------------|
-| `api/app/services/moments.py` | Lead Ladder, partitioning, merging, budgets |
+| `api/app/services/moments/` | Lead Ladder-based partitioning, merging, budgets |
 | `api/app/services/game_analysis.py` | Orchestrates partition + AI enrichment |
 | `api/app/services/ai_client.py` | OpenAI batch call, validation, linting |
 | `api/app/routers/sports/games.py` | Moments API endpoint |

@@ -54,7 +54,7 @@ FastAPI backend that serves normalized data:
 
 **Key Services:**
 - `services/timeline_generator.py` - Generates timeline artifacts from PBP + social
-- `services/moments.py` - Partitions timeline into moments (Lead Ladder-based)
+- `services/moments/` - Partitions timeline into moments (Lead Ladder-based)
 - `services/game_analysis.py` - AI enrichment for moments
 - `services/compact_mode.py` - Timeline compression
 
