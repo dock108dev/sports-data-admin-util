@@ -36,7 +36,6 @@ STAGE EXECUTION RULES
 
 from __future__ import annotations
 
-from datetime import datetime
 from enum import Enum
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -503,7 +502,7 @@ def _build_run_response(run: db_models.GamePipelineRun) -> PipelineRunResponse:
             prev_succeeded = False
         elif stage_record.status == "pending":
             pending += 1
-            prev_succeeded = prev_succeeded  # Keep previous state
+            # Keep prev_succeeded unchanged for pending stages
         else:
             prev_succeeded = False
     
@@ -736,7 +735,6 @@ async def execute_stage(
             detail=f"Invalid stage: {stage}. Valid stages: {valid_stages}",
         )
     
-    run = await _get_run_with_stages(session, run_id)
     executor = PipelineExecutor(session)
     
     try:
@@ -790,7 +788,6 @@ async def continue_pipeline(
     session: AsyncSession = Depends(get_db),
 ) -> ContinuePipelineResponse:
     """Continue a paused pipeline by executing the next pending stage."""
-    run = await _get_run_with_stages(session, run_id)
     executor = PipelineExecutor(session)
     
     try:

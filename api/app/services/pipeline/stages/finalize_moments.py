@@ -164,7 +164,8 @@ async def execute_finalize_moments(
                 datetime.fromisoformat(end_str),
             )
         except (ValueError, TypeError):
-            pass
+            # Skip phases with invalid date strings (missing or malformed)
+            continue
     
     # Fetch and process social posts
     social_events: list[tuple[datetime, dict[str, Any]]] = []

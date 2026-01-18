@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import styles from "../styles.module.css";
 import { PlayTrace } from "./PlayTrace";
 import type { MomentTraceDetail } from "@/lib/api/sportsAdmin";

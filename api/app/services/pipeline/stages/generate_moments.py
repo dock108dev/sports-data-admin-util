@@ -33,9 +33,7 @@ from ...moments import (
 )
 from ...moment_trace import (
     GenerationTrace,
-    MomentTrace,
     SignalSnapshot,
-    TraceAction,
     create_moment_trace_from_moment,
     validate_moment_and_trace,
 )
