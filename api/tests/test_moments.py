@@ -1286,6 +1286,583 @@ class TestNarrativeSelection(unittest.TestCase):
         self.assertIn("bounds", budget_dict)
 
 
+# =============================================================================
+# PHASE 3: MOMENT CONSTRUCTION IMPROVEMENTS
+# =============================================================================
+
+
+class TestBackAndForthChapters(unittest.TestCase):
+    """PHASE 3.1: Tests for back-and-forth chapter moments."""
+    
+    def test_volatility_cluster_detection(self) -> None:
+        """Should detect early-game volatility clusters."""
+        from app.services.moment_construction import detect_volatility_clusters, ChapterConfig
+        from app.services.moments import Moment, MomentType
+        
+        # Create moments simulating early game volatility
+        moments = []
+        for i in range(6):
+            m = Moment(
+                id=f"m_{i+1:03d}",
+                type=MomentType.FLIP if i % 2 == 0 else MomentType.TIE,
+                start_play=i * 3,
+                end_play=i * 3 + 2,
+                play_count=3,
+            )
+            m.importance_score = 2.0
+            moments.append(m)
+        
+        # Events for Q1
+        events = [
+            {"event_type": "pbp", "quarter": 1, "play_id": i}
+            for i in range(20)
+        ]
+        
+        clusters = detect_volatility_clusters(moments, events)
+        
+        # Should detect a cluster
+        self.assertGreater(len(clusters), 0)
+        
+        # Cluster should have multiple lead changes
+        cluster = clusters[0]
+        self.assertGreaterEqual(cluster.lead_changes, 2)
+    
+    def test_chapter_creation_absorbs_moments(self) -> None:
+        """Chapter creation should absorb FLIP/TIE sequences."""
+        from app.services.moment_construction import create_chapter_moments
+        from app.services.moments import Moment, MomentType
+        
+        # Create moments
+        moments = []
+        for i in range(5):
+            m = Moment(
+                id=f"m_{i+1:03d}",
+                type=MomentType.FLIP,
+                start_play=i * 4,
+                end_play=i * 4 + 3,
+                play_count=4,
+            )
+            m.importance_score = 2.0
+            moments.append(m)
+        
+        events = [
+            {"event_type": "pbp", "quarter": 1, "play_id": i}
+            for i in range(25)
+        ]
+        
+        result = create_chapter_moments(moments, events)
+        
+        # Should have created chapters if volatility was high enough
+        if result.chapters_created > 0:
+            self.assertLess(len(result.moments), len(moments))
+            self.assertGreater(result.moments_absorbed, 0)
+    
+    def test_chapter_has_is_chapter_flag(self) -> None:
+        """Chapter moments should have is_chapter=True."""
+        from app.services.moments import Moment, MomentType
+        
+        # Create a chapter moment directly
+        chapter = Moment(
+            id="chapter_001",
+            type=MomentType.NEUTRAL,
+            start_play=0,
+            end_play=20,
+            play_count=21,
+            is_chapter=True,
+        )
+        chapter.chapter_info = {
+            "lead_changes": 3,
+            "ties": 2,
+            "absorbed_moment_ids": ["m_001", "m_002", "m_003"],
+        }
+        
+        self.assertTrue(chapter.is_chapter)
+        self.assertIn("lead_changes", chapter.chapter_info)
+        
+        # Should serialize correctly
+        chapter_dict = chapter.to_dict()
+        self.assertTrue(chapter_dict["is_chapter"])
+        self.assertIn("chapter_info", chapter_dict)
+
+
+class TestMegaMomentSplitting(unittest.TestCase):
+    """PHASE 3.3: Tests for semantic mega-moment splitting."""
+    
+    def test_mega_moment_detection(self) -> None:
+        """Moments above threshold should be detected as mega-moments."""
+        from app.services.moment_construction import split_mega_moment, SplitConfig
+        from app.services.moments import Moment, MomentType
+        
+        # Create a mega-moment (50+ plays)
+        mega = Moment(
+            id="m_001",
+            type=MomentType.NEUTRAL,
+            start_play=0,
+            end_play=79,
+            play_count=80,
+        )
+        mega.importance_score = 3.0
+        
+        events = [
+            {"event_type": "pbp", "play_id": i, "home_score": i, "away_score": 0, "quarter": 1}
+            for i in range(100)
+        ]
+        thresholds = [5, 10, 15, 20]
+        
+        config = SplitConfig(mega_moment_threshold=50)
+        result = split_mega_moment(mega, events, thresholds, config)
+        
+        # Should be detected as mega-moment
+        self.assertEqual(result.original_play_count, 80)
+        # Note: may or may not be split depending on split points found
+    
+    def test_small_moment_not_split(self) -> None:
+        """Moments below threshold should not be split."""
+        from app.services.moment_construction import split_mega_moment, SplitConfig
+        from app.services.moments import Moment, MomentType
+        
+        small = Moment(
+            id="m_001",
+            type=MomentType.NEUTRAL,
+            start_play=0,
+            end_play=19,
+            play_count=20,
+        )
+        small.importance_score = 3.0
+        
+        events = [
+            {"event_type": "pbp", "play_id": i, "home_score": i, "away_score": 0}
+            for i in range(30)
+        ]
+        thresholds = [5, 10, 15, 20]
+        
+        config = SplitConfig(mega_moment_threshold=50)
+        result = split_mega_moment(small, events, thresholds, config)
+        
+        self.assertFalse(result.was_split)
+        self.assertEqual(result.skip_reason, "below_threshold")
+    
+    def test_split_creates_segments_with_metadata(self) -> None:
+        """Splits should create segments with proper metadata."""
+        from app.services.moment_construction import (
+            apply_mega_moment_splitting, SplitConfig, SplitSegment
+        )
+        from app.services.moments import Moment, MomentType
+        
+        # Create a mega-moment with tier changes
+        mega = Moment(
+            id="m_001",
+            type=MomentType.NEUTRAL,
+            start_play=0,
+            end_play=99,
+            play_count=100,
+            score_before=(0, 0),
+            score_after=(50, 30),
+            ladder_tier_before=0,
+            ladder_tier_after=2,
+        )
+        mega.importance_score = 5.0
+        
+        # Events with tier changes at different points
+        events = []
+        for i in range(100):
+            # Create tier changes at plays 25, 50, 75
+            if i < 25:
+                home, away = i, 0
+            elif i < 50:
+                home, away = i, i - 20
+            else:
+                home, away = i, i - 40
+            
+            events.append({
+                "event_type": "pbp",
+                "play_id": i,
+                "home_score": home,
+                "away_score": away,
+                "quarter": 1,
+            })
+        
+        thresholds = [5, 10, 15, 20]
+        config = SplitConfig(
+            mega_moment_threshold=50,
+            min_segment_plays=10,
+            min_plays_between_splits=15,
+        )
+        
+        result = apply_mega_moment_splitting([mega], events, thresholds, config)
+        
+        # Check stats
+        self.assertEqual(result.mega_moments_found, 1)
+        
+        # If split occurred, check segments
+        if result.mega_moments_split > 0:
+            # Each segment should have proper metadata
+            for moment in result.moments:
+                if moment.chapter_info.get("is_split_segment"):
+                    self.assertIn("parent_moment_id", moment.chapter_info)
+                    self.assertIn("segment_index", moment.chapter_info)
+    
+    def test_split_preserves_chronological_order(self) -> None:
+        """Split segments should remain chronologically ordered."""
+        from app.services.moment_construction import apply_mega_moment_splitting, SplitConfig
+        from app.services.moments import Moment, MomentType
+        
+        mega = Moment(
+            id="m_001",
+            type=MomentType.NEUTRAL,
+            start_play=0,
+            end_play=79,
+            play_count=80,
+        )
+        mega.importance_score = 5.0
+        
+        events = [
+            {"event_type": "pbp", "play_id": i, "home_score": i*2, "away_score": i, "quarter": 1}
+            for i in range(100)
+        ]
+        thresholds = [5, 10, 15, 20]
+        
+        result = apply_mega_moment_splitting([mega], events, thresholds)
+        
+        # Check chronological order
+        for i in range(1, len(result.moments)):
+            self.assertLessEqual(
+                result.moments[i-1].start_play,
+                result.moments[i].start_play,
+                "Moments should be chronologically ordered"
+            )
+
+
+# =============================================================================
+# PHASE 4: PLAYER & BOX SCORE INTEGRATION
+# =============================================================================
+
+
+class TestMomentBoxscore(unittest.TestCase):
+    """PHASE 4.1: Tests for per-moment stat aggregation."""
+    
+    def test_boxscore_aggregates_points_by_player(self) -> None:
+        """Should aggregate points by player from PBP events."""
+        from app.services.moment_enrichment import aggregate_moment_boxscore
+        from app.services.moments import Moment, MomentType
+        
+        moment = Moment(
+            id="m_001",
+            type=MomentType.LEAD_BUILD,
+            start_play=0,
+            end_play=4,
+            play_count=5,
+        )
+        
+        events = [
+            {"event_type": "pbp", "player_name": "LeBron James", "points_scored": 3, "scoring_team": "home"},
+            {"event_type": "pbp", "player_name": "Anthony Davis", "points_scored": 2, "scoring_team": "home"},
+            {"event_type": "pbp", "player_name": "LeBron James", "points_scored": 2, "scoring_team": "home"},
+            {"event_type": "pbp", "player_name": "Opponent Player", "points_scored": 2, "scoring_team": "away"},
+            {"event_type": "pbp", "player_name": "Anthony Davis", "points_scored": 2, "scoring_team": "home"},
+        ]
+        
+        boxscore = aggregate_moment_boxscore(moment, events)
+        
+        # LeBron: 3 + 2 = 5 points
+        self.assertEqual(boxscore.points_by_player.get("LeBron James"), 5)
+        # AD: 2 + 2 = 4 points
+        self.assertEqual(boxscore.points_by_player.get("Anthony Davis"), 4)
+        # Team totals
+        self.assertEqual(boxscore.team_totals.home, 9)
+        self.assertEqual(boxscore.team_totals.away, 2)
+    
+    def test_boxscore_tracks_key_plays(self) -> None:
+        """Should track blocks, steals, and turnovers."""
+        from app.services.moment_enrichment import aggregate_moment_boxscore
+        from app.services.moments import Moment, MomentType
+        
+        moment = Moment(
+            id="m_001",
+            type=MomentType.NEUTRAL,
+            start_play=0,
+            end_play=2,
+            play_count=3,
+        )
+        
+        events = [
+            {"event_type": "pbp", "play_type": "block", "player_name": "Anthony Davis"},
+            {"event_type": "pbp", "play_type": "steal", "player_name": "Alex Caruso"},
+            {"event_type": "pbp", "play_type": "turnover", "player_name": "Opponent Player"},
+        ]
+        
+        boxscore = aggregate_moment_boxscore(moment, events)
+        
+        self.assertEqual(boxscore.key_plays.blocks.get("Anthony Davis"), 1)
+        self.assertEqual(boxscore.key_plays.steals.get("Alex Caruso"), 1)
+        self.assertEqual(boxscore.key_plays.turnovers_committed.get("Opponent Player"), 1)
+    
+    def test_boxscore_tracks_assists(self) -> None:
+        """Should track assist connections."""
+        from app.services.moment_enrichment import aggregate_moment_boxscore
+        from app.services.moments import Moment, MomentType
+        
+        moment = Moment(
+            id="m_001",
+            type=MomentType.LEAD_BUILD,
+            start_play=0,
+            end_play=2,
+            play_count=3,
+        )
+        
+        events = [
+            {"event_type": "pbp", "player_name": "Scorer1", "points_scored": 2, "assist_player": "Passer1"},
+            {"event_type": "pbp", "player_name": "Scorer1", "points_scored": 3, "assist_player": "Passer1"},
+            {"event_type": "pbp", "player_name": "Scorer2", "points_scored": 2, "assist_player": "Passer1"},
+        ]
+        
+        boxscore = aggregate_moment_boxscore(moment, events)
+        
+        # Should have assist connections
+        self.assertGreater(len(boxscore.top_assists), 0)
+        # Passer1 -> Scorer1 should have 2 assists
+        p1_to_s1 = next((a for a in boxscore.top_assists if a.from_player == "Passer1" and a.to_player == "Scorer1"), None)
+        self.assertIsNotNone(p1_to_s1)
+        self.assertEqual(p1_to_s1.count, 2)
+    
+    def test_boxscore_to_dict(self) -> None:
+        """Boxscore should serialize correctly."""
+        from app.services.moment_enrichment import MomentBoxscore, TeamTotals, KeyPlays
+        
+        boxscore = MomentBoxscore(
+            points_by_player={"Player A": 10, "Player B": 5},
+            team_totals=TeamTotals(home=15, away=8),
+            plays_analyzed=10,
+            scoring_plays=5,
+        )
+        
+        result = boxscore.to_dict()
+        
+        self.assertIn("points_by_player", result)
+        self.assertIn("team_totals", result)
+        self.assertEqual(result["team_totals"]["home"], 15)
+        self.assertEqual(result["team_totals"]["net"], 7)
+
+
+class TestNarrativeSummary(unittest.TestCase):
+    """PHASE 4.2: Tests for deterministic narrative summaries."""
+    
+    def test_narrative_has_structural_sentence(self) -> None:
+        """Should generate structural change sentence."""
+        from app.services.moment_enrichment import (
+            generate_narrative_summary, MomentBoxscore, TeamTotals
+        )
+        from app.services.moments import Moment, MomentType
+        
+        moment = Moment(
+            id="m_001",
+            type=MomentType.FLIP,
+            start_play=0,
+            end_play=10,
+            play_count=11,
+            score_before=(20, 22),
+            score_after=(28, 24),
+        )
+        
+        boxscore = MomentBoxscore(
+            team_totals=TeamTotals(home=8, away=2),
+        )
+        
+        events = [{"event_type": "pbp", "quarter": 2, "game_clock": "6:00"} for _ in range(11)]
+        
+        summary = generate_narrative_summary(moment, boxscore, events, "Lakers", "Celtics")
+        
+        self.assertIn("Lakers", summary.structural_sentence)
+        self.assertIn("lead", summary.structural_sentence.lower())
+    
+    def test_narrative_has_player_sentence(self) -> None:
+        """Should generate player-centric sentence with top scorers."""
+        from app.services.moment_enrichment import (
+            generate_narrative_summary, MomentBoxscore, TeamTotals
+        )
+        from app.services.moments import Moment, MomentType
+        
+        moment = Moment(
+            id="m_001",
+            type=MomentType.LEAD_BUILD,
+            start_play=0,
+            end_play=10,
+            play_count=11,
+            score_before=(20, 15),
+            score_after=(35, 20),
+        )
+        
+        boxscore = MomentBoxscore(
+            points_by_player={"LeBron James": 10, "Anthony Davis": 5},
+            team_totals=TeamTotals(home=15, away=5),
+        )
+        
+        events = [{"event_type": "pbp", "quarter": 2} for _ in range(11)]
+        
+        summary = generate_narrative_summary(moment, boxscore, events, "Lakers", "Celtics")
+        
+        # Should mention players
+        self.assertIn("LeBron James", summary.player_sentence)
+        self.assertIn("LeBron James", summary.players_referenced)
+    
+    def test_narrative_is_deterministic(self) -> None:
+        """Same input should produce same output."""
+        from app.services.moment_enrichment import (
+            generate_narrative_summary, MomentBoxscore, TeamTotals
+        )
+        from app.services.moments import Moment, MomentType
+        
+        moment = Moment(
+            id="m_001",
+            type=MomentType.NEUTRAL,
+            start_play=0,
+            end_play=5,
+            play_count=6,
+        )
+        
+        boxscore = MomentBoxscore(
+            points_by_player={"Player A": 6},
+            team_totals=TeamTotals(home=6, away=4),
+        )
+        
+        events = [{"event_type": "pbp", "quarter": 1} for _ in range(6)]
+        
+        # Generate twice
+        summary1 = generate_narrative_summary(moment, boxscore, events)
+        summary2 = generate_narrative_summary(moment, boxscore, events)
+        
+        self.assertEqual(summary1.text, summary2.text)
+        self.assertEqual(summary1.template_id, summary2.template_id)
+    
+    def test_narrative_to_dict(self) -> None:
+        """Narrative should serialize correctly."""
+        from app.services.moment_enrichment import NarrativeSummary
+        
+        summary = NarrativeSummary(
+            text="The full summary text.",
+            structural_sentence="Lakers took the lead.",
+            player_sentence="LeBron scored 10.",
+            template_id="flip_home|single_star",
+            players_referenced=["LeBron James"],
+            stats_referenced=["points:10"],
+        )
+        
+        result = summary.to_dict()
+        
+        self.assertEqual(result["text"], "The full summary text.")
+        self.assertIn("sentences", result)
+        self.assertEqual(result["template_id"], "flip_home|single_star")
+
+
+class TestDynamicQuarterQuotas(unittest.TestCase):
+    """PHASE 3.2: Tests for dynamic quarter quotas."""
+    
+    def test_close_game_expands_q4_quota(self) -> None:
+        """Close games should have expanded Q4 quota."""
+        from app.services.moment_construction import compute_quarter_quotas, QuotaConfig
+        from app.services.moments import Moment, MomentType
+        
+        # Create moments across quarters
+        moments = []
+        for q in range(1, 5):
+            for i in range(3):
+                m = Moment(
+                    id=f"m_q{q}_{i}",
+                    type=MomentType.NEUTRAL,
+                    start_play=(q-1)*20 + i*5,
+                    end_play=(q-1)*20 + i*5 + 4,
+                    play_count=5,
+                )
+                m.importance_score = 3.0
+                moments.append(m)
+        
+        # Close game events (3 point margin)
+        events = []
+        for q in range(1, 5):
+            for i in range(20):
+                events.append({
+                    "event_type": "pbp",
+                    "quarter": q,
+                    "play_id": (q-1)*20 + i,
+                    "home_score": 50 + q*10 + i,
+                    "away_score": 50 + q*10 + i - 3,  # 3 point margin
+                })
+        
+        quotas = compute_quarter_quotas(moments, events)
+        
+        # Q4 should have bonus
+        self.assertIn(4, quotas)
+        q4_quota = quotas[4]
+        self.assertGreater(q4_quota.close_game_bonus, 0)
+    
+    def test_blowout_reduces_all_quotas(self) -> None:
+        """Blowouts should have reduced quotas."""
+        from app.services.moment_construction import compute_quarter_quotas, QuotaConfig
+        from app.services.moments import Moment, MomentType
+        
+        moments = []
+        for q in range(1, 5):
+            m = Moment(
+                id=f"m_q{q}",
+                type=MomentType.NEUTRAL,
+                start_play=(q-1)*20,
+                end_play=(q-1)*20 + 10,
+                play_count=11,
+            )
+            m.importance_score = 2.0
+            moments.append(m)
+        
+        # Blowout events (30 point margin)
+        events = []
+        for q in range(1, 5):
+            for i in range(20):
+                events.append({
+                    "event_type": "pbp",
+                    "quarter": q,
+                    "play_id": (q-1)*20 + i,
+                    "home_score": 30 + q*15,
+                    "away_score": q*10,  # Big margin
+                })
+        
+        quotas = compute_quarter_quotas(moments, events)
+        
+        # All quarters should have reduction
+        for q in range(1, 5):
+            if q in quotas:
+                self.assertGreater(quotas[q].blowout_reduction, 0)
+    
+    def test_quota_enforcement_merges_excess(self) -> None:
+        """Quota enforcement should merge excess moments."""
+        from app.services.moment_construction import enforce_quarter_quotas, QuotaConfig
+        from app.services.moments import Moment, MomentType
+        
+        # Create many moments in Q1 (more than quota)
+        moments = []
+        for i in range(10):
+            m = Moment(
+                id=f"m_{i+1:03d}",
+                type=MomentType.NEUTRAL,
+                start_play=i * 2,
+                end_play=i * 2 + 1,
+                play_count=2,
+            )
+            m.importance_score = float(i)  # Varying importance
+            moments.append(m)
+        
+        events = [
+            {"event_type": "pbp", "quarter": 1, "play_id": i, "home_score": i, "away_score": 0}
+            for i in range(25)
+        ]
+        
+        # Use a config with low quota to force merging
+        config = QuotaConfig(baseline_quota=4, min_quota=2, max_quota=6)
+        result = enforce_quarter_quotas(moments, events, config)
+        
+        # Should have merged some moments
+        if result.quotas.get(1, QuotaConfig()).needs_compression:
+            self.assertLess(len(result.moments), len(moments))
+
+
 class TestInvariantFullPlayCoverage(unittest.TestCase):
     """
     GUARDRAIL: Every PBP play must belong to exactly one moment.

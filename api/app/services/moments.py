@@ -299,6 +299,18 @@ class Moment:
     importance_score: float = 0.0
     # Breakdown of importance factors (ImportanceFactors.to_dict())
     importance_factors: dict[str, Any] = field(default_factory=dict)
+    
+    # PHASE 3.1: Chapter moments
+    # True if this is a "chapter" moment wrapping multiple absorbed moments
+    is_chapter: bool = False
+    # Metadata about the chapter (absorbed IDs, lead changes, ties, etc.)
+    chapter_info: dict[str, Any] = field(default_factory=dict)
+    
+    # PHASE 4: Player & Box Score Integration
+    # Aggregated stats for this moment (who scored, key plays, etc.)
+    moment_boxscore: Any = None  # MomentBoxscore, but avoid circular import
+    # Deterministic narrative summary (no AI)
+    narrative_summary: Any = None  # NarrativeSummary, but avoid circular import
 
     # AI-generated content (populated by enrich_game_moments)
     headline: str = ""   # max 60 chars
@@ -381,6 +393,20 @@ class Moment:
         result["importance_score"] = round(self.importance_score, 2)
         if self.importance_factors:
             result["importance_factors"] = self.importance_factors
+        
+        # PHASE 3.1: Include chapter info
+        result["is_chapter"] = self.is_chapter
+        if self.is_chapter and self.chapter_info:
+            result["chapter_info"] = self.chapter_info
+        
+        # PHASE 4: Include boxscore and narrative
+        if self.moment_boxscore:
+            result["moment_boxscore"] = self.moment_boxscore.to_dict()
+        if self.narrative_summary:
+            result["narrative_summary"] = self.narrative_summary.to_dict()
+            # Also expose the text for easy access
+            result["deterministic_summary"] = self.narrative_summary.text
+        
         return result
 
 
@@ -1841,9 +1867,70 @@ def partition_game(
             "swaps_performed": selection_result.swaps_performed,
         },
     )
+    
+    post_phase2_count = len(moments)
 
-    # Re-validate coverage after selection
-    # NOTE: Selection may reduce moments, so we validate the selected set
+    # PHASE 3: CONSTRUCTION IMPROVEMENTS (post-selection reshaping)
+    # Task 3.1: Back-and-forth chapter moments for early volatility
+    # Task 3.2: Dynamic quarter quotas
+    from .moment_construction import apply_construction_improvements
+    
+    construction_result = apply_construction_improvements(moments, events, thresholds)
+    moments = construction_result.moments
+    
+    # Log Phase 3 details
+    if construction_result.chapter_result:
+        logger.info(
+            "phase_3_1_chapters_applied",
+            extra={
+                "chapters_created": construction_result.chapter_result.chapters_created,
+                "moments_absorbed": construction_result.chapter_result.moments_absorbed,
+            },
+        )
+    
+    if construction_result.quota_result:
+        logger.info(
+            "phase_3_2_quotas_applied",
+            extra={
+                "is_close_game": construction_result.quota_result.is_close_game,
+                "is_blowout": construction_result.quota_result.is_blowout,
+                "quarters_compressed": construction_result.quota_result.quarters_compressed,
+                "moments_merged": construction_result.quota_result.moments_merged,
+            },
+        )
+    
+    if construction_result.splitting_result:
+        logger.info(
+            "phase_3_3_splitting_applied",
+            extra={
+                "mega_moments_found": construction_result.splitting_result.mega_moments_found,
+                "mega_moments_split": construction_result.splitting_result.mega_moments_split,
+                "total_segments_created": construction_result.splitting_result.total_segments_created,
+            },
+        )
+
+    # PHASE 4: PLAYER & BOX SCORE INTEGRATION
+    # Task 4.1: Per-moment stat aggregation
+    # Task 4.2: Deterministic narrative summaries
+    from .moment_enrichment import enrich_moments_with_boxscore
+    
+    # Extract team names from summary if available
+    home_team = summary.get("home_team", {}).get("name", "Home") if isinstance(summary, dict) else "Home"
+    away_team = summary.get("away_team", {}).get("name", "Away") if isinstance(summary, dict) else "Away"
+    
+    enrichment_result = enrich_moments_with_boxscore(moments, events, home_team, away_team)
+    moments = enrichment_result.moments
+    
+    logger.info(
+        "phase_4_enrichment_applied",
+        extra={
+            "moments_enriched": enrichment_result.moments_enriched,
+            "players_identified": enrichment_result.players_identified,
+            "total_scoring_plays": enrichment_result.total_scoring_plays,
+        },
+    )
+
+    # Re-validate coverage after construction improvements
     validate_moment_coverage(moments, pbp_indices)  # From moments_validation module
 
     # Validate score continuity
@@ -1852,7 +1939,7 @@ def partition_game(
     # CONTINUITY VALIDATION: Structural integrity check
     assert_moment_continuity(moments)  # From moments_validation module
 
-    # Renumber moment IDs after selection
+    # Renumber moment IDs after all processing
     for i, m in enumerate(moments):
         m.id = f"m_{i + 1:03d}"
 
@@ -1860,9 +1947,11 @@ def partition_game(
         "partition_game_complete",
         extra={
             "pre_merge_count": pre_merge_count,
-            "post_selection_count": len(moments),
+            "post_phase2_count": post_phase2_count,
+            "post_phase3_count": len(moments),
             "target_budget": selection_result.budget.target_moment_count,
             "dynamic_budget_signals": selection_result.budget.signals.to_dict(),
+            "chapters_created": construction_result.chapter_result.chapters_created if construction_result.chapter_result else 0,
             "notable_count": sum(1 for m in moments if m.is_notable),
         },
     )
