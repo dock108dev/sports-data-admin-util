@@ -67,11 +67,13 @@ FastAPI backend that serves normalized data:
 
 React/TypeScript admin interface:
 
-**Features:**
-- Game browser with filters
-- Scrape job management
-- Timeline generation UI
-- Game detail views (boxscores, odds, social, PBP, moments)
+| Feature | Description |
+|---------|-------------|
+| **Data Browser** | Filter and view games, teams, scrape runs |
+| **Ingestion** | Schedule scrape jobs with date ranges and data type toggles |
+| **Game Detail** | View boxscores, player stats, odds, social posts, PBP |
+| **Timeline Generation** | Generate and regenerate timeline artifacts |
+| **Compact Moments** | Review AI-generated game moment summaries |
 
 **Stack:**
 - Next.js (App Router)
@@ -212,8 +214,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for production setup, including:
 
 ## See Also
 
-- [PLATFORM_OVERVIEW.md](PLATFORM_OVERVIEW.md) - High-level feature overview
 - [TECHNICAL_FLOW.md](TECHNICAL_FLOW.md) - Detailed timeline generation flow
 - [MOMENT_SYSTEM_CONTRACT.md](MOMENT_SYSTEM_CONTRACT.md) - Moment system specification
+- [API.md](API.md) - API endpoint reference
 - [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md) - Local development setup
 - [OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md) - Production operations

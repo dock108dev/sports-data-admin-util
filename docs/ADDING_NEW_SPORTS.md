@@ -128,3 +128,53 @@ league_code: str = Field(default="NBA")
 # GOOD
 league_code: str = Field(..., description="Required: NBA, NHL, NCAAB")
 ```
+
+---
+
+## Implementing a New Scraper
+
+If the new sport needs custom scraping logic:
+
+### 1. Create Scraper Class
+
+Extend `BaseSportsReferenceScraper` in `scraper/bets_scraper/scrapers/`:
+
+```python
+class NewLeagueScraper(BaseSportsReferenceScraper):
+    def fetch_games_for_date(self, date: date) -> list[NormalizedGame]: ...
+    def pbp_url(self, game: SportsGame) -> str: ...  # If PBP supported
+    def fetch_play_by_play(self, game: SportsGame) -> list[NormalizedPlay]: ...
+    def fetch_single_boxscore(self, game: SportsGame) -> NormalizedGame: ...
+```
+
+### 2. Normalize Output
+
+Build `NormalizedGame` objects with:
+- `GameIdentification` (team identities, season, date)
+- `home_score`, `away_score`
+- `team_boxscores` + `player_boxscores`
+
+### 3. Register the Scraper
+
+Add to `_SCRAPER_REGISTRY` in `scraper/bets_scraper/scrapers/__init__.py`.
+
+### 4. Run Through Orchestrator
+
+`ScrapeRunManager` automatically pulls from `get_all_scrapers()`.
+
+---
+
+## Stubbed/Incomplete Data
+
+When scrapers operate with incomplete data (pre-game, partial ingestion):
+
+**Minimum requirements for a game payload:**
+
+| Field | Requirement |
+|-------|-------------|
+| Identity fields | Always present: `league_code`, `season`, `game_date`, team identities |
+| Team boxscores | Always present (two entries), but `points` may be `None` |
+| Scores | May be `None` for scheduled games |
+| Status | Must be explicit (`scheduled`, `in_progress`, `postponed`) |
+
+A missing or non-numeric score is treated as a parse error and logged.

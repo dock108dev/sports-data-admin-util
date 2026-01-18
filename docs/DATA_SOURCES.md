@@ -235,6 +235,6 @@ See also:
 
 ## See Also
 
-- [SCORE_LOGIC_AND_SCRAPERS.md](SCORE_LOGIC_AND_SCRAPERS.md) - Scraper architecture overview
+- [ADDING_NEW_SPORTS.md](ADDING_NEW_SPORTS.md) - Adding new leagues and scrapers
 - [DATABASE_INTEGRATION.md](DATABASE_INTEGRATION.md) - Database schema and queries
 - [OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md) - Production operations

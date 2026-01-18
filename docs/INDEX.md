@@ -4,8 +4,7 @@
 
 | Guide | Description |
 |-------|-------------|
-| [Quick Start](QUICK_START.md) | **Start here:** Run locally in 2 minutes |
-| [Platform Overview](PLATFORM_OVERVIEW.md) | What this platform does and key features |
+| [Local Development](LOCAL_DEVELOPMENT.md) | **Start here:** Run locally with Docker or manual setup |
 | [Architecture](ARCHITECTURE.md) | System components, data flow, database schema |
 | [API Reference](API.md) | FastAPI endpoints and usage |
 
@@ -13,7 +12,6 @@
 
 | Guide | Description |
 |-------|-------------|
-| [Local Development](LOCAL_DEVELOPMENT.md) | Detailed local setup and troubleshooting |
 | [Adding New Sports](ADDING_NEW_SPORTS.md) | How to enable a new league |
 | [NHL Implementation Guide](NHL_IMPLEMENTATION_GUIDE.md) | **Comprehensive NHL parity reference** |
 | [Database Integration](DATABASE_INTEGRATION.md) | Querying the sports database |
@@ -39,7 +37,6 @@ The core product: turning play-by-play and social data into a narrative timeline
 | Guide | Description |
 |-------|-------------|
 | [Data Sources](DATA_SOURCES.md) | **Start here:** Where data comes from |
-| [Scoring Logic & Scrapers](SCORE_LOGIC_AND_SCRAPERS.md) | Scraper architecture |
 | [X Integration](X_INTEGRATION.md) | X/Twitter social scraping |
 
 ## Sport-Specific Implementation
@@ -47,21 +44,22 @@ The core product: turning play-by-play and social data into a narrative timeline
 Technical references for sport-specific parsing and validation.
 
 ### Play-by-Play
+
 | Guide | Description |
 |-------|-------------|
-| [NBA PBP Patterns](pbp-nba-patterns.md) | NBA parsing patterns for NHL parity |
-| [NBA PBP Review](pbp-nba-review.md) | NBA PBP implementation details |
+| [NBA PBP Review](pbp-nba-review.md) | NBA PBP implementation and parity patterns |
 | [NHL PBP](pbp-nhl-hockey-reference.md) | NHL PBP via Hockey Reference |
 | [NCAAB PBP](pbp-ncaab-sports-reference.md) | NCAAB PBP via Sports Reference |
-| [NHL Overview](nhl-hockey-reference-overview.md) | NHL data source overview |
 
 ### Odds
+
 | Guide | Description |
 |-------|-------------|
 | [NBA/NCAAB Odds](odds-nba-ncaab-review.md) | NBA/NCAAB odds implementation |
 | [NHL Odds Validation](odds-nhl-validation.md) | NHL odds validation checklist |
 
 ### Social
+
 | Guide | Description |
 |-------|-------------|
 | [NBA Social](social-nba-review.md) | NBA social implementation |
@@ -71,7 +69,7 @@ Technical references for sport-specific parsing and validation.
 
 | Guide | Description |
 |-------|-------------|
-| [Operator Runbook](OPERATOR_RUNBOOK.md) | Production operations, backups, monitoring |
+| [Operator Runbook](OPERATOR_RUNBOOK.md) | Production operations and monitoring |
 | [Deployment](DEPLOYMENT.md) | Server setup, deploy flow, rollbacks |
 | [Infrastructure](INFRA.md) | Docker configuration and profiles |
 | [Edge Proxy](EDGE_PROXY.md) | Caddy/Nginx routing configuration |

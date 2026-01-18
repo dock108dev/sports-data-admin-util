@@ -534,6 +534,50 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 
 ---
 
+## 15. Hockey-Reference Data Sources
+
+### Entry Points
+
+| Data Type | URL Pattern |
+|-----------|-------------|
+| Team season stats | `hockey-reference.com/leagues/NHL_{season}.html` |
+| Skater stats | `hockey-reference.com/leagues/NHL_{season}_skaters.html` |
+| Goalie stats | `hockey-reference.com/leagues/NHL_{season}_goalies.html` |
+
+**Season identifier:** `NHL_{season}` where `{season}` is the opening year (e.g., `2023` for 2023-24 season).
+
+### Identifier Patterns
+
+- **Team IDs:** Derived from URLs like `/teams/NYR/2024.html` → `NYR`
+- **Player IDs:** Derived from URLs like `/players/m/mcdavco01.html` → `mcdavco01`
+- **Abbreviations:** Hockey-Reference uses NHL-specific abbreviations (VGK, CBJ, etc.)
+
+### Team Season Stats
+
+From the `stats` table:
+- Games played, wins, losses, overtime losses
+- Points / points percentage
+- Goals for/against, goal differential
+- Shots for/against, shooting/save percentages
+- Penalty minutes, power-play %, penalty-kill %
+
+### Player Season Stats
+
+From `skaters` and `goalies` tables:
+- Games played, goals, assists, points
+- Positions (C, LW, RW, D, G)
+- Time on ice (converted to decimal minutes)
+- Goalie-specific fields retained in `raw_stats`
+
+### Notable Quirks vs NBA/NCAAB
+
+- **Tables in HTML comments:** Hockey-Reference ships tables inside comments; scraper scans comment blocks.
+- **Team abbreviations:** NHL-specific (differ from basketball conventions).
+- **TOT rows:** Players who played for multiple teams have `TOT` rows with no linked team ID.
+- **Time on ice:** Expressed as `MM:SS`, converted to decimal minutes.
+
+---
+
 ## See Also
 
 - [MOMENT_SYSTEM_CONTRACT.md](MOMENT_SYSTEM_CONTRACT.md) - Moment system specification
@@ -541,4 +585,3 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 - [pbp-nhl-hockey-reference.md](pbp-nhl-hockey-reference.md) - NHL PBP parsing
 - [odds-nhl-validation.md](odds-nhl-validation.md) - NHL odds validation
 - [social-nhl.md](social-nhl.md) - NHL social integration
-- [nhl-hockey-reference-overview.md](nhl-hockey-reference-overview.md) - NHL data sources

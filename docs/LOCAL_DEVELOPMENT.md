@@ -1,16 +1,12 @@
 # Local Development
 
-## Docker (Recommended)
+## Quick Start (Docker)
 
 The easiest way to run the full stack locally.
-
-### Quick Start
 
 ```bash
 cd infra
 cp .env.example .env   # Edit credentials as needed
-
-# Start everything with the dev profile
 docker compose --profile dev up -d --build
 ```
 
@@ -19,33 +15,52 @@ docker compose --profile dev up -d --build
 - API Docs: http://localhost:8000/docs
 - Health: http://localhost:8000/healthz
 
-### Using an Existing Database
+## What's Running
 
-By default, `infra/docker-compose.yml` runs Postgres **inside Docker** and the API connects to it via the `postgres` service name.
-If you want to connect to a host Postgres instead, you’ll need to override the compose config (not provided by default).
+The Docker Compose setup starts:
 
-### Migrations
+| Service | Port | Description |
+|---------|------|-------------|
+| postgres | 5432 | PostgreSQL database |
+| redis | 6379 | Redis for Celery queue |
+| api | 8000 | FastAPI backend |
+| scraper-worker | — | Celery worker for data ingestion |
+| scraper-beat | — | Celery scheduler (13:00-02:00 UTC) |
+| web | 3000 | Next.js admin UI |
 
-Migrations are run explicitly (not on every container startup). Use the dedicated
-`migrate` service or run Alembic in the API container.
-
-To run migrations manually:
+## Verify Everything Works
 
 ```bash
-# Recommended (explicit) migration job
+# Check all services are running
+docker compose ps
+
+# Check API health
+curl http://localhost:8000/healthz
+
+# View logs
+docker compose logs -f api
+docker compose logs -f scraper-worker
+```
+
+## Database Migrations
+
+Migrations are run explicitly (not on container startup).
+
+```bash
+# Run pending migrations (recommended)
 docker compose --profile dev run --rm migrate
 
 # Check current version
 docker exec sports-api alembic current
 
-# Run pending migrations
+# Run manually
 docker exec sports-api alembic upgrade head
 
 # Create a new migration
 docker exec sports-api alembic revision --autogenerate -m "describe change"
 ```
 
-### Container Commands
+## Container Commands
 
 ```bash
 # View logs
@@ -60,7 +75,16 @@ docker compose --profile dev up -d --build api
 
 # Stop everything
 docker compose --profile dev down
+
+# Stop and remove volumes (WARNING: deletes data)
+docker compose --profile dev down -v
 ```
+
+## Using an Existing Database
+
+By default, Postgres runs inside Docker. To connect to a host Postgres instead, modify the `DATABASE_URL` in your `.env` file and adjust network settings in the compose file.
+
+---
 
 ## Local Services (Without Docker)
 
@@ -73,8 +97,7 @@ For development without Docker, run each service manually.
 psql "$DATABASE_URL" -f sql/000_sports_schema.sql
 
 # Or run Alembic migrations
-cd api
-alembic upgrade head
+cd api && alembic upgrade head
 ```
 
 ### 2. API
@@ -85,6 +108,7 @@ pip install -r requirements.txt
 
 export DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/sports"
 export REDIS_URL="redis://localhost:6379/2"
+export ENVIRONMENT="development"
 
 uvicorn main:app --reload --port 8000
 ```
@@ -93,7 +117,7 @@ uvicorn main:app --reload --port 8000
 
 ```bash
 cd scraper
-uv pip install --system -e .
+uv sync
 
 export DATABASE_URL="postgresql+psycopg://user:pass@localhost:5432/sports"
 export REDIS_URL="redis://localhost:6379/2"
@@ -101,7 +125,7 @@ export REDIS_URL="redis://localhost:6379/2"
 celery -A bets_scraper.celery_app.app worker --loglevel=info --queues=bets-scraper
 ```
 
-### 4. Web UI
+### 4. Web Admin
 
 ```bash
 cd web
@@ -111,7 +135,11 @@ export NEXT_PUBLIC_SPORTS_API_URL=http://localhost:8000
 pnpm dev
 ```
 
+---
+
 ## Environment Variables
+
+Key variables in `infra/.env`:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -120,40 +148,103 @@ pnpm dev
 | POSTGRES_DB | Yes | Database name |
 | POSTGRES_USER | Yes | Database user |
 | POSTGRES_PASSWORD | Yes | Database password |
+| ENVIRONMENT | Yes | `development`, `staging`, or `production` |
+| OPENAI_API_KEY | No | For AI enrichment (moment summaries) |
 | ODDS_API_KEY | No | The Odds API key for live odds |
 | X_AUTH_TOKEN | No | X auth cookie for social scraping |
-| X_CT0 | No | X csrf cookie for social scraping |
+| X_CT0 | No | X CSRF cookie for social scraping |
 | NEXT_PUBLIC_SPORTS_API_URL | Yes (web) | API base URL for frontend |
 | RUN_MIGRATIONS | No | Run Alembic on startup (default: false) |
 
+---
+
+## Development Workflow
+
+```bash
+# Make code changes...
+
+# Restart affected service
+docker compose restart api        # For API changes
+docker compose restart web        # For web changes
+docker compose restart scraper-worker  # For scraper changes
+
+# View logs
+docker compose logs -f api
+
+# Run tests
+docker compose exec api pytest tests/ -v
+```
+
+---
+
 ## Troubleshooting
+
+### Services won't start
+
+```bash
+# Check Docker resources
+docker system df
+
+# Clean up and rebuild
+docker compose down -v
+docker compose up -d --build
+```
+
+### Database connection errors
+
+```bash
+# Check PostgreSQL is running
+docker compose ps postgres
+docker compose logs postgres
+```
 
 ### API won't start
 
-Check the logs:
 ```bash
+# Check logs
 docker logs sports-api
+
+# Common issues:
+# - Database not ready: wait for postgres healthcheck
+# - Migration error: check Alembic version mismatch
+# - Import error: rebuild the container
 ```
 
-Common issues:
-- Database not ready: wait for postgres healthcheck
-- Migration error: check Alembic version mismatch
-- Import error: rebuild the container
+### Port already in use
+
+```bash
+# Find what's using the port
+lsof -i :8000  # or :3000, :5432, etc.
+
+# Stop the conflicting service or change ports
+```
 
 ### Scraper returns empty results
 
 For social scraping:
 1. Check X cookies are valid (they expire)
-2. Verify X_AUTH_TOKEN and X_CT0 in .env
-3. Rebuild scraper: docker compose --profile dev up -d --build scraper
+2. Verify `X_AUTH_TOKEN` and `X_CT0` in `.env`
+3. Rebuild scraper: `docker compose up -d --build scraper`
 
-### Database connection refused
+### Restoring a DB backup
 
-- Ensure postgres is running: docker ps | grep postgres
-- Check the host: Docker uses host.docker.internal for host machine
-- Verify credentials in .env
+The `infra/scripts/restore.sh` script is destructive and requires `CONFIRM_DESTRUCTIVE=true`.
 
-### Restoring a DB backup (local)
+```bash
+CONFIRM_DESTRUCTIVE=true docker exec sports-postgres /scripts/restore.sh /backups/sports_YYYYMMDD.sql.gz
+```
 
-The `infra/scripts/restore.sh` helper is **destructive** and guarded by `CONFIRM_DESTRUCTIVE=true`.
-On Postgres 16+ it uses `DROP DATABASE ... WITH (FORCE)` so you typically don’t need to stop services first.
+---
+
+## Next Steps
+
+1. **Explore Admin UI**: http://localhost:3000
+2. **Browse API Docs**: http://localhost:8000/docs
+3. **Trigger a scrape**: Use the admin UI to create a scrape run
+4. **View data**: Browse games, teams, and timeline artifacts
+
+## See Also
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture and data flow
+- [INFRA.md](INFRA.md) - Docker configuration details
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Production deployment
