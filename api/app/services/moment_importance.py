@@ -227,8 +227,10 @@ def _compute_time_weight(
     
     weight *= time_factor
     
-    # Bonus for final minutes (< 5 min in Q4 or OT)
-    if quarter and quarter >= 4:
+    # Bonus for final minutes (final phase with limited time, sport-agnostic)
+    # Uses game_progress > 0.85 as proxy for "final phase" to avoid coupling
+    # to specific quarter numbers
+    if game_progress >= 0.85 or is_overtime:
         if seconds_remaining is not None and seconds_remaining <= 300:
             is_final_minutes = True
             weight += weights.time_weight_final_minutes_bonus

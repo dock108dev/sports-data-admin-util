@@ -28,8 +28,6 @@ from .config import (
     EARLY_GAME_PROGRESS_THRESHOLD,
     MID_GAME_PROGRESS_THRESHOLD,
     EARLY_GAME_MIN_TIER_FOR_IMMEDIATE,
-    DEFAULT_CLOSING_SECONDS,
-    DEFAULT_CLOSING_TIER,
     HIGH_IMPACT_PLAY_TYPES,
 )
 
@@ -50,20 +48,27 @@ def get_score(event: dict[str, Any]) -> tuple[int, int]:
     return (home, away)
 
 
-def get_bucket(event: dict[str, Any]) -> str:
+def get_bucket(event: dict[str, Any], sport: str | None = None) -> str:
     """Determine time bucket (early/mid/late) from event.
 
-    This is sport-agnostic: uses quarter/period and clock position.
+    SPORT-AGNOSTIC: Uses unified game structure.
+    - "early": First ~35% of game
+    - "mid": Middle portion
+    - "late": Final phase with closing time remaining
     """
-    quarter = event.get("quarter", 1)
-    clock_seconds = parse_clock_to_seconds(event.get("game_clock"))
-
-    if quarter <= 1:
+    from .game_structure import compute_game_phase_state
+    
+    phase_state = compute_game_phase_state(event, sport)
+    
+    if phase_state.game_progress <= 0.35:
         return "early"
-    if quarter >= 4:
-        if clock_seconds is not None and clock_seconds <= 300:
-            return "late"
-        return "mid"
+    
+    if phase_state.is_final_phase and phase_state.is_closing_window:
+        return "late"
+    
+    if phase_state.is_late_game:
+        return "late"
+    
     return "mid"
 
 
@@ -80,42 +85,40 @@ def is_high_impact_event(event: dict[str, Any]) -> bool:
     return play_type in HIGH_IMPACT_PLAY_TYPES
 
 
-def get_game_progress(event: dict[str, Any]) -> float:
+def get_game_progress(event: dict[str, Any], sport: str | None = None) -> float:
     """Calculate game progress (0.0 to 1.0) from event context.
 
-    Uses quarter and game clock to determine how far into the game we are.
+    Uses quarter/period and game clock to determine how far into the game we are.
     Used for time-aware gating of FLIP/TIE triggers.
 
+    SPORT-AGNOSTIC: Uses unified game structure.
+    - NBA: 4 quarters × 12 min
+    - NCAAB: 2 halves × 20 min
+    - NHL: 3 periods × 20 min
+    - NFL: 4 quarters × 15 min
+
+    Args:
+        event: Timeline event with quarter/period and game_clock
+        sport: Sport identifier (optional, defaults to NBA)
+
     Returns:
-        Float from 0.0 (game start) to 1.0+ (OT)
+        Float from 0.0 (game start) to 1.0 (end of regulation), >1.0 in OT
     """
-    quarter = event.get("quarter", 1) or 1
-    clock_seconds = parse_clock_to_seconds(event.get("game_clock"))
+    from .game_structure import compute_game_progress
 
-    if clock_seconds is None:
-        clock_seconds = 360  # 6:00 remaining (middle of quarter)
-
-    quarter_seconds = 720  # NBA: 12 min quarters
-
-    if quarter <= 4:
-        elapsed_in_quarter = quarter_seconds - clock_seconds
-        total_elapsed = (quarter - 1) * quarter_seconds + elapsed_in_quarter
-        total_game = 4 * quarter_seconds
-        return total_elapsed / total_game
-    else:
-        ot_number = quarter - 4
-        ot_quarter_seconds = 300
-        elapsed_in_ot = ot_quarter_seconds - min(clock_seconds, ot_quarter_seconds)
-        return 1.0 + (ot_number - 1) * 0.1 + (elapsed_in_ot / ot_quarter_seconds) * 0.1
+    return compute_game_progress(event, sport)
 
 
 def get_game_phase(game_progress: float) -> str:
     """Determine game phase from progress.
 
+    SPORT-AGNOSTIC: Uses progress-based thresholds that work
+    for any game structure.
+
     Returns:
-        "early" - First ~35% of game (Q1 + early Q2)
-        "mid" - Middle portion (late Q2 through Q3)
-        "late" - Final stretch (Q4 and OT)
+        "early" - First ~35% of game
+        "mid" - Middle portion (35% to 75%)
+        "late" - Final stretch (75%+ or OT)
     """
     if game_progress <= EARLY_GAME_PROGRESS_THRESHOLD:
         return "early"
@@ -123,6 +126,24 @@ def get_game_phase(game_progress: float) -> str:
         return "mid"
     else:
         return "late"
+
+
+def get_game_phase_from_event(event: dict[str, Any], sport: str | None = None) -> str:
+    """Determine game phase from event.
+    
+    SPORT-AGNOSTIC: Uses unified game structure.
+
+    Args:
+        event: Timeline event with quarter/period and game_clock
+        sport: Sport identifier
+
+    Returns:
+        "early", "mid", or "late"
+    """
+    from .game_structure import compute_game_phase_state
+    
+    phase_state = compute_game_phase_state(event, sport)
+    return get_game_phase(phase_state.game_progress)
 
 
 def should_gate_early_flip(
@@ -188,32 +209,6 @@ def should_gate_early_tie(
         return False
 
     return True
-
-
-def is_closing_situation(
-    event: dict[str, Any],
-    lead_state: LeadState,
-    closing_seconds: int = DEFAULT_CLOSING_SECONDS,
-    closing_max_tier: int = DEFAULT_CLOSING_TIER,
-) -> bool:
-    """Check if we're in a closing situation (late game, close score).
-
-    Closing is defined as:
-    - Late in the game (configurable threshold)
-    - Lead tier is at or below closing_max_tier
-
-    Used to detect CLOSING_CONTROL moments (daggers).
-    """
-    quarter = event.get("quarter", 1)
-    clock_seconds = parse_clock_to_seconds(event.get("game_clock"))
-
-    if quarter < 4:
-        return False
-
-    if clock_seconds is None or clock_seconds > closing_seconds:
-        return False
-
-    return lead_state.tier <= closing_max_tier
 
 
 def extract_moment_context(
