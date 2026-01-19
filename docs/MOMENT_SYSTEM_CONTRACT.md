@@ -47,12 +47,24 @@ Runs do NOT create moments. A 10-0 run that doesn't cross a tier threshold is ju
 | Type | Meaning | When Created |
 |------|---------|--------------|
 | LEAD_BUILD | Lead tier increased | Tier went up |
-| CUT | Lead tier decreased | Tier went down (comeback) |
+| CUT | Lead tier decreased | Tier went down (sustained 5+ plays) |
 | TIE | Game returned to even | Score became equal |
 | FLIP | Leader changed | Control shifted teams |
 | CLOSING_CONTROL | Late-game lock-in | Q4 <5min, lead stabilized |
+| MOMENTUM_SHIFT | Significant scoring run | Run caused tier change |
 | HIGH_IMPACT | Dramatic non-scoring event | Ejection, injury, technical |
 | NEUTRAL | Normal flow | Default when no boundary |
+| HALFTIME_RECAP | Halftime summary | After Q2 (NBA) |
+| PERIOD_RECAP | Period summary | After P1/P2/P3 (NHL), 5th/9th (MLB) |
+| GAME_RECAP | Final summary | End of game (all sports) |
+| OVERTIME_RECAP | OT summary | After OT period (all sports) |
+
+**Note on Recap Moments:**
+- Recap moments are "zero-width" contextual summaries (`play_count = 0`)
+- They don't own plays, serve as boundary markers with contextual data
+- Always `is_notable = true`
+- Skip validation for coverage and overlaps
+- Only generated for games with 50+ events (not test games)
 
 ---
 
