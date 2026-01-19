@@ -34,6 +34,12 @@ class MomentType(str, Enum):
 
     # PHASE 1.3: Run-based moment type
     MOMENTUM_SHIFT = "MOMENTUM_SHIFT"  # Significant scoring run that caused tier change
+    
+    # Recap moment types (contextual summaries at key boundaries)
+    HALFTIME_RECAP = "HALFTIME_RECAP"  # Halftime summary
+    PERIOD_RECAP = "PERIOD_RECAP"  # End of period summary (NHL, baseball)
+    GAME_RECAP = "GAME_RECAP"  # Final game summary
+    OVERTIME_RECAP = "OVERTIME_RECAP"  # Overtime period summary
 
 
 @dataclass
@@ -96,6 +102,57 @@ class RunInfo:
 
 
 @dataclass
+class RecapContext:
+    """Contextual summary data for recap moments at key game boundaries.
+    
+    Priority order (most to least important):
+    1. momentum_summary: Who finished strong and gained control
+    2. key_runs: Significant scoring runs in the period
+    3. largest_lead: Biggest lead and which team had it
+    4. lead_changes: Number of times the lead changed hands
+    5. running_score: Current game score
+    6. top_performers: Key players in the period
+    7. period_score: Scoring in just this period
+    """
+    
+    # Priority 1: Momentum and control (most important)
+    momentum_summary: str = ""  # "Lakers finished strong" or "Back-and-forth battle"
+    who_has_control: str | None = None  # "home", "away", or None (tied/unclear)
+    
+    # Priority 2: Key runs
+    key_runs: list[dict[str, Any]] = field(default_factory=list)  # [{team, points, description}]
+    
+    # Priority 3: Largest lead
+    largest_lead: int = 0
+    largest_lead_team: str | None = None  # "home" or "away"
+    
+    # Priority 4: Lead changes
+    lead_changes_count: int = 0
+    
+    # Priority 5: Running score
+    running_score: tuple[int, int] = (0, 0)  # (home, away)
+    
+    # Priority 6: Top performers
+    top_performers: list[dict[str, Any]] = field(default_factory=list)  # [{name, team, stats}]
+    
+    # Priority 7: Period score
+    period_score: tuple[int, int] = (0, 0)  # (home, away) scoring in this period only
+    
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "momentum_summary": self.momentum_summary,
+            "who_has_control": self.who_has_control,
+            "key_runs": self.key_runs,
+            "largest_lead": self.largest_lead,
+            "largest_lead_team": self.largest_lead_team,
+            "lead_changes_count": self.lead_changes_count,
+            "running_score": self.running_score,
+            "top_performers": self.top_performers,
+            "period_score": self.period_score,
+        }
+
+
+@dataclass
 class Moment:
     """A contiguous segment of plays forming a narrative unit.
 
@@ -148,6 +205,9 @@ class Moment:
     # PHASE 4: Player & Box Score Integration
     moment_boxscore: Any = None
     narrative_summary: Any = None
+    
+    # Recap context (for HALFTIME_RECAP, PERIOD_RECAP, GAME_RECAP, OVERTIME_RECAP)
+    recap_context: RecapContext | None = None
 
     # AI-generated content
     headline: str = ""  # max 60 chars
@@ -175,22 +235,51 @@ class Moment:
             MomentType.CLOSING_CONTROL: "lock",
             MomentType.HIGH_IMPACT: "zap",
             MomentType.NEUTRAL: "minus",
+            MomentType.HALFTIME_RECAP: "pause-circle",
+            MomentType.PERIOD_RECAP: "clock",
+            MomentType.GAME_RECAP: "flag",
+            MomentType.OVERTIME_RECAP: "clock",
         }
         return icons.get(self.type, "circle")
 
     @property
     def display_color_hint(self) -> str:
-        """Color intent: tension, positive, negative, neutral."""
+        """Color intent: tension, positive, negative, neutral, recap."""
         if self.type in (MomentType.FLIP, MomentType.TIE):
             return "tension"
         if self.type == MomentType.CLOSING_CONTROL:
             return "positive"
         if self.type == MomentType.HIGH_IMPACT:
             return "highlight"
+        if self.type in (MomentType.HALFTIME_RECAP, MomentType.PERIOD_RECAP, 
+                         MomentType.GAME_RECAP, MomentType.OVERTIME_RECAP):
+            return "recap"  # Frontend can style with 10-15% more border
         return "neutral"
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for API responses."""
+        # Build score context with team identification
+        score_context = {
+            "current": {
+                "home": self.score_after[0],
+                "away": self.score_after[1],
+                "formatted": self.score_end,
+            },
+            "start": {
+                "home": self.score_before[0],
+                "away": self.score_before[1],
+                "formatted": self.score_start,
+            },
+            "margin": abs(self.score_after[0] - self.score_after[1]),
+            "leader": self.team_in_control,
+        }
+        
+        # Filter players to only those with meaningful contributions
+        key_players = [
+            p.to_dict() for p in self.players
+            if p.stats and sum(p.stats.values()) > 0
+        ][:3]  # Top 3 only
+        
         result = {
             "id": self.id,
             "type": self.type.value,
@@ -200,8 +289,10 @@ class Moment:
             "teams": self.teams,
             "primary_team": self.primary_team,
             "players": [p.to_dict() for p in self.players],
+            "key_players": key_players,  # NEW: Filtered top contributors
             "score_start": self.score_start,
             "score_end": self.score_end,
+            "score_context": score_context,  # NEW: Structured score info
             "clock": self.clock,
             "is_notable": self.is_notable,
             "is_period_start": self.is_period_start,
@@ -238,5 +329,8 @@ class Moment:
         if self.narrative_summary:
             result["narrative_summary"] = self.narrative_summary.to_dict()
             result["deterministic_summary"] = self.narrative_summary.text
+        
+        if self.recap_context:
+            result["recap_context"] = self.recap_context.to_dict()
 
         return result

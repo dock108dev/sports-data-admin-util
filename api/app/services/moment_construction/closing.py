@@ -451,7 +451,6 @@ def _find_expansion_candidates(
     
     # Track previous state for tier change detection
     prev_state = None
-    prev_index = None
     
     # Detect runs in the closing window
     all_runs = detect_runs(events)
@@ -588,14 +587,12 @@ def _check_narrative_distance(
     if candidate.seconds_remaining <= config.final_minute_override_seconds:
         return True, "final_minute_override"
     
-    # Non-FLIP/TIE candidates don't need distance check
-    if candidate.candidate_type not in ("final_minute_flip", "final_minute_tie", "tier_change"):
+    # Only FLIP/TIE candidates need distance check
+    # All other types (run, high_impact, tier_change) pass through
+    if candidate.candidate_type not in ("final_minute_flip", "final_minute_tie"):
         return True, "not_flip_tie"
     
-    # Only check distance for FLIP/TIE candidates
-    if candidate.candidate_type not in ("final_minute_flip", "final_minute_tie"):
-        return True, "not_flip_tie_type"
-    
+    # First FLIP/TIE in closing window is always allowed
     if last_flip_tie_index is None:
         return True, "first_in_closing"
     
@@ -606,14 +603,14 @@ def _check_narrative_distance(
             last_seconds = parse_clock_to_seconds(last_flip_tie_clock)
             candidate_seconds = parse_clock_to_seconds(candidate_clock)
             
-            # Clock counts down, so if last_seconds > candidate_seconds, time has passed
-            # But we need to handle quarter boundaries - for simplicity, use absolute difference
-            # This is conservative (may allow some that are too close)
-            seconds_since = abs(last_seconds - candidate_seconds)
-            
-            # If clocks are very different, might be different quarters - allow
-            if seconds_since > 600:  # More than 10 minutes apart
-                return True, "different_quarter"
+            # Clock counts down within a quarter, so last_seconds >= candidate_seconds
+            # indicates elapsed time within the same quarter.
+            if last_seconds >= candidate_seconds:
+                seconds_since = last_seconds - candidate_seconds
+            else:
+                # Clock increased (quarter boundary crossed).
+                # Treat as being outside the time window (allow the candidate).
+                return True, "quarter_boundary_crossed"
             
             if seconds_since < config.min_seconds_between_flip_tie:
                 candidate.seconds_since_last_flip_tie = seconds_since
@@ -621,6 +618,8 @@ def _check_narrative_distance(
             
             candidate.seconds_since_last_flip_tie = seconds_since
         except (ValueError, TypeError):
+            # Clock parsing failed (malformed or missing data).
+            # Treat as outside the distance window to avoid blocking the candidate.
             pass
     
     return True, "outside_distance_window"
@@ -669,27 +668,15 @@ def _check_comeback_limit(
         if curr_state.tier < prev_state.tier:
             tier_delta = prev_state.tier - curr_state.tier
             
-            # Determine which team is making the comeback (the one that was trailing)
-            # If home was leading and tier decreased, away is making comeback
-            # If away was leading and tier decreased, home is making comeback
-            if prev_state.leader == Leader.HOME:
-                comeback_team = "away"
-            elif prev_state.leader == Leader.AWAY:
-                comeback_team = "home"
-            else:
-                # Was tied - can't determine comeback team
-                return True, "was_tied"
-            
-            # Count existing comeback beats for this team in closing window
+            # Count existing comeback beats in closing window
+            # We count all CUT moments regardless of team (conservative but safe)
             # Check both existing moments and inserted moments
             comeback_count = 0
             all_moments = existing_moments + inserted_moments
             
             for moment in all_moments:
                 if moment.type.value == "CUT":
-                    # Check if this moment is in closing and represents a comeback
-                    # We can't perfectly determine which team, so we count all CUTs
-                    # This is conservative but safe
+                    # Check if this moment is in closing and precedes the candidate
                     if (moment.end_play >= candidate.event_index - 50 and
                         moment.end_play < candidate.event_index):
                         comeback_count += 1
@@ -770,12 +757,10 @@ def apply_closing_expansion(
         )
         return result
     
-    # Step 2: Classify closing category
-    is_close_game = closing_window.is_close_game
-    is_decided_game = closing_window.is_decided_game
-    
-    # Step 3: Handle DECIDED_GAME_CLOSING (compression)
-    if is_decided_game:
+    # Step 2: Classify closing category and handle accordingly
+    # If decided game, apply compression (suppress false CUT moments)
+    # Otherwise, apply expansion (add detail to close endings)
+    if closing_window.is_decided_game:
         output_moments: list["Moment"] = []
         removed_count = 0
         
@@ -986,12 +971,11 @@ def apply_closing_expansion(
                 else:
                     end_idx = min(candidate.event_index + 5, len(events) - 1)
             
-            # Get scores
+            # Get score before (score_after will be calculated by create_moment)
             if candidate.event_index > 0:
                 score_before = get_score(events[candidate.event_index - 1])
             else:
                 score_before = (0, 0)
-            score_after = get_score(events[end_idx])
             
             # Create the moment with unique ID
             # Use a temporary ID that will be renumbered later
@@ -1066,22 +1050,70 @@ def apply_closing_expansion(
                 },
             )
             
-        except Exception as e:
+        except (IndexError, KeyError) as e:
+            # Expected errors from array/dict access
             logger.error(
                 "closing_expansion_insertion_failed",
                 extra={
                     "event_index": candidate.event_index,
                     "candidate_type": candidate.candidate_type,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                    "events_length": len(events),
+                },
+            )
+            decision.reason = f"insertion_failed_{type(e).__name__}"
+        except (ValueError, TypeError, AttributeError) as e:
+            # Data validation or type errors
+            logger.error(
+                "closing_expansion_insertion_failed",
+                extra={
+                    "event_index": candidate.event_index,
+                    "candidate_type": candidate.candidate_type,
+                    "error_type": type(e).__name__,
                     "error": str(e),
                 },
             )
-            decision.reason = f"insertion_failed_{str(e)}"
+            decision.reason = f"insertion_failed_{type(e).__name__}"
+        except Exception as e:
+            # Unexpected errors - log with full traceback and re-raise in non-production
+            logger.exception(
+                "closing_expansion_insertion_unexpected_error",
+                extra={
+                    "event_index": candidate.event_index,
+                    "candidate_type": candidate.candidate_type,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
+            )
+            decision.reason = f"insertion_failed_unexpected_{type(e).__name__}"
+            # Re-raise to ensure bugs are caught during development
+            # In production, this will be caught by higher-level error handlers
+            raise
         
         result.expansion_decisions.append(decision)
     
     # Step 6: Merge inserted moments with existing moments
     all_moments = list(moments) + inserted_moments
     all_moments.sort(key=lambda m: m.start_play)
+    
+    # Track which moments were inserted BEFORE renumbering (by object identity)
+    inserted_moment_set = set(id(m) for m in inserted_moments)
+    
+    # Step 6.5: Reclassify false comeback moments
+    # This fixes CUT moments that should be CLOSING_CONTROL or LEAD_BUILD
+    all_moments, reclassified_count = reclassify_false_comeback_moments(
+        all_moments, events, thresholds, closing_window, sport
+    )
+    
+    if reclassified_count > 0:
+        logger.info(
+            "closing_reclassification_applied",
+            extra={
+                "reclassified_count": reclassified_count,
+                "total_moments": len(all_moments),
+            },
+        )
     
     # Step 7: Renumber all moments to ensure unique IDs
     for i, moment in enumerate(all_moments):
@@ -1090,6 +1122,9 @@ def apply_closing_expansion(
     # Step 8: Count moments in closing and annotate
     for idx, moment in enumerate(all_moments):
         in_closing = _is_moment_in_closing_window(moment, events, closing_window)
+        
+        # Check if this moment was inserted during expansion (by object identity)
+        was_inserted = id(moment) in inserted_moment_set
         
         if in_closing:
             result.moments_in_closing += 1
@@ -1113,8 +1148,8 @@ def apply_closing_expansion(
                     original_index=idx,
                     is_in_closing_window=True,
                     closing_category=category,
-                    expansion_applied=moment.id.startswith("closing_exp_"),
-                    reason="inserted" if moment.id.startswith("closing_exp_") else "existing",
+                    expansion_applied=was_inserted,
+                    reason="inserted" if was_inserted else "existing",
                     seconds_remaining=seconds,
                     tier_at_moment=tier,
                     margin_at_moment=margin,
@@ -1126,7 +1161,7 @@ def apply_closing_expansion(
                     original_index=idx,
                     is_in_closing_window=True,
                     closing_category="UNKNOWN",
-                    expansion_applied=moment.id.startswith("closing_exp_"),
+                    expansion_applied=was_inserted,
                     reason="invalid_end_play",
                 )
                 result.annotations.append(annotation)
@@ -1158,6 +1193,154 @@ def apply_closing_expansion(
     )
     
     return result
+
+
+def reclassify_false_comeback_moments(
+    moments: list["Moment"],
+    events: Sequence[dict[str, Any]],
+    thresholds: Sequence[int],
+    closing_window: ClosingWindowInfo,
+    sport: str | None = None,
+) -> tuple[list["Moment"], int]:
+    """Reclassify CUT moments that are not genuine comebacks.
+    
+    A CUT moment in the closing window should be reclassified if:
+    - The "comeback" team (team_in_control at moment end) maintains control
+    - The tier rebounds or stabilizes (not a sustained threat)
+    - It's the final moment or near-final moment
+    
+    Reclassification targets:
+    - CLOSING_CONTROL: If it's the final moment and team maintains control
+    - LEAD_BUILD: If it's mid-closing and team extends lead
+    - NEUTRAL: If it's a minor fluctuation
+    
+    Args:
+        moments: List of moments to process
+        events: Timeline events
+        thresholds: Lead Ladder thresholds
+        closing_window: Pre-computed closing window info
+        sport: Sport identifier
+    
+    Returns:
+        Tuple of (reclassified_moments, reclassification_count)
+    """
+    from ..moments import MomentType
+    from ..lead_ladder import compute_lead_state
+    
+    if not closing_window.is_active or not moments:
+        return moments, 0
+    
+    reclassified_count = 0
+    
+    # Determine eventual winner from final score
+    final_event = events[-1] if events else None
+    eventual_winner = None
+    if final_event:
+        final_home = final_event.get("home_score", 0) or 0
+        final_away = final_event.get("away_score", 0) or 0
+        if final_home > final_away:
+            eventual_winner = "home"
+        elif final_away > final_home:
+            eventual_winner = "away"
+    
+    for idx, moment in enumerate(moments):
+        # Only process CUT moments in the closing window
+        if moment.type != MomentType.CUT:
+            continue
+        
+        if not _is_moment_in_closing_window(moment, events, closing_window):
+            continue
+        
+        # Check if the moment's end state has the eventual winner in control
+        end_state = compute_lead_state(
+            moment.score_after[0], moment.score_after[1], thresholds
+        )
+        
+        moment_winner = None
+        if end_state.home_score > end_state.away_score:
+            moment_winner = "home"
+        elif end_state.away_score > end_state.home_score:
+            moment_winner = "away"
+        
+        # If the "comeback" team is actually the eventual winner, reclassify
+        if moment_winner and moment_winner == eventual_winner:
+            # Check if this is the final moment or near-final
+            is_final_moment = (idx == len(moments) - 1)
+            is_near_final = (idx >= len(moments) - 2)
+            
+            # Check if tier rebounds or stabilizes
+            tier_before = moment.ladder_tier_before
+            tier_after = moment.ladder_tier_after
+            
+            # If tier dropped but team maintains/extends control, reclassify
+            if tier_after >= tier_before or is_final_moment:
+                if is_final_moment and tier_after >= 2:
+                    # Final moment with safe lead = CLOSING_CONTROL
+                    moment.type = MomentType.CLOSING_CONTROL
+                    if moment.reason:
+                        moment.reason.trigger = "closing_lock"
+                        moment.reason.narrative_delta = "game locked"
+                    moment.note = "Game control locked"
+                    reclassified_count += 1
+                    
+                    logger.info(
+                        "cut_reclassified_to_closing_control",
+                        extra={
+                            "moment_id": moment.id,
+                            "tier_before": tier_before,
+                            "tier_after": tier_after,
+                            "winner": moment_winner,
+                            "reason": "final_moment_with_control",
+                        },
+                    )
+                elif tier_after > tier_before:
+                    # Tier increased = LEAD_BUILD
+                    moment.type = MomentType.LEAD_BUILD
+                    if moment.reason:
+                        moment.reason.trigger = "tier_cross"
+                        moment.reason.narrative_delta = "lead extended"
+                    moment.note = "Lead extended"
+                    reclassified_count += 1
+                    
+                    logger.info(
+                        "cut_reclassified_to_lead_build",
+                        extra={
+                            "moment_id": moment.id,
+                            "tier_before": tier_before,
+                            "tier_after": tier_after,
+                            "winner": moment_winner,
+                            "reason": "tier_increased",
+                        },
+                    )
+                elif is_near_final and tier_after == tier_before and tier_after >= 1:
+                    # Near-final with stable tier = CLOSING_CONTROL
+                    moment.type = MomentType.CLOSING_CONTROL
+                    if moment.reason:
+                        moment.reason.trigger = "closing_lock"
+                        moment.reason.narrative_delta = "control maintained"
+                    moment.note = "Control maintained"
+                    reclassified_count += 1
+                    
+                    logger.info(
+                        "cut_reclassified_to_closing_control_stable",
+                        extra={
+                            "moment_id": moment.id,
+                            "tier": tier_after,
+                            "winner": moment_winner,
+                            "reason": "near_final_stable_control",
+                        },
+                    )
+    
+    if reclassified_count > 0:
+        logger.info(
+            "false_comeback_reclassification_complete",
+            extra={
+                "reclassified_count": reclassified_count,
+                "total_moments": len(moments),
+            },
+        )
+    
+    return moments, reclassified_count
 
 
 def should_allow_short_moment_in_closing(

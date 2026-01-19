@@ -38,6 +38,7 @@ from .closing import (
     ClosingWindowInfo,
     apply_closing_expansion,
     detect_closing_window,
+    reclassify_false_comeback_moments,
     should_allow_short_moment_in_closing,
     should_relax_flip_tie_density_in_closing,
 )
@@ -217,6 +218,7 @@ __all__ = [
     "ClosingWindowInfo",
     "apply_closing_expansion",
     "detect_closing_window",
+    "reclassify_false_comeback_moments",
     "should_allow_short_moment_in_closing",
     "should_relax_flip_tie_density_in_closing",
     # Splitting (Task 3.3)

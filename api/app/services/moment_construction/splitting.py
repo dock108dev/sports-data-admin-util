@@ -30,7 +30,6 @@ from .split_types import (
 # Re-export functions from split_detection
 from .split_detection import (
     find_split_points,
-    count_by_reason,
     detect_narrative_dormancy,
     qualify_split_points_contextually,
     filter_redundant_segments,
@@ -478,12 +477,20 @@ def apply_mega_moment_splitting(
                 segment_type = original_type
 
             # Calculate tier states for the segment
-            # Note: We use parent's tier states, not recalculated from segment scores
-            # This ensures semantic splits don't create false tier changes
-            segment_tier_before = (
-                moment.ladder_tier_before if i == 0 else moment.ladder_tier_after
+            # We recalculate from actual segment scores to reflect the game state accurately.
+            # This is necessary because segments may have different score ranges within
+            # the parent moment, and tier states should reflect the actual lead situation.
+            from ..lead_ladder import compute_lead_state
+            
+            segment_prev_state = compute_lead_state(
+                segment.score_before[0], segment.score_before[1], thresholds
             )
-            segment_tier_after = moment.ladder_tier_after
+            segment_curr_state = compute_lead_state(
+                segment.score_after[0], segment.score_after[1], thresholds
+            )
+            
+            segment_tier_before = segment_prev_state.tier
+            segment_tier_after = segment_curr_state.tier
 
             new_moment = Moment(
                 id=segment_id,

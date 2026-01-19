@@ -272,7 +272,36 @@ def extract_moment_context(
         if player_name:
             player_impact[player_name] = player_impact.get(player_name, 0) + impact
             if player_name not in player_data:
-                player_data[player_name] = {}
+                player_data[player_name] = {
+                    "points": 0,
+                    "assists": 0,
+                    "rebounds": 0,
+                    "steals": 0,
+                    "blocks": 0,
+                }
+            
+            # Track actual stats from play descriptions
+            if "made" in description:
+                if "three" in description or "3pt" in description:
+                    player_data[player_name]["points"] = player_data[player_name].get("points", 0) + 3
+                elif "free throw" in description:
+                    player_data[player_name]["points"] = player_data[player_name].get("points", 0) + 1
+                else:
+                    # Assume 2-pointer
+                    player_data[player_name]["points"] = player_data[player_name].get("points", 0) + 2
+            
+            if "assist" in description:
+                player_data[player_name]["assists"] = player_data[player_name].get("assists", 0) + 1
+            
+            if "rebound" in description:
+                player_data[player_name]["rebounds"] = player_data[player_name].get("rebounds", 0) + 1
+            
+            if "steal" in description:
+                player_data[player_name]["steals"] = player_data[player_name].get("steals", 0) + 1
+            
+            if "block" in description:
+                player_data[player_name]["blocks"] = player_data[player_name].get("blocks", 0) + 1
+            
             if impact > 0:
                 key_play_ids.append(i)
 

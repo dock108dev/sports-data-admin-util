@@ -625,6 +625,9 @@ def qualify_split_points_contextually(
                         },
                     )
             except (ValueError, TypeError):
+                # Clock parsing failed (malformed or missing data).
+                # Skip the late window criterion; qualification will depend on
+                # other criteria (tier change or threat margin).
                 pass
             
             if not qualifies:
@@ -743,24 +746,41 @@ def filter_redundant_segments(
         prev_orig = segments[i - 1]
         next_orig = segments[i + 1] if i < len(segments) - 1 else None
         
-        # Check type match with neighbors
-        decision.same_type_as_prev = True # Always True since all segments inherit parent type
-        decision.same_type_as_next = (next_orig is not None)
-        
         # Check tier match with neighbors
         # We compare with the original neighbors to decide if this segment added value
         prev_curr_state = compute_lead_state(
             prev_orig.score_after[0], prev_orig.score_after[1], thresholds
         )
+        prev_tier_before_state = compute_lead_state(
+            prev_orig.score_before[0], prev_orig.score_before[1], thresholds
+        )
+        
         decision.same_tier_before = (segment_tier_before == prev_curr_state.tier)
+        
+        # Check if this segment has the same tier characteristics as previous
+        # (both tier_before and tier_after match)
+        decision.same_type_as_prev = (
+            segment_tier_before == prev_curr_state.tier and
+            segment_tier_after == prev_tier_before_state.tier
+        )
         
         if next_orig:
             next_prev_state = compute_lead_state(
                 next_orig.score_before[0], next_orig.score_before[1], thresholds
             )
+            next_curr_state = compute_lead_state(
+                next_orig.score_after[0], next_orig.score_after[1], thresholds
+            )
             decision.same_tier_after = (segment_tier_after == next_prev_state.tier)
+            
+            # Check if this segment has the same tier characteristics as next
+            decision.same_type_as_next = (
+                segment_tier_before == next_prev_state.tier and
+                segment_tier_after == next_curr_state.tier
+            )
         else:
             decision.same_tier_after = (segment_tier_after == parent_moment.ladder_tier_after)
+            decision.same_type_as_next = False
         
         # Check for unique markers
         has_high_impact = False
@@ -771,12 +791,11 @@ def filter_redundant_segments(
         
         decision.has_high_impact = has_high_impact
         
-        # Check for significant run (simplified)
-        score_diff = abs(
-            (segment.score_after[0] - segment.score_before[0]) +
-            (segment.score_after[1] - segment.score_before[1])
-        )
-        decision.has_unique_run = (score_diff >= 8)
+        # Check for significant run by a single team (not combined scoring)
+        home_run = abs(segment.score_after[0] - segment.score_before[0])
+        away_run = abs(segment.score_after[1] - segment.score_before[1])
+        max_run = max(home_run, away_run)
+        decision.has_unique_run = (max_run >= 8)  # Significant scoring change by one team
         
         # Determine if redundant or false drama
         # Rule: same tier across boundaries + no special markers OR marked as false drama

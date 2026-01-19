@@ -13,6 +13,7 @@ from .types import (
     MomentReason,
     MomentType,
     PlayerContribution,
+    RecapContext,
     RunInfo,
 )
 
@@ -116,6 +117,7 @@ __all__ = [
     "MomentType",
     "MomentValidationError",
     "PlayerContribution",
+    "RecapContext",
     "RunInfo",
     "DensityGateDecision",
     "LateFalseDramaDecision",

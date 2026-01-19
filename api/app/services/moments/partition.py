@@ -530,6 +530,29 @@ def partition_game(
     validate_score_continuity(moments)
     assert_moment_continuity(moments)
 
+    # PHASE 5: Generate recap moments at key boundaries
+    from .recaps import generate_recap_moments
+    recap_moments = generate_recap_moments(
+        events=events,
+        moments=moments,
+        sport=sport,
+        thresholds=thresholds,
+    )
+    
+    if recap_moments:
+        # Insert recap moments at their appropriate positions
+        all_moments = moments + recap_moments
+        all_moments.sort(key=lambda m: m.end_play)  # Sort by end position
+        moments = all_moments
+        
+        logger.info(
+            "recap_moments_generated",
+            extra={
+                "recap_count": len(recap_moments),
+                "recap_types": [m.type.value for m in recap_moments],
+            },
+        )
+
     # Final renumber
     for i, m in enumerate(moments):
         m.id = f"m_{i + 1:03d}"

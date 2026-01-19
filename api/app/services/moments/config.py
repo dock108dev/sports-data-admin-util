@@ -17,6 +17,9 @@ DEFAULT_HYSTERESIS_PLAYS = 2
 DEFAULT_FLIP_HYSTERESIS_PLAYS = 2
 DEFAULT_TIE_HYSTERESIS_PLAYS = 1
 
+# CUT sustained drop: number of plays a tier drop must persist to be a true comeback
+CUT_SUSTAINED_PLAYS = 5  # Tier drop must persist for 5+ plays to avoid false comebacks
+
 # =============================================================================
 # TIME-AWARE GATING CONFIGURATION
 # =============================================================================

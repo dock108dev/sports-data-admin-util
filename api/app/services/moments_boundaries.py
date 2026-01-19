@@ -521,6 +521,61 @@ def detect_boundaries(
                                     prev_state = curr_state
                                     continue
 
+                                # SUSTAINED DROP CHECK: Verify tier drop persists
+                                # Look ahead to ensure this is a genuine comeback attempt
+                                from .moments.config import CUT_SUSTAINED_PLAYS
+                                
+                                tier_drop_sustained = False
+                                lookahead_count = 0
+                                lookahead_tier = curr_state.tier
+                                
+                                # Look ahead up to CUT_SUSTAINED_PLAYS to see if tier stays low
+                                for lookahead_idx in range(canonical_pos + 1, min(canonical_pos + CUT_SUSTAINED_PLAYS + 1, len(pbp_indices))):
+                                    if lookahead_idx >= len(pbp_indices):
+                                        break
+                                    
+                                    lookahead_event_idx = pbp_indices[lookahead_idx]
+                                    if lookahead_event_idx >= len(events):
+                                        break
+                                    
+                                    lookahead_event = events[lookahead_event_idx]
+                                    if lookahead_event.get("event_type") != "pbp":
+                                        continue
+                                    
+                                    lookahead_home = lookahead_event.get("home_score", 0) or 0
+                                    lookahead_away = lookahead_event.get("away_score", 0) or 0
+                                    lookahead_state = compute_lead_state(lookahead_home, lookahead_away, thresholds)
+                                    
+                                    lookahead_count += 1
+                                    lookahead_tier = lookahead_state.tier
+                                    
+                                    # If tier rebounds back up, this is not a sustained drop
+                                    if lookahead_tier > curr_state.tier:
+                                        break
+                                    
+                                    # If we've seen enough plays at the lower tier, it's sustained
+                                    if lookahead_count >= CUT_SUSTAINED_PLAYS:
+                                        tier_drop_sustained = True
+                                        break
+                                
+                                # If tier drop is not sustained, suppress this CUT boundary
+                                if not tier_drop_sustained:
+                                    logger.debug(
+                                        "cut_boundary_not_sustained",
+                                        extra={
+                                            "index": pending_index,
+                                            "tier_before": pending_crossing.prev_state.tier,
+                                            "tier_after": curr_state.tier,
+                                            "lookahead_plays": lookahead_count,
+                                            "final_tier": lookahead_tier,
+                                            "reason": "tier_rebounded" if lookahead_tier > curr_state.tier else "insufficient_persistence",
+                                        },
+                                    )
+                                    pending_crossing = None
+                                    persistence_count = 0
+                                    prev_state = curr_state
+                                    continue
+
                             elif pending_crossing.crossing_type == TierCrossingType.TIE_BROKEN:
                                 moment_type = MomentType.LEAD_BUILD
                                 note = "Took the lead"

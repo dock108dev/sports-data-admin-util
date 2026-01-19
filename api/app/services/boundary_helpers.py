@@ -452,10 +452,18 @@ def should_density_gate_flip_tie(
         try:
             last_seconds = parse_clock_to_seconds(last_flip_tie_clock)
             current_seconds = parse_clock_to_seconds(current_clock)
-            # Clock counts down, so last_seconds > current_seconds means time elapsed
-            # But we need to account for quarter changes - this is within-quarter only
-            # For simplicity, just use absolute difference (conservative estimate)
-            seconds_since_last = abs(last_seconds - current_seconds)
+            
+            # Clock counts down within a quarter, so last_seconds >= current_seconds
+            # indicates elapsed time within the same quarter/period.
+            if last_seconds >= current_seconds:
+                seconds_since_last = last_seconds - current_seconds
+            else:
+                # Clock increased (e.g., 2:00 in Q3 -> 11:00 in Q4 after quarter reset).
+                # This implies a quarter/period boundary crossed.
+                # To avoid underestimating elapsed time across quarters, treat this as
+                # being outside the time window so it won't be suppressed on time grounds.
+                seconds_since_last = density_window_seconds
+            
             decision.seconds_since_last = seconds_since_last
         except (ValueError, TypeError):
             seconds_since_last = None
