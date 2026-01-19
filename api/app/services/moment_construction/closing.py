@@ -1125,7 +1125,7 @@ def apply_closing_expansion(
                     # Create a segment before this inserted moment (if any)
                     if current_start < ins_start:
                         # Create a new moment for the non-overlapping part
-                        from .helpers import create_moment, get_score
+                        from ..moments.helpers import create_moment, get_score
                         
                         score_before = get_score(events[current_start - 1]) if current_start > 0 else (0, 0)
                         
@@ -1153,7 +1153,7 @@ def apply_closing_expansion(
                 
                 # Create a segment after all inserted moments (if any)
                 if current_start <= moment.end_play:
-                    from .helpers import create_moment, get_score
+                    from ..moments.helpers import create_moment, get_score
                     
                     score_before = get_score(events[current_start - 1]) if current_start > 0 else (0, 0)
                     
