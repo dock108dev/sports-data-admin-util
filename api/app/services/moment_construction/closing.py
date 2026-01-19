@@ -1093,9 +1093,92 @@ def apply_closing_expansion(
         
         result.expansion_decisions.append(decision)
     
-    # Step 6: Merge inserted moments with existing moments
-    all_moments = list(moments) + inserted_moments
-    all_moments.sort(key=lambda m: m.start_play)
+    # Step 6: Merge inserted moments with existing moments, resolving overlaps
+    # When we insert expansion moments, they may overlap with existing moments
+    # We need to split existing moments to avoid coverage violations
+    
+    if not inserted_moments:
+        all_moments = list(moments)
+    else:
+        # Build a map of inserted moment ranges
+        inserted_ranges = [(m.start_play, m.end_play) for m in inserted_moments]
+        
+        # Process each input moment, splitting if it overlaps with inserted moments
+        processed_moments = []
+        for moment in moments:
+            overlaps = []
+            for ins_start, ins_end in inserted_ranges:
+                # Check if this moment overlaps with an inserted moment
+                if not (moment.end_play < ins_start or moment.start_play > ins_end):
+                    overlaps.append((ins_start, ins_end))
+            
+            if not overlaps:
+                # No overlap - keep as is
+                processed_moments.append(moment)
+            else:
+                # Split this moment around the inserted moments
+                # Sort overlaps by start index
+                overlaps.sort()
+                
+                current_start = moment.start_play
+                for ins_start, ins_end in overlaps:
+                    # Create a segment before this inserted moment (if any)
+                    if current_start < ins_start:
+                        # Create a new moment for the non-overlapping part
+                        from .helpers import create_moment, get_score
+                        
+                        score_before = get_score(events[current_start - 1]) if current_start > 0 else (0, 0)
+                        
+                        split_moment = create_moment(
+                            moment_id=0,  # Will be renumbered
+                            events=events,
+                            start_idx=current_start,
+                            end_idx=ins_start - 1,
+                            moment_type=moment.type,
+                            thresholds=thresholds,
+                            boundary=None,
+                            score_before=score_before,
+                            game_context={},
+                        )
+                        
+                        # Copy over important attributes
+                        split_moment.reason = moment.reason
+                        split_moment.run_info = moment.run_info
+                        split_moment.importance_score = moment.importance_score
+                        
+                        processed_moments.append(split_moment)
+                    
+                    # Move past the inserted moment
+                    current_start = ins_end + 1
+                
+                # Create a segment after all inserted moments (if any)
+                if current_start <= moment.end_play:
+                    from .helpers import create_moment, get_score
+                    
+                    score_before = get_score(events[current_start - 1]) if current_start > 0 else (0, 0)
+                    
+                    split_moment = create_moment(
+                        moment_id=0,  # Will be renumbered
+                        events=events,
+                        start_idx=current_start,
+                        end_idx=moment.end_play,
+                        moment_type=moment.type,
+                        thresholds=thresholds,
+                        boundary=None,
+                        score_before=score_before,
+                        game_context={},
+                    )
+                    
+                    # Copy over important attributes
+                    split_moment.reason = moment.reason
+                    split_moment.run_info = moment.run_info
+                    split_moment.importance_score = moment.importance_score
+                    
+                    processed_moments.append(split_moment)
+        
+        # Combine processed moments with inserted moments and sort
+        all_moments = processed_moments + inserted_moments
+        all_moments.sort(key=lambda m: m.start_play)
     
     # Track which moments were inserted BEFORE renumbering (by object identity)
     inserted_moment_set = set(id(m) for m in inserted_moments)
