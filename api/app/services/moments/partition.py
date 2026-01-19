@@ -532,16 +532,21 @@ def partition_game(
 
     # PHASE 5: Generate recap moments at key boundaries
     # Recap moments are "zero-width" contextual summaries that don't own plays
-    from .recaps import generate_recap_moments
+    # Only generate for real games (with sufficient events)
+    MIN_EVENTS_FOR_RECAPS = 50  # Skip recap generation for test/short games
     
-    logger.info("recap_generation_starting", extra={"moment_count": len(moments)})
-    
-    recap_moments = generate_recap_moments(
-        events=events,
-        moments=moments,
-        sport=sport,
-        thresholds=thresholds,
-    )
+    recap_moments = []
+    if len(events) >= MIN_EVENTS_FOR_RECAPS:
+        from .recaps import generate_recap_moments
+        
+        logger.info("recap_generation_starting", extra={"moment_count": len(moments)})
+        
+        recap_moments = generate_recap_moments(
+            events=events,
+            moments=moments,
+            sport=sport,
+            thresholds=thresholds,
+        )
     
     if recap_moments:
         logger.info(

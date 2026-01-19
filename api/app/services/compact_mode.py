@@ -144,6 +144,37 @@ COMPRESSION_BEHAVIOR: dict[MomentType, CompressionBehavior] = {
         description="Run-based momentum shifts - always show in full",
     ),
     
+    # === RECAP MOMENTS ===
+    # Contextual summaries at key boundaries - never collapse
+    
+    MomentType.HALFTIME_RECAP: CompressionBehavior(
+        collapse_allowed=False,
+        base_retention=1.0,
+        min_events=999,
+        description="Halftime recap - always show in full",
+    ),
+    
+    MomentType.PERIOD_RECAP: CompressionBehavior(
+        collapse_allowed=False,
+        base_retention=1.0,
+        min_events=999,
+        description="Period recap - always show in full",
+    ),
+    
+    MomentType.GAME_RECAP: CompressionBehavior(
+        collapse_allowed=False,
+        base_retention=1.0,
+        min_events=999,
+        description="Final game recap - always show in full",
+    ),
+    
+    MomentType.OVERTIME_RECAP: CompressionBehavior(
+        collapse_allowed=False,
+        base_retention=1.0,
+        min_events=999,
+        description="Overtime recap - always show in full",
+    ),
+    
     # === LIGHT COMPRESSION ===
     # These types are important but can have routine plays trimmed.
     
