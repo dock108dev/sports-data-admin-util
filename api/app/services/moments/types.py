@@ -190,6 +190,7 @@ class Moment:
     # Metadata
     is_notable: bool = False
     is_period_start: bool = False  # Flag for period boundaries
+    is_recap: bool = False  # Flag for recap moments (zero-width contextual summaries)
     note: str | None = None
     run_info: RunInfo | None = None  # If a run contributed to this moment
     bucket: str = ""  # "early", "mid", "late" (derived from clock)
@@ -296,6 +297,7 @@ class Moment:
             "clock": self.clock,
             "is_notable": self.is_notable,
             "is_period_start": self.is_period_start,
+            "is_recap": self.is_recap,
             "note": self.note,
             "ladder_tier_before": self.ladder_tier_before,
             "ladder_tier_after": self.ladder_tier_after,

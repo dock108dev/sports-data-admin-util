@@ -222,15 +222,26 @@ def extract_recap_context(
         RecapContext with extracted data
     """
     from .helpers import get_score
-    from ..runs import detect_runs
+    from ..moments_runs import detect_runs
     
     context = RecapContext()
     
-    # Get period events
-    period_events = [e for e in events[period_start_idx:period_end_idx + 1] 
-                     if e.get("event_type") == "pbp"]
+    # Get period events (all events in the period range)
+    period_events = list(events[period_start_idx:period_end_idx + 1])
+    pbp_events = [e for e in period_events if e.get("event_type") == "pbp"]
     
-    if not period_events:
+    logger.debug(
+        "recap_context_extraction",
+        extra={
+            "period_start_idx": period_start_idx,
+            "period_end_idx": period_end_idx,
+            "total_events": len(period_events),
+            "pbp_events": len(pbp_events),
+        },
+    )
+    
+    if not pbp_events:
+        logger.warning("recap_no_pbp_events", extra={"period_start": period_start_idx, "period_end": period_end_idx})
         return context
     
     # Extract scores
@@ -245,27 +256,37 @@ def extract_recap_context(
     
     # Priority 1: Momentum summary (who finished strong)
     context.momentum_summary, context.who_has_control = _analyze_momentum(
-        period_events, moments, period_start_idx, period_end_idx, thresholds
+        pbp_events, moments, period_start_idx, period_end_idx, thresholds
     )
     
     # Priority 2: Key runs
     all_runs = detect_runs(events)
     period_runs = [r for r in all_runs 
                    if r.start_idx >= period_start_idx and r.end_idx <= period_end_idx]
+    
+    logger.debug(
+        "recap_runs_detected",
+        extra={
+            "total_runs": len(all_runs),
+            "period_runs": len(period_runs),
+            "run_points": [r.points for r in period_runs],
+        },
+    )
+    
     # Get top 3 runs by points
     top_runs = sorted(period_runs, key=lambda r: r.points, reverse=True)[:3]
     context.key_runs = [
         {
             "team": r.team,
             "points": r.points,
-            "description": f"{r.points}-{0 if r.unanswered else '?'} run",
+            "description": f"{r.points}-pt run",
         }
         for r in top_runs if r.points >= 6  # Only include significant runs
     ]
     
     # Priority 3: Largest lead
     context.largest_lead, context.largest_lead_team = _find_largest_lead(
-        period_events, thresholds
+        pbp_events, thresholds
     )
     
     # Priority 4: Lead changes
@@ -296,7 +317,17 @@ def _analyze_momentum(
     from .helpers import get_score
     
     if not period_events:
+        logger.warning("momentum_analysis_no_events")
         return "No scoring", None
+    
+    logger.debug(
+        "momentum_analysis_starting",
+        extra={
+            "period_events_count": len(period_events),
+            "period_start_idx": period_start_idx,
+            "period_end_idx": period_end_idx,
+        },
+    )
     
     # Look at the last 10-15 plays to determine who finished strong
     lookback_window = min(15, len(period_events))
@@ -417,19 +448,51 @@ def create_recap_moment(
     # Generate headline and summary
     headline, summary = _generate_recap_narrative(recap_type, recap_context)
     
+    # Format scores for display (away-home format)
+    score_start_str = f"{score_before[1]}–{score_before[0]}"
+    score_end_str = f"{score_after[1]}–{score_after[0]}"
+    
+    # Determine teams and primary team from recap context
+    teams = []
+    primary_team = None
+    if recap_context.who_has_control:
+        primary_team = recap_context.who_has_control
+        teams = ["home", "away"]
+    
+    # Get clock info from events
+    clock_str = ""
+    if period_start_idx < len(events) and period_end_idx < len(events):
+        start_event = events[period_start_idx]
+        end_event = events[period_end_idx]
+        start_q = start_event.get("quarter", "?")
+        end_q = end_event.get("quarter", "?")
+        if start_q == end_q:
+            clock_str = f"Q{start_q} Recap"
+        else:
+            clock_str = f"Q{start_q}–Q{end_q} Recap"
+    
+    # Recap moments don't own plays - they're contextual summaries
+    # Set start_play = end_play to make them "zero-width" boundary markers
+    # This ensures they don't overlap with regular moments in coverage validation
     moment = Moment(
         id=moment_id,
         type=recap_type,
-        start_play=period_start_idx,
-        end_play=period_end_idx,
-        play_count=period_end_idx - period_start_idx + 1,
+        start_play=period_end_idx,  # Point to the last play of the period
+        end_play=period_end_idx,    # Same as start - zero width
+        play_count=0,  # Recap doesn't own plays
         score_before=score_before,
         score_after=score_after,
+        score_start=score_start_str,
+        score_end=score_end_str,
+        teams=teams,
+        primary_team=primary_team,
+        clock=clock_str,
         recap_context=recap_context,
         reason=reason,
         headline=headline,
         summary=summary,
         is_notable=True,  # Recaps are always notable
+        is_recap=True,  # Flag for validation to skip
     )
     
     return moment

@@ -36,6 +36,10 @@ def validate_score_continuity(moments: list[Moment]) -> None:
     for i in range(1, len(moments)):
         prev_moment = moments[i - 1]
         curr_moment = moments[i]
+        
+        # Skip score continuity check if either moment is a recap
+        if prev_moment.is_recap or curr_moment.is_recap:
+            continue
 
         if prev_moment.score_after != curr_moment.score_before:
             logger.error(
@@ -74,17 +78,26 @@ def assert_moment_continuity(moments: list[Moment]) -> None:
     issues: list[str] = []
 
     # Check play coverage (no overlaps)
+    # Skip recap moments - they don't own plays
     covered_plays: set[int] = set()
     for moment in moments:
+        if moment.is_recap:
+            # Recap moment - skip coverage validation
+            continue
         for play_idx in range(moment.start_play, moment.end_play + 1):
             if play_idx in covered_plays:
                 issues.append(f"Play {play_idx} covered by multiple moments (overlaps in {moment.id})")
             covered_plays.add(play_idx)
 
     # Check score continuity between adjacent moments
+    # Skip if either moment is a recap
     for i in range(1, len(moments)):
         prev_moment = moments[i - 1]
         curr_moment = moments[i]
+        
+        # Skip score continuity check if either is a recap
+        if prev_moment.is_recap or curr_moment.is_recap:
+            continue
 
         if prev_moment.score_after != curr_moment.score_before:
             issues.append(
@@ -117,8 +130,12 @@ def validate_moment_coverage(
         return
 
     # Check that moments cover all indices
+    # Skip recap moments - they're contextual summaries, not play owners
     covered_indices = set()
     for moment in moments:
+        if moment.is_recap:
+            # Recap moment - skip coverage validation
+            continue
         for i in range(moment.start_play, moment.end_play + 1):
             if i in covered_indices:
                 raise MomentValidationError(

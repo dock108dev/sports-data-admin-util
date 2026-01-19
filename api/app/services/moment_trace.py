@@ -734,14 +734,16 @@ def validate_moment_and_trace(
     
     # Check 2: Participants
     checks_performed.append("participants")
-    if not moment.teams:
+    # Skip for recap moments - they're contextual summaries
+    if not moment.is_recap and not moment.teams:
         issues.append("No teams identified")
     
     # Check 3: Micro-moment
     checks_performed.append("minimum_plays")
     if moment.play_count < 2:
         from .moments import MomentType
-        if moment.type not in (MomentType.FLIP, MomentType.TIE, MomentType.CLOSING_CONTROL, MomentType.HIGH_IMPACT):
+        # Skip check for recap moments (they're intentionally zero-width)
+        if not moment.is_recap and moment.type not in (MomentType.FLIP, MomentType.TIE, MomentType.CLOSING_CONTROL, MomentType.HIGH_IMPACT):
             issues.append(f"Micro-moment ({moment.play_count} plays) without high-impact type")
     
     # Check 4: Narrative change

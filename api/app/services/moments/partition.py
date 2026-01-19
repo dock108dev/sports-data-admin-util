@@ -531,7 +531,11 @@ def partition_game(
     assert_moment_continuity(moments)
 
     # PHASE 5: Generate recap moments at key boundaries
+    # Recap moments are "zero-width" contextual summaries that don't own plays
     from .recaps import generate_recap_moments
+    
+    logger.info("recap_generation_starting", extra={"moment_count": len(moments)})
+    
     recap_moments = generate_recap_moments(
         events=events,
         moments=moments,
@@ -540,16 +544,38 @@ def partition_game(
     )
     
     if recap_moments:
-        # Insert recap moments at their appropriate positions
-        all_moments = moments + recap_moments
-        all_moments.sort(key=lambda m: m.end_play)  # Sort by end position
-        moments = all_moments
-        
         logger.info(
-            "recap_moments_generated",
+            "recap_moments_created",
             extra={
                 "recap_count": len(recap_moments),
                 "recap_types": [m.type.value for m in recap_moments],
+                "recap_details": [
+                    {
+                        "id": m.id,
+                        "type": m.type.value,
+                        "start_play": m.start_play,
+                        "end_play": m.end_play,
+                        "play_count": m.play_count,
+                        "score_before": m.score_before,
+                        "score_after": m.score_after,
+                    }
+                    for m in recap_moments
+                ],
+            },
+        )
+        
+        # Insert recap moments at their appropriate positions
+        # Sort by start_play to maintain chronological order
+        all_moments = moments + recap_moments
+        all_moments.sort(key=lambda m: m.start_play)
+        moments = all_moments
+        
+        logger.info(
+            "recap_moments_integrated",
+            extra={
+                "total_moments": len(moments),
+                "regular_moments": len(moments) - len(recap_moments),
+                "recap_moments": len(recap_moments),
             },
         )
 
