@@ -144,10 +144,9 @@ def partition_game(
                             "index": d.event_index,
                             "type": d.crossing_type,
                             "reason": d.reason,
-                            "plays_since_last": (
-                                d.current_canonical_pos - d.last_flip_tie_canonical_pos
-                                if d.last_flip_tie_canonical_pos is not None else None
-                            ),
+                            "plays_since_last": d.plays_since_last,
+                            "seconds_since_last": d.seconds_since_last,
+                            "is_in_closing": d.is_in_closing_window,
                         }
                         for d in suppressed
                     ],

@@ -13,8 +13,12 @@ from .boundary_types import (
     DensityGateDecision,
     LateFalseDramaDecision,
     DEFAULT_FLIP_TIE_DENSITY_WINDOW_PLAYS,
+    DEFAULT_FLIP_TIE_DENSITY_WINDOW_SECONDS,
     DENSITY_GATE_LATE_GAME_PROGRESS,
-    DENSITY_GATE_OVERRIDE_MAX_TIER,
+    CLOSING_FINAL_SEQUENCE_SECONDS,
+    CLOSING_RUN_OVERRIDE_POINTS,
+    CLOSING_ONE_POSSESSION_THRESHOLD,
+    CLOSING_FIRST_FLIP_TIE_ALWAYS_ALLOW,
     LATE_GAME_SAFE_MARGIN,
     LATE_GAME_SAFE_TIER,
     LATE_GAME_MAX_SECONDS,
@@ -346,21 +350,32 @@ def should_density_gate_flip_tie(
     current_canonical_pos: int,
     last_flip_tie_canonical_pos: int | None,
     last_flip_tie_index: int | None,
-    density_window: int = DEFAULT_FLIP_TIE_DENSITY_WINDOW_PLAYS,
+    density_window_plays: int = DEFAULT_FLIP_TIE_DENSITY_WINDOW_PLAYS,
+    density_window_seconds: int = DEFAULT_FLIP_TIE_DENSITY_WINDOW_SECONDS,
+    last_flip_tie_clock: str | None = None,
+    is_first_flip_tie_in_closing: bool = False,
+    preceding_run_points: int = 0,
+    preceding_run_team: str | None = None,
 ) -> DensityGateDecision:
     """
-    Determine if a FLIP or TIE should be suppressed due to density gating.
+    Determine if a FLIP or TIE should be suppressed due to narrative distance gating.
 
-    Density gating prevents rapid-fire FLIP/TIE sequences (common in Q3/Q4)
-    from creating too many boundaries. This is applied AFTER early-game gating.
+    NARRATIVE DISTANCE GATING:
+    This replaces the previous blanket "override_late_close" that disabled all gating
+    in close late-game situations. Now we use narrative distance (plays + time) and
+    grant overrides only for specific, explainable conditions.
 
     A FLIP/TIE is suppressed if:
-    1. A previous FLIP/TIE boundary was emitted within the last N canonical plays
-    2. AND the current event does NOT qualify for a late-game override
+    1. A previous FLIP/TIE boundary was emitted within:
+       - density_window_plays canonical plays, OR
+       - density_window_seconds game time
+    2. AND the current event does NOT qualify for an override
 
-    Late-game override criteria:
-    - Game progress >= DENSITY_GATE_LATE_GAME_PROGRESS (late Q4 or OT)
-    - Current tier <= DENSITY_GATE_OVERRIDE_MAX_TIER (close game)
+    Override-worthy conditions (must be explainable):
+    - FIRST_IN_CLOSING: First FLIP/TIE in the closing window (always allowed)
+    - FINAL_SEQUENCE: Game time <= 60 seconds remaining (true final sequence)
+    - AFTER_RUN: Lead change after a scoring run >= N points
+    - ONE_POSSESSION: Lead change with margin <= one possession threshold
 
     Args:
         event: Current timeline event
@@ -369,15 +384,35 @@ def should_density_gate_flip_tie(
         current_canonical_pos: Position in canonical PBP stream (0-indexed)
         last_flip_tie_canonical_pos: Position of last FLIP/TIE boundary (or None)
         last_flip_tie_index: Timeline index of last FLIP/TIE boundary (or None)
-        density_window: Number of canonical plays for the density window
+        density_window_plays: Min plays between FLIP/TIE boundaries
+        density_window_seconds: Min seconds between FLIP/TIE boundaries
+        last_flip_tie_clock: Game clock string of last accepted FLIP/TIE (for time distance)
+        is_first_flip_tie_in_closing: Whether this is the first FLIP/TIE in closing window
+        preceding_run_points: Points scored in a run preceding this event
+        preceding_run_team: Team that scored the preceding run
 
     Returns:
-        DensityGateDecision with suppression decision and diagnostics
+        DensityGateDecision with suppression decision and full diagnostics
     """
+    from ..utils.datetime_utils import parse_clock_to_seconds
+
     event_index = event.get("_original_index", 0)
     game_progress = get_game_progress(event)
+    current_clock = event.get("game_clock", "12:00") or "12:00"
+    seconds_remaining = get_seconds_remaining(event)
+    quarter = event.get("quarter", 1) or 1
 
-    # Build base decision record
+    # Calculate margin
+    home = event.get("home_score", 0) or 0
+    away = event.get("away_score", 0) or 0
+    margin = abs(home - away)
+
+    # Determine if we're in the closing window (late Q4 or OT)
+    is_in_closing_window = (
+        game_progress >= DENSITY_GATE_LATE_GAME_PROGRESS or quarter > 4
+    )
+
+    # Build base decision record with full diagnostics
     decision = DensityGateDecision(
         event_index=event_index,
         crossing_type=crossing_type,
@@ -386,40 +421,151 @@ def should_density_gate_flip_tie(
         last_flip_tie_index=last_flip_tie_index,
         last_flip_tie_canonical_pos=last_flip_tie_canonical_pos,
         current_canonical_pos=current_canonical_pos,
-        window_size=density_window,
+        window_size_plays=density_window_plays,
+        window_size_seconds=density_window_seconds,
+        last_flip_tie_clock=last_flip_tie_clock,
+        current_clock=current_clock,
         game_progress=game_progress,
+        seconds_remaining=seconds_remaining,
         tier_at_event=curr_state.tier,
+        margin_at_event=margin,
+        is_in_closing_window=is_in_closing_window,
+        is_first_in_closing=is_first_flip_tie_in_closing,
         override_qualified=False,
+        override_reason=None,
+        preceding_run_points=preceding_run_points,
+        preceding_run_team=preceding_run_team,
     )
 
-    # If no previous FLIP/TIE boundary, no density gating needed
+    # === CASE 1: No previous FLIP/TIE boundary ===
     if last_flip_tie_canonical_pos is None:
         decision.reason = "no_recent_boundary"
         return decision
 
-    # Calculate distance from last FLIP/TIE boundary
+    # === Calculate narrative distance ===
     plays_since_last = current_canonical_pos - last_flip_tie_canonical_pos
+    decision.plays_since_last = plays_since_last
 
-    # If outside the density window, allow the boundary
-    if plays_since_last >= density_window:
-        decision.reason = "outside_window"
-        return decision
+    # Calculate time distance if we have the last clock
+    seconds_since_last: int | None = None
+    if last_flip_tie_clock is not None:
+        try:
+            last_seconds = parse_clock_to_seconds(last_flip_tie_clock)
+            current_seconds = parse_clock_to_seconds(current_clock)
+            # Clock counts down, so last_seconds > current_seconds means time elapsed
+            # But we need to account for quarter changes - this is within-quarter only
+            # For simplicity, just use absolute difference (conservative estimate)
+            seconds_since_last = abs(last_seconds - current_seconds)
+            decision.seconds_since_last = seconds_since_last
+        except (ValueError, TypeError):
+            seconds_since_last = None
 
-    # We're inside the density window - check for override
-    override_qualified = (
-        game_progress >= DENSITY_GATE_LATE_GAME_PROGRESS
-        and curr_state.tier <= DENSITY_GATE_OVERRIDE_MAX_TIER
+    # === CASE 2: Outside BOTH distance windows ===
+    outside_plays_window = plays_since_last >= density_window_plays
+    outside_seconds_window = (
+        seconds_since_last is None or seconds_since_last >= density_window_seconds
     )
-    decision.override_qualified = override_qualified
 
-    if override_qualified:
-        # Late-game close situation - allow despite density window
-        decision.reason = "override_late_close"
-        decision.density_gate_applied = False
+    if outside_plays_window and outside_seconds_window:
+        decision.reason = "outside_both_windows"
         return decision
 
-    # Suppress this FLIP/TIE boundary
+    if outside_plays_window:
+        decision.reason = "outside_plays_window"
+        return decision
+
+    # === CASE 3: Within distance window - evaluate override conditions ===
+
+    # Override 1: First FLIP/TIE in closing window
+    if is_first_flip_tie_in_closing and CLOSING_FIRST_FLIP_TIE_ALWAYS_ALLOW:
+        decision.override_qualified = True
+        decision.override_reason = "first_in_closing"
+        decision.reason = "override_first_in_closing"
+        logger.debug(
+            "density_gate_override_first_in_closing",
+            extra={
+                "event_index": event_index,
+                "crossing_type": crossing_type,
+                "plays_since_last": plays_since_last,
+                "seconds_since_last": seconds_since_last,
+            },
+        )
+        return decision
+
+    # Override 2: True final sequence (very late in game)
+    if seconds_remaining <= CLOSING_FINAL_SEQUENCE_SECONDS and is_in_closing_window:
+        decision.override_qualified = True
+        decision.override_reason = "final_sequence"
+        decision.reason = f"override_final_sequence_{seconds_remaining}s"
+        logger.debug(
+            "density_gate_override_final_sequence",
+            extra={
+                "event_index": event_index,
+                "crossing_type": crossing_type,
+                "seconds_remaining": seconds_remaining,
+                "plays_since_last": plays_since_last,
+            },
+        )
+        return decision
+
+    # Override 3: After a significant scoring run
+    if preceding_run_points >= CLOSING_RUN_OVERRIDE_POINTS:
+        decision.override_qualified = True
+        decision.override_reason = f"after_run_{preceding_run_points}pts"
+        decision.reason = f"override_after_{preceding_run_points}pt_run"
+        logger.debug(
+            "density_gate_override_after_run",
+            extra={
+                "event_index": event_index,
+                "crossing_type": crossing_type,
+                "run_points": preceding_run_points,
+                "run_team": preceding_run_team,
+                "plays_since_last": plays_since_last,
+            },
+        )
+        return decision
+
+    # Override 4: One-possession game (only for FLIPs, not TIEs)
+    if (
+        crossing_type == "FLIP"
+        and margin <= CLOSING_ONE_POSSESSION_THRESHOLD
+        and is_in_closing_window
+    ):
+        decision.override_qualified = True
+        decision.override_reason = f"one_possession_margin_{margin}"
+        decision.reason = f"override_one_possession_flip"
+        logger.debug(
+            "density_gate_override_one_possession",
+            extra={
+                "event_index": event_index,
+                "crossing_type": crossing_type,
+                "margin": margin,
+                "plays_since_last": plays_since_last,
+            },
+        )
+        return decision
+
+    # === CASE 4: Within window, no override - SUPPRESS ===
     decision.density_gate_applied = True
-    decision.reason = f"within_window_{plays_since_last}_plays"
+    if seconds_since_last is not None and seconds_since_last < density_window_seconds:
+        decision.reason = (
+            f"within_window_{plays_since_last}plays_{seconds_since_last}s"
+        )
+    else:
+        decision.reason = f"within_window_{plays_since_last}plays"
+
+    logger.debug(
+        "density_gate_suppressed",
+        extra={
+            "event_index": event_index,
+            "crossing_type": crossing_type,
+            "plays_since_last": plays_since_last,
+            "seconds_since_last": seconds_since_last,
+            "is_in_closing_window": is_in_closing_window,
+            "margin": margin,
+            "seconds_remaining": seconds_remaining,
+            "last_flip_tie_index": last_flip_tie_index,
+        },
+    )
 
     return decision

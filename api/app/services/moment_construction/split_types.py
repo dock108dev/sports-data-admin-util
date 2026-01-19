@@ -13,10 +13,13 @@ if TYPE_CHECKING:
 
 
 # Types that are FORBIDDEN for semantic splits
-# These can only originate from boundary detection
+# These can only originate from boundary detection (causal events)
+# Semantic splits are STRUCTURAL (readability only), not CAUSAL
 FORBIDDEN_SEMANTIC_SPLIT_TYPES: frozenset[str] = frozenset({
-    "FLIP",
-    "TIE",
+    "FLIP",              # Leader change - causal
+    "TIE",               # Game tied - causal
+    "CLOSING_CONTROL",   # Late-game lock-in - causal
+    "MOMENTUM_SHIFT",    # Run-based boundary - causal
 })
 
 # Default type to normalize forbidden types to
@@ -118,6 +121,66 @@ class SplitSegment:
 
 
 @dataclass
+class DormancyDecision:
+    """Decision about whether a mega-moment is narratively dormant."""
+    
+    is_dormant: bool
+    reason: str
+    
+    # Diagnostic flags
+    leader_unchanged: bool = True
+    tier_unchanged: bool = True
+    tier_oscillation_persists: bool = False
+    margin_above_decided_threshold: bool = False
+    margin_decided_percentage: float = 0.0
+    max_run_points: int = 0
+    run_changes_tier: bool = False
+    
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "is_dormant": self.is_dormant,
+            "reason": self.reason,
+            "leader_unchanged": self.leader_unchanged,
+            "tier_unchanged": self.tier_unchanged,
+            "tier_oscillation_persists": self.tier_oscillation_persists,
+            "margin_above_decided_threshold": self.margin_above_decided_threshold,
+            "margin_decided_percentage": self.margin_decided_percentage,
+            "max_run_points": self.max_run_points,
+            "run_changes_tier": self.run_changes_tier,
+        }
+
+
+@dataclass
+class RedundancyDecision:
+    """Decision about whether a split segment is redundant."""
+    
+    segment_index: int
+    is_redundant: bool
+    reason: str
+    
+    # Comparison with neighbors
+    same_type_as_prev: bool = False
+    same_type_as_next: bool = False
+    same_tier_before: bool = False
+    same_tier_after: bool = False
+    has_unique_run: bool = False
+    has_high_impact: bool = False
+    
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "segment_index": self.segment_index,
+            "is_redundant": self.is_redundant,
+            "reason": self.reason,
+            "same_type_as_prev": self.same_type_as_prev,
+            "same_type_as_next": self.same_type_as_next,
+            "same_tier_before": self.same_tier_before,
+            "same_tier_after": self.same_tier_after,
+            "has_unique_run": self.has_unique_run,
+            "has_high_impact": self.has_high_impact,
+        }
+
+
+@dataclass
 class MegaMomentSplitResult:
     """Result of splitting a single mega-moment.
 
@@ -125,6 +188,8 @@ class MegaMomentSplitResult:
     - Why splits were applied or skipped
     - Which semantic rules fired
     - Final segment composition
+    - Dormancy detection
+    - Redundancy filtering
     """
 
     original_moment_id: str
@@ -132,17 +197,25 @@ class MegaMomentSplitResult:
     was_split: bool = False
     is_large_mega: bool = False  # 80+ plays
     split_points_found: list[SplitPoint] = field(default_factory=list)
+    split_points_qualified: list[SplitPoint] = field(default_factory=list)  # After contextual qualification
     split_points_used: list[SplitPoint] = field(default_factory=list)
     split_points_skipped: list[SplitPoint] = field(default_factory=list)
     segments: list[SplitSegment] = field(default_factory=list)
+    segments_rejected: list[SplitSegment] = field(default_factory=list)  # Redundant segments
     skip_reason: str | None = None
     split_reasons_fired: list[str] = field(default_factory=list)
+    dormancy_decision: DormancyDecision | None = None
+    redundancy_decisions: list[RedundancyDecision] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         # Count points found by reason
         found_by_reason: dict[str, int] = {}
         for sp in self.split_points_found:
             found_by_reason[sp.split_reason] = found_by_reason.get(sp.split_reason, 0) + 1
+        
+        qualified_by_reason: dict[str, int] = {}
+        for sp in self.split_points_qualified:
+            qualified_by_reason[sp.split_reason] = qualified_by_reason.get(sp.split_reason, 0) + 1
 
         return {
             "original_moment_id": self.original_moment_id,
@@ -151,12 +224,18 @@ class MegaMomentSplitResult:
             "is_large_mega": self.is_large_mega,
             "split_points_found_count": len(self.split_points_found),
             "split_points_found_by_reason": found_by_reason,
+            "split_points_qualified_count": len(self.split_points_qualified),
+            "split_points_qualified_by_reason": qualified_by_reason,
             "split_points_used": [sp.to_dict() for sp in self.split_points_used],
             "split_points_skipped_count": len(self.split_points_skipped),
             "segments": [s.to_dict() for s in self.segments],
+            "segments_rejected_count": len(self.segments_rejected),
+            "segments_rejected": [s.to_dict() for s in self.segments_rejected],
             "segment_play_counts": [s.play_count for s in self.segments],
             "skip_reason": self.skip_reason,
             "split_reasons_fired": self.split_reasons_fired,
+            "dormancy_decision": self.dormancy_decision.to_dict() if self.dormancy_decision else None,
+            "redundancy_decisions": [d.to_dict() for d in self.redundancy_decisions],
         }
 
 

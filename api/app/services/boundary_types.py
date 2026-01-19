@@ -23,8 +23,15 @@ RUN_BOUNDARY_MIN_TIER_CHANGE = 1
 # Density gating configuration
 # Prevents rapid FLIP/TIE sequences from emitting multiple boundaries
 DEFAULT_FLIP_TIE_DENSITY_WINDOW_PLAYS = 8  # Min canonical plays between FLIP/TIE boundaries
-DENSITY_GATE_LATE_GAME_PROGRESS = 0.85  # Q4 late or OT threshold for override consideration
-DENSITY_GATE_OVERRIDE_MAX_TIER = 1  # Max tier to qualify for late-game override
+DEFAULT_FLIP_TIE_DENSITY_WINDOW_SECONDS = 90  # Min seconds between FLIP/TIE boundaries
+DENSITY_GATE_LATE_GAME_PROGRESS = 0.85  # Q4 late or OT threshold for closing window
+
+# Narrative distance gating configuration (replaces blanket late-close override)
+# These thresholds define when a FLIP/TIE in the closing window is "override-worthy"
+CLOSING_FINAL_SEQUENCE_SECONDS = 60  # True final sequence threshold (always allow)
+CLOSING_RUN_OVERRIDE_POINTS = 8  # Run size that justifies a new moment
+CLOSING_ONE_POSSESSION_THRESHOLD = 6  # Margin considered "one possession"
+CLOSING_FIRST_FLIP_TIE_ALWAYS_ALLOW = True  # First FLIP/TIE in closing always allowed
 
 # Late-game outcome threat configuration
 # Prevents false drama from cuts that don't materially threaten the result
@@ -68,18 +75,71 @@ class DensityGateDecision:
     """Record of a density gate decision for FLIP/TIE boundaries.
 
     Used for diagnostics to trace why a FLIP or TIE boundary was suppressed.
+    
+    NARRATIVE DISTANCE GATING:
+    Instead of a blanket late-close override, we now use narrative distance:
+    - Distance measured in both plays and seconds
+    - Override only granted for specific conditions (final sequence, after run, etc.)
     """
     event_index: int
     crossing_type: str  # "FLIP" or "TIE"
     density_gate_applied: bool
-    reason: str  # e.g., "within_window", "override_late_close", "no_recent_boundary"
+    reason: str  # e.g., "within_window_plays", "within_window_seconds", "override_final_sequence"
+    
+    # Position tracking
     last_flip_tie_index: int | None = None
     last_flip_tie_canonical_pos: int | None = None
     current_canonical_pos: int | None = None
-    window_size: int = DEFAULT_FLIP_TIE_DENSITY_WINDOW_PLAYS
+    
+    # Play-based distance
+    window_size_plays: int = DEFAULT_FLIP_TIE_DENSITY_WINDOW_PLAYS
+    plays_since_last: int | None = None
+    
+    # Time-based distance (narrative distance)
+    window_size_seconds: int = DEFAULT_FLIP_TIE_DENSITY_WINDOW_SECONDS
+    seconds_since_last: int | None = None
+    last_flip_tie_clock: str | None = None
+    current_clock: str | None = None
+    
+    # Game state
     game_progress: float = 0.0
+    seconds_remaining: int = 0
     tier_at_event: int = 0
+    margin_at_event: int = 0
+    
+    # Closing window state
+    is_in_closing_window: bool = False
+    is_first_in_closing: bool = False
+    
+    # Override evaluation
     override_qualified: bool = False
+    override_reason: str | None = None  # Why override was granted (or None if not)
+    
+    # Run context (if a run preceded this event)
+    preceding_run_points: int = 0
+    preceding_run_team: str | None = None
+    
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "event_index": self.event_index,
+            "crossing_type": self.crossing_type,
+            "density_gate_applied": self.density_gate_applied,
+            "reason": self.reason,
+            "last_flip_tie_index": self.last_flip_tie_index,
+            "plays_since_last": self.plays_since_last,
+            "seconds_since_last": self.seconds_since_last,
+            "last_flip_tie_clock": self.last_flip_tie_clock,
+            "current_clock": self.current_clock,
+            "game_progress": self.game_progress,
+            "seconds_remaining": self.seconds_remaining,
+            "tier_at_event": self.tier_at_event,
+            "margin_at_event": self.margin_at_event,
+            "is_in_closing_window": self.is_in_closing_window,
+            "is_first_in_closing": self.is_first_in_closing,
+            "override_qualified": self.override_qualified,
+            "override_reason": self.override_reason,
+            "preceding_run_points": self.preceding_run_points,
+        }
 
 
 @dataclass
