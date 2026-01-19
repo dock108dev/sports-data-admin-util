@@ -38,6 +38,7 @@ from .closing import (
     ClosingWindowInfo,
     apply_closing_expansion,
     detect_closing_window,
+    reclassify_false_comeback_moments,
     should_allow_short_moment_in_closing,
     should_relax_flip_tie_density_in_closing,
 )
@@ -55,7 +56,7 @@ from .splitting import (
     SplitSegment,
     SplittingResult,
     apply_mega_moment_splitting,
-    assert_no_semantic_split_flip_tie,
+    assert_no_semantic_split_causal_types,
     find_split_points,
     select_best_split_points,
     split_mega_moment,
@@ -107,6 +108,7 @@ def apply_construction_improvements(
     quota_config: QuotaConfig = DEFAULT_QUOTA_CONFIG,
     closing_config: ClosingConfig = DEFAULT_CLOSING_CONFIG,
     split_config: SplitConfig = DEFAULT_SPLIT_CONFIG,
+    sport: str | None = None,
 ) -> ConstructionResult:
     """Apply Phase 3 construction improvements.
 
@@ -158,7 +160,7 @@ def apply_construction_improvements(
     # Task 3.3: Split mega-moments semantically
     if thresholds:
         splitting_result = apply_mega_moment_splitting(
-            current_moments, events, thresholds, split_config
+            current_moments, events, thresholds, split_config, sport
         )
         result.splitting_result = splitting_result
         current_moments = splitting_result.moments
@@ -178,7 +180,7 @@ def apply_construction_improvements(
             "moments_absorbed": chapter_result.moments_absorbed,
             "quarters_compressed": quota_result.quarters_compressed,
             "closing_window_active": closing_result.closing_window.is_active,
-            "closing_moments_expanded": closing_result.moments_expanded,
+            "closing_moments_inserted": closing_result.moments_inserted,
             "mega_moments_split": (
                 result.splitting_result.mega_moments_split
                 if result.splitting_result
@@ -216,6 +218,7 @@ __all__ = [
     "ClosingWindowInfo",
     "apply_closing_expansion",
     "detect_closing_window",
+    "reclassify_false_comeback_moments",
     "should_allow_short_moment_in_closing",
     "should_relax_flip_tie_density_in_closing",
     # Splitting (Task 3.3)
@@ -226,7 +229,7 @@ __all__ = [
     "SplitSegment",
     "SplittingResult",
     "apply_mega_moment_splitting",
-    "assert_no_semantic_split_flip_tie",
+    "assert_no_semantic_split_causal_types",
     "find_split_points",
     "select_best_split_points",
     "split_mega_moment",

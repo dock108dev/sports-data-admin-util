@@ -35,8 +35,8 @@ from .boundary_types import (
     DEFAULT_FLIP_HYSTERESIS_PLAYS,
     DEFAULT_TIE_HYSTERESIS_PLAYS,
     DEFAULT_FLIP_TIE_DENSITY_WINDOW_PLAYS,
+    DEFAULT_FLIP_TIE_DENSITY_WINDOW_SECONDS,
     DENSITY_GATE_LATE_GAME_PROGRESS,
-    DENSITY_GATE_OVERRIDE_MAX_TIER,
     LATE_GAME_MIN_QUARTER,
     LATE_GAME_MAX_SECONDS,
     LATE_GAME_SAFE_MARGIN,
@@ -74,7 +74,8 @@ def detect_boundaries(
     hysteresis_plays: int = DEFAULT_HYSTERESIS_PLAYS,
     flip_hysteresis_plays: int = DEFAULT_FLIP_HYSTERESIS_PLAYS,
     tie_hysteresis_plays: int = DEFAULT_TIE_HYSTERESIS_PLAYS,
-    flip_tie_density_window: int = DEFAULT_FLIP_TIE_DENSITY_WINDOW_PLAYS,
+    flip_tie_density_window_plays: int = DEFAULT_FLIP_TIE_DENSITY_WINDOW_PLAYS,
+    flip_tie_density_window_seconds: int = DEFAULT_FLIP_TIE_DENSITY_WINDOW_SECONDS,
 ) -> tuple[list[BoundaryEvent], list[DensityGateDecision], list[LateFalseDramaDecision]]:
     """
     Detect all moment boundaries using the canonical PBP stream.
@@ -93,12 +94,20 @@ def detect_boundaries(
     PHASE 2 ENHANCEMENT:
     - Density gating prevents rapid FLIP/TIE sequences from creating too many boundaries
     - A rolling window ensures adequate spacing between FLIP/TIE boundaries
-    - Late-game close situations can override density gating
+    - NARRATIVE DISTANCE gating replaces blanket late-close override
 
     PHASE 3 ENHANCEMENT:
     - Late-game outcome threat check prevents "false drama" boundaries
     - TIER_DOWN/CUT boundaries are suppressed when margin remains safe late in the game
     - Only boundaries that materially threaten the outcome are emitted
+
+    NARRATIVE DISTANCE GATING:
+    - Late-close override no longer disables gating for all close Q4 situations
+    - Instead, specific override conditions allow individual FLIP/TIE through:
+      - First FLIP/TIE in closing window
+      - In final sequence (<60s remaining)
+      - After a significant run (8+ pts)
+      - One-possession lead change
 
     OPENER is no longer a moment type.
 
@@ -134,14 +143,31 @@ def detect_boundaries(
     tie_persistence_count: int = 0
     pending_tie_canonical_pos: int = 0
 
-    # PHASE 2: Track state for density gating
+    # PHASE 2: Track state for density gating (enhanced with narrative distance)
     last_flip_tie_canonical_pos: int | None = None
     last_flip_tie_index: int | None = None
+    last_flip_tie_clock: str | None = None  # For time-based distance calculation
+    
+    # Track closing window state for "first in closing" detection
+    entered_closing_window: bool = False
+    first_flip_tie_in_closing_emitted: bool = False
 
     for canonical_pos, i in enumerate(pbp_indices):
         event = events[i]
         home_score, away_score = get_score(event)
         curr_state = compute_lead_state(home_score, away_score, thresholds)
+        current_clock = event.get("game_clock", "12:00") or "12:00"
+        current_quarter = event.get("quarter", 1) or 1
+        
+        # Detect closing window entry
+        game_progress = get_game_progress(event)
+        is_in_closing = game_progress >= DENSITY_GATE_LATE_GAME_PROGRESS or current_quarter > 4
+        if is_in_closing and not entered_closing_window:
+            entered_closing_window = True
+            logger.debug(
+                "entered_closing_window",
+                extra={"canonical_pos": canonical_pos, "game_progress": game_progress},
+            )
 
         # === CHECK PENDING FLIP CONFIRMATION ===
         if pending_flip is not None:
@@ -150,6 +176,12 @@ def detect_boundaries(
 
                 if flip_persistence_count >= flip_hysteresis_plays:
                     pending_flip_event = events[pending_flip_index]
+                    pending_flip_clock = pending_flip_event.get("game_clock", "12:00") or "12:00"
+                    
+                    # Determine if this would be the first FLIP/TIE in closing
+                    is_first_in_closing = (
+                        entered_closing_window and not first_flip_tie_in_closing_emitted
+                    )
 
                     density_decision = should_density_gate_flip_tie(
                         event=pending_flip_event,
@@ -158,7 +190,10 @@ def detect_boundaries(
                         current_canonical_pos=pending_flip_canonical_pos,
                         last_flip_tie_canonical_pos=last_flip_tie_canonical_pos,
                         last_flip_tie_index=last_flip_tie_index,
-                        density_window=flip_tie_density_window,
+                        density_window_plays=flip_tie_density_window_plays,
+                        density_window_seconds=flip_tie_density_window_seconds,
+                        last_flip_tie_clock=last_flip_tie_clock,
+                        is_first_flip_tie_in_closing=is_first_in_closing,
                     )
                     density_decision.event_index = pending_flip_index
                     density_gate_decisions.append(density_decision)
@@ -169,10 +204,9 @@ def detect_boundaries(
                             extra={
                                 "index": pending_flip_index,
                                 "reason": density_decision.reason,
-                                "plays_since_last": (
-                                    pending_flip_canonical_pos - last_flip_tie_canonical_pos
-                                    if last_flip_tie_canonical_pos is not None else None
-                                ),
+                                "plays_since_last": density_decision.plays_since_last,
+                                "seconds_since_last": density_decision.seconds_since_last,
+                                "override_reason": density_decision.override_reason,
                             },
                         )
                     else:
@@ -196,6 +230,9 @@ def detect_boundaries(
                             ))
                         last_flip_tie_canonical_pos = pending_flip_canonical_pos
                         last_flip_tie_index = pending_flip_index
+                        last_flip_tie_clock = pending_flip_clock
+                        if entered_closing_window:
+                            first_flip_tie_in_closing_emitted = True
 
                     pending_flip = None
                     flip_persistence_count = 0
@@ -210,6 +247,12 @@ def detect_boundaries(
 
                 if tie_persistence_count >= tie_hysteresis_plays:
                     pending_tie_event = events[pending_tie_index]
+                    pending_tie_clock = pending_tie_event.get("game_clock", "12:00") or "12:00"
+                    
+                    # Determine if this would be the first FLIP/TIE in closing
+                    is_first_in_closing = (
+                        entered_closing_window and not first_flip_tie_in_closing_emitted
+                    )
 
                     density_decision = should_density_gate_flip_tie(
                         event=pending_tie_event,
@@ -218,7 +261,10 @@ def detect_boundaries(
                         current_canonical_pos=pending_tie_canonical_pos,
                         last_flip_tie_canonical_pos=last_flip_tie_canonical_pos,
                         last_flip_tie_index=last_flip_tie_index,
-                        density_window=flip_tie_density_window,
+                        density_window_plays=flip_tie_density_window_plays,
+                        density_window_seconds=flip_tie_density_window_seconds,
+                        last_flip_tie_clock=last_flip_tie_clock,
+                        is_first_flip_tie_in_closing=is_first_in_closing,
                     )
                     density_decision.event_index = pending_tie_index
                     density_gate_decisions.append(density_decision)
@@ -229,10 +275,9 @@ def detect_boundaries(
                             extra={
                                 "index": pending_tie_index,
                                 "reason": density_decision.reason,
-                                "plays_since_last": (
-                                    pending_tie_canonical_pos - last_flip_tie_canonical_pos
-                                    if last_flip_tie_canonical_pos is not None else None
-                                ),
+                                "plays_since_last": density_decision.plays_since_last,
+                                "seconds_since_last": density_decision.seconds_since_last,
+                                "override_reason": density_decision.override_reason,
                             },
                         )
                     else:
@@ -246,6 +291,9 @@ def detect_boundaries(
                         ))
                         last_flip_tie_canonical_pos = pending_tie_canonical_pos
                         last_flip_tie_index = pending_tie_index
+                        last_flip_tie_clock = pending_tie_clock
+                        if entered_closing_window:
+                            first_flip_tie_in_closing_emitted = True
 
                     pending_tie = None
                     tie_persistence_count = 0
@@ -260,10 +308,15 @@ def detect_boundaries(
             if crossing is not None:
                 crossing_type = crossing.crossing_type
 
-                # === FLIP: Now with time-aware gating, hysteresis, and density gating ===
+                # === FLIP: Now with time-aware gating, hysteresis, and narrative distance gating ===
                 if crossing_type == TierCrossingType.FLIP:
                     pending_crossing = None
                     persistence_count = 0
+                    
+                    # Determine if this would be the first FLIP/TIE in closing
+                    is_first_in_closing = (
+                        entered_closing_window and not first_flip_tie_in_closing_emitted
+                    )
 
                     if is_closing_situation(event, curr_state):
                         pending_flip = None
@@ -276,7 +329,10 @@ def detect_boundaries(
                             current_canonical_pos=canonical_pos,
                             last_flip_tie_canonical_pos=last_flip_tie_canonical_pos,
                             last_flip_tie_index=last_flip_tie_index,
-                            density_window=flip_tie_density_window,
+                            density_window_plays=flip_tie_density_window_plays,
+                            density_window_seconds=flip_tie_density_window_seconds,
+                            last_flip_tie_clock=last_flip_tie_clock,
+                            is_first_flip_tie_in_closing=is_first_in_closing,
                         )
                         density_decision.event_index = i
                         density_gate_decisions.append(density_decision)
@@ -284,7 +340,12 @@ def detect_boundaries(
                         if density_decision.density_gate_applied:
                             logger.debug(
                                 "closing_flip_density_gated",
-                                extra={"index": i, "reason": density_decision.reason},
+                                extra={
+                                    "index": i,
+                                    "reason": density_decision.reason,
+                                    "plays_since_last": density_decision.plays_since_last,
+                                    "seconds_since_last": density_decision.seconds_since_last,
+                                },
                             )
                         else:
                             boundaries.append(BoundaryEvent(
@@ -297,6 +358,9 @@ def detect_boundaries(
                             ))
                             last_flip_tie_canonical_pos = canonical_pos
                             last_flip_tie_index = i
+                            last_flip_tie_clock = current_clock
+                            if entered_closing_window:
+                                first_flip_tie_in_closing_emitted = True
 
                     elif should_gate_early_flip(event, curr_state, prev_state):
                         pending_flip = crossing
@@ -315,7 +379,10 @@ def detect_boundaries(
                             current_canonical_pos=canonical_pos,
                             last_flip_tie_canonical_pos=last_flip_tie_canonical_pos,
                             last_flip_tie_index=last_flip_tie_index,
-                            density_window=flip_tie_density_window,
+                            density_window_plays=flip_tie_density_window_plays,
+                            density_window_seconds=flip_tie_density_window_seconds,
+                            last_flip_tie_clock=last_flip_tie_clock,
+                            is_first_flip_tie_in_closing=is_first_in_closing,
                         )
                         density_decision.event_index = i
                         density_gate_decisions.append(density_decision)
@@ -323,7 +390,12 @@ def detect_boundaries(
                         if density_decision.density_gate_applied:
                             logger.debug(
                                 "flip_boundary_density_gated",
-                                extra={"index": i, "reason": density_decision.reason},
+                                extra={
+                                    "index": i,
+                                    "reason": density_decision.reason,
+                                    "plays_since_last": density_decision.plays_since_last,
+                                    "seconds_since_last": density_decision.seconds_since_last,
+                                },
                             )
                         else:
                             boundaries.append(BoundaryEvent(
@@ -336,11 +408,19 @@ def detect_boundaries(
                             ))
                             last_flip_tie_canonical_pos = canonical_pos
                             last_flip_tie_index = i
+                            last_flip_tie_clock = current_clock
+                            if entered_closing_window:
+                                first_flip_tie_in_closing_emitted = True
 
-                # === TIE_REACHED: Now with time-aware gating, hysteresis, and density gating ===
+                # === TIE_REACHED: Now with time-aware gating, hysteresis, and narrative distance gating ===
                 elif crossing_type == TierCrossingType.TIE_REACHED:
                     pending_crossing = None
                     persistence_count = 0
+                    
+                    # Determine if this would be the first FLIP/TIE in closing
+                    is_first_in_closing = (
+                        entered_closing_window and not first_flip_tie_in_closing_emitted
+                    )
 
                     if should_gate_early_tie(event, prev_state):
                         pending_tie = crossing
@@ -359,7 +439,10 @@ def detect_boundaries(
                             current_canonical_pos=canonical_pos,
                             last_flip_tie_canonical_pos=last_flip_tie_canonical_pos,
                             last_flip_tie_index=last_flip_tie_index,
-                            density_window=flip_tie_density_window,
+                            density_window_plays=flip_tie_density_window_plays,
+                            density_window_seconds=flip_tie_density_window_seconds,
+                            last_flip_tie_clock=last_flip_tie_clock,
+                            is_first_flip_tie_in_closing=is_first_in_closing,
                         )
                         density_decision.event_index = i
                         density_gate_decisions.append(density_decision)
@@ -367,7 +450,12 @@ def detect_boundaries(
                         if density_decision.density_gate_applied:
                             logger.debug(
                                 "tie_boundary_density_gated",
-                                extra={"index": i, "reason": density_decision.reason},
+                                extra={
+                                    "index": i,
+                                    "reason": density_decision.reason,
+                                    "plays_since_last": density_decision.plays_since_last,
+                                    "seconds_since_last": density_decision.seconds_since_last,
+                                },
                             )
                         else:
                             boundaries.append(BoundaryEvent(
@@ -380,6 +468,9 @@ def detect_boundaries(
                             ))
                             last_flip_tie_canonical_pos = canonical_pos
                             last_flip_tie_index = i
+                            last_flip_tie_clock = current_clock
+                            if entered_closing_window:
+                                first_flip_tie_in_closing_emitted = True
 
                 elif crossing_type in (
                     TierCrossingType.TIE_BROKEN,
@@ -430,6 +521,61 @@ def detect_boundaries(
                                     prev_state = curr_state
                                     continue
 
+                                # SUSTAINED DROP CHECK: Verify tier drop persists
+                                # Look ahead to ensure this is a genuine comeback attempt
+                                from .moments.config import CUT_SUSTAINED_PLAYS
+                                
+                                tier_drop_sustained = False
+                                lookahead_count = 0
+                                lookahead_tier = curr_state.tier
+                                
+                                # Look ahead up to CUT_SUSTAINED_PLAYS to see if tier stays low
+                                for lookahead_idx in range(canonical_pos + 1, min(canonical_pos + CUT_SUSTAINED_PLAYS + 1, len(pbp_indices))):
+                                    if lookahead_idx >= len(pbp_indices):
+                                        break
+                                    
+                                    lookahead_event_idx = pbp_indices[lookahead_idx]
+                                    if lookahead_event_idx >= len(events):
+                                        break
+                                    
+                                    lookahead_event = events[lookahead_event_idx]
+                                    if lookahead_event.get("event_type") != "pbp":
+                                        continue
+                                    
+                                    lookahead_home = lookahead_event.get("home_score", 0) or 0
+                                    lookahead_away = lookahead_event.get("away_score", 0) or 0
+                                    lookahead_state = compute_lead_state(lookahead_home, lookahead_away, thresholds)
+                                    
+                                    lookahead_count += 1
+                                    lookahead_tier = lookahead_state.tier
+                                    
+                                    # If tier rebounds back up, this is not a sustained drop
+                                    if lookahead_tier > curr_state.tier:
+                                        break
+                                    
+                                    # If we've seen enough plays at the lower tier, it's sustained
+                                    if lookahead_count >= CUT_SUSTAINED_PLAYS:
+                                        tier_drop_sustained = True
+                                        break
+                                
+                                # If tier drop is not sustained, suppress this CUT boundary
+                                if not tier_drop_sustained:
+                                    logger.debug(
+                                        "cut_boundary_not_sustained",
+                                        extra={
+                                            "index": pending_index,
+                                            "tier_before": pending_crossing.prev_state.tier,
+                                            "tier_after": curr_state.tier,
+                                            "lookahead_plays": lookahead_count,
+                                            "final_tier": lookahead_tier,
+                                            "reason": "tier_rebounded" if lookahead_tier > curr_state.tier else "insufficient_persistence",
+                                        },
+                                    )
+                                    pending_crossing = None
+                                    persistence_count = 0
+                                    prev_state = curr_state
+                                    continue
+
                             elif pending_crossing.crossing_type == TierCrossingType.TIE_BROKEN:
                                 moment_type = MomentType.LEAD_BUILD
                                 note = "Took the lead"
@@ -470,16 +616,42 @@ def detect_boundaries(
     # Log summary of density gating if any decisions were made
     if density_gate_decisions:
         suppressed_count = sum(1 for d in density_gate_decisions if d.density_gate_applied)
-        if suppressed_count > 0:
-            logger.info(
-                "density_gating_summary",
-                extra={
-                    "total_flip_tie_events": len(density_gate_decisions),
-                    "suppressed_count": suppressed_count,
-                    "emitted_count": len(density_gate_decisions) - suppressed_count,
-                    "window_size": flip_tie_density_window,
-                },
-            )
+        override_count = sum(1 for d in density_gate_decisions if d.override_qualified)
+        
+        # Group suppressions by reason
+        suppression_reasons: dict[str, int] = {}
+        override_reasons: dict[str, int] = {}
+        for d in density_gate_decisions:
+            if d.density_gate_applied:
+                suppression_reasons[d.reason] = suppression_reasons.get(d.reason, 0) + 1
+            elif d.override_qualified and d.override_reason:
+                override_reasons[d.override_reason] = override_reasons.get(d.override_reason, 0) + 1
+        
+        logger.info(
+            "density_gating_summary",
+            extra={
+                "total_flip_tie_events": len(density_gate_decisions),
+                "suppressed_count": suppressed_count,
+                "emitted_count": len(density_gate_decisions) - suppressed_count,
+                "override_count": override_count,
+                "window_size_plays": flip_tie_density_window_plays,
+                "window_size_seconds": flip_tie_density_window_seconds,
+                "suppression_reasons": suppression_reasons,
+                "override_reasons": override_reasons,
+                "suppressed_events": [
+                    {
+                        "index": d.event_index,
+                        "type": d.crossing_type,
+                        "reason": d.reason,
+                        "plays_since_last": d.plays_since_last,
+                        "seconds_since_last": d.seconds_since_last,
+                        "is_in_closing": d.is_in_closing_window,
+                    }
+                    for d in density_gate_decisions
+                    if d.density_gate_applied
+                ],
+            },
+        )
 
     # Log summary of late false drama suppression
     if false_drama_decisions:

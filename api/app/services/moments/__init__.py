@@ -13,6 +13,7 @@ from .types import (
     MomentReason,
     MomentType,
     PlayerContribution,
+    RecapContext,
     RunInfo,
 )
 
@@ -52,7 +53,6 @@ from ..moments_boundaries import (
     LateFalseDramaDecision,
     DEFAULT_FLIP_TIE_DENSITY_WINDOW_PLAYS,
     DENSITY_GATE_LATE_GAME_PROGRESS,
-    DENSITY_GATE_OVERRIDE_MAX_TIER,
     LATE_GAME_MIN_QUARTER,
     LATE_GAME_MAX_SECONDS,
     LATE_GAME_SAFE_MARGIN,
@@ -117,6 +117,7 @@ __all__ = [
     "MomentType",
     "MomentValidationError",
     "PlayerContribution",
+    "RecapContext",
     "RunInfo",
     "DensityGateDecision",
     "LateFalseDramaDecision",
@@ -167,7 +168,6 @@ __all__ = [
     "DEFAULT_TIE_HYSTERESIS_PLAYS",
     "DEFAULT_FLIP_TIE_DENSITY_WINDOW_PLAYS",
     "DENSITY_GATE_LATE_GAME_PROGRESS",
-    "DENSITY_GATE_OVERRIDE_MAX_TIER",
     "LATE_GAME_MIN_QUARTER",
     "LATE_GAME_MAX_SECONDS",
     "LATE_GAME_SAFE_MARGIN",

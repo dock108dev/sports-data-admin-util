@@ -96,34 +96,68 @@ class SplitConfig:
     priority_pressure: int = 3
     priority_timeout: int = 4
     priority_drought: int = 5
+    
+    # Narrative dormancy detection
+    dormancy_decided_margin_threshold: int = 10  # Margin considered "decided"
+    dormancy_decided_percentage: float = 0.75  # % of segment that must be above decided threshold
+    dormancy_tier_hysteresis: int = 2  # Plays tier must persist to count as "changed"
+    dormancy_run_meaningful_threshold: int = 8  # Run points needed to be "meaningful"
+    
+    # Contextual split point qualification
+    run_split_tier_change_required: bool = True  # Run must change tier OR meet other criteria
+    run_split_threat_margin: int = 6  # Margin threshold for "threat" band
+    run_split_late_window_seconds: int = 300  # Late window (5 minutes) for run qualification
+    tier_change_persistence_plays: int = 2  # Tier change must persist for N plays
 
 
 @dataclass
 class ClosingConfig:
     """Configuration for closing expansion (late-game narrative detail).
     
-    When the game is close late, we STOP collapsing and START expanding
-    to provide play-by-play tension detail.
+    POST-SELECTION EXPANSION PASS:
+    - Adds detail in true close endings (close_closing)
+    - Compresses decided endings (decided_closing)
+    - Respects narrative distance gating
     
-    A closing situation is:
-    - Q4 or OT
-    - inside the final_seconds_window (e.g. last 3 minutes)
-    - game tier ≤ max_closing_tier (close game)
+    Uses unified closing taxonomy from moments.closing:
+    - CLOSE_GAME_CLOSING: tier <= 1 OR margin <= possession threshold
+    - DECIDED_GAME_CLOSING: tier >= 2 AND margin > safe margin
     """
     
-    # Window definition
-    final_seconds_window: int = 180  # 3 minutes = 180 seconds
+    # Window definition (uses unified closing taxonomy)
+    final_seconds_window: int = 300  # 5 minutes (matches CLOSING_WINDOW_SECONDS)
     min_quarter_for_closing: int = 4  # Q4 minimum (5+ = OT)
-    max_closing_tier: int = 1  # Tier must be ≤ this for expansion
     
-    # Expansion behavior
-    allow_short_moments: bool = True  # Allow 1-3 play moments
-    min_closing_plays: int = 1  # Minimum plays for a closing moment
-    relax_flip_tie_density: bool = True  # Allow multiple FLIP/TIE close together
+    # Expansion limits for CLOSE_GAME_CLOSING
+    max_additional_moments: int = 5  # Max moments to insert in closing window
+    expansion_window_seconds: int = 180  # Last X seconds where expansion applies
     
-    # Limits
-    max_closing_moments: int = 10  # Hard cap on moments in closing window
-    max_expansion_ratio: float = 2.0  # At most 2x the pre-expansion count
+    # Narrative distance gating (prevents flip spam)
+    min_seconds_between_flip_tie: int = 30  # Min seconds between FLIP/TIE in closing
+    final_minute_override_seconds: int = 60  # Override distance in final minute
+    
+    # Expansion preferences (priority order)
+    prefer_run_based: bool = True  # Prefer run-based momentum shifts
+    prefer_high_impact: bool = True  # Prefer high-impact plays
+    prefer_final_minute: bool = True  # Prefer final-minute lead changes
+    
+    # Run threshold for expansion
+    run_expansion_min_points: int = 8  # Min points in run to qualify for expansion
+    
+    # Safety rules
+    max_comeback_beats_per_team: int = 1  # Max CUT/comeback beats per team
+    comeback_tier_threshold: int = 2  # Must cross down by >= 2 tiers for additional comeback
+    
+    # Compression for DECIDED_GAME_CLOSING
+    suppress_cut_in_decided: bool = True  # Suppress CUT moments in decided games
+    threat_margin_threshold: int = 6  # Margin must cross below this to allow comeback
+    
+    # Legacy fields (kept for backward compatibility)
+    allow_short_moments: bool = True
+    min_closing_plays: int = 1
+    relax_flip_tie_density: bool = False  # Now controlled by narrative distance
+    max_closing_moments: int = 15  # Total cap (including inserted)
+    max_expansion_ratio: float = 2.0
     
     # Protected types that should never be merged in closing
     protected_closing_types: frozenset = field(
@@ -132,6 +166,7 @@ class ClosingConfig:
             "TIE", 
             "CLOSING_CONTROL",
             "HIGH_IMPACT",
+            "MOMENTUM_SHIFT",
         })
     )
 

@@ -62,12 +62,19 @@ def _validate_moment_ordering(moments: list[dict[str, Any]]) -> list[str]:
 
 
 def _validate_no_overlaps(moments: list[dict[str, Any]]) -> list[str]:
-    """Validate moments don't overlap."""
+    """Validate moments don't overlap.
+    
+    Recap moments are skipped as they're zero-width boundary markers.
+    """
     errors = []
     
     for i in range(1, len(moments)):
         prev = moments[i - 1]
         curr = moments[i]
+        
+        # Skip overlap check if either moment is a recap
+        if prev.get("is_recap", False) or curr.get("is_recap", False):
+            continue
         
         if curr.get("start_play", 0) <= prev.get("end_play", 0):
             errors.append(
@@ -83,6 +90,8 @@ def _validate_score_continuity_detailed(
 ) -> list[dict[str, Any]]:
     """Validate score is continuous between moments.
     
+    Recap moments (play_count=0) are skipped as they're contextual summaries.
+    
     Returns detailed issue records instead of just warning strings.
     Each issue includes:
     - prev_moment_id: ID of the moment ending before the gap
@@ -97,6 +106,10 @@ def _validate_score_continuity_detailed(
     for i in range(1, len(moments)):
         prev = moments[i - 1]
         curr = moments[i]
+        
+        # Skip score continuity check if either moment is a recap
+        if prev.get("is_recap", False) or curr.get("is_recap", False):
+            continue
         
         prev_end = prev.get("score_after", (0, 0))
         curr_start = curr.get("score_before", (0, 0))
@@ -198,6 +211,28 @@ async def execute_validate_moments(
         raise ValueError("No moments in previous stage output")
     
     output.add_log(f"Validating {len(moments)} moments")
+    
+    # Log moment types for debugging
+    moment_types = {}
+    recap_count = 0
+    for m in moments:
+        m_type = m.get("type", "UNKNOWN")
+        moment_types[m_type] = moment_types.get(m_type, 0) + 1
+        if m.get("is_recap", False):
+            recap_count += 1
+    
+    logger.info(
+        "validation_moment_breakdown",
+        extra={
+            "total_moments": len(moments),
+            "moment_types": moment_types,
+            "recap_count": recap_count,
+        },
+    )
+    
+    output.add_log(
+        f"Moment breakdown: {moment_types}, Recap moments (play_count=0): {recap_count}"
+    )
     
     errors: list[str] = []
     warnings: list[str] = []
@@ -322,6 +357,24 @@ async def execute_validate_moments(
     )
     
     output.data = validation_output.to_dict()
+    
+    # Explicitly log the passed status for debugging
+    logger.info(
+        "validation_result",
+        extra={
+            "passed": passed,
+            "critical_passed": critical_passed,
+            "quality_status": quality_status.value,
+            "errors_count": len(errors),
+            "warnings_count": len(warnings),
+            "errors": errors[:3] if errors else [],
+        },
+    )
+    
+    output.add_log(
+        f"Validation result: passed={passed}, critical_passed={critical_passed}, "
+        f"quality_status={quality_status.value}"
+    )
     
     if passed:
         if quality_status == QualityStatus.DEGRADED:

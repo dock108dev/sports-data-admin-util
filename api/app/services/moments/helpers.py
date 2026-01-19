@@ -43,9 +43,14 @@ def format_score(home: int | None, away: int | None) -> str:
 
 def get_score(event: dict[str, Any]) -> tuple[int, int]:
     """Extract (home_score, away_score) from an event."""
-    home = event.get("home_score", 0) or 0
-    away = event.get("away_score", 0) or 0
-    return (home, away)
+    # Ensure we use 0 as fallback if scores are explicitly None or 0
+    home = event.get("home_score")
+    away = event.get("away_score")
+    
+    # If both are 0, it might be a reset marker.
+    # In that case, we should have carried it forward in normalization,
+    # but as a safety, we return (0, 0) and let the caller handle it.
+    return (home or 0, away or 0)
 
 
 def get_bucket(event: dict[str, Any], sport: str | None = None) -> str:
@@ -267,7 +272,36 @@ def extract_moment_context(
         if player_name:
             player_impact[player_name] = player_impact.get(player_name, 0) + impact
             if player_name not in player_data:
-                player_data[player_name] = {}
+                player_data[player_name] = {
+                    "points": 0,
+                    "assists": 0,
+                    "rebounds": 0,
+                    "steals": 0,
+                    "blocks": 0,
+                }
+            
+            # Track actual stats from play descriptions
+            if "made" in description:
+                if "three" in description or "3pt" in description:
+                    player_data[player_name]["points"] = player_data[player_name].get("points", 0) + 3
+                elif "free throw" in description:
+                    player_data[player_name]["points"] = player_data[player_name].get("points", 0) + 1
+                else:
+                    # Assume 2-pointer
+                    player_data[player_name]["points"] = player_data[player_name].get("points", 0) + 2
+            
+            if "assist" in description:
+                player_data[player_name]["assists"] = player_data[player_name].get("assists", 0) + 1
+            
+            if "rebound" in description:
+                player_data[player_name]["rebounds"] = player_data[player_name].get("rebounds", 0) + 1
+            
+            if "steal" in description:
+                player_data[player_name]["steals"] = player_data[player_name].get("steals", 0) + 1
+            
+            if "block" in description:
+                player_data[player_name]["blocks"] = player_data[player_name].get("blocks", 0) + 1
+            
             if impact > 0:
                 key_play_ids.append(i)
 

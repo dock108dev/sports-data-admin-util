@@ -144,10 +144,9 @@ def partition_game(
                             "index": d.event_index,
                             "type": d.crossing_type,
                             "reason": d.reason,
-                            "plays_since_last": (
-                                d.current_canonical_pos - d.last_flip_tie_canonical_pos
-                                if d.last_flip_tie_canonical_pos is not None else None
-                            ),
+                            "plays_since_last": d.plays_since_last,
+                            "seconds_since_last": d.seconds_since_last,
+                            "is_in_closing": d.is_in_closing_window,
                         }
                         for d in suppressed
                     ],
@@ -242,9 +241,29 @@ def partition_game(
     for idx, i in enumerate(pbp_indices):
         event = events[i]
 
+        # Use normalized scores from event if available, otherwise raw scores
+        # get_score already returns (home, away)
+        event_score = get_score(event)
+
         is_opener = is_period_opener(event, prev_event)
         if is_opener:
             current_is_period_start = True
+            # When a new period starts, if the event score is (0, 0) but we have a non-zero current_score,
+            # it means the feed reset the score for the new quarter marker.
+            # We must carry forward the current_score to the moment boundary to avoid 0-0 cards.
+            if event_score == (0, 0) and current_score != (0, 0):
+                # Update event with carried forward score so subsequent logic sees it
+                event["home_score"] = current_score[0]
+                event["away_score"] = current_score[1]
+                event_score = current_score
+                logger.info(
+                    "quarter_score_reset_prevented",
+                    extra={
+                        "play_index": i,
+                        "quarter": event.get("quarter"),
+                        "carried_forward_score": event_score,
+                    }
+                )
 
         if i in boundary_at:
             boundary = boundary_at[i]
@@ -278,7 +297,7 @@ def partition_game(
                 current_type = MomentType.NEUTRAL
                 current_is_period_start = is_opener
 
-        current_score = get_score(event)
+        current_score = event_score
         prev_event = event
 
     # Close final moment
@@ -443,7 +462,9 @@ def partition_game(
     # Apply construction improvements
     from ..moment_construction import apply_construction_improvements
 
-    construction_result = apply_construction_improvements(moments, events, thresholds)
+    construction_result = apply_construction_improvements(
+        moments, events, thresholds, sport=sport
+    )
     moments = construction_result.moments
 
     if construction_result.chapter_result:
@@ -508,6 +529,60 @@ def partition_game(
     validate_moment_coverage(moments, pbp_indices)
     validate_score_continuity(moments)
     assert_moment_continuity(moments)
+
+    # PHASE 5: Generate recap moments at key boundaries
+    # Recap moments are "zero-width" contextual summaries that don't own plays
+    # Only generate for real games (with sufficient events)
+    MIN_EVENTS_FOR_RECAPS = 50  # Skip recap generation for test/short games
+    
+    recap_moments = []
+    if len(events) >= MIN_EVENTS_FOR_RECAPS:
+        from .recaps import generate_recap_moments
+        
+        logger.info("recap_generation_starting", extra={"moment_count": len(moments)})
+        
+        recap_moments = generate_recap_moments(
+            events=events,
+            moments=moments,
+            sport=sport,
+            thresholds=thresholds,
+        )
+    
+    if recap_moments:
+        logger.info(
+            "recap_moments_created",
+            extra={
+                "recap_count": len(recap_moments),
+                "recap_types": [m.type.value for m in recap_moments],
+                "recap_details": [
+                    {
+                        "id": m.id,
+                        "type": m.type.value,
+                        "start_play": m.start_play,
+                        "end_play": m.end_play,
+                        "play_count": m.play_count,
+                        "score_before": m.score_before,
+                        "score_after": m.score_after,
+                    }
+                    for m in recap_moments
+                ],
+            },
+        )
+        
+        # Insert recap moments at their appropriate positions
+        # Sort by start_play to maintain chronological order
+        all_moments = moments + recap_moments
+        all_moments.sort(key=lambda m: m.start_play)
+        moments = all_moments
+        
+        logger.info(
+            "recap_moments_integrated",
+            extra={
+                "total_moments": len(moments),
+                "regular_moments": len(moments) - len(recap_moments),
+                "recap_moments": len(recap_moments),
+            },
+        )
 
     # Final renumber
     for i, m in enumerate(moments):

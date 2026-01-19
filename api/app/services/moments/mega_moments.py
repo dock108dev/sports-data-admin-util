@@ -25,10 +25,13 @@ logger = logging.getLogger(__name__)
 
 
 # Types that are FORBIDDEN for split moments
-# These can only originate from boundary detection
+# These can only originate from boundary detection (causal events)
+# Semantic splits are STRUCTURAL (readability only), not CAUSAL
 FORBIDDEN_SPLIT_TYPES: frozenset[str] = frozenset({
-    "FLIP",
-    "TIE",
+    "FLIP",              # Leader change - causal
+    "TIE",               # Game tied - causal
+    "CLOSING_CONTROL",   # Late-game lock-in - causal
+    "MOMENTUM_SHIFT",    # Run-based boundary - causal
 })
 
 
@@ -160,20 +163,20 @@ def split_mega_moment(
     sub_moments: list[Moment] = []
     current_start = moment.start_play
     moment_id_counter = 0
-
-    if current_start > 0:
-        current_score_before = get_score(events[current_start - 1])
-    else:
-        current_score_before = (0, 0)
+    current_working_score = moment.score_before
 
     for split_idx in split_points:
         if split_idx <= current_start:
             continue
 
-        score_before = current_score_before
+        score_before = current_working_score
 
         end_idx_for_sub = split_idx - 1
         score_after = get_score(events[end_idx_for_sub])
+
+        # Check for score reset (0-0) at quarter boundary within the segment
+        if score_after == (0, 0) and score_before != (0, 0):
+            score_after = score_before
 
         if score_after == (0, 0) and end_idx_for_sub > current_start:
             for j in range(end_idx_for_sub - 1, current_start - 1, -1):
@@ -183,32 +186,28 @@ def split_mega_moment(
                     end_idx_for_sub = j
                     break
 
-        start_state = compute_lead_state(score_before[0], score_before[1], thresholds)
-        end_state = compute_lead_state(score_after[0], score_after[1], thresholds)
-
-        # INVARIANT: Split moments must NEVER be FLIP or TIE
-        # These types can only originate from boundary detection
-        # Determine type based on tier change instead of leader change
-        if end_state.tier > start_state.tier:
-            sub_type = MomentType.LEAD_BUILD
-        elif end_state.tier < start_state.tier:
-            sub_type = MomentType.CUT
-        else:
-            sub_type = MomentType.NEUTRAL
+        # STRICT INVARIANT: Semantic splits inherit parent type exactly
+        # They are STRUCTURAL (readability), not CAUSAL (narrative invention)
+        # We do NOT change type based on tier deltas - that would invent narrative events
         
-        # Log if we would have created a forbidden type
-        if start_state.leader != end_state.leader:
-            would_be_type = "FLIP" if end_state.leader != Leader.TIED else "TIE"
+        parent_type_value = moment.type.value if hasattr(moment.type, 'value') else str(moment.type)
+        
+        # If parent type is forbidden (causal), normalize to NEUTRAL
+        if parent_type_value in FORBIDDEN_SPLIT_TYPES:
+            sub_type = MomentType.NEUTRAL
             logger.debug(
                 "split_moment_type_normalized",
                 extra={
                     "parent_moment_id": moment.id,
                     "segment_index": moment_id_counter,
-                    "would_be_type": would_be_type,
+                    "would_be_type": parent_type_value,
                     "actual_type": sub_type.value,
-                    "reason": "split_moments_cannot_be_flip_or_tie",
+                    "reason": "split_moments_cannot_be_causal_type",
                 },
             )
+        else:
+            # Inherit parent type exactly - no tier-delta logic
+            sub_type = moment.type
 
         sub_moment = create_moment(
             moment_id=moment_id_counter,
@@ -226,26 +225,20 @@ def split_mega_moment(
         sub_moments.append(sub_moment)
 
         current_start = split_idx
-        current_score_before = score_after
+        current_working_score = score_after
         moment_id_counter += 1
 
     # Create final sub-moment
     if current_start <= moment.end_play:
-        score_before = current_score_before
+        score_before = current_working_score
         
-        # INVARIANT: Split moments must NEVER be FLIP or TIE
-        # If the parent moment is FLIP or TIE, normalize to tier-based type
+        # STRICT INVARIANT: Semantic splits inherit parent type exactly
+        # They are STRUCTURAL (readability), not CAUSAL (narrative invention)
         parent_type_value = moment.type.value if hasattr(moment.type, 'value') else str(moment.type)
+        
         if parent_type_value in FORBIDDEN_SPLIT_TYPES:
-            # Determine replacement type based on tier dynamics
-            tier_delta = moment.ladder_tier_after - moment.ladder_tier_before
-            if tier_delta > 0:
-                final_type = MomentType.LEAD_BUILD
-            elif tier_delta < 0:
-                final_type = MomentType.CUT
-            else:
-                final_type = MomentType.NEUTRAL
-            
+            # If parent type is forbidden (causal), normalize to NEUTRAL
+            final_type = MomentType.NEUTRAL
             logger.debug(
                 "split_moment_type_normalized",
                 extra={
@@ -253,10 +246,11 @@ def split_mega_moment(
                     "segment_index": moment_id_counter,
                     "would_be_type": parent_type_value,
                     "actual_type": final_type.value,
-                    "reason": "split_moments_cannot_be_flip_or_tie",
+                    "reason": "split_moments_cannot_be_causal_type",
                 },
             )
         else:
+            # Inherit parent type exactly - no tier-delta logic
             final_type = moment.type
 
         sub_moment = create_moment(
