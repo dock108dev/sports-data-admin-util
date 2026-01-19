@@ -106,6 +106,7 @@ class SplitSegment:
     split_reason: str = ""
     parent_moment_id: str = ""
     segment_index: int = 0
+    is_false_drama: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -117,6 +118,7 @@ class SplitSegment:
             "split_reason": self.split_reason,
             "parent_moment_id": self.parent_moment_id,
             "segment_index": self.segment_index,
+            "is_false_drama": self.is_false_drama,
         }
 
 

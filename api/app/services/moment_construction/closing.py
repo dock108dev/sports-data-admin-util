@@ -582,7 +582,7 @@ def _check_narrative_distance(
     
     Returns (allowed, reason).
     """
-    from ..utils.datetime_utils import parse_clock_to_seconds
+    from ...utils.datetime_utils import parse_clock_to_seconds
     
     # Final-minute override (always allowed)
     if candidate.seconds_remaining <= config.final_minute_override_seconds:

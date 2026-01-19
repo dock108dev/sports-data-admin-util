@@ -55,6 +55,7 @@ def split_mega_moment(
     events: Sequence[dict[str, Any]],
     thresholds: Sequence[int],
     config: SplitConfig = DEFAULT_SPLIT_CONFIG,
+    sport: str | None = None,
 ) -> MegaMomentSplitResult:
     """Split a single mega-moment into readable segments.
 
@@ -67,6 +68,7 @@ def split_mega_moment(
         events: All timeline events
         thresholds: Lead Ladder thresholds
         config: Split configuration
+        sport: Sport identifier
 
     Returns:
         MegaMomentSplitResult with segments and diagnostics
@@ -223,18 +225,61 @@ def split_mega_moment(
     segment_starts = [moment.start_play] + [sp.play_index for sp in selected_points]
     segment_ends = [sp.play_index - 1 for sp in selected_points] + [moment.end_play]
 
+    # Import helpers
+    from ..moments.helpers import get_score
+    from ..lead_ladder import compute_lead_state
+    from ..boundary_helpers import is_late_false_drama
+    from ..moments import MomentType
+    
     all_segments: list[SplitSegment] = []
+    current_working_score = moment.score_before
+
     for i, (start, end) in enumerate(zip(segment_starts, segment_ends)):
-        score_before = (
-            moment.score_before if i == 0 else selected_points[i - 1].score_at_split
-        )
-        score_after = (
-            selected_points[i].score_at_split
-            if i < len(selected_points)
-            else moment.score_after
-        )
+        # Get actual scores from events at segment boundaries to ensure continuity
+        if i == 0:
+            score_before = moment.score_before
+        else:
+            # For continuity: segment i's score_before MUST equal segment i-1's score_after
+            score_before = current_working_score
+        
+        if end >= 0 and end < len(events):
+            score_after = get_score(events[end])
+            # Check for score reset (0-0) at quarter boundary within the segment
+            if score_after == (0, 0) and score_before != (0, 0):
+                score_after = score_before
+        else:
+            score_after = moment.score_after
+
+        current_working_score = score_after
 
         split_reason = "" if i == 0 else selected_points[i - 1].split_reason
+
+        # PRE-VALIDATE FALSE DRAMA: Check if this segment should be suppressed
+        # If it's a CUT-like segment in decided late game, we'll mark it for merging
+        is_false_drama = False
+        if moment.type == MomentType.CUT:
+            prev_state = compute_lead_state(score_before[0], score_before[1], thresholds)
+            curr_state = compute_lead_state(score_after[0], score_after[1], thresholds)
+            
+            if curr_state.tier < prev_state.tier:
+                if start < len(events):
+                    false_drama_decision = is_late_false_drama(
+                        event=events[start],
+                        prev_state=prev_state,
+                        curr_state=curr_state,
+                        crossing_type="TIER_DOWN",
+                        sport=sport,
+                    )
+                    if false_drama_decision.suppressed:
+                        is_false_drama = True
+                        logger.info(
+                            "segment_pre_suppressed_false_drama",
+                            extra={
+                                "moment_id": moment.id,
+                                "segment_index": i,
+                                "reason": false_drama_decision.suppressed_reason,
+                            },
+                        )
 
         segment = SplitSegment(
             start_play=start,
@@ -245,17 +290,19 @@ def split_mega_moment(
             split_reason=split_reason,
             parent_moment_id=moment.id,
             segment_index=i,
+            is_false_drama=is_false_drama,
         )
         all_segments.append(segment)
     
-    # Step 4: Filter redundant segments
+    # Step 4: Filter redundant and false drama segments
+    # The filter function now handles MERGING to preserve continuity
     filtered_segments, redundancy_decisions = filter_redundant_segments(
         all_segments, events, thresholds, moment
     )
     result.segments = filtered_segments
     result.segments_rejected = [
         seg for i, seg in enumerate(all_segments)
-        if i < len(redundancy_decisions) and redundancy_decisions[i].is_redundant
+        if i < len(redundancy_decisions) and (redundancy_decisions[i].is_redundant or all_segments[i].is_false_drama)
     ]
     result.redundancy_decisions = redundancy_decisions
     
@@ -330,6 +377,7 @@ def apply_mega_moment_splitting(
     events: Sequence[dict[str, Any]],
     thresholds: Sequence[int],
     config: SplitConfig = DEFAULT_SPLIT_CONFIG,
+    sport: str | None = None,
 ) -> SplittingResult:
     """Apply semantic splitting to all mega-moments.
 
@@ -368,7 +416,7 @@ def apply_mega_moment_splitting(
         if moment.play_count >= config.large_mega_threshold:
             result.large_mega_moments_found += 1
 
-        split_result = split_mega_moment(moment, events, thresholds, config)
+        split_result = split_mega_moment(moment, events, thresholds, config, sport)
         result.split_results.append(split_result)
 
         if not split_result.was_split:
@@ -387,8 +435,8 @@ def apply_mega_moment_splitting(
                 result.split_reasons_summary.get(sp.split_reason, 0) + 1
             )
 
-        # Only process segments that weren't rejected for redundancy
-        # (split_result.segments already contains filtered segments)
+        # Only process segments that weren't merged for redundancy/false-drama
+        # (split_result.segments already contains filtered and contiguous segments)
         for i, segment in enumerate(split_result.segments):
             segment_id = f"{moment.id}_seg{i+1}"
 
@@ -436,55 +484,6 @@ def apply_mega_moment_splitting(
                 moment.ladder_tier_before if i == 0 else moment.ladder_tier_after
             )
             segment_tier_after = moment.ladder_tier_after
-
-            # Check for false-drama suppression if this is a CUT moment
-            # Even though we inherit parent type, we need to check if a CUT parent
-            # in late-game should be suppressed when split into segments
-            if segment_type == MomentType.CUT:
-                # Get the event at segment start for false-drama check
-                if segment.start_play < len(events):
-                    segment_start_event = events[segment.start_play]
-                    from ..lead_ladder import compute_lead_state
-                    from ..boundary_helpers import is_late_false_drama
-                    
-                    # Calculate lead states for false-drama check
-                    # Use segment scores to determine if this segment represents a tier decrease
-                    home_before = segment.score_before[0]
-                    away_before = segment.score_before[1]
-                    home_after = segment.score_after[0]
-                    away_after = segment.score_after[1]
-                    
-                    prev_state = compute_lead_state(home_before, away_before, thresholds)
-                    curr_state = compute_lead_state(home_after, away_after, thresholds)
-                    
-                    # Only suppress if this segment actually represents a tier decrease
-                    # (not just inheriting CUT type from parent)
-                    if curr_state.tier < prev_state.tier:
-                        # Check if this split-derived CUT should be suppressed
-                        false_drama_decision = is_late_false_drama(
-                            event=segment_start_event,
-                            prev_state=prev_state,
-                            curr_state=curr_state,
-                            crossing_type="TIER_DOWN",
-                        )
-                        
-                        if false_drama_decision.suppressed:
-                            logger.info(
-                                "semantic_split_cut_suppressed_false_drama",
-                                extra={
-                                    "moment_id": segment_id,
-                                    "parent_moment_id": moment.id,
-                                    "segment_index": i,
-                                    "margin_after": false_drama_decision.margin_after,
-                                    "tier_after": curr_state.tier,
-                                    "tier_before": prev_state.tier,
-                                    "seconds_remaining": false_drama_decision.seconds_remaining,
-                                    "suppressed_reason": false_drama_decision.suppressed_reason,
-                                },
-                            )
-                            # Skip creating this segment - it would be false drama
-                            # This prevents suppressed late CUT boundaries from reappearing via splitting
-                            continue
 
             new_moment = Moment(
                 id=segment_id,

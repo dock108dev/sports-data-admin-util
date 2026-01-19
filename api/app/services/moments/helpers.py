@@ -43,9 +43,14 @@ def format_score(home: int | None, away: int | None) -> str:
 
 def get_score(event: dict[str, Any]) -> tuple[int, int]:
     """Extract (home_score, away_score) from an event."""
-    home = event.get("home_score", 0) or 0
-    away = event.get("away_score", 0) or 0
-    return (home, away)
+    # Ensure we use 0 as fallback if scores are explicitly None or 0
+    home = event.get("home_score")
+    away = event.get("away_score")
+    
+    # If both are 0, it might be a reset marker.
+    # In that case, we should have carried it forward in normalization,
+    # but as a safety, we return (0, 0) and let the caller handle it.
+    return (home or 0, away or 0)
 
 
 def get_bucket(event: dict[str, Any], sport: str | None = None) -> str:

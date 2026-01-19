@@ -359,7 +359,7 @@ def detect_narrative_dormancy(
         DormancyDecision with dormancy status and diagnostics
     """
     from ..lead_ladder import compute_lead_state, Leader
-    from ..utils.datetime_utils import parse_clock_to_seconds
+    from ...utils.datetime_utils import parse_clock_to_seconds
     
     decision = DormancyDecision(
         is_dormant=False,
@@ -548,7 +548,7 @@ def qualify_split_points_contextually(
         Qualified split points
     """
     from ..lead_ladder import compute_lead_state
-    from ..utils.datetime_utils import parse_clock_to_seconds
+    from ...utils.datetime_utils import parse_clock_to_seconds
     
     qualified: list[SplitPoint] = []
     
@@ -683,12 +683,14 @@ def filter_redundant_segments(
     thresholds: Sequence[int],
     parent_moment: "Moment",
 ) -> tuple[list[SplitSegment], list[RedundancyDecision]]:
-    """Filter out redundant child segments after splitting.
+    """Filter out redundant child segments after splitting by merging them.
     
     A segment is redundant if:
     - same type as neighbors AND
     - same tier_before/tier_after AND
     - no unique run/high-impact marker
+    
+    Redundant segments are MERGED into their neighbors to maintain continuity.
     
     Args:
         segments: Split segments to filter
@@ -697,21 +699,29 @@ def filter_redundant_segments(
         parent_moment: The parent moment
     
     Returns:
-        Tuple of (filtered_segments, redundancy_decisions)
+        Tuple of (merged_segments, redundancy_decisions)
     """
     from ..lead_ladder import compute_lead_state
     from ..boundary_helpers import is_high_impact_event
     
+    if not segments:
+        return [], []
     if len(segments) <= 1:
         return segments, []
     
-    filtered: list[SplitSegment] = []
+    # We'll use a working list and merge into it
+    working_segments: list[SplitSegment] = [segments[0]]
     decisions: list[RedundancyDecision] = []
     
-    # Parent type for comparison
-    parent_type = parent_moment.type.value if hasattr(parent_moment.type, 'value') else str(parent_moment.type)
+    # Track decision for the first segment
+    decisions.append(RedundancyDecision(
+        segment_index=0,
+        is_redundant=False,
+        reason="first_segment",
+    ))
     
-    for i, segment in enumerate(segments):
+    for i in range(1, len(segments)):
+        segment = segments[i]
         decision = RedundancyDecision(
             segment_index=i,
             is_redundant=False,
@@ -730,35 +740,29 @@ def filter_redundant_segments(
         segment_tier_after = curr_state.tier
         
         # Check neighbors
-        prev_segment = segments[i - 1] if i > 0 else None
-        next_segment = segments[i + 1] if i < len(segments) - 1 else None
+        prev_orig = segments[i - 1]
+        next_orig = segments[i + 1] if i < len(segments) - 1 else None
         
         # Check type match with neighbors
-        decision.same_type_as_prev = (prev_segment is not None)
-        decision.same_type_as_next = (next_segment is not None)
+        decision.same_type_as_prev = True # Always True since all segments inherit parent type
+        decision.same_type_as_next = (next_orig is not None)
         
         # Check tier match with neighbors
-        if prev_segment:
-            prev_prev_state = compute_lead_state(
-                prev_segment.score_before[0], prev_segment.score_before[1], thresholds
-            )
-            prev_curr_state = compute_lead_state(
-                prev_segment.score_after[0], prev_segment.score_after[1], thresholds
-            )
-            decision.same_tier_before = (segment_tier_before == prev_curr_state.tier)
-        else:
-            decision.same_tier_before = (segment_tier_before == parent_moment.ladder_tier_before)
+        # We compare with the original neighbors to decide if this segment added value
+        prev_curr_state = compute_lead_state(
+            prev_orig.score_after[0], prev_orig.score_after[1], thresholds
+        )
+        decision.same_tier_before = (segment_tier_before == prev_curr_state.tier)
         
-        if next_segment:
+        if next_orig:
             next_prev_state = compute_lead_state(
-                next_segment.score_before[0], next_segment.score_before[1], thresholds
+                next_orig.score_before[0], next_orig.score_before[1], thresholds
             )
             decision.same_tier_after = (segment_tier_after == next_prev_state.tier)
         else:
             decision.same_tier_after = (segment_tier_after == parent_moment.ladder_tier_after)
         
         # Check for unique markers
-        # Check for high-impact events in segment
         has_high_impact = False
         for idx in range(segment.start_play, min(segment.end_play + 1, len(events))):
             if idx < len(events) and is_high_impact_event(events[idx]):
@@ -767,50 +771,57 @@ def filter_redundant_segments(
         
         decision.has_high_impact = has_high_impact
         
-        # Check for significant run (simplified - would need run detection)
-        # For now, check if score change is significant
+        # Check for significant run (simplified)
         score_diff = abs(
             (segment.score_after[0] - segment.score_before[0]) +
             (segment.score_after[1] - segment.score_before[1])
         )
-        decision.has_unique_run = (score_diff >= 8)  # Significant scoring change
+        decision.has_unique_run = (score_diff >= 8)
         
-        # Determine if redundant
+        # Determine if redundant or false drama
+        # Rule: same tier across boundaries + no special markers OR marked as false drama
         is_redundant = (
-            decision.same_type_as_prev and
-            decision.same_type_as_next and
-            decision.same_tier_before and
-            decision.same_tier_after and
-            not decision.has_unique_run and
-            not decision.has_high_impact
+            (decision.same_tier_before and
+             decision.same_tier_after and
+             not decision.has_unique_run and
+             not decision.has_high_impact) or
+            segment.is_false_drama
         )
         
         decision.is_redundant = is_redundant
         
         if is_redundant:
             reasons = []
-            if decision.same_type_as_prev and decision.same_type_as_next:
-                reasons.append("same_type_as_neighbors")
-            if decision.same_tier_before and decision.same_tier_after:
-                reasons.append("same_tier_as_neighbors")
+            if segment.is_false_drama:
+                reasons.append("false_drama")
+            elif decision.same_tier_before and decision.same_tier_after:
+                reasons.append("no_tier_change")
+            
             if not decision.has_unique_run:
                 reasons.append("no_unique_run")
             if not decision.has_high_impact:
                 reasons.append("no_high_impact")
             decision.reason = "_".join(reasons)
             
-            logger.debug(
-                "segment_rejected_redundant",
+            # MERGE into previous segment in working list
+            last_seg = working_segments[-1]
+            last_seg.end_play = segment.end_play
+            last_seg.score_after = segment.score_after
+            last_seg.play_count = last_seg.end_play - last_seg.start_play + 1
+            
+            logger.info(
+                "segment_merged_redundant",
                 extra={
                     "segment_index": i,
                     "parent_moment_id": parent_moment.id,
                     "reason": decision.reason,
+                    "new_play_count": last_seg.play_count,
                 },
             )
         else:
             decision.reason = "not_redundant"
-            filtered.append(segment)
+            working_segments.append(segment)
         
         decisions.append(decision)
     
-    return filtered, decisions
+    return working_segments, decisions

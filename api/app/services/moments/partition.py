@@ -241,9 +241,29 @@ def partition_game(
     for idx, i in enumerate(pbp_indices):
         event = events[i]
 
+        # Use normalized scores from event if available, otherwise raw scores
+        # get_score already returns (home, away)
+        event_score = get_score(event)
+
         is_opener = is_period_opener(event, prev_event)
         if is_opener:
             current_is_period_start = True
+            # When a new period starts, if the event score is (0, 0) but we have a non-zero current_score,
+            # it means the feed reset the score for the new quarter marker.
+            # We must carry forward the current_score to the moment boundary to avoid 0-0 cards.
+            if event_score == (0, 0) and current_score != (0, 0):
+                # Update event with carried forward score so subsequent logic sees it
+                event["home_score"] = current_score[0]
+                event["away_score"] = current_score[1]
+                event_score = current_score
+                logger.info(
+                    "quarter_score_reset_prevented",
+                    extra={
+                        "play_index": i,
+                        "quarter": event.get("quarter"),
+                        "carried_forward_score": event_score,
+                    }
+                )
 
         if i in boundary_at:
             boundary = boundary_at[i]
@@ -277,7 +297,7 @@ def partition_game(
                 current_type = MomentType.NEUTRAL
                 current_is_period_start = is_opener
 
-        current_score = get_score(event)
+        current_score = event_score
         prev_event = event
 
     # Close final moment
@@ -442,7 +462,9 @@ def partition_game(
     # Apply construction improvements
     from ..moment_construction import apply_construction_improvements
 
-    construction_result = apply_construction_improvements(moments, events, thresholds)
+    construction_result = apply_construction_improvements(
+        moments, events, thresholds, sport=sport
+    )
     moments = construction_result.moments
 
     if construction_result.chapter_result:

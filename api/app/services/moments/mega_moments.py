@@ -163,20 +163,20 @@ def split_mega_moment(
     sub_moments: list[Moment] = []
     current_start = moment.start_play
     moment_id_counter = 0
-
-    if current_start > 0:
-        current_score_before = get_score(events[current_start - 1])
-    else:
-        current_score_before = (0, 0)
+    current_working_score = moment.score_before
 
     for split_idx in split_points:
         if split_idx <= current_start:
             continue
 
-        score_before = current_score_before
+        score_before = current_working_score
 
         end_idx_for_sub = split_idx - 1
         score_after = get_score(events[end_idx_for_sub])
+
+        # Check for score reset (0-0) at quarter boundary within the segment
+        if score_after == (0, 0) and score_before != (0, 0):
+            score_after = score_before
 
         if score_after == (0, 0) and end_idx_for_sub > current_start:
             for j in range(end_idx_for_sub - 1, current_start - 1, -1):
@@ -225,12 +225,12 @@ def split_mega_moment(
         sub_moments.append(sub_moment)
 
         current_start = split_idx
-        current_score_before = score_after
+        current_working_score = score_after
         moment_id_counter += 1
 
     # Create final sub-moment
     if current_start <= moment.end_play:
-        score_before = current_score_before
+        score_before = current_working_score
         
         # STRICT INVARIANT: Semantic splits inherit parent type exactly
         # They are STRUCTURAL (readability), not CAUSAL (narrative invention)
