@@ -135,7 +135,7 @@ export type RunInfo = {
  * - NEUTRAL: Normal flow
  */
 // ============================================================================
-// CHAPTERS-FIRST MODEL (ISSUE 13)
+// CHAPTERS-FIRST MODEL (ISSUE 14)
 // ============================================================================
 
 /**
@@ -146,6 +146,7 @@ export type RunInfo = {
  */
 export type ChapterEntry = {
   chapter_id: string;                   // "ch_001"
+  index: number;                        // Explicit chapter index for UI ordering
   play_start_idx: number;               // First play index (inclusive)
   play_end_idx: number;                 // Last play index (inclusive)
   play_count: number;                   // Number of plays in chapter
@@ -162,6 +163,10 @@ export type ChapterEntry = {
   
   // Plays (for expansion)
   plays: PlayEntry[];
+  
+  // Debug-only (optional)
+  chapter_fingerprint?: string | null;  // Deterministic chapter hash
+  boundary_logs?: Array<Record<string, unknown>> | null;  // Debug boundary events
 };
 
 /**
@@ -172,6 +177,7 @@ export type ChapterEntry = {
 export type GameStoryResponse = {
   game_id: number;
   sport: string;
+  story_version: string;                // Story generation version
   chapters: ChapterEntry[];
   chapter_count: number;
   total_plays: number;
@@ -183,6 +189,11 @@ export type GameStoryResponse = {
   // Metadata
   generated_at: string | null;
   metadata: Record<string, unknown>;
+  
+  // Generation status
+  has_summaries: boolean;
+  has_titles: boolean;
+  has_compact_story: boolean;
 };
 
 /**

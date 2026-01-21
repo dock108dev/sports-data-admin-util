@@ -21,6 +21,43 @@ export default function StoryGeneratorPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<number | null>(null);
   const [storyState, setStoryState] = useState<StoryStateResponse | null>(null);
+  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
+  const [showDebugView, setShowDebugView] = useState(false);
+  
+  const toggleChapter = (chapterId: string) => {
+    const newExpanded = new Set(expandedChapters);
+    if (newExpanded.has(chapterId)) {
+      newExpanded.delete(chapterId);
+    } else {
+      newExpanded.add(chapterId);
+    }
+    setExpandedChapters(newExpanded);
+  };
+  
+  const getReasonIcon = (reason: string) => {
+    switch (reason.toUpperCase()) {
+      case "PERIOD_START":
+        return "🏁";
+      case "PERIOD_END":
+        return "⏹️";
+      case "TIMEOUT":
+        return "⏸️";
+      case "REVIEW":
+        return "🔍";
+      case "CRUNCH_START":
+        return "🔥";
+      case "RUN_START":
+        return "📈";
+      case "RUN_END_RESPONSE":
+        return "↩️";
+      case "OVERTIME_START":
+        return "⏰";
+      case "GAME_END":
+        return "🏁";
+      default:
+        return "📍";
+    }
+  };
 
   useEffect(() => {
     loadStory();
@@ -31,23 +68,9 @@ export default function StoryGeneratorPage() {
     setError(null);
     
     try {
-      // TODO: Replace with actual API call
-      // const response = await fetch(`/api/sports-admin/games/${gameId}/story`);
-      // const data = await response.json();
-      // setStory(data);
-      
-      // Mock data for now
-      setStory({
-        game_id: gameId,
-        sport: "NBA",
-        chapters: [],
-        chapter_count: 0,
-        total_plays: 0,
-        compact_story: null,
-        reading_time_estimate_minutes: null,
-        generated_at: null,
-        metadata: {},
-      });
+      const { fetchGameStory } = await import("@/lib/api/sportsAdmin");
+      const data = await fetchGameStory(gameId, false);
+      setStory(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load story");
     } finally {
@@ -57,25 +80,13 @@ export default function StoryGeneratorPage() {
 
   const loadStoryState = async (chapterIndex: number) => {
     try {
-      // TODO: Replace with actual API call
-      // const response = await fetch(`/api/sports-admin/games/${gameId}/story-state?chapter=${chapterIndex}`);
-      // const data = await response.json();
-      // setStoryState(data);
-      
-      // Mock for now
-      setStoryState({
-        chapter_index_last_processed: chapterIndex - 1,
-        players: {},
-        teams: {},
-        momentum_hint: "unknown",
-        theme_tags: [],
-        constraints: {
-          no_future_knowledge: true,
-          source: "derived_from_prior_chapters_only",
-        },
-      });
+      const { fetchStoryState } = await import("@/lib/api/sportsAdmin");
+      const data = await fetchStoryState(gameId, chapterIndex);
+      setStoryState(data);
+      setSelectedChapter(chapterIndex);
     } catch (err) {
       console.error("Failed to load story state:", err);
+      setError(err instanceof Error ? err.message : "Failed to load story state");
     }
   };
 
@@ -85,10 +96,17 @@ export default function StoryGeneratorPage() {
     }
     
     try {
-      // TODO: API call to regenerate chapters
-      alert("Regenerate chapters not yet implemented");
+      const { regenerateChapters } = await import("@/lib/api/sportsAdmin");
+      const result = await regenerateChapters(gameId, true, false);
+      
+      if (result.success && result.story) {
+        setStory(result.story);
+        alert(result.message);
+      } else {
+        alert(`Failed: ${result.message}`);
+      }
     } catch (err) {
-      alert("Failed to regenerate chapters");
+      alert(`Failed to regenerate chapters: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
 
@@ -98,10 +116,17 @@ export default function StoryGeneratorPage() {
     }
     
     try {
-      // TODO: API call to regenerate summaries
-      alert("Regenerate summaries not yet implemented");
+      const { regenerateSummaries } = await import("@/lib/api/sportsAdmin");
+      const result = await regenerateSummaries(gameId, true);
+      
+      if (result.success && result.story) {
+        setStory(result.story);
+        alert(result.message);
+      } else {
+        alert(`Failed: ${result.message}`);
+      }
     } catch (err) {
-      alert("Failed to regenerate summaries");
+      alert(`Failed to regenerate summaries: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
 
@@ -111,10 +136,17 @@ export default function StoryGeneratorPage() {
     }
     
     try {
-      // TODO: API call to regenerate compact story
-      alert("Regenerate compact story not yet implemented");
+      const { regenerateCompactStory } = await import("@/lib/api/sportsAdmin");
+      const result = await regenerateCompactStory(gameId, true);
+      
+      if (result.success && result.story) {
+        setStory(result.story);
+        alert(result.message);
+      } else {
+        alert(`Failed: ${result.message}`);
+      }
     } catch (err) {
-      alert("Failed to regenerate compact story");
+      alert(`Failed to regenerate compact story: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
 
@@ -184,15 +216,15 @@ export default function StoryGeneratorPage() {
           
           <div className={styles.statusItem}>
             <span className={styles.statusLabel}>Summaries:</span>
-            <span className={story.chapters.some(ch => ch.chapter_summary) ? styles.statusOk : styles.statusMissing}>
-              {story.chapters.some(ch => ch.chapter_summary) ? "✓ Generated" : "✗ Not generated"}
+            <span className={story.has_summaries ? styles.statusOk : styles.statusMissing}>
+              {story.has_summaries ? "✓ Generated" : "✗ Not generated"}
             </span>
           </div>
           
           <div className={styles.statusItem}>
             <span className={styles.statusLabel}>Compact Story:</span>
-            <span className={story.compact_story ? styles.statusOk : styles.statusMissing}>
-              {story.compact_story ? "✓ Generated" : "✗ Not generated"}
+            <span className={story.has_compact_story ? styles.statusOk : styles.statusMissing}>
+              {story.has_compact_story ? "✓ Generated" : "✗ Not generated"}
             </span>
           </div>
         </div>
