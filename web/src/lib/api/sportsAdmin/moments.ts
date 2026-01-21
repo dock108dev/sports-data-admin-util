@@ -42,6 +42,9 @@ export interface MomentTraceDetail {
   merged_into_id: string | null;
   absorbed_moment_ids: string[];
   created_at: string;
+  // Phase 2-4: Context fields
+  phase_state?: Record<string, unknown>;
+  narrative_context?: Record<string, unknown>;
 }
 
 export interface GenerationTraceSummary {

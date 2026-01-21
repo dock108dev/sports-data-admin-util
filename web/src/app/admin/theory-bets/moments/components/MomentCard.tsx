@@ -162,6 +162,106 @@ export function MomentCard({ trace, isExpanded, onToggle, gameId }: MomentCardPr
             </div>
           </div>
 
+          {/* Phase & Narrative Context (Phase 2-4) */}
+          {(trace.phase_state || trace.narrative_context) && (
+            <div className={styles.traceSection}>
+              <div className={styles.traceSectionTitle}>Context (Phase 2-4)</div>
+              
+              {/* Phase State */}
+              {trace.phase_state && (
+                <div style={{ marginBottom: "1rem" }}>
+                  <strong style={{ fontSize: "0.9rem", color: "#1e293b" }}>Game Phase</strong>
+                  <div className={styles.traceGrid} style={{ marginTop: "0.5rem" }}>
+                    <div className={styles.traceItem}>
+                      <span className={styles.traceLabel}>Progress</span>
+                      <span className={styles.traceValue}>
+                        {((trace.phase_state.game_progress as number) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className={styles.traceItem}>
+                      <span className={styles.traceLabel}>Phase</span>
+                      <span className={styles.traceValue}>
+                        {trace.phase_state.is_closing_window ? "🔴 Closing" : 
+                         (trace.phase_state.game_progress as number) < 0.3 ? "🟢 Opening" : "🟡 Middle"}
+                      </span>
+                    </div>
+                    <div className={styles.traceItem}>
+                      <span className={styles.traceLabel}>Overtime</span>
+                      <span className={styles.traceValue}>
+                        {trace.phase_state.is_overtime ? "Yes" : "No"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Narrative Context */}
+              {trace.narrative_context && (
+                <div style={{ marginBottom: "1rem" }}>
+                  <strong style={{ fontSize: "0.9rem", color: "#1e293b" }}>Narrative State</strong>
+                  <div className={styles.traceGrid} style={{ marginTop: "0.5rem" }}>
+                    <div className={styles.traceItem}>
+                      <span className={styles.traceLabel}>Game Phase</span>
+                      <span className={styles.traceValue}>
+                        {String(trace.narrative_context.game_phase).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className={styles.traceItem}>
+                      <span className={styles.traceLabel}>Continuation</span>
+                      <span className={styles.traceValue}>
+                        {trace.narrative_context.is_continuation ? "✅ Yes" : "❌ No"}
+                      </span>
+                    </div>
+                    <div className={styles.traceItem}>
+                      <span className={styles.traceLabel}>Volatility</span>
+                      <span className={styles.traceValue}>
+                        {String(trace.narrative_context.volatility_phase)}
+                      </span>
+                    </div>
+                    <div className={styles.traceItem}>
+                      <span className={styles.traceLabel}>Control Duration</span>
+                      <span className={styles.traceValue}>
+                        {String(trace.narrative_context.control_duration)} moments
+                      </span>
+                    </div>
+                    <div className={styles.traceItem}>
+                      <span className={styles.traceLabel}>Controlling Team</span>
+                      <span className={styles.traceValue}>
+                        {trace.narrative_context.controlling_team ? String(trace.narrative_context.controlling_team).toUpperCase() : "None"}
+                      </span>
+                    </div>
+                    <div className={styles.traceItem}>
+                      <span className={styles.traceLabel}>Previous Type</span>
+                      <span className={styles.traceValue}>
+                        {trace.narrative_context.previous_moment_type || "None"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Raw JSON Toggle */}
+              <details style={{ marginTop: "0.5rem" }}>
+                <summary style={{ cursor: "pointer", color: "#64748b", fontSize: "0.85rem" }}>
+                  View Raw Context JSON
+                </summary>
+                <pre style={{ 
+                  fontSize: "0.75rem", 
+                  background: "#f8fafc", 
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                  overflow: "auto",
+                  marginTop: "0.5rem"
+                }}>
+                  {JSON.stringify({ 
+                    phase_state: trace.phase_state, 
+                    narrative_context: trace.narrative_context 
+                  }, null, 2)}
+                </pre>
+              </details>
+            </div>
+          )}
+
           {/* Action history */}
           {trace.actions && trace.actions.length > 0 && (
             <div className={styles.traceSection}>

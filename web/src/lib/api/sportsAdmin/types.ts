@@ -188,6 +188,46 @@ export type MomentEntry = {
   display_weight: "high" | "medium" | "low";
   display_icon: string;  // Icon name suggestion
   display_color_hint: "tension" | "positive" | "neutral" | "highlight";
+  
+  // Phase 2-4: Context-aware narrative fields
+  phase_state?: GamePhaseState;
+  narrative_context?: MomentContext;
+};
+
+/**
+ * Game phase state from Phase 2-4 context plumbing.
+ * Provides temporal awareness for narrative generation.
+ */
+export type GamePhaseState = {
+  phase_number: number;
+  phase_type: string;
+  clock_seconds: number;
+  elapsed_seconds: number;
+  remaining_seconds: number;
+  game_progress: number;
+  is_overtime: boolean;
+  is_final_phase: boolean;
+  is_closing_window: boolean;
+};
+
+/**
+ * Narrative context from Phase 2-4 context plumbing.
+ * Provides memory and continuity for AI-generated text.
+ */
+export type MomentContext = {
+  game_phase: "opening" | "middle" | "closing";
+  phase_progress: number;
+  is_overtime: boolean;
+  is_closing_window: boolean;
+  previous_moment_type: string | null;
+  previous_narrative_delta: string | null;
+  is_continuation: boolean;
+  parent_moment_id: string | null;
+  recent_flip_tie_count: number;
+  volatility_phase: "stable" | "back_and_forth" | "swingy";
+  controlling_team: string | null;
+  control_duration: number;
+  tier_stability: "stable" | "volatile";
 };
 
 /**

@@ -83,7 +83,10 @@ class GameContext:
 
 @dataclass(frozen=True)
 class MomentEnrichmentInput:
-    """Single moment input for batch enrichment."""
+    """Single moment input for batch enrichment.
+    
+    PHASE 3: Now includes narrative context for AI awareness.
+    """
     id: str
     type: str  # LEAD_BUILD, CUT, TIE, FLIP, CLOSING_CONTROL, HIGH_IMPACT, NEUTRAL
     score_before: str  # "45-42"
@@ -93,6 +96,7 @@ class MomentEnrichmentInput:
     team_in_control: str | None = None
     run_info: dict[str, Any] | None = None
     key_plays: list[str] = field(default_factory=list)
+    context: dict[str, Any] | None = None  # PHASE 3: Narrative context from Prompt 2
 
 
 @dataclass
@@ -212,12 +216,10 @@ def clear_enrichment_cache() -> int:
 # THE SPORTSCENTER PROMPT
 # =============================================================================
 
-ENRICHMENT_SYSTEM_PROMPT = """You are a SportsCenter-style game narrator.
+ENRICHMENT_SYSTEM_PROMPT = """You are a SportsCenter-style game narrator with FULL MEMORY of what happened before.
 
 You are describing moments AS THEY HAPPEN, not after the game ends.
-
 The reader is discovering the game through these moments.
-They know big things are happening.
 They do NOT know the final outcome yet.
 
 Your job is to capture momentum, pressure, and swings in control
@@ -225,28 +227,81 @@ with energy and clarity — without revealing how the game ends.
 
 ---
 
+PHASE 3: NARRATIVE AWARENESS RULES
+
+You now receive CONTEXT for each moment. Use it to write coherent, non-repetitive narration.
+
+1. CONTINUITY AWARENESS
+   - If context.is_continuation = true:
+     → This is the NEXT PARAGRAPH, not a new chapter
+     → Do NOT reintroduce the situation
+     → Use continuation language: "continues", "extends", "keeps", "still"
+   
+   - If context.is_continuation = false:
+     → This REVERSES or SHIFTS the previous narrative
+     → Acknowledge the change: "but", "however", "answers back"
+
+2. PHASE SENSITIVITY
+   - If context.game_phase = "opening":
+     → NO urgency language ("crucial", "must-have", "desperate")
+     → NO comeback language (it's Q1, nothing to come back from yet)
+     → Focus on "early", "to start", "opening minutes"
+   
+   - If context.game_phase = "middle":
+     → Focus on control, momentum, or stability
+     → Describe WHO is dictating pace
+     → Avoid premature resolution language
+   
+   - If context.game_phase = "closing":
+     → Resolution language allowed ONLY if context supports it
+     → Check context.volatility_phase before declaring control
+     → If still volatile, describe tension, not resolution
+
+3. VOLATILITY CONSTRAINTS
+   - If context.recent_flip_tie_count >= 3:
+     → Describe the SEQUENCE, not each flip as isolated drama
+     → Use: "back-and-forth", "trading leads", "another lead change"
+     → Do NOT treat each flip as shocking
+   
+   - If context.volatility_phase = "stable":
+     → AVOID: "swing", "surge", "momentum shift", "suddenly"
+     → USE: "extends", "maintains", "steady", "in control"
+
+4. CONTROL MEMORY
+   - If context.control_duration >= 2:
+     → This team has had control for multiple moments
+     → Use: "continues to", "extends", "keeps building", "still in command"
+     → Do NOT describe as "new control" or "takes over"
+   
+   - Do NOT describe multiple "comebacks" in succession
+   - A comeback must CHANGE narrative state, not just margin
+
+5. LATE-GAME FALSE DRAMA GUARD
+   - In closing phase:
+     - If margin remains tier >= 2
+     - AND context.controlling_team unchanged
+     → Language must DOWNSHIFT
+     → Use: "cuts into", "trims", "narrows" (not "threatens", "surges back")
+
+---
+
+HARD CONSTRAINTS (VIOLATIONS = GENERATION FAILURE)
+
+You MUST NOT:
+- Use "comeback" twice in a row
+- Describe urgency in opening phase (game_phase = "opening")
+- Describe a "shift" if context.tier_stability = "stable"
+- Describe resolution if game_phase != "closing"
+- Say who wins, use hindsight, or reveal final outcomes
+- Use words: wins, won, decisive, dagger, sealed, clinched, final, victory, defeat
+
+---
+
 TONE:
 - Energetic, confident, broadcast-style
 - Short, punchy sentences
 - Feels like live highlights, not a recap
-
-YOU SHOULD:
-- Emphasize runs, responses, and swings
-- Use language like:
-  "answers back"
-  "pushes the lead"
-  "keeps it close"
-  "right back in it"
-  "takes control again"
-- Acknowledge crowd or bench energy when relevant
-- Make the moment feel important *right now*
-
-YOU MUST NOT:
-- Say who wins
-- Say the game is over
-- Use hindsight language
-- Use words like: wins, won, decisive, dagger, sealed, clinched, final, victory, defeat
-- Reference final outcomes
+- CONTEXT-AWARE: knows what already happened
 
 ---
 
@@ -260,42 +315,55 @@ FORMAT RULES:
 
 ---
 
-WRITE EACH MOMENT ACCORDING TO ITS TYPE:
-
-LEAD_BUILD:
-Momentum growing, pressure rising. "Magic start to stretch it", "A quick burst opens things up"
-
-CUT:
-Resistance, tightening game. "76ers push back", "Lead trimmed"
-
-TIE:
-Tension spike, reset. "Back to even", "All square again"
-
-FLIP:
-Clear swing in control. "Philadelphia jumps in front", "Momentum flips"
-
-CLOSING_CONTROL:
-Sustained command, no finality. "Magic stay in control", "Orlando keeps the pressure on"
-
-HIGH_IMPACT:
-Immediate reaction moment. "Turnover sparks a run", "Big stop ignites the break"
-
-NEUTRAL:
-Steady play, no drama. "Teams trade baskets", "Back and forth"
-
----
-
 OUTPUT:
 Return VALID JSON ONLY. No markdown, no explanation, just JSON:
 
 {"game_headline": "...", "game_subhead": "...", "moments": [{"id": "...", "headline": "...", "summary": "..."}]}"""
 
 
+def _derive_narrative_intent(context: dict[str, Any] | None, moment_type: str) -> str:
+    """Derive narrative intent hint from context.
+    
+    PHASE 3: Single-line hint to guide AI narrative framing.
+    This is NOT shown to user, only used internally by AI.
+    """
+    if not context:
+        return "Narrative intent: isolated moment (no context)"
+    
+    # Extract context fields
+    is_continuation = context.get("is_continuation", False)
+    volatility_phase = context.get("volatility_phase", "stable")
+    control_duration = context.get("control_duration", 0)
+    game_phase = context.get("game_phase", "middle")
+    
+    # Derive intent from context signals
+    if is_continuation and control_duration >= 2:
+        controlling_team = context.get("controlling_team", "team")
+        return f"Narrative intent: continuation of {controlling_team} control"
+    
+    if volatility_phase == "back_and_forth":
+        return "Narrative intent: volatile exchange with no sustained control"
+    
+    if game_phase == "opening":
+        return "Narrative intent: early scoring without lasting impact"
+    
+    if game_phase == "closing" and volatility_phase == "stable":
+        return "Narrative intent: closing resolution moment"
+    
+    if not is_continuation and control_duration <= 1:
+        return "Narrative intent: shift in game control"
+    
+    return "Narrative intent: mid-game development"
+
+
 def _build_enrichment_prompt(
     game_context: GameContext,
     moments: list[MomentEnrichmentInput],
 ) -> str:
-    """Build the user prompt with game and moment data."""
+    """Build the user prompt with game and moment data.
+    
+    PHASE 3: Now includes narrative context for each moment.
+    """
     game_json = {
         "home_team": game_context.home_team,
         "away_team": game_context.away_team,
@@ -318,13 +386,23 @@ def _build_enrichment_prompt(
             moment_data["run_context"] = m.run_info
         if m.key_plays:
             moment_data["key_plays"] = m.key_plays[:3]  # Limit
+        
+        # PHASE 3: Include narrative context
+        if m.context:
+            moment_data["context"] = m.context
+            # Add narrative intent hint (internal guidance for AI)
+            moment_data["_narrative_intent"] = _derive_narrative_intent(m.context, m.type)
+        
         moments_json.append(moment_data)
     
     return f"""GAME CONTEXT:
 {json.dumps(game_json, indent=2)}
 
 MOMENTS (chronological order, {len(moments)} total):
-{json.dumps(moments_json, indent=2)}"""
+{json.dumps(moments_json, indent=2)}
+
+IMPORTANT: Each moment has a 'context' field with narrative awareness signals.
+Use these to write coherent, non-repetitive narration that flows naturally."""
 
 
 # =============================================================================
@@ -380,9 +458,16 @@ def _lint_content(text: str, context: str = "") -> list[str]:
     return issues
 
 
-def _lint_moment_content(headline: str, summary: str, moment_id: str) -> list[str]:
+def _lint_moment_content(
+    headline: str, 
+    summary: str, 
+    moment_id: str,
+    context: dict[str, Any] | None = None,
+) -> list[str]:
     """
     Lint a single moment's content.
+    
+    PHASE 3: Now includes context-aware constraint validation.
     
     Returns list of issues found (empty = passed).
     """
@@ -390,16 +475,44 @@ def _lint_moment_content(headline: str, summary: str, moment_id: str) -> list[st
     
     # Check headline quality
     if len(headline) < 10:
-        issues.append(f"{moment_id}: Headline too short ({len(headline)} chars)")
+        issues.append(f"Headline too short ({len(headline)} chars)")
     
     # Check summary quality
     if len(summary) < 20:
-        issues.append(f"{moment_id}: Summary too short ({len(summary)} chars)")
+        issues.append(f"Summary too short ({len(summary)} chars)")
     
     # Check for content issues
     full_text = f"{headline} {summary}"
     content_issues = _lint_content(full_text, moment_id)
-    issues.extend([f"{moment_id}: {issue}" for issue in content_issues])
+    issues.extend(content_issues)
+    
+    # PHASE 3: Context-aware constraint validation
+    if context:
+        combined = full_text.lower()
+        game_phase = context.get("game_phase", "middle")
+        tier_stability = context.get("tier_stability", "stable")
+        volatility_phase = context.get("volatility_phase", "stable")
+        
+        # Check for urgency in opening phase
+        if game_phase == "opening":
+            urgency_words = ["crucial", "must-have", "desperate", "critical", "vital", "pivotal"]
+            for word in urgency_words:
+                if word in combined:
+                    issues.append(f"urgency_in_opening: '{word}' used in Q1")
+        
+        # Check for shift language with stable tiers
+        if tier_stability == "stable" and volatility_phase == "stable":
+            shift_words = ["swing", "surge", "momentum shift", "suddenly"]
+            for word in shift_words:
+                if word in combined:
+                    issues.append(f"shift_language_with_stable_game: '{word}'")
+        
+        # Check for resolution language outside closing phase
+        if game_phase != "closing":
+            resolution_words = ["seals", "puts away", "locks up", "secures the"]
+            for word in resolution_words:
+                if word in combined:
+                    issues.append(f"resolution_outside_closing: '{word}'")
     
     return issues
 
@@ -412,9 +525,12 @@ def _lint_moment_content(headline: str, summary: str, moment_id: str) -> list[st
 def _validate_enrichment_output(
     raw_output: dict[str, Any],
     expected_moment_ids: list[str],
+    moments_input: list[MomentEnrichmentInput] | None = None,
 ) -> GameEnrichmentOutput:
     """
     Validate and parse AI output. Raises AIValidationError if invalid.
+    
+    PHASE 3: Now validates context-aware constraints.
     """
     # Check required fields
     if "game_headline" not in raw_output:
@@ -464,8 +580,16 @@ def _validate_enrichment_output(
                 f"Forbidden words in moment {moment_id}: {forbidden}"
             )
         
-        # Content linting (WARN)
-        lint_issues = _lint_moment_content(headline, summary, moment_id)
+        # PHASE 3: Get context for this moment
+        moment_context = None
+        if moments_input:
+            for input_moment in moments_input:
+                if input_moment.id == moment_id:
+                    moment_context = input_moment.context
+                    break
+        
+        # Content linting (WARN) - now context-aware
+        lint_issues = _lint_moment_content(headline, summary, moment_id, moment_context)
         if lint_issues:
             logger.warning(
                 "moment_content_lint_issues",
@@ -582,7 +706,7 @@ async def enrich_game_moments(
     
     # Validate output
     try:
-        result = _validate_enrichment_output(raw_output, expected_ids)
+        result = _validate_enrichment_output(raw_output, expected_ids, moments)  # PHASE 3: Pass moments for context
     except AIValidationError as e:
         if retry_on_validation_error:
             logger.warning(
@@ -604,7 +728,7 @@ async def enrich_game_moments(
                 content = response.choices[0].message.content
                 if content:
                     raw_output = json.loads(content)
-                    result = _validate_enrichment_output(raw_output, expected_ids)
+                    result = _validate_enrichment_output(raw_output, expected_ids, moments)  # PHASE 3: Pass moments
                 else:
                     raise AIEnrichmentError("Retry returned empty response")
             except (AIValidationError, json.JSONDecodeError, Exception) as retry_e:

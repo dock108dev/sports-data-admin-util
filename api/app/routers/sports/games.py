@@ -543,6 +543,9 @@ async def get_game_moments(
             display_weight=m.get("display_weight", "low"),
             display_icon=m.get("display_icon", "circle"),
             display_color_hint=m.get("display_color_hint", "neutral"),
+            # Phase 2-4: Context fields
+            phase_state=m.get("phase_state"),
+            narrative_context=m.get("narrative_context"),
         )
         for m in game_analysis.get("moments", [])
         if isinstance(m, dict)

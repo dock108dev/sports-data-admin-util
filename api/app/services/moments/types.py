@@ -153,6 +153,55 @@ class RecapContext:
 
 
 @dataclass
+class MomentContext:
+    """Lightweight narrative context for AI enrichment.
+    
+    This provides memory and awareness so AI can write coherent,
+    non-repetitive recaps. These are SIGNALS, not rules.
+    
+    Added in Prompt 2 (Phase 1-3): Context-Aware Moment Plumbing
+    """
+    
+    # Phase awareness
+    game_phase: str = "middle"  # "opening" | "middle" | "closing"
+    phase_progress: float = 0.5  # 0.0 to 1.0 (percentage through game)
+    is_overtime: bool = False
+    is_closing_window: bool = False
+    
+    # Narrative continuity
+    previous_moment_type: str | None = None  # Type of previous moment
+    previous_narrative_delta: str | None = None  # What the last moment established
+    is_continuation: bool = False  # Is this extending previous narrative?
+    parent_moment_id: str | None = None  # If split from another moment
+    
+    # Volatility context
+    recent_flip_tie_count: int = 0  # FLIPs/TIEs in recent moments
+    volatility_phase: str = "stable"  # "stable" | "volatile" | "back_and_forth"
+    
+    # Control context
+    controlling_team: str | None = None  # "home" | "away" | None
+    control_duration: int = 0  # Consecutive moments with same control
+    tier_stability: str = "stable"  # "stable" | "oscillating" | "shifting"
+    
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "game_phase": self.game_phase,
+            "phase_progress": round(self.phase_progress, 3),
+            "is_overtime": self.is_overtime,
+            "is_closing_window": self.is_closing_window,
+            "previous_moment_type": self.previous_moment_type,
+            "previous_narrative_delta": self.previous_narrative_delta,
+            "is_continuation": self.is_continuation,
+            "parent_moment_id": self.parent_moment_id,
+            "recent_flip_tie_count": self.recent_flip_tie_count,
+            "volatility_phase": self.volatility_phase,
+            "controlling_team": self.controlling_team,
+            "control_duration": self.control_duration,
+            "tier_stability": self.tier_stability,
+        }
+
+
+@dataclass
 class Moment:
     """A contiguous segment of plays forming a narrative unit.
 
@@ -213,6 +262,13 @@ class Moment:
     # AI-generated content
     headline: str = ""  # max 60 chars
     summary: str = ""  # max 150 chars
+    
+    # PROMPT 2: Context-aware plumbing (Phase 1-3)
+    # Game phase state at the time this moment occurred
+    phase_state: Any = None  # GamePhaseState from game_structure.py
+    
+    # Narrative context for AI enrichment
+    narrative_context: MomentContext | None = None
 
     @property
     def display_weight(self) -> str:
@@ -334,5 +390,12 @@ class Moment:
         
         if self.recap_context:
             result["recap_context"] = self.recap_context.to_dict()
+        
+        # PROMPT 2: Include phase state and narrative context
+        if self.phase_state is not None:
+            result["phase_state"] = self.phase_state.to_dict() if hasattr(self.phase_state, 'to_dict') else self.phase_state
+        
+        if self.narrative_context is not None:
+            result["narrative_context"] = self.narrative_context.to_dict()
 
         return result

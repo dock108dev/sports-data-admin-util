@@ -38,11 +38,12 @@ from ..moments_validation import (
 
 from .types import Moment, MomentType, RunInfo
 from .config import DEFAULT_HYSTERESIS_PLAYS, DEFAULT_FLIP_HYSTERESIS_PLAYS, DEFAULT_TIE_HYSTERESIS_PLAYS
-from .helpers import create_moment, get_score, is_period_opener
+from .helpers import create_moment, get_score, is_period_opener, build_moment_context
 from .mega_moments import detect_back_and_forth_phase, find_quarter_boundaries, split_mega_moment
 from .game_structure import (
     build_game_phase_context,
     GamePhaseContext,
+    compute_game_phase_state,
 )
 
 logger = logging.getLogger(__name__)
@@ -237,6 +238,10 @@ def partition_game(
     moment_start_score = (0, 0)
     current_score = (0, 0)
     prev_event: dict[str, Any] | None = None
+    
+    # PROMPT 2: Track previous moment for context building
+    previous_moment: Moment | None = None
+    moments_history: list[Moment] = []
 
     for idx, i in enumerate(pbp_indices):
         event = events[i]
@@ -270,6 +275,12 @@ def partition_game(
 
             if current_start is not None:
                 prev_idx = pbp_indices[idx - 1]
+                
+                # PROMPT 2: Compute phase state for this moment
+                phase_state_for_moment = compute_game_phase_state(
+                    events[current_start], sport=phase_context.sport, structure=phase_context.structure
+                )
+                
                 moment = create_moment(
                     moment_id=moment_id,
                     events=events,
@@ -280,9 +291,23 @@ def partition_game(
                     boundary=current_boundary,
                     score_before=moment_start_score,
                     game_context=_game_context,
+                    phase_state=phase_state_for_moment,  # PROMPT 2: Attach phase state
+                    previous_moment=previous_moment,  # PROMPT 2: Track previous moment
                 )
                 moment.is_period_start = current_is_period_start
+                
+                # PROMPT 2: Build and attach narrative context
+                narrative_context = build_moment_context(
+                    moment=moment,
+                    previous_moment=previous_moment,
+                    moments_history=moments_history,
+                    phase_state=phase_state_for_moment,
+                )
+                moment.narrative_context = narrative_context
+                
                 moments.append(moment)
+                moments_history.append(moment)
+                previous_moment = moment
                 moment_id += 1
 
                 moment_start_score = current_score
@@ -302,6 +327,11 @@ def partition_game(
 
     # Close final moment
     if current_start is not None:
+        # PROMPT 2: Compute phase state for final moment
+        phase_state_for_moment = compute_game_phase_state(
+            events[current_start], sport=phase_context.sport, structure=phase_context.structure
+        )
+        
         moment = create_moment(
             moment_id=moment_id,
             events=events,
@@ -312,9 +342,22 @@ def partition_game(
             boundary=current_boundary,
             score_before=moment_start_score,
             game_context=_game_context,
+            phase_state=phase_state_for_moment,  # PROMPT 2: Attach phase state
+            previous_moment=previous_moment,  # PROMPT 2: Track previous moment
         )
         moment.is_period_start = current_is_period_start
+        
+        # PROMPT 2: Build and attach narrative context
+        narrative_context = build_moment_context(
+            moment=moment,
+            previous_moment=previous_moment,
+            moments_history=moments_history,
+            phase_state=phase_state_for_moment,
+        )
+        moment.narrative_context = narrative_context
+        
         moments.append(moment)
+        moments_history.append(moment)
 
     # Attach runs to moments as metadata
     _attach_runs_to_moments(moments, runs)
@@ -584,6 +627,25 @@ def partition_game(
             },
         )
 
+    # PHASE 4: Enforce narrative coherence (final structural pass)
+    from .coherence import enforce_narrative_coherence, add_narrative_delta_to_moments
+    
+    pre_coherence_count = len(moments)
+    moments = enforce_narrative_coherence(moments, summary)
+    post_coherence_count = len(moments)
+    
+    # Add narrative_delta to moment reasons
+    add_narrative_delta_to_moments(moments)
+    
+    logger.info(
+        "coherence_enforcement_applied",
+        extra={
+            "pre_coherence_count": pre_coherence_count,
+            "post_coherence_count": post_coherence_count,
+            "suppressed_count": pre_coherence_count - post_coherence_count,
+        },
+    )
+
     # Final renumber
     for i, m in enumerate(moments):
         m.id = f"m_{i + 1:03d}"
@@ -593,7 +655,7 @@ def partition_game(
         extra={
             "pre_merge_count": pre_merge_count,
             "post_phase2_count": post_phase2_count,
-            "post_phase3_count": len(moments),
+            "post_phase3_count": post_coherence_count,
             "target_budget": selection_result.budget.target_moment_count,
             "dynamic_budget_signals": selection_result.budget.signals.to_dict(),
             "chapters_created": (
@@ -603,6 +665,8 @@ def partition_game(
             ),
             "notable_count": sum(1 for m in moments if m.is_notable),
             "phase_context": phase_context.to_dict(),
+            "pre_coherence_count": pre_coherence_count,
+            "post_coherence_count": post_coherence_count,
         },
     )
 

@@ -449,8 +449,14 @@ def create_moment(
     boundary: BoundaryEvent | None,
     score_before: tuple[int, int],
     game_context: dict[str, str] | None = None,
+    phase_state: Any = None,  # PROMPT 2: GamePhaseState
+    previous_moment: "Moment | None" = None,  # PROMPT 2: Previous moment for context
 ) -> Moment:
-    """Create a Moment and run the RESOLUTION PASS."""
+    """Create a Moment and run the RESOLUTION PASS.
+    
+    PROMPT 2 Enhancement: Now accepts phase_state and previous_moment
+    to enable context-aware narrative generation.
+    """
     start_event = events[start_idx]
     end_event = events[end_idx]
 
@@ -511,4 +517,116 @@ def create_moment(
         is_notable=notable,
         note=boundary.note if boundary else None,
         bucket=get_bucket(start_event),
+        phase_state=phase_state,  # PROMPT 2: Attach phase state
     )
+
+
+def build_moment_context(
+    moment: Moment,
+    previous_moment: Moment | None,
+    moments_history: list[Moment],
+    phase_state: Any = None,
+    parent_moment_id: str | None = None,
+) -> "MomentContext":
+    """Build narrative context for a moment.
+    
+    This provides memory and awareness for AI enrichment.
+    These are SIGNALS, not rules - no behavior changes here.
+    
+    PROMPT 2: Phase 3 - Context Payload Construction
+    
+    Args:
+        moment: The moment to build context for
+        previous_moment: The immediately preceding moment (if any)
+        moments_history: All moments created so far (for sliding window analysis)
+        phase_state: GamePhaseState at the time of this moment
+        parent_moment_id: If this moment was split from another
+        
+    Returns:
+        MomentContext with all fields populated
+    """
+    from .types import MomentContext, MomentType
+    
+    context = MomentContext()
+    
+    # Phase awareness (from phase_state if available)
+    if phase_state:
+        context.phase_progress = phase_state.game_progress
+        context.is_overtime = phase_state.is_overtime
+        context.is_closing_window = phase_state.is_closing_window
+        
+        # Classify game phase
+        if phase_state.game_progress < 0.35:
+            context.game_phase = "opening"
+        elif phase_state.game_progress > 0.75:
+            context.game_phase = "closing"
+        else:
+            context.game_phase = "middle"
+    else:
+        # Fallback to bucket if no phase_state
+        if moment.bucket == "early":
+            context.game_phase = "opening"
+        elif moment.bucket == "late":
+            context.game_phase = "closing"
+        else:
+            context.game_phase = "middle"
+    
+    # Narrative continuity
+    if previous_moment:
+        context.previous_moment_type = previous_moment.type.value
+        if previous_moment.reason:
+            context.previous_narrative_delta = previous_moment.reason.narrative_delta
+        
+        # Is this a continuation of the previous narrative?
+        # Same type OR same control direction
+        if moment.type == previous_moment.type:
+            context.is_continuation = True
+        elif moment.team_in_control and previous_moment.team_in_control:
+            context.is_continuation = (moment.team_in_control == previous_moment.team_in_control)
+    
+    context.parent_moment_id = parent_moment_id
+    
+    # Volatility context (sliding window of last 10 moments)
+    recent_window = moments_history[-10:] if len(moments_history) >= 10 else moments_history
+    
+    flip_tie_types = {MomentType.FLIP, MomentType.TIE}
+    context.recent_flip_tie_count = sum(
+        1 for m in recent_window if m.type in flip_tie_types
+    )
+    
+    # Classify volatility
+    if context.recent_flip_tie_count >= 4:
+        context.volatility_phase = "back_and_forth"
+    elif context.recent_flip_tie_count >= 2:
+        context.volatility_phase = "volatile"
+    else:
+        context.volatility_phase = "stable"
+    
+    # Control context
+    context.controlling_team = moment.team_in_control
+    
+    # Count consecutive moments with same control
+    control_duration = 0
+    if moment.team_in_control:
+        for m in reversed(moments_history):
+            if m.team_in_control == moment.team_in_control:
+                control_duration += 1
+            else:
+                break
+    context.control_duration = control_duration
+    
+    # Tier stability (analyze tier changes in recent moments)
+    if len(recent_window) >= 3:
+        tier_changes = 0
+        for i in range(1, len(recent_window)):
+            if recent_window[i].ladder_tier_after != recent_window[i-1].ladder_tier_after:
+                tier_changes += 1
+        
+        if tier_changes >= 4:
+            context.tier_stability = "oscillating"
+        elif tier_changes >= 2:
+            context.tier_stability = "shifting"
+        else:
+            context.tier_stability = "stable"
+    
+    return context

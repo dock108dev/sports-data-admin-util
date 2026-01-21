@@ -66,7 +66,7 @@ def _build_enrichment_inputs(
     """
     Convert Moment objects to MomentEnrichmentInput for AI.
     
-    This prepares the data the AI needs without giving it decision power.
+    PHASE 3: Now includes narrative context from Prompt 2.
     """
     inputs = []
     for m in moments:
@@ -88,6 +88,22 @@ def _build_enrichment_inputs(
                 "unanswered": m.run_info.unanswered,
             }
         
+        # PHASE 3: Extract narrative context
+        context_dict = None
+        if m.narrative_context:
+            context_dict = {
+                "game_phase": m.narrative_context.game_phase,
+                "phase_progress": round(m.narrative_context.phase_progress, 3),
+                "is_closing_window": m.narrative_context.is_closing_window,
+                "previous_moment_type": m.narrative_context.previous_moment_type,
+                "is_continuation": m.narrative_context.is_continuation,
+                "recent_flip_tie_count": m.narrative_context.recent_flip_tie_count,
+                "volatility_phase": m.narrative_context.volatility_phase,
+                "controlling_team": m.narrative_context.controlling_team,
+                "control_duration": m.narrative_context.control_duration,
+                "tier_stability": m.narrative_context.tier_stability,
+            }
+        
         inputs.append(MomentEnrichmentInput(
             id=m.id,
             type=m.type.value,
@@ -98,6 +114,7 @@ def _build_enrichment_inputs(
             team_in_control=m.team_in_control,
             run_info=run_info,
             key_plays=[],  # Could expand with actual play descriptions if needed
+            context=context_dict,  # PHASE 3: Pass narrative context to AI
         ))
     
     return inputs

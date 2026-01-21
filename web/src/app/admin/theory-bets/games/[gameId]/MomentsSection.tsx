@@ -173,6 +173,27 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
                       {moment.note}
                     </span>
                   )}
+                  {/* Phase 2-4: Context indicators */}
+                  {moment.narrative_context && (
+                    <>
+                      {moment.narrative_context.is_continuation && (
+                        <span className={styles.phaseBadge} style={{ backgroundColor: "#8b5cf6" }}>
+                          ↪️ Continuation
+                        </span>
+                      )}
+                      <span 
+                        className={styles.phaseBadge} 
+                        style={{ 
+                          backgroundColor: 
+                            moment.narrative_context.game_phase === "opening" ? "#22c55e" :
+                            moment.narrative_context.game_phase === "closing" ? "#dc2626" :
+                            "#f59e0b"
+                        }}
+                      >
+                        {moment.narrative_context.game_phase.toUpperCase()}
+                      </span>
+                    </>
+                  )}
                 </div>
 
                 {/* Score context */}
@@ -269,6 +290,31 @@ export function MomentsSection({ moments: allMoments }: MomentsSectionProps) {
                         #{moment.start_play}–#{moment.end_play} ({moment.play_count} plays)
                       </span>
                     </div>
+
+                    {/* Phase 2-4: Context Details */}
+                    {moment.narrative_context && (
+                      <>
+                        <div className={styles.debugItem}>
+                          <span className={styles.debugLabel}>Narrative context:</span>
+                          <span className={styles.debugValue}>
+                            {moment.narrative_context.is_continuation ? "Continuation" : "New thread"}
+                            {" • "}
+                            {moment.narrative_context.volatility_phase}
+                            {" • "}
+                            Control: {moment.narrative_context.control_duration}m
+                          </span>
+                        </div>
+                        
+                        <div className={styles.debugItem}>
+                          <span className={styles.debugLabel}>Previous moment:</span>
+                          <span className={styles.debugValue}>
+                            {moment.narrative_context.previous_moment_type || "None"}
+                            {moment.narrative_context.previous_narrative_delta && 
+                              ` (${moment.narrative_context.previous_narrative_delta})`}
+                          </span>
+                        </div>
+                      </>
+                    )}
 
                     {(() => {
                       const globalIndex = idx + page * MOMENTS_PER_PAGE;

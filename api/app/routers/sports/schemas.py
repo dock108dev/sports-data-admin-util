@@ -285,6 +285,10 @@ class MomentEntry(BaseModel):
     display_weight: str = "low"      # "high" | "medium" | "low"
     display_icon: str = "circle"     # Icon name suggestion
     display_color_hint: str = "neutral"  # "tension" | "positive" | "neutral" | "highlight"
+    
+    # Phase 2-4: Context-aware narrative fields
+    phase_state: dict | None = None  # Game phase state (timing, progress, closing window)
+    narrative_context: dict | None = None  # Narrative context (continuity, volatility, control)
 
 
 class MomentReasonEntry(BaseModel):

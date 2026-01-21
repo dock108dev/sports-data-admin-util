@@ -190,7 +190,13 @@ def merge_two_moments(m1: Moment, m2: Moment) -> Moment:
         note=m2.note or m1.note,
         run_info=m2.run_info or m1.run_info,
         bucket=m2.bucket or m1.bucket,
+        phase_state=m1.phase_state,  # PROMPT 2: Preserve phase state from start
+        narrative_context=m1.narrative_context,  # PROMPT 2: Preserve narrative context
     )
+    
+    # PROMPT 2: Update narrative context to reflect merge
+    if merged.narrative_context:
+        merged.narrative_context.is_continuation = True  # Merged moments are continuations
 
     return merged
 
