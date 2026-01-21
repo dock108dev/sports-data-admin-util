@@ -16,7 +16,6 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: "/admin/theory-bets/browser", label: "Data Browser" },
       { href: "/admin/theory-bets/ingestion", label: "Scraper Runs" },
       { href: "/admin/theory-bets/story-generator", label: "Story Generator" },
-      { href: "/admin/theory-bets/moments", label: "Moments (Legacy)" },
     ],
   },
 ];

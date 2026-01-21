@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { fetchGame, rescrapeGame, resyncOdds, type AdminGameDetail } from "@/lib/api/sportsAdmin";
 import { CollapsibleSection } from "./CollapsibleSection";
-import { MomentsSection } from "./MomentsSection";
 import { PbpSection } from "./PbpSection";
 import { SocialPostsSection } from "./SocialPostsSection";
 import styles from "./styles.module.css";
@@ -362,8 +361,6 @@ export default function GameDetailClient() {
       </CollapsibleSection>
 
       <SocialPostsSection posts={game.social_posts || []} />
-
-      <MomentsSection moments={game.moments || []} />
 
       <PbpSection plays={game.plays || []} />
 
