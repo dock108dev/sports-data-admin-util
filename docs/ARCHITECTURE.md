@@ -1,221 +1,353 @@
-# System Architecture
+# Architecture Overview
 
-## Overview
+## System Purpose
 
-Sports Data Admin is a data platform that ingests, normalizes, and serves sports data. It consists of three main components:
+Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 
-```
-┌─────────────┐      ┌─────────────┐      ┌──────────────┐
-│   Scraper   │─────▶│  PostgreSQL │◀─────│   FastAPI    │
-│  (Python)   │      │  Database   │      │     API      │
-└─────────────┘      └─────────────┘      └──────────────┘
-                            │                      │
-                            │                      ▼
-                            │              ┌──────────────┐
-                            └─────────────▶│  Admin Web   │
-                                           │   (React)    │
-                                           └──────────────┘
+**Primary Functions:**
+- Automated ingestion from multiple sports data sources
+- Normalization and storage in unified PostgreSQL database
+- REST API serving data to all Dock108 sports products
+- Narrative story generation (Scroll Down Sports feature)
+- Admin UI for data management and monitoring
+
+**Scope:** Multi-sport (NBA, NHL, NCAAB), multi-consumer (all Dock108 apps)
+
+## High-Level Architecture
+
+```mermaid
+graph TD
+    A[External Sources<br/>ESPN, Hockey Reference, etc.] --> B[Multi-Sport Scraper]
+    B --> C[PostgreSQL Hub<br/>Normalized Data]
+    C --> D[REST API<br/>All Dock108 Apps]
+    C --> E[Story Generator<br/>Scroll Down Sports]
+    D --> F[Dock108 Products]
+    E --> G[Scroll Down Sports]
+    C --> H[Admin UI<br/>Management & Monitoring]
 ```
 
 ## Components
 
-### 1. Scraper (`scraper/`)
+### 1. Data Scraper (`scraper/`)
+**Purpose:** Automated ingestion from external sources
 
-Python service that collects sports data from external sources:
+- **Sports:** NBA, NHL, NCAAB
+- **Sources:** ESPN, Hockey Reference, Sports Reference
+- **Data Types:** Play-by-play, box scores, odds, social media
+- **Scheduling:** Celery task queue
+- **Output:** Normalized data to PostgreSQL
 
-**Data Sources:**
-- **Boxscores & PBP**: Sports Reference (basketball-reference.com, hockey-reference.com)
-- **Live PBP**: NBA CDN, NHL Stats API
-- **Odds**: The Odds API
-- **Social**: X/Twitter (via Playwright)
+### 2. REST API (`api/`)
+**Purpose:** Serve data to all Dock108 apps
 
-**Execution:**
-- Celery worker processes scrape jobs
-- Celery Beat scheduler runs automatic ingestion (13:00-02:00 UTC, every 15 min)
-- Manual jobs triggered via Admin UI
+- **Framework:** FastAPI
+- **Database:** PostgreSQL (async SQLAlchemy)
+- **Endpoints:** Games, plays, box scores, odds, social, teams
+- **Story API:** Chapters-first narrative generation (Scroll Down feature)
+- **Admin Endpoints:** Scraper management, data browser
 
-**Key Modules:**
-- `scrapers/` - Sport-specific scrapers (NBA, NHL, NCAAB)
-- `live/` - Live feed clients
-- `odds/` - Odds API integration
-- `social/` - X/Twitter collector (Playwright-based)
-- `persistence/` - Database write operations
-- `normalization/` - Team name normalization
+### 3. Admin UI (`web/`)
+**Purpose:** Data management and monitoring
 
-### 2. API (`api/`)
+- **Framework:** React + TypeScript + Next.js
+- **Features:**
+  - Data browser (games, plays, stats)
+  - Story Generator interface (Scroll Down feature)
+  - Scraper run management
+  - Data quality monitoring
 
-FastAPI backend that serves normalized data:
+### 4. Database (PostgreSQL)
+**Purpose:** Single source of truth
 
-**Endpoints:**
-- `/api/admin/sports/*` - Admin operations (games, teams, scraper runs)
-- `/api/games/*` - App snapshot endpoints (timeline, social, PBP)
-- `/api/reading-positions/*` - User reading position tracking
-- `/healthz` - Health check
+- **Schema:** Normalized across sports
+- **Tables:** games, plays, box scores, odds, social posts, teams
+- **Migrations:** Alembic (see `sql/`)
+- **Access:** Async SQLAlchemy ORM
 
-**Key Services:**
-- `services/timeline_generator.py` - Generates timeline artifacts from PBP + social
-- `services/moments/` - Partitions timeline into moments (Lead Ladder-based)
-- `services/game_analysis.py` - AI enrichment for moments
-- `services/compact_mode.py` - Timeline compression
+---
 
-**Database:**
-- PostgreSQL with SQLAlchemy ORM
-- Alembic for migrations
-- JSONB for flexible stats storage
+## Story Generation Pipeline
 
-### 3. Admin Web (`web/`)
+The core product feature: converting play-by-play into narrative stories.
 
-React/TypeScript admin interface:
+### Pipeline Flow
 
-| Feature | Description |
-|---------|-------------|
-| **Data Browser** | Filter and view games, teams, scrape runs |
-| **Ingestion** | Schedule scrape jobs with date ranges and data type toggles |
-| **Game Detail** | View boxscores, player stats, odds, social posts, PBP |
-| **Timeline Generation** | Generate and regenerate timeline artifacts |
-| **Compact Moments** | Review AI-generated game moment summaries |
-
-**Stack:**
-- Next.js (App Router)
-- TypeScript
-- CSS Modules
-
-## Data Flow
-
-### Ingestion Pipeline
-
-```
-1. Scraper fetches data from sources
-   ├─ Boxscores → sports_team_boxscores, sports_player_boxscores
-   ├─ Odds → sports_game_odds
-   ├─ PBP → sports_game_plays
-   └─ Social → game_social_posts
-
-2. API generates timeline artifacts (post-scrape)
-   ├─ PBP events + Social events → merged timeline
-   ├─ Lead Ladder partitioning → moments
-   ├─ AI enrichment → headlines/summaries
-   └─ Persist → sports_game_timeline_artifacts
-
-3. Clients fetch via API
-   ├─ Full timeline (for detailed view)
-   └─ Compact timeline (compressed for mobile)
+```mermaid
+graph LR
+    A[Play-by-Play] --> B[ChapterizerV1]
+    B --> C[Chapters]
+    C --> D[StoryState Builder]
+    D --> E[AI Generator]
+    E --> F[GameStory]
 ```
 
-### Timeline Generation
+### Stage Details
 
-See [TECHNICAL_FLOW.md](TECHNICAL_FLOW.md) for the complete pipeline.
+#### 1. ChapterizerV1
+**Input:** Normalized play-by-play events  
+**Output:** Chapters with reason codes  
+**Logic:** Structural boundary detection (NBA v1 rules)  
+**Deterministic:** Yes  
+**AI:** No  
 
-**Key Concepts:**
-- **Narrative Time**: Events ordered by game phase (pregame, q1, q2, halftime, q3, q4, postgame), not wall-clock time
-- **Lead Ladder**: Tier-based lead tracking that determines moment boundaries
-- **Moments**: Contiguous segments of plays where game control state is stable
-- **Compact Mode**: Semantic compression that preserves social posts and key plays
+**Boundaries:**
+- Hard: Period start/end, overtime, game end
+- Scene Reset: Timeouts, reviews, challenges
+- Momentum: Crunch time start (minimal v1)
+
+See [NBA_V1_BOUNDARY_RULES.md](NBA_V1_BOUNDARY_RULES.md)
+
+#### 2. StoryState Builder
+**Input:** Ordered chapters  
+**Output:** StoryState (running context)  
+**Logic:** Deterministic stat accumulation  
+**Derived From:** Prior chapters only  
+**AI:** No  
+
+**Tracks:**
+- Player stats (top 6 by points)
+- Team scores
+- Momentum hints
+- Theme tags
+
+See [AI_CONTEXT_POLICY.md](AI_CONTEXT_POLICY.md)
+
+#### 3. AI Story Generator
+**Input:** Current chapter + StoryState  
+**Output:** Chapter summaries + titles  
+**Logic:** Sequential generation (no future knowledge)  
+**AI:** Yes (OpenAI)  
+
+**Modes:**
+- Chapter Summary: 1-3 sentences per chapter
+- Chapter Title: 3-8 words per chapter
+- Compact Story: Full game recap (4-12 min read)
+
+See [AI_SIGNALS_NBA_V1.md](AI_SIGNALS_NBA_V1.md)
+
+#### 4. GameStory Output
+**Format:** JSON  
+**Contains:** Chapters, summaries, compact story  
+**Consumed By:** Admin UI, consumer apps  
+
+---
+
+## Data Models
+
+### Play
+```python
+@dataclass
+class Play:
+    index: int              # Position in timeline (0-based)
+    event_type: str         # "pbp", "social", etc.
+    raw_data: dict          # Complete event data
+```
+
+**Properties:**
+- Atomic unit of game action
+- Immutable
+- Chronological
+
+### Chapter
+```python
+@dataclass
+class Chapter:
+    chapter_id: str         # "ch_001"
+    play_start_idx: int     # First play (inclusive)
+    play_end_idx: int       # Last play (inclusive)
+    plays: list[Play]       # Raw plays in chapter
+    reason_codes: list[str] # Why boundary exists
+    period: int | None      # Quarter/period
+    time_range: TimeRange | None  # Clock range
+```
+
+**Properties:**
+- Contiguous play range
+- Deterministic boundaries
+- No inherent narrative text
+
+### StoryState
+```python
+@dataclass
+class StoryState:
+    chapter_index_last_processed: int
+    players: dict[str, PlayerStoryState]
+    teams: dict[str, TeamStoryState]
+    momentum_hint: MomentumHint
+    theme_tags: list[str]
+    constraints: dict  # no_future_knowledge: true
+```
+
+**Properties:**
+- Derived from prior chapters only
+- Incremental updates
+- Bounded lists (top 6 players, max 8 themes)
+
+### GameStory
+```python
+@dataclass
+class GameStory:
+    game_id: int
+    sport: str
+    chapters: list[Chapter]
+    compact_story: str | None
+    reading_time_estimate_minutes: float | None
+    metadata: dict
+```
+
+**Properties:**
+- Authoritative output
+- Consumed by apps
+- Forward-compatible schema
+
+---
+
+## AI Responsibility Boundaries
+
+### What AI Does
+- ✅ Generate chapter summaries (1-3 sentences)
+- ✅ Generate chapter titles (3-8 words)
+- ✅ Generate compact story (full game recap)
+- ✅ Use callbacks to prior chapters
+- ✅ Interpret plays with sportscaster voice
+
+### What AI Does NOT Do
+- ❌ Define chapter boundaries
+- ❌ Decide structure
+- ❌ Infer stats beyond provided signals
+- ❌ See future chapters during sequential generation
+- ❌ Compute importance scores
+- ❌ Make strategic decisions
+
+**Principle:** AI is a narrative renderer, not a decision engine.
+
+---
 
 ## Database Schema
 
 ### Core Tables
+- `sports_games` - Game metadata
+- `sports_game_plays` - Play-by-play events
+- `sports_team_boxscores` - Team stats
+- `sports_player_boxscores` - Player stats
+- `sports_game_odds` - Betting lines
+- `game_social_posts` - Social media content
 
-| Table | Description |
-|-------|-------------|
-| `sports_leagues` | League definitions (NBA, NHL, NCAAB, etc.) |
-| `sports_teams` | Teams with names, abbreviations, external IDs |
-| `sports_games` | Games with scores, dates, status (`scheduled`, `live`, `final`) |
-| `sports_game_plays` | Play-by-play events (quarter, clock, description, scores) |
-| `game_social_posts` | X/Twitter posts from team accounts |
-| `sports_team_boxscores` | Team stats (JSONB) |
-| `sports_player_boxscores` | Player stats (JSONB) |
-| `sports_game_odds` | Odds from various books (spread, total, moneyline) |
+### Story Tables (Future)
+- `game_stories` - Generated stories (planned)
+- `chapter_summaries` - Chapter summaries (planned)
 
-### Timeline Artifacts
+See `sql/` for complete schema.
 
-| Table | Description |
-|-------|-------------|
-| `sports_game_timeline_artifacts` | Generated timelines with moments and summaries |
-| `compact_mode_thresholds` | Per-sport Lead Ladder thresholds |
-| `game_reading_positions` | User reading positions for progressive reveal |
+---
 
-### Audit & Jobs
+## API Endpoints
 
-| Table | Description |
-|-------|-------------|
-| `sports_scrape_runs` | Scrape job audit log |
-| `sports_job_runs` | General job execution log (timeline generation, etc.) |
+### Story Generation
+- `GET /api/admin/sports/games/{id}/story` - Fetch game story
+- `GET /api/admin/sports/games/{id}/story-state` - Fetch story state
+- `POST /api/admin/sports/games/{id}/story/regenerate-*` - Regenerate components
 
-## Configuration
+### Game Data
+- `GET /api/admin/sports/games` - List games
+- `GET /api/admin/sports/games/{id}` - Game details
+- `GET /api/admin/sports/games/{id}/plays` - Play-by-play
 
-### Environment Variables
+### Scraper
+- `GET /api/admin/sports/scrape-runs` - List scraper runs
+- `POST /api/admin/sports/scrape-runs` - Start scraper
 
-**Required:**
-- `DATABASE_URL` - PostgreSQL connection string
-- `ENVIRONMENT` - `development`, `staging`, or `production`
+See [API.md](API.md) for complete reference.
 
-**Optional:**
-- `OPENAI_API_KEY` - For AI enrichment (moment summaries)
-- `ODDS_API_KEY` - For odds ingestion
-- `X_AUTH_TOKEN`, `X_CT0` - For X/Twitter scraping
-- `CELERY_BROKER_URL` - Redis URL for Celery (defaults to `redis://redis:6379/0`)
+---
 
-### Sport Configuration
+## Tech Stack Details
 
-Sport-specific settings live in `api/app/config_sports.py`:
+### Backend
+- **Framework:** FastAPI
+- **Database:** PostgreSQL 15+
+- **ORM:** SQLAlchemy (async)
+- **Migrations:** Alembic
+- **AI:** OpenAI API
+- **Task Queue:** Celery + Redis
 
-```python
-SPORTS_CONFIG = {
-    "NBA": SportConfig(
-        code="NBA",
-        display_name="NBA",
-        supports_pbp=True,
-        supports_social=True,
-        supports_timeline=True,
-        supports_odds=True,
-    ),
-    # ... other sports
-}
+### Frontend
+- **Framework:** Next.js 14
+- **Language:** TypeScript
+- **Styling:** CSS Modules
+- **API Client:** Fetch API
+
+### Scraper
+- **Language:** Python 3.11+
+- **Package Manager:** uv
+- **HTTP:** httpx
+- **Parsing:** BeautifulSoup, lxml
+
+---
+
+## Development Workflow
+
+### Local Development
+```bash
+# Backend
+cd api
+pip install -r requirements.txt
+uvicorn main:app --reload
+
+# Frontend
+cd web
+npm install
+npm run dev
+
+# Scraper
+cd scraper
+uv sync
+uv run python -m bets_scraper
 ```
+
+### Running Tests
+```bash
+# Backend
+cd api
+pytest
+
+# Frontend
+cd web
+npm test
+```
+
+### Database Migrations
+```bash
+cd api
+alembic upgrade head
+```
+
+---
 
 ## Deployment
 
-### Docker Compose
+**Environments:**
+- Development (local)
+- Staging (staging.scrolldownsports.com)
+- Production (api.scrolldownsports.com)
 
-```bash
-cd infra
-cp .env.example .env
-docker compose --profile dev up -d --build
-```
+**Infrastructure:**
+- Docker containers
+- Caddy reverse proxy
+- PostgreSQL managed database
+- Redis for Celery
 
-**Profiles:**
-- `dev` - All services (API, scraper, web, postgres, redis)
-- `prod` - Production services only
+See [DEPLOYMENT.md](DEPLOYMENT.md) and [INFRA.md](INFRA.md).
 
-**Services:**
-- `api` - FastAPI (port 8000)
-- `scraper-worker` - Celery worker
-- `scraper-beat` - Celery scheduler
-- `web` - Next.js (port 3000)
-- `postgres` - PostgreSQL (port 5432)
-- `redis` - Redis (port 6379)
-
-### Production
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for production setup, including:
-- Server provisioning
-- Nginx reverse proxy
-- SSL certificates
-- Backup procedures
-- Rollback procedures
+---
 
 ## Key Principles
 
-1. **Stability over speed** - Downstream apps depend on predictable schemas
-2. **Fail fast** - No silent fallbacks that hide data quality issues
-3. **Traceable changes** - Every transformation is logged and auditable
-4. **Deterministic core** - AI only for narration, not for structure or ordering
+1. **Stability over speed** — Downstream apps depend on this
+2. **Predictable schemas** — No silent changes
+3. **Zero silent failures** — Log everything
+4. **Traceable changes** — Every transformation explainable
+5. **Structure before narrative** — Chapters are deterministic
+6. **No future knowledge** — AI sees only prior chapters
 
-## See Also
-
-- [TECHNICAL_FLOW.md](TECHNICAL_FLOW.md) - Detailed timeline generation flow
-- [MOMENT_SYSTEM_CONTRACT.md](MOMENT_SYSTEM_CONTRACT.md) - Moment system specification
-- [API.md](API.md) - API endpoint reference
-- [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md) - Local development setup
-- [OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md) - Production operations
+See [AGENTS.md](../AGENTS.md) for coding standards.

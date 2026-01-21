@@ -1,54 +1,21 @@
 # Book + Chapters Model
 
-**Status:** Phase 0 Implementation Complete  
+**Status:** Authoritative  
 **Date:** 2026-01-21  
-**Replaces:** Legacy "Moments" concept
+**Scope:** NBA v1
 
 ---
 
 ## Overview
 
-The Book + Chapters model is a fundamental architectural reset of game storytelling.
+The Book + Chapters model is the core architecture for narrative story generation.
 
 **Core Principle:** A game is a book. Plays are pages. Chapters are contiguous play ranges that represent coherent scenes.
 
-This model replaces the legacy "moments" concept, which suffered from event-first design and structural over-segmentation.
-
----
-
-## Why "Moments" Were Removed
-
-The legacy moments system had fundamental architectural problems:
-
-### Problem 1: Event-First Design
-Moments were created by reacting to events (tier crossings, lead flips) rather than tracking narrative intent. This produced:
-- Over-segmentation (2-3x too many moments)
-- Fragmented story beats split across multiple moments
-- AI compensation to paper over structural problems
-
-### Problem 2: Conflated Structure and Narrative
-Moments tried to be both structural units (coverage, continuity) and narrative units (story beats). This created:
-- Moment "types" (LEAD_BUILD, CUT, etc.) that were really narrative labels
-- Merging logic (481 lines) to fix over-segmentation
-- Coherence enforcement to repair fragmentation
-
-### Problem 3: Unpredictable Boundaries
-Moment boundaries were determined by:
-- Ladder tier crossings (numeric thresholds)
-- Scoring runs (heuristics)
-- Multi-pass merging (repair logic)
-- Coherence dampening (suppression)
-
-This made moments unpredictable and hard to reason about.
-
-### The Reset
-
-The Book + Chapters model separates concerns:
-- **Chapters** = Structure (where are the scene breaks?)
-- **Narrative** = Story (what happened in each scene?)
-- **AI** = Rendering (how do we describe it?)
-
-Chapters are deterministic, reproducible, and simple. Narrative is generated after structure exists.
+**Design Philosophy:**
+- **Structure before narrative** — Chapters are deterministic
+- **Separation of concerns** — Structure, context, and narrative are distinct layers
+- **No future knowledge** — AI sees only prior chapters during generation
 
 ---
 
@@ -58,7 +25,7 @@ Chapters are deterministic, reproducible, and simple. Narrative is generated aft
 
 **The atomic unit of game action.**
 
-A play is a single play-by-play event. Plays are the raw pages of the game's book. They are never modified or summarized.
+A play is a single play-by-play event. Plays are the raw pages of the game's book.
 
 ```python
 @dataclass
@@ -79,432 +46,356 @@ class Play:
 
 **A contiguous range of plays representing a single narrative scene.**
 
-A chapter is the fundamental structural unit of game storytelling. It answers "where are the scene breaks?" not "what happened?"
+Chapters are the structural unit for storytelling and UI expansion.
 
 ```python
 @dataclass
 class Chapter:
-    chapter_id: str         # Unique identifier (e.g., "ch_001")
+    chapter_id: str         # Unique ID (e.g., "ch_001")
     play_start_idx: int     # First play index (inclusive)
     play_end_idx: int       # Last play index (inclusive)
-    plays: list[Play]       # All plays in this chapter
-    reason_codes: list[str] # Why boundaries exist (for debugging)
+    plays: list[Play]       # Raw plays in chapter
+    reason_codes: list[str] # Why this boundary exists
+    period: int | None      # Quarter/period number
+    time_range: TimeRange | None  # Game clock range
 ```
 
 **Properties:**
+- Contiguous (no gaps)
 - Deterministic (same input → same output)
-- Contiguous (no gaps between chapters)
-- Complete coverage (every play in exactly one chapter)
-- No narrative text (text is generated later)
+- Structural (not narrative)
+- Explainable (reason codes)
 
 **What Chapters Are:**
-- Structural units for organizing plays
-- Scene breaks in the game's story
-- UI expansion boundaries
-- Deterministic and reproducible
+- Logistics for storytelling
+- UI expansion units
+- Structural scene breaks
 
 **What Chapters Are NOT:**
-- Narrative labels (no "types")
-- Event buckets (not defined by tier crossings)
-- AI-generated (no AI in chapter creation)
-- Fragments requiring merging
+- Narrative labels
+- Importance rankings
+- Event buckets
+
+---
+
+### StoryState
+
+**Running context derived from prior chapters only.**
+
+StoryState is the only shared memory the AI is allowed to have.
+
+```python
+@dataclass
+class StoryState:
+    chapter_index_last_processed: int
+    players: dict[str, PlayerStoryState]
+    teams: dict[str, TeamStoryState]
+    momentum_hint: MomentumHint
+    theme_tags: list[str]
+    constraints: dict  # no_future_knowledge: true
+```
+
+**Properties:**
+- Derived deterministically
+- Updated incrementally
+- Bounded (top 6 players, max 8 themes)
+- No future knowledge
+
+**Enables:**
+- Natural callbacks ("he already had 20 through three")
+- Thematic continuity
+- Context-aware narration
 
 ---
 
 ### GameStory
 
-**A narrative artifact produced from chapters.**
-
-The GameStory is the final output consumed by apps. It contains chapters (structure) and optional narrative text (AI-generated).
+**The authoritative output consumed by apps.**
 
 ```python
 @dataclass
 class GameStory:
-    game_id: int                # Database game ID
-    chapters: list[Chapter]     # All chapters in chronological order
-    compact_story: str | None   # Optional AI-generated summary
-    metadata: dict[str, Any]    # Game metadata (teams, score, etc.)
+    game_id: int
+    sport: str
+    chapters: list[Chapter]
+    compact_story: str | None
+    reading_time_estimate_minutes: float | None
+    metadata: dict
 ```
 
 **Properties:**
-- Contains all chapters
-- Validates structural integrity
-- Optional AI-generated narrative
-- Ready for API consumption
+- Complete game narrative
+- Forward-compatible schema
+- Serializable as JSON
+
+**Contains:**
+- All chapters (structural units)
+- Chapter summaries (AI-generated)
+- Chapter titles (AI-generated)
+- Compact story (AI-generated full recap)
 
 ---
 
-## Architecture
+## Pipeline Architecture
 
-### Pipeline Flow
+### High-Level Flow
 
+```mermaid
+graph LR
+    A[Play-by-Play] --> B[ChapterizerV1]
+    B --> C[Chapters]
+    C --> D[StoryState Builder]
+    D --> E[AI Generator]
+    E --> F[GameStory]
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ INPUT: Play-by-Play Timeline                                    │
-│ • Raw PBP events from data feed                                 │
-│ • Social posts (optional metadata)                              │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ STEP 1: Extract Plays                                           │
-│ • Filter canonical PBP events                                   │
-│ • Create Play objects                                           │
-│ • Preserve chronological order                                  │
-│                                                                  │
-│ Output: List[Play]                                              │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ STEP 2: Detect Boundaries                                       │
-│ • Identify structural inflection points                         │
-│ • Phase 0: Quarter/period changes                               │
-│ • Future: Narrative state changes                               │
-│                                                                  │
-│ CRITICAL: Boundaries are deterministic, not AI-driven           │
-│                                                                  │
-│ Output: List[ChapterBoundary]                                   │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ STEP 3: Create Chapters                                         │
-│ • Partition plays at boundaries                                 │
-│ • Ensure complete coverage (no gaps, no overlaps)               │
-│ • Validate structural integrity                                 │
-│                                                                  │
-│ Output: List[Chapter]                                           │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ STEP 4: Build GameStory                                         │
-│ • Wrap chapters in GameStory                                    │
-│ • Attach metadata                                               │
-│ • Validate story structure                                      │
-│                                                                  │
-│ Output: GameStory                                               │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ STEP 5: AI Enrichment (Optional, Future Phase)                  │
-│ • Generate chapter headlines                                    │
-│ • Generate chapter summaries                                    │
-│ • Generate compact story                                        │
-│                                                                  │
-│ CRITICAL: AI operates on chapters, does not define them         │
-│                                                                  │
-│ Output: Enriched GameStory                                      │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ OUTPUT: API Response                                            │
-│ • Apps consume chapters directly                                │
-│ • UI expands/collapses chapters                                 │
-│ • Narrative text enhances but doesn't define structure          │
-└─────────────────────────────────────────────────────────────────┘
-```
+
+### Stage 1: Chapterization
+
+**Component:** `ChapterizerV1`  
+**Input:** Normalized play-by-play events  
+**Output:** Chapters with reason codes  
+**Deterministic:** Yes  
+**AI:** No  
+
+**Logic:**
+- Detect structural boundaries (NBA v1 rules)
+- Create contiguous chapters
+- Assign reason codes
+- Validate coverage
+
+**Boundaries:**
+- **Hard:** Period start/end, overtime, game end
+- **Scene Reset:** Timeouts, reviews, challenges
+- **Momentum:** Crunch time start (minimal v1)
+
+See [NBA_V1_BOUNDARY_RULES.md](NBA_V1_BOUNDARY_RULES.md)
+
+### Stage 2: Story State Building
+
+**Component:** `build_state_incrementally()`  
+**Input:** Ordered chapters  
+**Output:** StoryState after each chapter  
+**Deterministic:** Yes  
+**AI:** No  
+
+**Logic:**
+- Extract player stats from play text
+- Track notable actions (dunk, block, steal, etc.)
+- Determine momentum hints from reason codes
+- Assign theme tags deterministically
+- Enforce bounded lists
+
+See [AI_CONTEXT_POLICY.md](AI_CONTEXT_POLICY.md)
+
+### Stage 3: AI Story Generation
+
+**Component:** `generate_chapter_summary()`, `generate_chapter_title()`, `generate_compact_story()`  
+**Input:** Current chapter + StoryState  
+**Output:** Summaries, titles, compact story  
+**Deterministic:** No (AI)  
+**AI:** Yes (OpenAI)  
+
+**Modes:**
+
+#### A. Chapter Summary (Sequential)
+- Input: Prior summaries + StoryState + current chapter
+- Output: 1-3 sentence summary
+- Context: Prior chapters only
+- Spoilers: Forbidden (except final chapter)
+
+#### B. Chapter Title (Sequential)
+- Input: Chapter summary
+- Output: 3-8 word title
+- Context: Summary only
+- Spoilers: Forbidden
+
+#### C. Compact Story (Full Arc)
+- Input: All chapter summaries
+- Output: Full game recap (4-12 min read)
+- Context: Complete narrative arc
+- Spoilers: Allowed (post-game)
+
+See [AI_SIGNALS_NBA_V1.md](AI_SIGNALS_NBA_V1.md)
 
 ---
 
-## Key Principles
+## Data Flow
 
-### 1. Structure Before Narrative
-
-Chapters are created deterministically from play structure. Narrative text is generated after chapters exist.
-
-**Old way (event-first):**
+### Input: Play-by-Play
+```json
+[
+  {
+    "play_index": 0,
+    "quarter": 1,
+    "game_clock": "12:00",
+    "description": "Jump ball",
+    "team": "LAL",
+    "score_home": 0,
+    "score_away": 0
+  },
+  ...
+]
 ```
-Event → Label → Fragment → Merge → Hope for coherence
-```
 
-**New way (structure-first):**
-```
-Plays → Boundaries → Chapters → Narrative
-```
-
-### 2. Chapters Are Logistics, Not Narrative
-
-Chapters answer "where are the scene breaks?" not "what happened?"
-
-- Chapter boundaries are structural inflection points
-- Narrative meaning is derived from plays within chapters
-- AI describes chapters, it doesn't define them
-
-### 3. Determinism
-
-Same PBP input → same chapters output. Always.
-
-- No randomness
-- No AI in chapter creation
-- No heuristics that change over time
-- Reproducible across runs
-
-### 4. Complete Coverage
-
-Every play belongs to exactly one chapter. No gaps, no overlaps.
-
-- Chapters are contiguous
-- Chronologically ordered
-- Validated at creation time
-
-### 5. AI Is a Renderer, Not a Decision Engine
-
-AI generates narrative text from chapters. It does not:
-- Define chapter boundaries
-- Determine structure
-- Compensate for fragmentation
-- Invent distinctions
-
----
-
-## JSON Schemas
-
-### Chapter Schema
-
+### Output: GameStory
 ```json
 {
-  "chapter_id": "ch_001",
-  "play_start_idx": 0,
-  "play_end_idx": 4,
-  "play_count": 5,
-  "plays": [
+  "game_id": 1,
+  "sport": "NBA",
+  "story_version": "1.0.0",
+  "chapters": [
     {
+      "chapter_id": "ch_001",
       "index": 0,
-      "event_type": "pbp",
-      "raw_data": { ... }
+      "play_start_idx": 0,
+      "play_end_idx": 15,
+      "play_count": 16,
+      "reason_codes": ["PERIOD_START"],
+      "period": 1,
+      "time_range": {"start": "12:00", "end": "8:00"},
+      "chapter_summary": "LeBron scored early...",
+      "chapter_title": "Lakers Start Strong",
+      "plays": [...]
     },
     ...
   ],
-  "reason_codes": ["quarter_change"]
+  "chapter_count": 6,
+  "total_plays": 155,
+  "compact_story": "The Lakers came out strong...",
+  "reading_time_estimate_minutes": 5.2,
+  "has_summaries": true,
+  "has_titles": true,
+  "has_compact_story": true
 }
 ```
 
-**Required fields:**
-- `chapter_id`: string
-- `play_start_idx`: integer
-- `play_end_idx`: integer
-- `play_count`: integer
-- `plays`: array of Play objects
-- `reason_codes`: array of strings
+---
 
-**No AI fields. No ladder metadata. No moment types.**
+## Invariants
+
+### Chapter Coverage Guarantees
+1. **Contiguity:** `chapter[i].play_end_idx + 1 == chapter[i+1].play_start_idx`
+2. **No gaps:** First chapter starts at 0, last ends at `len(plays)-1`
+3. **No overlaps:** Every play belongs to exactly one chapter
+4. **Determinism:** Same input → same chapters (fingerprinted)
+
+### Story State Constraints
+1. **No future knowledge:** Derived from prior chapters only
+2. **Bounded:** Top 6 players, max 8 themes, max 5 notable actions per player
+3. **Deterministic:** Same chapters → same state
+4. **Incremental:** Updated chapter-by-chapter
+
+### AI Context Rules
+1. **Sequential generation:** Chapter N sees only chapters 0..N-1
+2. **No spoilers:** Forbidden language enforced (except final chapter)
+3. **Signal whitelist:** Only allowed fields exposed
+4. **No inference:** AI uses provided signals only
 
 ---
 
-### GameStory Schema
+## Testing Strategy
 
-```json
-{
-  "game_id": 12345,
-  "chapter_count": 4,
-  "total_plays": 20,
-  "chapters": [ ... ],
-  "compact_story": null,
-  "metadata": {
-    "home_team": "Lakers",
-    "away_team": "Celtics",
-    "sport": "NBA"
-  }
-}
-```
+### Unit Tests (258 total)
+- Chapter coverage and contiguity
+- Boundary rule enforcement
+- Story state derivation
+- AI signal validation
+- Prompt determinism
+- Spoiler detection
 
-**Required fields:**
-- `game_id`: integer
-- `chapter_count`: integer
-- `total_plays`: integer
-- `chapters`: array of Chapter objects
-- `compact_story`: string or null
-- `metadata`: object
+### Integration Tests
+- End-to-end chapterization
+- Story state building
+- API endpoint contracts
+- Frontend data wiring
 
----
-
-## Usage
-
-### Building Chapters
-
-```python
-from app.services.chapters import build_chapters
-
-# Input: timeline from data feed
-timeline = [
-    {"event_type": "pbp", "quarter": 1, ...},
-    {"event_type": "pbp", "quarter": 1, ...},
-    ...
-]
-
-# Build chapters
-story = build_chapters(
-    timeline=timeline,
-    game_id=12345,
-    metadata={"home_team": "Lakers", "away_team": "Celtics"}
-)
-
-# Access chapters
-for chapter in story.chapters:
-    print(f"{chapter.chapter_id}: {chapter.play_count} plays")
-
-# Serialize for API
-story_dict = story.to_dict()
-```
-
-### Command-Line Interface
-
+**Run tests:**
 ```bash
-# Run chapter builder on sample input
-python -m app.services.chapters.cli sample_input.json
-
-# Output: JSON with chapters
-{
-  "game_id": 12345,
-  "chapters": [...],
-  ...
-}
+cd api
+pytest tests/test_chapters*.py tests/test_*_generator.py
 ```
 
 ---
 
-## Testing
+## Admin UI
 
-The Book + Chapters model has comprehensive unit tests that enforce:
+**Story Generator Interface:**
+- Game overview with generation status
+- Chapter inspector (expandable)
+- Story state viewer (debug)
+- Regeneration controls
 
-### 1. Chapter Coverage
-- Every play belongs to exactly one chapter
-- No gaps between chapters
-- No overlaps
+**Features:**
+- Inspect chapter boundaries
+- View reason codes
+- Expand chapters to see plays
+- Load story state for any chapter
+- Regenerate components safely
 
-### 2. Determinism
-- Same input → same output
-- Reproducible boundaries
-- Chronological order preserved
-
-### 3. Structural Integrity
-- Plays within chapters are contiguous
-- Chapter boundaries align to play indices
-- No empty chapters
-- Validation catches invalid structures
-
-### 4. Moment Regression Guard
-- No Moment objects produced
-- No moment-related imports
-- No moment-specific fields in schemas
-
-### Running Tests
-
-```bash
-# Run all chapter tests
-pytest api/tests/test_chapters.py -v
-
-# Run specific test categories
-pytest api/tests/test_chapters.py::test_chapter_coverage_all_plays_assigned
-pytest api/tests/test_chapters.py::test_determinism_same_input_same_output
-pytest api/tests/test_chapters.py::test_moment_regression_no_moment_objects
-```
+See [ADMIN_UI_STORY_GENERATOR.md](ADMIN_UI_STORY_GENERATOR.md)
 
 ---
 
-## Phase 0 Implementation
+## Key Design Decisions
 
-The current implementation is intentionally minimal:
+### Why Chapters Are Structural
 
-**What's Implemented:**
-- Core data types (Play, Chapter, GameStory)
-- Deterministic chapter creation
-- Boundary detection at quarter/period changes
-- Complete structural validation
-- Comprehensive unit tests
-- Command-line interface
+Chapters are defined by **structural boundaries**, not narrative labels.
 
-**What's NOT Implemented (Future Phases):**
-- Advanced boundary detection (narrative state tracking)
-- AI narrative generation
-- Chapter importance scoring
-- Sport-specific tuning
+**Structural boundaries:**
+- Period start/end
+- Timeouts
+- Reviews
+- Crunch time start
 
-**This is by design.** Phase 0 establishes the structural backbone. Intelligence is added in later phases.
+**Not boundaries:**
+- Individual scores
+- Lead changes
+- Tier crossings
+- Narrative importance
 
----
+**Benefit:** Deterministic, reproducible, simple.
 
-## Migration from Moments
+### Why AI Sees Only Prior Chapters
 
-### What Changed
+**Problem:** If AI sees the full game, it can spoil the ending.
 
-| Old (Moments) | New (Chapters) |
-|---------------|----------------|
-| `Moment` object | `Chapter` object |
-| `MomentType` enum | No types (structure only) |
-| Ladder-driven segmentation | Structural boundaries |
-| Multi-pass merging | No merging needed |
-| Coherence enforcement | Inherent coherence |
-| AI compensation | AI description |
+**Solution:** Sequential generation with prior context only.
 
-### Breaking Changes
+**Benefit:** Natural callbacks without spoilers.
 
-**The Moment concept is retired.** Code that depends on:
-- `Moment` objects
-- `MomentType` enum
-- Ladder-based segmentation
-- Moment merging logic
+### Why StoryState Is Bounded
 
-...must be updated to use chapters.
+**Problem:** Unbounded context leads to prompt bloat.
 
-### Backward Compatibility
+**Solution:** Top 6 players, max 8 themes, max 5 notable actions per player.
 
-Phase 0 does not maintain backward compatibility with the moments API. This is a hard reset.
-
-Future phases may add a compatibility layer if needed, but the core architecture is chapters-first.
+**Benefit:** Focused, relevant context.
 
 ---
 
-## Future Phases
+## Future Extensions
 
-### Phase 1: Advanced Boundary Detection
-- Narrative state tracking
-- Intent change detection
-- Momentum shift detection
-- Sport-specific boundaries
+### Multi-Sport Support
+- NHL v1 boundary rules
+- NCAAB v1 boundary rules
+- Sport-specific story state derivation
 
-### Phase 2: AI Narrative Generation
-- Chapter headlines
-- Chapter summaries
-- Compact story generation
-- Contextual descriptions
+### AI Improvements
+- Custom models
+- Prompt tuning
+- Style variations
 
-### Phase 3: Importance & Selection
-- Chapter importance scoring
-- Budget enforcement (if needed)
-- Display priority
-
-### Phase 4: UI Integration
-- Chapter expansion/collapse
-- Progressive disclosure
-- Narrative flow
-
----
-
-## Success Criteria
-
-Phase 0 is complete when:
-
-✅ **"Moment" is no longer a first-class concept**  
-→ Chapters are the only structural primitive
-
-✅ **Tests enforce coverage, determinism, and contiguity**  
-→ All tests pass, structural guarantees validated
-
-✅ **System runs end-to-end without AI**  
-→ CLI produces valid chapters from sample input
-
-✅ **No moment artifacts in output**  
-→ Regression tests prevent moment reintroduction
+### Performance
+- Cache generated stories in database
+- Incremental regeneration
+- Parallel chapter generation
 
 ---
 
 ## References
 
-- **Code:** `api/app/services/chapters/`
-- **Tests:** `api/tests/test_chapters.py`
-- **CLI:** `api/app/services/chapters/cli.py`
-- **Sample Input:** `api/app/services/chapters/sample_input.json`
-
----
-
-**Document Status:** Phase 0 Complete  
-**Next Phase:** Advanced boundary detection (narrative state tracking)
+- [NBA v1 Boundary Rules](NBA_V1_BOUNDARY_RULES.md)
+- [AI Context Policy](AI_CONTEXT_POLICY.md)
+- [AI Signals (NBA v1)](AI_SIGNALS_NBA_V1.md)
+- [Admin UI Guide](ADMIN_UI_STORY_GENERATOR.md)

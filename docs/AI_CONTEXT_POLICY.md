@@ -1,6 +1,5 @@
 # AI Context Policy: Prior Chapters Only
 
-**Issue:** 0.4  
 **Status:** Authoritative  
 **Date:** 2026-01-21  
 **Scope:** NBA v1
@@ -9,7 +8,7 @@
 
 ## Overview
 
-This document defines the **authoritative AI context rules** for the Book + Chapters system.
+This document defines the **authoritative AI context rules** for the Book + Chapters story generation system.
 
 **Core Principle:** AI may only know what has happened **so far** in the game, never what happens **next**.
 
@@ -18,6 +17,33 @@ This prevents:
 - Hallucinated "final line" statements
 - Hindsight language in sequential chapters
 - Context leakage from future chapters
+
+---
+
+## What AI Does (and Does Not Do)
+
+### AI Responsibilities ✅
+
+**AI is a narrative renderer:**
+- Generate chapter summaries (1-3 sentences per chapter)
+- Generate chapter titles (3-8 words per chapter)
+- Generate compact story (full game recap, 4-12 min read)
+- Use callbacks to prior chapters ("he already had 20 through three")
+- Interpret plays with sportscaster voice
+- Synthesize themes and momentum
+
+### AI Does NOT ❌
+
+**AI is not a decision engine:**
+- ❌ Define chapter boundaries
+- ❌ Decide which plays belong to which chapter
+- ❌ Compute importance scores
+- ❌ Infer stats beyond provided signals
+- ❌ See future chapters during sequential generation
+- ❌ Make strategic or structural decisions
+- ❌ Determine what is "notable" or "key"
+
+**Principle:** Structure is deterministic. AI adds meaning to existing structure.
 
 ---
 
