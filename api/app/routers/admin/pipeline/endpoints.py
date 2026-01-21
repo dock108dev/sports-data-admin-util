@@ -648,11 +648,9 @@ async def compare_stage_outputs(
     differences: dict[str, Any] = {}
 
     if stage == "GENERATE_MOMENTS":
-        moments_a = output_a.get("moment_count", 0)
-        moments_b = output_b.get("moment_count", 0)
-        differences["moment_count_delta"] = moments_b - moments_a
-        differences["notable_count_a"] = len(output_a.get("notable_moments", []))
-        differences["notable_count_b"] = len(output_b.get("notable_moments", []))
+        chapters_a = output_a.get("chapter_count", 0)
+        chapters_b = output_b.get("chapter_count", 0)
+        differences["chapter_count_delta"] = chapters_b - chapters_a
     elif stage == "DERIVE_SIGNALS":
         crossings_a = len(output_a.get("tier_crossings", []))
         crossings_b = len(output_b.get("tier_crossings", []))

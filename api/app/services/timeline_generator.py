@@ -10,7 +10,7 @@ This module is the core timeline generator. It:
 Related modules:
 - social_events.py: Social post processing and role assignment
 - summary_builder.py: Reading guide generation
-- game_analysis.py: Moment partitioning and AI enrichment
+- (Legacy moment partitioning removed - system is now chapters-first)
 - compact_mode.py: Timeline compression for compact view
 - timeline_validation.py: Validation and sanity checks
 - ai_client.py: OpenAI integration for interpretation (not ordering)
@@ -592,13 +592,13 @@ async def generate_timeline_artifact(
             timeline_version=timeline_version,
             game_context=game_context,
         )
-        moment_count = len(game_analysis.get("moments", []))
+        chapter_count = len(game_analysis.get("chapters", []))
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
                 "game_id": game_id,
                 "phase": "game_analysis",
-                "moment_count": moment_count,
+                "chapter_count": chapter_count,
             },
         )
 
