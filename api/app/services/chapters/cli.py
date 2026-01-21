@@ -41,7 +41,7 @@ import logging
 from pathlib import Path
 
 from .builder import build_chapters
-from .ai_context import build_chapter_ai_input, ChapterSummary
+from .ai_context import build_chapter_ai_input
 from .story_state import derive_story_state_from_chapters
 
 logging.basicConfig(
