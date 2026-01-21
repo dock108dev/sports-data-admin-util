@@ -62,6 +62,8 @@ def main():
         print("  --debug-chapters: Show structured debug logs for chapter boundaries", file=sys.stderr)
         print("  --print-ai-signals --chapter-index N: Show AI-visible signals for Chapter N", file=sys.stderr)
         print("  --generate-chapter-summary --chapter-index N: Generate AI summary for Chapter N", file=sys.stderr)
+        print("  --generate-chapter-title --chapter-index N: Generate AI title for Chapter N", file=sys.stderr)
+        print("  --generate-compact-story: Generate full compact game story from chapters", file=sys.stderr)
         sys.exit(1)
     
     input_path = Path(sys.argv[1])
@@ -86,6 +88,11 @@ def main():
         elif sys.argv[2] == "--generate-chapter-summary" and len(sys.argv) > 4 and sys.argv[3] == "--chapter-index":
             mode = "generate_chapter_summary"
             chapter_index = int(sys.argv[4])
+        elif sys.argv[2] == "--generate-chapter-title" and len(sys.argv) > 4 and sys.argv[3] == "--chapter-index":
+            mode = "generate_chapter_title"
+            chapter_index = int(sys.argv[4])
+        elif sys.argv[2] == "--generate-compact-story":
+            mode = "generate_compact_story"
     
     if not input_path.exists():
         print(f"Error: File not found: {input_path}", file=sys.stderr)
@@ -321,6 +328,117 @@ def main():
             "chapter_summary": result.chapter_summary,
             "chapter_title": result.chapter_title,
             "spoiler_warnings": result.spoiler_warnings,
+        }
+        print(json.dumps(output, indent=2))
+        logger.info("Done")
+    
+    elif mode == "generate_chapter_title":
+        # Generate AI title for specific chapter
+        if chapter_index is None or chapter_index < 0 or chapter_index >= story.chapter_count:
+            print(f"Error: Invalid chapter index {chapter_index}. Must be 0-{story.chapter_count-1}", file=sys.stderr)
+            sys.exit(1)
+        
+        from .summary_generator import generate_chapter_summary
+        from .title_generator import generate_chapter_title
+        
+        logger.info(f"Generating title for Chapter {chapter_index}")
+        
+        current_chapter = story.chapters[chapter_index]
+        prior_chapters = story.chapters[:chapter_index]
+        
+        # First generate summary (required for title)
+        summary_result = generate_chapter_summary(
+            current_chapter=current_chapter,
+            prior_chapters=prior_chapters,
+            sport=sport,
+            ai_client=None,  # Mock mode
+        )
+        
+        # Then generate title
+        is_final = (chapter_index == story.chapter_count - 1)
+        title_result = generate_chapter_title(
+            chapter=current_chapter,
+            chapter_summary=summary_result.chapter_summary,
+            chapter_index=chapter_index,
+            ai_client=None,  # Mock mode
+            is_final_chapter=is_final,
+        )
+        
+        # Print results
+        print(f"\n=== CHAPTER {chapter_index} TITLE ===", file=sys.stderr)
+        print(f"Chapter ID: {current_chapter.chapter_id}", file=sys.stderr)
+        print(f"Summary: {summary_result.chapter_summary}", file=sys.stderr)
+        print(f"Title: {title_result.chapter_title}", file=sys.stderr)
+        
+        if title_result.validation_result:
+            if title_result.validation_result["valid"]:
+                print("✓ Title validation: PASSED", file=sys.stderr)
+            else:
+                print(f"⚠️  Title validation issues: {', '.join(title_result.validation_result['issues'])}", file=sys.stderr)
+        
+        # Output JSON
+        output = {
+            "chapter_index": chapter_index,
+            "chapter_id": current_chapter.chapter_id,
+            "chapter_summary": summary_result.chapter_summary,
+            "chapter_title": title_result.chapter_title,
+            "validation": title_result.validation_result,
+        }
+        print(json.dumps(output, indent=2))
+        logger.info("Done")
+    
+    elif mode == "generate_compact_story":
+        # Generate full compact game story
+        from .summary_generator import generate_summaries_sequentially
+        from .compact_story_generator import generate_compact_story
+        
+        logger.info("Generating compact story for full game")
+        
+        # First generate all chapter summaries
+        logger.info(f"Generating summaries for {story.chapter_count} chapters...")
+        summary_results = generate_summaries_sequentially(
+            chapters=story.chapters,
+            sport=sport,
+            ai_client=None,  # Mock mode
+        )
+        
+        # Extract summaries
+        summaries = [r.chapter_summary for r in summary_results]
+        
+        # Generate compact story
+        logger.info("Generating compact story from summaries...")
+        compact_result = generate_compact_story(
+            chapter_summaries=summaries,
+            sport=sport,
+            ai_client=None,  # Mock mode
+        )
+        
+        # Print results
+        print(f"\n=== COMPACT GAME STORY ===", file=sys.stderr)
+        print(f"Chapters: {len(summaries)}", file=sys.stderr)
+        print(f"Word Count: {compact_result.word_count}", file=sys.stderr)
+        print(f"Reading Time: {compact_result.reading_time_minutes:.1f} minutes", file=sys.stderr)
+        
+        if compact_result.validation_result:
+            if compact_result.validation_result["valid"]:
+                print("✓ Length validation: PASSED", file=sys.stderr)
+            else:
+                print(f"⚠️  Length validation issues: {', '.join(compact_result.validation_result['issues'])}", file=sys.stderr)
+        
+        if compact_result.new_nouns_detected:
+            print(f"⚠️  Potentially new proper nouns: {', '.join(compact_result.new_nouns_detected)}", file=sys.stderr)
+        
+        print(f"\n{compact_result.compact_story}", file=sys.stderr)
+        
+        # Output JSON
+        output = {
+            "game_id": game_id,
+            "chapter_count": len(summaries),
+            "compact_story": compact_result.compact_story,
+            "reading_time_minutes": compact_result.reading_time_minutes,
+            "word_count": compact_result.word_count,
+            "validation": compact_result.validation_result,
+            "new_nouns_detected": compact_result.new_nouns_detected,
         }
         print(json.dumps(output, indent=2))
         logger.info("Done")

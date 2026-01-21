@@ -63,7 +63,21 @@ from .summary_generator import (
 )
 from .prompts import (
     check_for_spoilers,
+    validate_title,
     BANNED_PHRASES,
+    TITLE_BANNED_WORDS,
+)
+from .title_generator import (
+    ChapterTitleResult,
+    TitleGenerationError,
+    generate_chapter_title,
+    generate_titles_for_chapters,
+)
+from .compact_story_generator import (
+    CompactStoryResult,
+    CompactStoryGenerationError,
+    generate_compact_story,
+    validate_compact_story_input,
 )
 
 __all__ = [
@@ -122,4 +136,16 @@ __all__ = [
     "generate_summaries_sequentially",
     "check_for_spoilers",
     "BANNED_PHRASES",
+    # Title generation
+    "ChapterTitleResult",
+    "TitleGenerationError",
+    "generate_chapter_title",
+    "generate_titles_for_chapters",
+    "validate_title",
+    "TITLE_BANNED_WORDS",
+    # Compact story generation
+    "CompactStoryResult",
+    "CompactStoryGenerationError",
+    "generate_compact_story",
+    "validate_compact_story_input",
 ]

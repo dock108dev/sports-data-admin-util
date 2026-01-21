@@ -20,6 +20,7 @@ from dataclasses import dataclass
 # Version tracking for prompt evolution
 PROMPT_VERSION = "1.0.0"
 TITLE_PROMPT_VERSION = "1.0.0"
+COMPACT_STORY_PROMPT_VERSION = "1.0.0"
 
 
 # ============================================================================
@@ -504,4 +505,183 @@ def validate_title(
         "valid": len(issues) == 0,
         "issues": issues,
     }
+
+
+# ============================================================================
+# COMPACT STORY PROMPT (NBA V1)
+# ============================================================================
+
+COMPACT_STORY_PROMPT_V1 = """You are a sportscaster writing a cohesive game recap for an NBA game.
+
+You have already narrated this game chapter-by-chapter. Now, synthesize those chapters into a single, readable story that captures the full arc of the game.
+
+## CHAPTER SUMMARIES
+
+Here are the chapter summaries you created, in order:
+
+{chapter_summaries}
+
+## YOUR TASK
+
+Write a compact game story (4-12 minutes of reading time) that:
+
+**Must:**
+- Use ONLY the information from the chapter summaries above
+- Create a cohesive narrative with clear beginning → middle → end
+- Use paragraph-based prose (not bullets)
+- Tie together themes and momentum with hindsight
+- Include smooth transitions between chapters
+- Have a clear closing paragraph
+
+**May:**
+- Use hindsight framing ("That early push set the tone...")
+- Make thematic callbacks across chapters
+- Use clear closing language in the final paragraph
+- Reframe earlier moments with full context
+
+**Must NOT:**
+- Invent events not present in summaries
+- Add stats not implied by summaries
+- Contradict chapter summaries
+- Use play-by-play listing
+- Over-hype ("instant classic", "all-time performance") unless summaries imply it
+
+**Voice:**
+- Sportscaster recap tone
+- Engaging and readable
+- Observational, grounded
+- Natural flow between sections
+
+**Structure:**
+- Opening: Set the scene and tone
+- Middle: Progress through the game's narrative arc
+- Closing: Conclude with the outcome and key takeaways
+
+**Output Format:**
+Return ONLY a JSON object:
+{{
+  "compact_story": "Your multi-paragraph story here. Use \\n\\n for paragraph breaks."
+}}
+
+Do not include any other text outside the JSON object.
+"""
+
+
+@dataclass
+class CompactStoryPromptContext:
+    """Context for building compact story prompt."""
+    
+    chapter_summaries: list[str]
+    chapter_titles: list[str] | None = None
+    sport: str = "NBA"
+    teams: list[str] | None = None
+    game_metadata: dict[str, Any] | None = None
+
+
+def build_compact_story_prompt(context: CompactStoryPromptContext) -> str:
+    """Build compact story prompt from context.
+    
+    Args:
+        context: Compact story prompt context
+        
+    Returns:
+        Formatted prompt string
+    """
+    # Format chapter summaries
+    if context.chapter_titles and len(context.chapter_titles) == len(context.chapter_summaries):
+        # Include titles if available
+        summaries_text = "\n\n".join([
+            f"Chapter {i}: {title}\n{summary}"
+            for i, (title, summary) in enumerate(zip(context.chapter_titles, context.chapter_summaries))
+        ])
+    else:
+        # Just summaries
+        summaries_text = "\n\n".join([
+            f"Chapter {i}: {summary}"
+            for i, summary in enumerate(context.chapter_summaries)
+        ])
+    
+    prompt = COMPACT_STORY_PROMPT_V1.format(
+        chapter_summaries=summaries_text,
+    )
+    
+    return prompt
+
+
+# ============================================================================
+# COMPACT STORY VALIDATION
+# ============================================================================
+
+def estimate_reading_time(text: str, words_per_minute: int = 200) -> float:
+    """Estimate reading time in minutes.
+    
+    Args:
+        text: Text to estimate
+        words_per_minute: Average reading speed
+        
+    Returns:
+        Estimated reading time in minutes
+    """
+    word_count = len(text.split())
+    return word_count / words_per_minute
+
+
+def validate_compact_story_length(text: str, min_minutes: float = 4.0, max_minutes: float = 12.0) -> dict[str, Any]:
+    """Validate compact story length.
+    
+    Args:
+        text: Story text
+        min_minutes: Minimum reading time
+        max_minutes: Maximum reading time
+        
+    Returns:
+        Validation result
+    """
+    reading_time = estimate_reading_time(text)
+    word_count = len(text.split())
+    
+    issues = []
+    if reading_time < min_minutes:
+        issues.append(f"Too short: {reading_time:.1f} min (min {min_minutes})")
+    elif reading_time > max_minutes:
+        issues.append(f"Too long: {reading_time:.1f} min (max {max_minutes})")
+    
+    return {
+        "valid": len(issues) == 0,
+        "issues": issues,
+        "reading_time_minutes": reading_time,
+        "word_count": word_count,
+    }
+
+
+def check_for_new_proper_nouns(
+    compact_story: str,
+    chapter_summaries: list[str],
+) -> list[str]:
+    """Check if compact story introduces new proper nouns.
+    
+    This is a simple heuristic to detect potential contradictions.
+    
+    Args:
+        compact_story: Generated compact story
+        chapter_summaries: Original chapter summaries
+        
+    Returns:
+        List of potentially new proper nouns
+    """
+    # Extract capitalized words (simple heuristic for proper nouns)
+    import re
+    
+    # Get proper nouns from summaries
+    summary_text = " ".join(chapter_summaries)
+    summary_nouns = set(re.findall(r'\b[A-Z][a-z]+\b', summary_text))
+    
+    # Get proper nouns from compact story
+    story_nouns = set(re.findall(r'\b[A-Z][a-z]+\b', compact_story))
+    
+    # Find new nouns (excluding common words)
+    common_words = {"The", "A", "An", "In", "On", "At", "To", "For", "With", "By", "From", "Of"}
+    new_nouns = story_nouns - summary_nouns - common_words
+    
+    return list(new_nouns)
 
