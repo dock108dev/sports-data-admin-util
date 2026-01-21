@@ -243,6 +243,7 @@ def test_structural_integrity_chapter_validation():
             play_start_idx=3,
             play_end_idx=1,
             plays=plays[1:4],
+            reason_codes=["test"],
         )
     
     # Test: empty plays
@@ -252,15 +253,17 @@ def test_structural_integrity_chapter_validation():
             play_start_idx=0,
             play_end_idx=2,
             plays=[],
+            reason_codes=["test"],
         )
     
-    # Test: non-contiguous plays
-    with pytest.raises(ValueError, match="non-contiguous"):
+    # Test: non-contiguous plays (causes count mismatch)
+    with pytest.raises(ValueError, match="play count mismatch"):
         Chapter(
             chapter_id="ch_001",
             play_start_idx=0,
             play_end_idx=3,
             plays=[plays[0], plays[2], plays[3]],  # Missing plays[1]
+            reason_codes=["test"],
         )
 
 
@@ -272,7 +275,7 @@ def test_structural_integrity_story_validation():
     
     # Test: empty chapters
     with pytest.raises(ValueError, match="no chapters"):
-        GameStory(game_id=1, chapters=[])
+        GameStory(game_id=1, sport="NBA", chapters=[])
     
     # Test: non-contiguous chapters
     ch1 = Chapter(
@@ -280,16 +283,18 @@ def test_structural_integrity_story_validation():
         play_start_idx=0,
         play_end_idx=2,
         plays=plays[0:3],
+        reason_codes=["test"],
     )
     ch2 = Chapter(
         chapter_id="ch_002",
         play_start_idx=5,  # Gap: should be 3
         play_end_idx=7,
         plays=plays[5:8],
+        reason_codes=["test"],
     )
     
     with pytest.raises(ValueError, match="not contiguous"):
-        GameStory(game_id=1, chapters=[ch1, ch2])
+        GameStory(game_id=1, sport="NBA", chapters=[ch1, ch2])
 
 
 # Test 4: Moment Regression Guard

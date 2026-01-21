@@ -1,5 +1,6 @@
 {
   "game_id": 12345,
+  "sport": "NBA",
   "timeline": [
     {
       "event_type": "pbp",
