@@ -134,6 +134,92 @@ export type RunInfo = {
  * - HIGH_IMPACT: Ejection, injury, etc.
  * - NEUTRAL: Normal flow
  */
+// ============================================================================
+// CHAPTERS-FIRST MODEL (ISSUE 13)
+// ============================================================================
+
+/**
+ * Chapter: A contiguous narrative segment (scene) in the game.
+ * 
+ * Chapters are the structural unit for storytelling and UI expansion.
+ * They are deterministic and defined by structural boundaries, not narrative.
+ */
+export type ChapterEntry = {
+  chapter_id: string;                   // "ch_001"
+  play_start_idx: number;               // First play index (inclusive)
+  play_end_idx: number;                 // Last play index (inclusive)
+  play_count: number;                   // Number of plays in chapter
+  reason_codes: string[];               // Why this chapter boundary exists
+  period: number | null;                // Quarter/period number
+  time_range: {                         // Game clock range
+    start: string;
+    end: string;
+  } | null;
+  
+  // AI-generated (optional)
+  chapter_summary: string | null;       // 1-3 sentence summary
+  chapter_title: string | null;         // Short title (3-8 words)
+  
+  // Plays (for expansion)
+  plays: PlayEntry[];
+};
+
+/**
+ * Game Story: The authoritative output for apps.
+ * 
+ * Represents a game as a book with chapters.
+ */
+export type GameStoryResponse = {
+  game_id: number;
+  sport: string;
+  chapters: ChapterEntry[];
+  chapter_count: number;
+  total_plays: number;
+  
+  // AI-generated full story (optional)
+  compact_story: string | null;
+  reading_time_estimate_minutes: number | null;
+  
+  // Metadata
+  generated_at: string | null;
+  metadata: Record<string, unknown>;
+};
+
+/**
+ * Story State: Running context for AI generation.
+ * 
+ * Derived deterministically from prior chapters only.
+ */
+export type StoryStateResponse = {
+  chapter_index_last_processed: number;
+  players: Record<string, PlayerStoryState>;
+  teams: Record<string, TeamStoryState>;
+  momentum_hint: "surging" | "steady" | "slipping" | "volatile" | "unknown";
+  theme_tags: string[];
+  constraints: {
+    no_future_knowledge: boolean;
+    source: string;
+  };
+};
+
+export type PlayerStoryState = {
+  player_name: string;
+  points_so_far: number;
+  made_fg_so_far: number;
+  made_3pt_so_far: number;
+  made_ft_so_far: number;
+  notable_actions_so_far: string[];
+};
+
+export type TeamStoryState = {
+  team_name: string;
+  score_so_far: number | null;
+};
+
+// ============================================================================
+// LEGACY MOMENTS MODEL (DEPRECATED)
+// ============================================================================
+
 export type MomentType =
   | "LEAD_BUILD"
   | "CUT"

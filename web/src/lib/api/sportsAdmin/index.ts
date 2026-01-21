@@ -6,3 +6,4 @@ export * from "./statKeys";
 export * from "./timelines";
 export * from "./moments";
 export * from "./payloadVersions";
+export * from "./chapters";

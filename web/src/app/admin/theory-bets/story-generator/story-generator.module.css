@@ -1,0 +1,130 @@
+/* Story Generator Landing Page Styles */
+
+.container {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.loading,
+.error,
+.emptyState {
+  padding: 3rem;
+  text-align: center;
+  font-size: 1.1rem;
+}
+
+.error {
+  color: #ef4444;
+}
+
+/* Header */
+.header {
+  margin-bottom: 2rem;
+}
+
+.header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  color: #6b7280;
+  font-size: 1rem;
+}
+
+/* Games Grid */
+.gamesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.gameCard {
+  display: block;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  transition: all 0.2s;
+  text-decoration: none;
+  color: inherit;
+}
+
+.gameCard:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  transform: translateY(-2px);
+}
+
+.gameHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.gameDate {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.league {
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.gameMatchup {
+  margin-bottom: 1rem;
+}
+
+.team {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+}
+
+.score {
+  font-size: 1.5rem;
+  color: #3b82f6;
+  margin-left: 0.5rem;
+}
+
+.at {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.875rem;
+  margin: 0.25rem 0;
+}
+
+.gameStats {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+  padding-top: 1rem;
+  border-top: 1px solid #f3f4f6;
+}
+
+.stat {
+  font-weight: 500;
+}
+
+.statusBadge {
+  background: #d1fae5;
+  color: #065f46;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
