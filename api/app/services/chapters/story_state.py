@@ -4,12 +4,15 @@ Story State: Running context derived from prior chapters only.
 This module defines the StoryState schema and derivation logic for AI context.
 
 ISSUE 0.4: AI Context Rules (Prior Chapters Only)
+ISSUE 8: Implement Running Story State Builder
 
 CONTRACT:
 - Story state is derived deterministically from prior chapters
 - No future knowledge allowed
 - Bounded lists to prevent prompt bloat
 - Serializable as JSON
+- Supports incremental updates (chapter by chapter)
+- Immutable state (returns new copy on update)
 """
 
 from __future__ import annotations
@@ -454,3 +457,118 @@ def _determine_momentum_hint(chapter: Chapter | None) -> MomentumHint:
         return MomentumHint.VOLATILE
     
     return MomentumHint.STEADY
+
+
+# ============================================================================
+# INCREMENTAL BUILDER (ISSUE 8)
+# ============================================================================
+
+def build_initial_state() -> StoryState:
+    """Build initial empty story state (before any chapters).
+    
+    Returns:
+        Empty StoryState with chapter_index_last_processed = -1
+    """
+    return StoryState(
+        chapter_index_last_processed=-1,
+    )
+
+
+def update_state(
+    previous_state: StoryState,
+    chapter: Chapter,
+    sport: str = "NBA"
+) -> StoryState:
+    """Update story state incrementally with a new chapter.
+    
+    This is the incremental builder that processes one chapter at a time.
+    It creates a NEW state (immutable) by copying previous state and adding
+    the new chapter's data.
+    
+    GUARANTEES:
+    - No mutation of previous_state
+    - Returns new StoryState instance
+    - Deterministic (same inputs → same output)
+    - Bounded (enforces max players, themes)
+    
+    Args:
+        previous_state: Previous story state (from chapters 0..N-1)
+        chapter: New chapter N to process
+        sport: Sport identifier (NBA v1 only)
+        
+    Returns:
+        New StoryState including data from chapter N
+    """
+    if sport != "NBA":
+        # Fallback for non-NBA
+        return StoryState(
+            chapter_index_last_processed=previous_state.chapter_index_last_processed + 1,
+        )
+    
+    # Copy previous state data (deep copy for mutable structures)
+    import copy
+    players = copy.deepcopy(previous_state.players)
+    teams = copy.deepcopy(previous_state.teams)
+    theme_tags = previous_state.theme_tags.copy()
+    
+    # Process new chapter
+    for play in chapter.plays:
+        _extract_player_stats(play, players)
+        _extract_notable_actions(play, players, chapter)
+    
+    _extract_team_scores(chapter, teams)
+    _extract_theme_tags(chapter, theme_tags)
+    
+    # Determine momentum hint from this chapter
+    momentum_hint = _determine_momentum_hint(chapter)
+    
+    # Truncate to top 6 players by points (deterministic)
+    top_players = dict(
+        sorted(
+            players.items(),
+            key=lambda item: (item[1].points_so_far, item[0]),  # Secondary sort by name for determinism
+            reverse=True
+        )[:6]
+    )
+    
+    # Truncate theme tags to max 8 (most frequent, deterministic)
+    theme_counts = {tag: theme_tags.count(tag) for tag in set(theme_tags)}
+    top_themes = sorted(
+        theme_counts.items(),
+        key=lambda x: (x[1], x[0]),  # Secondary sort by tag name for determinism
+        reverse=True
+    )[:8]
+    final_themes = [tag for tag, _ in top_themes]
+    
+    return StoryState(
+        chapter_index_last_processed=previous_state.chapter_index_last_processed + 1,
+        players=top_players,
+        teams=teams,
+        momentum_hint=momentum_hint,
+        theme_tags=final_themes,
+    )
+
+
+def build_state_incrementally(
+    chapters: list[Chapter],
+    sport: str = "NBA"
+) -> list[StoryState]:
+    """Build story state incrementally for each chapter.
+    
+    This demonstrates the incremental builder by processing chapters one at a time.
+    
+    Args:
+        chapters: List of chapters to process (in order)
+        sport: Sport identifier (NBA v1 only)
+        
+    Returns:
+        List of StoryState objects, one after each chapter
+    """
+    states = []
+    current_state = build_initial_state()
+    
+    for chapter in chapters:
+        current_state = update_state(current_state, chapter, sport)
+        states.append(current_state)
+    
+    return states

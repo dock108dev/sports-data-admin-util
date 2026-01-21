@@ -66,14 +66,19 @@ class ChapterizerV1:
     - Deterministic and explainable
     """
     
-    def __init__(self, config: ChapterizerConfig | None = None):
+    def __init__(self, config: ChapterizerConfig | None = None, debug: bool = False):
         """Initialize chapterizer.
         
         Args:
             config: Configuration (uses defaults if None)
+            debug: Enable debug logging (Issue 7)
         """
         self.config = config or ChapterizerConfig()
         self.rules = NBABoundaryRules()
+        
+        # Issue 7: Debug logger for breakpoint tracing
+        from .debug_logger import ChapterDebugLogger
+        self.debug_logger = ChapterDebugLogger(enabled=debug)
     
     def chapterize(
         self,
@@ -125,9 +130,7 @@ class ChapterizerV1:
         chapters = self._create_chapters(plays, boundaries)
         logger.info(f"Created {len(chapters)} chapters")
         
-        # Step 4: Validate and build GameStory
-        self._validate_chapters(chapters, plays)
-        
+        # Step 4: Build GameStory
         story = GameStory(
             game_id=game_id,
             sport=sport,
@@ -135,6 +138,24 @@ class ChapterizerV1:
             compact_story=None,
             reading_time_estimate_minutes=None,
             metadata=metadata or {},
+        )
+        
+        # Step 5: Validate coverage (Issue 6)
+        from .coverage_validator import validate_game_story_coverage
+        
+        validation_result = validate_game_story_coverage(story, fail_fast=True)
+        
+        # Store fingerprint in metadata
+        story.metadata["chapters_fingerprint"] = validation_result.chapters_fingerprint
+        
+        logger.info(
+            "coverage_validation",
+            extra={
+                "passed": validation_result.passed,
+                "fingerprint": validation_result.chapters_fingerprint,
+                "play_count": validation_result.play_count,
+                "chapter_count": validation_result.chapter_count,
+            }
         )
         
         # Diagnostic: check soft cap
@@ -203,6 +224,12 @@ class ChapterizerV1:
             
             # Skip explicit non-boundaries
             if is_non_boundary_event(event):
+                self.debug_logger.log_boundary_ignored(
+                    play_idx=i,
+                    event_type_name=event.get("event_type", "unknown"),
+                    rule_name="non_boundary_filter",
+                    ignore_reason="explicit_non_boundary"
+                )
                 continue
             
             # Collect triggered reason codes
@@ -214,10 +241,30 @@ class ChapterizerV1:
                 logger.debug(
                     f"Boundary at play {i}: PERIOD_START (quarter {event.get('quarter')})"
                 )
+                from .boundary_rules import BOUNDARY_PRECEDENCE
+                from .debug_logger import BoundaryAction
+                self.debug_logger.log_boundary_triggered(
+                    play_idx=i,
+                    event_type_name="period_start",
+                    reason_codes=[BoundaryReasonCode.PERIOD_START.value],
+                    rule_name="is_period_start",
+                    rule_precedence=BOUNDARY_PRECEDENCE.get(BoundaryReasonCode.PERIOD_START, 0),
+                    boundary_action=BoundaryAction.START_NEW
+                )
             
             if self.rules.is_overtime_start(event, prev_event):
                 triggered_codes.append(BoundaryReasonCode.OVERTIME_START)
                 logger.debug(f"Boundary at play {i}: OVERTIME_START")
+                from .boundary_rules import BOUNDARY_PRECEDENCE
+                from .debug_logger import BoundaryAction
+                self.debug_logger.log_boundary_triggered(
+                    play_idx=i,
+                    event_type_name="overtime_start",
+                    reason_codes=[BoundaryReasonCode.OVERTIME_START.value],
+                    rule_name="is_overtime_start",
+                    rule_precedence=BOUNDARY_PRECEDENCE.get(BoundaryReasonCode.OVERTIME_START, 0),
+                    boundary_action=BoundaryAction.START_NEW
+                )
             
             # 2. Scene reset boundaries (medium precedence)
             is_timeout = self.rules.is_timeout(event)
@@ -231,8 +278,28 @@ class ChapterizerV1:
                         reset_cluster_start = i
                         if is_timeout:
                             triggered_codes.append(BoundaryReasonCode.TIMEOUT)
+                            from .boundary_rules import BOUNDARY_PRECEDENCE
+                            from .debug_logger import BoundaryAction
+                            self.debug_logger.log_boundary_triggered(
+                                play_idx=i,
+                                event_type_name="timeout",
+                                reason_codes=[BoundaryReasonCode.TIMEOUT.value],
+                                rule_name="is_timeout",
+                                rule_precedence=BOUNDARY_PRECEDENCE.get(BoundaryReasonCode.TIMEOUT, 0),
+                                boundary_action=BoundaryAction.START_NEW
+                            )
                         if is_review:
                             triggered_codes.append(BoundaryReasonCode.REVIEW)
+                            from .boundary_rules import BOUNDARY_PRECEDENCE
+                            from .debug_logger import BoundaryAction
+                            self.debug_logger.log_boundary_triggered(
+                                play_idx=i,
+                                event_type_name="review",
+                                reason_codes=[BoundaryReasonCode.REVIEW.value],
+                                rule_name="is_review",
+                                rule_precedence=BOUNDARY_PRECEDENCE.get(BoundaryReasonCode.REVIEW, 0),
+                                boundary_action=BoundaryAction.START_NEW
+                            )
                     else:
                         # Check if within cluster window
                         if i - reset_cluster_start <= self.config.reset_cluster_window_plays:
@@ -240,20 +307,66 @@ class ChapterizerV1:
                             logger.debug(
                                 f"Play {i}: Reset event collapsed into cluster at {reset_cluster_start}"
                             )
+                            self.debug_logger.log_boundary_ignored(
+                                play_idx=i,
+                                event_type_name="timeout" if is_timeout else "review",
+                                rule_name="reset_cluster_collapse",
+                                ignore_reason=f"collapsed_into_cluster_at_{reset_cluster_start}"
+                            )
                             continue
                         else:
                             # Outside window, start new cluster
                             reset_cluster_start = i
                             if is_timeout:
                                 triggered_codes.append(BoundaryReasonCode.TIMEOUT)
+                                from .boundary_rules import BOUNDARY_PRECEDENCE
+                                from .debug_logger import BoundaryAction
+                                self.debug_logger.log_boundary_triggered(
+                                    play_idx=i,
+                                    event_type_name="timeout",
+                                    reason_codes=[BoundaryReasonCode.TIMEOUT.value],
+                                    rule_name="is_timeout",
+                                    rule_precedence=BOUNDARY_PRECEDENCE.get(BoundaryReasonCode.TIMEOUT, 0),
+                                    boundary_action=BoundaryAction.START_NEW
+                                )
                             if is_review:
                                 triggered_codes.append(BoundaryReasonCode.REVIEW)
+                                from .boundary_rules import BOUNDARY_PRECEDENCE
+                                from .debug_logger import BoundaryAction
+                                self.debug_logger.log_boundary_triggered(
+                                    play_idx=i,
+                                    event_type_name="review",
+                                    reason_codes=[BoundaryReasonCode.REVIEW.value],
+                                    rule_name="is_review",
+                                    rule_precedence=BOUNDARY_PRECEDENCE.get(BoundaryReasonCode.REVIEW, 0),
+                                    boundary_action=BoundaryAction.START_NEW
+                                )
                 else:
                     # No clustering, create boundary
                     if is_timeout:
                         triggered_codes.append(BoundaryReasonCode.TIMEOUT)
+                        from .boundary_rules import BOUNDARY_PRECEDENCE
+                        from .debug_logger import BoundaryAction
+                        self.debug_logger.log_boundary_triggered(
+                            play_idx=i,
+                            event_type_name="timeout",
+                            reason_codes=[BoundaryReasonCode.TIMEOUT.value],
+                            rule_name="is_timeout",
+                            rule_precedence=BOUNDARY_PRECEDENCE.get(BoundaryReasonCode.TIMEOUT, 0),
+                            boundary_action=BoundaryAction.START_NEW
+                        )
                     if is_review:
                         triggered_codes.append(BoundaryReasonCode.REVIEW)
+                        from .boundary_rules import BOUNDARY_PRECEDENCE
+                        from .debug_logger import BoundaryAction
+                        self.debug_logger.log_boundary_triggered(
+                            play_idx=i,
+                            event_type_name="review",
+                            reason_codes=[BoundaryReasonCode.REVIEW.value],
+                            rule_name="is_review",
+                            rule_precedence=BOUNDARY_PRECEDENCE.get(BoundaryReasonCode.REVIEW, 0),
+                            boundary_action=BoundaryAction.START_NEW
+                        )
                 
                 if triggered_codes:
                     logger.debug(
@@ -271,6 +384,16 @@ class ChapterizerV1:
                 logger.debug(
                     f"Boundary at play {i}: CRUNCH_START "
                     f"(Q{event.get('quarter')}, clock {event.get('game_clock')})"
+                )
+                from .boundary_rules import BOUNDARY_PRECEDENCE
+                from .debug_logger import BoundaryAction
+                self.debug_logger.log_boundary_triggered(
+                    play_idx=i,
+                    event_type_name="crunch_start",
+                    reason_codes=[BoundaryReasonCode.CRUNCH_START.value],
+                    rule_name="is_crunch_start",
+                    rule_precedence=BOUNDARY_PRECEDENCE.get(BoundaryReasonCode.CRUNCH_START, 0),
+                    boundary_action=BoundaryAction.START_NEW
                 )
             
             # Note: RUN_START and RUN_END_RESPONSE are stubbed in v1
@@ -385,6 +508,26 @@ class ChapterizerV1:
                     f"reasons: {', '.join(reason_codes)}"
                 )
                 
+                # Issue 7: Log chapter start/end
+                self.debug_logger.log_chapter_start(
+                    chapter_id=chapter.chapter_id,
+                    start_play_idx=chapter.play_start_idx,
+                    trigger_event_type=chapter_plays[0].raw_data.get("event_type"),
+                    reason_codes=reason_codes,
+                    period=period,
+                    clock_time=time_range.start if time_range else None
+                )
+                
+                self.debug_logger.log_chapter_end(
+                    chapter_id=chapter.chapter_id,
+                    end_play_idx=chapter.play_end_idx,
+                    trigger_event_type=chapter_plays[-1].raw_data.get("event_type"),
+                    reason_codes=reason_codes,
+                    period=period,
+                    clock_time=time_range.end if time_range else None,
+                    chapter_play_count=len(chapter_plays)
+                )
+                
                 chapter_id += 1
             
             current_start_idx = boundary.play_index
@@ -414,6 +557,26 @@ class ChapterizerV1:
                 f"plays {chapter.play_start_idx}-{chapter.play_end_idx} "
                 f"({len(final_plays)} plays), "
                 f"reasons: {', '.join(reason_codes)}"
+            )
+            
+            # Issue 7: Log chapter start/end
+            self.debug_logger.log_chapter_start(
+                chapter_id=chapter.chapter_id,
+                start_play_idx=chapter.play_start_idx,
+                trigger_event_type=final_plays[0].raw_data.get("event_type"),
+                reason_codes=reason_codes,
+                period=period,
+                clock_time=time_range.start if time_range else None
+            )
+            
+            self.debug_logger.log_chapter_end(
+                chapter_id=chapter.chapter_id,
+                end_play_idx=chapter.play_end_idx,
+                trigger_event_type=final_plays[-1].raw_data.get("event_type"),
+                reason_codes=reason_codes,
+                period=period,
+                clock_time=time_range.end if time_range else None,
+                chapter_play_count=len(final_plays)
             )
         
         logger.info(
@@ -447,46 +610,6 @@ class ChapterizerV1:
         
         return period, time_range
     
-    def _validate_chapters(self, chapters: list[Chapter], plays: list[Play]) -> None:
-        """Validate chapters for coverage and contiguity.
-        
-        Args:
-            chapters: Created chapters
-            plays: All plays
-            
-        Raises:
-            ValueError: If validation fails
-        """
-        if not chapters:
-            raise ValueError("No chapters created")
-        
-        # Check coverage: all plays must be in exactly one chapter
-        covered_indices = set()
-        for chapter in chapters:
-            for play in chapter.plays:
-                if play.index in covered_indices:
-                    raise ValueError(f"Play {play.index} appears in multiple chapters")
-                covered_indices.add(play.index)
-        
-        play_indices = {p.index for p in plays}
-        if covered_indices != play_indices:
-            missing = play_indices - covered_indices
-            extra = covered_indices - play_indices
-            raise ValueError(
-                f"Coverage mismatch: missing {missing}, extra {extra}"
-            )
-        
-        # Check contiguity: chapters must be ordered and non-overlapping
-        for i in range(len(chapters) - 1):
-            curr = chapters[i]
-            next_ch = chapters[i + 1]
-            
-            if curr.play_end_idx >= next_ch.play_start_idx:
-                raise ValueError(
-                    f"Chapters {curr.chapter_id} and {next_ch.chapter_id} overlap"
-                )
-        
-        logger.debug("Chapter validation passed: full coverage and contiguity")
     
     def _count_reason_codes(self, boundaries: list[ChapterBoundary]) -> dict[str, int]:
         """Count reason code distribution for logging.

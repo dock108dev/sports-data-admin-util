@@ -54,11 +54,14 @@ logger = logging.getLogger(__name__)
 def main():
     """Main entry point."""
     if len(sys.argv) < 2:
-        print("Usage: python -m app.services.chapters.cli <input.json> [--chapter-index N | --build-story-state]", file=sys.stderr)
+        print("Usage: python -m app.services.chapters.cli <input.json> [OPTIONS]", file=sys.stderr)
         print("\nModes:", file=sys.stderr)
         print("  Default: Build chapters and output GameStory", file=sys.stderr)
         print("  --chapter-index N: Show AI input payload for Chapter N (0-based)", file=sys.stderr)
         print("  --build-story-state: Show story state after each chapter", file=sys.stderr)
+        print("  --debug-chapters: Show structured debug logs for chapter boundaries", file=sys.stderr)
+        print("  --print-ai-signals --chapter-index N: Show AI-visible signals for Chapter N", file=sys.stderr)
+        print("  --generate-chapter-summary --chapter-index N: Generate AI summary for Chapter N", file=sys.stderr)
         sys.exit(1)
     
     input_path = Path(sys.argv[1])
@@ -66,6 +69,7 @@ def main():
     # Parse mode
     mode = "default"
     chapter_index = None
+    debug_enabled = False
     
     if len(sys.argv) > 2:
         if sys.argv[2] == "--chapter-index" and len(sys.argv) > 3:
@@ -73,6 +77,15 @@ def main():
             chapter_index = int(sys.argv[3])
         elif sys.argv[2] == "--build-story-state":
             mode = "story_state"
+        elif sys.argv[2] == "--debug-chapters":
+            mode = "debug_chapters"
+            debug_enabled = True
+        elif sys.argv[2] == "--print-ai-signals" and len(sys.argv) > 4 and sys.argv[3] == "--chapter-index":
+            mode = "print_ai_signals"
+            chapter_index = int(sys.argv[4])
+        elif sys.argv[2] == "--generate-chapter-summary" and len(sys.argv) > 4 and sys.argv[3] == "--chapter-index":
+            mode = "generate_chapter_summary"
+            chapter_index = int(sys.argv[4])
     
     if not input_path.exists():
         print(f"Error: File not found: {input_path}", file=sys.stderr)
@@ -98,7 +111,14 @@ def main():
     
     # Build chapters
     try:
-        story = build_chapters(timeline, game_id, sport, metadata)
+        if debug_enabled:
+            # Use chapterizer directly with debug enabled
+            from .chapterizer import ChapterizerV1
+            chapterizer = ChapterizerV1(debug=True)
+            story = chapterizer.chapterize(timeline, game_id, sport, metadata)
+        else:
+            story = build_chapters(timeline, game_id, sport, metadata)
+            chapterizer = None
     except Exception as e:
         print(f"Error building chapters: {e}", file=sys.stderr)
         logger.exception("Chapter building failed")
@@ -109,10 +129,20 @@ def main():
     
     # Execute mode
     if mode == "default":
+        # Show coverage validation
+        from .coverage_validator import validate_game_story_coverage
+        
+        validation = validate_game_story_coverage(story, fail_fast=False)
+        print(f"\n{validation}", file=sys.stderr)
+        
         # Output GameStory
         output = story.to_dict()
         print(json.dumps(output, indent=2))
         logger.info("Done")
+        
+        # Exit with error if validation failed
+        if not validation.passed:
+            sys.exit(1)
     
     elif mode == "chapter_ai_input":
         # Show AI input for specific chapter
@@ -169,6 +199,129 @@ def main():
             logger.info(f"  - Momentum: {state.momentum_hint.value}")
             logger.info(f"  - Theme tags: {len(state.theme_tags)}")
         
+        print(json.dumps(output, indent=2))
+        logger.info("Done")
+    
+    elif mode == "debug_chapters":
+        # Show debug logs
+        if chapterizer is None:
+            print("Error: Debug mode requires chapterizer", file=sys.stderr)
+            sys.exit(1)
+        
+        from .debug_logger import ChapterLogEventType
+        
+        logger.info("Chapter Debug Logs:")
+        
+        # Show chapter summary
+        print("\n=== CHAPTER SUMMARY ===", file=sys.stderr)
+        for chapter in story.chapters:
+            print(
+                f"{chapter.chapter_id}: plays {chapter.play_start_idx}-{chapter.play_end_idx} "
+                f"({chapter.play_count} plays), "
+                f"period={chapter.period}, "
+                f"reasons={chapter.reason_codes}",
+                file=sys.stderr
+            )
+        
+        # Show debug events
+        print("\n=== DEBUG EVENTS ===", file=sys.stderr)
+        events = chapterizer.debug_logger.get_events()
+        print(f"Total events: {len(events)}", file=sys.stderr)
+        
+        # Group by event type
+        for event_type in ChapterLogEventType:
+            type_events = chapterizer.debug_logger.get_events_by_type(event_type)
+            if type_events:
+                print(f"\n{event_type.value}: {len(type_events)} events", file=sys.stderr)
+        
+        # Output full JSON
+        print(chapterizer.debug_logger.to_json())
+        logger.info("Done")
+    
+    elif mode == "print_ai_signals":
+        # Show AI-visible signals for specific chapter
+        if chapter_index is None or chapter_index < 0 or chapter_index >= story.chapter_count:
+            print(f"Error: Invalid chapter index {chapter_index}. Must be 0-{story.chapter_count-1}", file=sys.stderr)
+            sys.exit(1)
+        
+        from .story_state import derive_story_state_from_chapters
+        from .ai_signals import format_ai_signals_summary, validate_ai_signals
+        
+        logger.info(f"Building AI signals for Chapter {chapter_index}")
+        
+        # Build story state from prior chapters
+        prior_chapters = story.chapters[:chapter_index] if chapter_index > 0 else []
+        story_state = derive_story_state_from_chapters(prior_chapters, sport=sport)
+        
+        # Validate signals
+        try:
+            validate_ai_signals(story_state)
+            validation_status = "✓ VALID"
+        except Exception as e:
+            validation_status = f"✗ INVALID: {e}"
+        
+        # Print summary
+        print(f"\n=== AI SIGNALS FOR CHAPTER {chapter_index} ===", file=sys.stderr)
+        print(f"Prior chapters processed: {story_state.chapter_index_last_processed + 1}", file=sys.stderr)
+        print(f"Validation: {validation_status}\n", file=sys.stderr)
+        
+        # Print formatted summary
+        summary = format_ai_signals_summary(story_state)
+        print(summary, file=sys.stderr)
+        
+        # Output JSON
+        output = {
+            "chapter_index": chapter_index,
+            "prior_chapters_count": story_state.chapter_index_last_processed + 1,
+            "signals": story_state.to_dict(),
+            "validation": validation_status,
+        }
+        print(json.dumps(output, indent=2))
+        logger.info("Done")
+    
+    elif mode == "generate_chapter_summary":
+        # Generate AI summary for specific chapter
+        if chapter_index is None or chapter_index < 0 or chapter_index >= story.chapter_count:
+            print(f"Error: Invalid chapter index {chapter_index}. Must be 0-{story.chapter_count-1}", file=sys.stderr)
+            sys.exit(1)
+        
+        from .summary_generator import generate_chapter_summary
+        
+        logger.info(f"Generating summary for Chapter {chapter_index}")
+        
+        current_chapter = story.chapters[chapter_index]
+        prior_chapters = story.chapters[:chapter_index]
+        
+        # Generate summary (no AI client = mock mode)
+        result = generate_chapter_summary(
+            current_chapter=current_chapter,
+            prior_chapters=prior_chapters,
+            sport=sport,
+            ai_client=None,  # Mock mode for CLI
+        )
+        
+        # Print summary
+        print(f"\n=== CHAPTER {chapter_index} SUMMARY ===", file=sys.stderr)
+        print(f"Chapter ID: {current_chapter.chapter_id}", file=sys.stderr)
+        print(f"Play Range: {current_chapter.play_start_idx}-{current_chapter.play_end_idx}", file=sys.stderr)
+        print(f"Plays: {len(current_chapter.plays)}", file=sys.stderr)
+        print(f"Reason Codes: {', '.join(current_chapter.reason_codes)}", file=sys.stderr)
+        
+        if result.spoiler_warnings:
+            print(f"\n⚠️  SPOILER WARNINGS: {', '.join(result.spoiler_warnings)}", file=sys.stderr)
+        
+        print(f"\nSummary: {result.chapter_summary}", file=sys.stderr)
+        if result.chapter_title:
+            print(f"Title: {result.chapter_title}", file=sys.stderr)
+        
+        # Output JSON
+        output = {
+            "chapter_index": result.chapter_index,
+            "chapter_id": current_chapter.chapter_id,
+            "chapter_summary": result.chapter_summary,
+            "chapter_title": result.chapter_title,
+            "spoiler_warnings": result.spoiler_warnings,
+        }
         print(json.dumps(output, indent=2))
         logger.info("Done")
 
