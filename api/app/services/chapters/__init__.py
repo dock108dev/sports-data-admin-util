@@ -90,6 +90,18 @@ from .running_stats import (
     compute_section_delta,
     compute_section_deltas_from_snapshots,
 )
+from .beat_classifier import (
+    # Types
+    BeatType,
+    ChapterContext,
+    BeatClassification,
+    # Functions
+    classify_chapter_beat,
+    classify_all_chapters,
+    build_chapter_context,
+    format_classification_debug,
+    get_beat_distribution,
+)
 
 __all__ = [
     # Core types
@@ -168,4 +180,13 @@ __all__ = [
     "build_running_snapshots",
     "compute_section_delta",
     "compute_section_deltas_from_snapshots",
+    # Beat classifier
+    "BeatType",
+    "ChapterContext",
+    "BeatClassification",
+    "classify_chapter_beat",
+    "classify_all_chapters",
+    "build_chapter_context",
+    "format_classification_debug",
+    "get_beat_distribution",
 ]
