@@ -136,6 +136,14 @@ from .game_quality import (
     compute_quality_score,
     format_quality_debug,
 )
+from .target_length import (
+    # Types
+    TargetLengthResult,
+    # Functions
+    select_target_word_count,
+    get_target_words,
+    format_target_debug,
+)
 
 __all__ = [
     # Core types
@@ -248,4 +256,9 @@ __all__ = [
     "count_lead_changes",
     "compute_quality_score",
     "format_quality_debug",
+    # Target word count
+    "TargetLengthResult",
+    "select_target_word_count",
+    "get_target_words",
+    "format_target_debug",
 ]
