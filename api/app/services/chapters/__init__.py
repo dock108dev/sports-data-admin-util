@@ -160,6 +160,31 @@ from .story_renderer import (
     validate_render_result,
     format_render_debug,
 )
+from .story_validator import (
+    # Error types
+    StoryValidationError,
+    SectionOrderingError,
+    StatConsistencyError,
+    WordCountError,
+    PlayerInventionError,
+    StatInventionError,
+    OutcomeContradictionError,
+    # Result type
+    ValidationResult,
+    # Validation functions
+    validate_section_ordering,
+    validate_stat_consistency,
+    validate_word_count,
+    validate_no_new_players,
+    validate_no_stat_invention,
+    validate_no_outcome_contradictions,
+    validate_pre_render,
+    validate_post_render,
+    validate_full_pipeline,
+    format_validation_debug,
+    # Constants
+    WORD_COUNT_TOLERANCE_PCT,
+)
 
 __all__ = [
     # Core types
@@ -290,4 +315,24 @@ __all__ = [
     "validate_render_input",
     "validate_render_result",
     "format_render_debug",
+    # Story validator (FAIL LOUD)
+    "StoryValidationError",
+    "SectionOrderingError",
+    "StatConsistencyError",
+    "WordCountError",
+    "PlayerInventionError",
+    "StatInventionError",
+    "OutcomeContradictionError",
+    "ValidationResult",
+    "validate_section_ordering",
+    "validate_stat_consistency",
+    "validate_word_count",
+    "validate_no_new_players",
+    "validate_no_stat_invention",
+    "validate_no_outcome_contradictions",
+    "validate_pre_render",
+    "validate_post_render",
+    "validate_full_pipeline",
+    "format_validation_debug",
+    "WORD_COUNT_TOLERANCE_PCT",
 ]
