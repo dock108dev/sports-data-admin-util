@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { GameSummary } from "@/lib/api/sportsAdmin/types";
 import { listGames } from "@/lib/api/sportsAdmin";
-import { bulkGenerateStories } from "@/lib/api/sportsAdmin/chapters";
+import { bulkGenerateStoriesAsync, getBulkGenerateStatus } from "@/lib/api/sportsAdmin/chapters";
 import styles from "./story-generator.module.css";
 
 /**
@@ -25,6 +25,8 @@ export default function StoryGeneratorLandingPage() {
   const [selectedLeagues, setSelectedLeagues] = useState<string[]>(["NBA"]);
   const [generating, setGenerating] = useState(false);
   const [generationResult, setGenerationResult] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ current: number; total: number; status: string } | null>(null);
 
   useEffect(() => {
     loadGames();
@@ -59,24 +61,68 @@ export default function StoryGeneratorLandingPage() {
     
     setGenerating(true);
     setGenerationResult(null);
+    setProgress(null);
     
     try {
-      const result = await bulkGenerateStories({
+      // Start the background job
+      const job = await bulkGenerateStoriesAsync({
         start_date: startDate,
         end_date: endDate,
         leagues: selectedLeagues,
         force: false,
       });
       
-      setGenerationResult(
-        `✓ Generated stories for ${result.successful} of ${result.total_games} games. ${result.failed > 0 ? `${result.failed} failed.` : ""}`
-      );
+      setJobId(job.job_id);
+      setGenerationResult("Story generation started...");
       
-      // Reload games to show updated status
-      await loadGames();
+      // Poll for status
+      const pollInterval = setInterval(async () => {
+        try {
+          const status = await getBulkGenerateStatus(job.job_id);
+          
+          if (status.state === "PROGRESS") {
+            setProgress({
+              current: status.current || 0,
+              total: status.total || 0,
+              status: status.status || "Processing...",
+            });
+            setGenerationResult(
+              `Processing: ${status.current || 0}/${status.total || 0} games (${status.successful || 0} successful, ${status.failed || 0} failed, ${status.cached || 0} cached)`
+            );
+          } else if (status.state === "SUCCESS") {
+            clearInterval(pollInterval);
+            setGenerating(false);
+            setProgress(null);
+            const result = status.result;
+            if (result) {
+              setGenerationResult(
+                `✓ Generated stories for ${result.successful} of ${result.total_games} games. ${result.failed > 0 ? `${result.failed} failed.` : ""} (${result.cached} cached, ${result.generated} newly generated)`
+              );
+            }
+            // Reload games to show updated status
+            await loadGames();
+          } else if (status.state === "FAILURE") {
+            clearInterval(pollInterval);
+            setGenerating(false);
+            setProgress(null);
+            setGenerationResult(`✗ Generation failed: ${status.status}`);
+          }
+        } catch (err) {
+          console.error("Failed to poll status:", err);
+        }
+      }, 2000); // Poll every 2 seconds
+      
+      // Clean up interval after 10 minutes max
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        if (generating) {
+          setGenerating(false);
+          setGenerationResult("✗ Generation timed out. Check server logs.");
+        }
+      }, 600000);
+      
     } catch (err) {
       setGenerationResult(`✗ ${err instanceof Error ? err.message : "Generation failed"}`);
-    } finally {
       setGenerating(false);
     }
   };
@@ -167,6 +213,15 @@ export default function StoryGeneratorLandingPage() {
           >
             {generating ? "Generating..." : "Generate Stories"}
           </button>
+          
+          {progress && (
+            <div className={styles.progressBar}>
+              <div className={styles.progressFill} style={{ width: `${(progress.current / progress.total) * 100}%` }} />
+              <div className={styles.progressText}>
+                {progress.current} / {progress.total} games
+              </div>
+            </div>
+          )}
           
           {generationResult && (
             <div className={generationResult.startsWith("✓") ? styles.successMessage : styles.errorMessage}>

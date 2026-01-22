@@ -166,29 +166,20 @@ export async function regenerateAll(
 }
 
 /**
- * Bulk generate stories for games in a date range.
+ * Bulk generate stories for games in a date range (ASYNC - returns job ID).
  */
-export async function bulkGenerateStories(params: {
+export async function bulkGenerateStoriesAsync(params: {
   start_date: string;
   end_date: string;
   leagues: string[];
   force: boolean;
 }): Promise<{
-  success: boolean;
+  job_id: string;
   message: string;
-  total_games: number;
-  successful: number;
-  failed: number;
-  results: Array<{
-    game_id: number;
-    success: boolean;
-    message: string;
-    chapter_count?: number;
-    error?: string;
-  }>;
+  status_url: string;
 }> {
   const response = await fetch(
-    `${API_BASE}/api/admin/sports/games/bulk-generate`,
+    `${API_BASE}/api/admin/sports/games/bulk-generate-async`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -197,8 +188,43 @@ export async function bulkGenerateStories(params: {
   );
   
   if (!response.ok) {
-    throw new Error(`Failed to bulk generate: ${response.statusText}`);
+    throw new Error(`Failed to start bulk generation: ${response.statusText}`);
   }
   
   return response.json();
 }
+
+/**
+ * Check status of a background bulk generation job.
+ */
+export async function getBulkGenerateStatus(jobId: string): Promise<{
+  job_id: string;
+  state: string;
+  current?: number;
+  total?: number;
+  status?: string;
+  successful?: number;
+  failed?: number;
+  cached?: number;
+  result?: {
+    success: boolean;
+    message: string;
+    total_games: number;
+    successful: number;
+    failed: number;
+    cached: number;
+    generated: number;
+  };
+}> {
+  const response = await fetch(
+    `${API_BASE}/api/admin/sports/games/bulk-generate-status/${jobId}`
+  );
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get job status: ${response.statusText}`);
+  }
+  
+  return response.json();
+}
+
+// Synchronous bulk generation removed - use bulkGenerateStoriesAsync instead
