@@ -144,6 +144,22 @@ from .target_length import (
     get_target_words,
     format_target_debug,
 )
+from .story_renderer import (
+    # Types
+    ClosingContext,
+    SectionRenderInput,
+    StoryRenderInput,
+    StoryRenderResult,
+    StoryRenderError,
+    # Functions
+    build_section_render_input,
+    build_story_render_input,
+    build_render_prompt,
+    render_story,
+    validate_render_input,
+    validate_render_result,
+    format_render_debug,
+)
 
 __all__ = [
     # Core types
@@ -261,4 +277,17 @@ __all__ = [
     "select_target_word_count",
     "get_target_words",
     "format_target_debug",
+    # Story renderer (ONLY AI rendering path)
+    "ClosingContext",
+    "SectionRenderInput",
+    "StoryRenderInput",
+    "StoryRenderResult",
+    "StoryRenderError",
+    "build_section_render_input",
+    "build_story_render_input",
+    "build_render_prompt",
+    "render_story",
+    "validate_render_input",
+    "validate_render_result",
+    "format_render_debug",
 ]
