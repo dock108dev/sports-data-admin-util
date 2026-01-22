@@ -1,14 +1,13 @@
 """
 Social event processing for timeline generation.
 
-This module handles:
-1. Social post role assignment (heuristic + AI-enhanced)
+Handles:
+1. Social post role assignment (heuristic-based)
 2. Phase assignment for social posts
 3. Building social timeline events
 
 Related modules:
 - timeline_generator.py: Main timeline assembly
-- ai_client.py: AI classification for role assignment
 
 See docs/SOCIAL_EVENT_ROLES.md for role taxonomy.
 """
@@ -21,7 +20,6 @@ from datetime import datetime
 from typing import Any, Iterable, Sequence
 
 from .. import db_models
-from .ai_client import classify_social_role, is_ai_available
 
 logger = logging.getLogger(__name__)
 

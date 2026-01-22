@@ -1,23 +1,15 @@
 """
 Timeline artifact generation for finalized games.
 
-This module is the core timeline generator. It:
-1. Builds PBP events from game plays (with phase assignment)
-2. Builds social events from posts (with phase and role assignment)
-3. Merges events using phase-first ordering
-4. Generates summaries from the assembled timeline
+Builds PBP and social events for game timelines:
+1. PBP events from game plays (with phase assignment)
+2. Social events from posts (with phase and role assignment)
+3. Merge events using phase-first ordering
+4. Validate timeline structure
 
 Related modules:
 - social_events.py: Social post processing and role assignment
-- summary_builder.py: Reading guide generation
-- game_analysis.py: Moment partitioning and AI enrichment
-- compact_mode.py: Timeline compression for compact view
 - timeline_validation.py: Validation and sanity checks
-- ai_client.py: OpenAI integration for interpretation (not ordering)
-
-AI Usage Principle:
-    OpenAI is used ONLY for interpretation and narration - never for
-    ordering, filtering, or correctness. See docs/TECHNICAL_FLOW.md.
 
 See docs/TIMELINE_ASSEMBLY.md for the assembly contract.
 """
@@ -36,9 +28,7 @@ from .. import db_models
 from ..db import AsyncSession
 from ..utils.datetime_utils import now_utc, parse_clock_to_seconds
 from .timeline_validation import validate_and_log, TimelineValidationError
-from .game_analysis import build_game_analysis_async
 from .social_events import build_social_events, build_social_events_async
-from .summary_builder import build_nba_summary, build_summary_from_timeline_async
 
 logger = logging.getLogger(__name__)
 
@@ -592,13 +582,13 @@ async def generate_timeline_artifact(
             timeline_version=timeline_version,
             game_context=game_context,
         )
-        moment_count = len(game_analysis.get("moments", []))
+        chapter_count = len(game_analysis.get("chapters", []))
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
                 "game_id": game_id,
                 "phase": "game_analysis",
-                "moment_count": moment_count,
+                "chapter_count": chapter_count,
             },
         )
 

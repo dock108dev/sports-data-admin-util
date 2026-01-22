@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { fetchGame, rescrapeGame, resyncOdds, type AdminGameDetail } from "@/lib/api/sportsAdmin";
 import { CollapsibleSection } from "./CollapsibleSection";
-import { MomentsSection } from "./MomentsSection";
 import { PbpSection } from "./PbpSection";
 import { SocialPostsSection } from "./SocialPostsSection";
 import styles from "./styles.module.css";
@@ -48,7 +47,6 @@ export default function GameDetailClient() {
       { label: "Odds", ok: game.game.has_odds },
       { label: `Social (${game.game.social_post_count || 0})`, ok: game.game.has_social },
       { label: `PBP (${game.game.play_count || 0})`, ok: game.game.has_pbp },
-      { label: `Moments (${game.moments?.length || 0})`, ok: (game.moments?.length || 0) > 0 },
     ];
   }, [game]);
 
@@ -362,8 +360,6 @@ export default function GameDetailClient() {
       </CollapsibleSection>
 
       <SocialPostsSection posts={game.social_posts || []} />
-
-      <MomentsSection moments={game.moments || []} />
 
       <PbpSection plays={game.plays || []} />
 

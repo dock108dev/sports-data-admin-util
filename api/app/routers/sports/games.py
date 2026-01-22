@@ -38,8 +38,6 @@ from .schemas import (
     GameListResponse,
     GameMeta,
     GamePreviewScoreResponse,
-    MomentEntry,
-    MomentsResponse,
     ScrapeRunConfig,
     JobResponse,
     OddsEntry,
@@ -474,86 +472,4 @@ async def generate_game_timeline(
         timeline=artifact.timeline,
         summary=artifact.summary,
         game_analysis=artifact.game_analysis,
-    )
-
-
-@router.get("/games/{game_id}/moments", response_model=MomentsResponse)
-async def get_game_moments(
-    game_id: int,
-    session: AsyncSession = Depends(get_db),
-) -> MomentsResponse:
-    """
-    Get all moments for a game, ordered chronologically.
-    
-    The game timeline is fully partitioned into contiguous, non-overlapping moments.
-    Every play belongs to exactly one moment. Moments are ordered by start_play_id.
-    
-    Use this endpoint for:
-    - Full game coverage
-    - Expandable/collapsible moment UI
-    - Timeline linking
-    """
-    result = await session.execute(
-        select(db_models.SportsGame)
-        .options(selectinload(db_models.SportsGame.timeline_artifacts))
-        .where(db_models.SportsGame.id == game_id)
-    )
-    game = result.scalar_one_or_none()
-    if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
-    
-    timeline_artifacts = game.timeline_artifacts or []
-    if not timeline_artifacts:
-        return MomentsResponse(
-            game_id=game_id,
-            generated_at=None,
-            moments=[],
-            total_count=0,
-        )
-    
-    artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
-    game_analysis = artifact.game_analysis_json or {}
-    
-    moments = [
-        MomentEntry(
-            id=m.get("id", ""),
-            type=m.get("type", "NEUTRAL"),
-            start_play=m.get("start_play", 0),
-            end_play=m.get("end_play", 0),
-            play_count=m.get("play_count", 0),
-            teams=m.get("teams", []),
-            primary_team=m.get("primary_team"),
-            players=m.get("players", []),
-            score_start=m.get("score_start", ""),
-            score_end=m.get("score_end", ""),
-            clock=m.get("clock", ""),
-            is_notable=m.get("is_notable", False),
-            is_period_start=m.get("is_period_start", False),
-            note=m.get("note"),
-            ladder_tier_before=m.get("ladder_tier_before", 0),
-            ladder_tier_after=m.get("ladder_tier_after", 0),
-            team_in_control=m.get("team_in_control"),
-            key_play_ids=m.get("key_play_ids", []),
-            reason=m.get("reason"),
-            run_info=m.get("run_info"),
-            # AI-generated content
-            headline=m.get("headline", ""),
-            summary=m.get("summary", ""),
-            # Display hints
-            display_weight=m.get("display_weight", "low"),
-            display_icon=m.get("display_icon", "circle"),
-            display_color_hint=m.get("display_color_hint", "neutral"),
-        )
-        for m in game_analysis.get("moments", [])
-        if isinstance(m, dict)
-    ]
-    
-    return MomentsResponse(
-        game_id=game_id,
-        generated_at=artifact.generated_at,
-        moments=moments,
-        total_count=len(moments),
-        # AI-generated game-level copy
-        game_headline=game_analysis.get("game_headline", ""),
-        game_subhead=game_analysis.get("game_subhead", ""),
     )

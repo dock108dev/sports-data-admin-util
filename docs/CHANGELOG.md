@@ -2,6 +2,71 @@
 
 All notable changes to Sports Data Admin.
 
+## [2026-01-19] - Moment Pipeline Enhancements
+
+### Added
+
+#### Recap Moments
+- **Recap moment types**: Contextual summaries at key game boundaries
+  - `HALFTIME_RECAP`: Halftime summary (NBA after Q2)
+  - `PERIOD_RECAP`: Period summaries (NHL P1/P2/P3, MLB 5th/9th)
+  - `GAME_RECAP`: Final game summary (all sports)
+  - `OVERTIME_RECAP`: Overtime period summary (all sports)
+- **RecapContext**: Structured contextual data for recap moments
+  - Priority-ordered fields: momentum_summary, key_runs, largest_lead, lead_changes, running_score, top_performers, period_score
+  - Clarifies late back-and-forths and explains who gained control
+- **Zero-width moments**: Recaps have `play_count = 0` and `start_play = end_play`
+  - Don't own plays, serve as contextual boundary markers
+  - Skip validation for coverage and overlaps
+- **Display hints**: Recap moments include `display_color_hint = "recap"` for 10-15% more border styling
+
+#### Closing Expansion Pass
+- **Post-selection expansion**: Adds detail in close endings, compresses decided endings
+- **Closing categories**: `CLOSE_GAME_CLOSING` (expand) vs `DECIDED_GAME_CLOSING` (compress)
+- **Narrative distance gating**: Prevents FLIP spam in late-game sequences
+- **Comeback limit**: Prevents multiple "they're coming back!" beats unless game becomes threatened
+- **Overlap resolution**: Automatically splits existing moments when inserting expansion moments
+
+#### Mega-Moment Splitting
+- **Narrative dormancy detection**: Identifies dormant stretches (Q3, etc.) to avoid over-splitting
+- **Redundancy filter**: Merges redundant segments with same type, tier, and no unique markers
+- **Contextual split points**: Run-based and tier-change splits only eligible if meaningful
+- **False-drama suppression**: Marks segments as `is_false_drama` in decided late-game situations
+
+#### Enhanced Moment Data
+- **MOMENTUM_SHIFT** moment type: Significant scoring runs causing tier changes
+- **Player stats extraction**: Points, assists, rebounds, steals, blocks parsed from play descriptions
+- **key_players field**: Top 3 players with meaningful contributions (filtered from players array)
+- **score_context field**: Structured score info with current/start scores, margin, leader
+- **Display properties**: `display_weight`, `display_icon`, `display_color_hint` for UI rendering hints
+- **Importance scoring**: `importance_score` and `importance_factors` for moment ranking
+
+### Changed
+
+#### Moment Classification
+- **CUT moments**: Now require sustained tier drops (5+ plays) to avoid false comebacks
+- **Reclassification pass**: Late-game CUT moments reclassified as CLOSING_CONTROL or LEAD_BUILD when appropriate
+- **Time distance calculation**: Fixed to handle quarter boundary resets correctly
+
+#### Validation
+- **Recap moment handling**: Validation skips coverage, overlap, and score continuity checks for recap moments
+- **Micro-moment checks**: Skip for recap moments (intentionally zero-width)
+- **Team identification**: Skip for recap moments (contextual summaries)
+
+#### Score Handling
+- **Quarter boundary fix**: Scores now carry forward correctly at end-of-quarter events
+- **Score continuity**: Robust carry-forward logic prevents 0-0 resets at period boundaries
+
+### Fixed
+- Import paths for moment helper functions in closing expansion
+- Overlap detection when closing expansion inserts new moments
+- Score discontinuity in split mega-moments
+- Time distance calculation across quarter resets
+- Tier calculation for split segments (now derived from segment scores, not parent tier)
+- Run detection logic (now uses max individual team run, not sum of both teams)
+
+---
+
 ## [2026-01-17] - Lead Ladder Refactor
 
 ### Added

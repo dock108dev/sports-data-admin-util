@@ -1,68 +1,57 @@
-# Technical Flow: PBP to Compact Timeline
+# Technical Flow: Play-by-Play to Game Story
 
 > **Audience:** Developers working on the sports data pipeline  
-> **Last Updated:** 2026-01-14
-
----
-
-## AI Usage Principle
-
-> **OpenAI is used only for interpretation and narration — never for ordering, filtering, or correctness.**
-
-Code decides what happened. AI explains why it mattered.
-
----
-
-## Where OpenAI Is Used
-
-| Area | Purpose | Determinism |
-|------|---------|-------------|
-| Social Role Classification | Improve role accuracy beyond heuristics | Cached, bounded |
-| Game Analysis Enrichment | Label segments more naturally | Cached, derived |
-| Summary Generation | Produce the "reading guide" text | Cached, final |
-
-**Everything else remains pure code.** The core timeline assembly (phase assignment, ordering, merging) is 100% deterministic.
+> **Last Updated:** 2026-01-22  
+> **Status:** Authoritative
 
 ---
 
 ## Overview
 
-This document traces a game's journey from raw play-by-play data through to the final compact timeline and summary served to clients.
+This document traces a game's journey from raw play-by-play data to the final narrative story served to apps.
+
+The system operates in three distinct phases:
+1. **Ingestion** — Scrape and normalize data
+2. **Structure** — Generate deterministic chapters
+3. **Narrative** — AI-powered story generation
+
+---
+
+## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           INGESTION PHASE                                    │
 │                                                                             │
-│  [Sports Reference]  ──scrape──▶  [Scraper]  ──persist──▶  [PostgreSQL]    │
+│  [External Sources]  ──scrape──▶  [Scraper]  ──persist──▶  [PostgreSQL]    │
 │                                                                             │
 │  Raw HTML ────────────────────▶ NormalizedPlay ─────────▶ SportsGamePlay   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           GENERATION PHASE                                   │
+│                           STRUCTURE PHASE (Deterministic)                    │
 │                                                                             │
-│  [SportsGamePlay]  ──build_pbp_events──▶  [PBP Events with Phases]         │
-│  [GameSocialPost]  ──build_social_events──▶ [Social Events with Roles]     │
+│  [SportsGamePlay]  ──ChapterizerV1──▶  [Chapters with Reason Codes]        │
 │                            │                                                │
 │                            ▼                                                │
-│  [Merged Timeline]  ◀──merge_timeline_events──                              │
-│        │                                                                    │
-│        ├──▶ [Game Analysis: Segments + Highlights]                          │
-│        │                                                                    │
-│        └──▶ [Summary: Reading Guide]                                        │
-│                            │                                                │
-│                            ▼                                                │
-│  [SportsGameTimelineArtifact] ──persist──▶ [PostgreSQL]                     │
+│  [Chapters]  ──StoryState Builder──▶  [Running Context]                    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           SERVING PHASE                                      │
+│                           NARRATIVE PHASE (AI)                               │
 │                                                                             │
-│  GET /games/{id}/timeline          ──▶  Full timeline artifact              │
-│  GET /games/{id}/timeline/compact  ──▶  Compressed timeline                 │
-│  GET /games/{id}/compact/{id}/summary ──▶ Moment summary                    │
+│  [Chapters + StoryState]  ──AI Sequential──▶  [Chapter Summaries]          │
+│                                    │                                        │
+│                                    ▼                                        │
+│  [Summaries]  ──AI Independent──▶  [Chapter Titles]                        │
+│                                    │                                        │
+│                                    ▼                                        │
+│  [Summaries]  ──AI Synthesis──▶  [Compact Story]                           │
+│                                    │                                        │
+│                                    ▼                                        │
+│  [GameStory] ──persist──▶ [Admin UI / Apps]                                │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -72,9 +61,14 @@ This document traces a game's journey from raw play-by-play data through to the 
 
 ### 1.1 PBP Scraping
 
-**Source:** `scraper/bets_scraper/scrapers/nba_sportsref.py`
+**Source:** `scraper/bets_scraper/scrapers/`
 
-The scraper fetches play-by-play data from Sports Reference after a game is marked `final`.
+The scraper fetches play-by-play data from external sources after a game is marked `final`.
+
+**Sources by Sport:**
+- **NBA:** Sports Reference (sportsreference.com)
+- **NHL:** Hockey Reference (hockey-reference.com)
+- **NCAAB:** Sports Reference (sports-reference.com)
 
 ```python
 # Scraper extracts raw PBP from HTML tables
@@ -99,621 +93,495 @@ for row in raw_plays:
 
 **Source:** `scraper/bets_scraper/persistence/plays.py`
 
-Plays are persisted with upsert logic (append-only, no overwrites).
+Normalized plays are persisted to PostgreSQL:
 
 ```python
-# Upsert using ON CONFLICT DO NOTHING
-stmt = insert(SportsGamePlay).values(
-    game_id=game_id,
-    play_index=play.play_index,
-    quarter=play.quarter,
-    game_clock=play.game_clock,
-    play_type=play.play_type,
-    description=play.description,
-    home_score=play.home_score,
-    away_score=play.away_score,
-    raw_data=play.raw_data,
-).on_conflict_do_nothing(index_elements=["game_id", "play_index"])
+# Upsert plays (idempotent)
+for play in normalized_plays:
+    session.merge(SportsGamePlay(
+        game_id=game_id,
+        play_index=play.play_index,
+        quarter=play.quarter,
+        game_clock=play.game_clock,
+        play_type=play.play_type,
+        description=play.description,
+        team_id=play.team_id,
+        home_score=play.home_score,
+        away_score=play.away_score,
+        raw_data=play.raw_data,
+    ))
 ```
 
-### 1.3 Social Post Collection
-
-**Source:** `scraper/bets_scraper/social/collector.py`
-
-Team social posts are collected within a configurable window around game time.
-
-```python
-# Window: game_start - 2h to game_end + 2h
-posts = fetch_team_tweets(
-    handles=[home_team.x_handle, away_team.x_handle],
-    start_time=game_start - timedelta(hours=2),
-    end_time=game_end + timedelta(hours=2),
-)
-```
+**Key Properties:**
+- Idempotent (can re-scrape safely)
+- Preserves raw data
+- Indexed by `(game_id, play_index)`
 
 ---
 
-## Phase 2: Timeline Generation
+## Phase 2: Structure (Deterministic)
 
-**Entry Point:** `POST /api/games/{game_id}/timeline/generate`  
-**Source:** `api/app/services/timeline_generator.py`
+### 2.1 Chapter Generation
 
-### 2.1 Prerequisites
+**Source:** `api/app/services/chapters/chapterizer.py`
 
-Timeline generation requires:
-1. Game status = `final`
-2. League = `NBA` (only supported league currently)
-3. At least one play-by-play record exists
+Chapters are deterministic structural boundaries based on NBA v1 rules.
 
-### 2.2 Build PBP Events
-
-**Function:** `_build_pbp_events(plays, game_start)`
-
-Each raw play becomes a timeline event with:
-- **Phase assignment** (q1, q2, halftime, q3, q4, ot, postgame)
-- **Synthetic timestamp** (computed from phase + game clock)
-- **Intra-phase order** (for sorting within a phase)
+**Input:** Ordered list of plays  
+**Output:** List of chapters with reason codes  
+**AI:** None  
+**Deterministic:** Yes
 
 ```python
-for play in plays:
-    phase = _nba_phase_for_quarter(play.quarter)  # q1, q2, etc.
-    
-    # Compute position within phase (inverted clock: 12:00 → 0, 0:00 → 720)
-    remaining_seconds = _parse_clock_to_seconds(play.game_clock)
-    intra_phase_order = NBA_QUARTER_GAME_SECONDS - remaining_seconds
-    
-    events.append({
-        "event_type": "pbp",
-        "phase": phase,
-        "intra_phase_order": intra_phase_order,
-        "synthetic_timestamp": computed_timestamp,
-        "description": play.description,
-        "home_score": play.home_score,
-        "away_score": play.away_score,
-        "quarter": play.quarter,
-        "game_clock": play.game_clock,
-        "play_type": play.play_type,
-    })
-```
+from app.services.chapters import build_chapters
 
-### 2.3 Build Social Events (AI-Assisted)
-
-**Function:** `_build_social_events_async(posts, phase_boundaries, sport)`  
-**AI Client:** `api/app/services/ai_client.py`
-
-Each social post gets:
-- **Phase assignment** (based on `posted_at` vs computed phase boundaries) — deterministic
-- **Role assignment** (AI-assisted with heuristic fallback) — cached
-- **Intra-phase order** (based on `posted_at`) — deterministic
-
-#### Role Assignment Flow
-
-```python
-def assign_social_role(post, phase):
-    # 1. Fast heuristic pass
-    role, confidence = _assign_social_role_heuristic(post.text, phase)
-    if confidence >= 0.8:
-        return role  # Skip AI for high-confidence heuristics
-    
-    # 2. Cache lookup
-    cache_key = hash(post.text + phase)
-    if cached := role_cache.get(cache_key):
-        return cached
-    
-    # 3. OpenAI classification
-    role = await classify_social_role(post.text, phase)
-    
-    # 4. Cache result (30-day TTL)
-    role_cache.set(cache_key, role)
-    return role
-```
-
-#### OpenAI Prompt (Social Role)
-
-```text
-You are classifying a sports-related social media post.
-
-Context:
-- Sport: NBA
-- Game phase: {phase}
-- This post is from an official team or league account
-
-Choose exactly one role from:
-- hype, context, reaction, momentum, highlight, result, reflection, ambient
-
-Post text: "{tweet_text}"
-
-Respond with ONLY the role.
-```
-
-| Setting | Value |
-|---------|-------|
-| Model | `gpt-4o-mini` |
-| Temperature | 0 |
-| Max Tokens | 5 |
-
-**Why this is safe + cheap:**
-- Heuristics handle most cases (pattern matching)
-- AI only runs on ambiguous posts (confidence < 0.8)
-- Results cached aggressively (30 days)
-- Classification output is tiny and deterministic
-
-**Role Taxonomy:**
-
-| Role | Phase | Description |
-|------|-------|-------------|
-| `hype` | pregame | Game day excitement |
-| `context` | pregame | Injury reports, lineups |
-| `reaction` | in-game | Live reactions to plays |
-| `momentum` | in-game | Scoring runs, swings |
-| `highlight` | any | Video/media content |
-| `result` | postgame | Final score announcement |
-| `reflection` | postgame | Post-game thoughts |
-| `ambient` | any | Atmosphere, crowd |
-
-### 2.4 Merge Timeline Events
-
-**Function:** `_merge_timeline_events(pbp_events, social_events)`
-
-Events are merged using **phase-first ordering**:
-
-```python
-def sort_key(event):
-    return (
-        PHASE_ORDER[event["phase"]],  # Primary: phase (0-99)
-        event["intra_phase_order"],    # Secondary: position in phase
-        0 if event["event_type"] == "pbp" else 1,  # Tertiary: PBP before social
-        event.get("play_index", 0),    # Quaternary: play index for stability
-    )
-
-sorted_timeline = sorted(all_events, key=sort_key)
-```
-
-**Critical:** Timestamps are NOT used for global ordering. Phase is the source of truth.
-
-### 2.5 Game Analysis (AI-Enhanced)
-
-**Function:** `build_nba_game_analysis_async(timeline, summary, game_id)`  
-**Source:** `api/app/services/game_analysis.py`
-
-Analyzes the timeline to identify:
-
-1. **Segments** - Chunks of the game with consistent character (deterministic):
-   - `opening` - First ~4 scoring plays of Q1
-   - `run` - One team scores 8+ consecutive points
-   - `swing` - Lead changes hands
-   - `blowout` - Margin exceeds 20 points
-   - `close` - Final 5 min with margin ≤5
-   - `garbage_time` - Final 5 min with margin ≥18
-   - `steady` - Normal play, no drama
-
-2. **Highlights** - Notable moments (deterministic):
-   - `scoring_run` - Team scores 8+ consecutive
-   - `lead_change` - Lead switches teams
-   - `quarter_shift` - Big momentum change between quarters
-   - `game_deciding_stretch` - When the winner took permanent lead
-
-3. **AI Enrichment (Optional)** - Human-readable labels and tone:
-   - Added to segments after deterministic detection
-   - Cached per (game_id, segment_id)
-   - Never changes the segment structure, only adds `ai_label` and `ai_tone`
-
-#### AI Enrichment Flow
-
-```python
-# After deterministic analysis:
-analysis = build_nba_game_analysis(timeline, summary)
-
-# AI enrichment adds labels and tone to segments
-analysis["segments"] = await enrich_segments_with_ai(
-    segments=analysis["segments"],
-    game_id=game_id
-)
-```
-
-#### OpenAI Prompt (Segment Enrichment)
-
-```text
-You are labeling stretches of an NBA game for a timeline-based app.
-
-Segment type: {segment_type}
-Phases: {start_phase} → {end_phase}
-Play count: {play_count}
-
-Your job:
-- Add a short, neutral label describing what this stretch *felt like*
-- Do NOT invent events
-- Do NOT restate scores
-
-Respond with JSON: {"label": "short phrase", "tone": "calm | tense | decisive | flat"}
-```
-
-| Setting | Value |
-|---------|-------|
-| Model | `gpt-4o-mini` |
-| Temperature | 0 |
-| Max Tokens | 50 |
-
-```python
-# Example output (with AI enrichment)
-{
-    "segments": [
-        {
-            "segment_id": "segment_1",
-            "segment_type": "opening",
-            "ai_label": "Cautious start",
-            "ai_tone": "calm",
-            ...
-        },
-        {
-            "segment_id": "segment_2",
-            "segment_type": "run",
-            "ai_label": "One-sided surge",
-            "ai_tone": "decisive",
-            ...
-        },
-    ],
-    "highlights": [...]
-}
-```
-
-### 2.6 Summary Generation (Primary AI Use)
-
-**Function:** `build_summary_from_timeline_async(timeline, game_analysis, game_id, timeline_version)`
-
-Generates a **reading guide** (not a traditional recap) from the timeline artifact.
-
-**Key Principle:** The summary only references what's in the timeline. It never queries external data.
-
-This is where OpenAI really earns its keep. Summaries are AI-authored but:
-- Grounded strictly in timeline + analysis
-- Cached permanently per (game_id, timeline_version)
-- Generated once per timeline version
-- Falls back to template-based if AI unavailable
-
-#### Summary Generation Flow
-
-```python
-def build_summary_from_timeline_async(timeline, game_analysis, game_id, timeline_version):
-    cache_key = f"{game_id}:{timeline_version}"
-    
-    if cached := summary_cache.get(cache_key):
-        return cached
-    
-    # Extract facts from timeline (deterministic)
-    phases = extract_phases(timeline)
-    segments = game_analysis.get("segments", [])
-    highlights = game_analysis.get("highlights", [])
-    social_counts = count_social_by_phase(timeline)
-    
-    # Call OpenAI
-    prompt = build_summary_prompt(phases, segments, highlights, social_counts)
-    summary = await generate_summary(prompt)
-    
-    # Cache permanently
-    summary_cache.set(cache_key, summary)
-    return summary
-```
-
-#### OpenAI Prompt (Summary Generation)
-
-```text
-You are writing a reading guide for a mobile app that shows a game timeline.
-
-This is NOT a recap.
-
-The user is about to scroll a feed that already contains:
-- grouped play-by-play moments
-- social reactions before, during, and after the game
-
-Your job:
-- Describe what kind of game this was
-- Point out where attention should increase while scrolling
-- Explain how the story unfolds across the timeline
-
-Use the provided structure only.
-Do NOT invent events.
-Do NOT list plays chronologically.
-Do NOT use box-score language.
-
-Timeline facts:
-- Phases present: {phases}
-- Key segments: {segment_summaries}
-- Highlights: {highlights}
-- Social activity by phase: {social_counts}
-
-Write 1–2 short paragraphs maximum.
-Tone: neutral, guiding, conversational.
-
-Respond with JSON: {"overview": "...", "attention_points": ["...", "...", "..."]}
-```
-
-| Setting | Value |
-|---------|-------|
-| Model | `gpt-4o` |
-| Temperature | 0.2 |
-| Max Tokens | 180 |
-
-```python
-# Output structure
-{
-    "overview": "This one gets away early. Houston takes control and never really lets go...",
-    "attention_points": [
-        "The first few minutes set the early tempo",
-        "A stretch in the second or third where the gap starts to open",
-        "The closing stretch confirms the outcome"
-    ],
-    "flow": "blowout",  # blowout, comfortable, competitive, close
-    "phases_in_timeline": ["q1", "q2", "q3", "q4", "postgame"],
-    "social_counts": {"total": 10, "by_phase": {"q4": 1, "postgame": 9}},
-    "ai_generated": true,
-}
-```
-
-### 2.7 Validation
-
-**Function:** `validate_and_log(timeline, summary, game_id)`  
-**Source:** `api/app/services/timeline_validation.py`
-
-Before persistence, the timeline is validated:
-- Phase ordering is correct (all Q1 before Q2, etc.)
-- No duplicate events
-- Social posts have valid phases and roles
-- Scores are monotonically increasing (with some tolerance)
-
-**Bad timelines never ship.** Validation failures raise errors.
-
-### 2.8 Persistence
-
-The complete artifact is stored:
-
-```python
-artifact = SportsGameTimelineArtifact(
+# Build chapters from plays
+game_story = build_chapters(
+    timeline=plays,
     game_id=game_id,
     sport="NBA",
-    timeline_version="v1",
-    timeline_json=timeline,        # List of events
-    summary_json=summary_json,     # Reading guide
-    game_analysis_json=game_analysis,  # Segments + highlights
-    generated_at=now_utc(),
-    generated_by="api",
 )
-session.add(artifact)
-await session.commit()
+
+# Result: GameStory with chapters
+# Each chapter has:
+# - chapter_id (unique)
+# - play_start_idx, play_end_idx (contiguous range)
+# - plays (raw play data)
+# - reason_codes (why boundary exists)
+# - period, time_range (metadata)
 ```
+
+**Boundary Rules (NBA v1):**
+
+**Hard Boundaries (Always Break):**
+- Period start/end
+- Overtime start
+- Game end
+
+**Scene Reset Boundaries:**
+- Team timeout
+- Official timeout
+- Coach's challenge
+- Instant replay review
+
+**Momentum Boundaries (Minimal v1):**
+- Crunch time start (Q4 <5min + close game)
+
+See [NBA_V1_BOUNDARY_RULES.md](NBA_V1_BOUNDARY_RULES.md) for complete rules.
+
+### 2.2 Story State Builder
+
+**Source:** `api/app/services/chapters/story_state.py`
+
+Story State is deterministic context derived from prior chapters only.
+
+**Input:** Chapters 0..N-1  
+**Output:** StoryState  
+**AI:** None  
+**Deterministic:** Yes
+
+```python
+from app.services.chapters import derive_story_state_from_chapters
+
+# Build story state from prior chapters
+story_state = derive_story_state_from_chapters(
+    chapters=prior_chapters,
+    sport="NBA",
+)
+
+# Result: StoryState with:
+# - players (top 6 by points_so_far)
+# - teams (score_so_far, momentum_hint)
+# - theme_tags (bounded list, max 8)
+# - constraints (no_future_knowledge: true)
+```
+
+**Derivation Rules:**
+- Points accumulated from made shots/FTs
+- Notable actions from play text tags (dunk, block, steal, 3PT, etc.)
+- Momentum hints from chapter reason codes
+- Theme tags from play patterns
+
+**Bounded Lists:**
+- Top 6 players by points
+- Max 5 notable actions per player
+- Max 8 theme tags
+
+See [AI_CONTEXT_POLICY.md](AI_CONTEXT_POLICY.md) for complete rules.
 
 ---
 
-## Phase 3: Compact Mode
+## Phase 3: Narrative (AI)
 
-**Entry Point:** `GET /api/games/{game_id}/timeline/compact?level=2`  
-**Source:** `api/app/services/compact_mode.py`
+### 3.1 Chapter Summary Generation (Sequential)
 
-Compact mode compresses the timeline for mobile/quick-view consumption.
+**Source:** `api/app/services/chapters/summary_generator.py`
 
-### 3.1 Core Principles
+Generate narrative summaries for each chapter sequentially.
 
-1. **Social posts are NEVER dropped**
-2. **Operate on semantic groups, not individual events**
-3. **Higher excitement → more detail retained**
-4. **Excitement scores are internal only (never exposed)**
-
-### 3.2 Semantic Groups
-
-The timeline is analyzed into semantic groups:
-
-| Group Type | Definition | Compression Behavior |
-|------------|------------|---------------------|
-| `scoring_run` | 3+ consecutive scores by one team | Show all scoring plays |
-| `swing` | Lead change sequence | Show pivot plays |
-| `drought` | 2+ min without scoring | Collapse to summary |
-| `finish` | Final 2 min of period | Never compress |
-| `opener` | First 2 min of period | Light compression |
-| `routine` | No scoring, no drama | Heavy compression |
-
-### 3.3 Excitement Scoring (Internal Only)
+**Input:** Current chapter + prior summaries + story state  
+**Output:** Chapter summary (1-3 sentences)  
+**AI:** Yes (OpenAI)  
+**Sequential:** Yes (one chapter at a time)
 
 ```python
-def compute_excitement(group):
-    score = 0.0
-    
-    # Pace: short gaps between plays
-    if avg_play_gap < 20_seconds:
-        score += 0.3
-    
-    # Social density: tweets during this stretch
-    if tweets_in_window >= 2:
-        score += 0.25
-    
-    # Play types: dunks, blocks, steals
-    exciting_plays = count(["dunk", "block", "steal", "made_three"])
-    score += min(exciting_plays * 0.1, 0.3)
-    
-    # Late game bonus
-    if is_final_minutes:
-        score += 0.2
-    
-    return min(score, 1.0)
+from app.services.chapters import generate_summaries_sequentially
+from app.services.openai_client import get_openai_client
+
+# Get AI client
+ai_client = get_openai_client()
+
+# Generate summaries sequentially
+summary_results = generate_summaries_sequentially(
+    chapters=game_story.chapters,
+    sport="NBA",
+    ai_client=ai_client,
+)
+
+# Result: List of ChapterSummaryResult
+# Each contains:
+# - chapter_summary (1-3 sentences)
+# - spoiler_warnings (if any)
+# - prompt_used (for debugging)
 ```
 
-### 3.4 Compression Levels
+**Context Rules:**
+- ✅ Prior chapter summaries (0..N-1)
+- ✅ Story state from prior chapters
+- ✅ Current chapter plays
+- ❌ No future chapters
+- ❌ No full game stats
+- ❌ No box score
 
-| Level | Name | PBP Retention | Use Case |
-|-------|------|---------------|----------|
-| 1 | Highlights | ~15-20% | Quick recap |
-| 2 | Standard | ~40-50% | Default compact view |
-| 3 | Detailed | ~70-80% | Engaged viewing |
+**Validation:**
+- Spoiler detection (banned phrases)
+- Future knowledge detection
+- Sentence count (1-3)
+- No bullet points
 
-### 3.5 Compression Algorithm
+See [AI_CONTEXT_POLICY.md](AI_CONTEXT_POLICY.md) for complete policy.
 
-> **TERMINOLOGY NOTE (2026-01):** Compact Mode now operates on **Moments** (defined in 
-> `moments/`). There is no separate "SemanticGroup" — Moment is the single narrative unit.
+### 3.2 Chapter Title Generation (Independent)
+
+**Source:** `api/app/services/chapters/title_generator.py`
+
+Generate titles from existing summaries only.
+
+**Input:** Chapter summary only  
+**Output:** Chapter title (3-8 words)  
+**AI:** Yes (OpenAI)  
+**Sequential:** No (independent per chapter)
 
 ```python
-def get_compact_timeline(timeline, level):
-    # 1. Compute Moments using the unified partition_game()
-    # Moment is the SINGLE narrative unit (from moments/ package)
-    moments = partition_game(timeline, summary={})
-    
-    # 2. For each Moment, compute excitement and apply compression
-    compressed = []
-    for moment in moments:
-        # Extract events belonging to this moment
-        moment_events = extract_moment_events(timeline, moment)
-        
-        # Compute excitement (internal only, never exposed)
-        excitement = compute_excitement_for_moment(moment, moment_events)
-        
-        # Apply compression based on MomentType + excitement + level
-        if moment.type == MomentType.CLOSING:
-            # Never compress closing moments (final minutes)
-            compressed.extend(moment_events)
-        elif excitement > 0.7:
-            # High excitement: show all
-            compressed.extend(moment_events)
-        elif level == 1:
-            # Highlights only: heavy compression
-            compressed.extend(compress_moment(moment, moment_events, keep_every_nth=5))
-        elif level == 2:
-            # Standard: moderate compression
-            compressed.extend(compress_moment(moment, moment_events, keep_every_nth=3))
-        else:
-            # Detailed: light compression
-            compressed.extend(compress_moment(moment, moment_events, keep_every_nth=2))
-    
-    # Social posts are NEVER dropped (handled inside compress_moment)
-    return compressed
+from app.services.chapters import generate_titles_for_chapters
+
+# Generate titles from summaries
+title_results = generate_titles_for_chapters(
+    chapters=game_story.chapters,
+    summaries=[ch.summary for ch in game_story.chapters],
+    ai_client=ai_client,
+)
+
+# Result: List of ChapterTitleResult
+# Each contains:
+# - chapter_title (3-8 words)
+# - validation_result (pass/fail)
 ```
 
-### 3.6 Summary Markers
+**Context Rules:**
+- ✅ Chapter summary only
+- ✅ Optional metadata (period, time_range)
+- ❌ No plays
+- ❌ No story state
+- ❌ No other summaries
 
-When plays are compressed, a summary marker may be inserted:
+**Validation:**
+- Length (3-8 words)
+- No numbers
+- No punctuation (except apostrophes)
+- Spoiler detection
 
-```json
-{
-    "event_type": "summary",
-    "phase": "q2",
-    "summary_type": "routine",
-    "plays_compressed": 8,
-    "duration_seconds": 145,
-    "description": "Back-and-forth possession play"
-}
+### 3.3 Compact Story Generation (Full Arc)
+
+**Source:** `api/app/services/chapters/compact_story_generator.py`
+
+Generate full game recap from chapter summaries.
+
+**Input:** All chapter summaries (ordered)  
+**Output:** Compact story (4-12 min read)  
+**AI:** Yes (OpenAI)  
+**Hindsight:** Allowed
+
+```python
+from app.services.chapters import generate_compact_story
+
+# Generate compact story from summaries
+compact_result = generate_compact_story(
+    chapter_summaries=[ch.summary for ch in game_story.chapters],
+    chapter_titles=[ch.title for ch in game_story.chapters],
+    sport="NBA",
+    ai_client=ai_client,
+)
+
+# Result: CompactStoryResult
+# Contains:
+# - compact_story (full game recap)
+# - reading_time_minutes (estimated)
+# - word_count
 ```
+
+**Context Rules:**
+- ✅ All chapter summaries
+- ✅ Optional chapter titles
+- ✅ Hindsight language allowed
+- ❌ No raw plays
+- ❌ No story state
+- ❌ No box score
+
+**Validation:**
+- Non-empty
+- Paragraph-based (no bullets)
+- No play-by-play listing
+- No new entities (not in summaries)
 
 ---
 
 ## API Endpoints
 
-### Full Timeline
-```
-GET /api/games/{game_id}/timeline
-```
-Returns the complete stored timeline artifact with all events.
+### Story Generation
 
-### Compact Timeline
-```
-GET /api/games/{game_id}/timeline/compact?level=2
-```
-Returns semantically compressed timeline.
-- `level=1`: Highlights only (~15-20% PBP)
-- `level=2`: Standard (~40-50% PBP)
-- `level=3`: Detailed (~70-80% PBP)
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/admin/sports/games/{id}/story` | GET | Fetch complete game story |
+| `/api/admin/sports/games/{id}/story-state` | GET | Fetch story state before chapter N |
+| `/api/admin/sports/games/{id}/story/regenerate-chapters` | POST | Regenerate chapters |
+| `/api/admin/sports/games/{id}/story/regenerate-summaries` | POST | Generate AI summaries |
+| `/api/admin/sports/games/{id}/story/regenerate-titles` | POST | Generate AI titles |
+| `/api/admin/sports/games/{id}/story/regenerate-compact` | POST | Generate compact story |
+| `/api/admin/sports/games/{id}/story/regenerate-all` | POST | Full pipeline |
+| `/api/admin/sports/games/bulk-generate` | POST | Bulk generation for date range |
 
-### Generate Timeline
-```
-POST /api/games/{game_id}/timeline/generate
-```
-Generates and stores a new timeline artifact. Only works for final NBA games.
+### Game Data
 
-### Timeline Diagnostic
-```
-GET /api/games/{game_id}/timeline/diagnostic
-```
-Debug endpoint showing event counts, phases, and sample events.
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/admin/sports/games` | GET | List games |
+| `/api/admin/sports/games/{id}` | GET | Game details |
+| `/api/admin/sports/games/{id}/preview-score` | GET | Preview score |
 
----
+### Scraper Management
 
-## Data Flow Summary
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/admin/sports/scraper/runs` | GET | List scraper runs |
+| `/api/admin/sports/scraper/runs` | POST | Start scraper |
+| `/api/admin/sports/scraper/runs/{id}` | GET | Get run details |
+| `/api/admin/sports/scraper/runs/{id}/cancel` | POST | Cancel run |
 
-```
-1. SCRAPE
-   Sports Reference HTML → NormalizedPlay → SportsGamePlay (DB)
-
-2. GENERATE (triggered manually or after game final)
-   SportsGamePlay + GameSocialPost
-   → _build_pbp_events (add phases)                      [deterministic]
-   → _build_social_events_async (add phases + AI roles)  [AI: cached]
-   → _merge_timeline_events (phase-first sort)           [deterministic]
-   → build_nba_game_analysis_async (segments + AI labels)[AI: cached]
-   → build_summary_from_timeline_async (AI reading guide)[AI: cached]
-   → validate_and_log (quality gate)                     [deterministic]
-   → SportsGameTimelineArtifact (DB)
-
-3. SERVE (no AI calls - all pre-baked)
-   SportsGameTimelineArtifact
-   → Full timeline (as-is)
-   → Compact timeline (semantic compression)
-   → Moment summaries (template-based)
-```
-
-**AI is only used during GENERATE, never during SERVE.**
+See [API.md](API.md) for complete reference.
 
 ---
 
-## AI Caching Strategy
+## Data Flow Example
 
-All OpenAI outputs are idempotent, cacheable, and regenerable only on version bump.
+### Example: Generate Story for Game 110536
 
-| Item | Cache Key | TTL |
-|------|-----------|-----|
-| Social role | `hash(text + phase)` | 30 days |
-| Segment labels | `game_id + segment_id` | Permanent |
-| Summary | `game_id + timeline_version` | Permanent |
+**Step 1: Fetch PBP**
+```sql
+SELECT * FROM sports_game_plays 
+WHERE game_id = 110536 
+ORDER BY play_index;
+-- Returns 477 plays
+```
 
-**Key Guarantees:**
-- No AI calls on read paths (all cached at generation time)
-- No polling, retries, or async UX issues
-- iOS app consumes fully baked artifacts
-- Costs stay extremely low (AI only on ambiguous cases)
+**Step 2: Generate Chapters (Deterministic)**
+```python
+game_story = build_chapters(timeline=plays, game_id=110536, sport="NBA")
+# Result: 18 chapters with reason codes
+```
+
+**Step 3: Generate Summaries (Sequential AI)**
+```python
+summary_results = generate_summaries_sequentially(
+    chapters=game_story.chapters,
+    sport="NBA",
+    ai_client=openai_client,
+)
+# Takes ~30-60 seconds (sequential)
+# Result: 18 chapter summaries
+```
+
+**Step 4: Generate Titles (Independent AI)**
+```python
+title_results = generate_titles_for_chapters(
+    chapters=game_story.chapters,
+    summaries=[r.chapter_summary for r in summary_results],
+    ai_client=openai_client,
+)
+# Takes ~10-20 seconds
+# Result: 18 chapter titles
+```
+
+**Step 5: Generate Compact Story (Full Arc AI)**
+```python
+compact_result = generate_compact_story(
+    chapter_summaries=[r.chapter_summary for r in summary_results],
+    chapter_titles=[r.chapter_title for r in title_results],
+    sport="NBA",
+    ai_client=openai_client,
+)
+# Takes ~5-10 seconds
+# Result: Full game recap
+```
+
+**Total Time:** ~45-90 seconds for complete story generation
 
 ---
 
-## Environment Variables
+## AI Usage Principle
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | _(required)_ | OpenAI API key |
-| `OPENAI_MODEL_CLASSIFICATION` | `gpt-4o-mini` | Model for role/segment classification |
-| `OPENAI_MODEL_SUMMARY` | `gpt-4o` | Model for summary generation |
-| `ENABLE_AI_SOCIAL_ROLES` | `true` | Enable AI role classification |
+> **OpenAI is used only for narrative generation — never for structure, ordering, or boundaries.**
 
----
+**What AI Does:**
+- ✅ Generate chapter summaries
+- ✅ Generate chapter titles
+- ✅ Generate compact story
+- ✅ Interpret plays with sportscaster voice
 
-## Key Files
+**What AI Does NOT Do:**
+- ❌ Define chapter boundaries
+- ❌ Decide structure
+- ❌ Compute importance
+- ❌ Order events
+- ❌ Filter plays
 
-| File | Purpose |
-|------|---------|
-| `scraper/bets_scraper/scrapers/nba_sportsref.py` | PBP scraping |
-| `scraper/bets_scraper/persistence/plays.py` | PBP persistence |
-| `api/app/services/timeline_generator.py` | Timeline assembly |
-| `api/app/services/moments/` | Lead Ladder-based moment detection |
-| `api/app/services/game_analysis.py` | Segment/highlight detection |
-| `api/app/services/ai_client.py` | OpenAI integration + caching |
-| `api/app/services/compact_mode.py` | Semantic compression |
-| `api/app/services/timeline_validation.py` | Quality validation |
-| `api/app/routers/game_snapshots.py` | Timeline API endpoints |
+**Principle:** Code decides structure. AI adds meaning.
 
 ---
 
-## One-Line Mental Model
+## Key Modules
 
-> **Code decides what happened. AI explains why it mattered.**
+| Module | Purpose | AI | Deterministic |
+|--------|---------|----|--------------| 
+| `scraper/` | Data ingestion | No | Yes |
+| `api/app/services/chapters/chapterizer.py` | Chapter boundaries | No | Yes |
+| `api/app/services/chapters/story_state.py` | Running context | No | Yes |
+| `api/app/services/chapters/summary_generator.py` | Chapter summaries | Yes | No |
+| `api/app/services/chapters/title_generator.py` | Chapter titles | Yes | No |
+| `api/app/services/chapters/compact_story_generator.py` | Compact story | Yes | No |
+| `api/app/services/openai_client.py` | OpenAI integration | Yes | No |
+| `api/app/routers/sports/story.py` | Story API endpoints | Mixed | Mixed |
 
 ---
 
-## Changelog
+## Configuration
 
-| Date | Change |
-|------|--------|
-| 2026-01-14 | Initial documentation |
-| 2026-01-14 | Added OpenAI integration for roles, segments, summaries |
+### Environment Variables
+
+**Required:**
+- `DATABASE_URL` — PostgreSQL connection string
+- `REDIS_URL` — Redis connection string (for Celery)
+
+**Optional (AI Features):**
+- `OPENAI_API_KEY` — Enable AI narrative generation
+- `OPENAI_MODEL_CLASSIFICATION` — Model for classification (default: gpt-4o-mini)
+
+**Without OpenAI API Key:**
+- Chapters generate normally (deterministic)
+- AI endpoints return "API key not configured" error
+- System remains fully functional for structure inspection
+
+---
+
+## Performance Characteristics
+
+### Deterministic Operations (Instant)
+- Chapter generation: <1 second for 500 plays
+- Story state derivation: <1 second
+- Bulk chapter generation: ~22 games/second
+
+### AI Operations (Sequential)
+- Chapter summaries: ~2-3 seconds per chapter
+- Chapter titles: ~1-2 seconds per chapter
+- Compact story: ~5-10 seconds
+
+**Example:** 18-chapter game = ~60-90 seconds total
+
+---
+
+## Testing
+
+### Unit Tests
+
+**Deterministic Components:**
+```bash
+cd api
+pytest tests/test_chapterizer.py
+pytest tests/test_story_state.py
+pytest tests/test_coverage_validator.py
+```
+
+**AI Components (with mocks):**
+```bash
+pytest tests/test_summary_generator.py
+pytest tests/test_title_generator.py
+pytest tests/test_compact_story_generator.py
+pytest tests/test_narrative_validator.py
+```
+
+### Integration Tests
+
+```bash
+# Full story generation
+pytest tests/test_story_api.py
+```
+
+---
+
+## Deployment
+
+**Infrastructure:** Docker Compose  
+**Services:** API, Web, Scraper, PostgreSQL, Redis
+
+```bash
+cd infra
+docker compose --profile dev up -d --build
+```
+
+**URLs:**
+- Admin UI: http://localhost:3000
+- API Docs: http://localhost:8000/docs
+- Health: http://localhost:8000/healthz
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for production setup.
+
+---
+
+## Related Documentation
+
+**Core Concepts:**
+- [Book + Chapters Model](BOOK_CHAPTERS_MODEL.md)
+- [NBA v1 Boundary Rules](NBA_V1_BOUNDARY_RULES.md)
+- [AI Context Policy](AI_CONTEXT_POLICY.md)
+
+**Implementation:**
+- [AI Signals (NBA v1)](AI_SIGNALS_NBA_V1.md)
+- [Admin UI Guide](ADMIN_UI_STORY_GENERATOR.md)
+- [API Reference](API.md)
+
+**Operations:**
+- [Local Development](LOCAL_DEVELOPMENT.md)
+- [Deployment](DEPLOYMENT.md)
+- [Operator Runbook](OPERATOR_RUNBOOK.md)
+
+---
+
+## Summary
+
+**Pipeline:** PBP → Chapters (deterministic) → StoryState (deterministic) → AI (narrative) → GameStory
+
+**Key Principle:** Structure is deterministic. AI adds meaning to existing structure.
+
+**Performance:** Chapters generate instantly. AI narrative takes ~60-90 seconds for full game.
+
+**Status:** Production-ready for NBA v1.

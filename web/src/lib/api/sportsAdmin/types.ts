@@ -105,194 +105,97 @@ export type PlayEntry = {
   away_score: number | null;
 };
 
-/**
- * Player contribution within a moment.
- */
-export type PlayerContribution = {
-  name: string;
-  stats: { pts?: number; stl?: number; blk?: number; ast?: number };
-  summary: string | null; // "6 pts, 1 stl"
-};
+// ============================================================================
+// CHAPTERS-FIRST MODEL (ISSUE 14)
+// ============================================================================
 
 /**
- * Run metadata when a run contributed to a moment.
- */
-export type RunInfo = {
-  team: "home" | "away";
-  points: number;
-  unanswered: boolean;
-  play_ids: number[];
-};
-
-/**
- * MomentType values (Lead Ladder):
- * - LEAD_BUILD: Lead tier increased
- * - CUT: Lead tier decreased (comeback)
- * - TIE: Game returned to even
- * - FLIP: Leader changed
- * - CLOSING_CONTROL: Late-game lock-in
- * - HIGH_IMPACT: Ejection, injury, etc.
- * - NEUTRAL: Normal flow
- */
-export type MomentType =
-  | "LEAD_BUILD"
-  | "CUT"
-  | "TIE"
-  | "FLIP"
-  | "CLOSING_CONTROL"
-  | "HIGH_IMPACT"
-  | "NEUTRAL";
-
-/**
- * The single narrative unit.
+ * Chapter: A contiguous narrative segment (scene) in the game.
  * 
- * Every play belongs to exactly one moment.
- * Moments are always chronological.
+ * Chapters are the structural unit for storytelling and UI expansion.
+ * They are deterministic and defined by structural boundaries, not narrative.
+ */
+export type ChapterEntry = {
+  chapter_id: string;                   // "ch_001"
+  index: number;                        // Explicit chapter index for UI ordering
+  play_start_idx: number;               // First play index (inclusive)
+  play_end_idx: number;                 // Last play index (inclusive)
+  play_count: number;                   // Number of plays in chapter
+  reason_codes: string[];               // Why this chapter boundary exists
+  period: number | null;                // Quarter/period number
+  time_range: {                         // Game clock range
+    start: string;
+    end: string;
+  } | null;
+  
+  // AI-generated (optional)
+  chapter_summary: string | null;       // 1-3 sentence summary
+  chapter_title: string | null;         // Short title (3-8 words)
+  
+  // Plays (for expansion)
+  plays: PlayEntry[];
+  
+  // Debug-only (optional)
+  chapter_fingerprint?: string | null;  // Deterministic chapter hash
+  boundary_logs?: Array<Record<string, unknown>> | null;  // Debug boundary events
+};
+
+/**
+ * Game Story: The authoritative output for apps.
  * 
- * Moments are aggressively merged to stay within sport-specific budgets.
- * A typical NBA game has ~25-35 moments, not 60-70.
+ * Represents a game as a book with chapters.
  */
-export type MomentEntry = {
-  id: string;                           // "m_001"
-  type: MomentType;
-  start_play: number;                   // First play index
-  end_play: number;                     // Last play index
-  play_count: number;                   // Number of plays
-  teams: string[];
-  primary_team: string | null;
-  players: PlayerContribution[];
-  score_start: string;                  // "12–15"
-  score_end: string;                    // "18–15"
-  clock: string;                        // "Q2 8:45–6:12"
-  is_notable: boolean;                  // True for notable moments (key game events)
-  is_period_start: boolean;             // True if this moment starts a new period
-  note: string | null;                  // "7-0 run"
-  
-  // Lead Ladder state
-  ladder_tier_before: number;
-  ladder_tier_after: number;
-  team_in_control: "home" | "away" | null;
-  key_play_ids: number[];
-  
-  // WHY THIS MOMENT EXISTS - mandatory for narrative clarity
-  reason?: MomentReason;
-  
-  // Run metadata if a run contributed
-  run_info?: RunInfo;
-  
-  // AI-generated content (SportsCenter-style, spoiler-safe)
-  headline: string;   // max 60 chars
-  summary: string;    // max 150 chars
-  
-  // Display hints (frontend doesn't need to guess)
-  display_weight: "high" | "medium" | "low";
-  display_icon: string;  // Icon name suggestion
-  display_color_hint: "tension" | "positive" | "neutral" | "highlight";
-};
-
-/**
- * Explains WHY a moment exists.
- * Every moment must have a reason. If you can't explain it, don't create it.
- */
-export type MomentReason = {
-  trigger: "tier_cross" | "flip" | "tie" | "closing_lock" | "high_impact" | "stable";
-  control_shift: "home" | "away" | null;
-  narrative_delta: string;  // "tension ↑" | "control gained" | "pressure relieved" | etc.
-};
-
-/**
- * Quality status of validated moments.
- * Provides clear signal about data integrity beyond pass/fail.
- */
-export type QualityStatus = "PASSED" | "DEGRADED" | "FAILED" | "OVERRIDDEN";
-
-/**
- * Score continuity issue record.
- * Captures where score jumped unexpectedly between moments.
- */
-export type ScoreContinuityIssue = {
-  prev_moment_id: string;
-  curr_moment_id: string;
-  prev_score_after: [number, number];
-  curr_score_before: [number, number];
-  delta: { home: number; away: number };
-  position_in_sequence: number;
-  prev_end_play: number;
-  curr_start_play: number;
-};
-
-/**
- * Score continuity override audit record.
- */
-export type ScoreContinuityOverride = {
-  enabled: boolean;
-  reason: string | null;
-  overridden_by: string | null;
-  overridden_at: string | null;
-};
-
-/**
- * Moment distribution metrics for pacing analysis.
- * Enables instant detection of pacing problems (e.g., Q1 spam).
- */
-export type MomentDistribution = {
-  moments_per_quarter: Record<string, number>;  // e.g., { Q1: 7, Q2: 6, Q3: 5, Q4: 3 }
-  moments_by_trigger_type: Record<string, number>;  // e.g., { flip: 5, tier_cross: 12 }
-  moments_by_tier: Record<string, number>;  // Tier at end of moment, keyed as strings
-  average_plays_per_moment: number;
-  first_half_vs_second_half: {
-    first_half: number;
-    second_half: number;
-    overtime: number;
-    first_half_percentage: number;
-  };
-  budget_utilization: {
-    total_moments: number;
-    budget: number;
-    utilization_percentage: number;
-  };
-  merge_statistics: {
-    total_before_merge: number;
-    total_merged: number;
-    merge_ratio: number;
-  };
-};
-
-/**
- * Response from GET /games/{game_id}/moments
- * 
- * Moments are already merged and within sport-specific budgets (e.g., NBA: 30 max).
- * Each moment has a 'reason' field explaining why it exists.
- */
-export type MomentsResponse = {
+export type GameStoryResponse = {
   game_id: number;
+  sport: string;
+  story_version: string;                // Story generation version
+  chapters: ChapterEntry[];
+  chapter_count: number;
+  total_plays: number;
+  
+  // AI-generated full story (optional)
+  compact_story: string | null;
+  reading_time_estimate_minutes: number | null;
+  
+  // Metadata
   generated_at: string | null;
-  moments: MomentEntry[];
-  total_count: number;
+  metadata: Record<string, unknown>;
   
-  // AI-generated game-level copy (SportsCenter-style, spoiler-safe)
-  game_headline: string;   // max 80 chars
-  game_subhead: string;    // max 120 chars
-  
-  // Phase 0: Quality and observability data
-  quality_status?: QualityStatus;
-  moment_distribution?: MomentDistribution;
-  score_continuity_issues?: ScoreContinuityIssue[];
-  score_continuity_override?: ScoreContinuityOverride;
+  // Generation status
+  has_summaries: boolean;
+  has_titles: boolean;
+  has_compact_story: boolean;
 };
 
 /**
- * Game analysis from the pipeline.
- * Contains moments plus Phase 0 observability data.
+ * Story State: Running context for AI generation.
+ * 
+ * Derived deterministically from prior chapters only.
  */
-export type GameAnalysis = {
-  moments: MomentEntry[];
-  notable_moments: MomentEntry[];
-  moment_count: number;
-  quality_status: QualityStatus;
-  moment_distribution?: MomentDistribution;
-  score_continuity_issues?: ScoreContinuityIssue[];
-  score_continuity_override?: ScoreContinuityOverride;
+export type StoryStateResponse = {
+  chapter_index_last_processed: number;
+  players: Record<string, PlayerStoryState>;
+  teams: Record<string, TeamStoryState>;
+  momentum_hint: "surging" | "steady" | "slipping" | "volatile" | "unknown";
+  theme_tags: string[];
+  constraints: {
+    no_future_knowledge: boolean;
+    source: string;
+  };
+};
+
+export type PlayerStoryState = {
+  player_name: string;
+  points_so_far: number;
+  made_fg_so_far: number;
+  made_3pt_so_far: number;
+  made_ft_so_far: number;
+  notable_actions_so_far: string[];
+};
+
+export type TeamStoryState = {
+  team_name: string;
+  score_so_far: number | null;
 };
 
 export type AdminGameDetail = {
@@ -325,11 +228,8 @@ export type AdminGameDetail = {
   odds: OddsEntry[];
   social_posts: SocialPost[];
   plays: PlayEntry[];
-  moments: MomentEntry[];  // Full game coverage; filter by is_notable for key moments
   derived_metrics: Record<string, unknown>;
   raw_payloads: Record<string, unknown>;
-  // Phase 0: Game analysis with observability data
-  game_analysis?: GameAnalysis;
 };
 
 export type GameFilters = {

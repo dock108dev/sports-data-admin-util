@@ -16,19 +16,20 @@
 | [NHL Implementation Guide](NHL_IMPLEMENTATION_GUIDE.md) | **Comprehensive NHL parity reference** |
 | [Database Integration](DATABASE_INTEGRATION.md) | Querying the sports database |
 
-## Timeline System
+## Story Generation System
 
-The core product: turning play-by-play and social data into a narrative timeline.
+The core product: turning play-by-play into narrative chapters and stories.
 
 | Guide | Description |
 |-------|-------------|
-| [Moment System Contract](MOMENT_SYSTEM_CONTRACT.md) | **Start here:** The contract for moment detection |
-| [Technical Flow](TECHNICAL_FLOW.md) | Complete pipeline from PBP to compact timeline |
-| [Narrative Time Model](NARRATIVE_TIME_MODEL.md) | Phase-based ordering (narrative vs wall-clock time) |
-| [Timeline Assembly](TIMELINE_ASSEMBLY.md) | Step-by-step timeline generation |
+| [Book + Chapters Model](BOOK_CHAPTERS_MODEL.md) | **Start here:** Core architecture and concepts |
+| [NBA v1 Boundary Rules](NBA_V1_BOUNDARY_RULES.md) | Chapter boundary rules for NBA |
+| [AI Context Policy](AI_CONTEXT_POLICY.md) | What AI can and cannot see |
+| [AI Signals (NBA v1)](AI_SIGNALS_NBA_V1.md) | Exact signals exposed to AI |
+| [Admin UI Guide](ADMIN_UI_STORY_GENERATOR.md) | Story Generator admin interface |
+| [Technical Flow](TECHNICAL_FLOW.md) | Complete pipeline from PBP to story |
+| [Timeline Assembly](TIMELINE_ASSEMBLY.md) | Timeline generation details |
 | [Timeline Validation](TIMELINE_VALIDATION.md) | Validation rules and sanity checks |
-| [Compact Mode](COMPACT_MODE.md) | Timeline compression for mobile |
-| [Summary Generation](SUMMARY_GENERATION.md) | AI-generated reading guides |
 | [PBP Timestamp Usage](PBP_TIMESTAMP_USAGE.md) | How PBP timestamps are used |
 | [Social Event Roles](SOCIAL_EVENT_ROLES.md) | Narrative roles for social posts |
 
