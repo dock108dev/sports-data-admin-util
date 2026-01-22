@@ -11,7 +11,7 @@ celery_app = Celery(
     "sports_data_admin",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks.story_generation"],
+    include=[],
 )
 
 # Configuration
