@@ -217,9 +217,6 @@ class PlayEntry(BaseModel):
     away_score: int | None = None
 
 
-# Legacy player contribution, run info, and moment types removed - system is now chapters-first
-
-
 class GameDetailResponse(BaseModel):
     game: GameMeta
     team_stats: list[TeamStat]

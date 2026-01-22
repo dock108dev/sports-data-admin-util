@@ -13,7 +13,7 @@ from app.logging_config import configure_logging
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.routers import game_snapshots, reading_positions, social, sports
-from app.routers.admin import frontend_payload, pbp, pipeline, resolution, timeline_jobs
+from app.routers.admin import pbp, pipeline, resolution, timeline_jobs
 
 configure_logging(
     service="sports-data-admin-api",
@@ -42,7 +42,6 @@ app.include_router(timeline_jobs.router, prefix="/api/admin/sports", tags=["admi
 app.include_router(pipeline.router, prefix="/api/admin/sports", tags=["admin", "pipeline"])
 app.include_router(pbp.router, prefix="/api/admin/sports", tags=["admin", "pbp"])
 app.include_router(resolution.router, prefix="/api/admin/sports", tags=["admin", "resolution"])
-app.include_router(frontend_payload.router, prefix="/api/admin/sports", tags=["admin", "frontend-payload"])
 
 
 @app.get("/healthz")

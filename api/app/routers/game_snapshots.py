@@ -502,25 +502,18 @@ async def get_game_timeline_compact(
     if artifact is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found")
 
-    original_timeline = artifact.timeline_json or []
-    
-    # Legacy compact mode removed - return full timeline
-    # Compression levels are no longer supported
-    compressed_timeline = original_timeline
-    
-    original_count = len(original_timeline)
-    compressed_count = len(compressed_timeline)
-    retention = 1.0  # No compression
+    timeline = artifact.timeline_json or []
+    event_count = len(timeline)
 
     return CompactTimelineResponse(
         game_id=artifact.game_id,
         sport=artifact.sport,
         timeline_version=artifact.timeline_version,
         compression_level=level,
-        original_event_count=original_count,
-        compressed_event_count=compressed_count,
-        retention_rate=round(retention, 3),
-        timeline_json=compressed_timeline,
+        original_event_count=event_count,
+        compressed_event_count=event_count,
+        retention_rate=1.0,
+        timeline_json=timeline,
         summary_json=artifact.summary_json,
     )
 

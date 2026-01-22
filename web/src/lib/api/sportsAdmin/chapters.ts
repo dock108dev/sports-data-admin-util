@@ -226,5 +226,3 @@ export async function getBulkGenerateStatus(jobId: string): Promise<{
   
   return response.json();
 }
-
-// Synchronous bulk generation removed - use bulkGenerateStoriesAsync instead

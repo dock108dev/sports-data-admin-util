@@ -138,13 +138,13 @@ def test_debug_fields_optional():
 
 
 # ============================================================================
-# TEST 4: LEGACY ISOLATION TEST
+# TEST 4: CHAPTERS-ONLY STORY TEST
 # ============================================================================
 
-def test_story_renders_without_legacy_moment_data():
-    """Admin UI renders correctly without any legacy moment data available."""
-    
-    # Create a story with only chapter data (no moments)
+def test_story_renders_with_chapters_only():
+    """Story renders correctly with chapter data only."""
+
+    # Create a story with only chapter data
     plays = [make_play(i, f"Play {i}") for i in range(5)]
     
     chapter = Chapter(

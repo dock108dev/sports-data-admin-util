@@ -267,9 +267,6 @@ def format_plays_for_prompt(plays: list[Any], max_plays: int = 40, max_desc_leng
     return "\n".join(lines)
 
 
-# Spoiler detection removed - trust the architecture and AI prompts instead
-
-
 # ============================================================================
 # CHAPTER TITLE PROMPT (NBA V1)
 # ============================================================================
@@ -368,9 +365,6 @@ def build_chapter_title_prompt(context: TitlePromptContext) -> str:
     )
     
     return prompt
-
-
-# Title validation removed - trust the AI prompts instead
 
 
 # ============================================================================
@@ -518,7 +512,3 @@ def validate_compact_story_length(text: str, min_minutes: float = 4.0, max_minut
         "reading_time_minutes": reading_time,
         "word_count": word_count,
     }
-
-
-# Proper noun validation removed - trust the AI prompts instead
-

@@ -740,6 +740,3 @@ async def get_bulk_generate_status(
         response.status = f"Failed: {str(task.info)}"
     
     return response
-
-
-# Synchronous bulk generation removed - use /games/bulk-generate-async instead
