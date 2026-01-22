@@ -114,6 +114,18 @@ from .story_section import (
     generate_section_notes,
     format_sections_debug,
 )
+from .header_reset import (
+    # Types
+    HeaderContext,
+    HEADER_TEMPLATES,
+    # Functions
+    build_header_context,
+    generate_header,
+    generate_header_for_section,
+    generate_all_headers,
+    validate_header,
+    format_headers_debug,
+)
 
 __all__ = [
     # Core types
@@ -210,4 +222,13 @@ __all__ = [
     "enforce_section_count",
     "generate_section_notes",
     "format_sections_debug",
+    # Header reset generator
+    "HeaderContext",
+    "HEADER_TEMPLATES",
+    "build_header_context",
+    "generate_header",
+    "generate_header_for_section",
+    "generate_all_headers",
+    "validate_header",
+    "format_headers_debug",
 ]
