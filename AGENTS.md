@@ -83,7 +83,7 @@ See `docs/BOOK_CHAPTERS_MODEL.md` for details.
 
 ## Coding Standards
 
-See `.cursorrules` for complete standards. Key points:
+See [CLAUDE.md](CLAUDE.md) for complete standards. Key points:
 
 ### Python
 - Type hints on all functions

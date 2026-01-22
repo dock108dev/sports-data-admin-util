@@ -186,7 +186,7 @@ export default function StoryGeneratorPage() {
           <div className={styles.noStory}>
             <p>No story generated yet.</p>
             <p className={styles.noStoryHint}>
-              Click "Regenerate Story" to generate the full game narrative.
+              Click &ldquo;Regenerate Story&rdquo; to generate the full game narrative.
             </p>
           </div>
         )}
