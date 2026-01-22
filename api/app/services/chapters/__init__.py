@@ -74,6 +74,22 @@ from .compact_story_generator import (
     validate_compact_story_input,
 )
 # Narrative validator removed - trust the architecture
+from .running_stats import (
+    # Data structures
+    PlayerSnapshot,
+    TeamSnapshot,
+    RunningStatsSnapshot,
+    PlayerDelta,
+    TeamDelta,
+    SectionDelta,
+    # Builder functions
+    normalize_player_key,
+    build_initial_snapshot,
+    update_snapshot,
+    build_running_snapshots,
+    compute_section_delta,
+    compute_section_deltas_from_snapshots,
+)
 
 __all__ = [
     # Core types
@@ -139,4 +155,17 @@ __all__ = [
     "CompactStoryGenerationError",
     "generate_compact_story",
     "validate_compact_story_input",
+    # Running stats builder
+    "PlayerSnapshot",
+    "TeamSnapshot",
+    "RunningStatsSnapshot",
+    "PlayerDelta",
+    "TeamDelta",
+    "SectionDelta",
+    "normalize_player_key",
+    "build_initial_snapshot",
+    "update_snapshot",
+    "build_running_snapshots",
+    "compute_section_delta",
+    "compute_section_deltas_from_snapshots",
 ]
