@@ -40,6 +40,8 @@ from .story_schemas import (
     BulkGenerateRequest,
     BulkGenerateResponse,
     BulkGenerateResult,
+    BulkGenerateJobResponse,
+    JobStatusResponse,
 )
 
 router = APIRouter()
@@ -670,6 +672,74 @@ async def regenerate_all(
             message="Failed to regenerate story",
             errors=[str(e)],
         )
+
+
+@router.post("/games/bulk-generate-async", response_model=BulkGenerateJobResponse)
+async def bulk_generate_stories_async(
+    request: BulkGenerateRequest,
+) -> BulkGenerateJobResponse:
+    """
+    Start a background job to generate stories for all games in a date range.
+    
+    Returns immediately with a job ID that can be used to check status.
+    This allows the UI to remain responsive during long-running generation tasks.
+    """
+    from app.tasks.story_generation import bulk_generate_stories_task
+    
+    # Queue the task
+    task = bulk_generate_stories_task.delay(
+        start_date=request.start_date,
+        end_date=request.end_date,
+        leagues=request.leagues,
+        force_regenerate=request.force,
+    )
+    
+    return BulkGenerateJobResponse(
+        job_id=task.id,
+        message="Story generation job started",
+        status_url=f"/api/admin/sports/games/bulk-generate-status/{task.id}",
+    )
+
+
+@router.get("/games/bulk-generate-status/{job_id}", response_model=JobStatusResponse)
+async def get_bulk_generate_status(
+    job_id: str,
+) -> JobStatusResponse:
+    """
+    Check the status of a background story generation job.
+    
+    States:
+    - PENDING: Job is queued but not started
+    - PROGRESS: Job is running
+    - SUCCESS: Job completed successfully
+    - FAILURE: Job failed with an error
+    """
+    from celery.result import AsyncResult
+    
+    task = AsyncResult(job_id)
+    
+    response = JobStatusResponse(
+        job_id=job_id,
+        state=task.state,
+    )
+    
+    if task.state == "PENDING":
+        response.status = "Waiting to start..."
+    elif task.state == "PROGRESS":
+        info = task.info or {}
+        response.current = info.get("current")
+        response.total = info.get("total")
+        response.status = info.get("status", "Processing...")
+        response.successful = info.get("successful")
+        response.failed = info.get("failed")
+        response.cached = info.get("cached")
+    elif task.state == "SUCCESS":
+        response.result = task.result
+        response.status = "Completed"
+    elif task.state == "FAILURE":
+        response.status = f"Failed: {str(task.info)}"
+    
+    return response
 
 
 @router.post("/games/bulk-generate", response_model=BulkGenerateResponse)

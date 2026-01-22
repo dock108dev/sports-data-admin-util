@@ -203,3 +203,25 @@ class BulkGenerateResponse(BaseModel):
     successful: int
     failed: int
     results: list[BulkGenerateResult] = Field(default_factory=list)
+
+
+class BulkGenerateJobResponse(BaseModel):
+    """Response when starting a background job."""
+    
+    job_id: str = Field(..., description="Celery task ID")
+    message: str = Field(..., description="Status message")
+    status_url: str = Field(..., description="URL to check job status")
+
+
+class JobStatusResponse(BaseModel):
+    """Status of a background job."""
+    
+    job_id: str
+    state: str = Field(..., description="PENDING, PROGRESS, SUCCESS, FAILURE")
+    current: int | None = Field(None, description="Current progress")
+    total: int | None = Field(None, description="Total items")
+    status: str | None = Field(None, description="Status message")
+    successful: int | None = None
+    failed: int | None = None
+    cached: int | None = None
+    result: dict | None = Field(None, description="Final result if completed")
