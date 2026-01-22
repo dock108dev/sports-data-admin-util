@@ -215,7 +215,7 @@ async def regenerate_chapters(
             )
         
         # Regenerate story
-        story = await _build_game_story(game, include_debug=request.debug)
+        story = await build_game_story_response(game, include_debug=request.debug)
         
         return RegenerateResponse(
             success=True,
@@ -309,7 +309,7 @@ async def regenerate_summaries(
             chapter.title = summary_result.chapter_title
         
         # Rebuild response with summaries
-        story = await _build_game_story(game, include_debug=request.debug)
+        story = await build_game_story_response(game, include_debug=request.debug)
         
         # Inject generated summaries into response
         for idx, summary_result in enumerate(summary_results):
@@ -419,7 +419,7 @@ async def regenerate_titles(
             chapter.title = title_result.chapter_title
         
         # Rebuild response with titles
-        story = await _build_game_story(game, include_debug=request.debug)
+        story = await build_game_story_response(game, include_debug=request.debug)
         
         # Inject generated titles into response
         for idx, title_result in enumerate(title_results):
@@ -529,7 +529,7 @@ async def regenerate_compact_story(
         )
         
         # Rebuild response with compact story
-        story = await _build_game_story(game, include_debug=request.debug)
+        story = await build_game_story_response(game, include_debug=request.debug)
         
         # Inject compact story into response
         story.compact_story = compact_result.compact_story
@@ -643,7 +643,7 @@ async def regenerate_all(
         game_story.reading_time_estimate_minutes = compact_result.reading_time_minutes
         
         # Rebuild response with all AI content
-        story = await _build_game_story(game, include_debug=request.debug)
+        story = await build_game_story_response(game, include_debug=request.debug)
         
         # Inject generated content into response
         for idx, summary_result in enumerate(summary_results):
@@ -680,6 +680,11 @@ async def bulk_generate_stories(
     """
     Generate stories for all games in a date range.
     
+    COST OPTIMIZATION: Stories are cached in the database to avoid redundant AI calls.
+    - Checks database first for existing stories
+    - Only generates if missing or force_regenerate=True
+    - Saves ~10-20 AI calls per game
+    
     This is useful for:
     - Initial story generation for historical games
     - Regenerating stories after rule changes
@@ -690,6 +695,17 @@ async def bulk_generate_stories(
     from datetime import datetime as dt
     
     try:
+        # Get OpenAI client
+        ai_client = get_openai_client()
+        if not ai_client:
+            return BulkGenerateResponse(
+                success=False,
+                message="OpenAI API key not configured",
+                total_games=0,
+                successful=0,
+                failed=0,
+            )
+        
         # Parse dates
         start_date = dt.strptime(request.start_date, "%Y-%m-%d").date()
         end_date = dt.strptime(request.end_date, "%Y-%m-%d").date()
@@ -725,22 +741,110 @@ async def bulk_generate_stories(
             }
         )
         
-        # Generate stories
+        # Generate stories with database caching
         results = []
         successful = 0
         failed = 0
+        cached = 0
+        generated = 0
+        stories_to_save = []  # Collect stories to save after AI generation
         
         for game in games_with_pbp:
             try:
-                story = await _build_game_story(game, include_debug=False)
+                sport = game.league.code if game.league else "NBA"
+                story_version = "1.0.0"  # Match ChapterizerV1 version
+                
+                # Check if story already exists in database
+                existing_story = await session.execute(
+                    select(db_models.SportsGameStory)
+                    .where(
+                        db_models.SportsGameStory.game_id == game.id,
+                        db_models.SportsGameStory.story_version == story_version,
+                    )
+                )
+                cached_story = existing_story.scalar_one_or_none()
+                
+                if cached_story and cached_story.has_summaries and cached_story.has_compact_story:
+                    # Story already exists, skip AI generation
+                    logger.info(f"Using cached story for game {game.id}")
+                    results.append(BulkGenerateResult(
+                        game_id=game.id,
+                        success=True,
+                        message=f"Used cached story ({cached_story.chapter_count} chapters)",
+                        chapter_count=cached_story.chapter_count,
+                    ))
+                    successful += 1
+                    cached += 1
+                    continue
+                
+                # Generate new story with AI
+                logger.info(f"Generating new story for game {game.id}")
+                
+                # Step 1: Build chapters (deterministic structure)
+                plays = sorted(game.plays or [], key=lambda p: p.play_index)
+                timeline = [
+                    {
+                        "event_type": "pbp",
+                        "play_index": p.play_index,
+                        "quarter": p.quarter,
+                        "game_clock": p.game_clock,
+                        "play_type": p.play_type,
+                        "description": p.description,
+                        "team": p.team.abbreviation if p.team else None,
+                        "home_score": p.home_score,
+                        "away_score": p.away_score,
+                    }
+                    for p in plays
+                ]
+                
+                game_story = build_chapters(timeline=timeline, game_id=game.id, sport=sport)
+                
+                # Step 2: Generate summaries sequentially
+                summary_results = generate_summaries_sequentially(
+                    chapters=game_story.chapters,
+                    sport=sport,
+                    ai_client=ai_client,
+                )
+                
+                # Update chapters with summaries
+                for chapter, summary_result in zip(game_story.chapters, summary_results):
+                    chapter.summary = summary_result.chapter_summary
+                    chapter.title = summary_result.chapter_title
+                
+                # Step 3: Generate compact story from summaries
+                chapter_summaries = [ch.summary for ch in game_story.chapters]
+                chapter_titles = [ch.title for ch in game_story.chapters if ch.title]
+                
+                compact_result = generate_compact_story(
+                    chapter_summaries=chapter_summaries,
+                    chapter_titles=chapter_titles if len(chapter_titles) == len(chapter_summaries) else None,
+                    sport=sport,
+                    ai_client=ai_client,
+                )
+                
+                # Prepare story data for database save (after all AI calls complete)
+                total_ai_calls = len(summary_results) + 1  # summaries + compact story
+                
+                story_data = {
+                    "game": game,
+                    "cached_story": cached_story,
+                    "sport": sport,
+                    "story_version": story_version,
+                    "game_story": game_story,
+                    "summary_results": summary_results,
+                    "compact_result": compact_result,
+                    "total_ai_calls": total_ai_calls,
+                }
+                stories_to_save.append(story_data)
                 
                 results.append(BulkGenerateResult(
                     game_id=game.id,
                     success=True,
-                    message=f"Generated {story.chapter_count} chapters",
-                    chapter_count=story.chapter_count,
+                    message=f"Generated {len(game_story.chapters)} chapters with AI ({total_ai_calls} API calls)",
+                    chapter_count=len(game_story.chapters),
                 ))
                 successful += 1
+                generated += 1
                 
             except Exception as e:
                 logger.error(f"Failed to generate story for game {game.id}: {e}")
@@ -752,18 +856,68 @@ async def bulk_generate_stories(
                 ))
                 failed += 1
         
+        # Save all generated stories to database (after all AI calls complete)
+        try:
+            for story_data in stories_to_save:
+                cached_story = story_data["cached_story"]
+                game_story = story_data["game_story"]
+                summary_results = story_data["summary_results"]
+                compact_result = story_data["compact_result"]
+                
+                if cached_story:
+                    # Update existing story
+                    cached_story.chapters_json = [ch.to_dict() for ch in game_story.chapters]
+                    cached_story.chapter_count = len(game_story.chapters)
+                    cached_story.summaries_json = [{"chapter_index": r.chapter_index, "summary": r.chapter_summary} for r in summary_results]
+                    cached_story.titles_json = [{"chapter_index": r.chapter_index, "title": r.chapter_title} for r in summary_results if r.chapter_title]
+                    cached_story.compact_story = compact_result.compact_story
+                    cached_story.reading_time_minutes = compact_result.reading_time_minutes
+                    cached_story.has_summaries = True
+                    cached_story.has_titles = any(r.chapter_title for r in summary_results)
+                    cached_story.has_compact_story = True
+                    cached_story.generated_at = dt.utcnow()
+                    cached_story.total_ai_calls = story_data["total_ai_calls"]
+                else:
+                    # Create new story
+                    new_story = db_models.SportsGameStory(
+                        game_id=story_data["game"].id,
+                        sport=story_data["sport"],
+                        story_version=story_data["story_version"],
+                        chapters_json=[ch.to_dict() for ch in game_story.chapters],
+                        chapter_count=len(game_story.chapters),
+                        summaries_json=[{"chapter_index": r.chapter_index, "summary": r.chapter_summary} for r in summary_results],
+                        titles_json=[{"chapter_index": r.chapter_index, "title": r.chapter_title} for r in summary_results if r.chapter_title],
+                        compact_story=compact_result.compact_story,
+                        reading_time_minutes=compact_result.reading_time_minutes,
+                        has_summaries=True,
+                        has_titles=any(r.chapter_title for r in summary_results),
+                        has_compact_story=True,
+                        generated_at=dt.utcnow(),
+                        total_ai_calls=story_data["total_ai_calls"],
+                    )
+                    session.add(new_story)
+            
+            # Commit all stories at once
+            await session.commit()
+            logger.info(f"Successfully saved {len(stories_to_save)} stories to database")
+        except Exception as e:
+            logger.error(f"Failed to save stories to database: {e}")
+            await session.rollback()
+        
         logger.info(
             "bulk_generate_complete",
             extra={
                 "total_games": len(games_with_pbp),
                 "successful": successful,
                 "failed": failed,
+                "cached": cached,
+                "generated": generated,
             }
         )
         
         return BulkGenerateResponse(
             success=True,
-            message=f"Processed {len(games_with_pbp)} games: {successful} successful, {failed} failed",
+            message=f"Processed {len(games_with_pbp)} games: {successful} successful ({cached} cached, {generated} generated), {failed} failed",
             total_games=len(games_with_pbp),
             successful=successful,
             failed=failed,

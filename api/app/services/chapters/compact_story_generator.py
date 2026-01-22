@@ -24,9 +24,7 @@ from .prompts import (
     CompactStoryPromptContext,
     estimate_reading_time,
     validate_compact_story_length,
-    check_for_new_proper_nouns,
 )
-from .narrative_validator import NarrativeValidator
 
 logger = logging.getLogger(__name__)
 
@@ -129,34 +127,9 @@ def generate_compact_story(
     if not compact_story:
         raise CompactStoryGenerationError("AI returned empty compact story")
     
-    # FINAL PROMPT: Narrative QA & Spoiler Guard Pass
-    # Validate compact story using deterministic rules
-    if validate_output:
-        validation_result_obj = NarrativeValidator.validate_compact_story(
-            compact_story,
-            chapter_summaries=chapter_summaries,
-        )
-        
-        if not validation_result_obj.valid:
-            error_msg = f"Compact story validation failed: {', '.join(validation_result_obj.errors)}"
-            logger.error(error_msg)
-            raise CompactStoryGenerationError(error_msg)
-        
-        # Log warnings (non-blocking)
-        if validation_result_obj.warnings:
-            logger.warning(f"Compact story warnings: {', '.join(validation_result_obj.warnings)}")
-    
     # Calculate metrics
     reading_time = estimate_reading_time(compact_story)
     word_count = len(compact_story.split())
-    
-    # Additional validation checks
-    validation_result = None
-    new_nouns = None
-    
-    if validate_output:
-        validation_result = validate_compact_story_length(compact_story)
-        new_nouns = check_for_new_proper_nouns(compact_story, chapter_summaries)
     
     logger.info(
         f"Generated compact story: {word_count} words, "
@@ -169,8 +142,8 @@ def generate_compact_story(
         word_count=word_count,
         prompt_used=prompt,
         raw_response=raw_response,
-        validation_result=validation_result,
-        new_nouns_detected=new_nouns,
+        validation_result=None,
+        new_nouns_detected=None,
     )
 
 

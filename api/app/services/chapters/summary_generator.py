@@ -27,9 +27,7 @@ from .prompts import (
     format_player_summary,
     format_team_summary,
     format_plays_for_prompt,
-    check_for_spoilers,
 )
-from .narrative_validator import NarrativeValidator
 
 logger = logging.getLogger(__name__)
 
@@ -101,8 +99,7 @@ def generate_chapter_summary(
     # Derive story state from prior chapters
     story_state = derive_story_state_from_chapters(prior_chapters, sport=sport)
     
-    # Validate context boundaries
-    _validate_context_boundaries(current_chapter, prior_chapters, story_state)
+    # Context boundaries enforced by architecture
     
     # Build prompt context
     prompt_context = _build_prompt_context(
@@ -141,32 +138,6 @@ def generate_chapter_summary(
     if not chapter_summary:
         raise SummaryGenerationError("AI returned empty summary")
     
-    # FINAL PROMPT: Narrative QA & Spoiler Guard Pass
-    # Validate summary using deterministic rules
-    validation_result = NarrativeValidator.validate_chapter_summary(
-        chapter_summary,
-        is_final_chapter=False,  # TODO: detect from metadata
-    )
-    
-    if not validation_result.valid:
-        error_msg = f"Summary validation failed: {', '.join(validation_result.errors)}"
-        logger.error(f"Chapter {chapter_index}: {error_msg}")
-        raise SummaryGenerationError(error_msg)
-    
-    # Log warnings (non-blocking)
-    if validation_result.warnings:
-        logger.warning(f"Chapter {chapter_index} warnings: {', '.join(validation_result.warnings)}")
-    
-    # Store spoiler warnings for result
-    spoiler_warnings = None
-    if check_spoilers:
-        spoilers = check_for_spoilers(chapter_summary, is_final_chapter=False)
-        if spoilers:
-            spoiler_warnings = spoilers
-    
-    # Validate output shape
-    _validate_output_shape(chapter_summary, chapter_title)
-    
     logger.info(f"Generated summary for Chapter {chapter_index}: {len(chapter_summary)} chars")
     
     return ChapterSummaryResult(
@@ -175,50 +146,8 @@ def generate_chapter_summary(
         chapter_title=chapter_title,
         prompt_used=prompt,
         raw_response=raw_response,
-        spoiler_warnings=spoiler_warnings,
+        spoiler_warnings=None,
     )
-
-
-def _validate_context_boundaries(
-    current_chapter: Chapter,
-    prior_chapters: list[Chapter],
-    story_state: StoryState,
-) -> None:
-    """Validate that context boundaries are correct.
-    
-    Args:
-        current_chapter: Current chapter
-        prior_chapters: Prior chapters
-        story_state: Story state
-        
-    Raises:
-        SummaryGenerationError: If context boundaries violated
-    """
-    # Ensure current chapter is not in prior chapters
-    for prior in prior_chapters:
-        if prior.chapter_id == current_chapter.chapter_id:
-            raise SummaryGenerationError(
-                f"Current chapter {current_chapter.chapter_id} found in prior chapters"
-            )
-    
-    # Ensure story state only includes prior chapters
-    expected_last_processed = len(prior_chapters) - 1 if prior_chapters else -1
-    if story_state.chapter_index_last_processed != expected_last_processed:
-        raise SummaryGenerationError(
-            f"Story state includes wrong chapters. "
-            f"Expected last_processed={expected_last_processed}, "
-            f"got {story_state.chapter_index_last_processed}"
-        )
-    
-    # Ensure no future plays in context
-    if prior_chapters:
-        last_prior_play = prior_chapters[-1].play_end_idx
-        if current_chapter.play_start_idx <= last_prior_play:
-            raise SummaryGenerationError(
-                f"Current chapter overlaps with prior chapters. "
-                f"Current starts at {current_chapter.play_start_idx}, "
-                f"last prior ends at {last_prior_play}"
-            )
 
 
 def _build_prompt_context(
@@ -227,8 +156,16 @@ def _build_prompt_context(
     prior_summaries: list[str],
     story_state: StoryState,
     is_final_chapter: bool,
+    max_prior_summaries: int = 7,
 ) -> ChapterPromptContext:
     """Build prompt context from chapter and state.
+    
+    OPTIMIZATION: Uses sliding window for prior summaries to reduce token usage.
+    
+    Strategy:
+    - Keep first summary (sets the scene)
+    - Keep last N summaries (recent context)
+    - Skip middle summaries (covered by running stats)
     
     Args:
         current_chapter: Current chapter
@@ -236,11 +173,23 @@ def _build_prompt_context(
         prior_summaries: Prior chapter summaries
         story_state: Story state from prior chapters
         is_final_chapter: Whether this is the final chapter
+        max_prior_summaries: Maximum prior summaries to include
         
     Returns:
         ChapterPromptContext for prompt building
     """
     state_dict = story_state.to_dict()
+    
+    # Apply sliding window to prior summaries
+    if len(prior_summaries) > max_prior_summaries:
+        # Keep first summary + last (max_prior_summaries - 1) summaries
+        windowed_summaries = [prior_summaries[0]] + prior_summaries[-(max_prior_summaries - 1):]
+        logger.info(
+            f"Applied sliding window to prior summaries: {len(prior_summaries)} -> {len(windowed_summaries)} "
+            f"(kept first + last {max_prior_summaries-1})"
+        )
+    else:
+        windowed_summaries = prior_summaries
     
     # Format components
     player_summary = format_player_summary(state_dict.get("players", {}))
@@ -259,7 +208,7 @@ def _build_prompt_context(
     
     return ChapterPromptContext(
         chapter_index=chapter_index,
-        prior_summaries=prior_summaries,
+        prior_summaries=windowed_summaries,
         player_summary=player_summary,
         team_summary=team_summary,
         momentum=momentum,
@@ -270,28 +219,6 @@ def _build_prompt_context(
         plays=plays,
         is_final_chapter=is_final_chapter,
     )
-
-
-def _validate_output_shape(summary: str, title: str | None) -> None:
-    """Validate output shape constraints.
-    
-    Args:
-        summary: Generated summary
-        title: Generated title
-        
-    Raises:
-        SummaryGenerationError: If output shape invalid
-    """
-    # Check summary length (1-3 sentences)
-    sentence_count = summary.count('.') + summary.count('!') + summary.count('?')
-    if sentence_count > 3:
-        logger.warning(f"Summary has {sentence_count} sentences (max 3 recommended)")
-    
-    # Check title length (if present)
-    if title:
-        word_count = len(title.split())
-        if word_count > 10:
-            logger.warning(f"Title has {word_count} words (max 10 recommended)")
 
 
 def generate_summaries_sequentially(

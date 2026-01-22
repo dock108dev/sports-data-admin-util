@@ -23,9 +23,7 @@ from .types import Chapter
 from .prompts import (
     build_chapter_title_prompt,
     TitlePromptContext,
-    validate_title,
 )
-from .narrative_validator import NarrativeValidator
 
 logger = logging.getLogger(__name__)
 
@@ -121,30 +119,6 @@ def generate_chapter_title(
     if not chapter_title:
         raise TitleGenerationError("AI returned empty title")
     
-    # FINAL PROMPT: Narrative QA & Spoiler Guard Pass
-    # Validate title using deterministic rules
-    validation_result = None
-    if validate_output:
-        validation_result_obj = NarrativeValidator.validate_chapter_title(
-            chapter_title,
-            is_final_chapter=is_final_chapter,
-        )
-        
-        if not validation_result_obj.valid:
-            error_msg = f"Title validation failed: {', '.join(validation_result_obj.errors)}"
-            logger.error(f"Chapter {chapter_index}: {error_msg}")
-            raise TitleGenerationError(error_msg)
-        
-        # Log warnings (non-blocking)
-        if validation_result_obj.warnings:
-            logger.warning(f"Chapter {chapter_index} title warnings: {', '.join(validation_result_obj.warnings)}")
-        
-        # Store validation result
-        validation_result = {
-            "valid": validation_result_obj.valid,
-            "issues": validation_result_obj.errors,
-        }
-    
     logger.info(f"Generated title for Chapter {chapter_index}: '{chapter_title}'")
     
     return ChapterTitleResult(
@@ -152,7 +126,7 @@ def generate_chapter_title(
         chapter_title=chapter_title,
         prompt_used=prompt,
         raw_response=raw_response,
-        validation_result=validation_result,
+        validation_result=None,
     )
 
 

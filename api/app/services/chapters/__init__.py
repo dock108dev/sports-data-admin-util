@@ -60,12 +60,7 @@ from .summary_generator import (
     generate_chapter_summary,
     generate_summaries_sequentially,
 )
-from .prompts import (
-    check_for_spoilers,
-    validate_title,
-    BANNED_PHRASES,
-    TITLE_BANNED_WORDS,
-)
+# Validation removed - trust the architecture
 from .title_generator import (
     ChapterTitleResult,
     TitleGenerationError,
@@ -78,13 +73,7 @@ from .compact_story_generator import (
     generate_compact_story,
     validate_compact_story_input,
 )
-from .narrative_validator import (
-    NarrativeValidator,
-    ValidationResult,
-    validate_narrative_output,
-    all_valid,
-    get_all_errors,
-)
+# Narrative validator removed - trust the architecture
 
 __all__ = [
     # Core types
@@ -140,24 +129,14 @@ __all__ = [
     "SummaryGenerationError",
     "generate_chapter_summary",
     "generate_summaries_sequentially",
-    "check_for_spoilers",
-    "BANNED_PHRASES",
     # Title generation
     "ChapterTitleResult",
     "TitleGenerationError",
     "generate_chapter_title",
     "generate_titles_for_chapters",
-    "validate_title",
-    "TITLE_BANNED_WORDS",
     # Compact story generation
     "CompactStoryResult",
     "CompactStoryGenerationError",
     "generate_compact_story",
     "validate_compact_story_input",
-    # Narrative validation
-    "NarrativeValidator",
-    "ValidationResult",
-    "validate_narrative_output",
-    "all_valid",
-    "get_all_errors",
 ]

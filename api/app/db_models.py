@@ -951,3 +951,81 @@ class FrontendPayloadVersion(Base):
     def is_latest(self) -> bool:
         """Check if this is the active version."""
         return self.is_active
+
+
+class SportsGameStory(Base):
+    """Cached AI-generated game stories.
+    
+    This table stores expensive AI-generated content to avoid redundant API calls.
+    Stories are versioned and can be regenerated when needed.
+    
+    COST OPTIMIZATION
+    =================
+    - Each game requires 10-20 AI calls (summaries + compact story)
+    - Costs grow with chapter count and context size
+    - Caching prevents regenerating identical content
+    
+    VERSIONING
+    ==========
+    - story_version: Matches ChapterizerV1 version (e.g., "1.0.0")
+    - One story per (game_id, story_version)
+    - Regenerate when chapterizer rules change
+    
+    CONTENT STRUCTURE
+    =================
+    - chapters_json: Deterministic chapter structure
+    - summaries_json: AI-generated chapter summaries (expensive)
+    - titles_json: AI-generated chapter titles (expensive)
+    - compact_story: AI-generated full game narrative (expensive)
+    """
+
+    __tablename__ = "sports_game_stories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False, index=True)
+    sport: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    story_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    
+    # Chapter structure (deterministic, can be regenerated quickly)
+    chapters_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        server_default=text("'[]'::jsonb"),
+        nullable=False,
+    )
+    chapter_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    chapters_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    
+    # AI-generated content (expensive, should be cached)
+    summaries_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        server_default=text("'[]'::jsonb"),
+        nullable=False,
+    )
+    titles_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        server_default=text("'[]'::jsonb"),
+        nullable=False,
+    )
+    compact_story: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reading_time_minutes: Mapped[float | None] = mapped_column(Float, nullable=True)
+    
+    # Generation metadata
+    has_summaries: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    has_titles: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    has_compact_story: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ai_model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    total_ai_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    game: Mapped[SportsGame] = relationship("SportsGame")
+
+    __table_args__ = (
+        UniqueConstraint("game_id", "story_version", name="uq_game_story_version"),
+        Index("idx_game_stories_game_id", "game_id"),
+        Index("idx_game_stories_sport", "sport"),
+        Index("idx_game_stories_generated_at", "generated_at"),
+    )
