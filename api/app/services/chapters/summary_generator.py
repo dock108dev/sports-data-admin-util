@@ -29,6 +29,7 @@ from .prompts import (
     format_plays_for_prompt,
     check_for_spoilers,
 )
+from .narrative_validator import NarrativeValidator
 
 logger = logging.getLogger(__name__)
 
@@ -140,15 +141,30 @@ def generate_chapter_summary(
     if not chapter_summary:
         raise SummaryGenerationError("AI returned empty summary")
     
-    # Check for spoilers
+    # FINAL PROMPT: Narrative QA & Spoiler Guard Pass
+    # Validate summary using deterministic rules
+    validation_result = NarrativeValidator.validate_chapter_summary(
+        chapter_summary,
+        is_final_chapter=False,  # TODO: detect from metadata
+    )
+    
+    if not validation_result.valid:
+        error_msg = f"Summary validation failed: {', '.join(validation_result.errors)}"
+        logger.error(f"Chapter {chapter_index}: {error_msg}")
+        raise SummaryGenerationError(error_msg)
+    
+    # Log warnings (non-blocking)
+    if validation_result.warnings:
+        logger.warning(f"Chapter {chapter_index} warnings: {', '.join(validation_result.warnings)}")
+    
+    # Legacy spoiler check (now redundant but kept for backwards compatibility)
     spoiler_warnings = None
     if check_spoilers:
         spoilers = check_for_spoilers(chapter_summary, is_final_chapter=False)
         if spoilers:
             spoiler_warnings = spoilers
-            logger.warning(f"Detected spoilers in Chapter {chapter_index}: {spoilers}")
     
-    # Validate output shape
+    # Validate output shape (legacy)
     _validate_output_shape(chapter_summary, chapter_title)
     
     logger.info(f"Generated summary for Chapter {chapter_index}: {len(chapter_summary)} chars")

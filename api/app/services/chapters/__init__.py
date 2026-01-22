@@ -79,6 +79,13 @@ from .compact_story_generator import (
     generate_compact_story,
     validate_compact_story_input,
 )
+from .narrative_validator import (
+    NarrativeValidator,
+    ValidationResult,
+    validate_narrative_output,
+    all_valid,
+    get_all_errors,
+)
 
 __all__ = [
     # Core types
@@ -148,4 +155,10 @@ __all__ = [
     "CompactStoryGenerationError",
     "generate_compact_story",
     "validate_compact_story_input",
+    # Narrative validation
+    "NarrativeValidator",
+    "ValidationResult",
+    "validate_narrative_output",
+    "all_valid",
+    "get_all_errors",
 ]
