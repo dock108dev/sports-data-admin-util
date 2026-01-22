@@ -153,3 +153,38 @@ class RegenerateResponse(BaseModel):
     message: str
     story: GameStoryResponse | None = None
     errors: list[str] = Field(default_factory=list)
+
+
+# ============================================================================
+# BULK GENERATION
+# ============================================================================
+
+class BulkGenerateRequest(BaseModel):
+    """Request for bulk story generation."""
+
+    start_date: str = Field(..., description="Start date (YYYY-MM-DD)")
+    end_date: str = Field(..., description="End date (YYYY-MM-DD)")
+    leagues: list[str] = Field(default=["NBA"], description="League codes to include")
+    force: bool = Field(False, description="Force regeneration even if story exists")
+
+
+class BulkGenerateAsyncResponse(BaseModel):
+    """Response when starting async bulk generation."""
+
+    job_id: str
+    message: str
+    status_url: str
+
+
+class BulkGenerateStatusResponse(BaseModel):
+    """Response for bulk generation job status."""
+
+    job_id: str
+    state: str = Field(..., description="PENDING, PROGRESS, SUCCESS, or FAILURE")
+    current: int | None = Field(None, description="Current game being processed")
+    total: int | None = Field(None, description="Total games to process")
+    status: str | None = Field(None, description="Status message")
+    successful: int | None = Field(None, description="Number of successful generations")
+    failed: int | None = Field(None, description="Number of failed generations")
+    cached: int | None = Field(None, description="Number of games with existing stories")
+    result: dict[str, Any] | None = Field(None, description="Final result when complete")

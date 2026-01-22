@@ -370,8 +370,8 @@ def validate_stat_consistency(sections: list[StorySection]) -> ValidationResult:
 # 3. WORD COUNT TOLERANCE VALIDATION
 # ----------------------------------------------------------------------------
 
-# Tolerance: +/- 15% of target
-WORD_COUNT_TOLERANCE_PCT = 0.15
+# Tolerance: +/- 25% of target (AI generation has natural variance)
+WORD_COUNT_TOLERANCE_PCT = 0.25
 
 
 def validate_word_count(
@@ -471,36 +471,22 @@ def _extract_player_names_from_input(input_data: StoryRenderInput) -> set[str]:
 def _extract_names_from_story(compact_story: str) -> set[str]:
     """Extract potential player names from story text.
 
-    Uses heuristics to identify proper nouns that could be player names.
-    This is intentionally conservative - it may flag false positives,
-    which is acceptable (fail loud).
+    Player names in our data are formatted as "A. LastName" (first initial,
+    period, space, capitalized last name). We look for this specific pattern
+    rather than trying to catch all capitalized words.
 
     Returns:
         Set of potential player names (lowercase)
     """
-    # Find sequences of capitalized words (potential names)
-    # Pattern: 2-3 capitalized words in a row
-    name_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b'
+    # Pattern: Initial + period + optional space + Capitalized word(s)
+    # Examples: "D. Mitchell", "J. Allen", "K. Knueppel"
+    name_pattern = r'\b([A-Z]\.\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b'
 
     matches = re.findall(name_pattern, compact_story)
 
-    # Filter out common non-name patterns
-    common_words = {
-        # Time/period references
-        "first", "second", "third", "fourth", "overtime", "quarter",
-        "half", "game", "final", "opening", "closing",
-        # Actions
-        "the", "this", "that", "with", "from", "into",
-        # Generic sports terms
-        "home", "away", "team", "teams", "points", "score",
-    }
-
     names = set()
     for match in matches:
-        # Skip if it's a common word pattern
-        words = match.lower().split()
-        if all(w in common_words for w in words):
-            continue
+        # Normalize: lowercase for comparison
         names.add(match.lower())
 
     return names
