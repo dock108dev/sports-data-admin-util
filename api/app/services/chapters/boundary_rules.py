@@ -257,8 +257,7 @@ class NBABoundaryRules:
         Returns:
             True if a significant run is starting
         """
-        # v1: Stub - will be implemented with run tracking
-        # For now, return False (no run boundaries in minimal v1)
+        # Not implemented in NBA v1
         return False
     
     @staticmethod
@@ -277,8 +276,7 @@ class NBABoundaryRules:
         Returns:
             True if this is a response to a run
         """
-        # v1: Stub - will be implemented with run tracking
-        # For now, return False (no run boundaries in minimal v1)
+        # Not implemented in NBA v1
         return False
     
     @staticmethod

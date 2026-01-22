@@ -150,7 +150,7 @@ def generate_compact_story(
     reading_time = estimate_reading_time(compact_story)
     word_count = len(compact_story.split())
     
-    # Legacy validation
+    # Additional validation checks
     validation_result = None
     new_nouns = None
     

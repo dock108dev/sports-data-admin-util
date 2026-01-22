@@ -14,7 +14,6 @@ from sqlalchemy.orm import selectinload
 from .. import db_models
 from ..config import settings
 from ..db import AsyncSession, get_db
-# Legacy compact mode and moments removed - endpoints return full data
 from ..services.recap_generator import build_recap
 from ..services.reveal_levels import parse_reveal_level
 from ..utils.datetime_utils import now_utc

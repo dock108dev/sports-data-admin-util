@@ -72,7 +72,7 @@ DISALLOWED_SIGNALS = {
     "clutch_rating",
     "importance_score",
     
-    # Legacy Moments Engine
+    # Disallowed signals
     "ladder_tier",
     "moment_type",
     "lead_change_count",

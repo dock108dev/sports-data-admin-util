@@ -30,23 +30,6 @@ from .stages import (
     execute_normalize_pbp,
 )
 
-# Legacy stages removed - stubs for backwards compatibility
-async def execute_derive_signals(stage_input):
-    """Stub: Legacy stage removed."""
-    return {"lead_states": [], "tier_crossings": []}
-
-async def execute_generate_moments(stage_input):
-    """Stub: Legacy stage removed - use chapters system."""
-    return {"chapters": [], "chapter_count": 0}
-
-async def execute_validate_moments(stage_input):
-    """Stub: Legacy stage removed."""
-    return {"valid": True}
-
-async def execute_finalize_moments(session, stage_input, run_uuid):
-    """Stub: Legacy stage removed."""
-    return {"finalized": True}
-
 logger = logging.getLogger(__name__)
 
 

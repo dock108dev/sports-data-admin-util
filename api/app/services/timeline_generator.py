@@ -1,23 +1,15 @@
 """
 Timeline artifact generation for finalized games.
 
-This module is the core timeline generator. It:
-1. Builds PBP events from game plays (with phase assignment)
-2. Builds social events from posts (with phase and role assignment)
-3. Merges events using phase-first ordering
-4. Generates summaries from the assembled timeline
+Builds PBP and social events for game timelines:
+1. PBP events from game plays (with phase assignment)
+2. Social events from posts (with phase and role assignment)
+3. Merge events using phase-first ordering
+4. Validate timeline structure
 
 Related modules:
 - social_events.py: Social post processing and role assignment
-- summary_builder.py: Reading guide generation
-- (Legacy moment partitioning removed - system is now chapters-first)
-- compact_mode.py: Timeline compression for compact view
 - timeline_validation.py: Validation and sanity checks
-- ai_client.py: OpenAI integration for interpretation (not ordering)
-
-AI Usage Principle:
-    OpenAI is used ONLY for interpretation and narration - never for
-    ordering, filtering, or correctness. See docs/TECHNICAL_FLOW.md.
 
 See docs/TIMELINE_ASSEMBLY.md for the assembly contract.
 """
@@ -37,21 +29,6 @@ from ..db import AsyncSession
 from ..utils.datetime_utils import now_utc, parse_clock_to_seconds
 from .timeline_validation import validate_and_log, TimelineValidationError
 from .social_events import build_social_events, build_social_events_async
-
-# Legacy game_analysis and summary_builder removed - use chapters system
-# Stub functions for backwards compatibility with timeline_generator
-
-def build_nba_summary(game: Any) -> dict[str, Any]:
-    """Stub: Legacy summary builder removed."""
-    return {}
-
-async def build_game_analysis_async(**kwargs) -> dict[str, Any]:
-    """Stub: Legacy game analysis removed - use chapters system."""
-    return {"chapters": [], "chapter_count": 0}
-
-async def build_summary_from_timeline_async(**kwargs) -> dict[str, Any]:
-    """Stub: Legacy summary builder removed."""
-    return {}
 
 logger = logging.getLogger(__name__)
 

@@ -4,8 +4,7 @@ Book + Chapters Model
 A game is a book. Plays are pages. Chapters are contiguous play ranges
 that represent coherent scenes.
 
-This module replaces the legacy "Moments" concept with a simpler,
-narrative-first architecture.
+This module provides a narrative-first architecture for game storytelling.
 
 Issue 0.2: Canonical data model and output contract.
 """

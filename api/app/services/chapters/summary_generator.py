@@ -157,14 +157,14 @@ def generate_chapter_summary(
     if validation_result.warnings:
         logger.warning(f"Chapter {chapter_index} warnings: {', '.join(validation_result.warnings)}")
     
-    # Legacy spoiler check (now redundant but kept for backwards compatibility)
+    # Store spoiler warnings for result
     spoiler_warnings = None
     if check_spoilers:
         spoilers = check_for_spoilers(chapter_summary, is_final_chapter=False)
         if spoilers:
             spoiler_warnings = spoilers
     
-    # Validate output shape (legacy)
+    # Validate output shape
     _validate_output_shape(chapter_summary, chapter_title)
     
     logger.info(f"Generated summary for Chapter {chapter_index}: {len(chapter_summary)} chars")

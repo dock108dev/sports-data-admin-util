@@ -362,8 +362,6 @@ class GameStory:
     - chapters are chronologically ordered
     - chapters are contiguous (no gaps)
     - chapter_ids are unique within game
-    
-    FORWARD COMPATIBILITY:
     - Schema is serializable as JSON
     - New fields can be added without breaking existing consumers
     - Required fields cannot be removed without version bump

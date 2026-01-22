@@ -139,7 +139,7 @@ def generate_chapter_title(
         if validation_result_obj.warnings:
             logger.warning(f"Chapter {chapter_index} title warnings: {', '.join(validation_result_obj.warnings)}")
         
-        # Legacy validation result format
+        # Store validation result
         validation_result = {
             "valid": validation_result_obj.valid,
             "issues": validation_result_obj.errors,

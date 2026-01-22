@@ -396,8 +396,7 @@ class ChapterizerV1:
                     boundary_action=BoundaryAction.START_NEW
                 )
             
-            # Note: RUN_START and RUN_END_RESPONSE are stubbed in v1
-            # They return False, so no boundaries created
+            # Note: RUN_START and RUN_END_RESPONSE not implemented in NBA v1
             
             # Resolve precedence and create boundary
             if triggered_codes:
