@@ -121,7 +121,6 @@ def generate_chapter_summary(
         logger.warning("No AI client provided, returning mock summary")
         raw_response = json.dumps({
             "chapter_summary": f"Mock summary for Chapter {chapter_index}",
-            "chapter_title": f"Chapter {chapter_index}",
         })
     else:
         try:
@@ -133,7 +132,8 @@ def generate_chapter_summary(
     try:
         response_data = json.loads(raw_response)
         chapter_summary = response_data.get("chapter_summary", "")
-        chapter_title = response_data.get("chapter_title")
+        # Note: Titles are generated separately (Issue 3.1)
+        chapter_title = None
     except json.JSONDecodeError as e:
         raise SummaryGenerationError(f"Failed to parse AI response: {e}")
     

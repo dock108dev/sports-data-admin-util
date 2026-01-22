@@ -130,6 +130,26 @@ export default function StoryGeneratorPage() {
     }
   };
 
+  const handleRegenerateTitles = async () => {
+    if (!confirm("Regenerate chapter titles? (Summaries must exist first)")) {
+      return;
+    }
+    
+    try {
+      const { regenerateTitles } = await import("@/lib/api/sportsAdmin");
+      const result = await regenerateTitles(gameId, true);
+      
+      if (result.success && result.story) {
+        setStory(result.story);
+        alert(result.message);
+      } else {
+        alert(`Failed: ${result.message}\n${result.errors?.join("\n") || ""}`);
+      }
+    } catch (err) {
+      alert(`Failed to regenerate titles: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  };
+
   const handleRegenerateCompactStory = async () => {
     if (!confirm("Regenerate compact story?")) {
       return;
@@ -197,6 +217,9 @@ export default function StoryGeneratorPage() {
         </button>
         <button onClick={handleRegenerateSummaries} className={styles.btnSecondary}>
           Regenerate Summaries
+        </button>
+        <button onClick={handleRegenerateTitles} className={styles.btnSecondary}>
+          Regenerate Titles
         </button>
         <button onClick={handleRegenerateCompactStory} className={styles.btnSecondary}>
           Regenerate Compact Story

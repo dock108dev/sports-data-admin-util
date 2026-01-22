@@ -169,3 +169,37 @@ class RegenerateResponse(BaseModel):
     message: str
     story: GameStoryResponse | None = None
     errors: list[str] = Field(default_factory=list)
+
+
+# ============================================================================
+# BULK GENERATION
+# ============================================================================
+
+class BulkGenerateRequest(BaseModel):
+    """Request to generate stories for multiple games."""
+    
+    start_date: str = Field(..., description="Start date (YYYY-MM-DD)")
+    end_date: str = Field(..., description="End date (YYYY-MM-DD)")
+    leagues: list[str] = Field(default_factory=lambda: ["NBA", "NHL"], description="Leagues to include")
+    force: bool = Field(False, description="Force regeneration even if already exists")
+
+
+class BulkGenerateResult(BaseModel):
+    """Result for a single game in bulk generation."""
+    
+    game_id: int
+    success: bool
+    message: str
+    chapter_count: int | None = None
+    error: str | None = None
+
+
+class BulkGenerateResponse(BaseModel):
+    """Response from bulk generation operation."""
+    
+    success: bool
+    message: str
+    total_games: int
+    successful: int
+    failed: int
+    results: list[BulkGenerateResult] = Field(default_factory=list)

@@ -85,11 +85,12 @@ Write a 1-3 sentence summary of THIS CHAPTER ONLY.
 **Output Format:**
 Return ONLY a JSON object with this structure:
 {{
-  "chapter_summary": "1-3 sentence summary of this chapter",
-  "chapter_title": "Optional short title (2-5 words)"
+  "chapter_summary": "1-3 sentence summary of this chapter"
 }}
 
 Do not include any other text outside the JSON object.
+
+Note: Chapter titles are generated separately from summaries.
 """
 
 FINAL_CHAPTER_NOTE = """

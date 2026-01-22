@@ -77,7 +77,7 @@ export async function regenerateChapters(
 export async function regenerateSummaries(
   gameId: number,
   force: boolean = false
-): Promise<{ success: boolean; message: string; story?: GameStoryResponse }> {
+): Promise<{ success: boolean; message: string; story?: GameStoryResponse; errors?: string[] }> {
   const response = await fetch(
     `${API_BASE}/api/admin/sports/games/${gameId}/story/regenerate-summaries`,
     {
@@ -89,6 +89,31 @@ export async function regenerateSummaries(
   
   if (!response.ok) {
     throw new Error(`Failed to regenerate summaries: ${response.statusText}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Regenerate chapter titles for a game (requires summaries to exist first).
+ * 
+ * ISSUE 3.1: Titles derive from summaries only.
+ */
+export async function regenerateTitles(
+  gameId: number,
+  force: boolean = false
+): Promise<{ success: boolean; message: string; story?: GameStoryResponse; errors?: string[] }> {
+  const response = await fetch(
+    `${API_BASE}/api/admin/sports/games/${gameId}/story/regenerate-titles`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force, debug: false }),
+    }
+  );
+  
+  if (!response.ok) {
+    throw new Error(`Failed to regenerate titles: ${response.statusText}`);
   }
   
   return response.json();
@@ -135,6 +160,44 @@ export async function regenerateAll(
   
   if (!response.ok) {
     throw new Error(`Failed to regenerate all: ${response.statusText}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Bulk generate stories for games in a date range.
+ */
+export async function bulkGenerateStories(params: {
+  start_date: string;
+  end_date: string;
+  leagues: string[];
+  force: boolean;
+}): Promise<{
+  success: boolean;
+  message: string;
+  total_games: number;
+  successful: number;
+  failed: number;
+  results: Array<{
+    game_id: number;
+    success: boolean;
+    message: string;
+    chapter_count?: number;
+    error?: string;
+  }>;
+}> {
+  const response = await fetch(
+    `${API_BASE}/api/admin/sports/games/bulk-generate`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }
+  );
+  
+  if (!response.ok) {
+    throw new Error(`Failed to bulk generate: ${response.statusText}`);
   }
   
   return response.json();

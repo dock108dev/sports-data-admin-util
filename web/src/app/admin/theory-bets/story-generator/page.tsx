@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { GameSummary } from "@/lib/api/sportsAdmin/types";
 import { listGames } from "@/lib/api/sportsAdmin";
+import { bulkGenerateStories } from "@/lib/api/sportsAdmin/chapters";
 import styles from "./story-generator.module.css";
 
 /**
@@ -11,12 +12,19 @@ import styles from "./story-generator.module.css";
  * 
  * ISSUE 13: Admin UI for Chapters-First System
  * 
- * Lists games with story generation status.
+ * Lists games with story generation status and provides bulk generation tools.
  */
 export default function StoryGeneratorLandingPage() {
   const [games, setGames] = useState<GameSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Bulk generation state
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [selectedLeagues, setSelectedLeagues] = useState<string[]>(["NBA"]);
+  const [generating, setGenerating] = useState(false);
+  const [generationResult, setGenerationResult] = useState<string | null>(null);
 
   useEffect(() => {
     loadGames();
@@ -43,6 +51,36 @@ export default function StoryGeneratorLandingPage() {
     }
   };
 
+  const handleBulkGenerate = async () => {
+    if (!startDate || !endDate) {
+      setGenerationResult("Please select both start and end dates");
+      return;
+    }
+    
+    setGenerating(true);
+    setGenerationResult(null);
+    
+    try {
+      const result = await bulkGenerateStories({
+        start_date: startDate,
+        end_date: endDate,
+        leagues: selectedLeagues,
+        force: false,
+      });
+      
+      setGenerationResult(
+        `✓ Generated stories for ${result.successful} of ${result.total_games} games. ${result.failed > 0 ? `${result.failed} failed.` : ""}`
+      );
+      
+      // Reload games to show updated status
+      await loadGames();
+    } catch (err) {
+      setGenerationResult(`✗ ${err instanceof Error ? err.message : "Generation failed"}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className={styles.container}>
@@ -66,6 +104,76 @@ export default function StoryGeneratorLandingPage() {
         <p className={styles.subtitle}>
           Chapters-First narrative generation for NBA games
         </p>
+      </div>
+
+      {/* Bulk Generation Tool */}
+      <div className={styles.bulkGenerationPanel}>
+        <h2>Bulk Generate Stories</h2>
+        <p className={styles.helpText}>
+          Generate chapter-based stories for all games with PBP data in a date range.
+        </p>
+        
+        <div className={styles.bulkGenerationForm}>
+          <div className={styles.formRow}>
+            <label>
+              Start Date:
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className={styles.dateInput}
+              />
+            </label>
+            
+            <label>
+              End Date:
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className={styles.dateInput}
+              />
+            </label>
+          </div>
+          
+          <div className={styles.formRow}>
+            <label>
+              Leagues:
+              <div className={styles.checkboxGroup}>
+                {["NBA", "NHL", "NCAAB"].map((league) => (
+                  <label key={league} className={styles.checkbox}>
+                    <input
+                      type="checkbox"
+                      checked={selectedLeagues.includes(league)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedLeagues([...selectedLeagues, league]);
+                        } else {
+                          setSelectedLeagues(selectedLeagues.filter(l => l !== league));
+                        }
+                      }}
+                    />
+                    {league}
+                  </label>
+                ))}
+              </div>
+            </label>
+          </div>
+          
+          <button
+            onClick={handleBulkGenerate}
+            disabled={generating || !startDate || !endDate || selectedLeagues.length === 0}
+            className={styles.generateButton}
+          >
+            {generating ? "Generating..." : "Generate Stories"}
+          </button>
+          
+          {generationResult && (
+            <div className={generationResult.startsWith("✓") ? styles.successMessage : styles.errorMessage}>
+              {generationResult}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className={styles.gamesGrid}>
