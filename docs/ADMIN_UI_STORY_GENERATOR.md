@@ -28,15 +28,17 @@ The Story Generator admin UI replaces the legacy Moments-based interface with a 
 
 **Route:** `/admin/theory-bets/story-generator`
 
-**Purpose:** List games with story generation status
+**Purpose:** List games and provide bulk generation tools
 
 **Displays:**
+- Bulk generation panel (date range + league selection)
 - Grid of games with PBP data
 - Game matchup and score
 - Play count
 - Link to individual game story
 
 **Actions:**
+- Bulk Generate Stories — Generate chapters for all games in date range
 - Click game to open Story Generator detail page
 
 ---
@@ -58,10 +60,11 @@ The Story Generator admin UI replaces the legacy Moments-based interface with a 
   - ✓/✗ Compact story generated
 
 **Actions:**
-- Regenerate chapters
-- Regenerate chapter summaries
-- Regenerate compact story
-- Regenerate all (chapters → summaries → compact)
+- Regenerate Chapters — Rebuild structural boundaries
+- Regenerate Summaries — Generate AI chapter summaries (requires OpenAI)
+- Regenerate Titles — Generate AI chapter titles from summaries (requires OpenAI)
+- Regenerate Compact Story — Generate full game recap (requires OpenAI)
+- Regenerate All — Full pipeline (chapters → summaries → titles → compact)
 
 ---
 
@@ -195,111 +198,111 @@ type StoryStateResponse = {
 
 ---
 
-## API Endpoints (Expected)
+## API Endpoints
 
-### GET /api/sports-admin/games/{gameId}/story
+### GET /api/admin/sports/games/{gameId}/story
 
 Returns `GameStoryResponse` with chapters, summaries, and compact story.
 
-### GET /api/sports-admin/games/{gameId}/story-state?chapter={N}
+### GET /api/admin/sports/games/{gameId}/story-state?chapter={N}
 
 Returns `StoryStateResponse` for the state before Chapter N.
 
-### POST /api/sports-admin/games/{gameId}/story/regenerate-chapters
+### POST /api/admin/sports/games/{gameId}/story/regenerate-chapters
 
-Regenerates chapters (resets summaries and compact story).
+Regenerates chapters (deterministic, instant).
 
-### POST /api/sports-admin/games/{gameId}/story/regenerate-summaries
+### POST /api/admin/sports/games/{gameId}/story/regenerate-summaries
 
-Regenerates chapter summaries (preserves chapters, resets compact story).
+Regenerates chapter summaries (requires OpenAI API key, ~30-60s).
 
-### POST /api/sports-admin/games/{gameId}/story/regenerate-compact
+### POST /api/admin/sports/games/{gameId}/story/regenerate-titles
 
-Regenerates compact story only (preserves chapters and summaries).
+Regenerates chapter titles from summaries (requires OpenAI API key, ~10-20s).
 
-### POST /api/sports-admin/games/{gameId}/story/regenerate-all
+### POST /api/admin/sports/games/{gameId}/story/regenerate-compact
 
-Regenerates everything (chapters → summaries → compact story).
+Regenerates compact story from summaries (requires OpenAI API key, ~5-10s).
 
----
+### POST /api/admin/sports/games/{gameId}/story/regenerate-all
 
-## Removed/Archived
+Regenerates everything (chapters → summaries → titles → compact story, ~60-90s).
 
-The following legacy Moments-based UI elements are deprecated:
+### POST /api/admin/sports/games/bulk-generate
 
-### Removed:
-- ❌ Moments timeline view
-- ❌ Ladder / tier graphs
-- ❌ Moment merge / coherence panels
-- ❌ Moment-level AI diagnostics
+Bulk generate chapters for games in a date range.
 
-### Archived (Legacy):
-- Moments pages moved to `/admin/theory-bets/moments` (marked "Legacy")
-- Still accessible for comparison during transition
-- Will be removed in future cleanup
+**Request:**
+```json
+{
+  "start_date": "2026-01-20",
+  "end_date": "2026-01-20",
+  "leagues": ["NBA", "NHL"],
+  "force": false
+}
+```
 
----
-
-## Testing
-
-### Unit Tests
-
-**Location:** `web/src/app/admin/theory-bets/games/[gameId]/__tests__/ChaptersSection.test.tsx`
-
-**Tests:**
-1. Chapters Render Test
-   - Correct chapter count
-   - Chapters in order
-   - Summaries displayed
-
-2. Expand Chapter Test
-   - Expanding shows all plays
-   - Plays in correct order
-   - Play indices correct
-
-3. Metadata Display Test
-   - Reason codes displayed
-   - Play range displayed
-   - Time range displayed
-
-4. Debug View Test
-   - Debug toggle works
-   - Debug info shown when enabled
-
-**Run tests:**
-```bash
-cd web
-npm test ChaptersSection.test.tsx
+**Response:**
+```json
+{
+  "success": true,
+  "total_games": 22,
+  "successful": 22,
+  "failed": 0,
+  "results": [...]
+}
 ```
 
 ---
 
-## Migration Notes
+## Removed Concepts
 
-### For Developers
+The following legacy concepts have been removed:
 
-1. **New Primary Unit:** Chapters (not moments)
-2. **No Ladder Logic:** Reason codes replace tier crossings
-3. **Sequential AI:** Each chapter uses prior context only
-4. **Compact Story:** Synthesized from summaries, not raw plays
+- ❌ Moments engine
+- ❌ Ladder / tier logic
+- ❌ Moment merge / coherence passes
+- ❌ Importance scoring
 
-### For Admins
-
-1. **Story Generator** is the new default
-2. **Moments (Legacy)** still available for comparison
-3. **Regeneration** is safe and explicit
-4. **Debug views** show exact AI inputs
+**Current System:** Chapters-First (deterministic structure + AI narrative)
 
 ---
 
-## Future Enhancements
+## OpenAI Configuration
 
-- Real-time story generation status
-- Diff view for regeneration
-- AI prompt viewer per chapter
-- Spoiler detection warnings in UI
-- Batch regeneration for multiple games
-- Export story as JSON/Markdown
+### Enable AI Generation
+
+Add to `infra/.env`:
+```bash
+OPENAI_API_KEY=sk-proj-...your-key...
+```
+
+Restart API:
+```bash
+cd infra && docker compose restart api
+```
+
+### Without OpenAI Key
+
+- ✅ Chapters generate normally (deterministic, instant)
+- ✅ Story state derives normally
+- ✅ UI shows chapter structure
+- ❌ AI generation buttons return "API key not configured"
+
+---
+
+## Performance
+
+### Deterministic Operations (Instant)
+- Chapter generation: <1 second
+- Bulk generation: ~22 games/second
+
+### AI Operations (With OpenAI Key)
+- Chapter summaries: ~2-3 seconds per chapter
+- Chapter titles: ~1-2 seconds per chapter
+- Compact story: ~5-10 seconds
+
+**Example:** 18-chapter game = ~60-90 seconds total
 
 ---
 
