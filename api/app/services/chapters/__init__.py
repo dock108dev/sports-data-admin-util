@@ -102,6 +102,18 @@ from .beat_classifier import (
     format_classification_debug,
     get_beat_distribution,
 )
+from .story_section import (
+    # Types
+    StorySection,
+    TeamStatDelta as SectionTeamStatDelta,
+    PlayerStatDelta as SectionPlayerStatDelta,
+    ForcedBreakReason,
+    # Functions
+    build_story_sections,
+    enforce_section_count,
+    generate_section_notes,
+    format_sections_debug,
+)
 
 __all__ = [
     # Core types
@@ -189,4 +201,13 @@ __all__ = [
     "build_chapter_context",
     "format_classification_debug",
     "get_beat_distribution",
+    # Story section builder
+    "StorySection",
+    "SectionTeamStatDelta",
+    "SectionPlayerStatDelta",
+    "ForcedBreakReason",
+    "build_story_sections",
+    "enforce_section_count",
+    "generate_section_notes",
+    "format_sections_debug",
 ]
