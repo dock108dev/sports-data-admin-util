@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { GameSummary } from "@/lib/api/sportsAdmin/types";
-import { fetchGames } from "@/lib/api/sportsAdmin";
+import { listGames } from "@/lib/api/sportsAdmin";
 import styles from "./story-generator.module.css";
 
 /**
@@ -27,13 +27,15 @@ export default function StoryGeneratorLandingPage() {
     setError(null);
     
     try {
-      const response = await fetchGames({
+      const response = await listGames({
+        leagues: ["NBA", "NHL", "NCAAB"],
         limit: 50,
         offset: 0,
-        has_pbp: true,  // Only games with PBP can have stories
       });
       
-      setGames(response.games);
+      // Filter to games with PBP (only those can have stories)
+      const gamesWithPbp = response.games.filter(g => g.has_pbp);
+      setGames(gamesWithPbp);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load games");
     } finally {

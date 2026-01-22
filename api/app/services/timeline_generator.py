@@ -36,9 +36,22 @@ from .. import db_models
 from ..db import AsyncSession
 from ..utils.datetime_utils import now_utc, parse_clock_to_seconds
 from .timeline_validation import validate_and_log, TimelineValidationError
-from .game_analysis import build_game_analysis_async
 from .social_events import build_social_events, build_social_events_async
-from .summary_builder import build_nba_summary, build_summary_from_timeline_async
+
+# Legacy game_analysis and summary_builder removed - use chapters system
+# Stub functions for backwards compatibility with timeline_generator
+
+def build_nba_summary(game: Any) -> dict[str, Any]:
+    """Stub: Legacy summary builder removed."""
+    return {}
+
+async def build_game_analysis_async(**kwargs) -> dict[str, Any]:
+    """Stub: Legacy game analysis removed - use chapters system."""
+    return {"chapters": [], "chapter_count": 0}
+
+async def build_summary_from_timeline_async(**kwargs) -> dict[str, Any]:
+    """Stub: Legacy summary builder removed."""
+    return {}
 
 logger = logging.getLogger(__name__)
 

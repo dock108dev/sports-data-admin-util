@@ -21,7 +21,15 @@ from datetime import datetime
 from typing import Any, Iterable, Sequence
 
 from .. import db_models
-from .ai_client import classify_social_role, is_ai_available
+
+# Legacy ai_client removed - stub for backwards compatibility
+def is_ai_available() -> bool:
+    """Stub: AI client removed."""
+    return False
+
+def classify_social_role(text: str) -> str:
+    """Stub: AI classification removed."""
+    return "highlight"
 
 logger = logging.getLogger(__name__)
 

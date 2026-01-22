@@ -198,6 +198,39 @@ export type TeamStoryState = {
   score_so_far: number | null;
 };
 
+export type AdminGameDetail = {
+  game: {
+    id: number;
+    league_code: string;
+    season: number;
+    season_type: string | null;
+    game_date: string;
+    home_team: string;
+    away_team: string;
+    home_score: number | null;
+    away_score: number | null;
+    status: string;
+    scrape_version: number | null;
+    last_scraped_at: string | null;
+    last_ingested_at: string | null;
+    last_pbp_at: string | null;
+    last_social_at: string | null;
+    has_boxscore: boolean;
+    has_player_stats: boolean;
+    has_odds: boolean;
+    has_social: boolean;
+    has_pbp: boolean;
+    play_count: number;
+    social_post_count: number;
+  };
+  team_stats: TeamStat[];
+  player_stats: PlayerStat[];
+  odds: OddsEntry[];
+  social_posts: SocialPost[];
+  plays: PlayEntry[];
+  derived_metrics: Record<string, unknown>;
+  raw_payloads: Record<string, unknown>;
+};
 
 export type GameFilters = {
   leagues: string[];
