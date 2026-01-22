@@ -126,6 +126,16 @@ from .header_reset import (
     validate_header,
     format_headers_debug,
 )
+from .game_quality import (
+    # Types
+    GameQuality,
+    QualitySignals,
+    QualityScoreResult,
+    # Functions
+    count_lead_changes,
+    compute_quality_score,
+    format_quality_debug,
+)
 
 __all__ = [
     # Core types
@@ -231,4 +241,11 @@ __all__ = [
     "generate_all_headers",
     "validate_header",
     "format_headers_debug",
+    # Game quality scoring
+    "GameQuality",
+    "QualitySignals",
+    "QualityScoreResult",
+    "count_lead_changes",
+    "compute_quality_score",
+    "format_quality_debug",
 ]
