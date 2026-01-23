@@ -9,8 +9,8 @@
 ## Table of Contents
 
 1. [Health Check](#health-check)
-2. [Games — Admin](#games--admin)
-3. [Games — Moments](#games--moments)
+2. [Story Generation (Chapters-First)](#story-generation-chapters-first) ← **NEW (v2.0)**
+3. [Games — Admin](#games--admin)
 4. [Games — Snapshots (App)](#games--snapshots-app)
 5. [Timeline Generation](#timeline-generation)
 6. [Teams](#teams)
@@ -19,6 +19,7 @@
 9. [Diagnostics](#diagnostics)
 10. [Social](#social)
 11. [Reading Positions](#reading-positions)
+12. [Migration Guide: Moments → Story](#migration-guide-moments--story)
 
 ---
 
@@ -29,6 +30,305 @@
 ```json
 { "status": "ok", "app": "ok", "db": "ok" }
 ```
+
+---
+
+## Story Generation (Chapters-First)
+
+**Base path:** `/api/admin/sports`
+
+The chapters-first story generation system replaces the legacy "moments" approach. It provides:
+- **Chapters**: Deterministic structural units (contiguous play ranges)
+- **Sections**: Narrative groupings with beat types (3-10 per game)
+- **Compact Story**: Single AI-generated game recap
+
+### Architecture Overview
+
+```
+PBP Data → ChapterizerV1 → Chapters → StoryState → AI (single call) → GameStory
+```
+
+**Pipeline Stages:**
+1. `build_chapters` — Deterministic chapter boundaries from play-by-play
+2. `build_running_snapshots` — Cumulative team/player stats at chapter ends
+3. `classify_all_chapters` — Assign beat type to each chapter
+4. `build_story_sections` — Collapse chapters into 3-10 narrative sections
+5. `generate_all_headers` — Deterministic one-sentence orientation anchors
+6. `compute_quality_score` — Assess game quality (LOW/MEDIUM/HIGH)
+7. `select_target_word_count` — Quality → word count (400/700/1050)
+8. `validate_pre_render` — Check section ordering, stat consistency
+9. `render_story` — **SINGLE AI CALL** turns outline into prose
+10. `validate_post_render` — Check word count, no player inventions
+
+### `GET /games/{game_id}/story`
+
+Get game story using chapters-first pipeline.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `include_debug` | `bool` | Include debug info (fingerprints, boundary logs) |
+
+**Response: `GameStoryResponse`**
+
+```json
+{
+  "game_id": 12345,
+  "sport": "NBA",
+  "story_version": "2.0.0",
+
+  "chapters": [
+    {
+      "chapter_id": "ch_001",
+      "index": 0,
+      "play_start_idx": 0,
+      "play_end_idx": 15,
+      "play_count": 16,
+      "reason_codes": ["period_start", "timeout"],
+      "period": 1,
+      "time_range": { "start": "12:00", "end": "8:45" },
+      "plays": [...]
+    }
+  ],
+  "chapter_count": 8,
+  "total_plays": 245,
+
+  "sections": [
+    {
+      "section_index": 0,
+      "beat_type": "FAST_START",
+      "header": "Both teams opened at a fast pace.",
+      "chapters_included": ["ch_001", "ch_002"],
+      "start_score": { "home": 0, "away": 0 },
+      "end_score": { "home": 24, "away": 22 },
+      "notes": ["Lakers scored first 8 points", "12 lead changes"]
+    }
+  ],
+  "section_count": 5,
+
+  "compact_story": "The Lakers and Celtics traded blows in an instant classic...",
+  "word_count": 712,
+  "target_word_count": 700,
+  "quality": "MEDIUM",
+  "reading_time_estimate_minutes": 3.56,
+
+  "generated_at": "2026-01-22T15:30:00Z",
+  "has_compact_story": true,
+  "metadata": {
+    "quality_score": 6.5,
+    "quality_signals": {...}
+  }
+}
+```
+
+### `POST /games/{game_id}/story/regenerate`
+
+Regenerate story from scratch using chapters-first pipeline.
+
+**Request:**
+
+```json
+{
+  "force": true,
+  "debug": false
+}
+```
+
+**Response: `RegenerateResponse`**
+
+```json
+{
+  "success": true,
+  "message": "Generated story: 5 sections, 712 words",
+  "story": { ... GameStoryResponse ... },
+  "errors": []
+}
+```
+
+### `POST /games/bulk-generate-async`
+
+Start bulk story generation for games in a date range.
+
+**Request:**
+
+```json
+{
+  "start_date": "2026-01-15",
+  "end_date": "2026-01-22",
+  "leagues": ["NBA", "NHL"],
+  "force": false
+}
+```
+
+**Response:**
+
+```json
+{
+  "job_id": "abc-123-def",
+  "message": "Bulk generation started",
+  "status_url": "/api/admin/sports/games/bulk-generate-status/abc-123-def"
+}
+```
+
+### `GET /games/bulk-generate-status/{job_id}`
+
+Poll status of bulk generation job.
+
+**Response:**
+
+```json
+{
+  "job_id": "abc-123-def",
+  "state": "PROGRESS",
+  "current": 5,
+  "total": 20,
+  "status": "Processing game 12345",
+  "successful": 4,
+  "failed": 0,
+  "cached": 0,
+  "result": null
+}
+```
+
+**Job States:** `PENDING`, `PROGRESS`, `SUCCESS`, `FAILURE`
+
+---
+
+## Response Models
+
+### GameStoryResponse
+
+```typescript
+interface GameStoryResponse {
+  game_id: number;
+  sport: string;
+  story_version: string;           // "2.0.0"
+
+  // Structural data
+  chapters: ChapterEntry[];
+  chapter_count: number;
+  total_plays: number;
+
+  // Narrative sections (3-10 per game)
+  sections: SectionEntry[];
+  section_count: number;
+
+  // AI-generated compact story (SINGLE AI CALL)
+  compact_story: string | null;
+  word_count: number | null;
+  target_word_count: number | null;
+  quality: "LOW" | "MEDIUM" | "HIGH" | null;
+  reading_time_estimate_minutes: number | null;
+
+  // Metadata
+  generated_at: string | null;     // ISO datetime
+  has_compact_story: boolean;
+  metadata: Record<string, any>;
+}
+```
+
+### ChapterEntry
+
+Chapters are **structural units** — deterministic, contiguous play ranges.
+
+```typescript
+interface ChapterEntry {
+  chapter_id: string;              // "ch_001"
+  index: number;                   // Explicit ordering for UI
+
+  // Play range (inclusive)
+  play_start_idx: number;
+  play_end_idx: number;
+  play_count: number;
+
+  // Boundary explanation
+  reason_codes: string[];          // Why this chapter exists
+
+  // Metadata
+  period: number | null;           // Quarter/period number
+  time_range: TimeRange | null;
+
+  // Expanded plays
+  plays: PlayEntry[];
+
+  // Debug only
+  chapter_fingerprint?: string;
+  boundary_logs?: object[];
+}
+```
+
+**Reason Codes:**
+- `period_start` — Start of quarter/period
+- `period_end` — End of quarter/period
+- `timeout` — Timeout called
+- `review` — Official review
+- `run_boundary` — Scoring run triggered new chapter
+- `overtime_start` — Start of overtime
+- `game_end` — End of game
+
+### SectionEntry
+
+Sections are **narrative units** — collapsed chapters with beat types.
+
+```typescript
+interface SectionEntry {
+  section_index: number;           // 0-based ordering
+  beat_type: BeatType;             // See Beat Types below
+  header: string;                  // Deterministic one-sentence anchor
+  chapters_included: string[];     // Chapter IDs in this section
+
+  // Score bookends
+  start_score: { home: number; away: number };
+  end_score: { home: number; away: number };
+
+  // Deterministic notes
+  notes: string[];                 // Machine-generated bullets
+}
+```
+
+### Beat Types (Locked - NBA v1)
+
+| Beat Type | Description |
+|-----------|-------------|
+| `FAST_START` | Early energy, both teams scoring quickly |
+| `MISSED_SHOT_FEST` | Low-scoring stretch |
+| `BACK_AND_FORTH` | Tied or alternating leads |
+| `EARLY_CONTROL` | One team gaining edge |
+| `RUN` | Consecutive scoring (6+ unanswered) |
+| `RESPONSE` | Catch-up attempt after run |
+| `STALL` | Slowed action, scoring drought |
+| `CRUNCH_SETUP` | Late-game tightening (final 5 min, within 5 pts) |
+| `CLOSING_SEQUENCE` | Final minutes determining outcome |
+| `OVERTIME` | Overtime period play |
+
+### PlayEntry
+
+```typescript
+interface PlayEntry {
+  play_index: number;
+  quarter: number | null;
+  game_clock: string | null;       // "8:45"
+  play_type: string | null;        // "shot", "turnover", etc.
+  description: string;
+  team: string | null;             // Team abbreviation
+  score_home: number | null;
+  score_away: number | null;
+}
+```
+
+### Quality & Word Count
+
+| Quality | Target Words | Word Range |
+|---------|--------------|------------|
+| `LOW` | 400 | 300-500 |
+| `MEDIUM` | 700 | 600-800 |
+| `HIGH` | 1050 | 900-1200 |
+
+Quality is determined by:
+- Lead changes frequency
+- Crunch time presence
+- Overtime presence
+- Final margin closeness
+- Run/response patterns
 
 ---
 
@@ -51,7 +351,7 @@ List games with filtering and pagination.
 
 ### `GET /games/{game_id}`
 
-Full game detail including moments.
+Full game detail.
 
 ```json
 {
@@ -61,7 +361,6 @@ Full game detail including moments.
   "odds": [...],
   "social_posts": [...],
   "plays": [...],
-  "moments": [MomentEntry],
   "derived_metrics": {...}
 }
 ```
@@ -73,110 +372,6 @@ Trigger rescrape for a game.
 ### `POST /games/{game_id}/resync-odds`
 
 Resync odds for a game.
-
----
-
-## Games — Moments
-
-Base path: `/api/admin/sports`
-
-Moments partition the entire game timeline. Every play belongs to exactly one moment. **Highlights are moments where `is_notable=true`** — filter client-side.
-
-### `GET /games/{game_id}/moments`
-
-Get all moments for a game.
-
-```json
-{
-  "game_id": 12345,
-  "generated_at": "2026-01-16T19:42:00Z",
-  "moments": [
-    {
-      "id": "m_003",
-      "type": "FLIP",
-      "start_play": 21,
-      "end_play": 34,
-      "play_count": 14,
-      "teams": ["DEN", "BOS"],
-      "players": [
-        { "name": "N. Jokic", "stats": { "pts": 8 }, "summary": "8 pts" }
-      ],
-      "score_start": "9–12",
-      "score_end": "9–18",
-      "clock": "Q1 9:12–7:48",
-      "is_notable": true,
-      "note": "Lead changes hands",
-      "run_info": {
-        "team": "away",
-        "points": 10,
-        "unanswered": true,
-        "play_ids": [22, 25, 28, 31]
-      }
-    }
-  ],
-  "total_count": 15
-}
-```
-
-**Moment Types:**
-
-| Type | Description | Notable? |
-|------|-------------|----------|
-| `LEAD_BUILD` | Lead tier increased (team extending control) | If tier change ≥ 2 |
-| `CUT` | Lead tier decreased (opponent cutting in) | If tier change ≥ 2 |
-| `TIE` | Game returned to even | Always |
-| `FLIP` | Leader changed | Always |
-| `CLOSING_CONTROL` | Late-game lock-in (dagger) | Always |
-| `MOMENTUM_SHIFT` | Significant scoring run causing tier change | Always |
-| `HIGH_IMPACT` | Ejection, injury, flagrant | Always |
-| `NEUTRAL` | Normal flow, no tier changes | Never |
-| `HALFTIME_RECAP` | Halftime contextual summary | Always |
-| `PERIOD_RECAP` | End of period summary (NHL P1/P2/P3, MLB 5th/9th) | Always |
-| `GAME_RECAP` | Final game summary | Always |
-| `OVERTIME_RECAP` | Overtime period summary | Always |
-
-**Optional Fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `run_info` | object | Run metadata if a run contributed to this moment |
-| `run_info.team` | string | "home" or "away" |
-| `run_info.points` | int | Points scored in run |
-| `run_info.unanswered` | bool | Always true (runs are unanswered by definition) |
-| `run_info.play_ids` | int[] | Indices of scoring plays in run |
-| `ladder_tier_before` | int | Lead Ladder tier at start |
-| `ladder_tier_after` | int | Lead Ladder tier at end |
-| `team_in_control` | string | "home", "away", or null |
-| `is_recap` | bool | True for recap moments (zero-width contextual summaries) |
-| `recap_context` | object | Contextual data for recap moments (see RecapContext below) |
-| `score_context` | object | Structured score info with current/start scores, margin, leader |
-| `key_players` | array | Top 3 players with meaningful contributions (filtered from players) |
-| `importance_score` | float | Calculated importance score (0-100) |
-| `importance_factors` | object | Factors contributing to importance score |
-| `display_weight` | string | "high", "medium", or "low" - rendering prominence hint |
-| `display_icon` | string | Suggested icon name for this moment type |
-| `display_color_hint` | string | Color intent: "tension", "positive", "negative", "neutral", "recap" |
-
-**Key Fields:**
-- `is_notable` — True for notable moments (key game events)
-- `start_play` / `end_play` — Play indices (recap moments have start_play = end_play, play_count = 0)
-- `players` — All players with contributions in this moment
-- `key_players` — Top 3 players with meaningful stats (pts, ast, blk, stl, reb)
-- `is_recap` — True for recap moments (HALFTIME_RECAP, PERIOD_RECAP, GAME_RECAP, OVERTIME_RECAP)
-
-**Recap Moments:**
-
-Recap moments are special "zero-width" contextual summaries inserted at key game boundaries:
-- **NBA**: Halftime (after Q2) and Final
-- **NHL**: After each period (P1, P2, P3) and Final, plus Overtime if applicable
-- **MLB**: After 5th inning, after 9th inning (or end of regulation), and Final
-
-Recap moments:
-- Have `play_count = 0` and `start_play = end_play` (they don't own plays)
-- Provide contextual summaries via `recap_context` field
-- Are always `is_notable = true`
-- Help clarify late back-and-forths and momentum shifts
-- Display with subtle visual distinction (10-15% more border via `display_color_hint = "recap"`)
 
 ---
 
@@ -364,126 +559,115 @@ Get reading position.
 
 ---
 
-## Response Models
+## Migration Guide: Moments → Story
 
-### MomentEntry
+### What Changed
+
+The story generation system has been completely redesigned from "Moments" to "Chapters-First Story":
+
+| Aspect | Old (Moments) | New (Chapters-First) |
+|--------|---------------|----------------------|
+| **Version** | v1.x | v2.0.0 |
+| **Structure** | Moments (event-driven) | Chapters → Sections → Story |
+| **AI Calls** | Multiple per game | **Single call** |
+| **Boundaries** | Event-based (tier changes) | Time-based (periods, timeouts) |
+| **Narrative** | Per-moment summaries | Single compact story |
+| **Determinism** | Mixed | Fully deterministic until AI |
+
+### Endpoint Changes
+
+| Old Endpoint | New Endpoint | Notes |
+|--------------|--------------|-------|
+| `GET /games/{id}/moments` | `GET /games/{id}/story` | Complete replacement |
+| Moments array | `sections` array | Sections replace moments |
+| Per-moment `summary` | `compact_story` | Single narrative |
+| `is_notable` filtering | `beat_type` filtering | Use beat types instead |
+
+### Schema Mapping
+
+**Old MomentEntry → New SectionEntry:**
 
 ```typescript
+// OLD (Moments)
 {
-  id: string;           // "m_001"
-  type: string;         // See Moment Types table above
-  start_play: number;
-  end_play: number;
-  play_count: number;   // 0 for recap moments
-  teams: string[];
-  primary_team: string | null;   // The team that drove the narrative
-  players: PlayerContribution[]; // All players with contributions
-  key_players: PlayerContribution[]; // Top 3 players with meaningful stats
-  score_start: string;  // "12–15" (away–home format)
-  score_end: string;    // "12–15" (away–home format)
-  clock: string;        // "Q2 8:45–6:12" or "Q2 Recap" for recap moments
-  is_notable: boolean;  // Filter by this for highlights
-  is_period_start: boolean; // True if this moment starts a new period
-  is_recap: boolean;    // True for recap moments (zero-width summaries)
-  note: string | null;
-  headline: string;     // AI-generated headline (max 60 chars)
-  summary: string;      // AI-generated summary (max 150 chars)
-  
-  // Display hints
-  display_weight: string;      // "high", "medium", "low"
-  display_icon: string;        // Suggested icon name
-  display_color_hint: string;  // "tension", "positive", "negative", "neutral", "recap"
-  
-  // Optional fields
-  run_info?: RunInfo;            // If a run contributed to this moment
-  ladder_tier_before?: number;   // Lead Ladder tier at moment start
-  ladder_tier_after?: number;    // Lead Ladder tier at moment end
-  team_in_control?: string;      // "home", "away", or null
-  key_play_ids?: number[];       // Notable plays within moment
-  importance_score?: number;     // Calculated importance (0-100)
-  importance_factors?: object;   // Factors contributing to score
-  
-  // Structured score info
-  score_context?: {
-    current: { home: number; away: number; formatted: string };
-    start: { home: number; away: number; formatted: string };
-    margin: number;
-    leader: string | null;
-  };
-  
-  // Recap context (only for recap moments)
-  recap_context?: RecapContext;
-  
-  // Reason for moment existence
-  reason?: {
-    trigger: string;           // "tier_cross", "flip", "tie", "closing_lock", etc.
-    control_shift: string | null; // "home", "away", or null
-    narrative_delta: string;   // "tension ↑", "control gained", etc.
-  };
+  id: "m_003",
+  type: "FLIP",
+  start_play: 21,
+  end_play: 34,
+  is_notable: true,
+  headline: "...",
+  summary: "..."
+}
+
+// NEW (Sections)
+{
+  section_index: 0,
+  beat_type: "RUN",
+  header: "A stretch of scoring created separation.",
+  chapters_included: ["ch_003", "ch_004"],
+  start_score: { home: 12, away: 15 },
+  end_score: { home: 12, away: 25 },
+  notes: ["10-0 run", "3 consecutive turnovers"]
 }
 ```
 
-### RunInfo
+### Client Migration Steps
 
-```typescript
-{
-  team: string;         // "home" or "away"
-  points: number;       // Points scored in the run
-  unanswered: boolean;  // Always true (runs are unanswered)
-  play_ids: number[];   // Indices of scoring plays in the run
-}
-```
+1. **Update endpoint calls:**
+   ```typescript
+   // OLD
+   const response = await fetch(`/api/admin/sports/games/${gameId}/moments`);
+   const { moments } = await response.json();
 
-### PlayerContribution
+   // NEW
+   const response = await fetch(`/api/admin/sports/games/${gameId}/story`);
+   const story = await response.json();
+   const { sections, compact_story, chapters } = story;
+   ```
 
-```typescript
-{
-  name: string;
-  stats: { pts?: number; ast?: number; stl?: number; blk?: number; reb?: number };
-  summary: string | null;  // "8 pts, 2 ast"
-}
-```
+2. **Replace moment rendering with section rendering:**
+   ```typescript
+   // OLD: Render each moment
+   moments.filter(m => m.is_notable).map(m => <Moment data={m} />)
 
-### RecapContext
+   // NEW: Render sections + compact story
+   <>
+     {sections.map(s => <Section data={s} />)}
+     <CompactStory text={compact_story} />
+   </>
+   ```
 
-Contextual summary data for recap moments (HALFTIME_RECAP, PERIOD_RECAP, GAME_RECAP, OVERTIME_RECAP).
+3. **Update filtering logic:**
+   ```typescript
+   // OLD: Filter by is_notable
+   const highlights = moments.filter(m => m.is_notable);
 
-Fields are prioritized in order of importance:
+   // NEW: Filter by beat_type or use all sections
+   const keyMoments = sections.filter(s =>
+     ['RUN', 'CLOSING_SEQUENCE', 'CRUNCH_SETUP'].includes(s.beat_type)
+   );
+   ```
 
-```typescript
-{
-  // Priority 1: Momentum and control (most important)
-  momentum_summary: string;      // "Lakers finished strong" or "Back-and-forth battle"
-  who_has_control: string | null; // "home", "away", or null (tied/unclear)
-  
-  // Priority 2: Key runs
-  key_runs: Array<{
-    team: string;                 // "home" or "away"
-    points: number;               // Points in the run
-    description: string;          // "14-2 run to close the half"
-  }>;
-  
-  // Priority 3: Largest lead
-  largest_lead: number;           // Biggest lead in the period
-  largest_lead_team: string | null; // "home" or "away"
-  
-  // Priority 4: Lead changes
-  lead_changes_count: number;     // Times the lead changed hands
-  
-  // Priority 5: Running score
-  running_score: [number, number]; // [home, away] current game score
-  
-  // Priority 6: Top performers
-  top_performers: Array<{
-    name: string;
-    team: string;                 // "home" or "away"
-    stats: { pts?: number; ast?: number; reb?: number; stl?: number; blk?: number };
-  }>;
-  
-  // Priority 7: Period score
-  period_score: [number, number]; // [home, away] scoring in this period only
-}
-```
+4. **Use compact_story for game summary:**
+   ```typescript
+   // OLD: Concatenate moment summaries
+   const summary = moments.map(m => m.summary).join(' ');
+
+   // NEW: Use compact_story directly
+   const summary = story.compact_story;
+   ```
+
+### Key Differences for Consumers
+
+1. **Fewer, richer sections** — Expect 3-10 sections instead of 10-20+ moments
+2. **Single narrative** — Use `compact_story` for the full game recap
+3. **Deterministic headers** — Section `header` is template-based, not AI
+4. **Quality metadata** — Use `quality` field to adjust UI treatment
+5. **Word count** — Story length scales with game quality (400/700/1050 words)
+
+### Deprecation Notice
+
+The `/games/{game_id}/moments` endpoint is **deprecated** and will be removed in a future release. All consumers should migrate to `/games/{game_id}/story`.
 
 ---
 
