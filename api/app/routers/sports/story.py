@@ -74,7 +74,7 @@ async def get_cached_story(
         and_(
             db_models.SportsGameStory.game_id == game_id,
             db_models.SportsGameStory.story_version == CURRENT_STORY_VERSION,
-            db_models.SportsGameStory.has_compact_story == True,
+            db_models.SportsGameStory.has_compact_story.is_(True),
         )
     )
     result = await session.execute(query)
@@ -304,7 +304,7 @@ async def _run_bulk_generation(
                 and_(
                     db_models.SportsGameStory.game_id.in_(game_ids),
                     db_models.SportsGameStory.story_version == CURRENT_STORY_VERSION,
-                    db_models.SportsGameStory.has_compact_story == True,
+                    db_models.SportsGameStory.has_compact_story.is_(True),
                 )
             )
             existing_result = await session.execute(existing_stories_query)

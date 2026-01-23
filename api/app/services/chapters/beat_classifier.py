@@ -37,7 +37,7 @@ from enum import Enum
 from typing import Any
 
 from .types import Chapter
-from .running_stats import SectionDelta, TeamDelta
+from .running_stats import SectionDelta
 
 
 # ============================================================================

@@ -38,9 +38,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from .story_section import StorySection, TeamStatDelta, PlayerStatDelta
+from .story_section import StorySection
 from .beat_classifier import BeatType
-from .story_renderer import StoryRenderInput, StoryRenderResult, ClosingContext
+from .story_renderer import StoryRenderInput, StoryRenderResult
 
 
 logger = logging.getLogger(__name__)
@@ -325,7 +325,6 @@ def validate_stat_consistency(sections: list[StorySection]) -> ValidationResult:
             # Expected: points = (fg_made - three_pt_made)*2 + three_pt_made*3 + ft_made
             # Simplified: points = fg_made*2 + three_pt_made*1 + ft_made
             if player_delta.points_scored > 0:
-                expected_min = 0
                 expected_max = player_delta.fg_made * 3 + player_delta.ft_made  # All FGs are 3PT
 
                 if player_delta.points_scored > expected_max and player_delta.fg_made == 0 and player_delta.ft_made == 0:
@@ -651,7 +650,6 @@ def validate_no_outcome_contradictions(
     # Determine actual winner
     home_won = closing.final_home_score > closing.final_away_score
     away_won = closing.final_away_score > closing.final_home_score
-    is_tie = closing.final_home_score == closing.final_away_score
 
     home_team_lower = closing.home_team_name.lower()
     away_team_lower = closing.away_team_name.lower()

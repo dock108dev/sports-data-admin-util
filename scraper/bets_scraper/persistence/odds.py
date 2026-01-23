@@ -291,16 +291,29 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
             if snapshot.source_key:
                 external_ids["odds_api_event_id"] = snapshot.source_key
 
-            game_id, created = upsert_game_stub(
-                session,
-                league_code=snapshot.league_code,
-                game_date=snapshot.game_date,
-                home_team=snapshot.home_team,
-                away_team=snapshot.away_team,
-                status="scheduled",
-                tip_time=tip_time,
-                external_ids=external_ids if external_ids else None,
-            )
+            try:
+                game_id, created = upsert_game_stub(
+                    session,
+                    league_code=snapshot.league_code,
+                    game_date=snapshot.game_date,
+                    home_team=snapshot.home_team,
+                    away_team=snapshot.away_team,
+                    status="scheduled",
+                    tip_time=tip_time,
+                    external_ids=external_ids if external_ids else None,
+                )
+            except Exception as exc:
+                logger.error(
+                    "odds_pregame_stub_failed",
+                    league=snapshot.league_code,
+                    home_team=snapshot.home_team.name,
+                    away_team=snapshot.away_team.name,
+                    game_date=str(game_date_only),
+                    error=str(exc),
+                    exc_info=True,
+                )
+                cache_set(cache_key, None)
+                return False
 
             logger.info(
                 "odds_created_pregame_placeholder",

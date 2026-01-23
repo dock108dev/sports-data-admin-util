@@ -64,8 +64,7 @@ class ScrapeRunManager:
     def run(self, run_id: int, config: IngestionConfig) -> dict:
         summary: Dict[str, int | str] = {
             "games": 0,
-            "games_created": 0,  # Games created by Odds API (pregame placeholders)
-            "games_updated": 0,  # Games enriched with boxscore data
+            "games_enriched": 0,  # Games enriched with boxscore data
             "odds": 0,
             "social_posts": 0,
             "pbp_games": 0,
@@ -151,7 +150,6 @@ class ScrapeRunManager:
                     stage="2_boxscore_enrichment",
                 )
 
-                games_enriched = 0
                 games_skipped = 0
 
                 if config.only_missing or updated_before_dt:
@@ -174,10 +172,9 @@ class ScrapeRunManager:
                                     result = persist_game_payload(session, game_payload)
                                     session.commit()
                                     if result.game_id is not None:
-                                        if result.enriched:
-                                            games_enriched += 1
-                                        summary["games_updated"] += 1
                                         summary["games"] += 1
+                                        if result.enriched:
+                                            summary["games_enriched"] += 1
                                     else:
                                         games_skipped += 1
                         except Exception as exc:
@@ -197,10 +194,9 @@ class ScrapeRunManager:
                                 result = persist_game_payload(session, game_payload)
                                 session.commit()
                                 if result.game_id is not None:
-                                    if result.enriched:
-                                        games_enriched += 1
-                                    summary["games_updated"] += 1
                                     summary["games"] += 1
+                                    if result.enriched:
+                                        summary["games_enriched"] += 1
                                 else:
                                     # Game not found - this is normal for games not in Odds API
                                     games_skipped += 1
@@ -210,8 +206,7 @@ class ScrapeRunManager:
                 logger.info(
                     "boxscores_complete",
                     count=summary["games"],
-                    enriched=games_enriched,
-                    updated=summary["games_updated"],
+                    enriched=summary["games_enriched"],
                     skipped=games_skipped,
                     run_id=run_id,
                 )
@@ -411,7 +406,7 @@ class ScrapeRunManager:
             summary_parts = []
             if summary["games"]:
                 summary_parts.append(
-                    f'Games: {summary["games"]} (created {summary["games_created"]}, updated {summary["games_updated"]})'
+                    f'Games: {summary["games"]} ({summary["games_enriched"]} enriched)'
                 )
             if summary["odds"]:
                 summary_parts.append(f'Odds: {summary["odds"]}')

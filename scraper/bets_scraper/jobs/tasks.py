@@ -16,26 +16,14 @@ from ..services.timeline_generator import (
 
 @shared_task(name="run_scrape_job")
 def run_scrape_job(run_id: int, config_payload: dict) -> dict:
-    """Run a scrape job.
-    
-    NOTE: Timeline generation is now DECOUPLED from scraping.
-    Use trigger_game_pipelines task or the pipeline API endpoints
-    to generate timelines after scraping completes.
-    
-    For prod auto-chain behavior, call trigger_game_pipelines_task
-    separately after this task completes.
+    """Run a scrape job (data ingestion only).
+
+    Timeline generation is decoupled - call trigger_game_pipelines_task
+    after this completes, or use Pipeline API endpoints for manual control.
     """
     logger.info("scrape_job_started", run_id=run_id)
     result = run_ingestion(run_id, config_payload)
     logger.info("scrape_job_completed", run_id=run_id, result=result)
-    
-    # NOTE: Timeline generation has been decoupled.
-    # The scraper now ONLY handles data ingestion.
-    # Timeline/moment generation is triggered separately via:
-    # 1. trigger_game_pipelines_task for prod auto-chain
-    # 2. Pipeline API endpoints for admin/manual control
-    # This allows dev/admin to inspect scraped data before processing.
-    
     return result
 
 

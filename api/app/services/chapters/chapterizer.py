@@ -214,8 +214,7 @@ class Chapterizer:
         for i, play in enumerate(plays):
             event = play.raw_data
             prev_event = plays[i - 1].raw_data if i > 0 else None
-            next_event = plays[i + 1].raw_data if i < len(plays) - 1 else None
-            
+
             # Skip explicit non-boundaries
             if is_non_boundary_event(event):
                 self.debug_logger.log_boundary_ignored(

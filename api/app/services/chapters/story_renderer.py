@@ -38,10 +38,10 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol
 
-from .story_section import StorySection, TeamStatDelta, PlayerStatDelta
+from .story_section import StorySection
 from .beat_classifier import BeatType
 
 
@@ -497,7 +497,7 @@ def render_story(
         if response_text.startswith("```"):
             # Remove markdown fences
             lines = response_text.split("\n")
-            lines = [l for l in lines if not l.startswith("```")]
+            lines = [line for line in lines if not line.startswith("```")]
             response_text = "\n".join(lines)
 
         response_data = json.loads(response_text)

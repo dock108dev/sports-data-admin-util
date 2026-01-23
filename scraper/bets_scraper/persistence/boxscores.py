@@ -6,10 +6,10 @@ Handles team and player boxscore upserts.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Sequence
 
-from sqlalchemy import cast, Date, func, text
+from sqlalchemy import cast, Date, text
 from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Session
 
@@ -176,8 +176,12 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
 
 @dataclass(frozen=True)
 class GamePersistResult:
+    """Result of boxscore persistence (enrichment-only model).
+
+    Boxscores enrich existing games; they never create new game records.
+    Games are created exclusively by Odds API during schedule sync.
+    """
     game_id: int | None
-    created: bool
     enriched: bool = False
 
 
@@ -284,7 +288,7 @@ def persist_game_payload(session: Session, payload: NormalizedGame) -> GamePersi
             game_date=str(payload.identity.game_date.date()),
             source_game_key=payload.identity.source_game_key,
         )
-        return GamePersistResult(game_id=None, created=False, enriched=False)
+        return GamePersistResult(game_id=None, enriched=False)
 
     # Find existing game
     game = _find_game_for_boxscore(
@@ -303,7 +307,7 @@ def persist_game_payload(session: Session, payload: NormalizedGame) -> GamePersi
             source_game_key=payload.identity.source_game_key,
             message="Game not found in database. Games must be created via Odds API first.",
         )
-        return GamePersistResult(game_id=None, created=False, enriched=False)
+        return GamePersistResult(game_id=None, enriched=False)
 
     # Enrich existing game with boxscore data
     enriched = _enrich_game_with_boxscore(session, game, payload)
@@ -337,4 +341,4 @@ def persist_game_payload(session: Session, payload: NormalizedGame) -> GamePersi
     else:
         logger.warning("no_player_boxscores_to_persist", game_id=game.id, game_key=payload.identity.source_game_key)
 
-    return GamePersistResult(game_id=game.id, created=False, enriched=enriched)
+    return GamePersistResult(game_id=game.id, enriched=enriched)

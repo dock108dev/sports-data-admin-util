@@ -381,7 +381,7 @@ def check_phase_coverage(timeline: Sequence[dict[str, Any]]) -> ValidationResult
 
 
 def check_summary_phases_valid(
-    timeline: Sequence[dict[str, Any]], 
+    timeline: Sequence[dict[str, Any]],
     summary: dict[str, Any],
 ) -> ValidationResult:
     """W3: Summary should only reference phases present in timeline."""
