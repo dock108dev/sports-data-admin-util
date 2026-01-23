@@ -160,7 +160,7 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
             away_identity, away_score = self._parse_team_row(team_rows[0])
             home_identity, home_score = self._parse_team_row(team_rows[1])
 
-            boxscore_link = div.select_one("p.links a[href*='/boxscores/']")
+            boxscore_link = div.select_one("td.gamelink a[href*='/boxscores/']")
             if not boxscore_link:
                 raise ScraperError("Missing boxscore link")
             boxscore_url = urljoin(self.base_url, boxscore_link["href"])
