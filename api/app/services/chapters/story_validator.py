@@ -471,27 +471,21 @@ def _extract_player_names_from_input(input_data: StoryRenderInput) -> set[str]:
 def _extract_names_from_story(compact_story: str) -> set[str]:
     """Extract potential player names from story text.
 
-    Detects two name formats:
-    1. "A. LastName" format (first initial + period + last name)
-       Examples: "D. Mitchell", "J. Allen", "K. Knueppel"
-    2. "FirstName LastName" format (two capitalized words in sequence)
-       Examples: "Michael Jordan", "LeBron James"
+    Only detects the "A. LastName" format (first initial + period + last name).
+    Examples: "D. Mitchell", "J. Allen", "K. Knueppel"
+
+    This avoids false positives from common phrases like "Final Score" or
+    "Decisive Factors" that would match a generic "FirstName LastName" pattern.
 
     Returns:
         Set of potential player names (lowercase)
     """
     names = set()
 
-    # Pattern 1: Initial + period + optional space + Capitalized word(s)
+    # Pattern: Initial + period + optional space + Capitalized word(s)
     # Examples: "D. Mitchell", "J. Allen", "K. Knueppel"
     initial_pattern = r'\b([A-Z]\.\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b'
     for match in re.findall(initial_pattern, compact_story):
-        names.add(match.lower())
-
-    # Pattern 2: FirstName LastName (two capitalized words)
-    # Examples: "Michael Jordan", "LeBron James"
-    full_name_pattern = r'\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b'
-    for match in re.findall(full_name_pattern, compact_story):
         names.add(match.lower())
 
     return names
