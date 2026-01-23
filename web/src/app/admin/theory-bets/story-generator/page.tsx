@@ -87,7 +87,7 @@ export default function StoryGeneratorLandingPage() {
               status: status.status || "Processing...",
             });
             setGenerationResult(
-              `Processing: ${status.current || 0}/${status.total || 0} games (${status.successful || 0} successful, ${status.failed || 0} failed, ${status.cached || 0} cached)`
+              `Processing: ${status.current || 0}/${status.total || 0} games (${status.successful || 0} successful, ${status.failed || 0} failed, ${status.skipped || 0} skipped)`
             );
           } else if (status.state === "SUCCESS") {
             clearInterval(pollInterval);
@@ -96,7 +96,7 @@ export default function StoryGeneratorLandingPage() {
             const result = status.result;
             if (result) {
               setGenerationResult(
-                `✓ Generated stories for ${result.successful} of ${result.total_games} games. ${result.failed > 0 ? `${result.failed} failed.` : ""} (${result.cached} cached, ${result.generated} newly generated)`
+                `✓ Generated stories for ${result.successful} of ${result.total_games} games. ${result.failed > 0 ? `${result.failed} failed.` : ""} (${result.skipped} skipped, ${result.generated} newly generated)`
               );
             }
             // Reload games to show updated status

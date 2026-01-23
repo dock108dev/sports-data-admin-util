@@ -220,14 +220,14 @@ export async function getBulkGenerateStatus(jobId: string): Promise<{
   status?: string;
   successful?: number;
   failed?: number;
-  cached?: number;
+  skipped?: number;
   result?: {
     success: boolean;
     message: string;
     total_games: number;
     successful: number;
     failed: number;
-    cached: number;
+    skipped: number;
     generated: number;
   };
 }> {
