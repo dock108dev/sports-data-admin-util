@@ -42,50 +42,84 @@ class OpenAIClient:
         self.client = OpenAI(api_key=self.api_key)
         logger.info(f"OpenAI client initialized with model: {self.model}")
     
-    def generate(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1000) -> str:
-        """Generate text from prompt.
-        
+    def generate(
+        self,
+        prompt: str,
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        max_retries: int = 3,
+    ) -> str:
+        """Generate text from prompt with retry logic.
+
         Args:
             prompt: Prompt text
             temperature: Sampling temperature (0-1)
             max_tokens: Maximum tokens to generate
-            
+            max_retries: Maximum retry attempts for malformed responses
+
         Returns:
             Generated text (JSON string for structured outputs)
-            
+
         Raises:
-            Exception: If generation fails
+            Exception: If generation fails after all retries
         """
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a sports narrative writer. Generate engaging, accurate summaries of game moments. Always respond with valid JSON."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format={"type": "json_object"},
-            )
-            
-            content = response.choices[0].message.content
-            if not content:
-                raise ValueError("OpenAI returned empty response")
-            
-            # Validate it's valid JSON
-            json.loads(content)
-            
-            return content
-            
-        except Exception as e:
-            logger.error(f"OpenAI generation failed: {e}")
-            raise
+        last_error = None
+
+        for attempt in range(max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a sports narrative writer. Generate engaging, accurate summaries of game moments. Always respond with valid JSON."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    response_format={"type": "json_object"},
+                )
+
+                content = response.choices[0].message.content
+                if not content:
+                    raise ValueError("OpenAI returned empty response")
+
+                # Log response length for debugging truncation issues
+                logger.debug(f"OpenAI response length: {len(content)} chars")
+
+                # Validate it's valid JSON
+                try:
+                    json.loads(content)
+                except json.JSONDecodeError as e:
+                    # Log the problematic content for debugging
+                    logger.warning(
+                        f"Malformed JSON content (first 100 chars): {content[:100]!r}"
+                    )
+                    raise
+
+                if attempt > 0:
+                    logger.info(f"OpenAI generation succeeded on attempt {attempt + 1}")
+
+                return content
+
+            except json.JSONDecodeError as e:
+                last_error = e
+                logger.warning(
+                    f"OpenAI returned malformed JSON (attempt {attempt + 1}/{max_retries}): {e}"
+                )
+                # Continue to retry
+
+            except Exception as e:
+                last_error = e
+                logger.error(f"OpenAI generation failed (attempt {attempt + 1}/{max_retries}): {e}")
+                # For non-JSON errors, also retry (could be transient API issues)
+
+        logger.error(f"OpenAI generation failed after {max_retries} attempts: {last_error}")
+        raise last_error or Exception("OpenAI generation failed")
 
 
 def get_openai_client() -> OpenAIClient | None:

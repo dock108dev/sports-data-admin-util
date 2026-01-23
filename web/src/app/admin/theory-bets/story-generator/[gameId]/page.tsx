@@ -1,29 +1,35 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import type { GameStoryResponse, StoryStateResponse } from "@/lib/api/sportsAdmin/types";
+import { useParams, useRouter } from "next/navigation";
+import type { GameStoryResponse } from "@/lib/api/sportsAdmin/types";
 import styles from "./story-generator.module.css";
 
 /**
- * Story Generator — Game Overview Page
- * 
- * ISSUE 13: Admin UI for Chapters-First System
- * 
- * Single-game inspection for story generation pipeline.
+ * Story Generator — Game Story Page
+ *
+ * STORY-CENTRIC UI (Breaking Change)
+ *
+ * PRIMARY VIEW: Compact Game Story
+ * - The full story text is the default view
+ * - This is what users see first
+ *
+ * DEBUG VIEW: Chapters & Technical Details
+ * - Hidden by default behind a toggle
+ * - Shows chapters, plays, reason codes, etc.
  */
 export default function StoryGeneratorPage() {
   const params = useParams();
+  const router = useRouter();
   const gameId = parseInt(params.gameId as string);
-  
+
   const [story, setStory] = useState<GameStoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedChapter, setSelectedChapter] = useState<number | null>(null);
-  const [storyState, setStoryState] = useState<StoryStateResponse | null>(null);
-  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [showDebugView, setShowDebugView] = useState(false);
-  
+  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
+
   const toggleChapter = (chapterId: string) => {
     const newExpanded = new Set(expandedChapters);
     if (newExpanded.has(chapterId)) {
@@ -33,31 +39,6 @@ export default function StoryGeneratorPage() {
     }
     setExpandedChapters(newExpanded);
   };
-  
-  const getReasonIcon = (reason: string) => {
-    switch (reason.toUpperCase()) {
-      case "PERIOD_START":
-        return "🏁";
-      case "PERIOD_END":
-        return "⏹️";
-      case "TIMEOUT":
-        return "⏸️";
-      case "REVIEW":
-        return "🔍";
-      case "CRUNCH_START":
-        return "🔥";
-      case "RUN_START":
-        return "📈";
-      case "RUN_END_RESPONSE":
-        return "↩️";
-      case "OVERTIME_START":
-        return "⏰";
-      case "GAME_END":
-        return "🏁";
-      default:
-        return "📍";
-    }
-  };
 
   useEffect(() => {
     loadStory();
@@ -66,7 +47,7 @@ export default function StoryGeneratorPage() {
   const loadStory = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const { fetchGameStory } = await import("@/lib/api/sportsAdmin");
       const data = await fetchGameStory(gameId, false);
@@ -78,95 +59,50 @@ export default function StoryGeneratorPage() {
     }
   };
 
-  const loadStoryState = async (chapterIndex: number) => {
-    try {
-      const { fetchStoryState } = await import("@/lib/api/sportsAdmin");
-      const data = await fetchStoryState(gameId, chapterIndex);
-      setStoryState(data);
-      setSelectedChapter(chapterIndex);
-    } catch (err) {
-      console.error("Failed to load story state:", err);
-      setError(err instanceof Error ? err.message : "Failed to load story state");
-    }
-  };
-
-  const handleRegenerateChapters = async () => {
-    if (!confirm("Regenerate chapters? This will reset all summaries and titles.")) {
+  const handleRegenerateStory = async () => {
+    if (!confirm("Regenerate the entire story? This will rebuild chapters, summaries, and the compact story.")) {
       return;
     }
-    
-    try {
-      const { regenerateChapters } = await import("@/lib/api/sportsAdmin");
-      const result = await regenerateChapters(gameId, true, false);
-      
-      if (result.success && result.story) {
-        setStory(result.story);
-        alert(result.message);
-      } else {
-        alert(`Failed: ${result.message}`);
-      }
-    } catch (err) {
-      alert(`Failed to regenerate chapters: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-  };
 
-  const handleRegenerateSummaries = async () => {
-    if (!confirm("Regenerate all chapter summaries?")) {
-      return;
-    }
-    
-    try {
-      const { regenerateSummaries } = await import("@/lib/api/sportsAdmin");
-      const result = await regenerateSummaries(gameId, true);
-      
-      if (result.success && result.story) {
-        setStory(result.story);
-        alert(result.message);
-      } else {
-        alert(`Failed: ${result.message}`);
-      }
-    } catch (err) {
-      alert(`Failed to regenerate summaries: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-  };
+    setRegenerating(true);
 
-  const handleRegenerateTitles = async () => {
-    if (!confirm("Regenerate chapter titles? (Summaries must exist first)")) {
-      return;
-    }
-    
     try {
-      const { regenerateTitles } = await import("@/lib/api/sportsAdmin");
-      const result = await regenerateTitles(gameId, true);
-      
-      if (result.success && result.story) {
-        setStory(result.story);
-        alert(result.message);
-      } else {
-        alert(`Failed: ${result.message}\n${result.errors?.join("\n") || ""}`);
-      }
-    } catch (err) {
-      alert(`Failed to regenerate titles: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-  };
+      // Full regeneration pipeline: chapters -> summaries -> titles -> compact story
+      const { regenerateChapters, regenerateSummaries, regenerateTitles, regenerateCompactStory } = await import("@/lib/api/sportsAdmin");
 
-  const handleRegenerateCompactStory = async () => {
-    if (!confirm("Regenerate compact story?")) {
-      return;
-    }
-    
-    try {
-      const { regenerateCompactStory } = await import("@/lib/api/sportsAdmin");
-      const result = await regenerateCompactStory(gameId, true);
-      
-      if (result.success && result.story) {
-        setStory(result.story);
-        alert(result.message);
-      } else {
-        alert(`Failed: ${result.message}`);
+      // Step 1: Regenerate chapters
+      let result = await regenerateChapters(gameId, true, false);
+      if (!result.success) {
+        throw new Error(`Chapter generation failed: ${result.message}`);
       }
+
+      // Step 2: Regenerate summaries
+      result = await regenerateSummaries(gameId, true);
+      if (!result.success) {
+        throw new Error(`Summary generation failed: ${result.message}`);
+      }
+
+      // Step 3: Regenerate titles
+      result = await regenerateTitles(gameId, true);
+      if (!result.success) {
+        throw new Error(`Title generation failed: ${result.message}`);
+      }
+
+      // Step 4: Regenerate compact story
+      result = await regenerateCompactStory(gameId, true);
+      if (!result.success) {
+        throw new Error(`Compact story generation failed: ${result.message}`);
+      }
+
+      // Update UI with final result
+      if (result.story) {
+        setStory(result.story);
+      }
+
     } catch (err) {
-      alert(`Failed to regenerate compact story: ${err instanceof Error ? err.message : "Unknown error"}`);
+      alert(`Failed to regenerate story: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -194,236 +130,162 @@ export default function StoryGeneratorPage() {
     );
   }
 
+  const hasStory = story.has_compact_story && story.compact_story;
+
   return (
     <div className={styles.container}>
       {/* Header */}
       <div className={styles.header}>
-        <h1>Story Generator — Game {gameId}</h1>
+        <div className={styles.headerTop}>
+          <button
+            onClick={() => router.push("/admin/theory-bets/story-generator")}
+            className={styles.backButton}
+          >
+            Back to Games
+          </button>
+        </div>
+        <h1>Game {gameId}</h1>
         <div className={styles.headerMeta}>
           <span className={styles.sport}>{story.sport}</span>
-          <span className={styles.chapterCount}>{story.chapter_count} chapters</span>
           {story.reading_time_estimate_minutes && (
             <span className={styles.readingTime}>
-              ~{story.reading_time_estimate_minutes.toFixed(1)} min read
+              {story.reading_time_estimate_minutes.toFixed(1)} min read
             </span>
           )}
         </div>
       </div>
 
-      {/* Actions */}
+      {/* Primary Action */}
       <div className={styles.actions}>
-        <button onClick={handleRegenerateChapters} className={styles.btnSecondary}>
-          Regenerate Chapters
+        <button
+          onClick={handleRegenerateStory}
+          className={styles.btnPrimary}
+          disabled={regenerating}
+        >
+          {regenerating ? "Regenerating..." : "Regenerate Story"}
         </button>
-        <button onClick={handleRegenerateSummaries} className={styles.btnSecondary}>
-          Regenerate Summaries
-        </button>
-        <button onClick={handleRegenerateTitles} className={styles.btnSecondary}>
-          Regenerate Titles
-        </button>
-        <button onClick={handleRegenerateCompactStory} className={styles.btnSecondary}>
-          Regenerate Compact Story
-        </button>
+        <label className={styles.debugToggle}>
+          <input
+            type="checkbox"
+            checked={showDebugView}
+            onChange={(e) => setShowDebugView(e.target.checked)}
+          />
+          Show Debug Details
+        </label>
       </div>
 
-      {/* Status */}
-      <div className={styles.statusPanel}>
-        <h2>Generation Status</h2>
-        <div className={styles.statusGrid}>
-          <div className={styles.statusItem}>
-            <span className={styles.statusLabel}>Chapters:</span>
-            <span className={story.chapter_count > 0 ? styles.statusOk : styles.statusMissing}>
-              {story.chapter_count > 0 ? `✓ ${story.chapter_count}` : "✗ Not generated"}
-            </span>
-          </div>
-          
-          <div className={styles.statusItem}>
-            <span className={styles.statusLabel}>Summaries:</span>
-            <span className={story.has_summaries ? styles.statusOk : styles.statusMissing}>
-              {story.has_summaries ? "✓ Generated" : "✗ Not generated"}
-            </span>
-          </div>
-          
-          <div className={styles.statusItem}>
-            <span className={styles.statusLabel}>Compact Story:</span>
-            <span className={story.has_compact_story ? styles.statusOk : styles.statusMissing}>
-              {story.has_compact_story ? "✓ Generated" : "✗ Not generated"}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Compact Story */}
-      {story.compact_story && (
-        <div className={styles.compactStoryPanel}>
-          <h2>Compact Game Story</h2>
-          <div className={styles.compactStory}>
-            {story.compact_story.split('\n\n').map((paragraph, i) => (
+      {/* PRIMARY VIEW: Compact Story */}
+      <div className={styles.storyPanel}>
+        {hasStory ? (
+          <div className={styles.storyContent}>
+            {story.compact_story!.split('\n\n').map((paragraph, i) => (
               <p key={i}>{paragraph}</p>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className={styles.noStory}>
+            <p>No story generated yet.</p>
+            <p className={styles.noStoryHint}>
+              Click &ldquo;Regenerate Story&rdquo; to generate the full game narrative.
+            </p>
+          </div>
+        )}
+      </div>
 
-      {/* Chapters */}
-      <div className={styles.chaptersPanel}>
-        <h2>Chapters ({story.chapter_count})</h2>
-        <div className={styles.chaptersList}>
-          {story.chapters.map((chapter, idx) => {
-            const isExpanded = expandedChapters.has(chapter.chapter_id);
-            
-            return (
-              <div key={chapter.chapter_id} className={styles.chapterCard}>
-                {/* Collapsed View */}
-                <div 
-                  className={styles.chapterHeader}
-                  onClick={() => toggleChapter(chapter.chapter_id)}
-                >
-                  <div className={styles.chapterHeaderLeft}>
-                    <span className={styles.chapterToggle}>
-                      {isExpanded ? "▼" : "▶"}
-                    </span>
-                    <span className={styles.chapterIndex}>Chapter {idx}</span>
-                    {chapter.chapter_title && (
-                      <span className={styles.chapterTitle}>{chapter.chapter_title}</span>
-                    )}
-                  </div>
-                  
-                  <div className={styles.chapterHeaderRight}>
-                    <span className={styles.playCount}>{chapter.play_count} plays</span>
-                    {chapter.period && <span className={styles.period}>Q{chapter.period}</span>}
-                    <span className={styles.reasonCodes}>
-                      {chapter.reason_codes.map(code => getReasonIcon(code)).join(" ")}
-                    </span>
-                  </div>
-                </div>
+      {/* DEBUG VIEW: Chapters (hidden by default) */}
+      {showDebugView && (
+        <div className={styles.debugSection}>
+          <h2 className={styles.debugSectionTitle}>Debug: Chapters ({story.chapter_count})</h2>
 
-                {/* Summary (Always Visible) */}
-                {chapter.chapter_summary && (
-                  <div className={styles.chapterSummary}>
-                    {chapter.chapter_summary}
-                  </div>
-                )}
+          {/* Status indicators */}
+          <div className={styles.statusRow}>
+            <span className={story.chapter_count > 0 ? styles.statusOk : styles.statusMissing}>
+              Chapters: {story.chapter_count > 0 ? story.chapter_count : "None"}
+            </span>
+            <span className={story.has_summaries ? styles.statusOk : styles.statusMissing}>
+              Summaries: {story.has_summaries ? "Yes" : "No"}
+            </span>
+            <span className={story.has_compact_story ? styles.statusOk : styles.statusMissing}>
+              Compact Story: {story.has_compact_story ? "Yes" : "No"}
+            </span>
+          </div>
 
-                {/* Expanded View */}
-                {isExpanded && (
-                  <div className={styles.chapterExpanded}>
-                    {/* Metadata */}
-                    <div className={styles.metadata}>
-                      <div className={styles.metadataRow}>
-                        <span className={styles.label}>Play Range:</span>
-                        <span>{chapter.play_start_idx} - {chapter.play_end_idx}</span>
-                      </div>
-                      
-                      {chapter.time_range && (
-                        <div className={styles.metadataRow}>
-                          <span className={styles.label}>Time Range:</span>
-                          <span>{chapter.time_range.start} - {chapter.time_range.end}</span>
-                        </div>
+          {/* Chapters list */}
+          <div className={styles.chaptersList}>
+            {story.chapters.map((chapter, idx) => {
+              const isExpanded = expandedChapters.has(chapter.chapter_id);
+
+              return (
+                <div key={chapter.chapter_id} className={styles.chapterCard}>
+                  <div
+                    className={styles.chapterHeader}
+                    onClick={() => toggleChapter(chapter.chapter_id)}
+                  >
+                    <div className={styles.chapterHeaderLeft}>
+                      <span className={styles.chapterToggle}>
+                        {isExpanded ? "v" : ">"}
+                      </span>
+                      <span className={styles.chapterIndex}>Ch {idx}</span>
+                      {chapter.chapter_title && (
+                        <span className={styles.chapterTitle}>{chapter.chapter_title}</span>
                       )}
-                      
-                      <div className={styles.metadataRow}>
-                        <span className={styles.label}>Reason Codes:</span>
-                        <div className={styles.reasonCodesList}>
-                          {chapter.reason_codes.map((code, i) => (
-                            <span key={i} className={styles.reasonBadge}>
-                              {getReasonIcon(code)} {code}
-                            </span>
+                    </div>
+
+                    <div className={styles.chapterHeaderRight}>
+                      <span className={styles.playCount}>{chapter.play_count} plays</span>
+                      {chapter.period && <span className={styles.period}>Q{chapter.period}</span>}
+                      <span className={styles.reasonCodes}>
+                        {chapter.reason_codes.join(", ")}
+                      </span>
+                    </div>
+                  </div>
+
+                  {chapter.chapter_summary && (
+                    <div className={styles.chapterSummary}>
+                      {chapter.chapter_summary}
+                    </div>
+                  )}
+
+                  {isExpanded && (
+                    <div className={styles.chapterExpanded}>
+                      <div className={styles.metadata}>
+                        <div className={styles.metadataRow}>
+                          <span className={styles.label}>Play Range:</span>
+                          <span>{chapter.play_start_idx} - {chapter.play_end_idx}</span>
+                        </div>
+
+                        {chapter.time_range && (
+                          <div className={styles.metadataRow}>
+                            <span className={styles.label}>Time Range:</span>
+                            <span>{chapter.time_range.start} - {chapter.time_range.end}</span>
+                          </div>
+                        )}
+
+                        <div className={styles.metadataRow}>
+                          <span className={styles.label}>Reason Codes:</span>
+                          <span>{chapter.reason_codes.join(", ")}</span>
+                        </div>
+                      </div>
+
+                      <div className={styles.playsSection}>
+                        <h4>Plays ({chapter.plays.length})</h4>
+                        <div className={styles.playsList}>
+                          {chapter.plays.map((play, playIdx) => (
+                            <div key={playIdx} className={styles.playEntry}>
+                              <span className={styles.playIndex}>{play.play_index}</span>
+                              <span className={styles.playDescription}>{play.description}</span>
+                              {play.game_clock && (
+                                <span className={styles.playClock}>{play.game_clock}</span>
+                              )}
+                            </div>
                           ))}
                         </div>
                       </div>
                     </div>
-
-                    {/* Debug Info */}
-                    {showDebugView && (
-                      <div className={styles.debugPanel}>
-                        <h4>Debug Info</h4>
-                        <button 
-                          onClick={() => loadStoryState(idx)}
-                          className={styles.btnSmall}
-                        >
-                          Load Story State Before This Chapter
-                        </button>
-                        <pre className={styles.debugJson}>
-                          {JSON.stringify({
-                            chapter_id: chapter.chapter_id,
-                            play_start_idx: chapter.play_start_idx,
-                            play_end_idx: chapter.play_end_idx,
-                            play_count: chapter.play_count,
-                            reason_codes: chapter.reason_codes,
-                          }, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-
-                    {/* Plays */}
-                    <div className={styles.playsSection}>
-                      <h4>Plays ({chapter.plays.length})</h4>
-                      <div className={styles.playsList}>
-                        {chapter.plays.map((play, playIdx) => (
-                          <div key={playIdx} className={styles.playEntry}>
-                            <span className={styles.playIndex}>{play.play_index}</span>
-                            <span className={styles.playDescription}>{play.description}</span>
-                            {play.game_clock && (
-                              <span className={styles.playClock}>{play.game_clock}</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Story State Inspector (if loaded) */}
-      {storyState && selectedChapter !== null && (
-        <div className={styles.storyStatePanel}>
-          <h2>Story State Before Chapter {selectedChapter}</h2>
-          <div className={styles.storyStateContent}>
-            <div className={styles.storyStateSection}>
-              <h3>Players (Top {Object.keys(storyState.players).length})</h3>
-              {Object.entries(storyState.players).map(([name, player]) => (
-                <div key={name} className={styles.playerState}>
-                  <span className={styles.playerName}>{name}</span>
-                  <span className={styles.playerStats}>
-                    {player.points_so_far} pts ({player.made_fg_so_far} FG, {player.made_3pt_so_far} 3PT)
-                  </span>
-                  {player.notable_actions_so_far.length > 0 && (
-                    <span className={styles.notableActions}>
-                      Notable: {player.notable_actions_so_far.join(", ")}
-                    </span>
                   )}
                 </div>
-              ))}
-            </div>
-
-            <div className={styles.storyStateSection}>
-              <h3>Momentum</h3>
-              <span className={styles.momentum}>{storyState.momentum_hint}</span>
-            </div>
-
-            {storyState.theme_tags.length > 0 && (
-              <div className={styles.storyStateSection}>
-                <h3>Themes</h3>
-                <div className={styles.themeTags}>
-                  {storyState.theme_tags.map((tag, i) => (
-                    <span key={i} className={styles.themeTag}>{tag}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className={styles.storyStateSection}>
-              <h3>Constraints</h3>
-              <div className={styles.constraints}>
-                <div>✓ no_future_knowledge: {storyState.constraints.no_future_knowledge.toString()}</div>
-                <div>✓ source: {storyState.constraints.source}</div>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
       )}

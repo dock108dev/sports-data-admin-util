@@ -1,56 +1,149 @@
-/* Admin-specific light theme - overrides default dark theme variables */
-.layout {
-  /* Override dock108 theme variables for light mode in admin */
-  --dock-bg: #f1f5f9;
-  --dock-surface: #ffffff;
-  --dock-elevated: #f8fafc;
-  --dock-border: #cbd5e1;
-  --dock-text: #0f172a;
-  --dock-text-muted: #475569;
-  --dock-accent: #2563eb;
-  --dock-accent-secondary: #059669;
-  
+/*
+ * Admin Shell Layout
+ *
+ * CSS Grid structure:
+ * - Column 1: Sidebar (fixed 240px)
+ * - Column 2: Main content (flexible)
+ * - Row 1: Header (60px)
+ * - Row 2: Content area (flexible)
+ *
+ * Z-Index Policy (fixed order):
+ * 1. App background (adminShell)
+ * 2. Layout grid
+ * 3. Sidebar (z-index: 2)
+ * 4. Header (z-index: 3)
+ * 5. Overlays (z-index: 10+)
+ */
+
+.adminShell {
+  /* Admin light theme variables */
+  --admin-bg: #f1f5f9;
+  --admin-surface: #ffffff;
+  --admin-elevated: #f8fafc;
+  --admin-border: #e2e8f0;
+  --admin-text: #0f172a;
+  --admin-text-muted: #475569;
+  --admin-accent: #2563eb;
+  --admin-accent-secondary: #059669;
+  --admin-sidebar-width: 240px;
+  --admin-header-height: 60px;
+
+  /* Override dock theme variables for admin context */
+  --dock-bg: var(--admin-bg);
+  --dock-surface: var(--admin-surface);
+  --dock-elevated: var(--admin-elevated);
+  --dock-border: var(--admin-border);
+  --dock-text: var(--admin-text);
+  --dock-text-muted: var(--admin-text-muted);
+  --dock-accent: var(--admin-accent);
+  --dock-accent-secondary: var(--admin-accent-secondary);
+
+  /* Full viewport coverage - overlays root layout */
+  position: fixed;
+  inset: 0;
+
+  /* CSS Grid layout */
+  display: grid;
+  grid-template-columns: var(--admin-sidebar-width) 1fr;
+  grid-template-rows: var(--admin-header-height) 1fr;
+  grid-template-areas:
+    "header header"
+    "sidebar main";
+
+  /* Background owned by shell */
+  background: var(--admin-bg);
+  color: var(--admin-text);
+
+  /* Mobile Safari: use dvh, add safe area padding */
+  min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+
+  /* Prevent horizontal overflow */
+  overflow: hidden;
+
+  /* Base z-index for stacking context */
+  z-index: 1;
+}
+
+/* Header - spans full width, part of grid */
+.header {
+  grid-area: header;
   display: flex;
-  min-height: calc(100vh - 60px);
-  margin-top: 60px;
-  background: var(--dock-bg);
-  color: var(--dock-text);
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  background: var(--admin-surface);
+  border-bottom: 1px solid var(--admin-border);
+  z-index: 3;
 }
 
+.headerLogo {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--admin-text);
+  letter-spacing: -0.02em;
+}
+
+.headerLink {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--admin-text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.headerLink:hover {
+  color: var(--admin-accent);
+}
+
+/* Sidebar - fixed width column, full height */
+.sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  background: var(--admin-surface);
+  border-right: 1px solid var(--admin-border);
+  overflow-y: auto;
+  z-index: 2;
+}
+
+/* Main content - flexible width, scrollable */
 .main {
-  flex: 1;
-  margin-left: 240px;
+  grid-area: main;
   padding: 2rem;
-  min-height: calc(100vh - 60px);
+  overflow-y: auto;
+  z-index: 1;
 }
 
-.content {
+/* Content max-width constraint */
+.main > * {
   max-width: 1400px;
-  margin: 0 auto;
+  margin-left: auto;
+  margin-right: auto;
 }
 
-/* Ensure all admin text uses the light theme colors */
-.layout h1,
-.layout h2,
-.layout h3,
-.layout h4,
-.layout h5,
-.layout h6 {
-  color: var(--dock-text);
+/* Ensure all admin text uses light theme colors */
+.adminShell h1,
+.adminShell h2,
+.adminShell h3,
+.adminShell h4,
+.adminShell h5,
+.adminShell h6 {
+  color: var(--admin-text);
 }
 
-.layout p,
-.layout span,
-.layout td,
-.layout th,
-.layout li {
+.adminShell p,
+.adminShell span,
+.adminShell td,
+.adminShell th,
+.adminShell li {
   color: inherit;
 }
 
-.layout a {
-  color: var(--dock-accent);
+.adminShell a {
+  color: var(--admin-accent);
 }
 
-.layout strong {
-  color: var(--dock-text);
+.adminShell strong {
+  color: var(--admin-text);
 }

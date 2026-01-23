@@ -26,7 +26,7 @@ export function AdminNav() {
   const isActive = (href: string) => pathname.startsWith(href);
 
   return (
-    <aside className={styles.sidebar}>
+    <div className={styles.navContainer}>
       <div className={styles.logo}>
         <div className={styles.logoText}>Sports Admin</div>
         <div className={styles.logoSub}>Data Management</div>
@@ -54,7 +54,6 @@ export function AdminNav() {
           Back to Home
         </Link>
       </div>
-    </aside>
+    </div>
   );
 }
-

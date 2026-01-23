@@ -31,8 +31,7 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/theory-bets/games
                 <th>Players</th>
                 <th>Odds</th>
                 <th>Social</th>
-                  <th>PBP</th>
-                <th>Moments</th>
+                <th>PBP</th>
               </>
             )}
           </tr>
@@ -40,7 +39,7 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/theory-bets/games
         <tbody>
           {games.length === 0 ? (
             <tr>
-                <td colSpan={showCompleteness ? 11 : 5} className={styles.emptyCell}>
+                <td colSpan={showCompleteness ? 10 : 5} className={styles.emptyCell}>
                 No games found
               </td>
             </tr>
@@ -94,12 +93,6 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/theory-bets/games
                       <span className={`${styles.statusDot} ${game.has_pbp ? styles.dotOk : styles.dotMissing}`} />
                       <span className={styles.statusLabel}>
                         {game.play_count > 0 ? `${game.play_count}` : "—"}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`${styles.statusDot} ${game.has_pbp ? styles.dotOk : styles.dotMissing}`} />
-                      <span className={styles.statusLabel}>
-                        Moments
                       </span>
                     </td>
                   </>

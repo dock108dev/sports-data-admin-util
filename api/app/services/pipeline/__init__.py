@@ -1,8 +1,6 @@
 """Game Pipeline Service.
 
-Legacy moment stages removed. System is now chapters-first.
-
-The pipeline framework remains for potential future use with chapter generation stages.
+Pipeline framework for chapter generation stages.
 """
 
 from .executor import PipelineExecutor

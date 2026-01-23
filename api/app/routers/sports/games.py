@@ -242,15 +242,6 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     ]
 
     plays_entries = [serialize_play_entry(play) for play in sorted(game.plays, key=lambda p: p.play_index)]
-    
-    # Extract moments from timeline artifact
-    timeline_artifacts = game.timeline_artifacts or []
-    moments_list: list[dict] = []
-    if timeline_artifacts:
-        # Get most recent artifact
-        artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
-        game_analysis = artifact.game_analysis_json or {}
-        moments_list = game_analysis.get("moments", [])
 
     meta = GameMeta(
         id=game.id,
@@ -312,50 +303,6 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         ],
     }
 
-    # Serialize moments (filter by is_notable client-side if needed)
-    moments_list: list[MomentEntry] = []
-    if timeline_artifacts:
-        artifact = sorted(timeline_artifacts, key=lambda a: a.generated_at, reverse=True)[0]
-        game_analysis = artifact.game_analysis_json or {}
-        
-        for m in game_analysis.get("moments", []):
-            if isinstance(m, dict):
-                # Build run_info if present
-                run_info_data = m.get("run_info")
-                run_info = None
-                if run_info_data and isinstance(run_info_data, dict):
-                    from .schemas import RunInfo
-                    run_info = RunInfo(
-                        team=run_info_data.get("team", "home"),
-                        points=run_info_data.get("points", 0),
-                        unanswered=run_info_data.get("unanswered", True),
-                        play_ids=run_info_data.get("play_ids", []),
-                    )
-                
-                moment = MomentEntry(
-                    id=m.get("id", ""),
-                    type=m.get("type", "NEUTRAL"),
-                    start_play=m.get("start_play", 0),
-                    end_play=m.get("end_play", 0),
-                    play_count=m.get("play_count", 0),
-                    teams=m.get("teams", []),
-                    primary_team=m.get("primary_team"),
-                    players=m.get("players", []),
-                    score_start=m.get("score_start", ""),
-                    score_end=m.get("score_end", ""),
-                    clock=m.get("clock", ""),
-                    is_notable=m.get("is_notable", False),
-                    is_period_start=m.get("is_period_start", False),
-                    note=m.get("note"),
-                    # New Lead Ladder fields
-                    run_info=run_info,
-                    ladder_tier_before=m.get("ladder_tier_before"),
-                    ladder_tier_after=m.get("ladder_tier_after"),
-                    team_in_control=m.get("team_in_control"),
-                    key_play_ids=m.get("key_play_ids", []),
-                )
-                moments_list.append(moment)
-
     return GameDetailResponse(
         game=meta,
         team_stats=team_stats,
@@ -363,7 +310,6 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,
-        moments=moments_list,
         derived_metrics=derived,
         raw_payloads=raw_payloads,
     )
