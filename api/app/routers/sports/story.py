@@ -1,13 +1,10 @@
 """
-Story Generation API endpoints (Chapters-First Architecture).
+Story Generation API endpoints.
 
 Provides endpoints for:
 - Fetching game stories (chapters + sections + compact story)
 - Regenerating stories
 - Bulk generation
-
-This uses the chapters-first pipeline EXCLUSIVELY.
-There are no legacy paths, no fallbacks, no dual modes.
 """
 
 from __future__ import annotations
@@ -234,11 +231,11 @@ async def save_story_to_cache(
                 titles_json=metadata_json,
                 compact_story=story.compact_story,
                 reading_time_minutes=story.reading_time_estimate_minutes,
-                has_summaries=False,  # Not used in chapters-first
-                has_titles=False,  # Not used in chapters-first
+                has_summaries=False,
+                has_titles=False,
                 has_compact_story=story.has_compact_story,
                 generated_at=story.generated_at or datetime.now(timezone.utc),
-                total_ai_calls=1,  # Single AI call in chapters-first
+                total_ai_calls=1,
             )
             session.add(cached_story)
             logger.info(f"Created cached story for game {game.id}")

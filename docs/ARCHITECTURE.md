@@ -74,7 +74,7 @@ The core product feature: converting play-by-play into narrative stories.
 
 ```mermaid
 graph LR
-    A[Play-by-Play] --> B[ChapterizerV1]
+    A[Play-by-Play] --> B[Chapterizer]
     B --> C[Chapters]
     C --> D[StoryState Builder]
     D --> E[AI Generator]
@@ -83,7 +83,7 @@ graph LR
 
 ### Stage Details
 
-#### 1. ChapterizerV1
+#### 1. Chapterizer
 **Input:** Normalized play-by-play events  
 **Output:** Chapters with reason codes  
 **Logic:** Structural boundary detection (NBA v1 rules)  

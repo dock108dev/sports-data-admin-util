@@ -955,28 +955,20 @@ class FrontendPayloadVersion(Base):
 
 class SportsGameStory(Base):
     """Cached AI-generated game stories.
-    
+
     This table stores expensive AI-generated content to avoid redundant API calls.
     Stories are versioned and can be regenerated when needed.
-    
-    COST OPTIMIZATION
-    =================
-    - Each game requires 10-20 AI calls (summaries + compact story)
-    - Costs grow with chapter count and context size
-    - Caching prevents regenerating identical content
-    
+
     VERSIONING
-    ==========
-    - story_version: Matches ChapterizerV1 version (e.g., "1.0.0")
+    - story_version: Matches Chapterizer version (e.g., "2.0.0")
     - One story per (game_id, story_version)
     - Regenerate when chapterizer rules change
-    
+
     CONTENT STRUCTURE
-    =================
     - chapters_json: Deterministic chapter structure
-    - summaries_json: AI-generated chapter summaries (expensive)
-    - titles_json: AI-generated chapter titles (expensive)
-    - compact_story: AI-generated full game narrative (expensive)
+    - summaries_json: Section data
+    - titles_json: Metadata
+    - compact_story: AI-generated full game narrative
     """
 
     __tablename__ = "sports_game_stories"

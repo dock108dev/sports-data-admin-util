@@ -142,7 +142,7 @@ class GameStory:
 
 ```mermaid
 graph LR
-    A[Play-by-Play] --> B[ChapterizerV1]
+    A[Play-by-Play] --> B[Chapterizer]
     B --> C[Chapters]
     C --> D[StoryState Builder]
     D --> E[AI Generator]
@@ -151,7 +151,7 @@ graph LR
 
 ### Stage 1: Chapterization
 
-**Component:** `ChapterizerV1`  
+**Component:** `Chapterizer`  
 **Input:** Normalized play-by-play events  
 **Output:** Chapters with reason codes  
 **Deterministic:** Yes  

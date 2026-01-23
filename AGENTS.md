@@ -65,7 +65,7 @@ A game is a book. Plays are pages. Chapters are scenes.
 
 **Pipeline:**
 ```
-Play-by-Play → ChapterizerV1 → Chapters → StoryState → AI → GameStory
+Play-by-Play → Chapterizer → Chapters → StoryState → AI → GameStory
 ```
 
 **Key Concepts:**

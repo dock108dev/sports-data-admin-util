@@ -4,14 +4,12 @@ Chapter builder: Create chapters from play-by-play events.
 This module contains the core logic for partitioning a game's plays
 into chapters.
 
-ISSUE 0.3: NBA v1 Boundary Rules
-This implementation uses the authoritative NBA v1 boundary rules defined
-in boundary_rules.py. Boundaries are determined by:
+Boundaries are determined by:
 - Hard boundaries (period start/end, OT, game end)
 - Scene reset boundaries (timeouts, reviews)
-- Momentum boundaries (runs, crunch time) - minimal in v1
+- Momentum boundaries (crunch time)
 
-The core contract remains:
+The core contract:
 - Deterministic (same input → same output)
 - Complete coverage (every play in exactly one chapter)
 - No AI involvement in chapter creation
@@ -35,13 +33,10 @@ logger = logging.getLogger(__name__)
 
 def _extract_plays(timeline: Sequence[dict[str, Any]]) -> list[Play]:
     """Extract canonical plays from timeline.
-    
-    For Phase 0, we only extract PBP events. Future phases may include
-    other event types.
-    
+
     Args:
         timeline: Full timeline events (PBP + social)
-        
+
     Returns:
         List of Play objects in chronological order
     """
@@ -59,72 +54,61 @@ def _extract_plays(timeline: Sequence[dict[str, Any]]) -> list[Play]:
 
 def _detect_boundaries(plays: list[Play], sport: str = "NBA") -> list[ChapterBoundary]:
     """Detect structural boundaries between chapters.
-    
-    ISSUE 0.3: NBA v1 Boundary Rules
+
     Uses authoritative boundary rules from boundary_rules.py:
     - Hard boundaries (period start/end, OT, game end)
     - Scene reset boundaries (timeouts, reviews)
-    - Momentum boundaries (runs, crunch time) - minimal in v1
-    
+    - Momentum boundaries (crunch time)
+
     Boundaries are deterministic and structural. No AI, no ladder logic.
-    
+
     Args:
         plays: All plays in chronological order
         sport: Sport identifier (currently only NBA supported)
-        
+
     Returns:
         List of ChapterBoundary objects with reason codes
     """
     if not plays:
         return []
-    
+
     if sport != "NBA":
         # Fallback to simple quarter boundaries for non-NBA
         return _detect_boundaries_simple(plays)
-    
+
     boundaries = []
     rules = NBABoundaryRules()
     context: dict[str, Any] = {}  # Game context for conditional rules
-    
+
     for i, play in enumerate(plays):
         event = play.raw_data
         prev_event = plays[i - 1].raw_data if i > 0 else None
-        next_event = plays[i + 1].raw_data if i < len(plays) - 1 else None
-        
+
         # Skip explicit non-boundaries
         if is_non_boundary_event(event):
             continue
-        
+
         # Collect triggered reason codes
         triggered_codes: list[BoundaryReasonCode] = []
-        
+
         # 1. Hard boundaries (highest precedence)
         if rules.is_period_start(event, prev_event):
             triggered_codes.append(BoundaryReasonCode.PERIOD_START)
-        
+
         if rules.is_overtime_start(event, prev_event):
             triggered_codes.append(BoundaryReasonCode.OVERTIME_START)
-        
-        # Note: PERIOD_END handled by next event's PERIOD_START
-        # Note: GAME_END handled separately for final chapter
-        
+
         # 2. Scene reset boundaries (medium precedence)
         if rules.is_timeout(event):
             triggered_codes.append(BoundaryReasonCode.TIMEOUT)
-        
+
         if rules.is_review(event):
             triggered_codes.append(BoundaryReasonCode.REVIEW)
-        
-        # 3. Momentum boundaries (low precedence, minimal v1)
+
+        # 3. Momentum boundaries (low precedence)
         if rules.is_crunch_start(event, prev_event, context):
             triggered_codes.append(BoundaryReasonCode.CRUNCH_START)
-        
-        if rules.is_run_start(event, context):
-            triggered_codes.append(BoundaryReasonCode.RUN_START)
-        
-        if rules.is_run_end_response(event, context):
-            triggered_codes.append(BoundaryReasonCode.RUN_END_RESPONSE)
-        
+
         # Resolve precedence and create boundary
         if triggered_codes:
             resolved_codes = resolve_boundary_precedence(triggered_codes)
@@ -193,12 +177,10 @@ def _count_reason_codes(boundaries: list[ChapterBoundary]) -> dict[str, int]:
 
 def _extract_period_and_time(plays: list[Play]) -> tuple[int | None, TimeRange | None]:
     """Extract period and time range from plays.
-    
-    Issue 0.2: Populate period and time_range fields.
-    
+
     Args:
         plays: List of plays in the chapter
-        
+
     Returns:
         Tuple of (period, time_range)
     """
@@ -224,19 +206,16 @@ def _create_chapters(
     boundaries: list[ChapterBoundary],
 ) -> list[Chapter]:
     """Create chapters from plays and boundaries.
-    
+
     This function ensures:
     - Every play belongs to exactly one chapter
     - Chapters are contiguous (no gaps)
     - Chapters are chronologically ordered
-    
-    Issue 0.2: Populates all required fields including period and time_range.
-    Issue 0.3: Uses NBA v1 boundary rules with reason codes.
-    
+
     Args:
         plays: All plays in chronological order
         boundaries: Structural boundaries
-        
+
     Returns:
         List of Chapter objects
     """
@@ -348,31 +327,29 @@ def build_chapters(
     metadata: dict[str, Any] | None = None,
 ) -> GameStory:
     """Build a GameStory from a play-by-play timeline.
-    
+
     This is the main entry point for chapter creation. It:
     1. Extracts plays from timeline
     2. Detects structural boundaries
     3. Creates chapters from boundaries
     4. Validates structural integrity
     5. Returns a GameStory
-    
+
     GUARANTEES:
     - Deterministic (same input → same output)
     - Complete coverage (every play in exactly one chapter)
     - No AI involvement
     - No "moment" objects produced
-    
-    Issue 0.2: Populates all required GameStory fields including sport.
-    
+
     Args:
         timeline: Full timeline events (PBP + social)
         game_id: Database game ID
         sport: Sport identifier (e.g., "NBA", "NHL")
         metadata: Optional game metadata (teams, score, etc.)
-        
+
     Returns:
         GameStory with chapters
-        
+
     Raises:
         ValueError: If structural validation fails
     """
@@ -394,13 +371,13 @@ def build_chapters(
         },
     )
     
-    # Step 2: Detect boundaries (Issue 0.3: NBA v1 rules)
+    # Step 2: Detect boundaries
     boundaries = _detect_boundaries(plays, sport)
-    
+
     # Step 3: Create chapters
     chapters = _create_chapters(plays, boundaries)
-    
-    # Step 4: Create GameStory (Issue 0.2: all required fields)
+
+    # Step 4: Create GameStory
     story = GameStory(
         game_id=game_id,
         sport=sport,

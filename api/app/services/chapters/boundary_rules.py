@@ -1,5 +1,5 @@
 """
-Chapter Boundary Rules for NBA v1.
+Chapter Boundary Rules for NBA.
 
 This module defines the authoritative rules for when chapter boundaries occur.
 
@@ -9,8 +9,6 @@ Boundaries separate different stretches of control, tactical resets, and
 emotional/structural shifts in the game.
 
 Boundaries must be rare enough to keep chapters meaningful.
-
-ISSUE 0.3: NBA v1 Rules (Intentionally Simple)
 """
 
 from __future__ import annotations
@@ -22,29 +20,25 @@ from typing import Any
 
 class BoundaryReasonCode(str, Enum):
     """Fixed enum of reason codes explaining chapter boundaries.
-    
+
     These codes are diagnostic, not narrative. They explain WHY a boundary
     exists for debugging, tuning, and validation.
-    
+
     Multiple reason codes may exist per chapter (e.g., PERIOD_START + TIMEOUT).
     Reason codes must be deterministic.
-    
-    NBA v1 Reason Codes (Issue 0.3):
     """
-    
+
     # Hard boundaries (always break)
     PERIOD_START = "PERIOD_START"          # Start of quarter
     PERIOD_END = "PERIOD_END"              # End of quarter
     OVERTIME_START = "OVERTIME_START"      # Start of overtime
     GAME_END = "GAME_END"                  # End of game
-    
+
     # Scene reset boundaries (usually break)
     TIMEOUT = "TIMEOUT"                    # Team timeout or official timeout
     REVIEW = "REVIEW"                      # Instant replay review or challenge
-    
-    # Momentum boundaries (conditional, minimal v1)
-    RUN_START = "RUN_START"                # A scoring run begins
-    RUN_END_RESPONSE = "RUN_END_RESPONSE"  # Run ends and opponent responds
+
+    # Momentum boundaries
     CRUNCH_START = "CRUNCH_START"          # Transition into crunch time
 
 
@@ -75,17 +69,17 @@ class BoundaryRule:
 
 
 # ============================================================================
-# NBA v1 BOUNDARY RULES
+# NBA BOUNDARY RULES
 # ============================================================================
 
 class NBABoundaryRules:
-    """NBA v1 chapter boundary rules.
-    
+    """NBA chapter boundary rules.
+
     RULE CATEGORIES:
     1. Hard Boundaries (Always Break) - Precedence 100+
     2. Scene Reset Boundaries (Usually Break) - Precedence 50-99
     3. Momentum Boundaries (Conditional) - Precedence 1-49
-    
+
     EXPLICIT NON-BOUNDARIES (Never Break):
     - Individual made baskets
     - Free throws
@@ -94,7 +88,7 @@ class NBABoundaryRules:
     - Rebounds
     - Missed shots
     - Isolated turnovers
-    
+
     These are structurally excluded to prevent over-segmentation.
     """
     
@@ -229,56 +223,9 @@ class NBABoundaryRules:
                 "review" in play_type or "challenge" in play_type)
     
     # ========================================================================
-    # 3. MOMENTUM BOUNDARIES (Conditional, Minimal v1)
+    # 3. MOMENTUM BOUNDARIES (Conditional)
     # ========================================================================
-    
-    @staticmethod
-    def is_run_start(
-        event: dict[str, Any],
-        context: dict[str, Any]
-    ) -> bool:
-        """A scoring run begins (conditional boundary).
-        
-        NBA v1 RUN DEFINITION (High Level):
-        A run is a sequence of unanswered scoring by one team that:
-        - Accumulates 6+ points
-        - Spans at least 3 scoring plays
-        - Occurs without the opponent scoring
-        
-        This is intentionally simple. Advanced run detection is Phase 1+.
-        
-        IMPORTANT: Tier crossings and lead changes alone are NOT boundaries.
-        Only actual scoring runs create boundaries.
-        
-        Args:
-            event: Current event
-            context: Game context with run tracking
-            
-        Returns:
-            True if a significant run is starting
-        """
-        # Not implemented in NBA v1
-        return False
-    
-    @staticmethod
-    def is_run_end_response(
-        event: dict[str, Any],
-        context: dict[str, Any]
-    ) -> bool:
-        """Run ends and opponent responds (conditional boundary).
-        
-        Rule: After a run, if opponent scores to break the run, that's a scene change.
-        
-        Args:
-            event: Current event
-            context: Game context with run tracking
-            
-        Returns:
-            True if this is a response to a run
-        """
-        # Not implemented in NBA v1
-        return False
-    
+
     @staticmethod
     def is_crunch_start(
         event: dict[str, Any],
@@ -286,18 +233,18 @@ class NBABoundaryRules:
         context: dict[str, Any]
     ) -> bool:
         """Transition into crunch time (conditional boundary).
-        
-        NBA v1 CRUNCH TIME DEFINITION:
+
+        CRUNCH TIME DEFINITION:
         - Time: Last 5 minutes of 4th quarter or any overtime
         - Score: Margin <= 5 points
-        
+
         Rule: First event that meets both criteria creates a boundary.
-        
+
         Args:
             event: Current event
             prev_event: Previous event
             context: Game context
-            
+
         Returns:
             True if this is the start of crunch time
         """
@@ -374,15 +321,13 @@ BOUNDARY_PRECEDENCE = {
     BoundaryReasonCode.OVERTIME_START: 95,
     BoundaryReasonCode.PERIOD_END: 90,
     BoundaryReasonCode.GAME_END: 85,
-    
+
     # Scene reset boundaries (medium precedence)
     BoundaryReasonCode.REVIEW: 60,
     BoundaryReasonCode.TIMEOUT: 50,
-    
+
     # Momentum boundaries (low precedence)
     BoundaryReasonCode.CRUNCH_START: 20,
-    BoundaryReasonCode.RUN_START: 15,
-    BoundaryReasonCode.RUN_END_RESPONSE: 10,
 }
 
 

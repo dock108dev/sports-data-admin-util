@@ -1,12 +1,12 @@
 """
-Unit tests for ChapterizerV1 (Phase 1 Issue 5).
+Unit tests for Chapterizer.
 
-These tests validate the chapterization logic for NBA v1.
+These tests validate the chapterization logic for NBA.
 """
 
 import pytest
 
-from app.services.chapters import ChapterizerV1, ChapterizerConfig
+from app.services.chapters import Chapterizer, ChapterizerConfig
 
 
 # Test 1: Full Coverage / Contiguity
@@ -18,7 +18,7 @@ def test_full_coverage_all_plays_in_chapters():
         for i in range(20)
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Collect all play indices from chapters
@@ -43,7 +43,7 @@ def test_contiguity_chapters_ordered_no_overlap():
         for i in range(10, 20)
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Check ordering and non-overlap
@@ -68,7 +68,7 @@ def test_hard_boundary_quarter_breaks():
         {"event_type": "pbp", "quarter": 3, "play_id": 4, "description": "Q3 play 1"},
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should have at least 3 chapters (Q1, Q2, Q3)
@@ -86,7 +86,7 @@ def test_hard_boundary_reason_codes():
         {"event_type": "pbp", "quarter": 2, "play_id": 1, "description": "Q2"},
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # First chapter should have PERIOD_START
@@ -107,7 +107,7 @@ def test_timeout_creates_boundary():
         {"event_type": "pbp", "quarter": 1, "play_id": 3, "description": "Play after timeout"},
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should have at least 2 chapters (before and after timeout)
@@ -126,7 +126,7 @@ def test_review_creates_boundary():
         {"event_type": "pbp", "quarter": 1, "play_id": 2, "description": "Play after review"},
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Check for REVIEW reason code
@@ -146,7 +146,7 @@ def test_reset_cluster_collapse():
         {"event_type": "pbp", "quarter": 1, "play_id": 4, "description": "Play after cluster"},
     ]
     
-    chapterizer = ChapterizerV1(config)
+    chapterizer = Chapterizer(config)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should not create micro-chapters for each reset event
@@ -167,7 +167,7 @@ def test_non_boundary_scoring_sequence():
         {"event_type": "pbp", "quarter": 1, "play_id": 5, "description": "Westbrook makes 3-pointer"},
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should be 1 chapter (no boundaries within Q1 for just scores)
@@ -183,7 +183,7 @@ def test_non_boundary_free_throws():
         {"event_type": "pbp", "quarter": 1, "play_id": 3, "description": "Free throw missed"},
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should be 1 chapter
@@ -201,7 +201,7 @@ def test_min_chapter_size_enforcement():
         for i in range(10)
     ]
     
-    chapterizer = ChapterizerV1(config)
+    chapterizer = Chapterizer(config)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # All chapters should have at least min_plays_per_chapter
@@ -219,7 +219,7 @@ def test_determinism_same_input_same_output():
         {"event_type": "pbp", "quarter": 2, "play_id": 2, "description": "Q2"},
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     
     story1 = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     story2 = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
@@ -283,7 +283,7 @@ def test_integration_full_game():
         "away_score": 100,
     })
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should have multiple chapters
@@ -309,7 +309,7 @@ def test_integration_schema_valid_output():
         {"event_type": "pbp", "quarter": 2, "play_id": 1, "description": "Play 2"},
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should be valid GameStory
@@ -337,7 +337,7 @@ def test_config_customization():
          "game_clock": "2:55", "home_score": 100, "away_score": 98},
     ]
     
-    chapterizer = ChapterizerV1(config)
+    chapterizer = Chapterizer(config)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should use custom config
@@ -347,7 +347,7 @@ def test_config_customization():
 
 def test_error_empty_timeline():
     """Empty timeline should raise error."""
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     
     with pytest.raises(ValueError, match="Timeline cannot be empty"):
         chapterizer.chapterize([], game_id=1, sport="NBA")
@@ -356,7 +356,7 @@ def test_error_empty_timeline():
 def test_error_non_nba_sport():
     """Non-NBA sport should raise error."""
     timeline = [{"event_type": "pbp", "quarter": 1, "play_id": 0}]
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     
     with pytest.raises(ValueError, match="only supports NBA"):
         chapterizer.chapterize(timeline, game_id=1, sport="NHL")
