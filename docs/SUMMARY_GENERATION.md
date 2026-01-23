@@ -21,7 +21,7 @@ A game is a book. Plays are pages. Chapters are scenes.
 ```
 Play-by-Play Data
     ↓
-ChapterizerV1 (Deterministic)
+Chapterizer (Deterministic)
     ↓
 Chapters (Structure)
     ↓

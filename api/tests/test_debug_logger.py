@@ -1,5 +1,5 @@
 """
-Unit tests for Chapter Debug Logger (Phase 1 Issue 7).
+Unit tests for Chapter Debug Logger.
 
 These tests validate logging correctness and reason code tracing.
 """
@@ -7,7 +7,7 @@ These tests validate logging correctness and reason code tracing.
 import pytest
 
 from app.services.chapters import (
-    ChapterizerV1,
+    Chapterizer,
     ChapterDebugLogger,
     ChapterLogEventType,
     BoundaryAction,
@@ -24,7 +24,7 @@ def test_boundary_trigger_logged():
         {"event_type": "pbp", "quarter": 2, "play_id": 1, "description": "Q2 start"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Get boundary triggered events
@@ -58,7 +58,7 @@ def test_boundary_trigger_correct_play_index():
         {"event_type": "pbp", "quarter": 1, "play_id": 3, "description": "Play 3"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Get boundary events
@@ -87,7 +87,7 @@ def test_ignored_boundary_logged():
         {"event_type": "pbp", "quarter": 1, "play_id": 2, "description": "Tatum makes 3-pointer"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Get ignored boundary events
@@ -111,7 +111,7 @@ def test_ignored_boundary_correct_reason():
         {"event_type": "pbp", "quarter": 1, "play_id": 1, "description": "Free throw made"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Get ignored events
@@ -137,7 +137,7 @@ def test_reset_cluster_collapse_logged():
         {"event_type": "pbp", "quarter": 1, "play_id": 4, "description": "Play after cluster"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Get ignored events (collapsed into cluster)
@@ -159,7 +159,7 @@ def test_reset_cluster_only_one_boundary():
         {"event_type": "pbp", "quarter": 1, "play_id": 3, "description": "Play after"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should have 2-3 chapters max (not 4+)
@@ -176,7 +176,7 @@ def test_chapter_reason_trace():
         {"event_type": "pbp", "quarter": 2, "play_id": 2, "description": "Q2"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Trace reason codes
@@ -197,7 +197,7 @@ def test_chapter_reason_trace_no_orphan_codes():
         {"event_type": "pbp", "quarter": 2, "play_id": 2, "description": "Q2"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Get all boundary triggered events
@@ -228,7 +228,7 @@ def test_debug_logger_disabled_no_events():
         {"event_type": "pbp", "quarter": 2, "play_id": 1, "description": "Play 2"},
     ]
     
-    chapterizer = ChapterizerV1(debug=False)
+    chapterizer = Chapterizer(debug=False)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should have no events logged
@@ -242,7 +242,7 @@ def test_debug_logger_enabled_has_events():
         {"event_type": "pbp", "quarter": 2, "play_id": 1, "description": "Play 2"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should have events logged
@@ -258,7 +258,7 @@ def test_chapter_start_end_logged():
         {"event_type": "pbp", "quarter": 2, "play_id": 1, "description": "Play 2"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Get start/end events
@@ -284,7 +284,7 @@ def test_chapter_start_end_match_chapters():
         {"event_type": "pbp", "quarter": 2, "play_id": 2, "description": "Q2"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     start_events = chapterizer.debug_logger.get_events_by_type(
@@ -317,7 +317,7 @@ def test_integration_full_game_logging():
     for i in range(10):
         timeline.append({"event_type": "pbp", "quarter": 2, "play_id": len(timeline), "description": f"Q2 play {i}"})
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should have multiple event types
@@ -337,7 +337,7 @@ def test_integration_json_export():
         {"event_type": "pbp", "quarter": 2, "play_id": 1, "description": "Play 2"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should export to JSON without error
@@ -356,7 +356,7 @@ def test_query_events_by_play_index():
         {"event_type": "pbp", "quarter": 1, "play_id": 2, "description": "Play 2"},
     ]
     
-    chapterizer = ChapterizerV1(debug=True)
+    chapterizer = Chapterizer(debug=True)
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Query events for play 1 (timeout)
@@ -375,11 +375,11 @@ def test_logging_deterministic():
         {"event_type": "pbp", "quarter": 2, "play_id": 1, "description": "Play 2"},
     ]
     
-    chapterizer1 = ChapterizerV1(debug=True)
+    chapterizer1 = Chapterizer(debug=True)
     story1 = chapterizer1.chapterize(timeline, game_id=1, sport="NBA")
     events1 = chapterizer1.debug_logger.get_events()
     
-    chapterizer2 = ChapterizerV1(debug=True)
+    chapterizer2 = Chapterizer(debug=True)
     story2 = chapterizer2.chapterize(timeline, game_id=1, sport="NBA")
     events2 = chapterizer2.debug_logger.get_events()
     

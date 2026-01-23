@@ -1,9 +1,8 @@
 # NBA v1 Chapter Boundary Rules
 
-**Issue:** 0.3  
-**Status:** Complete  
-**Date:** 2026-01-21  
-**Sport:** NBA only  
+**Status:** Complete
+**Date:** 2026-01-21
+**Sport:** NBA only
 **Version:** v1 (Intentionally Simple)
 
 ---
@@ -73,21 +72,9 @@ These events **may** start a new chapter when they indicate a scene change.
 
 | Event | Reason Code | Description |
 |-------|-------------|-------------|
-| **Run starts** | `RUN_START` | Significant scoring run begins |
-| **Run ends, opponent responds** | `RUN_END_RESPONSE` | Run broken by opponent |
 | **Crunch time starts** | `CRUNCH_START` | Late + close game |
 
-#### NBA v1 Run Definition (High Level)
-
-A **run** is a sequence of unanswered scoring by one team that:
-- Accumulates **6+ points**
-- Spans at least **3 scoring plays**
-- Occurs without the opponent scoring
-
-**IMPORTANT:** Tier crossings and lead changes alone are NOT boundaries.  
-Only actual scoring runs create boundaries.
-
-**v1 Status:** Run boundaries stubbed (return `False`). Will be implemented in Phase 1.
+**Note:** Run-based boundaries (`RUN_START`, `RUN_END_RESPONSE`) were considered but not implemented in v1. The current boundary rules focus on structural events (periods, timeouts, reviews) and crunch time only.
 
 #### NBA v1 Crunch Time Definition
 
@@ -134,9 +121,7 @@ When multiple boundary triggers occur simultaneously, precedence determines whic
  85: GAME_END
  60: REVIEW
  50: TIMEOUT
- 20: CRUNCH_START
- 15: RUN_START
- 10: RUN_END_RESPONSE (lowest)
+ 20: CRUNCH_START (lowest)
 ```
 
 ### Precedence Rules
@@ -163,8 +148,8 @@ When multiple boundary triggers occur simultaneously, precedence determines whic
 # Example 2: Overtime start + timeout
 [TIMEOUT, OVERTIME_START] → [OVERTIME_START]
 
-# Example 3: Review + run start
-[RUN_START, REVIEW] → [REVIEW]
+# Example 3: Review + crunch start
+[CRUNCH_START, REVIEW] → [REVIEW]
 
 # Example 4: Multiple scene resets
 [TIMEOUT, REVIEW] → [REVIEW, TIMEOUT]  # Both included (same tier)
@@ -183,14 +168,12 @@ class BoundaryReasonCode(str, Enum):
     PERIOD_END = "PERIOD_END"
     OVERTIME_START = "OVERTIME_START"
     GAME_END = "GAME_END"
-    
+
     # Scene reset boundaries
     TIMEOUT = "TIMEOUT"
     REVIEW = "REVIEW"
-    
+
     # Momentum boundaries
-    RUN_START = "RUN_START"
-    RUN_END_RESPONSE = "RUN_END_RESPONSE"
     CRUNCH_START = "CRUNCH_START"
 ```
 
@@ -351,35 +334,29 @@ pytest tests/test_boundary_rules.py -v
 
 NBA v1 is intentionally simple. The following are NOT implemented:
 
-❌ **Advanced run detection** — Stubbed (returns `False`)  
-❌ **Run-based boundaries** — Phase 1+  
-❌ **Ladder tier logic** — Explicitly excluded  
-❌ **Moment types** — Explicitly excluded  
-❌ **Score-based heuristics** — Only crunch time uses score  
-❌ **Possession-level boundaries** — Explicitly excluded  
+❌ **Run-based boundaries** — Not implemented (considered but deferred)
+❌ **Ladder tier logic** — Explicitly excluded
+❌ **Moment types** — Explicitly excluded
+❌ **Score-based heuristics** — Only crunch time uses score
+❌ **Possession-level boundaries** — Explicitly excluded
 
-These will be added in future phases if needed, but v1 proves the architecture works without them.
+v1 proves the architecture works with structural boundaries (periods, timeouts, reviews, crunch time) only.
 
 ---
 
-## Future Enhancements (Phase 1+)
+## Future Enhancements
 
-### Phase 1: Run Detection
-- Implement `is_run_start()` and `is_run_end_response()`
-- Track active runs in context
-- Define run significance thresholds
-
-### Phase 2: Sport-Specific Tuning
+### Sport-Specific Tuning
 - NHL boundary rules (period structure, no timeouts)
 - NFL boundary rules (quarters, 2-minute warning)
 - MLB boundary rules (innings, pitching changes)
 
-### Phase 3: Advanced Momentum
-- Momentum shift detection beyond runs
+### Advanced Momentum (Optional)
+- Run detection if needed
+- Momentum shift detection
 - Defensive stops as boundaries
-- Clutch play sequences
 
-**v1 is sufficient for validation. Advanced rules are optional.**
+**v1 is sufficient for production. Advanced rules are optional.**
 
 ---
 
@@ -413,7 +390,6 @@ NBA v1 boundary rules are:
 
 ---
 
-**Document Status:** Authoritative  
-**Code:** `api/app/services/chapters/boundary_rules.py`  
-**Tests:** `api/tests/test_boundary_rules.py`  
-**Next:** Phase 1 (advanced run detection)
+**Document Status:** Authoritative
+**Code:** `api/app/services/chapters/boundary_rules.py`
+**Tests:** `api/tests/test_boundary_rules.py`

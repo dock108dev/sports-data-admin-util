@@ -42,7 +42,7 @@ DATA FLOW
 =========
 
 ```
-Source (NBA/NHL API) 
+Source (NBA/NHL API)
     → Raw PBP (sports_pbp_snapshots, type=raw)
     → sports_game_plays (persisted)
     → NORMALIZE_PBP stage (pipeline)

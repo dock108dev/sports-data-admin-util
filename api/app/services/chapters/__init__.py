@@ -5,13 +5,11 @@ A game is a book. Plays are pages. Chapters are contiguous play ranges
 that represent coherent scenes.
 
 This module provides a narrative-first architecture for game storytelling.
-
-Issue 0.2: Canonical data model and output contract.
 """
 
 from .types import Play, Chapter, GameStory, ChapterBoundary, TimeRange
 from .builder import build_chapters
-from .chapterizer import ChapterizerV1, ChapterizerConfig
+from .chapterizer import Chapterizer, ChapterizerConfig
 from .coverage_validator import (
     CoverageValidationResult,
     CoverageValidationError,
@@ -153,7 +151,7 @@ __all__ = [
     # Builder
     "build_chapters",
     # Chapterizer
-    "ChapterizerV1",
+    "Chapterizer",
     "ChapterizerConfig",
     # Coverage validator
     "CoverageValidationResult",

@@ -32,7 +32,7 @@ The system operates in three distinct phases:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           STRUCTURE PHASE (Deterministic)                    │
 │                                                                             │
-│  [SportsGamePlay]  ──ChapterizerV1──▶  [Chapters with Reason Codes]        │
+│  [SportsGamePlay]  ──Chapterizer──▶  [Chapters with Reason Codes]        │
 │                            │                                                │
 │                            ▼                                                │
 │  [Chapters]  ──StoryState Builder──▶  [Running Context]                    │

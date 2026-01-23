@@ -5,7 +5,7 @@ Handles odds matching to games and persistence, including NCAAB-specific name ma
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import alias, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -25,6 +25,7 @@ from .odds_matching import (
     match_game_by_team_ids,
     should_log,
 )
+from .games import upsert_game_stub
 from .teams import _find_team_by_name, _upsert_team
 
 
@@ -273,43 +274,99 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
             )
 
     if game_id is None:
-        home_team = session.execute(
-            select(db_models.SportsTeam.name, db_models.SportsTeam.abbreviation).where(
-                db_models.SportsTeam.id == home_team_id
-            )
-        ).first()
-        away_team = session.execute(
-            select(db_models.SportsTeam.name, db_models.SportsTeam.abbreviation).where(
-                db_models.SportsTeam.id == away_team_id
-            )
-        ).first()
+        # For current/future games, create a pregame placeholder via upsert_game_stub
+        # This makes Odds API the sole creator of game records
+        today = date.today()
+        game_date_only = snapshot.game_date.date()
 
-        if should_log("odds_game_missing"):
-            logger.warning(
-                "odds_game_missing",
+        if game_date_only >= today:
+            # Create pregame placeholder - Odds API is the source of truth for schedules
+            # Determine tip_time: use the full datetime if it has a time component
+            tip_time = None
+            if snapshot.game_date.hour != 0 or snapshot.game_date.minute != 0:
+                tip_time = snapshot.game_date
+
+            # Build external_ids with Odds API source key if available
+            external_ids = {}
+            if snapshot.source_key:
+                external_ids["odds_api_event_id"] = snapshot.source_key
+
+            try:
+                game_id, created = upsert_game_stub(
+                    session,
+                    league_code=snapshot.league_code,
+                    game_date=snapshot.game_date,
+                    home_team=snapshot.home_team,
+                    away_team=snapshot.away_team,
+                    status="scheduled",
+                    tip_time=tip_time,
+                    external_ids=external_ids if external_ids else None,
+                )
+            except Exception as exc:
+                logger.error(
+                    "odds_pregame_stub_failed",
+                    league=snapshot.league_code,
+                    home_team=snapshot.home_team.name,
+                    away_team=snapshot.away_team.name,
+                    game_date=str(game_date_only),
+                    error=str(exc),
+                    exc_info=True,
+                )
+                cache_set(cache_key, None)
+                return False
+
+            logger.info(
+                "odds_created_pregame_placeholder",
                 league=snapshot.league_code,
-                home_team_name=snapshot.home_team.name,
-                home_team_abbr=snapshot.home_team.abbreviation,
-                home_team_id=home_team_id,
-                home_team_db_name=home_team[0] if home_team else None,
-                home_team_db_abbr=home_team[1] if home_team else None,
-                away_team_name=snapshot.away_team.name,
-                away_team_abbr=snapshot.away_team.abbreviation,
-                away_team_id=away_team_id,
-                away_team_db_name=away_team[0] if away_team else None,
-                away_team_db_abbr=away_team[1] if away_team else None,
-                game_date=str(snapshot.game_date.date()),
-                game_datetime=str(snapshot.game_date),
-                day_start=str(day_start),
-                day_end=str(day_end),
-                potential_games_count=len(potential_games),
-                potential_games=[
-                    {"id": game[0], "date": str(game[1]), "home_id": game[2], "away_id": game[3]}
-                    for game in potential_games[:3]
-                ],
+                game_id=game_id,
+                created=created,
+                home_team=snapshot.home_team.name,
+                away_team=snapshot.away_team.name,
+                game_date=str(game_date_only),
+                tip_time=str(tip_time) if tip_time else None,
             )
-        cache_set(cache_key, None)
-        return False
+
+            # Cache the newly created game_id for subsequent odds records
+            cache_set(cache_key, game_id)
+        else:
+            # Historical game not found - log warning and skip (no game creation for past dates)
+            home_team = session.execute(
+                select(db_models.SportsTeam.name, db_models.SportsTeam.abbreviation).where(
+                    db_models.SportsTeam.id == home_team_id
+                )
+            ).first()
+            away_team = session.execute(
+                select(db_models.SportsTeam.name, db_models.SportsTeam.abbreviation).where(
+                    db_models.SportsTeam.id == away_team_id
+                )
+            ).first()
+
+            if should_log("odds_game_missing"):
+                logger.warning(
+                    "odds_game_missing_historical",
+                    league=snapshot.league_code,
+                    home_team_name=snapshot.home_team.name,
+                    home_team_abbr=snapshot.home_team.abbreviation,
+                    home_team_id=home_team_id,
+                    home_team_db_name=home_team[0] if home_team else None,
+                    home_team_db_abbr=home_team[1] if home_team else None,
+                    away_team_name=snapshot.away_team.name,
+                    away_team_abbr=snapshot.away_team.abbreviation,
+                    away_team_id=away_team_id,
+                    away_team_db_name=away_team[0] if away_team else None,
+                    away_team_db_abbr=away_team[1] if away_team else None,
+                    game_date=str(snapshot.game_date.date()),
+                    game_datetime=str(snapshot.game_date),
+                    day_start=str(day_start),
+                    day_end=str(day_end),
+                    potential_games_count=len(potential_games),
+                    potential_games=[
+                        {"id": game[0], "date": str(game[1]), "home_id": game[2], "away_id": game[3]}
+                        for game in potential_games[:3]
+                    ],
+                )
+            cache_set(cache_key, None)
+            return False
 
     # Update game's tip_time if null and we have commence_time from Odds API
     # snapshot.game_date is the commence_time (actual tip time)

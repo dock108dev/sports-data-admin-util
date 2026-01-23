@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
 
 from openai import OpenAI
 
@@ -94,7 +93,7 @@ class OpenAIClient:
                 # Validate it's valid JSON
                 try:
                     json.loads(content)
-                except json.JSONDecodeError as e:
+                except json.JSONDecodeError:
                     # Log the problematic content for debugging
                     logger.warning(
                         f"Malformed JSON content (first 100 chars): {content[:100]!r}"

@@ -1,10 +1,8 @@
 """
-ChapterizerV1: Deterministic PBP → Chapters converter for NBA v1.
+Chapterizer: Deterministic PBP → Chapters converter for NBA.
 
 This module implements the core chapterization logic that converts normalized
-play-by-play data into Chapter objects following NBA v1 boundary rules.
-
-PHASE 1 ISSUE 5: Implement ChapterizerV1
+play-by-play data into Chapter objects following NBA boundary rules.
 
 CONTRACT:
 - Deterministic (same input → same output)
@@ -32,34 +30,30 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ChapterizerConfig:
-    """Configuration for NBA v1 chapterization.
-    
+    """Configuration for NBA chapterization.
+
     These values control boundary detection and chapter creation.
     All values are deterministic and testable.
     """
-    
+
     # Crunch time detection
     crunch_time_seconds: int = 300  # Last 5 minutes (300 seconds)
     close_game_margin: int = 5      # Within 5 points
-    
-    # Run detection (minimal v1)
-    run_min_points: int = 6         # 6+ unanswered points
-    run_min_plays: int = 3          # Across 3+ scoring plays
-    
+
     # Chapter size constraints
     min_plays_per_chapter: int = 1  # Minimum plays (allow single-play chapters for now)
     max_chapters_soft_cap: int = 20 # Diagnostic warning only
-    
+
     # Reset cluster handling
     collapse_reset_clusters: bool = True  # Merge consecutive timeouts/reviews
     reset_cluster_window_plays: int = 3   # Max plays between resets to collapse
 
 
-class ChapterizerV1:
-    """Deterministic chapterizer for NBA v1.
-    
-    Converts normalized play-by-play into chapters following NBA v1 rules.
-    
+class Chapterizer:
+    """Deterministic chapterizer for NBA.
+
+    Converts normalized play-by-play into chapters following NBA rules.
+
     PHILOSOPHY:
     - Chapters are scenes, not possessions
     - Boundaries are rare (4-8 per game typical)
@@ -104,7 +98,7 @@ class ChapterizerV1:
             ValueError: If sport is not NBA or timeline is invalid
         """
         if sport != "NBA":
-            raise ValueError(f"ChapterizerV1 only supports NBA, got {sport}")
+            raise ValueError(f"Chapterizer only supports NBA, got {sport}")
         
         if not timeline:
             raise ValueError("Timeline cannot be empty")
@@ -220,8 +214,7 @@ class ChapterizerV1:
         for i, play in enumerate(plays):
             event = play.raw_data
             prev_event = plays[i - 1].raw_data if i > 0 else None
-            next_event = plays[i + 1].raw_data if i < len(plays) - 1 else None
-            
+
             # Skip explicit non-boundaries
             if is_non_boundary_event(event):
                 self.debug_logger.log_boundary_ignored(
@@ -395,9 +388,7 @@ class ChapterizerV1:
                     rule_precedence=BOUNDARY_PRECEDENCE.get(BoundaryReasonCode.CRUNCH_START, 0),
                     boundary_action=BoundaryAction.START_NEW
                 )
-            
-            # Note: RUN_START and RUN_END_RESPONSE not implemented in NBA v1
-            
+
             # Resolve precedence and create boundary
             if triggered_codes:
                 resolved_codes = resolve_boundary_precedence(triggered_codes)

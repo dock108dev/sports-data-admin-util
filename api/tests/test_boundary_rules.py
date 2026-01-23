@@ -1,5 +1,5 @@
 """
-Unit tests for NBA v1 Chapter Boundary Rules (Issue 0.3).
+Unit tests for NBA v1 Chapter Boundary Rules.
 
 These tests validate rule correctness, not implementation sophistication.
 They ensure boundaries occur when expected and NOT when they shouldn't.
@@ -233,12 +233,12 @@ def test_precedence_overtime_over_timeout():
     assert BoundaryReasonCode.TIMEOUT not in resolved
 
 
-def test_precedence_review_over_run():
-    """Review must take precedence over run logic."""
-    codes = [BoundaryReasonCode.RUN_START, BoundaryReasonCode.REVIEW]
+def test_precedence_review_over_crunch():
+    """Review must take precedence over momentum boundaries."""
+    codes = [BoundaryReasonCode.CRUNCH_START, BoundaryReasonCode.REVIEW]
     resolved = resolve_boundary_precedence(codes)
-    
-    # REVIEW should be first
+
+    # REVIEW should be first (higher precedence)
     assert resolved[0] == BoundaryReasonCode.REVIEW
 
 

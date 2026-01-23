@@ -1,13 +1,10 @@
 """
-Story Generation API endpoints (Chapters-First Architecture).
+Story Generation API endpoints.
 
 Provides endpoints for:
 - Fetching game stories (chapters + sections + compact story)
 - Regenerating stories
 - Bulk generation
-
-This uses the chapters-first pipeline EXCLUSIVELY.
-There are no legacy paths, no fallbacks, no dual modes.
 """
 
 from __future__ import annotations
@@ -77,7 +74,7 @@ async def get_cached_story(
         and_(
             db_models.SportsGameStory.game_id == game_id,
             db_models.SportsGameStory.story_version == CURRENT_STORY_VERSION,
-            db_models.SportsGameStory.has_compact_story == True,
+            db_models.SportsGameStory.has_compact_story.is_(True),
         )
     )
     result = await session.execute(query)
@@ -234,11 +231,11 @@ async def save_story_to_cache(
                 titles_json=metadata_json,
                 compact_story=story.compact_story,
                 reading_time_minutes=story.reading_time_estimate_minutes,
-                has_summaries=False,  # Not used in chapters-first
-                has_titles=False,  # Not used in chapters-first
+                has_summaries=False,
+                has_titles=False,
                 has_compact_story=story.has_compact_story,
                 generated_at=story.generated_at or datetime.now(timezone.utc),
-                total_ai_calls=1,  # Single AI call in chapters-first
+                total_ai_calls=1,
             )
             session.add(cached_story)
             logger.info(f"Created cached story for game {game.id}")
@@ -307,7 +304,7 @@ async def _run_bulk_generation(
                 and_(
                     db_models.SportsGameStory.game_id.in_(game_ids),
                     db_models.SportsGameStory.story_version == CURRENT_STORY_VERSION,
-                    db_models.SportsGameStory.has_compact_story == True,
+                    db_models.SportsGameStory.has_compact_story.is_(True),
                 )
             )
             existing_result = await session.execute(existing_stories_query)

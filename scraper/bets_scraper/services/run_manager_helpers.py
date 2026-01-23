@@ -95,9 +95,10 @@ def select_games_for_social(
     only_missing: bool = False,
     updated_before: datetime | None = None,
     is_backfill: bool = False,
+    include_pregame: bool = True,
 ) -> list[int]:
     """Return game IDs for social scraping with filters.
-    
+
     Args:
         session: Database session
         league_code: League to query (e.g., "NBA", "NHL")
@@ -108,6 +109,8 @@ def select_games_for_social(
         is_backfill: If True, skip the recent game window filter. Use this
                      for historical backfills where we want to scrape social
                      for games that ended more than `recent_game_window_hours` ago.
+        include_pregame: If True, include scheduled (pregame) games for social collection.
+                        This enables pregame social content without requiring boxscore data.
     """
     league = session.query(db_models.SportsLeague).filter(
         db_models.SportsLeague.code == league_code
@@ -126,29 +129,51 @@ def select_games_for_social(
         db_models.SportsGame.game_date <= end_dt,
     )
 
+    scheduled_status = db_models.GameStatus.scheduled.value
     live_status = db_models.GameStatus.live.value
     final_statuses = [db_models.GameStatus.final.value]
-    
+
     if is_backfill:
-        # Backfill mode: include all completed/final games regardless of when they ended
-        query = query.filter(
-            or_(
-                db_models.SportsGame.status == live_status,
-                db_models.SportsGame.status.in_(final_statuses),
-            )
-        )
-    else:
-        # Real-time mode: only include live games or games that ended recently
-        query = query.filter(
-            or_(
-                db_models.SportsGame.status == live_status,
-                and_(
+        # Backfill mode: include scheduled, live, and final games
+        if include_pregame:
+            query = query.filter(
+                or_(
+                    db_models.SportsGame.status == scheduled_status,
+                    db_models.SportsGame.status == live_status,
                     db_models.SportsGame.status.in_(final_statuses),
-                    db_models.SportsGame.end_time.isnot(None),
-                    db_models.SportsGame.end_time >= recent_cutoff,
-                ),
+                )
+            )
+        else:
+            query = query.filter(
+                or_(
+                    db_models.SportsGame.status == live_status,
+                    db_models.SportsGame.status.in_(final_statuses),
+                )
+            )
+    else:
+        # Real-time mode: include pregame, live, or recently ended final games
+        status_conditions = [db_models.SportsGame.status == live_status]
+
+        if include_pregame:
+            # Include scheduled games with upcoming tip_time (within 48 hours)
+            upcoming_cutoff = now + timedelta(hours=48)
+            status_conditions.append(
+                and_(
+                    db_models.SportsGame.status == scheduled_status,
+                    db_models.SportsGame.game_date <= upcoming_cutoff,
+                )
+            )
+
+        # Include final games that ended recently
+        status_conditions.append(
+            and_(
+                db_models.SportsGame.status.in_(final_statuses),
+                db_models.SportsGame.end_time.isnot(None),
+                db_models.SportsGame.end_time >= recent_cutoff,
             )
         )
+
+        query = query.filter(or_(*status_conditions))
 
     if only_missing:
         has_posts = exists().where(

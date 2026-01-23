@@ -45,7 +45,7 @@ The chapters-first story generation system replaces the legacy "moments" approac
 ### Architecture Overview
 
 ```
-PBP Data → ChapterizerV1 → Chapters → StoryState → AI (single call) → GameStory
+PBP Data → Chapterizer → Chapters → StoryState → AI (single call) → GameStory
 ```
 
 **Pipeline Stages:**

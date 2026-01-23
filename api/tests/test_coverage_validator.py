@@ -1,5 +1,5 @@
 """
-Unit tests for Coverage Validator (Phase 1 Issue 6).
+Unit tests for Coverage Validator.
 
 These tests deliberately try to break coverage guarantees.
 """
@@ -341,15 +341,15 @@ def test_valid_game_story_coverage():
 # Test 9: Integration with Chapterizer
 
 def test_integration_chapterizer_produces_valid_coverage():
-    """ChapterizerV1 should produce valid coverage."""
-    from app.services.chapters import ChapterizerV1
+    """Chapterizer should produce valid coverage."""
+    from app.services.chapters import Chapterizer
     
     timeline = [
         {"event_type": "pbp", "quarter": 1, "play_id": i, "description": f"Play {i}"}
         for i in range(20)
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     story = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     
     # Should have fingerprint in metadata
@@ -361,15 +361,15 @@ def test_integration_chapterizer_produces_valid_coverage():
 
 
 def test_integration_chapterizer_deterministic():
-    """ChapterizerV1 should produce deterministic fingerprints."""
-    from app.services.chapters import ChapterizerV1
+    """Chapterizer should produce deterministic fingerprints."""
+    from app.services.chapters import Chapterizer
     
     timeline = [
         {"event_type": "pbp", "quarter": 1, "play_id": i, "description": f"Play {i}"}
         for i in range(10)
     ]
     
-    chapterizer = ChapterizerV1()
+    chapterizer = Chapterizer()
     
     story1 = chapterizer.chapterize(timeline, game_id=1, sport="NBA")
     story2 = chapterizer.chapterize(timeline, game_id=1, sport="NBA")

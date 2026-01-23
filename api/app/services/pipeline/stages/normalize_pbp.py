@@ -252,7 +252,7 @@ def _compute_resolution_stats(plays: list) -> dict[str, Any]:
     
     teams_resolved = sum(1 for p in plays if p.team_id is not None)
     teams_unresolved = sum(
-        1 for p in plays 
+        1 for p in plays
         if p.team_id is None and (p.raw_data.get("teamTricode") or p.raw_data.get("team"))
     )
     players_with_name = sum(1 for p in plays if p.player_name)

@@ -2,62 +2,15 @@
 
 **Centralized sports data hub for all Dock108 apps.**
 
-Automated ingestion, normalization, and serving of sports data from multiple sources. Provides:
-- Multi-sport play-by-play, box scores, odds, and social media
-- Narrative story generation (Scroll Down Sports)
-- Unified API for all Dock108 sports products
-- Admin UI for data management and monitoring
+Automated ingestion, normalization, and serving of sports data. Provides play-by-play, box scores, odds, and social media for NBA, NHL, and NCAAB. Powers narrative story generation for Scroll Down Sports.
 
-## What This System Does
-
-**Data Ingestion:**
-- Automated scraping from ESPN, Hockey Reference, Sports Reference
-- Multi-sport support: NBA, NHL, NCAAB
-- Play-by-play, box scores, odds, social media
-- Scheduled and on-demand runs
-
-**Data Serving:**
-- RESTful API for all Dock108 apps
-- Normalized schemas across sports
-- Real-time and historical data
-- Admin endpoints for management
-
-**Story Generation (Scroll Down Sports):**
-- Chapters-first narrative system
-- AI-powered summaries and recaps
-- Deterministic structural segmentation
-- Admin UI for inspection and debugging
-
-## Architecture
-
-```mermaid
-graph TD
-    A[External Sources] --> B[Multi-Sport Scraper]
-    B --> C[PostgreSQL Hub]
-    C --> D[Normalization Layer]
-    D --> E[REST API]
-    E --> F[Dock108 Apps]
-    C --> G[Story Generator]
-    G --> H[Scroll Down Sports]
-```
-
-## Tech Stack
-
-- **API:** Python, FastAPI, PostgreSQL
-- **Scraper:** Python, uv, Celery
-- **Admin UI:** React, TypeScript, Next.js
-- **Infrastructure:** Docker, Caddy, Redis
-
-## Run Locally
+## Quick Start
 
 ```bash
 cd infra
 cp .env.example .env
-
 docker compose --profile dev up -d --build
 ```
-
-Note: `infra/.env` contains secrets and is gitignored.
 
 **URLs:**
 - Admin UI: http://localhost:3000
@@ -66,52 +19,60 @@ Note: `infra/.env` contains secrets and is gitignored.
 
 For manual setup, see [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md).
 
-## Key Features
+## Architecture
 
-**Centralized Data Hub:**
-- Single source of truth for all Dock108 sports products
-- Automated ingestion from multiple sources
-- Normalized schemas across NBA, NHL, NCAAB
-- Real-time and historical data access
+```
+┌─────────────────┐     ┌──────────────┐     ┌─────────────┐
+│ External Sources│────▶│   Scraper    │────▶│  PostgreSQL │
+│ (ESPN, SportsRef)     │ (Celery/uv)  │     │    Hub      │
+└─────────────────┘     └──────────────┘     └──────┬──────┘
+                                                    │
+                        ┌───────────────────────────┼───────────────────────────┐
+                        │                           │                           │
+                        ▼                           ▼                           ▼
+                 ┌─────────────┐           ┌───────────────┐           ┌─────────────┐
+                 │  REST API   │           │Story Generator│           │  Admin UI   │
+                 │  (FastAPI)  │           │  (Chapters)   │           │  (Next.js)  │
+                 └──────┬──────┘           └───────┬───────┘           └─────────────┘
+                        │                          │
+                        ▼                          ▼
+                 ┌─────────────┐           ┌───────────────┐
+                 │ Dock108 Apps│           │Scroll Down    │
+                 └─────────────┘           │Sports         │
+                                           └───────────────┘
+```
 
-**Data Types:**
-- Play-by-play (full game timelines)
-- Box scores (team and player stats)
-- Betting odds (multiple books)
-- Social media (team highlights and reactions)
+## Tech Stack
 
-**Story Generation (Scroll Down Sports):**
-- Chapters-first narrative system
-- Deterministic structural segmentation
-- AI-powered summaries and recaps
-- Admin UI for inspection and debugging
+| Component | Stack |
+|-----------|-------|
+| API | Python, FastAPI, PostgreSQL |
+| Scraper | Python, uv, Celery, Redis |
+| Admin UI | React, TypeScript, Next.js |
+| Infrastructure | Docker, Caddy |
 
-**Admin Tools:**
-- Data browser and search
-- Scraper run management
-- Story generator interface
-- Data quality monitoring
+## Directory Structure
+
+```
+api/          FastAPI backend, story generation
+scraper/      Multi-sport data scraper
+web/          Admin UI
+sql/          Database schema and migrations
+infra/        Docker, deployment config
+docs/         Documentation
+```
 
 ## Documentation
 
-**Getting Started:**
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [Local Development](docs/LOCAL_DEVELOPMENT.md)
-- [API Reference](docs/API.md)
-
-**Story Generation:**
-- [Book + Chapters Model](docs/BOOK_CHAPTERS_MODEL.md)
-- [NBA v1 Boundary Rules](docs/NBA_V1_BOUNDARY_RULES.md)
-- [AI Context Policy](docs/AI_CONTEXT_POLICY.md)
-- [Admin UI Guide](docs/ADMIN_UI_STORY_GENERATOR.md)
-
-**Full Index:** [docs/INDEX.md](docs/INDEX.md)
-
-## Deployment
-
-Infrastructure details: [docs/INFRA.md](docs/INFRA.md)  
-Deployment guide: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+| Guide | Description |
+|-------|-------------|
+| [docs/INDEX.md](docs/INDEX.md) | Full documentation index |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
+| [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) | Development setup |
+| [docs/API.md](docs/API.md) | API reference |
+| [docs/BOOK_CHAPTERS_MODEL.md](docs/BOOK_CHAPTERS_MODEL.md) | Story generation system |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment guide |
 
 ## Contributing
 
-See [AGENTS.md](AGENTS.md) for coding standards and principles.
+See [CLAUDE.md](CLAUDE.md) for coding standards and development principles.

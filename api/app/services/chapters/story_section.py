@@ -34,7 +34,7 @@ from typing import Any
 
 from .types import Chapter
 from .beat_classifier import BeatType, BeatClassification
-from .running_stats import SectionDelta, TeamDelta, PlayerDelta
+from .running_stats import SectionDelta
 
 
 # ============================================================================

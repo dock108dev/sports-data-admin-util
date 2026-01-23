@@ -58,7 +58,7 @@
 
 **Chapters-First Pipeline:**
 ```
-PBP → ChapterizerV1 → Chapters → StoryState → AI → GameStory
+PBP → Chapterizer → Chapters → StoryState → AI → GameStory
 ```
 
 **Key Concepts:**

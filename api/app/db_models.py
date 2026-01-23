@@ -179,7 +179,7 @@ class SportsGame(Base):
         game_date is often just midnight UTC (date only, no time component).
         """
         return self.tip_time if self.tip_time else self.game_date
-    
+
     @property
     def has_reliable_start_time(self) -> bool:
         """Return True if we have an actual tip time, not just a date."""
@@ -846,27 +846,27 @@ class EntityResolution(Base):
     game_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False, index=True)
     pipeline_run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sports_game_pipeline_runs.id", ondelete="SET NULL"), nullable=True, index=True)
     entity_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # "team" or "player"
-    
+
     # Source identifiers
     source_identifier: Mapped[str] = mapped_column(String(200), nullable=False)
     source_context: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    
+
     # Resolution result
     resolved_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     resolved_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     resolution_status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     resolution_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    
+
     # Failure/ambiguity details
     failure_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
     candidates: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
-    
+
     # Occurrence tracking
     occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     first_play_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_play_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     game: Mapped[SportsGame] = relationship("SportsGame")
@@ -917,26 +917,26 @@ class FrontendPayloadVersion(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     game_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False, index=True)
     pipeline_run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sports_game_pipeline_runs.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+
     # Version tracking
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"), index=True)
-    
+
     # Payload content (IMMUTABLE once created)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     timeline_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     moments_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     summary_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-    
+
     # Metadata
     event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     moment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     generation_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
     generation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    
+
     # Change tracking
     diff_from_previous: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    
+
     # Timestamps (NO updated_at - payloads are IMMUTABLE)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -955,28 +955,20 @@ class FrontendPayloadVersion(Base):
 
 class SportsGameStory(Base):
     """Cached AI-generated game stories.
-    
+
     This table stores expensive AI-generated content to avoid redundant API calls.
     Stories are versioned and can be regenerated when needed.
-    
-    COST OPTIMIZATION
-    =================
-    - Each game requires 10-20 AI calls (summaries + compact story)
-    - Costs grow with chapter count and context size
-    - Caching prevents regenerating identical content
-    
+
     VERSIONING
-    ==========
-    - story_version: Matches ChapterizerV1 version (e.g., "1.0.0")
+    - story_version: Matches Chapterizer version (e.g., "2.0.0")
     - One story per (game_id, story_version)
     - Regenerate when chapterizer rules change
-    
+
     CONTENT STRUCTURE
-    =================
     - chapters_json: Deterministic chapter structure
-    - summaries_json: AI-generated chapter summaries (expensive)
-    - titles_json: AI-generated chapter titles (expensive)
-    - compact_story: AI-generated full game narrative (expensive)
+    - summaries_json: Section data
+    - titles_json: Metadata
+    - compact_story: AI-generated full game narrative
     """
 
     __tablename__ = "sports_game_stories"
@@ -985,7 +977,7 @@ class SportsGameStory(Base):
     game_id: Mapped[int] = mapped_column(Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False, index=True)
     sport: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     story_version: Mapped[str] = mapped_column(String(20), nullable=False)
-    
+
     # Chapter structure (deterministic, can be regenerated quickly)
     chapters_json: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB,
@@ -994,7 +986,7 @@ class SportsGameStory(Base):
     )
     chapter_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     chapters_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    
+
     # AI-generated content (expensive, should be cached)
     summaries_json: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB,
@@ -1008,7 +1000,7 @@ class SportsGameStory(Base):
     )
     compact_story: Mapped[str | None] = mapped_column(Text, nullable=True)
     reading_time_minutes: Mapped[float | None] = mapped_column(Float, nullable=True)
-    
+
     # Generation metadata
     has_summaries: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     has_titles: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
@@ -1016,7 +1008,7 @@ class SportsGameStory(Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ai_model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     total_ai_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
