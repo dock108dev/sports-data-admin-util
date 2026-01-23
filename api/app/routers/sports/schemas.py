@@ -21,15 +21,21 @@ class ScrapeRunConfig(BaseModel):
 
     @field_validator("end_date", mode="after")
     @classmethod
-    def cap_end_date_to_today(cls, v: date | None) -> date:
-        """Ensure end_date is never null or in the future.
-        
-        If end_date is None or in the future, cap it to today.
-        This prevents scraper from trying to query future games.
+    def cap_end_date_to_reasonable_future(cls, v: date | None) -> date:
+        """Ensure end_date is set and within a reasonable future window.
+
+        If end_date is None, defaults to today.
+        Allows up to 7 days in the future to support odds fetching for upcoming games.
+        Boxscores for future dates simply return no data (graceful no-op).
         """
+        from datetime import timedelta
         today = date.today()
-        if v is None or v > today:
+        max_future = today + timedelta(days=7)
+
+        if v is None:
             return today
+        if v > max_future:
+            return max_future
         return v
 
     # Data type toggles
