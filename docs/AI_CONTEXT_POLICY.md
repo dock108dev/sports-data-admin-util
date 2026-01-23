@@ -571,12 +571,7 @@ Simple rules based on chapter reason codes:
 
 ```python
 # Check most recent chapter reason codes
-if "RUN_START" in recent_chapter.reason_codes:
-    # Determine which team based on scoring in that chapter
-    momentum_hint = "surging"
-elif "RUN_END_RESPONSE" in recent_chapter.reason_codes:
-    momentum_hint = "volatile"
-elif "CRUNCH_START" in recent_chapter.reason_codes:
+if "CRUNCH_START" in recent_chapter.reason_codes:
     momentum_hint = "volatile"
 else:
     momentum_hint = "steady"
@@ -596,7 +591,6 @@ Deterministic tags based on chapter reason codes and play patterns:
 - `crunch_time` — CRUNCH_START reason code
 - `overtime` — OVERTIME_START reason code
 - `review_heavy` — Multiple REVIEW reason codes
-- `run_based` — RUN_START or RUN_END_RESPONSE codes
 
 **Bounded List:**
 - Keep most frequent 8
@@ -614,11 +608,9 @@ Deterministic tags based on chapter reason codes and play patterns:
 ❌ No box score lookup  
 ❌ No external data sources  
 
-✅ Only explicit play text parsing  
-✅ Only deterministic rules  
-✅ Only bounded lists  
-
-**Advanced inference is Phase 2+.**
+✅ Only explicit play text parsing
+✅ Only deterministic rules
+✅ Only bounded lists
 
 ---
 
@@ -791,6 +783,5 @@ validate(story_state.to_dict(), STORY_STATE_SCHEMA)
 
 ---
 
-**Status:** Authoritative  
-**Enforcement:** Structural (payload builder) + Unit tests  
-**Next:** Implement payload builder and tests (Issue 0.4)
+**Status:** Authoritative
+**Enforcement:** Structural (payload builder) + Unit tests

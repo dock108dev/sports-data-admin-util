@@ -580,7 +580,7 @@ From `skaters` and `goalies` tables:
 
 ## See Also
 
-- [MOMENT_SYSTEM_CONTRACT.md](MOMENT_SYSTEM_CONTRACT.md) - Moment system specification
+- [BOOK_CHAPTERS_MODEL.md](BOOK_CHAPTERS_MODEL.md) - Chapters-first story architecture
 - [TECHNICAL_FLOW.md](TECHNICAL_FLOW.md) - Timeline generation flow
 - [pbp-nhl-hockey-reference.md](pbp-nhl-hockey-reference.md) - NHL PBP parsing
 - [odds-nhl-validation.md](odds-nhl-validation.md) - NHL odds validation

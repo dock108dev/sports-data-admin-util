@@ -76,7 +76,7 @@ class Play:
     A play is a single play-by-play event. Plays are the raw pages
     of the game's book. They are never modified or summarized.
     
-    CONTRACT (Issue 0.2):
+    CONTRACT (canonical contract):
     - index: Required, non-negative integer
     - event_type: Required, non-empty string
     - raw_data: Required, contains complete event data
@@ -118,7 +118,7 @@ class TimeRange:
     Represents the game clock time span covered by a chapter.
     Both start and end are optional (nullable) if PBP does not provide time.
     
-    CONTRACT (Issue 0.2):
+    CONTRACT (canonical contract):
     - start: Game clock at chapter start (e.g., "12:00", "2:30")
     - end: Game clock at chapter end (e.g., "10:45", "0:00")
     - Both nullable if sport/feed lacks clock data
@@ -185,7 +185,7 @@ class Chapter:
     - Chapters are chronologically ordered
     - Chapter boundaries are deterministic
     
-    CONTRACT (Issue 0.2):
+    CONTRACT (canonical contract):
     
     REQUIRED FIELDS:
     - chapter_id: Unique within game, stable, deterministic (e.g., "ch_001")
@@ -232,7 +232,7 @@ class Chapter:
     def __post_init__(self):
         """Validate chapter structure.
         
-        Enforces all CONTRACT invariants from Issue 0.2.
+        Enforces all CONTRACT invariants from canonical contract.
         """
         # Validate chapter_id
         if not self.chapter_id:
@@ -295,7 +295,7 @@ class Chapter:
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for API responses.
         
-        Returns JSON schema (Issue 0.2):
+        Returns JSON schema (canonical contract):
         {
             "chapter_id": str,              # Required
             "play_start_idx": int,          # Required
@@ -345,7 +345,7 @@ class GameStory:
     - AI generates narrative text from chapters
     - Apps consume both structure (chapters) and narrative (AI text)
     
-    CONTRACT (Issue 0.2):
+    CONTRACT (canonical contract):
     
     REQUIRED FIELDS:
     - game_id: Database game ID (positive integer)
@@ -385,7 +385,7 @@ class GameStory:
     def __post_init__(self):
         """Validate story structure.
         
-        Enforces all CONTRACT invariants from Issue 0.2.
+        Enforces all CONTRACT invariants from canonical contract.
         """
         # Validate game_id
         if self.game_id <= 0:
@@ -439,7 +439,7 @@ class GameStory:
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for API responses.
         
-        Returns JSON schema (Issue 0.2):
+        Returns JSON schema (canonical contract):
         {
             "game_id": int,                             # Required
             "sport": str,                               # Required

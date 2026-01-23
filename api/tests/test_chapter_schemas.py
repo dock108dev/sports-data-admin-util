@@ -1,5 +1,5 @@
 """
-Unit tests for Chapter and GameStory schema validation (Issue 0.2).
+Unit tests for Chapter and GameStory schema validation.
 
 These tests enforce the data contracts, not behavior.
 They validate that the schemas are strict and that validation catches errors.
@@ -74,7 +74,7 @@ def test_chapter_schema_empty_plays():
 
 
 def test_chapter_schema_empty_reason_codes():
-    """Chapter with empty reason_codes must fail (Issue 0.2)."""
+    """Chapter with empty reason_codes must fail."""
     plays = [Play(index=0, event_type="pbp", raw_data={})]
     
     with pytest.raises(ValueError, match="empty reason_codes"):

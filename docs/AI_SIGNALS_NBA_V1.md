@@ -123,7 +123,6 @@ Themes represent **story-level patterns**, not stats.
 | `crunch_time` | Late + close game | `CRUNCH_START` in reason codes |
 | `overtime` | Overtime period | `OVERTIME_START` in reason codes |
 | `review_heavy` | Multiple reviews | `REVIEW` in reason codes |
-| `run_based` | Scoring runs | `RUN_START` or `RUN_END_RESPONSE` in reason codes |
 | `defensive_intensity` | Blocks + steals | ≥3 blocks/steals in chapter |
 | `hot_shooting` | Many made shots | ≥5 made shots in chapter |
 | `free_throw_battle` | Many free throws | ≥4 free throws in chapter |
