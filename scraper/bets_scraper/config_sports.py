@@ -58,7 +58,7 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         social_enabled=True,
         pbp_enabled=True,
         timeline_enabled=True,
-        scheduled_ingestion=False,  # Not yet scheduled
+        scheduled_ingestion=True,
     ),
     "NCAAB": LeagueConfig(
         code="NCAAB",

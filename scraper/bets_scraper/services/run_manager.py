@@ -139,35 +139,71 @@ class ScrapeRunManager:
 
             # STAGE 2: Boxscore scraping (enrichment only - does NOT create games)
             # Boxscores enrich existing games created by Odds API
+            # IMPORTANT: Only scrape boxscores for completed games (yesterday and earlier)
             if config.boxscores and scraper:
-                logger.info(
-                    "boxscore_scraping_start",
-                    run_id=run_id,
-                    league=config.league_code,
-                    start_date=str(start),
-                    end_date=str(end),
-                    only_missing=config.only_missing,
-                    stage="2_boxscore_enrichment",
-                )
-
+                yesterday = today_utc() - timedelta(days=1)
+                boxscore_end = min(end, yesterday)
                 games_skipped = 0
 
-                if config.only_missing or updated_before_dt:
-                    # Filter games by criteria
-                    with get_session() as session:
-                        games_to_scrape = select_games_for_boxscores(
-                            session, config.league_code, start, end,
-                            only_missing=config.only_missing,
-                            updated_before=updated_before_dt,
-                        )
-                    logger.info("found_games_for_boxscores", count=len(games_to_scrape), run_id=run_id)
+                if start > yesterday:
+                    logger.info(
+                        "boxscore_scraping_skipped_future_dates",
+                        run_id=run_id,
+                        league=config.league_code,
+                        start_date=str(start),
+                        end_date=str(end),
+                        reason="All dates are today or in the future - no completed games to scrape",
+                    )
+                else:
+                    logger.info(
+                        "boxscore_scraping_start",
+                        run_id=run_id,
+                        league=config.league_code,
+                        start_date=str(start),
+                        end_date=str(boxscore_end),
+                        original_end_date=str(end) if end != boxscore_end else None,
+                        only_missing=config.only_missing,
+                        stage="2_boxscore_enrichment",
+                    )
 
-                    for game_id, source_key, game_date in games_to_scrape:
-                        if not source_key or not game_date:
-                            continue
-                        try:
-                            game_payload = scraper.fetch_single_boxscore(source_key, game_date)
-                            if game_payload:
+                    if config.only_missing or updated_before_dt:
+                        # Filter games by criteria
+                        with get_session() as session:
+                            games_to_scrape = select_games_for_boxscores(
+                                session, config.league_code, start, boxscore_end,
+                                only_missing=config.only_missing,
+                                updated_before=updated_before_dt,
+                            )
+                        logger.info("found_games_for_boxscores", count=len(games_to_scrape), run_id=run_id)
+
+                        for game_id, source_key, game_date in games_to_scrape:
+                            if not source_key or not game_date:
+                                continue
+                            try:
+                                game_payload = scraper.fetch_single_boxscore(source_key, game_date)
+                                if game_payload:
+                                    with get_session() as session:
+                                        result = persist_game_payload(session, game_payload)
+                                        session.commit()
+                                        if result.game_id is not None:
+                                            summary["games"] += 1
+                                            if result.enriched:
+                                                summary["games_enriched"] += 1
+                                        else:
+                                            games_skipped += 1
+                            except Exception as exc:
+                                logger.warning("boxscore_scrape_failed", game_id=game_id, error=str(exc))
+                    else:
+                        # Scrape all games in date range from Sports Reference
+                        for game_payload in scraper.fetch_date_range(start, boxscore_end):
+                            try:
+                                if not game_payload.identity.source_game_key:
+                                    logger.warning(
+                                        "game_normalization_missing_external_id",
+                                        league=config.league_code,
+                                        game_date=str(game_payload.identity.game_date),
+                                    )
+                                    continue
                                 with get_session() as session:
                                     result = persist_game_payload(session, game_payload)
                                     session.commit()
@@ -176,32 +212,10 @@ class ScrapeRunManager:
                                         if result.enriched:
                                             summary["games_enriched"] += 1
                                     else:
+                                        # Game not found - this is normal for games not in Odds API
                                         games_skipped += 1
-                        except Exception as exc:
-                            logger.warning("boxscore_scrape_failed", game_id=game_id, error=str(exc))
-                else:
-                    # Scrape all games in date range from Sports Reference
-                    for game_payload in scraper.fetch_date_range(start, end):
-                        try:
-                            if not game_payload.identity.source_game_key:
-                                logger.warning(
-                                    "game_normalization_missing_external_id",
-                                    league=config.league_code,
-                                    game_date=str(game_payload.identity.game_date),
-                                )
-                                continue
-                            with get_session() as session:
-                                result = persist_game_payload(session, game_payload)
-                                session.commit()
-                                if result.game_id is not None:
-                                    summary["games"] += 1
-                                    if result.enriched:
-                                        summary["games_enriched"] += 1
-                                else:
-                                    # Game not found - this is normal for games not in Odds API
-                                    games_skipped += 1
-                        except Exception as exc:
-                            logger.exception("game_persist_failed", error=str(exc), run_id=run_id)
+                            except Exception as exc:
+                                logger.exception("game_persist_failed", error=str(exc), run_id=run_id)
 
                 logger.info(
                     "boxscores_complete",
@@ -287,30 +301,43 @@ class ScrapeRunManager:
                             complete_job_run(pbp_run_id, "error", str(exc))
                 else:
                     # Non-live PBP scraping via SportsReference
+                    # Only scrape PBP for completed games (yesterday and earlier)
+                    pbp_yesterday = today_utc() - timedelta(days=1)
+                    pbp_end = min(end, pbp_yesterday)
                     pbp_events = 0
-                    try:
-                        with get_session() as session:
-                            pbp_games, pbp_events = ingest_pbp_via_sportsref(
-                                session,
-                                run_id=run_id,
-                                league_code=config.league_code,
-                                scraper=self.scrapers.get(config.league_code),
-                                start_date=start,
-                                end_date=end,
-                                only_missing=config.only_missing,
-                                updated_before=updated_before_dt,
-                            )
-                            session.commit()
-                        summary["pbp_games"] += pbp_games
-                        complete_job_run(pbp_run_id, "success")
-                    except Exception as exc:
-                        logger.exception(
-                            "pbp_sportsref_failed",
+
+                    if start > pbp_yesterday:
+                        logger.info(
+                            "pbp_sportsref_skipped_future_dates",
                             run_id=run_id,
                             league=config.league_code,
-                            error=str(exc),
+                            reason="All dates are today or in the future - no completed games for PBP",
                         )
-                        complete_job_run(pbp_run_id, "error", str(exc))
+                        complete_job_run(pbp_run_id, "success", "skipped_future_dates")
+                    else:
+                        try:
+                            with get_session() as session:
+                                pbp_games, pbp_events = ingest_pbp_via_sportsref(
+                                    session,
+                                    run_id=run_id,
+                                    league_code=config.league_code,
+                                    scraper=self.scrapers.get(config.league_code),
+                                    start_date=start,
+                                    end_date=pbp_end,
+                                    only_missing=config.only_missing,
+                                    updated_before=updated_before_dt,
+                                )
+                                session.commit()
+                            summary["pbp_games"] += pbp_games
+                            complete_job_run(pbp_run_id, "success")
+                        except Exception as exc:
+                            logger.exception(
+                                "pbp_sportsref_failed",
+                                run_id=run_id,
+                                league=config.league_code,
+                                error=str(exc),
+                            )
+                            complete_job_run(pbp_run_id, "error", str(exc))
 
                 logger.info("pbp_complete", count=summary["pbp_games"], run_id=run_id)
 

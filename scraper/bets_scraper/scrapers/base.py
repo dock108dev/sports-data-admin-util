@@ -95,17 +95,24 @@ class BaseSportsReferenceScraper:
     def _fetch_from_network(self, url: str) -> str:
         """Fetch HTML from network with polite delays and retry logic."""
         self._polite_delay()
-        
+
         logger.info("fetching_url", url=url)
-        response = self.client.get(url)
-        
+        response = self.client.get(url, follow_redirects=True)
+
         if response.status_code == 429:
             logger.warning("rate_limit_hit", url=url, wait_seconds=self._rate_limit_wait)
             time.sleep(self._rate_limit_wait)
             raise ScraperError(f"Rate limited: {url} (429)")
         if response.status_code != 200:
             raise ScraperError(f"Failed to fetch {url} ({response.status_code})")
-        
+
+        # Detect redirects (e.g., Sports Reference redirects to main page for dates with no games)
+        final_url = str(response.url)
+        if final_url != url and "?" not in final_url:
+            # Redirected to a different page (likely main page with no query params)
+            logger.info("redirect_detected_no_games", original_url=url, final_url=final_url)
+            raise ScraperError(f"Redirected from {url} to {final_url} (no games for this date)")
+
         return response.text
 
     def fetch_html(self, url: str, game_date: date | None = None) -> BeautifulSoup:

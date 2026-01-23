@@ -132,7 +132,7 @@ NHL_TEAMS = {
     "Florida Panthers": ("Florida Panthers", "FLA", ["Florida", "Panthers"]),
     "Los Angeles Kings": ("Los Angeles Kings", "LAK", ["LA Kings", "L.A. Kings", "Kings"]),
     "Minnesota Wild": ("Minnesota Wild", "MIN", ["Minnesota", "Wild"]),
-    "Montreal Canadiens": ("Montreal Canadiens", "MTL", ["Montreal", "Canadiens"]),
+    "Montreal Canadiens": ("Montreal Canadiens", "MTL", ["Montreal", "Canadiens", "Montréal Canadiens", "Montréal"]),
     "Nashville Predators": ("Nashville Predators", "NSH", ["Nashville", "Predators"]),
     "New Jersey Devils": ("New Jersey Devils", "NJD", ["New Jersey", "Devils"]),
     "New York Islanders": ("New York Islanders", "NYI", ["NY Islanders", "Islanders"]),
