@@ -64,8 +64,8 @@ class ScrapeRunManager:
     def run(self, run_id: int, config: IngestionConfig) -> dict:
         summary: Dict[str, int | str] = {
             "games": 0,
-            "games_created": 0,
-            "games_updated": 0,
+            "games_created": 0,  # Games created by Odds API (pregame placeholders)
+            "games_updated": 0,  # Games enriched with boxscore data
             "odds": 0,
             "social_posts": 0,
             "pbp_games": 0,
@@ -108,7 +108,38 @@ class ScrapeRunManager:
             if config.boxscores or config.odds:
                 ingest_run_id = start_job_run("ingest", [config.league_code])
 
-            # Boxscore scraping
+            # STAGE 1: Odds scraping (MUST run first - creates game records)
+            # Odds API is the sole creator of game records for the pregame → final lifecycle
+            if config.odds:
+                logger.info(
+                    "odds_scraping_start",
+                    run_id=run_id,
+                    league=config.league_code,
+                    start_date=str(start),
+                    end_date=str(end),
+                    only_missing=config.only_missing,
+                    stage="1_schedule_sync",
+                )
+
+                if config.only_missing:
+                    with get_session() as session:
+                        dates_to_fetch = select_games_for_odds(
+                            session, config.league_code, start, end,
+                            only_missing=True,
+                        )
+                    for fetch_date in dates_to_fetch:
+                        try:
+                            odds_count = self.odds_sync.sync_single_date(config.league_code, fetch_date)
+                            summary["odds"] += odds_count
+                        except Exception as e:
+                            logger.warning("odds_fetch_failed", date=str(fetch_date), error=str(e))
+                else:
+                    summary["odds"] = self.odds_sync.sync(config)
+
+                logger.info("odds_complete", count=summary["odds"], run_id=run_id)
+
+            # STAGE 2: Boxscore scraping (enrichment only - does NOT create games)
+            # Boxscores enrich existing games created by Odds API
             if config.boxscores and scraper:
                 logger.info(
                     "boxscore_scraping_start",
@@ -117,7 +148,11 @@ class ScrapeRunManager:
                     start_date=str(start),
                     end_date=str(end),
                     only_missing=config.only_missing,
+                    stage="2_boxscore_enrichment",
                 )
+
+                games_enriched = 0
+                games_skipped = 0
 
                 if config.only_missing or updated_before_dt:
                     # Filter games by criteria
@@ -138,15 +173,17 @@ class ScrapeRunManager:
                                 with get_session() as session:
                                     result = persist_game_payload(session, game_payload)
                                     session.commit()
-                                    if result.created:
-                                        summary["games_created"] += 1
-                                    else:
+                                    if result.game_id is not None:
+                                        if result.enriched:
+                                            games_enriched += 1
                                         summary["games_updated"] += 1
-                                    summary["games"] += 1
+                                        summary["games"] += 1
+                                    else:
+                                        games_skipped += 1
                         except Exception as exc:
                             logger.warning("boxscore_scrape_failed", game_id=game_id, error=str(exc))
                 else:
-                    # Scrape all games in date range
+                    # Scrape all games in date range from Sports Reference
                     for game_payload in scraper.fetch_date_range(start, end):
                         try:
                             if not game_payload.identity.source_game_key:
@@ -159,22 +196,27 @@ class ScrapeRunManager:
                             with get_session() as session:
                                 result = persist_game_payload(session, game_payload)
                                 session.commit()
-                                if result.created:
-                                    summary["games_created"] += 1
-                                else:
+                                if result.game_id is not None:
+                                    if result.enriched:
+                                        games_enriched += 1
                                     summary["games_updated"] += 1
-                                summary["games"] += 1
+                                    summary["games"] += 1
+                                else:
+                                    # Game not found - this is normal for games not in Odds API
+                                    games_skipped += 1
                         except Exception as exc:
                             logger.exception("game_persist_failed", error=str(exc), run_id=run_id)
 
                 logger.info(
                     "boxscores_complete",
                     count=summary["games"],
-                    created=summary["games_created"],
+                    enriched=games_enriched,
                     updated=summary["games_updated"],
+                    skipped=games_skipped,
                     run_id=run_id,
                 )
 
+            # STAGE 3: Season stats (NHL only)
             if config.team_stats or config.player_stats:
                 if config.league_code != "NHL":
                     logger.info(
@@ -203,33 +245,6 @@ class ScrapeRunManager:
                         with get_session() as session:
                             summary["player_stats"] += upsert_player_season_stats(session, player_payloads)
 
-            # Odds scraping
-            if config.odds:
-                logger.info(
-                    "odds_scraping_start",
-                    run_id=run_id,
-                    league=config.league_code,
-                    start_date=str(start),
-                    end_date=str(end),
-                    only_missing=config.only_missing,
-                )
-
-                if config.only_missing:
-                    with get_session() as session:
-                        dates_to_fetch = select_games_for_odds(
-                            session, config.league_code, start, end,
-                            only_missing=True,
-                        )
-                    for fetch_date in dates_to_fetch:
-                        try:
-                            odds_count = self.odds_sync.sync_single_date(config.league_code, fetch_date)
-                            summary["odds"] += odds_count
-                        except Exception as e:
-                            logger.warning("odds_fetch_failed", date=str(fetch_date), error=str(e))
-                else:
-                    summary["odds"] = self.odds_sync.sync(config)
-
-                logger.info("odds_complete", count=summary["odds"], run_id=run_id)
             if ingest_run_id is not None:
                 complete_job_run(ingest_run_id, "success")
                 ingest_run_completed = True
