@@ -16,7 +16,7 @@ VALIDATION CATEGORIES:
 PART 1 - DETERMINISTIC VALIDATION (Before/After AI):
 1. Section Ordering - sequential, no gaps, no chapter overlap, full coverage
 2. Stat Consistency - deltas sum correctly, no negatives, player bounds enforced
-3. Word Count Tolerance - within +/-15% of target (post-AI only)
+3. Word Count Tolerance - within +/-25% of target (post-AI only)
 
 PART 2 - POST-AI NARRATIVE GUARD:
 4. No New Players - every player name in story must exist in provided data
@@ -380,14 +380,14 @@ def validate_word_count(
 ) -> ValidationResult:
     """Validate that word count is within acceptable tolerance.
 
-    TOLERANCE: +/- 15% of target_word_count
+    TOLERANCE: +/- 25% of target_word_count (to accommodate AI generation variance)
 
     This validation applies ONLY after AI rendering.
     There is NO retry on failure.
 
     Args:
         result: The story render result
-        tolerance_pct: Tolerance percentage (default 0.15 = 15%)
+        tolerance_pct: Tolerance percentage (default 0.25 = 25%)
 
     Returns:
         ValidationResult
@@ -471,22 +471,27 @@ def _extract_player_names_from_input(input_data: StoryRenderInput) -> set[str]:
 def _extract_names_from_story(compact_story: str) -> set[str]:
     """Extract potential player names from story text.
 
-    Player names in our data are formatted as "A. LastName" (first initial,
-    period, space, capitalized last name). We look for this specific pattern
-    rather than trying to catch all capitalized words.
+    Detects two name formats:
+    1. "A. LastName" format (first initial + period + last name)
+       Examples: "D. Mitchell", "J. Allen", "K. Knueppel"
+    2. "FirstName LastName" format (two capitalized words in sequence)
+       Examples: "Michael Jordan", "LeBron James"
 
     Returns:
         Set of potential player names (lowercase)
     """
-    # Pattern: Initial + period + optional space + Capitalized word(s)
-    # Examples: "D. Mitchell", "J. Allen", "K. Knueppel"
-    name_pattern = r'\b([A-Z]\.\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b'
-
-    matches = re.findall(name_pattern, compact_story)
-
     names = set()
-    for match in matches:
-        # Normalize: lowercase for comparison
+
+    # Pattern 1: Initial + period + optional space + Capitalized word(s)
+    # Examples: "D. Mitchell", "J. Allen", "K. Knueppel"
+    initial_pattern = r'\b([A-Z]\.\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b'
+    for match in re.findall(initial_pattern, compact_story):
+        names.add(match.lower())
+
+    # Pattern 2: FirstName LastName (two capitalized words)
+    # Examples: "Michael Jordan", "LeBron James"
+    full_name_pattern = r'\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b'
+    for match in re.findall(full_name_pattern, compact_story):
         names.add(match.lower())
 
     return names

@@ -5,7 +5,7 @@ These tests validate:
 - PART 1: Deterministic Validation
   - Section ordering (sequential, no gaps, no overlap, full coverage)
   - Stat consistency (no negatives, player bounds, explainable points)
-  - Word count tolerance (+/- 15%)
+  - Word count tolerance (+/- 25%)
 - PART 2: Post-AI Narrative Guard
   - No new players (invented names)
   - No stat invention (percentages, efficiency, inferred totals)
@@ -392,8 +392,8 @@ class TestWordCountValidation:
         assert result.valid is True
 
     def test_within_tolerance_passes(self, valid_render_result):
-        """Word count within 15% tolerance passes."""
-        # Target 700, 15% tolerance = 595-805
+        """Word count within 25% tolerance passes."""
+        # Target 700, 25% tolerance = 525-875
         valid_render_result.word_count = 650  # Within tolerance
 
         result = validate_word_count(valid_render_result)
@@ -401,30 +401,30 @@ class TestWordCountValidation:
 
     def test_at_lower_bound_passes(self, valid_render_result):
         """Word count at lower bound passes."""
-        # Target 700, 15% tolerance = 595
-        valid_render_result.word_count = 595
+        # Target 700, 25% tolerance = 525
+        valid_render_result.word_count = 525
 
         result = validate_word_count(valid_render_result)
         assert result.valid is True
 
     def test_at_upper_bound_passes(self, valid_render_result):
         """Word count at upper bound passes."""
-        # Target 700, 15% tolerance = int(700 * 1.15) = 804 (truncated)
-        valid_render_result.word_count = 804
+        # Target 700, 25% tolerance = int(700 * 1.25) = 875
+        valid_render_result.word_count = 875
 
         result = validate_word_count(valid_render_result)
         assert result.valid is True
 
     def test_below_tolerance_fails(self, valid_render_result):
         """Word count below tolerance fails."""
-        # Target 700, min 595
-        valid_render_result.word_count = 500  # Too low
+        # Target 700, min 525
+        valid_render_result.word_count = 400  # Too low
 
         result = validate_word_count(valid_render_result)
         assert result.valid is False
         assert result.error_type == "WordCountError"
         assert "too low" in result.error_message.lower()
-        assert result.details["actual_word_count"] == 500
+        assert result.details["actual_word_count"] == 400
 
     def test_above_tolerance_fails(self, valid_render_result):
         """Word count above tolerance fails."""
@@ -437,9 +437,9 @@ class TestWordCountValidation:
         assert "too high" in result.error_message.lower()
         assert result.details["actual_word_count"] == 1000
 
-    def test_tolerance_constant_is_15_percent(self):
-        """Verify tolerance constant is 15%."""
-        assert WORD_COUNT_TOLERANCE_PCT == 0.15
+    def test_tolerance_constant_is_25_percent(self):
+        """Verify tolerance constant is 25% (to accommodate AI generation variance)."""
+        assert WORD_COUNT_TOLERANCE_PCT == 0.25
 
 
 # ============================================================================
