@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -30,9 +30,13 @@ from .story_schemas import (
     BulkGenerateAsyncResponse,
     BulkGenerateRequest,
     BulkGenerateStatusResponse,
+    ChapterEntry,
     GameStoryResponse,
+    PlayEntry,
     RegenerateRequest,
     RegenerateResponse,
+    SectionEntry,
+    TimeRange,
 )
 
 router = APIRouter()
@@ -48,6 +52,202 @@ _bulk_jobs: dict[str, dict[str, Any]] = {}
 
 # Current story version - must match story_builder.py
 CURRENT_STORY_VERSION = "2.0.0"
+
+
+# ============================================================================
+# STORY CACHE FUNCTIONS
+# ============================================================================
+
+
+async def get_cached_story(
+    session: AsyncSession,
+    game_id: int,
+) -> GameStoryResponse | None:
+    """Retrieve a cached story from the database if it exists.
+
+    Args:
+        session: Database session
+        game_id: Game ID to look up
+
+    Returns:
+        GameStoryResponse if cached story exists with current version and compact_story,
+        None otherwise.
+    """
+    query = select(db_models.SportsGameStory).where(
+        and_(
+            db_models.SportsGameStory.game_id == game_id,
+            db_models.SportsGameStory.story_version == CURRENT_STORY_VERSION,
+            db_models.SportsGameStory.has_compact_story == True,
+        )
+    )
+    result = await session.execute(query)
+    cached = result.scalar_one_or_none()
+
+    if not cached:
+        return None
+
+    logger.info(f"Found cached story for game {game_id}")
+
+    try:
+        # Reconstruct GameStoryResponse from cached data
+        # chapters_json stores serialized chapters
+        chapters = []
+        for ch_data in cached.chapters_json or []:
+            plays = [PlayEntry(**p) for p in ch_data.get("plays", [])]
+            time_range = None
+            if ch_data.get("time_range"):
+                time_range = TimeRange(**ch_data["time_range"])
+            chapters.append(ChapterEntry(
+                chapter_id=ch_data["chapter_id"],
+                index=ch_data["index"],
+                play_start_idx=ch_data["play_start_idx"],
+                play_end_idx=ch_data["play_end_idx"],
+                play_count=ch_data["play_count"],
+                reason_codes=ch_data["reason_codes"],
+                period=ch_data.get("period"),
+                time_range=time_range,
+                plays=plays,
+            ))
+
+        # summaries_json stores serialized sections (repurposed field)
+        sections = []
+        for sec_data in cached.summaries_json or []:
+            sections.append(SectionEntry(
+                section_index=sec_data["section_index"],
+                beat_type=sec_data["beat_type"],
+                header=sec_data["header"],
+                chapters_included=sec_data["chapters_included"],
+                start_score=sec_data["start_score"],
+                end_score=sec_data["end_score"],
+                notes=sec_data.get("notes", []),
+            ))
+
+        # titles_json stores additional metadata (repurposed field)
+        metadata = cached.titles_json or {}
+
+        return GameStoryResponse(
+            game_id=cached.game_id,
+            sport=cached.sport,
+            story_version=cached.story_version,
+            chapters=chapters,
+            sections=sections,
+            chapter_count=cached.chapter_count,
+            section_count=len(sections),
+            total_plays=metadata.get("total_plays", sum(ch.play_count for ch in chapters)),
+            compact_story=cached.compact_story,
+            word_count=metadata.get("word_count"),
+            target_word_count=metadata.get("target_word_count"),
+            quality=metadata.get("quality"),
+            reading_time_estimate_minutes=cached.reading_time_minutes,
+            generated_at=cached.generated_at,
+            metadata=metadata.get("extra_metadata", {}),
+            has_compact_story=cached.has_compact_story,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to deserialize cached story for game {game_id}: {e}")
+        return None
+
+
+async def save_story_to_cache(
+    session: AsyncSession,
+    game: db_models.SportsGame,
+    story: GameStoryResponse,
+) -> None:
+    """Save a generated story to the database cache.
+
+    Args:
+        session: Database session
+        game: Game database object
+        story: Generated story response to cache
+    """
+    try:
+        # Serialize chapters
+        chapters_json = [
+            {
+                "chapter_id": ch.chapter_id,
+                "index": ch.index,
+                "play_start_idx": ch.play_start_idx,
+                "play_end_idx": ch.play_end_idx,
+                "play_count": ch.play_count,
+                "reason_codes": ch.reason_codes,
+                "period": ch.period,
+                "time_range": ch.time_range.model_dump() if ch.time_range else None,
+                "plays": [p.model_dump() for p in ch.plays],
+            }
+            for ch in story.chapters
+        ]
+
+        # Serialize sections (stored in summaries_json - repurposed)
+        sections_json = [
+            {
+                "section_index": sec.section_index,
+                "beat_type": sec.beat_type,
+                "header": sec.header,
+                "chapters_included": sec.chapters_included,
+                "start_score": sec.start_score,
+                "end_score": sec.end_score,
+                "notes": sec.notes,
+            }
+            for sec in story.sections
+        ]
+
+        # Store additional metadata in titles_json (repurposed)
+        metadata_json = {
+            "word_count": story.word_count,
+            "target_word_count": story.target_word_count,
+            "quality": story.quality,
+            "total_plays": story.total_plays,
+            "extra_metadata": story.metadata,
+        }
+
+        # Check if story already exists (update) or needs to be created
+        existing_query = select(db_models.SportsGameStory).where(
+            and_(
+                db_models.SportsGameStory.game_id == game.id,
+                db_models.SportsGameStory.story_version == CURRENT_STORY_VERSION,
+            )
+        )
+        result = await session.execute(existing_query)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            # Update existing record
+            existing.chapters_json = chapters_json
+            existing.summaries_json = sections_json
+            existing.titles_json = metadata_json
+            existing.compact_story = story.compact_story
+            existing.chapter_count = story.chapter_count
+            existing.reading_time_minutes = story.reading_time_estimate_minutes
+            existing.has_compact_story = story.has_compact_story
+            existing.generated_at = story.generated_at or datetime.now(timezone.utc)
+            existing.total_ai_calls = 1  # Single AI call in chapters-first
+            logger.info(f"Updated cached story for game {game.id}")
+        else:
+            # Create new record
+            cached_story = db_models.SportsGameStory(
+                game_id=game.id,
+                sport=story.sport,
+                story_version=CURRENT_STORY_VERSION,
+                chapters_json=chapters_json,
+                chapter_count=story.chapter_count,
+                summaries_json=sections_json,
+                titles_json=metadata_json,
+                compact_story=story.compact_story,
+                reading_time_minutes=story.reading_time_estimate_minutes,
+                has_summaries=False,  # Not used in chapters-first
+                has_titles=False,  # Not used in chapters-first
+                has_compact_story=story.has_compact_story,
+                generated_at=story.generated_at or datetime.now(timezone.utc),
+                total_ai_calls=1,  # Single AI call in chapters-first
+            )
+            session.add(cached_story)
+            logger.info(f"Created cached story for game {game.id}")
+
+        await session.commit()
+    except Exception as e:
+        logger.error(f"Failed to save story to cache for game {game.id}: {e}")
+        await session.rollback()
+        # Don't re-raise - caching failure shouldn't break the response
 
 
 async def _run_bulk_generation(
@@ -131,9 +331,11 @@ async def _run_bulk_generation(
 
                 try:
                     # Run the chapters-first pipeline
-                    await build_game_story_response(game, include_debug=False)
+                    story = await build_game_story_response(game, include_debug=False)
+                    # Save to cache
+                    await save_story_to_cache(session, game, story)
                     job["successful"] += 1
-                    logger.info(f"Generated story for game {game.id}")
+                    logger.info(f"Generated and cached story for game {game.id}")
                 except Exception as e:
                     logger.error(f"Failed to generate story for game {game.id}: {e}")
                     job["failed"] += 1
@@ -167,14 +369,15 @@ async def _run_bulk_generation(
 async def get_game_story(
     game_id: int,
     include_debug: bool = Query(False, description="Include debug info"),
+    force_regenerate: bool = Query(False, description="Force regeneration, bypassing cache"),
     session: AsyncSession = Depends(get_db),
 ) -> GameStoryResponse:
     """
     Get game story using chapters-first pipeline.
 
-    This is the ONLY story generation path. There are no fallbacks.
+    Returns cached story if available, otherwise generates and caches.
 
-    Pipeline:
+    Pipeline (only runs if not cached):
     chapters → running_stats → beat_classifier → story_sections →
     headers → quality → target_length → render (SINGLE AI CALL) → validate
 
@@ -184,6 +387,14 @@ async def get_game_story(
     - Compact story (AI-generated)
     - Quality assessment and word count metadata
     """
+    # Check cache first (unless force_regenerate is set)
+    if not force_regenerate and not include_debug:
+        cached_story = await get_cached_story(session, game_id)
+        if cached_story:
+            logger.info(f"Returning cached story for game {game_id}")
+            return cached_story
+
+    # Fetch game with plays for generation
     result = await session.execute(
         select(db_models.SportsGame)
         .options(
@@ -201,7 +412,13 @@ async def get_game_story(
         )
 
     try:
-        return await build_game_story_response(game, include_debug=include_debug)
+        story = await build_game_story_response(game, include_debug=include_debug)
+
+        # Cache the generated story (unless debug mode, which may have extra data)
+        if not include_debug:
+            await save_story_to_cache(session, game, story)
+
+        return story
     except PipelineError as e:
         logger.error(f"Pipeline error for game {game_id}: {e}")
         raise HTTPException(
@@ -248,6 +465,9 @@ async def regenerate_story(
 
         # Regenerate story using chapters-first pipeline
         story = await build_game_story_response(game, include_debug=request.debug)
+
+        # Save to cache (always save on explicit regenerate)
+        await save_story_to_cache(session, game, story)
 
         return RegenerateResponse(
             success=True,
