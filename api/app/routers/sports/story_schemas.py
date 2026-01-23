@@ -186,5 +186,5 @@ class BulkGenerateStatusResponse(BaseModel):
     status: str | None = Field(None, description="Status message")
     successful: int | None = Field(None, description="Number of successful generations")
     failed: int | None = Field(None, description="Number of failed generations")
-    cached: int | None = Field(None, description="Number of games with existing stories")
+    skipped: int | None = Field(None, description="Number of games skipped (story already exists)")
     result: dict[str, Any] | None = Field(None, description="Final result when complete")

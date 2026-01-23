@@ -47,6 +47,9 @@ app.conf.task_routes = {
 # It processes:
 # - Games missing timelines (newly completed games with PBP data)
 # - Games needing regeneration (PBP or social updated after timeline was generated)
+#
+# Story generation runs 15 minutes after timeline generation to allow timelines to complete.
+# It generates AI stories for all games in the last 3 days that have PBP data.
 app.conf.beat_schedule = {
     "daily-nba-ingestion-8am-eastern": {
         "task": "run_scheduled_ingestion",
@@ -56,6 +59,11 @@ app.conf.beat_schedule = {
     "daily-timeline-generation-930am-eastern": {
         "task": "run_scheduled_timeline_generation",
         "schedule": crontab(minute=30, hour=13),  # 9:30 AM EDT = 13:30 UTC (90 min after ingestion)
+        "options": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
+    },
+    "daily-story-generation-945am-eastern": {
+        "task": "run_scheduled_story_generation",
+        "schedule": crontab(minute=45, hour=13),  # 9:45 AM EDT = 13:45 UTC (15 min after timeline gen)
         "options": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
     },
 }

@@ -46,6 +46,10 @@ logger = logging.getLogger(__name__)
 _bulk_jobs: dict[str, dict[str, Any]] = {}
 
 
+# Current story version - must match story_builder.py
+CURRENT_STORY_VERSION = "2.0.0"
+
+
 async def _run_bulk_generation(
     job_id: str,
     start_date: str,
@@ -53,7 +57,16 @@ async def _run_bulk_generation(
     leagues: list[str],
     force: bool,
 ) -> None:
-    """Background task to run bulk story generation."""
+    """Background task to run bulk story generation.
+
+    Args:
+        job_id: Unique job identifier for tracking
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        leagues: List of league codes to process
+        force: If True, regenerate even if story already exists.
+               If False, skip games that already have stories.
+    """
     job = _bulk_jobs[job_id]
     job["state"] = "PROGRESS"
     job["status"] = "Starting..."
@@ -88,20 +101,39 @@ async def _run_bulk_generation(
             # Filter to games with plays
             games_with_pbp = [g for g in games if g.plays and len(g.plays) > 0]
 
+            # Get existing stories to check which games already have them
+            game_ids = [g.id for g in games_with_pbp]
+            existing_stories_query = select(db_models.SportsGameStory.game_id).where(
+                and_(
+                    db_models.SportsGameStory.game_id.in_(game_ids),
+                    db_models.SportsGameStory.story_version == CURRENT_STORY_VERSION,
+                    db_models.SportsGameStory.has_compact_story == True,
+                )
+            )
+            existing_result = await session.execute(existing_stories_query)
+            existing_story_game_ids = set(existing_result.scalars().all())
+
             job["total"] = len(games_with_pbp)
             job["current"] = 0
             job["successful"] = 0
             job["failed"] = 0
-            job["cached"] = 0
+            job["skipped"] = 0
 
             for i, game in enumerate(games_with_pbp):
                 job["current"] = i + 1
                 job["status"] = f"Processing game {game.id}"
 
+                # Check if story already exists
+                if game.id in existing_story_game_ids and not force:
+                    logger.info(f"Skipping game {game.id} - story already exists")
+                    job["skipped"] += 1
+                    continue
+
                 try:
                     # Run the chapters-first pipeline
                     await build_game_story_response(game, include_debug=False)
                     job["successful"] += 1
+                    logger.info(f"Generated story for game {game.id}")
                 except Exception as e:
                     logger.error(f"Failed to generate story for game {game.id}: {e}")
                     job["failed"] += 1
@@ -113,11 +145,11 @@ async def _run_bulk_generation(
             job["status"] = "Complete"
             job["result"] = {
                 "success": True,
-                "message": f"Generated stories for {job['successful']} of {job['total']} games",
+                "message": f"Generated stories for {job['successful']} games ({job['skipped']} skipped, {job['failed']} failed)",
                 "total_games": job["total"],
                 "successful": job["successful"],
                 "failed": job["failed"],
-                "cached": job["cached"],
+                "skipped": job["skipped"],
                 "generated": job["successful"],
             }
 
@@ -271,7 +303,7 @@ async def bulk_generate_stories_async(
         "status": "Queued",
         "successful": 0,
         "failed": 0,
-        "cached": 0,
+        "skipped": 0,
         "result": None,
     }
 
@@ -313,6 +345,6 @@ async def get_bulk_generate_status(job_id: str) -> BulkGenerateStatusResponse:
         status=job.get("status"),
         successful=job.get("successful"),
         failed=job.get("failed"),
-        cached=job.get("cached"),
+        skipped=job.get("skipped"),
         result=job.get("result"),
     )
