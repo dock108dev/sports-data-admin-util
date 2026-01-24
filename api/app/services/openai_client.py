@@ -19,14 +19,14 @@ logger = logging.getLogger(__name__)
 
 class OpenAIClient:
     """OpenAI client for story generation.
-    
+
     This client provides a simple .generate(prompt) interface
     that the chapter generators expect.
     """
-    
+
     def __init__(self, api_key: str | None = None, model: str = "gpt-4o-mini"):
         """Initialize OpenAI client.
-        
+
         Args:
             api_key: OpenAI API key (if None, uses settings)
             model: Model to use for generation
@@ -34,13 +34,13 @@ class OpenAIClient:
         settings = get_settings()
         self.api_key = api_key or settings.openai_api_key
         self.model = model
-        
+
         if not self.api_key:
             raise ValueError("OpenAI API key not configured")
-        
+
         self.client = OpenAI(api_key=self.api_key)
         logger.info(f"OpenAI client initialized with model: {self.model}")
-    
+
     def generate(
         self,
         prompt: str,
@@ -71,12 +71,9 @@ class OpenAIClient:
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a sports narrative writer. Generate engaging, accurate summaries of game moments. Always respond with valid JSON."
+                            "content": "You are a sports narrative writer. Generate engaging, accurate summaries of game moments. Always respond with valid JSON.",
                         },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
+                        {"role": "user", "content": prompt},
                     ],
                     temperature=temperature,
                     max_tokens=max_tokens,
@@ -114,25 +111,29 @@ class OpenAIClient:
 
             except Exception as e:
                 last_error = e
-                logger.error(f"OpenAI generation failed (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.error(
+                    f"OpenAI generation failed (attempt {attempt + 1}/{max_retries}): {e}"
+                )
                 # For non-JSON errors, also retry (could be transient API issues)
 
-        logger.error(f"OpenAI generation failed after {max_retries} attempts: {last_error}")
+        logger.error(
+            f"OpenAI generation failed after {max_retries} attempts: {last_error}"
+        )
         raise last_error or Exception("OpenAI generation failed")
 
 
 def get_openai_client() -> OpenAIClient | None:
     """Get OpenAI client if API key is configured.
-    
+
     Returns:
         OpenAIClient if configured, None otherwise
     """
     settings = get_settings()
-    
+
     if not settings.openai_api_key:
         logger.warning("OpenAI API key not configured - AI generation disabled")
         return None
-    
+
     try:
         return OpenAIClient()
     except Exception as e:

@@ -56,48 +56,39 @@ HEADER_TEMPLATES: dict[BeatType, list[str]] = {
         "Both teams opened at a fast pace.",
         "The game began with early energy from both sides.",
     ],
-
     BeatType.MISSED_SHOT_FEST: [
         "Scoring was hard to come by as missed shots piled up.",
         "Neither team found a rhythm as shots failed to fall.",
     ],
-
     BeatType.BACK_AND_FORTH: [
         "Neither side could separate as play moved back and forth.",
         "The teams traded possessions without building significant separation.",
         "Competitive play continued without a clear advantage for either side.",
     ],
-
     BeatType.EARLY_CONTROL: [
         "One team began to establish a modest edge.",
         "A gap started to form as one side found its footing.",
     ],
-
     BeatType.RUN: [
         "A stretch of scoring created separation on the scoreboard.",
         "One team strung together consecutive buckets to pull ahead.",
     ],
-
     BeatType.RESPONSE: [
         "The opposing side answered to keep the game within reach.",
         "A response brought the trailing team back into contention.",
     ],
-
     BeatType.STALL: [
         "The game slowed with little sustained scoring.",
         "Action stalled as both teams struggled to generate offense.",
     ],
-
     BeatType.CRUNCH_SETUP: [
         "The game tightened late as every possession began to matter.",
         "With time winding down, the margin remained close.",
     ],
-
     BeatType.CLOSING_SEQUENCE: [
         "Late possessions took on added importance down the stretch.",
         "The final minutes arrived with the outcome still uncertain.",
     ],
-
     BeatType.OVERTIME: [
         "Overtime extended the game into a survival phase.",
         "Extra time was needed to determine the outcome.",
@@ -108,6 +99,7 @@ HEADER_TEMPLATES: dict[BeatType, list[str]] = {
 # ============================================================================
 # HEADER CONTEXT
 # ============================================================================
+
 
 @dataclass
 class HeaderContext:
@@ -143,6 +135,7 @@ class HeaderContext:
 # ============================================================================
 # HEADER GENERATION
 # ============================================================================
+
 
 def build_header_context(section: StorySection) -> HeaderContext:
     """Build header context from a StorySection.
@@ -257,6 +250,7 @@ def generate_all_headers(sections: list[StorySection]) -> list[str]:
 # VALIDATION
 # ============================================================================
 
+
 def validate_header(header: str) -> list[str]:
     """Validate that a header meets all constraints.
 
@@ -327,6 +321,7 @@ def validate_all_headers(headers: list[str]) -> dict[int, list[str]]:
 # ============================================================================
 # DEBUG OUTPUT
 # ============================================================================
+
 
 def format_headers_debug(sections: list[StorySection], headers: list[str]) -> str:
     """Format headers with their sections for debugging.

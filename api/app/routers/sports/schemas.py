@@ -29,6 +29,7 @@ class ScrapeRunConfig(BaseModel):
         Boxscores for future dates simply return no data (graceful no-op).
         """
         from datetime import timedelta
+
         today = date.today()
         max_future = today + timedelta(days=7)
 
@@ -63,7 +64,9 @@ class ScrapeRunConfig(BaseModel):
             "social": self.social,
             "pbp": self.pbp,
             "only_missing": self.only_missing,
-            "updated_before": self.updated_before.isoformat() if self.updated_before else None,
+            "updated_before": self.updated_before.isoformat()
+            if self.updated_before
+            else None,
             "include_books": self.include_books,
         }
 

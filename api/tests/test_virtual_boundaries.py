@@ -8,7 +8,6 @@ Tests cover:
 4. Serialization (to_dict with and without debug)
 """
 
-import pytest
 from typing import Any
 
 from app.services.chapters import (
@@ -51,7 +50,9 @@ def create_play(
     )
 
 
-def create_chapter_with_plays(plays: list[Play], reason_codes: list[str] | None = None) -> Chapter:
+def create_chapter_with_plays(
+    plays: list[Play], reason_codes: list[str] | None = None
+) -> Chapter:
     """Create a test Chapter object."""
     if not plays:
         raise ValueError("Cannot create chapter with no plays")
@@ -81,15 +82,17 @@ def create_timeline_with_scores(
     """
     timeline = []
     for i, (home, away) in enumerate(scores):
-        timeline.append({
-            "event_type": "pbp",
-            "quarter": quarter,
-            "play_id": i,
-            "description": f"Play {i}",
-            "home_score": home,
-            "away_score": away,
-            "game_clock": f"{12 - i}:00",
-        })
+        timeline.append(
+            {
+                "event_type": "pbp",
+                "quarter": quarter,
+                "play_id": i,
+                "description": f"Play {i}",
+                "home_score": home,
+                "away_score": away,
+                "game_clock": f"{12 - i}:00",
+            }
+        )
     return timeline
 
 
@@ -130,7 +133,9 @@ def test_detect_run_start_8_points():
 
     boundaries = detect_virtual_boundaries(chapter)
 
-    run_starts = [b for b in boundaries if b.reason == VirtualBoundaryReason.RUN_START.value]
+    run_starts = [
+        b for b in boundaries if b.reason == VirtualBoundaryReason.RUN_START.value
+    ]
     assert len(run_starts) == 1
     assert run_starts[0].team_id == "away"
 
@@ -146,7 +151,9 @@ def test_no_run_start_under_threshold():
 
     boundaries = detect_virtual_boundaries(chapter)
 
-    run_starts = [b for b in boundaries if b.reason == VirtualBoundaryReason.RUN_START.value]
+    run_starts = [
+        b for b in boundaries if b.reason == VirtualBoundaryReason.RUN_START.value
+    ]
     assert len(run_starts) == 0
 
 
@@ -169,7 +176,9 @@ def test_detect_run_end():
 
     boundaries = detect_virtual_boundaries(chapter)
 
-    run_ends = [b for b in boundaries if b.reason == VirtualBoundaryReason.RUN_END.value]
+    run_ends = [
+        b for b in boundaries if b.reason == VirtualBoundaryReason.RUN_END.value
+    ]
     assert len(run_ends) == 1
     assert run_ends[0].team_id == "home"
     assert run_ends[0].play_index == 4
@@ -188,7 +197,9 @@ def test_no_run_end_if_run_not_started():
 
     boundaries = detect_virtual_boundaries(chapter)
 
-    run_ends = [b for b in boundaries if b.reason == VirtualBoundaryReason.RUN_END.value]
+    run_ends = [
+        b for b in boundaries if b.reason == VirtualBoundaryReason.RUN_END.value
+    ]
     assert len(run_ends) == 0
 
 
@@ -201,14 +212,16 @@ def test_detect_lead_change():
     """Lead change should create LEAD_CHANGE marker."""
     # Home leads, then away takes lead
     plays = [
-        create_play(0, home_score=5, away_score=3),   # Home leads
-        create_play(1, home_score=5, away_score=6),   # Away takes lead
+        create_play(0, home_score=5, away_score=3),  # Home leads
+        create_play(1, home_score=5, away_score=6),  # Away takes lead
     ]
     chapter = create_chapter_with_plays(plays)
 
     boundaries = detect_virtual_boundaries(chapter)
 
-    lead_changes = [b for b in boundaries if b.reason == VirtualBoundaryReason.LEAD_CHANGE.value]
+    lead_changes = [
+        b for b in boundaries if b.reason == VirtualBoundaryReason.LEAD_CHANGE.value
+    ]
     assert len(lead_changes) == 1
     assert lead_changes[0].team_id == "away"
     assert lead_changes[0].play_index == 1
@@ -217,15 +230,17 @@ def test_detect_lead_change():
 def test_detect_multiple_lead_changes():
     """Multiple lead changes should all be detected."""
     plays = [
-        create_play(0, home_score=5, away_score=3),   # Home leads
-        create_play(1, home_score=5, away_score=6),   # Away leads
-        create_play(2, home_score=8, away_score=6),   # Home leads again
+        create_play(0, home_score=5, away_score=3),  # Home leads
+        create_play(1, home_score=5, away_score=6),  # Away leads
+        create_play(2, home_score=8, away_score=6),  # Home leads again
     ]
     chapter = create_chapter_with_plays(plays)
 
     boundaries = detect_virtual_boundaries(chapter)
 
-    lead_changes = [b for b in boundaries if b.reason == VirtualBoundaryReason.LEAD_CHANGE.value]
+    lead_changes = [
+        b for b in boundaries if b.reason == VirtualBoundaryReason.LEAD_CHANGE.value
+    ]
     assert len(lead_changes) == 2
     assert lead_changes[0].team_id == "away"
     assert lead_changes[1].team_id == "home"
@@ -234,14 +249,16 @@ def test_detect_multiple_lead_changes():
 def test_no_lead_change_from_tie():
     """Taking lead from tie is NOT a lead change."""
     plays = [
-        create_play(0, home_score=5, away_score=5),   # Tied
-        create_play(1, home_score=7, away_score=5),   # Home takes lead (from tie)
+        create_play(0, home_score=5, away_score=5),  # Tied
+        create_play(1, home_score=7, away_score=5),  # Home takes lead (from tie)
     ]
     chapter = create_chapter_with_plays(plays)
 
     boundaries = detect_virtual_boundaries(chapter)
 
-    lead_changes = [b for b in boundaries if b.reason == VirtualBoundaryReason.LEAD_CHANGE.value]
+    lead_changes = [
+        b for b in boundaries if b.reason == VirtualBoundaryReason.LEAD_CHANGE.value
+    ]
     assert len(lead_changes) == 0
 
 
@@ -253,14 +270,16 @@ def test_no_lead_change_from_tie():
 def test_detect_tie_creation():
     """Game becoming tied should create TIE_CREATION marker."""
     plays = [
-        create_play(0, home_score=5, away_score=3),   # Home leads
-        create_play(1, home_score=5, away_score=5),   # Tied
+        create_play(0, home_score=5, away_score=3),  # Home leads
+        create_play(1, home_score=5, away_score=5),  # Tied
     ]
     chapter = create_chapter_with_plays(plays)
 
     boundaries = detect_virtual_boundaries(chapter)
 
-    ties = [b for b in boundaries if b.reason == VirtualBoundaryReason.TIE_CREATION.value]
+    ties = [
+        b for b in boundaries if b.reason == VirtualBoundaryReason.TIE_CREATION.value
+    ]
     assert len(ties) == 1
     assert ties[0].team_id is None
     assert ties[0].play_index == 1
@@ -269,14 +288,16 @@ def test_detect_tie_creation():
 def test_no_tie_creation_if_already_tied():
     """Staying tied should not create TIE_CREATION marker."""
     plays = [
-        create_play(0, home_score=5, away_score=5),   # Already tied
-        create_play(1, home_score=5, away_score=5),   # Still tied (no scoring)
+        create_play(0, home_score=5, away_score=5),  # Already tied
+        create_play(1, home_score=5, away_score=5),  # Still tied (no scoring)
     ]
     chapter = create_chapter_with_plays(plays)
 
     boundaries = detect_virtual_boundaries(chapter)
 
-    ties = [b for b in boundaries if b.reason == VirtualBoundaryReason.TIE_CREATION.value]
+    ties = [
+        b for b in boundaries if b.reason == VirtualBoundaryReason.TIE_CREATION.value
+    ]
     assert len(ties) == 0
 
 
@@ -361,8 +382,13 @@ def test_chapter_count_unchanged_with_virtual_boundaries():
     """Adding virtual boundary detection should NOT change chapter count."""
     # Create a timeline where we know a run will occur
     scores = [
-        (0, 0), (2, 0), (4, 0), (6, 0),  # Home run of 6
-        (6, 2), (6, 4), (6, 6),           # Away answers
+        (0, 0),
+        (2, 0),
+        (4, 0),
+        (6, 0),  # Home run of 6
+        (6, 2),
+        (6, 4),
+        (6, 6),  # Away answers
     ]
     timeline = create_timeline_with_scores(scores)
 
@@ -383,15 +409,17 @@ def test_multi_quarter_chapter_count_unchanged():
     for q in range(1, 5):
         for p in range(5):
             play_idx = (q - 1) * 5 + p
-            timeline.append({
-                "event_type": "pbp",
-                "quarter": q,
-                "play_id": play_idx,
-                "description": f"Play {play_idx}",
-                "home_score": play_idx * 2,
-                "away_score": play_idx * 2 + 1,
-                "game_clock": f"{12 - p}:00",
-            })
+            timeline.append(
+                {
+                    "event_type": "pbp",
+                    "quarter": q,
+                    "play_id": play_idx,
+                    "description": f"Play {play_idx}",
+                    "home_score": play_idx * 2,
+                    "away_score": play_idx * 2 + 1,
+                    "game_clock": f"{12 - p}:00",
+                }
+            )
 
     story = build_chapters(timeline, game_id=1)
 
@@ -440,7 +468,10 @@ def test_to_dict_with_debug_includes_virtual_boundaries():
 
     assert "virtual_boundaries" in result
     assert len(result["virtual_boundaries"]) > 0
-    assert result["virtual_boundaries"][0]["reason"] == VirtualBoundaryReason.RUN_START.value
+    assert (
+        result["virtual_boundaries"][0]["reason"]
+        == VirtualBoundaryReason.RUN_START.value
+    )
 
 
 def test_boundary_marker_to_dict():
@@ -473,15 +504,17 @@ def test_build_chapters_assigns_boundary_type():
     for q in range(1, 3):
         for p in range(3):
             play_idx = (q - 1) * 3 + p
-            timeline.append({
-                "event_type": "pbp",
-                "quarter": q,
-                "play_id": play_idx,
-                "description": f"Play {play_idx}",
-                "home_score": 0,
-                "away_score": 0,
-                "game_clock": "10:00",
-            })
+            timeline.append(
+                {
+                    "event_type": "pbp",
+                    "quarter": q,
+                    "play_id": play_idx,
+                    "description": f"Play {play_idx}",
+                    "home_score": 0,
+                    "away_score": 0,
+                    "game_clock": "10:00",
+                }
+            )
 
     story = build_chapters(timeline, game_id=1)
 
@@ -494,10 +527,38 @@ def test_build_chapters_detects_virtual_boundaries():
     """build_chapters should detect virtual boundaries in chapters."""
     # Create a scoring run within Q1
     timeline = [
-        {"event_type": "pbp", "quarter": 1, "play_id": 0, "home_score": 0, "away_score": 0, "game_clock": "12:00"},
-        {"event_type": "pbp", "quarter": 1, "play_id": 1, "home_score": 2, "away_score": 0, "game_clock": "11:00"},
-        {"event_type": "pbp", "quarter": 1, "play_id": 2, "home_score": 4, "away_score": 0, "game_clock": "10:00"},
-        {"event_type": "pbp", "quarter": 1, "play_id": 3, "home_score": 6, "away_score": 0, "game_clock": "9:00"},
+        {
+            "event_type": "pbp",
+            "quarter": 1,
+            "play_id": 0,
+            "home_score": 0,
+            "away_score": 0,
+            "game_clock": "12:00",
+        },
+        {
+            "event_type": "pbp",
+            "quarter": 1,
+            "play_id": 1,
+            "home_score": 2,
+            "away_score": 0,
+            "game_clock": "11:00",
+        },
+        {
+            "event_type": "pbp",
+            "quarter": 1,
+            "play_id": 2,
+            "home_score": 4,
+            "away_score": 0,
+            "game_clock": "10:00",
+        },
+        {
+            "event_type": "pbp",
+            "quarter": 1,
+            "play_id": 3,
+            "home_score": 6,
+            "away_score": 0,
+            "game_clock": "9:00",
+        },
     ]
 
     story = build_chapters(timeline, game_id=1)
@@ -506,6 +567,9 @@ def test_build_chapters_detects_virtual_boundaries():
     chapter = story.chapters[0]
 
     # Should have RUN_START virtual boundary
-    run_starts = [vb for vb in chapter.virtual_boundaries
-                  if vb.reason == VirtualBoundaryReason.RUN_START.value]
+    run_starts = [
+        vb
+        for vb in chapter.virtual_boundaries
+        if vb.reason == VirtualBoundaryReason.RUN_START.value
+    ]
     assert len(run_starts) == 1

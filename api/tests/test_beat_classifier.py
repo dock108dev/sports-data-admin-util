@@ -11,45 +11,50 @@ These tests validate:
 ISSUE: Beat Classifier (Chapters-First Architecture)
 """
 
-import pytest
-
 from app.services.chapters.types import Chapter, Play
 from app.services.chapters.beat_classifier import (
     # Core types
     BeatType,
-    BeatDescriptor,  # Phase 2.1
-    RunWindow,  # Phase 2.2
-    ResponseWindow,  # Phase 2.3
-    BackAndForthWindow,  # Phase 2.4
+    BeatDescriptor,
+    RunWindow,
+    ResponseWindow,
+    BackAndForthWindow,
+    EarlyWindowStats,
+    SectionBeatOverride,
     ChapterContext,
     BeatClassification,
-    # Constants (Phase 2.1)
+    # Constants
     PRIMARY_BEATS,
     BEAT_PRIORITY,
     MISSED_SHOT_PPP_THRESHOLD,
-    # Constants (Phase 2.2)
     RUN_WINDOW_THRESHOLD,
     RUN_MARGIN_EXPANSION_THRESHOLD,
-    # Constants (Phase 2.4)
     BACK_AND_FORTH_LEAD_CHANGES_THRESHOLD,
     BACK_AND_FORTH_TIES_THRESHOLD,
+    EARLY_WINDOW_DURATION_SECONDS,
+    FAST_START_MIN_COMBINED_POINTS,
+    FAST_START_MAX_MARGIN,
+    EARLY_CONTROL_MIN_LEAD,
+    EARLY_CONTROL_MIN_SHARE_PCT,
+    CRUNCH_SETUP_TIME_THRESHOLD,
+    CRUNCH_SETUP_MARGIN_THRESHOLD,
+    CLOSING_SEQUENCE_TIME_THRESHOLD,
+    CLOSING_SEQUENCE_MARGIN_THRESHOLD,
     # Functions
     classify_chapter_beat,
     classify_all_chapters,
-    build_chapter_context,
     parse_game_clock_to_seconds,
     format_classification_debug,
     get_beat_distribution,
-    _compute_descriptors,  # Phase 2.1
-    # Run window functions (Phase 2.2)
+    _compute_descriptors,
     detect_run_windows,
     get_qualifying_run_windows,
-    # Response window functions (Phase 2.3)
     detect_response_windows,
     get_qualifying_response_windows,
-    # Back-and-forth window functions (Phase 2.4)
     detect_back_and_forth_window,
     get_qualifying_back_and_forth_window,
+    detect_section_fast_start,
+    detect_section_early_control,
     # Rule functions (for direct testing)
     _check_overtime,
     _check_closing_sequence,
@@ -57,7 +62,7 @@ from app.services.chapters.beat_classifier import (
     _check_run,
     _check_response,
     _check_stall,
-    _check_back_and_forth,  # Phase 2.4
+    _check_back_and_forth,
     _default_back_and_forth,
 )
 
@@ -65,6 +70,7 @@ from app.services.chapters.beat_classifier import (
 # ============================================================================
 # TEST HELPERS
 # ============================================================================
+
 
 def make_play(
     index: int,
@@ -165,6 +171,7 @@ def make_context(
 # TEST: TIME PARSING
 # ============================================================================
 
+
 class TestTimeParsing:
     """Tests for game clock parsing."""
 
@@ -192,6 +199,7 @@ class TestTimeParsing:
 # ============================================================================
 # TEST: BEAT TYPE ENUM
 # ============================================================================
+
 
 class TestBeatTypeEnum:
     """Tests for BeatType enum."""
@@ -221,6 +229,7 @@ class TestBeatTypeEnum:
 # ============================================================================
 # TEST: EACH BEAT TYPE
 # ============================================================================
+
 
 class TestOvertimeBeat:
     """Tests for OVERTIME beat assignment."""
@@ -358,7 +367,7 @@ class TestRunBeat:
                     start_home_score=5,
                     start_away_score=8,  # Away leading
                     end_home_score=13,
-                    end_away_score=8,    # Home now leading
+                    end_away_score=8,  # Home now leading
                     caused_lead_change=True,
                     margin_expansion=8,
                 )
@@ -454,8 +463,8 @@ class TestResponseBeat:
         ctx = make_context(
             previous_beat_type=BeatType.RUN,
             previous_run_windows=[previous_run],
-            home_points_scored=2,   # Run team scores 2
-            away_points_scored=8,   # Responding team scores 8
+            home_points_scored=2,  # Run team scores 2
+            away_points_scored=8,  # Responding team scores 8
         )
         result = _check_response(ctx)
         assert result is not None
@@ -492,8 +501,8 @@ class TestResponseBeat:
         ctx = make_context(
             previous_beat_type=BeatType.RUN,
             previous_run_windows=[previous_run],
-            home_points_scored=8,   # Run team scores MORE
-            away_points_scored=4,   # Responding team scores less
+            home_points_scored=8,  # Run team scores MORE
+            away_points_scored=4,  # Responding team scores less
         )
         result = _check_response(ctx)
         assert result is None
@@ -517,8 +526,8 @@ class TestResponseBeat:
         ctx = make_context(
             previous_beat_type=BeatType.RUN,
             previous_run_windows=[previous_run],
-            home_points_scored=0,   # Run team scores NOTHING
-            away_points_scored=6,   # Responding team scores
+            home_points_scored=0,  # Run team scores NOTHING
+            away_points_scored=6,  # Responding team scores
         )
         result = _check_response(ctx)
         assert result is not None
@@ -590,6 +599,7 @@ class TestBackAndForthBeat:
 # ============================================================================
 # TEST: RULE PRIORITY CONFLICTS
 # ============================================================================
+
 
 class TestRulePriority:
     """Tests for rule priority (higher wins)."""
@@ -690,8 +700,8 @@ class TestRulePriority:
             time_remaining_seconds=500,
             previous_beat_type=BeatType.RUN,
             previous_run_windows=[previous_run],
-            home_points_scored=4,   # Run team (home) scores less
-            away_points_scored=6,   # Responding team (away) scores more
+            home_points_scored=4,  # Run team (home) scores less
+            away_points_scored=6,  # Responding team (away) scores more
         )
         result = classify_chapter_beat(ctx)
         # This should be RESPONSE since previous was RUN and responding team outscored
@@ -701,6 +711,7 @@ class TestRulePriority:
 # ============================================================================
 # TEST: EDGE CASES
 # ============================================================================
+
 
 class TestEdgeCases:
     """Tests for edge cases and boundary conditions."""
@@ -831,6 +842,7 @@ class TestEdgeCases:
 # TEST: DETERMINISM
 # ============================================================================
 
+
 class TestDeterminism:
     """Tests for deterministic behavior."""
 
@@ -865,13 +877,18 @@ class TestDeterminism:
 # TEST: BATCH CLASSIFICATION
 # ============================================================================
 
+
 class TestBatchClassification:
     """Tests for classify_all_chapters."""
 
     def test_classify_multiple_chapters(self):
         """Classify multiple chapters."""
         plays1 = [make_play(0, "play", quarter=1, game_clock="10:00")]
-        plays2 = [make_play(1, "play", quarter=4, game_clock="1:00", home_score=80, away_score=78)]
+        plays2 = [
+            make_play(
+                1, "play", quarter=4, game_clock="1:00", home_score=80, away_score=78
+            )
+        ]
 
         chapters = [
             make_chapter("ch_001", plays1, period=1),
@@ -888,13 +905,27 @@ class TestBatchClassification:
         """RESPONSE only after RUN."""
         # First chapter: 10-0 run
         plays1 = [
-            make_play(0, "LAL makes 3-pt shot", quarter=2, game_clock="8:00",
-                     home_score=10, away_score=0, team_abbr="LAL"),
+            make_play(
+                0,
+                "LAL makes 3-pt shot",
+                quarter=2,
+                game_clock="8:00",
+                home_score=10,
+                away_score=0,
+                team_abbr="LAL",
+            ),
         ]
         # Second chapter: opponent responds
         plays2 = [
-            make_play(1, "BOS makes layup", quarter=2, game_clock="6:00",
-                     home_score=12, away_score=4, team_abbr="BOS"),
+            make_play(
+                1,
+                "BOS makes layup",
+                quarter=2,
+                game_clock="6:00",
+                home_score=12,
+                away_score=4,
+                team_abbr="BOS",
+            ),
         ]
 
         chapters = [
@@ -911,6 +942,7 @@ class TestBatchClassification:
 # ============================================================================
 # TEST: DEBUG OUTPUT
 # ============================================================================
+
 
 class TestDebugOutput:
     """Tests for debug output functions."""
@@ -949,6 +981,7 @@ class TestDebugOutput:
 # TEST: SERIALIZATION
 # ============================================================================
 
+
 class TestSerialization:
     """Tests for serialization."""
 
@@ -980,6 +1013,7 @@ class TestSerialization:
 # ============================================================================
 # TEST: PHASE 2.1 - BEAT DESCRIPTORS
 # ============================================================================
+
 
 class TestBeatDescriptorEnum:
     """Tests for BeatDescriptor enum (Phase 2.1)."""
@@ -1205,6 +1239,7 @@ class TestClassificationSerialization:
 # TEST: PHASE 2.2 - RUN WINDOW DETECTION
 # ============================================================================
 
+
 class TestRunWindowThresholds:
     """Tests for run window threshold constants."""
 
@@ -1250,7 +1285,11 @@ class TestDetectRunWindows:
             {"description": "LAL makes layup", "home_score": 2, "away_score": 0},
             {"description": "LAL makes 3-pt shot", "home_score": 5, "away_score": 0},
             {"description": "LAL makes layup", "home_score": 7, "away_score": 0},
-            {"description": "BOS makes layup", "home_score": 7, "away_score": 2},  # Run ends here
+            {
+                "description": "BOS makes layup",
+                "home_score": 7,
+                "away_score": 2,
+            },  # Run ends here
             {"description": "LAL makes layup", "home_score": 9, "away_score": 2},
         ]
         windows = detect_run_windows(plays)
@@ -1265,9 +1304,17 @@ class TestDetectRunWindows:
             {"description": "LAL makes layup", "home_score": 2, "away_score": 0},
             {"description": "LAL makes 3-pt shot", "home_score": 5, "away_score": 0},
             {"description": "LAL makes layup", "home_score": 7, "away_score": 0},
-            {"description": "BOS makes layup", "home_score": 7, "away_score": 2},  # Run 1 ends
+            {
+                "description": "BOS makes layup",
+                "home_score": 7,
+                "away_score": 2,
+            },  # Run 1 ends
             {"description": "BOS makes 3-pt shot", "home_score": 7, "away_score": 5},
-            {"description": "BOS makes layup", "home_score": 7, "away_score": 7},  # Run 2 (2+3+2=7 pts)
+            {
+                "description": "BOS makes layup",
+                "home_score": 7,
+                "away_score": 7,
+            },  # Run 2 (2+3+2=7 pts)
         ]
         windows = detect_run_windows(plays)
 
@@ -1536,6 +1583,7 @@ class TestRunWindowSerialization:
 # TEST: PHASE 2.3 - RESPONSE WINDOW DETECTION
 # ============================================================================
 
+
 class TestDetectResponseWindows:
     """Tests for detect_response_windows function."""
 
@@ -1760,6 +1808,7 @@ class TestRunResponseSequence:
 # TEST: PHASE 2.4 - BACK_AND_FORTH WINDOW DETECTION
 # ============================================================================
 
+
 class TestBackAndForthThresholds:
     """Tests for back-and-forth window threshold constants."""
 
@@ -1779,9 +1828,21 @@ class TestDetectBackAndForthWindow:
         """Detect lead changes in chapter."""
         plays = [
             {"description": "LAL makes layup", "home_score": 2, "away_score": 0},
-            {"description": "BOS makes 3-pt shot", "home_score": 2, "away_score": 3},  # Lead change: home→away
-            {"description": "LAL makes 3-pt shot", "home_score": 5, "away_score": 3},  # Lead change: away→home
-            {"description": "BOS makes 3-pt shot", "home_score": 5, "away_score": 6},  # Lead change: home→away
+            {
+                "description": "BOS makes 3-pt shot",
+                "home_score": 2,
+                "away_score": 3,
+            },  # Lead change: home→away
+            {
+                "description": "LAL makes 3-pt shot",
+                "home_score": 5,
+                "away_score": 3,
+            },  # Lead change: away→home
+            {
+                "description": "BOS makes 3-pt shot",
+                "home_score": 5,
+                "away_score": 6,
+            },  # Lead change: home→away
         ]
         window = detect_back_and_forth_window(plays)
 
@@ -1792,11 +1853,23 @@ class TestDetectBackAndForthWindow:
         """Detect tie creations in chapter."""
         plays = [
             {"description": "LAL makes layup", "home_score": 2, "away_score": 0},
-            {"description": "BOS makes layup", "home_score": 2, "away_score": 2},  # Tie created
+            {
+                "description": "BOS makes layup",
+                "home_score": 2,
+                "away_score": 2,
+            },  # Tie created
             {"description": "LAL makes layup", "home_score": 4, "away_score": 2},
-            {"description": "BOS makes layup", "home_score": 4, "away_score": 4},  # Tie created
+            {
+                "description": "BOS makes layup",
+                "home_score": 4,
+                "away_score": 4,
+            },  # Tie created
             {"description": "LAL makes layup", "home_score": 6, "away_score": 4},
-            {"description": "BOS makes layup", "home_score": 6, "away_score": 6},  # Tie created
+            {
+                "description": "BOS makes layup",
+                "home_score": 6,
+                "away_score": 6,
+            },  # Tie created
         ]
         window = detect_back_and_forth_window(plays)
 
@@ -1903,8 +1976,16 @@ class TestGetQualifyingBackAndForthWindow:
         """Returns window when qualifying."""
         plays = [
             {"description": "LAL makes layup", "home_score": 2, "away_score": 0},
-            {"description": "BOS makes 3-pt shot", "home_score": 2, "away_score": 3},  # Lead change 1
-            {"description": "LAL makes 3-pt shot", "home_score": 5, "away_score": 3},  # Lead change 2
+            {
+                "description": "BOS makes 3-pt shot",
+                "home_score": 2,
+                "away_score": 3,
+            },  # Lead change 1
+            {
+                "description": "LAL makes 3-pt shot",
+                "home_score": 5,
+                "away_score": 3,
+            },  # Lead change 2
         ]
         window = get_qualifying_back_and_forth_window(plays)
 
@@ -2114,23 +2195,6 @@ class TestBackAndForthWindowSerialization:
 # ============================================================================
 # TEST: PHASE 2.5 - SECTION-LEVEL FAST_START & EARLY_CONTROL
 # ============================================================================
-
-from app.services.chapters.beat_classifier import (
-    # Types
-    EarlyWindowStats,
-    SectionBeatOverride,
-    # Constants
-    EARLY_WINDOW_DURATION_SECONDS,
-    FAST_START_MIN_COMBINED_POINTS,
-    FAST_START_MAX_MARGIN,
-    EARLY_CONTROL_MIN_LEAD,
-    EARLY_CONTROL_MIN_SHARE_PCT,
-    # Functions
-    compute_early_window_stats,
-    detect_section_fast_start,
-    detect_section_early_control,
-    detect_opening_section_beat,
-)
 
 
 class TestEarlyWindowConstants:
@@ -2434,13 +2498,6 @@ class TestEarlyWindowStatsSerialization:
 # ============================================================================
 # TEST: PHASE 2.6 - CRUNCH_SETUP & CLOSING_SEQUENCE
 # ============================================================================
-
-from app.services.chapters.beat_classifier import (
-    CRUNCH_SETUP_TIME_THRESHOLD,
-    CRUNCH_SETUP_MARGIN_THRESHOLD,
-    CLOSING_SEQUENCE_TIME_THRESHOLD,
-    CLOSING_SEQUENCE_MARGIN_THRESHOLD,
-)
 
 
 class TestPhase26Constants:

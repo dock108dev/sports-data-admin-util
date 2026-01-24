@@ -140,7 +140,7 @@ async def list_social_posts(
 ) -> SocialPostListResponse:
     """
     List social posts with optional filters.
-    
+
     - game_id: Filter by specific game
     - team_id: Filter by team abbreviation (e.g., "GSW", "LAL")
     - start_date/end_date: Filter by posted_at timestamp
@@ -168,11 +168,16 @@ async def list_social_posts(
 
     # Count total before pagination
     from sqlalchemy import func
+
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await session.execute(count_stmt)).scalar() or 0
 
     # Apply ordering and pagination
-    stmt = stmt.order_by(db_models.GameSocialPost.posted_at.asc()).offset(offset).limit(limit)
+    stmt = (
+        stmt.order_by(db_models.GameSocialPost.posted_at.asc())
+        .offset(offset)
+        .limit(limit)
+    )
 
     result = await session.execute(stmt)
     posts = result.scalars().all()
@@ -209,6 +214,7 @@ async def list_social_accounts(
         stmt = stmt.where(db_models.TeamSocialAccount.platform == platform)
 
     from sqlalchemy import func
+
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await session.execute(count_stmt)).scalar() or 0
 
@@ -222,7 +228,11 @@ async def list_social_accounts(
     )
 
 
-@router.post("/accounts", response_model=SocialAccountResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/accounts",
+    response_model=SocialAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def upsert_social_account(
     payload: SocialAccountUpsertRequest,
     session: AsyncSession = Depends(get_db),
@@ -230,7 +240,9 @@ async def upsert_social_account(
     """Create or update a social account registry entry."""
     team = await session.get(db_models.SportsTeam, payload.team_id)
     if not team:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
+        )
 
     existing_stmt = select(db_models.TeamSocialAccount).where(
         db_models.TeamSocialAccount.team_id == payload.team_id,
@@ -280,7 +292,9 @@ async def get_posts_for_game(
     )
 
 
-@router.post("/posts", response_model=SocialPostResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/posts", response_model=SocialPostResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_social_post(
     payload: SocialPostCreateRequest,
     session: AsyncSession = Depends(get_db),
@@ -300,7 +314,7 @@ async def create_social_post(
     )
     result = await session.execute(team_stmt)
     team = result.scalar_one_or_none()
-    
+
     if not team:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -337,14 +351,18 @@ async def create_social_post(
     return _serialize_post(post)
 
 
-@router.post("/posts/bulk", response_model=SocialPostListResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/posts/bulk",
+    response_model=SocialPostListResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def bulk_create_social_posts(
     payload: SocialPostBulkCreateRequest,
     session: AsyncSession = Depends(get_db),
 ) -> SocialPostListResponse:
     """Bulk create social posts. Skips duplicates by tweet_url."""
     created_posts: list[db_models.GameSocialPost] = []
-    
+
     # Pre-fetch all teams by abbreviation
     abbrevs = list({p.team_abbreviation.upper() for p in payload.posts})
     team_stmt = select(db_models.SportsTeam).where(
@@ -384,7 +402,7 @@ async def bulk_create_social_posts(
         created_posts.append(post)
 
     await session.flush()
-    
+
     # Refresh to load team relationships
     for post in created_posts:
         await session.refresh(post, attribute_names=["team"])
@@ -407,5 +425,5 @@ async def delete_social_post(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Post not found",
         )
-    
+
     await session.delete(post)

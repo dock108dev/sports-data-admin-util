@@ -47,7 +47,11 @@ def apply_game_filters(
     """Apply filtering options for list endpoints."""
     if leagues:
         league_codes = [code.upper() for code in leagues]
-        stmt = stmt.where(db_models.SportsGame.league.has(db_models.SportsLeague.code.in_(league_codes)))
+        stmt = stmt.where(
+            db_models.SportsGame.league.has(
+                db_models.SportsLeague.code.in_(league_codes)
+            )
+        )
 
     if season is not None:
         stmt = stmt.where(db_models.SportsGame.season == season)
@@ -56,12 +60,24 @@ def apply_game_filters(
         pattern = f"%{team}%"
         stmt = stmt.where(
             or_(
-                db_models.SportsGame.home_team.has(db_models.SportsTeam.name.ilike(pattern)),
-                db_models.SportsGame.away_team.has(db_models.SportsTeam.name.ilike(pattern)),
-                db_models.SportsGame.home_team.has(db_models.SportsTeam.short_name.ilike(pattern)),
-                db_models.SportsGame.away_team.has(db_models.SportsTeam.short_name.ilike(pattern)),
-                db_models.SportsGame.home_team.has(db_models.SportsTeam.abbreviation.ilike(pattern)),
-                db_models.SportsGame.away_team.has(db_models.SportsTeam.abbreviation.ilike(pattern)),
+                db_models.SportsGame.home_team.has(
+                    db_models.SportsTeam.name.ilike(pattern)
+                ),
+                db_models.SportsGame.away_team.has(
+                    db_models.SportsTeam.name.ilike(pattern)
+                ),
+                db_models.SportsGame.home_team.has(
+                    db_models.SportsTeam.short_name.ilike(pattern)
+                ),
+                db_models.SportsGame.away_team.has(
+                    db_models.SportsTeam.short_name.ilike(pattern)
+                ),
+                db_models.SportsGame.home_team.has(
+                    db_models.SportsTeam.abbreviation.ilike(pattern)
+                ),
+                db_models.SportsGame.away_team.has(
+                    db_models.SportsTeam.abbreviation.ilike(pattern)
+                ),
             )
         )
 
@@ -153,7 +169,11 @@ def preview_tags(
     if min(home_rating.elo, away_rating.elo) >= PREVIEW_TOP25_ELO_THRESHOLD:
         tags.add("top25_matchup")
 
-    seeds = [seed for seed in (home_rating.projected_seed, away_rating.projected_seed) if seed is not None]
+    seeds = [
+        seed
+        for seed in (home_rating.projected_seed, away_rating.projected_seed)
+        if seed is not None
+    ]
     if len(seeds) == 2:
         if max(seeds) <= PREVIEW_TOP_RATED_SEED_THRESHOLD:
             tags.update({"top_rated", "tournament_preview"})
@@ -173,7 +193,7 @@ def build_preview_context(
         raise ValueError(f"Game {game.id} missing team mappings")
     if not game.league:
         raise ValueError(f"Game {game.id} missing league")
-    
+
     rivalry = home_rating.conference == away_rating.conference
     projected_spread_value = projected_spread(home_rating, away_rating)
     projected_total_value = projected_total(home_rating, away_rating)
@@ -182,9 +202,12 @@ def build_preview_context(
         for seed in (home_rating.projected_seed, away_rating.projected_seed)
     )
     playoff_implications = all(
-        seed is not None for seed in (home_rating.projected_seed, away_rating.projected_seed)
+        seed is not None
+        for seed in (home_rating.projected_seed, away_rating.projected_seed)
     )
-    national_broadcast = (home_rating.elo + away_rating.elo) / 2 >= PREVIEW_NATIONAL_ELO_THRESHOLD
+    national_broadcast = (
+        home_rating.elo + away_rating.elo
+    ) / 2 >= PREVIEW_NATIONAL_ELO_THRESHOLD
 
     return GameContext(
         game_id=str(game.id),
@@ -208,7 +231,7 @@ def summarize_game(game: db_models.SportsGame) -> GameSummary:
         raise ValueError(f"Game {game.id} missing league")
     if not game.home_team or not game.away_team:
         raise ValueError(f"Game {game.id} missing team mappings")
-    
+
     has_boxscore = bool(game.team_boxscores)
     has_player_stats = bool(game.player_boxscores)
     has_odds = bool(game.odds)
@@ -243,7 +266,9 @@ def summarize_game(game: db_models.SportsGame) -> GameSummary:
     )
 
 
-def resolve_team_abbreviation(game: db_models.SportsGame, post: db_models.GameSocialPost) -> str:
+def resolve_team_abbreviation(
+    game: db_models.SportsGame, post: db_models.GameSocialPost
+) -> str:
     """Resolve a team's abbreviation for a social post entry. Fails fast if not resolvable."""
     if hasattr(post, "team") and post.team and post.team.abbreviation:
         return post.team.abbreviation
@@ -252,7 +277,9 @@ def resolve_team_abbreviation(game: db_models.SportsGame, post: db_models.GameSo
             return game.home_team.abbreviation
         if game.away_team and game.away_team.id == post.team_id:
             return game.away_team.abbreviation
-    raise ValueError(f"Cannot resolve team abbreviation for post {post.id} in game {game.id}")
+    raise ValueError(
+        f"Cannot resolve team abbreviation for post {post.id} in game {game.id}"
+    )
 
 
 def serialize_social_posts(

@@ -44,6 +44,7 @@ from .running_stats import SectionDelta
 # LOCKED BEAT TAXONOMY (NBA v1)
 # ============================================================================
 
+
 class BeatType(str, Enum):
     """Locked beat types for NBA v1.
 
@@ -100,45 +101,48 @@ PRIMARY_BEATS: set[BeatType] = {
 # Priority order for section beat selection (highest priority first)
 # Used when multiple chapters in a section have different beats
 BEAT_PRIORITY: list[BeatType] = [
-    BeatType.OVERTIME,           # 1. Highest priority
-    BeatType.CLOSING_SEQUENCE,   # 2.
-    BeatType.CRUNCH_SETUP,       # 3.
-    BeatType.RUN,                # 4.
-    BeatType.RESPONSE,           # 5.
-    BeatType.BACK_AND_FORTH,     # 6.
-    BeatType.EARLY_CONTROL,      # 7.
-    BeatType.FAST_START,         # 8.
-    BeatType.STALL,              # 9. Lowest priority (default)
+    BeatType.OVERTIME,  # 1. Highest priority
+    BeatType.CLOSING_SEQUENCE,  # 2.
+    BeatType.CRUNCH_SETUP,  # 3.
+    BeatType.RUN,  # 4.
+    BeatType.RESPONSE,  # 5.
+    BeatType.BACK_AND_FORTH,  # 6.
+    BeatType.EARLY_CONTROL,  # 7.
+    BeatType.FAST_START,  # 8.
+    BeatType.STALL,  # 9. Lowest priority (default)
 ]
 
 # Threshold for MISSED_SHOT_CONTEXT descriptor (points per play)
 MISSED_SHOT_PPP_THRESHOLD = 0.35
 
 # Run detection thresholds
-RUN_WINDOW_THRESHOLD = 6        # Minimum unanswered points to start a run window
-RUN_MARGIN_EXPANSION_THRESHOLD = 8  # Margin increase required to qualify without lead change
+RUN_WINDOW_THRESHOLD = 6  # Minimum unanswered points to start a run window
+RUN_MARGIN_EXPANSION_THRESHOLD = (
+    8  # Margin increase required to qualify without lead change
+)
 
 # Back-and-forth detection thresholds (Phase 2.4)
 BACK_AND_FORTH_LEAD_CHANGES_THRESHOLD = 2  # Minimum lead changes to qualify
-BACK_AND_FORTH_TIES_THRESHOLD = 3          # Minimum ties to qualify
+BACK_AND_FORTH_TIES_THRESHOLD = 3  # Minimum ties to qualify
 
 # Early window detection thresholds (Phase 2.5 - Section-level beats)
-EARLY_WINDOW_DURATION_SECONDS = 360        # First 6:00 of Q1 (time > 6:00 remaining)
-FAST_START_MIN_COMBINED_POINTS = 30        # Combined points >= 30 for FAST_START
-FAST_START_MAX_MARGIN = 6                  # Margin <= 6 for FAST_START
-EARLY_CONTROL_MIN_LEAD = 8                 # Lead >= 8 for EARLY_CONTROL
-EARLY_CONTROL_MIN_SHARE_PCT = 0.65         # Leading team scores >= 65% of total
+EARLY_WINDOW_DURATION_SECONDS = 360  # First 6:00 of Q1 (time > 6:00 remaining)
+FAST_START_MIN_COMBINED_POINTS = 30  # Combined points >= 30 for FAST_START
+FAST_START_MAX_MARGIN = 6  # Margin <= 6 for FAST_START
+EARLY_CONTROL_MIN_LEAD = 8  # Lead >= 8 for EARLY_CONTROL
+EARLY_CONTROL_MIN_SHARE_PCT = 0.65  # Leading team scores >= 65% of total
 
 # Late-game beat thresholds (Phase 2.6)
-CRUNCH_SETUP_TIME_THRESHOLD = 300          # ≤ 5:00 remaining in Q4
-CRUNCH_SETUP_MARGIN_THRESHOLD = 10         # Margin ≤ 10 for CRUNCH_SETUP
-CLOSING_SEQUENCE_TIME_THRESHOLD = 120      # ≤ 2:00 remaining in Q4
-CLOSING_SEQUENCE_MARGIN_THRESHOLD = 8      # Margin ≤ 8 for CLOSING_SEQUENCE
+CRUNCH_SETUP_TIME_THRESHOLD = 300  # ≤ 5:00 remaining in Q4
+CRUNCH_SETUP_MARGIN_THRESHOLD = 10  # Margin ≤ 10 for CRUNCH_SETUP
+CLOSING_SEQUENCE_TIME_THRESHOLD = 120  # ≤ 2:00 remaining in Q4
+CLOSING_SEQUENCE_MARGIN_THRESHOLD = 8  # Margin ≤ 8 for CLOSING_SEQUENCE
 
 
 # ============================================================================
 # RUN WINDOW DETECTION
 # ============================================================================
+
 
 @dataclass
 class RunWindow:
@@ -148,16 +152,16 @@ class RunWindow:
     points and ends when the opposing team scores or the chapter ends.
     """
 
-    team: str                    # "home" or "away"
-    start_play_index: int        # Index within chapter where run started
-    end_play_index: int          # Index within chapter where run ended
-    points_scored: int           # Total points in the run
-    start_home_score: int        # Home score when run started
-    start_away_score: int        # Away score when run started
-    end_home_score: int          # Home score when run ended
-    end_away_score: int          # Away score when run ended
-    caused_lead_change: bool     # Did this run flip the lead?
-    margin_expansion: int        # How much did margin change in running team's favor?
+    team: str  # "home" or "away"
+    start_play_index: int  # Index within chapter where run started
+    end_play_index: int  # Index within chapter where run ended
+    points_scored: int  # Total points in the run
+    start_home_score: int  # Home score when run started
+    start_away_score: int  # Away score when run started
+    end_home_score: int  # Home score when run ended
+    end_away_score: int  # Away score when run ended
+    caused_lead_change: bool  # Did this run flip the lead?
+    margin_expansion: int  # How much did margin change in running team's favor?
 
     def is_qualifying(self) -> bool:
         """Check if this run qualifies as a RUN beat.
@@ -166,7 +170,10 @@ class RunWindow:
         - Caused a lead change, OR
         - Expanded the margin by ≥ RUN_MARGIN_EXPANSION_THRESHOLD points
         """
-        return self.caused_lead_change or self.margin_expansion >= RUN_MARGIN_EXPANSION_THRESHOLD
+        return (
+            self.caused_lead_change
+            or self.margin_expansion >= RUN_MARGIN_EXPANSION_THRESHOLD
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for debugging."""
@@ -262,17 +269,19 @@ def detect_run_windows(plays: list[dict[str, Any]]) -> list[RunWindow]:
             # Both changed (unusual) - ends any run
             if current_run_team and current_run_points >= RUN_WINDOW_THRESHOLD:
                 # Finalize current run window
-                run_windows.append(_finalize_run_window(
-                    team=current_run_team,
-                    start_idx=current_run_start_idx,
-                    end_idx=i - 1,
-                    points=current_run_points,
-                    start_home=run_start_home_score,
-                    start_away=run_start_away_score,
-                    end_home=prev_home_score,
-                    end_away=prev_away_score,
-                    start_leader=run_start_leader,
-                ))
+                run_windows.append(
+                    _finalize_run_window(
+                        team=current_run_team,
+                        start_idx=current_run_start_idx,
+                        end_idx=i - 1,
+                        points=current_run_points,
+                        start_home=run_start_home_score,
+                        start_away=run_start_away_score,
+                        end_home=prev_home_score,
+                        end_away=prev_away_score,
+                        start_leader=run_start_leader,
+                    )
+                )
             current_run_team = None
             current_run_points = 0
             prev_home_score = home_score
@@ -287,17 +296,19 @@ def detect_run_windows(plays: list[dict[str, Any]]) -> list[RunWindow]:
                 # Different team scored
                 if current_run_team and current_run_points >= RUN_WINDOW_THRESHOLD:
                     # Finalize previous run window
-                    run_windows.append(_finalize_run_window(
-                        team=current_run_team,
-                        start_idx=current_run_start_idx,
-                        end_idx=i - 1,
-                        points=current_run_points,
-                        start_home=run_start_home_score,
-                        start_away=run_start_away_score,
-                        end_home=prev_home_score,
-                        end_away=prev_away_score,
-                        start_leader=run_start_leader,
-                    ))
+                    run_windows.append(
+                        _finalize_run_window(
+                            team=current_run_team,
+                            start_idx=current_run_start_idx,
+                            end_idx=i - 1,
+                            points=current_run_points,
+                            start_home=run_start_home_score,
+                            start_away=run_start_away_score,
+                            end_home=prev_home_score,
+                            end_away=prev_away_score,
+                            start_leader=run_start_leader,
+                        )
+                    )
 
                 # Start new potential run
                 current_run_team = scoring_team
@@ -313,17 +324,19 @@ def detect_run_windows(plays: list[dict[str, Any]]) -> list[RunWindow]:
 
     # Check for run at chapter end
     if current_run_team and current_run_points >= RUN_WINDOW_THRESHOLD:
-        run_windows.append(_finalize_run_window(
-            team=current_run_team,
-            start_idx=current_run_start_idx,
-            end_idx=len(plays) - 1,
-            points=current_run_points,
-            start_home=run_start_home_score,
-            start_away=run_start_away_score,
-            end_home=prev_home_score,
-            end_away=prev_away_score,
-            start_leader=run_start_leader,
-        ))
+        run_windows.append(
+            _finalize_run_window(
+                team=current_run_team,
+                start_idx=current_run_start_idx,
+                end_idx=len(plays) - 1,
+                points=current_run_points,
+                start_home=run_start_home_score,
+                start_away=run_start_away_score,
+                end_home=prev_home_score,
+                end_away=prev_away_score,
+                start_leader=run_start_leader,
+            )
+        )
 
     return run_windows
 
@@ -343,10 +356,7 @@ def _finalize_run_window(
     end_leader = _get_leader(end_home, end_away)
 
     # Lead change: leader switched to the running team
-    caused_lead_change = (
-        start_leader != team and
-        end_leader == team
-    )
+    caused_lead_change = start_leader != team and end_leader == team
 
     # Margin expansion: how much did margin increase in favor of running team?
     # Positive if running team increased their advantage
@@ -390,6 +400,7 @@ def get_qualifying_run_windows(plays: list[dict[str, Any]]) -> list[RunWindow]:
 # RESPONSE WINDOW DETECTION
 # ============================================================================
 
+
 @dataclass
 class ResponseWindow:
     """Represents a detected RESPONSE window following a RUN.
@@ -398,16 +409,16 @@ class ResponseWindow:
     and captures the trailing team's counter-scoring.
     """
 
-    responding_team: str         # "home" or "away" - team that was trailing
-    run_team: str                # "home" or "away" - team that had the RUN
-    start_play_index: int        # Index where response starts (after RUN ends)
-    end_play_index: int          # Index where response ends
+    responding_team: str  # "home" or "away" - team that was trailing
+    run_team: str  # "home" or "away" - team that had the RUN
+    start_play_index: int  # Index where response starts (after RUN ends)
+    end_play_index: int  # Index where response ends
     responding_team_points: int  # Points scored by responding team
-    run_team_points: int         # Points scored by team that had the RUN
-    run_end_home_score: int      # Home score when RUN ended
-    run_end_away_score: int      # Away score when RUN ended
-    response_end_home_score: int # Home score when response ends
-    response_end_away_score: int # Away score when response ends
+    run_team_points: int  # Points scored by team that had the RUN
+    run_end_home_score: int  # Home score when RUN ended
+    run_end_away_score: int  # Away score when RUN ended
+    response_end_home_score: int  # Home score when response ends
+    response_end_away_score: int  # Away score when response ends
 
     def is_qualifying(self) -> bool:
         """Check if this response qualifies as a RESPONSE beat.
@@ -463,11 +474,7 @@ def detect_response_windows(
         if response_start_idx >= len(plays):
             continue
 
-        # Determine which team is responding (the team that was trailing)
-        # At end of RUN, the running team is leading (or tied/ahead)
-        run_end_leader = _get_leader(run.end_home_score, run.end_away_score)
-
-        # The responding team is the one that was NOT running
+        # The responding team is the one that was NOT running (opposite of run team)
         responding_team = "away" if run.team == "home" else "home"
 
         # Track scoring in the response window
@@ -511,18 +518,20 @@ def detect_response_windows(
 
         # Create response window if there was any activity
         if responding_points > 0 or run_team_points > 0:
-            response_windows.append(ResponseWindow(
-                responding_team=responding_team,
-                run_team=run.team,
-                start_play_index=response_start_idx,
-                end_play_index=end_idx,
-                responding_team_points=responding_points,
-                run_team_points=run_team_points,
-                run_end_home_score=run.end_home_score,
-                run_end_away_score=run.end_away_score,
-                response_end_home_score=end_home,
-                response_end_away_score=end_away,
-            ))
+            response_windows.append(
+                ResponseWindow(
+                    responding_team=responding_team,
+                    run_team=run.team,
+                    start_play_index=response_start_idx,
+                    end_play_index=end_idx,
+                    responding_team_points=responding_points,
+                    run_team_points=run_team_points,
+                    run_end_home_score=run.end_home_score,
+                    run_end_away_score=run.end_away_score,
+                    response_end_home_score=end_home,
+                    response_end_away_score=end_away,
+                )
+            )
 
     return response_windows
 
@@ -548,6 +557,7 @@ def get_qualifying_response_windows(
 # BACK_AND_FORTH WINDOW DETECTION (Phase 2.4)
 # ============================================================================
 
+
 @dataclass
 class BackAndForthWindow:
     """Represents a detected back-and-forth window with lead volatility.
@@ -556,14 +566,14 @@ class BackAndForthWindow:
     the lead changes frequently or the game is tied multiple times.
     """
 
-    start_play_index: int        # Index where window starts
-    end_play_index: int          # Index where window ends
-    lead_change_count: int       # Number of lead changes in window
-    tie_count: int               # Number of times score became tied
-    start_home_score: int        # Home score at window start
-    start_away_score: int        # Away score at window start
-    end_home_score: int          # Home score at window end
-    end_away_score: int          # Away score at window end
+    start_play_index: int  # Index where window starts
+    end_play_index: int  # Index where window ends
+    lead_change_count: int  # Number of lead changes in window
+    tie_count: int  # Number of times score became tied
+    start_home_score: int  # Home score at window start
+    start_away_score: int  # Away score at window start
+    end_home_score: int  # Home score at window end
+    end_away_score: int  # Away score at window end
 
     def is_qualifying(self) -> bool:
         """Check if this window qualifies as a BACK_AND_FORTH beat.
@@ -573,8 +583,8 @@ class BackAndForthWindow:
         - tie_count >= 3
         """
         return (
-            self.lead_change_count >= BACK_AND_FORTH_LEAD_CHANGES_THRESHOLD or
-            self.tie_count >= BACK_AND_FORTH_TIES_THRESHOLD
+            self.lead_change_count >= BACK_AND_FORTH_LEAD_CHANGES_THRESHOLD
+            or self.tie_count >= BACK_AND_FORTH_TIES_THRESHOLD
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -590,7 +600,9 @@ class BackAndForthWindow:
         }
 
 
-def detect_back_and_forth_window(plays: list[dict[str, Any]]) -> BackAndForthWindow | None:
+def detect_back_and_forth_window(
+    plays: list[dict[str, Any]],
+) -> BackAndForthWindow | None:
     """Detect back-and-forth window within a chapter's plays.
 
     Tracks lead changes and ties throughout the chapter:
@@ -657,7 +669,9 @@ def detect_back_and_forth_window(plays: list[dict[str, Any]]) -> BackAndForthWin
             if current_leader is not None:
                 # Went from tied to having a leader - not a lead change
                 pass
-            elif current_leader is None and (home_score != prev_home_score or away_score != prev_away_score):
+            elif current_leader is None and (
+                home_score != prev_home_score or away_score != prev_away_score
+            ):
                 # Still tied but scores changed - count as tie occurrence
                 # Only count if scores actually changed
                 if home_score != prev_home_score or away_score != prev_away_score:
@@ -703,6 +717,7 @@ def get_qualifying_back_and_forth_window(
 # EARLY WINDOW DETECTION (Phase 2.5 - Section-level beats)
 # ============================================================================
 
+
 @dataclass
 class EarlyWindowStats:
     """Statistics from the early-game window (first 6:00 of Q1).
@@ -711,14 +726,14 @@ class EarlyWindowStats:
     These beats are not assigned at the chapter level.
     """
 
-    home_points: int                 # Points scored by home team in window
-    away_points: int                 # Points scored by away team in window
-    total_points: int                # Combined points in window
-    final_home_score: int            # Score at end of window
-    final_away_score: int            # Score at end of window
-    final_margin: int                # Absolute margin at end of window
-    window_end_seconds: int          # Time remaining when window ends (should be >= 360)
-    chapter_ids_in_window: list[str] # Chapters included in window
+    home_points: int  # Points scored by home team in window
+    away_points: int  # Points scored by away team in window
+    total_points: int  # Combined points in window
+    final_home_score: int  # Score at end of window
+    final_away_score: int  # Score at end of window
+    final_margin: int  # Absolute margin at end of window
+    window_end_seconds: int  # Time remaining when window ends (should be >= 360)
+    chapter_ids_in_window: list[str]  # Chapters included in window
 
     @property
     def leading_team(self) -> str | None:
@@ -773,7 +788,6 @@ def compute_early_window_stats(
     Returns:
         EarlyWindowStats if any Q1 early plays exist, None otherwise
     """
-    from .types import Chapter  # Import here to avoid circular dependency
 
     home_points = 0
     away_points = 0
@@ -989,6 +1003,7 @@ def detect_opening_section_beat(
 # CHAPTER CONTEXT (INPUT)
 # ============================================================================
 
+
 @dataclass
 class ChapterContext:
     """Context needed for beat classification.
@@ -999,17 +1014,17 @@ class ChapterContext:
 
     # Chapter identity
     chapter_id: str
-    chapter_index: int                       # 0-indexed position in game
+    chapter_index: int  # 0-indexed position in game
 
     # Time context
-    period: int | None                       # 1-4 for regulation, 5+ for OT
-    time_remaining_seconds: int | None       # Seconds remaining in period
-    is_overtime: bool                        # True if period > 4
+    period: int | None  # 1-4 for regulation, 5+ for OT
+    time_remaining_seconds: int | None  # Seconds remaining in period
+    is_overtime: bool  # True if period > 4
 
     # Score context
     home_score: int
     away_score: int
-    score_margin: int                        # abs(home_score - away_score)
+    score_margin: int  # abs(home_score - away_score)
 
     # Section stats (from SectionDelta)
     home_points_scored: int
@@ -1022,16 +1037,16 @@ class ChapterContext:
 
     # Shot/rebound metrics (for descriptor detection)
     total_fg_made: int
-    total_fg_attempts: int | None            # May not be available
-    total_rebounds: int | None               # May not be available
+    total_fg_attempts: int | None  # May not be available
+    total_rebounds: int | None  # May not be available
 
     # Run window detection (Phase 2.2)
     qualifying_run_windows: list[RunWindow] = field(default_factory=list)
-    has_qualifying_run: bool = False         # Convenience flag
+    has_qualifying_run: bool = False  # Convenience flag
 
     # Response window detection (Phase 2.3)
     qualifying_response_windows: list[ResponseWindow] = field(default_factory=list)
-    has_qualifying_response: bool = False    # Convenience flag
+    has_qualifying_response: bool = False  # Convenience flag
 
     # Back-and-forth window detection (Phase 2.4)
     back_and_forth_window: BackAndForthWindow | None = None
@@ -1062,14 +1077,20 @@ class ChapterContext:
             "has_qualifying_run": self.has_qualifying_run,
             "has_qualifying_response": self.has_qualifying_response,
             "has_qualifying_back_and_forth": self.has_qualifying_back_and_forth,
-            "previous_beat_type": self.previous_beat_type.value if self.previous_beat_type else None,
+            "previous_beat_type": self.previous_beat_type.value
+            if self.previous_beat_type
+            else None,
         }
         # Include qualifying run windows if present
         if self.qualifying_run_windows:
-            result["qualifying_run_windows"] = [w.to_dict() for w in self.qualifying_run_windows]
+            result["qualifying_run_windows"] = [
+                w.to_dict() for w in self.qualifying_run_windows
+            ]
         # Include qualifying response windows if present
         if self.qualifying_response_windows:
-            result["qualifying_response_windows"] = [r.to_dict() for r in self.qualifying_response_windows]
+            result["qualifying_response_windows"] = [
+                r.to_dict() for r in self.qualifying_response_windows
+            ]
         # Include back-and-forth window if present
         if self.back_and_forth_window:
             result["back_and_forth_window"] = self.back_and_forth_window.to_dict()
@@ -1079,6 +1100,7 @@ class ChapterContext:
 # ============================================================================
 # CLASSIFICATION RESULT (OUTPUT)
 # ============================================================================
+
 
 @dataclass
 class BeatClassification:
@@ -1095,9 +1117,11 @@ class BeatClassification:
 
     chapter_id: str
     beat_type: BeatType
-    triggered_rule: str                      # Human-readable rule name
-    debug_info: dict[str, Any]               # Context used for decision
-    descriptors: set[BeatDescriptor] = field(default_factory=set)  # Phase 2.1: Secondary descriptors
+    triggered_rule: str  # Human-readable rule name
+    debug_info: dict[str, Any]  # Context used for decision
+    descriptors: set[BeatDescriptor] = field(
+        default_factory=set
+    )  # Phase 2.1: Secondary descriptors
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for API/debugging."""
@@ -1116,6 +1140,7 @@ class BeatClassification:
 # ============================================================================
 # HELPER: TIME PARSING
 # ============================================================================
+
 
 def parse_game_clock_to_seconds(clock_str: str | None) -> int | None:
     """Parse game clock string to seconds remaining.
@@ -1145,6 +1170,7 @@ def parse_game_clock_to_seconds(clock_str: str | None) -> int | None:
 # CONTEXT BUILDER
 # ============================================================================
 
+
 def build_chapter_context(
     chapter: Chapter,
     chapter_index: int,
@@ -1152,7 +1178,8 @@ def build_chapter_context(
     previous_result: BeatClassification | None,
     home_team_key: str | None = None,
     away_team_key: str | None = None,
-    previous_context: ChapterContext | None = None,  # Phase 2.3: for cross-chapter RESPONSE
+    previous_context: ChapterContext
+    | None = None,  # Phase 2.3: for cross-chapter RESPONSE
 ) -> ChapterContext:
     """Build classification context from chapter and stats.
 
@@ -1269,7 +1296,7 @@ def build_chapter_context(
         possessions_estimate=possessions_estimate,
         total_fg_made=total_fg_made,
         total_fg_attempts=None,  # Not tracked yet
-        total_rebounds=None,     # Not tracked yet
+        total_rebounds=None,  # Not tracked yet
         qualifying_run_windows=qualifying_runs,
         has_qualifying_run=has_qualifying_run,
         qualifying_response_windows=qualifying_responses,
@@ -1285,6 +1312,7 @@ def build_chapter_context(
 # ============================================================================
 # BEAT CLASSIFICATION RULES (PRIORITY ORDER)
 # ============================================================================
+
 
 def _check_overtime(ctx: ChapterContext) -> BeatClassification | None:
     """RULE 1: OVERTIME (FORCED)
@@ -1438,7 +1466,7 @@ def _check_response(ctx: ChapterContext) -> BeatClassification | None:
     if ctx.has_qualifying_response:
         best_response = max(
             ctx.qualifying_response_windows,
-            key=lambda r: r.responding_team_points - r.run_team_points
+            key=lambda r: r.responding_team_points - r.run_team_points,
         )
         return BeatClassification(
             chapter_id=ctx.chapter_id,
@@ -1449,7 +1477,8 @@ def _check_response(ctx: ChapterContext) -> BeatClassification | None:
                 "responding_team": best_response.responding_team,
                 "responding_team_points": best_response.responding_team_points,
                 "run_team_points": best_response.run_team_points,
-                "point_differential": best_response.responding_team_points - best_response.run_team_points,
+                "point_differential": best_response.responding_team_points
+                - best_response.run_team_points,
             },
         )
 
@@ -1571,6 +1600,7 @@ def _default_back_and_forth(ctx: ChapterContext) -> BeatClassification:
 # MAIN CLASSIFICATION FUNCTION
 # ============================================================================
 
+
 def _compute_descriptors(ctx: ChapterContext) -> set[BeatDescriptor]:
     """Compute descriptors for a chapter.
 
@@ -1668,6 +1698,7 @@ def classify_chapter_beat(ctx: ChapterContext) -> BeatClassification:
 # BATCH CLASSIFICATION
 # ============================================================================
 
+
 def classify_all_chapters(
     chapters: list[Chapter],
     section_deltas: list[SectionDelta] | None = None,
@@ -1690,7 +1721,9 @@ def classify_all_chapters(
 
     for i, chapter in enumerate(chapters):
         # Get corresponding section delta
-        delta = section_deltas[i] if section_deltas and i < len(section_deltas) else None
+        delta = (
+            section_deltas[i] if section_deltas and i < len(section_deltas) else None
+        )
 
         # Get previous result and context (for RESPONSE detection)
         previous_result = results[-1] if results else None
@@ -1718,6 +1751,7 @@ def classify_all_chapters(
 # ============================================================================
 # DEBUG OUTPUT
 # ============================================================================
+
 
 def format_classification_debug(results: list[BeatClassification]) -> str:
     """Format classification results for debug output.

@@ -16,7 +16,10 @@ from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
 from ...services.derived_metrics import compute_derived_metrics
-from ...services.timeline_generator import TimelineGenerationError, generate_timeline_artifact
+from ...services.timeline_generator import (
+    TimelineGenerationError,
+    generate_timeline_artifact,
+)
 from .common import (
     serialize_nhl_goalie,
     serialize_nhl_skater,
@@ -190,7 +193,11 @@ async def list_games(
         missing_any=missingAny,
     )
 
-    stmt = base_stmt.order_by(desc(db_models.SportsGame.game_date)).offset(offset).limit(limit)
+    stmt = (
+        base_stmt.order_by(desc(db_models.SportsGame.game_date))
+        .offset(offset)
+        .limit(limit)
+    )
     results = await session.execute(stmt)
     games = results.scalars().unique().all()
 
@@ -211,23 +218,39 @@ async def list_games(
     total = (await session.execute(count_stmt)).scalar_one()
 
     with_boxscore_count_stmt = count_stmt.where(
-        exists(select(1).where(db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id))
+        exists(
+            select(1).where(
+                db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id
+            )
+        )
     )
     with_player_stats_count_stmt = count_stmt.where(
-        exists(select(1).where(db_models.SportsPlayerBoxscore.game_id == db_models.SportsGame.id))
+        exists(
+            select(1).where(
+                db_models.SportsPlayerBoxscore.game_id == db_models.SportsGame.id
+            )
+        )
     )
     with_odds_count_stmt = count_stmt.where(
-        exists(select(1).where(db_models.SportsGameOdds.game_id == db_models.SportsGame.id))
+        exists(
+            select(1).where(db_models.SportsGameOdds.game_id == db_models.SportsGame.id)
+        )
     )
     with_social_count_stmt = count_stmt.where(
-        exists(select(1).where(db_models.GameSocialPost.game_id == db_models.SportsGame.id))
+        exists(
+            select(1).where(db_models.GameSocialPost.game_id == db_models.SportsGame.id)
+        )
     )
     with_pbp_count_stmt = count_stmt.where(
-        exists(select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id))
+        exists(
+            select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
+        )
     )
 
     with_boxscore_count = (await session.execute(with_boxscore_count_stmt)).scalar_one()
-    with_player_stats_count = (await session.execute(with_player_stats_count_stmt)).scalar_one()
+    with_player_stats_count = (
+        await session.execute(with_player_stats_count_stmt)
+    ).scalar_one()
     with_odds_count = (await session.execute(with_odds_count_stmt)).scalar_one()
     with_social_count = (await session.execute(with_social_count_stmt)).scalar_one()
     with_pbp_count = (await session.execute(with_pbp_count_stmt)).scalar_one()
@@ -263,7 +286,9 @@ async def get_game_preview_score(
     )
     game = result.scalar_one_or_none()
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
     if not game.home_team or not game.away_team:
         logger.error("Preview score missing team data", extra={"game_id": game_id})
         raise HTTPException(
@@ -306,25 +331,37 @@ async def get_game_preview_score(
 
 
 @router.get("/games/{game_id}", response_model=GameDetailResponse)
-async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> GameDetailResponse:
+async def get_game(
+    game_id: int, session: AsyncSession = Depends(get_db)
+) -> GameDetailResponse:
     result = await session.execute(
         select(db_models.SportsGame)
         .options(
             selectinload(db_models.SportsGame.league),
             selectinload(db_models.SportsGame.home_team),
             selectinload(db_models.SportsGame.away_team),
-            selectinload(db_models.SportsGame.team_boxscores).selectinload(db_models.SportsTeamBoxscore.team),
-            selectinload(db_models.SportsGame.player_boxscores).selectinload(db_models.SportsPlayerBoxscore.team),
+            selectinload(db_models.SportsGame.team_boxscores).selectinload(
+                db_models.SportsTeamBoxscore.team
+            ),
+            selectinload(db_models.SportsGame.player_boxscores).selectinload(
+                db_models.SportsPlayerBoxscore.team
+            ),
             selectinload(db_models.SportsGame.odds),
-            selectinload(db_models.SportsGame.social_posts).selectinload(db_models.GameSocialPost.team),
-            selectinload(db_models.SportsGame.plays).selectinload(db_models.SportsGamePlay.team),
+            selectinload(db_models.SportsGame.social_posts).selectinload(
+                db_models.GameSocialPost.team
+            ),
+            selectinload(db_models.SportsGame.plays).selectinload(
+                db_models.SportsGamePlay.team
+            ),
             selectinload(db_models.SportsGame.timeline_artifacts),
         )
         .where(db_models.SportsGame.id == game_id)
     )
     game = result.scalar_one_or_none()
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
 
     team_stats = [serialize_team_stat(box) for box in game.team_boxscores]
 
@@ -353,7 +390,9 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         nhl_goalies = goalies
     else:
         # Non-NHL: use generic player stats
-        player_stats = [serialize_player_stat(player) for player in game.player_boxscores]
+        player_stats = [
+            serialize_player_stat(player) for player in game.player_boxscores
+        ]
 
     odds_entries = [
         OddsEntry(
@@ -368,7 +407,10 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         for odd in game.odds
     ]
 
-    plays_entries = [serialize_play_entry(play) for play in sorted(game.plays, key=lambda p: p.play_index)]
+    plays_entries = [
+        serialize_play_entry(play)
+        for play in sorted(game.plays, key=lambda p: p.play_index)
+    ]
 
     meta = GameMeta(
         id=game.id,
@@ -504,10 +546,14 @@ async def _enqueue_single_game_run(
 
 
 @router.post("/games/{game_id}/rescrape", response_model=JobResponse)
-async def rescrape_game(game_id: int, session: AsyncSession = Depends(get_db)) -> JobResponse:
+async def rescrape_game(
+    game_id: int, session: AsyncSession = Depends(get_db)
+) -> JobResponse:
     game = await session.get(db_models.SportsGame, game_id)
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
     return await enqueue_single_game_run(
         session,
         game,
@@ -518,10 +564,14 @@ async def rescrape_game(game_id: int, session: AsyncSession = Depends(get_db)) -
 
 
 @router.post("/games/{game_id}/resync-odds", response_model=JobResponse)
-async def resync_game_odds(game_id: int, session: AsyncSession = Depends(get_db)) -> JobResponse:
+async def resync_game_odds(
+    game_id: int, session: AsyncSession = Depends(get_db)
+) -> JobResponse:
     game = await session.get(db_models.SportsGame, game_id)
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
     return await enqueue_single_game_run(
         session,
         game,
@@ -531,7 +581,9 @@ async def resync_game_odds(game_id: int, session: AsyncSession = Depends(get_db)
     )
 
 
-@router.post("/games/{game_id}/timeline/generate", response_model=TimelineArtifactResponse)
+@router.post(
+    "/games/{game_id}/timeline/generate", response_model=TimelineArtifactResponse
+)
 async def generate_game_timeline(
     game_id: int,
     session: AsyncSession = Depends(get_db),

@@ -18,17 +18,17 @@ from dataclasses import dataclass
 class LeagueConfig:
     """Configuration for a single league/sport."""
 
-    code: str                       # "NBA", "NHL", "NCAAB"
-    display_name: str               # "NBA Basketball"
+    code: str  # "NBA", "NHL", "NCAAB"
+    display_name: str  # "NBA Basketball"
 
     # Pipeline feature flags
     boxscores_enabled: bool = True
     player_stats_enabled: bool = True
     team_stats_enabled: bool = True
     odds_enabled: bool = True
-    social_enabled: bool = True     # X/Twitter integration
-    pbp_enabled: bool = True        # Play-by-play
-    timeline_enabled: bool = True   # Timeline/moments generation
+    social_enabled: bool = True  # X/Twitter integration
+    pbp_enabled: bool = True  # Play-by-play
+    timeline_enabled: bool = True  # Timeline/moments generation
 
     # Scheduling
     scheduled_ingestion: bool = True  # Include in daily scheduled runs
@@ -117,7 +117,9 @@ def validate_league_code(league_code: str) -> str:
     """
     if league_code not in LEAGUE_CONFIG:
         valid = ", ".join(LEAGUE_CONFIG.keys())
-        raise ValueError(f"Invalid league_code '{league_code}'. Must be one of: {valid}")
+        raise ValueError(
+            f"Invalid league_code '{league_code}'. Must be one of: {valid}"
+        )
     return league_code
 
 

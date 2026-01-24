@@ -14,7 +14,7 @@ from typing import Any
 
 class PipelineStage(str, Enum):
     """Pipeline stages for game processing.
-    
+
     Stages are executed in order. Each stage consumes the output of the
     previous stage and produces output for the next stage.
     """
@@ -62,13 +62,14 @@ class PipelineStage(str, Enum):
 @dataclass
 class StageInput:
     """Input data for a pipeline stage.
-    
+
     Attributes:
         game_id: The game being processed
         run_id: The pipeline run ID
         previous_output: Output from the previous stage (None for first stage)
         game_context: Game metadata for team name resolution
     """
+
     game_id: int
     run_id: int
     previous_output: dict[str, Any] | None = None
@@ -78,27 +79,30 @@ class StageInput:
 @dataclass
 class StageOutput:
     """Output data from a pipeline stage.
-    
+
     Attributes:
         data: Stage-specific output data (stored in output_json)
         logs: Log entries generated during execution
     """
+
     data: dict[str, Any]
     logs: list[dict[str, Any]] = field(default_factory=list)
 
     def add_log(self, message: str, level: str = "info") -> None:
         """Add a log entry."""
-        self.logs.append({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "level": level,
-            "message": message,
-        })
+        self.logs.append(
+            {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "level": level,
+                "message": message,
+            }
+        )
 
 
 @dataclass
 class StageResult:
     """Result of executing a pipeline stage.
-    
+
     Attributes:
         stage: The stage that was executed
         success: Whether the stage completed successfully
@@ -106,6 +110,7 @@ class StageResult:
         error: Error message if failed
         duration_seconds: Time taken to execute the stage
     """
+
     stage: PipelineStage
     success: bool
     output: StageOutput | None = None
@@ -120,13 +125,14 @@ class StageResult:
 @dataclass
 class NormalizedPBPOutput:
     """Output schema for NORMALIZE_PBP stage.
-    
+
     Contains the normalized play-by-play events with phase assignments
     and synthetic timestamps.
     """
+
     pbp_events: list[dict[str, Any]]
     game_start: str  # ISO format datetime
-    game_end: str    # ISO format datetime
+    game_end: str  # ISO format datetime
     has_overtime: bool
     total_plays: int
     phase_boundaries: dict[str, tuple[str, str]]  # phase -> (start, end) ISO datetimes
@@ -145,14 +151,15 @@ class NormalizedPBPOutput:
 @dataclass
 class DerivedSignalsOutput:
     """Output schema for DERIVE_SIGNALS stage.
-    
+
     Contains the computed lead states, tier crossings, and runs
     derived from the normalized PBP events.
     """
-    lead_states: list[dict[str, Any]]   # Lead state at each play
+
+    lead_states: list[dict[str, Any]]  # Lead state at each play
     tier_crossings: list[dict[str, Any]]  # Detected tier crossings
-    runs: list[dict[str, Any]]          # Detected scoring runs
-    thresholds: list[int]               # Lead ladder thresholds used
+    runs: list[dict[str, Any]]  # Detected scoring runs
+    thresholds: list[int]  # Lead ladder thresholds used
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -166,10 +173,11 @@ class DerivedSignalsOutput:
 @dataclass
 class GeneratedMomentsOutput:
     """Output schema for GENERATE_MOMENTS stage.
-    
+
     Contains the partitioned moments with all metadata, plus a full
     generation trace for explainability.
     """
+
     moments: list[dict[str, Any]]
     notable_moments: list[dict[str, Any]]
     moment_count: int
@@ -197,22 +205,24 @@ class GeneratedMomentsOutput:
 
 class QualityStatus(str, Enum):
     """Quality status of the validated moments.
-    
+
     This provides a clear signal about data integrity beyond pass/fail.
     """
-    PASSED = "PASSED"           # All checks passed, no issues
-    DEGRADED = "DEGRADED"       # Passed with known issues (e.g., score discontinuity in non-strict mode)
-    FAILED = "FAILED"           # Critical validation failures
-    OVERRIDDEN = "OVERRIDDEN"   # Would have failed but manually overridden
+
+    PASSED = "PASSED"  # All checks passed, no issues
+    DEGRADED = "DEGRADED"  # Passed with known issues (e.g., score discontinuity in non-strict mode)
+    FAILED = "FAILED"  # Critical validation failures
+    OVERRIDDEN = "OVERRIDDEN"  # Would have failed but manually overridden
 
 
 @dataclass
 class ScoreContinuityOverride:
     """Audit record for manual score continuity override.
-    
+
     When score continuity issues are manually overridden, this captures
     the override metadata for auditability.
     """
+
     enabled: bool = False
     reason: str | None = None
     overridden_by: str | None = None
@@ -230,9 +240,10 @@ class ScoreContinuityOverride:
 @dataclass
 class ValidationOutput:
     """Output schema for VALIDATE_MOMENTS stage.
-    
+
     Contains the validation report and pass/fail status.
     """
+
     passed: bool
     critical_passed: bool
     warnings_count: int
@@ -257,16 +268,19 @@ class ValidationOutput:
             "score_continuity_issues": self.score_continuity_issues,
         }
         if self.score_continuity_override:
-            result["score_continuity_override"] = self.score_continuity_override.to_dict()
+            result["score_continuity_override"] = (
+                self.score_continuity_override.to_dict()
+            )
         return result
 
 
 @dataclass
 class FinalizedOutput:
     """Output schema for FINALIZE_MOMENTS stage.
-    
+
     Contains references to the persisted artifact.
     """
+
     artifact_id: int
     timeline_events: int
     moment_count: int

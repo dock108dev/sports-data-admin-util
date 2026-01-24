@@ -104,7 +104,7 @@ DEFAULT_TIMELINE_VERSION = "v1"
 
 # Social post time windows (configurable)
 # These define how far before/after the game we include social posts
-SOCIAL_PREGAME_WINDOW_SECONDS = 2 * 60 * 60   # 2 hours before game start
+SOCIAL_PREGAME_WINDOW_SECONDS = 2 * 60 * 60  # 2 hours before game start
 SOCIAL_POSTGAME_WINDOW_SECONDS = 2 * 60 * 60  # 2 hours after game end
 
 # Canonical phase ordering - this is the source of truth for timeline order
@@ -138,6 +138,7 @@ def _phase_sort_order(phase: str | None) -> int:
 @dataclass
 class TimelineArtifactPayload:
     """Payload for a generated timeline artifact."""
+
     game_id: int
     sport: str
     timeline_version: str
@@ -355,12 +356,14 @@ def _build_pbp_events(
         quarter_start = _nba_quarter_start(game_start, quarter)
         elapsed_in_quarter = NBA_QUARTER_GAME_SECONDS - (clock_seconds or 0)
         # Scale game time to real time (roughly 1.5x)
-        real_elapsed = elapsed_in_quarter * (NBA_QUARTER_REAL_SECONDS / NBA_QUARTER_GAME_SECONDS)
+        real_elapsed = elapsed_in_quarter * (
+            NBA_QUARTER_REAL_SECONDS / NBA_QUARTER_GAME_SECONDS
+        )
         synthetic_ts = quarter_start + timedelta(seconds=real_elapsed)
 
         # Extract team abbreviation from relationship
         team_abbrev = None
-        if hasattr(play, 'team') and play.team:
+        if hasattr(play, "team") and play.team:
             team_abbrev = play.team.abbreviation
 
         event_payload = {
@@ -437,9 +440,7 @@ def _merge_timeline_events(
     """
     merged = list(pbp_events) + list(social_events)
 
-    def sort_key(
-        item: tuple[datetime, dict[str, Any]]
-    ) -> tuple[int, float, int, int]:
+    def sort_key(item: tuple[datetime, dict[str, Any]]) -> tuple[int, float, int, int]:
         _, payload = item
 
         # Primary: phase order
@@ -526,9 +527,7 @@ async def generate_timeline_artifact(
         )
         plays = plays_result.scalars().all()
         if not plays:
-            raise TimelineGenerationError(
-                "Missing play-by-play data", status_code=422
-            )
+            raise TimelineGenerationError("Missing play-by-play data", status_code=422)
 
         game_start = game.start_time
         game_end = _nba_game_end(game_start, plays)
@@ -585,9 +584,7 @@ async def generate_timeline_artifact(
         )
         pbp_events = _build_pbp_events(plays, game_start)
         if not pbp_events:
-            raise TimelineGenerationError(
-                "Missing play-by-play data", status_code=422
-            )
+            raise TimelineGenerationError("Missing play-by-play data", status_code=422)
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
@@ -622,15 +619,19 @@ async def generate_timeline_artifact(
             extra={"game_id": game_id, "phase": "game_analysis"},
         )
         base_summary = build_nba_summary(game)
-        
+
         # Build game context for team name resolution
         game_context = {
             "home_team_name": game.home_team.name if game.home_team else "Home",
             "away_team_name": game.away_team.name if game.away_team else "Away",
-            "home_team_abbrev": game.home_team.abbreviation if game.home_team else "HOME",
-            "away_team_abbrev": game.away_team.abbreviation if game.away_team else "AWAY",
+            "home_team_abbrev": game.home_team.abbreviation
+            if game.home_team
+            else "HOME",
+            "away_team_abbrev": game.away_team.abbreviation
+            if game.away_team
+            else "AWAY",
         }
-        
+
         game_analysis = await build_game_analysis_async(
             timeline=timeline,
             summary=base_summary,
@@ -712,7 +713,8 @@ async def generate_timeline_artifact(
             select(db_models.SportsGameTimelineArtifact).where(
                 db_models.SportsGameTimelineArtifact.game_id == game_id,
                 db_models.SportsGameTimelineArtifact.sport == "NBA",
-                db_models.SportsGameTimelineArtifact.timeline_version == timeline_version,
+                db_models.SportsGameTimelineArtifact.timeline_version
+                == timeline_version,
             )
         )
         artifact = artifact_result.scalar_one_or_none()

@@ -18,16 +18,12 @@ Test scenarios:
 ISSUE: Game Quality Scoring (Chapters-First Architecture)
 """
 
-import pytest
-
 from app.services.chapters.beat_classifier import BeatType
 from app.services.chapters.story_section import StorySection
 from app.services.chapters.game_quality import (
     # Types
     GameQuality,
     QualitySignals,
-    QualityScoreResult,
-    # Functions
     count_lead_changes,
     compute_quality_score,
     format_quality_debug,
@@ -46,6 +42,7 @@ from app.services.chapters.game_quality import (
 # ============================================================================
 # TEST HELPERS
 # ============================================================================
+
 
 def make_section(
     section_index: int,
@@ -79,37 +76,49 @@ def make_score_history(*scores: tuple[int, int]) -> list[dict[str, int]]:
 # TEST: LEAD CHANGE COUNTING
 # ============================================================================
 
+
 class TestLeadChangeCounting:
     """Tests for lead change counter."""
 
     def test_no_lead_changes_home_always_ahead(self):
         """Home team leads throughout - no lead changes."""
         history = make_score_history(
-            (0, 0), (2, 0), (4, 2), (6, 4), (8, 6),
+            (0, 0),
+            (2, 0),
+            (4, 2),
+            (6, 4),
+            (8, 6),
         )
         assert count_lead_changes(history) == 0
 
     def test_no_lead_changes_away_always_ahead(self):
         """Away team leads throughout - no lead changes."""
         history = make_score_history(
-            (0, 0), (0, 3), (2, 5), (4, 7), (6, 9),
+            (0, 0),
+            (0, 3),
+            (2, 5),
+            (4, 7),
+            (6, 9),
         )
         assert count_lead_changes(history) == 0
 
     def test_one_lead_change(self):
         """Single lead change from home to away."""
         history = make_score_history(
-            (0, 0), (5, 0), (5, 3), (5, 6),  # Home leads, then away takes lead
+            (0, 0),
+            (5, 0),
+            (5, 3),
+            (5, 6),  # Home leads, then away takes lead
         )
         assert count_lead_changes(history) == 1
 
     def test_multiple_lead_changes(self):
         """Multiple lead changes back and forth."""
         history = make_score_history(
-            (0, 0),   # Tied
-            (3, 0),   # Home leads
-            (3, 5),   # Away leads (change 1)
-            (8, 5),   # Home leads (change 2)
+            (0, 0),  # Tied
+            (3, 0),  # Home leads
+            (3, 5),  # Away leads (change 1)
+            (8, 5),  # Home leads (change 2)
             (8, 10),  # Away leads (change 3)
         )
         assert count_lead_changes(history) == 3
@@ -117,10 +126,10 @@ class TestLeadChangeCounting:
     def test_tie_does_not_count_as_lead_change(self):
         """Tie doesn't count as lead change."""
         history = make_score_history(
-            (0, 0),   # Tied
-            (5, 0),   # Home leads
-            (5, 5),   # Tied
-            (5, 8),   # Away leads (only 1 change)
+            (0, 0),  # Tied
+            (5, 0),  # Home leads
+            (5, 5),  # Tied
+            (5, 8),  # Away leads (only 1 change)
         )
         assert count_lead_changes(history) == 1
 
@@ -136,14 +145,14 @@ class TestLeadChangeCounting:
     def test_many_lead_changes_exciting_game(self):
         """Highly competitive game with many lead changes."""
         history = make_score_history(
-            (0, 0),    # Tie
-            (2, 0),    # Home
-            (2, 3),    # Away - change 1
-            (5, 3),    # Home - change 2
-            (5, 6),    # Away - change 3
-            (8, 6),    # Home - change 4
-            (8, 9),    # Away - change 5
-            (11, 9),   # Home - change 6
+            (0, 0),  # Tie
+            (2, 0),  # Home
+            (2, 3),  # Away - change 1
+            (5, 3),  # Home - change 2
+            (5, 6),  # Away - change 3
+            (8, 6),  # Home - change 4
+            (8, 9),  # Away - change 5
+            (11, 9),  # Home - change 6
             (11, 12),  # Away - change 7
         )
         assert count_lead_changes(history) == 7
@@ -151,7 +160,11 @@ class TestLeadChangeCounting:
     def test_tie_through_entire_game(self):
         """Game stays tied throughout - no lead changes."""
         history = make_score_history(
-            (0, 0), (2, 2), (4, 4), (6, 6), (8, 8),
+            (0, 0),
+            (2, 2),
+            (4, 4),
+            (6, 6),
+            (8, 8),
         )
         assert count_lead_changes(history) == 0
 
@@ -159,6 +172,7 @@ class TestLeadChangeCounting:
 # ============================================================================
 # TEST: POINT CONSTANTS (LOCKED VALUES)
 # ============================================================================
+
 
 class TestLockedConstants:
     """Verify point constants match specification."""
@@ -196,6 +210,7 @@ class TestLockedConstants:
 # ============================================================================
 # TEST: BLOWOUT GAMES (LOW QUALITY)
 # ============================================================================
+
 
 class TestBlowoutGames:
     """Tests for blowout games that should score LOW."""
@@ -243,6 +258,7 @@ class TestBlowoutGames:
 # ============================================================================
 # TEST: CLOSE GAMES (MEDIUM/HIGH QUALITY)
 # ============================================================================
+
 
 class TestCloseGames:
     """Tests for close games."""
@@ -308,6 +324,7 @@ class TestCloseGames:
 # TEST: OVERTIME GAMES (HIGH QUALITY)
 # ============================================================================
 
+
 class TestOvertimeGames:
     """Tests for overtime games."""
 
@@ -359,6 +376,7 @@ class TestOvertimeGames:
 # TEST: GAMES WITH MANY LEAD CHANGES
 # ============================================================================
 
+
 class TestLeadChangeGames:
     """Tests for games with lead changes."""
 
@@ -368,7 +386,11 @@ class TestLeadChangeGames:
             make_section(0, BeatType.BACK_AND_FORTH),
         ]
         history = make_score_history(
-            (0, 0), (5, 0), (5, 7), (10, 7), (10, 12),  # 3 lead changes
+            (0, 0),
+            (5, 0),
+            (5, 7),
+            (10, 7),
+            (10, 12),  # 3 lead changes
         )
 
         result = compute_quality_score(
@@ -392,7 +414,12 @@ class TestLeadChangeGames:
             make_section(2, BeatType.RESPONSE),
         ]
         history = make_score_history(
-            (0, 0), (3, 0), (3, 5), (8, 5), (8, 10), (15, 10),  # 4 lead changes
+            (0, 0),
+            (3, 0),
+            (3, 5),
+            (8, 5),
+            (8, 10),
+            (15, 10),  # 4 lead changes
         )
 
         result = compute_quality_score(
@@ -414,6 +441,7 @@ class TestLeadChangeGames:
 # ============================================================================
 # TEST: RUN/RESPONSE SECTIONS
 # ============================================================================
+
 
 class TestRunResponseSections:
     """Tests for RUN and RESPONSE section counting."""
@@ -481,6 +509,7 @@ class TestRunResponseSections:
 # TEST: BUCKET BOUNDARIES (EDGE CASES)
 # ============================================================================
 
+
 class TestBucketBoundaries:
     """Tests for exact bucket boundary behavior."""
 
@@ -491,7 +520,11 @@ class TestBucketBoundaries:
         ]
         # 3 lead changes = 3.0 points exactly
         history = make_score_history(
-            (0, 0), (3, 0), (3, 5), (8, 5), (8, 10),
+            (0, 0),
+            (3, 0),
+            (3, 5),
+            (8, 5),
+            (8, 10),
         )
 
         result = compute_quality_score(
@@ -511,7 +544,12 @@ class TestBucketBoundaries:
         ]
         # 4 lead changes = 4.0 points
         history = make_score_history(
-            (0, 0), (3, 0), (3, 5), (8, 5), (8, 10), (15, 10),
+            (0, 0),
+            (3, 0),
+            (3, 5),
+            (8, 5),
+            (8, 10),
+            (15, 10),
         )
 
         result = compute_quality_score(
@@ -537,7 +575,10 @@ class TestBucketBoundaries:
             make_section(0, BeatType.RUN),  # +0.5
         ]
         history = make_score_history(
-            (0, 0), (3, 0), (3, 5), (8, 5),  # 2 lead changes
+            (0, 0),
+            (3, 0),
+            (3, 5),
+            (8, 5),  # 2 lead changes
         )
 
         result = compute_quality_score(
@@ -559,7 +600,11 @@ class TestBucketBoundaries:
         ]
         # 3 lead changes = 3 points
         history = make_score_history(
-            (0, 0), (3, 0), (3, 5), (8, 5), (8, 10),
+            (0, 0),
+            (3, 0),
+            (3, 5),
+            (8, 5),
+            (8, 10),
         )
 
         result = compute_quality_score(
@@ -578,6 +623,7 @@ class TestBucketBoundaries:
 # TEST: DETERMINISM
 # ============================================================================
 
+
 class TestDeterminism:
     """Tests for deterministic behavior."""
 
@@ -589,7 +635,10 @@ class TestDeterminism:
             make_section(2, BeatType.CRUNCH_SETUP),
         ]
         history = make_score_history(
-            (0, 0), (5, 0), (5, 7), (12, 7),
+            (0, 0),
+            (5, 0),
+            (5, 7),
+            (12, 7),
         )
 
         results = []
@@ -644,6 +693,7 @@ class TestDeterminism:
 # TEST: COMPREHENSIVE SCENARIOS
 # ============================================================================
 
+
 class TestComprehensiveScenarios:
     """End-to-end scenario tests."""
 
@@ -679,7 +729,10 @@ class TestComprehensiveScenarios:
             make_section(5, BeatType.CLOSING_SEQUENCE),
         ]
         history = make_score_history(
-            (0, 0), (5, 2), (5, 8), (12, 8),  # 2 lead changes
+            (0, 0),
+            (5, 2),
+            (5, 8),
+            (12, 8),  # 2 lead changes
         )
 
         result = compute_quality_score(
@@ -707,7 +760,13 @@ class TestComprehensiveScenarios:
         # Lead changes: Home(10-2) -> Away(10-15) -> Home(20-15) -> Away(20-25) -> Home(30-25) -> Away(30-32)
         # That's 5 lead changes: away takes, home takes, away takes, home takes, away takes
         history = make_score_history(
-            (0, 0), (10, 2), (10, 15), (20, 15), (20, 25), (30, 25), (30, 32),
+            (0, 0),
+            (10, 2),
+            (10, 15),
+            (20, 15),
+            (20, 25),
+            (30, 25),
+            (30, 32),
         )
 
         result = compute_quality_score(
@@ -747,6 +806,7 @@ class TestComprehensiveScenarios:
 # TEST: SIGNAL ISOLATION
 # ============================================================================
 
+
 class TestSignalIsolation:
     """Tests verifying each signal works independently."""
 
@@ -754,7 +814,12 @@ class TestSignalIsolation:
         """Only lead changes contribute."""
         sections = [make_section(0, BeatType.BACK_AND_FORTH)]
         history = make_score_history(
-            (0, 0), (5, 0), (5, 8), (12, 8), (12, 15), (20, 15),  # 4 lead changes
+            (0, 0),
+            (5, 0),
+            (5, 8),
+            (12, 8),
+            (12, 15),
+            (20, 15),  # 4 lead changes
         )
 
         result = compute_quality_score(
@@ -830,6 +895,7 @@ class TestSignalIsolation:
 # TEST: DEBUG OUTPUT
 # ============================================================================
 
+
 class TestDebugOutput:
     """Tests for debug formatting."""
 
@@ -840,7 +906,9 @@ class TestDebugOutput:
             make_section(1, BeatType.CRUNCH_SETUP),
         ]
         history = make_score_history(
-            (0, 0), (5, 0), (5, 8),  # 1 lead change
+            (0, 0),
+            (5, 0),
+            (5, 8),  # 1 lead change
         )
 
         result = compute_quality_score(
@@ -866,6 +934,7 @@ class TestDebugOutput:
 # ============================================================================
 # TEST: SERIALIZATION
 # ============================================================================
+
 
 class TestSerialization:
     """Tests for serialization."""

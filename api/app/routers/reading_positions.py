@@ -92,7 +92,9 @@ async def get_reading_position(
     record = result.scalar_one_or_none()
 
     if record is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reading position not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Reading position not found."
+        )
 
     return ReadingPositionResponse(
         userId=record.user_id,

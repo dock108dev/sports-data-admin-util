@@ -26,4 +26,6 @@ def validate_env() -> None:
 
         allowed_cors = require_env("ALLOWED_CORS_ORIGINS")
         if "localhost" in allowed_cors or "127.0.0.1" in allowed_cors:
-            raise RuntimeError("ALLOWED_CORS_ORIGINS must not include localhost in production.")
+            raise RuntimeError(
+                "ALLOWED_CORS_ORIGINS must not include localhost in production."
+            )

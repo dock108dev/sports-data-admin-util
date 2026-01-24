@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 # AI CLIENT PROTOCOL
 # ============================================================================
 
+
 class AIClient(Protocol):
     """Protocol for AI client implementations."""
 
@@ -71,12 +72,14 @@ class AIClient(Protocol):
 # RENDERING INPUT (AUTHORITATIVE)
 # ============================================================================
 
+
 @dataclass
 class ClosingContext:
     """Context for the closing paragraph.
 
     Contains ONLY what AI needs for the final paragraph.
     """
+
     final_home_score: int
     final_away_score: int
     home_team_name: str
@@ -98,6 +101,7 @@ class SectionRenderInput:
     Contains ONLY what AI needs to render this section.
     No raw plays, no chapters, no cumulative stats.
     """
+
     header: str  # Deterministic one-sentence header (use verbatim)
     beat_type: BeatType
     team_stat_deltas: list[dict[str, Any]]
@@ -122,6 +126,7 @@ class StoryRenderInput:
     This is the AUTHORITATIVE payload sent to AI.
     Contains everything AI needs and nothing more.
     """
+
     sport: str
     home_team_name: str
     away_team_name: str
@@ -147,12 +152,14 @@ class StoryRenderInput:
 # RENDERING RESULT
 # ============================================================================
 
+
 @dataclass
 class StoryRenderResult:
     """Result of story rendering.
 
     Contains the rendered story and metadata.
     """
+
     compact_story: str
     word_count: int
     target_word_count: int
@@ -172,6 +179,7 @@ class StoryRenderResult:
 
 class StoryRenderError(Exception):
     """Raised when story rendering fails."""
+
     pass
 
 
@@ -275,9 +283,11 @@ def _format_section_for_prompt(section: SectionRenderInput, index: int) -> str:
             fouls = team.get("personal_fouls_committed", 0)
             tech = team.get("technical_fouls_committed", 0)
             to = team.get("timeouts_used", 0)
-            lines.append(f"  - {name}: {pts} pts, {fouls} fouls" +
-                        (f", {tech} tech" if tech > 0 else "") +
-                        (f", {to} TO used" if to > 0 else ""))
+            lines.append(
+                f"  - {name}: {pts} pts, {fouls} fouls"
+                + (f", {tech} tech" if tech > 0 else "")
+                + (f", {to} TO used" if to > 0 else "")
+            )
 
     # Player stats (bounded)
     if section.player_stat_deltas:
@@ -324,15 +334,19 @@ def build_render_prompt(input_data: StoryRenderInput) -> str:
         Formatted prompt string
     """
     # Format all sections
-    sections_text = "\n\n".join([
-        _format_section_for_prompt(section, i)
-        for i, section in enumerate(input_data.sections)
-    ])
+    sections_text = "\n\n".join(
+        [
+            _format_section_for_prompt(section, i)
+            for i, section in enumerate(input_data.sections)
+        ]
+    )
 
     # Format decisive factors
-    decisive_factors = "\n".join([
-        f"- {factor}" for factor in input_data.closing.decisive_factors
-    ]) if input_data.closing.decisive_factors else "- (none specified)"
+    decisive_factors = (
+        "\n".join([f"- {factor}" for factor in input_data.closing.decisive_factors])
+        if input_data.closing.decisive_factors
+        else "- (none specified)"
+    )
 
     # Build final prompt
     prompt = STORY_RENDER_PROMPT.format(
@@ -352,6 +366,7 @@ def build_render_prompt(input_data: StoryRenderInput) -> str:
 # INPUT BUILDING HELPERS
 # ============================================================================
 
+
 def build_section_render_input(
     section: StorySection,
     header: str,
@@ -366,14 +381,10 @@ def build_section_render_input(
         SectionRenderInput ready for prompt
     """
     # Convert team deltas to dicts
-    team_deltas = [
-        delta.to_dict() for delta in section.team_stat_deltas.values()
-    ]
+    team_deltas = [delta.to_dict() for delta in section.team_stat_deltas.values()]
 
     # Convert player deltas to dicts (already bounded to top 1-3)
-    player_deltas = [
-        delta.to_dict() for delta in section.player_stat_deltas.values()
-    ]
+    player_deltas = [delta.to_dict() for delta in section.player_stat_deltas.values()]
 
     return SectionRenderInput(
         header=header,
@@ -452,6 +463,7 @@ def build_story_render_input(
 # RENDERING FUNCTION
 # ============================================================================
 
+
 def render_story(
     input_data: StoryRenderInput,
     ai_client: AIClient | None = None,
@@ -481,9 +493,11 @@ def render_story(
     # Generate story
     if ai_client is None:
         logger.warning("No AI client provided, returning mock story")
-        raw_response = json.dumps({
-            "compact_story": _generate_mock_story(input_data),
-        })
+        raw_response = json.dumps(
+            {
+                "compact_story": _generate_mock_story(input_data),
+            }
+        )
     else:
         try:
             raw_response = ai_client.generate(prompt)
@@ -512,8 +526,7 @@ def render_story(
     word_count = len(compact_story.split())
 
     logger.info(
-        f"Rendered story: {word_count} words "
-        f"(target: {input_data.target_word_count})"
+        f"Rendered story: {word_count} words (target: {input_data.target_word_count})"
     )
 
     return StoryRenderResult(
@@ -561,6 +574,7 @@ def _generate_mock_story(input_data: StoryRenderInput) -> str:
 # ============================================================================
 # VALIDATION
 # ============================================================================
+
 
 def validate_render_input(input_data: StoryRenderInput) -> list[str]:
     """Validate rendering input.
@@ -639,6 +653,7 @@ def validate_render_result(
 # DEBUG OUTPUT
 # ============================================================================
 
+
 def format_render_debug(
     input_data: StoryRenderInput,
     result: StoryRenderResult | None = None,
@@ -670,14 +685,16 @@ def format_render_debug(
     lines.append(f"Closing: {input_data.closing.to_dict()['final_score']}")
 
     if result:
-        lines.extend([
-            "",
-            "-" * 60,
-            "Result:",
-            f"  Word Count: {result.word_count}",
-            f"  Target: {result.target_word_count}",
-            f"  Deviation: {abs(result.word_count - result.target_word_count)} words",
-        ])
+        lines.extend(
+            [
+                "",
+                "-" * 60,
+                "Result:",
+                f"  Word Count: {result.word_count}",
+                f"  Target: {result.target_word_count}",
+                f"  Deviation: {abs(result.word_count - result.target_word_count)} words",
+            ]
+        )
 
     lines.append("=" * 60)
 

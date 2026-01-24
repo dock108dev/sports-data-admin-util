@@ -127,9 +127,7 @@ class StageStatusResponse(BaseModel):
         description="Summary of output (counts, key metrics)"
     )
     log_count: int = Field(description="Number of log entries")
-    can_execute: bool = Field(
-        description="Whether this stage can be executed now"
-    )
+    can_execute: bool = Field(description="Whether this stage can be executed now")
 
 
 class StageOutputResponse(BaseModel):
@@ -306,9 +304,7 @@ class GamePipelineSummary(BaseModel):
     latest_artifact_at: str | None
     total_pipeline_runs: int
     latest_run: PipelineRunSummary | None
-    can_run_pipeline: bool = Field(
-        description="Whether a new pipeline can be started"
-    )
+    can_run_pipeline: bool = Field(description="Whether a new pipeline can be started")
 
 
 class StageComparisonResponse(BaseModel):

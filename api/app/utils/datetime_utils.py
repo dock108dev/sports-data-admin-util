@@ -21,11 +21,11 @@ def date_to_utc_datetime(day: date) -> datetime:
 def parse_clock_to_seconds(clock: str | None) -> int | None:
     """
     Parse game clock string to seconds remaining.
-    
+
     Accepts formats:
     - "MM:SS" (e.g., "11:45")
     - "MM:SS.x" (e.g., "5:30.0")
-    
+
     Returns None if clock is invalid or None.
     """
     if not clock:
@@ -37,4 +37,3 @@ def parse_clock_to_seconds(clock: str | None) -> int | None:
         return int(float(parts[0]))
     except (ValueError, IndexError):
         return None
-

@@ -61,7 +61,9 @@ def normalize_post_text(text: str | None) -> str | None:
     return cleaned or None
 
 
-def dedupe_social_posts(posts: Sequence[db_models.GameSocialPost]) -> list[db_models.GameSocialPost]:
+def dedupe_social_posts(
+    posts: Sequence[db_models.GameSocialPost],
+) -> list[db_models.GameSocialPost]:
     """Deduplicate social posts by normalized text and team id."""
     seen: set[tuple[str, int]] = set()
     deduped: list[db_models.GameSocialPost] = []
@@ -77,15 +79,21 @@ def dedupe_social_posts(posts: Sequence[db_models.GameSocialPost]) -> list[db_mo
 
 async def get_league(session: AsyncSession, code: str) -> db_models.SportsLeague:
     """Fetch league by code or raise 404."""
-    stmt = select(db_models.SportsLeague).where(db_models.SportsLeague.code == code.upper())
+    stmt = select(db_models.SportsLeague).where(
+        db_models.SportsLeague.code == code.upper()
+    )
     result = await session.execute(stmt)
     league = result.scalar_one_or_none()
     if not league:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"League {code} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"League {code} not found"
+        )
     return league
 
 
-def serialize_run(run: db_models.SportsScrapeRun, league_code: str) -> ScrapeRunResponse:
+def serialize_run(
+    run: db_models.SportsScrapeRun, league_code: str
+) -> ScrapeRunResponse:
     """Serialize scrape run to API response."""
     return ScrapeRunResponse(
         id=run.id,
@@ -133,7 +141,9 @@ def _extract_minutes(stats: dict[str, Any]) -> float | None:
     return float(minutes_val) if isinstance(minutes_val, (int, float)) else None
 
 
-def _get_int_stat(stats: dict[str, Any], normalized_key: str, raw_key: str) -> int | None:
+def _get_int_stat(
+    stats: dict[str, Any], normalized_key: str, raw_key: str
+) -> int | None:
     value = stats.get(normalized_key) or stats.get(raw_key)
     if value is None:
         return None
@@ -197,7 +207,9 @@ def serialize_nhl_skater(player: db_models.SportsPlayerBoxscore) -> NHLSkaterSta
     )
 
 
-def _get_float_stat(stats: dict[str, Any], normalized_key: str, raw_key: str) -> float | None:
+def _get_float_stat(
+    stats: dict[str, Any], normalized_key: str, raw_key: str
+) -> float | None:
     """Extract float stat from raw or normalized key."""
     value = stats.get(normalized_key) or stats.get(raw_key)
     if value is None:

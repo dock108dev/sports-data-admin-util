@@ -86,6 +86,7 @@ class RevealClassification(NamedTuple):
 # Classification Logic
 # ----------------------------------------------------------------------------
 
+
 def check_for_reveals(text: str) -> RevealCheckResult:
     """Check if text contains definitive game outcome reveals."""
     if not text:
@@ -113,14 +114,20 @@ def classify_reveal_risk(text: str | None) -> RevealClassification:
 
     reveal_result = check_for_reveals(text)
     if reveal_result.reveals_outcome:
-        return RevealClassification(True, reveal_result.reason, reveal_result.matched_pattern)
+        return RevealClassification(
+            True, reveal_result.reason, reveal_result.matched_pattern
+        )
 
     if SCORE_EMOJI_PATTERN.search(text):
-        return RevealClassification(True, reason="score_emoji", matched_pattern=SCORE_EMOJI_PATTERN.pattern)
+        return RevealClassification(
+            True, reason="score_emoji", matched_pattern=SCORE_EMOJI_PATTERN.pattern
+        )
 
     for pattern in SAFE_PATTERNS:
         if pattern.search(text):
-            return RevealClassification(False, reason="safe_pattern", matched_pattern=pattern.pattern)
+            return RevealClassification(
+                False, reason="safe_pattern", matched_pattern=pattern.pattern
+            )
 
     return RevealClassification(True, reason="default_conservative")
 
@@ -128,6 +135,7 @@ def classify_reveal_risk(text: str | None) -> RevealClassification:
 # ----------------------------------------------------------------------------
 # Redaction Logic
 # ----------------------------------------------------------------------------
+
 
 def contains_explicit_score(text: str | None) -> bool:
     """Return True if the text contains an explicit score pattern."""

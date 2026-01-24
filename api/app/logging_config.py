@@ -72,8 +72,12 @@ def _normalize_log_level(level: str | None, environment: str) -> int:
     return logging._nameToLevel.get(normalized, logging.INFO)
 
 
-def configure_logging(service: str, environment: str, log_level: str | None = None) -> None:
-    resolved_level = _normalize_log_level(log_level or os.getenv("LOG_LEVEL"), environment)
+def configure_logging(
+    service: str, environment: str, log_level: str | None = None
+) -> None:
+    resolved_level = _normalize_log_level(
+        log_level or os.getenv("LOG_LEVEL"), environment
+    )
     handler = logging.StreamHandler(stream=sys.stdout)
     handler.setFormatter(JSONFormatter(service=service, environment=environment))
     root_logger = logging.getLogger()

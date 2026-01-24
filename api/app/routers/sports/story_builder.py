@@ -203,7 +203,9 @@ def _map_pipeline_result_to_response(
         generated_at=result.generated_at,
         metadata={
             "quality_score": result.quality.numeric_score,
-            "quality_signals": result.quality.signals.to_dict() if hasattr(result.quality.signals, "to_dict") else {},
+            "quality_signals": result.quality.signals.to_dict()
+            if hasattr(result.quality.signals, "to_dict")
+            else {},
         },
         has_compact_story=bool(result.compact_story),
     )

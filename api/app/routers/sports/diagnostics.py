@@ -20,7 +20,10 @@ async def list_missing_pbp(
 ) -> list[MissingPbpEntry]:
     stmt = (
         select(db_models.SportsMissingPbp, db_models.SportsLeague.code)
-        .join(db_models.SportsLeague, db_models.SportsMissingPbp.league_id == db_models.SportsLeague.id)
+        .join(
+            db_models.SportsLeague,
+            db_models.SportsMissingPbp.league_id == db_models.SportsLeague.id,
+        )
         .order_by(desc(db_models.SportsMissingPbp.updated_at))
         .limit(limit)
     )
@@ -49,7 +52,10 @@ async def list_game_conflicts(
 ) -> list[GameConflictEntry]:
     stmt = (
         select(db_models.SportsGameConflict, db_models.SportsLeague.code)
-        .join(db_models.SportsLeague, db_models.SportsGameConflict.league_id == db_models.SportsLeague.id)
+        .join(
+            db_models.SportsLeague,
+            db_models.SportsGameConflict.league_id == db_models.SportsLeague.id,
+        )
         .order_by(desc(db_models.SportsGameConflict.created_at))
         .limit(limit)
     )

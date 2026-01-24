@@ -144,8 +144,12 @@ async def list_games(
             db_models.SportsGame.status == db_models.GameStatus.live.value,
         )
 
-    has_pbp = exists(select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id))
-    has_social = exists(select(1).where(db_models.GameSocialPost.game_id == db_models.SportsGame.id))
+    has_pbp = exists(
+        select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
+    )
+    has_social = exists(
+        select(1).where(db_models.GameSocialPost.game_id == db_models.SportsGame.id)
+    )
 
     conflict_exists = exists(
         select(1)
@@ -153,14 +157,17 @@ async def list_games(
         .where(
             or_(
                 db_models.SportsGameConflict.game_id == db_models.SportsGame.id,
-                db_models.SportsGameConflict.conflict_game_id == db_models.SportsGame.id,
+                db_models.SportsGameConflict.conflict_game_id
+                == db_models.SportsGame.id,
             )
         )
     )
 
     try:
         league_clause = (
-            db_models.SportsGame.league.has(db_models.SportsLeague.code == league_filter)
+            db_models.SportsGame.league.has(
+                db_models.SportsLeague.code == league_filter
+            )
             if league_filter
             else None
         )
@@ -240,7 +247,9 @@ async def list_games(
             game.last_scraped_at,
             game.updated_at,
         ]
-        last_updated = max([dt for dt in timestamps if dt is not None], default=game.game_date)
+        last_updated = max(
+            [dt for dt in timestamps if dt is not None], default=game.game_date
+        )
         games.append(
             GameSnapshot(
                 id=game.id,
@@ -256,7 +265,9 @@ async def list_games(
         )
 
     if excluded:
-        logger.info("snapshot_games_excluded", extra={"range": range, "excluded": excluded})
+        logger.info(
+            "snapshot_games_excluded", extra={"range": range, "excluded": excluded}
+        )
 
     await _record_snapshot_job_run(
         session,
@@ -291,7 +302,9 @@ async def get_game_pbp(
     """
     game = await session.get(db_models.SportsGame, game_id)
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
 
     plays_result = await session.execute(
         select(db_models.SportsGamePlay)
@@ -330,7 +343,9 @@ async def get_game_social(
     """
     game = await session.get(db_models.SportsGame, game_id)
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
 
     posts_result = await session.execute(
         select(db_models.GameSocialPost)
@@ -375,7 +390,9 @@ async def get_game_timeline(
     )
     artifact = artifact_result.scalar_one_or_none()
     if artifact is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found"
+        )
 
     return TimelineArtifactStoredResponse(
         game_id=artifact.game_id,
@@ -421,7 +438,9 @@ async def get_game_timeline_diagnostic(
     )
     artifact = artifact_result.scalar_one_or_none()
     if artifact is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found"
+        )
 
     timeline = artifact.timeline_json or []
 
@@ -474,7 +493,12 @@ class CompactTimelineResponse(BaseModel):
 @router.get("/games/{game_id}/timeline/compact", response_model=CompactTimelineResponse)
 async def get_game_timeline_compact(
     game_id: int,
-    level: int = Query(2, ge=1, le=3, description="Compression level: 1=highlights, 2=standard, 3=detailed"),
+    level: int = Query(
+        2,
+        ge=1,
+        le=3,
+        description="Compression level: 1=highlights, 2=standard, 3=detailed",
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> CompactTimelineResponse:
     """
@@ -500,7 +524,9 @@ async def get_game_timeline_compact(
     )
     artifact = artifact_result.scalar_one_or_none()
     if artifact is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Timeline artifact not found"
+        )
 
     timeline = artifact.timeline_json or []
     event_count = len(timeline)
@@ -540,11 +566,15 @@ async def get_game_recap(
     """
     reveal_level = parse_reveal_level(reveal)
     if reveal_level is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reveal value")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reveal value"
+        )
 
     game = await session.get(db_models.SportsGame, game_id)
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
 
     plays_result = await session.execute(
         select(db_models.SportsGamePlay)

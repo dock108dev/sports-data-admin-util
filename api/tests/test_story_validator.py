@@ -58,6 +58,7 @@ from app.services.chapters.story_validator import (
 # FIXTURES
 # ============================================================================
 
+
 @pytest.fixture
 def valid_section() -> StorySection:
     """Create a valid StorySection for testing."""
@@ -191,6 +192,7 @@ def valid_render_result() -> StoryRenderResult:
 # PART 1: SECTION ORDERING VALIDATION
 # ============================================================================
 
+
 class TestSectionOrderingValidation:
     """Tests for section ordering validation."""
 
@@ -251,7 +253,13 @@ class TestSectionOrderingValidation:
 
     def test_missing_chapter_fails(self, valid_sections):
         """Missing expected chapter fails."""
-        chapter_ids = ["ch_001", "ch_002", "ch_003", "ch_004", "ch_005"]  # ch_005 missing
+        chapter_ids = [
+            "ch_001",
+            "ch_002",
+            "ch_003",
+            "ch_004",
+            "ch_005",
+        ]  # ch_005 missing
 
         result = validate_section_ordering(valid_sections, chapter_ids)
         assert result.valid is False
@@ -273,6 +281,7 @@ class TestSectionOrderingValidation:
 # ============================================================================
 # PART 1: STAT CONSISTENCY VALIDATION
 # ============================================================================
+
 
 class TestStatConsistencyValidation:
     """Tests for stat consistency validation."""
@@ -383,6 +392,7 @@ class TestStatConsistencyValidation:
 # PART 1: WORD COUNT TOLERANCE VALIDATION
 # ============================================================================
 
+
 class TestWordCountValidation:
     """Tests for word count tolerance validation."""
 
@@ -446,6 +456,7 @@ class TestWordCountValidation:
 # PART 2: NO NEW PLAYERS VALIDATION
 # ============================================================================
 
+
 class TestNoNewPlayersValidation:
     """Tests for no new players validation."""
 
@@ -473,15 +484,13 @@ class TestNoNewPlayersValidation:
         assert result.error_type == "PlayerInventionError"
         assert "m. jordan" in str(result.details["invented_names"]).lower()
 
-    def test_misspelled_player_fails(self, valid_render_input):
-        """Misspelled player name fails (treated as new player)."""
+    def test_misspelled_player_behavior_documented(self, valid_render_input):
+        """Misspelled player name behavior is documented (fuzzy matching dependent)."""
         story = "LaBron James scored 12 points."  # Misspelled
 
-        result = validate_no_new_players(story, valid_render_input)
-        # This may or may not fail depending on fuzzy matching
+        # Call the validator - behavior depends on fuzzy matching implementation
         # The validator is conservative, so misspellings might pass
-        # This test documents the behavior
-        pass  # Behavior depends on implementation
+        validate_no_new_players(story, valid_render_input)
 
     def test_partial_name_match_passes(self, valid_render_input):
         """Partial name (last name only) passes."""
@@ -494,6 +503,7 @@ class TestNoNewPlayersValidation:
 # ============================================================================
 # PART 2: NO STAT INVENTION VALIDATION
 # ============================================================================
+
 
 class TestNoStatInventionValidation:
     """Tests for no stat invention validation."""
@@ -568,6 +578,7 @@ class TestNoStatInventionValidation:
 # PART 2: NO OUTCOME CONTRADICTIONS VALIDATION
 # ============================================================================
 
+
 class TestNoOutcomeContradictionsValidation:
     """Tests for no outcome contradictions validation."""
 
@@ -641,6 +652,7 @@ class TestNoOutcomeContradictionsValidation:
 # AGGREGATE VALIDATION TESTS
 # ============================================================================
 
+
 class TestPreRenderValidation:
     """Tests for pre-render validation aggregate function."""
 
@@ -657,7 +669,9 @@ class TestPreRenderValidation:
         valid_sections[1].section_index = 5  # Gap
 
         with pytest.raises(SectionOrderingError):
-            validate_pre_render(valid_sections, ["ch_001", "ch_002", "ch_003", "ch_004"])
+            validate_pre_render(
+                valid_sections, ["ch_001", "ch_002", "ch_003", "ch_004"]
+            )
 
     def test_invalid_stats_raises(self, valid_section):
         """Invalid stats raises StatConsistencyError."""
@@ -701,7 +715,9 @@ class TestPostRenderValidation:
         with pytest.raises(StatInventionError):
             validate_post_render(story, valid_render_input, valid_render_result)
 
-    def test_outcome_contradiction_raises(self, valid_render_input, valid_render_result):
+    def test_outcome_contradiction_raises(
+        self, valid_render_input, valid_render_result
+    ):
         """Outcome contradiction raises OutcomeContradictionError."""
         story = "The Celtics won the game. " * 100  # Within word count
 
@@ -712,6 +728,7 @@ class TestPostRenderValidation:
 # ============================================================================
 # DEBUG OUTPUT TESTS
 # ============================================================================
+
 
 class TestDebugOutput:
     """Tests for debug output formatting."""
@@ -730,12 +747,15 @@ class TestDebugOutput:
         valid_sections[1].section_index = 5  # Create failure
 
         try:
-            validate_pre_render(valid_sections, ["ch_001", "ch_002", "ch_003", "ch_004"])
+            validate_pre_render(
+                valid_sections, ["ch_001", "ch_002", "ch_003", "ch_004"]
+            )
         except SectionOrderingError:
             pass
 
         # Create a failed result manually for testing format
         from app.services.chapters.story_validator import ValidationResult
+
         failed_result = ValidationResult(
             valid=False,
             error_type="SectionOrderingError",
@@ -752,6 +772,7 @@ class TestDebugOutput:
 # ============================================================================
 # EDGE CASES
 # ============================================================================
+
 
 class TestEdgeCases:
     """Tests for edge cases and boundary conditions."""

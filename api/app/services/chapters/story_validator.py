@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 # VALIDATION ERROR TYPES
 # ============================================================================
 
+
 class StoryValidationError(Exception):
     """Base exception for story validation failures.
 
@@ -64,37 +65,44 @@ class StoryValidationError(Exception):
 
 class SectionOrderingError(StoryValidationError):
     """Raised when section ordering validation fails."""
+
     pass
 
 
 class StatConsistencyError(StoryValidationError):
     """Raised when stat consistency validation fails."""
+
     pass
 
 
 class WordCountError(StoryValidationError):
     """Raised when word count is outside tolerance."""
+
     pass
 
 
 class PlayerInventionError(StoryValidationError):
     """Raised when AI invented a player not in the data."""
+
     pass
 
 
 class StatInventionError(StoryValidationError):
     """Raised when AI invented stats not in the data."""
+
     pass
 
 
 class OutcomeContradictionError(StoryValidationError):
     """Raised when AI output contradicts known game outcome."""
+
     pass
 
 
 # ============================================================================
 # VALIDATION RESULT
 # ============================================================================
+
 
 @dataclass
 class ValidationResult:
@@ -103,6 +111,7 @@ class ValidationResult:
     NOTE: This is for reporting, NOT for conditional logic.
     If valid=False, the caller MUST raise or fail.
     """
+
     valid: bool
     error_type: str | None = None
     error_message: str | None = None
@@ -125,6 +134,7 @@ class ValidationResult:
 # ----------------------------------------------------------------------------
 # 1. SECTION ORDERING VALIDATION
 # ----------------------------------------------------------------------------
+
 
 def validate_section_ordering(
     sections: list[StorySection],
@@ -236,6 +246,7 @@ def validate_section_ordering(
 # 2. STAT CONSISTENCY VALIDATION
 # ----------------------------------------------------------------------------
 
+
 def validate_stat_consistency(sections: list[StorySection]) -> ValidationResult:
     """Validate that section stats are internally consistent.
 
@@ -325,9 +336,15 @@ def validate_stat_consistency(sections: list[StorySection]) -> ValidationResult:
             # Expected: points = (fg_made - three_pt_made)*2 + three_pt_made*3 + ft_made
             # Simplified: points = fg_made*2 + three_pt_made*1 + ft_made
             if player_delta.points_scored > 0:
-                expected_max = player_delta.fg_made * 3 + player_delta.ft_made  # All FGs are 3PT
+                expected_max = (
+                    player_delta.fg_made * 3 + player_delta.ft_made
+                )  # All FGs are 3PT
 
-                if player_delta.points_scored > expected_max and player_delta.fg_made == 0 and player_delta.ft_made == 0:
+                if (
+                    player_delta.points_scored > expected_max
+                    and player_delta.fg_made == 0
+                    and player_delta.ft_made == 0
+                ):
                     return ValidationResult(
                         valid=False,
                         error_type="StatConsistencyError",
@@ -450,6 +467,7 @@ def validate_word_count(
 # 4. NO NEW PLAYERS VALIDATION
 # ----------------------------------------------------------------------------
 
+
 def _extract_player_names_from_input(input_data: StoryRenderInput) -> set[str]:
     """Extract all valid player names from rendering input.
 
@@ -483,7 +501,7 @@ def _extract_names_from_story(compact_story: str) -> set[str]:
 
     # Pattern: Initial + period + optional space + Capitalized word(s)
     # Examples: "D. Mitchell", "J. Allen", "K. Knueppel"
-    initial_pattern = r'\b([A-Z]\.\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b'
+    initial_pattern = r"\b([A-Z]\.\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b"
     for match in re.findall(initial_pattern, compact_story):
         names.add(match.lower())
 
@@ -560,21 +578,24 @@ def validate_no_new_players(
 # Patterns that indicate invented stats
 STAT_INVENTION_PATTERNS = [
     # Percentages
-    (r'\d+(\.\d+)?\s*%', "percentage"),
-    (r'shot\s+\d+\s*(of|for)\s*\d+', "shooting fraction"),
-    (r'\d+\s*-\s*(of|for)\s*-\s*\d+', "shooting notation"),
-
+    (r"\d+(\.\d+)?\s*%", "percentage"),
+    (r"shot\s+\d+\s*(of|for)\s*\d+", "shooting fraction"),
+    (r"\d+\s*-\s*(of|for)\s*-\s*\d+", "shooting notation"),
     # Efficiency claims
-    (r'efficient', "efficiency claim"),
-    (r'shooting\s+efficiency', "efficiency claim"),
-
+    (r"efficient", "efficiency claim"),
+    (r"shooting\s+efficiency", "efficiency claim"),
     # Inferred totals
-    (r'(finished|ended)\s+(with|at)\s+\d+\s+(points|rebounds|assists)', "inferred total"),
-    (r'(scored|had)\s+a\s+(game|team|season)[\s-]?(high|leading)', "inferred comparison"),
-
+    (
+        r"(finished|ended)\s+(with|at)\s+\d+\s+(points|rebounds|assists)",
+        "inferred total",
+    ),
+    (
+        r"(scored|had)\s+a\s+(game|team|season)[\s-]?(high|leading)",
+        "inferred comparison",
+    ),
     # Comparative claims
-    (r'led\s+all\s+scorers', "inferred leadership"),
-    (r'(most|fewest)\s+(points|rebounds|assists)', "inferred superlative"),
+    (r"led\s+all\s+scorers", "inferred leadership"),
+    (r"(most|fewest)\s+(points|rebounds|assists)", "inferred superlative"),
 ]
 
 
@@ -602,11 +623,13 @@ def validate_no_stat_invention(compact_story: str) -> ValidationResult:
             # Find the actual matched text for context
             full_matches = re.finditer(pattern, compact_story, re.IGNORECASE)
             for match in full_matches:
-                violations.append({
-                    "type": description,
-                    "match": match.group(),
-                    "position": match.start(),
-                })
+                violations.append(
+                    {
+                        "type": description,
+                        "match": match.group(),
+                        "position": match.start(),
+                    }
+                )
 
     if violations:
         return ValidationResult(
@@ -625,6 +648,7 @@ def validate_no_stat_invention(compact_story: str) -> ValidationResult:
 # ----------------------------------------------------------------------------
 # 6. NO OUTCOME CONTRADICTIONS VALIDATION
 # ----------------------------------------------------------------------------
+
 
 def validate_no_outcome_contradictions(
     compact_story: str,
@@ -700,8 +724,7 @@ def validate_no_outcome_contradictions(
 
     # Check for overtime mention without OVERTIME section
     has_overtime_section = any(
-        section.beat_type == BeatType.OVERTIME
-        for section in input_data.sections
+        section.beat_type == BeatType.OVERTIME for section in input_data.sections
     )
 
     overtime_mentions = ["overtime", " ot ", "extra period", "extra time"]
@@ -724,6 +747,7 @@ def validate_no_outcome_contradictions(
 # ============================================================================
 # AGGREGATE VALIDATION FUNCTIONS
 # ============================================================================
+
 
 def validate_pre_render(
     sections: list[StorySection],
@@ -750,7 +774,9 @@ def validate_pre_render(
     ordering_result = validate_section_ordering(sections, all_chapter_ids)
     results.append(ordering_result)
     if not ordering_result.valid:
-        logger.error(f"Section ordering validation FAILED: {ordering_result.error_message}")
+        logger.error(
+            f"Section ordering validation FAILED: {ordering_result.error_message}"
+        )
         raise SectionOrderingError(
             ordering_result.error_message or "Section ordering failed",
             ordering_result.details,
@@ -879,6 +905,7 @@ def validate_full_pipeline(
 # ============================================================================
 # DEBUG OUTPUT
 # ============================================================================
+
 
 def format_validation_debug(results: list[ValidationResult]) -> str:
     """Format validation results for debugging.

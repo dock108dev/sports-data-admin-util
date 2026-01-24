@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 # PLAY ENTRY
 # ============================================================================
 
+
 class PlayEntry(BaseModel):
     """A single play from the game timeline."""
 
@@ -33,6 +34,7 @@ class PlayEntry(BaseModel):
 # ============================================================================
 # CHAPTER ENTRY
 # ============================================================================
+
 
 class TimeRange(BaseModel):
     """Game clock time range for a chapter."""
@@ -64,16 +66,23 @@ class ChapterEntry(BaseModel):
     time_range: TimeRange | None = Field(None, description="Game clock range")
 
     # Plays (for expansion)
-    plays: list[PlayEntry] = Field(default_factory=list, description="Raw plays in chapter")
+    plays: list[PlayEntry] = Field(
+        default_factory=list, description="Raw plays in chapter"
+    )
 
     # Debug-only (optional)
-    chapter_fingerprint: str | None = Field(None, description="Deterministic chapter hash")
-    boundary_logs: list[dict[str, Any]] | None = Field(None, description="Debug boundary events")
+    chapter_fingerprint: str | None = Field(
+        None, description="Deterministic chapter hash"
+    )
+    boundary_logs: list[dict[str, Any]] | None = Field(
+        None, description="Debug boundary events"
+    )
 
 
 # ============================================================================
 # SECTION ENTRY (CHAPTERS-FIRST)
 # ============================================================================
+
 
 class SectionEntry(BaseModel):
     """
@@ -84,21 +93,30 @@ class SectionEntry(BaseModel):
     """
 
     section_index: int = Field(..., description="0-based section index")
-    beat_type: str = Field(..., description="Beat type (e.g., 'FAST_START', 'RUN', 'CLOSING_SEQUENCE')")
+    beat_type: str = Field(
+        ..., description="Beat type (e.g., 'FAST_START', 'RUN', 'CLOSING_SEQUENCE')"
+    )
     header: str = Field(..., description="Deterministic one-sentence header")
     chapters_included: list[str] = Field(..., description="Chapter IDs in this section")
 
     # Score bookends
-    start_score: dict[str, int] = Field(..., description="Score at section start {'home': int, 'away': int}")
-    end_score: dict[str, int] = Field(..., description="Score at section end {'home': int, 'away': int}")
+    start_score: dict[str, int] = Field(
+        ..., description="Score at section start {'home': int, 'away': int}"
+    )
+    end_score: dict[str, int] = Field(
+        ..., description="Score at section end {'home': int, 'away': int}"
+    )
 
     # Deterministic notes
-    notes: list[str] = Field(default_factory=list, description="Machine-generated bullets")
+    notes: list[str] = Field(
+        default_factory=list, description="Machine-generated bullets"
+    )
 
 
 # ============================================================================
 # GAME STORY RESPONSE
 # ============================================================================
+
 
 class GameStoryResponse(BaseModel):
     """
@@ -117,19 +135,27 @@ class GameStoryResponse(BaseModel):
     total_plays: int = Field(..., description="Total number of plays")
 
     # Sections (narrative, chapters-first)
-    sections: list[SectionEntry] = Field(default_factory=list, description="Narrative sections (3-10)")
+    sections: list[SectionEntry] = Field(
+        default_factory=list, description="Narrative sections (3-10)"
+    )
     section_count: int = Field(default=0, description="Total number of sections")
 
     # AI-generated compact story
-    compact_story: str | None = Field(None, description="Full game recap (SINGLE AI CALL)")
+    compact_story: str | None = Field(
+        None, description="Full game recap (SINGLE AI CALL)"
+    )
     word_count: int | None = Field(None, description="Actual word count")
     target_word_count: int | None = Field(None, description="Target word count")
     quality: str | None = Field(None, description="Game quality (LOW/MEDIUM/HIGH)")
-    reading_time_estimate_minutes: float | None = Field(None, description="Estimated reading time")
+    reading_time_estimate_minutes: float | None = Field(
+        None, description="Estimated reading time"
+    )
 
     # Metadata
     generated_at: datetime | None = Field(None, description="When story was generated")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata"
+    )
 
     # Generation status
     has_compact_story: bool = Field(False, description="Whether compact story exists")
@@ -138,6 +164,7 @@ class GameStoryResponse(BaseModel):
 # ============================================================================
 # REGENERATION
 # ============================================================================
+
 
 class RegenerateRequest(BaseModel):
     """Request to regenerate story."""
@@ -158,6 +185,7 @@ class RegenerateResponse(BaseModel):
 # ============================================================================
 # BULK GENERATION
 # ============================================================================
+
 
 class BulkGenerateRequest(BaseModel):
     """Request for bulk story generation."""
@@ -186,5 +214,9 @@ class BulkGenerateStatusResponse(BaseModel):
     status: str | None = Field(None, description="Status message")
     successful: int | None = Field(None, description="Number of successful generations")
     failed: int | None = Field(None, description="Number of failed generations")
-    skipped: int | None = Field(None, description="Number of games skipped (story already exists)")
-    result: dict[str, Any] | None = Field(None, description="Final result when complete")
+    skipped: int | None = Field(
+        None, description="Number of games skipped (story already exists)"
+    )
+    result: dict[str, Any] | None = Field(
+        None, description="Final result when complete"
+    )

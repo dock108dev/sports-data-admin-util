@@ -37,6 +37,7 @@ from .story_section import StorySection
 # QUALITY ENUM (LOCKED)
 # ============================================================================
 
+
 class GameQuality(str, Enum):
     """Game quality bucket for story length targeting.
 
@@ -44,6 +45,7 @@ class GameQuality(str, Enum):
     MEDIUM = standard story target
     HIGH = longer story target
     """
+
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
@@ -53,6 +55,7 @@ class GameQuality(str, Enum):
 # QUALITY SIGNALS (AUTHORITATIVE)
 # ============================================================================
 
+
 @dataclass
 class QualitySignals:
     """Individual signal contributions to quality score.
@@ -60,6 +63,7 @@ class QualitySignals:
     Each signal maps to a locked point value.
     This structure enables debug output and explainability.
     """
+
     # Signal: Lead changes (count each time leading team switches)
     # Points: +1 per lead change
     lead_changes: int = 0
@@ -110,6 +114,7 @@ class QualityScoreResult:
     - The numeric score used to determine bucket
     - The individual signal contributions
     """
+
     quality: GameQuality
     numeric_score: float
     signals: QualitySignals
@@ -137,9 +142,9 @@ POINTS_CRUNCH_PRESENT = 2.0
 POINTS_OVERTIME_PRESENT = 3.0
 
 # Final margin thresholds and points
-MARGIN_THRESHOLD_CLOSE = 5      # <= 5 points = very close game
+MARGIN_THRESHOLD_CLOSE = 5  # <= 5 points = very close game
 MARGIN_THRESHOLD_COMPETITIVE = 12  # <= 12 points = competitive game
-POINTS_MARGIN_CLOSE = 2.0       # +2 for margin <= 5
+POINTS_MARGIN_CLOSE = 2.0  # +2 for margin <= 5
 POINTS_MARGIN_COMPETITIVE = 1.0  # +1 for margin <= 12 (but > 5)
 
 # Run/Response points: +0.5 per section
@@ -151,13 +156,14 @@ POINTS_PER_RUN_RESPONSE = 0.5
 # ============================================================================
 
 # Bucket thresholds (score falls on boundary = round DOWN)
-BUCKET_MEDIUM_THRESHOLD = 3.0   # score >= 3 = MEDIUM
-BUCKET_HIGH_THRESHOLD = 6.0     # score >= 6 = HIGH
+BUCKET_MEDIUM_THRESHOLD = 3.0  # score >= 3 = MEDIUM
+BUCKET_HIGH_THRESHOLD = 6.0  # score >= 6 = HIGH
 
 
 # ============================================================================
 # LEAD CHANGE COUNTER
 # ============================================================================
+
 
 def count_lead_changes(score_history: list[dict[str, int]]) -> int:
     """Count the number of lead changes in a game.
@@ -193,9 +199,11 @@ def count_lead_changes(score_history: list[dict[str, int]]) -> int:
 
         # Count lead change only when leader SWITCHES (not from/to tie)
         # A lead change requires going from one team leading to the other
-        if (current_leader is not None and
-            new_leader is not None and
-            current_leader != new_leader):
+        if (
+            current_leader is not None
+            and new_leader is not None
+            and current_leader != new_leader
+        ):
             lead_changes += 1
 
         # Update current leader (even if tied)
@@ -208,6 +216,7 @@ def count_lead_changes(score_history: list[dict[str, int]]) -> int:
 # ============================================================================
 # SIGNAL EXTRACTION FROM SECTIONS
 # ============================================================================
+
 
 def _has_beat_type(sections: list[StorySection], beat_type: BeatType) -> bool:
     """Check if any section has the given beat type."""
@@ -222,6 +231,7 @@ def _count_beat_types(sections: list[StorySection], beat_types: set[BeatType]) -
 # ============================================================================
 # QUALITY SCORE COMPUTATION
 # ============================================================================
+
 
 def compute_quality_score(
     sections: list[StorySection],
@@ -305,11 +315,11 @@ def compute_quality_score(
     # Sum all points
     # -------------------------------------------------------------------------
     numeric_score = (
-        signals.lead_changes_points +
-        signals.crunch_points +
-        signals.overtime_points +
-        signals.margin_points +
-        signals.run_response_points
+        signals.lead_changes_points
+        + signals.crunch_points
+        + signals.overtime_points
+        + signals.margin_points
+        + signals.run_response_points
     )
 
     # -------------------------------------------------------------------------
@@ -335,6 +345,7 @@ def compute_quality_score(
 # ============================================================================
 # DEBUG OUTPUT
 # ============================================================================
+
 
 def format_quality_debug(result: QualityScoreResult) -> str:
     """Format quality score result for debugging.

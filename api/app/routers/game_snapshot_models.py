@@ -144,7 +144,9 @@ def chunk_plays_by_period(plays: Iterable[db_models.SportsGamePlay]) -> list[Pbp
         )
     return [
         PbpPeriod(period=period, events=events)
-        for period, events in sorted(periods.items(), key=lambda item: (item[0] is None, item[0] or 0))
+        for period, events in sorted(
+            periods.items(), key=lambda item: (item[0] is None, item[0] or 0)
+        )
     ]
 
 

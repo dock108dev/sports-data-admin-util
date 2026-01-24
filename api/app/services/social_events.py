@@ -64,9 +64,7 @@ _ROLE_PATTERNS = {
         re.compile(r"\b(report|update|status)\b", re.I),
     ],
     "hype": [
-        re.compile(
-            r"\b(game\s*day|let'?s\s*go|tip[- ]?off|ready|tonight)\b", re.I
-        ),
+        re.compile(r"\b(game\s*day|let'?s\s*go|tip[- ]?off|ready|tonight)\b", re.I),
         re.compile(r"🔥|💪|⬆️|🏀", re.I),
     ],
     # In-game patterns
@@ -75,12 +73,8 @@ _ROLE_PATTERNS = {
         re.compile(r"\b(run|streak|straight)\b", re.I),
     ],
     "milestone": [
-        re.compile(
-            r"\b(triple[- ]?double|double[- ]?double|career[- ]?high)\b", re.I
-        ),
-        re.compile(
-            r"\b(\d+th|first|record)\b.*\b(of the season|in franchise)\b", re.I
-        ),
+        re.compile(r"\b(triple[- ]?double|double[- ]?double|career[- ]?high)\b", re.I),
+        re.compile(r"\b(\d+th|first|record)\b.*\b(of the season|in franchise)\b", re.I),
     ],
     # Postgame patterns
     "result": [

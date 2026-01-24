@@ -46,7 +46,9 @@ class StructuredLoggingMiddleware:
             if key.lower() in self._sensitive_query_keys:
                 redacted[key] = "[REDACTED]"
             else:
-                redacted[key] = [self._truncate_value(value, 100) or "" for value in values]
+                redacted[key] = [
+                    self._truncate_value(value, 100) or "" for value in values
+                ]
         return redacted
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
@@ -67,7 +69,9 @@ class StructuredLoggingMiddleware:
                     "status_code": message["status"],
                     "client_ip": request.client.host if request.client else None,
                     "duration_ms": round(elapsed_ms, 2),
-                    "user_agent": self._truncate_value(request.headers.get("user-agent"), 200),
+                    "user_agent": self._truncate_value(
+                        request.headers.get("user-agent"), 200
+                    ),
                 }
                 self.logger.info("http_request", extra=log_payload)
             await send(message)

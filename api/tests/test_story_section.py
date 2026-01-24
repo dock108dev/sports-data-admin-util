@@ -16,7 +16,6 @@ import pytest
 
 from app.services.chapters.types import Chapter, Play
 from app.services.chapters.beat_classifier import BeatType, BeatClassification
-from app.services.chapters.running_stats import SectionDelta, TeamDelta, PlayerDelta
 from app.services.chapters.story_section import (
     # Types
     StorySection,
@@ -30,11 +29,7 @@ from app.services.chapters.story_section import (
     enforce_section_count,
     generate_section_notes,
     format_sections_debug,
-    _is_overtime_start,
     _is_final_2_minutes_entry,
-    _is_first_crunch_setup,
-    _is_quarter_boundary,
-    _is_beat_change,
     _is_protected_section,
 )
 
@@ -42,6 +37,7 @@ from app.services.chapters.story_section import (
 # ============================================================================
 # TEST HELPERS
 # ============================================================================
+
 
 def make_play(
     index: int,
@@ -137,6 +133,7 @@ def make_section(
 # TEST: FORCED BREAK DETECTION
 # ============================================================================
 
+
 class TestForcedBreakDetection:
     """Tests for forced break detection."""
 
@@ -216,6 +213,7 @@ class TestForcedBreakDetection:
 # TEST: FORCED BREAK PRIORITY
 # ============================================================================
 
+
 class TestForcedBreakPriority:
     """Tests for forced break priority order."""
 
@@ -263,13 +261,18 @@ class TestForcedBreakPriority:
 # TEST: OVERTIME HANDLING
 # ============================================================================
 
+
 class TestOvertimeHandling:
     """Tests for overtime section handling."""
 
     def test_overtime_is_separate_section(self):
         """Overtime always becomes its own section."""
-        plays_q4 = [make_play(0, quarter=4, game_clock="1:00", home_score=100, away_score=100)]
-        plays_ot = [make_play(1, quarter=5, game_clock="4:00", home_score=102, away_score=100)]
+        plays_q4 = [
+            make_play(0, quarter=4, game_clock="1:00", home_score=100, away_score=100)
+        ]
+        plays_ot = [
+            make_play(1, quarter=5, game_clock="4:00", home_score=102, away_score=100)
+        ]
 
         chapters = [
             make_chapter("ch_001", plays_q4, period=4),
@@ -293,11 +296,26 @@ class TestOvertimeHandling:
         """Overtime section never merges with regulation."""
         # Create a simple game with OT
         plays = [
-            [make_play(0, quarter=4, game_clock="0:30", home_score=100, away_score=100)],
-            [make_play(1, quarter=5, game_clock="4:00", home_score=102, away_score=100)],
-            [make_play(2, quarter=5, game_clock="2:00", home_score=105, away_score=104)],
+            [
+                make_play(
+                    0, quarter=4, game_clock="0:30", home_score=100, away_score=100
+                )
+            ],
+            [
+                make_play(
+                    1, quarter=5, game_clock="4:00", home_score=102, away_score=100
+                )
+            ],
+            [
+                make_play(
+                    2, quarter=5, game_clock="2:00", home_score=105, away_score=104
+                )
+            ],
         ]
-        chapters = [make_chapter(f"ch_{i:03d}", p, period=p[0].raw_data["quarter"]) for i, p in enumerate(plays)]
+        chapters = [
+            make_chapter(f"ch_{i:03d}", p, period=p[0].raw_data["quarter"])
+            for i, p in enumerate(plays)
+        ]
         classifications = [
             make_classification("ch_000", BeatType.CLOSING_SEQUENCE, 0),
             make_classification("ch_001", BeatType.OVERTIME, 1),
@@ -320,6 +338,7 @@ class TestOvertimeHandling:
 # ============================================================================
 # TEST: FINAL 2 MINUTES HANDLING
 # ============================================================================
+
 
 class TestFinal2MinutesHandling:
     """Tests for final 2 minutes section handling."""
@@ -357,6 +376,7 @@ class TestFinal2MinutesHandling:
 # TEST: SECTION COUNT ENFORCEMENT
 # ============================================================================
 
+
 class TestSectionCountEnforcement:
     """Tests for section count constraints (3-10)."""
 
@@ -379,8 +399,7 @@ class TestSectionCountEnforcement:
         """Sections are merged to stay under maximum of 10."""
         # Create 12 sections
         sections = [
-            make_section(i, BeatType.BACK_AND_FORTH, [f"ch_{i:03d}"])
-            for i in range(12)
+            make_section(i, BeatType.BACK_AND_FORTH, [f"ch_{i:03d}"]) for i in range(12)
         ]
 
         result = enforce_section_count(sections, max_sections=10)
@@ -390,19 +409,18 @@ class TestSectionCountEnforcement:
     def test_protected_sections_not_merged(self):
         """Protected sections (opening, CRUNCH, CLOSING, OT) are not merged."""
         sections = [
-            make_section(0, BeatType.FAST_START, ["ch_000"]),       # Protected: opening
+            make_section(0, BeatType.FAST_START, ["ch_000"]),  # Protected: opening
             make_section(1, BeatType.BACK_AND_FORTH, ["ch_001"]),
             make_section(2, BeatType.RUN, ["ch_002"]),
-            make_section(3, BeatType.CRUNCH_SETUP, ["ch_003"]),     # Protected
-            make_section(4, BeatType.CLOSING_SEQUENCE, ["ch_004"]), # Protected
+            make_section(3, BeatType.CRUNCH_SETUP, ["ch_003"]),  # Protected
+            make_section(4, BeatType.CLOSING_SEQUENCE, ["ch_004"]),  # Protected
         ]
 
         result = enforce_section_count(sections, max_sections=3)
 
         # Should merge middle sections, not protected ones
-        # Protected: 0, 3, 4 → can merge 1+2
-        # Result: at most 4 sections (can't get to 3)
-        protected_types = {BeatType.FAST_START, BeatType.CRUNCH_SETUP, BeatType.CLOSING_SEQUENCE}
+        # Protected: FAST_START (0), CRUNCH_SETUP (3), CLOSING_SEQUENCE (4)
+        # Can only merge 1+2 → result: at most 4 sections (can't get to 3)
 
         # Verify protected sections still exist
         result_types = {s.beat_type for s in result}
@@ -433,6 +451,7 @@ class TestSectionCountEnforcement:
 # ============================================================================
 # TEST: NOTES GENERATION
 # ============================================================================
+
 
 class TestNotesGeneration:
     """Tests for deterministic notes generation."""
@@ -549,6 +568,7 @@ class TestNotesGeneration:
 # TEST: SECTION BUILDING
 # ============================================================================
 
+
 class TestSectionBuilding:
     """Tests for full section building workflow."""
 
@@ -561,7 +581,10 @@ class TestSectionBuilding:
             [make_play(3, quarter=4, game_clock="5:00", home_score=75, away_score=72)],
         ]
 
-        chapters = [make_chapter(f"ch_{i:03d}", p, period=p[0].raw_data["quarter"]) for i, p in enumerate(plays)]
+        chapters = [
+            make_chapter(f"ch_{i:03d}", p, period=p[0].raw_data["quarter"])
+            for i, p in enumerate(plays)
+        ]
         classifications = [
             make_classification("ch_000", BeatType.FAST_START, 0),
             make_classification("ch_001", BeatType.BACK_AND_FORTH, 1),
@@ -582,7 +605,9 @@ class TestSectionBuilding:
             [make_play(2, quarter=1, game_clock="6:00")],
         ]
 
-        chapters = [make_chapter(f"ch_{i:03d}", p, period=1) for i, p in enumerate(plays)]
+        chapters = [
+            make_chapter(f"ch_{i:03d}", p, period=1) for i, p in enumerate(plays)
+        ]
         classifications = [
             make_classification("ch_000", BeatType.BACK_AND_FORTH, 0),
             make_classification("ch_001", BeatType.BACK_AND_FORTH, 1),
@@ -602,7 +627,9 @@ class TestSectionBuilding:
             [make_play(1, quarter=1, game_clock="8:00", home_score=10, away_score=8)],
         ]
 
-        chapters = [make_chapter(f"ch_{i:03d}", p, period=1) for i, p in enumerate(plays)]
+        chapters = [
+            make_chapter(f"ch_{i:03d}", p, period=1) for i, p in enumerate(plays)
+        ]
         classifications = [
             make_classification("ch_000", BeatType.BACK_AND_FORTH, 0),
             make_classification("ch_001", BeatType.BACK_AND_FORTH, 1),
@@ -619,6 +646,7 @@ class TestSectionBuilding:
 # TEST: DETERMINISM
 # ============================================================================
 
+
 class TestDeterminism:
     """Tests for deterministic behavior."""
 
@@ -629,7 +657,10 @@ class TestDeterminism:
             [make_play(1, quarter=2, game_clock="10:00", home_score=25, away_score=20)],
         ]
 
-        chapters = [make_chapter(f"ch_{i:03d}", p, period=p[0].raw_data["quarter"]) for i, p in enumerate(plays)]
+        chapters = [
+            make_chapter(f"ch_{i:03d}", p, period=p[0].raw_data["quarter"])
+            for i, p in enumerate(plays)
+        ]
         classifications = [
             make_classification("ch_000", BeatType.FAST_START, 0),
             make_classification("ch_001", BeatType.BACK_AND_FORTH, 1),
@@ -648,6 +679,7 @@ class TestDeterminism:
 # ============================================================================
 # TEST: SERIALIZATION
 # ============================================================================
+
 
 class TestSerialization:
     """Tests for serialization."""
@@ -692,6 +724,7 @@ class TestSerialization:
 # TEST: DEBUG OUTPUT
 # ============================================================================
 
+
 class TestDebugOutput:
     """Tests for debug output."""
 
@@ -720,6 +753,7 @@ class TestDebugOutput:
 # ============================================================================
 # TEST: EDGE CASES
 # ============================================================================
+
 
 class TestEdgeCases:
     """Tests for edge cases."""
@@ -756,6 +790,7 @@ class TestEdgeCases:
 # ============================================================================
 # TEST: PROTECTED SECTION DETECTION
 # ============================================================================
+
 
 class TestProtectedSectionDetection:
     """Tests for protected section detection."""

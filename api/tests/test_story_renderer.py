@@ -46,6 +46,7 @@ from app.services.chapters.story_renderer import (
 # TEST HELPERS
 # ============================================================================
 
+
 def make_section(
     section_index: int,
     beat_type: BeatType,
@@ -119,14 +120,15 @@ class MockAIClient:
         if self.response:
             return self.response
         # Default mock response
-        return json.dumps({
-            "compact_story": "This is a mock story.\n\nIt has two paragraphs."
-        })
+        return json.dumps(
+            {"compact_story": "This is a mock story.\n\nIt has two paragraphs."}
+        )
 
 
 # ============================================================================
 # TEST: CLOSING CONTEXT
 # ============================================================================
+
 
 class TestClosingContext:
     """Tests for ClosingContext."""
@@ -150,6 +152,7 @@ class TestClosingContext:
 # ============================================================================
 # TEST: SECTION RENDER INPUT
 # ============================================================================
+
 
 class TestSectionRenderInput:
     """Tests for SectionRenderInput."""
@@ -176,6 +179,7 @@ class TestSectionRenderInput:
 # ============================================================================
 # TEST: BUILD SECTION RENDER INPUT
 # ============================================================================
+
 
 class TestBuildSectionRenderInput:
     """Tests for build_section_render_input."""
@@ -205,6 +209,7 @@ class TestBuildSectionRenderInput:
 # ============================================================================
 # TEST: BUILD STORY RENDER INPUT
 # ============================================================================
+
 
 class TestBuildStoryRenderInput:
     """Tests for build_story_render_input."""
@@ -269,6 +274,7 @@ class TestBuildStoryRenderInput:
 # ============================================================================
 # TEST: PROMPT BUILDING
 # ============================================================================
+
 
 class TestPromptBuilding:
     """Tests for prompt construction."""
@@ -382,6 +388,7 @@ class TestPromptBuilding:
 # ============================================================================
 # TEST: RENDER STORY
 # ============================================================================
+
 
 class TestRenderStory:
     """Tests for render_story function."""
@@ -542,6 +549,7 @@ class TestRenderStory:
 # TEST: INPUT VALIDATION
 # ============================================================================
 
+
 class TestInputValidation:
     """Tests for validate_render_input."""
 
@@ -656,6 +664,7 @@ class TestInputValidation:
 # TEST: RESULT VALIDATION
 # ============================================================================
 
+
 class TestResultValidation:
     """Tests for validate_render_result."""
 
@@ -736,6 +745,7 @@ class TestResultValidation:
 # TEST: DEBUG OUTPUT
 # ============================================================================
 
+
 class TestDebugOutput:
     """Tests for format_render_debug."""
 
@@ -798,6 +808,7 @@ class TestDebugOutput:
 # TEST: SERIALIZATION
 # ============================================================================
 
+
 class TestSerialization:
     """Tests for serialization."""
 
@@ -844,6 +855,7 @@ class TestSerialization:
 # TEST: SECTION FORMATTING
 # ============================================================================
 
+
 class TestSectionFormatting:
     """Tests for _format_section_for_prompt."""
 
@@ -881,7 +893,11 @@ class TestSectionFormatting:
             header="Header.",
             beat_type=BeatType.FAST_START,
             team_stat_deltas=[
-                {"team_name": "Lakers", "points_scored": 15, "personal_fouls_committed": 3}
+                {
+                    "team_name": "Lakers",
+                    "points_scored": 15,
+                    "personal_fouls_committed": 3,
+                }
             ],
             player_stat_deltas=[],
             notes=[],

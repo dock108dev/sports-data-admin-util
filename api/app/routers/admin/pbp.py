@@ -73,6 +73,7 @@ router = APIRouter()
 
 class PlaySummary(BaseModel):
     """Summary of a single play for listing."""
+
     play_index: int
     quarter: int | None
     game_clock: str | None
@@ -90,6 +91,7 @@ class PlaySummary(BaseModel):
 
 class PlayDetail(BaseModel):
     """Full detail of a single play."""
+
     play_index: int
     quarter: int | None
     game_clock: str | None
@@ -109,6 +111,7 @@ class PlayDetail(BaseModel):
 
 class GamePBPResponse(BaseModel):
     """Current PBP data for a game from sports_game_plays table."""
+
     game_id: int
     game_date: str
     home_team: str
@@ -123,6 +126,7 @@ class GamePBPResponse(BaseModel):
 
 class GamePBPDetailResponse(BaseModel):
     """Detailed PBP data with full play information."""
+
     game_id: int
     game_date: str
     home_team: str
@@ -140,6 +144,7 @@ class GamePBPDetailResponse(BaseModel):
 
 class PBPSnapshotSummary(BaseModel):
     """Summary of a PBP snapshot."""
+
     snapshot_id: int
     game_id: int
     snapshot_type: str
@@ -153,6 +158,7 @@ class PBPSnapshotSummary(BaseModel):
 
 class PBPSnapshotDetail(BaseModel):
     """Full detail of a PBP snapshot."""
+
     snapshot_id: int
     game_id: int
     snapshot_type: str
@@ -169,6 +175,7 @@ class PBPSnapshotDetail(BaseModel):
 
 class GamePBPSnapshotsResponse(BaseModel):
     """All PBP snapshots for a game."""
+
     game_id: int
     game_date: str
     home_team: str
@@ -182,6 +189,7 @@ class GamePBPSnapshotsResponse(BaseModel):
 
 class PipelineRunPBPResponse(BaseModel):
     """PBP data associated with a specific pipeline run."""
+
     run_id: int
     run_uuid: str
     game_id: int
@@ -199,6 +207,7 @@ class PipelineRunPBPResponse(BaseModel):
 
 class PBPComparisonResponse(BaseModel):
     """Compare PBP between current and snapshot."""
+
     game_id: int
     comparison_type: str
     current_play_count: int
@@ -227,17 +236,21 @@ def _build_resolution_summary(plays: list[db_models.SportsGamePlay]) -> dict[str
             "plays_with_score": 0,
             "plays_without_score": 0,
         }
-    
+
     teams_resolved = sum(1 for p in plays if p.team_id is not None)
-    teams_unresolved = sum(1 for p in plays if p.team_id is None and (p.description or "").strip())
+    teams_unresolved = sum(
+        1 for p in plays if p.team_id is None and (p.description or "").strip()
+    )
     players_with_name = sum(1 for p in plays if p.player_name)
     plays_with_score = sum(1 for p in plays if p.home_score is not None)
-    
+
     return {
         "total_plays": total,
         "teams_resolved": teams_resolved,
         "teams_unresolved": teams_unresolved,
-        "team_resolution_rate": round(teams_resolved / total * 100, 1) if total > 0 else 0,
+        "team_resolution_rate": round(teams_resolved / total * 100, 1)
+        if total > 0
+        else 0,
         "players_with_name": players_with_name,
         "players_without_name": total - players_with_name,
         "plays_with_score": plays_with_score,
@@ -303,7 +316,7 @@ async def get_game_pbp(
     session: AsyncSession = Depends(get_db),
 ) -> GamePBPResponse:
     """Get current PBP data for a game.
-    
+
     This returns the live data from sports_game_plays, which is the
     authoritative source for PBP after ingestion.
     """
@@ -317,20 +330,21 @@ async def get_game_pbp(
         .where(db_models.SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
-    
+
     if not game:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Game {game_id} not found",
         )
-    
+
     # Get total count
     count_result = await session.execute(
-        select(func.count(db_models.SportsGamePlay.id))
-        .where(db_models.SportsGamePlay.game_id == game_id)
+        select(func.count(db_models.SportsGamePlay.id)).where(
+            db_models.SportsGamePlay.game_id == game_id
+        )
     )
     total_plays = count_result.scalar() or 0
-    
+
     # Fetch plays
     plays_result = await session.execute(
         select(db_models.SportsGamePlay)
@@ -341,7 +355,7 @@ async def get_game_pbp(
         .limit(limit)
     )
     plays = plays_result.scalars().all()
-    
+
     return GamePBPResponse(
         game_id=game_id,
         game_date=game.game_date.isoformat() if game.game_date else "",
@@ -364,7 +378,9 @@ async def get_game_pbp_detail(
     game_id: int,
     limit: int = Query(default=100, ge=1, le=500, description="Max plays to return"),
     offset: int = Query(default=0, ge=0, description="Starting play index"),
-    quarter: int | None = Query(default=None, ge=1, le=10, description="Filter by quarter"),
+    quarter: int | None = Query(
+        default=None, ge=1, le=10, description="Filter by quarter"
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> GamePBPDetailResponse:
     """Get detailed PBP data including raw_data for each play."""
@@ -378,23 +394,23 @@ async def get_game_pbp_detail(
         .where(db_models.SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
-    
+
     if not game:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Game {game_id} not found",
         )
-    
+
     # Build query
     query = (
         select(db_models.SportsGamePlay)
         .options(selectinload(db_models.SportsGamePlay.team))
         .where(db_models.SportsGamePlay.game_id == game_id)
     )
-    
+
     if quarter is not None:
         query = query.where(db_models.SportsGamePlay.quarter == quarter)
-    
+
     # Get total count
     count_query = select(func.count(db_models.SportsGamePlay.id)).where(
         db_models.SportsGamePlay.game_id == game_id
@@ -403,24 +419,24 @@ async def get_game_pbp_detail(
         count_query = count_query.where(db_models.SportsGamePlay.quarter == quarter)
     count_result = await session.execute(count_query)
     total_plays = count_result.scalar() or 0
-    
+
     # Fetch plays
     plays_result = await session.execute(
-        query.order_by(db_models.SportsGamePlay.play_index)
-        .offset(offset)
-        .limit(limit)
+        query.order_by(db_models.SportsGamePlay.play_index).offset(offset).limit(limit)
     )
     plays = plays_result.scalars().all()
-    
+
     # Build metadata
     metadata = {
         "offset": offset,
         "limit": limit,
         "quarter_filter": quarter,
         "last_pbp_at": game.last_pbp_at.isoformat() if game.last_pbp_at else None,
-        "last_scraped_at": game.last_scraped_at.isoformat() if game.last_scraped_at else None,
+        "last_scraped_at": game.last_scraped_at.isoformat()
+        if game.last_scraped_at
+        else None,
     }
-    
+
     return GamePBPDetailResponse(
         game_id=game_id,
         game_date=game.game_date.isoformat() if game.game_date else "",
@@ -457,13 +473,13 @@ async def get_single_play(
         )
     )
     play = result.scalar_one_or_none()
-    
+
     if not play:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Play {play_index} not found for game {game_id}",
         )
-    
+
     return _play_to_detail(play)
 
 
@@ -493,13 +509,13 @@ async def get_game_pbp_snapshots(
         .where(db_models.SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
-    
+
     if not game:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Game {game_id} not found",
         )
-    
+
     # Fetch snapshots
     snapshots_result = await session.execute(
         select(db_models.PBPSnapshot)
@@ -507,10 +523,10 @@ async def get_game_pbp_snapshots(
         .order_by(db_models.PBPSnapshot.created_at.desc())
     )
     snapshots = snapshots_result.scalars().all()
-    
+
     # Check which types exist
     snapshot_types = {s.snapshot_type for s in snapshots}
-    
+
     return GamePBPSnapshotsResponse(
         game_id=game_id,
         game_date=game.game_date.isoformat() if game.game_date else "",
@@ -554,13 +570,13 @@ async def get_pbp_snapshot(
         .where(db_models.PBPSnapshot.id == snapshot_id)
     )
     snapshot = result.scalar_one_or_none()
-    
+
     if not snapshot:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"PBP snapshot {snapshot_id} not found",
         )
-    
+
     return PBPSnapshotDetail(
         snapshot_id=snapshot.id,
         game_id=snapshot.game_id,
@@ -568,7 +584,9 @@ async def get_pbp_snapshot(
         source=snapshot.source,
         play_count=snapshot.play_count,
         pipeline_run_id=snapshot.pipeline_run_id,
-        pipeline_run_uuid=str(snapshot.pipeline_run.run_uuid) if snapshot.pipeline_run else None,
+        pipeline_run_uuid=str(snapshot.pipeline_run.run_uuid)
+        if snapshot.pipeline_run
+        else None,
         scrape_run_id=snapshot.scrape_run_id,
         plays=snapshot.plays_json or [],
         metadata=snapshot.metadata_json,
@@ -593,7 +611,7 @@ async def get_pipeline_run_pbp(
     session: AsyncSession = Depends(get_db),
 ) -> PipelineRunPBPResponse:
     """Get PBP data from a specific pipeline run.
-    
+
     This retrieves the normalized PBP from the NORMALIZE_PBP stage output,
     as well as any associated PBP snapshot.
     """
@@ -602,34 +620,38 @@ async def get_pipeline_run_pbp(
         select(db_models.GamePipelineRun)
         .options(
             selectinload(db_models.GamePipelineRun.stages),
-            selectinload(db_models.GamePipelineRun.game).selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.GamePipelineRun.game).selectinload(db_models.SportsGame.away_team),
+            selectinload(db_models.GamePipelineRun.game).selectinload(
+                db_models.SportsGame.home_team
+            ),
+            selectinload(db_models.GamePipelineRun.game).selectinload(
+                db_models.SportsGame.away_team
+            ),
         )
         .where(db_models.GamePipelineRun.id == run_id)
     )
     run = run_result.scalar_one_or_none()
-    
+
     if not run:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Pipeline run {run_id} not found",
         )
-    
+
     game = run.game
-    
+
     # Get NORMALIZE_PBP stage output
     normalize_stage = next(
         (s for s in run.stages if s.stage == "NORMALIZE_PBP"),
         None,
     )
-    
+
     normalized_pbp = None
     play_count = 0
-    
+
     if normalize_stage and normalize_stage.output_json:
         normalized_pbp = normalize_stage.output_json
         play_count = len(normalized_pbp.get("pbp_events", []))
-    
+
     # Check for associated snapshot
     snapshot_result = await session.execute(
         select(db_models.PBPSnapshot)
@@ -638,7 +660,7 @@ async def get_pipeline_run_pbp(
         .limit(1)
     )
     snapshot = snapshot_result.scalar_one_or_none()
-    
+
     snapshot_summary = None
     if snapshot:
         snapshot_summary = PBPSnapshotSummary(
@@ -652,7 +674,7 @@ async def get_pipeline_run_pbp(
             created_at=snapshot.created_at.isoformat(),
             resolution_stats=snapshot.resolution_stats,
         )
-    
+
     return PipelineRunPBPResponse(
         run_id=run.id,
         run_uuid=str(run.run_uuid),
@@ -683,49 +705,49 @@ async def compare_pbp(
     session: AsyncSession = Depends(get_db),
 ) -> PBPComparisonResponse:
     """Compare current PBP with a snapshot.
-    
+
     Useful for debugging differences between raw and processed data.
     """
     # Get current play count
     current_count_result = await session.execute(
-        select(func.count(db_models.SportsGamePlay.id))
-        .where(db_models.SportsGamePlay.game_id == game_id)
+        select(func.count(db_models.SportsGamePlay.id)).where(
+            db_models.SportsGamePlay.game_id == game_id
+        )
     )
     current_count = current_count_result.scalar() or 0
-    
+
     # Get snapshot
     snapshot_result = await session.execute(
-        select(db_models.PBPSnapshot)
-        .where(db_models.PBPSnapshot.id == snapshot_id)
+        select(db_models.PBPSnapshot).where(db_models.PBPSnapshot.id == snapshot_id)
     )
     snapshot = snapshot_result.scalar_one_or_none()
-    
+
     if not snapshot:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"PBP snapshot {snapshot_id} not found",
         )
-    
+
     if snapshot.game_id != game_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Snapshot does not belong to this game",
         )
-    
+
     # Calculate differences
     differences = {
         "play_count_delta": current_count - snapshot.play_count,
         "snapshot_type": snapshot.snapshot_type,
         "snapshot_created_at": snapshot.created_at.isoformat(),
     }
-    
+
     # If counts differ, check for missing/extra plays
     if current_count != snapshot.play_count:
         differences["note"] = (
             f"Current has {abs(current_count - snapshot.play_count)} "
             f"{'more' if current_count > snapshot.play_count else 'fewer'} plays"
         )
-    
+
     return PBPComparisonResponse(
         game_id=game_id,
         comparison_type=f"current_vs_{snapshot.snapshot_type}",
@@ -754,7 +776,7 @@ async def get_resolution_issues(
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Get plays with resolution issues.
-    
+
     Helps debug data quality problems in PBP ingestion.
     """
     # Fetch all plays
@@ -765,65 +787,81 @@ async def get_resolution_issues(
         .order_by(db_models.SportsGamePlay.play_index)
     )
     plays = plays_result.scalars().all()
-    
+
     issues: dict[str, list[dict[str, Any]]] = {
         "team_unresolved": [],
         "player_missing": [],
         "score_missing": [],
         "clock_missing": [],
     }
-    
+
     for play in plays:
         play_info = {
             "play_index": play.play_index,
             "quarter": play.quarter,
             "description": play.description[:100] if play.description else None,
         }
-        
+
         # Team resolution issues
         if issue_type in ("all", "team"):
             if play.team_id is None and play.description:
                 # Check if raw_data has team info
                 raw_team = play.raw_data.get("teamTricode") or play.raw_data.get("team")
                 if raw_team:
-                    issues["team_unresolved"].append({
-                        **play_info,
-                        "raw_team": raw_team,
-                        "issue": "Team abbreviation in raw data but not resolved",
-                    })
-        
+                    issues["team_unresolved"].append(
+                        {
+                            **play_info,
+                            "raw_team": raw_team,
+                            "issue": "Team abbreviation in raw data but not resolved",
+                        }
+                    )
+
         # Player issues
         if issue_type in ("all", "player"):
             if not play.player_name and play.description:
                 # Check if play type typically has a player
-                if play.play_type and play.play_type not in ("timeout", "substitution", "period_start", "period_end"):
-                    issues["player_missing"].append({
-                        **play_info,
-                        "play_type": play.play_type,
-                        "issue": "Expected player name but not found",
-                    })
-        
+                if play.play_type and play.play_type not in (
+                    "timeout",
+                    "substitution",
+                    "period_start",
+                    "period_end",
+                ):
+                    issues["player_missing"].append(
+                        {
+                            **play_info,
+                            "play_type": play.play_type,
+                            "issue": "Expected player name but not found",
+                        }
+                    )
+
         # Score issues
         if issue_type in ("all", "score"):
             if play.home_score is None or play.away_score is None:
-                issues["score_missing"].append({
-                    **play_info,
-                    "issue": "Missing score information",
-                })
-        
+                issues["score_missing"].append(
+                    {
+                        **play_info,
+                        "issue": "Missing score information",
+                    }
+                )
+
         # Clock issues
         if issue_type in ("all", "clock"):
             if not play.game_clock:
-                issues["clock_missing"].append({
-                    **play_info,
-                    "issue": "Missing game clock",
-                })
-    
+                issues["clock_missing"].append(
+                    {
+                        **play_info,
+                        "issue": "Missing game clock",
+                    }
+                )
+
     # Filter by requested type
     if issue_type != "all":
-        filtered = {issue_type: issues.get(f"{issue_type}_unresolved", []) or issues.get(f"{issue_type}_missing", [])}
+        filtered = {
+            issue_type: issues.get(f"{issue_type}_unresolved", [])
+            or issues.get(f"{issue_type}_missing", [])
+        }
         issues = filtered
-    
+
     return {
         "game_id": game_id,
         "total_plays": len(plays),

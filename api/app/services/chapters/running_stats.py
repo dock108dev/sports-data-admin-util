@@ -41,6 +41,7 @@ from .types import Chapter, Play
 # PLAYER ID NORMALIZATION
 # ============================================================================
 
+
 def normalize_player_key(player_name: str) -> str:
     """Normalize player name for use as dictionary key.
 
@@ -66,6 +67,7 @@ def normalize_player_key(player_name: str) -> str:
 # SNAPSHOT DATA STRUCTURES (CUMULATIVE TOTALS)
 # ============================================================================
 
+
 @dataclass
 class PlayerSnapshot:
     """Cumulative player statistics from game start → end of chapter.
@@ -79,20 +81,20 @@ class PlayerSnapshot:
     """
 
     # Identity
-    player_key: str                          # Normalized name (primary key)
-    player_name: str                         # Display name (original case)
-    player_id: str | None = None             # External ref (may be null)
-    team_key: str | None = None              # Which team this player is on
+    player_key: str  # Normalized name (primary key)
+    player_name: str  # Display name (original case)
+    player_id: str | None = None  # External ref (may be null)
+    team_key: str | None = None  # Which team this player is on
 
     # Scoring (Cumulative Totals)
     points_scored_total: int = 0
-    fg_made_total: int = 0                   # Field goals made
-    three_pt_made_total: int = 0             # 3-pointers made
-    ft_made_total: int = 0                   # Free throws made
+    fg_made_total: int = 0  # Field goals made
+    three_pt_made_total: int = 0  # 3-pointers made
+    ft_made_total: int = 0  # Free throws made
 
     # Fouls (Cumulative Totals)
     personal_foul_count_total: int = 0
-    technical_foul_count_total: int = 0      # Separate from personal fouls
+    technical_foul_count_total: int = 0  # Separate from personal fouls
 
     # Notable Actions (Unique Set)
     notable_actions_set: set[str] = field(default_factory=set)
@@ -122,8 +124,8 @@ class TeamSnapshot:
     """
 
     # Identity
-    team_key: str                            # Normalized team identifier
-    team_name: str                           # Display name
+    team_key: str  # Normalized team identifier
+    team_name: str  # Display name
 
     # Scoring
     points_scored_total: int = 0
@@ -164,7 +166,7 @@ class RunningStatsSnapshot:
     - Initial snapshot (before any chapters) has chapter_index=-1
     """
 
-    chapter_index: int                       # -1 for initial, 0+ for after chapter N
+    chapter_index: int  # -1 for initial, 0+ for after chapter N
 
     # Team snapshots (keyed by team_key)
     teams: dict[str, TeamSnapshot] = field(default_factory=dict)
@@ -184,6 +186,7 @@ class RunningStatsSnapshot:
 # ============================================================================
 # SECTION DELTA DATA STRUCTURES
 # ============================================================================
+
 
 @dataclass
 class PlayerDelta:
@@ -211,7 +214,7 @@ class PlayerDelta:
     notable_actions: set[str] = field(default_factory=set)
 
     # Flags
-    foul_trouble_flag: bool = False          # personal_foul_count >= 4 in section
+    foul_trouble_flag: bool = False  # personal_foul_count >= 4 in section
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON."""
@@ -275,8 +278,8 @@ class SectionDelta:
     - Tie-breakers: fg_made, three_pt_made, then player_key (deterministic)
     """
 
-    section_start_chapter: int               # First chapter in section (inclusive)
-    section_end_chapter: int                 # Last chapter in section (inclusive)
+    section_start_chapter: int  # First chapter in section (inclusive)
+    section_end_chapter: int  # Last chapter in section (inclusive)
 
     # Team deltas
     teams: dict[str, TeamDelta] = field(default_factory=dict)
@@ -297,6 +300,7 @@ class SectionDelta:
 # ============================================================================
 # EVENT PARSING RULES (AUTHORITATIVE)
 # ============================================================================
+
 
 def _extract_team_key(play: Play) -> str | None:
     """Extract team key from play data.
@@ -515,6 +519,7 @@ def _extract_notable_action(play: Play) -> str | None:
 # SNAPSHOT BUILDING
 # ============================================================================
 
+
 def build_initial_snapshot() -> RunningStatsSnapshot:
     """Build initial empty snapshot (before any chapters).
 
@@ -525,9 +530,7 @@ def build_initial_snapshot() -> RunningStatsSnapshot:
 
 
 def _ensure_team(
-    snapshot: RunningStatsSnapshot,
-    team_key: str,
-    team_name: str | None = None
+    snapshot: RunningStatsSnapshot, team_key: str, team_name: str | None = None
 ) -> TeamSnapshot:
     """Ensure team exists in snapshot, create if needed."""
     if team_key not in snapshot.teams:
@@ -693,6 +696,7 @@ def build_running_snapshots(chapters: list[Chapter]) -> list[RunningStatsSnapsho
 # SECTION DELTA COMPUTATION
 # ============================================================================
 
+
 def _compute_player_delta(
     player_key: str,
     start_player: PlayerSnapshot | None,
@@ -720,13 +724,18 @@ def _compute_player_delta(
             player_name=end_player.player_name,
             player_id=end_player.player_id,
             team_key=end_player.team_key,
-            points_scored=end_player.points_scored_total - start_player.points_scored_total,
+            points_scored=end_player.points_scored_total
+            - start_player.points_scored_total,
             fg_made=end_player.fg_made_total - start_player.fg_made_total,
-            three_pt_made=end_player.three_pt_made_total - start_player.three_pt_made_total,
+            three_pt_made=end_player.three_pt_made_total
+            - start_player.three_pt_made_total,
             ft_made=end_player.ft_made_total - start_player.ft_made_total,
-            personal_foul_count=end_player.personal_foul_count_total - start_player.personal_foul_count_total,
-            technical_foul_count=end_player.technical_foul_count_total - start_player.technical_foul_count_total,
-            notable_actions=end_player.notable_actions_set - start_player.notable_actions_set,
+            personal_foul_count=end_player.personal_foul_count_total
+            - start_player.personal_foul_count_total,
+            technical_foul_count=end_player.technical_foul_count_total
+            - start_player.technical_foul_count_total,
+            notable_actions=end_player.notable_actions_set
+            - start_player.notable_actions_set,
         )
 
     # Set foul trouble flag
@@ -756,10 +765,13 @@ def _compute_team_delta(
             team_key=end_team.team_key,
             team_name=end_team.team_name,
             points_scored=end_team.points_scored_total - start_team.points_scored_total,
-            personal_fouls_committed=end_team.personal_fouls_committed_total - start_team.personal_fouls_committed_total,
-            technical_fouls_committed=end_team.technical_fouls_committed_total - start_team.technical_fouls_committed_total,
+            personal_fouls_committed=end_team.personal_fouls_committed_total
+            - start_team.personal_fouls_committed_total,
+            technical_fouls_committed=end_team.technical_fouls_committed_total
+            - start_team.technical_fouls_committed_total,
             timeouts_used=end_team.timeouts_used_total - start_team.timeouts_used_total,
-            possessions_estimate=end_team.possessions_estimate_total - start_team.possessions_estimate_total,
+            possessions_estimate=end_team.possessions_estimate_total
+            - start_team.possessions_estimate_total,
         )
 
 
@@ -812,8 +824,12 @@ def compute_section_delta(
     # Compute all player deltas
     all_player_deltas: dict[str, PlayerDelta] = {}
     for player_key, end_player in end_snapshot.players.items():
-        start_player = start_snapshot.players.get(player_key) if start_snapshot else None
-        all_player_deltas[player_key] = _compute_player_delta(player_key, start_player, end_player)
+        start_player = (
+            start_snapshot.players.get(player_key) if start_snapshot else None
+        )
+        all_player_deltas[player_key] = _compute_player_delta(
+            player_key, start_player, end_player
+        )
 
     # Group players by team
     players_by_team: dict[str, list[PlayerDelta]] = {}

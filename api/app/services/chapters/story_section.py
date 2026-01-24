@@ -47,6 +47,7 @@ from .running_stats import SectionDelta
 # FORCED BREAK REASONS
 # ============================================================================
 
+
 class ForcedBreakReason(str, Enum):
     """Reasons for forced section breaks.
 
@@ -65,6 +66,7 @@ class ForcedBreakReason(str, Enum):
 # ============================================================================
 # STORYSECTION SCHEMA (AUTHORITATIVE)
 # ============================================================================
+
 
 @dataclass
 class TeamStatDelta:
@@ -143,8 +145,8 @@ class StorySection:
     chapters_included: list[str]
 
     # Score bookends
-    start_score: dict[str, int]              # {"home": int, "away": int}
-    end_score: dict[str, int]                # {"home": int, "away": int}
+    start_score: dict[str, int]  # {"home": int, "away": int}
+    end_score: dict[str, int]  # {"home": int, "away": int}
 
     # Stats
     team_stat_deltas: dict[str, TeamStatDelta] = field(default_factory=dict)
@@ -167,8 +169,12 @@ class StorySection:
             "chapters_included": self.chapters_included,
             "start_score": self.start_score,
             "end_score": self.end_score,
-            "team_stat_deltas": {k: v.to_dict() for k, v in self.team_stat_deltas.items()},
-            "player_stat_deltas": {k: v.to_dict() for k, v in self.player_stat_deltas.items()},
+            "team_stat_deltas": {
+                k: v.to_dict() for k, v in self.team_stat_deltas.items()
+            },
+            "player_stat_deltas": {
+                k: v.to_dict() for k, v in self.player_stat_deltas.items()
+            },
             "notes": self.notes,
         }
         # Include descriptors if present
@@ -186,6 +192,7 @@ class StorySection:
 # ============================================================================
 # CHAPTER METADATA FOR SECTION BUILDING
 # ============================================================================
+
 
 @dataclass
 class ChapterMetadata:
@@ -207,6 +214,7 @@ class ChapterMetadata:
 # ============================================================================
 # FORCED BREAK DETECTION
 # ============================================================================
+
 
 def _is_overtime_start(
     curr: ChapterMetadata,
@@ -385,6 +393,7 @@ def detect_forced_break(
 # NOTES GENERATION (DETERMINISTIC)
 # ============================================================================
 
+
 def generate_section_notes(
     team_deltas: dict[str, TeamStatDelta],
     player_deltas: dict[str, PlayerStatDelta],
@@ -427,7 +436,10 @@ def generate_section_notes(
                 f"{high_team.team_name} outscored {low_team.team_name} "
                 f"{high_team.points_scored}–{low_team.points_scored}"
             )
-        elif high_team.points_scored == low_team.points_scored and high_team.points_scored > 0:
+        elif (
+            high_team.points_scored == low_team.points_scored
+            and high_team.points_scored > 0
+        ):
             notes.append(
                 f"Teams tied {high_team.points_scored}–{low_team.points_scored} in section"
             )
@@ -456,7 +468,9 @@ def generate_section_notes(
 
     # High scorers (> 6 points in section)
     high_scorers = [p for p in player_deltas.values() if p.points_scored >= 6]
-    high_scorers_sorted = sorted(high_scorers, key=lambda p: p.points_scored, reverse=True)
+    high_scorers_sorted = sorted(
+        high_scorers, key=lambda p: p.points_scored, reverse=True
+    )
 
     for player in high_scorers_sorted[:2]:  # Max 2 high scorer notes
         notes.append(f"{player.player_name} scored {player.points_scored} points")
@@ -467,6 +481,7 @@ def generate_section_notes(
 # ============================================================================
 # SECTION CONSTRUCTION
 # ============================================================================
+
 
 def _extract_chapter_metadata(
     chapter: Chapter,
@@ -698,6 +713,7 @@ def _build_section(
 # SECTION COUNT ENFORCEMENT
 # ============================================================================
 
+
 def _is_protected_section(section: StorySection) -> bool:
     """Check if section is protected from merging.
 
@@ -922,7 +938,7 @@ def enforce_section_count(
             if _can_merge_pair(result, i, closing_idx):
                 # Merge these two
                 merged_section = _merge_sections(result[i], result[i + 1], i)
-                result = result[:i] + [merged_section] + result[i + 2:]
+                result = result[:i] + [merged_section] + result[i + 2 :]
 
                 # Renumber remaining sections
                 for j, s in enumerate(result):
@@ -957,8 +973,10 @@ def enforce_section_count(
             break  # Can't merge any more (all protected)
 
         # Merge the best pair
-        merged_section = _merge_sections(result[best_pair], result[best_pair + 1], best_pair)
-        result = result[:best_pair] + [merged_section] + result[best_pair + 2:]
+        merged_section = _merge_sections(
+            result[best_pair], result[best_pair + 1], best_pair
+        )
+        result = result[:best_pair] + [merged_section] + result[best_pair + 2 :]
 
         # Renumber remaining sections
         for j, s in enumerate(result):
@@ -970,6 +988,7 @@ def enforce_section_count(
 # ============================================================================
 # MAIN BUILDER FUNCTION
 # ============================================================================
+
 
 def build_story_sections(
     chapters: list[Chapter],
@@ -1028,12 +1047,19 @@ def build_story_sections(
             seen_closing_before = seen_closing
 
         # Check for forced break
-        break_reason = detect_forced_break(meta, prev_meta, seen_crunch_before, seen_closing_before)
+        break_reason = detect_forced_break(
+            meta, prev_meta, seen_crunch_before, seen_closing_before
+        )
 
         if break_reason is not None:
             # Save current group if non-empty
             if current_group:
-                section_groups.append((current_group, current_break_reason or ForcedBreakReason.GAME_START))
+                section_groups.append(
+                    (
+                        current_group,
+                        current_break_reason or ForcedBreakReason.GAME_START,
+                    )
+                )
 
             # Start new group
             current_group = [meta]
@@ -1044,7 +1070,9 @@ def build_story_sections(
 
     # Don't forget the last group
     if current_group:
-        section_groups.append((current_group, current_break_reason or ForcedBreakReason.GAME_START))
+        section_groups.append(
+            (current_group, current_break_reason or ForcedBreakReason.GAME_START)
+        )
 
     # Build sections from groups
     sections: list[StorySection] = []
@@ -1106,13 +1134,18 @@ def _apply_opening_section_beat_override(
         debug_info = override.debug_info
         total_pts = debug_info.get("total_points", 0)
         margin = debug_info.get("final_margin", 0)
-        opening.notes.insert(0, f"High-scoring early window: {total_pts} points, {margin}-point margin")
+        opening.notes.insert(
+            0, f"High-scoring early window: {total_pts} points, {margin}-point margin"
+        )
     elif override.beat_type == BeatType.EARLY_CONTROL:
         debug_info = override.debug_info
         leading_team = debug_info.get("leading_team", "unknown")
         margin = debug_info.get("final_margin", 0)
         share_pct = int(debug_info.get("leading_team_share", 0) * 100)
-        opening.notes.insert(0, f"Early control established: {leading_team} team led by {margin}, scored {share_pct}% of points")
+        opening.notes.insert(
+            0,
+            f"Early control established: {leading_team} team led by {margin}, scored {share_pct}% of points",
+        )
 
     return sections
 
@@ -1120,6 +1153,7 @@ def _apply_opening_section_beat_override(
 # ============================================================================
 # DEBUG OUTPUT
 # ============================================================================
+
 
 def format_sections_debug(sections: list[StorySection]) -> str:
     """Format sections for debug output.
