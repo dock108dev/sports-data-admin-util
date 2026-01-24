@@ -129,9 +129,10 @@ def upsert_plays(
     scrape_run_id: int | None = None,
     create_snapshot: bool = True,
 ) -> int:
-    """Insert play-by-play events for a game.
+    """Upsert play-by-play events for a game.
 
-    Uses PostgreSQL ON CONFLICT DO NOTHING to append new plays without overwriting.
+    Uses PostgreSQL ON CONFLICT DO UPDATE to insert new plays or update existing
+    ones with fresh data (e.g., player names resolved from roster).
     Optionally creates a raw PBP snapshot for auditability.
 
     Args:
@@ -143,7 +144,7 @@ def upsert_plays(
         create_snapshot: Whether to create a raw PBP snapshot
 
     Returns:
-        Number of plays inserted
+        Number of plays upserted (inserted or updated)
     """
     if not plays:
         return 0
@@ -192,8 +193,21 @@ def upsert_plays(
                 raw_data=play.raw_data,
                 updated_at=now_utc(),
             )
-            .on_conflict_do_nothing(
+            .on_conflict_do_update(
                 index_elements=["game_id", "play_index"],
+                set_={
+                    "quarter": play.quarter,
+                    "game_clock": play.game_clock,
+                    "play_type": play.play_type,
+                    "team_id": team_id,
+                    "player_id": play.player_id,
+                    "player_name": play.player_name,
+                    "description": play.description,
+                    "home_score": play.home_score,
+                    "away_score": play.away_score,
+                    "raw_data": play.raw_data,
+                    "updated_at": now_utc(),
+                },
             )
         )
         result = session.execute(stmt)

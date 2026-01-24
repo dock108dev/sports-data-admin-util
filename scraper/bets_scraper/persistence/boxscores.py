@@ -203,14 +203,19 @@ def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[Nor
         )
 
 
-def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[NormalizedPlayerBoxscore]) -> None:
+def upsert_player_boxscores(
+    session: Session, game_id: int, payloads: Sequence[NormalizedPlayerBoxscore]
+) -> PlayerBoxscoreStats:
     """Upsert player boxscores for a game.
 
     Handles errors per player and logs summary statistics.
     NHL rows are validated before insertion - invalid rows are rejected and logged.
+
+    Returns:
+        PlayerBoxscoreStats with counts of inserted, rejected, and errored players.
     """
     if not payloads:
-        return
+        return PlayerBoxscoreStats()
 
     inserted_count = 0
     rejected_count = 0
@@ -259,7 +264,7 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
                 exc_info=True,
             )
             error_count += 1
-    
+
     logger.info(
         "player_boxscores_upsert_complete",
         game_id=game_id,
@@ -272,6 +277,24 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
             {db_models.SportsGame.last_ingested_at: now_utc()}
         )
 
+    return PlayerBoxscoreStats(
+        inserted=inserted_count,
+        rejected=rejected_count,
+        errors=error_count,
+    )
+
+
+@dataclass(frozen=True)
+class PlayerBoxscoreStats:
+    """Statistics from player boxscore upsert operation."""
+    inserted: int = 0
+    rejected: int = 0
+    errors: int = 0
+
+    @property
+    def total_processed(self) -> int:
+        return self.inserted + self.rejected + self.errors
+
 
 @dataclass(frozen=True)
 class GamePersistResult:
@@ -282,6 +305,12 @@ class GamePersistResult:
     """
     game_id: int | None
     enriched: bool = False
+    player_stats: PlayerBoxscoreStats | None = None
+
+    @property
+    def has_player_stats(self) -> bool:
+        """Returns True if player stats were successfully upserted."""
+        return self.player_stats is not None and self.player_stats.inserted > 0
 
 
 def _find_game_for_boxscore(
@@ -425,10 +454,11 @@ def persist_game_payload(session: Session, payload: NormalizedGame) -> GamePersi
     )
 
     # Attach player boxscores
+    player_stats: PlayerBoxscoreStats | None = None
     if payload.player_boxscores:
         try:
             logger.info("persisting_player_boxscores", game_id=game.id, count=len(payload.player_boxscores))
-            upsert_player_boxscores(session, game.id, payload.player_boxscores)
+            player_stats = upsert_player_boxscores(session, game.id, payload.player_boxscores)
         except Exception as exc:
             logger.error(
                 "failed_to_persist_player_boxscores_for_game",
@@ -440,4 +470,4 @@ def persist_game_payload(session: Session, payload: NormalizedGame) -> GamePersi
     else:
         logger.warning("no_player_boxscores_to_persist", game_id=game.id, game_key=payload.identity.source_game_key)
 
-    return GamePersistResult(game_id=game.id, enriched=enriched)
+    return GamePersistResult(game_id=game.id, enriched=enriched, player_stats=player_stats)

@@ -317,7 +317,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             selectinload(db_models.SportsGame.player_boxscores).selectinload(db_models.SportsPlayerBoxscore.team),
             selectinload(db_models.SportsGame.odds),
             selectinload(db_models.SportsGame.social_posts).selectinload(db_models.GameSocialPost.team),
-            selectinload(db_models.SportsGame.plays),
+            selectinload(db_models.SportsGame.plays).selectinload(db_models.SportsGamePlay.team),
             selectinload(db_models.SportsGame.timeline_artifacts),
         )
         .where(db_models.SportsGame.id == game_id)

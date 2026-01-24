@@ -9,7 +9,7 @@ from __future__ import annotations
 import httpx
 import time
 from datetime import datetime, timedelta
-from sqlalchemy import exists, and_
+from sqlalchemy import exists
 from sqlalchemy.orm import Session, aliased
 from typing import Sequence
 

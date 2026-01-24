@@ -24,6 +24,31 @@ from .. import db_models
 logger = logging.getLogger(__name__)
 
 
+def is_ai_available() -> bool:
+    """Check if AI classification is available.
+
+    Currently always returns False (AI classification not implemented).
+    When AI role classification is ready, update this to check for API key/connectivity.
+    """
+    return False
+
+
+async def classify_social_role(
+    text: str,
+    phase: str,
+    sport: str,
+    heuristic_role: str,
+    heuristic_confidence: float,
+) -> str:
+    """AI-based social role classification.
+
+    NOT YET IMPLEMENTED - placeholder for future AI classification.
+    Falls back to heuristic role.
+    """
+    # Currently just returns heuristic role since AI is not implemented
+    return heuristic_role
+
+
 # =============================================================================
 # ROLE PATTERNS
 # Compiled regex patterns for heuristic role assignment
