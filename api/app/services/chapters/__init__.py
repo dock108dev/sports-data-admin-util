@@ -105,6 +105,19 @@ from .story_section import (
     TeamStatDelta as SectionTeamStatDelta,
     PlayerStatDelta as SectionPlayerStatDelta,
     ForcedBreakReason,
+    # Constants (Signal thresholds)
+    SECTION_MIN_POINTS_THRESHOLD,
+    SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD,
+    # Beat compatibility
+    INCOMPATIBLE_BEAT_PAIRS,
+    CRUNCH_TIER_BEATS,
+    NON_CRUNCH_BEATS,
+    are_beats_compatible_for_merge,
+    # Signal evaluation
+    count_meaningful_events,
+    get_section_total_points,
+    is_section_underpowered,
+    handle_underpowered_sections,
     # Functions
     build_story_sections,
     enforce_section_count,
@@ -277,6 +290,20 @@ __all__ = [
     "SectionTeamStatDelta",
     "SectionPlayerStatDelta",
     "ForcedBreakReason",
+    # Signal thresholds
+    "SECTION_MIN_POINTS_THRESHOLD",
+    "SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD",
+    # Beat compatibility
+    "INCOMPATIBLE_BEAT_PAIRS",
+    "CRUNCH_TIER_BEATS",
+    "NON_CRUNCH_BEATS",
+    "are_beats_compatible_for_merge",
+    # Signal evaluation
+    "count_meaningful_events",
+    "get_section_total_points",
+    "is_section_underpowered",
+    "handle_underpowered_sections",
+    # Section functions
     "build_story_sections",
     "enforce_section_count",
     "generate_section_notes",

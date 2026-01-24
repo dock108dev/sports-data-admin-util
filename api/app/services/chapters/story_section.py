@@ -6,12 +6,13 @@ This module constructs StorySections from chapters, beat types, and stat deltas.
 DESIGN PRINCIPLES:
 - Deterministic: Same input → same sections every run
 - Structural: Builds outline only, no narrative generation
-- Constrained: 3-10 sections enforced
+- Constrained: 0-10 sections (underpowered sections removed)
 - No AI usage
 
 COLLAPSE RULES:
 - Adjacent chapters with same beat_type MAY merge
 - Forced breaks ALWAYS override merging
+- Incompatible beats NEVER merge (beat-aware rules)
 
 FORCED SECTION BREAKS:
 1. Overtime start
@@ -20,8 +21,20 @@ FORCED SECTION BREAKS:
 4. Quarter boundary
 5. Beat change (fallback)
 
+BEAT-AWARE MERGE RULES:
+- non-crunch beats cannot merge with CRUNCH_SETUP or CLOSING_SEQUENCE
+- RUN/RESPONSE cannot merge with STALL
+- FAST_START/EARLY_CONTROL cannot merge with CLOSING_SEQUENCE
+- Any beat cannot merge with OVERTIME
+
+SIGNAL THRESHOLD:
+A section is underpowered if BOTH:
+- Total points scored < 8
+- Meaningful events < 3 (scoring plays, lead changes, run events, ties)
+Underpowered sections are merged into compatible neighbors or dropped.
+
 SECTION COUNT CONSTRAINTS:
-- Minimum: 3 sections
+- Minimum: 0 sections (low-signal games may have fewer than 3)
 - Maximum: 10 sections
 - Protected from merging: opening, CRUNCH_SETUP, CLOSING_SEQUENCE, OVERTIME
 """
@@ -710,6 +723,312 @@ def _build_section(
 
 
 # ============================================================================
+# SIGNAL THRESHOLD CONSTANTS
+# ============================================================================
+
+# Minimum points scored in a section to be considered "powered"
+SECTION_MIN_POINTS_THRESHOLD = 8
+
+# Minimum meaningful events in a section to be considered "powered"
+SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD = 3
+
+
+# ============================================================================
+# BEAT-AWARE MERGE RULES
+# ============================================================================
+
+
+# Beat pairs that are incompatible for merging (cannot be in same section)
+# Format: (beat_a, beat_b) - order doesn't matter, both directions blocked
+INCOMPATIBLE_BEAT_PAIRS: set[frozenset[BeatType]] = {
+    # RUN/RESPONSE cannot merge with STALL
+    frozenset({BeatType.RUN, BeatType.STALL}),
+    frozenset({BeatType.RESPONSE, BeatType.STALL}),
+    # FAST_START/EARLY_CONTROL cannot merge with CLOSING_SEQUENCE
+    frozenset({BeatType.FAST_START, BeatType.CLOSING_SEQUENCE}),
+    frozenset({BeatType.EARLY_CONTROL, BeatType.CLOSING_SEQUENCE}),
+}
+
+# Beats that are "crunch-tier" and should not merge with non-crunch beats
+CRUNCH_TIER_BEATS: set[BeatType] = {
+    BeatType.CRUNCH_SETUP,
+    BeatType.CLOSING_SEQUENCE,
+}
+
+# Non-crunch beats (everything except crunch-tier and overtime)
+NON_CRUNCH_BEATS: set[BeatType] = {
+    BeatType.FAST_START,
+    BeatType.BACK_AND_FORTH,
+    BeatType.EARLY_CONTROL,
+    BeatType.RUN,
+    BeatType.RESPONSE,
+    BeatType.STALL,
+    BeatType.MISSED_SHOT_FEST,  # Deprecated but still in enum
+}
+
+
+def are_beats_compatible_for_merge(beat_a: BeatType, beat_b: BeatType) -> bool:
+    """Check if two beats can be merged into the same section.
+
+    Beat-aware merge rules:
+    1. OVERTIME cannot merge with anything (always isolated)
+    2. Non-crunch beats cannot merge with crunch-tier beats (CRUNCH_SETUP, CLOSING_SEQUENCE)
+    3. RUN/RESPONSE cannot merge with STALL
+    4. FAST_START/EARLY_CONTROL cannot merge with CLOSING_SEQUENCE
+
+    Args:
+        beat_a: Beat type of first section
+        beat_b: Beat type of second section
+
+    Returns:
+        True if the beats are compatible for merging
+    """
+    # Rule 1: OVERTIME never merges
+    if beat_a == BeatType.OVERTIME or beat_b == BeatType.OVERTIME:
+        return False
+
+    # Rule 2: Non-crunch cannot merge with crunch-tier
+    a_is_crunch = beat_a in CRUNCH_TIER_BEATS
+    b_is_crunch = beat_b in CRUNCH_TIER_BEATS
+    a_is_non_crunch = beat_a in NON_CRUNCH_BEATS
+    b_is_non_crunch = beat_b in NON_CRUNCH_BEATS
+
+    if (a_is_crunch and b_is_non_crunch) or (a_is_non_crunch and b_is_crunch):
+        return False
+
+    # Rules 3 & 4: Check explicit incompatible pairs
+    pair = frozenset({beat_a, beat_b})
+    if pair in INCOMPATIBLE_BEAT_PAIRS:
+        return False
+
+    return True
+
+
+# ============================================================================
+# SECTION SIGNAL EVALUATION
+# ============================================================================
+
+
+def _count_scoring_plays(chapters: list[Chapter], chapter_ids: list[str]) -> int:
+    """Count scoring plays in the given chapters.
+
+    A scoring play is any play where the score changes.
+    """
+    count = 0
+    chapters_map = {ch.chapter_id: ch for ch in chapters}
+
+    for chapter_id in chapter_ids:
+        chapter = chapters_map.get(chapter_id)
+        if not chapter or not chapter.plays:
+            continue
+
+        prev_home = None
+        prev_away = None
+
+        for play in chapter.plays:
+            raw = play.raw_data
+            home = raw.get("home_score") or 0
+            away = raw.get("away_score") or 0
+
+            if prev_home is not None and prev_away is not None:
+                if home != prev_home or away != prev_away:
+                    count += 1
+
+            prev_home = home
+            prev_away = away
+
+    return count
+
+
+def _count_lead_changes_and_ties(
+    chapters: list[Chapter], chapter_ids: list[str]
+) -> tuple[int, int]:
+    """Count lead changes and tie creations in the given chapters.
+
+    Returns:
+        Tuple of (lead_change_count, tie_creation_count)
+    """
+    lead_changes = 0
+    tie_creations = 0
+    chapters_map = {ch.chapter_id: ch for ch in chapters}
+
+    prev_leader: str | None = None
+    first_play = True
+
+    for chapter_id in chapter_ids:
+        chapter = chapters_map.get(chapter_id)
+        if not chapter or not chapter.plays:
+            continue
+
+        for play in chapter.plays:
+            raw = play.raw_data
+            home = raw.get("home_score") or 0
+            away = raw.get("away_score") or 0
+
+            # Determine current leader
+            if home > away:
+                curr_leader: str | None = "home"
+            elif away > home:
+                curr_leader = "away"
+            else:
+                curr_leader = None  # Tied
+
+            if not first_play:
+                # Lead change: one team was leading, now the other is
+                if prev_leader is not None and curr_leader is not None:
+                    if prev_leader != curr_leader:
+                        lead_changes += 1
+
+                # Tie creation: one team was leading, now tied
+                if prev_leader is not None and curr_leader is None:
+                    tie_creations += 1
+
+            # Update for next iteration
+            if curr_leader is not None:
+                prev_leader = curr_leader
+            first_play = False
+
+    return lead_changes, tie_creations
+
+
+def _count_run_events(chapters: list[Chapter], chapter_ids: list[str]) -> int:
+    """Count run start/end events in the given chapters.
+
+    A run starts when one team scores >= 6 unanswered points.
+    A run ends when the opposing team scores.
+    """
+    from .virtual_boundaries import RUN_THRESHOLD_POINTS
+
+    run_events = 0
+    chapters_map = {ch.chapter_id: ch for ch in chapters}
+
+    run_team: str | None = None
+    run_points: int = 0
+    run_announced: bool = False
+    prev_home: int | None = None
+    prev_away: int | None = None
+
+    for chapter_id in chapter_ids:
+        chapter = chapters_map.get(chapter_id)
+        if not chapter or not chapter.plays:
+            continue
+
+        for play in chapter.plays:
+            raw = play.raw_data
+            home = raw.get("home_score") or 0
+            away = raw.get("away_score") or 0
+
+            if prev_home is not None and prev_away is not None:
+                home_delta = home - prev_home
+                away_delta = away - prev_away
+
+                if home_delta > 0 and away_delta == 0:
+                    # Home scored
+                    if run_team == "home":
+                        run_points += home_delta
+                    else:
+                        if run_team == "away" and run_announced:
+                            run_events += 1  # RUN_END
+                        run_team = "home"
+                        run_points = home_delta
+                        run_announced = False
+
+                    if run_points >= RUN_THRESHOLD_POINTS and not run_announced:
+                        run_events += 1  # RUN_START
+                        run_announced = True
+
+                elif away_delta > 0 and home_delta == 0:
+                    # Away scored
+                    if run_team == "away":
+                        run_points += away_delta
+                    else:
+                        if run_team == "home" and run_announced:
+                            run_events += 1  # RUN_END
+                        run_team = "away"
+                        run_points = away_delta
+                        run_announced = False
+
+                    if run_points >= RUN_THRESHOLD_POINTS and not run_announced:
+                        run_events += 1  # RUN_START
+                        run_announced = True
+
+                elif home_delta > 0 and away_delta > 0:
+                    # Both scored - end any run
+                    if run_announced:
+                        run_events += 1  # RUN_END
+                    run_team = None
+                    run_points = 0
+                    run_announced = False
+
+            prev_home = home
+            prev_away = away
+
+    return run_events
+
+
+def count_meaningful_events(
+    section: StorySection, chapters: list[Chapter]
+) -> int:
+    """Count meaningful events in a section.
+
+    Meaningful events include:
+    - Scoring plays
+    - Lead changes
+    - Run start/end
+    - Tie creation
+
+    Args:
+        section: The section to evaluate
+        chapters: All chapters (for looking up chapter content)
+
+    Returns:
+        Total count of meaningful events
+    """
+    chapter_ids = section.chapters_included
+
+    scoring_plays = _count_scoring_plays(chapters, chapter_ids)
+    lead_changes, tie_creations = _count_lead_changes_and_ties(chapters, chapter_ids)
+    run_events = _count_run_events(chapters, chapter_ids)
+
+    return scoring_plays + lead_changes + tie_creations + run_events
+
+
+def get_section_total_points(section: StorySection) -> int:
+    """Get total points scored in a section (both teams combined)."""
+    total = 0
+    for team_delta in section.team_stat_deltas.values():
+        total += team_delta.points_scored
+    return total
+
+
+def is_section_underpowered(
+    section: StorySection,
+    chapters: list[Chapter],
+) -> bool:
+    """Check if a section is underpowered (below signal threshold).
+
+    A section is underpowered if BOTH:
+    - Total points scored < SECTION_MIN_POINTS_THRESHOLD (8)
+    - Meaningful event count < SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD (3)
+
+    Args:
+        section: The section to evaluate
+        chapters: All chapters (for meaningful event detection)
+
+    Returns:
+        True if the section is underpowered
+    """
+    total_points = get_section_total_points(section)
+    meaningful_events = count_meaningful_events(section, chapters)
+
+    # Underpowered if BOTH conditions are true
+    return (
+        total_points < SECTION_MIN_POINTS_THRESHOLD
+        and meaningful_events < SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD
+    )
+
+
+# ============================================================================
 # SECTION COUNT ENFORCEMENT
 # ============================================================================
 
@@ -880,6 +1199,7 @@ def _can_merge_pair(
     """Check if a pair of sections at idx and idx+1 can be merged.
 
     Phase 2.6: Prevents merging sections at or after CLOSING_SEQUENCE.
+    Beat-aware: Prevents merging incompatible beat types.
 
     Args:
         sections: List of sections
@@ -898,12 +1218,152 @@ def _can_merge_pair(
         if idx >= closing_sequence_idx or idx + 1 >= closing_sequence_idx:
             return False
 
+    # Beat-aware: Check beat compatibility
+    if not are_beats_compatible_for_merge(
+        sections[idx].beat_type, sections[idx + 1].beat_type
+    ):
+        return False
+
     return True
+
+
+def _find_compatible_neighbor_for_merge(
+    sections: list[StorySection],
+    idx: int,
+    closing_sequence_idx: int | None,
+) -> int | None:
+    """Find a compatible neighbor section to merge an underpowered section into.
+
+    Preference order:
+    1. Previous section (if compatible)
+    2. Next section (if compatible)
+
+    Args:
+        sections: List of sections
+        idx: Index of the underpowered section
+        closing_sequence_idx: Index of CLOSING_SEQUENCE section (or None)
+
+    Returns:
+        Index of compatible neighbor, or None if none found
+    """
+    underpowered = sections[idx]
+
+    # Try previous section first
+    if idx > 0:
+        prev_section = sections[idx - 1]
+        # Check if previous is not protected and beats are compatible
+        if not _is_protected_section(prev_section):
+            if are_beats_compatible_for_merge(
+                prev_section.beat_type, underpowered.beat_type
+            ):
+                # Check CLOSING_SEQUENCE constraint
+                if closing_sequence_idx is None or (
+                    idx - 1 < closing_sequence_idx and idx < closing_sequence_idx
+                ):
+                    return idx - 1
+
+    # Try next section
+    if idx < len(sections) - 1:
+        next_section = sections[idx + 1]
+        # Check if next is not protected and beats are compatible
+        if not _is_protected_section(next_section):
+            if are_beats_compatible_for_merge(
+                underpowered.beat_type, next_section.beat_type
+            ):
+                # Check CLOSING_SEQUENCE constraint
+                if closing_sequence_idx is None or (
+                    idx < closing_sequence_idx and idx + 1 < closing_sequence_idx
+                ):
+                    return idx + 1
+
+    return None
+
+
+def handle_underpowered_sections(
+    sections: list[StorySection],
+    chapters: list[Chapter],
+) -> list[StorySection]:
+    """Handle underpowered sections by merging or dropping them.
+
+    For each underpowered section:
+    1. Try to merge into nearest compatible neighbor
+    2. If no compatible neighbor, drop the section
+
+    Args:
+        sections: List of sections to process
+        chapters: All chapters (for signal evaluation)
+
+    Returns:
+        List of sections with underpowered sections handled
+    """
+    if not sections:
+        return sections
+
+    result = list(sections)
+    changed = True
+
+    # Process iteratively until no more changes
+    while changed:
+        changed = False
+        closing_idx = _find_closing_sequence_index(result)
+
+        # Find first underpowered section
+        underpowered_idx = None
+        for i, section in enumerate(result):
+            # Protected sections cannot be dropped/merged
+            if _is_protected_section(section):
+                continue
+
+            if is_section_underpowered(section, chapters):
+                underpowered_idx = i
+                break
+
+        if underpowered_idx is None:
+            break  # No more underpowered sections
+
+        # Try to find compatible neighbor
+        neighbor_idx = _find_compatible_neighbor_for_merge(
+            result, underpowered_idx, closing_idx
+        )
+
+        if neighbor_idx is not None:
+            # Merge into neighbor
+            if neighbor_idx < underpowered_idx:
+                # Merge underpowered into previous
+                merged = _merge_sections(
+                    result[neighbor_idx], result[underpowered_idx], neighbor_idx
+                )
+                result = (
+                    result[:neighbor_idx]
+                    + [merged]
+                    + result[underpowered_idx + 1 :]
+                )
+            else:
+                # Merge underpowered into next
+                merged = _merge_sections(
+                    result[underpowered_idx], result[neighbor_idx], underpowered_idx
+                )
+                result = (
+                    result[:underpowered_idx]
+                    + [merged]
+                    + result[neighbor_idx + 1 :]
+                )
+            changed = True
+        else:
+            # No compatible neighbor - drop the section
+            result = result[:underpowered_idx] + result[underpowered_idx + 1 :]
+            changed = True
+
+        # Renumber remaining sections
+        for j, s in enumerate(result):
+            s.section_index = j
+
+    return result
 
 
 def enforce_section_count(
     sections: list[StorySection],
-    min_sections: int = 3,
+    min_sections: int = 0,  # Updated: was 3, now 0 (allow fewer sections)
     max_sections: int = 10,
 ) -> list[StorySection]:
     """Enforce section count constraints.
@@ -1003,7 +1463,7 @@ def build_story_sections(
         section_deltas: Stats for each chapter (from running_stats)
 
     Returns:
-        List of StorySections (3-10 sections, enforced)
+        List of StorySections (0-10 sections, underpowered sections removed)
     """
     if not chapters or not classifications:
         return []
@@ -1089,7 +1549,10 @@ def build_story_sections(
         section = _build_section(section_idx, group_meta, group_deltas, break_reason)
         sections.append(section)
 
-    # Enforce section count constraints
+    # Handle underpowered sections (merge or drop)
+    sections = handle_underpowered_sections(sections, chapters)
+
+    # Enforce section count constraints (max only, min is now 0)
     sections = enforce_section_count(sections)
 
     # Phase 2.5: Apply section-level beat overrides (FAST_START, EARLY_CONTROL)
