@@ -132,14 +132,30 @@ def trigger_game_pipelines_task(
     retry_kwargs={"max_retries": 3},
 )
 def run_scheduled_ingestion() -> dict:
-    """Trigger the scheduled ingestion pipeline (manual debug entry point)."""
-    summary = schedule_ingestion_runs()
+    """Trigger the scheduled ingestion pipeline.
+
+    Runs leagues sequentially: NBA first, waits for completion, then NHL.
+    This ensures NHL runs immediately after NBA completes.
+    """
+    from ..services.scheduler import schedule_single_league_and_wait
+
+    results = {}
+
+    # Run NBA first and wait for completion
+    logger.info("scheduled_ingestion_nba_start")
+    nba_result = schedule_single_league_and_wait("NBA")
+    results["NBA"] = nba_result
+    logger.info("scheduled_ingestion_nba_complete", **nba_result)
+
+    # Run NHL immediately after NBA completes
+    logger.info("scheduled_ingestion_nhl_start")
+    nhl_result = schedule_single_league_and_wait("NHL")
+    results["NHL"] = nhl_result
+    logger.info("scheduled_ingestion_nhl_complete", **nhl_result)
+
     return {
-        "runs_created": summary.runs_created,
-        "runs_skipped": summary.runs_skipped,
-        "run_failures": summary.run_failures,
-        "enqueue_failures": summary.enqueue_failures,
-        "last_run_at": summary.last_run_at.isoformat(),
+        "leagues": results,
+        "total_runs_created": nba_result["runs_created"] + nhl_result["runs_created"],
     }
 
 
