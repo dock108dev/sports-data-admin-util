@@ -5,11 +5,10 @@ Handles team and player boxscore upserts.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from typing import Sequence
 
-from sqlalchemy import cast, Date, text
+from sqlalchemy import cast, Date, literal
 from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Session
 
@@ -178,8 +177,8 @@ def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[Nor
         league_id = get_league_id(session, payload.team.league_code)
         team_id = _upsert_team(session, league_id, payload.team)
         stats = _build_team_stats(payload)
-        # psycopg3 requires explicit JSONB casting for dicts in raw SQL
-        stats_json = cast(text(f"'{json.dumps(stats)}'"), JSONB)
+        # Use literal() for proper parameter binding (avoids SQL injection with apostrophes)
+        stats_json = literal(stats, type_=JSONB)
         stmt = insert(db_models.SportsTeamBoxscore).values(
             game_id=game_id,
             team_id=team_id,
@@ -229,8 +228,8 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
             league_id = get_league_id(session, payload.team.league_code)
             team_id = _upsert_team(session, league_id, payload.team)
             stats = _build_player_stats(payload)
-            # psycopg3 requires explicit JSONB casting for dicts in raw SQL
-            stats_json = cast(text(f"'{json.dumps(stats)}'"), JSONB)
+            # Use literal() for proper parameter binding (avoids SQL injection with apostrophes)
+            stats_json = literal(stats, type_=JSONB)
             stmt = insert(db_models.SportsPlayerBoxscore).values(
                 game_id=game_id,
                 team_id=team_id,
