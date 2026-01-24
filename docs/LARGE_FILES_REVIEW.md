@@ -1,12 +1,5 @@
 
-### Routers/Endpoints - Needs Review
 
-| File | LOC | Recommendation |
-|------|-----|----------------|
-| admin/pbp.py | 876 | Consider splitting by operation type |
-| admin/pipeline/endpoints.py | 716 | Consider splitting pipeline stages |
-| sports/games.py | 606 | Review - multiple game operations |
-| game_snapshots.py | 606 | Review - snapshot logic |
 
 
 ### Services
