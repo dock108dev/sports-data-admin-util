@@ -91,14 +91,13 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
         
         # Update tip_time even on cache hit if not yet set
         game = session.get(db_models.SportsGame, game_id)
-        if game and game.tip_time is None and snapshot.game_date:
-            if snapshot.game_date.hour != 0 or snapshot.game_date.minute != 0:
-                game.tip_time = snapshot.game_date
-                logger.debug(
-                    "odds_set_tip_time_cached",
-                    game_id=game_id,
-                    tip_time=str(snapshot.game_date),
-                )
+        if game and game.tip_time is None and snapshot.tip_time:
+            game.tip_time = snapshot.tip_time
+            logger.debug(
+                "odds_set_tip_time_cached",
+                game_id=game_id,
+                tip_time=str(snapshot.tip_time),
+            )
         
         side_value = snapshot.side if snapshot.side else None
         stmt = (
@@ -280,10 +279,8 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
         today = date.today()
         is_historical = game_date_only < today
 
-        # Determine tip_time: use the full datetime if it has a time component
-        tip_time = None
-        if snapshot.game_date.hour != 0 or snapshot.game_date.minute != 0:
-            tip_time = snapshot.game_date
+        # Use tip_time from snapshot (actual start time in UTC)
+        tip_time = snapshot.tip_time
 
         # Build external_ids with Odds API source key if available
         external_ids = {}
@@ -331,18 +328,15 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
         # Cache the newly created game_id for subsequent odds records
         cache_set(cache_key, game_id)
 
-    # Update game's tip_time if null and we have commence_time from Odds API
-    # snapshot.game_date is the commence_time (actual tip time)
+    # Update game's tip_time if null and we have tip_time from Odds API
     game = session.get(db_models.SportsGame, game_id)
-    if game and game.tip_time is None and snapshot.game_date:
-        # Only set tip_time if the Odds API time has an actual time component (not midnight)
-        if snapshot.game_date.hour != 0 or snapshot.game_date.minute != 0:
-            game.tip_time = snapshot.game_date
-            logger.debug(
-                "odds_set_tip_time",
-                game_id=game_id,
-                tip_time=str(snapshot.game_date),
-            )
+    if game and game.tip_time is None and snapshot.tip_time:
+        game.tip_time = snapshot.tip_time
+        logger.debug(
+            "odds_set_tip_time",
+            game_id=game_id,
+            tip_time=str(snapshot.tip_time),
+        )
 
     side_value = snapshot.side if snapshot.side else None
 

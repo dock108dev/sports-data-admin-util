@@ -44,35 +44,84 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
         return f"https://www.hockey-reference.com/boxscores/pbp/{source_game_key}.html"
 
     def _extract_team_stats(self, soup: BeautifulSoup, team_abbr: str) -> dict:
-        """Extract team stats from boxscore table."""
+        """Extract team stats from Hockey Reference skaters table.
+
+        Hockey Reference uses table IDs like '{ABBR}_skaters' (e.g., 'BOS_skaters'),
+        NOT 'box-{ABBR}-game-basic' like Basketball Reference.
+        """
         from ..utils.html_parsing import extract_team_stats_from_table, find_table_by_id
-        
-        # Hockey Reference uses UPPERCASE team abbreviations in table IDs
-        table_id = f"box-{team_abbr.upper()}-game-basic"
+
+        # Hockey Reference uses {ABBR}_skaters format (e.g., BOS_skaters)
+        table_id = f"{team_abbr.upper()}_skaters"
         table = find_table_by_id(soup, table_id)
-        
+
         if not table:
-            logger.warning("team_stats_table_not_found", table_id=table_id, team_abbr=team_abbr)
+            # Log available table IDs for debugging
+            all_tables = soup.find_all("table", id=True)
+            available_ids = [t.get("id") for t in all_tables[:10]]
+            logger.warning(
+                "team_stats_table_not_found",
+                table_id=table_id,
+                team_abbr=team_abbr,
+                available_table_ids=available_ids,
+            )
             return {}
-        
+
         return extract_team_stats_from_table(table, team_abbr, table_id)
 
     def _extract_player_stats(
         self, soup: BeautifulSoup, team_abbr: str, team_identity: TeamIdentity, is_home: bool
     ) -> list[NormalizedPlayerBoxscore]:
-        """Parse individual player rows from box-{TEAM}-game-basic table."""
+        """Parse individual player rows from Hockey Reference skaters and goalies tables.
+
+        Hockey Reference uses table IDs like '{ABBR}_skaters' and '{ABBR}_goalies'
+        (e.g., 'BOS_skaters', 'BOS_goalies'), NOT 'box-{ABBR}-game-basic'.
+        """
         from ..utils.html_parsing import find_player_table
-        
-        # Hockey Reference uses UPPERCASE team abbreviations in table IDs
-        table_id = f"box-{team_abbr.upper()}-game-basic"
-        table = find_player_table(soup, table_id)
-        
-        if not table:
-            logger.warning("player_stats_table_not_found", table_id=table_id, team=team_abbr)
-            return []
 
-        logger.debug("player_stats_table_found", table_id=table_id, team=team_abbr)
+        players: list[NormalizedPlayerBoxscore] = []
 
+        # Extract skaters from {ABBR}_skaters table
+        skaters_table_id = f"{team_abbr.upper()}_skaters"
+        skaters_table = find_player_table(soup, skaters_table_id)
+
+        if not skaters_table:
+            all_tables = soup.find_all("table", id=True)
+            available_ids = [t.get("id") for t in all_tables[:10]]
+            logger.warning(
+                "player_stats_table_not_found",
+                table_id=skaters_table_id,
+                team=team_abbr,
+                available_table_ids=available_ids,
+            )
+        else:
+            logger.debug("player_stats_table_found", table_id=skaters_table_id, team=team_abbr)
+            players.extend(
+                self._parse_player_table(skaters_table, skaters_table_id, team_abbr, team_identity, is_home, "skater")
+            )
+
+        # Extract goalies from {ABBR}_goalies table
+        goalies_table_id = f"{team_abbr.upper()}_goalies"
+        goalies_table = find_player_table(soup, goalies_table_id)
+
+        if goalies_table:
+            logger.debug("goalie_stats_table_found", table_id=goalies_table_id, team=team_abbr)
+            players.extend(
+                self._parse_player_table(goalies_table, goalies_table_id, team_abbr, team_identity, is_home, "goalie")
+            )
+
+        return players
+
+    def _parse_player_table(
+        self,
+        table,
+        table_id: str,
+        team_abbr: str,
+        team_identity: TeamIdentity,
+        is_home: bool,
+        player_type: str,
+    ) -> list[NormalizedPlayerBoxscore]:
+        """Parse individual player rows from a stats table."""
         players: list[NormalizedPlayerBoxscore] = []
         tbody = table.find("tbody")
         if not tbody:
@@ -108,7 +157,12 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
             player_id = href.split("/")[-1].replace(".html", "") if href else player_name
 
             raw_stats = extract_all_stats_from_row(row)
+            # Add player_type to raw_stats for filtering later
+            raw_stats["player_type"] = player_type
 
+            # Hockey uses different stat names than basketball
+            # Skaters: toi (time on ice), g (goals), a (assists), pts (points), s (shots)
+            # Goalies: toi, sa (shots against), ga (goals against), sv (saves), sv_pct
             players.append(
                 NormalizedPlayerBoxscore(
                     player_id=player_id,
@@ -118,6 +172,7 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
                     points=parse_int(get_stat_from_row(row, "pts")),
                     rebounds=None,  # Not applicable to hockey
                     assists=parse_int(get_stat_from_row(row, "a")),
+                    shots_on_goal=parse_int(get_stat_from_row(row, "s")),  # Shots for skaters
                     raw_stats=raw_stats,
                 )
             )
@@ -126,6 +181,7 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
         logger.info(
             "player_stats_extraction_complete",
             team=team_abbr,
+            player_type=player_type,
             is_home=is_home,
             total_rows=len(all_rows),
             skipped_thead=skipped_thead,
@@ -137,13 +193,25 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
         return players
 
     def _build_team_boxscore(self, identity: TeamIdentity, is_home: bool, score: int, stats: dict) -> NormalizedTeamBoxscore:
+        """Build team boxscore from Hockey Reference stats.
+
+        Hockey Reference uses different stat names:
+        - g: goals
+        - a: assists
+        - pts: points (g + a for skaters)
+        - s: shots
+        - pim: penalty minutes
+        - toi: time on ice
+        """
         return NormalizedTeamBoxscore(
             team=identity,
             is_home=is_home,
-            points=score,
+            points=score,  # Final score (goals)
             rebounds=None,  # Not applicable to hockey
             assists=parse_int(stats.get("a")),
             turnovers=None,  # Not tracked in hockey boxscores
+            shots_on_goal=parse_int(stats.get("s")),  # Team shots
+            penalty_minutes=parse_int(stats.get("pim")),  # Penalty minutes
             raw_stats=stats,
         )
 

@@ -119,6 +119,8 @@ MLB_TEAMS = {
 NHL_TEAMS = {
     "Anaheim Ducks": ("Anaheim Ducks", "ANA", ["Anaheim", "Ducks"]),
     "Arizona Coyotes": ("Arizona Coyotes", "ARI", ["Arizona", "Coyotes"]),
+    # Utah Hockey Club (relocated from Arizona in 2024)
+    "Utah Hockey Club": ("Utah Hockey Club", "UTA", ["Utah", "Utah HC", "Utah Mammoth"]),
     "Boston Bruins": ("Boston Bruins", "BOS", ["Boston", "Bruins"]),
     "Buffalo Sabres": ("Buffalo Sabres", "BUF", ["Buffalo", "Sabres"]),
     "Calgary Flames": ("Calgary Flames", "CGY", ["Calgary", "Flames"]),

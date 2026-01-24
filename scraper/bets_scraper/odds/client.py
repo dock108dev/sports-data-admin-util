@@ -9,9 +9,10 @@ Includes local JSON caching to avoid repeat API calls and save credits.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -19,6 +20,9 @@ from ..config import settings
 from ..logging import logger
 from ..models import NormalizedOddsSnapshot, TeamIdentity
 from ..normalization import normalize_team_name
+
+# US sports use Eastern Time for game dates
+US_EASTERN = ZoneInfo("America/New_York")
 
 
 SPORT_KEY_MAP = {
@@ -280,7 +284,14 @@ class OddsAPIClient:
         snapshots: list[NormalizedOddsSnapshot] = []
         
         for event in events:
-            game_date = datetime.fromisoformat(event["commence_time"].replace("Z", "+00:00"))
+            # Parse commence_time as UTC
+            commence_utc = datetime.fromisoformat(event["commence_time"].replace("Z", "+00:00"))
+            # Convert to Eastern Time for date extraction (US sports use ET dates)
+            # This ensures games at 7pm ET on Jan 22 are stored as Jan 22, not Jan 23 UTC
+            commence_et = commence_utc.astimezone(US_EASTERN)
+            # Create game_date at midnight ET, then convert back to UTC for storage
+            game_date_et = datetime.combine(commence_et.date(), datetime.min.time(), tzinfo=US_EASTERN)
+            game_date = game_date_et.astimezone(timezone.utc)
             
             # Normalize team names to canonical form
             raw_home_name = event["home_team"]
@@ -374,6 +385,7 @@ class OddsAPIClient:
                                 home_team=home_team,
                                 away_team=away_team,
                                 game_date=game_date,
+                                tip_time=commence_utc,  # Actual start time in UTC
                                 source_key=market.get("key"),
                                 is_closing_line=True,
                                 raw_payload=outcome,
