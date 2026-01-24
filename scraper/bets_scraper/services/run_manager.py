@@ -63,6 +63,7 @@ class ScrapeRunManager:
         summary: Dict[str, int | str] = {
             "games": 0,
             "games_enriched": 0,  # Games enriched with boxscore data
+            "games_with_stats": 0,  # Games that had player stats upserted
             "odds": 0,
             "social_posts": 0,
             "pbp_games": 0,
@@ -185,6 +186,8 @@ class ScrapeRunManager:
                                             summary["games"] += 1
                                             if result.enriched:
                                                 summary["games_enriched"] += 1
+                                            if result.has_player_stats:
+                                                summary["games_with_stats"] += 1
                                         else:
                                             games_skipped += 1
                             except Exception as exc:
@@ -207,6 +210,8 @@ class ScrapeRunManager:
                                         summary["games"] += 1
                                         if result.enriched:
                                             summary["games_enriched"] += 1
+                                        if result.has_player_stats:
+                                            summary["games_with_stats"] += 1
                                     else:
                                         # Game not found - this is normal for games not in Odds API
                                         games_skipped += 1
@@ -217,6 +222,7 @@ class ScrapeRunManager:
                     "boxscores_complete",
                     count=summary["games"],
                     enriched=summary["games_enriched"],
+                    with_stats=summary["games_with_stats"],
                     skipped=games_skipped,
                     run_id=run_id,
                 )
@@ -400,7 +406,7 @@ class ScrapeRunManager:
             summary_parts = []
             if summary["games"]:
                 summary_parts.append(
-                    f'Games: {summary["games"]} ({summary["games_enriched"]} enriched)'
+                    f'Games: {summary["games"]} ({summary["games_enriched"]} enriched, {summary["games_with_stats"]} with stats)'
                 )
             if summary["odds"]:
                 summary_parts.append(f'Odds: {summary["odds"]}')
