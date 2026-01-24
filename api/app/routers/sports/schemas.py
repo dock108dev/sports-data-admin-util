@@ -223,6 +223,19 @@ class PlayEntry(BaseModel):
     away_score: int | None = None
 
 
+class NHLDataHealth(BaseModel):
+    """NHL-specific data health indicators.
+
+    Helps distinguish between legitimate empty data vs ingestion failure.
+    Only populated for NHL games.
+    """
+
+    skater_count: int = 0
+    goalie_count: int = 0
+    is_healthy: bool = True
+    issues: list[str] = Field(default_factory=list)
+
+
 class GameDetailResponse(BaseModel):
     game: GameMeta
     team_stats: list[TeamStat]
@@ -232,6 +245,8 @@ class GameDetailResponse(BaseModel):
     plays: list[PlayEntry]
     derived_metrics: dict[str, Any]
     raw_payloads: dict[str, Any]
+    # NHL-specific data health (only populated for NHL games)
+    data_health: NHLDataHealth | None = None
 
 
 class JobResponse(BaseModel):

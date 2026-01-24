@@ -110,6 +110,28 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
                 self._parse_player_table(goalies_table, goalies_table_id, team_abbr, team_identity, is_home, "goalie")
             )
 
+        # Regression guard: warn if zero players were extracted
+        # This should never happen for a valid boxscore page
+        skater_count = sum(1 for p in players if p.player_role == "skater")
+        goalie_count = sum(1 for p in players if p.player_role == "goalie")
+
+        if skater_count == 0:
+            logger.warning(
+                "nhl_zero_skaters_extracted",
+                team=team_abbr,
+                is_home=is_home,
+                total_players=len(players),
+                message="Possible ingestion failure: no skaters found for team",
+            )
+        if goalie_count == 0:
+            logger.warning(
+                "nhl_zero_goalies_extracted",
+                team=team_abbr,
+                is_home=is_home,
+                total_players=len(players),
+                message="Possible ingestion failure: no goalies found for team",
+            )
+
         return players
 
     def _parse_player_table(

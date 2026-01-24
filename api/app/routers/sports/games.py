@@ -38,6 +38,7 @@ from .schemas import (
     GameListResponse,
     GameMeta,
     GamePreviewScoreResponse,
+    NHLDataHealth,
     ScrapeRunConfig,
     JobResponse,
     OddsEntry,
@@ -46,6 +47,76 @@ from ..game_snapshot_models import TimelineArtifactResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _compute_nhl_data_health(
+    game: "db_models.SportsGame",
+    player_boxscores: list,
+) -> NHLDataHealth | None:
+    """Compute NHL-specific data health indicators.
+
+    Returns None for non-NHL games.
+    For NHL games, returns health status that distinguishes between:
+    - Legitimate empty (game not yet played)
+    - Ingestion failure (completed game with missing player data)
+    """
+    league_code = game.league.code if game.league else None
+    if league_code != "NHL":
+        return None
+
+    # Count skaters and goalies by checking player_role in raw stats
+    skater_count = 0
+    goalie_count = 0
+
+    for player in player_boxscores:
+        stats = player.stats or {}
+        player_role = stats.get("player_role")
+        if player_role == "skater":
+            skater_count += 1
+        elif player_role == "goalie":
+            goalie_count += 1
+
+    # Determine health status
+    issues: list[str] = []
+    is_healthy = True
+
+    # Game status determines what we expect
+    game_status = (game.status or "").lower()
+    is_completed = game_status in ("completed", "final", "finished")
+
+    if is_completed:
+        # Completed games SHOULD have player data
+        if skater_count == 0:
+            issues.append("zero_skaters_for_completed_game")
+            is_healthy = False
+        if goalie_count == 0:
+            issues.append("zero_goalies_for_completed_game")
+            is_healthy = False
+
+        # Additional sanity checks for NHL
+        # Each team should have ~18-20 skaters and 1-2 goalies
+        if skater_count > 0 and skater_count < 20:
+            issues.append(f"low_skater_count:{skater_count}")
+            # Not necessarily unhealthy, but notable
+
+    # Log issues for visibility
+    if issues:
+        logger.warning(
+            "nhl_data_health_issues",
+            game_id=game.id,
+            status=game_status,
+            skater_count=skater_count,
+            goalie_count=goalie_count,
+            issues=issues,
+            is_healthy=is_healthy,
+        )
+
+    return NHLDataHealth(
+        skater_count=skater_count,
+        goalie_count=goalie_count,
+        is_healthy=is_healthy,
+        issues=issues,
+    )
 
 
 @router.get("/games", response_model=GameListResponse)
@@ -303,6 +374,9 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         ],
     }
 
+    # Compute NHL-specific data health (None for non-NHL games)
+    data_health = _compute_nhl_data_health(game, game.player_boxscores)
+
     return GameDetailResponse(
         game=meta,
         team_stats=team_stats,
@@ -312,6 +386,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         plays=plays_entries,
         derived_metrics=derived,
         raw_payloads=raw_payloads,
+        data_health=data_health,
     )
 
 
