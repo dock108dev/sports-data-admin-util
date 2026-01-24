@@ -11,11 +11,9 @@ from ..logging import logger
 from ..models import IngestionConfig
 from ..live import LiveFeedManager
 from ..odds.synchronizer import OddsSynchronizer
-from ..persistence import persist_game_payload, upsert_player_season_stats, upsert_team_season_stats
-from ..season_stats import NHLHockeyReferenceSeasonStatsScraper
+from ..persistence import persist_game_payload
 from ..scrapers import get_all_scrapers
 from ..social import XPostCollector, XCircuitBreakerError
-from ..utils.date_utils import season_from_date
 from ..utils.datetime_utils import now_utc, today_utc
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
 from .job_runs import complete_job_run, start_job_run
@@ -68,8 +66,6 @@ class ScrapeRunManager:
             "odds": 0,
             "social_posts": 0,
             "pbp_games": 0,
-            "team_stats": 0,
-            "player_stats": 0,
         }
         start = config.start_date or today_utc()
         end = config.end_date or start
@@ -224,35 +220,6 @@ class ScrapeRunManager:
                     skipped=games_skipped,
                     run_id=run_id,
                 )
-
-            # STAGE 3: Season stats (NHL only)
-            if config.team_stats or config.player_stats:
-                if config.league_code != "NHL":
-                    logger.info(
-                        "season_stats_not_supported",
-                        run_id=run_id,
-                        league=config.league_code,
-                        message="Season stats scraping is only implemented for NHL.",
-                    )
-                else:
-                    season = config.season or season_from_date(start, config.league_code)
-                    stats_scraper = NHLHockeyReferenceSeasonStatsScraper()
-                    logger.info(
-                        "season_stats_scraping_start",
-                        run_id=run_id,
-                        league=config.league_code,
-                        season=season,
-                        team_stats=config.team_stats,
-                        player_stats=config.player_stats,
-                    )
-                    if config.team_stats:
-                        team_payloads = stats_scraper.fetch_team_stats(season)
-                        with get_session() as session:
-                            summary["team_stats"] += upsert_team_season_stats(session, team_payloads)
-                    if config.player_stats:
-                        player_payloads = stats_scraper.fetch_player_stats(season)
-                        with get_session() as session:
-                            summary["player_stats"] += upsert_player_season_stats(session, player_payloads)
 
             if ingest_run_id is not None:
                 complete_job_run(ingest_run_id, "success")
@@ -441,10 +408,6 @@ class ScrapeRunManager:
                 summary_parts.append(f'Social: {summary["social_posts"]}')
             if summary["pbp_games"]:
                 summary_parts.append(f'PBP: {summary["pbp_games"]}')
-            if summary["team_stats"]:
-                summary_parts.append(f'Team stats: {summary["team_stats"]}')
-            if summary["player_stats"]:
-                summary_parts.append(f'Player stats: {summary["player_stats"]}')
 
             self._update_run(
                 run_id,

@@ -11,7 +11,6 @@ from .boxscores import GamePersistResult, persist_game_payload, upsert_player_bo
 from .games import upsert_game
 from .odds import upsert_odds
 from .plays import upsert_plays
-from .season_stats import upsert_player_season_stats, upsert_team_season_stats
 from .teams import _find_team_by_name, _upsert_team
 
 __all__ = [
@@ -22,8 +21,6 @@ __all__ = [
     "upsert_player_boxscores",
     "upsert_odds",
     "upsert_plays",
-    "upsert_team_season_stats",
-    "upsert_player_season_stats",
     "_upsert_team",
     "_find_team_by_name",
 ]

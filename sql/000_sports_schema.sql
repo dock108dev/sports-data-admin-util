@@ -100,39 +100,6 @@ CREATE TABLE IF NOT EXISTS sports_player_boxscores (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_player_boxscore_identity ON sports_player_boxscores(game_id, team_id, player_external_ref);
 CREATE INDEX IF NOT EXISTS ix_player_boxscores_game ON sports_player_boxscores(game_id);
 
--- Team season stats
-CREATE TABLE IF NOT EXISTS sports_team_season_stats (
-    id SERIAL PRIMARY KEY,
-    team_id INTEGER NOT NULL REFERENCES sports_teams(id) ON DELETE CASCADE,
-    season INTEGER NOT NULL,
-    season_type VARCHAR(50) NOT NULL,
-    raw_stats_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    source VARCHAR(50),
-    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
-    updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_team_season_stat_identity ON sports_team_season_stats(team_id, season, season_type, source);
-CREATE INDEX IF NOT EXISTS idx_team_season_stats_team_season ON sports_team_season_stats(team_id, season);
-
--- Player season stats
-CREATE TABLE IF NOT EXISTS sports_player_season_stats (
-    id SERIAL PRIMARY KEY,
-    league_id INTEGER NOT NULL REFERENCES sports_leagues(id) ON DELETE CASCADE,
-    team_id INTEGER REFERENCES sports_teams(id) ON DELETE SET NULL,
-    team_abbreviation VARCHAR(20),
-    player_external_ref VARCHAR(100) NOT NULL,
-    player_name VARCHAR(200) NOT NULL,
-    position VARCHAR(20),
-    season INTEGER NOT NULL,
-    season_type VARCHAR(50) NOT NULL,
-    raw_stats_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    source VARCHAR(50),
-    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
-    updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_player_season_stat_identity ON sports_player_season_stats(league_id, player_external_ref, season, season_type, team_abbreviation, source);
-CREATE INDEX IF NOT EXISTS idx_player_season_stats_league_season ON sports_player_season_stats(league_id, season);
-
 -- Odds
 CREATE TABLE IF NOT EXISTS sports_game_odds (
     id SERIAL PRIMARY KEY,

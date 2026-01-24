@@ -17,19 +17,17 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class LeagueConfig:
     """Configuration for a single league/sport."""
-    
+
     code: str                       # "NBA", "NHL", "NCAAB"
     display_name: str               # "NBA Basketball"
-    
+
     # Pipeline feature flags
     boxscores_enabled: bool = True
-    player_stats_enabled: bool = True
-    team_stats_enabled: bool = True
     odds_enabled: bool = True
     social_enabled: bool = True     # X/Twitter integration
     pbp_enabled: bool = True        # Play-by-play
     timeline_enabled: bool = True   # Timeline/moments generation
-    
+
     # Scheduling
     scheduled_ingestion: bool = True  # Include in daily scheduled runs
 
@@ -40,8 +38,6 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         code="NBA",
         display_name="NBA Basketball",
         boxscores_enabled=True,
-        player_stats_enabled=True,
-        team_stats_enabled=True,
         odds_enabled=True,
         social_enabled=True,
         pbp_enabled=True,
@@ -52,8 +48,6 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         code="NHL",
         display_name="NHL Hockey",
         boxscores_enabled=True,
-        player_stats_enabled=True,
-        team_stats_enabled=True,
         odds_enabled=True,
         social_enabled=True,
         pbp_enabled=True,
@@ -64,8 +58,6 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         code="NCAAB",
         display_name="NCAA Basketball",
         boxscores_enabled=True,
-        player_stats_enabled=True,
-        team_stats_enabled=True,
         odds_enabled=True,
         social_enabled=False,  # No social integration yet
         pbp_enabled=True,
@@ -78,7 +70,7 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
 def get_league_config(league_code: str) -> LeagueConfig:
     """
     Get configuration for a specific league.
-    
+
     Raises:
         ValueError: If league_code is not in LEAGUE_CONFIG
     """
@@ -111,7 +103,7 @@ def get_timeline_enabled_leagues() -> list[str]:
 def validate_league_code(league_code: str) -> str:
     """
     Validate and return league code.
-    
+
     Raises:
         ValueError: If league_code is not valid
     """
