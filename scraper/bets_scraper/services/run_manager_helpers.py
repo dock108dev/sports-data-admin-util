@@ -296,3 +296,198 @@ def ingest_pbp_via_sportsref(
             pbp_events += inserted
 
     return (pbp_games, pbp_events)
+
+
+def select_games_for_pbp_nhl_api(
+    session: Session,
+    *,
+    start_date: date,
+    end_date: date,
+    only_missing: bool,
+    updated_before: datetime | None,
+) -> list[tuple[int, int]]:
+    """Return game ids and external_ids for NHL API play-by-play ingestion.
+
+    NHL PBP must be fetched via the official NHL API using the external_id
+    (NHL game ID like 2025020767). Sports Reference does not provide NHL PBP.
+
+    Args:
+        session: Database session
+        start_date: Start of date range
+        end_date: End of date range
+        only_missing: Skip games that already have PBP data
+        updated_before: Only include games with stale PBP data
+
+    Returns:
+        List of (game_id, external_id) tuples for games needing PBP
+    """
+    league = session.query(db_models.SportsLeague).filter(
+        db_models.SportsLeague.code == "NHL"
+    ).first()
+    if not league:
+        return []
+
+    query = session.query(
+        db_models.SportsGame.id,
+        db_models.SportsGame.external_id,
+        db_models.SportsGame.status,
+    ).filter(
+        db_models.SportsGame.league_id == league.id,
+        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
+        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
+        # external_id is required for NHL API PBP fetch
+        db_models.SportsGame.external_id.isnot(None),
+    )
+
+    # Only fetch PBP for final or live games (not scheduled)
+    final_status = db_models.GameStatus.final.value
+    live_status = db_models.GameStatus.live.value
+    query = query.filter(
+        db_models.SportsGame.status.in_([final_status, live_status])
+    )
+
+    if only_missing:
+        has_pbp = exists().where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
+        query = query.filter(not_(has_pbp))
+
+    if updated_before:
+        has_fresh = exists().where(
+            db_models.SportsGamePlay.game_id == db_models.SportsGame.id,
+            db_models.SportsGamePlay.updated_at >= updated_before,
+        )
+        query = query.filter(not_(has_fresh))
+
+    rows = query.all()
+    results = []
+    for game_id, external_id, status in rows:
+        if external_id:
+            # external_id might be stored as string or in external_ids JSONB
+            try:
+                nhl_game_id = int(external_id)
+                results.append((game_id, nhl_game_id))
+            except (ValueError, TypeError):
+                logger.warning(
+                    "nhl_pbp_invalid_external_id",
+                    game_id=game_id,
+                    external_id=external_id,
+                )
+    return results
+
+
+def ingest_pbp_via_nhl_api(
+    session: Session,
+    *,
+    run_id: int,
+    start_date: date,
+    end_date: date,
+    only_missing: bool,
+    updated_before: datetime | None,
+) -> tuple[int, int]:
+    """Ingest PBP using the official NHL API (api-web.nhle.com).
+
+    This is the only way to get NHL play-by-play data - Sports Reference
+    does not provide it.
+
+    Args:
+        session: Database session
+        run_id: Scrape run ID for logging
+        start_date: Start of date range
+        end_date: End of date range
+        only_missing: Skip games that already have PBP data
+        updated_before: Only include games with stale PBP data
+
+    Returns:
+        Tuple of (games_with_pbp, total_events_inserted)
+    """
+    from ..live.nhl import NHLLiveFeedClient, NHL_MIN_EXPECTED_PLAYS
+
+    games = select_games_for_pbp_nhl_api(
+        session,
+        start_date=start_date,
+        end_date=end_date,
+        only_missing=only_missing,
+        updated_before=updated_before,
+    )
+
+    if not games:
+        logger.info(
+            "nhl_pbp_no_games_selected",
+            run_id=run_id,
+            start_date=str(start_date),
+            end_date=str(end_date),
+            only_missing=only_missing,
+        )
+        return (0, 0)
+
+    logger.info(
+        "nhl_pbp_games_selected",
+        run_id=run_id,
+        games=len(games),
+        only_missing=only_missing,
+        updated_before=str(updated_before) if updated_before else None,
+    )
+
+    client = NHLLiveFeedClient()
+    pbp_games = 0
+    pbp_events = 0
+
+    for game_id, nhl_game_id in games:
+        try:
+            # Fetch PBP from NHL API
+            payload = client.fetch_play_by_play(nhl_game_id)
+
+            if not payload.plays:
+                logger.warning(
+                    "nhl_pbp_empty_response",
+                    run_id=run_id,
+                    game_id=game_id,
+                    nhl_game_id=nhl_game_id,
+                )
+                continue
+
+            # Validation: Check if game is final and event count is suspiciously low
+            game = session.query(db_models.SportsGame).get(game_id)
+            if game and game.status == db_models.GameStatus.final.value:
+                if len(payload.plays) < NHL_MIN_EXPECTED_PLAYS:
+                    logger.warning(
+                        "nhl_pbp_insufficient_events",
+                        run_id=run_id,
+                        game_id=game_id,
+                        nhl_game_id=nhl_game_id,
+                        play_count=len(payload.plays),
+                        expected_min=NHL_MIN_EXPECTED_PLAYS,
+                    )
+
+            # Persist plays
+            inserted = upsert_plays(session, game_id, payload.plays, source="nhl_api")
+
+            if inserted:
+                pbp_games += 1
+                pbp_events += inserted
+
+                logger.info(
+                    "nhl_pbp_ingested",
+                    run_id=run_id,
+                    game_id=game_id,
+                    nhl_game_id=nhl_game_id,
+                    events_inserted=inserted,
+                )
+
+        except Exception as exc:
+            logger.warning(
+                "nhl_pbp_fetch_failed",
+                run_id=run_id,
+                game_id=game_id,
+                nhl_game_id=nhl_game_id,
+                error=str(exc),
+            )
+            continue
+
+    logger.info(
+        "nhl_pbp_ingestion_complete",
+        run_id=run_id,
+        games_processed=pbp_games,
+        total_events=pbp_events,
+    )
+
+    return (pbp_games, pbp_events)

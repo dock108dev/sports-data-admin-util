@@ -18,6 +18,7 @@ from ..utils.datetime_utils import now_utc, today_utc
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
 from .job_runs import complete_job_run, start_job_run
 from .run_manager_helpers import (
+    ingest_pbp_via_nhl_api,
     ingest_pbp_via_sportsref,
     select_games_for_boxscores,
     select_games_for_odds,
@@ -273,7 +274,7 @@ class ScrapeRunManager:
                             )
                             complete_job_run(pbp_run_id, "error", str(exc))
                 else:
-                    # Non-live PBP scraping via SportsReference
+                    # Non-live PBP scraping
                     # Only scrape PBP for completed games (yesterday and earlier)
                     pbp_yesterday = today_utc() - timedelta(days=1)
                     pbp_end = min(end, pbp_yesterday)
@@ -281,13 +282,37 @@ class ScrapeRunManager:
 
                     if start > pbp_yesterday:
                         logger.info(
-                            "pbp_sportsref_skipped_future_dates",
+                            "pbp_skipped_future_dates",
                             run_id=run_id,
                             league=config.league_code,
                             reason="All dates are today or in the future - no completed games for PBP",
                         )
                         complete_job_run(pbp_run_id, "success", "skipped_future_dates")
+                    elif config.league_code == "NHL":
+                        # NHL: Use official NHL API for PBP (Sports Reference doesn't have NHL PBP)
+                        try:
+                            with get_session() as session:
+                                pbp_games, pbp_events = ingest_pbp_via_nhl_api(
+                                    session,
+                                    run_id=run_id,
+                                    start_date=start,
+                                    end_date=pbp_end,
+                                    only_missing=config.only_missing,
+                                    updated_before=updated_before_dt,
+                                )
+                                session.commit()
+                            summary["pbp_games"] += pbp_games
+                            complete_job_run(pbp_run_id, "success")
+                        except Exception as exc:
+                            logger.exception(
+                                "pbp_nhl_api_failed",
+                                run_id=run_id,
+                                league=config.league_code,
+                                error=str(exc),
+                            )
+                            complete_job_run(pbp_run_id, "error", str(exc))
                     else:
+                        # NBA/other leagues: Use Sports Reference for PBP
                         try:
                             with get_session() as session:
                                 pbp_games, pbp_events = ingest_pbp_via_sportsref(
