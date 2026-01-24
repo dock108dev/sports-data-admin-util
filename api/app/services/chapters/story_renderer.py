@@ -49,6 +49,27 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# SECTION LENGTH CONSTANTS
+# ============================================================================
+
+SECTION_MIN_WORDS = 60
+SECTION_MAX_WORDS = 120
+SECTION_AVG_WORDS = 90  # Used to compute total target: section_count × 90
+
+
+def compute_target_word_count(section_count: int) -> int:
+    """Compute target word count from section count.
+
+    Args:
+        section_count: Number of sections in story
+
+    Returns:
+        Target word count (section_count × SECTION_AVG_WORDS)
+    """
+    return section_count * SECTION_AVG_WORDS
+
+
+# ============================================================================
 # AI CLIENT PROTOCOL
 # ============================================================================
 
@@ -229,19 +250,43 @@ Decisive Factors:
 9. Tone: calm, professional, SportsCenter-style
 10. Perspective: neutral, post-game
 
-## LENGTH CONTROL
+## LENGTH CONTROL (NON-NEGOTIABLE)
 
-- Target: approximately {target_word_count} words total
-- Allocate words proportionally across sections
-- Small deviations acceptable, large deviations are not
+- Total target: approximately {target_word_count} words
+- Per-section bounds: {section_min_words}-{section_max_words} words per section
+- Each section MUST contain at least {section_min_words} words
+- Each section MUST NOT exceed {section_max_words} words
+- Count your words carefully for each section
 
-## STAT USAGE RULES
+## STAT USAGE RULES (NON-NEGOTIABLE)
 
 - Use ONLY the stats provided in each section
 - Do NOT compute percentages or efficiency
 - Do NOT introduce cumulative totals mid-story
 - Player mentions must be grounded in provided stats
 - If a stat or player is not in the input, it does not exist
+
+## FACT-ONLY CONSTRAINT (NON-NEGOTIABLE)
+
+You may ONLY restate factual information explicitly present in the input.
+You may NOT infer quality, efficiency, trends, or dominance.
+
+PROHIBITED LANGUAGE (never use these or similar terms):
+- "efficient", "inefficient"
+- "struggled", "struggling"
+- "hot start", "cold shooting", "cold streak"
+- "dominant", "dominated", "dominance"
+- "controlled", "took control"
+- "strong performance", "weak performance"
+- "impressive", "disappointing"
+- "clutch", "choked"
+- "momentum", "momentum shift"
+- "outplayed", "outmatched"
+- "chemistry", "rhythm"
+
+ALLOWED: Direct stat restatement, factual descriptions of what happened.
+Example: "scored 12 points on 4-for-6 shooting" (factual)
+NOT ALLOWED: "had an efficient night" (inference)
 
 ## CLOSING PARAGRAPH
 
@@ -354,6 +399,8 @@ def build_render_prompt(input_data: StoryRenderInput) -> str:
         home_team=input_data.home_team_name,
         away_team=input_data.away_team_name,
         target_word_count=input_data.target_word_count,
+        section_min_words=SECTION_MIN_WORDS,
+        section_max_words=SECTION_MAX_WORDS,
         sections_text=sections_text,
         final_score=input_data.closing.to_dict()["final_score"],
         decisive_factors=decisive_factors,
@@ -618,6 +665,7 @@ def validate_render_result(
     - Missing headers
     - Wrong header order
     - Extreme length deviation
+    - Per-section word count bounds
 
     Args:
         result: The rendering result
@@ -646,7 +694,79 @@ def validate_render_result(
         if not any(word in story_lower for word in header_words if len(word) > 3):
             errors.append(f"Header may be missing: {section.header[:50]}...")
 
+    # Check per-section word counts
+    section_word_counts = _parse_section_word_counts(
+        result.compact_story, input_data.sections
+    )
+    for i, word_count in enumerate(section_word_counts):
+        if word_count < SECTION_MIN_WORDS:
+            errors.append(
+                f"Section {i + 1} too short: {word_count} words "
+                f"(minimum: {SECTION_MIN_WORDS})"
+            )
+        elif word_count > SECTION_MAX_WORDS:
+            errors.append(
+                f"Section {i + 1} too long: {word_count} words "
+                f"(maximum: {SECTION_MAX_WORDS})"
+            )
+
     return errors
+
+
+def _parse_section_word_counts(
+    story: str,
+    sections: list[SectionRenderInput],
+) -> list[int]:
+    """Parse story to extract word counts per section.
+
+    Uses headers as delimiters to split story into sections.
+
+    Args:
+        story: The rendered story text
+        sections: List of sections with headers
+
+    Returns:
+        List of word counts per section (may be shorter than sections if parsing fails)
+    """
+    if not sections:
+        return []
+
+    # Build a list of (header, start_position) tuples
+    header_positions: list[tuple[int, int]] = []  # (section_index, position)
+
+    story_lower = story.lower()
+    for i, section in enumerate(sections):
+        # Find header in story (case-insensitive, look for key phrase)
+        header_lower = section.header.lower()
+        # Try to find the first few words as a marker
+        header_words = header_lower.split()[:4]
+        search_phrase = " ".join(header_words)
+
+        pos = story_lower.find(search_phrase)
+        if pos >= 0:
+            header_positions.append((i, pos))
+
+    if not header_positions:
+        # Fallback: split by double newlines
+        paragraphs = [p.strip() for p in story.split("\n\n") if p.strip()]
+        return [len(p.split()) for p in paragraphs]
+
+    # Sort by position
+    header_positions.sort(key=lambda x: x[1])
+
+    # Extract word counts between positions
+    word_counts: list[int] = []
+    for j, (section_idx, start_pos) in enumerate(header_positions):
+        if j + 1 < len(header_positions):
+            end_pos = header_positions[j + 1][1]
+        else:
+            end_pos = len(story)
+
+        section_text = story[start_pos:end_pos].strip()
+        word_count = len(section_text.split())
+        word_counts.append(word_count)
+
+    return word_counts
 
 
 # ============================================================================

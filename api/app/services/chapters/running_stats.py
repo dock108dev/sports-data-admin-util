@@ -340,35 +340,59 @@ def _extract_team_key(play: Play) -> str | None:
     return None
 
 
-def _extract_player_info(play: Play) -> tuple[str | None, str | None, str | None]:
+def _extract_player_info(
+    play: Play,
+    resolver: "PlayerIdentityResolver | None" = None,
+) -> tuple[str | None, str | None, str | None]:
     """Extract player information from play data.
+
+    When a PlayerIdentityResolver is provided, truncated/aliased names
+    are resolved to canonical identities.
 
     Returns:
         Tuple of (player_key, player_name, player_id)
-        - player_key: Normalized name for dictionary lookups
-        - player_name: Display name (original case)
+        - player_key: Normalized name for dictionary lookups (canonical if resolved)
+        - player_name: Display name (canonical if resolved)
         - player_id: External reference (may be null)
     """
     raw = play.raw_data
 
     # Try explicit player fields first
-    player_name = raw.get("player_name") or raw.get("player")
+    raw_name = raw.get("player_name") or raw.get("player")
     player_id = raw.get("player_id")
 
     # Fallback: extract from description
-    if not player_name:
+    if not raw_name:
         description = raw.get("description", "")
         # Common pattern: "Player Name makes/misses..."
         for verb in [" makes ", " misses ", " commits ", " called for "]:
             if verb in description:
-                player_name = description.split(verb)[0].strip()
+                raw_name = description.split(verb)[0].strip()
                 break
 
-    if not player_name:
+    if not raw_name:
         return None, None, None
 
-    player_key = normalize_player_key(player_name)
-    return player_key, player_name, player_id
+    # Use resolver if available to get canonical identity
+    if resolver is not None:
+        team_key = _extract_team_key(play)
+        resolved = resolver.resolve(raw_name, player_id, team_key)
+        if resolved:
+            return resolved.canonical_key, resolved.canonical_name, resolved.player_id
+
+    # Fallback to simple normalization
+    player_key = normalize_player_key(raw_name)
+    return player_key, raw_name, player_id
+
+
+# Import PlayerIdentityResolver at runtime to avoid circular import
+def _get_resolver_type():
+    """Get PlayerIdentityResolver type for type hints."""
+    from .player_identity import PlayerIdentityResolver
+    return PlayerIdentityResolver
+
+# Type hint placeholder
+PlayerIdentityResolver = None  # Will be imported at runtime
 
 
 def _is_made_field_goal(play: Play) -> tuple[bool, int]:
@@ -735,13 +759,23 @@ def _ensure_player(
     return snapshot.players[player_key]
 
 
-def _process_play(play: Play, snapshot: RunningStatsSnapshot) -> None:
+def _process_play(
+    play: Play,
+    snapshot: RunningStatsSnapshot,
+    resolver: "PlayerIdentityResolver | None" = None,
+) -> None:
     """Process a single play and update snapshot in place.
 
     This function implements all event parsing rules.
+    When a resolver is provided, player names are resolved to canonical forms.
+
+    Args:
+        play: Play to process
+        snapshot: Snapshot to update
+        resolver: Optional PlayerIdentityResolver for name canonicalization
     """
-    # Extract player info
-    player_key, player_name, player_id = _extract_player_info(play)
+    # Extract player info (using resolver if available)
+    player_key, player_name, player_id = _extract_player_info(play, resolver)
     team_key = _extract_team_key(play)
 
     # Get team name for display
@@ -808,6 +842,13 @@ def _process_play(play: Play, snapshot: RunningStatsSnapshot) -> None:
     # Process assists (Player Prominence)
     is_assist, assister_key, assister_name, assister_id = _is_assist(play)
     if is_assist and assister_key and assister_name:
+        # Resolve assister name if resolver available
+        if resolver is not None:
+            resolved = resolver.resolve(assister_name, assister_id, team_key)
+            if resolved:
+                assister_key = resolved.canonical_key
+                assister_name = resolved.canonical_name
+                assister_id = resolved.player_id
         assister = _ensure_player(
             snapshot, assister_key, assister_name, assister_id, team_key
         )
@@ -816,6 +857,13 @@ def _process_play(play: Play, snapshot: RunningStatsSnapshot) -> None:
     # Process blocks (Player Prominence)
     is_block, blocker_key, blocker_name, blocker_id = _is_block(play)
     if is_block and blocker_key and blocker_name:
+        # Resolve blocker name if resolver available
+        if resolver is not None:
+            resolved = resolver.resolve(blocker_name, blocker_id, team_key)
+            if resolved:
+                blocker_key = resolved.canonical_key
+                blocker_name = resolved.canonical_name
+                blocker_id = resolved.player_id
         blocker = _ensure_player(
             snapshot, blocker_key, blocker_name, blocker_id, team_key
         )
@@ -824,6 +872,13 @@ def _process_play(play: Play, snapshot: RunningStatsSnapshot) -> None:
     # Process steals (Player Prominence)
     is_steal, stealer_key, stealer_name, stealer_id = _is_steal(play)
     if is_steal and stealer_key and stealer_name:
+        # Resolve stealer name if resolver available
+        if resolver is not None:
+            resolved = resolver.resolve(stealer_name, stealer_id, team_key)
+            if resolved:
+                stealer_key = resolved.canonical_key
+                stealer_name = resolved.canonical_name
+                stealer_id = resolved.player_id
         stealer = _ensure_player(
             snapshot, stealer_key, stealer_name, stealer_id, team_key
         )
@@ -833,6 +888,7 @@ def _process_play(play: Play, snapshot: RunningStatsSnapshot) -> None:
 def update_snapshot(
     previous: RunningStatsSnapshot,
     chapter: Chapter,
+    resolver: "PlayerIdentityResolver | None" = None,
 ) -> RunningStatsSnapshot:
     """Update snapshot with a new chapter's plays.
 
@@ -842,6 +898,7 @@ def update_snapshot(
     Args:
         previous: Snapshot from previous chapter boundary
         chapter: New chapter to process
+        resolver: Optional PlayerIdentityResolver for name canonicalization
 
     Returns:
         New snapshot including data from this chapter
@@ -859,16 +916,25 @@ def update_snapshot(
 
     # Process each play in the chapter
     for play in chapter.plays:
-        _process_play(play, new_snapshot)
+        _process_play(play, new_snapshot, resolver)
 
     return new_snapshot
 
 
-def build_running_snapshots(chapters: list[Chapter]) -> list[RunningStatsSnapshot]:
+def build_running_snapshots(
+    chapters: list[Chapter],
+    resolver: "PlayerIdentityResolver | None" = None,
+) -> list[RunningStatsSnapshot]:
     """Build snapshots at every chapter boundary.
+
+    NAME RESOLUTION:
+    When a PlayerIdentityResolver is provided, all player names are resolved
+    to canonical forms during stat aggregation. This prevents stat loss and
+    ghost players caused by truncated or aliased names.
 
     Args:
         chapters: List of chapters in chronological order
+        resolver: Optional PlayerIdentityResolver for name canonicalization
 
     Returns:
         List of snapshots, one after each chapter.
@@ -879,7 +945,7 @@ def build_running_snapshots(chapters: list[Chapter]) -> list[RunningStatsSnapsho
     current = build_initial_snapshot()
 
     for chapter in chapters:
-        current = update_snapshot(current, chapter)
+        current = update_snapshot(current, chapter, resolver)
         snapshots.append(current)
 
     return snapshots

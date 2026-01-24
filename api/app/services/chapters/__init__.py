@@ -46,6 +46,19 @@ from .running_stats import (
     compute_section_delta,
     compute_section_deltas_from_snapshots,
 )
+from .player_identity import (
+    # Data structures
+    RosterPlayer,
+    ResolvedPlayer,
+    ResolutionStats,
+    # Functions
+    normalize_for_matching,
+    extract_initial_and_lastname,
+    is_truncated_name,
+    build_roster_from_boxscore,
+    # Resolver class
+    PlayerIdentityResolver,
+)
 from .beat_classifier import (
     # Types
     BeatType,
@@ -179,7 +192,12 @@ from .story_renderer import (
     StoryRenderInput,
     StoryRenderResult,
     StoryRenderError,
+    # Constants (section length bounds)
+    SECTION_MIN_WORDS,
+    SECTION_MAX_WORDS,
+    SECTION_AVG_WORDS,
     # Functions
+    compute_target_word_count,
     build_section_render_input,
     build_story_render_input,
     build_render_prompt,
@@ -262,6 +280,15 @@ __all__ = [
     "build_running_snapshots",
     "compute_section_delta",
     "compute_section_deltas_from_snapshots",
+    # Player identity resolution
+    "RosterPlayer",
+    "ResolvedPlayer",
+    "ResolutionStats",
+    "normalize_for_matching",
+    "extract_initial_and_lastname",
+    "is_truncated_name",
+    "build_roster_from_boxscore",
+    "PlayerIdentityResolver",
     # Beat classifier
     "BeatType",
     "BeatDescriptor",  # Phase 2.1
@@ -371,6 +398,11 @@ __all__ = [
     "StoryRenderInput",
     "StoryRenderResult",
     "StoryRenderError",
+    # Section length bounds (Phase: Validation Failures)
+    "SECTION_MIN_WORDS",
+    "SECTION_MAX_WORDS",
+    "SECTION_AVG_WORDS",
+    "compute_target_word_count",
     "build_section_render_input",
     "build_story_render_input",
     "build_render_prompt",
