@@ -28,14 +28,18 @@ def get_stat_from_row(row: Tag, stat_name: str) -> str | None:
 def extract_all_stats_from_row(row: Tag) -> dict[str, str]:
     """
     Extract all stats from a table row as a dictionary.
-    
+
     Iterates through all td cells and extracts data-stat attributes.
+    Empty strings are excluded (not stored) to prevent database pollution.
     """
     raw_stats = {}
     for cell in row.find_all("td"):
         stat_name = cell.get("data-stat")
         if stat_name:
-            raw_stats[stat_name] = cell.text.strip()
+            value = cell.text.strip()
+            # Skip empty values - do not store empty strings
+            if value:
+                raw_stats[stat_name] = value
     return raw_stats
 
 
@@ -90,7 +94,10 @@ def extract_team_stats_from_table(table: Tag, team_abbr: str, table_id: str) -> 
     for cell in cells:
         stat = cell.get("data-stat")
         if stat:
-            totals[stat] = cell.text.strip()
+            value = cell.text.strip()
+            # Skip empty values - do not store empty strings
+            if value:
+                totals[stat] = value
     
     logger.debug(
         "team_stats_extracted",

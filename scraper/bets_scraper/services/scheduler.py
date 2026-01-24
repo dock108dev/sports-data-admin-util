@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
@@ -195,8 +196,108 @@ def schedule_ingestion_runs(
         enqueue_failures=summary.enqueue_failures,
         last_run_at=str(summary.last_run_at),
     )
-    
+
     # Note: Timeline generation is triggered at the END of each scrape job,
     # not here. See run_scrape_job task for the trigger.
-    
+
     return summary
+
+
+def schedule_single_league_and_wait(
+    league_code: str,
+    timeout_seconds: int = 300,
+    poll_interval: int = 5,
+) -> dict:
+    """Schedule ingestion for a single league and wait for completion.
+
+    Args:
+        league_code: The league to run (e.g., "NBA", "NHL")
+        timeout_seconds: Maximum time to wait for completion (default 5 minutes)
+        poll_interval: How often to check status (default 5 seconds)
+
+    Returns:
+        Dict with run status and summary
+    """
+    start_dt, end_dt = build_scheduled_window()
+    start_date = start_dt.date()
+    end_date = end_dt.date()
+
+    with get_session() as session:
+        league = (
+            session.query(db_models.SportsLeague)
+            .filter(db_models.SportsLeague.code == league_code)
+            .first()
+        )
+        if not league:
+            logger.warning("schedule_single_league_unknown", league=league_code)
+            return {"runs_created": 0, "status": "skipped", "reason": "unknown_league"}
+
+        league_cfg = get_league_config(league_code)
+
+        config = IngestionConfig(
+            league_code=league_code,
+            start_date=start_date,
+            end_date=end_date,
+            boxscores=league_cfg.boxscores_enabled,
+            odds=league_cfg.odds_enabled,
+            social=False,  # Social runs separately
+            pbp=False,  # PBP runs separately
+            only_missing=False,
+        )
+
+        run = create_scrape_run(session, league, config, requested_by="scheduler_sequential")
+
+        from ..celery_app import app as celery_app
+
+        async_result = celery_app.send_task(
+            "run_scrape_job",
+            args=[run.id, config.model_dump(mode="json")],
+            queue="bets-scraper",
+            routing_key="bets-scraper",
+        )
+        run.job_id = async_result.id
+        session.commit()
+
+        logger.info(
+            "schedule_single_league_enqueued",
+            league=league_code,
+            run_id=run.id,
+            job_id=run.job_id,
+        )
+
+    # Poll for completion
+    elapsed = 0
+    while elapsed < timeout_seconds:
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+
+        with get_session() as session:
+            run = session.query(db_models.SportsScrapeRun).get(run.id)
+            if run.status in ("completed", "failed", "error", "interrupted"):
+                logger.info(
+                    "schedule_single_league_finished",
+                    league=league_code,
+                    run_id=run.id,
+                    status=run.status,
+                    elapsed_seconds=elapsed,
+                )
+                return {
+                    "runs_created": 1,
+                    "status": run.status,
+                    "run_id": run.id,
+                    "elapsed_seconds": elapsed,
+                }
+
+    # Timeout
+    logger.warning(
+        "schedule_single_league_timeout",
+        league=league_code,
+        run_id=run.id,
+        timeout_seconds=timeout_seconds,
+    )
+    return {
+        "runs_created": 1,
+        "status": "timeout",
+        "run_id": run.id,
+        "elapsed_seconds": elapsed,
+    }

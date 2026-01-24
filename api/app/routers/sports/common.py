@@ -12,10 +12,12 @@ from ... import db_models
 from ...db import AsyncSession
 from ...utils.reveal_utils import contains_explicit_score
 from .schemas import (
+    NHLGoalieStat,
+    NHLSkaterStat,
     PlayEntry,
+    PlayerStat,
     ScrapeRunResponse,
     TeamStat,
-    PlayerStat,
 )
 
 
@@ -148,6 +150,68 @@ def serialize_player_stat(player: db_models.SportsPlayerBoxscore) -> PlayerStat:
         assists=_get_int_stat(stats, "assists", "ast"),
         yards=_get_int_stat(stats, "yards", "yds"),
         touchdowns=_get_int_stat(stats, "touchdowns", "td"),
+        raw_stats=stats,
+        source=player.source,
+        updated_at=player.updated_at,
+    )
+
+
+def _extract_toi(stats: dict[str, Any]) -> str | None:
+    """Extract time-on-ice, preserving MM:SS format for NHL."""
+    toi = stats.get("toi") or stats.get("time_on_ice")
+    if isinstance(toi, str) and ":" in toi:
+        return toi
+    # If stored as seconds, convert to MM:SS
+    if isinstance(toi, (int, float)):
+        minutes = int(toi) // 60
+        seconds = int(toi) % 60
+        return f"{minutes}:{seconds:02d}"
+    return None
+
+
+def serialize_nhl_skater(player: db_models.SportsPlayerBoxscore) -> NHLSkaterStat:
+    """Serialize NHL skater boxscore with hockey-specific fields."""
+    stats = player.stats or {}
+    return NHLSkaterStat(
+        team=player.team.name if player.team else "Unknown",
+        player_name=player.player_name,
+        toi=_extract_toi(stats),
+        goals=_get_int_stat(stats, "goals", "g"),
+        assists=_get_int_stat(stats, "assists", "a"),
+        points=_get_int_stat(stats, "points", "pts"),
+        shots_on_goal=_get_int_stat(stats, "shots_on_goal", "sog"),
+        plus_minus=_get_int_stat(stats, "plus_minus", "+/-"),
+        penalty_minutes=_get_int_stat(stats, "penalty_minutes", "pim"),
+        hits=_get_int_stat(stats, "hits", "hit"),
+        blocked_shots=_get_int_stat(stats, "blocked_shots", "blk"),
+        raw_stats=stats,
+        source=player.source,
+        updated_at=player.updated_at,
+    )
+
+
+def _get_float_stat(stats: dict[str, Any], normalized_key: str, raw_key: str) -> float | None:
+    """Extract float stat from raw or normalized key."""
+    value = stats.get(normalized_key) or stats.get(raw_key)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def serialize_nhl_goalie(player: db_models.SportsPlayerBoxscore) -> NHLGoalieStat:
+    """Serialize NHL goalie boxscore with goaltender-specific fields."""
+    stats = player.stats or {}
+    return NHLGoalieStat(
+        team=player.team.name if player.team else "Unknown",
+        player_name=player.player_name,
+        toi=_extract_toi(stats),
+        shots_against=_get_int_stat(stats, "shots_against", "sa"),
+        saves=_get_int_stat(stats, "saves", "sv"),
+        goals_against=_get_int_stat(stats, "goals_against", "ga"),
+        save_percentage=_get_float_stat(stats, "save_percentage", "sv_pct"),
         raw_stats=stats,
         source=player.source,
         updated_at=player.updated_at,

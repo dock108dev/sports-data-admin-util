@@ -119,6 +119,8 @@ MLB_TEAMS = {
 NHL_TEAMS = {
     "Anaheim Ducks": ("Anaheim Ducks", "ANA", ["Anaheim", "Ducks"]),
     "Arizona Coyotes": ("Arizona Coyotes", "ARI", ["Arizona", "Coyotes"]),
+    # Utah Hockey Club (relocated from Arizona in 2024)
+    "Utah Hockey Club": ("Utah Hockey Club", "UTA", ["Utah", "Utah HC", "Utah Mammoth"]),
     "Boston Bruins": ("Boston Bruins", "BOS", ["Boston", "Bruins"]),
     "Buffalo Sabres": ("Buffalo Sabres", "BUF", ["Buffalo", "Sabres"]),
     "Calgary Flames": ("Calgary Flames", "CGY", ["Calgary", "Flames"]),
@@ -132,7 +134,7 @@ NHL_TEAMS = {
     "Florida Panthers": ("Florida Panthers", "FLA", ["Florida", "Panthers"]),
     "Los Angeles Kings": ("Los Angeles Kings", "LAK", ["LA Kings", "L.A. Kings", "Kings"]),
     "Minnesota Wild": ("Minnesota Wild", "MIN", ["Minnesota", "Wild"]),
-    "Montreal Canadiens": ("Montreal Canadiens", "MTL", ["Montreal", "Canadiens"]),
+    "Montreal Canadiens": ("Montreal Canadiens", "MTL", ["Montreal", "Canadiens", "Montréal Canadiens", "Montréal"]),
     "Nashville Predators": ("Nashville Predators", "NSH", ["Nashville", "Predators"]),
     "New Jersey Devils": ("New Jersey Devils", "NJD", ["New Jersey", "Devils"]),
     "New York Islanders": ("New York Islanders", "NYI", ["NY Islanders", "Islanders"]),

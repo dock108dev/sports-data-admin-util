@@ -21,15 +21,21 @@ class ScrapeRunConfig(BaseModel):
 
     @field_validator("end_date", mode="after")
     @classmethod
-    def cap_end_date_to_today(cls, v: date | None) -> date:
-        """Ensure end_date is never null or in the future.
-        
-        If end_date is None or in the future, cap it to today.
-        This prevents scraper from trying to query future games.
+    def cap_end_date_to_reasonable_future(cls, v: date | None) -> date:
+        """Ensure end_date is set and within a reasonable future window.
+
+        If end_date is None, defaults to today.
+        Allows up to 7 days in the future to support odds fetching for upcoming games.
+        Boxscores for future dates simply return no data (graceful no-op).
         """
+        from datetime import timedelta
         today = date.today()
-        if v is None or v > today:
+        max_future = today + timedelta(days=7)
+
+        if v is None:
             return today
+        if v > max_future:
+            return max_future
         return v
 
     # Data type toggles
@@ -37,8 +43,6 @@ class ScrapeRunConfig(BaseModel):
     odds: bool = Field(True, alias="odds")
     social: bool = Field(False, alias="social")
     pbp: bool = Field(False, alias="pbp")
-    team_stats: bool = Field(False, alias="teamStats")
-    player_stats: bool = Field(False, alias="playerStats")
 
     # Shared filters
     only_missing: bool = Field(False, alias="onlyMissing")
@@ -58,8 +62,6 @@ class ScrapeRunConfig(BaseModel):
             "odds": self.odds,
             "social": self.social,
             "pbp": self.pbp,
-            "team_stats": self.team_stats,
-            "player_stats": self.player_stats,
             "only_missing": self.only_missing,
             "updated_before": self.updated_before.isoformat() if self.updated_before else None,
             "include_books": self.include_books,
@@ -132,6 +134,8 @@ class TeamStat(BaseModel):
 
 
 class PlayerStat(BaseModel):
+    """Generic player stat for NBA/NCAAB/NFL."""
+
     team: str
     player_name: str
     # Flattened common stats for frontend display
@@ -142,6 +146,42 @@ class PlayerStat(BaseModel):
     yards: int | None = None
     touchdowns: int | None = None
     # Full raw stats dict for detail view
+    raw_stats: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    updated_at: datetime | None = None
+
+
+class NHLSkaterStat(BaseModel):
+    """NHL skater (non-goalie) stats."""
+
+    team: str
+    player_name: str
+    # Time on ice in MM:SS format
+    toi: str | None = None
+    goals: int | None = None
+    assists: int | None = None
+    points: int | None = None
+    shots_on_goal: int | None = None
+    plus_minus: int | None = None
+    penalty_minutes: int | None = None
+    hits: int | None = None
+    blocked_shots: int | None = None
+    raw_stats: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    updated_at: datetime | None = None
+
+
+class NHLGoalieStat(BaseModel):
+    """NHL goalie stats."""
+
+    team: str
+    player_name: str
+    # Time on ice in MM:SS format
+    toi: str | None = None
+    shots_against: int | None = None
+    saves: int | None = None
+    goals_against: int | None = None
+    save_percentage: float | None = None
     raw_stats: dict[str, Any] = Field(default_factory=dict)
     source: str | None = None
     updated_at: datetime | None = None
@@ -217,15 +257,34 @@ class PlayEntry(BaseModel):
     away_score: int | None = None
 
 
+class NHLDataHealth(BaseModel):
+    """NHL-specific data health indicators.
+
+    Helps distinguish between legitimate empty data vs ingestion failure.
+    Only populated for NHL games.
+    """
+
+    skater_count: int = 0
+    goalie_count: int = 0
+    is_healthy: bool = True
+    issues: list[str] = Field(default_factory=list)
+
+
 class GameDetailResponse(BaseModel):
     game: GameMeta
     team_stats: list[TeamStat]
+    # Generic player stats (NBA, NCAAB, NFL, etc.)
     player_stats: list[PlayerStat]
+    # NHL-specific player stats (only populated for NHL games)
+    nhl_skaters: list[NHLSkaterStat] | None = None
+    nhl_goalies: list[NHLGoalieStat] | None = None
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry]
     plays: list[PlayEntry]
     derived_metrics: dict[str, Any]
     raw_payloads: dict[str, Any]
+    # NHL-specific data health (only populated for NHL games)
+    data_health: NHLDataHealth | None = None
 
 
 class JobResponse(BaseModel):

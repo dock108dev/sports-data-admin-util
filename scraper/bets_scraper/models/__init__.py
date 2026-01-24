@@ -6,11 +6,9 @@ from .schemas import (
     NormalizedGame,
     NormalizedOddsSnapshot,
     NormalizedPlayerBoxscore,
-    NormalizedPlayerSeasonStats,
     NormalizedPlay,
     NormalizedPlayByPlay,
     NormalizedTeamBoxscore,
-    NormalizedTeamSeasonStats,
     TeamIdentity,
 )
 
@@ -20,8 +18,6 @@ __all__ = [
     "NormalizedGame",
     "NormalizedTeamBoxscore",
     "NormalizedPlayerBoxscore",
-    "NormalizedTeamSeasonStats",
-    "NormalizedPlayerSeasonStats",
     "NormalizedOddsSnapshot",
     "NormalizedPlay",
     "NormalizedPlayByPlay",

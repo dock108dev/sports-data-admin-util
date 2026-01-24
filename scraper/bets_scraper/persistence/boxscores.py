@@ -5,11 +5,10 @@ Handles team and player boxscore upserts.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from typing import Sequence
 
-from sqlalchemy import cast, Date, text
+from sqlalchemy import cast, Date, literal
 from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Session
 
@@ -22,6 +21,81 @@ from ..utils.db_queries import get_league_id
 from ..utils.datetime_utils import now_utc
 from .games import _normalize_status, resolve_status_transition
 from .teams import _find_team_by_name, _upsert_team
+
+
+def _validate_nhl_player_boxscore(payload: NormalizedPlayerBoxscore, game_id: int) -> str | None:
+    """Validate NHL player boxscore before insertion.
+
+    Returns None if valid, or a rejection reason string if invalid.
+    Logs rejected rows with game_id, team, role, and reason.
+    """
+    # Only apply NHL-specific validation for NHL
+    if payload.team.league_code != "NHL":
+        return None
+
+    team_name = payload.team.name or payload.team.abbreviation or "unknown"
+
+    # Check: player name is required
+    if not payload.player_name or not payload.player_name.strip():
+        reason = "missing_player_name"
+        logger.warning(
+            "nhl_player_boxscore_rejected",
+            game_id=game_id,
+            team=team_name,
+            role=payload.player_role,
+            reason=reason,
+            player_id=payload.player_id,
+        )
+        return reason
+
+    # Check: player role is required for NHL
+    if not payload.player_role:
+        reason = "missing_player_role"
+        logger.warning(
+            "nhl_player_boxscore_rejected",
+            game_id=game_id,
+            team=team_name,
+            role=None,
+            reason=reason,
+            player_name=payload.player_name,
+        )
+        return reason
+
+    # Check: at least one stat field must be non-null (don't fabricate zeroes)
+    # Check role-specific stats based on player_role
+    if payload.player_role == "skater":
+        has_stats = any([
+            payload.minutes is not None,
+            payload.goals is not None,
+            payload.assists is not None,
+            payload.points is not None,
+            payload.shots_on_goal is not None,
+        ])
+    elif payload.player_role == "goalie":
+        has_stats = any([
+            payload.minutes is not None,
+            payload.saves is not None,
+            payload.goals_against is not None,
+            payload.shots_against is not None,
+            payload.save_percentage is not None,
+        ])
+    else:
+        # Unknown role - should not happen due to earlier validation
+        has_stats = False
+
+    if not has_stats:
+        reason = "all_stats_null"
+        logger.warning(
+            "nhl_player_boxscore_rejected",
+            game_id=game_id,
+            team=team_name,
+            role=payload.player_role,
+            reason=reason,
+            player_name=payload.player_name,
+        )
+        return reason
+
+    return None  # Valid
 
 
 def _build_team_stats(payload: NormalizedTeamBoxscore) -> dict:
@@ -59,6 +133,9 @@ def _build_team_stats(payload: NormalizedTeamBoxscore) -> dict:
 def _build_player_stats(payload: NormalizedPlayerBoxscore) -> dict:
     """Build stats dict from typed fields + raw_stats, excluding None values."""
     stats = {}
+    # Common fields
+    if payload.player_role is not None:
+        stats["player_role"] = payload.player_role
     if payload.minutes is not None:
         stats["minutes"] = payload.minutes
     if payload.points is not None:
@@ -71,10 +148,23 @@ def _build_player_stats(payload: NormalizedPlayerBoxscore) -> dict:
         stats["yards"] = payload.yards
     if payload.touchdowns is not None:
         stats["touchdowns"] = payload.touchdowns
+    # NHL skater stats
     if payload.shots_on_goal is not None:
         stats["shots_on_goal"] = payload.shots_on_goal
     if payload.penalties is not None:
         stats["penalties"] = payload.penalties
+    if payload.goals is not None:
+        stats["goals"] = payload.goals
+    # NHL goalie stats
+    if payload.saves is not None:
+        stats["saves"] = payload.saves
+    if payload.goals_against is not None:
+        stats["goals_against"] = payload.goals_against
+    if payload.shots_against is not None:
+        stats["shots_against"] = payload.shots_against
+    if payload.save_percentage is not None:
+        stats["save_percentage"] = payload.save_percentage
+    # Raw stats (includes any additional fields)
     if payload.raw_stats:
         stats.update(payload.raw_stats)
     return stats
@@ -87,8 +177,8 @@ def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[Nor
         league_id = get_league_id(session, payload.team.league_code)
         team_id = _upsert_team(session, league_id, payload.team)
         stats = _build_team_stats(payload)
-        # psycopg3 requires explicit JSONB casting for dicts in raw SQL
-        stats_json = cast(text(f"'{json.dumps(stats)}'"), JSONB)
+        # Use literal() for proper parameter binding (avoids SQL injection with apostrophes)
+        stats_json = literal(stats, type_=JSONB)
         stmt = insert(db_models.SportsTeamBoxscore).values(
             game_id=game_id,
             team_id=team_id,
@@ -115,23 +205,31 @@ def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[Nor
 
 def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[NormalizedPlayerBoxscore]) -> None:
     """Upsert player boxscores for a game.
-    
+
     Handles errors per player and logs summary statistics.
+    NHL rows are validated before insertion - invalid rows are rejected and logged.
     """
     if not payloads:
         return
-    
+
     inserted_count = 0
+    rejected_count = 0
     error_count = 0
-    
+
     updated = False
     for payload in payloads:
+        # Pre-insert validation for NHL (rejects broken rows before DB)
+        rejection_reason = _validate_nhl_player_boxscore(payload, game_id)
+        if rejection_reason:
+            rejected_count += 1
+            continue  # Skip invalid row
+
         try:
             league_id = get_league_id(session, payload.team.league_code)
             team_id = _upsert_team(session, league_id, payload.team)
             stats = _build_player_stats(payload)
-            # psycopg3 requires explicit JSONB casting for dicts in raw SQL
-            stats_json = cast(text(f"'{json.dumps(stats)}'"), JSONB)
+            # Use literal() for proper parameter binding (avoids SQL injection with apostrophes)
+            stats_json = literal(stats, type_=JSONB)
             stmt = insert(db_models.SportsPlayerBoxscore).values(
                 game_id=game_id,
                 team_id=team_id,
@@ -166,6 +264,7 @@ def upsert_player_boxscores(session: Session, game_id: int, payloads: Sequence[N
         "player_boxscores_upsert_complete",
         game_id=game_id,
         inserted_count=inserted_count,
+        rejected_count=rejected_count,
         error_count=error_count,
     )
     if updated:

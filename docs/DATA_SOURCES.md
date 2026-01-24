@@ -31,7 +31,7 @@ This document describes where data comes from and how it's ingested.
 
 ### Timing
 - Scraped after game status changes to `final`
-- Automatic scraping runs every 15 minutes (13:00-02:00 UTC)
+- Automatic ingestion runs once daily at 12:00 UTC (8 AM Eastern)
 - Manual scraping available via Admin UI
 
 ## Play-by-Play
@@ -56,7 +56,7 @@ This document describes where data comes from and how it's ingested.
 
 **Implementation:**
 - `scraper/bets_scraper/scrapers/nba_sportsref.py`
-- `scraper/bets_scraper/scrapers/nhl_hockey_reference.py`
+- `scraper/bets_scraper/scrapers/nhl_sportsref.py`
 - `scraper/bets_scraper/scrapers/ncaab_sportsref.py`
 
 See also:
@@ -189,10 +189,10 @@ See also:
 
 ### Automatic (Scheduled)
 - **Scheduler**: Celery Beat
-- **Hours**: 13:00-02:00 UTC (covers US evening games)
-- **Frequency**: Every 15 minutes
-- **Window**: Yesterday through now + 24 hours
-- **Data Types**: Boxscores, odds, PBP, social (configurable per run)
+- **Ingestion**: Daily at 12:00 UTC (8 AM Eastern) - boxscores, odds, PBP, social
+- **Timeline Generation**: Daily at 13:30 UTC (9:30 AM Eastern)
+- **Story Generation**: Daily at 13:45 UTC (9:45 AM Eastern)
+- **Window**: Yesterday through today (catches overnight game completions)
 
 ### Manual (Admin UI)
 - Create scrape run via `/api/admin/sports/scraper/runs`

@@ -21,7 +21,7 @@ from ..models import (
     NormalizedTeamBoxscore,
     TeamIdentity,
 )
-from ..utils import extract_all_stats_from_row, get_stat_from_row, parse_float, parse_int
+from ..utils import extract_all_stats_from_row, get_stat_from_row, parse_float, parse_int, parse_time_to_minutes
 from .base import BaseSportsReferenceScraper, ScraperError
 from .nhl_sportsref_helpers import (
     parse_pbp_period_marker,
@@ -44,34 +44,112 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
         return f"https://www.hockey-reference.com/boxscores/pbp/{source_game_key}.html"
 
     def _extract_team_stats(self, soup: BeautifulSoup, team_abbr: str) -> dict:
-        """Extract team stats from boxscore table."""
+        """Extract team stats from Hockey Reference skaters table.
+
+        Hockey Reference uses table IDs like '{ABBR}_skaters' (e.g., 'BOS_skaters'),
+        NOT 'box-{ABBR}-game-basic' like Basketball Reference.
+        """
         from ..utils.html_parsing import extract_team_stats_from_table, find_table_by_id
-        
-        # Hockey Reference uses UPPERCASE team abbreviations in table IDs
-        table_id = f"box-{team_abbr.upper()}-game-basic"
+
+        # Hockey Reference uses {ABBR}_skaters format (e.g., BOS_skaters)
+        table_id = f"{team_abbr.upper()}_skaters"
         table = find_table_by_id(soup, table_id)
-        
+
         if not table:
-            logger.warning("team_stats_table_not_found", table_id=table_id, team_abbr=team_abbr)
+            # Log available table IDs for debugging
+            all_tables = soup.find_all("table", id=True)
+            available_ids = [t.get("id") for t in all_tables[:10]]
+            logger.warning(
+                "team_stats_table_not_found",
+                table_id=table_id,
+                team_abbr=team_abbr,
+                available_table_ids=available_ids,
+            )
             return {}
-        
+
         return extract_team_stats_from_table(table, team_abbr, table_id)
 
     def _extract_player_stats(
         self, soup: BeautifulSoup, team_abbr: str, team_identity: TeamIdentity, is_home: bool
     ) -> list[NormalizedPlayerBoxscore]:
-        """Parse individual player rows from box-{TEAM}-game-basic table."""
-        from ..utils.html_parsing import find_player_table
-        
-        # Hockey Reference uses UPPERCASE team abbreviations in table IDs
-        table_id = f"box-{team_abbr.upper()}-game-basic"
-        table = find_player_table(soup, table_id)
-        
-        if not table:
-            logger.warning("player_stats_table_not_found", table_id=table_id, team=team_abbr)
-            return []
+        """Parse individual player rows from Hockey Reference skaters and goalies tables.
 
-        logger.debug("player_stats_table_found", table_id=table_id, team=team_abbr)
+        Hockey Reference uses table IDs like '{ABBR}_skaters' and '{ABBR}_goalies'
+        (e.g., 'BOS_skaters', 'BOS_goalies'), NOT 'box-{ABBR}-game-basic'.
+        """
+        from ..utils.html_parsing import find_player_table
+
+        players: list[NormalizedPlayerBoxscore] = []
+
+        # Extract skaters from {ABBR}_skaters table
+        skaters_table_id = f"{team_abbr.upper()}_skaters"
+        skaters_table = find_player_table(soup, skaters_table_id)
+
+        if not skaters_table:
+            all_tables = soup.find_all("table", id=True)
+            available_ids = [t.get("id") for t in all_tables[:10]]
+            logger.warning(
+                "player_stats_table_not_found",
+                table_id=skaters_table_id,
+                team=team_abbr,
+                available_table_ids=available_ids,
+            )
+        else:
+            logger.debug("player_stats_table_found", table_id=skaters_table_id, team=team_abbr)
+            players.extend(
+                self._parse_player_table(skaters_table, skaters_table_id, team_abbr, team_identity, is_home, "skater")
+            )
+
+        # Extract goalies from {ABBR}_goalies table
+        goalies_table_id = f"{team_abbr.upper()}_goalies"
+        goalies_table = find_player_table(soup, goalies_table_id)
+
+        if goalies_table:
+            logger.debug("goalie_stats_table_found", table_id=goalies_table_id, team=team_abbr)
+            players.extend(
+                self._parse_player_table(goalies_table, goalies_table_id, team_abbr, team_identity, is_home, "goalie")
+            )
+
+        # Regression guard: warn if zero players were extracted
+        # This should never happen for a valid boxscore page
+        skater_count = sum(1 for p in players if p.player_role == "skater")
+        goalie_count = sum(1 for p in players if p.player_role == "goalie")
+
+        if skater_count == 0:
+            logger.warning(
+                "nhl_zero_skaters_extracted",
+                team=team_abbr,
+                is_home=is_home,
+                total_players=len(players),
+                message="Possible ingestion failure: no skaters found for team",
+            )
+        if goalie_count == 0:
+            logger.warning(
+                "nhl_zero_goalies_extracted",
+                team=team_abbr,
+                is_home=is_home,
+                total_players=len(players),
+                message="Possible ingestion failure: no goalies found for team",
+            )
+
+        return players
+
+    def _parse_player_table(
+        self,
+        table,
+        table_id: str,
+        team_abbr: str,
+        team_identity: TeamIdentity,
+        is_home: bool,
+        player_role: str,
+    ) -> list[NormalizedPlayerBoxscore]:
+        """Parse individual player rows from a stats table.
+
+        Enforces strict role separation: skaters and goalies have distinct field extraction.
+        player_role must be "skater" or "goalie".
+        """
+        if player_role not in ("skater", "goalie"):
+            raise ValueError(f"Invalid player_role: {player_role}. Must be 'skater' or 'goalie'.")
 
         players: list[NormalizedPlayerBoxscore] = []
         tbody = table.find("tbody")
@@ -85,22 +163,72 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
         skipped_thead = 0
         skipped_no_player_cell = 0
         skipped_no_player_link = 0
+        skipped_empty_net = 0
         parsed_count = 0
 
-        for row in all_rows:
+        for row_index, row in enumerate(all_rows):
             row_classes = row.get("class", [])
             if "thead" in row_classes:
                 skipped_thead += 1
+                logger.debug(
+                    "player_row_skipped",
+                    table_id=table_id,
+                    row_index=row_index,
+                    reason="thead_class",
+                )
                 continue
 
-            player_cell = row.find("th", {"data-stat": "player"})
+            # Hockey Reference uses <td data-stat="player"> for player cells in boxscores
+            player_cell = row.find("td", {"data-stat": "player"})
             if not player_cell:
                 skipped_no_player_cell += 1
+                logger.debug(
+                    "player_row_skipped",
+                    table_id=table_id,
+                    row_index=row_index,
+                    reason="no_player_cell",
+                )
                 continue
 
             player_link = player_cell.find("a")
+            player_text = player_cell.text.strip()
+
+            # Explicitly skip TOTAL/Team Total rows - these are aggregate rows, not players
+            # This is a critical guard to prevent TOTAL rows from leaking into player stats
+            if player_text.lower() in ("total", "team total", "team totals"):
+                logger.debug(
+                    "player_row_skipped",
+                    table_id=table_id,
+                    row_index=row_index,
+                    reason="total_row_not_a_player",
+                    cell_text=player_text,
+                )
+                continue
+
             if not player_link:
+                # No player link - could be "Empty Net" row or other non-player row
+
+                # Explicitly detect "Empty Net" rows in goalie tables
+                if player_text.lower() == "empty net" and player_role == "goalie":
+                    skipped_empty_net += 1
+                    logger.info(
+                        "nhl_empty_net_row_skipped",
+                        table_id=table_id,
+                        team=team_abbr,
+                        row_index=row_index,
+                        reason="empty_net_not_a_player",
+                    )
+                    continue
+
+                # Other non-player rows (unexpected)
                 skipped_no_player_link += 1
+                logger.debug(
+                    "player_row_skipped",
+                    table_id=table_id,
+                    row_index=row_index,
+                    reason="no_player_link",
+                    cell_text=player_text,
+                )
                 continue
 
             player_name = player_link.text.strip()
@@ -109,41 +237,93 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
 
             raw_stats = extract_all_stats_from_row(row)
 
-            players.append(
-                NormalizedPlayerBoxscore(
+            # Build player boxscore with role-specific field extraction
+            # Common fields for both roles
+            toi = parse_time_to_minutes(get_stat_from_row(row, "time_on_ice"))
+
+            if player_role == "skater":
+                # SKATER-ONLY STATS
+                # Skaters: g (goals), a (assists), pts (points), s (shots), shifts, etc.
+                # Goalie fields MUST remain None for skaters
+                player = NormalizedPlayerBoxscore(
                     player_id=player_id,
                     player_name=player_name,
                     team=team_identity,
-                    minutes=parse_float(get_stat_from_row(row, "toi")),  # Time on ice
-                    points=parse_int(get_stat_from_row(row, "pts")),
-                    rebounds=None,  # Not applicable to hockey
-                    assists=parse_int(get_stat_from_row(row, "a")),
+                    player_role="skater",
+                    minutes=toi,
+                    # Skater stats
+                    goals=parse_int(get_stat_from_row(row, "goals")),
+                    assists=parse_int(get_stat_from_row(row, "assists")),
+                    points=parse_int(get_stat_from_row(row, "points")),
+                    shots_on_goal=parse_int(get_stat_from_row(row, "shots")),
+                    # Goalie stats explicitly None (enforced separation)
+                    saves=None,
+                    goals_against=None,
+                    shots_against=None,
+                    save_percentage=None,
                     raw_stats=raw_stats,
                 )
-            )
+            else:
+                # GOALIE-ONLY STATS
+                # Goalies: sa (shots against), ga (goals against), sv (saves), sv_pct
+                # Skater fields MUST remain None for goalies
+                player = NormalizedPlayerBoxscore(
+                    player_id=player_id,
+                    player_name=player_name,
+                    team=team_identity,
+                    player_role="goalie",
+                    minutes=toi,
+                    # Goalie stats
+                    saves=parse_int(get_stat_from_row(row, "saves")),
+                    goals_against=parse_int(get_stat_from_row(row, "goals_against")),
+                    shots_against=parse_int(get_stat_from_row(row, "shots_against")),
+                    save_percentage=parse_float(get_stat_from_row(row, "save_pct")),
+                    # Skater stats explicitly None (enforced separation)
+                    goals=None,
+                    assists=None,
+                    points=None,
+                    shots_on_goal=None,
+                    raw_stats=raw_stats,
+                )
+
+            players.append(player)
             parsed_count += 1
 
         logger.info(
             "player_stats_extraction_complete",
             team=team_abbr,
+            player_role=player_role,
             is_home=is_home,
             total_rows=len(all_rows),
             skipped_thead=skipped_thead,
             skipped_no_player_cell=skipped_no_player_cell,
             skipped_no_player_link=skipped_no_player_link,
+            skipped_empty_net=skipped_empty_net,
             parsed_players=parsed_count,
         )
 
         return players
 
     def _build_team_boxscore(self, identity: TeamIdentity, is_home: bool, score: int, stats: dict) -> NormalizedTeamBoxscore:
+        """Build team boxscore from Hockey Reference stats.
+
+        Hockey Reference uses different stat names:
+        - g: goals
+        - a: assists
+        - pts: points (g + a for skaters)
+        - s: shots
+        - pim: penalty minutes
+        - toi: time on ice
+        """
         return NormalizedTeamBoxscore(
             team=identity,
             is_home=is_home,
-            points=score,
+            points=score,  # Final score (goals)
             rebounds=None,  # Not applicable to hockey
             assists=parse_int(stats.get("a")),
             turnovers=None,  # Not tracked in hockey boxscores
+            shots_on_goal=parse_int(stats.get("s")),  # Team shots
+            penalty_minutes=parse_int(stats.get("pim")),  # Penalty minutes
             raw_stats=stats,
         )
 
@@ -160,7 +340,7 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
             away_identity, away_score = self._parse_team_row(team_rows[0])
             home_identity, home_score = self._parse_team_row(team_rows[1])
 
-            boxscore_link = div.select_one("p.links a[href*='/boxscores/']")
+            boxscore_link = div.select_one("td.gamelink a[href*='/boxscores/']")
             if not boxscore_link:
                 raise ScraperError("Missing boxscore link")
             boxscore_url = urljoin(self.base_url, boxscore_link["href"])

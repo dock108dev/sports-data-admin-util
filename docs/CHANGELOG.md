@@ -2,6 +2,8 @@
 
 All notable changes to Sports Data Admin.
 
+> **Note**: Entries from January 2026 reference the legacy "Moments" system which has been replaced by the "Chapters" architecture. See [BOOK_CHAPTERS_MODEL.md](BOOK_CHAPTERS_MODEL.md) for the current system.
+
 ## [2026-01-19] - Moment Pipeline Enhancements
 
 ### Added

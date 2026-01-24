@@ -44,7 +44,7 @@ async def create_scrape_run(
     league = await get_league(session, payload.config.league_code)
 
     run = db_models.SportsScrapeRun(
-        scraper_type="scrape",  # Simplified - no longer configurable
+        scraper_type="scrape",
         league_id=league.id,
         season=payload.config.season,
         season_type=payload.config.season_type,
