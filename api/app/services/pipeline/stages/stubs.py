@@ -1,7 +1,8 @@
 """Stub implementations for unimplemented pipeline stages.
 
 These stages are placeholders for future implementation.
-Each raises NotImplementedError to make it explicit these aren't ready for use.
+Each returns a no-op StageOutput to allow pipeline runs to complete,
+while logging that the stage was skipped.
 """
 
 from __future__ import annotations
@@ -17,25 +18,31 @@ if TYPE_CHECKING:
 async def execute_derive_signals(stage_input: StageInput) -> StageOutput:
     """Derive signals from normalized PBP data.
 
-    NOT YET IMPLEMENTED - placeholder for future stage.
+    NOT YET IMPLEMENTED - returns no-op output.
     """
-    raise NotImplementedError("DERIVE_SIGNALS stage not yet implemented")
+    output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
+    output.add_log("DERIVE_SIGNALS stage skipped - not yet implemented", level="warning")
+    return output
 
 
 async def execute_generate_moments(stage_input: StageInput) -> StageOutput:
     """Generate moments from derived signals.
 
-    NOT YET IMPLEMENTED - placeholder for future stage.
+    NOT YET IMPLEMENTED - returns no-op output.
     """
-    raise NotImplementedError("GENERATE_MOMENTS stage not yet implemented")
+    output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
+    output.add_log("GENERATE_MOMENTS stage skipped - not yet implemented", level="warning")
+    return output
 
 
 async def execute_validate_moments(stage_input: StageInput) -> StageOutput:
     """Validate generated moments.
 
-    NOT YET IMPLEMENTED - placeholder for future stage.
+    NOT YET IMPLEMENTED - returns no-op output.
     """
-    raise NotImplementedError("VALIDATE_MOMENTS stage not yet implemented")
+    output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
+    output.add_log("VALIDATE_MOMENTS stage skipped - not yet implemented", level="warning")
+    return output
 
 
 async def execute_finalize_moments(
@@ -45,6 +52,8 @@ async def execute_finalize_moments(
 ) -> StageOutput:
     """Finalize moments and persist to database.
 
-    NOT YET IMPLEMENTED - placeholder for future stage.
+    NOT YET IMPLEMENTED - returns no-op output.
     """
-    raise NotImplementedError("FINALIZE_MOMENTS stage not yet implemented")
+    output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
+    output.add_log("FINALIZE_MOMENTS stage skipped - not yet implemented", level="warning")
+    return output

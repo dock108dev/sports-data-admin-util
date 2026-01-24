@@ -272,8 +272,8 @@ export default function GameDetailClient() {
                             </tr>
                           </thead>
                           <tbody>
-                            {nhlSkatersByTeam[team].map((p) => (
-                              <tr key={`${team}-skater-${p.player_name}`}>
+                            {nhlSkatersByTeam[team].map((p, idx) => (
+                              <tr key={`${team}-skater-${idx}-${p.player_name}`}>
                                 <td>{p.player_name}</td>
                                 <td>{p.toi ?? "—"}</td>
                                 <td>{p.goals ?? "—"}</td>
@@ -308,8 +308,8 @@ export default function GameDetailClient() {
                           </tr>
                         </thead>
                         <tbody>
-                          {nhlGoaliesByTeam[team].map((p) => (
-                            <tr key={`${team}-goalie-${p.player_name}`}>
+                          {nhlGoaliesByTeam[team].map((p, idx) => (
+                            <tr key={`${team}-goalie-${idx}-${p.player_name}`}>
                               <td>{p.player_name}</td>
                               <td>{p.toi ?? "—"}</td>
                               <td>{p.shots_against ?? "—"}</td>
@@ -348,8 +348,8 @@ export default function GameDetailClient() {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((p) => (
-                        <tr key={`${team}-${p.player_name}`}>
+                      {rows.map((p, idx) => (
+                        <tr key={`${team}-${idx}-${p.player_name}`}>
                           <td>{p.player_name}</td>
                           <td>{p.minutes ?? "—"}</td>
                           <td>{p.points ?? "—"}</td>

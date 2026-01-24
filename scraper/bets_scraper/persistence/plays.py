@@ -129,9 +129,10 @@ def upsert_plays(
     scrape_run_id: int | None = None,
     create_snapshot: bool = True,
 ) -> int:
-    """Insert play-by-play events for a game.
+    """Upsert play-by-play events for a game.
 
-    Uses PostgreSQL ON CONFLICT DO NOTHING to append new plays without overwriting.
+    Uses PostgreSQL ON CONFLICT DO UPDATE to insert new plays or update existing
+    ones with fresh data (e.g., player names resolved from roster).
     Optionally creates a raw PBP snapshot for auditability.
 
     Args:
@@ -143,7 +144,7 @@ def upsert_plays(
         create_snapshot: Whether to create a raw PBP snapshot
 
     Returns:
-        Number of plays inserted
+        Number of plays upserted (inserted or updated)
     """
     if not plays:
         return 0
