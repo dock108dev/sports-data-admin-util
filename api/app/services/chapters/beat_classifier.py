@@ -69,6 +69,53 @@ from .early_windows import (
     detect_opening_section_beat,
 )
 
+# Re-exports for backward compatibility (used by __init__.py)
+__all__ = [
+    # Types
+    "BeatType",
+    "BeatDescriptor",
+    "RunWindow",
+    "ResponseWindow",
+    "BackAndForthWindow",
+    "EarlyWindowStats",
+    "SectionBeatOverride",
+    "ChapterContext",
+    "BeatClassification",
+    # Constants
+    "PRIMARY_BEATS",
+    "BEAT_PRIORITY",
+    "MISSED_SHOT_PPP_THRESHOLD",
+    "RUN_WINDOW_THRESHOLD",
+    "RUN_MARGIN_EXPANSION_THRESHOLD",
+    "BACK_AND_FORTH_LEAD_CHANGES_THRESHOLD",
+    "BACK_AND_FORTH_TIES_THRESHOLD",
+    "EARLY_WINDOW_DURATION_SECONDS",
+    "FAST_START_MIN_COMBINED_POINTS",
+    "FAST_START_MAX_MARGIN",
+    "EARLY_CONTROL_MIN_LEAD",
+    "EARLY_CONTROL_MIN_SHARE_PCT",
+    "CRUNCH_SETUP_TIME_THRESHOLD",
+    "CRUNCH_SETUP_MARGIN_THRESHOLD",
+    "CLOSING_SEQUENCE_TIME_THRESHOLD",
+    "CLOSING_SEQUENCE_MARGIN_THRESHOLD",
+    # Functions
+    "classify_chapter_beat",
+    "classify_all_chapters",
+    "build_chapter_context",
+    "format_classification_debug",
+    "get_beat_distribution",
+    "detect_run_windows",
+    "get_qualifying_run_windows",
+    "detect_response_windows",
+    "get_qualifying_response_windows",
+    "detect_back_and_forth_window",
+    "get_qualifying_back_and_forth_window",
+    "compute_early_window_stats",
+    "detect_section_fast_start",
+    "detect_section_early_control",
+    "detect_opening_section_beat",
+]
+
 
 # ============================================================================
 # CHAPTER CONTEXT (INPUT)

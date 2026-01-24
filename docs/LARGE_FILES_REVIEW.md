@@ -1,13 +1,3 @@
-
-
-
-
-### Services
-
-| File | LOC | Recommendation |
-|------|-----|----------------|
-| timeline_generator.py | 774 | Review - timeline generation |
-
 ### Scraper
 
 | File | LOC | Recommendation |
