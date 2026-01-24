@@ -16,8 +16,6 @@ import pytest
 from app.services.chapters.player_identity import (
     # Data structures
     RosterPlayer,
-    ResolvedPlayer,
-    ResolutionStats,
     # Functions
     normalize_for_matching,
     extract_initial_and_lastname,

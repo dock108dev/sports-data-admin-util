@@ -5,7 +5,7 @@
 | Guide | Description |
 |-------|-------------|
 | [Local Development](LOCAL_DEVELOPMENT.md) | **Start here:** Run locally with Docker or manual setup |
-| [AI Agent Context](AGENTS.md) | Quick context for AI agents working on this codebase |
+| [Coding Standards](../CLAUDE.md) | Development principles and coding standards |
 | [Architecture](ARCHITECTURE.md) | System components, data flow, database schema |
 | [API Reference](API.md) | FastAPI endpoints and usage |
 

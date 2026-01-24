@@ -902,9 +902,7 @@ def _build_section(
     }
 
     # Aggregate stats with prominence-based player selection
-    team_deltas, player_deltas = _aggregate_section_deltas(
-        section_deltas, end_snapshot
-    )
+    team_deltas, player_deltas = _aggregate_section_deltas(section_deltas, end_snapshot)
 
     # Generate notes
     notes = generate_section_notes(team_deltas, player_deltas)
@@ -1252,9 +1250,7 @@ def is_section_underpowered(
 # ============================================================================
 
 
-def count_section_scoring_plays(
-    section: StorySection, chapters: list[Chapter]
-) -> int:
+def count_section_scoring_plays(section: StorySection, chapters: list[Chapter]) -> int:
     """Count number of scoring plays in a section.
 
     A scoring play is any play where the score changes.
@@ -1433,9 +1429,7 @@ def handle_thin_sections(
                 result = result[:target_idx] + [merged] + result[thin_idx + 1 :]
             else:
                 # Merge thin into next (downward merge)
-                merged = _merge_sections(
-                    result[thin_idx], result[target_idx], thin_idx
-                )
+                merged = _merge_sections(result[thin_idx], result[target_idx], thin_idx)
                 result = result[:thin_idx] + [merged] + result[target_idx + 1 :]
 
             changed = True
@@ -1600,9 +1594,9 @@ def apply_dominance_cap(
 
         # Find or create player entry in target section
         if dominant_key in target_section.player_stat_deltas:
-            target_section.player_stat_deltas[dominant_key].points_scored += (
-                excess_points
-            )
+            target_section.player_stat_deltas[
+                dominant_key
+            ].points_scored += excess_points
         else:
             # Create new player entry with just the spillover points
             target_section.player_stat_deltas[dominant_key] = PlayerStatDelta(

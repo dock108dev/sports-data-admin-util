@@ -389,7 +389,9 @@ def _extract_player_info(
 def _get_resolver_type():
     """Get PlayerIdentityResolver type for type hints."""
     from .player_identity import PlayerIdentityResolver
+
     return PlayerIdentityResolver
+
 
 # Type hint placeholder
 PlayerIdentityResolver = None  # Will be imported at runtime

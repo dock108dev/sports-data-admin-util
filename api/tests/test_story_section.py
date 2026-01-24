@@ -1780,9 +1780,7 @@ class TestProminenceIntegration:
             },
         )
 
-        sections = build_story_sections(
-            chapters, classifications, snapshots=[snapshot]
-        )
+        sections = build_story_sections(chapters, classifications, snapshots=[snapshot])
 
         # Sections should be built (specific player selection tested above)
         assert len(sections) >= 1
@@ -1822,8 +1820,12 @@ class TestThinSectionDetection:
         # Create section with exactly 4 points and 2 scoring plays
         plays = [
             make_play(0, quarter=1, game_clock="10:00", home_score=0, away_score=0),
-            make_play(1, quarter=1, game_clock="9:00", home_score=2, away_score=0),  # scoring play 1
-            make_play(2, quarter=1, game_clock="8:00", home_score=2, away_score=2),  # scoring play 2
+            make_play(
+                1, quarter=1, game_clock="9:00", home_score=2, away_score=0
+            ),  # scoring play 1
+            make_play(
+                2, quarter=1, game_clock="8:00", home_score=2, away_score=2
+            ),  # scoring play 2
         ]
         chapters = [make_chapter("ch_000", plays, period=1)]
 
@@ -1834,8 +1836,12 @@ class TestThinSectionDetection:
             start_score={"home": 0, "away": 0},
             end_score={"home": 2, "away": 2},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
-                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=2),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=2
+                ),
+                "away": TeamStatDelta(
+                    team_key="away", team_name="Away", points_scored=2
+                ),
             },
         )
 
@@ -1849,7 +1855,9 @@ class TestThinSectionDetection:
 
         plays = [
             make_play(0, quarter=1, game_clock="10:00", home_score=0, away_score=0),
-            make_play(1, quarter=1, game_clock="9:00", home_score=5, away_score=0),  # 5 points, 1 play
+            make_play(
+                1, quarter=1, game_clock="9:00", home_score=5, away_score=0
+            ),  # 5 points, 1 play
         ]
         chapters = [make_chapter("ch_000", plays, period=1)]
 
@@ -1860,7 +1868,9 @@ class TestThinSectionDetection:
             start_score={"home": 0, "away": 0},
             end_score={"home": 5, "away": 0},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=5),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=5
+                ),
             },
         )
 
@@ -1886,8 +1896,12 @@ class TestThinSectionDetection:
             start_score={"home": 0, "away": 0},
             end_score={"home": 2, "away": 1},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
-                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=1),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=2
+                ),
+                "away": TeamStatDelta(
+                    team_key="away", team_name="Away", points_scored=1
+                ),
             },
         )
 
@@ -1909,7 +1923,9 @@ class TestThinSectionMerging:
         ]
         plays2 = [
             make_play(2, quarter=1, game_clock="10:00", home_score=10, away_score=8),
-            make_play(3, quarter=1, game_clock="9:00", home_score=12, away_score=8),  # only 2 pts
+            make_play(
+                3, quarter=1, game_clock="9:00", home_score=12, away_score=8
+            ),  # only 2 pts
         ]
         plays3 = [
             make_play(4, quarter=1, game_clock="8:00", home_score=12, away_score=8),
@@ -1929,8 +1945,12 @@ class TestThinSectionMerging:
             start_score={"home": 0, "away": 0},
             end_score={"home": 10, "away": 8},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=10),
-                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=8),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=10
+                ),
+                "away": TeamStatDelta(
+                    team_key="away", team_name="Away", points_scored=8
+                ),
             },
         )
 
@@ -1942,7 +1962,9 @@ class TestThinSectionMerging:
             start_score={"home": 10, "away": 8},
             end_score={"home": 12, "away": 8},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=2
+                ),
             },
         )
 
@@ -1953,8 +1975,12 @@ class TestThinSectionMerging:
             start_score={"home": 12, "away": 8},
             end_score={"home": 20, "away": 16},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=8),
-                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=8),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=8
+                ),
+                "away": TeamStatDelta(
+                    team_key="away", team_name="Away", points_scored=8
+                ),
             },
         )
 
@@ -1972,7 +1998,9 @@ class TestThinSectionMerging:
 
         plays = [
             make_play(0, quarter=4, game_clock="2:00", home_score=100, away_score=98),
-            make_play(1, quarter=4, game_clock="1:30", home_score=102, away_score=98),  # 2 pts
+            make_play(
+                1, quarter=4, game_clock="1:30", home_score=102, away_score=98
+            ),  # 2 pts
         ]
         chapters = [make_chapter("ch_000", plays, period=4)]
 
@@ -1984,7 +2012,9 @@ class TestThinSectionMerging:
             start_score={"home": 100, "away": 98},
             end_score={"home": 102, "away": 98},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=2
+                ),
             },
         )
 
@@ -2001,7 +2031,9 @@ class TestThinSectionMerging:
         # Single thin section isolated by OVERTIME boundaries
         plays = [
             make_play(0, quarter=5, game_clock="2:00", home_score=100, away_score=100),
-            make_play(1, quarter=5, game_clock="1:30", home_score=102, away_score=100),  # 2 pts
+            make_play(
+                1, quarter=5, game_clock="1:30", home_score=102, away_score=100
+            ),  # 2 pts
         ]
         chapters = [make_chapter("ch_000", plays, period=5)]
 
@@ -2012,7 +2044,9 @@ class TestThinSectionMerging:
             start_score={"home": 100, "away": 100},
             end_score={"home": 102, "away": 100},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=2
+                ),
             },
         )
 
@@ -2031,7 +2065,9 @@ class TestThinSectionMerging:
         ]
         plays2 = [
             make_play(2, quarter=4, game_clock="1:00", home_score=110, away_score=108),
-            make_play(3, quarter=4, game_clock="0:30", home_score=112, away_score=108),  # 2 pts, thin
+            make_play(
+                3, quarter=4, game_clock="0:30", home_score=112, away_score=108
+            ),  # 2 pts, thin
         ]
         chapters = [
             make_chapter("ch_000", plays1, period=4),
@@ -2045,8 +2081,12 @@ class TestThinSectionMerging:
             start_score={"home": 100, "away": 98},
             end_score={"home": 110, "away": 108},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=10),
-                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=10),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=10
+                ),
+                "away": TeamStatDelta(
+                    team_key="away", team_name="Away", points_scored=10
+                ),
             },
         )
 
@@ -2058,7 +2098,9 @@ class TestThinSectionMerging:
             start_score={"home": 110, "away": 108},
             end_score={"home": 112, "away": 108},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=2
+                ),
             },
         )
 
@@ -2107,8 +2149,12 @@ class TestLumpySectionDetection:
             start_score={"home": 0, "away": 0},
             end_score={"home": 20, "away": 10},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=20),
-                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=10),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=20
+                ),
+                "away": TeamStatDelta(
+                    team_key="away", team_name="Away", points_scored=10
+                ),
             },
             player_stat_deltas={
                 "star_player": PlayerStatDelta(
@@ -2143,8 +2189,12 @@ class TestLumpySectionDetection:
             start_score={"home": 0, "away": 0},
             end_score={"home": 15, "away": 15},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=15),
-                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=15),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=15
+                ),
+                "away": TeamStatDelta(
+                    team_key="away", team_name="Away", points_scored=15
+                ),
             },
             player_stat_deltas={
                 "player_a": PlayerStatDelta(
@@ -2189,8 +2239,12 @@ class TestDominanceCapping:
             start_score={"home": 0, "away": 0},
             end_score={"home": 24, "away": 6},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=24),
-                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=6),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=24
+                ),
+                "away": TeamStatDelta(
+                    team_key="away", team_name="Away", points_scored=6
+                ),
             },
             player_stat_deltas={
                 "star_player": PlayerStatDelta(
@@ -2215,8 +2269,12 @@ class TestDominanceCapping:
             start_score={"home": 24, "away": 6},
             end_score={"home": 44, "away": 26},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=20),
-                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=20),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=20
+                ),
+                "away": TeamStatDelta(
+                    team_key="away", team_name="Away", points_scored=20
+                ),
             },
             player_stat_deltas={},
         )
@@ -2248,8 +2306,12 @@ class TestDominanceCapping:
             start_score={"home": 0, "away": 0},
             end_score={"home": 24, "away": 6},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=24),
-                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=6),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=24
+                ),
+                "away": TeamStatDelta(
+                    team_key="away", team_name="Away", points_scored=6
+                ),
             },
             player_stat_deltas={
                 "star_player": PlayerStatDelta(
@@ -2290,8 +2352,12 @@ class TestDominanceCapping:
             start_score={"home": 0, "away": 0},
             end_score={"home": 15, "away": 15},
             team_stat_deltas={
-                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=15),
-                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=15),
+                "home": TeamStatDelta(
+                    team_key="home", team_name="Home", points_scored=15
+                ),
+                "away": TeamStatDelta(
+                    team_key="away", team_name="Away", points_scored=15
+                ),
             },
             player_stat_deltas={
                 "player_a": PlayerStatDelta(
