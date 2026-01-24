@@ -258,10 +258,13 @@ def schedule_single_league_and_wait(
         run.job_id = async_result.id
         session.commit()
 
+        # Store run_id before exiting session context to avoid DetachedInstanceError
+        run_id = run.id
+
         logger.info(
             "schedule_single_league_enqueued",
             league=league_code,
-            run_id=run.id,
+            run_id=run_id,
             job_id=run.job_id,
         )
 
@@ -272,7 +275,7 @@ def schedule_single_league_and_wait(
         elapsed += poll_interval
 
         with get_session() as session:
-            run = session.query(db_models.SportsScrapeRun).get(run.id)
+            run = session.query(db_models.SportsScrapeRun).get(run_id)
             if run.status in ("completed", "failed", "error", "interrupted"):
                 logger.info(
                     "schedule_single_league_finished",
@@ -292,12 +295,12 @@ def schedule_single_league_and_wait(
     logger.warning(
         "schedule_single_league_timeout",
         league=league_code,
-        run_id=run.id,
+        run_id=run_id,
         timeout_seconds=timeout_seconds,
     )
     return {
         "runs_created": 1,
         "status": "timeout",
-        "run_id": run.id,
+        "run_id": run_id,
         "elapsed_seconds": elapsed,
     }
