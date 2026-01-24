@@ -70,30 +70,34 @@ def find_table_by_id(soup: BeautifulSoup, table_id: str, alternate_ids: list[str
 
 def extract_team_stats_from_table(table: Tag, team_abbr: str, table_id: str) -> dict:
     """Extract team stats from a table's tfoot section.
-    
+
     Common pattern across Sports Reference sites:
     - Stats are in tfoot
     - Each cell has a data-stat attribute
     - Values are in cell text
-    
+
     Args:
         table: BeautifulSoup table Tag
         team_abbr: Team abbreviation (for logging)
         table_id: Table ID (for logging)
-        
+
     Returns:
         Dictionary of stat_name -> stat_value
     """
+    # Fields that are row labels, not actual stats - exclude from team stats
+    # "player" is the row label cell containing "TOTAL" or "Team Total"
+    NON_STAT_FIELDS = {"player", "ranker"}
+
     totals = {}
     tfoot = table.find("tfoot")
     if not tfoot:
         logger.warning("team_stats_tfoot_not_found", table_id=table_id, team_abbr=team_abbr)
         return totals
-    
+
     cells = tfoot.find_all("td")
     for cell in cells:
         stat = cell.get("data-stat")
-        if stat:
+        if stat and stat not in NON_STAT_FIELDS:
             value = cell.text.strip()
             # Skip empty values - do not store empty strings
             if value:

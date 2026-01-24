@@ -70,6 +70,32 @@ export type PlayerStat = {
   raw_stats: Record<string, unknown>;
 };
 
+export type NHLSkaterStat = {
+  team: string;
+  player_name: string;
+  toi: string | null;
+  goals: number | null;
+  assists: number | null;
+  points: number | null;
+  shots_on_goal: number | null;
+  plus_minus: number | null;
+  penalty_minutes: number | null;
+  hits: number | null;
+  blocked_shots: number | null;
+  raw_stats: Record<string, unknown>;
+};
+
+export type NHLGoalieStat = {
+  team: string;
+  player_name: string;
+  toi: string | null;
+  shots_against: number | null;
+  saves: number | null;
+  goals_against: number | null;
+  save_percentage: number | null;
+  raw_stats: Record<string, unknown>;
+};
+
 export type OddsEntry = {
   book: string;
   market_type: string;
@@ -225,6 +251,9 @@ export type AdminGameDetail = {
   };
   team_stats: TeamStat[];
   player_stats: PlayerStat[];
+  // NHL-specific player stats (only populated for NHL games)
+  nhl_skaters?: NHLSkaterStat[] | null;
+  nhl_goalies?: NHLGoalieStat[] | null;
   odds: OddsEntry[];
   social_posts: SocialPost[];
   plays: PlayEntry[];

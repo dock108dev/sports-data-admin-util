@@ -122,7 +122,13 @@ class NHLLiveFeedClient:
         return games
 
     def _parse_schedule_response(self, payload: dict, target_date: date) -> list[NHLLiveGame]:
-        """Parse the schedule response from the new NHL API."""
+        """Parse the schedule response from the new NHL API.
+
+        IMPORTANT: Uses the gameWeek date (local date) for game_date, not startTimeUTC.
+        This is because our database stores games by local date (e.g., 2026-01-18 for
+        a game played on Jan 18 evening local time), but startTimeUTC might be the
+        next day in UTC (e.g., 2026-01-19T01:00:00Z for a 6pm MT game).
+        """
         games: list[NHLLiveGame] = []
 
         for week in payload.get("gameWeek", []):
@@ -135,7 +141,10 @@ class NHLLiveFeedClient:
                 if game_id is None:
                     continue
 
-                game_date = _parse_datetime(game.get("startTimeUTC"))
+                # Use the gameWeek date (local date) for matching, not startTimeUTC
+                # This ensures EDM @ STL on "2026-01-18" matches our DB even though
+                # startTimeUTC is "2026-01-19T01:00:00Z"
+                game_date = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc)
                 game_state = game.get("gameState", "")
                 status = _map_nhl_game_state(game_state)
 

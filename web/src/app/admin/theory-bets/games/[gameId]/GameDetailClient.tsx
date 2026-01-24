@@ -82,6 +82,29 @@ export default function GameDetailClient() {
     }, {});
   }, [game]);
 
+  // NHL-specific: Group skaters by team
+  const nhlSkatersByTeam = useMemo(() => {
+    if (!game || !game.nhl_skaters) return {};
+    return game.nhl_skaters.reduce<Record<string, NonNullable<typeof game.nhl_skaters>>>((acc, p) => {
+      acc[p.team] = acc[p.team] || [];
+      acc[p.team].push(p);
+      return acc;
+    }, {});
+  }, [game]);
+
+  // NHL-specific: Group goalies by team
+  const nhlGoaliesByTeam = useMemo(() => {
+    if (!game || !game.nhl_goalies) return {};
+    return game.nhl_goalies.reduce<Record<string, NonNullable<typeof game.nhl_goalies>>>((acc, p) => {
+      acc[p.team] = acc[p.team] || [];
+      acc[p.team].push(p);
+      return acc;
+    }, {});
+  }, [game]);
+
+  // Determine if this is an NHL game
+  const isNHL = game?.game.league_code === "NHL";
+
   const handleRescrape = async () => {
     setActionStatus(null);
     setActionLoading("rescrape");
@@ -215,40 +238,131 @@ export default function GameDetailClient() {
       </CollapsibleSection>
 
       <CollapsibleSection title="Player Stats" defaultOpen={false}>
-        {Object.keys(playerStatsByTeam).length === 0 ? (
-          <div style={{ color: "#475569" }}>No player stats found.</div>
-        ) : (
-          <div className={styles.playerStatsGrid}>
-            {Object.entries(playerStatsByTeam).map(([team, rows]) => (
-              <div key={team} className={styles.teamStatsCard}>
-                <div className={styles.teamStatsHeader}>
-                  <h3>{team}</h3>
+        {isNHL ? (
+          // NHL-specific player stats display - one card per team with skaters + goalies
+          Object.keys(nhlSkatersByTeam).length === 0 && Object.keys(nhlGoaliesByTeam).length === 0 ? (
+            <div style={{ color: "#475569" }}>No player stats found.</div>
+          ) : (
+            <div className={styles.playerStatsGrid}>
+              {/* Get unique teams from both skaters and goalies */}
+              {Array.from(new Set([...Object.keys(nhlSkatersByTeam), ...Object.keys(nhlGoaliesByTeam)])).map((team) => (
+                <div key={team} className={styles.teamStatsCard}>
+                  <div className={styles.teamStatsHeader}>
+                    <h3>{team}</h3>
+                  </div>
+
+                  {/* Skaters section */}
+                  {nhlSkatersByTeam[team] && nhlSkatersByTeam[team].length > 0 && (
+                    <>
+                      <h4 style={{ margin: "0.75rem 0 0.25rem", fontSize: "0.9rem", color: "#475569" }}>Skaters</h4>
+                      <div style={{ overflowX: "auto" }}>
+                        <table className={styles.table} style={{ fontSize: "0.85rem" }}>
+                          <thead>
+                            <tr>
+                              <th>Player</th>
+                              <th>TOI</th>
+                              <th>G</th>
+                              <th>A</th>
+                              <th>Pts</th>
+                              <th>+/-</th>
+                              <th>SOG</th>
+                              <th>Hits</th>
+                              <th>BLK</th>
+                              <th>PIM</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {nhlSkatersByTeam[team].map((p) => (
+                              <tr key={`${team}-skater-${p.player_name}`}>
+                                <td>{p.player_name}</td>
+                                <td>{p.toi ?? "—"}</td>
+                                <td>{p.goals ?? "—"}</td>
+                                <td>{p.assists ?? "—"}</td>
+                                <td>{p.points ?? "—"}</td>
+                                <td>{p.plus_minus ?? "—"}</td>
+                                <td>{p.shots_on_goal ?? "—"}</td>
+                                <td>{p.hits ?? "—"}</td>
+                                <td>{p.blocked_shots ?? "—"}</td>
+                                <td>{p.penalty_minutes ?? "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Goalies section */}
+                  {nhlGoaliesByTeam[team] && nhlGoaliesByTeam[team].length > 0 && (
+                    <>
+                      <h4 style={{ margin: "0.75rem 0 0.25rem", fontSize: "0.9rem", color: "#475569" }}>Goalies</h4>
+                      <table className={styles.table} style={{ fontSize: "0.85rem" }}>
+                        <thead>
+                          <tr>
+                            <th>Player</th>
+                            <th>TOI</th>
+                            <th>SA</th>
+                            <th>SV</th>
+                            <th>GA</th>
+                            <th>SV%</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {nhlGoaliesByTeam[team].map((p) => (
+                            <tr key={`${team}-goalie-${p.player_name}`}>
+                              <td>{p.player_name}</td>
+                              <td>{p.toi ?? "—"}</td>
+                              <td>{p.shots_against ?? "—"}</td>
+                              <td>{p.saves ?? "—"}</td>
+                              <td>{p.goals_against ?? "—"}</td>
+                              <td>{p.save_percentage != null ? `${(p.save_percentage * 100).toFixed(1)}%` : "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
                 </div>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Player</th>
-                      <th>Minutes</th>
-                      <th>Points</th>
-                      <th>Reb</th>
-                      <th>Ast</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((p) => (
-                      <tr key={`${team}-${p.player_name}`}>
-                        <td>{p.player_name}</td>
-                        <td>{p.minutes ?? "—"}</td>
-                        <td>{p.points ?? "—"}</td>
-                        <td>{p.rebounds ?? "—"}</td>
-                        <td>{p.assists ?? "—"}</td>
+              ))}
+            </div>
+          )
+        ) : (
+          // Generic player stats (NBA, NCAAB, etc.)
+          Object.keys(playerStatsByTeam).length === 0 ? (
+            <div style={{ color: "#475569" }}>No player stats found.</div>
+          ) : (
+            <div className={styles.playerStatsGrid}>
+              {Object.entries(playerStatsByTeam).map(([team, rows]) => (
+                <div key={team} className={styles.teamStatsCard}>
+                  <div className={styles.teamStatsHeader}>
+                    <h3>{team}</h3>
+                  </div>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Player</th>
+                        <th>Minutes</th>
+                        <th>Points</th>
+                        <th>Reb</th>
+                        <th>Ast</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-          </div>
+                    </thead>
+                    <tbody>
+                      {rows.map((p) => (
+                        <tr key={`${team}-${p.player_name}`}>
+                          <td>{p.player_name}</td>
+                          <td>{p.minutes ?? "—"}</td>
+                          <td>{p.points ?? "—"}</td>
+                          <td>{p.rebounds ?? "—"}</td>
+                          <td>{p.assists ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </CollapsibleSection>
 
