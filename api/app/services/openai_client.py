@@ -125,6 +125,8 @@ class OpenAIClient:
 def get_openai_client() -> OpenAIClient | None:
     """Get OpenAI client if API key is configured.
 
+    Uses openai_model_summary setting (defaults to gpt-4o) for story generation.
+
     Returns:
         OpenAIClient if configured, None otherwise
     """
@@ -135,7 +137,7 @@ def get_openai_client() -> OpenAIClient | None:
         return None
 
     try:
-        return OpenAIClient()
+        return OpenAIClient(model=settings.openai_model_summary)
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {e}")
         return None

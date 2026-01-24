@@ -107,6 +107,7 @@ class GameSummary(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
+    has_story: bool
     play_count: int
     social_post_count: int
     has_required_data: bool
@@ -221,6 +222,7 @@ class GameMeta(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
+    has_story: bool
     play_count: int
     social_post_count: int
     home_team_x_handle: str | None = None

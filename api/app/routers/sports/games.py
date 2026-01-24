@@ -336,6 +336,7 @@ async def get_game(
         has_odds=bool(game.odds),
         has_social=bool(game.social_posts),
         has_pbp=bool(game.plays),
+        has_story=bool(game.timeline_artifacts),
         play_count=len(game.plays) if game.plays else 0,
         social_post_count=len(game.social_posts) if game.social_posts else 0,
         home_team_x_handle=game.home_team.x_handle if game.home_team else None,

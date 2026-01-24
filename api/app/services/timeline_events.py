@@ -65,7 +65,12 @@ def build_pbp_events(
             # Invert clock: 12:00 (720s) -> 0, 0:00 -> 720
             # So earlier in quarter has lower order (comes first)
             intra_phase_order = NBA_QUARTER_GAME_SECONDS - clock_seconds
-            progress = (quarter - 1 + (1 - clock_seconds / 720)) / 4
+            # Progress through regulation (0.0 to 1.0)
+            # For overtime quarters (>4), clamp to 1.0
+            raw_progress = (
+                quarter - 1 + (1 - clock_seconds / NBA_QUARTER_GAME_SECONDS)
+            ) / 4
+            progress = min(1.0, max(0.0, raw_progress))
 
         # Compute synthetic timestamp
         quarter_start = nba_quarter_start(game_start, quarter)

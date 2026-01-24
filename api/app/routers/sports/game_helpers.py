@@ -241,6 +241,8 @@ def summarize_game(game: db_models.SportsGame) -> GameSummary:
     plays = getattr(game, "plays", [])
     has_pbp = bool(plays)
     play_count = len(plays)
+    timeline_artifacts = getattr(game, "timeline_artifacts", [])
+    has_story = bool(timeline_artifacts)
 
     return GameSummary(
         id=game.id,
@@ -255,6 +257,7 @@ def summarize_game(game: db_models.SportsGame) -> GameSummary:
         has_odds=has_odds,
         has_social=has_social,
         has_pbp=has_pbp,
+        has_story=has_story,
         play_count=play_count,
         social_post_count=social_post_count,
         has_required_data=has_boxscore and has_odds,

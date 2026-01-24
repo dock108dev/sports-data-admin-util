@@ -47,6 +47,7 @@ export default function GameDetailClient() {
       { label: "Odds", ok: game.game.has_odds },
       { label: `Social (${game.game.social_post_count || 0})`, ok: game.game.has_social },
       { label: `PBP (${game.game.play_count || 0})`, ok: game.game.has_pbp },
+      { label: "Story", ok: game.game.has_story },
     ];
   }, [game]);
 

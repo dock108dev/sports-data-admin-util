@@ -90,14 +90,16 @@ def compute_nhl_data_health(
     if issues:
         logger.warning(
             "nhl_data_health_issues",
-            game_id=game.id,
-            status=game_status,
-            skater_count=skater_count,
-            goalie_count=goalie_count,
-            no_role_count=no_role_count,
-            has_non_hockey_fields=has_non_hockey_fields,
-            issues=issues,
-            is_healthy=is_healthy,
+            extra={
+                "game_id": game.id,
+                "status": game_status,
+                "skater_count": skater_count,
+                "goalie_count": goalie_count,
+                "no_role_count": no_role_count,
+                "has_non_hockey_fields": has_non_hockey_fields,
+                "issues": issues,
+                "is_healthy": is_healthy,
+            },
         )
 
     return NHLDataHealth(

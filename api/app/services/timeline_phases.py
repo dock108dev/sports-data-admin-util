@@ -11,6 +11,7 @@ from typing import Sequence
 from .. import db_models
 from .timeline_types import (
     NBA_HALFTIME_REAL_SECONDS,
+    NBA_OVERTIME_REAL_SECONDS,
     NBA_QUARTER_REAL_SECONDS,
     NBA_REGULATION_REAL_SECONDS,
     SOCIAL_POSTGAME_WINDOW_SECONDS,
@@ -66,10 +67,10 @@ def nba_quarter_start(game_start: datetime, quarter: int) -> datetime:
         return game_start + timedelta(
             seconds=3 * NBA_QUARTER_REAL_SECONDS + NBA_HALFTIME_REAL_SECONDS
         )
-    # Overtime quarters
+    # Overtime quarters: OT1 (quarter 5) starts at regulation end
     ot_num = quarter - 4
     return game_start + timedelta(
-        seconds=NBA_REGULATION_REAL_SECONDS + ot_num * 15 * 60
+        seconds=NBA_REGULATION_REAL_SECONDS + (ot_num - 1) * NBA_OVERTIME_REAL_SECONDS
     )
 
 
@@ -90,10 +91,10 @@ def nba_game_end(
     if max_quarter <= 4:
         return nba_regulation_end(game_start)
 
-    # Has overtime
+    # Has overtime - game ends at the end of the last OT period
     ot_count = max_quarter - 4
     return game_start + timedelta(
-        seconds=NBA_REGULATION_REAL_SECONDS + ot_count * 15 * 60
+        seconds=NBA_REGULATION_REAL_SECONDS + ot_count * NBA_OVERTIME_REAL_SECONDS
     )
 
 
@@ -141,7 +142,7 @@ def compute_phase_boundaries(
     if has_overtime:
         ot_start = q4_end
         for i in range(1, 5):  # Up to 4 OT periods
-            ot_end = ot_start + timedelta(seconds=15 * 60)
+            ot_end = ot_start + timedelta(seconds=NBA_OVERTIME_REAL_SECONDS)
             boundaries[f"ot{i}"] = (ot_start, ot_end)
             ot_start = ot_end
         boundaries["postgame"] = (

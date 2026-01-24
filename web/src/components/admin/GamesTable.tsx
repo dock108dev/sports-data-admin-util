@@ -12,7 +12,7 @@ interface GamesTableProps {
 
 /**
  * Table component for displaying game summaries.
- * Shows game metadata, scores, and data completeness indicators.
+ * Shows game metadata and data completeness indicators.
  */
 export function GamesTable({ games, detailLinkPrefix = "/admin/theory-bets/games", showCompleteness = true }: GamesTableProps) {
   return (
@@ -24,7 +24,6 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/theory-bets/games
             <th>Date</th>
             <th>League</th>
             <th>Teams</th>
-            <th>Score</th>
             {showCompleteness && (
               <>
                 <th>Boxscore</th>
@@ -32,6 +31,7 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/theory-bets/games
                 <th>Odds</th>
                 <th>Social</th>
                 <th>PBP</th>
+                <th>Story</th>
               </>
             )}
           </tr>
@@ -39,7 +39,7 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/theory-bets/games
         <tbody>
           {games.length === 0 ? (
             <tr>
-                <td colSpan={showCompleteness ? 10 : 5} className={styles.emptyCell}>
+                <td colSpan={showCompleteness ? 10 : 4} className={styles.emptyCell}>
                 No games found
               </td>
             </tr>
@@ -64,36 +64,31 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/theory-bets/games
                 <td>
                   {game.away_team} @ {game.home_team}
                 </td>
-                <td>
-                  {game.away_score !== null && game.home_score !== null
-                    ? `${game.away_score} - ${game.home_score}`
-                    : "—"}
-                </td>
                 {showCompleteness && (
                   <>
                     <td>
                       <span className={`${styles.statusDot} ${game.has_boxscore ? styles.dotOk : styles.dotMissing}`} />
-                      <span className={styles.statusLabel}>Team</span>
                     </td>
                     <td>
                       <span className={`${styles.statusDot} ${game.has_player_stats ? styles.dotOk : styles.dotMissing}`} />
-                      <span className={styles.statusLabel}>Players</span>
                     </td>
                     <td>
                       <span className={`${styles.statusDot} ${game.has_odds ? styles.dotOk : styles.dotMissing}`} />
-                      <span className={styles.statusLabel}>Odds</span>
                     </td>
                     <td>
                       <span className={`${styles.statusDot} ${game.has_social ? styles.dotOk : styles.dotMissing}`} />
-                      <span className={styles.statusLabel}>
-                        {game.social_post_count > 0 ? `${game.social_post_count}` : "—"}
-                      </span>
+                      {game.social_post_count > 0 && (
+                        <span className={styles.statusLabel}>{game.social_post_count}</span>
+                      )}
                     </td>
                     <td>
                       <span className={`${styles.statusDot} ${game.has_pbp ? styles.dotOk : styles.dotMissing}`} />
-                      <span className={styles.statusLabel}>
-                        {game.play_count > 0 ? `${game.play_count}` : "—"}
-                      </span>
+                      {game.play_count > 0 && (
+                        <span className={styles.statusLabel}>{game.play_count}</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`${styles.statusDot} ${game.has_story ? styles.dotOk : styles.dotMissing}`} />
                     </td>
                   </>
                 )}
@@ -105,4 +100,3 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/theory-bets/games
     </>
   );
 }
-

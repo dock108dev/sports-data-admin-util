@@ -113,12 +113,14 @@ def detect_run_windows(plays: list[dict[str, Any]]) -> list[RunWindow]:
         home_score = play.get("home_score", 0) or 0
         away_score = play.get("away_score", 0) or 0
 
-        # Initialize prev scores on first scoring play if not set
+        # Initialize prev scores from first observed score in this chapter
+        # Skip delta calculation on first play (we need a baseline)
         if prev_home_score is None or prev_away_score is None:
-            prev_home_score = 0
-            prev_away_score = 0
+            prev_home_score = home_score
+            prev_away_score = away_score
+            continue
 
-        # Calculate deltas
+        # Calculate deltas from previous play within this chapter
         home_delta = home_score - prev_home_score
         away_delta = away_score - prev_away_score
 

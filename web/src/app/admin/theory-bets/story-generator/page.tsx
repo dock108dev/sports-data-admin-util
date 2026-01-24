@@ -27,6 +27,7 @@ export default function StoryGeneratorLandingPage() {
   const [generationResult, setGenerationResult] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ current: number; total: number; status: string } | null>(null);
+  const [forceRegenerate, setForceRegenerate] = useState(false);
 
   useEffect(() => {
     loadGames();
@@ -69,7 +70,7 @@ export default function StoryGeneratorLandingPage() {
         start_date: startDate,
         end_date: endDate,
         leagues: selectedLeagues,
-        force: false,
+        force: forceRegenerate,
       });
       
       setJobId(job.job_id);
@@ -205,7 +206,18 @@ export default function StoryGeneratorLandingPage() {
               </div>
             </label>
           </div>
-          
+
+          <div className={styles.formRow}>
+            <label className={styles.checkbox}>
+              <input
+                type="checkbox"
+                checked={forceRegenerate}
+                onChange={(e) => setForceRegenerate(e.target.checked)}
+              />
+              Override existing stories (regenerate all)
+            </label>
+          </div>
+
           <button
             onClick={handleBulkGenerate}
             disabled={generating || !startDate || !endDate || selectedLeagues.length === 0}

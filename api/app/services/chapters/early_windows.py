@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
+from ...utils.datetime_utils import parse_clock_to_seconds
 from .beat_types import (
     BeatType,
     EARLY_WINDOW_DURATION_SECONDS,
@@ -113,15 +114,9 @@ def compute_early_window_stats(
 
         # Check each play in the chapter
         for play in chapter.plays:
-            # Get time remaining
+            # Get time remaining using shared utility
             clock_str = play.raw_data.get("game_clock")
-            time_remaining = None
-            if clock_str and ":" in clock_str:
-                try:
-                    parts = clock_str.split(":")
-                    time_remaining = int(parts[0]) * 60 + int(parts[1])
-                except (ValueError, IndexError):
-                    pass
+            time_remaining = parse_clock_to_seconds(clock_str)
 
             if time_remaining is None:
                 continue
@@ -147,15 +142,10 @@ def compute_early_window_stats(
         if chapter.chapter_id not in chapter_ids and found_early_plays:
             for play in chapter.plays:
                 clock_str = play.raw_data.get("game_clock")
-                if clock_str and ":" in clock_str:
-                    try:
-                        parts = clock_str.split(":")
-                        time_remaining = int(parts[0]) * 60 + int(parts[1])
-                        if time_remaining > EARLY_WINDOW_DURATION_SECONDS:
-                            chapter_ids.append(chapter.chapter_id)
-                            break
-                    except (ValueError, IndexError):
-                        pass
+                time_remaining = parse_clock_to_seconds(clock_str)
+                if time_remaining is not None and time_remaining > EARLY_WINDOW_DURATION_SECONDS:
+                    chapter_ids.append(chapter.chapter_id)
+                    break
 
     if not found_early_plays:
         return None

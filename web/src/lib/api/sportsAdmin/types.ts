@@ -29,6 +29,7 @@ export type GameSummary = {
   has_odds: boolean;
   has_social: boolean;
   has_pbp: boolean;
+  has_story: boolean;
   play_count: number;
   social_post_count: number;
   has_required_data: boolean;
@@ -246,6 +247,7 @@ export type AdminGameDetail = {
     has_odds: boolean;
     has_social: boolean;
     has_pbp: boolean;
+    has_story: boolean;
     play_count: number;
     social_post_count: number;
   };
