@@ -4,8 +4,11 @@
  * ISSUE 14: Wire GameStory Output to Admin UI
  */
 
-import type { GameStoryResponse, StoryStateResponse } from './types';
+import type { GameStoryResponse, StoryStateResponse, PipelineDebugResponse } from './types';
 import { getApiBase } from '../apiBase';
+
+// Re-export types for convenience
+export type { GameStoryResponse, StoryStateResponse, PipelineDebugResponse };
 
 function getApiBaseUrl(): string {
   return getApiBase({
@@ -32,6 +35,24 @@ export async function fetchGameStory(
 
   if (!response.ok) {
     throw new Error(`Failed to fetch game story: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch pipeline debug view showing data transformation from PBP → Story.
+ */
+export async function fetchPipelineDebug(
+  gameId: number
+): Promise<PipelineDebugResponse> {
+  const apiBase = getApiBaseUrl();
+  const response = await fetch(
+    `${apiBase}/api/admin/sports/games/${gameId}/story/pipeline`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch pipeline debug: ${response.statusText}`);
   }
 
   return response.json();

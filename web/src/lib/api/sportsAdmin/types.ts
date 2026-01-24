@@ -49,6 +49,7 @@ export type GameListResponse = {
   with_odds_count?: number;
   with_social_count?: number;
   with_pbp_count?: number;
+  with_story_count?: number;
 };
 
 export type TeamStat = {
@@ -322,4 +323,87 @@ export type JobResponse = {
   run_id: number;
   job_id: string | null;
   message: string;
+};
+
+/**
+ * Pipeline Stage Info: Overview of a single pipeline stage.
+ */
+export type PipelineStageInfo = {
+  stage_name: string;
+  description: string;
+  input_count: number | null;
+  output_count: number | null;
+};
+
+/**
+ * Pipeline Debug Response: Shows the full story generation pipeline.
+ *
+ * Raw PBP → Chapters → Sections → OpenAI Prompt → Story
+ */
+export type PipelineDebugResponse = {
+  game_id: number;
+  sport: string;
+
+  // Stage 1: Raw PBP sample
+  raw_pbp_sample: Array<Record<string, unknown>>;
+  total_plays: number;
+
+  // Stage 2: Chapters
+  chapters_summary: Array<{
+    index: number;
+    chapter_id: string;
+    period: number | null;
+    play_range: string;
+    play_count: number;
+    reason_codes: string[];
+    time_range: string | null;
+    sample_plays: Array<{
+      description: string;
+      score: string;
+    }>;
+  }>;
+  chapter_count: number;
+
+  // Stage 3: Sections
+  sections_summary: Array<{
+    index: number;
+    beat_type: string;
+    header: string;
+    chapters_included: string[];
+    start_score: Record<string, number>;
+    end_score: Record<string, number>;
+    notes: string[];
+  }>;
+  section_count: number;
+
+  // Stage 4: Render input summary
+  render_input_summary: {
+    sport: string;
+    home_team: string;
+    away_team: string;
+    target_word_count: number;
+    section_count: number;
+    sections_preview: Array<{
+      header: string;
+      beat_type: string;
+      team_stats_count: number;
+      player_stats_count: number;
+      notes_count: number;
+    }>;
+    closing: Record<string, unknown>;
+  } | null;
+
+  // Stage 5: OpenAI prompt
+  openai_prompt: string | null;
+
+  // Stage 6: AI response
+  ai_raw_response: string | null;
+
+  // Final output
+  compact_story: string | null;
+  word_count: number | null;
+  target_word_count: number | null;
+
+  // Pipeline overview
+  pipeline_stages: PipelineStageInfo[];
 };

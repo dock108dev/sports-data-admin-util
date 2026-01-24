@@ -127,6 +127,7 @@ class GameListResponse(BaseModel):
     with_odds_count: int | None = 0
     with_social_count: int | None = 0
     with_pbp_count: int | None = 0
+    with_story_count: int | None = 0
 
 
 class TeamStat(BaseModel):

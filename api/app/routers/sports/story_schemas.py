@@ -220,3 +220,74 @@ class BulkGenerateStatusResponse(BaseModel):
     result: dict[str, Any] | None = Field(
         None, description="Final result when complete"
     )
+
+
+# ============================================================================
+# PIPELINE DEBUG (for viewing data transformation flow)
+# ============================================================================
+
+
+class PipelineStageInfo(BaseModel):
+    """Info about a pipeline stage."""
+
+    stage_name: str
+    description: str
+    input_count: int | None = None
+    output_count: int | None = None
+
+
+class PipelineDebugResponse(BaseModel):
+    """
+    Debug view of the story generation pipeline.
+
+    Shows the data flow from raw PBP → chapters → sections → prompt → story.
+    """
+
+    game_id: int
+    sport: str
+
+    # Stage 1: Raw PBP sample
+    raw_pbp_sample: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="First 15 plays from raw PBP data",
+    )
+    total_plays: int = Field(0, description="Total number of plays in game")
+
+    # Stage 2: Chapters
+    chapters_summary: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Chapter breakdown with reason codes",
+    )
+    chapter_count: int = 0
+
+    # Stage 3: Sections
+    sections_summary: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Section breakdown with beat types and headers",
+    )
+    section_count: int = 0
+
+    # Stage 4: Render input (what gets sent to AI)
+    render_input_summary: dict[str, Any] | None = Field(
+        None, description="Structured data prepared for AI"
+    )
+
+    # Stage 5: OpenAI prompt
+    openai_prompt: str | None = Field(
+        None, description="The actual prompt sent to OpenAI"
+    )
+
+    # Stage 6: AI response
+    ai_raw_response: str | None = Field(
+        None, description="Raw response from OpenAI"
+    )
+
+    # Final output
+    compact_story: str | None = Field(None, description="Final rendered story")
+    word_count: int | None = None
+    target_word_count: int | None = None
+
+    # Pipeline stages overview
+    pipeline_stages: list[PipelineStageInfo] = Field(
+        default_factory=list, description="Overview of pipeline stages"
+    )

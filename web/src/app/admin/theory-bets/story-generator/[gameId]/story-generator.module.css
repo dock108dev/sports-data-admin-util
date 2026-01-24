@@ -497,3 +497,222 @@
   color: #10b981;
   font-family: monospace;
 }
+
+/* View Mode Tabs */
+.viewTabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.viewTab {
+  padding: 0.75rem 1.5rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+
+.viewTab:hover {
+  color: #374151;
+  background: #f9fafb;
+}
+
+.viewTabActive {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+}
+
+/* Pipeline View */
+.pipelineView {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pipelineStages {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 1rem;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.pipelineStage {
+  flex: 1;
+  min-width: 150px;
+  padding: 0.75rem;
+  background: white;
+  border: 1px solid #e0f2fe;
+  border-radius: 0.375rem;
+  text-align: center;
+}
+
+.stageName {
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: #0369a1;
+  margin-bottom: 0.25rem;
+}
+
+.stageDescription {
+  font-size: 0.7rem;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+
+.stageCounts {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+/* Pipeline Section */
+.pipelineSection {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.pipelineSection:hover {
+  border-color: #3b82f6;
+}
+
+.pipelineSectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  margin: 0;
+  background: #f9fafb;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+  user-select: none;
+}
+
+.pipelineSectionTitle span {
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.pipelineSectionContent {
+  padding: 1rem;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+  cursor: default;
+}
+
+/* Code/Prompt Blocks */
+.codeBlock {
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.promptBlock {
+  background: #fef3c7;
+  color: #78350f;
+  padding: 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  max-height: 600px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+/* Chapter/Section Summary Cards */
+.chapterSummaryCard {
+  padding: 0.75rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.chapterSummaryHeader {
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.25rem;
+}
+
+.chapterSummaryReasons {
+  color: #6b7280;
+  font-size: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.chapterSamplePlays {
+  padding-left: 0.5rem;
+  border-left: 2px solid #e5e7eb;
+}
+
+.samplePlay {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+
+.sectionSummaryCard {
+  padding: 0.75rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  margin-bottom: 0.5rem;
+}
+
+.sectionBeatType {
+  display: inline-block;
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.sectionHeader {
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.sectionScore {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.sectionChapters {
+  font-size: 0.7rem;
+  color: #9ca3af;
+  margin-top: 0.25rem;
+}
+
+.noData {
+  color: #9ca3af;
+  font-style: italic;
+  text-align: center;
+  padding: 2rem;
+}

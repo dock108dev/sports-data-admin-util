@@ -22,13 +22,14 @@ from sqlalchemy.orm import selectinload
 from ... import db_models
 from ...db import AsyncSession, get_db, AsyncSessionLocal
 from ...services.chapters import PipelineError, StoryValidationError
-from .story_builder import build_game_story_response
+from .story_builder import build_game_story_response, build_pipeline_debug_response
 from .story_schemas import (
     BulkGenerateAsyncResponse,
     BulkGenerateRequest,
     BulkGenerateStatusResponse,
     ChapterEntry,
     GameStoryResponse,
+    PipelineDebugResponse,
     PlayEntry,
     RegenerateRequest,
     RegenerateResponse,
@@ -426,6 +427,57 @@ async def get_game_story(
             await save_story_to_cache(session, game, story)
 
         return story
+    except PipelineError as e:
+        logger.error(f"Pipeline error for game {game_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Pipeline failed at stage '{e.stage}': {str(e)}",
+        )
+    except StoryValidationError as e:
+        logger.error(f"Validation error for game {game_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Story validation failed: {str(e)}",
+        )
+
+
+@router.get("/games/{game_id}/story/pipeline", response_model=PipelineDebugResponse)
+async def get_story_pipeline(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> PipelineDebugResponse:
+    """
+    Get the story generation pipeline debug view.
+
+    Shows the full data transformation from raw PBP to final story:
+    1. Raw PBP sample (first 15 plays)
+    2. Chapter breakdown with reason codes
+    3. Section breakdown with beat types and headers
+    4. The actual OpenAI prompt that was sent
+    5. The raw AI response
+    6. Final story output
+
+    This endpoint runs the full pipeline to capture all debug data.
+    """
+    result = await session.execute(
+        select(db_models.SportsGame)
+        .options(
+            selectinload(db_models.SportsGame.league),
+            selectinload(db_models.SportsGame.plays).selectinload(
+                db_models.SportsGamePlay.team
+            ),
+        )
+        .where(db_models.SportsGame.id == game_id)
+    )
+    game = result.scalar_one_or_none()
+
+    if not game:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
+
+    try:
+        return await build_pipeline_debug_response(game)
     except PipelineError as e:
         logger.error(f"Pipeline error for game {game_id}: {e}")
         raise HTTPException(

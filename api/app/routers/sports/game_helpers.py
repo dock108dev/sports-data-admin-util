@@ -225,8 +225,17 @@ def build_preview_context(
     )
 
 
-def summarize_game(game: db_models.SportsGame) -> GameSummary:
-    """Summarize game fields for list responses. Fails fast if core data missing."""
+def summarize_game(
+    game: db_models.SportsGame,
+    has_story: bool | None = None,
+) -> GameSummary:
+    """Summarize game fields for list responses. Fails fast if core data missing.
+
+    Args:
+        game: The game to summarize
+        has_story: Whether the game has a story in SportsGameStory table.
+            If None, defaults to False.
+    """
     if not game.league:
         raise ValueError(f"Game {game.id} missing league")
     if not game.home_team or not game.away_team:
@@ -241,8 +250,9 @@ def summarize_game(game: db_models.SportsGame) -> GameSummary:
     plays = getattr(game, "plays", [])
     has_pbp = bool(plays)
     play_count = len(plays)
-    timeline_artifacts = getattr(game, "timeline_artifacts", [])
-    has_story = bool(timeline_artifacts)
+    # has_story is now passed in from caller (checked against SportsGameStory table)
+    if has_story is None:
+        has_story = False
 
     return GameSummary(
         id=game.id,

@@ -149,6 +149,14 @@ async def list_games(
             select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
         )
     )
+    with_story_count_stmt = count_stmt.where(
+        exists(
+            select(1).where(
+                db_models.SportsGameStory.game_id == db_models.SportsGame.id,
+                db_models.SportsGameStory.has_compact_story.is_(True),
+            )
+        )
+    )
 
     with_boxscore_count = (await session.execute(with_boxscore_count_stmt)).scalar_one()
     with_player_stats_count = (
@@ -157,9 +165,25 @@ async def list_games(
     with_odds_count = (await session.execute(with_odds_count_stmt)).scalar_one()
     with_social_count = (await session.execute(with_social_count_stmt)).scalar_one()
     with_pbp_count = (await session.execute(with_pbp_count_stmt)).scalar_one()
+    with_story_count = (await session.execute(with_story_count_stmt)).scalar_one()
+
+    # Query which games have stories in SportsGameStory table
+    game_ids = [game.id for game in games]
+    if game_ids:
+        story_check_stmt = select(db_models.SportsGameStory.game_id).where(
+            db_models.SportsGameStory.game_id.in_(game_ids),
+            db_models.SportsGameStory.has_compact_story.is_(True),
+        )
+        story_result = await session.execute(story_check_stmt)
+        games_with_stories = set(story_result.scalars().all())
+    else:
+        games_with_stories = set()
 
     next_offset = offset + limit if offset + limit < total else None
-    summaries = [summarize_game(game) for game in games]
+    summaries = [
+        summarize_game(game, has_story=game.id in games_with_stories)
+        for game in games
+    ]
 
     return GameListResponse(
         games=summaries,
@@ -170,6 +194,7 @@ async def list_games(
         with_odds_count=with_odds_count,
         with_social_count=with_social_count,
         with_pbp_count=with_pbp_count,
+        with_story_count=with_story_count,
     )
 
 
@@ -315,6 +340,15 @@ async def get_game(
         for play in sorted(game.plays, key=lambda p: p.play_index)
     ]
 
+    # Check if game has a story in SportsGameStory table
+    story_check = await session.execute(
+        select(db_models.SportsGameStory.id).where(
+            db_models.SportsGameStory.game_id == game_id,
+            db_models.SportsGameStory.has_compact_story.is_(True),
+        ).limit(1)
+    )
+    has_story = story_check.scalar() is not None
+
     meta = GameMeta(
         id=game.id,
         league_code=game.league.code if game.league else "UNKNOWN",
@@ -336,7 +370,7 @@ async def get_game(
         has_odds=bool(game.odds),
         has_social=bool(game.social_posts),
         has_pbp=bool(game.plays),
-        has_story=bool(game.timeline_artifacts),
+        has_story=has_story,
         play_count=len(game.plays) if game.plays else 0,
         social_post_count=len(game.social_posts) if game.social_posts else 0,
         home_team_x_handle=game.home_team.x_handle if game.home_team else None,

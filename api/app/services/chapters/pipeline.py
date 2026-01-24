@@ -111,6 +111,8 @@ class PipelineResult:
     classifications: list[BeatClassification] | None = None
     snapshots: list[RunningStatsSnapshot] | None = None
     render_input: StoryRenderInput | None = None
+    prompt_used: str | None = None
+    raw_ai_response: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for API response."""
@@ -367,6 +369,8 @@ def build_game_story(
         result.classifications = classifications
         result.snapshots = snapshots
         result.render_input = render_input
+        result.prompt_used = render_result.prompt_used
+        result.raw_ai_response = render_result.raw_response
 
     logger.info(
         f"Pipeline complete for game {game_id}: {render_result.word_count} words"
