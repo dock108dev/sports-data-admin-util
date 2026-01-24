@@ -158,3 +158,32 @@ def post_reveal_level(post: db_models.GameSocialPost) -> RevealLevel:
     if classification.reveal_risk:
         return RevealLevel.post
     return RevealLevel.pre
+
+
+class TimelineDiagnosticResponse(BaseModel):
+    """Diagnostic breakdown of timeline artifact contents."""
+
+    game_id: int
+    sport: str
+    timeline_version: str
+    generated_at: datetime
+    total_events: int
+    event_type_counts: dict[str, int]
+    first_5_events: list[dict[str, Any]]
+    last_5_events: list[dict[str, Any]]
+    tweet_timestamps: list[str]
+    pbp_timestamp_range: dict[str, str | None]
+
+
+class CompactTimelineResponse(BaseModel):
+    """Compact timeline with semantic compression applied."""
+
+    game_id: int
+    sport: str
+    timeline_version: str
+    compression_level: int
+    original_event_count: int
+    compressed_event_count: int
+    retention_rate: float
+    timeline_json: list[dict[str, Any]]
+    summary_json: dict[str, Any] | None

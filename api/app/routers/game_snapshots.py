@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import logging
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
 from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import selectinload
 
@@ -18,6 +16,7 @@ from ..services.recap_generator import build_recap
 from ..services.reveal_levels import parse_reveal_level
 from ..utils.datetime_utils import now_utc
 from .game_snapshot_models import (
+    CompactTimelineResponse,
     GameSnapshot,
     GameSnapshotResponse,
     PbpResponse,
@@ -25,6 +24,7 @@ from .game_snapshot_models import (
     SocialPostSnapshot,
     SocialResponse,
     TimelineArtifactStoredResponse,
+    TimelineDiagnosticResponse,
     chunk_plays_by_period,
     post_reveal_level,
     team_snapshot,
@@ -405,21 +405,6 @@ async def get_game_timeline(
     )
 
 
-class TimelineDiagnosticResponse(BaseModel):
-    """Diagnostic breakdown of timeline artifact contents."""
-
-    game_id: int
-    sport: str
-    timeline_version: str
-    generated_at: datetime
-    total_events: int
-    event_type_counts: dict[str, int]
-    first_5_events: list[dict[str, Any]]
-    last_5_events: list[dict[str, Any]]
-    tweet_timestamps: list[str]
-    pbp_timestamp_range: dict[str, str | None]
-
-
 @router.get("/games/{game_id}/timeline/diagnostic")
 async def get_game_timeline_diagnostic(
     game_id: int,
@@ -474,20 +459,6 @@ async def get_game_timeline_diagnostic(
         tweet_timestamps=tweet_timestamps,
         pbp_timestamp_range={"start": pbp_start, "end": pbp_end},
     )
-
-
-class CompactTimelineResponse(BaseModel):
-    """Compact timeline with semantic compression applied."""
-
-    game_id: int
-    sport: str
-    timeline_version: str
-    compression_level: int
-    original_event_count: int
-    compressed_event_count: int
-    retention_rate: float
-    timeline_json: list[dict[str, Any]]
-    summary_json: dict[str, Any] | None
 
 
 @router.get("/games/{game_id}/timeline/compact", response_model=CompactTimelineResponse)

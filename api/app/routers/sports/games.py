@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, exists, func, select
 from sqlalchemy.orm import selectinload
 
 from ... import db_models
-from ...celery_client import get_celery_app
 from ...db import AsyncSession, get_db
 from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
@@ -38,117 +37,21 @@ from .game_helpers import (
     serialize_social_posts,
     summarize_game,
 )
+from .nhl_helpers import compute_nhl_data_health
 from .schemas import (
     GameDetailResponse,
     GameListResponse,
     GameMeta,
     GamePreviewScoreResponse,
     JobResponse,
-    NHLDataHealth,
     NHLGoalieStat,
     NHLSkaterStat,
     OddsEntry,
-    ScrapeRunConfig,
 )
 from ..game_snapshot_models import TimelineArtifactResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-def _compute_nhl_data_health(
-    game: "db_models.SportsGame",
-    player_boxscores: list,
-) -> NHLDataHealth | None:
-    """Compute NHL-specific data health indicators.
-
-    Returns None for non-NHL games.
-    For NHL games, returns health status that distinguishes between:
-    - Legitimate empty (game not yet played)
-    - Ingestion failure (completed game with missing player data)
-    - Schema pollution (non-hockey fields like rebounds/yards present)
-    """
-    league_code = game.league.code if game.league else None
-    if league_code != "NHL":
-        return None
-
-    # Count skaters and goalies by checking player_role in raw stats
-    skater_count = 0
-    goalie_count = 0
-    no_role_count = 0
-    has_non_hockey_fields = False
-
-    # Non-hockey fields that should never appear in NHL player data
-    non_hockey_fields = {"rebounds", "yards", "touchdowns", "trb", "yds", "td"}
-
-    for player in player_boxscores:
-        stats = player.stats or {}
-        player_role = stats.get("player_role")
-        if player_role == "skater":
-            skater_count += 1
-        elif player_role == "goalie":
-            goalie_count += 1
-        else:
-            no_role_count += 1
-
-        # Check for non-hockey field pollution
-        if any(field in stats for field in non_hockey_fields):
-            has_non_hockey_fields = True
-
-    # Determine health status
-    issues: list[str] = []
-    is_healthy = True
-
-    # Game status determines what we expect
-    game_status = (game.status or "").lower()
-    is_completed = game_status in ("completed", "final", "finished")
-
-    if is_completed:
-        # Completed games SHOULD have player data
-        if skater_count == 0:
-            issues.append("zero_skaters_for_completed_game")
-            is_healthy = False
-        if goalie_count == 0:
-            issues.append("zero_goalies_for_completed_game")
-            is_healthy = False
-
-        # Additional sanity checks for NHL
-        # Each team should have ~18-20 skaters and 1-2 goalies
-        if skater_count > 0 and skater_count < 20:
-            issues.append(f"low_skater_count:{skater_count}")
-            # Not necessarily unhealthy, but notable
-
-    # Check for players without proper role assignment
-    if no_role_count > 0:
-        issues.append(f"players_without_role:{no_role_count}")
-        is_healthy = False
-
-    # Check for schema pollution (non-hockey fields)
-    if has_non_hockey_fields:
-        issues.append("non_hockey_fields_detected")
-        # This indicates legacy or corrupted data
-        is_healthy = False
-
-    # Log issues for visibility
-    if issues:
-        logger.warning(
-            "nhl_data_health_issues",
-            game_id=game.id,
-            status=game_status,
-            skater_count=skater_count,
-            goalie_count=goalie_count,
-            no_role_count=no_role_count,
-            has_non_hockey_fields=has_non_hockey_fields,
-            issues=issues,
-            is_healthy=is_healthy,
-        )
-
-    return NHLDataHealth(
-        skater_count=skater_count,
-        goalie_count=goalie_count,
-        is_healthy=is_healthy,
-        issues=issues,
-    )
 
 
 @router.get("/games", response_model=GameListResponse)
@@ -473,7 +376,7 @@ async def get_game(
     }
 
     # Compute NHL-specific data health (None for non-NHL games)
-    data_health = _compute_nhl_data_health(game, game.player_boxscores)
+    data_health = compute_nhl_data_health(game, game.player_boxscores)
 
     return GameDetailResponse(
         game=meta,
@@ -488,61 +391,6 @@ async def get_game(
         raw_payloads=raw_payloads,
         data_health=data_health,
     )
-
-
-async def _enqueue_single_game_run(
-    session: AsyncSession,
-    game: db_models.SportsGame,
-    *,
-    include_boxscores: bool,
-    include_odds: bool,
-    scraper_type: str,
-) -> JobResponse:
-    """Create a scrape run and enqueue it for a single game."""
-    await session.refresh(game, attribute_names=["league"])
-    if not game.league:
-        raise HTTPException(status_code=400, detail="League missing for game")
-
-    config = ScrapeRunConfig(
-        league_code=game.league.code,
-        season=game.season,
-        season_type=getattr(game, "season_type", "regular"),
-        start_date=game.game_date.date(),
-        end_date=game.game_date.date(),
-        boxscores=include_boxscores,
-        odds=include_odds,
-        social=False,
-        pbp=False,
-        only_missing=False,
-        updated_before=None,
-        include_books=None,
-    )
-
-    run = db_models.SportsScrapeRun(
-        scraper_type=scraper_type,
-        league_id=game.league_id,
-        season=game.season,
-        season_type=getattr(game, "season_type", "regular"),
-        start_date=datetime.combine(game.game_date.date(), datetime.min.time()),
-        end_date=datetime.combine(game.game_date.date(), datetime.min.time()),
-        status="pending",
-        requested_by="admin_boxscore_viewer",
-        config=config.model_dump(by_alias=False),
-    )
-    session.add(run)
-    await session.flush()
-
-    worker_payload = config.to_worker_payload()
-    celery_app = get_celery_app()
-    async_result = celery_app.send_task(
-        "run_scrape_job",
-        args=[run.id, worker_payload],
-        queue="bets-scraper",
-        routing_key="bets-scraper",
-    )
-    run.job_id = async_result.id
-
-    return JobResponse(run_id=run.id, job_id=async_result.id, message="Job enqueued")
 
 
 @router.post("/games/{game_id}/rescrape", response_model=JobResponse)
