@@ -21,7 +21,7 @@ from ..models import (
     NormalizedTeamBoxscore,
     TeamIdentity,
 )
-from ..utils import extract_all_stats_from_row, get_stat_from_row, parse_float, parse_int
+from ..utils import extract_all_stats_from_row, get_stat_from_row, parse_float, parse_int, parse_time_to_minutes
 from .base import BaseSportsReferenceScraper, ScraperError
 from .nhl_sportsref_helpers import (
     parse_pbp_period_marker,
@@ -119,9 +119,16 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
         team_abbr: str,
         team_identity: TeamIdentity,
         is_home: bool,
-        player_type: str,
+        player_role: str,
     ) -> list[NormalizedPlayerBoxscore]:
-        """Parse individual player rows from a stats table."""
+        """Parse individual player rows from a stats table.
+
+        Enforces strict role separation: skaters and goalies have distinct field extraction.
+        player_role must be "skater" or "goalie".
+        """
+        if player_role not in ("skater", "goalie"):
+            raise ValueError(f"Invalid player_role: {player_role}. Must be 'skater' or 'goalie'.")
+
         players: list[NormalizedPlayerBoxscore] = []
         tbody = table.find("tbody")
         if not tbody:
@@ -134,22 +141,64 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
         skipped_thead = 0
         skipped_no_player_cell = 0
         skipped_no_player_link = 0
+        skipped_empty_net = 0
         parsed_count = 0
 
-        for row in all_rows:
+        for row_index, row in enumerate(all_rows):
             row_classes = row.get("class", [])
             if "thead" in row_classes:
                 skipped_thead += 1
+                logger.debug(
+                    "player_row_skipped",
+                    table_id=table_id,
+                    row_index=row_index,
+                    reason="thead_class",
+                )
                 continue
 
-            player_cell = row.find("th", {"data-stat": "player"})
+            # Hockey Reference uses <td> for player cells in boxscores (NOT <th>)
+            # Per NHL HTML Selector Spec: player names are ALWAYS in <td data-stat="player">
+            # <th data-stat="player"> only appears in column headers (thead), never in data rows
+            player_cell = row.find("td", {"data-stat": "player"})
+            if not player_cell:
+                # Fallback to <th> for defensive compatibility, but this should never match
+                player_cell = row.find("th", {"data-stat": "player"})
             if not player_cell:
                 skipped_no_player_cell += 1
+                logger.debug(
+                    "player_row_skipped",
+                    table_id=table_id,
+                    row_index=row_index,
+                    reason="no_player_cell",
+                )
                 continue
 
             player_link = player_cell.find("a")
             if not player_link:
+                # No player link - could be "Empty Net" row or other non-player row
+                player_text = player_cell.text.strip()
+
+                # Explicitly detect "Empty Net" rows in goalie tables
+                if player_text.lower() == "empty net" and player_role == "goalie":
+                    skipped_empty_net += 1
+                    logger.info(
+                        "nhl_empty_net_row_skipped",
+                        table_id=table_id,
+                        team=team_abbr,
+                        row_index=row_index,
+                        reason="empty_net_not_a_player",
+                    )
+                    continue
+
+                # Other non-player rows (unexpected)
                 skipped_no_player_link += 1
+                logger.debug(
+                    "player_row_skipped",
+                    table_id=table_id,
+                    row_index=row_index,
+                    reason="no_player_link",
+                    cell_text=player_text,
+                )
                 continue
 
             player_name = player_link.text.strip()
@@ -157,36 +206,69 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
             player_id = href.split("/")[-1].replace(".html", "") if href else player_name
 
             raw_stats = extract_all_stats_from_row(row)
-            # Add player_type to raw_stats for filtering later
-            raw_stats["player_type"] = player_type
 
-            # Hockey uses different stat names than basketball
-            # Skaters: toi (time on ice), g (goals), a (assists), pts (points), s (shots)
-            # Goalies: toi, sa (shots against), ga (goals against), sv (saves), sv_pct
-            players.append(
-                NormalizedPlayerBoxscore(
+            # Build player boxscore with role-specific field extraction
+            # Common fields for both roles
+            toi = parse_time_to_minutes(get_stat_from_row(row, "time_on_ice"))
+
+            if player_role == "skater":
+                # SKATER-ONLY STATS
+                # Skaters: g (goals), a (assists), pts (points), s (shots), shifts, etc.
+                # Goalie fields MUST remain None for skaters
+                player = NormalizedPlayerBoxscore(
                     player_id=player_id,
                     player_name=player_name,
                     team=team_identity,
-                    minutes=parse_float(get_stat_from_row(row, "toi")),  # Time on ice
-                    points=parse_int(get_stat_from_row(row, "pts")),
-                    rebounds=None,  # Not applicable to hockey
-                    assists=parse_int(get_stat_from_row(row, "a")),
-                    shots_on_goal=parse_int(get_stat_from_row(row, "s")),  # Shots for skaters
+                    player_role="skater",
+                    minutes=toi,
+                    # Skater stats
+                    goals=parse_int(get_stat_from_row(row, "goals")),
+                    assists=parse_int(get_stat_from_row(row, "assists")),
+                    points=parse_int(get_stat_from_row(row, "points")),
+                    shots_on_goal=parse_int(get_stat_from_row(row, "shots")),
+                    # Goalie stats explicitly None (enforced separation)
+                    saves=None,
+                    goals_against=None,
+                    shots_against=None,
+                    save_percentage=None,
                     raw_stats=raw_stats,
                 )
-            )
+            else:
+                # GOALIE-ONLY STATS
+                # Goalies: sa (shots against), ga (goals against), sv (saves), sv_pct
+                # Skater fields MUST remain None for goalies
+                player = NormalizedPlayerBoxscore(
+                    player_id=player_id,
+                    player_name=player_name,
+                    team=team_identity,
+                    player_role="goalie",
+                    minutes=toi,
+                    # Goalie stats
+                    saves=parse_int(get_stat_from_row(row, "saves")),
+                    goals_against=parse_int(get_stat_from_row(row, "goals_against")),
+                    shots_against=parse_int(get_stat_from_row(row, "shots_against")),
+                    save_percentage=parse_float(get_stat_from_row(row, "save_pct")),
+                    # Skater stats explicitly None (enforced separation)
+                    goals=None,
+                    assists=None,
+                    points=None,
+                    shots_on_goal=None,
+                    raw_stats=raw_stats,
+                )
+
+            players.append(player)
             parsed_count += 1
 
         logger.info(
             "player_stats_extraction_complete",
             team=team_abbr,
-            player_type=player_type,
+            player_role=player_role,
             is_home=is_home,
             total_rows=len(all_rows),
             skipped_thead=skipped_thead,
             skipped_no_player_cell=skipped_no_player_cell,
             skipped_no_player_link=skipped_no_player_link,
+            skipped_empty_net=skipped_empty_net,
             parsed_players=parsed_count,
         )
 

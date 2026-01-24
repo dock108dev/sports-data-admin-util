@@ -90,7 +90,7 @@ class NHLHockeyReferenceSeasonStatsScraper(BaseSportsReferenceScraper):
     def fetch_team_stats(self, season: int, season_type: str = "regular") -> list[NormalizedTeamSeasonStats]:
         url = self.team_stats_url(season)
         soup = self.fetch_html(url)
-        table = self._find_table(soup, "stats", alternate_ids=["team_stats", "all_team_stats"])
+        table = self._find_table(soup, "stats", alternate_ids=["all_stats", "team_stats"])
         if not table:
             logger.warning("nhl_team_stats_table_not_found", url=url, season=season)
             return []
@@ -105,7 +105,8 @@ class NHLHockeyReferenceSeasonStatsScraper(BaseSportsReferenceScraper):
             if "thead" in (row.get("class") or []):
                 continue
 
-            team_cell = row.find("th", {"data-stat": "team_name"}) or row.find("th", {"data-stat": "team"})
+            # Hockey Reference uses <td> for team_name (not <th>)
+            team_cell = row.find("td", {"data-stat": "team_name"}) or row.find("th", {"data-stat": "team_name"})
             if not team_cell:
                 continue
 
@@ -123,13 +124,15 @@ class NHLHockeyReferenceSeasonStatsScraper(BaseSportsReferenceScraper):
             )
 
             raw_stats = extract_all_stats_from_row(row)
-            games_played = parse_int(self._first_stat(raw_stats, "games_played", "gp", "g"))
+            # Hockey Reference uses these data-stat names:
+            # games, wins, losses, losses_ot, points, goals, opp_goals
+            games_played = parse_int(self._first_stat(raw_stats, "games", "games_played", "gp"))
             wins = parse_int(self._first_stat(raw_stats, "wins", "w"))
             losses = parse_int(self._first_stat(raw_stats, "losses", "l"))
-            overtime_losses = parse_int(self._first_stat(raw_stats, "ot_losses", "otl"))
+            overtime_losses = parse_int(self._first_stat(raw_stats, "losses_ot", "ot_losses", "otl"))
             points = parse_int(self._first_stat(raw_stats, "points", "pts"))
-            goals_for = parse_int(self._first_stat(raw_stats, "goals_for", "gf"))
-            goals_against = parse_int(self._first_stat(raw_stats, "goals_against", "ga"))
+            goals_for = parse_int(self._first_stat(raw_stats, "goals", "goals_for", "gf"))
+            goals_against = parse_int(self._first_stat(raw_stats, "opp_goals", "goals_against", "ga"))
             goal_diff = parse_int(self._first_stat(raw_stats, "goal_diff", "diff"))
             shots_for = parse_int(self._first_stat(raw_stats, "shots", "shots_for", "s"))
             shots_against = parse_int(self._first_stat(raw_stats, "shots_against", "sa"))
@@ -178,7 +181,12 @@ class NHLHockeyReferenceSeasonStatsScraper(BaseSportsReferenceScraper):
             if "thead" in (row.get("class") or []):
                 continue
 
-            player_cell = row.find("th", {"data-stat": "player"})
+            # Hockey Reference uses "name_display" for player name cell (as <td>, not <th>)
+            player_cell = row.find("td", {"data-stat": "name_display"})
+            if not player_cell:
+                player_cell = row.find("th", {"data-stat": "name_display"})
+            if not player_cell:
+                player_cell = row.find("td", {"data-stat": "player"})
             if not player_cell:
                 continue
             player_link = player_cell.find("a")
@@ -189,7 +197,7 @@ class NHLHockeyReferenceSeasonStatsScraper(BaseSportsReferenceScraper):
             player_id = href.split("/")[-1].replace(".html", "") if href else player_name
 
             raw_stats = extract_all_stats_from_row(row)
-            team_abbr = self._first_stat(raw_stats, "team_id", "team", "tm")
+            team_abbr = self._first_stat(raw_stats, "team_name_abbr", "team_id", "team", "tm")
             if team_abbr:
                 team_abbr = team_abbr.strip().upper()
             team_identity = None
@@ -205,11 +213,12 @@ class NHLHockeyReferenceSeasonStatsScraper(BaseSportsReferenceScraper):
                 )
 
             position = self._first_stat(raw_stats, "pos", "position")
-            games_played = parse_int(self._first_stat(raw_stats, "games_played", "gp", "g"))
+            # Skaters use "games", goalies use "goalie_games"
+            games_played = parse_int(self._first_stat(raw_stats, "games", "goalie_games", "games_played", "gp"))
             goals = parse_int(self._first_stat(raw_stats, "goals", "g"))
             assists = parse_int(self._first_stat(raw_stats, "assists", "a"))
             points = parse_int(self._first_stat(raw_stats, "points", "pts"))
-            toi = parse_time_to_minutes(self._first_stat(raw_stats, "toi_avg", "toi"))
+            toi = parse_time_to_minutes(self._first_stat(raw_stats, "time_on_ice_avg", "time_on_ice", "toi_avg", "toi"))
 
             payloads.append(
                 NormalizedPlayerSeasonStats(
@@ -239,14 +248,14 @@ class NHLHockeyReferenceSeasonStatsScraper(BaseSportsReferenceScraper):
         skater_soup = self.fetch_html(skater_url)
         goalie_soup = self.fetch_html(goalie_url)
 
-        skater_table = self._find_table(skater_soup, "skaters", alternate_ids=["skaters_stats", "all_skaters"])
-        goalie_table = self._find_table(goalie_soup, "goalies", alternate_ids=["goalies_stats", "all_goalies"])
+        skater_table = self._find_table(skater_soup, "player_stats", alternate_ids=["all_player_stats", "skaters"])
+        goalie_table = self._find_table(goalie_soup, "goalie_stats", alternate_ids=["all_goalie_stats", "goalies"])
 
         payloads: list[NormalizedPlayerSeasonStats] = []
         if skater_table:
             payloads.extend(self._parse_player_table(skater_table, season, season_type, "skater"))
         else:
-            logger.warning("nhl_skater_stats_table_not_found", season=season)
+            logger.warning("nhl_player_stats_table_not_found", season=season)
 
         if goalie_table:
             payloads.extend(self._parse_player_table(goalie_table, season, season_type, "goalie"))

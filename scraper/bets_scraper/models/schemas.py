@@ -53,14 +53,22 @@ class NormalizedPlayerBoxscore(BaseModel):
     player_id: str
     player_name: str
     team: TeamIdentity
+    player_role: str | None = None  # "skater" or "goalie" for NHL; None for other sports
     minutes: float | None = None
     points: int | None = None
     rebounds: int | None = None
     assists: int | None = None
     yards: int | None = None
     touchdowns: int | None = None
+    # Skater stats (NHL)
     shots_on_goal: int | None = None
     penalties: int | None = None
+    goals: int | None = None
+    # Goalie stats (NHL)
+    saves: int | None = None
+    goals_against: int | None = None
+    shots_against: int | None = None
+    save_percentage: float | None = None
     raw_stats: dict = Field(default_factory=dict)
 
 

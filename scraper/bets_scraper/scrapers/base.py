@@ -9,7 +9,7 @@ from typing import Iterable, Iterator, Sequence
 
 import httpx
 from bs4 import BeautifulSoup, Tag
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 from ..config import settings
 from ..logging import logger
@@ -22,6 +22,13 @@ from ..utils.parsing import parse_int
 
 class ScraperError(RuntimeError):
     """Raised when a scraper encounters an unrecoverable error."""
+
+
+class NoGamesFoundError(ScraperError):
+    """Raised when no games are found for a date (e.g., redirect detected).
+
+    This is not retried - it's an expected condition, not a failure.
+    """
 
 
 # HTMLCache moved to utils/cache.py
@@ -91,7 +98,11 @@ class BaseSportsReferenceScraper:
             time.sleep(wait_time)
         self._last_request_time = time.time()
 
-    @retry(wait=wait_exponential(multiplier=30, min=60, max=300), stop=stop_after_attempt(2))
+    @retry(
+        wait=wait_exponential(multiplier=30, min=60, max=300),
+        stop=stop_after_attempt(2),
+        retry=retry_if_not_exception_type(NoGamesFoundError),
+    )
     def _fetch_from_network(self, url: str) -> str:
         """Fetch HTML from network with polite delays and retry logic."""
         self._polite_delay()
@@ -111,7 +122,7 @@ class BaseSportsReferenceScraper:
         if final_url != url and "?" not in final_url:
             # Redirected to a different page (likely main page with no query params)
             logger.info("redirect_detected_no_games", original_url=url, final_url=final_url)
-            raise ScraperError(f"Redirected from {url} to {final_url} (no games for this date)")
+            raise NoGamesFoundError(f"No games found: redirected from {url} to {final_url}")
 
         return response.text
 
@@ -161,6 +172,11 @@ class BaseSportsReferenceScraper:
                 for game in games_list:
                     yield game
                 time.sleep(random.uniform(self._day_delay_min, self._day_delay_max))
+            except NoGamesFoundError:
+                # No games for this date - not an error, just continue to next date
+                logger.debug("scraper_no_games_for_date", day=str(day), league=self.league_code)
+                time.sleep(random.uniform(self._day_delay_min, self._day_delay_max))
+                continue
             except ScraperError as exc:
                 logger.error("scraper_date_error", day=str(day), error=str(exc), league=self.league_code, exc_info=True)
                 time.sleep(random.uniform(self._error_delay_min, self._error_delay_max))
