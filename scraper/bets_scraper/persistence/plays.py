@@ -192,8 +192,21 @@ def upsert_plays(
                 raw_data=play.raw_data,
                 updated_at=now_utc(),
             )
-            .on_conflict_do_nothing(
+            .on_conflict_do_update(
                 index_elements=["game_id", "play_index"],
+                set_={
+                    "quarter": play.quarter,
+                    "game_clock": play.game_clock,
+                    "play_type": play.play_type,
+                    "team_id": team_id,
+                    "player_id": play.player_id,
+                    "player_name": play.player_name,
+                    "description": play.description,
+                    "home_score": play.home_score,
+                    "away_score": play.away_score,
+                    "raw_data": play.raw_data,
+                    "updated_at": now_utc(),
+                },
             )
         )
         result = session.execute(stmt)

@@ -6,7 +6,6 @@ from celery import shared_task
 
 from ..logging import logger
 from ..services.ingestion import run_ingestion
-from ..services.scheduler import schedule_ingestion_runs
 from ..services.timeline_generator import (
     generate_missing_timelines,
     generate_all_needed_timelines,

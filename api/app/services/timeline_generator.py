@@ -34,6 +34,63 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# STUB FUNCTIONS (Not Yet Implemented)
+# These are placeholders for future AI-powered analysis features
+# =============================================================================
+
+
+def build_nba_summary(game: db_models.SportsGame) -> dict[str, Any]:
+    """Build basic summary dict from game data.
+
+    Returns minimal game metadata for timeline context.
+    """
+    return {
+        "game_id": game.id,
+        "home_team": game.home_team.name if game.home_team else None,
+        "away_team": game.away_team.name if game.away_team else None,
+        "home_score": game.home_score,
+        "away_score": game.away_score,
+        "status": game.status,
+    }
+
+
+async def build_game_analysis_async(
+    timeline: list[dict[str, Any]],
+    summary: dict[str, Any],
+    game_id: int,
+    sport: str,
+    timeline_version: str,
+    game_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Build game analysis from timeline data.
+
+    NOT YET IMPLEMENTED - placeholder for future AI analysis.
+    Returns minimal structure with empty chapters.
+    """
+    return {
+        "chapters": [],
+        "key_moments": [],
+        "game_flow": {},
+    }
+
+
+async def build_summary_from_timeline_async(
+    timeline: list[dict[str, Any]],
+    game_analysis: dict[str, Any],
+) -> dict[str, Any]:
+    """Generate AI summary from timeline and analysis.
+
+    NOT YET IMPLEMENTED - placeholder for future AI summary generation.
+    Returns empty summary structure.
+    """
+    return {
+        "ai_generated": False,
+        "summary_text": "",
+        "highlights": [],
+    }
+
+
+# =============================================================================
 # CONSTANTS
 # =============================================================================
 

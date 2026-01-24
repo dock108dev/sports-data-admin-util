@@ -350,4 +350,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) and [INFRA.md](INFRA.md).
 5. **Structure before narrative** — Chapters are deterministic
 6. **No future knowledge** — AI sees only prior chapters
 
-See [AGENTS.md](../AGENTS.md) for coding standards.
+See [CLAUDE.md](../CLAUDE.md) for coding standards.

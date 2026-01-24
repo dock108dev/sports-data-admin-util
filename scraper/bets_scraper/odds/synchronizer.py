@@ -224,7 +224,6 @@ class OddsSynchronizer:
         """Persist odds snapshots to database."""
         inserted = 0
         skipped = 0
-        games_created = 0
 
         with get_session() as session:
             for snapshot in snapshots:

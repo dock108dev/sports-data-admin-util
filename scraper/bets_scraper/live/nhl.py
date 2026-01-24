@@ -247,8 +247,18 @@ class NHLLiveFeedClient:
         if away_team_id and away_abbr:
             team_id_to_abbr[away_team_id] = away_abbr
 
+        # Build player ID to name lookup from rosterSpots
+        player_id_to_name: dict[int, str] = {}
+        for roster_spot in payload.get("rosterSpots", []):
+            player_id = roster_spot.get("playerId")
+            first_name = roster_spot.get("firstName", {}).get("default", "")
+            last_name = roster_spot.get("lastName", {}).get("default", "")
+            if player_id and (first_name or last_name):
+                full_name = f"{first_name} {last_name}".strip()
+                player_id_to_name[player_id] = full_name
+
         for play in raw_plays:
-            normalized = self._normalize_play(play, team_id_to_abbr, game_id)
+            normalized = self._normalize_play(play, team_id_to_abbr, player_id_to_name, game_id)
             if normalized:
                 plays.append(normalized)
 
@@ -261,6 +271,7 @@ class NHLLiveFeedClient:
         self,
         play: dict[str, Any],
         team_id_to_abbr: dict[int, str],
+        player_id_to_name: dict[int, str],
         game_id: int,
     ) -> NormalizedPlay | None:
         """Normalize a single play event from the NHL API.
@@ -299,7 +310,9 @@ class NHLLiveFeedClient:
         team_abbr = team_id_to_abbr.get(event_owner_team_id) if event_owner_team_id else None
 
         # Get primary player (scorer, shooter, penalty taker, etc.)
-        player_id, player_name = self._extract_primary_player(details, type_desc_key)
+        player_id = self._extract_primary_player_id(details, type_desc_key)
+        # Resolve player name from roster lookup
+        player_name = player_id_to_name.get(player_id) if player_id else None
 
         # Get scores (only present on goal events)
         home_score = _parse_int(details.get("homeScore"))
@@ -352,42 +365,42 @@ class NHLLiveFeedClient:
         )
         return type_desc_key.upper().replace("-", "_")
 
-    def _extract_primary_player(
+    def _extract_primary_player_id(
         self,
         details: dict[str, Any],
         type_desc_key: str,
-    ) -> tuple[int | None, str | None]:
+    ) -> int | None:
         """Extract the primary player ID from event details.
 
         Different event types have different player ID fields.
-        Returns (player_id, player_name) - name is not always available in new API.
+        Returns player_id (name is resolved from roster lookup).
         """
         # Priority order for primary player based on event type
         if type_desc_key == "goal":
-            return _parse_int(details.get("scoringPlayerId")), None
+            return _parse_int(details.get("scoringPlayerId"))
         elif type_desc_key == "shot-on-goal":
-            return _parse_int(details.get("shootingPlayerId")), None
+            return _parse_int(details.get("shootingPlayerId"))
         elif type_desc_key == "missed-shot":
-            return _parse_int(details.get("shootingPlayerId")), None
+            return _parse_int(details.get("shootingPlayerId"))
         elif type_desc_key == "blocked-shot":
-            return _parse_int(details.get("blockingPlayerId")), None
+            return _parse_int(details.get("blockingPlayerId"))
         elif type_desc_key == "hit":
-            return _parse_int(details.get("hittingPlayerId")), None
+            return _parse_int(details.get("hittingPlayerId"))
         elif type_desc_key == "penalty":
-            return _parse_int(details.get("committedByPlayerId")), None
+            return _parse_int(details.get("committedByPlayerId"))
         elif type_desc_key == "faceoff":
-            return _parse_int(details.get("winningPlayerId")), None
+            return _parse_int(details.get("winningPlayerId"))
         elif type_desc_key == "giveaway":
-            return _parse_int(details.get("playerId")), None
+            return _parse_int(details.get("playerId"))
         elif type_desc_key == "takeaway":
-            return _parse_int(details.get("playerId")), None
+            return _parse_int(details.get("playerId"))
 
         # Generic fallback - look for any playerId field
         for key in ["playerId", "shootingPlayerId", "scoringPlayerId"]:
             if key in details:
-                return _parse_int(details.get(key)), None
+                return _parse_int(details.get(key))
 
-        return None, None
+        return None
 
     def _build_description(self, type_desc_key: str, details: dict[str, Any]) -> str | None:
         """Build a human-readable description from event details."""

@@ -23,12 +23,19 @@ from .schemas import (
 
 def serialize_play_entry(play: db_models.SportsGamePlay) -> PlayEntry:
     """Serialize a play record to API response format."""
+    # Get team abbreviation from the relationship (preferred) or raw_data (fallback)
+    team_abbr = None
+    if play.team:
+        team_abbr = play.team.abbreviation
+    elif isinstance(play.raw_data, dict):
+        team_abbr = play.raw_data.get("team_abbreviation")
+
     return PlayEntry(
         play_index=play.play_index,
         quarter=play.quarter,
         game_clock=play.game_clock,
         play_type=play.play_type,
-        team_abbreviation=play.raw_data.get("team_abbreviation") if isinstance(play.raw_data, dict) else None,
+        team_abbreviation=team_abbr,
         player_name=play.player_name,
         description=play.description,
         home_score=play.home_score,

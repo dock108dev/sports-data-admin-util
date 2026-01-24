@@ -27,7 +27,11 @@ from ...db import AsyncSession
 from ...utils.datetime_utils import now_utc
 from .models import PipelineStage, StageInput, StageOutput, StageResult
 from .stages import (
+    execute_derive_signals,
+    execute_finalize_moments,
+    execute_generate_moments,
     execute_normalize_pbp,
+    execute_validate_moments,
 )
 
 logger = logging.getLogger(__name__)
