@@ -26,7 +26,9 @@ from .boundary_rules import (
     BoundaryReasonCode,
     resolve_boundary_precedence,
     is_non_boundary_event,
+    get_boundary_type_for_reasons,
 )
+from .virtual_boundaries import detect_virtual_boundaries
 
 logger = logging.getLogger(__name__)
 
@@ -239,15 +241,19 @@ def _create_chapters(
     # If no boundaries, create one chapter with all plays
     if not sorted_boundaries:
         period, time_range = _extract_period_and_time(plays)
+        reason_codes = ["PERIOD_START"]  # First chapter always starts period
         chapter = Chapter(
             chapter_id=f"ch_{chapter_id:03d}",
             play_start_idx=plays[0].index,
             play_end_idx=plays[-1].index,
             plays=plays,
-            reason_codes=["PERIOD_START"],  # First chapter always starts period
+            reason_codes=reason_codes,
             period=period,
             time_range=time_range,
         )
+        # Phase 1.1: Assign boundary type and detect virtual boundaries
+        chapter.boundary_type = get_boundary_type_for_reasons(reason_codes)
+        chapter.virtual_boundaries = detect_virtual_boundaries(chapter)
         chapters.append(chapter)
         return chapters
     
@@ -266,7 +272,7 @@ def _create_chapters(
         if chapter_plays:
             # Extract period and time range
             period, time_range = _extract_period_and_time(chapter_plays)
-            
+
             # Determine reason codes for this chapter
             # First chapter gets PERIOD_START if no explicit reason
             if chapter_id == 1 and current_start_idx == 0:
@@ -274,7 +280,7 @@ def _create_chapters(
             else:
                 # Use reason codes from the boundary that STARTED this chapter
                 reason_codes = boundary_reasons.get(current_start_idx, ["PERIOD_START"])
-            
+
             chapter = Chapter(
                 chapter_id=f"ch_{chapter_id:03d}",
                 play_start_idx=chapter_plays[0].index,
@@ -284,6 +290,9 @@ def _create_chapters(
                 period=period,
                 time_range=time_range,
             )
+            # Phase 1.1: Assign boundary type and detect virtual boundaries
+            chapter.boundary_type = get_boundary_type_for_reasons(reason_codes)
+            chapter.virtual_boundaries = detect_virtual_boundaries(chapter)
             chapters.append(chapter)
             chapter_id += 1
         
@@ -294,10 +303,10 @@ def _create_chapters(
     if final_plays:
         # Extract period and time range
         period, time_range = _extract_period_and_time(final_plays)
-        
+
         # Use reason codes from the boundary that started this chapter
         reason_codes = boundary_reasons.get(current_start_idx, ["game_end"])
-        
+
         chapter = Chapter(
             chapter_id=f"ch_{chapter_id:03d}",
             play_start_idx=final_plays[0].index,
@@ -307,6 +316,9 @@ def _create_chapters(
             period=period,
             time_range=time_range,
         )
+        # Phase 1.1: Assign boundary type and detect virtual boundaries
+        chapter.boundary_type = get_boundary_type_for_reasons(reason_codes)
+        chapter.virtual_boundaries = detect_virtual_boundaries(chapter)
         chapters.append(chapter)
     
     logger.info(

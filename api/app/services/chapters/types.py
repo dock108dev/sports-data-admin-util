@@ -66,7 +66,10 @@ ARCHITECTURAL PRINCIPLES:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .boundary_rules import BoundaryType, BoundaryMarker
 
 
 @dataclass
@@ -228,7 +231,10 @@ class Chapter:
     reason_codes: list[str]
     period: int | None = None
     time_range: TimeRange | None = None
-    
+    # Phase 1.1: Boundary classification (backward-compatible defaults)
+    boundary_type: BoundaryType | None = None  # HARD or SOFT only for chapters
+    virtual_boundaries: list[BoundaryMarker] = field(default_factory=list)
+
     def __post_init__(self):
         """Validate chapter structure.
         
@@ -292,9 +298,12 @@ class Chapter:
         """Number of plays in this chapter."""
         return len(self.plays)
     
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, include_debug: bool = False) -> dict[str, Any]:
         """Serialize to dict for API responses.
-        
+
+        Args:
+            include_debug: If True, include virtual_boundaries in output.
+
         Returns JSON schema (canonical contract):
         {
             "chapter_id": str,              # Required
@@ -304,7 +313,9 @@ class Chapter:
             "plays": [...],                 # Required
             "reason_codes": [...],          # Required, non-empty
             "period": int | null,           # Conditionally required
-            "time_range": {...} | null      # Optional
+            "time_range": {...} | null,     # Optional
+            "boundary_type": str | null,    # Phase 1.1: HARD or SOFT
+            "virtual_boundaries": [...]     # Phase 1.1: Debug only
         }
         """
         result: dict[str, Any] = {
@@ -316,12 +327,20 @@ class Chapter:
             "reason_codes": self.reason_codes,
             "period": self.period,
         }
-        
+
         if self.time_range is not None:
             result["time_range"] = self.time_range.to_dict()
         else:
             result["time_range"] = None
-        
+
+        # Phase 1.1: Include boundary_type if set (always informative)
+        if self.boundary_type is not None:
+            result["boundary_type"] = self.boundary_type.value
+
+        # Phase 1.1: Include virtual_boundaries only in debug mode
+        if include_debug and self.virtual_boundaries:
+            result["virtual_boundaries"] = [vb.to_dict() for vb in self.virtual_boundaries]
+
         return result
 
 

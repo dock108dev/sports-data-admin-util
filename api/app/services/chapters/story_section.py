@@ -33,7 +33,13 @@ from enum import Enum
 from typing import Any
 
 from .types import Chapter
-from .beat_classifier import BeatType, BeatClassification
+from .beat_classifier import (
+    BeatType,
+    BeatClassification,
+    BeatDescriptor,
+    BEAT_PRIORITY,
+    detect_opening_section_beat,
+)
 from .running_stats import SectionDelta
 
 
@@ -50,6 +56,7 @@ class ForcedBreakReason(str, Enum):
     OVERTIME_START = "OVERTIME_START"
     FINAL_2_MINUTES = "FINAL_2_MINUTES"
     CRUNCH_SETUP_FIRST = "CRUNCH_SETUP_FIRST"
+    CLOSING_SEQUENCE_FIRST = "CLOSING_SEQUENCE_FIRST"  # Phase 2.6
     QUARTER_BOUNDARY = "QUARTER_BOUNDARY"
     BEAT_CHANGE = "BEAT_CHANGE"
     GAME_START = "GAME_START"
@@ -119,7 +126,8 @@ class StorySection:
 
     SCHEMA (AUTHORITATIVE):
     - section_index: 0-based, sequential
-    - beat_type: From BeatType enum
+    - beat_type: From BeatType enum (primary beat)
+    - descriptors: Secondary context (Phase 2.1)
     - chapters_included: List of chapter IDs
     - start_score: {home: int, away: int}
     - end_score: {home: int, away: int}
@@ -127,7 +135,7 @@ class StorySection:
     - player_stat_deltas: Top 1-3 players per team
     - notes: Deterministic machine bullets
 
-    No additional fields.
+    Phase 2.1: Added descriptors field for MISSED_SHOT_CONTEXT, etc.
     """
 
     section_index: int
@@ -145,12 +153,15 @@ class StorySection:
     # Deterministic notes
     notes: list[str] = field(default_factory=list)
 
+    # Phase 2.1: Secondary descriptors (union of all chapter descriptors)
+    descriptors: set[BeatDescriptor] = field(default_factory=set)
+
     # Debug info (not part of core schema)
     break_reason: ForcedBreakReason | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON."""
-        return {
+        result = {
             "section_index": self.section_index,
             "beat_type": self.beat_type.value,
             "chapters_included": self.chapters_included,
@@ -160,6 +171,10 @@ class StorySection:
             "player_stat_deltas": {k: v.to_dict() for k, v in self.player_stat_deltas.items()},
             "notes": self.notes,
         }
+        # Include descriptors if present
+        if self.descriptors:
+            result["descriptors"] = [d.value for d in self.descriptors]
+        return result
 
     def to_debug_dict(self) -> dict[str, Any]:
         """Serialize with debug info."""
@@ -186,6 +201,7 @@ class ChapterMetadata:
     start_away_score: int
     end_home_score: int
     end_away_score: int
+    descriptors: set[BeatDescriptor] = field(default_factory=set)  # Phase 2.1
 
 
 # ============================================================================
@@ -262,6 +278,21 @@ def _is_first_crunch_setup(
     return not seen_crunch
 
 
+def _is_first_closing_sequence(
+    curr: ChapterMetadata,
+    prev: ChapterMetadata | None,
+    seen_closing: bool,
+) -> bool:
+    """Check if this is the FIRST chapter labeled CLOSING_SEQUENCE.
+
+    Phase 2.6: CLOSING_SEQUENCE must always start its own section.
+    """
+    if curr.beat_type != BeatType.CLOSING_SEQUENCE:
+        return False
+
+    return not seen_closing
+
+
 def _is_quarter_boundary(
     curr: ChapterMetadata,
     prev: ChapterMetadata | None,
@@ -297,21 +328,24 @@ def detect_forced_break(
     curr: ChapterMetadata,
     prev: ChapterMetadata | None,
     seen_crunch: bool,
+    seen_closing: bool = False,  # Phase 2.6
 ) -> ForcedBreakReason | None:
     """Detect if a forced section break is required.
 
     Checks in priority order:
     1. Game start (first chapter)
     2. Overtime start
-    3. Final 2 minutes entry
-    4. First CRUNCH_SETUP
-    5. Quarter boundary
-    6. Beat change
+    3. First CLOSING_SEQUENCE (Phase 2.6)
+    4. Final 2 minutes entry (legacy - now handled by CLOSING_SEQUENCE)
+    5. First CRUNCH_SETUP
+    6. Quarter boundary
+    7. Beat change
 
     Args:
         curr: Current chapter metadata
         prev: Previous chapter metadata (None if first)
         seen_crunch: Whether CRUNCH_SETUP has been seen before
+        seen_closing: Whether CLOSING_SEQUENCE has been seen before
 
     Returns:
         ForcedBreakReason if break required, None otherwise
@@ -324,19 +358,23 @@ def detect_forced_break(
     if _is_overtime_start(curr, prev):
         return ForcedBreakReason.OVERTIME_START
 
-    # Priority 2: Final 2 minutes entry
+    # Priority 2: First CLOSING_SEQUENCE (Phase 2.6)
+    if _is_first_closing_sequence(curr, prev, seen_closing):
+        return ForcedBreakReason.CLOSING_SEQUENCE_FIRST
+
+    # Priority 3: Final 2 minutes entry (legacy)
     if _is_final_2_minutes_entry(curr, prev):
         return ForcedBreakReason.FINAL_2_MINUTES
 
-    # Priority 3: First CRUNCH_SETUP
+    # Priority 4: First CRUNCH_SETUP
     if _is_first_crunch_setup(curr, prev, seen_crunch):
         return ForcedBreakReason.CRUNCH_SETUP_FIRST
 
-    # Priority 4: Quarter boundary
+    # Priority 5: Quarter boundary
     if _is_quarter_boundary(curr, prev):
         return ForcedBreakReason.QUARTER_BOUNDARY
 
-    # Priority 5: Beat change
+    # Priority 6: Beat change
     if _is_beat_change(curr, prev):
         return ForcedBreakReason.BEAT_CHANGE
 
@@ -480,6 +518,7 @@ def _extract_chapter_metadata(
         start_away_score=start_away,
         end_home_score=end_home,
         end_away_score=end_away,
+        descriptors=classification.descriptors or set(),  # Phase 2.1
     )
 
 
@@ -554,16 +593,73 @@ def _aggregate_section_deltas(
     return team_totals, bounded_players
 
 
+def _select_section_beat(chapters_meta: list[ChapterMetadata]) -> BeatType:
+    """Select the primary beat for a section based on priority.
+
+    Phase 2.1: Uses priority-based selection instead of "first chapter wins".
+
+    Priority order (highest first):
+    1. OVERTIME
+    2. CLOSING_SEQUENCE
+    3. CRUNCH_SETUP
+    4. RUN
+    5. RESPONSE
+    6. BACK_AND_FORTH
+    7. EARLY_CONTROL
+    8. FAST_START
+    9. STALL (default)
+
+    Args:
+        chapters_meta: List of ChapterMetadata in the section
+
+    Returns:
+        The highest-priority beat type present in any chapter
+    """
+    # Collect all beat types in the section
+    beat_types = {m.beat_type for m in chapters_meta}
+
+    # Select highest-priority beat
+    for beat in BEAT_PRIORITY:
+        if beat in beat_types:
+            return beat
+
+    # Default to STALL if no match (shouldn't happen)
+    return BeatType.STALL
+
+
+def _aggregate_descriptors(chapters_meta: list[ChapterMetadata]) -> set[BeatDescriptor]:
+    """Aggregate all descriptors from chapters in a section.
+
+    Phase 2.1: Descriptors are unioned across all chapters.
+
+    Args:
+        chapters_meta: List of ChapterMetadata in the section
+
+    Returns:
+        Union of all descriptors from all chapters
+    """
+    result: set[BeatDescriptor] = set()
+    for meta in chapters_meta:
+        result.update(meta.descriptors)
+    return result
+
+
 def _build_section(
     section_index: int,
     chapters_meta: list[ChapterMetadata],
     section_deltas: list[SectionDelta],
     break_reason: ForcedBreakReason,
 ) -> StorySection:
-    """Build a single StorySection from chapters."""
-    # Determine beat type (use first chapter's beat, or most common)
-    beat_types = [m.beat_type for m in chapters_meta]
-    beat_type = beat_types[0]  # Use first chapter's beat
+    """Build a single StorySection from chapters.
+
+    Phase 2.1: Uses priority-based beat selection instead of first chapter.
+    Aggregates descriptors from all chapters.
+    """
+    # Phase 2.1: Use priority-based beat selection
+    beat_type = _select_section_beat(chapters_meta)
+
+    # Phase 2.1: Union all descriptors from chapters
+    descriptors = _aggregate_descriptors(chapters_meta)
 
     # Get chapter IDs
     chapter_ids = [m.chapter_id for m in chapters_meta]
@@ -593,6 +689,7 @@ def _build_section(
         team_stat_deltas=team_deltas,
         player_stat_deltas=player_deltas,
         notes=notes,
+        descriptors=descriptors,  # Phase 2.1
         break_reason=break_reason,
     )
 
@@ -728,6 +825,9 @@ def _merge_sections(
     # Regenerate notes
     notes = generate_section_notes(merged_teams, bounded_players)
 
+    # Phase 2.1: Merge descriptors from both sections
+    merged_descriptors = section_a.descriptors | section_b.descriptors
+
     return StorySection(
         section_index=new_index,
         beat_type=section_a.beat_type,
@@ -737,8 +837,52 @@ def _merge_sections(
         team_stat_deltas=merged_teams,
         player_stat_deltas=bounded_players,
         notes=notes,
+        descriptors=merged_descriptors,  # Phase 2.1
         break_reason=section_a.break_reason,
     )
+
+
+def _find_closing_sequence_index(sections: list[StorySection]) -> int | None:
+    """Find the index of the first CLOSING_SEQUENCE section.
+
+    Phase 2.6: Used to prevent merging after CLOSING_SEQUENCE.
+
+    Returns:
+        Index of first CLOSING_SEQUENCE section, or None if not found
+    """
+    for i, section in enumerate(sections):
+        if section.beat_type == BeatType.CLOSING_SEQUENCE:
+            return i
+    return None
+
+
+def _can_merge_pair(
+    sections: list[StorySection],
+    idx: int,
+    closing_sequence_idx: int | None,
+) -> bool:
+    """Check if a pair of sections at idx and idx+1 can be merged.
+
+    Phase 2.6: Prevents merging sections at or after CLOSING_SEQUENCE.
+
+    Args:
+        sections: List of sections
+        idx: Index of first section in pair
+        closing_sequence_idx: Index of CLOSING_SEQUENCE section (or None)
+
+    Returns:
+        True if the pair can be merged
+    """
+    # Check protected sections
+    if _is_protected_section(sections[idx]) or _is_protected_section(sections[idx + 1]):
+        return False
+
+    # Phase 2.6: No merging at or after CLOSING_SEQUENCE
+    if closing_sequence_idx is not None:
+        if idx >= closing_sequence_idx or idx + 1 >= closing_sequence_idx:
+            return False
+
+    return True
 
 
 def enforce_section_count(
@@ -752,6 +896,7 @@ def enforce_section_count(
     - If sections < min: Merge earliest adjacent sections
     - If sections > max: Merge middle sections first
     - NEVER merge: opening, CRUNCH_SETUP, CLOSING_SEQUENCE, OVERTIME
+    - Phase 2.6: NEVER merge sections at or after CLOSING_SEQUENCE
 
     Args:
         sections: List of sections to constrain
@@ -763,12 +908,18 @@ def enforce_section_count(
     """
     result = list(sections)
 
+    # Phase 2.6: Find CLOSING_SEQUENCE section to prevent merging after it
+    closing_idx = _find_closing_sequence_index(result)
+
     # Merge if too few sections
     while len(result) < min_sections and len(result) >= 2:
+        # Update closing index after potential merges
+        closing_idx = _find_closing_sequence_index(result)
+
         # Find first pair of adjacent non-protected sections to merge
         merged = False
         for i in range(len(result) - 1):
-            if not _is_protected_section(result[i]) and not _is_protected_section(result[i + 1]):
+            if _can_merge_pair(result, i, closing_idx):
                 # Merge these two
                 merged_section = _merge_sections(result[i], result[i + 1], i)
                 result = result[:i] + [merged_section] + result[i + 2:]
@@ -785,12 +936,15 @@ def enforce_section_count(
 
     # Merge if too many sections
     while len(result) > max_sections:
+        # Update closing index after potential merges
+        closing_idx = _find_closing_sequence_index(result)
+
         # Find best pair to merge (prefer middle sections)
         best_pair = None
         best_distance_from_edges = -1
 
         for i in range(len(result) - 1):
-            if _is_protected_section(result[i]) or _is_protected_section(result[i + 1]):
+            if not _can_merge_pair(result, i, closing_idx):
                 continue
 
             # Distance from edges (prefer middle)
@@ -854,6 +1008,7 @@ def build_story_sections(
     current_group: list[ChapterMetadata] = []
     current_break_reason: ForcedBreakReason | None = None
     seen_crunch = False
+    seen_closing = False  # Phase 2.6
 
     for i, meta in enumerate(metadata_list):
         prev_meta = metadata_list[i - 1] if i > 0 else None
@@ -865,8 +1020,15 @@ def build_story_sections(
         else:
             seen_crunch_before = seen_crunch
 
+        # Track if we've seen CLOSING_SEQUENCE (Phase 2.6)
+        if meta.beat_type == BeatType.CLOSING_SEQUENCE:
+            seen_closing_before = seen_closing
+            seen_closing = True
+        else:
+            seen_closing_before = seen_closing
+
         # Check for forced break
-        break_reason = detect_forced_break(meta, prev_meta, seen_crunch_before)
+        break_reason = detect_forced_break(meta, prev_meta, seen_crunch_before, seen_closing_before)
 
         if break_reason is not None:
             # Save current group if non-empty
@@ -902,6 +1064,56 @@ def build_story_sections(
     # Enforce section count constraints
     sections = enforce_section_count(sections)
 
+    # Phase 2.5: Apply section-level beat overrides (FAST_START, EARLY_CONTROL)
+    sections = _apply_opening_section_beat_override(sections, chapters)
+
+    return sections
+
+
+def _apply_opening_section_beat_override(
+    sections: list[StorySection],
+    chapters: list[Chapter],
+) -> list[StorySection]:
+    """Apply section-level beat override to opening section.
+
+    Phase 2.5: FAST_START and EARLY_CONTROL are now detected at section level
+    using early-game window analysis. If detected, they override the opening
+    section's beat type.
+
+    Args:
+        sections: List of sections (opening section is index 0)
+        chapters: Original chapters for early window analysis
+
+    Returns:
+        Sections with opening section beat potentially overridden
+    """
+    if not sections or not chapters:
+        return sections
+
+    # Detect section-level beat for opening section
+    override = detect_opening_section_beat(chapters)
+
+    if override is None:
+        return sections
+
+    # Override the opening section's beat type
+    opening = sections[0]
+    opening.beat_type = override.beat_type
+
+    # Store override info in notes for debugging
+    # (Notes are deterministic bullets, so we add a factual note about the beat)
+    if override.beat_type == BeatType.FAST_START:
+        debug_info = override.debug_info
+        total_pts = debug_info.get("total_points", 0)
+        margin = debug_info.get("final_margin", 0)
+        opening.notes.insert(0, f"High-scoring early window: {total_pts} points, {margin}-point margin")
+    elif override.beat_type == BeatType.EARLY_CONTROL:
+        debug_info = override.debug_info
+        leading_team = debug_info.get("leading_team", "unknown")
+        margin = debug_info.get("final_margin", 0)
+        share_pct = int(debug_info.get("leading_team_share", 0) * 100)
+        opening.notes.insert(0, f"Early control established: {leading_team} team led by {margin}, scored {share_pct}% of points")
+
     return sections
 
 
@@ -915,15 +1127,18 @@ def format_sections_debug(sections: list[StorySection]) -> str:
     Shows:
     - section_index
     - beat_type
+    - descriptors (Phase 2.1)
     - chapters_included
     - reason for section boundaries
     """
     lines = ["Story Sections:", "=" * 60]
 
     for section in sections:
-        lines.append(
-            f"Section {section.section_index}: {section.beat_type.value}"
-        )
+        line = f"Section {section.section_index}: {section.beat_type.value}"
+        if section.descriptors:
+            descriptors_str = ", ".join(d.value for d in section.descriptors)
+            line += f" [descriptors: {descriptors_str}]"
+        lines.append(line)
         lines.append(f"  Chapters: {section.chapters_included}")
         lines.append(f"  Score: {section.start_score} → {section.end_score}")
         if section.break_reason:

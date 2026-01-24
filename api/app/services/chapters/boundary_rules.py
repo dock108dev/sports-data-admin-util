@@ -18,6 +18,67 @@ from enum import Enum
 from typing import Any
 
 
+class BoundaryType(str, Enum):
+    """Classification of boundary types by structural significance.
+
+    Used to categorize chapter boundaries for downstream processing.
+
+    HARD: Always creates chapter boundary (period starts, overtime)
+    SOFT: Usually creates chapter boundary (timeouts, reviews)
+    VIRTUAL: Detected within chapters, does NOT create splits (runs, lead changes)
+    """
+
+    HARD = "HARD"
+    SOFT = "SOFT"
+    VIRTUAL = "VIRTUAL"
+
+
+class VirtualBoundaryReason(str, Enum):
+    """Reason codes for virtual (non-splitting) boundaries.
+
+    Virtual boundaries are detected within chapters for context enrichment
+    but do NOT cause chapter splits. They inform downstream processing
+    about momentum shifts.
+    """
+
+    RUN_START = "RUN_START"          # Start of unanswered scoring run (>=6 points)
+    RUN_END = "RUN_END"              # End of scoring run (opposing team scores)
+    LEAD_CHANGE = "LEAD_CHANGE"      # Leading team switched
+    TIE_CREATION = "TIE_CREATION"    # Game became tied
+
+
+@dataclass
+class BoundaryMarker:
+    """Marker for a detected boundary (real or virtual).
+
+    Used for both actual chapter boundaries and virtual boundaries
+    that are detected but do not cause chapter splits.
+
+    CONTRACT:
+    - boundary_type: Required, from BoundaryType enum
+    - play_index: Required, index of play where boundary occurs
+    - reason: Required, from BoundaryReasonCode or VirtualBoundaryReason
+    - team_id: Optional, team associated with boundary (for runs, lead changes)
+    - score_snapshot: Required, score at this play (home, away)
+    """
+
+    boundary_type: BoundaryType
+    play_index: int
+    reason: str
+    team_id: str | None = None
+    score_snapshot: tuple[int, int] = (0, 0)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for JSON."""
+        return {
+            "boundary_type": self.boundary_type.value,
+            "play_index": self.play_index,
+            "reason": self.reason,
+            "team_id": self.team_id,
+            "score_snapshot": {"home": self.score_snapshot[0], "away": self.score_snapshot[1]},
+        }
+
+
 class BoundaryReasonCode(str, Enum):
     """Fixed enum of reason codes explaining chapter boundaries.
 
@@ -435,5 +496,47 @@ def is_non_boundary_event(event: dict[str, Any]) -> bool:
     # Turnovers
     if "turnover" in description or "turnover" in play_type:
         return True
-    
+
     return False
+
+
+# ============================================================================
+# BOUNDARY TYPE CLASSIFICATION (Phase 1.1)
+# ============================================================================
+
+REASON_TO_BOUNDARY_TYPE: dict[BoundaryReasonCode, BoundaryType] = {
+    # HARD boundaries - always break chapters
+    BoundaryReasonCode.PERIOD_START: BoundaryType.HARD,
+    BoundaryReasonCode.PERIOD_END: BoundaryType.HARD,
+    BoundaryReasonCode.OVERTIME_START: BoundaryType.HARD,
+    BoundaryReasonCode.GAME_END: BoundaryType.HARD,
+
+    # SOFT boundaries - usually break chapters
+    BoundaryReasonCode.TIMEOUT: BoundaryType.SOFT,
+    BoundaryReasonCode.REVIEW: BoundaryType.SOFT,
+    BoundaryReasonCode.CRUNCH_START: BoundaryType.SOFT,
+}
+
+
+def get_boundary_type_for_reasons(reason_codes: list[str]) -> BoundaryType:
+    """Determine boundary type from reason codes.
+
+    Uses highest precedence rule:
+    - If any HARD reason present, boundary is HARD
+    - Otherwise, boundary is SOFT
+
+    Args:
+        reason_codes: List of reason code strings
+
+    Returns:
+        BoundaryType (HARD or SOFT only - VIRTUAL is for virtual_boundaries)
+    """
+    for code_str in reason_codes:
+        try:
+            code = BoundaryReasonCode(code_str)
+            if REASON_TO_BOUNDARY_TYPE.get(code) == BoundaryType.HARD:
+                return BoundaryType.HARD
+        except ValueError:
+            continue  # Unknown code, skip
+
+    return BoundaryType.SOFT

@@ -9,6 +9,13 @@ This module provides a narrative-first architecture for game storytelling.
 
 from .types import Play, Chapter, GameStory, ChapterBoundary, TimeRange
 from .builder import build_chapters
+from .boundary_rules import (
+    BoundaryType,
+    BoundaryMarker,
+    VirtualBoundaryReason,
+    get_boundary_type_for_reasons,
+)
+from .virtual_boundaries import detect_virtual_boundaries
 from .chapterizer import Chapterizer, ChapterizerConfig
 from .coverage_validator import (
     CoverageValidationResult,
@@ -42,14 +49,55 @@ from .running_stats import (
 from .beat_classifier import (
     # Types
     BeatType,
+    BeatDescriptor,  # Phase 2.1
+    RunWindow,  # Phase 2.2
+    ResponseWindow,  # Phase 2.3
+    BackAndForthWindow,  # Phase 2.4
+    EarlyWindowStats,  # Phase 2.5
+    SectionBeatOverride,  # Phase 2.5
     ChapterContext,
     BeatClassification,
+    # Constants (Phase 2.1)
+    PRIMARY_BEATS,
+    BEAT_PRIORITY,
+    MISSED_SHOT_PPP_THRESHOLD,
+    # Constants (Phase 2.2)
+    RUN_WINDOW_THRESHOLD,
+    RUN_MARGIN_EXPANSION_THRESHOLD,
+    # Constants (Phase 2.4)
+    BACK_AND_FORTH_LEAD_CHANGES_THRESHOLD,
+    BACK_AND_FORTH_TIES_THRESHOLD,
+    # Constants (Phase 2.5)
+    EARLY_WINDOW_DURATION_SECONDS,
+    FAST_START_MIN_COMBINED_POINTS,
+    FAST_START_MAX_MARGIN,
+    EARLY_CONTROL_MIN_LEAD,
+    EARLY_CONTROL_MIN_SHARE_PCT,
+    # Constants (Phase 2.6)
+    CRUNCH_SETUP_TIME_THRESHOLD,
+    CRUNCH_SETUP_MARGIN_THRESHOLD,
+    CLOSING_SEQUENCE_TIME_THRESHOLD,
+    CLOSING_SEQUENCE_MARGIN_THRESHOLD,
     # Functions
     classify_chapter_beat,
     classify_all_chapters,
     build_chapter_context,
     format_classification_debug,
     get_beat_distribution,
+    # Run window functions (Phase 2.2)
+    detect_run_windows,
+    get_qualifying_run_windows,
+    # Response window functions (Phase 2.3)
+    detect_response_windows,
+    get_qualifying_response_windows,
+    # Back-and-forth window functions (Phase 2.4)
+    detect_back_and_forth_window,
+    get_qualifying_back_and_forth_window,
+    # Section-level beat functions (Phase 2.5)
+    compute_early_window_stats,
+    detect_section_fast_start,
+    detect_section_early_control,
+    detect_opening_section_beat,
 )
 from .story_section import (
     # Types
@@ -148,6 +196,12 @@ __all__ = [
     "GameStory",
     "ChapterBoundary",
     "TimeRange",
+    # Phase 1.1: Boundary classification
+    "BoundaryType",
+    "BoundaryMarker",
+    "VirtualBoundaryReason",
+    "get_boundary_type_for_reasons",
+    "detect_virtual_boundaries",
     # Builder
     "build_chapters",
     # Chapterizer
@@ -179,13 +233,45 @@ __all__ = [
     "compute_section_deltas_from_snapshots",
     # Beat classifier
     "BeatType",
+    "BeatDescriptor",  # Phase 2.1
+    "RunWindow",  # Phase 2.2
+    "ResponseWindow",  # Phase 2.3
+    "BackAndForthWindow",  # Phase 2.4
+    "EarlyWindowStats",  # Phase 2.5
+    "SectionBeatOverride",  # Phase 2.5
     "ChapterContext",
     "BeatClassification",
+    "PRIMARY_BEATS",  # Phase 2.1
+    "BEAT_PRIORITY",  # Phase 2.1
+    "MISSED_SHOT_PPP_THRESHOLD",  # Phase 2.1
+    "RUN_WINDOW_THRESHOLD",  # Phase 2.2
+    "RUN_MARGIN_EXPANSION_THRESHOLD",  # Phase 2.2
+    "BACK_AND_FORTH_LEAD_CHANGES_THRESHOLD",  # Phase 2.4
+    "BACK_AND_FORTH_TIES_THRESHOLD",  # Phase 2.4
+    "EARLY_WINDOW_DURATION_SECONDS",  # Phase 2.5
+    "FAST_START_MIN_COMBINED_POINTS",  # Phase 2.5
+    "FAST_START_MAX_MARGIN",  # Phase 2.5
+    "EARLY_CONTROL_MIN_LEAD",  # Phase 2.5
+    "EARLY_CONTROL_MIN_SHARE_PCT",  # Phase 2.5
+    "CRUNCH_SETUP_TIME_THRESHOLD",  # Phase 2.6
+    "CRUNCH_SETUP_MARGIN_THRESHOLD",  # Phase 2.6
+    "CLOSING_SEQUENCE_TIME_THRESHOLD",  # Phase 2.6
+    "CLOSING_SEQUENCE_MARGIN_THRESHOLD",  # Phase 2.6
     "classify_chapter_beat",
     "classify_all_chapters",
     "build_chapter_context",
     "format_classification_debug",
     "get_beat_distribution",
+    "detect_run_windows",  # Phase 2.2
+    "get_qualifying_run_windows",  # Phase 2.2
+    "detect_response_windows",  # Phase 2.3
+    "get_qualifying_response_windows",  # Phase 2.3
+    "detect_back_and_forth_window",  # Phase 2.4
+    "get_qualifying_back_and_forth_window",  # Phase 2.4
+    "compute_early_window_stats",  # Phase 2.5
+    "detect_section_fast_start",  # Phase 2.5
+    "detect_section_early_control",  # Phase 2.5
+    "detect_opening_section_beat",  # Phase 2.5
     # Story section builder
     "StorySection",
     "SectionTeamStatDelta",
