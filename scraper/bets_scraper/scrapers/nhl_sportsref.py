@@ -191,9 +191,22 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
                 continue
 
             player_link = player_cell.find("a")
+            player_text = player_cell.text.strip()
+
+            # Explicitly skip TOTAL/Team Total rows - these are aggregate rows, not players
+            # This is a critical guard to prevent TOTAL rows from leaking into player stats
+            if player_text.lower() in ("total", "team total", "team totals"):
+                logger.debug(
+                    "player_row_skipped",
+                    table_id=table_id,
+                    row_index=row_index,
+                    reason="total_row_not_a_player",
+                    cell_text=player_text,
+                )
+                continue
+
             if not player_link:
                 # No player link - could be "Empty Net" row or other non-player row
-                player_text = player_cell.text.strip()
 
                 # Explicitly detect "Empty Net" rows in goalie tables
                 if player_text.lower() == "empty net" and player_role == "goalie":

@@ -18,6 +18,8 @@ from ...game_metadata.services import RatingsService, StandingsService
 from ...services.derived_metrics import compute_derived_metrics
 from ...services.timeline_generator import TimelineGenerationError, generate_timeline_artifact
 from .common import (
+    serialize_nhl_goalie,
+    serialize_nhl_skater,
     serialize_play_entry,
     serialize_player_stat,
     serialize_team_stat,
@@ -38,10 +40,12 @@ from .schemas import (
     GameListResponse,
     GameMeta,
     GamePreviewScoreResponse,
-    NHLDataHealth,
-    ScrapeRunConfig,
     JobResponse,
+    NHLDataHealth,
+    NHLGoalieStat,
+    NHLSkaterStat,
     OddsEntry,
+    ScrapeRunConfig,
 )
 from ..game_snapshot_models import TimelineArtifactResponse
 
@@ -59,6 +63,7 @@ def _compute_nhl_data_health(
     For NHL games, returns health status that distinguishes between:
     - Legitimate empty (game not yet played)
     - Ingestion failure (completed game with missing player data)
+    - Schema pollution (non-hockey fields like rebounds/yards present)
     """
     league_code = game.league.code if game.league else None
     if league_code != "NHL":
@@ -67,6 +72,11 @@ def _compute_nhl_data_health(
     # Count skaters and goalies by checking player_role in raw stats
     skater_count = 0
     goalie_count = 0
+    no_role_count = 0
+    has_non_hockey_fields = False
+
+    # Non-hockey fields that should never appear in NHL player data
+    non_hockey_fields = {"rebounds", "yards", "touchdowns", "trb", "yds", "td"}
 
     for player in player_boxscores:
         stats = player.stats or {}
@@ -75,6 +85,12 @@ def _compute_nhl_data_health(
             skater_count += 1
         elif player_role == "goalie":
             goalie_count += 1
+        else:
+            no_role_count += 1
+
+        # Check for non-hockey field pollution
+        if any(field in stats for field in non_hockey_fields):
+            has_non_hockey_fields = True
 
     # Determine health status
     issues: list[str] = []
@@ -99,6 +115,17 @@ def _compute_nhl_data_health(
             issues.append(f"low_skater_count:{skater_count}")
             # Not necessarily unhealthy, but notable
 
+    # Check for players without proper role assignment
+    if no_role_count > 0:
+        issues.append(f"players_without_role:{no_role_count}")
+        is_healthy = False
+
+    # Check for schema pollution (non-hockey fields)
+    if has_non_hockey_fields:
+        issues.append("non_hockey_fields_detected")
+        # This indicates legacy or corrupted data
+        is_healthy = False
+
     # Log issues for visibility
     if issues:
         logger.warning(
@@ -107,6 +134,8 @@ def _compute_nhl_data_health(
             status=game_status,
             skater_count=skater_count,
             goalie_count=goalie_count,
+            no_role_count=no_role_count,
+            has_non_hockey_fields=has_non_hockey_fields,
             issues=issues,
             is_healthy=is_healthy,
         )
@@ -298,7 +327,34 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
 
     team_stats = [serialize_team_stat(box) for box in game.team_boxscores]
-    player_stats = [serialize_player_stat(player) for player in game.player_boxscores]
+
+    # Determine if this is an NHL game
+    league_code = game.league.code if game.league else None
+    is_nhl = league_code == "NHL"
+
+    # For NHL, separate skaters and goalies; for other sports use generic player stats
+    nhl_skaters: list[NHLSkaterStat] | None = None
+    nhl_goalies: list[NHLGoalieStat] | None = None
+    player_stats: list = []
+
+    if is_nhl:
+        # NHL: populate sport-specific lists, leave player_stats empty
+        skaters = []
+        goalies = []
+        for player in game.player_boxscores:
+            stats = player.stats or {}
+            player_role = stats.get("player_role")
+            if player_role == "goalie":
+                goalies.append(serialize_nhl_goalie(player))
+            else:
+                # Default to skater for NHL players without explicit role
+                skaters.append(serialize_nhl_skater(player))
+        nhl_skaters = skaters
+        nhl_goalies = goalies
+    else:
+        # Non-NHL: use generic player stats
+        player_stats = [serialize_player_stat(player) for player in game.player_boxscores]
+
     odds_entries = [
         OddsEntry(
             book=odd.book,
@@ -381,6 +437,8 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         game=meta,
         team_stats=team_stats,
         player_stats=player_stats,
+        nhl_skaters=nhl_skaters,
+        nhl_goalies=nhl_goalies,
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,
