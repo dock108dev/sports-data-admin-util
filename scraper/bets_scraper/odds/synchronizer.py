@@ -26,8 +26,6 @@ class OddsSynchronizer:
 
         Automatically uses historical API for past dates and live API for today/future.
         """
-        # Beta config uses boolean toggles (odds/boxscores/social/pbp). Older code
-        # referenced include_odds; keep this strict and explicit.
         if not config.odds:
             logger.debug("odds_sync_skipped", league=config.league_code, reason="odds_disabled")
             return 0

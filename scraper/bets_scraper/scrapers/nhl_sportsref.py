@@ -178,13 +178,8 @@ class NHLSportsReferenceScraper(BaseSportsReferenceScraper):
                 )
                 continue
 
-            # Hockey Reference uses <td> for player cells in boxscores (NOT <th>)
-            # Per NHL HTML Selector Spec: player names are ALWAYS in <td data-stat="player">
-            # <th data-stat="player"> only appears in column headers (thead), never in data rows
+            # Hockey Reference uses <td data-stat="player"> for player cells in boxscores
             player_cell = row.find("td", {"data-stat": "player"})
-            if not player_cell:
-                # Fallback to <th> for defensive compatibility, but this should never match
-                player_cell = row.find("th", {"data-stat": "player"})
             if not player_cell:
                 skipped_no_player_cell += 1
                 logger.debug(

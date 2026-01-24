@@ -23,9 +23,11 @@ The core product: turning play-by-play into narrative chapters and stories.
 | Guide | Description |
 |-------|-------------|
 | [Book + Chapters Model](BOOK_CHAPTERS_MODEL.md) | **Start here:** Core architecture and concepts |
+| [Narrative Time Model](NARRATIVE_TIME_MODEL.md) | How timeline ordering works (narrative vs wall-clock) |
 | [NBA v1 Boundary Rules](NBA_V1_BOUNDARY_RULES.md) | Chapter boundary rules for NBA |
 | [AI Context Policy](AI_CONTEXT_POLICY.md) | What AI can and cannot see |
 | [AI Signals (NBA v1)](AI_SIGNALS_NBA_V1.md) | Exact signals exposed to AI |
+| [Summary Generation](SUMMARY_GENERATION.md) | AI generation modes, voice, validation |
 | [Admin UI Guide](ADMIN_UI_STORY_GENERATOR.md) | Story Generator admin interface |
 | [Technical Flow](TECHNICAL_FLOW.md) | Complete pipeline from PBP to story |
 | [Timeline Assembly](TIMELINE_ASSEMBLY.md) | Timeline generation details |

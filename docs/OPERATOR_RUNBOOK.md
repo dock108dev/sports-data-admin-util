@@ -100,18 +100,30 @@ docker exec sports-api alembic upgrade head
 
 ## Backups & Restore
 
-### Nightly Backups
+### Automatic Backups (Production)
 
-Use `scripts/backup/pg_dump_backup.sh` with a cron job or systemd timer.
+When running with `--profile prod`, the backup service runs daily at 14:00 UTC and:
+- Creates a compressed SQL dump
+- Stores backups in `infra/backups/`
+- Keeps only the last 7 days of backups
+- Maintains a `latest.sql.gz` symlink
 
-Example cron entry:
+### Manual Backup
+
 ```bash
-0 2 * * * DATABASE_URL=postgresql+asyncpg://... BACKUP_S3_URI=s3://bucket/sports /workspace/scripts/backup/pg_dump_backup.sh
+docker exec sports-postgres /scripts/backup.sh
 ```
 
-Upload options:
-- `BACKUP_S3_URI`: Uses AWS CLI (`aws s3 cp`)
-- `BACKUP_RCLONE_REMOTE`: Uses `rclone copy` for Hetzner Storage Box or S3-compatible endpoints
+### Offsite Backup (Optional)
+
+Copy backups to external storage:
+```bash
+# Copy to S3
+aws s3 sync infra/backups/ s3://your-bucket/sports-backups/
+
+# Copy to remote server
+rsync -avz infra/backups/ user@backup-server:/backups/sports/
+```
 
 ### Restore
 

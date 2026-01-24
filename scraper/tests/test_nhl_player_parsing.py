@@ -118,29 +118,6 @@ VALID_GOALIES_HTML = """
 </table>
 """
 
-# BROKEN HTML: uses <th data-stat="player"> in data rows (the original bug)
-BROKEN_SKATERS_HTML_TH_CELLS = """
-<table id="BOS_skaters">
-  <thead>
-    <tr>
-      <th data-stat="player">Player</th>
-      <th data-stat="goals">G</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th data-stat="player"><a href="/players/m/marchabr01.html">Brad Marchand</a></th>
-      <td data-stat="goals">1</td>
-    </tr>
-    <tr>
-      <th data-stat="player"><a href="/players/p/pastrda01.html">David Pastrnak</a></th>
-      <td data-stat="goals">2</td>
-    </tr>
-  </tbody>
-</table>
-"""
-
-
 @pytest.fixture
 def scraper() -> StubNHLScraper:
     return StubNHLScraper()
@@ -190,29 +167,6 @@ class TestNHLPlayerCellDetection:
         # Verify role is set correctly
         for player in players:
             assert player.player_role == "skater", f"Expected role 'skater', got '{player.player_role}'"
-
-    def test_th_player_cells_in_data_rows_still_work_as_fallback(
-        self, scraper: StubNHLScraper, team_identity: TeamIdentity
-    ) -> None:
-        """<th data-stat="player"> in data rows should work as fallback.
-
-        While Hockey Reference uses <td> for data rows, we maintain <th> fallback
-        for defensive compatibility. This test verifies the fallback works.
-        """
-        soup = BeautifulSoup(BROKEN_SKATERS_HTML_TH_CELLS, "lxml")
-        table = soup.find("table", id="BOS_skaters")
-
-        players = scraper._parse_player_table(
-            table=table,
-            table_id="BOS_skaters",
-            team_abbr="BOS",
-            team_identity=team_identity,
-            is_home=True,
-            player_role="skater",
-        )
-
-        # Fallback should still parse players
-        assert len(players) == 2, f"Expected 2 skaters from fallback, got {len(players)}"
 
 
 class TestNHLSkaterParsing:
