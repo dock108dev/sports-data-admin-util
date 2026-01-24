@@ -37,23 +37,39 @@ class TestDetectRunWindows:
         ]
         assert detect_run_windows(plays) == []
 
-    def test_chapter_starts_mid_game_no_spurious_run(self):
-        """Chapter starting mid-game doesn't create spurious run from score delta.
-
-        This tests the fix for initializing prev scores from first observed score
-        rather than zero.
-        """
-        # Chapter starts at 45-42, first scoring play brings it to 47-42
+    def test_game_start_uses_zero_baseline(self):
+        """When score is low (<=6 total), assume 0-0 baseline for first play."""
+        # First play shows 2-0 (total=2, within threshold)
+        # So we assume prev was 0-0, meaning this play scored 2
         plays = [
-            _make_play("Home makes layup", 47, 42),  # First scoring play
-            _make_play("Home makes three", 50, 42),  # +3 more for home
+            _make_play("Home makes layup", 2, 0),  # +2 (from 0-0)
+            _make_play("Home makes three", 5, 0),  # +3
+            _make_play("Home makes free throw", 6, 0),  # +1 = 6 total
         ]
         windows = detect_run_windows(plays)
 
-        # Should NOT detect a run of 47 or 50 points
-        # Should only see the 3-point delta from second play
-        for w in windows:
-            assert w.points_scored < 10, "Spurious run detected from mid-game start"
+        assert len(windows) == 1
+        assert windows[0].points_scored == 6
+        assert windows[0].team == "home"
+
+    def test_chapter_starts_mid_game_no_spurious_run(self):
+        """Chapter starting mid-game doesn't create spurious run from score delta.
+
+        When a chapter starts mid-game (high score), the first play sets the
+        baseline and deltas are calculated from subsequent plays.
+        """
+        # Chapter starts at 45-42 (total > threshold, so mid-game heuristic applies)
+        # First scoring play at 47-42 sets baseline, then +3 and +3 more
+        plays = [
+            _make_play("Home makes layup", 47, 42),  # Sets baseline (total=89 > 6)
+            _make_play("Home makes three", 50, 42),  # +3 for home
+            _make_play("Home makes three", 53, 42),  # +3 more = 6 total
+        ]
+        windows = detect_run_windows(plays)
+
+        # Should detect a 6-point run (3+3), NOT a 53-point run
+        assert len(windows) == 1
+        assert windows[0].points_scored == 6, "Should only count deltas from baseline"
 
     def test_run_via_lead_change_qualifies(self):
         """Run that causes lead change qualifies as a beat."""
