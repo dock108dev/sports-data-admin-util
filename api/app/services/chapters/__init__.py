@@ -105,9 +105,19 @@ from .story_section import (
     TeamStatDelta as SectionTeamStatDelta,
     PlayerStatDelta as SectionPlayerStatDelta,
     ForcedBreakReason,
+    # Player Prominence types and functions
+    PlayerProminence,
+    compute_player_prominence,
+    select_prominent_players,
     # Constants (Signal thresholds)
     SECTION_MIN_POINTS_THRESHOLD,
     SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD,
+    # Constants (Thin section)
+    THIN_SECTION_MAX_POINTS,
+    THIN_SECTION_MAX_SCORING_PLAYS,
+    # Constants (Lumpy section / dominance capping)
+    LUMPY_DOMINANCE_THRESHOLD_PCT,
+    DOMINANCE_CAP_PCT,
     # Beat compatibility
     INCOMPATIBLE_BEAT_PAIRS,
     CRUNCH_TIER_BEATS,
@@ -118,6 +128,14 @@ from .story_section import (
     get_section_total_points,
     is_section_underpowered,
     handle_underpowered_sections,
+    # Thin section functions
+    count_section_scoring_plays,
+    is_section_thin,
+    handle_thin_sections,
+    # Lumpy section functions
+    get_dominant_player_share,
+    is_section_lumpy,
+    apply_dominance_cap,
     # Functions
     build_story_sections,
     enforce_section_count,
@@ -290,9 +308,19 @@ __all__ = [
     "SectionTeamStatDelta",
     "SectionPlayerStatDelta",
     "ForcedBreakReason",
+    # Player Prominence
+    "PlayerProminence",
+    "compute_player_prominence",
+    "select_prominent_players",
     # Signal thresholds
     "SECTION_MIN_POINTS_THRESHOLD",
     "SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD",
+    # Thin section constants
+    "THIN_SECTION_MAX_POINTS",
+    "THIN_SECTION_MAX_SCORING_PLAYS",
+    # Lumpy section / dominance capping constants
+    "LUMPY_DOMINANCE_THRESHOLD_PCT",
+    "DOMINANCE_CAP_PCT",
     # Beat compatibility
     "INCOMPATIBLE_BEAT_PAIRS",
     "CRUNCH_TIER_BEATS",
@@ -303,6 +331,14 @@ __all__ = [
     "get_section_total_points",
     "is_section_underpowered",
     "handle_underpowered_sections",
+    # Thin section functions
+    "count_section_scoring_plays",
+    "is_section_thin",
+    "handle_thin_sections",
+    # Lumpy section functions
+    "get_dominant_player_share",
+    "is_section_lumpy",
+    "apply_dominance_cap",
     # Section functions
     "build_story_sections",
     "enforce_section_count",

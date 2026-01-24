@@ -92,6 +92,11 @@ class PlayerSnapshot:
     three_pt_made_total: int = 0  # 3-pointers made
     ft_made_total: int = 0  # Free throws made
 
+    # Expanded Stats (Cumulative Totals) - Player Prominence
+    assists_total: int = 0
+    blocks_total: int = 0
+    steals_total: int = 0
+
     # Fouls (Cumulative Totals)
     personal_foul_count_total: int = 0
     technical_foul_count_total: int = 0  # Separate from personal fouls
@@ -110,6 +115,9 @@ class PlayerSnapshot:
             "fg_made_total": self.fg_made_total,
             "three_pt_made_total": self.three_pt_made_total,
             "ft_made_total": self.ft_made_total,
+            "assists_total": self.assists_total,
+            "blocks_total": self.blocks_total,
+            "steals_total": self.steals_total,
             "personal_foul_count_total": self.personal_foul_count_total,
             "technical_foul_count_total": self.technical_foul_count_total,
             "notable_actions_set": sorted(self.notable_actions_set),
@@ -206,6 +214,11 @@ class PlayerDelta:
     three_pt_made: int = 0
     ft_made: int = 0
 
+    # Expanded Stats (Section Delta) - Player Prominence
+    assists: int = 0
+    blocks: int = 0
+    steals: int = 0
+
     # Fouls (Section Delta)
     personal_foul_count: int = 0
     technical_foul_count: int = 0
@@ -227,6 +240,9 @@ class PlayerDelta:
             "fg_made": self.fg_made,
             "three_pt_made": self.three_pt_made,
             "ft_made": self.ft_made,
+            "assists": self.assists,
+            "blocks": self.blocks,
+            "steals": self.steals,
             "personal_foul_count": self.personal_foul_count,
             "technical_foul_count": self.technical_foul_count,
             "notable_actions": sorted(self.notable_actions),
@@ -516,6 +532,159 @@ def _extract_notable_action(play: Play) -> str | None:
 
 
 # ============================================================================
+# EXPANDED STATS PARSING (ASSISTS, BLOCKS, STEALS)
+# ============================================================================
+
+
+def _is_assist(play: Play) -> tuple[bool, str | None, str | None, str | None]:
+    """Check if play contains an assist and extract assister info.
+
+    ASSIST RULES:
+    - Look for "assist" keyword in description
+    - Common patterns: "(Player Name assists)", "assisted by Player Name"
+
+    Returns:
+        Tuple of (is_assist, assister_key, assister_name, assister_id)
+    """
+    description = (play.raw_data.get("description") or "").lower()
+    raw = play.raw_data
+
+    if "assist" not in description:
+        return False, None, None, None
+
+    # Try to extract assister name
+    # Pattern 1: "(Player Name assists)" or "assisted by Player Name"
+    original_desc = play.raw_data.get("description") or ""
+
+    # Try explicit assist_player field first
+    assist_player = raw.get("assist_player") or raw.get("assist_player_name")
+    if assist_player:
+        assister_key = normalize_player_key(assist_player)
+        return True, assister_key, assist_player, raw.get("assist_player_id")
+
+    # Pattern: "assisted by Player Name" or "(Player Name assists)"
+    # Extract from description
+    if "assisted by " in original_desc.lower():
+        parts = original_desc.lower().split("assisted by ")
+        if len(parts) > 1:
+            # Take text after "assisted by" up to next punctuation
+            name_part = parts[1].split(")")[0].split(",")[0].strip()
+            if name_part:
+                # Find original case name
+                idx = original_desc.lower().find(name_part)
+                if idx >= 0:
+                    assister_name = original_desc[idx : idx + len(name_part)]
+                    assister_key = normalize_player_key(assister_name)
+                    return True, assister_key, assister_name, None
+
+    # Pattern: "(Player assists)"
+    if " assists)" in original_desc.lower():
+        # Find the opening paren
+        idx = original_desc.lower().find(" assists)")
+        if idx > 0:
+            # Find matching open paren
+            open_idx = original_desc.rfind("(", 0, idx)
+            if open_idx >= 0:
+                name_part = original_desc[open_idx + 1 : idx].strip()
+                if name_part:
+                    assister_key = normalize_player_key(name_part)
+                    return True, assister_key, name_part, None
+
+    # Assist detected but couldn't extract player
+    return True, None, None, None
+
+
+def _is_block(play: Play) -> tuple[bool, str | None, str | None, str | None]:
+    """Check if play contains a block and extract blocker info.
+
+    BLOCK RULES:
+    - Look for "block" keyword in description
+    - Common patterns: "blocked by Player Name"
+
+    Returns:
+        Tuple of (is_block, blocker_key, blocker_name, blocker_id)
+    """
+    description = (play.raw_data.get("description") or "").lower()
+    raw = play.raw_data
+
+    if "block" not in description:
+        return False, None, None, None
+
+    original_desc = play.raw_data.get("description") or ""
+
+    # Try explicit block_player field first
+    block_player = raw.get("block_player") or raw.get("block_player_name")
+    if block_player:
+        blocker_key = normalize_player_key(block_player)
+        return True, blocker_key, block_player, raw.get("block_player_id")
+
+    # Pattern: "blocked by Player Name"
+    if "blocked by " in original_desc.lower():
+        parts = original_desc.lower().split("blocked by ")
+        if len(parts) > 1:
+            name_part = parts[1].split(")")[0].split(",")[0].strip()
+            if name_part:
+                idx = original_desc.lower().find(name_part)
+                if idx >= 0:
+                    blocker_name = original_desc[idx : idx + len(name_part)]
+                    blocker_key = normalize_player_key(blocker_name)
+                    return True, blocker_key, blocker_name, None
+
+    # Block detected but couldn't extract player
+    return True, None, None, None
+
+
+def _is_steal(play: Play) -> tuple[bool, str | None, str | None, str | None]:
+    """Check if play contains a steal and extract stealer info.
+
+    STEAL RULES:
+    - Look for "steal" keyword in description
+    - Common patterns: "Player Name steals", "stolen by Player Name"
+
+    Returns:
+        Tuple of (is_steal, stealer_key, stealer_name, stealer_id)
+    """
+    description = (play.raw_data.get("description") or "").lower()
+    raw = play.raw_data
+
+    if "steal" not in description:
+        return False, None, None, None
+
+    original_desc = play.raw_data.get("description") or ""
+
+    # Try explicit steal_player field first
+    steal_player = raw.get("steal_player") or raw.get("steal_player_name")
+    if steal_player:
+        stealer_key = normalize_player_key(steal_player)
+        return True, stealer_key, steal_player, raw.get("steal_player_id")
+
+    # Pattern: "stolen by Player Name"
+    if "stolen by " in original_desc.lower():
+        parts = original_desc.lower().split("stolen by ")
+        if len(parts) > 1:
+            name_part = parts[1].split(")")[0].split(",")[0].strip()
+            if name_part:
+                idx = original_desc.lower().find(name_part)
+                if idx >= 0:
+                    stealer_name = original_desc[idx : idx + len(name_part)]
+                    stealer_key = normalize_player_key(stealer_name)
+                    return True, stealer_key, stealer_name, None
+
+    # Pattern: "Player Name steals"
+    if " steals" in original_desc.lower():
+        idx = original_desc.lower().find(" steals")
+        if idx > 0:
+            # Take text before " steals"
+            name_part = original_desc[:idx].split(",")[-1].strip()
+            if name_part:
+                stealer_key = normalize_player_key(name_part)
+                return True, stealer_key, name_part, None
+
+    # Steal detected but couldn't extract player
+    return True, None, None, None
+
+
+# ============================================================================
 # SNAPSHOT BUILDING
 # ============================================================================
 
@@ -636,6 +805,30 @@ def _process_play(play: Play, snapshot: RunningStatsSnapshot) -> None:
         player = _ensure_player(snapshot, player_key, player_name, player_id, team_key)
         player.notable_actions_set.add(notable_action)
 
+    # Process assists (Player Prominence)
+    is_assist, assister_key, assister_name, assister_id = _is_assist(play)
+    if is_assist and assister_key and assister_name:
+        assister = _ensure_player(
+            snapshot, assister_key, assister_name, assister_id, team_key
+        )
+        assister.assists_total += 1
+
+    # Process blocks (Player Prominence)
+    is_block, blocker_key, blocker_name, blocker_id = _is_block(play)
+    if is_block and blocker_key and blocker_name:
+        blocker = _ensure_player(
+            snapshot, blocker_key, blocker_name, blocker_id, team_key
+        )
+        blocker.blocks_total += 1
+
+    # Process steals (Player Prominence)
+    is_steal, stealer_key, stealer_name, stealer_id = _is_steal(play)
+    if is_steal and stealer_key and stealer_name:
+        stealer = _ensure_player(
+            snapshot, stealer_key, stealer_name, stealer_id, team_key
+        )
+        stealer.steals_total += 1
+
 
 def update_snapshot(
     previous: RunningStatsSnapshot,
@@ -714,6 +907,9 @@ def _compute_player_delta(
             fg_made=end_player.fg_made_total,
             three_pt_made=end_player.three_pt_made_total,
             ft_made=end_player.ft_made_total,
+            assists=end_player.assists_total,
+            blocks=end_player.blocks_total,
+            steals=end_player.steals_total,
             personal_foul_count=end_player.personal_foul_count_total,
             technical_foul_count=end_player.technical_foul_count_total,
             notable_actions=set(end_player.notable_actions_set),
@@ -730,6 +926,9 @@ def _compute_player_delta(
             three_pt_made=end_player.three_pt_made_total
             - start_player.three_pt_made_total,
             ft_made=end_player.ft_made_total - start_player.ft_made_total,
+            assists=end_player.assists_total - start_player.assists_total,
+            blocks=end_player.blocks_total - start_player.blocks_total,
+            steals=end_player.steals_total - start_player.steals_total,
             personal_foul_count=end_player.personal_foul_count_total
             - start_player.personal_foul_count_total,
             technical_foul_count=end_player.technical_foul_count_total

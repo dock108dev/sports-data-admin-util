@@ -8,6 +8,7 @@ DESIGN PRINCIPLES:
 - Structural: Builds outline only, no narrative generation
 - Constrained: 0-10 sections (underpowered sections removed)
 - No AI usage
+- No plays may ever be dropped
 
 COLLAPSE RULES:
 - Adjacent chapters with same beat_type MAY merge
@@ -33,6 +34,25 @@ A section is underpowered if BOTH:
 - Meaningful events < 3 (scoring plays, lead changes, run events, ties)
 Underpowered sections are merged into compatible neighbors or dropped.
 
+THIN SECTION HANDLING:
+A section is thin if BOTH:
+- Total points scored ≤ 4
+- Number of scoring plays ≤ 2
+Thin sections are ALWAYS merged, NEVER dropped:
+- Early game (Q1-Q3): Merge upward into previous
+- Crunch/late game: Merge downward into next
+- Final fallback: Merge forward (if not end-of-game)
+- End-of-game: Must merge backward
+Never crosses OVERTIME boundaries.
+
+LUMPY SECTION HANDLING (DOMINANCE CAPPING):
+A section is lumpy if single player accounts for ≥ 65% of section points.
+When lumpy:
+- Cap dominant player contribution at 60% of section points
+- Spill excess to nearest compatible adjacent section
+- Preserve total game stats
+- Never cross OVERTIME boundaries
+
 SECTION COUNT CONSTRAINTS:
 - Minimum: 0 sections (low-signal games may have fewer than 3)
 - Maximum: 10 sections
@@ -53,7 +73,136 @@ from .beat_classifier import (
     BEAT_PRIORITY,
     detect_opening_section_beat,
 )
-from .running_stats import SectionDelta
+from .running_stats import SectionDelta, RunningStatsSnapshot
+
+
+# ============================================================================
+# PLAYER PROMINENCE ACCUMULATOR
+# ============================================================================
+
+
+@dataclass
+class PlayerProminence:
+    """Player prominence metrics for selection purposes.
+
+    PLAYER PROMINENCE SYSTEM:
+    Used ONLY for player selection - these values are NOT passed to AI.
+    The AI receives only section-level deltas (points_scored in section).
+
+    Selection logic (per team):
+    1. Rank by section_points → Top 1-2 as "section leaders"
+    2. Rank by game_points_so_far → Top 1 as "game presence"
+    3. No duplicates, max 3 per team
+
+    Attributes:
+        player_key: Normalized player identifier
+        player_name: Display name
+        team_key: Team identifier
+        section_points: Points scored in THIS section only
+        game_points_so_far: Cumulative game points (for selection only)
+        run_involvement_count: Number of run events player was involved in
+    """
+
+    player_key: str
+    player_name: str
+    team_key: str | None = None
+    section_points: int = 0
+    game_points_so_far: int = 0
+    run_involvement_count: int = 0
+
+
+def compute_player_prominence(
+    section_delta: SectionDelta,
+    end_snapshot: RunningStatsSnapshot | None = None,
+) -> dict[str, PlayerProminence]:
+    """Compute prominence metrics for all players in a section.
+
+    Args:
+        section_delta: Section-level player statistics
+        end_snapshot: Cumulative snapshot at section end (for game totals)
+
+    Returns:
+        Dict of player_key -> PlayerProminence
+    """
+    prominence_map: dict[str, PlayerProminence] = {}
+
+    for player_key, delta in section_delta.players.items():
+        # Get game totals from snapshot if available
+        game_points = 0
+        if end_snapshot and player_key in end_snapshot.players:
+            game_points = end_snapshot.players[player_key].points_scored_total
+
+        prominence_map[player_key] = PlayerProminence(
+            player_key=delta.player_key,
+            player_name=delta.player_name,
+            team_key=delta.team_key,
+            section_points=delta.points_scored,
+            game_points_so_far=game_points,
+            run_involvement_count=0,  # Stub for now - can add run tracking later
+        )
+
+    return prominence_map
+
+
+def select_prominent_players(
+    prominence_map: dict[str, PlayerProminence],
+    max_per_team: int = 3,
+) -> set[str]:
+    """Select prominent players using prominence-based rules.
+
+    SELECTION RULES (per team):
+    1. Top 1-2 by section_points ("section leaders")
+    2. Top 1 by game_points_so_far ("game presence") if not already selected
+    3. No duplicates, max 3 per team
+
+    Args:
+        prominence_map: Player prominence metrics
+        max_per_team: Maximum players to select per team (default: 3)
+
+    Returns:
+        Set of selected player_keys
+    """
+    selected: set[str] = set()
+
+    # Group by team
+    players_by_team: dict[str, list[PlayerProminence]] = {}
+    for p in prominence_map.values():
+        team = p.team_key or "unknown"
+        if team not in players_by_team:
+            players_by_team[team] = []
+        players_by_team[team].append(p)
+
+    for team_key, team_players in players_by_team.items():
+        team_selected: list[str] = []
+
+        # Step 1: Top 1-2 by section_points (section leaders)
+        by_section_points = sorted(
+            team_players,
+            key=lambda x: (-x.section_points, -x.game_points_so_far, x.player_key),
+        )
+
+        # Take up to 2 section leaders
+        for p in by_section_points[:2]:
+            if p.section_points > 0:  # Only if they actually scored
+                team_selected.append(p.player_key)
+
+        # Step 2: Top 1 by game_points_so_far (game presence)
+        if len(team_selected) < max_per_team:
+            by_game_points = sorted(
+                team_players,
+                key=lambda x: (-x.game_points_so_far, -x.section_points, x.player_key),
+            )
+
+            for p in by_game_points:
+                if p.player_key not in team_selected:
+                    if p.game_points_so_far > 0:  # Only if they've scored in game
+                        team_selected.append(p.player_key)
+                        break
+
+        # Ensure we don't exceed max_per_team
+        selected.update(team_selected[:max_per_team])
+
+    return selected
 
 
 # ============================================================================
@@ -117,6 +266,10 @@ class PlayerStatDelta:
     fg_made: int = 0
     three_pt_made: int = 0
     ft_made: int = 0
+    # Expanded stats (Player Prominence)
+    assists: int = 0
+    blocks: int = 0
+    steals: int = 0
     personal_foul_count: int = 0
     foul_trouble_flag: bool = False
 
@@ -130,6 +283,9 @@ class PlayerStatDelta:
             "fg_made": self.fg_made,
             "three_pt_made": self.three_pt_made,
             "ft_made": self.ft_made,
+            "assists": self.assists,
+            "blocks": self.blocks,
+            "steals": self.steals,
             "personal_foul_count": self.personal_foul_count,
             "foul_trouble_flag": self.foul_trouble_flag,
         }
@@ -552,11 +708,21 @@ def _extract_chapter_metadata(
 
 def _aggregate_section_deltas(
     section_deltas: list[SectionDelta],
+    end_snapshot: RunningStatsSnapshot | None = None,
 ) -> tuple[dict[str, TeamStatDelta], dict[str, PlayerStatDelta]]:
     """Aggregate section deltas from multiple chapters into one section.
 
+    PLAYER PROMINENCE SELECTION:
+    Uses prominence-based selection when end_snapshot is provided:
+    - Top 1-2 by section_points (section leaders)
+    - Top 1 by game_points_so_far (game presence)
+    - Max 3 per team, no duplicates
+
+    Falls back to simple "top 3 by points" when no snapshot available.
+
     Args:
         section_deltas: List of SectionDelta objects to aggregate
+        end_snapshot: Optional snapshot at section end for prominence selection
 
     Returns:
         Tuple of (team_deltas, player_deltas)
@@ -594,29 +760,58 @@ def _aggregate_section_deltas(
             p.fg_made += player_delta.fg_made
             p.three_pt_made += player_delta.three_pt_made
             p.ft_made += player_delta.ft_made
+            # Expanded stats (Player Prominence)
+            p.assists += player_delta.assists
+            p.blocks += player_delta.blocks
+            p.steals += player_delta.steals
             p.personal_foul_count += player_delta.personal_foul_count
             # Foul trouble if 4+ fouls in this aggregated section
             p.foul_trouble_flag = p.personal_foul_count >= 4
 
-    # Bound players: top 3 per team by points
+    # Select players using prominence-based rules
     bounded_players: dict[str, PlayerStatDelta] = {}
 
-    # Group by team
-    players_by_team: dict[str, list[PlayerStatDelta]] = {}
-    for p in player_totals.values():
-        team = p.team_key or "unknown"
-        if team not in players_by_team:
-            players_by_team[team] = []
-        players_by_team[team].append(p)
+    if end_snapshot is not None:
+        # Use prominence-based selection
+        # Build a fake section delta for the aggregated stats
+        from .running_stats import PlayerDelta
 
-    # Take top 3 per team
-    for team_key, players in players_by_team.items():
-        sorted_players = sorted(
-            players,
-            key=lambda x: (-x.points_scored, -x.fg_made, x.player_key),
+        aggregated_delta = SectionDelta(
+            section_start_chapter=0,
+            section_end_chapter=0,
+            players={
+                key: PlayerDelta(
+                    player_key=p.player_key,
+                    player_name=p.player_name,
+                    team_key=p.team_key,
+                    points_scored=p.points_scored,
+                )
+                for key, p in player_totals.items()
+            },
         )
-        for p in sorted_players[:3]:
-            bounded_players[p.player_key] = p
+
+        prominence_map = compute_player_prominence(aggregated_delta, end_snapshot)
+        selected_keys = select_prominent_players(prominence_map, max_per_team=3)
+
+        for key in selected_keys:
+            if key in player_totals:
+                bounded_players[key] = player_totals[key]
+    else:
+        # Fallback: top 3 per team by section points (original behavior)
+        players_by_team: dict[str, list[PlayerStatDelta]] = {}
+        for p in player_totals.values():
+            team = p.team_key or "unknown"
+            if team not in players_by_team:
+                players_by_team[team] = []
+            players_by_team[team].append(p)
+
+        for team_key, players in players_by_team.items():
+            sorted_players = sorted(
+                players,
+                key=lambda x: (-x.points_scored, -x.fg_made, x.player_key),
+            )
+            for p in sorted_players[:3]:
+                bounded_players[p.player_key] = p
 
     return team_totals, bounded_players
 
@@ -677,11 +872,15 @@ def _build_section(
     chapters_meta: list[ChapterMetadata],
     section_deltas: list[SectionDelta],
     break_reason: ForcedBreakReason,
+    end_snapshot: RunningStatsSnapshot | None = None,
 ) -> StorySection:
     """Build a single StorySection from chapters.
 
     Phase 2.1: Uses priority-based beat selection instead of first chapter.
     Aggregates descriptors from all chapters.
+
+    Player Prominence: When end_snapshot is provided, uses prominence-based
+    player selection (top 1-2 by section points, top 1 by game points).
     """
     # Phase 2.1: Use priority-based beat selection
     beat_type = _select_section_beat(chapters_meta)
@@ -702,8 +901,10 @@ def _build_section(
         "away": chapters_meta[-1].end_away_score,
     }
 
-    # Aggregate stats
-    team_deltas, player_deltas = _aggregate_section_deltas(section_deltas)
+    # Aggregate stats with prominence-based player selection
+    team_deltas, player_deltas = _aggregate_section_deltas(
+        section_deltas, end_snapshot
+    )
 
     # Generate notes
     notes = generate_section_notes(team_deltas, player_deltas)
@@ -731,6 +932,26 @@ SECTION_MIN_POINTS_THRESHOLD = 8
 
 # Minimum meaningful events in a section to be considered "powered"
 SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD = 3
+
+
+# ============================================================================
+# THIN SECTION CONSTANTS
+# ============================================================================
+
+# A section is "thin" if BOTH conditions are true
+THIN_SECTION_MAX_POINTS = 4  # Total points scored ≤ 4
+THIN_SECTION_MAX_SCORING_PLAYS = 2  # Number of scoring plays ≤ 2
+
+
+# ============================================================================
+# LUMPY SECTION CONSTANTS (DOMINANCE CAPPING)
+# ============================================================================
+
+# A section is "lumpy" if single player has ≥ this % of section points
+LUMPY_DOMINANCE_THRESHOLD_PCT = 0.65  # 65%
+
+# Cap dominant player contribution at this % of section points
+DOMINANCE_CAP_PCT = 0.60  # 60%
 
 
 # ============================================================================
@@ -966,9 +1187,7 @@ def _count_run_events(chapters: list[Chapter], chapter_ids: list[str]) -> int:
     return run_events
 
 
-def count_meaningful_events(
-    section: StorySection, chapters: list[Chapter]
-) -> int:
+def count_meaningful_events(section: StorySection, chapters: list[Chapter]) -> int:
     """Count meaningful events in a section.
 
     Meaningful events include:
@@ -1026,6 +1245,374 @@ def is_section_underpowered(
         total_points < SECTION_MIN_POINTS_THRESHOLD
         and meaningful_events < SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD
     )
+
+
+# ============================================================================
+# THIN SECTION DETECTION & HANDLING
+# ============================================================================
+
+
+def count_section_scoring_plays(
+    section: StorySection, chapters: list[Chapter]
+) -> int:
+    """Count number of scoring plays in a section.
+
+    A scoring play is any play where the score changes.
+    """
+    return _count_scoring_plays(chapters, section.chapters_included)
+
+
+def is_section_thin(section: StorySection, chapters: list[Chapter]) -> bool:
+    """Check if a section is thin (very low signal).
+
+    A section is thin if BOTH:
+    - Total points scored ≤ THIN_SECTION_MAX_POINTS (4)
+    - Number of scoring plays ≤ THIN_SECTION_MAX_SCORING_PLAYS (2)
+
+    Thin sections must ALWAYS be merged, never dropped.
+
+    Args:
+        section: The section to evaluate
+        chapters: All chapters (for scoring play count)
+
+    Returns:
+        True if the section is thin
+    """
+    total_points = get_section_total_points(section)
+    scoring_plays = count_section_scoring_plays(section, chapters)
+
+    return (
+        total_points <= THIN_SECTION_MAX_POINTS
+        and scoring_plays <= THIN_SECTION_MAX_SCORING_PLAYS
+    )
+
+
+def _is_crunch_or_late_game(section: StorySection) -> bool:
+    """Check if section is in crunch or late game phase.
+
+    Returns True for CRUNCH_SETUP or CLOSING_SEQUENCE beats.
+    """
+    return section.beat_type in (BeatType.CRUNCH_SETUP, BeatType.CLOSING_SEQUENCE)
+
+
+def _is_early_game_section(section: StorySection) -> bool:
+    """Check if section is in early game phase (Q1-Q3).
+
+    Returns True if section is NOT crunch/late game.
+    """
+    return not _is_crunch_or_late_game(section)
+
+
+def _find_thin_section_merge_target(
+    sections: list[StorySection],
+    thin_idx: int,
+    is_end_of_game: bool,
+) -> int | None:
+    """Find merge target for a thin section following merge rules.
+
+    THIN SECTION MERGE RULES (Authoritative):
+    1. Early game (Q1-Q3): Merge upward (into previous)
+    2. Crunch/late game: Merge downward (into next)
+    3. Final fallback (non-end-of-game): Merge forward into next
+    4. End-of-game exception: Final section merges backward only
+
+    Never crosses OVERTIME boundaries.
+
+    Args:
+        sections: List of sections
+        thin_idx: Index of the thin section
+        is_end_of_game: True if thin section is the last section
+
+    Returns:
+        Index of merge target, or None if no valid target found
+    """
+    thin_section = sections[thin_idx]
+
+    # Rule 4: End-of-game exception - must merge backward
+    if is_end_of_game:
+        # Find previous non-OVERTIME section
+        for i in range(thin_idx - 1, -1, -1):
+            if sections[i].beat_type != BeatType.OVERTIME:
+                return i
+        return None
+
+    # Rule 1: Early game - merge upward (into previous)
+    if _is_early_game_section(thin_section):
+        # Try previous section first
+        if thin_idx > 0:
+            prev_section = sections[thin_idx - 1]
+            # Can't cross OVERTIME boundary
+            if prev_section.beat_type != BeatType.OVERTIME:
+                return thin_idx - 1
+
+        # Rule 3: Fallback - merge forward (if not end-of-game)
+        if thin_idx < len(sections) - 1:
+            next_section = sections[thin_idx + 1]
+            if next_section.beat_type != BeatType.OVERTIME:
+                return thin_idx + 1
+
+        return None
+
+    # Rule 2: Crunch/late game - merge downward (into next)
+    if thin_idx < len(sections) - 1:
+        next_section = sections[thin_idx + 1]
+        # Can't cross OVERTIME boundary
+        if next_section.beat_type != BeatType.OVERTIME:
+            return thin_idx + 1
+
+    # Rule 3: Fallback - merge backward
+    if thin_idx > 0:
+        prev_section = sections[thin_idx - 1]
+        if prev_section.beat_type != BeatType.OVERTIME:
+            return thin_idx - 1
+
+    return None
+
+
+def handle_thin_sections(
+    sections: list[StorySection],
+    chapters: list[Chapter],
+) -> list[StorySection]:
+    """Handle thin sections by merging them (never dropping).
+
+    THIN SECTION MERGE RULES:
+    1. Early game (Q1-Q3): Merge upward into previous
+    2. Crunch/late game: Merge downward into next
+    3. Final fallback: Merge forward (if not end-of-game)
+    4. End-of-game: Must merge backward
+
+    Key constraints:
+    - Thin sections are ALWAYS merged, NEVER dropped
+    - PROTECTED sections (opening, CRUNCH_SETUP, CLOSING_SEQUENCE, OVERTIME)
+      cannot be merged away - they are skipped even if thin
+    - Never crosses OVERTIME boundaries
+
+    Args:
+        sections: List of sections to process
+        chapters: All chapters (for signal evaluation)
+
+    Returns:
+        List of sections with thin sections merged
+    """
+    if not sections:
+        return sections
+
+    result = list(sections)
+    changed = True
+
+    # Process iteratively until no more thin sections
+    while changed:
+        changed = False
+
+        # Find first thin section that is NOT protected
+        thin_idx = None
+        for i, section in enumerate(result):
+            # Skip protected sections - they cannot be merged away
+            if _is_protected_section(section):
+                continue
+            if is_section_thin(section, chapters):
+                thin_idx = i
+                break
+
+        if thin_idx is None:
+            break  # No more thin sections (or all remaining thin sections are protected)
+
+        # Determine if this is end-of-game
+        is_end_of_game = thin_idx == len(result) - 1
+
+        # Find merge target
+        target_idx = _find_thin_section_merge_target(result, thin_idx, is_end_of_game)
+
+        if target_idx is not None:
+            # Perform merge
+            if target_idx < thin_idx:
+                # Merge thin into previous (upward merge)
+                merged = _merge_sections(
+                    result[target_idx], result[thin_idx], target_idx
+                )
+                result = result[:target_idx] + [merged] + result[thin_idx + 1 :]
+            else:
+                # Merge thin into next (downward merge)
+                merged = _merge_sections(
+                    result[thin_idx], result[target_idx], thin_idx
+                )
+                result = result[:thin_idx] + [merged] + result[target_idx + 1 :]
+
+            changed = True
+
+            # Renumber remaining sections
+            for j, s in enumerate(result):
+                s.section_index = j
+        else:
+            # No valid merge target - this should rarely happen
+            # (only if section is completely isolated by OVERTIME boundaries)
+            # In this case, we leave it as-is rather than dropping
+            break
+
+    return result
+
+
+# ============================================================================
+# LUMPY SECTION DETECTION & DOMINANCE CAPPING
+# ============================================================================
+
+
+def get_dominant_player_share(section: StorySection) -> tuple[str | None, float]:
+    """Get the most dominant player and their share of section points.
+
+    Args:
+        section: The section to evaluate
+
+    Returns:
+        Tuple of (player_key, share_pct) where share_pct is 0.0-1.0.
+        Returns (None, 0.0) if no players or no points.
+    """
+    total_points = get_section_total_points(section)
+    if total_points == 0:
+        return None, 0.0
+
+    max_player_key = None
+    max_player_points = 0
+
+    for player_key, delta in section.player_stat_deltas.items():
+        if delta.points_scored > max_player_points:
+            max_player_points = delta.points_scored
+            max_player_key = player_key
+
+    if max_player_key is None:
+        return None, 0.0
+
+    share = max_player_points / total_points
+    return max_player_key, share
+
+
+def is_section_lumpy(section: StorySection) -> bool:
+    """Check if a section is lumpy (dominated by single player).
+
+    A section is lumpy if a single player accounts for ≥ 65% of section points.
+
+    Args:
+        section: The section to evaluate
+
+    Returns:
+        True if the section is lumpy
+    """
+    _, share = get_dominant_player_share(section)
+    return share >= LUMPY_DOMINANCE_THRESHOLD_PCT
+
+
+def _find_spillover_target(
+    sections: list[StorySection],
+    source_idx: int,
+) -> int | None:
+    """Find a section to receive spillover stats.
+
+    Spillover goes to the nearest compatible adjacent section.
+    Never crosses OVERTIME boundaries.
+
+    Preference: previous section, then next section.
+
+    Args:
+        sections: List of sections
+        source_idx: Index of the lumpy section
+
+    Returns:
+        Index of spillover target, or None if no valid target
+    """
+    # Try previous section first
+    if source_idx > 0:
+        prev_section = sections[source_idx - 1]
+        # Can't cross OVERTIME boundary
+        if prev_section.beat_type != BeatType.OVERTIME:
+            source_beat = sections[source_idx].beat_type
+            if are_beats_compatible_for_merge(prev_section.beat_type, source_beat):
+                return source_idx - 1
+
+    # Try next section
+    if source_idx < len(sections) - 1:
+        next_section = sections[source_idx + 1]
+        if next_section.beat_type != BeatType.OVERTIME:
+            source_beat = sections[source_idx].beat_type
+            if are_beats_compatible_for_merge(source_beat, next_section.beat_type):
+                return source_idx + 1
+
+    return None
+
+
+def apply_dominance_cap(
+    sections: list[StorySection],
+) -> list[StorySection]:
+    """Apply dominance capping to lumpy sections with spillover.
+
+    When a section is lumpy (single player ≥ 65% of points):
+    1. Cap dominant player at 60% of section points
+    2. Spill excess to nearest compatible adjacent section
+    3. Preserve total game stats
+    4. Never cross OVERTIME boundaries
+
+    Note: This modifies player_stat_deltas only, not team stats.
+    Stat adjustments are deterministic.
+
+    Args:
+        sections: List of sections to process
+
+    Returns:
+        List of sections with dominance capping applied
+    """
+    if len(sections) < 2:
+        return sections
+
+    result = list(sections)
+
+    for i, section in enumerate(result):
+        if not is_section_lumpy(section):
+            continue
+
+        total_points = get_section_total_points(section)
+        if total_points == 0:
+            continue
+
+        dominant_key, dominant_share = get_dominant_player_share(section)
+        if dominant_key is None:
+            continue
+
+        # Calculate cap and excess
+        cap_points = int(total_points * DOMINANCE_CAP_PCT)
+        dominant_player = section.player_stat_deltas.get(dominant_key)
+        if dominant_player is None:
+            continue
+
+        excess_points = dominant_player.points_scored - cap_points
+        if excess_points <= 0:
+            continue
+
+        # Find spillover target
+        target_idx = _find_spillover_target(result, i)
+        if target_idx is None:
+            # No valid spillover target - skip capping for this section
+            continue
+
+        # Apply cap to dominant player in this section
+        dominant_player.points_scored = cap_points
+
+        # Apply spillover to target section
+        target_section = result[target_idx]
+
+        # Find or create player entry in target section
+        if dominant_key in target_section.player_stat_deltas:
+            target_section.player_stat_deltas[dominant_key].points_scored += (
+                excess_points
+            )
+        else:
+            # Create new player entry with just the spillover points
+            target_section.player_stat_deltas[dominant_key] = PlayerStatDelta(
+                player_key=dominant_player.player_key,
+                player_name=dominant_player.player_name,
+                team_key=dominant_player.team_key,
+                points_scored=excess_points,
+            )
+
+    return result
 
 
 # ============================================================================
@@ -1114,6 +1701,9 @@ def _merge_sections(
             fg_made=delta.fg_made,
             three_pt_made=delta.three_pt_made,
             ft_made=delta.ft_made,
+            assists=delta.assists,
+            blocks=delta.blocks,
+            steals=delta.steals,
             personal_foul_count=delta.personal_foul_count,
             foul_trouble_flag=delta.foul_trouble_flag,
         )
@@ -1125,6 +1715,9 @@ def _merge_sections(
             p.fg_made += delta.fg_made
             p.three_pt_made += delta.three_pt_made
             p.ft_made += delta.ft_made
+            p.assists += delta.assists
+            p.blocks += delta.blocks
+            p.steals += delta.steals
             p.personal_foul_count += delta.personal_foul_count
             p.foul_trouble_flag = p.personal_foul_count >= 4
         else:
@@ -1136,6 +1729,9 @@ def _merge_sections(
                 fg_made=delta.fg_made,
                 three_pt_made=delta.three_pt_made,
                 ft_made=delta.ft_made,
+                assists=delta.assists,
+                blocks=delta.blocks,
+                steals=delta.steals,
                 personal_foul_count=delta.personal_foul_count,
                 foul_trouble_flag=delta.foul_trouble_flag,
             )
@@ -1334,9 +1930,7 @@ def handle_underpowered_sections(
                     result[neighbor_idx], result[underpowered_idx], neighbor_idx
                 )
                 result = (
-                    result[:neighbor_idx]
-                    + [merged]
-                    + result[underpowered_idx + 1 :]
+                    result[:neighbor_idx] + [merged] + result[underpowered_idx + 1 :]
                 )
             else:
                 # Merge underpowered into next
@@ -1344,9 +1938,7 @@ def handle_underpowered_sections(
                     result[underpowered_idx], result[neighbor_idx], underpowered_idx
                 )
                 result = (
-                    result[:underpowered_idx]
-                    + [merged]
-                    + result[neighbor_idx + 1 :]
+                    result[:underpowered_idx] + [merged] + result[neighbor_idx + 1 :]
                 )
             changed = True
         else:
@@ -1454,13 +2046,22 @@ def build_story_sections(
     chapters: list[Chapter],
     classifications: list[BeatClassification],
     section_deltas: list[SectionDelta] | None = None,
+    snapshots: list[RunningStatsSnapshot] | None = None,
 ) -> list[StorySection]:
     """Build StorySections from chapters and beat classifications.
+
+    PLAYER PROMINENCE:
+    When snapshots are provided, uses prominence-based player selection:
+    - Top 1-2 by section_points (section leaders)
+    - Top 1 by game_points_so_far (game presence)
+    - Max 3 per team, no duplicates
+    Rolling game totals are used ONLY for selection, not passed to AI.
 
     Args:
         chapters: List of chapters in chronological order
         classifications: Beat classification for each chapter
         section_deltas: Stats for each chapter (from running_stats)
+        snapshots: Running stats snapshots for prominence selection (optional)
 
     Returns:
         List of StorySections (0-10 sections, underpowered sections removed)
@@ -1546,11 +2147,26 @@ def build_story_sections(
                 if idx < len(section_deltas):
                     group_deltas.append(section_deltas[idx])
 
-        section = _build_section(section_idx, group_meta, group_deltas, break_reason)
+        # Get end snapshot for prominence selection (last chapter in section)
+        end_snapshot = None
+        if snapshots and chapter_indices:
+            last_chapter_idx = chapter_indices[-1]
+            if last_chapter_idx < len(snapshots):
+                end_snapshot = snapshots[last_chapter_idx]
+
+        section = _build_section(
+            section_idx, group_meta, group_deltas, break_reason, end_snapshot
+        )
         sections.append(section)
 
     # Handle underpowered sections (merge or drop)
     sections = handle_underpowered_sections(sections, chapters)
+
+    # Handle thin sections (always merge, never drop)
+    sections = handle_thin_sections(sections, chapters)
+
+    # Apply dominance capping to lumpy sections
+    sections = apply_dominance_cap(sections)
 
     # Enforce section count constraints (max only, min is now 0)
     sections = enforce_section_count(sections)

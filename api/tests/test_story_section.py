@@ -23,10 +23,10 @@ from app.services.chapters.story_section import (
     PlayerStatDelta,
     ChapterMetadata,
     ForcedBreakReason,
+    PlayerProminence,
     # Constants
     SECTION_MIN_POINTS_THRESHOLD,
     SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD,
-    INCOMPATIBLE_BEAT_PAIRS,
     CRUNCH_TIER_BEATS,
     NON_CRUNCH_BEATS,
     # Functions
@@ -42,6 +42,14 @@ from app.services.chapters.story_section import (
     get_section_total_points,
     count_meaningful_events,
     handle_underpowered_sections,
+    compute_player_prominence,
+    select_prominent_players,
+)
+from app.services.chapters.running_stats import (
+    SectionDelta,
+    PlayerDelta,
+    RunningStatsSnapshot,
+    PlayerSnapshot,
 )
 
 
@@ -585,11 +593,46 @@ class TestSectionBuilding:
 
     def test_build_basic_sections(self):
         """Build sections from simple chapters."""
+        # Each quarter needs multiple plays and sufficient scoring to not be underpowered
         plays = [
-            [make_play(0, quarter=1, game_clock="10:00", home_score=5, away_score=3)],
-            [make_play(1, quarter=2, game_clock="10:00", home_score=25, away_score=20)],
-            [make_play(2, quarter=3, game_clock="10:00", home_score=50, away_score=45)],
-            [make_play(3, quarter=4, game_clock="5:00", home_score=75, away_score=72)],
+            [
+                make_play(0, quarter=1, game_clock="12:00", home_score=0, away_score=0),
+                make_play(1, quarter=1, game_clock="10:00", home_score=5, away_score=3),
+                make_play(2, quarter=1, game_clock="8:00", home_score=10, away_score=8),
+            ],
+            [
+                make_play(
+                    3, quarter=2, game_clock="12:00", home_score=10, away_score=8
+                ),
+                make_play(
+                    4, quarter=2, game_clock="10:00", home_score=20, away_score=15
+                ),
+                make_play(
+                    5, quarter=2, game_clock="8:00", home_score=28, away_score=22
+                ),
+            ],
+            [
+                make_play(
+                    6, quarter=3, game_clock="12:00", home_score=28, away_score=22
+                ),
+                make_play(
+                    7, quarter=3, game_clock="10:00", home_score=40, away_score=35
+                ),
+                make_play(
+                    8, quarter=3, game_clock="8:00", home_score=52, away_score=48
+                ),
+            ],
+            [
+                make_play(
+                    9, quarter=4, game_clock="5:00", home_score=52, away_score=48
+                ),
+                make_play(
+                    10, quarter=4, game_clock="4:00", home_score=60, away_score=55
+                ),
+                make_play(
+                    11, quarter=4, game_clock="3:00", home_score=75, away_score=72
+                ),
+            ],
         ]
 
         chapters = [
@@ -876,13 +919,19 @@ class TestBeatAwareMergeRules:
 
     def test_response_stall_incompatible(self):
         """RESPONSE cannot merge with STALL."""
-        assert are_beats_compatible_for_merge(BeatType.RESPONSE, BeatType.STALL) is False
-        assert are_beats_compatible_for_merge(BeatType.STALL, BeatType.RESPONSE) is False
+        assert (
+            are_beats_compatible_for_merge(BeatType.RESPONSE, BeatType.STALL) is False
+        )
+        assert (
+            are_beats_compatible_for_merge(BeatType.STALL, BeatType.RESPONSE) is False
+        )
 
     def test_fast_start_closing_incompatible(self):
         """FAST_START cannot merge with CLOSING_SEQUENCE."""
         assert (
-            are_beats_compatible_for_merge(BeatType.FAST_START, BeatType.CLOSING_SEQUENCE)
+            are_beats_compatible_for_merge(
+                BeatType.FAST_START, BeatType.CLOSING_SEQUENCE
+            )
             is False
         )
 
@@ -899,9 +948,9 @@ class TestBeatAwareMergeRules:
         """Non-crunch beats cannot merge with crunch-tier beats."""
         for non_crunch in NON_CRUNCH_BEATS:
             for crunch in CRUNCH_TIER_BEATS:
-                assert (
-                    are_beats_compatible_for_merge(non_crunch, crunch) is False
-                ), f"{non_crunch} should not merge with {crunch}"
+                assert are_beats_compatible_for_merge(non_crunch, crunch) is False, (
+                    f"{non_crunch} should not merge with {crunch}"
+                )
 
     def test_same_beats_compatible(self):
         """Same beat types are compatible (except OVERTIME)."""
@@ -912,9 +961,9 @@ class TestBeatAwareMergeRules:
             BeatType.STALL,
         ]
         for beat in compatible_beats:
-            assert (
-                are_beats_compatible_for_merge(beat, beat) is True
-            ), f"{beat} should be compatible with itself"
+            assert are_beats_compatible_for_merge(beat, beat) is True, (
+                f"{beat} should be compatible with itself"
+            )
 
     def test_run_response_compatible(self):
         """RUN and RESPONSE are compatible."""
@@ -922,7 +971,10 @@ class TestBeatAwareMergeRules:
 
     def test_back_and_forth_compatible_with_run(self):
         """BACK_AND_FORTH is compatible with RUN."""
-        assert are_beats_compatible_for_merge(BeatType.BACK_AND_FORTH, BeatType.RUN) is True
+        assert (
+            are_beats_compatible_for_merge(BeatType.BACK_AND_FORTH, BeatType.RUN)
+            is True
+        )
 
 
 class TestBeatAwareMergeIntegration:
@@ -936,7 +988,9 @@ class TestBeatAwareMergeIntegration:
             [make_play(2, quarter=1, game_clock="6:00", home_score=12, away_score=4)],
         ]
 
-        chapters = [make_chapter(f"ch_{i:03d}", p, period=1) for i, p in enumerate(plays)]
+        chapters = [
+            make_chapter(f"ch_{i:03d}", p, period=1) for i, p in enumerate(plays)
+        ]
         classifications = [
             make_classification("ch_000", BeatType.BACK_AND_FORTH, 0),
             make_classification("ch_001", BeatType.RUN, 1),
@@ -1050,9 +1104,15 @@ class TestSignalThreshold:
         plays = [
             make_play(0, quarter=1, game_clock="10:00", home_score=0, away_score=0),
             make_play(1, quarter=1, game_clock="9:30", home_score=2, away_score=0),
-            make_play(2, quarter=1, game_clock="9:00", home_score=2, away_score=3),  # Lead change
-            make_play(3, quarter=1, game_clock="8:30", home_score=4, away_score=3),  # Lead change
-            make_play(4, quarter=1, game_clock="8:00", home_score=4, away_score=5),  # Lead change
+            make_play(
+                2, quarter=1, game_clock="9:00", home_score=2, away_score=3
+            ),  # Lead change
+            make_play(
+                3, quarter=1, game_clock="8:30", home_score=4, away_score=3
+            ),  # Lead change
+            make_play(
+                4, quarter=1, game_clock="8:00", home_score=4, away_score=5
+            ),  # Lead change
         ]
         chapter = make_chapter("ch_001", plays, period=1)
 
@@ -1134,7 +1194,9 @@ class TestUnderpoweredSectionHandling:
 
         chapters = [
             make_chapter("ch_000", plays1, period=1),
-            make_chapter("ch_001", plays2, period=1),  # Underpowered (2 points, few events)
+            make_chapter(
+                "ch_001", plays2, period=1
+            ),  # Underpowered (2 points, few events)
             make_chapter("ch_002", plays3, period=1),
         ]
 
@@ -1380,3 +1442,889 @@ class TestCrunchClosingIsolation:
             s for s in sections if s.beat_type == BeatType.CLOSING_SEQUENCE
         ]
         assert len(closing_sections) >= 1
+
+
+# ============================================================================
+# TEST: PLAYER PROMINENCE SYSTEM
+# ============================================================================
+
+
+class TestPlayerProminenceDataclass:
+    """Tests for PlayerProminence dataclass."""
+
+    def test_basic_instantiation(self):
+        """PlayerProminence should store all expected fields."""
+        p = PlayerProminence(
+            player_key="lebron james",
+            player_name="LeBron James",
+            team_key="lal",
+            section_points=12,
+            game_points_so_far=24,
+            run_involvement_count=2,
+        )
+
+        assert p.player_key == "lebron james"
+        assert p.player_name == "LeBron James"
+        assert p.team_key == "lal"
+        assert p.section_points == 12
+        assert p.game_points_so_far == 24
+        assert p.run_involvement_count == 2
+
+    def test_defaults(self):
+        """PlayerProminence should have sensible defaults."""
+        p = PlayerProminence(
+            player_key="player",
+            player_name="Player",
+        )
+
+        assert p.team_key is None
+        assert p.section_points == 0
+        assert p.game_points_so_far == 0
+        assert p.run_involvement_count == 0
+
+
+class TestComputePlayerProminence:
+    """Tests for compute_player_prominence function."""
+
+    def test_compute_from_delta_only(self):
+        """Should compute prominence from section delta without snapshot."""
+        delta = SectionDelta(
+            section_start_chapter=0,
+            section_end_chapter=0,
+            players={
+                "lebron james": PlayerDelta(
+                    player_key="lebron james",
+                    player_name="LeBron James",
+                    team_key="lal",
+                    points_scored=10,
+                ),
+                "anthony davis": PlayerDelta(
+                    player_key="anthony davis",
+                    player_name="Anthony Davis",
+                    team_key="lal",
+                    points_scored=8,
+                ),
+            },
+        )
+
+        prominence = compute_player_prominence(delta)
+
+        assert len(prominence) == 2
+        assert prominence["lebron james"].section_points == 10
+        assert prominence["lebron james"].game_points_so_far == 0  # No snapshot
+        assert prominence["anthony davis"].section_points == 8
+
+    def test_compute_with_snapshot(self):
+        """Should include game totals when snapshot provided."""
+        delta = SectionDelta(
+            section_start_chapter=0,
+            section_end_chapter=0,
+            players={
+                "lebron james": PlayerDelta(
+                    player_key="lebron james",
+                    player_name="LeBron James",
+                    team_key="lal",
+                    points_scored=10,
+                ),
+            },
+        )
+
+        # Snapshot shows LeBron has 30 game points total
+        snapshot = RunningStatsSnapshot(
+            chapter_index=0,
+            players={
+                "lebron james": PlayerSnapshot(
+                    player_key="lebron james",
+                    player_name="LeBron James",
+                    team_key="lal",
+                    points_scored_total=30,
+                ),
+            },
+        )
+
+        prominence = compute_player_prominence(delta, snapshot)
+
+        assert prominence["lebron james"].section_points == 10
+        assert prominence["lebron james"].game_points_so_far == 30
+
+
+class TestSelectProminentPlayers:
+    """Tests for select_prominent_players function."""
+
+    def test_top_2_by_section_points(self):
+        """Should select top 1-2 section scorers."""
+        prominence = {
+            "player_a": PlayerProminence(
+                player_key="player_a",
+                player_name="Player A",
+                team_key="team1",
+                section_points=20,
+                game_points_so_far=40,
+            ),
+            "player_b": PlayerProminence(
+                player_key="player_b",
+                player_name="Player B",
+                team_key="team1",
+                section_points=15,
+                game_points_so_far=25,
+            ),
+            "player_c": PlayerProminence(
+                player_key="player_c",
+                player_name="Player C",
+                team_key="team1",
+                section_points=5,
+                game_points_so_far=50,  # High game total
+            ),
+        }
+
+        selected = select_prominent_players(prominence)
+
+        # Top 2 section scorers + player_c has highest game total
+        assert "player_a" in selected  # Top section scorer
+        assert "player_b" in selected  # Second section scorer
+        assert "player_c" in selected  # Top game scorer (not duplicate)
+        assert len(selected) == 3
+
+    def test_game_presence_selection(self):
+        """Should add game presence player if not already in section leaders."""
+        prominence = {
+            "player_a": PlayerProminence(
+                player_key="player_a",
+                player_name="Player A",
+                team_key="team1",
+                section_points=10,
+                game_points_so_far=20,
+            ),
+            "player_b": PlayerProminence(
+                player_key="player_b",
+                player_name="Player B",
+                team_key="team1",
+                section_points=8,
+                game_points_so_far=15,
+            ),
+            "player_c": PlayerProminence(
+                player_key="player_c",
+                player_name="Player C",
+                team_key="team1",
+                section_points=0,  # No section points
+                game_points_so_far=50,  # Highest game total
+            ),
+        }
+
+        selected = select_prominent_players(prominence)
+
+        # player_a, player_b are section leaders
+        # player_c should be added as game presence
+        assert "player_a" in selected
+        assert "player_b" in selected
+        assert "player_c" in selected
+
+    def test_no_duplicate_entries(self):
+        """Should not include same player twice."""
+        prominence = {
+            "player_a": PlayerProminence(
+                player_key="player_a",
+                player_name="Player A",
+                team_key="team1",
+                section_points=20,
+                game_points_so_far=50,  # Both top section AND game scorer
+            ),
+            "player_b": PlayerProminence(
+                player_key="player_b",
+                player_name="Player B",
+                team_key="team1",
+                section_points=10,
+                game_points_so_far=30,
+            ),
+        }
+
+        selected = select_prominent_players(prominence)
+
+        # player_a is both top section and game scorer - should only appear once
+        assert len(selected) == 2
+        assert "player_a" in selected
+        assert "player_b" in selected
+
+    def test_max_3_per_team(self):
+        """Should not select more than 3 players per team."""
+        prominence = {
+            f"player_{i}": PlayerProminence(
+                player_key=f"player_{i}",
+                player_name=f"Player {i}",
+                team_key="team1",
+                section_points=10 - i,
+                game_points_so_far=50 - i,
+            )
+            for i in range(5)  # 5 players on same team
+        }
+
+        selected = select_prominent_players(prominence, max_per_team=3)
+
+        # Should only select 3
+        assert len(selected) == 3
+
+    def test_multiple_teams(self):
+        """Should select from each team independently."""
+        prominence = {
+            "lal_a": PlayerProminence(
+                player_key="lal_a",
+                player_name="LAL A",
+                team_key="lal",
+                section_points=20,
+                game_points_so_far=40,
+            ),
+            "lal_b": PlayerProminence(
+                player_key="lal_b",
+                player_name="LAL B",
+                team_key="lal",
+                section_points=15,
+                game_points_so_far=30,
+            ),
+            "bos_a": PlayerProminence(
+                player_key="bos_a",
+                player_name="BOS A",
+                team_key="bos",
+                section_points=18,
+                game_points_so_far=35,
+            ),
+            "bos_b": PlayerProminence(
+                player_key="bos_b",
+                player_name="BOS B",
+                team_key="bos",
+                section_points=12,
+                game_points_so_far=25,
+            ),
+        }
+
+        selected = select_prominent_players(prominence)
+
+        # Should have players from both teams
+        lal_players = [p for p in selected if "lal" in p]
+        bos_players = [p for p in selected if "bos" in p]
+        assert len(lal_players) >= 1
+        assert len(bos_players) >= 1
+
+    def test_zero_scorers_not_selected_as_section_leaders(self):
+        """Players with 0 section points should not be section leaders."""
+        prominence = {
+            "player_a": PlayerProminence(
+                player_key="player_a",
+                player_name="Player A",
+                team_key="team1",
+                section_points=0,
+                game_points_so_far=50,
+            ),
+        }
+
+        selected = select_prominent_players(prominence)
+
+        # player_a has 0 section points, but high game total
+        # Should be selected as game presence
+        assert "player_a" in selected
+
+    def test_zero_game_scorers_not_selected_as_presence(self):
+        """Players with 0 game points should not be game presence."""
+        prominence = {
+            "player_a": PlayerProminence(
+                player_key="player_a",
+                player_name="Player A",
+                team_key="team1",
+                section_points=10,
+                game_points_so_far=0,  # Only scored in this section
+            ),
+            "player_b": PlayerProminence(
+                player_key="player_b",
+                player_name="Player B",
+                team_key="team1",
+                section_points=0,
+                game_points_so_far=0,
+            ),
+        }
+
+        selected = select_prominent_players(prominence)
+
+        # player_a is section leader
+        assert "player_a" in selected
+        # player_b has no points anywhere
+        assert "player_b" not in selected
+
+
+class TestProminenceIntegration:
+    """Integration tests for prominence selection in build_story_sections."""
+
+    def test_prominence_selection_with_snapshots(self):
+        """build_story_sections should use prominence selection when snapshots provided."""
+        # Create plays with scoring
+        plays = [
+            make_play(0, quarter=1, game_clock="12:00", home_score=0, away_score=0),
+            make_play(1, quarter=1, game_clock="11:00", home_score=10, away_score=8),
+        ]
+        plays[0].raw_data["description"] = "Game start"
+        plays[1].raw_data["description"] = "LeBron James makes layup"
+        plays[1].raw_data["player_name"] = "LeBron James"
+        plays[1].raw_data["team_abbreviation"] = "LAL"
+
+        chapters = [make_chapter("ch_000", plays, period=1)]
+        classifications = [make_classification("ch_000", BeatType.BACK_AND_FORTH, 0)]
+
+        # Create snapshot with game totals
+        snapshot = RunningStatsSnapshot(
+            chapter_index=0,
+            players={
+                "lebron james": PlayerSnapshot(
+                    player_key="lebron james",
+                    player_name="LeBron James",
+                    team_key="lal",
+                    points_scored_total=30,
+                ),
+            },
+        )
+
+        sections = build_story_sections(
+            chapters, classifications, snapshots=[snapshot]
+        )
+
+        # Sections should be built (specific player selection tested above)
+        assert len(sections) >= 1
+
+    def test_fallback_without_snapshots(self):
+        """build_story_sections should work without snapshots (fallback selection)."""
+        plays = [
+            make_play(0, quarter=1, game_clock="12:00", home_score=0, away_score=0),
+            make_play(1, quarter=1, game_clock="11:00", home_score=10, away_score=8),
+        ]
+
+        chapters = [make_chapter("ch_000", plays, period=1)]
+        classifications = [make_classification("ch_000", BeatType.BACK_AND_FORTH, 0)]
+
+        # No snapshots provided - should still work
+        sections = build_story_sections(chapters, classifications)
+
+        assert len(sections) >= 1
+
+
+# ============================================================================
+# TEST: THIN SECTION HANDLING
+# ============================================================================
+
+
+class TestThinSectionDetection:
+    """Tests for thin section detection."""
+
+    def test_thin_section_low_points_low_scoring_plays(self):
+        """Section with ≤4 points AND ≤2 scoring plays is thin."""
+        from app.services.chapters.story_section import (
+            is_section_thin,
+            THIN_SECTION_MAX_POINTS,
+            THIN_SECTION_MAX_SCORING_PLAYS,
+        )
+
+        # Create section with exactly 4 points and 2 scoring plays
+        plays = [
+            make_play(0, quarter=1, game_clock="10:00", home_score=0, away_score=0),
+            make_play(1, quarter=1, game_clock="9:00", home_score=2, away_score=0),  # scoring play 1
+            make_play(2, quarter=1, game_clock="8:00", home_score=2, away_score=2),  # scoring play 2
+        ]
+        chapters = [make_chapter("ch_000", plays, period=1)]
+
+        section = StorySection(
+            section_index=1,  # Not opening (not protected)
+            beat_type=BeatType.STALL,
+            chapters_included=["ch_000"],
+            start_score={"home": 0, "away": 0},
+            end_score={"home": 2, "away": 2},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
+                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=2),
+            },
+        )
+
+        assert is_section_thin(section, chapters) is True
+        assert THIN_SECTION_MAX_POINTS == 4
+        assert THIN_SECTION_MAX_SCORING_PLAYS == 2
+
+    def test_not_thin_with_high_points(self):
+        """Section with >4 points is not thin even if few scoring plays."""
+        from app.services.chapters.story_section import is_section_thin
+
+        plays = [
+            make_play(0, quarter=1, game_clock="10:00", home_score=0, away_score=0),
+            make_play(1, quarter=1, game_clock="9:00", home_score=5, away_score=0),  # 5 points, 1 play
+        ]
+        chapters = [make_chapter("ch_000", plays, period=1)]
+
+        section = StorySection(
+            section_index=1,
+            beat_type=BeatType.STALL,
+            chapters_included=["ch_000"],
+            start_score={"home": 0, "away": 0},
+            end_score={"home": 5, "away": 0},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=5),
+            },
+        )
+
+        assert is_section_thin(section, chapters) is False
+
+    def test_not_thin_with_many_scoring_plays(self):
+        """Section with >2 scoring plays is not thin even if low points."""
+        from app.services.chapters.story_section import is_section_thin
+
+        # 3 scoring plays, each 1 point (free throws)
+        plays = [
+            make_play(0, quarter=1, game_clock="10:00", home_score=0, away_score=0),
+            make_play(1, quarter=1, game_clock="9:00", home_score=1, away_score=0),
+            make_play(2, quarter=1, game_clock="8:00", home_score=1, away_score=1),
+            make_play(3, quarter=1, game_clock="7:00", home_score=2, away_score=1),
+        ]
+        chapters = [make_chapter("ch_000", plays, period=1)]
+
+        section = StorySection(
+            section_index=1,
+            beat_type=BeatType.STALL,
+            chapters_included=["ch_000"],
+            start_score={"home": 0, "away": 0},
+            end_score={"home": 2, "away": 1},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
+                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=1),
+            },
+        )
+
+        # 3 points, 3 scoring plays - not thin (too many scoring plays)
+        assert is_section_thin(section, chapters) is False
+
+
+class TestThinSectionMerging:
+    """Tests for thin section merge behavior."""
+
+    def test_thin_section_merged_upward_early_game(self):
+        """Early game thin section should merge upward (into previous)."""
+        from app.services.chapters.story_section import handle_thin_sections
+
+        # Create three sections: normal -> thin -> normal
+        plays1 = [
+            make_play(0, quarter=1, game_clock="12:00", home_score=0, away_score=0),
+            make_play(1, quarter=1, game_clock="11:00", home_score=10, away_score=8),
+        ]
+        plays2 = [
+            make_play(2, quarter=1, game_clock="10:00", home_score=10, away_score=8),
+            make_play(3, quarter=1, game_clock="9:00", home_score=12, away_score=8),  # only 2 pts
+        ]
+        plays3 = [
+            make_play(4, quarter=1, game_clock="8:00", home_score=12, away_score=8),
+            make_play(5, quarter=1, game_clock="7:00", home_score=20, away_score=16),
+        ]
+
+        chapters = [
+            make_chapter("ch_000", plays1, period=1),
+            make_chapter("ch_001", plays2, period=1),
+            make_chapter("ch_002", plays3, period=1),
+        ]
+
+        section1 = StorySection(
+            section_index=0,
+            beat_type=BeatType.BACK_AND_FORTH,
+            chapters_included=["ch_000"],
+            start_score={"home": 0, "away": 0},
+            end_score={"home": 10, "away": 8},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=10),
+                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=8),
+            },
+        )
+
+        # Thin section - only 2 points, 1 scoring play
+        section2 = StorySection(
+            section_index=1,
+            beat_type=BeatType.STALL,
+            chapters_included=["ch_001"],
+            start_score={"home": 10, "away": 8},
+            end_score={"home": 12, "away": 8},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
+            },
+        )
+
+        section3 = StorySection(
+            section_index=2,
+            beat_type=BeatType.BACK_AND_FORTH,
+            chapters_included=["ch_002"],
+            start_score={"home": 12, "away": 8},
+            end_score={"home": 20, "away": 16},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=8),
+                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=8),
+            },
+        )
+
+        result = handle_thin_sections([section1, section2, section3], chapters)
+
+        # Thin section2 should be merged - now only 2 sections
+        assert len(result) == 2
+        # First section should now include both ch_000 and ch_001
+        assert "ch_000" in result[0].chapters_included
+        assert "ch_001" in result[0].chapters_included
+
+    def test_protected_thin_section_not_merged(self):
+        """Protected sections (CRUNCH_SETUP, CLOSING_SEQUENCE) should not be merged even if thin."""
+        from app.services.chapters.story_section import handle_thin_sections
+
+        plays = [
+            make_play(0, quarter=4, game_clock="2:00", home_score=100, away_score=98),
+            make_play(1, quarter=4, game_clock="1:30", home_score=102, away_score=98),  # 2 pts
+        ]
+        chapters = [make_chapter("ch_000", plays, period=4)]
+
+        # CRUNCH_SETUP is protected
+        crunch_section = StorySection(
+            section_index=1,
+            beat_type=BeatType.CRUNCH_SETUP,
+            chapters_included=["ch_000"],
+            start_score={"home": 100, "away": 98},
+            end_score={"home": 102, "away": 98},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
+            },
+        )
+
+        result = handle_thin_sections([crunch_section], chapters)
+
+        # Should remain unchanged (protected)
+        assert len(result) == 1
+        assert result[0].beat_type == BeatType.CRUNCH_SETUP
+
+    def test_thin_section_never_dropped(self):
+        """Thin sections should be merged, never dropped (even if no merge target)."""
+        from app.services.chapters.story_section import handle_thin_sections
+
+        # Single thin section isolated by OVERTIME boundaries
+        plays = [
+            make_play(0, quarter=5, game_clock="2:00", home_score=100, away_score=100),
+            make_play(1, quarter=5, game_clock="1:30", home_score=102, away_score=100),  # 2 pts
+        ]
+        chapters = [make_chapter("ch_000", plays, period=5)]
+
+        overtime_section = StorySection(
+            section_index=0,
+            beat_type=BeatType.OVERTIME,  # OVERTIME is protected
+            chapters_included=["ch_000"],
+            start_score={"home": 100, "away": 100},
+            end_score={"home": 102, "away": 100},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
+            },
+        )
+
+        result = handle_thin_sections([overtime_section], chapters)
+
+        # Should remain unchanged (OVERTIME is protected, can't be merged)
+        assert len(result) == 1
+
+    def test_end_of_game_merges_backward(self):
+        """End-of-game thin section must merge backward, not forward."""
+        from app.services.chapters.story_section import handle_thin_sections
+
+        plays1 = [
+            make_play(0, quarter=4, game_clock="3:00", home_score=100, away_score=98),
+            make_play(1, quarter=4, game_clock="2:30", home_score=110, away_score=108),
+        ]
+        plays2 = [
+            make_play(2, quarter=4, game_clock="1:00", home_score=110, away_score=108),
+            make_play(3, quarter=4, game_clock="0:30", home_score=112, away_score=108),  # 2 pts, thin
+        ]
+        chapters = [
+            make_chapter("ch_000", plays1, period=4),
+            make_chapter("ch_001", plays2, period=4),
+        ]
+
+        section1 = StorySection(
+            section_index=1,  # Not opening (not protected)
+            beat_type=BeatType.RUN,
+            chapters_included=["ch_000"],
+            start_score={"home": 100, "away": 98},
+            end_score={"home": 110, "away": 108},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=10),
+                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=10),
+            },
+        )
+
+        # End-of-game thin section (last in list)
+        section2 = StorySection(
+            section_index=2,
+            beat_type=BeatType.STALL,
+            chapters_included=["ch_001"],
+            start_score={"home": 110, "away": 108},
+            end_score={"home": 112, "away": 108},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=2),
+            },
+        )
+
+        result = handle_thin_sections([section1, section2], chapters)
+
+        # Thin end-of-game section should merge backward into section1
+        assert len(result) == 1
+        assert "ch_000" in result[0].chapters_included
+        assert "ch_001" in result[0].chapters_included
+
+
+class TestThinSectionConstants:
+    """Tests for thin section constants."""
+
+    def test_constants_defined(self):
+        """Thin section constants should be defined."""
+        from app.services.chapters.story_section import (
+            THIN_SECTION_MAX_POINTS,
+            THIN_SECTION_MAX_SCORING_PLAYS,
+        )
+
+        assert THIN_SECTION_MAX_POINTS == 4
+        assert THIN_SECTION_MAX_SCORING_PLAYS == 2
+
+
+# ============================================================================
+# TEST: LUMPY SECTION HANDLING
+# ============================================================================
+
+
+class TestLumpySectionDetection:
+    """Tests for lumpy section (dominance) detection."""
+
+    def test_lumpy_section_single_player_dominates(self):
+        """Section is lumpy if single player has ≥65% of points."""
+        from app.services.chapters.story_section import (
+            is_section_lumpy,
+            get_dominant_player_share,
+            LUMPY_DOMINANCE_THRESHOLD_PCT,
+        )
+
+        section = StorySection(
+            section_index=0,
+            beat_type=BeatType.RUN,
+            chapters_included=["ch_000"],
+            start_score={"home": 0, "away": 0},
+            end_score={"home": 20, "away": 10},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=20),
+                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=10),
+            },
+            player_stat_deltas={
+                "star_player": PlayerStatDelta(
+                    player_key="star_player",
+                    player_name="Star Player",
+                    team_key="home",
+                    points_scored=20,  # 20/30 = 67% > 65%
+                ),
+                "other_player": PlayerStatDelta(
+                    player_key="other_player",
+                    player_name="Other Player",
+                    team_key="away",
+                    points_scored=10,
+                ),
+            },
+        )
+
+        dominant_key, share = get_dominant_player_share(section)
+        assert dominant_key == "star_player"
+        assert share == pytest.approx(20 / 30, rel=0.01)
+        assert is_section_lumpy(section) is True
+        assert LUMPY_DOMINANCE_THRESHOLD_PCT == 0.65
+
+    def test_not_lumpy_with_balanced_scoring(self):
+        """Section is not lumpy if scoring is balanced."""
+        from app.services.chapters.story_section import is_section_lumpy
+
+        section = StorySection(
+            section_index=0,
+            beat_type=BeatType.BACK_AND_FORTH,
+            chapters_included=["ch_000"],
+            start_score={"home": 0, "away": 0},
+            end_score={"home": 15, "away": 15},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=15),
+                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=15),
+            },
+            player_stat_deltas={
+                "player_a": PlayerStatDelta(
+                    player_key="player_a",
+                    player_name="Player A",
+                    team_key="home",
+                    points_scored=10,  # 10/30 = 33%
+                ),
+                "player_b": PlayerStatDelta(
+                    player_key="player_b",
+                    player_name="Player B",
+                    team_key="home",
+                    points_scored=5,
+                ),
+                "player_c": PlayerStatDelta(
+                    player_key="player_c",
+                    player_name="Player C",
+                    team_key="away",
+                    points_scored=15,  # 15/30 = 50% < 65%
+                ),
+            },
+        )
+
+        assert is_section_lumpy(section) is False
+
+
+class TestDominanceCapping:
+    """Tests for dominance capping and spillover."""
+
+    def test_dominance_cap_applied(self):
+        """Dominant player should be capped at 60% of section points."""
+        from app.services.chapters.story_section import (
+            apply_dominance_cap,
+            DOMINANCE_CAP_PCT,
+        )
+
+        # 30 total points, star has 24 (80%)
+        section1 = StorySection(
+            section_index=0,
+            beat_type=BeatType.RUN,
+            chapters_included=["ch_000"],
+            start_score={"home": 0, "away": 0},
+            end_score={"home": 24, "away": 6},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=24),
+                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=6),
+            },
+            player_stat_deltas={
+                "star_player": PlayerStatDelta(
+                    player_key="star_player",
+                    player_name="Star Player",
+                    team_key="home",
+                    points_scored=24,  # 24/30 = 80% > 65%
+                ),
+                "other_player": PlayerStatDelta(
+                    player_key="other_player",
+                    player_name="Other Player",
+                    team_key="away",
+                    points_scored=6,
+                ),
+            },
+        )
+
+        section2 = StorySection(
+            section_index=1,
+            beat_type=BeatType.BACK_AND_FORTH,
+            chapters_included=["ch_001"],
+            start_score={"home": 24, "away": 6},
+            end_score={"home": 44, "away": 26},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=20),
+                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=20),
+            },
+            player_stat_deltas={},
+        )
+
+        result = apply_dominance_cap([section1, section2])
+
+        # Cap = 60% of 30 = 18 points
+        # Excess = 24 - 18 = 6 points spillover
+        capped_star = result[0].player_stat_deltas.get("star_player")
+        assert capped_star is not None
+        assert capped_star.points_scored == 18  # Capped at 60%
+
+        # Spillover to adjacent section
+        spillover_star = result[1].player_stat_deltas.get("star_player")
+        assert spillover_star is not None
+        assert spillover_star.points_scored == 6  # Excess spilled over
+
+        assert DOMINANCE_CAP_PCT == 0.60
+
+    def test_spillover_never_crosses_overtime(self):
+        """Spillover should never cross OVERTIME boundaries."""
+        from app.services.chapters.story_section import apply_dominance_cap
+
+        # Lumpy section followed by OVERTIME
+        section1 = StorySection(
+            section_index=0,
+            beat_type=BeatType.RUN,
+            chapters_included=["ch_000"],
+            start_score={"home": 0, "away": 0},
+            end_score={"home": 24, "away": 6},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=24),
+                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=6),
+            },
+            player_stat_deltas={
+                "star_player": PlayerStatDelta(
+                    player_key="star_player",
+                    player_name="Star Player",
+                    team_key="home",
+                    points_scored=24,  # 80% > 65%
+                ),
+            },
+        )
+
+        overtime_section = StorySection(
+            section_index=1,
+            beat_type=BeatType.OVERTIME,
+            chapters_included=["ch_001"],
+            start_score={"home": 24, "away": 6},
+            end_score={"home": 30, "away": 12},
+            team_stat_deltas={},
+            player_stat_deltas={},
+        )
+
+        result = apply_dominance_cap([section1, overtime_section])
+
+        # No spillover should occur (OVERTIME boundary blocks it)
+        # Star player should remain at 24 (no cap applied without valid spillover target)
+        star = result[0].player_stat_deltas.get("star_player")
+        assert star is not None
+        assert star.points_scored == 24  # Unchanged (no valid spillover target)
+
+    def test_no_cap_when_not_lumpy(self):
+        """Sections that are not lumpy should not be capped."""
+        from app.services.chapters.story_section import apply_dominance_cap
+
+        section = StorySection(
+            section_index=0,
+            beat_type=BeatType.BACK_AND_FORTH,
+            chapters_included=["ch_000"],
+            start_score={"home": 0, "away": 0},
+            end_score={"home": 15, "away": 15},
+            team_stat_deltas={
+                "home": TeamStatDelta(team_key="home", team_name="Home", points_scored=15),
+                "away": TeamStatDelta(team_key="away", team_name="Away", points_scored=15),
+            },
+            player_stat_deltas={
+                "player_a": PlayerStatDelta(
+                    player_key="player_a",
+                    player_name="Player A",
+                    team_key="home",
+                    points_scored=10,  # 33% < 65%
+                ),
+                "player_b": PlayerStatDelta(
+                    player_key="player_b",
+                    player_name="Player B",
+                    team_key="away",
+                    points_scored=15,  # 50% < 65%
+                ),
+            },
+        )
+
+        result = apply_dominance_cap([section])
+
+        # No changes
+        assert result[0].player_stat_deltas["player_a"].points_scored == 10
+        assert result[0].player_stat_deltas["player_b"].points_scored == 15
+
+
+class TestLumpySectionConstants:
+    """Tests for lumpy section constants."""
+
+    def test_constants_defined(self):
+        """Lumpy section constants should be defined."""
+        from app.services.chapters.story_section import (
+            LUMPY_DOMINANCE_THRESHOLD_PCT,
+            DOMINANCE_CAP_PCT,
+        )
+
+        assert LUMPY_DOMINANCE_THRESHOLD_PCT == 0.65
+        assert DOMINANCE_CAP_PCT == 0.60
