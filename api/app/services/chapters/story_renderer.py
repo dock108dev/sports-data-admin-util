@@ -624,11 +624,12 @@ def _format_section_for_prompt(
                 + (f", {to} TO used" if to > 0 else "")
             )
 
-    # Player stats (bounded)
+    # Player stats (bounded) - grouped by team for clarity
     if section.player_stat_deltas:
         lines.append("Key Players:")
         for player in section.player_stat_deltas:
             name = player.get("player_name", "Unknown")
+            team_key = player.get("team_key")
             pts = player.get("points_scored", 0)
             fg = player.get("fg_made", 0)
             three = player.get("three_pt_made", 0)
@@ -648,7 +649,12 @@ def _format_section_for_prompt(
             if trouble:
                 stat_parts.append("(foul trouble)")
 
-            lines.append(f"  - {name}: {', '.join(stat_parts)}")
+            # Include team affiliation to prevent AI from guessing wrong team
+            if team_key:
+                team_display = team_key.upper()
+                lines.append(f"  - {name} ({team_display}): {', '.join(stat_parts)}")
+            else:
+                lines.append(f"  - {name}: {', '.join(stat_parts)}")
 
     # Notes
     if section.notes:
