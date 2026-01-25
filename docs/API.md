@@ -132,6 +132,46 @@ Compressed timeline for efficient app display.
 |-----------|------|-------------|
 | `level` | `int` | 1=highlights, 2=standard, 3=detailed |
 
+### `GET /api/games/{game_id}/story`
+
+Get the pre-generated story for a game. **Read-only** - returns cached story or 404.
+
+Stories are generated via admin endpoints (`/api/admin/sports/games/{id}/story/regenerate`).
+Apps should never trigger story generation.
+
+**Response:**
+```json
+{
+  "game_id": 123,
+  "sport": "NBA",
+  "story_version": "2.0.0",
+  "sections": [
+    {
+      "section_index": 0,
+      "beat_type": "FAST_START",
+      "header": "Both teams opened at a fast pace.",
+      "start_score": {"home": 0, "away": 0},
+      "end_score": {"home": 24, "away": 22},
+      "notes": ["Lakers scored first 8 points"]
+    }
+  ],
+  "section_count": 5,
+  "compact_story": "The Lakers and Celtics traded blows...",
+  "word_count": 712,
+  "quality": "MEDIUM",
+  "reading_time_estimate_minutes": 3.56,
+  "generated_at": "2026-01-22T15:30:00Z",
+  "has_story": true
+}
+```
+
+**Error (no story generated):**
+```json
+{
+  "detail": "Story not found. Stories are generated via admin."
+}
+```
+
 ---
 
 ## Admin Endpoints
