@@ -318,17 +318,21 @@ def _extract_chapter_metadata(
     classification: BeatClassification,
 ) -> ChapterMetadata:
     """Extract metadata needed for section construction."""
-    # Extract period from last play (end period)
-    period = chapter.period
-    if period is None and chapter.plays:
-        period = chapter.plays[-1].raw_data.get("quarter")
-
-    is_overtime = period is not None and period > 4
-
     # Extract start period from first play
     start_period = None
     if chapter.plays:
         start_period = chapter.plays[0].raw_data.get("quarter")
+
+    # Extract end period from last play (used for overtime check)
+    # Always derive from last play to handle chapters that span quarter boundaries
+    end_period = None
+    if chapter.plays:
+        end_period = chapter.plays[-1].raw_data.get("quarter")
+    # Fallback to chapter.period if no plays (shouldn't happen in practice)
+    if end_period is None:
+        end_period = chapter.period
+
+    is_overtime = end_period is not None and end_period > 4
 
     # Extract time remaining from first play (start time)
     start_time_remaining_seconds = None
@@ -340,6 +344,8 @@ def _extract_chapter_metadata(
                 parts = clock_str.split(":")
                 start_time_remaining_seconds = int(parts[0]) * 60 + int(parts[1])
             except (ValueError, IndexError):
+                # Malformed clock string (e.g., "12:XX") - leave as None
+                # Time context is optional; missing it won't break rendering
                 pass
 
     # Extract time remaining from last play (end time)
@@ -352,6 +358,7 @@ def _extract_chapter_metadata(
                 parts = clock_str.split(":")
                 time_remaining_seconds = int(parts[0]) * 60 + int(parts[1])
             except (ValueError, IndexError):
+                # Malformed clock string - leave as None (time context is optional)
                 pass
 
     # Extract scores
@@ -373,7 +380,7 @@ def _extract_chapter_metadata(
         chapter_id=chapter.chapter_id,
         chapter_index=classification.debug_info.get("chapter_index", 0),
         beat_type=classification.beat_type,
-        period=period,
+        period=end_period,  # End period (for overtime check and legacy compatibility)
         time_remaining_seconds=time_remaining_seconds,
         is_overtime=is_overtime,
         start_home_score=start_home,

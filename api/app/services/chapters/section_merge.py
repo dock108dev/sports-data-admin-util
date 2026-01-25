@@ -353,6 +353,11 @@ def _merge_sections(
         notes=notes,
         descriptors=merged_descriptors,  # Phase 2.1
         break_reason=section_a.break_reason,
+        # Time context: start from section_a, end from section_b
+        start_period=section_a.start_period,
+        end_period=section_b.end_period,
+        start_time_remaining=section_a.start_time_remaining,
+        end_time_remaining=section_b.end_time_remaining,
     )
 
 
