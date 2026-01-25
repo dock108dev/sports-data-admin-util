@@ -128,6 +128,8 @@ class SectionRenderInput:
     team_stat_deltas: list[dict[str, Any]]
     player_stat_deltas: list[dict[str, Any]]  # Bounded: top 1-3 per team
     notes: list[str]  # Machine-generated bullets
+    start_score: dict[str, int]  # Score at section start {"home": X, "away": Y}
+    end_score: dict[str, int]  # Score at section end {"home": X, "away": Y}
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for prompt building."""
@@ -137,6 +139,8 @@ class SectionRenderInput:
             "team_stats": self.team_stat_deltas,
             "player_stats": self.player_stat_deltas,
             "notes": self.notes,
+            "start_score": self.start_score,
+            "end_score": self.end_score,
         }
 
 
@@ -249,6 +253,7 @@ Decisive Factors:
 8. Avoid play-by-play phrasing
 9. Tone: calm, professional, SportsCenter-style
 10. Perspective: neutral, post-game
+11. SCORE MENTIONS: Each section paragraph COULD mention the score at that point. Use end_score in the last paragraph only, and it must be used naturally in context.
 
 ## LENGTH CONTROL (NON-NEGOTIABLE)
 
@@ -265,6 +270,13 @@ Decisive Factors:
 - Do NOT introduce cumulative totals mid-story
 - Player mentions must be grounded in provided stats
 - If a stat or player is not in the input, it does not exist
+
+## SCORE PRESENTATION RULES (NON-NEGOTIABLE)
+
+- You MAY include the running score where it fits naturally in context
+- The end_score should appear in the LAST paragraph of each section (e.g., "...leaving the score at 102-98")
+- The notes may say "Team A outscored Team B 14-6" - this is the SECTION scoring (Team A scored 14 points, Team B scored 6 points IN THIS SECTION). This is NOT a run. Do NOT call this a run.
+- A "run" is specifically 8+ UNANSWERED points (e.g., "a 10-0 run" or "an 8-0 run"). Only use "run" for actual unanswered scoring sequences.
 
 ## FACT-ONLY CONSTRAINT (NON-NEGOTIABLE)
 
@@ -288,12 +300,13 @@ ALLOWED: Direct stat restatement, factual descriptions of what happened.
 Example: "scored 12 points on 4-for-6 shooting" (factual)
 NOT ALLOWED: "had an efficient night" (inference)
 
-## CLOSING PARAGRAPH
+## CLOSING PARAGRAPH (REQUIRED)
 
-At the end:
-- Reference final score ONCE
+The FINAL paragraph MUST:
+- State the final score clearly (e.g., "Team A defeated Team B 110-102" or "The final score: Team A 110, Team B 102")
 - Briefly summarize decisive factors (as provided)
 - Do NOT editorialize or speculate beyond the game
+- The final score is NON-NEGOTIABLE - it MUST appear in the last paragraph
 
 ## OUTPUT
 
@@ -303,20 +316,42 @@ Return ONLY a JSON object:
 No markdown fences. No explanation. No metadata."""
 
 
-def _format_section_for_prompt(section: SectionRenderInput, index: int) -> str:
+def _format_section_for_prompt(
+    section: SectionRenderInput,
+    index: int,
+    home_team: str,
+    away_team: str,
+) -> str:
     """Format a single section for the prompt.
 
     Args:
         section: The section to format
         index: Section index (0-based)
+        home_team: Home team name
+        away_team: Away team name
 
     Returns:
         Formatted section text
     """
+    # Format score as "Away X, Home Y" for clarity
+    start_home = section.start_score.get('home', 0)
+    start_away = section.start_score.get('away', 0)
+    end_home = section.end_score.get('home', 0)
+    end_away = section.end_score.get('away', 0)
+
+    # Current running total (the main score to include in narrative)
+    current_score_str = f"{away_team} {end_away}, {home_team} {end_home}"
+
+    # Section scoring (how many points each team scored IN THIS SECTION - not a run)
+    section_pts_home = end_home - start_home
+    section_pts_away = end_away - start_away
+
     lines = [
         f"### Section {index + 1}",
         f"Header: {section.header}",
         f"Beat: {section.beat_type.value}",
+        f"Current score at end of section: {current_score_str}",
+        f"Section scoring: {away_team} scored {section_pts_away}, {home_team} scored {section_pts_home} (NOT a run, just section totals)",
     ]
 
     # Team stats
@@ -381,7 +416,9 @@ def build_render_prompt(input_data: StoryRenderInput) -> str:
     # Format all sections
     sections_text = "\n\n".join(
         [
-            _format_section_for_prompt(section, i)
+            _format_section_for_prompt(
+                section, i, input_data.home_team_name, input_data.away_team_name
+            )
             for i, section in enumerate(input_data.sections)
         ]
     )
@@ -439,6 +476,8 @@ def build_section_render_input(
         team_stat_deltas=team_deltas,
         player_stat_deltas=player_deltas,
         notes=section.notes,
+        start_score=section.start_score,
+        end_score=section.end_score,
     )
 
 
