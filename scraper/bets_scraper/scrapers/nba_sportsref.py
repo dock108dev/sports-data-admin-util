@@ -35,6 +35,18 @@ from ..utils import (
 )
 from .base import BaseSportsReferenceScraper, ScraperError
 
+# Sports Reference uses different abbreviations for some NBA teams
+# Map from our canonical abbreviations to Sports Reference abbreviations
+SPORTSREF_ABBR_MAP: dict[str, str] = {
+    "CHA": "CHO",  # Charlotte Hornets
+    "BKN": "BRK",  # Brooklyn Nets
+}
+
+
+def _to_sportsref_abbr(abbr: str) -> str:
+    """Convert canonical team abbreviation to Sports Reference abbreviation."""
+    return SPORTSREF_ABBR_MAP.get(abbr.upper(), abbr.upper())
+
 
 class NBASportsReferenceScraper(BaseSportsReferenceScraper):
     sport = "nba"
@@ -48,8 +60,9 @@ class NBASportsReferenceScraper(BaseSportsReferenceScraper):
         """Extract team stats from boxscore table."""
         from ..utils.html_parsing import extract_team_stats_from_table, find_table_by_id, get_table_ids_on_page
 
-        # Basketball Reference uses UPPERCASE team abbreviations in table IDs
-        table_id = f"box-{team_abbr.upper()}-game-basic"
+        # Sports Reference uses different abbreviations for some teams (CHO for Charlotte, BRK for Brooklyn)
+        sportsref_abbr = _to_sportsref_abbr(team_abbr)
+        table_id = f"box-{sportsref_abbr}-game-basic"
         table = find_table_by_id(soup, table_id)
 
         if not table:
@@ -71,8 +84,9 @@ class NBASportsReferenceScraper(BaseSportsReferenceScraper):
         """Parse individual player rows from box-{TEAM}-game-basic table."""
         from ..utils.html_parsing import find_player_table
 
-        # Basketball Reference uses UPPERCASE team abbreviations in table IDs
-        table_id = f"box-{team_abbr.upper()}-game-basic"
+        # Sports Reference uses different abbreviations for some teams (CHO for Charlotte, BRK for Brooklyn)
+        sportsref_abbr = _to_sportsref_abbr(team_abbr)
+        table_id = f"box-{sportsref_abbr}-game-basic"
         table = find_player_table(soup, table_id)
 
         if not table:
