@@ -750,23 +750,20 @@ def _apply_opening_section_beat_override(
     opening = sections[0]
     opening.beat_type = override.beat_type
 
-    # Store override info in notes for debugging
-    # (Notes are deterministic bullets, so we add a factual note about the beat)
+    # Store qualitative texture note for opening paragraph
+    # (Notes should guide AI toward scene-setting, not stat-citing)
     if override.beat_type == BeatType.FAST_START:
         debug_info = override.debug_info
-        total_pts = debug_info.get("total_points", 0)
         margin = debug_info.get("final_margin", 0)
-        opening.notes.insert(
-            0, f"High-scoring early window: {total_pts} points, {margin}-point margin"
-        )
+        if margin <= 3:
+            opening.notes.insert(0, "Uptempo action with neither side pulling away")
+        else:
+            opening.notes.insert(0, "Quick scoring with one side gaining an early edge")
     elif override.beat_type == BeatType.EARLY_CONTROL:
         debug_info = override.debug_info
         leading_team = debug_info.get("leading_team", "unknown")
-        margin = debug_info.get("final_margin", 0)
-        share_pct = int(debug_info.get("leading_team_share", 0) * 100)
         opening.notes.insert(
-            0,
-            f"Early control established: {leading_team} team led by {margin}, scored {share_pct}% of points",
+            0, f"The {leading_team} team began asserting itself early"
         )
 
     return sections

@@ -212,11 +212,14 @@ class StoryRenderError(Exception):
 # SYSTEM INSTRUCTION (STRICT)
 # ============================================================================
 
-SYSTEM_INSTRUCTION = """You are a neutral sports anchor summarizing a completed game after watching highlight packages.
+SYSTEM_INSTRUCTION = """You are a neutral sports anchor telling the story of a completed game.
+
+Your job is to make the reader FEEL the game, not just know what happened.
+The opening draws them in. The middle builds the shape. The end delivers the outcome.
 
 You are NOT discovering what happened.
 You are NOT deciding what mattered.
-You are describing an already-defined story.
+You are rendering an already-defined story with texture and clarity.
 
 Follow the outline EXACTLY."""
 
@@ -254,6 +257,33 @@ Decisive Factors:
 9. Tone: calm, professional, SportsCenter-style
 10. Perspective: neutral, post-game
 11. SCORE MENTIONS: Each section paragraph COULD mention the score at that point. Use end_score in the last paragraph only, and it must be used naturally in context.
+
+## OPENING PARAGRAPH RULES (NON-NEGOTIABLE)
+
+The FIRST section (Section 1) is the opening. It must establish TEXTURE, not summary.
+
+OPENING MUST:
+- Orient the reader to what kind of game this is becoming
+- Signal tension, instability, control shifts, or unresolved dynamics
+- Create curiosity rather than completeness
+- Use observational, scene-setting language
+- Focus on qualitative game feel (rhythm, pressure, pace)
+
+OPENING MUST NOT:
+- Summarize what already happened
+- List stats, totals, or player point counts
+- Read as a standalone recap
+- Use procedural phrases like "both teams started", "the game opened with", "early in the first"
+- State exact scores or point totals
+- Explain why something happened
+
+OPENING LANGUAGE GUIDANCE:
+- Prefer: "trading buckets", "neither side settling in", "the floor tilting", "pressure building"
+- Avoid: "both teams combined for X points", "scored Y in the opening minutes", "opened at a fast pace"
+
+The opening should make the reader lean forward, not feel informed.
+
+After Section 1, resume normal rendering style for Sections 2+.
 
 ## LENGTH CONTROL (NON-NEGOTIABLE)
 

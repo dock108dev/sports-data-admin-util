@@ -99,8 +99,8 @@ def make_section(
 def make_header(beat_type: BeatType) -> str:
     """Create a deterministic header for testing."""
     headers = {
-        BeatType.FAST_START: "Both teams opened at a fast pace.",
-        BeatType.BACK_AND_FORTH: "Neither side could separate as play moved back and forth.",
+        BeatType.FAST_START: "The floor was alive from the opening tip.",
+        BeatType.BACK_AND_FORTH: "Neither side could create separation.",
         BeatType.RUN: "A stretch of scoring created separation on the scoreboard.",
         BeatType.RESPONSE: "The opposing side answered to keep the game within reach.",
         BeatType.CRUNCH_SETUP: "The game tightened late as every possession began to matter.",
@@ -443,7 +443,7 @@ class TestRenderStory:
 
         assert result.compact_story
         # Mock should include headers
-        assert "fast pace" in result.compact_story.lower()
+        assert "floor was alive" in result.compact_story.lower()
 
     def test_render_captures_prompt(self):
         """Result includes the prompt used."""
