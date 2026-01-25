@@ -70,16 +70,16 @@ HEADER_TEMPLATES: dict[BeatType, list[str]] = {
         "A subtle edge emerged before the first timeout.",
     ],
     BeatType.RUN: [
-        "A stretch of scoring created separation on the scoreboard.",
-        "One team strung together consecutive buckets to pull ahead.",
+        "One side started pulling away.",
+        "The scoreboard gap widened quickly.",
     ],
     BeatType.RESPONSE: [
-        "The opposing side answered to keep the game within reach.",
-        "A response brought the trailing team back into contention.",
+        "The trailing team clawed back into it.",
+        "An answer came before the lead could grow.",
     ],
     BeatType.STALL: [
-        "The game slowed with little sustained scoring.",
-        "Action stalled as both teams struggled to generate offense.",
+        "Scoring dried up on both ends.",
+        "Neither offense could find a rhythm.",
     ],
     BeatType.CRUNCH_SETUP: [
         "The game tightened late as every possession began to matter.",

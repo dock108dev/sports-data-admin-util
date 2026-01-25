@@ -318,14 +318,31 @@ def _extract_chapter_metadata(
     classification: BeatClassification,
 ) -> ChapterMetadata:
     """Extract metadata needed for section construction."""
-    # Extract period
+    # Extract period from last play (end period)
     period = chapter.period
     if period is None and chapter.plays:
-        period = chapter.plays[0].raw_data.get("quarter")
+        period = chapter.plays[-1].raw_data.get("quarter")
 
     is_overtime = period is not None and period > 4
 
-    # Extract time remaining from last play
+    # Extract start period from first play
+    start_period = None
+    if chapter.plays:
+        start_period = chapter.plays[0].raw_data.get("quarter")
+
+    # Extract time remaining from first play (start time)
+    start_time_remaining_seconds = None
+    if chapter.plays:
+        first_play = chapter.plays[0]
+        clock_str = first_play.raw_data.get("game_clock")
+        if clock_str and ":" in clock_str:
+            try:
+                parts = clock_str.split(":")
+                start_time_remaining_seconds = int(parts[0]) * 60 + int(parts[1])
+            except (ValueError, IndexError):
+                pass
+
+    # Extract time remaining from last play (end time)
     time_remaining_seconds = None
     if chapter.plays:
         last_play = chapter.plays[-1]
@@ -364,6 +381,8 @@ def _extract_chapter_metadata(
         end_home_score=end_home,
         end_away_score=end_away,
         descriptors=classification.descriptors or set(),  # Phase 2.1
+        start_time_remaining_seconds=start_time_remaining_seconds,
+        start_period=start_period,
     )
 
 
@@ -560,6 +579,12 @@ def _build_section(
         "away": chapters_meta[-1].end_away_score,
     }
 
+    # Get time context from first and last chapters
+    start_period = chapters_meta[0].start_period or chapters_meta[0].period
+    start_time_remaining = chapters_meta[0].start_time_remaining_seconds
+    end_period = chapters_meta[-1].period
+    end_time_remaining = chapters_meta[-1].time_remaining_seconds
+
     # Aggregate stats with prominence-based player selection
     team_deltas, player_deltas = _aggregate_section_deltas(section_deltas, end_snapshot)
 
@@ -576,6 +601,10 @@ def _build_section(
         player_stat_deltas=player_deltas,
         notes=notes,
         descriptors=descriptors,  # Phase 2.1
+        start_period=start_period,
+        end_period=end_period,
+        start_time_remaining=start_time_remaining,
+        end_time_remaining=end_time_remaining,
         break_reason=break_reason,
     )
 

@@ -183,7 +183,7 @@ def generate_section_notes(
             and high_team.points_scored > 0
         ):
             notes.append(
-                f"Teams tied {high_team.points_scored}–{low_team.points_scored} in section"
+                f"Teams matched scoring {high_team.points_scored}–{low_team.points_scored}"
             )
 
     # Timeouts

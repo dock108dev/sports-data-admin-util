@@ -101,8 +101,8 @@ def make_header(beat_type: BeatType) -> str:
     headers = {
         BeatType.FAST_START: "The floor was alive from the opening tip.",
         BeatType.BACK_AND_FORTH: "Neither side could create separation.",
-        BeatType.RUN: "A stretch of scoring created separation on the scoreboard.",
-        BeatType.RESPONSE: "The opposing side answered to keep the game within reach.",
+        BeatType.RUN: "One side started pulling away.",
+        BeatType.RESPONSE: "The trailing team clawed back into it.",
         BeatType.CRUNCH_SETUP: "The game tightened late as every possession began to matter.",
         BeatType.CLOSING_SEQUENCE: "Late possessions took on added importance down the stretch.",
         BeatType.OVERTIME: "Overtime extended the game into a survival phase.",
@@ -1259,10 +1259,9 @@ class TestFactOnlyConstraintInPrompt:
         assert "struggled" in prompt.lower()
         assert "dominant" in prompt.lower()
         assert "hot start" in prompt.lower()
-        assert "controlled" in prompt.lower()
 
-    def test_prompt_includes_fact_only_rule(self):
-        """Prompt includes fact-only constraint rule."""
+    def test_prompt_includes_fact_based_confidence_rule(self):
+        """Prompt includes fact-based confidence constraint rule."""
         sections = [make_section(0, BeatType.FAST_START)]
         headers = [make_header(BeatType.FAST_START)]
 
@@ -1278,9 +1277,9 @@ class TestFactOnlyConstraintInPrompt:
 
         prompt = build_render_prompt(input_data)
 
-        assert "may NOT infer" in prompt
-        assert "may ONLY restate" in prompt
-        assert "factual information" in prompt.lower()
+        assert "may NOT invent" in prompt
+        assert "grounded in facts" in prompt.lower()
+        assert "observable" in prompt.lower()
 
     def test_prompt_includes_section_word_bounds(self):
         """Prompt includes per-section word bounds."""
