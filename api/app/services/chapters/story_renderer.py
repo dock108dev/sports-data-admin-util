@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from .story_section import StorySection
@@ -128,8 +128,8 @@ class SectionRenderInput:
     team_stat_deltas: list[dict[str, Any]]
     player_stat_deltas: list[dict[str, Any]]  # Bounded: top 1-3 per team
     notes: list[str]  # Machine-generated bullets
-    start_score: dict[str, int]  # Score at section start {"home": X, "away": Y}
-    end_score: dict[str, int]  # Score at section end {"home": X, "away": Y}
+    start_score: dict[str, int] = field(default_factory=lambda: {"home": 0, "away": 0})
+    end_score: dict[str, int] = field(default_factory=lambda: {"home": 0, "away": 0})
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for prompt building."""

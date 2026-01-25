@@ -887,7 +887,7 @@ class TestSectionFormatting:
             notes=[],
         )
 
-        output = _format_section_for_prompt(section_input, 0)
+        output = _format_section_for_prompt(section_input, 0, "Lakers", "Celtics")
 
         assert "Both teams opened at a fast pace." in output
 
@@ -901,7 +901,7 @@ class TestSectionFormatting:
             notes=[],
         )
 
-        output = _format_section_for_prompt(section_input, 0)
+        output = _format_section_for_prompt(section_input, 0, "Lakers", "Celtics")
 
         assert "RUN" in output
 
@@ -921,7 +921,7 @@ class TestSectionFormatting:
             notes=[],
         )
 
-        output = _format_section_for_prompt(section_input, 0)
+        output = _format_section_for_prompt(section_input, 0, "Lakers", "Celtics")
 
         assert "Lakers" in output
         assert "15 pts" in output
@@ -947,7 +947,7 @@ class TestSectionFormatting:
             notes=[],
         )
 
-        output = _format_section_for_prompt(section_input, 0)
+        output = _format_section_for_prompt(section_input, 0, "Lakers", "Celtics")
 
         assert "LeBron James" in output
         assert "12 pts" in output
@@ -964,7 +964,7 @@ class TestSectionFormatting:
             notes=["Lakers went on 8-0 run", "Timeout called"],
         )
 
-        output = _format_section_for_prompt(section_input, 0)
+        output = _format_section_for_prompt(section_input, 0, "Lakers", "Celtics")
 
         assert "8-0 run" in output
         assert "Timeout" in output
