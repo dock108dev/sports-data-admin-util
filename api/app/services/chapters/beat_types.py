@@ -1,12 +1,11 @@
 """
-Beat Types and Constants: Locked beat taxonomy for NBA v1.
+Beat Types and Constants: Locked beat taxonomy for NBA.
 
 This module defines the beat type enums, descriptors, and threshold constants
 used throughout the beat classification system.
 
-LOCKED BEAT TAXONOMY (NBA v1):
+LOCKED BEAT TAXONOMY:
 - FAST_START
-- MISSED_SHOT_FEST (deprecated as primary, retained for compatibility)
 - BACK_AND_FORTH
 - EARLY_CONTROL
 - RUN
@@ -25,21 +24,17 @@ from enum import Enum
 
 
 # ============================================================================
-# LOCKED BEAT TAXONOMY (NBA v1)
+# LOCKED BEAT TAXONOMY
 # ============================================================================
 
 
 class BeatType(str, Enum):
-    """Locked beat types for NBA v1.
+    """Locked beat types for NBA.
 
     These are the ONLY valid beat types. No additions, renaming, or synonyms.
-
-    Note: MISSED_SHOT_FEST is retained in enum for backward compatibility
-    but is no longer used as a primary beat (Phase 2.1).
     """
 
     FAST_START = "FAST_START"
-    MISSED_SHOT_FEST = "MISSED_SHOT_FEST"  # Deprecated as primary beat (Phase 2.1)
     BACK_AND_FORTH = "BACK_AND_FORTH"
     EARLY_CONTROL = "EARLY_CONTROL"
     RUN = "RUN"
@@ -57,19 +52,16 @@ class BeatDescriptor(str, Enum):
     - Do NOT replace primary beats
     - May coexist with any primary beat
     - Are optional (0-N per chapter or section)
-
-    Phase 2.1: MISSED_SHOT_CONTEXT replaces MISSED_SHOT_FEST as primary beat.
     """
 
     MISSED_SHOT_CONTEXT = "MISSED_SHOT_CONTEXT"
 
 
 # ============================================================================
-# PRIMARY BEATS AND PRIORITY ORDER (Phase 2.1)
+# PRIMARY BEATS AND PRIORITY ORDER
 # ============================================================================
 
-# Primary beats that can be assigned as the main beat_type
-# MISSED_SHOT_FEST is excluded - it's now a descriptor only
+# All beat types can be assigned as primary beats
 PRIMARY_BEATS: set[BeatType] = {
     BeatType.FAST_START,
     BeatType.EARLY_CONTROL,

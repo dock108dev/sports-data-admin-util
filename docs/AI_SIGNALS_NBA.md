@@ -1,8 +1,8 @@
-# AI Signals for NBA v1
+# AI Signals for NBA
 
 > **Status:** Authoritative
 > **Last Updated:** 2026-01-24
-> **Scope:** NBA v1
+> **Scope:** NBA
 
 This document defines the signals exposed to AI during story rendering.
 
@@ -42,12 +42,11 @@ class SectionRenderInput:
 
 Beat types classify what happened in a section.
 
-### Allowed Beat Types (NBA v1)
+### Allowed Beat Types
 
 | Beat Type | Description | AI Should Convey |
 |-----------|-------------|------------------|
 | `FAST_START` | High-scoring opening | Energy, pace, rhythm |
-| `MISSED_SHOT_FEST` | Low-efficiency stretch | Cold shooting, searching |
 | `BACK_AND_FORTH` | Neither team separating | Trading, tight, even |
 | `EARLY_CONTROL` | One team establishing lead | Edge emerging, tilt |
 | `RUN` | 8+ unanswered points | Disruption, separation |

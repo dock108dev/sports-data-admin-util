@@ -56,10 +56,6 @@ HEADER_TEMPLATES: dict[BeatType, list[str]] = {
         "The floor was alive from the opening tip.",
         "Buckets came quick, and neither side blinked.",
     ],
-    BeatType.MISSED_SHOT_FEST: [
-        "The rim stayed cold as both offenses searched for rhythm.",
-        "Possessions came and went without much to show for them.",
-    ],
     BeatType.BACK_AND_FORTH: [
         "Neither side could create separation.",
         "The scoreboard stayed tight as possessions traded evenly.",

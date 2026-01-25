@@ -118,14 +118,14 @@ for play in normalized_plays:
 
 **Source:** `api/app/services/chapters/chapterizer.py`
 
-Chapters are deterministic structural boundaries based on NBA v1 rules.
+Chapters are deterministic structural boundaries based on NBA rules.
 
 **Input:** Ordered list of plays
 **Output:** List of chapters with reason codes
 **AI:** None
 **Deterministic:** Yes
 
-**Boundary Rules (NBA v1):**
+**Boundary Rules (NBA):**
 
 **Hard Boundaries (Always Break):**
 - Period start/end
@@ -138,10 +138,10 @@ Chapters are deterministic structural boundaries based on NBA v1 rules.
 - Coach's challenge
 - Instant replay review
 
-**Momentum Boundaries (Minimal v1):**
+**Momentum Boundaries:**
 - Crunch time start (Q4 <5min + close game)
 
-See [NBA_V1_BOUNDARY_RULES.md](NBA_V1_BOUNDARY_RULES.md) for complete rules.
+See [NBA_BOUNDARY_RULES.md](NBA_BOUNDARY_RULES.md) for complete rules.
 
 ### 2.2 Section Building
 
@@ -172,7 +172,6 @@ class StorySection:
 
 **Beat Types:**
 - `FAST_START` — High-scoring opening
-- `MISSED_SHOT_FEST` — Low-efficiency stretch
 - `BACK_AND_FORTH` — Neither team separating
 - `EARLY_CONTROL` — One team establishing lead
 - `RUN` — 8+ unanswered points
@@ -479,7 +478,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for production setup.
 
 **Core Concepts:**
 - [Book + Chapters Model](BOOK_CHAPTERS_MODEL.md)
-- [NBA v1 Boundary Rules](NBA_V1_BOUNDARY_RULES.md)
+- [NBA Boundary Rules](NBA_BOUNDARY_RULES.md)
 
 **Implementation:**
 - [Admin UI Guide](ADMIN_UI_STORY_GENERATOR.md)
@@ -500,4 +499,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for production setup.
 
 **Performance:** Structure generates instantly. AI rendering takes ~5-15 seconds per game.
 
-**Status:** Production-ready for NBA v1.
+**Status:** Production-ready for NBA.

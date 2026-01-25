@@ -1,15 +1,14 @@
-# NBA v1 Chapter Boundary Rules
+# NBA Chapter Boundary Rules
 
 **Status:** Complete
 **Date:** 2026-01-21
 **Sport:** NBA only
-**Version:** v1 (Intentionally Simple)
 
 ---
 
 ## Overview
 
-This document defines the authoritative chapter boundary rules for NBA v1.
+This document defines the authoritative chapter boundary rules for NBA.
 
 **Philosophy:** A chapter represents a scene change, not a possession change or every score.
 
@@ -66,7 +65,7 @@ These events **normally** start a new chapter (tactical/structural resets).
 
 ---
 
-### 3. Momentum Boundaries (Conditional, Minimal v1)
+### 3. Momentum Boundaries (Conditional)
 
 These events **may** start a new chapter when they indicate a scene change.
 
@@ -74,9 +73,9 @@ These events **may** start a new chapter when they indicate a scene change.
 |-------|-------------|-------------|
 | **Crunch time starts** | `CRUNCH_START` | Late + close game |
 
-**Note:** Run-based boundaries (`RUN_START`, `RUN_END_RESPONSE`) were considered but not implemented in v1. The current boundary rules focus on structural events (periods, timeouts, reviews) and crunch time only.
+**Note:** Run-based boundaries (`RUN_START`, `RUN_END_RESPONSE`) were considered but not implemented. The current boundary rules focus on structural events (periods, timeouts, reviews) and crunch time only.
 
-#### NBA v1 Crunch Time Definition
+#### NBA Crunch Time Definition
 
 **Crunch time** is defined as:
 - **Time:** Last 5 minutes of Q4 or any overtime period
@@ -330,9 +329,9 @@ pytest tests/test_boundary_rules.py -v
 
 ---
 
-## v1 Limitations (By Design)
+## Current Limitations (By Design)
 
-NBA v1 is intentionally simple. The following are NOT implemented:
+NBA rules are intentionally simple. The following are NOT implemented:
 
 ❌ **Run-based boundaries** — Not implemented (considered but deferred)
 ❌ **Ladder tier logic** — Explicitly excluded
@@ -340,7 +339,7 @@ NBA v1 is intentionally simple. The following are NOT implemented:
 ❌ **Score-based heuristics** — Only crunch time uses score
 ❌ **Possession-level boundaries** — Explicitly excluded
 
-v1 proves the architecture works with structural boundaries (periods, timeouts, reviews, crunch time) only.
+This approach proves the architecture works with structural boundaries (periods, timeouts, reviews, crunch time) only.
 
 ---
 
@@ -356,7 +355,7 @@ v1 proves the architecture works with structural boundaries (periods, timeouts, 
 - Momentum shift detection
 - Defensive stops as boundaries
 
-**v1 is sufficient for production. Advanced rules are optional.**
+**The current rules are sufficient for production. Advanced rules are optional.**
 
 ---
 
@@ -380,7 +379,7 @@ v1 proves the architecture works with structural boundaries (periods, timeouts, 
 
 ## Summary
 
-NBA v1 boundary rules are:
+NBA boundary rules are:
 - **Simple** — Easy to understand and explain
 - **Testable** — 27 tests validate behavior
 - **Deterministic** — No randomness or AI

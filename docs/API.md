@@ -285,12 +285,11 @@ interface SectionEntry {
 }
 ```
 
-### Beat Types (Locked - NBA v1)
+### Beat Types (Locked)
 
 | Beat Type | Description |
 |-----------|-------------|
 | `FAST_START` | Early energy, both teams scoring quickly |
-| `MISSED_SHOT_FEST` | Low-scoring stretch |
 | `BACK_AND_FORTH` | Tied or alternating leads |
 | `EARLY_CONTROL` | One team gaining edge |
 | `RUN` | Consecutive scoring (6+ unanswered) |
@@ -556,118 +555,6 @@ Save reading position.
 ### `GET /api/users/{user_id}/games/{game_id}/resume`
 
 Get reading position.
-
----
-
-## Migration Guide: Moments → Story
-
-### What Changed
-
-The story generation system has been completely redesigned from "Moments" to "Chapters-First Story":
-
-| Aspect | Old (Moments) | New (Chapters-First) |
-|--------|---------------|----------------------|
-| **Version** | v1.x | v2.0.0 |
-| **Structure** | Moments (event-driven) | Chapters → Sections → Story |
-| **AI Calls** | Multiple per game | **Single call** |
-| **Boundaries** | Event-based (tier changes) | Time-based (periods, timeouts) |
-| **Narrative** | Per-moment summaries | Single compact story |
-| **Determinism** | Mixed | Fully deterministic until AI |
-
-### Endpoint Changes
-
-| Old Endpoint | New Endpoint | Notes |
-|--------------|--------------|-------|
-| `GET /games/{id}/moments` | `GET /games/{id}/story` | Complete replacement |
-| Moments array | `sections` array | Sections replace moments |
-| Per-moment `summary` | `compact_story` | Single narrative |
-| `is_notable` filtering | `beat_type` filtering | Use beat types instead |
-
-### Schema Mapping
-
-**Old MomentEntry → New SectionEntry:**
-
-```typescript
-// OLD (Moments)
-{
-  id: "m_003",
-  type: "FLIP",
-  start_play: 21,
-  end_play: 34,
-  is_notable: true,
-  headline: "...",
-  summary: "..."
-}
-
-// NEW (Sections)
-{
-  section_index: 0,
-  beat_type: "RUN",
-  header: "A stretch of scoring created separation.",
-  chapters_included: ["ch_003", "ch_004"],
-  start_score: { home: 12, away: 15 },
-  end_score: { home: 12, away: 25 },
-  notes: ["10-0 run", "3 consecutive turnovers"]
-}
-```
-
-### Client Migration Steps
-
-1. **Update endpoint calls:**
-   ```typescript
-   // OLD
-   const response = await fetch(`/api/admin/sports/games/${gameId}/moments`);
-   const { moments } = await response.json();
-
-   // NEW
-   const response = await fetch(`/api/admin/sports/games/${gameId}/story`);
-   const story = await response.json();
-   const { sections, compact_story, chapters } = story;
-   ```
-
-2. **Replace moment rendering with section rendering:**
-   ```typescript
-   // OLD: Render each moment
-   moments.filter(m => m.is_notable).map(m => <Moment data={m} />)
-
-   // NEW: Render sections + compact story
-   <>
-     {sections.map(s => <Section data={s} />)}
-     <CompactStory text={compact_story} />
-   </>
-   ```
-
-3. **Update filtering logic:**
-   ```typescript
-   // OLD: Filter by is_notable
-   const highlights = moments.filter(m => m.is_notable);
-
-   // NEW: Filter by beat_type or use all sections
-   const keyMoments = sections.filter(s =>
-     ['RUN', 'CLOSING_SEQUENCE', 'CRUNCH_SETUP'].includes(s.beat_type)
-   );
-   ```
-
-4. **Use compact_story for game summary:**
-   ```typescript
-   // OLD: Concatenate moment summaries
-   const summary = moments.map(m => m.summary).join(' ');
-
-   // NEW: Use compact_story directly
-   const summary = story.compact_story;
-   ```
-
-### Key Differences for Consumers
-
-1. **Fewer, richer sections** — Expect 3-10 sections instead of 10-20+ moments
-2. **Single narrative** — Use `compact_story` for the full game recap
-3. **Deterministic headers** — Section `header` is template-based, not AI
-4. **Quality metadata** — Use `quality` field to adjust UI treatment
-5. **Word count** — Story length scales with game quality (400/700/1050 words)
-
-### Deprecation Notice
-
-The `/games/{game_id}/moments` endpoint is **deprecated** and will be removed in a future release. All consumers should migrate to `/games/{game_id}/story`.
 
 ---
 
