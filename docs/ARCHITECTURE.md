@@ -76,19 +76,20 @@ The core product feature: converting play-by-play into narrative stories.
 graph LR
     A[Play-by-Play] --> B[Chapterizer]
     B --> C[Chapters]
-    C --> D[StoryState Builder]
-    D --> E[AI Generator]
-    E --> F[GameStory]
+    C --> D[Section Builder]
+    D --> E[Headers]
+    E --> F[Story Renderer]
+    F --> G[Compact Story]
 ```
 
 ### Stage Details
 
 #### 1. Chapterizer
-**Input:** Normalized play-by-play events  
-**Output:** Chapters with reason codes  
-**Logic:** Structural boundary detection (NBA v1 rules)  
-**Deterministic:** Yes  
-**AI:** No  
+**Input:** Normalized play-by-play events
+**Output:** Chapters with reason codes
+**Logic:** Structural boundary detection (NBA v1 rules)
+**Deterministic:** Yes
+**AI:** No
 
 **Boundaries:**
 - Hard: Period start/end, overtime, game end
@@ -97,37 +98,45 @@ graph LR
 
 See [NBA_V1_BOUNDARY_RULES.md](NBA_V1_BOUNDARY_RULES.md)
 
-#### 2. StoryState Builder
-**Input:** Ordered chapters  
-**Output:** StoryState (running context)  
-**Logic:** Deterministic stat accumulation  
-**Derived From:** Prior chapters only  
-**AI:** No  
+#### 2. Section Builder
+**Input:** Chapters
+**Output:** StorySections with beat types, stats, notes
+**Logic:** Transforms chapters into AI-ready input
+**Deterministic:** Yes
+**AI:** No
 
-**Tracks:**
-- Player stats (top 6 by points)
-- Team scores
-- Momentum hints
-- Theme tags
+**Provides:**
+- Beat type classification (RUN, RESPONSE, STALL, etc.)
+- Team and player stat deltas
+- Machine-generated observations
+- Time context (period, clock)
 
-See [AI_CONTEXT_POLICY.md](AI_CONTEXT_POLICY.md)
+#### 3. Header Generator
+**Input:** StorySections
+**Output:** Deterministic one-sentence headers
+**Logic:** Template-based selection by beat type
+**Deterministic:** Yes
+**AI:** No
 
-#### 3. AI Story Generator
-**Input:** Current chapter + StoryState  
-**Output:** Chapter summaries + titles  
-**Logic:** Sequential generation (no future knowledge)  
-**AI:** Yes (OpenAI)  
+Headers are orientation anchors (WHERE we are), not narrative.
 
-**Modes:**
-- Chapter Summary: 1-3 sentences per chapter
-- Chapter Title: 3-8 words per chapter
-- Compact Story: Full game recap (4-12 min read)
+#### 4. Story Renderer (Single AI Call)
+**Input:** Sections + Headers + Team info
+**Output:** Compact story (prose narrative)
+**Logic:** Render outline into cohesive prose
+**AI:** Yes (OpenAI)
 
-See [AI_SIGNALS_NBA_V1.md](AI_SIGNALS_NBA_V1.md)
+**AI's Role:**
+- Turn outline into prose
+- Use headers verbatim
+- Follow prompt rules for tone, shape, flow
+- Add language polish WITHOUT adding logic
 
-#### 4. GameStory Output
-**Format:** JSON  
-**Contains:** Chapters, summaries, compact story  
+See [SUMMARY_GENERATION.md](SUMMARY_GENERATION.md)
+
+#### 5. GameStory Output
+**Format:** JSON
+**Contains:** Sections, headers, compact story
 **Consumed By:** Admin UI, consumer apps  
 
 ---
@@ -166,22 +175,28 @@ class Chapter:
 - Deterministic boundaries
 - No inherent narrative text
 
-### StoryState
+### StorySection
 ```python
 @dataclass
-class StoryState:
-    chapter_index_last_processed: int
-    players: dict[str, PlayerStoryState]
-    teams: dict[str, TeamStoryState]
-    momentum_hint: MomentumHint
-    theme_tags: list[str]
-    constraints: dict  # no_future_knowledge: true
+class StorySection:
+    section_index: int
+    beat_type: BeatType
+    team_stat_deltas: dict[str, TeamStatDelta]
+    player_stat_deltas: dict[str, PlayerStatDelta]
+    notes: list[str]
+    start_score: dict[str, int]
+    end_score: dict[str, int]
+    start_period: int | None
+    end_period: int | None
+    start_time_remaining: int | None
+    end_time_remaining: int | None
 ```
 
 **Properties:**
-- Derived from prior chapters only
-- Incremental updates
-- Bounded lists (top 6 players, max 8 themes)
+- AI-ready representation of chapters
+- Contains beat type classification
+- Includes stat deltas and machine-generated notes
+- Time context for reader-facing anchoring
 
 ### GameStory
 ```python
@@ -205,21 +220,21 @@ class GameStory:
 ## AI Responsibility Boundaries
 
 ### What AI Does
-- ✅ Generate chapter summaries (1-3 sentences)
-- ✅ Generate chapter titles (3-8 words)
-- ✅ Generate compact story (full game recap)
-- ✅ Use callbacks to prior chapters
-- ✅ Interpret plays with sportscaster voice
+- ✅ Render sections into prose (single call)
+- ✅ Use headers verbatim
+- ✅ Follow prompt rules for tone, shape, flow
+- ✅ Add language polish
+- ✅ Match target word count
 
 ### What AI Does NOT Do
-- ❌ Define chapter boundaries
-- ❌ Decide structure
+- ❌ Define chapter/section boundaries
+- ❌ Decide structure or importance
 - ❌ Infer stats beyond provided signals
-- ❌ See future chapters during sequential generation
-- ❌ Compute importance scores
-- ❌ Make strategic decisions
+- ❌ Plan or restructure the outline
+- ❌ Invent context or drama
+- ❌ Generate separate chapter summaries/titles
 
-**Principle:** AI is a narrative renderer, not a decision engine.
+**Principle:** Code decides structure. AI renders it into prose.
 
 ---
 

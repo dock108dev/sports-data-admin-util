@@ -1,8 +1,8 @@
 # Book + Chapters Model
 
-**Status:** Authoritative  
-**Date:** 2026-01-21  
-**Scope:** NBA v1
+> **Status:** Authoritative
+> **Last Updated:** 2026-01-24
+> **Scope:** NBA v1
 
 ---
 
@@ -10,12 +10,12 @@
 
 The Book + Chapters model is the core architecture for narrative story generation.
 
-**Core Principle:** A game is a book. Plays are pages. Chapters are contiguous play ranges that represent coherent scenes.
+**Core Principle:** A game is a book. Plays are pages. Chapters are contiguous play ranges. Sections are AI-ready representations.
 
 **Design Philosophy:**
-- **Structure before narrative** — Chapters are deterministic
-- **Separation of concerns** — Structure, context, and narrative are distinct layers
-- **No future knowledge** — AI sees only prior chapters during generation
+- **Structure before narrative** — Chapters and sections are deterministic
+- **Separation of concerns** — Structure, classification, and rendering are distinct layers
+- **Single AI call** — One rendering call produces the complete story
 
 ---
 
@@ -44,9 +44,9 @@ class Play:
 
 ### Chapter
 
-**A contiguous range of plays representing a single narrative scene.**
+**A contiguous range of plays representing a structural boundary.**
 
-Chapters are the structural unit for storytelling and UI expansion.
+Chapters are created by the Chapterizer based on structural rules (timeouts, period breaks, etc.).
 
 ```python
 @dataclass
@@ -67,44 +67,73 @@ class Chapter:
 - Explainable (reason codes)
 
 **What Chapters Are:**
-- Logistics for storytelling
-- UI expansion units
 - Structural scene breaks
+- Deterministic boundaries
+- Input to section building
 
 **What Chapters Are NOT:**
 - Narrative labels
 - Importance rankings
-- Event buckets
+- AI-generated
 
 ---
 
-### StoryState
+### StorySection
 
-**Running context derived from prior chapters only.**
+**An AI-ready representation of one or more chapters.**
 
-StoryState is the only shared memory the AI is allowed to have.
+Sections contain beat types, stats, notes, and time context — everything the AI needs to render a paragraph.
 
 ```python
 @dataclass
-class StoryState:
-    chapter_index_last_processed: int
-    players: dict[str, PlayerStoryState]
-    teams: dict[str, TeamStoryState]
-    momentum_hint: MomentumHint
-    theme_tags: list[str]
-    constraints: dict  # no_future_knowledge: true
+class StorySection:
+    section_index: int
+    beat_type: BeatType  # FAST_START, RUN, RESPONSE, etc.
+    team_stat_deltas: dict[str, TeamStatDelta]
+    player_stat_deltas: dict[str, PlayerStatDelta]
+    notes: list[str]  # Machine-generated observations
+    start_score: dict[str, int]
+    end_score: dict[str, int]
+    start_period: int | None
+    end_period: int | None
+    start_time_remaining: int | None
+    end_time_remaining: int | None
 ```
 
 **Properties:**
-- Derived deterministically
-- Updated incrementally
-- Bounded (top 6 players, max 8 themes)
-- No future knowledge
+- Beat type classification
+- Stat deltas (not cumulative)
+- Time context for anchoring
+- Machine-generated notes
 
 **Enables:**
-- Natural callbacks ("he already had 20 through three")
-- Thematic continuity
-- Context-aware narration
+- Structured AI input
+- Deterministic header assignment
+- Consistent rendering
+
+---
+
+### Header
+
+**A deterministic one-sentence orientation anchor.**
+
+Headers tell the reader WHERE we are, not WHAT happened.
+
+```python
+# Example headers by beat type
+HEADER_TEMPLATES = {
+    BeatType.FAST_START: ["The floor was alive from the opening tip."],
+    BeatType.RUN: ["One side started pulling away."],
+    BeatType.RESPONSE: ["The trailing team clawed back into it."],
+    BeatType.STALL: ["Scoring dried up on both ends."],
+}
+```
+
+**Properties:**
+- Template-based selection
+- Deterministic (same beat type + index → same header)
+- NOT narrative or AI-generated
+- Structural guides for rendering
 
 ---
 
@@ -117,7 +146,7 @@ class StoryState:
 class GameStory:
     game_id: int
     sport: str
-    chapters: list[Chapter]
+    sections: list[StorySection]
     compact_story: str | None
     reading_time_estimate_minutes: float | None
     metadata: dict
@@ -129,10 +158,9 @@ class GameStory:
 - Serializable as JSON
 
 **Contains:**
-- All chapters (structural units)
-- Chapter summaries (AI-generated)
-- Chapter titles (AI-generated)
-- Compact story (AI-generated full recap)
+- All sections (structural units)
+- Headers (deterministic)
+- Compact story (AI-rendered)
 
 ---
 
@@ -140,22 +168,31 @@ class GameStory:
 
 ### High-Level Flow
 
-```mermaid
-graph LR
-    A[Play-by-Play] --> B[Chapterizer]
-    B --> C[Chapters]
-    C --> D[StoryState Builder]
-    D --> E[AI Generator]
-    E --> F[GameStory]
+```
+Play-by-Play
+    ↓
+Chapterizer (Deterministic)
+    ↓
+Chapters (Structural boundaries)
+    ↓
+Section Builder (Deterministic)
+    ↓
+StorySections (with beat types, stats, notes)
+    ↓
+Header Generator (Deterministic)
+    ↓
+Story Renderer (Single AI Call)
+    ↓
+Compact Story
 ```
 
 ### Stage 1: Chapterization
 
-**Component:** `Chapterizer`  
-**Input:** Normalized play-by-play events  
-**Output:** Chapters with reason codes  
-**Deterministic:** Yes  
-**AI:** No  
+**Component:** `chapterizer.py`
+**Input:** Normalized play-by-play events
+**Output:** Chapters with reason codes
+**Deterministic:** Yes
+**AI:** No
 
 **Logic:**
 - Detect structural boundaries (NBA v1 rules)
@@ -170,52 +207,48 @@ graph LR
 
 See [NBA_V1_BOUNDARY_RULES.md](NBA_V1_BOUNDARY_RULES.md)
 
-### Stage 2: Story State Building
+### Stage 2: Section Building
 
-**Component:** `build_state_incrementally()`  
-**Input:** Ordered chapters  
-**Output:** StoryState after each chapter  
-**Deterministic:** Yes  
-**AI:** No  
+**Component:** `story_section.py`
+**Input:** Ordered chapters
+**Output:** StorySections with beat types, stats, notes
+**Deterministic:** Yes
+**AI:** No
 
 **Logic:**
-- Extract player stats from play text
-- Track notable actions (dunk, block, steal, etc.)
-- Determine momentum hints from reason codes
-- Assign theme tags deterministically
-- Enforce bounded lists
+- Classify beat type from chapter characteristics
+- Extract team and player stat deltas
+- Generate machine observations (notes)
+- Add time context from plays
 
-See [AI_CONTEXT_POLICY.md](AI_CONTEXT_POLICY.md)
+### Stage 3: Header Generation
 
-### Stage 3: AI Story Generation
+**Component:** `header_reset.py`
+**Input:** StorySections
+**Output:** Deterministic headers
+**Deterministic:** Yes
+**AI:** No
 
-**Component:** `generate_chapter_summary()`, `generate_chapter_title()`, `generate_compact_story()`  
-**Input:** Current chapter + StoryState  
-**Output:** Summaries, titles, compact story  
-**Deterministic:** No (AI)  
-**AI:** Yes (OpenAI)  
+**Logic:**
+- Select template based on beat type
+- Vary selection based on section index
+- Same input → same header every time
 
-**Modes:**
+### Stage 4: Story Rendering
 
-#### A. Chapter Summary (Sequential)
-- Input: Prior summaries + StoryState + current chapter
-- Output: 1-3 sentence summary
-- Context: Prior chapters only
-- Spoilers: Forbidden (except final chapter)
+**Component:** `story_renderer.py`
+**Input:** Sections + Headers + Team info
+**Output:** Compact story (prose)
+**Deterministic:** No (AI)
+**AI:** Yes (OpenAI)
 
-#### B. Chapter Title (Sequential)
-- Input: Chapter summary
-- Output: 3-8 word title
-- Context: Summary only
-- Spoilers: Forbidden
+**Single Call Architecture:**
+- One AI call renders entire story
+- AI uses headers verbatim
+- AI follows comprehensive prompt rules
+- AI adds language polish, not logic
 
-#### C. Compact Story (Full Arc)
-- Input: All chapter summaries
-- Output: Full game recap (4-12 min read)
-- Context: Complete narrative arc
-- Spoilers: Allowed (post-game)
-
-See [AI_SIGNALS_NBA_V1.md](AI_SIGNALS_NBA_V1.md)
+See [SUMMARY_GENERATION.md](SUMMARY_GENERATION.md)
 
 ---
 
@@ -242,29 +275,24 @@ See [AI_SIGNALS_NBA_V1.md](AI_SIGNALS_NBA_V1.md)
 {
   "game_id": 1,
   "sport": "NBA",
-  "story_version": "1.0.0",
-  "chapters": [
+  "story_version": "2.0.0",
+  "sections": [
     {
-      "chapter_id": "ch_001",
-      "index": 0,
-      "play_start_idx": 0,
-      "play_end_idx": 15,
-      "play_count": 16,
-      "reason_codes": ["PERIOD_START"],
-      "period": 1,
-      "time_range": {"start": "12:00", "end": "8:00"},
-      "chapter_summary": "LeBron scored early...",
-      "chapter_title": "Lakers Start Strong",
-      "plays": [...]
+      "section_index": 0,
+      "beat_type": "FAST_START",
+      "header": "The floor was alive from the opening tip.",
+      "team_stat_deltas": [...],
+      "player_stat_deltas": [...],
+      "notes": ["Lakers outscored Celtics 14-8"],
+      "start_score": {"home": 0, "away": 0},
+      "end_score": {"home": 14, "away": 8}
     },
     ...
   ],
-  "chapter_count": 6,
+  "section_count": 12,
   "total_plays": 155,
-  "compact_story": "The Lakers came out strong...",
-  "reading_time_estimate_minutes": 5.2,
-  "has_summaries": true,
-  "has_titles": true,
+  "compact_story": "The Lakers came out firing...",
+  "reading_time_estimate_minutes": 3.5,
   "has_compact_story": true
 }
 ```
@@ -279,40 +307,39 @@ See [AI_SIGNALS_NBA_V1.md](AI_SIGNALS_NBA_V1.md)
 3. **No overlaps:** Every play belongs to exactly one chapter
 4. **Determinism:** Same input → same chapters (fingerprinted)
 
-### Story State Constraints
-1. **No future knowledge:** Derived from prior chapters only
-2. **Bounded:** Top 6 players, max 8 themes, max 5 notable actions per player
-3. **Deterministic:** Same chapters → same state
-4. **Incremental:** Updated chapter-by-chapter
+### Section Properties
+1. **Beat classification:** Every section has a beat type
+2. **Stats present:** Team and player deltas always computed
+3. **Time context:** Period and clock included when available
+4. **Deterministic:** Same chapters → same sections
 
-### AI Context Rules
-1. **Sequential generation:** Chapter N sees only chapters 0..N-1
-2. **No spoilers:** Forbidden language enforced (except final chapter)
-3. **Signal whitelist:** Only allowed fields exposed
-4. **No inference:** AI uses provided signals only
+### Rendering Constraints
+1. **Headers verbatim:** AI must use headers as-is
+2. **Word count targets:** 60-120 words per section
+3. **No inference:** AI uses only provided signals
+4. **Single call:** One API call per story
 
 ---
 
 ## Testing Strategy
 
-### Unit Tests (258 total)
+### Unit Tests
 - Chapter coverage and contiguity
 - Boundary rule enforcement
-- Story state derivation
-- AI signal validation
-- Prompt determinism
-- Spoiler detection
+- Section building and beat classification
+- Header generation determinism
+- Prompt building
 
 ### Integration Tests
 - End-to-end chapterization
-- Story state building
+- Section building from chapters
 - API endpoint contracts
 - Frontend data wiring
 
 **Run tests:**
 ```bash
 cd api
-pytest tests/test_chapters*.py tests/test_*_generator.py
+pytest tests/test_chapterizer.py tests/test_story_section.py tests/test_story_renderer.py
 ```
 
 ---
@@ -321,16 +348,16 @@ pytest tests/test_chapters*.py tests/test_*_generator.py
 
 **Story Generator Interface:**
 - Game overview with generation status
-- Chapter inspector (expandable)
-- Story state viewer (debug)
+- Section inspector (expandable)
+- Stats and notes per section
 - Regeneration controls
+- Pipeline debug view
 
 **Features:**
-- Inspect chapter boundaries
-- View reason codes
-- Expand chapters to see plays
-- Load story state for any chapter
-- Regenerate components safely
+- Inspect section boundaries
+- View beat types and headers
+- Expand sections to see stats
+- Regenerate story
 
 See [ADMIN_UI_STORY_GENERATOR.md](ADMIN_UI_STORY_GENERATOR.md)
 
@@ -351,51 +378,38 @@ Chapters are defined by **structural boundaries**, not narrative labels.
 **Not boundaries:**
 - Individual scores
 - Lead changes
-- Tier crossings
 - Narrative importance
 
 **Benefit:** Deterministic, reproducible, simple.
 
-### Why AI Sees Only Prior Chapters
+### Why Sections Transform Chapters
 
-**Problem:** If AI sees the full game, it can spoil the ending.
+Sections add the AI-ready layer:
+- Beat type classification
+- Stat deltas
+- Machine-generated notes
+- Time context
 
-**Solution:** Sequential generation with prior context only.
+**Benefit:** Clean separation between structure and rendering input.
 
-**Benefit:** Natural callbacks without spoilers.
+### Why Single AI Call
 
-### Why StoryState Is Bounded
+**Problem:** Sequential chapter-by-chapter generation is slow (~60-90 seconds) and produces inconsistent voice.
 
-**Problem:** Unbounded context leads to prompt bloat.
+**Solution:** Single AI call renders entire story at once.
 
-**Solution:** Top 6 players, max 8 themes, max 5 notable actions per player.
-
-**Benefit:** Focused, relevant context.
-
----
-
-## Future Extensions
-
-### Multi-Sport Support
-- NHL v1 boundary rules
-- NCAAB v1 boundary rules
-- Sport-specific story state derivation
-
-### AI Improvements
-- Custom models
-- Prompt tuning
-- Style variations
-
-### Performance
-- Cache generated stories in database
-- Incremental regeneration
-- Parallel chapter generation
+**Benefits:**
+- Coherent narrative voice
+- Consistent story shape
+- Faster generation (~5-15 seconds)
+- Better flow between sections
 
 ---
 
 ## References
 
 - [NBA v1 Boundary Rules](NBA_V1_BOUNDARY_RULES.md)
-- [AI Context Policy](AI_CONTEXT_POLICY.md)
 - [AI Signals (NBA v1)](AI_SIGNALS_NBA_V1.md)
+- [Story Rendering](SUMMARY_GENERATION.md)
+- [Technical Flow](TECHNICAL_FLOW.md)
 - [Admin UI Guide](ADMIN_UI_STORY_GENERATOR.md)

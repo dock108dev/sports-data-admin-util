@@ -1,380 +1,320 @@
 # AI Signals for NBA v1
 
-**Issue 9: Define Player, Team, and Theme Signals Exposed to AI**
+> **Status:** Authoritative
+> **Last Updated:** 2026-01-24
+> **Scope:** NBA v1
 
-This document defines the authoritative, locked set of signals that the AI may reference during chapter-level and full-book story generation for NBA v1.
-
-## Core Principles
-
-1. **Prior Chapters Only**: All signals derived from `StoryState` (chapters 0..N-1)
-2. **No Future Knowledge**: No spoilers, no final totals, no outcomes
-3. **Minimal & Bounded**: Only essential signals, strictly limited
-4. **Deterministic**: Same chapters → same signals
-5. **Natural Language Ready**: Signals map cleanly to callbacks
+This document defines the signals exposed to AI during story rendering.
 
 ---
 
-## A. Player Signals (NBA v1)
+## Overview
 
-### Allowed Player Signals
+The story renderer receives structured input and renders it into prose in a single AI call. This document defines what signals the AI sees and how it should use them.
 
-Only the following player-level signals are exposed to AI:
-
-| Field Name | Type | Description | Bounded |
-|------------|------|-------------|---------|
-| `player_name` | string | Display name | N/A |
-| `points_so_far` | int | Cumulative points from prior chapters | Top 6 only |
-| `made_fg_so_far` | int | Made field goals from prior chapters | Top 6 only |
-| `made_3pt_so_far` | int | Made 3-pointers from prior chapters | Top 6 only |
-| `made_ft_so_far` | int | Made free throws from prior chapters | Top 6 only |
-| `notable_actions_so_far` | list[str] | Notable actions (max 5) | Top 6 only |
-
-### Player Bounding Rules
-
-- **Only top 6 players by `points_so_far`** are exposed to AI
-- Players outside top 6 are invisible to AI (even if they appear in current chapter)
-- Tie-breaking: alphabetical by `player_name` (deterministic)
-
-### Allowed AI Phrasing
-
-✅ **Allowed:**
-- "LeBron had 20 through three quarters"
-- "Curry already had 15 by halftime"
-- "Durant's 12 early points"
-- "Giannis with 8 so far"
-
-❌ **Disallowed:**
-- "LeBron finished with 35" (implies future knowledge)
-- "Curry would end up with 28" (predictive)
-- "Durant was on pace for 40" (inference)
-- "Giannis was the leading scorer" (unless deterministically true in state)
-
-### Notable Actions
-
-Allowed notable action tags (NBA v1):
-- `dunk`
-- `block`
-- `steal`
-- `3PT`
-- `and-1`
-- `technical`
-- `flagrant`
-- `challenge`
-- `clutch_shot` (only if in crunch time)
-
-**Rules:**
-- Max 5 per player (FIFO)
-- No inference or fabrication
-- AI may reference as: "after his dunk earlier", "with 3 three-pointers already"
+**Key Principle:** AI sees only what's in the section input. It does not accumulate or infer.
 
 ---
 
-## B. Team Signals (NBA v1)
+## Section Input Structure
 
-### Allowed Team Signals
+Each section provided to AI contains:
 
-| Field Name | Type | Description | Notes |
-|------------|------|-------------|-------|
-| `team_name` | string | Display name | Required |
-| `score_so_far` | int \| null | Cumulative score (if derivable) | Nullable |
-| `momentum_hint` | enum | Coarse momentum indicator | See enum below |
-| `theme_tags` | list[str] | Deterministic theme tags (max 8) | See themes |
-
-### Momentum Hint Enum (Locked)
-
-```
-surging    # Team on a run
-steady     # Normal back-and-forth
-slipping   # Team losing momentum
-volatile   # Momentum swinging rapidly
-unknown    # Cannot determine
-```
-
-**Rules:**
-- Momentum hints are **descriptive, not predictive**
-- AI must not extrapolate outcomes from momentum
-- Momentum is derived from most recent chapter's reason codes
-
-### Allowed AI Phrasing
-
-✅ **Allowed:**
-- "Utah was surging"
-- "Minnesota had been steady"
-- "The momentum was volatile"
-
-❌ **Disallowed:**
-- "Utah would go on to win" (predictive)
-- "Minnesota couldn't recover" (outcome)
-- "The game was over" (finality)
-
----
-
-## C. Theme Signals (NBA v1)
-
-### Allowed Theme Tags
-
-Themes represent **story-level patterns**, not stats.
-
-**NBA v1 Theme Tags (Locked):**
-
-| Theme Tag | Description | Derivation Rule |
-|-----------|-------------|-----------------|
-| `timeout_heavy` | Multiple timeouts | `TIMEOUT` in reason codes |
-| `crunch_time` | Late + close game | `CRUNCH_START` in reason codes |
-| `overtime` | Overtime period | `OVERTIME_START` in reason codes |
-| `review_heavy` | Multiple reviews | `REVIEW` in reason codes |
-| `defensive_intensity` | Blocks + steals | ≥3 blocks/steals in chapter |
-| `hot_shooting` | Many made shots | ≥5 made shots in chapter |
-| `free_throw_battle` | Many free throws | ≥4 free throws in chapter |
-
-**Bounding:**
-- Max 8 theme tags total (most frequent, deterministic)
-- Themes are cumulative across all prior chapters
-- Tie-breaking: alphabetical by tag name
-
-### Allowed AI Phrasing
-
-✅ **Allowed:**
-- "Utah kept attacking the rim"
-- "Minnesota was settling for threes"
-- "It was a free throw battle"
-- "Defensive intensity was high"
-
-❌ **Disallowed:**
-- "Utah knew Minnesota couldn't stop them" (inference)
-- "Minnesota gave up" (subjective)
-- "The defense was elite" (qualitative judgment)
-
----
-
-## D. Signal-to-Language Mapping Guidelines
-
-### General Rules
-
-1. **Use past tense for prior chapters**: "had", "was", "kept"
-2. **Use "so far" language**: "through three", "by halftime", "early on"
-3. **No finality**: Never "finished", "ended", "final"
-4. **No prediction**: Never "would", "was going to", "on pace for"
-5. **No inference**: Only state what signals explicitly show
-
-### Examples by Signal Type
-
-**Player Stats:**
-```
-✅ "Collier had already piled up 20 by the time the fourth opened"
-✅ "George with 14 through three quarters"
-✅ "Edwards' 13 early points"
-❌ "Collier was on his way to a monster night"
-❌ "George would finish with 28"
-```
-
-**Notable Actions:**
-```
-✅ "After his dunk in the second"
-✅ "With three 3-pointers already"
-✅ "Following his block earlier"
-❌ "He was dominating" (qualitative)
-❌ "His best performance of the season" (external knowledge)
-```
-
-**Momentum:**
-```
-✅ "Utah was surging"
-✅ "The momentum had shifted"
-✅ "It was volatile"
-❌ "Utah was going to win"
-❌ "Minnesota had no chance"
-```
-
-**Themes:**
-```
-✅ "They kept attacking the rim"
-✅ "It was a defensive battle"
-✅ "Free throws were key"
-❌ "They had the perfect strategy"
-❌ "The defense was unstoppable"
+```python
+@dataclass
+class SectionRenderInput:
+    header: str                    # Deterministic (use verbatim)
+    beat_type: BeatType            # Classification of what happened
+    team_stat_deltas: list[dict]   # Team stats for this section
+    player_stat_deltas: list[dict] # Top 1-3 players for this section
+    notes: list[str]               # Machine-generated observations
+    start_score: dict[str, int]    # Score at section start
+    end_score: dict[str, int]      # Score at section end
+    start_period: int | None       # Period at start
+    end_period: int | None         # Period at end
+    start_time_remaining: int | None  # Seconds remaining at start
+    end_time_remaining: int | None    # Seconds remaining at end
 ```
 
 ---
 
-## E. Disallowed Signals (Explicit Blacklist)
+## A. Beat Type Signals
 
-The following signals **must never** be exposed to AI in NBA v1:
+Beat types classify what happened in a section.
 
-### Stats & Totals
-- ❌ `final_points` (or any "final" stat)
-- ❌ `shooting_percentage` (FG%, 3PT%, FT%)
-- ❌ `plus_minus`
-- ❌ `efficiency_rating`
-- ❌ Box score totals (rebounds, assists, etc.)
+### Allowed Beat Types (NBA v1)
+
+| Beat Type | Description | AI Should Convey |
+|-----------|-------------|------------------|
+| `FAST_START` | High-scoring opening | Energy, pace, rhythm |
+| `MISSED_SHOT_FEST` | Low-efficiency stretch | Cold shooting, searching |
+| `BACK_AND_FORTH` | Neither team separating | Trading, tight, even |
+| `EARLY_CONTROL` | One team establishing lead | Edge emerging, tilt |
+| `RUN` | 8+ unanswered points | Disruption, separation |
+| `RESPONSE` | Comeback after a run | Clawing back, answering |
+| `STALL` | Scoring drought | Flat, searching |
+| `CRUNCH_SETUP` | Late tight game | Stakes rising, tension |
+| `CLOSING_SEQUENCE` | Final minutes | Urgency, outcome |
+| `OVERTIME` | Extra period | Extended, survival |
+
+### How AI Uses Beat Types
+
+Beat types inform tone and framing, not explicit labeling.
+
+**Good:**
+- RUN: "The Lakers rattled off an 11-0 run..."
+- RESPONSE: "But the Celtics answered quickly..."
+- STALL: "Scoring dried up as both offenses searched..."
+
+**Bad:**
+- "This was a RUN beat type"
+- "The section was classified as STALL"
+
+---
+
+## B. Team Stat Signals
+
+Team stats are provided as deltas for each section.
+
+### Allowed Team Stats
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `team_name` | string | Display name |
+| `points_scored` | int | Points scored in this section |
+| `personal_fouls_committed` | int | Fouls in this section |
+| `technical_fouls_committed` | int | Techs in this section |
+| `timeouts_used` | int | Timeouts used in this section |
+
+### How AI Uses Team Stats
+
+Stats explain WHAT happened in context.
+
+**Good:**
+- "The Lakers outscored the Celtics 14-6 in this stretch"
+- "Boston picked up 3 quick fouls"
+
+**Bad:**
+- "Team stats: Lakers 14, Celtics 6"
+- Listing stats without narrative context
+
+---
+
+## C. Player Stat Signals
+
+Player stats are provided for top 1-3 players per section.
+
+### Allowed Player Stats
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `player_name` | string | Display name |
+| `points_scored` | int | Points in this section |
+| `fg_made` | int | Field goals made |
+| `three_pt_made` | int | 3-pointers made |
+| `ft_made` | int | Free throws made |
+| `personal_foul_count` | int | Fouls committed |
+| `foul_trouble_flag` | bool | Player in foul trouble |
+
+### Player Bounding
+
+- Only top 1-3 players per section are exposed
+- Selection based on points scored in section
+- Players not in stats are invisible to AI
+
+### How AI Uses Player Stats
+
+Player stats should be SELECTIVE and attached to moments.
+
+**Good:**
+- "LeBron scored 8 in the run"
+- "Curry connected on back-to-back threes"
+
+**Bad:**
+- "LeBron had 8 pts (3 FG, 1 3PT, 1 FT)"
+- Listing every player's full stat line
+
+---
+
+## D. Score Signals
+
+Scores are provided at section start and end.
+
+### Score Fields
+
+| Field | Description |
+|-------|-------------|
+| `start_score` | `{"home": int, "away": int}` |
+| `end_score` | `{"home": int, "away": int}` |
+
+### Score Presentation Rules
+
+- May include running score where it fits naturally
+- End score should appear in last paragraph of section
+- "Team A outscored Team B X-Y" is section scoring (NOT a run)
+- A "run" is specifically 8+ UNANSWERED points
+
+**Good:**
+- "...leaving the score at 102-98"
+- "The Lakers outscored the Celtics 14-6"
+
+**Bad:**
+- "Score: 102-98"
+- Calling section scoring a "run"
+
+---
+
+## E. Time Context Signals
+
+Time context anchors moments for readers.
+
+### Time Fields
+
+| Field | Description |
+|-------|-------------|
+| `start_period` | Period at section start (1-4, 5+ for OT) |
+| `end_period` | Period at section end |
+| `start_time_remaining` | Seconds remaining at start |
+| `end_time_remaining` | Seconds remaining at end |
+
+### Time Presentation Rules
+
+**Allowed Expressions:**
+- Explicit clock: "with 2:05 left in the first"
+- Natural phrasing: "midway through the third"
+- Approximate: "late in the half"
+
+**Prohibited:**
+- "in this section"
+- "during the segment"
+- "stretch", "phase"
+
+---
+
+## F. Notes Signals
+
+Notes are machine-generated observations about the section.
+
+### Note Types
+
+- Scoring differential: "Lakers outscored Celtics 14-6"
+- Run detection: "11-0 run"
+- Game state: "Lead changed hands"
+- Notable events: "Technical foul called"
+
+### How AI Uses Notes
+
+Notes provide facts to weave into narrative.
+
+**Good:**
+- Incorporate note facts into flowing prose
+- Use notes to explain WHY momentum shifted
+
+**Bad:**
+- Quote notes verbatim
+- List notes as bullet points
+
+---
+
+## G. Disallowed Signals
+
+The following are NOT exposed to AI:
+
+### Stats Not Provided
+- ❌ Shooting percentages (FG%, 3PT%, FT%)
+- ❌ Plus/minus
+- ❌ Rebounds, assists (not tracked in sections)
+- ❌ Box score totals
 
 ### Predictive Metrics
-- ❌ `win_probability`
-- ❌ `expected_points`
-- ❌ `clutch_rating`
-- ❌ `importance_score`
-
-### Legacy Moments Engine
-- ❌ `ladder_tier`
-- ❌ `moment_type`
-- ❌ `lead_change_count`
-- ❌ `tier_crossing_count`
+- ❌ Win probability
+- ❌ Clutch rating
+- ❌ Importance score
 
 ### External Context
 - ❌ Season stats
 - ❌ Career stats
 - ❌ Team records
-- ❌ Playoff context
 - ❌ Historical comparisons
 
-### Subjective Inference
+### Subjective Judgments
 - ❌ "Best player"
 - ❌ "Clutch performer"
-- ❌ "Momentum shifter"
-- ❌ Any ranking not deterministically derived from `points_so_far`
+- ❌ Quality rankings
 
 ---
 
-## F. Schema Definition
+## H. AI Language Guidelines
 
-### AI Input Payload Schema (Chapter-Level)
+### Allowed Phrasing
 
-```json
-{
-  "chapter": {
-    "chapter_id": "string",
-    "plays": [...],
-    "reason_codes": ["string"]
-  },
-  "story_state": {
-    "chapter_index_last_processed": "int",
-    "players": {
-      "<player_name>": {
-        "player_name": "string",
-        "points_so_far": "int",
-        "made_fg_so_far": "int",
-        "made_3pt_so_far": "int",
-        "made_ft_so_far": "int",
-        "notable_actions_so_far": ["string"]
-      }
-    },
-    "teams": {
-      "<team_name>": {
-        "team_name": "string",
-        "score_so_far": "int | null"
-      }
-    },
-    "momentum_hint": "surging | steady | slipping | volatile | unknown",
-    "theme_tags": ["string"],
-    "constraints": {
-      "no_future_knowledge": true,
-      "source": "derived_from_prior_chapters_only"
-    }
-  },
-  "prior_summaries": [...]
-}
-```
+**Stats:**
+- "scored 8 in the run"
+- "connected on three threes"
+- "picked up his fourth foul"
 
-### Validation Rules
+**Momentum:**
+- "The lead grew"
+- "The gap widened"
+- "They clawed back"
 
-1. **Players**: Max 6, sorted by `points_so_far` descending
-2. **Notable Actions**: Max 5 per player
-3. **Theme Tags**: Max 8 total
-4. **Momentum Hint**: Must be valid enum value
-5. **Constraints**: Must be present and valid
+**Time:**
+- "With 2:05 left"
+- "Midway through the third"
+- "Late in the fourth"
+
+### Disallowed Phrasing
+
+**Quality Judgments:**
+- "efficient", "inefficient"
+- "dominant", "struggled"
+- "impressive", "clutch"
+
+**Internal Language:**
+- "stretch of scoring"
+- "segment", "section"
+- "in this phase"
+
+**Hedging:**
+- "somewhat", "arguably"
+- "to some degree"
 
 ---
 
-## G. Testing Requirements
+## I. Validation
 
 ### Signal Whitelist Test
-- Assert AI payload contains only defined signals
-- No extra fields allowed
+- Assert AI input contains only defined fields
+- No extra signals allowed
 
 ### Bounding Test
-- Create 10 players → only top 6 in payload
-- Verify deterministic truncation
+- Max 3 players per section
+- Stats are section deltas, not cumulative
 
-### No Disallowed Fields Test
-- Assert no blacklisted signals in payload
-- Check against explicit disallow list
-
-### Schema Validation Test
-- Payload conforms to schema
-- Enums validated
-- Bounds enforced
+### Language Test
+- No prohibited phrases in output
+- No internal structural language
 
 ---
 
-## H. CLI Support
+## Summary
 
-### Print AI Signals Command
+**What AI Sees:**
+- Header (use verbatim)
+- Beat type (informs tone)
+- Team stats (section deltas)
+- Player stats (top 1-3, section deltas)
+- Notes (machine observations)
+- Scores (start/end)
+- Time context (period, clock)
 
-```bash
-python -m app.services.chapters.cli <input.json> --print-ai-signals --chapter-index N
-```
-
-**Output:**
-```
-=== AI SIGNALS FOR CHAPTER N ===
-
-Players (Top 6):
-  1. LeBron James: 20 pts (7 FG, 2 3PT, 0 FT) | Notable: dunk, 3PT
-  2. Stephen Curry: 15 pts (5 FG, 3 3PT, 0 FT) | Notable: 3PT, 3PT, 3PT
-  ...
-
-Teams:
-  Lakers: 58 pts | Momentum: surging
-  Warriors: 52 pts | Momentum: steady
-
-Themes (8):
-  - hot_shooting
-  - defensive_intensity
-  - crunch_time
-
-Constraints:
-  ✓ no_future_knowledge: true
-  ✓ source: derived_from_prior_chapters_only
-```
-
----
-
-## I. Evolution & Extensibility
-
-### Adding New Signals (Future)
-
-To add a new signal:
-1. Update this document with signal definition
-2. Add to `StoryState` schema
-3. Add derivation logic to `story_state.py`
-4. Add to whitelist tests
-5. Update AI prompt templates
-
-### Removing Signals
-
-To remove a signal:
-1. Mark as deprecated in this document
-2. Add to disallowed list
-3. Update tests to reject it
-4. Remove from schema (breaking change)
-
----
-
-## J. Summary
-
-**Allowed Signals:**
-- Player: name, points/FG/3PT/FT so far, notable actions (top 6 only)
-- Team: name, score so far, momentum hint, theme tags
-- Themes: 8 deterministic tags
-
-**Disallowed Signals:**
-- Final stats, percentages, box scores
-- Predictive metrics, win probability
-- Legacy moments engine fields
-- External context, subjective rankings
+**What AI Does NOT See:**
+- Cumulative game stats
+- Box score data
+- External context
+- Quality metrics
 
 **Guarantees:**
-- Prior chapters only
+- Section-scoped data only
 - Deterministic & bounded
-- Natural language ready
-- No spoilers, no inference
+- No inference required

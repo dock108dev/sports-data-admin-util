@@ -1,7 +1,7 @@
-# Story Generation: Chapters-First System
+# Story Rendering: Single AI Call Architecture
 
-> **Status:** Authoritative  
-> **Last Updated:** 2026-01-22  
+> **Status:** Authoritative
+> **Last Updated:** 2026-01-24
 > **Scope:** NBA v1
 
 ---
@@ -10,9 +10,9 @@
 
 The story generation system converts play-by-play data into narrative stories for Scroll Down Sports.
 
-**Architecture:** Chapters-First
+**Architecture:** Sections-First, Single AI Call
 
-A game is a book. Plays are pages. Chapters are scenes.
+A game's plays become chapters, chapters become sections, sections render into one cohesive story.
 
 ---
 
@@ -25,149 +25,172 @@ Chapterizer (Deterministic)
     ↓
 Chapters (Structure)
     ↓
-StoryState Builder (Deterministic)
+Section Builder (Deterministic)
     ↓
-AI Summary Generator (Sequential)
+StorySections (with beat types, stats, notes)
     ↓
-AI Title Generator (Independent)
+Header Generator (Deterministic)
     ↓
-AI Compact Story Generator (Full Arc)
+Story Renderer (Single AI Call)
     ↓
-GameStory (Complete)
+Compact Story (Complete)
 ```
 
 ---
 
-## Generation Modes
+## Core Concepts
 
-### Mode 1: Chapter Summaries (Sequential, Prior Context Only)
+### StorySections
 
-**Purpose:** Narrate each chapter in sequence
+Sections are the AI-ready representation of chapters. Each section contains:
 
-**Input:**
-- Current chapter plays
-- Prior chapter summaries (0..N-1)
-- Story state from prior chapters
+- **beat_type:** Classification of what happened (RUN, RESPONSE, STALL, etc.)
+- **stats:** Team and player stat deltas for the section
+- **notes:** Machine-generated observations
+- **scores:** Start and end scores
+- **time context:** Period and time remaining
 
-**Output:**
-- Chapter summary (1-3 sentences)
+### Headers
 
-**Rules:**
-- ✅ May reference prior chapters
-- ✅ May use "so far" stats
-- ❌ No future knowledge
-- ❌ No final totals
+Deterministic one-sentence orientation anchors that tell the reader WHERE we are:
 
-**Example:**
-```
-"After his hot start in Q1, LeBron cooled off in Q2 as the Celtics 
-tightened their defense. He has 18 points through two quarters."
-```
+- "The floor was alive from the opening tip." (FAST_START)
+- "One side started pulling away." (RUN)
+- "Scoring dried up on both ends." (STALL)
 
----
+Headers are NOT narrative. They're structural guides.
 
-### Mode 2: Chapter Titles (Independent, Summary-Only)
+### Beat Types
 
-**Purpose:** Generate scannable headlines
-
-**Input:**
-- Chapter summary only
-- Optional metadata (period, time_range)
-
-**Output:**
-- Chapter title (3-8 words)
-
-**Rules:**
-- ✅ Derives from summary only
-- ✅ No new information
-- ❌ No numbers
-- ❌ No timestamps
-
-**Example:**
-```
-"Warriors Build Early Lead"
-"Lakers Fight Back"
-"Crunch Time Intensity"
-```
+| Beat Type | Description |
+|-----------|-------------|
+| `FAST_START` | High-scoring opening |
+| `MISSED_SHOT_FEST` | Low-efficiency stretch |
+| `BACK_AND_FORTH` | Neither team separating |
+| `EARLY_CONTROL` | One team establishing lead |
+| `RUN` | 8+ unanswered points |
+| `RESPONSE` | Comeback after a run |
+| `STALL` | Scoring drought |
+| `CRUNCH_SETUP` | Late tight game |
+| `CLOSING_SEQUENCE` | Final minutes |
+| `OVERTIME` | Extra period |
 
 ---
 
-### Mode 3: Compact Story (Full Arc, Hindsight Allowed)
+## Story Rendering
 
-**Purpose:** Generate complete game recap
+### Single AI Call Architecture
 
-**Input:**
-- All chapter summaries (ordered)
-- Optional chapter titles
+The system makes **one AI call** to render the complete story from the structured outline.
 
-**Output:**
-- Compact story (4-12 min read)
+**Why Single Call:**
+- Coherent narrative voice throughout
+- Consistent story shape and flow
+- Better control over length and pacing
+- Faster generation (5-15 seconds vs 60-90 seconds for sequential)
 
-**Rules:**
-- ✅ Hindsight language allowed
-- ✅ Final totals allowed
-- ✅ Game result allowed
-- ❌ No new facts (not in summaries)
+### AI's Role (Strictly Limited)
 
-**Example:**
-```
-"The Warriors defeated the Lakers 112-108 in a thrilling finish. 
-After building an early lead, Golden State weathered a Lakers 
-comeback before Curry hit a dagger 3-pointer with 3 minutes left. 
-His 28 points led the Warriors to victory."
-```
+**AI DOES:**
+- Turn outline into prose
+- Use headers verbatim
+- Match target word count
+- Add language polish
+
+**AI DOES NOT:**
+- Plan or restructure
+- Infer importance
+- Invent context
+- Decide what matters
+- Add drama not in input
+
+### Prompt Rules
+
+The AI prompt includes comprehensive rules for:
+
+#### Opening Paragraph
+- Establish TEXTURE, not summary
+- Create curiosity rather than completeness
+- Focus on game feel (rhythm, pressure, pace)
+- No stats, totals, or point counts
+
+#### Story Shape
+Must reflect how pressure actually behaved:
+- Build → Swing → Resolve (tight game, decided late)
+- Early Break → Control → Fade (blowout)
+- Trade → Trade → Decisive Push (back-and-forth)
+- Surge → Stall → Late Separation (uneven momentum)
+
+#### Narrative Flow
+- Paragraphs BUILD on each other
+- Carry tension forward
+- Show cause and effect
+- Middle paragraphs must do meaningful work
+
+#### Layer Responsibility
+Two layers exist:
+- **Compact Story:** Overview layer — "What happened and how did it feel?"
+- **Expanded Sections:** Detail layer — "How did that actually play out?"
+
+The story invites curiosity. Expanded sections provide evidence.
+
+#### Stat Usage
+- 0-2 specific stats per section (max)
+- Stats must be attached to moments
+- No moment → no stat
+
+#### Closing Paragraph
+- Resolution matching the story's shape
+- State final score clearly
+- Connect back to earlier tension
+- Land the story with closure
 
 ---
 
 ## Voice and Tone
 
-### Sportscaster Voice
+### Confident Sports Writer
 
 **Style:**
-- Observational, energetic, grounded
-- Like watching highlights for the first time
-- No box-score listing
-- No play-by-play regurgitation
+- Observational, confident, grounded
+- Like someone who watched the game and understands what mattered
+- Assured, post-game perspective
 
 **Good Examples:**
-- "The Warriors came out firing"
-- "LeBron kept them in it"
-- "The game tightened late"
+- "The floor was tilting"
+- "Neither side could create separation"
+- "The trailing team clawed back"
+- "The lead that emerged late held comfortably"
 
 **Bad Examples:**
 - "The Warriors scored 28 points in Q1" (stat dump)
-- "At 8:42, Curry made a three-pointer" (too specific)
+- "At 8:42, Curry made a three-pointer" (play-by-play)
 - "The game was exciting" (generic filler)
+- "They struggled somewhat" (hedging)
 
 ---
 
-## Banned Phrases
+## Prohibited Language
 
-### Spoiler Words (Unless Final Chapter)
+### Segment/Internal Language
+Never expose internal structure:
+- "stretch of scoring"
+- "segment", "section", "phase"
+- "in this section"
+- "during the stretch"
 
-**Forbidden in sequential generation:**
-- "finished with"
-- "sealed it"
-- "the dagger"
-- "would not recover"
-- "ended the game"
-- "closed it out"
-- "put it away"
-- "clinched"
+### Hedging Language
+No false balance or uncertainty:
+- "somewhat", "to some degree"
+- "arguably", "perhaps"
+- Symmetric "both teams" framing when one side had the edge
 
-**Allowed in:**
-- Final chapter summary
-- Compact story (full arc)
-
-### Future Knowledge Phrases
-
-**Always forbidden:**
-- "later"
-- "eventually"
-- "from there"
-- "that would prove"
-- "on the way to"
-- "would go on to"
+### Quality Judgments
+Don't infer beyond facts:
+- "efficient", "inefficient"
+- "struggled", "dominant"
+- "impressive", "disappointing"
+- "clutch", "choked"
 
 ---
 
@@ -175,28 +198,24 @@ His 28 points led the Warriors to victory."
 
 All AI-generated text is validated post-generation:
 
-### Chapter Summary Validation
-- ✅ 1-3 sentences
-- ✅ No spoilers (unless final chapter)
-- ✅ No future knowledge
-- ✅ No bullet points
+### Length Validation
+- Target word count (section_count × 90 words)
+- Per-section bounds: 60-120 words
+- Deviation tolerance: ±50%
 
-### Chapter Title Validation
-- ✅ 3-8 words
-- ✅ No numbers
-- ✅ No punctuation (except apostrophes)
-- ✅ No spoiler words
+### Header Validation
+- All headers present
+- Headers in correct order
+- Key words from headers appear in story
 
-### Compact Story Validation
-- ✅ Non-empty
-- ✅ Paragraph-based
-- ✅ No play-by-play listing
-- ✅ No new entities
+### Quality Checks
+- Non-empty story
+- Paragraph-based structure
+- No prohibited phrases
 
 **Failure Behavior:**
 - Log exact errors
 - Surface in Admin UI
-- Do not persist bad output
 - Retry once, then fail loudly
 
 ---
@@ -218,18 +237,10 @@ All AI-generated text is validated post-generation:
 
 **Features:**
 - View complete game story
-- Inspect chapters (expand/collapse)
-- View story state per chapter
-- Regeneration buttons:
-  - Regenerate Chapters
-  - Regenerate Summaries
-  - Regenerate Titles
-  - Regenerate Compact Story
-  - Regenerate All
-
-**Chapter Inspector:**
-- Collapsed: Title, summary, play count, reason codes
-- Expanded: All raw plays, boundary explanation, debug info
+- Inspect sections (expand/collapse)
+- View stats and notes per section
+- Regeneration button
+- Pipeline debug view
 
 ---
 
@@ -237,20 +248,14 @@ All AI-generated text is validated post-generation:
 
 ### Deterministic Operations (Instant)
 - Chapter generation: <1 second
-- Story state derivation: <1 second
+- Section building: <1 second
+- Header generation: <1 second
 - Bulk chapter generation: ~22 games/second
 
-### AI Operations (Sequential)
-- Chapter summaries: ~2-3 seconds per chapter
-- Chapter titles: ~1-2 seconds per chapter
-- Compact story: ~5-10 seconds
+### AI Operations (Single Call)
+- Story rendering: ~5-15 seconds
 
-**Example:** 18-chapter game
-- Chapters: <1 second
-- Summaries: ~36-54 seconds
-- Titles: ~18-36 seconds
-- Compact story: ~5-10 seconds
-- **Total:** ~60-100 seconds
+**Example:** Full game story = ~5-20 seconds total
 
 ---
 
@@ -270,23 +275,24 @@ cd infra && docker compose restart api
 
 ### Without OpenAI Key
 
-- ✅ Chapters generate normally
-- ✅ Story state derives normally
-- ❌ AI endpoints return "API key not configured"
+- ✅ Chapters and sections generate normally
+- ✅ Headers generate normally
+- ❌ Story rendering returns "API key not configured"
 
 ---
 
 ## Testing
 
-### Test Chapter Generation
+### Test Structure Generation
 ```bash
-curl -s http://localhost:8000/api/admin/sports/games/110536/story | jq '.chapter_count'
-# Returns: 18
+curl -s http://localhost:8000/api/admin/sports/games/110536/story | jq '.section_count'
 ```
 
-### Test Story State
+### Test Story Rendering
 ```bash
-curl -s 'http://localhost:8000/api/admin/sports/games/110536/story-state?chapter=5' | jq '.players | keys'
+curl -X POST http://localhost:8000/api/admin/sports/games/110536/story/regenerate-all \
+  -H "Content-Type: application/json" \
+  -d '{"force": false}'
 ```
 
 ### Test Bulk Generation
@@ -300,12 +306,17 @@ curl -X POST http://localhost:8000/api/admin/sports/games/bulk-generate \
   }'
 ```
 
-### Test AI Generation (requires API key)
-```bash
-curl -X POST http://localhost:8000/api/admin/sports/games/110536/story/regenerate-all \
-  -H "Content-Type: application/json" \
-  -d '{"force": false}'
-```
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `story_section.py` | Section building from chapters |
+| `beat_classifier.py` | Beat type classification |
+| `header_reset.py` | Deterministic header generation |
+| `story_renderer.py` | Single AI call story rendering |
+| `section_types.py` | Data structures |
 
 ---
 
@@ -314,18 +325,16 @@ curl -X POST http://localhost:8000/api/admin/sports/games/110536/story/regenerat
 **Core Concepts:**
 - [Book + Chapters Model](BOOK_CHAPTERS_MODEL.md) — Architecture and definitions
 - [NBA v1 Boundary Rules](NBA_V1_BOUNDARY_RULES.md) — Chapter boundary rules
-- [AI Context Policy](AI_CONTEXT_POLICY.md) — What AI can/cannot see
+- [Technical Flow](TECHNICAL_FLOW.md) — Complete pipeline details
 
 **Implementation:**
-- [AI Signals (NBA v1)](AI_SIGNALS_NBA_V1.md) — Exact signals exposed to AI
 - [Admin UI Guide](ADMIN_UI_STORY_GENERATOR.md) — Story Generator interface
-- [Technical Flow](TECHNICAL_FLOW.md) — Complete pipeline details
 
 ---
 
 ## Summary
 
-**Architecture:** Chapters-First (structure before narrative)  
-**AI Usage:** Narrative only (never structure)  
-**Performance:** Chapters instant, AI ~60-90 seconds  
+**Architecture:** Sections-first, single AI call
+**AI Usage:** Rendering only (never structure)
+**Performance:** ~5-15 seconds per game
 **Status:** Production-ready for NBA v1
