@@ -47,4 +47,3 @@ async def get_async_session():
 
 async def close_db() -> None:
     await engine.dispose()
-

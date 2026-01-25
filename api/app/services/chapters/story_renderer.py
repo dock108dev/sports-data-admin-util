@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from .story_section import StorySection
@@ -49,8 +49,30 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# SECTION LENGTH CONSTANTS
+# ============================================================================
+
+SECTION_MIN_WORDS = 60
+SECTION_MAX_WORDS = 120
+SECTION_AVG_WORDS = 90  # Used to compute total target: section_count × 90
+
+
+def compute_target_word_count(section_count: int) -> int:
+    """Compute target word count from section count.
+
+    Args:
+        section_count: Number of sections in story
+
+    Returns:
+        Target word count (section_count × SECTION_AVG_WORDS)
+    """
+    return section_count * SECTION_AVG_WORDS
+
+
+# ============================================================================
 # AI CLIENT PROTOCOL
 # ============================================================================
+
 
 class AIClient(Protocol):
     """Protocol for AI client implementations."""
@@ -71,12 +93,14 @@ class AIClient(Protocol):
 # RENDERING INPUT (AUTHORITATIVE)
 # ============================================================================
 
+
 @dataclass
 class ClosingContext:
     """Context for the closing paragraph.
 
     Contains ONLY what AI needs for the final paragraph.
     """
+
     final_home_score: int
     final_away_score: int
     home_team_name: str
@@ -98,11 +122,14 @@ class SectionRenderInput:
     Contains ONLY what AI needs to render this section.
     No raw plays, no chapters, no cumulative stats.
     """
+
     header: str  # Deterministic one-sentence header (use verbatim)
     beat_type: BeatType
     team_stat_deltas: list[dict[str, Any]]
     player_stat_deltas: list[dict[str, Any]]  # Bounded: top 1-3 per team
     notes: list[str]  # Machine-generated bullets
+    start_score: dict[str, int] = field(default_factory=lambda: {"home": 0, "away": 0})
+    end_score: dict[str, int] = field(default_factory=lambda: {"home": 0, "away": 0})
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for prompt building."""
@@ -112,6 +139,8 @@ class SectionRenderInput:
             "team_stats": self.team_stat_deltas,
             "player_stats": self.player_stat_deltas,
             "notes": self.notes,
+            "start_score": self.start_score,
+            "end_score": self.end_score,
         }
 
 
@@ -122,6 +151,7 @@ class StoryRenderInput:
     This is the AUTHORITATIVE payload sent to AI.
     Contains everything AI needs and nothing more.
     """
+
     sport: str
     home_team_name: str
     away_team_name: str
@@ -147,12 +177,14 @@ class StoryRenderInput:
 # RENDERING RESULT
 # ============================================================================
 
+
 @dataclass
 class StoryRenderResult:
     """Result of story rendering.
 
     Contains the rendered story and metadata.
     """
+
     compact_story: str
     word_count: int
     target_word_count: int
@@ -172,6 +204,7 @@ class StoryRenderResult:
 
 class StoryRenderError(Exception):
     """Raised when story rendering fails."""
+
     pass
 
 
@@ -220,14 +253,17 @@ Decisive Factors:
 8. Avoid play-by-play phrasing
 9. Tone: calm, professional, SportsCenter-style
 10. Perspective: neutral, post-game
+11. SCORE MENTIONS: Each section paragraph COULD mention the score at that point. Use end_score in the last paragraph only, and it must be used naturally in context.
 
-## LENGTH CONTROL
+## LENGTH CONTROL (NON-NEGOTIABLE)
 
-- Target: approximately {target_word_count} words total
-- Allocate words proportionally across sections
-- Small deviations acceptable, large deviations are not
+- Total target: approximately {target_word_count} words
+- Per-section bounds: {section_min_words}-{section_max_words} words per section
+- Each section MUST contain at least {section_min_words} words
+- Each section MUST NOT exceed {section_max_words} words
+- Count your words carefully for each section
 
-## STAT USAGE RULES
+## STAT USAGE RULES (NON-NEGOTIABLE)
 
 - Use ONLY the stats provided in each section
 - Do NOT compute percentages or efficiency
@@ -235,12 +271,42 @@ Decisive Factors:
 - Player mentions must be grounded in provided stats
 - If a stat or player is not in the input, it does not exist
 
-## CLOSING PARAGRAPH
+## SCORE PRESENTATION RULES (NON-NEGOTIABLE)
 
-At the end:
-- Reference final score ONCE
+- You MAY include the running score where it fits naturally in context
+- The end_score should appear in the LAST paragraph of each section (e.g., "...leaving the score at 102-98")
+- The notes may say "Team A outscored Team B 14-6" - this is the SECTION scoring (Team A scored 14 points, Team B scored 6 points IN THIS SECTION). This is NOT a run. Do NOT call this a run.
+- A "run" is specifically 8+ UNANSWERED points (e.g., "a 10-0 run" or "an 8-0 run"). Only use "run" for actual unanswered scoring sequences.
+
+## FACT-ONLY CONSTRAINT (NON-NEGOTIABLE)
+
+You may ONLY restate factual information explicitly present in the input.
+You may NOT infer quality, efficiency, trends, or dominance.
+
+PROHIBITED LANGUAGE (never use these or similar terms):
+- "efficient", "inefficient"
+- "struggled", "struggling"
+- "hot start", "cold shooting", "cold streak"
+- "dominant", "dominated", "dominance"
+- "controlled", "took control"
+- "strong performance", "weak performance"
+- "impressive", "disappointing"
+- "clutch", "choked"
+- "momentum", "momentum shift"
+- "outplayed", "outmatched"
+- "chemistry", "rhythm"
+
+ALLOWED: Direct stat restatement, factual descriptions of what happened.
+Example: "scored 12 points on 4-for-6 shooting" (factual)
+NOT ALLOWED: "had an efficient night" (inference)
+
+## CLOSING PARAGRAPH (REQUIRED)
+
+The FINAL paragraph MUST:
+- State the final score clearly (e.g., "Team A defeated Team B 110-102" or "The final score: Team A 110, Team B 102")
 - Briefly summarize decisive factors (as provided)
 - Do NOT editorialize or speculate beyond the game
+- The final score is NON-NEGOTIABLE - it MUST appear in the last paragraph
 
 ## OUTPUT
 
@@ -250,20 +316,42 @@ Return ONLY a JSON object:
 No markdown fences. No explanation. No metadata."""
 
 
-def _format_section_for_prompt(section: SectionRenderInput, index: int) -> str:
+def _format_section_for_prompt(
+    section: SectionRenderInput,
+    index: int,
+    home_team: str,
+    away_team: str,
+) -> str:
     """Format a single section for the prompt.
 
     Args:
         section: The section to format
         index: Section index (0-based)
+        home_team: Home team name
+        away_team: Away team name
 
     Returns:
         Formatted section text
     """
+    # Format score as "Away X, Home Y" for clarity
+    start_home = section.start_score.get('home', 0)
+    start_away = section.start_score.get('away', 0)
+    end_home = section.end_score.get('home', 0)
+    end_away = section.end_score.get('away', 0)
+
+    # Current running total (the main score to include in narrative)
+    current_score_str = f"{away_team} {end_away}, {home_team} {end_home}"
+
+    # Section scoring (how many points each team scored IN THIS SECTION - not a run)
+    section_pts_home = end_home - start_home
+    section_pts_away = end_away - start_away
+
     lines = [
         f"### Section {index + 1}",
         f"Header: {section.header}",
         f"Beat: {section.beat_type.value}",
+        f"Current score at end of section: {current_score_str}",
+        f"Section scoring: {away_team} scored {section_pts_away}, {home_team} scored {section_pts_home} (NOT a run, just section totals)",
     ]
 
     # Team stats
@@ -275,9 +363,11 @@ def _format_section_for_prompt(section: SectionRenderInput, index: int) -> str:
             fouls = team.get("personal_fouls_committed", 0)
             tech = team.get("technical_fouls_committed", 0)
             to = team.get("timeouts_used", 0)
-            lines.append(f"  - {name}: {pts} pts, {fouls} fouls" +
-                        (f", {tech} tech" if tech > 0 else "") +
-                        (f", {to} TO used" if to > 0 else ""))
+            lines.append(
+                f"  - {name}: {pts} pts, {fouls} fouls"
+                + (f", {tech} tech" if tech > 0 else "")
+                + (f", {to} TO used" if to > 0 else "")
+            )
 
     # Player stats (bounded)
     if section.player_stat_deltas:
@@ -324,15 +414,21 @@ def build_render_prompt(input_data: StoryRenderInput) -> str:
         Formatted prompt string
     """
     # Format all sections
-    sections_text = "\n\n".join([
-        _format_section_for_prompt(section, i)
-        for i, section in enumerate(input_data.sections)
-    ])
+    sections_text = "\n\n".join(
+        [
+            _format_section_for_prompt(
+                section, i, input_data.home_team_name, input_data.away_team_name
+            )
+            for i, section in enumerate(input_data.sections)
+        ]
+    )
 
     # Format decisive factors
-    decisive_factors = "\n".join([
-        f"- {factor}" for factor in input_data.closing.decisive_factors
-    ]) if input_data.closing.decisive_factors else "- (none specified)"
+    decisive_factors = (
+        "\n".join([f"- {factor}" for factor in input_data.closing.decisive_factors])
+        if input_data.closing.decisive_factors
+        else "- (none specified)"
+    )
 
     # Build final prompt
     prompt = STORY_RENDER_PROMPT.format(
@@ -340,6 +436,8 @@ def build_render_prompt(input_data: StoryRenderInput) -> str:
         home_team=input_data.home_team_name,
         away_team=input_data.away_team_name,
         target_word_count=input_data.target_word_count,
+        section_min_words=SECTION_MIN_WORDS,
+        section_max_words=SECTION_MAX_WORDS,
         sections_text=sections_text,
         final_score=input_data.closing.to_dict()["final_score"],
         decisive_factors=decisive_factors,
@@ -351,6 +449,7 @@ def build_render_prompt(input_data: StoryRenderInput) -> str:
 # ============================================================================
 # INPUT BUILDING HELPERS
 # ============================================================================
+
 
 def build_section_render_input(
     section: StorySection,
@@ -366,14 +465,10 @@ def build_section_render_input(
         SectionRenderInput ready for prompt
     """
     # Convert team deltas to dicts
-    team_deltas = [
-        delta.to_dict() for delta in section.team_stat_deltas.values()
-    ]
+    team_deltas = [delta.to_dict() for delta in section.team_stat_deltas.values()]
 
     # Convert player deltas to dicts (already bounded to top 1-3)
-    player_deltas = [
-        delta.to_dict() for delta in section.player_stat_deltas.values()
-    ]
+    player_deltas = [delta.to_dict() for delta in section.player_stat_deltas.values()]
 
     return SectionRenderInput(
         header=header,
@@ -381,6 +476,8 @@ def build_section_render_input(
         team_stat_deltas=team_deltas,
         player_stat_deltas=player_deltas,
         notes=section.notes,
+        start_score=section.start_score,
+        end_score=section.end_score,
     )
 
 
@@ -452,6 +549,7 @@ def build_story_render_input(
 # RENDERING FUNCTION
 # ============================================================================
 
+
 def render_story(
     input_data: StoryRenderInput,
     ai_client: AIClient | None = None,
@@ -481,9 +579,11 @@ def render_story(
     # Generate story
     if ai_client is None:
         logger.warning("No AI client provided, returning mock story")
-        raw_response = json.dumps({
-            "compact_story": _generate_mock_story(input_data),
-        })
+        raw_response = json.dumps(
+            {
+                "compact_story": _generate_mock_story(input_data),
+            }
+        )
     else:
         try:
             raw_response = ai_client.generate(prompt)
@@ -512,8 +612,7 @@ def render_story(
     word_count = len(compact_story.split())
 
     logger.info(
-        f"Rendered story: {word_count} words "
-        f"(target: {input_data.target_word_count})"
+        f"Rendered story: {word_count} words (target: {input_data.target_word_count})"
     )
 
     return StoryRenderResult(
@@ -562,6 +661,7 @@ def _generate_mock_story(input_data: StoryRenderInput) -> str:
 # VALIDATION
 # ============================================================================
 
+
 def validate_render_input(input_data: StoryRenderInput) -> list[str]:
     """Validate rendering input.
 
@@ -604,6 +704,7 @@ def validate_render_result(
     - Missing headers
     - Wrong header order
     - Extreme length deviation
+    - Per-section word count bounds
 
     Args:
         result: The rendering result
@@ -632,12 +733,85 @@ def validate_render_result(
         if not any(word in story_lower for word in header_words if len(word) > 3):
             errors.append(f"Header may be missing: {section.header[:50]}...")
 
+    # Check per-section word counts
+    section_word_counts = _parse_section_word_counts(
+        result.compact_story, input_data.sections
+    )
+    for i, word_count in enumerate(section_word_counts):
+        if word_count < SECTION_MIN_WORDS:
+            errors.append(
+                f"Section {i + 1} too short: {word_count} words "
+                f"(minimum: {SECTION_MIN_WORDS})"
+            )
+        elif word_count > SECTION_MAX_WORDS:
+            errors.append(
+                f"Section {i + 1} too long: {word_count} words "
+                f"(maximum: {SECTION_MAX_WORDS})"
+            )
+
     return errors
+
+
+def _parse_section_word_counts(
+    story: str,
+    sections: list[SectionRenderInput],
+) -> list[int]:
+    """Parse story to extract word counts per section.
+
+    Uses headers as delimiters to split story into sections.
+
+    Args:
+        story: The rendered story text
+        sections: List of sections with headers
+
+    Returns:
+        List of word counts per section (may be shorter than sections if parsing fails)
+    """
+    if not sections:
+        return []
+
+    # Build a list of (header, start_position) tuples
+    header_positions: list[tuple[int, int]] = []  # (section_index, position)
+
+    story_lower = story.lower()
+    for i, section in enumerate(sections):
+        # Find header in story (case-insensitive, look for key phrase)
+        header_lower = section.header.lower()
+        # Try to find the first few words as a marker
+        header_words = header_lower.split()[:4]
+        search_phrase = " ".join(header_words)
+
+        pos = story_lower.find(search_phrase)
+        if pos >= 0:
+            header_positions.append((i, pos))
+
+    if not header_positions:
+        # Fallback: split by double newlines
+        paragraphs = [p.strip() for p in story.split("\n\n") if p.strip()]
+        return [len(p.split()) for p in paragraphs]
+
+    # Sort by position
+    header_positions.sort(key=lambda x: x[1])
+
+    # Extract word counts between positions
+    word_counts: list[int] = []
+    for j, (section_idx, start_pos) in enumerate(header_positions):
+        if j + 1 < len(header_positions):
+            end_pos = header_positions[j + 1][1]
+        else:
+            end_pos = len(story)
+
+        section_text = story[start_pos:end_pos].strip()
+        word_count = len(section_text.split())
+        word_counts.append(word_count)
+
+    return word_counts
 
 
 # ============================================================================
 # DEBUG OUTPUT
 # ============================================================================
+
 
 def format_render_debug(
     input_data: StoryRenderInput,
@@ -670,14 +844,16 @@ def format_render_debug(
     lines.append(f"Closing: {input_data.closing.to_dict()['final_score']}")
 
     if result:
-        lines.extend([
-            "",
-            "-" * 60,
-            "Result:",
-            f"  Word Count: {result.word_count}",
-            f"  Target: {result.target_word_count}",
-            f"  Deviation: {abs(result.word_count - result.target_word_count)} words",
-        ])
+        lines.extend(
+            [
+                "",
+                "-" * 60,
+                "Result:",
+                f"  Word Count: {result.word_count}",
+                f"  Target: {result.target_word_count}",
+                f"  Deviation: {abs(result.word_count - result.target_word_count)} words",
+            ]
+        )
 
     lines.append("=" * 60)
 

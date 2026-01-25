@@ -13,7 +13,6 @@ These tests validate:
 ISSUE: Running Stats Builder (Chapters-First Architecture)
 """
 
-import pytest
 import json
 
 from app.services.chapters.types import Chapter, Play
@@ -26,13 +25,6 @@ from app.services.chapters.running_stats import (
     compute_section_delta,
     compute_section_deltas_from_snapshots,
     # Data structures
-    RunningStatsSnapshot,
-    PlayerSnapshot,
-    TeamSnapshot,
-    SectionDelta,
-    PlayerDelta,
-    TeamDelta,
-    # Parsing helpers (for direct testing)
     _is_made_field_goal,
     _is_made_free_throw,
     _is_personal_foul,
@@ -46,6 +38,7 @@ from app.services.chapters.running_stats import (
 # ============================================================================
 # TEST HELPERS
 # ============================================================================
+
 
 def make_play(
     index: int,
@@ -90,6 +83,7 @@ def make_chapter(
 # TEST: PLAYER KEY NORMALIZATION
 # ============================================================================
 
+
 class TestPlayerKeyNormalization:
     """Tests for player key normalization."""
 
@@ -119,47 +113,69 @@ class TestPlayerKeyNormalization:
 # TEST: SCORING (2PT, 3PT, FT)
 # ============================================================================
 
+
 class TestScoring:
     """Tests for scoring extraction."""
 
     def test_2pt_field_goal(self):
         """Regular 2-point field goal."""
-        play = make_play(0, "LeBron James makes layup", player_name="LeBron James", team_key="lal")
+        play = make_play(
+            0, "LeBron James makes layup", player_name="LeBron James", team_key="lal"
+        )
         is_fg, points = _is_made_field_goal(play)
         assert is_fg is True
         assert points == 2
 
     def test_3pt_field_goal_3pt_keyword(self):
         """3-pointer with '3-pt' keyword."""
-        play = make_play(0, "Stephen Curry makes 3-pt jump shot", player_name="Stephen Curry", team_key="gsw")
+        play = make_play(
+            0,
+            "Stephen Curry makes 3-pt jump shot",
+            player_name="Stephen Curry",
+            team_key="gsw",
+        )
         is_fg, points = _is_made_field_goal(play)
         assert is_fg is True
         assert points == 3
 
     def test_3pt_field_goal_three_keyword(self):
         """3-pointer with 'three' keyword."""
-        play = make_play(0, "Klay Thompson makes three pointer", player_name="Klay Thompson", team_key="gsw")
+        play = make_play(
+            0,
+            "Klay Thompson makes three pointer",
+            player_name="Klay Thompson",
+            team_key="gsw",
+        )
         is_fg, points = _is_made_field_goal(play)
         assert is_fg is True
         assert points == 3
 
     def test_3pt_field_goal_3pointer_keyword(self):
         """3-pointer with '3-pointer' keyword."""
-        play = make_play(0, "Luka Doncic makes 3-pointer", player_name="Luka Doncic", team_key="dal")
+        play = make_play(
+            0, "Luka Doncic makes 3-pointer", player_name="Luka Doncic", team_key="dal"
+        )
         is_fg, points = _is_made_field_goal(play)
         assert is_fg is True
         assert points == 3
 
     def test_free_throw_not_counted_as_fg(self):
         """Free throw should not be counted as FG."""
-        play = make_play(0, "LeBron James makes free throw", player_name="LeBron James", team_key="lal")
+        play = make_play(
+            0,
+            "LeBron James makes free throw",
+            player_name="LeBron James",
+            team_key="lal",
+        )
         is_fg, points = _is_made_field_goal(play)
         assert is_fg is False
         assert points == 0
 
     def test_free_throw_detection(self):
         """Free throw detection."""
-        play = make_play(0, "Giannis makes free throw 1 of 2", player_name="Giannis", team_key="mil")
+        play = make_play(
+            0, "Giannis makes free throw 1 of 2", player_name="Giannis", team_key="mil"
+        )
         assert _is_made_free_throw(play) is True
 
     def test_missed_shot_not_scored(self):
@@ -172,25 +188,37 @@ class TestScoring:
     def test_scoring_accumulation_in_snapshot(self):
         """Scoring should accumulate correctly in snapshot."""
         plays = [
-            make_play(0, "LeBron makes layup", player_name="LeBron", team_key="lal"),         # 2
-            make_play(1, "LeBron makes 3-pt shot", player_name="LeBron", team_key="lal"),     # 3
-            make_play(2, "LeBron makes free throw", player_name="LeBron", team_key="lal"),    # 1
-            make_play(3, "LeBron makes dunk", player_name="LeBron", team_key="lal"),          # 2
+            make_play(
+                0, "LeBron makes layup", player_name="LeBron", team_key="lal"
+            ),  # 2
+            make_play(
+                1, "LeBron makes 3-pt shot", player_name="LeBron", team_key="lal"
+            ),  # 3
+            make_play(
+                2, "LeBron makes free throw", player_name="LeBron", team_key="lal"
+            ),  # 1
+            make_play(
+                3, "LeBron makes dunk", player_name="LeBron", team_key="lal"
+            ),  # 2
         ]
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
         snapshot = update_snapshot(build_initial_snapshot(), chapter)
 
         player = snapshot.players["lebron"]
         assert player.points_scored_total == 8  # 2 + 3 + 1 + 2
-        assert player.fg_made_total == 3        # layup, 3pt, dunk
+        assert player.fg_made_total == 3  # layup, 3pt, dunk
         assert player.three_pt_made_total == 1  # only the 3pt
-        assert player.ft_made_total == 1        # only the free throw
+        assert player.ft_made_total == 1  # only the free throw
 
     def test_team_scoring_accumulation(self):
         """Team score should accumulate from player scoring."""
         plays = [
-            make_play(0, "Player A makes layup", player_name="Player A", team_key="lal"),
-            make_play(1, "Player B makes 3-pt shot", player_name="Player B", team_key="lal"),
+            make_play(
+                0, "Player A makes layup", player_name="Player A", team_key="lal"
+            ),
+            make_play(
+                1, "Player B makes 3-pt shot", player_name="Player B", team_key="lal"
+            ),
             make_play(2, "Player C makes dunk", player_name="Player C", team_key="bos"),
         ]
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
@@ -204,27 +232,49 @@ class TestScoring:
 # TEST: FOULS (PERSONAL VS TECHNICAL)
 # ============================================================================
 
+
 class TestFouls:
     """Tests for foul detection and tracking."""
 
     def test_personal_foul_detection(self):
         """Personal foul is detected."""
-        play = make_play(0, "LeBron James commits personal foul", player_name="LeBron James", team_key="lal")
+        play = make_play(
+            0,
+            "LeBron James commits personal foul",
+            player_name="LeBron James",
+            team_key="lal",
+        )
         assert _is_personal_foul(play) is True
         assert _is_technical_foul(play) is False
 
     def test_technical_foul_detection(self):
         """Technical foul is detected separately."""
-        play = make_play(0, "LeBron James commits technical foul", player_name="LeBron James", team_key="lal")
+        play = make_play(
+            0,
+            "LeBron James commits technical foul",
+            player_name="LeBron James",
+            team_key="lal",
+        )
         assert _is_technical_foul(play) is True
-        assert _is_personal_foul(play) is False  # Technical should NOT count as personal
+        assert (
+            _is_personal_foul(play) is False
+        )  # Technical should NOT count as personal
 
     def test_personal_foul_accumulation(self):
         """Personal fouls accumulate correctly."""
         plays = [
-            make_play(0, "Player A commits foul", player_name="Player A", team_key="lal"),
-            make_play(1, "Player A commits personal foul", player_name="Player A", team_key="lal"),
-            make_play(2, "Player B commits foul", player_name="Player B", team_key="lal"),
+            make_play(
+                0, "Player A commits foul", player_name="Player A", team_key="lal"
+            ),
+            make_play(
+                1,
+                "Player A commits personal foul",
+                player_name="Player A",
+                team_key="lal",
+            ),
+            make_play(
+                2, "Player B commits foul", player_name="Player B", team_key="lal"
+            ),
         ]
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
         snapshot = update_snapshot(build_initial_snapshot(), chapter)
@@ -236,14 +286,24 @@ class TestFouls:
     def test_technical_foul_separate_from_personal(self):
         """Technical fouls do NOT count as personal fouls."""
         plays = [
-            make_play(0, "Player A commits technical foul", player_name="Player A", team_key="lal"),
-            make_play(1, "Player A commits personal foul", player_name="Player A", team_key="lal"),
+            make_play(
+                0,
+                "Player A commits technical foul",
+                player_name="Player A",
+                team_key="lal",
+            ),
+            make_play(
+                1,
+                "Player A commits personal foul",
+                player_name="Player A",
+                team_key="lal",
+            ),
         ]
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
         snapshot = update_snapshot(build_initial_snapshot(), chapter)
 
         player = snapshot.players["player a"]
-        assert player.personal_foul_count_total == 1   # Only the personal foul
+        assert player.personal_foul_count_total == 1  # Only the personal foul
         assert player.technical_foul_count_total == 1  # Only the technical foul
 
         team = snapshot.teams["lal"]
@@ -253,10 +313,18 @@ class TestFouls:
     def test_foul_trouble_flag_in_delta(self):
         """Foul trouble flag set when 4+ personal fouls in section."""
         plays = [
-            make_play(0, "Player A commits foul", player_name="Player A", team_key="lal"),
-            make_play(1, "Player A commits foul", player_name="Player A", team_key="lal"),
-            make_play(2, "Player A commits foul", player_name="Player A", team_key="lal"),
-            make_play(3, "Player A commits foul", player_name="Player A", team_key="lal"),  # 4th foul
+            make_play(
+                0, "Player A commits foul", player_name="Player A", team_key="lal"
+            ),
+            make_play(
+                1, "Player A commits foul", player_name="Player A", team_key="lal"
+            ),
+            make_play(
+                2, "Player A commits foul", player_name="Player A", team_key="lal"
+            ),
+            make_play(
+                3, "Player A commits foul", player_name="Player A", team_key="lal"
+            ),  # 4th foul
         ]
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
         snapshot = update_snapshot(build_initial_snapshot(), chapter)
@@ -274,9 +342,15 @@ class TestFouls:
     def test_foul_trouble_flag_false_under_4(self):
         """Foul trouble flag false when less than 4 fouls."""
         plays = [
-            make_play(0, "Player A commits foul", player_name="Player A", team_key="lal"),
-            make_play(1, "Player A commits foul", player_name="Player A", team_key="lal"),
-            make_play(2, "Player A commits foul", player_name="Player A", team_key="lal"),
+            make_play(
+                0, "Player A commits foul", player_name="Player A", team_key="lal"
+            ),
+            make_play(
+                1, "Player A commits foul", player_name="Player A", team_key="lal"
+            ),
+            make_play(
+                2, "Player A commits foul", player_name="Player A", team_key="lal"
+            ),
         ]
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
         snapshot = update_snapshot(build_initial_snapshot(), chapter)
@@ -295,6 +369,7 @@ class TestFouls:
 # ============================================================================
 # TEST: TIMEOUTS
 # ============================================================================
+
 
 class TestTimeouts:
     """Tests for timeout detection."""
@@ -342,6 +417,7 @@ class TestTimeouts:
 # TEST: POSSESSIONS ESTIMATE
 # ============================================================================
 
+
 class TestPossessionsEstimate:
     """Tests for possession estimate."""
 
@@ -373,21 +449,24 @@ class TestPossessionsEstimate:
     def test_possession_accumulation(self):
         """Possessions accumulate correctly."""
         plays = [
-            make_play(0, "Team A makes layup", team_key="lal"),           # +1 possession
-            make_play(1, "Team B turnover", team_key="bos"),               # +1 possession
-            make_play(2, "Team A defensive rebound", team_key="lal"),     # +1 possession
-            make_play(3, "Team A makes 3-pt shot", team_key="lal"),       # +1 possession
+            make_play(0, "Team A makes layup", team_key="lal"),  # +1 possession
+            make_play(1, "Team B turnover", team_key="bos"),  # +1 possession
+            make_play(2, "Team A defensive rebound", team_key="lal"),  # +1 possession
+            make_play(3, "Team A makes 3-pt shot", team_key="lal"),  # +1 possession
         ]
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
         snapshot = update_snapshot(build_initial_snapshot(), chapter)
 
-        assert snapshot.teams["lal"].possessions_estimate_total == 3  # 2 makes + 1 def rebound
+        assert (
+            snapshot.teams["lal"].possessions_estimate_total == 3
+        )  # 2 makes + 1 def rebound
         assert snapshot.teams["bos"].possessions_estimate_total == 1  # turnover
 
 
 # ============================================================================
 # TEST: NOTABLE ACTIONS EXTRACTION
 # ============================================================================
+
 
 class TestNotableActions:
     """Tests for notable action extraction."""
@@ -414,7 +493,9 @@ class TestNotableActions:
 
     def test_no_synonyms(self):
         """No synonym matching (e.g., 'rejection' != 'block')."""
-        play = make_play(0, "LeBron rejection on the play", player_name="LeBron", team_key="lal")
+        play = make_play(
+            0, "LeBron rejection on the play", player_name="LeBron", team_key="lal"
+        )
         assert _extract_notable_action(play) is None
 
     def test_notable_actions_unique_set(self):
@@ -422,7 +503,9 @@ class TestNotableActions:
         plays = [
             make_play(0, "LeBron makes dunk", player_name="LeBron", team_key="lal"),
             make_play(1, "LeBron blocks shot", player_name="LeBron", team_key="lal"),
-            make_play(2, "LeBron makes dunk", player_name="LeBron", team_key="lal"),  # Duplicate
+            make_play(
+                2, "LeBron makes dunk", player_name="LeBron", team_key="lal"
+            ),  # Duplicate
             make_play(3, "LeBron steal", player_name="LeBron", team_key="lal"),
         ]
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
@@ -436,6 +519,7 @@ class TestNotableActions:
 # TEST: PLAYER BOUNDING AND TIE-BREAKING
 # ============================================================================
 
+
 class TestPlayerBounding:
     """Tests for player bounding (top 3 per team)."""
 
@@ -445,7 +529,14 @@ class TestPlayerBounding:
         # Team LAL: Player1 (10), Player2 (8), Player3 (6), Player4 (4), Player5 (2)
         for name, points in [("P1", 10), ("P2", 8), ("P3", 6), ("P4", 4), ("P5", 2)]:
             for _ in range(points // 2):
-                plays.append(make_play(len(plays), f"{name} makes layup", player_name=name, team_key="lal"))
+                plays.append(
+                    make_play(
+                        len(plays),
+                        f"{name} makes layup",
+                        player_name=name,
+                        team_key="lal",
+                    )
+                )
 
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
         snapshot = update_snapshot(build_initial_snapshot(), chapter)
@@ -470,13 +561,27 @@ class TestPlayerBounding:
         """Tie-breaker: fg_made when points equal."""
         plays = [
             # Both have 4 points, but P1 has 2 FG and P2 has 4 FT
-            make_play(0, "P1 makes layup", player_name="P1", team_key="lal"),       # 2 pts, 1 FG
-            make_play(1, "P1 makes layup", player_name="P1", team_key="lal"),       # 4 pts, 2 FG
-            make_play(2, "P2 makes free throw", player_name="P2", team_key="lal"),  # 1 pt, 0 FG
-            make_play(3, "P2 makes free throw", player_name="P2", team_key="lal"),  # 2 pts, 0 FG
-            make_play(4, "P2 makes free throw", player_name="P2", team_key="lal"),  # 3 pts, 0 FG
-            make_play(5, "P2 makes free throw", player_name="P2", team_key="lal"),  # 4 pts, 0 FG
-            make_play(6, "P3 makes layup", player_name="P3", team_key="lal"),       # 2 pts, 1 FG
+            make_play(
+                0, "P1 makes layup", player_name="P1", team_key="lal"
+            ),  # 2 pts, 1 FG
+            make_play(
+                1, "P1 makes layup", player_name="P1", team_key="lal"
+            ),  # 4 pts, 2 FG
+            make_play(
+                2, "P2 makes free throw", player_name="P2", team_key="lal"
+            ),  # 1 pt, 0 FG
+            make_play(
+                3, "P2 makes free throw", player_name="P2", team_key="lal"
+            ),  # 2 pts, 0 FG
+            make_play(
+                4, "P2 makes free throw", player_name="P2", team_key="lal"
+            ),  # 3 pts, 0 FG
+            make_play(
+                5, "P2 makes free throw", player_name="P2", team_key="lal"
+            ),  # 4 pts, 0 FG
+            make_play(
+                6, "P3 makes layup", player_name="P3", team_key="lal"
+            ),  # 2 pts, 1 FG
         ]
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
         snapshot = update_snapshot(build_initial_snapshot(), chapter)
@@ -499,12 +604,24 @@ class TestPlayerBounding:
         """Tie-breaker: three_pt_made when points and fg_made equal."""
         plays = [
             # Both have 6 points, 2 FG, but P1 has 2 3PT and P2 has 0 3PT
-            make_play(0, "P1 makes 3-pt shot", player_name="P1", team_key="lal"),   # 3 pts, 1 FG, 1 3PT
-            make_play(1, "P1 makes 3-pt shot", player_name="P1", team_key="lal"),   # 6 pts, 2 FG, 2 3PT
-            make_play(2, "P2 makes layup", player_name="P2", team_key="lal"),       # 2 pts, 1 FG, 0 3PT
-            make_play(3, "P2 makes layup", player_name="P2", team_key="lal"),       # 4 pts, 2 FG, 0 3PT
-            make_play(4, "P2 makes free throw", player_name="P2", team_key="lal"),  # 5 pts
-            make_play(5, "P2 makes free throw", player_name="P2", team_key="lal"),  # 6 pts
+            make_play(
+                0, "P1 makes 3-pt shot", player_name="P1", team_key="lal"
+            ),  # 3 pts, 1 FG, 1 3PT
+            make_play(
+                1, "P1 makes 3-pt shot", player_name="P1", team_key="lal"
+            ),  # 6 pts, 2 FG, 2 3PT
+            make_play(
+                2, "P2 makes layup", player_name="P2", team_key="lal"
+            ),  # 2 pts, 1 FG, 0 3PT
+            make_play(
+                3, "P2 makes layup", player_name="P2", team_key="lal"
+            ),  # 4 pts, 2 FG, 0 3PT
+            make_play(
+                4, "P2 makes free throw", player_name="P2", team_key="lal"
+            ),  # 5 pts
+            make_play(
+                5, "P2 makes free throw", player_name="P2", team_key="lal"
+            ),  # 6 pts
         ]
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
         snapshot = update_snapshot(build_initial_snapshot(), chapter)
@@ -553,12 +670,26 @@ class TestPlayerBounding:
         # Team LAL: 5 players
         for name, points in [("L1", 10), ("L2", 8), ("L3", 6), ("L4", 4), ("L5", 2)]:
             for _ in range(points // 2):
-                plays.append(make_play(len(plays), f"{name} makes layup", player_name=name, team_key="lal"))
+                plays.append(
+                    make_play(
+                        len(plays),
+                        f"{name} makes layup",
+                        player_name=name,
+                        team_key="lal",
+                    )
+                )
 
         # Team BOS: 5 players
         for name, points in [("B1", 12), ("B2", 6), ("B3", 4), ("B4", 2), ("B5", 1)]:
             for _ in range(points // 2):
-                plays.append(make_play(len(plays), f"{name} makes layup", player_name=name, team_key="bos"))
+                plays.append(
+                    make_play(
+                        len(plays),
+                        f"{name} makes layup",
+                        player_name=name,
+                        team_key="bos",
+                    )
+                )
 
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
         snapshot = update_snapshot(build_initial_snapshot(), chapter)
@@ -588,17 +719,24 @@ class TestPlayerBounding:
 # TEST: SECTION DELTA COMPUTATION
 # ============================================================================
 
+
 class TestSectionDelta:
     """Tests for section delta computation."""
 
     def test_delta_is_difference(self):
         """Delta is computed as end - start."""
         plays1 = [
-            make_play(0, "LeBron makes layup", player_name="LeBron", team_key="lal"),  # 2 pts
+            make_play(
+                0, "LeBron makes layup", player_name="LeBron", team_key="lal"
+            ),  # 2 pts
         ]
         plays2 = [
-            make_play(1, "LeBron makes 3-pt shot", player_name="LeBron", team_key="lal"),  # 3 pts
-            make_play(2, "LeBron makes layup", player_name="LeBron", team_key="lal"),      # 2 pts
+            make_play(
+                1, "LeBron makes 3-pt shot", player_name="LeBron", team_key="lal"
+            ),  # 3 pts
+            make_play(
+                2, "LeBron makes layup", player_name="LeBron", team_key="lal"
+            ),  # 2 pts
         ]
 
         chapter1 = make_chapter("ch_001", 0, plays1, ["PERIOD_START"])
@@ -673,6 +811,7 @@ class TestSectionDelta:
 # TEST: DETERMINISM
 # ============================================================================
 
+
 class TestDeterminism:
     """Tests for deterministic behavior."""
 
@@ -695,8 +834,12 @@ class TestDeterminism:
 
     def test_chapter_order_matters(self):
         """Processing chapters in different order gives different results."""
-        plays1 = [make_play(0, "LeBron makes layup", player_name="LeBron", team_key="lal")]
-        plays2 = [make_play(1, "Curry makes layup", player_name="Curry", team_key="gsw")]
+        plays1 = [
+            make_play(0, "LeBron makes layup", player_name="LeBron", team_key="lal")
+        ]
+        plays2 = [
+            make_play(1, "Curry makes layup", player_name="Curry", team_key="gsw")
+        ]
 
         chapter1 = make_chapter("ch_001", 0, plays1, ["PERIOD_START"])
         chapter2 = make_chapter("ch_002", 1, plays2, ["TIMEOUT"])
@@ -731,13 +874,16 @@ class TestDeterminism:
 # TEST: SNAPSHOT IMMUTABILITY
 # ============================================================================
 
+
 class TestImmutability:
     """Tests for snapshot immutability."""
 
     def test_update_does_not_mutate_previous(self):
         """update_snapshot creates new snapshot without mutating previous."""
         initial = build_initial_snapshot()
-        plays = [make_play(0, "LeBron makes layup", player_name="LeBron", team_key="lal")]
+        plays = [
+            make_play(0, "LeBron makes layup", player_name="LeBron", team_key="lal")
+        ]
         chapter = make_chapter("ch_001", 0, plays, ["PERIOD_START"])
 
         # Update
@@ -755,8 +901,12 @@ class TestImmutability:
 
     def test_notable_actions_set_independent(self):
         """Notable actions sets are independent between snapshots."""
-        plays1 = [make_play(0, "LeBron makes dunk", player_name="LeBron", team_key="lal")]
-        plays2 = [make_play(1, "LeBron blocks shot", player_name="LeBron", team_key="lal")]
+        plays1 = [
+            make_play(0, "LeBron makes dunk", player_name="LeBron", team_key="lal")
+        ]
+        plays2 = [
+            make_play(1, "LeBron blocks shot", player_name="LeBron", team_key="lal")
+        ]
 
         chapter1 = make_chapter("ch_001", 0, plays1, ["PERIOD_START"])
         chapter2 = make_chapter("ch_002", 1, plays2, ["TIMEOUT"])
@@ -774,6 +924,7 @@ class TestImmutability:
 # ============================================================================
 # TEST: SERIALIZATION
 # ============================================================================
+
 
 class TestSerialization:
     """Tests for JSON serialization."""
@@ -842,6 +993,7 @@ class TestSerialization:
 # TEST: INTEGRATION
 # ============================================================================
 
+
 class TestIntegration:
     """Integration tests for full workflow."""
 
@@ -909,8 +1061,19 @@ class TestIntegration:
         chapters = []
 
         for i in range(6):
-            plays = [make_play(i, f"Player{i} makes layup", player_name=f"Player{i}", team_key="lal")]
-            chapters.append(make_chapter(f"ch_{i:03d}", i, plays, ["PERIOD_START"] if i == 0 else ["TIMEOUT"]))
+            plays = [
+                make_play(
+                    i,
+                    f"Player{i} makes layup",
+                    player_name=f"Player{i}",
+                    team_key="lal",
+                )
+            ]
+            chapters.append(
+                make_chapter(
+                    f"ch_{i:03d}", i, plays, ["PERIOD_START"] if i == 0 else ["TIMEOUT"]
+                )
+            )
 
         snapshots = build_running_snapshots(chapters)
 

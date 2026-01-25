@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { fetchGame, rescrapeGame, resyncOdds, type AdminGameDetail } from "@/lib/api/sportsAdmin";
+import { fetchGameStory, type GameStoryResponse } from "@/lib/api/sportsAdmin/chapters";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { PbpSection } from "./PbpSection";
 import { SocialPostsSection } from "./SocialPostsSection";
@@ -19,6 +20,8 @@ export default function GameDetailClient() {
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<"rescrape" | "odds" | null>(null);
   const [selectedBook, setSelectedBook] = useState<string | null>(null);
+  const [story, setStory] = useState<GameStoryResponse | null>(null);
+  const [storyLoading, setStoryLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -39,6 +42,17 @@ export default function GameDetailClient() {
     }
   }, [isNumericId, load]);
 
+  // Load story when game has_story is true
+  useEffect(() => {
+    if (game?.game.has_story) {
+      setStoryLoading(true);
+      fetchGameStory(parseInt(gameIdParam, 10))
+        .then(setStory)
+        .catch(() => setStory(null))
+        .finally(() => setStoryLoading(false));
+    }
+  }, [game?.game.has_story, gameIdParam]);
+
   const flags = useMemo(() => {
     if (!game) return [];
     return [
@@ -47,6 +61,7 @@ export default function GameDetailClient() {
       { label: "Odds", ok: game.game.has_odds },
       { label: `Social (${game.game.social_post_count || 0})`, ok: game.game.has_social },
       { label: `PBP (${game.game.play_count || 0})`, ok: game.game.has_pbp },
+      { label: "Story", ok: game.game.has_story },
     ];
   }, [game]);
 
@@ -476,6 +491,31 @@ export default function GameDetailClient() {
       <SocialPostsSection posts={game.social_posts || []} />
 
       <PbpSection plays={game.plays || []} />
+
+      {/* Story Card */}
+      {game.game.has_story && (
+        <CollapsibleSection title="Story" defaultOpen={true}>
+          {storyLoading ? (
+            <div style={{ color: "#475569" }}>Loading story...</div>
+          ) : story?.compact_story ? (
+            <>
+              <div className={styles.storyContent}>
+                {story.compact_story.split('\n\n').map((paragraph, i) => (
+                  <p key={i}>{paragraph}</p>
+                ))}
+              </div>
+              <div className={styles.storyMeta}>
+                {story.compact_story.split(/\s+/).length} words
+                {story.reading_time_estimate_minutes && (
+                  <> · {story.reading_time_estimate_minutes.toFixed(1)} min read</>
+                )}
+              </div>
+            </>
+          ) : (
+            <div style={{ color: "#475569" }}>No story content available.</div>
+          )}
+        </CollapsibleSection>
+      )}
 
       <CollapsibleSection title="Derived Metrics" defaultOpen={false}>
         {Object.keys(game.derived_metrics || {}).length === 0 ? (

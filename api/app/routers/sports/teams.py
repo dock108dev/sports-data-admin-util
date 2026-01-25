@@ -9,7 +9,13 @@ from sqlalchemy.sql import or_
 
 from ... import db_models
 from ...db import AsyncSession, get_db
-from .schemas import TeamDetail, TeamGameSummary, TeamListResponse, TeamSocialInfo, TeamSummary
+from .schemas import (
+    TeamDetail,
+    TeamGameSummary,
+    TeamListResponse,
+    TeamSocialInfo,
+    TeamSummary,
+)
 
 router = APIRouter()
 
@@ -36,13 +42,13 @@ async def list_teams(
         .scalar_subquery()
     )
 
-    stmt = (
-        select(
-            db_models.SportsTeam,
-            db_models.SportsLeague.code.label("league_code"),
-            (games_as_home + games_as_away).label("games_count"),
-        )
-        .join(db_models.SportsLeague, db_models.SportsTeam.league_id == db_models.SportsLeague.id)
+    stmt = select(
+        db_models.SportsTeam,
+        db_models.SportsLeague.code.label("league_code"),
+        (games_as_home + games_as_away).label("games_count"),
+    ).join(
+        db_models.SportsLeague,
+        db_models.SportsTeam.league_id == db_models.SportsLeague.id,
     )
 
     if league:
@@ -86,7 +92,9 @@ async def get_team(team_id: int, session: AsyncSession = Depends(get_db)) -> Tea
     """Get team detail with recent games."""
     team = await session.get(db_models.SportsTeam, team_id)
     if not team:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
+        )
 
     league = await session.get(db_models.SportsLeague, team.league_id)
 
@@ -101,8 +109,12 @@ async def get_team(team_id: int, session: AsyncSession = Depends(get_db)) -> Tea
         .options(selectinload(db_models.SportsGame.home_team))
     )
 
-    home_result = await session.execute(home_games.order_by(desc(db_models.SportsGame.game_date)).limit(10))
-    away_result = await session.execute(away_games.order_by(desc(db_models.SportsGame.game_date)).limit(10))
+    home_result = await session.execute(
+        home_games.order_by(desc(db_models.SportsGame.game_date)).limit(10)
+    )
+    away_result = await session.execute(
+        away_games.order_by(desc(db_models.SportsGame.game_date)).limit(10)
+    )
 
     recent_games: list[TeamGameSummary] = []
 
@@ -146,7 +158,9 @@ async def get_team(team_id: int, session: AsyncSession = Depends(get_db)) -> Tea
             )
         )
 
-    recent_games.sort(key=lambda g: g.gameDate, reverse=True)  # Use serialized field name
+    recent_games.sort(
+        key=lambda g: g.gameDate, reverse=True
+    )  # Use serialized field name
     recent_games = recent_games[:20]
 
     return TeamDetail(
@@ -164,11 +178,15 @@ async def get_team(team_id: int, session: AsyncSession = Depends(get_db)) -> Tea
 
 
 @router.get("/teams/{team_id}/social", response_model=TeamSocialInfo)
-async def get_team_social_info(team_id: int, session: AsyncSession = Depends(get_db)) -> TeamSocialInfo:
+async def get_team_social_info(
+    team_id: int, session: AsyncSession = Depends(get_db)
+) -> TeamSocialInfo:
     """Get team's social media info including X handle."""
     team = await session.get(db_models.SportsTeam, team_id)
     if not team:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
+        )
 
     return TeamSocialInfo(
         teamId=team.id,

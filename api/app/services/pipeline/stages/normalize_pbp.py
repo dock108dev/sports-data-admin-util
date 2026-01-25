@@ -170,7 +170,7 @@ def _build_pbp_events(
     game_start: datetime,
 ) -> list[dict[str, Any]]:
     """Build normalized PBP events with phase assignment and synthetic timestamps.
-    
+
     Each event includes:
     - phase: Narrative phase (q1, q2, etc.)
     - intra_phase_order: Sort key within phase (clock-based)
@@ -197,12 +197,14 @@ def _build_pbp_events(
         # Compute synthetic timestamp
         quarter_start = _nba_quarter_start(game_start, quarter)
         elapsed_in_quarter = NBA_QUARTER_GAME_SECONDS - (clock_seconds or 0)
-        real_elapsed = elapsed_in_quarter * (NBA_QUARTER_REAL_SECONDS / NBA_QUARTER_GAME_SECONDS)
+        real_elapsed = elapsed_in_quarter * (
+            NBA_QUARTER_REAL_SECONDS / NBA_QUARTER_GAME_SECONDS
+        )
         synthetic_ts = quarter_start + timedelta(seconds=real_elapsed)
 
         # Extract team abbreviation from relationship
         team_abbrev = None
-        if hasattr(play, 'team') and play.team:
+        if hasattr(play, "team") and play.team:
             team_abbrev = play.team.abbreviation
 
         event_payload = {
@@ -229,7 +231,7 @@ def _build_pbp_events(
 
 def _compute_resolution_stats(plays: list) -> dict[str, Any]:
     """Compute resolution statistics for PBP data.
-    
+
     Tracks:
     - teams_resolved: Plays with team_id resolved
     - teams_unresolved: Plays with team in raw data but no team_id
@@ -249,21 +251,25 @@ def _compute_resolution_stats(plays: list) -> dict[str, Any]:
             "plays_without_score": 0,
             "clock_parse_failures": 0,
         }
-    
+
     teams_resolved = sum(1 for p in plays if p.team_id is not None)
     teams_unresolved = sum(
-        1 for p in plays
-        if p.team_id is None and (p.raw_data.get("teamTricode") or p.raw_data.get("team"))
+        1
+        for p in plays
+        if p.team_id is None
+        and (p.raw_data.get("teamTricode") or p.raw_data.get("team"))
     )
     players_with_name = sum(1 for p in plays if p.player_name)
     plays_with_score = sum(1 for p in plays if p.home_score is not None)
     clock_failures = sum(1 for p in plays if not p.game_clock)
-    
+
     return {
         "total_plays": total,
         "teams_resolved": teams_resolved,
         "teams_unresolved": teams_unresolved,
-        "team_resolution_rate": round(teams_resolved / total * 100, 1) if total > 0 else 0,
+        "team_resolution_rate": round(teams_resolved / total * 100, 1)
+        if total > 0
+        else 0,
         "players_with_name": players_with_name,
         "players_without_name": total - players_with_name,
         "plays_with_score": plays_with_score,
@@ -278,26 +284,26 @@ async def execute_normalize_pbp(
     pipeline_run_id: int | None = None,
 ) -> StageOutput:
     """Execute the NORMALIZE_PBP stage.
-    
+
     Reads play-by-play data from the database and produces normalized
     events with phase assignments and synthetic timestamps.
-    
+
     Also creates a PBP snapshot for auditability.
-    
+
     Args:
         session: Database session
         stage_input: Input containing game_id
         pipeline_run_id: Optional pipeline run ID for snapshot association
-        
+
     Returns:
         StageOutput with NormalizedPBPOutput data
     """
     output = StageOutput(data={})
     game_id = stage_input.game_id
     run_id = pipeline_run_id or stage_input.run_id
-    
+
     output.add_log(f"Starting NORMALIZE_PBP for game {game_id}")
-    
+
     # Fetch game with relations
     result = await session.execute(
         select(db_models.SportsGame)
@@ -309,15 +315,15 @@ async def execute_normalize_pbp(
         .where(db_models.SportsGame.id == game_id)
     )
     game = result.scalar_one_or_none()
-    
+
     if not game:
         raise ValueError(f"Game {game_id} not found")
-    
+
     if not game.is_final:
         raise ValueError(f"Game {game_id} is not final (status: {game.status})")
-    
+
     output.add_log(f"Game found: {game.away_team.name} @ {game.home_team.name}")
-    
+
     # Fetch plays with team relationship
     plays_result = await session.execute(
         select(db_models.SportsGamePlay)
@@ -326,29 +332,29 @@ async def execute_normalize_pbp(
         .order_by(db_models.SportsGamePlay.play_index)
     )
     plays = list(plays_result.scalars().all())
-    
+
     if not plays:
         raise ValueError(f"Game {game_id} has no play-by-play data")
-    
+
     output.add_log(f"Found {len(plays)} plays")
-    
+
     # Compute resolution stats BEFORE normalization
     resolution_stats = _compute_resolution_stats(plays)
     output.add_log(f"Team resolution rate: {resolution_stats['team_resolution_rate']}%")
-    
+
     if resolution_stats["teams_unresolved"] > 0:
         output.add_log(
             f"WARNING: {resolution_stats['teams_unresolved']} plays have unresolved teams",
-            "warning"
+            "warning",
         )
-    
+
     # Track entity resolutions for auditability
     resolution_tracker = ResolutionTracker(game_id, run_id)
-    
+
     # Build team context from game
     home_abbrev = game.home_team.abbreviation if game.home_team else None
     away_abbrev = game.away_team.abbreviation if game.away_team else None
-    
+
     # Track team and player resolutions
     for play in plays:
         # Track team resolution
@@ -359,7 +365,9 @@ async def execute_normalize_pbp(
                     source_abbrev=raw_team,
                     resolved_id=play.team_id,
                     resolved_name=play.team.name if play.team else None,
-                    method="game_context" if raw_team.upper() in (home_abbrev, away_abbrev) else "abbreviation_lookup",
+                    method="game_context"
+                    if raw_team.upper() in (home_abbrev, away_abbrev)
+                    else "abbreviation_lookup",
                     play_index=play.play_index,
                     source_context={"raw_data": play.raw_data},
                 )
@@ -370,7 +378,7 @@ async def execute_normalize_pbp(
                     play_index=play.play_index,
                     source_context={"raw_data": play.raw_data},
                 )
-        
+
         # Track player resolution (name normalization)
         if play.player_name:
             resolution_tracker.track_player(
@@ -379,44 +387,44 @@ async def execute_normalize_pbp(
                 method="passthrough",
                 play_index=play.play_index,
             )
-    
+
     # Get resolution summary for logging
     res_summary = resolution_tracker.get_summary()
     output.add_log(
         f"Resolution tracking: {res_summary.teams_resolved}/{res_summary.teams_total} teams, "
         f"{res_summary.players_resolved}/{res_summary.players_total} players"
     )
-    
+
     # Persist entity resolutions
     try:
         resolution_count = await resolution_tracker.persist(session)
         output.add_log(f"Persisted {resolution_count} entity resolutions")
     except Exception as e:
         output.add_log(f"Warning: Failed to persist entity resolutions: {e}", "warning")
-    
+
     # Compute game timing
     game_start = game.start_time
     game_end = _nba_game_end(game_start, plays)
     has_overtime = any((play.quarter or 0) > 4 for play in plays)
-    
+
     output.add_log(f"Game timing: {game_start.isoformat()} to {game_end.isoformat()}")
     if has_overtime:
         output.add_log("Game went to overtime")
-    
+
     # Build normalized PBP events
     pbp_events = _build_pbp_events(plays, game_start)
-    
+
     output.add_log(f"Normalized {len(pbp_events)} PBP events")
-    
+
     # Compute phase boundaries for later use
     phase_boundaries = _compute_phase_boundaries(game_start, has_overtime)
-    
+
     # Convert datetime boundaries to ISO strings for JSON serialization
     phase_boundaries_str = {
         phase: (start.isoformat(), end.isoformat())
         for phase, (start, end) in phase_boundaries.items()
     }
-    
+
     # Create PBP snapshot for auditability
     try:
         snapshot = db_models.PBPSnapshot(
@@ -441,7 +449,7 @@ async def execute_normalize_pbp(
         output.add_log(f"Created PBP snapshot (id={snapshot.id})")
     except Exception as e:
         output.add_log(f"Warning: Failed to create PBP snapshot: {e}", "warning")
-    
+
     # Build output
     normalized_output = NormalizedPBPOutput(
         pbp_events=pbp_events,
@@ -451,12 +459,12 @@ async def execute_normalize_pbp(
         total_plays=len(plays),
         phase_boundaries=phase_boundaries_str,
     )
-    
+
     # Add resolution stats to output for visibility
     output.data = {
         **normalized_output.to_dict(),
         "resolution_stats": resolution_stats,
     }
     output.add_log("NORMALIZE_PBP completed successfully")
-    
+
     return output

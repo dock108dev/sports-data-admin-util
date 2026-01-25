@@ -3,20 +3,22 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, exists, func, select
 from sqlalchemy.orm import selectinload
 
 from ... import db_models
-from ...celery_client import get_celery_app
 from ...db import AsyncSession, get_db
 from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
 from ...services.derived_metrics import compute_derived_metrics
-from ...services.timeline_generator import TimelineGenerationError, generate_timeline_artifact
+from ...services.timeline_generator import (
+    TimelineGenerationError,
+    generate_timeline_artifact,
+)
 from .common import (
     serialize_nhl_goalie,
     serialize_nhl_skater,
@@ -35,117 +37,21 @@ from .game_helpers import (
     serialize_social_posts,
     summarize_game,
 )
+from .nhl_helpers import compute_nhl_data_health
 from .schemas import (
     GameDetailResponse,
     GameListResponse,
     GameMeta,
     GamePreviewScoreResponse,
     JobResponse,
-    NHLDataHealth,
     NHLGoalieStat,
     NHLSkaterStat,
     OddsEntry,
-    ScrapeRunConfig,
 )
 from ..game_snapshot_models import TimelineArtifactResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-def _compute_nhl_data_health(
-    game: "db_models.SportsGame",
-    player_boxscores: list,
-) -> NHLDataHealth | None:
-    """Compute NHL-specific data health indicators.
-
-    Returns None for non-NHL games.
-    For NHL games, returns health status that distinguishes between:
-    - Legitimate empty (game not yet played)
-    - Ingestion failure (completed game with missing player data)
-    - Schema pollution (non-hockey fields like rebounds/yards present)
-    """
-    league_code = game.league.code if game.league else None
-    if league_code != "NHL":
-        return None
-
-    # Count skaters and goalies by checking player_role in raw stats
-    skater_count = 0
-    goalie_count = 0
-    no_role_count = 0
-    has_non_hockey_fields = False
-
-    # Non-hockey fields that should never appear in NHL player data
-    non_hockey_fields = {"rebounds", "yards", "touchdowns", "trb", "yds", "td"}
-
-    for player in player_boxscores:
-        stats = player.stats or {}
-        player_role = stats.get("player_role")
-        if player_role == "skater":
-            skater_count += 1
-        elif player_role == "goalie":
-            goalie_count += 1
-        else:
-            no_role_count += 1
-
-        # Check for non-hockey field pollution
-        if any(field in stats for field in non_hockey_fields):
-            has_non_hockey_fields = True
-
-    # Determine health status
-    issues: list[str] = []
-    is_healthy = True
-
-    # Game status determines what we expect
-    game_status = (game.status or "").lower()
-    is_completed = game_status in ("completed", "final", "finished")
-
-    if is_completed:
-        # Completed games SHOULD have player data
-        if skater_count == 0:
-            issues.append("zero_skaters_for_completed_game")
-            is_healthy = False
-        if goalie_count == 0:
-            issues.append("zero_goalies_for_completed_game")
-            is_healthy = False
-
-        # Additional sanity checks for NHL
-        # Each team should have ~18-20 skaters and 1-2 goalies
-        if skater_count > 0 and skater_count < 20:
-            issues.append(f"low_skater_count:{skater_count}")
-            # Not necessarily unhealthy, but notable
-
-    # Check for players without proper role assignment
-    if no_role_count > 0:
-        issues.append(f"players_without_role:{no_role_count}")
-        is_healthy = False
-
-    # Check for schema pollution (non-hockey fields)
-    if has_non_hockey_fields:
-        issues.append("non_hockey_fields_detected")
-        # This indicates legacy or corrupted data
-        is_healthy = False
-
-    # Log issues for visibility
-    if issues:
-        logger.warning(
-            "nhl_data_health_issues",
-            game_id=game.id,
-            status=game_status,
-            skater_count=skater_count,
-            goalie_count=goalie_count,
-            no_role_count=no_role_count,
-            has_non_hockey_fields=has_non_hockey_fields,
-            issues=issues,
-            is_healthy=is_healthy,
-        )
-
-    return NHLDataHealth(
-        skater_count=skater_count,
-        goalie_count=goalie_count,
-        is_healthy=is_healthy,
-        issues=issues,
-    )
 
 
 @router.get("/games", response_model=GameListResponse)
@@ -190,7 +96,11 @@ async def list_games(
         missing_any=missingAny,
     )
 
-    stmt = base_stmt.order_by(desc(db_models.SportsGame.game_date)).offset(offset).limit(limit)
+    stmt = (
+        base_stmt.order_by(desc(db_models.SportsGame.game_date))
+        .offset(offset)
+        .limit(limit)
+    )
     results = await session.execute(stmt)
     games = results.scalars().unique().all()
 
@@ -211,29 +121,69 @@ async def list_games(
     total = (await session.execute(count_stmt)).scalar_one()
 
     with_boxscore_count_stmt = count_stmt.where(
-        exists(select(1).where(db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id))
+        exists(
+            select(1).where(
+                db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id
+            )
+        )
     )
     with_player_stats_count_stmt = count_stmt.where(
-        exists(select(1).where(db_models.SportsPlayerBoxscore.game_id == db_models.SportsGame.id))
+        exists(
+            select(1).where(
+                db_models.SportsPlayerBoxscore.game_id == db_models.SportsGame.id
+            )
+        )
     )
     with_odds_count_stmt = count_stmt.where(
-        exists(select(1).where(db_models.SportsGameOdds.game_id == db_models.SportsGame.id))
+        exists(
+            select(1).where(db_models.SportsGameOdds.game_id == db_models.SportsGame.id)
+        )
     )
     with_social_count_stmt = count_stmt.where(
-        exists(select(1).where(db_models.GameSocialPost.game_id == db_models.SportsGame.id))
+        exists(
+            select(1).where(db_models.GameSocialPost.game_id == db_models.SportsGame.id)
+        )
     )
     with_pbp_count_stmt = count_stmt.where(
-        exists(select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id))
+        exists(
+            select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
+        )
+    )
+    with_story_count_stmt = count_stmt.where(
+        exists(
+            select(1).where(
+                db_models.SportsGameStory.game_id == db_models.SportsGame.id,
+                db_models.SportsGameStory.has_compact_story.is_(True),
+            )
+        )
     )
 
     with_boxscore_count = (await session.execute(with_boxscore_count_stmt)).scalar_one()
-    with_player_stats_count = (await session.execute(with_player_stats_count_stmt)).scalar_one()
+    with_player_stats_count = (
+        await session.execute(with_player_stats_count_stmt)
+    ).scalar_one()
     with_odds_count = (await session.execute(with_odds_count_stmt)).scalar_one()
     with_social_count = (await session.execute(with_social_count_stmt)).scalar_one()
     with_pbp_count = (await session.execute(with_pbp_count_stmt)).scalar_one()
+    with_story_count = (await session.execute(with_story_count_stmt)).scalar_one()
+
+    # Query which games have stories in SportsGameStory table
+    game_ids = [game.id for game in games]
+    if game_ids:
+        story_check_stmt = select(db_models.SportsGameStory.game_id).where(
+            db_models.SportsGameStory.game_id.in_(game_ids),
+            db_models.SportsGameStory.has_compact_story.is_(True),
+        )
+        story_result = await session.execute(story_check_stmt)
+        games_with_stories = set(story_result.scalars().all())
+    else:
+        games_with_stories = set()
 
     next_offset = offset + limit if offset + limit < total else None
-    summaries = [summarize_game(game) for game in games]
+    summaries = [
+        summarize_game(game, has_story=game.id in games_with_stories)
+        for game in games
+    ]
 
     return GameListResponse(
         games=summaries,
@@ -244,6 +194,7 @@ async def list_games(
         with_odds_count=with_odds_count,
         with_social_count=with_social_count,
         with_pbp_count=with_pbp_count,
+        with_story_count=with_story_count,
     )
 
 
@@ -263,7 +214,9 @@ async def get_game_preview_score(
     )
     game = result.scalar_one_or_none()
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
     if not game.home_team or not game.away_team:
         logger.error("Preview score missing team data", extra={"game_id": game_id})
         raise HTTPException(
@@ -306,25 +259,37 @@ async def get_game_preview_score(
 
 
 @router.get("/games/{game_id}", response_model=GameDetailResponse)
-async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> GameDetailResponse:
+async def get_game(
+    game_id: int, session: AsyncSession = Depends(get_db)
+) -> GameDetailResponse:
     result = await session.execute(
         select(db_models.SportsGame)
         .options(
             selectinload(db_models.SportsGame.league),
             selectinload(db_models.SportsGame.home_team),
             selectinload(db_models.SportsGame.away_team),
-            selectinload(db_models.SportsGame.team_boxscores).selectinload(db_models.SportsTeamBoxscore.team),
-            selectinload(db_models.SportsGame.player_boxscores).selectinload(db_models.SportsPlayerBoxscore.team),
+            selectinload(db_models.SportsGame.team_boxscores).selectinload(
+                db_models.SportsTeamBoxscore.team
+            ),
+            selectinload(db_models.SportsGame.player_boxscores).selectinload(
+                db_models.SportsPlayerBoxscore.team
+            ),
             selectinload(db_models.SportsGame.odds),
-            selectinload(db_models.SportsGame.social_posts).selectinload(db_models.GameSocialPost.team),
-            selectinload(db_models.SportsGame.plays).selectinload(db_models.SportsGamePlay.team),
+            selectinload(db_models.SportsGame.social_posts).selectinload(
+                db_models.GameSocialPost.team
+            ),
+            selectinload(db_models.SportsGame.plays).selectinload(
+                db_models.SportsGamePlay.team
+            ),
             selectinload(db_models.SportsGame.timeline_artifacts),
         )
         .where(db_models.SportsGame.id == game_id)
     )
     game = result.scalar_one_or_none()
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
 
     team_stats = [serialize_team_stat(box) for box in game.team_boxscores]
 
@@ -353,7 +318,9 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         nhl_goalies = goalies
     else:
         # Non-NHL: use generic player stats
-        player_stats = [serialize_player_stat(player) for player in game.player_boxscores]
+        player_stats = [
+            serialize_player_stat(player) for player in game.player_boxscores
+        ]
 
     odds_entries = [
         OddsEntry(
@@ -368,7 +335,19 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         for odd in game.odds
     ]
 
-    plays_entries = [serialize_play_entry(play) for play in sorted(game.plays, key=lambda p: p.play_index)]
+    plays_entries = [
+        serialize_play_entry(play)
+        for play in sorted(game.plays, key=lambda p: p.play_index)
+    ]
+
+    # Check if game has a story in SportsGameStory table
+    story_check = await session.execute(
+        select(db_models.SportsGameStory.id).where(
+            db_models.SportsGameStory.game_id == game_id,
+            db_models.SportsGameStory.has_compact_story.is_(True),
+        ).limit(1)
+    )
+    has_story = story_check.scalar() is not None
 
     meta = GameMeta(
         id=game.id,
@@ -391,6 +370,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         has_odds=bool(game.odds),
         has_social=bool(game.social_posts),
         has_pbp=bool(game.plays),
+        has_story=has_story,
         play_count=len(game.plays) if game.plays else 0,
         social_post_count=len(game.social_posts) if game.social_posts else 0,
         home_team_x_handle=game.home_team.x_handle if game.home_team else None,
@@ -431,7 +411,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     }
 
     # Compute NHL-specific data health (None for non-NHL games)
-    data_health = _compute_nhl_data_health(game, game.player_boxscores)
+    data_health = compute_nhl_data_health(game, game.player_boxscores)
 
     return GameDetailResponse(
         game=meta,
@@ -448,66 +428,15 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     )
 
 
-async def _enqueue_single_game_run(
-    session: AsyncSession,
-    game: db_models.SportsGame,
-    *,
-    include_boxscores: bool,
-    include_odds: bool,
-    scraper_type: str,
-) -> JobResponse:
-    """Create a scrape run and enqueue it for a single game."""
-    await session.refresh(game, attribute_names=["league"])
-    if not game.league:
-        raise HTTPException(status_code=400, detail="League missing for game")
-
-    config = ScrapeRunConfig(
-        league_code=game.league.code,
-        season=game.season,
-        season_type=getattr(game, "season_type", "regular"),
-        start_date=game.game_date.date(),
-        end_date=game.game_date.date(),
-        boxscores=include_boxscores,
-        odds=include_odds,
-        social=False,
-        pbp=False,
-        only_missing=False,
-        updated_before=None,
-        include_books=None,
-    )
-
-    run = db_models.SportsScrapeRun(
-        scraper_type=scraper_type,
-        league_id=game.league_id,
-        season=game.season,
-        season_type=getattr(game, "season_type", "regular"),
-        start_date=datetime.combine(game.game_date.date(), datetime.min.time()),
-        end_date=datetime.combine(game.game_date.date(), datetime.min.time()),
-        status="pending",
-        requested_by="admin_boxscore_viewer",
-        config=config.model_dump(by_alias=False),
-    )
-    session.add(run)
-    await session.flush()
-
-    worker_payload = config.to_worker_payload()
-    celery_app = get_celery_app()
-    async_result = celery_app.send_task(
-        "run_scrape_job",
-        args=[run.id, worker_payload],
-        queue="bets-scraper",
-        routing_key="bets-scraper",
-    )
-    run.job_id = async_result.id
-
-    return JobResponse(run_id=run.id, job_id=async_result.id, message="Job enqueued")
-
-
 @router.post("/games/{game_id}/rescrape", response_model=JobResponse)
-async def rescrape_game(game_id: int, session: AsyncSession = Depends(get_db)) -> JobResponse:
+async def rescrape_game(
+    game_id: int, session: AsyncSession = Depends(get_db)
+) -> JobResponse:
     game = await session.get(db_models.SportsGame, game_id)
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
     return await enqueue_single_game_run(
         session,
         game,
@@ -518,10 +447,14 @@ async def rescrape_game(game_id: int, session: AsyncSession = Depends(get_db)) -
 
 
 @router.post("/games/{game_id}/resync-odds", response_model=JobResponse)
-async def resync_game_odds(game_id: int, session: AsyncSession = Depends(get_db)) -> JobResponse:
+async def resync_game_odds(
+    game_id: int, session: AsyncSession = Depends(get_db)
+) -> JobResponse:
     game = await session.get(db_models.SportsGame, game_id)
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
     return await enqueue_single_game_run(
         session,
         game,
@@ -531,7 +464,9 @@ async def resync_game_odds(game_id: int, session: AsyncSession = Depends(get_db)
     )
 
 
-@router.post("/games/{game_id}/timeline/generate", response_model=TimelineArtifactResponse)
+@router.post(
+    "/games/{game_id}/timeline/generate", response_model=TimelineArtifactResponse
+)
 async def generate_game_timeline(
     game_id: int,
     session: AsyncSession = Depends(get_db),

@@ -7,7 +7,9 @@ from typing import Any, Sequence
 from .. import db_models
 
 
-def _select_closing_lines(odds: Sequence[db_models.SportsGameOdds], market: str) -> list[db_models.SportsGameOdds]:
+def _select_closing_lines(
+    odds: Sequence[db_models.SportsGameOdds], market: str
+) -> list[db_models.SportsGameOdds]:
     candidates = [odd for odd in odds if odd.market_type == market]
     closing = [odd for odd in candidates if odd.is_closing_line]
     return closing or candidates
@@ -21,7 +23,9 @@ def _implied_probability(price: float | None) -> float | None:
     return -price / (-price + 100)
 
 
-def compute_derived_metrics(game: db_models.SportsGame, odds: Sequence[db_models.SportsGameOdds]) -> dict[str, Any]:
+def compute_derived_metrics(
+    game: db_models.SportsGame, odds: Sequence[db_models.SportsGameOdds]
+) -> dict[str, Any]:
     metrics: dict[str, Any] = {}
     if game.home_score is not None and game.away_score is not None:
         home = game.home_score
@@ -30,7 +34,9 @@ def compute_derived_metrics(game: db_models.SportsGame, odds: Sequence[db_models
         metrics["away_score"] = away
         metrics["margin_of_victory"] = home - away
         metrics["combined_score"] = home + away
-        metrics["winner"] = "home" if home > away else ("away" if away > home else "tie")
+        metrics["winner"] = (
+            "home" if home > away else ("away" if away > home else "tie")
+        )
 
     spread_lines = _select_closing_lines(odds, "spread")
     if spread_lines and game.home_score is not None and game.away_score is not None:
@@ -86,7 +92,13 @@ def compute_derived_metrics(game: db_models.SportsGame, odds: Sequence[db_models
         combined = metrics["combined_score"]
         metrics["closing_total"] = total_value
         metrics["closing_total_price"] = total_line.price
-        metrics["total_result"] = "over" if combined > total_value else "under" if combined < total_value else "push"
+        metrics["total_result"] = (
+            "over"
+            if combined > total_value
+            else "under"
+            if combined < total_value
+            else "push"
+        )
 
     moneyline = _select_closing_lines(odds, "moneyline")
     if moneyline:
@@ -102,11 +114,21 @@ def compute_derived_metrics(game: db_models.SportsGame, odds: Sequence[db_models
                 metrics["closing_ml_away"] = line.price
                 metrics["closing_ml_away_implied"] = prob
         if "winner" in metrics:
-            if metrics["winner"] == "home" and "closing_ml_home" in metrics and "closing_ml_away" in metrics:
-                metrics["moneyline_upset"] = (metrics["closing_ml_home"] or 0) > (metrics["closing_ml_away"] or 0)
-            elif metrics["winner"] == "away" and "closing_ml_home" in metrics and "closing_ml_away" in metrics:
-                metrics["moneyline_upset"] = (metrics["closing_ml_away"] or 0) > (metrics["closing_ml_home"] or 0)
+            if (
+                metrics["winner"] == "home"
+                and "closing_ml_home" in metrics
+                and "closing_ml_away" in metrics
+            ):
+                metrics["moneyline_upset"] = (metrics["closing_ml_home"] or 0) > (
+                    metrics["closing_ml_away"] or 0
+                )
+            elif (
+                metrics["winner"] == "away"
+                and "closing_ml_home" in metrics
+                and "closing_ml_away" in metrics
+            ):
+                metrics["moneyline_upset"] = (metrics["closing_ml_away"] or 0) > (
+                    metrics["closing_ml_home"] or 0
+                )
 
     return metrics
-
-

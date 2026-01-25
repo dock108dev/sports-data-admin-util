@@ -66,6 +66,7 @@ logger = logging.getLogger(__name__)
 # AI CLIENT PROTOCOL
 # ============================================================================
 
+
 class AIClient(Protocol):
     """Protocol for AI client implementations."""
 
@@ -77,6 +78,7 @@ class AIClient(Protocol):
 # ============================================================================
 # PIPELINE RESULT
 # ============================================================================
+
 
 @dataclass
 class PipelineResult:
@@ -109,6 +111,8 @@ class PipelineResult:
     classifications: list[BeatClassification] | None = None
     snapshots: list[RunningStatsSnapshot] | None = None
     render_input: StoryRenderInput | None = None
+    prompt_used: str | None = None
+    raw_ai_response: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for API response."""
@@ -138,6 +142,7 @@ class PipelineError(Exception):
 # ============================================================================
 # PIPELINE ORCHESTRATOR
 # ============================================================================
+
 
 def build_game_story(
     timeline: list[dict[str, Any]],
@@ -258,10 +263,12 @@ def build_game_story(
         # Build score history from sections
         score_history = []
         for section in sections:
-            score_history.append({
-                "home": section.end_score.get("home", 0),
-                "away": section.end_score.get("away", 0),
-            })
+            score_history.append(
+                {
+                    "home": section.end_score.get("home", 0),
+                    "away": section.end_score.get("away", 0),
+                }
+            )
 
         quality = compute_quality_score(
             sections=sections,
@@ -269,7 +276,9 @@ def build_game_story(
             final_away_score=final_away_score,
             score_history=score_history,
         )
-        logger.info(f"Stage 6: Quality score = {quality.quality.value} ({quality.numeric_score:.1f})")
+        logger.info(
+            f"Stage 6: Quality score = {quality.quality.value} ({quality.numeric_score:.1f})"
+        )
     except Exception as e:
         raise PipelineError("compute_quality_score", str(e))
 
@@ -360,8 +369,12 @@ def build_game_story(
         result.classifications = classifications
         result.snapshots = snapshots
         result.render_input = render_input
+        result.prompt_used = render_result.prompt_used
+        result.raw_ai_response = render_result.raw_response
 
-    logger.info(f"Pipeline complete for game {game_id}: {render_result.word_count} words")
+    logger.info(
+        f"Pipeline complete for game {game_id}: {render_result.word_count} words"
+    )
     return result
 
 

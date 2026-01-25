@@ -21,7 +21,9 @@ async def execute_derive_signals(stage_input: StageInput) -> StageOutput:
     NOT YET IMPLEMENTED - returns no-op output.
     """
     output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
-    output.add_log("DERIVE_SIGNALS stage skipped - not yet implemented", level="warning")
+    output.add_log(
+        "DERIVE_SIGNALS stage skipped - not yet implemented", level="warning"
+    )
     return output
 
 
@@ -31,7 +33,9 @@ async def execute_generate_moments(stage_input: StageInput) -> StageOutput:
     NOT YET IMPLEMENTED - returns no-op output.
     """
     output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
-    output.add_log("GENERATE_MOMENTS stage skipped - not yet implemented", level="warning")
+    output.add_log(
+        "GENERATE_MOMENTS stage skipped - not yet implemented", level="warning"
+    )
     return output
 
 
@@ -41,7 +45,9 @@ async def execute_validate_moments(stage_input: StageInput) -> StageOutput:
     NOT YET IMPLEMENTED - returns no-op output.
     """
     output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
-    output.add_log("VALIDATE_MOMENTS stage skipped - not yet implemented", level="warning")
+    output.add_log(
+        "VALIDATE_MOMENTS stage skipped - not yet implemented", level="warning"
+    )
     return output
 
 
@@ -55,5 +61,7 @@ async def execute_finalize_moments(
     NOT YET IMPLEMENTED - returns no-op output.
     """
     output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
-    output.add_log("FINALIZE_MOMENTS stage skipped - not yet implemented", level="warning")
+    output.add_log(
+        "FINALIZE_MOMENTS stage skipped - not yet implemented", level="warning"
+    )
     return output

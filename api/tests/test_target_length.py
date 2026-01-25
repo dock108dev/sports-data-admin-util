@@ -11,13 +11,9 @@ These tests validate:
 ISSUE: Target Word Count (Chapters-First Architecture)
 """
 
-import pytest
-
 from app.services.chapters.game_quality import GameQuality
 from app.services.chapters.target_length import (
     # Types
-    TargetLengthResult,
-    # Functions
     select_target_word_count,
     get_target_words,
     format_target_debug,
@@ -37,6 +33,7 @@ from app.services.chapters.target_length import (
 # ============================================================================
 # TEST: LOCKED CONSTANTS
 # ============================================================================
+
 
 class TestLockedConstants:
     """Verify constants match specification."""
@@ -76,6 +73,7 @@ class TestLockedConstants:
 # TEST: LOW QUALITY SELECTION
 # ============================================================================
 
+
 class TestLowQuality:
     """Tests for LOW quality word count selection."""
 
@@ -104,6 +102,7 @@ class TestLowQuality:
 # ============================================================================
 # TEST: MEDIUM QUALITY SELECTION
 # ============================================================================
+
 
 class TestMediumQuality:
     """Tests for MEDIUM quality word count selection."""
@@ -134,6 +133,7 @@ class TestMediumQuality:
 # TEST: HIGH QUALITY SELECTION
 # ============================================================================
 
+
 class TestHighQuality:
     """Tests for HIGH quality word count selection."""
 
@@ -162,6 +162,7 @@ class TestHighQuality:
 # ============================================================================
 # TEST: DETERMINISM
 # ============================================================================
+
 
 class TestDeterminism:
     """Tests for deterministic behavior."""
@@ -195,6 +196,7 @@ class TestDeterminism:
 # TEST: CONVENIENCE FUNCTION
 # ============================================================================
 
+
 class TestConvenienceFunction:
     """Tests for get_target_words convenience function."""
 
@@ -222,6 +224,7 @@ class TestConvenienceFunction:
 # TEST: RANGES DO NOT OVERLAP
 # ============================================================================
 
+
 class TestRangesSeparation:
     """Tests verifying ranges don't overlap."""
 
@@ -246,6 +249,7 @@ class TestRangesSeparation:
 # ============================================================================
 # TEST: SERIALIZATION
 # ============================================================================
+
 
 class TestSerialization:
     """Tests for serialization."""
@@ -274,6 +278,7 @@ class TestSerialization:
 # ============================================================================
 # TEST: DEBUG OUTPUT
 # ============================================================================
+
 
 class TestDebugOutput:
     """Tests for debug formatting."""

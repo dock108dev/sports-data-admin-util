@@ -19,501 +19,96 @@ RELATIONSHIP TO story_state.py:
 - Both are deterministic, but serve different purposes
 - This module does NOT replace story_state.py; they complement each other
 
-PLAYER ID DECISION:
-- Primary key: player_name (deterministically normalized to lowercase, stripped)
-- Reason: player_id is an external reference that may be null or inconsistent
-- player_id is PRESERVED in snapshots when available for future reference
-- This decision is documented per the specification requirement
-
 ISSUE: Running Stats Builder (Chapters-First Architecture)
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
 import copy
+from typing import TYPE_CHECKING
 
 from .types import Chapter, Play
 
-
-# ============================================================================
-# PLAYER ID NORMALIZATION
-# ============================================================================
-
-def normalize_player_key(player_name: str) -> str:
-    """Normalize player name for use as dictionary key.
-
-    PLAYER ID DECISION (DOCUMENTED):
-    - We use player_name as the primary key because player_id is an external
-      reference that may be null or inconsistent across data sources.
-    - Normalization: lowercase, stripped whitespace, collapsed internal spaces.
-    - This ensures deterministic matching regardless of case variations.
-
-    Args:
-        player_name: Raw player name from play data
-
-    Returns:
-        Normalized key for dictionary lookups
-    """
-    if not player_name:
-        return ""
-    # Lowercase, strip whitespace, collapse internal spaces
-    return " ".join(player_name.lower().split())
-
-
-# ============================================================================
-# SNAPSHOT DATA STRUCTURES (CUMULATIVE TOTALS)
-# ============================================================================
-
-@dataclass
-class PlayerSnapshot:
-    """Cumulative player statistics from game start → end of chapter.
-
-    Snapshots are IMMUTABLE once computed.
-
-    PLAYER ID NOTE:
-    - player_key is the normalized name used for lookups
-    - player_name is the display name (original case preserved)
-    - player_id is the external reference (preserved when available, may be null)
-    """
-
-    # Identity
-    player_key: str                          # Normalized name (primary key)
-    player_name: str                         # Display name (original case)
-    player_id: str | None = None             # External ref (may be null)
-    team_key: str | None = None              # Which team this player is on
-
-    # Scoring (Cumulative Totals)
-    points_scored_total: int = 0
-    fg_made_total: int = 0                   # Field goals made
-    three_pt_made_total: int = 0             # 3-pointers made
-    ft_made_total: int = 0                   # Free throws made
-
-    # Fouls (Cumulative Totals)
-    personal_foul_count_total: int = 0
-    technical_foul_count_total: int = 0      # Separate from personal fouls
-
-    # Notable Actions (Unique Set)
-    notable_actions_set: set[str] = field(default_factory=set)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSON."""
-        return {
-            "player_key": self.player_key,
-            "player_name": self.player_name,
-            "player_id": self.player_id,
-            "team_key": self.team_key,
-            "points_scored_total": self.points_scored_total,
-            "fg_made_total": self.fg_made_total,
-            "three_pt_made_total": self.three_pt_made_total,
-            "ft_made_total": self.ft_made_total,
-            "personal_foul_count_total": self.personal_foul_count_total,
-            "technical_foul_count_total": self.technical_foul_count_total,
-            "notable_actions_set": sorted(self.notable_actions_set),
-        }
-
-
-@dataclass
-class TeamSnapshot:
-    """Cumulative team statistics from game start → end of chapter.
-
-    Snapshots are IMMUTABLE once computed.
-    """
-
-    # Identity
-    team_key: str                            # Normalized team identifier
-    team_name: str                           # Display name
-
-    # Scoring
-    points_scored_total: int = 0
-
-    # Fouls (Cumulative Totals)
-    personal_fouls_committed_total: int = 0
-    technical_fouls_committed_total: int = 0
-
-    # Timeouts
-    timeouts_used_total: int = 0
-
-    # Pace (Very Rough Estimate)
-    possessions_estimate_total: int = 0
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSON."""
-        return {
-            "team_key": self.team_key,
-            "team_name": self.team_name,
-            "points_scored_total": self.points_scored_total,
-            "personal_fouls_committed_total": self.personal_fouls_committed_total,
-            "technical_fouls_committed_total": self.technical_fouls_committed_total,
-            "timeouts_used_total": self.timeouts_used_total,
-            "possessions_estimate_total": self.possessions_estimate_total,
-        }
-
-
-@dataclass
-class RunningStatsSnapshot:
-    """Complete statistical snapshot at a chapter boundary.
-
-    Represents totals from game start → end of the specified chapter.
-    Snapshots are IMMUTABLE once computed.
-
-    SEMANTICS:
-    - chapter_index: The chapter this snapshot is taken AFTER (0-indexed)
-    - A snapshot at chapter_index=2 contains totals through chapters 0, 1, 2
-    - Initial snapshot (before any chapters) has chapter_index=-1
-    """
-
-    chapter_index: int                       # -1 for initial, 0+ for after chapter N
-
-    # Team snapshots (keyed by team_key)
-    teams: dict[str, TeamSnapshot] = field(default_factory=dict)
-
-    # Player snapshots (keyed by player_key)
-    players: dict[str, PlayerSnapshot] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSON."""
-        return {
-            "chapter_index": self.chapter_index,
-            "teams": {k: v.to_dict() for k, v in self.teams.items()},
-            "players": {k: v.to_dict() for k, v in self.players.items()},
-        }
-
-
-# ============================================================================
-# SECTION DELTA DATA STRUCTURES
-# ============================================================================
-
-@dataclass
-class PlayerDelta:
-    """Player statistics for a SECTION (delta between two snapshots).
-
-    Computed as: snapshot_at_section_end - snapshot_at_section_start
-    """
-
-    player_key: str
-    player_name: str
-    player_id: str | None = None
-    team_key: str | None = None
-
-    # Scoring (Section Delta)
-    points_scored: int = 0
-    fg_made: int = 0
-    three_pt_made: int = 0
-    ft_made: int = 0
-
-    # Fouls (Section Delta)
-    personal_foul_count: int = 0
-    technical_foul_count: int = 0
-
-    # Notable Actions (Unique set for this section)
-    notable_actions: set[str] = field(default_factory=set)
-
-    # Flags
-    foul_trouble_flag: bool = False          # personal_foul_count >= 4 in section
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSON."""
-        return {
-            "player_key": self.player_key,
-            "player_name": self.player_name,
-            "player_id": self.player_id,
-            "team_key": self.team_key,
-            "points_scored": self.points_scored,
-            "fg_made": self.fg_made,
-            "three_pt_made": self.three_pt_made,
-            "ft_made": self.ft_made,
-            "personal_foul_count": self.personal_foul_count,
-            "technical_foul_count": self.technical_foul_count,
-            "notable_actions": sorted(self.notable_actions),
-            "foul_trouble_flag": self.foul_trouble_flag,
-        }
-
-
-@dataclass
-class TeamDelta:
-    """Team statistics for a SECTION (delta between two snapshots)."""
-
-    team_key: str
-    team_name: str
-
-    # Scoring (Section Delta)
-    points_scored: int = 0
-
-    # Fouls (Section Delta)
-    personal_fouls_committed: int = 0
-    technical_fouls_committed: int = 0
-
-    # Timeouts (Section Delta)
-    timeouts_used: int = 0
-
-    # Pace (Section Delta)
-    possessions_estimate: int = 0
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSON."""
-        return {
-            "team_key": self.team_key,
-            "team_name": self.team_name,
-            "points_scored": self.points_scored,
-            "personal_fouls_committed": self.personal_fouls_committed,
-            "technical_fouls_committed": self.technical_fouls_committed,
-            "timeouts_used": self.timeouts_used,
-            "possessions_estimate": self.possessions_estimate,
-        }
-
-
-@dataclass
-class SectionDelta:
-    """Complete statistics for a SECTION (chapter range).
-
-    Computed by differencing snapshots at section boundaries.
-
-    PLAYER BOUNDING:
-    - Only top 3 players per team by points_scored (section delta) are included
-    - Tie-breakers: fg_made, three_pt_made, then player_key (deterministic)
-    """
-
-    section_start_chapter: int               # First chapter in section (inclusive)
-    section_end_chapter: int                 # Last chapter in section (inclusive)
-
-    # Team deltas
-    teams: dict[str, TeamDelta] = field(default_factory=dict)
-
-    # Player deltas (bounded: top 3 per team)
-    players: dict[str, PlayerDelta] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSON."""
-        return {
-            "section_start_chapter": self.section_start_chapter,
-            "section_end_chapter": self.section_end_chapter,
-            "teams": {k: v.to_dict() for k, v in self.teams.items()},
-            "players": {k: v.to_dict() for k, v in self.players.items()},
-        }
-
-
-# ============================================================================
-# EVENT PARSING RULES (AUTHORITATIVE)
-# ============================================================================
-
-def _extract_team_key(play: Play) -> str | None:
-    """Extract team key from play data.
-
-    Tries multiple sources:
-    1. team_abbreviation (preferred)
-    2. team_name
-    3. home_team/away_team based on scoring
-    """
-    raw = play.raw_data
-
-    # Try explicit team fields
-    team_abbr = raw.get("team_abbreviation") or raw.get("team_abbrev")
-    if team_abbr:
-        return team_abbr.lower().strip()
-
-    team_name = raw.get("team_name") or raw.get("team")
-    if team_name:
-        return team_name.lower().strip()
-
-    return None
-
-
-def _extract_player_info(play: Play) -> tuple[str | None, str | None, str | None]:
-    """Extract player information from play data.
-
-    Returns:
-        Tuple of (player_key, player_name, player_id)
-        - player_key: Normalized name for dictionary lookups
-        - player_name: Display name (original case)
-        - player_id: External reference (may be null)
-    """
-    raw = play.raw_data
-
-    # Try explicit player fields first
-    player_name = raw.get("player_name") or raw.get("player")
-    player_id = raw.get("player_id")
-
-    # Fallback: extract from description
-    if not player_name:
-        description = raw.get("description", "")
-        # Common pattern: "Player Name makes/misses..."
-        for verb in [" makes ", " misses ", " commits ", " called for "]:
-            if verb in description:
-                player_name = description.split(verb)[0].strip()
-                break
-
-    if not player_name:
-        return None, None, None
-
-    player_key = normalize_player_key(player_name)
-    return player_key, player_name, player_id
-
-
-def _is_made_field_goal(play: Play) -> tuple[bool, int]:
-    """Check if play is a made field goal and return points.
-
-    SCORING RULES:
-    - +3 on made 3PT (patterns: "3-pt", "three", "3-pointer")
-    - +2 on other made FG
-
-    Returns:
-        Tuple of (is_made_fg, points)
-    """
-    description = (play.raw_data.get("description") or "").lower()
-
-    if "makes" not in description:
-        return False, 0
-
-    # Check for 3-pointer
-    if "3-pt" in description or "three" in description or "3-pointer" in description:
-        return True, 3
-
-    # Check for free throw (handled separately)
-    if "free throw" in description:
-        return False, 0
-
-    # Regular field goal
-    return True, 2
-
-
-def _is_made_free_throw(play: Play) -> bool:
-    """Check if play is a made free throw.
-
-    SCORING RULES:
-    - +1 on made FT
-    """
-    description = (play.raw_data.get("description") or "").lower()
-    return "makes" in description and "free throw" in description
-
-
-def _is_personal_foul(play: Play) -> bool:
-    """Check if play is a personal foul.
-
-    FOUL RULES:
-    - Personal fouls: increment player personal_foul_count + team personal_fouls
-    - EXCLUDE technical fouls (counted separately)
-    - EXCLUDE flagrant fouls (counted as personal + notable action)
-    """
-    description = (play.raw_data.get("description") or "").lower()
-    play_type = (play.raw_data.get("play_type") or "").lower()
-
-    # Check for foul
-    is_foul = "foul" in description or "foul" in play_type
-    if not is_foul:
-        return False
-
-    # Exclude technical fouls
-    if "technical" in description:
-        return False
-
-    return True
-
-
-def _is_technical_foul(play: Play) -> bool:
-    """Check if play is a technical foul.
-
-    FOUL RULES:
-    - Technical fouls: increment technical_foul_count
-    - DO NOT count as personal fouls
-    - DO NOT affect foul limits
-    - MUST remain available for narrative use later
-    """
-    description = (play.raw_data.get("description") or "").lower()
-    return "technical" in description and "foul" in description
-
-
-def _is_timeout(play: Play) -> tuple[bool, str | None]:
-    """Check if play is a timeout and extract team.
-
-    TIMEOUT RULES:
-    - Increment timeouts_used for the team on explicit timeout events
-    - Ignore official/media timeouts unless clearly attributed
-
-    Returns:
-        Tuple of (is_timeout, team_key)
-    """
-    description = (play.raw_data.get("description") or "").lower()
-    play_type = (play.raw_data.get("play_type") or "").lower()
-
-    is_timeout = "timeout" in description or "timeout" in play_type
-    if not is_timeout:
-        return False, None
-
-    # Ignore official/media timeouts
-    if "official" in description or "media" in description or "tv" in description:
-        return False, None
-
-    # Extract team
-    team_key = _extract_team_key(play)
-    return True, team_key
-
-
-def _is_possession_ending(play: Play) -> bool:
-    """Check if play ends a possession (for rough pace estimate).
-
-    POSSESSIONS ESTIMATE RULES (Very Rough, Intentional):
-    Increment possessions_estimate on:
-    - made FG
-    - turnover
-    - defensive rebound
-
-    Do NOT attempt full possession accounting.
-    This signal is for pace description only.
-    """
-    description = (play.raw_data.get("description") or "").lower()
-    play_type = (play.raw_data.get("play_type") or "").lower()
-
-    # Made FG
-    if "makes" in description and "free throw" not in description:
-        return True
-
-    # Turnover
-    if "turnover" in description or "turnover" in play_type:
-        return True
-
-    # Defensive rebound
-    if "defensive rebound" in description or "def rebound" in description:
-        return True
-
-    return False
-
-
-def _extract_notable_action(play: Play) -> str | None:
-    """Extract notable action from play if present.
-
-    NOTABLE ACTIONS RULES (Strict, Deterministic):
-    Extract ONLY if explicitly present in play text:
-    - block
-    - steal
-    - dunk
-
-    Rules:
-    - No inference
-    - No synonyms
-    - Return exactly one action (or None)
-    """
-    description = (play.raw_data.get("description") or "").lower()
-
-    # Check for dunk (most specific first)
-    if "dunk" in description:
-        return "dunk"
-
-    # Check for block
-    if "block" in description:
-        return "block"
-
-    # Check for steal
-    if "steal" in description:
-        return "steal"
-
-    return None
+# Import data structures from stat_types
+from .stat_types import (
+    normalize_player_key,
+    PlayerSnapshot,
+    TeamSnapshot,
+    RunningStatsSnapshot,
+    PlayerDelta,
+    TeamDelta,
+    SectionDelta,
+)
+
+# Import extraction functions from play_extractors
+from .play_extractors import (
+    extract_team_key,
+    extract_player_info,
+    is_made_field_goal,
+    is_made_free_throw,
+    is_personal_foul,
+    is_technical_foul,
+    is_timeout,
+    is_possession_ending,
+    extract_notable_action,
+    is_assist,
+    is_block,
+    is_steal,
+)
+
+if TYPE_CHECKING:
+    from .player_identity import PlayerIdentityResolver
+
+# Re-export for backward compatibility
+__all__ = [
+    # Types
+    "normalize_player_key",
+    "PlayerSnapshot",
+    "TeamSnapshot",
+    "RunningStatsSnapshot",
+    "PlayerDelta",
+    "TeamDelta",
+    "SectionDelta",
+    # Extraction functions (aliased with underscore prefix for internal use)
+    "_extract_team_key",
+    "_extract_player_info",
+    "_is_made_field_goal",
+    "_is_made_free_throw",
+    "_is_personal_foul",
+    "_is_technical_foul",
+    "_is_timeout",
+    "_is_possession_ending",
+    "_extract_notable_action",
+    "_is_assist",
+    "_is_block",
+    "_is_steal",
+    # Builder functions
+    "build_initial_snapshot",
+    "update_snapshot",
+    "build_running_snapshots",
+    "compute_section_delta",
+    "compute_section_deltas_from_snapshots",
+]
+
+# Aliases with underscore prefix for internal/test compatibility
+_extract_team_key = extract_team_key
+_extract_player_info = extract_player_info
+_is_made_field_goal = is_made_field_goal
+_is_made_free_throw = is_made_free_throw
+_is_personal_foul = is_personal_foul
+_is_technical_foul = is_technical_foul
+_is_timeout = is_timeout
+_is_possession_ending = is_possession_ending
+_extract_notable_action = extract_notable_action
+_is_assist = is_assist
+_is_block = is_block
+_is_steal = is_steal
 
 
 # ============================================================================
 # SNAPSHOT BUILDING
 # ============================================================================
+
 
 def build_initial_snapshot() -> RunningStatsSnapshot:
     """Build initial empty snapshot (before any chapters).
@@ -525,9 +120,7 @@ def build_initial_snapshot() -> RunningStatsSnapshot:
 
 
 def _ensure_team(
-    snapshot: RunningStatsSnapshot,
-    team_key: str,
-    team_name: str | None = None
+    snapshot: RunningStatsSnapshot, team_key: str, team_name: str | None = None
 ) -> TeamSnapshot:
     """Ensure team exists in snapshot, create if needed."""
     if team_key not in snapshot.teams:
@@ -563,21 +156,31 @@ def _ensure_player(
     return snapshot.players[player_key]
 
 
-def _process_play(play: Play, snapshot: RunningStatsSnapshot) -> None:
+def _process_play(
+    play: Play,
+    snapshot: RunningStatsSnapshot,
+    resolver: "PlayerIdentityResolver | None" = None,
+) -> None:
     """Process a single play and update snapshot in place.
 
     This function implements all event parsing rules.
+    When a resolver is provided, player names are resolved to canonical forms.
+
+    Args:
+        play: Play to process
+        snapshot: Snapshot to update
+        resolver: Optional PlayerIdentityResolver for name canonicalization
     """
-    # Extract player info
-    player_key, player_name, player_id = _extract_player_info(play)
-    team_key = _extract_team_key(play)
+    # Extract player info (using resolver if available)
+    player_key, player_name, player_id = extract_player_info(play, resolver)
+    team_key = extract_team_key(play)
 
     # Get team name for display
     team_name = play.raw_data.get("team_name") or play.raw_data.get("team")
 
     # Process scoring
-    is_made_fg, fg_points = _is_made_field_goal(play)
-    if is_made_fg and player_key:
+    made_fg, fg_points = is_made_field_goal(play)
+    if made_fg and player_key:
         player = _ensure_player(snapshot, player_key, player_name, player_id, team_key)
         player.points_scored_total += fg_points
         player.fg_made_total += 1
@@ -589,7 +192,7 @@ def _process_play(play: Play, snapshot: RunningStatsSnapshot) -> None:
             team = _ensure_team(snapshot, team_key, team_name)
             team.points_scored_total += fg_points
 
-    if _is_made_free_throw(play) and player_key:
+    if is_made_free_throw(play) and player_key:
         player = _ensure_player(snapshot, player_key, player_name, player_id, team_key)
         player.points_scored_total += 1
         player.ft_made_total += 1
@@ -600,7 +203,7 @@ def _process_play(play: Play, snapshot: RunningStatsSnapshot) -> None:
             team.points_scored_total += 1
 
     # Process fouls
-    if _is_personal_foul(play) and player_key:
+    if is_personal_foul(play) and player_key:
         player = _ensure_player(snapshot, player_key, player_name, player_id, team_key)
         player.personal_foul_count_total += 1
 
@@ -608,7 +211,7 @@ def _process_play(play: Play, snapshot: RunningStatsSnapshot) -> None:
             team = _ensure_team(snapshot, team_key, team_name)
             team.personal_fouls_committed_total += 1
 
-    if _is_technical_foul(play) and player_key:
+    if is_technical_foul(play) and player_key:
         player = _ensure_player(snapshot, player_key, player_name, player_id, team_key)
         player.technical_foul_count_total += 1
 
@@ -617,26 +220,72 @@ def _process_play(play: Play, snapshot: RunningStatsSnapshot) -> None:
             team.technical_fouls_committed_total += 1
 
     # Process timeouts
-    is_timeout, timeout_team = _is_timeout(play)
-    if is_timeout and timeout_team:
+    timeout_detected, timeout_team = is_timeout(play)
+    if timeout_detected and timeout_team:
         team = _ensure_team(snapshot, timeout_team, team_name)
         team.timeouts_used_total += 1
 
     # Process possessions estimate
-    if _is_possession_ending(play) and team_key:
+    if is_possession_ending(play) and team_key:
         team = _ensure_team(snapshot, team_key, team_name)
         team.possessions_estimate_total += 1
 
     # Process notable actions
-    notable_action = _extract_notable_action(play)
+    notable_action = extract_notable_action(play)
     if notable_action and player_key:
         player = _ensure_player(snapshot, player_key, player_name, player_id, team_key)
         player.notable_actions_set.add(notable_action)
+
+    # Process assists (Player Prominence)
+    assist_detected, assister_key, assister_name, assister_id = is_assist(play)
+    if assist_detected and assister_key and assister_name:
+        # Resolve assister name if resolver available
+        if resolver is not None:
+            resolved = resolver.resolve(assister_name, assister_id, team_key)
+            if resolved:
+                assister_key = resolved.canonical_key
+                assister_name = resolved.canonical_name
+                assister_id = resolved.player_id
+        assister = _ensure_player(
+            snapshot, assister_key, assister_name, assister_id, team_key
+        )
+        assister.assists_total += 1
+
+    # Process blocks (Player Prominence)
+    block_detected, blocker_key, blocker_name, blocker_id = is_block(play)
+    if block_detected and blocker_key and blocker_name:
+        # Resolve blocker name if resolver available
+        if resolver is not None:
+            resolved = resolver.resolve(blocker_name, blocker_id, team_key)
+            if resolved:
+                blocker_key = resolved.canonical_key
+                blocker_name = resolved.canonical_name
+                blocker_id = resolved.player_id
+        blocker = _ensure_player(
+            snapshot, blocker_key, blocker_name, blocker_id, team_key
+        )
+        blocker.blocks_total += 1
+
+    # Process steals (Player Prominence)
+    steal_detected, stealer_key, stealer_name, stealer_id = is_steal(play)
+    if steal_detected and stealer_key and stealer_name:
+        # Resolve stealer name if resolver available
+        if resolver is not None:
+            resolved = resolver.resolve(stealer_name, stealer_id, team_key)
+            if resolved:
+                stealer_key = resolved.canonical_key
+                stealer_name = resolved.canonical_name
+                stealer_id = resolved.player_id
+        stealer = _ensure_player(
+            snapshot, stealer_key, stealer_name, stealer_id, team_key
+        )
+        stealer.steals_total += 1
 
 
 def update_snapshot(
     previous: RunningStatsSnapshot,
     chapter: Chapter,
+    resolver: "PlayerIdentityResolver | None" = None,
 ) -> RunningStatsSnapshot:
     """Update snapshot with a new chapter's plays.
 
@@ -646,6 +295,7 @@ def update_snapshot(
     Args:
         previous: Snapshot from previous chapter boundary
         chapter: New chapter to process
+        resolver: Optional PlayerIdentityResolver for name canonicalization
 
     Returns:
         New snapshot including data from this chapter
@@ -663,16 +313,25 @@ def update_snapshot(
 
     # Process each play in the chapter
     for play in chapter.plays:
-        _process_play(play, new_snapshot)
+        _process_play(play, new_snapshot, resolver)
 
     return new_snapshot
 
 
-def build_running_snapshots(chapters: list[Chapter]) -> list[RunningStatsSnapshot]:
+def build_running_snapshots(
+    chapters: list[Chapter],
+    resolver: "PlayerIdentityResolver | None" = None,
+) -> list[RunningStatsSnapshot]:
     """Build snapshots at every chapter boundary.
+
+    NAME RESOLUTION:
+    When a PlayerIdentityResolver is provided, all player names are resolved
+    to canonical forms during stat aggregation. This prevents stat loss and
+    ghost players caused by truncated or aliased names.
 
     Args:
         chapters: List of chapters in chronological order
+        resolver: Optional PlayerIdentityResolver for name canonicalization
 
     Returns:
         List of snapshots, one after each chapter.
@@ -683,7 +342,7 @@ def build_running_snapshots(chapters: list[Chapter]) -> list[RunningStatsSnapsho
     current = build_initial_snapshot()
 
     for chapter in chapters:
-        current = update_snapshot(current, chapter)
+        current = update_snapshot(current, chapter, resolver)
         snapshots.append(current)
 
     return snapshots
@@ -692,6 +351,7 @@ def build_running_snapshots(chapters: list[Chapter]) -> list[RunningStatsSnapsho
 # ============================================================================
 # SECTION DELTA COMPUTATION
 # ============================================================================
+
 
 def _compute_player_delta(
     player_key: str,
@@ -710,6 +370,9 @@ def _compute_player_delta(
             fg_made=end_player.fg_made_total,
             three_pt_made=end_player.three_pt_made_total,
             ft_made=end_player.ft_made_total,
+            assists=end_player.assists_total,
+            blocks=end_player.blocks_total,
+            steals=end_player.steals_total,
             personal_foul_count=end_player.personal_foul_count_total,
             technical_foul_count=end_player.technical_foul_count_total,
             notable_actions=set(end_player.notable_actions_set),
@@ -720,13 +383,21 @@ def _compute_player_delta(
             player_name=end_player.player_name,
             player_id=end_player.player_id,
             team_key=end_player.team_key,
-            points_scored=end_player.points_scored_total - start_player.points_scored_total,
+            points_scored=end_player.points_scored_total
+            - start_player.points_scored_total,
             fg_made=end_player.fg_made_total - start_player.fg_made_total,
-            three_pt_made=end_player.three_pt_made_total - start_player.three_pt_made_total,
+            three_pt_made=end_player.three_pt_made_total
+            - start_player.three_pt_made_total,
             ft_made=end_player.ft_made_total - start_player.ft_made_total,
-            personal_foul_count=end_player.personal_foul_count_total - start_player.personal_foul_count_total,
-            technical_foul_count=end_player.technical_foul_count_total - start_player.technical_foul_count_total,
-            notable_actions=end_player.notable_actions_set - start_player.notable_actions_set,
+            assists=end_player.assists_total - start_player.assists_total,
+            blocks=end_player.blocks_total - start_player.blocks_total,
+            steals=end_player.steals_total - start_player.steals_total,
+            personal_foul_count=end_player.personal_foul_count_total
+            - start_player.personal_foul_count_total,
+            technical_foul_count=end_player.technical_foul_count_total
+            - start_player.technical_foul_count_total,
+            notable_actions=end_player.notable_actions_set
+            - start_player.notable_actions_set,
         )
 
     # Set foul trouble flag
@@ -756,10 +427,13 @@ def _compute_team_delta(
             team_key=end_team.team_key,
             team_name=end_team.team_name,
             points_scored=end_team.points_scored_total - start_team.points_scored_total,
-            personal_fouls_committed=end_team.personal_fouls_committed_total - start_team.personal_fouls_committed_total,
-            technical_fouls_committed=end_team.technical_fouls_committed_total - start_team.technical_fouls_committed_total,
+            personal_fouls_committed=end_team.personal_fouls_committed_total
+            - start_team.personal_fouls_committed_total,
+            technical_fouls_committed=end_team.technical_fouls_committed_total
+            - start_team.technical_fouls_committed_total,
             timeouts_used=end_team.timeouts_used_total - start_team.timeouts_used_total,
-            possessions_estimate=end_team.possessions_estimate_total - start_team.possessions_estimate_total,
+            possessions_estimate=end_team.possessions_estimate_total
+            - start_team.possessions_estimate_total,
         )
 
 
@@ -812,8 +486,12 @@ def compute_section_delta(
     # Compute all player deltas
     all_player_deltas: dict[str, PlayerDelta] = {}
     for player_key, end_player in end_snapshot.players.items():
-        start_player = start_snapshot.players.get(player_key) if start_snapshot else None
-        all_player_deltas[player_key] = _compute_player_delta(player_key, start_player, end_player)
+        start_player = (
+            start_snapshot.players.get(player_key) if start_snapshot else None
+        )
+        all_player_deltas[player_key] = _compute_player_delta(
+            player_key, start_player, end_player
+        )
 
     # Group players by team
     players_by_team: dict[str, list[PlayerDelta]] = {}

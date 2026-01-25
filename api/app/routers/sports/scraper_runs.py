@@ -78,7 +78,9 @@ async def create_scrape_run(
         )
         run.status = "error"
         run.error_details = f"Failed to enqueue scrape: {exc}"
-        raise HTTPException(status_code=500, detail="Failed to enqueue scrape job") from exc
+        raise HTTPException(
+            status_code=500, detail="Failed to enqueue scrape job"
+        ) from exc
 
     return serialize_run(run, league.code)
 
@@ -106,17 +108,21 @@ async def list_scrape_runs(
 
     league_map: dict[int, str] = {}
     if runs:
-        stmt_leagues = select(db_models.SportsLeague.id, db_models.SportsLeague.code).where(
-            db_models.SportsLeague.id.in_({run.league_id for run in runs})
-        )
+        stmt_leagues = select(
+            db_models.SportsLeague.id, db_models.SportsLeague.code
+        ).where(db_models.SportsLeague.id.in_({run.league_id for run in runs}))
         league_rows = await session.execute(stmt_leagues)
         league_map = {row.id: row.code for row in league_rows}
 
-    return [serialize_run(run, league_map.get(run.league_id, "UNKNOWN")) for run in runs]
+    return [
+        serialize_run(run, league_map.get(run.league_id, "UNKNOWN")) for run in runs
+    ]
 
 
 @router.get("/scraper/runs/{run_id}", response_model=ScrapeRunResponse)
-async def fetch_run(run_id: int, session: AsyncSession = Depends(get_db)) -> ScrapeRunResponse:
+async def fetch_run(
+    run_id: int, session: AsyncSession = Depends(get_db)
+) -> ScrapeRunResponse:
     result = await session.execute(
         select(db_models.SportsScrapeRun)
         .options(selectinload(db_models.SportsScrapeRun.league))
@@ -124,7 +130,9 @@ async def fetch_run(run_id: int, session: AsyncSession = Depends(get_db)) -> Scr
     )
     run = result.scalar_one_or_none()
     if not run:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Run not found"
+        )
     league_code = run.league.code if run.league else "UNKNOWN"
     return serialize_run(run, league_code)
 
@@ -135,14 +143,14 @@ async def clear_scraper_cache(
     days: int = Query(7, ge=1, le=30, description="Days of cache to clear"),
 ) -> dict:
     """Clear cached scoreboard HTML files for the last N days.
-    
+
     This is useful before running a manual scrape to ensure fresh data is fetched.
     Only clears scoreboard pages (not boxscores or PBP which are immutable).
     """
     from ...logging_config import get_logger
-    
+
     logger = get_logger(__name__)
-    
+
     try:
         celery_app = get_celery_app()
         async_result = celery_app.send_task(
@@ -151,10 +159,10 @@ async def clear_scraper_cache(
             queue="bets-scraper",
             routing_key="bets-scraper",
         )
-        
+
         # Wait for the result (short timeout since this is fast)
         result = async_result.get(timeout=30)
-        
+
         return {
             "status": "success",
             "league": league.upper(),
@@ -175,7 +183,9 @@ async def clear_scraper_cache(
 
 
 @router.post("/scraper/runs/{run_id}/cancel", response_model=ScrapeRunResponse)
-async def cancel_scrape_run(run_id: int, session: AsyncSession = Depends(get_db)) -> ScrapeRunResponse:
+async def cancel_scrape_run(
+    run_id: int, session: AsyncSession = Depends(get_db)
+) -> ScrapeRunResponse:
     result = await session.execute(
         select(db_models.SportsScrapeRun)
         .options(selectinload(db_models.SportsScrapeRun.league))
@@ -183,7 +193,9 @@ async def cancel_scrape_run(run_id: int, session: AsyncSession = Depends(get_db)
     )
     run = result.scalar_one_or_none()
     if not run:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Run not found"
+        )
 
     if run.status not in {"pending", "running"}:
         raise HTTPException(

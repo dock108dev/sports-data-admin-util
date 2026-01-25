@@ -2,21 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import type { GameStoryResponse } from "@/lib/api/sportsAdmin/types";
+import type { GameStoryResponse, PipelineDebugResponse } from "@/lib/api/sportsAdmin/types";
 import styles from "./story-generator.module.css";
+
+type ViewMode = "story" | "pipeline";
 
 /**
  * Story Generator — Game Story Page
  *
- * STORY-CENTRIC UI (Breaking Change)
- *
- * PRIMARY VIEW: Compact Game Story
- * - The full story text is the default view
- * - This is what users see first
- *
- * DEBUG VIEW: Chapters & Technical Details
- * - Hidden by default behind a toggle
- * - Shows chapters, plays, reason codes, etc.
+ * Two views:
+ * 1. STORY VIEW: The final rendered story
+ * 2. PIPELINE VIEW: Shows data transformation from PBP → OpenAI Prompt → Story
  */
 export default function StoryGeneratorPage() {
   const params = useParams();
@@ -24,20 +20,22 @@ export default function StoryGeneratorPage() {
   const gameId = parseInt(params.gameId as string);
 
   const [story, setStory] = useState<GameStoryResponse | null>(null);
+  const [pipeline, setPipeline] = useState<PipelineDebugResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingPipeline, setLoadingPipeline] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showDebugView, setShowDebugView] = useState(false);
-  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<ViewMode>("story");
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
-  const toggleChapter = (chapterId: string) => {
-    const newExpanded = new Set(expandedChapters);
-    if (newExpanded.has(chapterId)) {
-      newExpanded.delete(chapterId);
+  const toggleSection = (sectionId: string) => {
+    const newExpanded = new Set(expandedSections);
+    if (newExpanded.has(sectionId)) {
+      newExpanded.delete(sectionId);
     } else {
-      newExpanded.add(chapterId);
+      newExpanded.add(sectionId);
     }
-    setExpandedChapters(newExpanded);
+    setExpandedSections(newExpanded);
   };
 
   useEffect(() => {
@@ -56,6 +54,28 @@ export default function StoryGeneratorPage() {
       setError(err instanceof Error ? err.message : "Failed to load story");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPipeline = async () => {
+    if (pipeline) return; // Already loaded
+
+    setLoadingPipeline(true);
+    try {
+      const { fetchPipelineDebug } = await import("@/lib/api/sportsAdmin/chapters");
+      const data = await fetchPipelineDebug(gameId);
+      setPipeline(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load pipeline");
+    } finally {
+      setLoadingPipeline(false);
+    }
+  };
+
+  const handleViewModeChange = async (mode: ViewMode) => {
+    setViewMode(mode);
+    if (mode === "pipeline") {
+      await loadPipeline();
     }
   };
 
@@ -141,7 +161,7 @@ export default function StoryGeneratorPage() {
             onClick={() => router.push("/admin/theory-bets/story-generator")}
             className={styles.backButton}
           >
-            Back to Games
+            Back
           </button>
         </div>
         <h1>Game {gameId}</h1>
@@ -155,138 +175,225 @@ export default function StoryGeneratorPage() {
         </div>
       </div>
 
-      {/* Primary Action */}
-      <div className={styles.actions}>
+      {/* View Mode Tabs */}
+      <div className={styles.viewTabs}>
         <button
-          onClick={handleRegenerateStory}
-          className={styles.btnPrimary}
-          disabled={regenerating}
+          className={`${styles.viewTab} ${viewMode === "story" ? styles.viewTabActive : ""}`}
+          onClick={() => handleViewModeChange("story")}
         >
-          {regenerating ? "Regenerating..." : "Regenerate Story"}
+          Story
         </button>
-        <label className={styles.debugToggle}>
-          <input
-            type="checkbox"
-            checked={showDebugView}
-            onChange={(e) => setShowDebugView(e.target.checked)}
-          />
-          Show Debug Details
-        </label>
+        <button
+          className={`${styles.viewTab} ${viewMode === "pipeline" ? styles.viewTabActive : ""}`}
+          onClick={() => handleViewModeChange("pipeline")}
+        >
+          Pipeline (PBP → Prompt → Story)
+        </button>
       </div>
 
-      {/* PRIMARY VIEW: Compact Story */}
-      <div className={styles.storyPanel}>
-        {hasStory ? (
-          <div className={styles.storyContent}>
-            {story.compact_story!.split('\n\n').map((paragraph, i) => (
-              <p key={i}>{paragraph}</p>
-            ))}
-          </div>
-        ) : (
-          <div className={styles.noStory}>
-            <p>No story generated yet.</p>
-            <p className={styles.noStoryHint}>
-              Click &ldquo;Regenerate Story&rdquo; to generate the full game narrative.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* DEBUG VIEW: Chapters (hidden by default) */}
-      {showDebugView && (
-        <div className={styles.debugSection}>
-          <h2 className={styles.debugSectionTitle}>Debug: Chapters ({story.chapter_count})</h2>
-
-          {/* Status indicators */}
-          <div className={styles.statusRow}>
-            <span className={story.chapter_count > 0 ? styles.statusOk : styles.statusMissing}>
-              Chapters: {story.chapter_count > 0 ? story.chapter_count : "None"}
-            </span>
-            <span className={story.has_summaries ? styles.statusOk : styles.statusMissing}>
-              Summaries: {story.has_summaries ? "Yes" : "No"}
-            </span>
-            <span className={story.has_compact_story ? styles.statusOk : styles.statusMissing}>
-              Compact Story: {story.has_compact_story ? "Yes" : "No"}
-            </span>
+      {/* STORY VIEW */}
+      {viewMode === "story" && (
+        <>
+          <div className={styles.actions}>
+            <button
+              onClick={handleRegenerateStory}
+              className={styles.btnPrimary}
+              disabled={regenerating}
+            >
+              {regenerating ? "Regenerating..." : "Regenerate Story"}
+            </button>
           </div>
 
-          {/* Chapters list */}
-          <div className={styles.chaptersList}>
-            {story.chapters.map((chapter, idx) => {
-              const isExpanded = expandedChapters.has(chapter.chapter_id);
+          <div className={styles.storyPanel}>
+            {hasStory ? (
+              <div className={styles.storyContent}>
+                {story.compact_story!.split('\n\n').map((paragraph, i) => (
+                  <p key={i}>{paragraph}</p>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.noStory}>
+                <p>No story generated yet.</p>
+                <p className={styles.noStoryHint}>
+                  Click &ldquo;Regenerate Story&rdquo; to generate the full game narrative.
+                </p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
-              return (
-                <div key={chapter.chapter_id} className={styles.chapterCard}>
-                  <div
-                    className={styles.chapterHeader}
-                    onClick={() => toggleChapter(chapter.chapter_id)}
-                  >
-                    <div className={styles.chapterHeaderLeft}>
-                      <span className={styles.chapterToggle}>
-                        {isExpanded ? "v" : ">"}
-                      </span>
-                      <span className={styles.chapterIndex}>Ch {idx}</span>
-                      {chapter.chapter_title && (
-                        <span className={styles.chapterTitle}>{chapter.chapter_title}</span>
-                      )}
-                    </div>
-
-                    <div className={styles.chapterHeaderRight}>
-                      <span className={styles.playCount}>{chapter.play_count} plays</span>
-                      {chapter.period && <span className={styles.period}>Q{chapter.period}</span>}
-                      <span className={styles.reasonCodes}>
-                        {chapter.reason_codes.join(", ")}
-                      </span>
-                    </div>
-                  </div>
-
-                  {chapter.chapter_summary && (
-                    <div className={styles.chapterSummary}>
-                      {chapter.chapter_summary}
-                    </div>
-                  )}
-
-                  {isExpanded && (
-                    <div className={styles.chapterExpanded}>
-                      <div className={styles.metadata}>
-                        <div className={styles.metadataRow}>
-                          <span className={styles.label}>Play Range:</span>
-                          <span>{chapter.play_start_idx} - {chapter.play_end_idx}</span>
-                        </div>
-
-                        {chapter.time_range && (
-                          <div className={styles.metadataRow}>
-                            <span className={styles.label}>Time Range:</span>
-                            <span>{chapter.time_range.start} - {chapter.time_range.end}</span>
-                          </div>
-                        )}
-
-                        <div className={styles.metadataRow}>
-                          <span className={styles.label}>Reason Codes:</span>
-                          <span>{chapter.reason_codes.join(", ")}</span>
-                        </div>
+      {/* PIPELINE VIEW */}
+      {viewMode === "pipeline" && (
+        <div className={styles.pipelineView}>
+          {loadingPipeline ? (
+            <div className={styles.loading}>Loading pipeline data...</div>
+          ) : pipeline ? (
+            <>
+              {/* Pipeline Stages Overview */}
+              <div className={styles.pipelineStages}>
+                {pipeline.pipeline_stages.map((stage, idx) => (
+                  <div key={idx} className={styles.pipelineStage}>
+                    <div className={styles.stageName}>{stage.stage_name}</div>
+                    <div className={styles.stageDescription}>{stage.description}</div>
+                    {stage.input_count !== null && (
+                      <div className={styles.stageCounts}>
+                        {stage.input_count} → {stage.output_count}
                       </div>
+                    )}
+                  </div>
+                ))}
+              </div>
 
-                      <div className={styles.playsSection}>
-                        <h4>Plays ({chapter.plays.length})</h4>
-                        <div className={styles.playsList}>
-                          {chapter.plays.map((play, playIdx) => (
-                            <div key={playIdx} className={styles.playEntry}>
-                              <span className={styles.playIndex}>{play.play_index}</span>
-                              <span className={styles.playDescription}>{play.description}</span>
-                              {play.game_clock && (
-                                <span className={styles.playClock}>{play.game_clock}</span>
-                              )}
+              {/* Stage 1: Raw PBP Sample */}
+              <div
+                className={styles.pipelineSection}
+                onClick={() => toggleSection("pbp")}
+              >
+                <h3 className={styles.pipelineSectionTitle}>
+                  <span>{expandedSections.has("pbp") ? "▼" : "▶"}</span>
+                  1. Raw PBP Data ({pipeline.total_plays} plays, showing first 15)
+                </h3>
+                {expandedSections.has("pbp") && (
+                  <div className={styles.pipelineSectionContent}>
+                    <pre className={styles.codeBlock}>
+                      {JSON.stringify(pipeline.raw_pbp_sample, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+
+              {/* Stage 2: Chapters */}
+              <div
+                className={styles.pipelineSection}
+                onClick={() => toggleSection("chapters")}
+              >
+                <h3 className={styles.pipelineSectionTitle}>
+                  <span>{expandedSections.has("chapters") ? "▼" : "▶"}</span>
+                  2. Chapters ({pipeline.chapter_count} chapters)
+                </h3>
+                {expandedSections.has("chapters") && (
+                  <div className={styles.pipelineSectionContent}>
+                    {pipeline.chapters_summary.map((ch) => (
+                      <div key={ch.chapter_id} className={styles.chapterSummaryCard}>
+                        <div className={styles.chapterSummaryHeader}>
+                          <strong>Ch {ch.index}</strong> (Q{ch.period}) - Plays {ch.play_range}
+                        </div>
+                        <div className={styles.chapterSummaryReasons}>
+                          Reasons: {ch.reason_codes.join(", ")}
+                        </div>
+                        <div className={styles.chapterSamplePlays}>
+                          {ch.sample_plays.map((play, i) => (
+                            <div key={i} className={styles.samplePlay}>
+                              [{play.score}] {play.description}
                             </div>
                           ))}
                         </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Stage 3: Sections */}
+              <div
+                className={styles.pipelineSection}
+                onClick={() => toggleSection("sections")}
+              >
+                <h3 className={styles.pipelineSectionTitle}>
+                  <span>{expandedSections.has("sections") ? "▼" : "▶"}</span>
+                  3. Sections ({pipeline.section_count} sections)
+                </h3>
+                {expandedSections.has("sections") && (
+                  <div className={styles.pipelineSectionContent}>
+                    {pipeline.sections_summary.map((sec) => (
+                      <div key={sec.index} className={styles.sectionSummaryCard}>
+                        <div className={styles.sectionBeatType}>{sec.beat_type}</div>
+                        <div className={styles.sectionHeader}>{sec.header}</div>
+                        <div className={styles.sectionScore}>
+                          Score: {sec.start_score.home}-{sec.start_score.away} →{" "}
+                          {sec.end_score.home}-{sec.end_score.away}
+                        </div>
+                        <div className={styles.sectionChapters}>
+                          Chapters: {sec.chapters_included.join(", ")}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Stage 4: OpenAI Prompt */}
+              <div
+                className={styles.pipelineSection}
+                onClick={() => toggleSection("prompt")}
+              >
+                <h3 className={styles.pipelineSectionTitle}>
+                  <span>{expandedSections.has("prompt") ? "▼" : "▶"}</span>
+                  4. OpenAI Prompt (Target: {pipeline.target_word_count} words)
+                </h3>
+                {expandedSections.has("prompt") && (
+                  <div className={styles.pipelineSectionContent}>
+                    {pipeline.openai_prompt ? (
+                      <pre className={styles.promptBlock}>
+                        {pipeline.openai_prompt}
+                      </pre>
+                    ) : (
+                      <p className={styles.noData}>No prompt data available</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Stage 5: AI Response */}
+              <div
+                className={styles.pipelineSection}
+                onClick={() => toggleSection("response")}
+              >
+                <h3 className={styles.pipelineSectionTitle}>
+                  <span>{expandedSections.has("response") ? "▼" : "▶"}</span>
+                  5. AI Response (Raw JSON)
+                </h3>
+                {expandedSections.has("response") && (
+                  <div className={styles.pipelineSectionContent}>
+                    {pipeline.ai_raw_response ? (
+                      <pre className={styles.codeBlock}>
+                        {pipeline.ai_raw_response}
+                      </pre>
+                    ) : (
+                      <p className={styles.noData}>No response data available</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Stage 6: Final Story */}
+              <div
+                className={styles.pipelineSection}
+                onClick={() => toggleSection("story")}
+              >
+                <h3 className={styles.pipelineSectionTitle}>
+                  <span>{expandedSections.has("story") ? "▼" : "▶"}</span>
+                  6. Final Story ({pipeline.word_count} words)
+                </h3>
+                {expandedSections.has("story") && (
+                  <div className={styles.pipelineSectionContent}>
+                    {pipeline.compact_story ? (
+                      <div className={styles.storyContent}>
+                        {pipeline.compact_story.split('\n\n').map((p, i) => (
+                          <p key={i}>{p}</p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className={styles.noData}>No story generated</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className={styles.error}>Failed to load pipeline data</div>
+          )}
         </div>
       )}
     </div>

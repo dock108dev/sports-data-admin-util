@@ -101,24 +101,28 @@ def detect_virtual_boundaries(chapter: Chapter) -> list[BoundaryMarker]:
         # Lead change: one team was leading, now the other team is leading
         if prev_leader is not None and curr_leader is not None:
             if prev_leader != curr_leader:
-                boundaries.append(BoundaryMarker(
-                    boundary_type=BoundaryType.VIRTUAL,
-                    play_index=play.index,
-                    reason=VirtualBoundaryReason.LEAD_CHANGE.value,
-                    team_id=curr_leader,
-                    score_snapshot=score_snapshot,
-                ))
+                boundaries.append(
+                    BoundaryMarker(
+                        boundary_type=BoundaryType.VIRTUAL,
+                        play_index=play.index,
+                        reason=VirtualBoundaryReason.LEAD_CHANGE.value,
+                        team_id=curr_leader,
+                        score_snapshot=score_snapshot,
+                    )
+                )
 
         # --- TIE CREATION DETECTION ---
         # Tie creation: one team was leading, now it's tied
         if prev_leader is not None and curr_leader is None:
-            boundaries.append(BoundaryMarker(
-                boundary_type=BoundaryType.VIRTUAL,
-                play_index=play.index,
-                reason=VirtualBoundaryReason.TIE_CREATION.value,
-                team_id=None,
-                score_snapshot=score_snapshot,
-            ))
+            boundaries.append(
+                BoundaryMarker(
+                    boundary_type=BoundaryType.VIRTUAL,
+                    play_index=play.index,
+                    reason=VirtualBoundaryReason.TIE_CREATION.value,
+                    team_id=None,
+                    score_snapshot=score_snapshot,
+                )
+            )
 
         # --- RUN DETECTION ---
         if home_delta > 0 and away_delta == 0:
@@ -129,13 +133,15 @@ def detect_virtual_boundaries(chapter: Chapter) -> list[BoundaryMarker]:
             else:
                 # Previous run (if any) just ended
                 if run_team == "away" and run_announced:
-                    boundaries.append(BoundaryMarker(
-                        boundary_type=BoundaryType.VIRTUAL,
-                        play_index=play.index,
-                        reason=VirtualBoundaryReason.RUN_END.value,
-                        team_id="away",
-                        score_snapshot=score_snapshot,
-                    ))
+                    boundaries.append(
+                        BoundaryMarker(
+                            boundary_type=BoundaryType.VIRTUAL,
+                            play_index=play.index,
+                            reason=VirtualBoundaryReason.RUN_END.value,
+                            team_id="away",
+                            score_snapshot=score_snapshot,
+                        )
+                    )
                 # Start new home run
                 run_team = "home"
                 run_points = home_delta
@@ -144,13 +150,17 @@ def detect_virtual_boundaries(chapter: Chapter) -> list[BoundaryMarker]:
 
             # Check if we just reached run threshold
             if run_points >= RUN_THRESHOLD_POINTS and not run_announced:
-                boundaries.append(BoundaryMarker(
-                    boundary_type=BoundaryType.VIRTUAL,
-                    play_index=run_start_idx if run_start_idx is not None else play.index,
-                    reason=VirtualBoundaryReason.RUN_START.value,
-                    team_id="home",
-                    score_snapshot=score_snapshot,
-                ))
+                boundaries.append(
+                    BoundaryMarker(
+                        boundary_type=BoundaryType.VIRTUAL,
+                        play_index=run_start_idx
+                        if run_start_idx is not None
+                        else play.index,
+                        reason=VirtualBoundaryReason.RUN_START.value,
+                        team_id="home",
+                        score_snapshot=score_snapshot,
+                    )
+                )
                 run_announced = True
 
         elif away_delta > 0 and home_delta == 0:
@@ -161,13 +171,15 @@ def detect_virtual_boundaries(chapter: Chapter) -> list[BoundaryMarker]:
             else:
                 # Previous run (if any) just ended
                 if run_team == "home" and run_announced:
-                    boundaries.append(BoundaryMarker(
-                        boundary_type=BoundaryType.VIRTUAL,
-                        play_index=play.index,
-                        reason=VirtualBoundaryReason.RUN_END.value,
-                        team_id="home",
-                        score_snapshot=score_snapshot,
-                    ))
+                    boundaries.append(
+                        BoundaryMarker(
+                            boundary_type=BoundaryType.VIRTUAL,
+                            play_index=play.index,
+                            reason=VirtualBoundaryReason.RUN_END.value,
+                            team_id="home",
+                            score_snapshot=score_snapshot,
+                        )
+                    )
                 # Start new away run
                 run_team = "away"
                 run_points = away_delta
@@ -176,26 +188,32 @@ def detect_virtual_boundaries(chapter: Chapter) -> list[BoundaryMarker]:
 
             # Check if we just reached run threshold
             if run_points >= RUN_THRESHOLD_POINTS and not run_announced:
-                boundaries.append(BoundaryMarker(
-                    boundary_type=BoundaryType.VIRTUAL,
-                    play_index=run_start_idx if run_start_idx is not None else play.index,
-                    reason=VirtualBoundaryReason.RUN_START.value,
-                    team_id="away",
-                    score_snapshot=score_snapshot,
-                ))
+                boundaries.append(
+                    BoundaryMarker(
+                        boundary_type=BoundaryType.VIRTUAL,
+                        play_index=run_start_idx
+                        if run_start_idx is not None
+                        else play.index,
+                        reason=VirtualBoundaryReason.RUN_START.value,
+                        team_id="away",
+                        score_snapshot=score_snapshot,
+                    )
+                )
                 run_announced = True
 
         elif home_delta > 0 and away_delta > 0:
             # Both teams scored (unusual, e.g., and-one or correction)
             # End any active run
             if run_announced:
-                boundaries.append(BoundaryMarker(
-                    boundary_type=BoundaryType.VIRTUAL,
-                    play_index=play.index,
-                    reason=VirtualBoundaryReason.RUN_END.value,
-                    team_id=run_team,
-                    score_snapshot=score_snapshot,
-                ))
+                boundaries.append(
+                    BoundaryMarker(
+                        boundary_type=BoundaryType.VIRTUAL,
+                        play_index=play.index,
+                        reason=VirtualBoundaryReason.RUN_END.value,
+                        team_id=run_team,
+                        score_snapshot=score_snapshot,
+                    )
+                )
             # Reset run state
             run_team = None
             run_points = 0

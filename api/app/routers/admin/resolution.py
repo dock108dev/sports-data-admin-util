@@ -79,6 +79,7 @@ router = APIRouter()
 
 class TeamResolutionResult(BaseModel):
     """Single team resolution result."""
+
     source: str = Field(description="Source identifier (abbreviation)")
     resolved_id: int | None = Field(description="Internal team ID if resolved")
     resolved_name: str | None = Field(description="Resolved team name")
@@ -89,6 +90,7 @@ class TeamResolutionResult(BaseModel):
 
 class PlayerResolutionResult(BaseModel):
     """Single player resolution result."""
+
     source: str = Field(description="Source player name")
     resolved_name: str | None = Field(description="Normalized player name")
     status: str = Field(description="success, failed")
@@ -98,6 +100,7 @@ class PlayerResolutionResult(BaseModel):
 
 class ResolutionIssue(BaseModel):
     """Resolution issue requiring review."""
+
     source: str
     reason: str | None = None
     occurrences: int = Field(default=1)
@@ -106,6 +109,7 @@ class ResolutionIssue(BaseModel):
 
 class ResolutionStats(BaseModel):
     """Stats for a category of resolutions."""
+
     total: int
     resolved: int
     failed: int
@@ -114,6 +118,7 @@ class ResolutionStats(BaseModel):
 
 class ResolutionSummaryResponse(BaseModel):
     """Summary of all entity resolutions for a game or run."""
+
     game_id: int
     pipeline_run_id: int | None
     game_info: dict[str, Any] | None = Field(description="Game metadata")
@@ -128,6 +133,7 @@ class ResolutionSummaryResponse(BaseModel):
 
 class ResolutionDetailResponse(BaseModel):
     """Detailed resolution info for a single entity."""
+
     entity_type: str
     source_identifier: str
     resolved_id: int | None
@@ -159,7 +165,7 @@ async def get_game_resolution_summary(
     session: AsyncSession = Depends(get_db),
 ) -> ResolutionSummaryResponse:
     """Get the entity resolution summary for a game.
-    
+
     Returns all team and player resolutions with success/failure status.
     Also includes issues that may require manual review.
     """
@@ -174,16 +180,16 @@ async def get_game_resolution_summary(
         .where(db_models.SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
-    
+
     if not game:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Game {game_id} not found",
         )
-    
+
     # Get resolution summary
     summary = await get_resolution_summary_for_game(session, game_id)
-    
+
     # Build game info
     game_info = {
         "game_date": game.game_date.isoformat() if game.game_date else None,
@@ -194,7 +200,7 @@ async def get_game_resolution_summary(
         "league": game.league.code if game.league else None,
         "status": game.status,
     }
-    
+
     return ResolutionSummaryResponse(
         game_id=game_id,
         pipeline_run_id=summary.pipeline_run_id,
@@ -203,17 +209,21 @@ async def get_game_resolution_summary(
             total=summary.teams_total,
             resolved=summary.teams_resolved,
             failed=summary.teams_failed,
-            resolution_rate=round(summary.teams_resolved / summary.teams_total * 100, 1) if summary.teams_total > 0 else 0,
+            resolution_rate=round(summary.teams_resolved / summary.teams_total * 100, 1)
+            if summary.teams_total > 0
+            else 0,
         ),
         players=ResolutionStats(
             total=summary.players_total,
             resolved=summary.players_resolved,
             failed=summary.players_failed,
-            resolution_rate=round(summary.players_resolved / summary.players_total * 100, 1) if summary.players_total > 0 else 0,
+            resolution_rate=round(
+                summary.players_resolved / summary.players_total * 100, 1
+            )
+            if summary.players_total > 0
+            else 0,
         ),
-        team_resolutions=[
-            TeamResolutionResult(**r) for r in summary.team_resolutions
-        ],
+        team_resolutions=[TeamResolutionResult(**r) for r in summary.team_resolutions],
         player_resolutions=[
             PlayerResolutionResult(**r) for r in summary.player_resolutions
         ],
@@ -235,7 +245,7 @@ async def get_live_resolution_analysis(
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Analyze current PBP data for resolution issues.
-    
+
     This is a live analysis that doesn't require persisted resolution records.
     Useful for debugging resolution issues in existing games.
     """
@@ -249,13 +259,13 @@ async def get_live_resolution_analysis(
         .where(db_models.SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
-    
+
     if not game:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Game {game_id} not found",
         )
-    
+
     # Fetch plays
     plays_result = await session.execute(
         select(db_models.SportsGamePlay)
@@ -264,18 +274,18 @@ async def get_live_resolution_analysis(
         .order_by(db_models.SportsGamePlay.play_index)
     )
     plays = list(plays_result.scalars().all())
-    
+
     if not plays:
         return {
             "game_id": game_id,
             "status": "no_pbp_data",
             "message": "No play-by-play data found for this game",
         }
-    
+
     # Analyze resolutions
     team_abbrevs_seen: dict[str, dict[str, Any]] = {}
     player_names_seen: dict[str, dict[str, Any]] = {}
-    
+
     for play in plays:
         # Team analysis
         raw_team = play.raw_data.get("teamTricode") or play.raw_data.get("team")
@@ -293,7 +303,7 @@ async def get_live_resolution_analysis(
             else:
                 team_abbrevs_seen[raw_team]["occurrences"] += 1
                 team_abbrevs_seen[raw_team]["last_play"] = play.play_index
-        
+
         # Player analysis
         if play.player_name:
             name = play.player_name.strip()
@@ -306,36 +316,41 @@ async def get_live_resolution_analysis(
                 }
             else:
                 player_names_seen[name]["occurrences"] += 1
-    
+
     # Find issues
     unresolved_teams = [
         t for t in team_abbrevs_seen.values() if t["status"] == "failed"
     ]
-    
+
     # Expected teams from game context
     expected_teams = []
     if game.home_team:
-        expected_teams.append({
-            "abbrev": game.home_team.abbreviation,
-            "name": game.home_team.name,
-            "team_id": game.home_team.id,
-            "role": "home",
-        })
+        expected_teams.append(
+            {
+                "abbrev": game.home_team.abbreviation,
+                "name": game.home_team.name,
+                "team_id": game.home_team.id,
+                "role": "home",
+            }
+        )
     if game.away_team:
-        expected_teams.append({
-            "abbrev": game.away_team.abbreviation,
-            "name": game.away_team.name,
-            "team_id": game.away_team.id,
-            "role": "away",
-        })
-    
+        expected_teams.append(
+            {
+                "abbrev": game.away_team.abbreviation,
+                "name": game.away_team.name,
+                "team_id": game.away_team.id,
+                "role": "away",
+            }
+        )
+
     # Check for unexpected teams
     expected_abbrevs = {t["abbrev"].upper() for t in expected_teams}
     unexpected_teams = [
-        t for t in team_abbrevs_seen.values()
+        t
+        for t in team_abbrevs_seen.values()
         if t["source"].upper() not in expected_abbrevs
     ]
-    
+
     return {
         "game_id": game_id,
         "total_plays": len(plays),
@@ -343,7 +358,9 @@ async def get_live_resolution_analysis(
         "analysis": {
             "teams": {
                 "unique_abbreviations": len(team_abbrevs_seen),
-                "resolved": sum(1 for t in team_abbrevs_seen.values() if t["status"] == "success"),
+                "resolved": sum(
+                    1 for t in team_abbrevs_seen.values() if t["status"] == "success"
+                ),
                 "unresolved": len(unresolved_teams),
                 "details": list(team_abbrevs_seen.values()),
             },
@@ -379,17 +396,17 @@ async def get_run_resolution_summary(
     session: AsyncSession = Depends(get_db),
 ) -> ResolutionSummaryResponse:
     """Get the entity resolution summary for a pipeline run.
-    
+
     Returns resolutions that were tracked during this specific run.
     """
     summary = await get_resolution_summary_for_run(session, run_id)
-    
+
     if not summary:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No resolution data found for pipeline run {run_id}",
         )
-    
+
     # Fetch game info
     game_result = await session.execute(
         select(db_models.SportsGame)
@@ -400,7 +417,7 @@ async def get_run_resolution_summary(
         .where(db_models.SportsGame.id == summary.game_id)
     )
     game = game_result.scalar_one_or_none()
-    
+
     game_info = None
     if game:
         game_info = {
@@ -408,7 +425,7 @@ async def get_run_resolution_summary(
             "home_team": game.home_team.name if game.home_team else None,
             "away_team": game.away_team.name if game.away_team else None,
         }
-    
+
     return ResolutionSummaryResponse(
         game_id=summary.game_id,
         pipeline_run_id=run_id,
@@ -417,17 +434,21 @@ async def get_run_resolution_summary(
             total=summary.teams_total,
             resolved=summary.teams_resolved,
             failed=summary.teams_failed,
-            resolution_rate=round(summary.teams_resolved / summary.teams_total * 100, 1) if summary.teams_total > 0 else 0,
+            resolution_rate=round(summary.teams_resolved / summary.teams_total * 100, 1)
+            if summary.teams_total > 0
+            else 0,
         ),
         players=ResolutionStats(
             total=summary.players_total,
             resolved=summary.players_resolved,
             failed=summary.players_failed,
-            resolution_rate=round(summary.players_resolved / summary.players_total * 100, 1) if summary.players_total > 0 else 0,
+            resolution_rate=round(
+                summary.players_resolved / summary.players_total * 100, 1
+            )
+            if summary.players_total > 0
+            else 0,
         ),
-        team_resolutions=[
-            TeamResolutionResult(**r) for r in summary.team_resolutions
-        ],
+        team_resolutions=[TeamResolutionResult(**r) for r in summary.team_resolutions],
         player_resolutions=[
             PlayerResolutionResult(**r) for r in summary.player_resolutions
         ],
@@ -457,7 +478,7 @@ async def get_entity_resolution_detail(
     session: AsyncSession = Depends(get_db),
 ) -> ResolutionDetailResponse:
     """Get detailed resolution information for a specific entity.
-    
+
     Useful for debugging why a particular team or player failed to resolve.
     """
     if entity_type not in ("team", "player"):
@@ -465,7 +486,7 @@ async def get_entity_resolution_detail(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="entity_type must be 'team' or 'player'",
         )
-    
+
     result = await session.execute(
         select(db_models.EntityResolution)
         .where(
@@ -477,13 +498,13 @@ async def get_entity_resolution_detail(
         .limit(1)
     )
     record = result.scalar_one_or_none()
-    
+
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No resolution found for {entity_type} '{source_identifier}' in game {game_id}",
         )
-    
+
     return ResolutionDetailResponse(
         entity_type=record.entity_type,
         source_identifier=record.source_identifier,
@@ -524,17 +545,17 @@ async def list_games_with_resolution_issues(
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """List games that have resolution issues.
-    
+
     Useful for finding games that need attention or data fixes.
     """
     query = select(
         db_models.EntityResolution.game_id,
         func.count(db_models.EntityResolution.id).label("issue_count"),
     ).group_by(db_models.EntityResolution.game_id)
-    
+
     if entity_type:
         query = query.where(db_models.EntityResolution.entity_type == entity_type)
-    
+
     if status_filter == "failed":
         query = query.where(db_models.EntityResolution.resolution_status == "failed")
     elif status_filter == "ambiguous":
@@ -543,12 +564,14 @@ async def list_games_with_resolution_issues(
         query = query.where(
             db_models.EntityResolution.resolution_status.in_(["failed", "ambiguous"])
         )
-    
-    query = query.order_by(func.count(db_models.EntityResolution.id).desc()).limit(limit)
-    
+
+    query = query.order_by(func.count(db_models.EntityResolution.id).desc()).limit(
+        limit
+    )
+
     result = await session.execute(query)
     rows = result.all()
-    
+
     # Fetch game details for the results
     game_issues = []
     for game_id, issue_count in rows:
@@ -561,16 +584,18 @@ async def list_games_with_resolution_issues(
             .where(db_models.SportsGame.id == game_id)
         )
         game = game_result.scalar_one_or_none()
-        
+
         if game:
-            game_issues.append({
-                "game_id": game_id,
-                "game_date": game.game_date.isoformat() if game.game_date else None,
-                "home_team": game.home_team.name if game.home_team else None,
-                "away_team": game.away_team.name if game.away_team else None,
-                "issue_count": issue_count,
-            })
-    
+            game_issues.append(
+                {
+                    "game_id": game_id,
+                    "game_date": game.game_date.isoformat() if game.game_date else None,
+                    "home_team": game.home_team.name if game.home_team else None,
+                    "away_team": game.away_team.name if game.away_team else None,
+                    "issue_count": issue_count,
+                }
+            )
+
     return {
         "filter": {
             "entity_type": entity_type,

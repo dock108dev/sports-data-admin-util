@@ -45,12 +45,14 @@ def _extract_plays(timeline: Sequence[dict[str, Any]]) -> list[Play]:
     plays = []
     for i, event in enumerate(timeline):
         if event.get("event_type") == "pbp":
-            plays.append(Play(
-                index=i,
-                event_type="pbp",
-                raw_data=event,
-            ))
-    
+            plays.append(
+                Play(
+                    index=i,
+                    event_type="pbp",
+                    raw_data=event,
+                )
+            )
+
     return plays
 
 
@@ -115,11 +117,13 @@ def _detect_boundaries(plays: list[Play], sport: str = "NBA") -> list[ChapterBou
         if triggered_codes:
             resolved_codes = resolve_boundary_precedence(triggered_codes)
             if resolved_codes:
-                boundaries.append(ChapterBoundary(
-                    play_index=play.index,
-                    reason_codes=[code.value for code in resolved_codes],
-                ))
-    
+                boundaries.append(
+                    ChapterBoundary(
+                        play_index=play.index,
+                        reason_codes=[code.value for code in resolved_codes],
+                    )
+                )
+
     logger.info(
         "chapter_boundaries_detected",
         extra={
@@ -129,44 +133,46 @@ def _detect_boundaries(plays: list[Play], sport: str = "NBA") -> list[ChapterBou
             "reason_code_distribution": _count_reason_codes(boundaries),
         },
     )
-    
+
     return boundaries
 
 
 def _detect_boundaries_simple(plays: list[Play]) -> list[ChapterBoundary]:
     """Fallback boundary detection for non-NBA sports.
-    
+
     Simple quarter/period change detection.
-    
+
     Args:
         plays: All plays in chronological order
-        
+
     Returns:
         List of ChapterBoundary objects
     """
     boundaries = []
     prev_quarter = None
-    
+
     for play in plays:
         quarter = play.raw_data.get("quarter")
-        
+
         if prev_quarter is not None and quarter != prev_quarter:
-            boundaries.append(ChapterBoundary(
-                play_index=play.index,
-                reason_codes=["PERIOD_START"],
-            ))
-        
+            boundaries.append(
+                ChapterBoundary(
+                    play_index=play.index,
+                    reason_codes=["PERIOD_START"],
+                )
+            )
+
         prev_quarter = quarter
-    
+
     return boundaries
 
 
 def _count_reason_codes(boundaries: list[ChapterBoundary]) -> dict[str, int]:
     """Count reason code distribution for logging.
-    
+
     Args:
         boundaries: List of boundaries
-        
+
     Returns:
         Dict of reason code -> count
     """
@@ -188,18 +194,18 @@ def _extract_period_and_time(plays: list[Play]) -> tuple[int | None, TimeRange |
     """
     if not plays:
         return None, None
-    
+
     # Extract period from first play
     period = plays[0].raw_data.get("quarter")
-    
+
     # Extract time range if available
     start_clock = plays[0].raw_data.get("game_clock")
     end_clock = plays[-1].raw_data.get("game_clock")
-    
+
     time_range = None
     if start_clock is not None or end_clock is not None:
         time_range = TimeRange(start=start_clock, end=end_clock)
-    
+
     return period, time_range
 
 
@@ -223,21 +229,21 @@ def _create_chapters(
     """
     if not plays:
         return []
-    
+
     chapters = []
     chapter_id = 1
     current_start_idx = 0
-    
+
     # Sort boundaries by play index
     sorted_boundaries = sorted(boundaries, key=lambda b: b.play_index)
-    
+
     # Collect reason codes for each boundary index
     boundary_reasons: dict[int, list[str]] = {}
     for boundary in sorted_boundaries:
         if boundary.play_index not in boundary_reasons:
             boundary_reasons[boundary.play_index] = []
         boundary_reasons[boundary.play_index].extend(boundary.reason_codes)
-    
+
     # If no boundaries, create one chapter with all plays
     if not sorted_boundaries:
         period, time_range = _extract_period_and_time(plays)
@@ -256,19 +262,18 @@ def _create_chapters(
         chapter.virtual_boundaries = detect_virtual_boundaries(chapter)
         chapters.append(chapter)
         return chapters
-    
+
     # Create chapters between boundaries
     for boundary in sorted_boundaries:
         # Skip if this boundary is at or before current start
         if boundary.play_index <= current_start_idx:
             continue
-        
+
         # Get plays for this chapter (from current_start to boundary)
         chapter_plays = [
-            p for p in plays
-            if current_start_idx <= p.index < boundary.play_index
+            p for p in plays if current_start_idx <= p.index < boundary.play_index
         ]
-        
+
         if chapter_plays:
             # Extract period and time range
             period, time_range = _extract_period_and_time(chapter_plays)
@@ -295,9 +300,9 @@ def _create_chapters(
             chapter.virtual_boundaries = detect_virtual_boundaries(chapter)
             chapters.append(chapter)
             chapter_id += 1
-        
+
         current_start_idx = boundary.play_index
-    
+
     # Create final chapter (from last boundary to end)
     final_plays = [p for p in plays if p.index >= current_start_idx]
     if final_plays:
@@ -320,7 +325,7 @@ def _create_chapters(
         chapter.boundary_type = get_boundary_type_for_reasons(reason_codes)
         chapter.virtual_boundaries = detect_virtual_boundaries(chapter)
         chapters.append(chapter)
-    
+
     logger.info(
         "chapters_created",
         extra={
@@ -328,7 +333,7 @@ def _create_chapters(
             "total_plays": len(plays),
         },
     )
-    
+
     return chapters
 
 
@@ -367,13 +372,13 @@ def build_chapters(
     """
     if not timeline:
         raise ValueError("Cannot build chapters from empty timeline")
-    
+
     # Step 1: Extract plays
     plays = _extract_plays(timeline)
-    
+
     if not plays:
         raise ValueError("No canonical plays found in timeline")
-    
+
     logger.info(
         "chapter_building_started",
         extra={
@@ -382,7 +387,7 @@ def build_chapters(
             "play_count": len(plays),
         },
     )
-    
+
     # Step 2: Detect boundaries
     boundaries = _detect_boundaries(plays, sport)
 
@@ -398,7 +403,7 @@ def build_chapters(
         reading_time_estimate_minutes=None,  # Can be computed later
         metadata=metadata or {},
     )
-    
+
     logger.info(
         "chapter_building_complete",
         extra={
@@ -408,5 +413,5 @@ def build_chapters(
             "total_plays": story.total_plays,
         },
     )
-    
+
     return story

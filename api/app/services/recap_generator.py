@@ -41,11 +41,23 @@ def _sanitize_pre_reveal(text: str) -> str:
 
 def _momentum_sentence(plays: Iterable[db_models.SportsGamePlay]) -> str:
     play_types = {play.play_type or "" for play in plays}
-    if any(term in play_type for play_type in play_types for term in ("turnover", "interception", "fumble", "giveaway")):
+    if any(
+        term in play_type
+        for play_type in play_types
+        for term in ("turnover", "interception", "fumble", "giveaway")
+    ):
         return "Momentum swung after a turnover-heavy stretch."
-    if any(term in play_type for play_type in play_types for term in ("shot", "goal", "touchdown", "score")):
+    if any(
+        term in play_type
+        for play_type in play_types
+        for term in ("shot", "goal", "touchdown", "score")
+    ):
         return "Scoring bursts kept the tempo high."
-    if any(term in play_type for play_type in play_types for term in ("timeout", "challenge", "review")):
+    if any(
+        term in play_type
+        for play_type in play_types
+        for term in ("timeout", "challenge", "review")
+    ):
         return "A reset in play shifted the rhythm."
     return "Both sides traded possessions as the pace settled."
 
@@ -59,7 +71,9 @@ def _period_sentences(
         periods.setdefault(play.quarter, []).append(play)
 
     sentences: list[str] = []
-    for period, period_plays in sorted(periods.items(), key=lambda item: (item[0] is None, item[0] or 0)):
+    for period, period_plays in sorted(
+        periods.items(), key=lambda item: (item[0] is None, item[0] or 0)
+    ):
         descriptions = [play.description for play in period_plays if play.description]
         if not descriptions:
             continue
@@ -124,7 +138,9 @@ def build_recap(
     away_name = game.away_team.name if game.away_team else "Away"
 
     summary_parts: list[str] = []
-    summary_parts.append(f"{away_name} at {home_name} featured stretches of back-and-forth play.")
+    summary_parts.append(
+        f"{away_name} at {home_name} featured stretches of back-and-forth play."
+    )
     summary_parts.append(_momentum_sentence(plays))
     summary_parts.extend(_period_sentences(plays, reveal_level))
 

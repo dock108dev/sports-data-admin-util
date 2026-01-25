@@ -8,18 +8,25 @@ from sqlalchemy import exists, select
 
 from ... import db_models
 from ...db import AsyncSession, get_db
-from ...services.timeline_generator import TimelineGenerationError, generate_timeline_artifact
+from ...services.timeline_generator import (
+    TimelineGenerationError,
+    generate_timeline_artifact,
+)
 
 router = APIRouter()
 
 
 class TimelineGenerationRequest(BaseModel):
     """Request to generate timeline for a specific game."""
-    timeline_version: str = Field(default="v1", description="Timeline version identifier")
+
+    timeline_version: str = Field(
+        default="v1", description="Timeline version identifier"
+    )
 
 
 class TimelineGenerationResponse(BaseModel):
     """Response after generating a timeline."""
+
     game_id: int
     timeline_version: str
     success: bool
@@ -28,6 +35,7 @@ class TimelineGenerationResponse(BaseModel):
 
 class MissingTimelineGame(BaseModel):
     """Game missing timeline artifact."""
+
     game_id: int
     game_date: str
     league: str
@@ -39,12 +47,14 @@ class MissingTimelineGame(BaseModel):
 
 class MissingTimelinesResponse(BaseModel):
     """List of games missing timeline artifacts."""
+
     games: list[MissingTimelineGame]
     total_count: int
 
 
 class BatchGenerationRequest(BaseModel):
     """Request to generate timelines for multiple games."""
+
     league_code: str = Field(..., description="League to process (NBA, NHL, NCAAB)")
     days_back: int = Field(default=7, ge=1, le=30, description="Days back to check")
     max_games: int | None = Field(default=None, description="Max games to process")
@@ -52,6 +62,7 @@ class BatchGenerationRequest(BaseModel):
 
 class BatchGenerationResponse(BaseModel):
     """Response after batch timeline generation."""
+
     job_id: str
     message: str
     games_found: int
@@ -65,7 +76,7 @@ async def generate_timeline_for_game(
 ) -> TimelineGenerationResponse:
     """
     Generate timeline artifact for a specific game.
-    
+
     This endpoint triggers timeline generation for a single game. The game must:
     - Exist in the database
     - Be in final/completed status
@@ -75,17 +86,16 @@ async def generate_timeline_for_game(
     game = await session.get(db_models.SportsGame, game_id)
     if not game:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Game {game_id} not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Game {game_id} not found"
         )
-    
+
     # Check if game is completed
     if game.status != db_models.GameStatus.final.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Game {game_id} is not completed (status: {game.status})"
+            detail=f"Game {game_id} is not completed (status: {game.status})",
         )
-    
+
     # Check if PBP data exists
     pbp_exists = await session.scalar(
         select(exists().where(db_models.SportsGamePlay.game_id == game_id))
@@ -93,9 +103,9 @@ async def generate_timeline_for_game(
     if not pbp_exists:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Game {game_id} has no play-by-play data"
+            detail=f"Game {game_id} has no play-by-play data",
         )
-    
+
     # Generate timeline
     try:
         await generate_timeline_artifact(
@@ -103,18 +113,18 @@ async def generate_timeline_for_game(
             game_id,
             timeline_version=request.timeline_version,
         )
-        
+
         return TimelineGenerationResponse(
             game_id=game_id,
             timeline_version=request.timeline_version,
             success=True,
             message="Timeline generated successfully",
         )
-        
+
     except TimelineGenerationError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Timeline generation failed: {str(exc)}"
+            detail=f"Timeline generation failed: {str(exc)}",
         ) from exc
 
 
@@ -126,14 +136,14 @@ async def list_missing_timelines(
 ) -> MissingTimelinesResponse:
     """
     List games that have PBP data but are missing timeline artifacts.
-    
+
     Returns completed games from the specified time range that need
     timeline generation.
     """
     from datetime import timedelta
     from sqlalchemy.orm import aliased
     from ...utils.datetime_utils import now_utc
-    
+
     # Get league
     league_result = await session.execute(
         select(db_models.SportsLeague).where(db_models.SportsLeague.code == league_code)
@@ -142,15 +152,15 @@ async def list_missing_timelines(
     if not league:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"League {league_code} not found"
+            detail=f"League {league_code} not found",
         )
-    
+
     cutoff_date = now_utc() - timedelta(days=days_back)
-    
+
     # Create aliases for home and away teams
     HomeTeam = aliased(db_models.SportsTeam)
     AwayTeam = aliased(db_models.SportsTeam)
-    
+
     # Find games missing timelines
     query = (
         select(
@@ -161,7 +171,10 @@ async def list_missing_timelines(
             HomeTeam.name.label("home_team"),
             AwayTeam.name.label("away_team"),
         )
-        .join(db_models.SportsLeague, db_models.SportsGame.league_id == db_models.SportsLeague.id)
+        .join(
+            db_models.SportsLeague,
+            db_models.SportsGame.league_id == db_models.SportsLeague.id,
+        )
         .join(
             HomeTeam,
             db_models.SportsGame.home_team_id == HomeTeam.id,
@@ -187,10 +200,10 @@ async def list_missing_timelines(
         )
         .order_by(db_models.SportsGame.game_date.desc())
     )
-    
+
     result = await session.execute(query)
     rows = result.all()
-    
+
     games = [
         MissingTimelineGame(
             game_id=row.id,
@@ -203,7 +216,7 @@ async def list_missing_timelines(
         )
         for row in rows
     ]
-    
+
     return MissingTimelinesResponse(
         games=games,
         total_count=len(games),
@@ -212,6 +225,7 @@ async def list_missing_timelines(
 
 class SyncBatchGenerationResponse(BaseModel):
     """Response after synchronous batch timeline generation."""
+
     games_processed: int
     games_successful: int
     games_failed: int
@@ -221,13 +235,17 @@ class SyncBatchGenerationResponse(BaseModel):
 
 class RegenerateBatchRequest(BaseModel):
     """Request to regenerate timelines for specific games or all games with existing timelines."""
-    game_ids: list[int] | None = Field(default=None, description="Specific game IDs to regenerate (None = all)")
+
+    game_ids: list[int] | None = Field(
+        default=None, description="Specific game IDs to regenerate (None = all)"
+    )
     league_code: str = Field(..., description="League to filter by (NBA, NHL, NCAAB)")
     days_back: int = Field(default=7, ge=1, le=90, description="Days back to check")
 
 
 class ExistingTimelineGame(BaseModel):
     """Game with an existing timeline artifact."""
+
     game_id: int
     game_date: str
     league: str
@@ -239,6 +257,7 @@ class ExistingTimelineGame(BaseModel):
 
 class ExistingTimelinesResponse(BaseModel):
     """List of games with existing timeline artifacts."""
+
     games: list[ExistingTimelineGame]
     total_count: int
 
@@ -250,28 +269,30 @@ async def generate_timelines_batch(
 ) -> SyncBatchGenerationResponse:
     """
     Generate timelines for all games missing them (synchronous).
-    
+
     This endpoint generates timelines directly in the API. It processes
     games one by one and returns results when complete.
-    
+
     Note: For large batches, this may take several minutes.
     """
     from datetime import timedelta
     from ...utils.datetime_utils import now_utc
-    
+
     # Verify league exists
     league_result = await session.execute(
-        select(db_models.SportsLeague).where(db_models.SportsLeague.code == request.league_code)
+        select(db_models.SportsLeague).where(
+            db_models.SportsLeague.code == request.league_code
+        )
     )
     league = league_result.scalar_one_or_none()
     if not league:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"League {request.league_code} not found"
+            detail=f"League {request.league_code} not found",
         )
-    
+
     cutoff_date = now_utc() - timedelta(days=request.days_back)
-    
+
     # Find games needing timelines
     query = (
         select(db_models.SportsGame.id)
@@ -290,13 +311,13 @@ async def generate_timelines_batch(
         )
         .order_by(db_models.SportsGame.game_date.desc())
     )
-    
+
     if request.max_games:
         query = query.limit(request.max_games)
-    
+
     result = await session.execute(query)
     game_ids = [row[0] for row in result.all()]
-    
+
     if not game_ids:
         return SyncBatchGenerationResponse(
             games_processed=0,
@@ -305,15 +326,16 @@ async def generate_timelines_batch(
             failed_game_ids=[],
             message="No games found needing timeline generation",
         )
-    
+
     # Generate timelines for each game
     import logging
+
     logger = logging.getLogger(__name__)
-    
+
     successful = 0
     failed = 0
     failed_ids: list[int] = []
-    
+
     for game_id in game_ids:
         try:
             await generate_timeline_artifact(
@@ -329,7 +351,7 @@ async def generate_timelines_batch(
             failed += 1
             failed_ids.append(game_id)
             logger.error(f"Failed to generate timeline for game {game_id}: {exc}")
-    
+
     return SyncBatchGenerationResponse(
         games_processed=len(game_ids),
         games_successful=successful,
@@ -351,7 +373,7 @@ async def list_existing_timelines(
     from datetime import timedelta
     from sqlalchemy.orm import aliased
     from ...utils.datetime_utils import now_utc
-    
+
     # Get league
     league_result = await session.execute(
         select(db_models.SportsLeague).where(db_models.SportsLeague.code == league_code)
@@ -360,15 +382,15 @@ async def list_existing_timelines(
     if not league:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"League {league_code} not found"
+            detail=f"League {league_code} not found",
         )
-    
+
     cutoff_date = now_utc() - timedelta(days=days_back)
-    
+
     # Create aliases for home and away teams
     HomeTeam = aliased(db_models.SportsTeam)
     AwayTeam = aliased(db_models.SportsTeam)
-    
+
     # Find games with existing timelines
     query = (
         select(
@@ -378,9 +400,14 @@ async def list_existing_timelines(
             db_models.SportsLeague.code.label("league_code"),
             HomeTeam.name.label("home_team"),
             AwayTeam.name.label("away_team"),
-            db_models.SportsGameTimelineArtifact.generated_at.label("timeline_generated_at"),
+            db_models.SportsGameTimelineArtifact.generated_at.label(
+                "timeline_generated_at"
+            ),
         )
-        .join(db_models.SportsLeague, db_models.SportsGame.league_id == db_models.SportsLeague.id)
+        .join(
+            db_models.SportsLeague,
+            db_models.SportsGame.league_id == db_models.SportsLeague.id,
+        )
         .join(HomeTeam, db_models.SportsGame.home_team_id == HomeTeam.id)
         .join(AwayTeam, db_models.SportsGame.away_team_id == AwayTeam.id)
         .join(
@@ -393,10 +420,10 @@ async def list_existing_timelines(
         )
         .order_by(db_models.SportsGame.game_date.desc())
     )
-    
+
     result = await session.execute(query)
     rows = result.all()
-    
+
     games = [
         ExistingTimelineGame(
             game_id=row.id,
@@ -409,7 +436,7 @@ async def list_existing_timelines(
         )
         for row in rows
     ]
-    
+
     return ExistingTimelinesResponse(
         games=games,
         total_count=len(games),
@@ -423,37 +450,39 @@ async def regenerate_timelines_batch(
 ) -> SyncBatchGenerationResponse:
     """
     Regenerate timelines for games that already have timeline artifacts.
-    
+
     Use this to refresh timelines after social posts have been backfilled
     or when timeline logic has been updated.
-    
+
     If game_ids is provided, only those games are regenerated.
     Otherwise, all games with existing timelines in the date range are regenerated.
     """
     from datetime import timedelta
     import logging
     from ...utils.datetime_utils import now_utc
-    
+
     logger = logging.getLogger(__name__)
-    
+
     # Verify league exists
     league_result = await session.execute(
-        select(db_models.SportsLeague).where(db_models.SportsLeague.code == request.league_code)
+        select(db_models.SportsLeague).where(
+            db_models.SportsLeague.code == request.league_code
+        )
     )
     league = league_result.scalar_one_or_none()
     if not league:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"League {request.league_code} not found"
+            detail=f"League {request.league_code} not found",
         )
-    
+
     if request.game_ids:
         # Regenerate specific games
         game_ids = request.game_ids
     else:
         # Find all games with existing timelines in date range
         cutoff_date = now_utc() - timedelta(days=request.days_back)
-        
+
         query = (
             select(db_models.SportsGame.id)
             .join(
@@ -465,10 +494,10 @@ async def regenerate_timelines_batch(
                 db_models.SportsGame.game_date >= cutoff_date,
             )
         )
-        
+
         result = await session.execute(query)
         game_ids = [row[0] for row in result.all()]
-    
+
     if not game_ids:
         return SyncBatchGenerationResponse(
             games_processed=0,
@@ -477,12 +506,12 @@ async def regenerate_timelines_batch(
             failed_game_ids=[],
             message="No games found for regeneration",
         )
-    
+
     # Regenerate timelines for each game
     successful = 0
     failed = 0
     failed_ids: list[int] = []
-    
+
     for game_id in game_ids:
         try:
             await generate_timeline_artifact(
@@ -500,7 +529,7 @@ async def regenerate_timelines_batch(
             failed += 1
             failed_ids.append(game_id)
             logger.error(f"Failed to regenerate timeline for game {game_id}: {exc}")
-    
+
     return SyncBatchGenerationResponse(
         games_processed=len(game_ids),
         games_successful=successful,

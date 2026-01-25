@@ -46,6 +46,19 @@ from .running_stats import (
     compute_section_delta,
     compute_section_deltas_from_snapshots,
 )
+from .player_identity import (
+    # Data structures
+    RosterPlayer,
+    ResolvedPlayer,
+    ResolutionStats,
+    # Functions
+    normalize_for_matching,
+    extract_initial_and_lastname,
+    is_truncated_name,
+    build_roster_from_boxscore,
+    # Resolver class
+    PlayerIdentityResolver,
+)
 from .beat_classifier import (
     # Types
     BeatType,
@@ -105,6 +118,37 @@ from .story_section import (
     TeamStatDelta as SectionTeamStatDelta,
     PlayerStatDelta as SectionPlayerStatDelta,
     ForcedBreakReason,
+    # Player Prominence types and functions
+    PlayerProminence,
+    compute_player_prominence,
+    select_prominent_players,
+    # Constants (Signal thresholds)
+    SECTION_MIN_POINTS_THRESHOLD,
+    SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD,
+    # Constants (Thin section)
+    THIN_SECTION_MAX_POINTS,
+    THIN_SECTION_MAX_SCORING_PLAYS,
+    # Constants (Lumpy section / dominance capping)
+    LUMPY_DOMINANCE_THRESHOLD_PCT,
+    DOMINANCE_CAP_PCT,
+    # Beat compatibility
+    INCOMPATIBLE_BEAT_PAIRS,
+    CRUNCH_TIER_BEATS,
+    NON_CRUNCH_BEATS,
+    are_beats_compatible_for_merge,
+    # Signal evaluation
+    count_meaningful_events,
+    get_section_total_points,
+    is_section_underpowered,
+    handle_underpowered_sections,
+    # Thin section functions
+    count_section_scoring_plays,
+    is_section_thin,
+    handle_thin_sections,
+    # Lumpy section functions
+    get_dominant_player_share,
+    is_section_lumpy,
+    apply_dominance_cap,
     # Functions
     build_story_sections,
     enforce_section_count,
@@ -148,7 +192,12 @@ from .story_renderer import (
     StoryRenderInput,
     StoryRenderResult,
     StoryRenderError,
+    # Constants (section length bounds)
+    SECTION_MIN_WORDS,
+    SECTION_MAX_WORDS,
+    SECTION_AVG_WORDS,
     # Functions
+    compute_target_word_count,
     build_section_render_input,
     build_story_render_input,
     build_render_prompt,
@@ -231,6 +280,15 @@ __all__ = [
     "build_running_snapshots",
     "compute_section_delta",
     "compute_section_deltas_from_snapshots",
+    # Player identity resolution
+    "RosterPlayer",
+    "ResolvedPlayer",
+    "ResolutionStats",
+    "normalize_for_matching",
+    "extract_initial_and_lastname",
+    "is_truncated_name",
+    "build_roster_from_boxscore",
+    "PlayerIdentityResolver",
     # Beat classifier
     "BeatType",
     "BeatDescriptor",  # Phase 2.1
@@ -277,6 +335,38 @@ __all__ = [
     "SectionTeamStatDelta",
     "SectionPlayerStatDelta",
     "ForcedBreakReason",
+    # Player Prominence
+    "PlayerProminence",
+    "compute_player_prominence",
+    "select_prominent_players",
+    # Signal thresholds
+    "SECTION_MIN_POINTS_THRESHOLD",
+    "SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD",
+    # Thin section constants
+    "THIN_SECTION_MAX_POINTS",
+    "THIN_SECTION_MAX_SCORING_PLAYS",
+    # Lumpy section / dominance capping constants
+    "LUMPY_DOMINANCE_THRESHOLD_PCT",
+    "DOMINANCE_CAP_PCT",
+    # Beat compatibility
+    "INCOMPATIBLE_BEAT_PAIRS",
+    "CRUNCH_TIER_BEATS",
+    "NON_CRUNCH_BEATS",
+    "are_beats_compatible_for_merge",
+    # Signal evaluation
+    "count_meaningful_events",
+    "get_section_total_points",
+    "is_section_underpowered",
+    "handle_underpowered_sections",
+    # Thin section functions
+    "count_section_scoring_plays",
+    "is_section_thin",
+    "handle_thin_sections",
+    # Lumpy section functions
+    "get_dominant_player_share",
+    "is_section_lumpy",
+    "apply_dominance_cap",
+    # Section functions
     "build_story_sections",
     "enforce_section_count",
     "generate_section_notes",
@@ -308,6 +398,11 @@ __all__ = [
     "StoryRenderInput",
     "StoryRenderResult",
     "StoryRenderError",
+    # Section length bounds (Phase: Validation Failures)
+    "SECTION_MIN_WORDS",
+    "SECTION_MAX_WORDS",
+    "SECTION_AVG_WORDS",
+    "compute_target_word_count",
     "build_section_render_input",
     "build_story_render_input",
     "build_render_prompt",

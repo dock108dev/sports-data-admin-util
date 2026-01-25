@@ -6,12 +6,14 @@ This module constructs StorySections from chapters, beat types, and stat deltas.
 DESIGN PRINCIPLES:
 - Deterministic: Same input → same sections every run
 - Structural: Builds outline only, no narrative generation
-- Constrained: 3-10 sections enforced
+- Constrained: 0-10 sections (underpowered sections removed)
 - No AI usage
+- No plays may ever be dropped
 
 COLLAPSE RULES:
 - Adjacent chapters with same beat_type MAY merge
 - Forced breaks ALWAYS override merging
+- Incompatible beats NEVER merge (beat-aware rules)
 
 FORCED SECTION BREAKS:
 1. Overtime start
@@ -20,193 +22,118 @@ FORCED SECTION BREAKS:
 4. Quarter boundary
 5. Beat change (fallback)
 
-SECTION COUNT CONSTRAINTS:
-- Minimum: 3 sections
-- Maximum: 10 sections
-- Protected from merging: opening, CRUNCH_SETUP, CLOSING_SEQUENCE, OVERTIME
+See section_merge.py for merge rules and section_signal.py for signal thresholds.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any
-
 from .types import Chapter
-from .beat_classifier import (
-    BeatType,
-    BeatClassification,
-    BeatDescriptor,
-    BEAT_PRIORITY,
-    detect_opening_section_beat,
+from .beat_types import BeatType, BeatDescriptor, BEAT_PRIORITY
+from .beat_classifier import BeatClassification, detect_opening_section_beat
+from .running_stats import SectionDelta, RunningStatsSnapshot, PlayerDelta
+
+# Import types from section_types
+from .section_types import (
+    ForcedBreakReason,
+    TeamStatDelta,
+    PlayerStatDelta,
+    StorySection,
+    ChapterMetadata,
 )
-from .running_stats import SectionDelta
 
+# Import player prominence functions
+from .player_prominence import (
+    PlayerProminence,
+    compute_player_prominence,
+    select_prominent_players,
+)
 
-# ============================================================================
-# FORCED BREAK REASONS
-# ============================================================================
+# Import signal evaluation functions and constants
+from .section_signal import (
+    SECTION_MIN_POINTS_THRESHOLD,
+    SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD,
+    THIN_SECTION_MAX_POINTS,
+    THIN_SECTION_MAX_SCORING_PLAYS,
+    LUMPY_DOMINANCE_THRESHOLD_PCT,
+    DOMINANCE_CAP_PCT,
+    count_meaningful_events,
+    get_section_total_points,
+    is_section_underpowered,
+    count_section_scoring_plays,
+    is_section_thin,
+    get_dominant_player_share,
+    is_section_lumpy,
+)
 
-class ForcedBreakReason(str, Enum):
-    """Reasons for forced section breaks.
+# Import merge operations and constants
+from .section_merge import (
+    INCOMPATIBLE_BEAT_PAIRS,
+    CRUNCH_TIER_BEATS,
+    NON_CRUNCH_BEATS,
+    are_beats_compatible_for_merge,
+    generate_section_notes,
+    handle_thin_sections,
+    apply_dominance_cap,
+    handle_underpowered_sections,
+    enforce_section_count,
+    _is_protected_section,  # Re-export for tests
+)
 
-    These are diagnostic only - they explain WHY a break occurred.
-    """
-
-    OVERTIME_START = "OVERTIME_START"
-    FINAL_2_MINUTES = "FINAL_2_MINUTES"
-    CRUNCH_SETUP_FIRST = "CRUNCH_SETUP_FIRST"
-    CLOSING_SEQUENCE_FIRST = "CLOSING_SEQUENCE_FIRST"  # Phase 2.6
-    QUARTER_BOUNDARY = "QUARTER_BOUNDARY"
-    BEAT_CHANGE = "BEAT_CHANGE"
-    GAME_START = "GAME_START"
-
-
-# ============================================================================
-# STORYSECTION SCHEMA (AUTHORITATIVE)
-# ============================================================================
-
-@dataclass
-class TeamStatDelta:
-    """Team statistics for a section."""
-
-    team_key: str
-    team_name: str
-    points_scored: int = 0
-    personal_fouls_committed: int = 0
-    technical_fouls_committed: int = 0
-    timeouts_used: int = 0
-    possessions_estimate: int = 0
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSON."""
-        return {
-            "team_key": self.team_key,
-            "team_name": self.team_name,
-            "points_scored": self.points_scored,
-            "personal_fouls_committed": self.personal_fouls_committed,
-            "technical_fouls_committed": self.technical_fouls_committed,
-            "timeouts_used": self.timeouts_used,
-            "possessions_estimate": self.possessions_estimate,
-        }
-
-
-@dataclass
-class PlayerStatDelta:
-    """Player statistics for a section (top 1-3 per team only)."""
-
-    player_key: str
-    player_name: str
-    team_key: str | None
-    points_scored: int = 0
-    fg_made: int = 0
-    three_pt_made: int = 0
-    ft_made: int = 0
-    personal_foul_count: int = 0
-    foul_trouble_flag: bool = False
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSON."""
-        return {
-            "player_key": self.player_key,
-            "player_name": self.player_name,
-            "team_key": self.team_key,
-            "points_scored": self.points_scored,
-            "fg_made": self.fg_made,
-            "three_pt_made": self.three_pt_made,
-            "ft_made": self.ft_made,
-            "personal_foul_count": self.personal_foul_count,
-            "foul_trouble_flag": self.foul_trouble_flag,
-        }
-
-
-@dataclass
-class StorySection:
-    """A narrative section of the game story.
-
-    SCHEMA (AUTHORITATIVE):
-    - section_index: 0-based, sequential
-    - beat_type: From BeatType enum (primary beat)
-    - descriptors: Secondary context (Phase 2.1)
-    - chapters_included: List of chapter IDs
-    - start_score: {home: int, away: int}
-    - end_score: {home: int, away: int}
-    - team_stat_deltas: Per-team stats for this section
-    - player_stat_deltas: Top 1-3 players per team
-    - notes: Deterministic machine bullets
-
-    Phase 2.1: Added descriptors field for MISSED_SHOT_CONTEXT, etc.
-    """
-
-    section_index: int
-    beat_type: BeatType
-    chapters_included: list[str]
-
-    # Score bookends
-    start_score: dict[str, int]              # {"home": int, "away": int}
-    end_score: dict[str, int]                # {"home": int, "away": int}
-
-    # Stats
-    team_stat_deltas: dict[str, TeamStatDelta] = field(default_factory=dict)
-    player_stat_deltas: dict[str, PlayerStatDelta] = field(default_factory=dict)
-
-    # Deterministic notes
-    notes: list[str] = field(default_factory=list)
-
-    # Phase 2.1: Secondary descriptors (union of all chapter descriptors)
-    descriptors: set[BeatDescriptor] = field(default_factory=set)
-
-    # Debug info (not part of core schema)
-    break_reason: ForcedBreakReason | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSON."""
-        result = {
-            "section_index": self.section_index,
-            "beat_type": self.beat_type.value,
-            "chapters_included": self.chapters_included,
-            "start_score": self.start_score,
-            "end_score": self.end_score,
-            "team_stat_deltas": {k: v.to_dict() for k, v in self.team_stat_deltas.items()},
-            "player_stat_deltas": {k: v.to_dict() for k, v in self.player_stat_deltas.items()},
-            "notes": self.notes,
-        }
-        # Include descriptors if present
-        if self.descriptors:
-            result["descriptors"] = [d.value for d in self.descriptors]
-        return result
-
-    def to_debug_dict(self) -> dict[str, Any]:
-        """Serialize with debug info."""
-        result = self.to_dict()
-        result["break_reason"] = self.break_reason.value if self.break_reason else None
-        return result
-
-
-# ============================================================================
-# CHAPTER METADATA FOR SECTION BUILDING
-# ============================================================================
-
-@dataclass
-class ChapterMetadata:
-    """Metadata needed for section construction."""
-
-    chapter_id: str
-    chapter_index: int
-    beat_type: BeatType
-    period: int | None
-    time_remaining_seconds: int | None
-    is_overtime: bool
-    start_home_score: int
-    start_away_score: int
-    end_home_score: int
-    end_away_score: int
-    descriptors: set[BeatDescriptor] = field(default_factory=set)  # Phase 2.1
+# Re-exports for backward compatibility (used by __init__.py and tests)
+__all__ = [
+    # Types
+    "StorySection",
+    "TeamStatDelta",
+    "PlayerStatDelta",
+    "ChapterMetadata",
+    "ForcedBreakReason",
+    # Player prominence
+    "PlayerProminence",
+    "compute_player_prominence",
+    "select_prominent_players",
+    # Signal threshold constants
+    "SECTION_MIN_POINTS_THRESHOLD",
+    "SECTION_MIN_MEANINGFUL_EVENTS_THRESHOLD",
+    # Thin section constants
+    "THIN_SECTION_MAX_POINTS",
+    "THIN_SECTION_MAX_SCORING_PLAYS",
+    # Lumpy section constants
+    "LUMPY_DOMINANCE_THRESHOLD_PCT",
+    "DOMINANCE_CAP_PCT",
+    # Beat compatibility
+    "INCOMPATIBLE_BEAT_PAIRS",
+    "CRUNCH_TIER_BEATS",
+    "NON_CRUNCH_BEATS",
+    "are_beats_compatible_for_merge",
+    # Signal evaluation
+    "count_meaningful_events",
+    "get_section_total_points",
+    "is_section_underpowered",
+    "handle_underpowered_sections",
+    # Thin section functions
+    "count_section_scoring_plays",
+    "is_section_thin",
+    "handle_thin_sections",
+    # Lumpy section functions
+    "get_dominant_player_share",
+    "is_section_lumpy",
+    "apply_dominance_cap",
+    # Core functions
+    "detect_forced_break",
+    "build_story_sections",
+    "enforce_section_count",
+    "generate_section_notes",
+    "format_sections_debug",
+    # Internal for tests
+    "_is_final_2_minutes_entry",
+    "_is_protected_section",
+]
 
 
 # ============================================================================
 # FORCED BREAK DETECTION
 # ============================================================================
+
 
 def _is_overtime_start(
     curr: ChapterMetadata,
@@ -382,91 +309,9 @@ def detect_forced_break(
 
 
 # ============================================================================
-# NOTES GENERATION (DETERMINISTIC)
-# ============================================================================
-
-def generate_section_notes(
-    team_deltas: dict[str, TeamStatDelta],
-    player_deltas: dict[str, PlayerStatDelta],
-    home_team_key: str | None = None,
-    away_team_key: str | None = None,
-) -> list[str]:
-    """Generate deterministic notes for a section.
-
-    RULES:
-    - Derived ONLY from section stat deltas
-    - Factual and deterministic
-    - Short, single-sentence bullets
-
-    Allowed:
-    - "Toronto outscored LA 14–6"
-    - "Four turnovers in the section"
-    - "Two timeouts used by Lakers"
-    - "Technical foul assessed"
-
-    Disallowed:
-    - Adjectives
-    - Opinions
-    - Inferred momentum
-    - Narrative language
-    """
-    notes = []
-
-    # Collect team data
-    teams = list(team_deltas.values())
-
-    if len(teams) >= 2:
-        # Sort by points scored (descending)
-        sorted_teams = sorted(teams, key=lambda t: t.points_scored, reverse=True)
-        high_team = sorted_teams[0]
-        low_team = sorted_teams[1]
-
-        # Scoring comparison
-        if high_team.points_scored > low_team.points_scored:
-            notes.append(
-                f"{high_team.team_name} outscored {low_team.team_name} "
-                f"{high_team.points_scored}–{low_team.points_scored}"
-            )
-        elif high_team.points_scored == low_team.points_scored and high_team.points_scored > 0:
-            notes.append(
-                f"Teams tied {high_team.points_scored}–{low_team.points_scored} in section"
-            )
-
-    # Timeouts
-    for team in teams:
-        if team.timeouts_used >= 2:
-            notes.append(f"{team.timeouts_used} timeouts used by {team.team_name}")
-        elif team.timeouts_used == 1:
-            notes.append(f"Timeout used by {team.team_name}")
-
-    # Technical fouls
-    for team in teams:
-        if team.technical_fouls_committed > 0:
-            if team.technical_fouls_committed == 1:
-                notes.append(f"Technical foul assessed to {team.team_name}")
-            else:
-                notes.append(
-                    f"{team.technical_fouls_committed} technical fouls assessed to {team.team_name}"
-                )
-
-    # Foul trouble
-    for player in player_deltas.values():
-        if player.foul_trouble_flag:
-            notes.append(f"{player.player_name} in foul trouble")
-
-    # High scorers (> 6 points in section)
-    high_scorers = [p for p in player_deltas.values() if p.points_scored >= 6]
-    high_scorers_sorted = sorted(high_scorers, key=lambda p: p.points_scored, reverse=True)
-
-    for player in high_scorers_sorted[:2]:  # Max 2 high scorer notes
-        notes.append(f"{player.player_name} scored {player.points_scored} points")
-
-    return notes
-
-
-# ============================================================================
 # SECTION CONSTRUCTION
 # ============================================================================
+
 
 def _extract_chapter_metadata(
     chapter: Chapter,
@@ -524,11 +369,21 @@ def _extract_chapter_metadata(
 
 def _aggregate_section_deltas(
     section_deltas: list[SectionDelta],
+    end_snapshot: RunningStatsSnapshot | None = None,
 ) -> tuple[dict[str, TeamStatDelta], dict[str, PlayerStatDelta]]:
     """Aggregate section deltas from multiple chapters into one section.
 
+    PLAYER PROMINENCE SELECTION:
+    Uses prominence-based selection when end_snapshot is provided:
+    - Top 1-2 by section_points (section leaders)
+    - Top 1 by game_points_so_far (game presence)
+    - Max 3 per team, no duplicates
+
+    Falls back to simple "top 3 by points" when no snapshot available.
+
     Args:
         section_deltas: List of SectionDelta objects to aggregate
+        end_snapshot: Optional snapshot at section end for prominence selection
 
     Returns:
         Tuple of (team_deltas, player_deltas)
@@ -566,29 +421,56 @@ def _aggregate_section_deltas(
             p.fg_made += player_delta.fg_made
             p.three_pt_made += player_delta.three_pt_made
             p.ft_made += player_delta.ft_made
+            # Expanded stats (Player Prominence)
+            p.assists += player_delta.assists
+            p.blocks += player_delta.blocks
+            p.steals += player_delta.steals
             p.personal_foul_count += player_delta.personal_foul_count
             # Foul trouble if 4+ fouls in this aggregated section
             p.foul_trouble_flag = p.personal_foul_count >= 4
 
-    # Bound players: top 3 per team by points
+    # Select players using prominence-based rules
     bounded_players: dict[str, PlayerStatDelta] = {}
 
-    # Group by team
-    players_by_team: dict[str, list[PlayerStatDelta]] = {}
-    for p in player_totals.values():
-        team = p.team_key or "unknown"
-        if team not in players_by_team:
-            players_by_team[team] = []
-        players_by_team[team].append(p)
-
-    # Take top 3 per team
-    for team_key, players in players_by_team.items():
-        sorted_players = sorted(
-            players,
-            key=lambda x: (-x.points_scored, -x.fg_made, x.player_key),
+    if end_snapshot is not None:
+        # Use prominence-based selection
+        # Build a fake section delta for the aggregated stats
+        aggregated_delta = SectionDelta(
+            section_start_chapter=0,
+            section_end_chapter=0,
+            players={
+                key: PlayerDelta(
+                    player_key=p.player_key,
+                    player_name=p.player_name,
+                    team_key=p.team_key,
+                    points_scored=p.points_scored,
+                )
+                for key, p in player_totals.items()
+            },
         )
-        for p in sorted_players[:3]:
-            bounded_players[p.player_key] = p
+
+        prominence_map = compute_player_prominence(aggregated_delta, end_snapshot)
+        selected_keys = select_prominent_players(prominence_map, max_per_team=3)
+
+        for key in selected_keys:
+            if key in player_totals:
+                bounded_players[key] = player_totals[key]
+    else:
+        # Fallback: top 3 per team by section points (original behavior)
+        players_by_team: dict[str, list[PlayerStatDelta]] = {}
+        for p in player_totals.values():
+            team = p.team_key or "unknown"
+            if team not in players_by_team:
+                players_by_team[team] = []
+            players_by_team[team].append(p)
+
+        for team_key, players in players_by_team.items():
+            sorted_players = sorted(
+                players,
+                key=lambda x: (-x.points_scored, -x.fg_made, x.player_key),
+            )
+            for p in sorted_players[:3]:
+                bounded_players[p.player_key] = p
 
     return team_totals, bounded_players
 
@@ -649,11 +531,15 @@ def _build_section(
     chapters_meta: list[ChapterMetadata],
     section_deltas: list[SectionDelta],
     break_reason: ForcedBreakReason,
+    end_snapshot: RunningStatsSnapshot | None = None,
 ) -> StorySection:
     """Build a single StorySection from chapters.
 
     Phase 2.1: Uses priority-based beat selection instead of first chapter.
     Aggregates descriptors from all chapters.
+
+    Player Prominence: When end_snapshot is provided, uses prominence-based
+    player selection (top 1-2 by section points, top 1 by game points).
     """
     # Phase 2.1: Use priority-based beat selection
     beat_type = _select_section_beat(chapters_meta)
@@ -674,8 +560,8 @@ def _build_section(
         "away": chapters_meta[-1].end_away_score,
     }
 
-    # Aggregate stats
-    team_deltas, player_deltas = _aggregate_section_deltas(section_deltas)
+    # Aggregate stats with prominence-based player selection
+    team_deltas, player_deltas = _aggregate_section_deltas(section_deltas, end_snapshot)
 
     # Generate notes
     notes = generate_section_notes(team_deltas, player_deltas)
@@ -695,296 +581,33 @@ def _build_section(
 
 
 # ============================================================================
-# SECTION COUNT ENFORCEMENT
-# ============================================================================
-
-def _is_protected_section(section: StorySection) -> bool:
-    """Check if section is protected from merging.
-
-    Protected sections:
-    - Opening section (index 0)
-    - CRUNCH_SETUP
-    - CLOSING_SEQUENCE
-    - OVERTIME
-    """
-    if section.section_index == 0:
-        return True
-
-    if section.beat_type in (
-        BeatType.CRUNCH_SETUP,
-        BeatType.CLOSING_SEQUENCE,
-        BeatType.OVERTIME,
-    ):
-        return True
-
-    return False
-
-
-def _merge_sections(
-    section_a: StorySection,
-    section_b: StorySection,
-    new_index: int,
-) -> StorySection:
-    """Merge two adjacent sections into one.
-
-    The merged section:
-    - Takes beat_type from section_a (earlier)
-    - Combines chapters_included
-    - Uses start_score from section_a, end_score from section_b
-    - Aggregates stats and notes
-    """
-    # Combine chapters
-    chapters = section_a.chapters_included + section_b.chapters_included
-
-    # Merge team deltas
-    merged_teams: dict[str, TeamStatDelta] = {}
-    for team_key, delta in section_a.team_stat_deltas.items():
-        merged_teams[team_key] = TeamStatDelta(
-            team_key=delta.team_key,
-            team_name=delta.team_name,
-            points_scored=delta.points_scored,
-            personal_fouls_committed=delta.personal_fouls_committed,
-            technical_fouls_committed=delta.technical_fouls_committed,
-            timeouts_used=delta.timeouts_used,
-            possessions_estimate=delta.possessions_estimate,
-        )
-
-    for team_key, delta in section_b.team_stat_deltas.items():
-        if team_key in merged_teams:
-            t = merged_teams[team_key]
-            t.points_scored += delta.points_scored
-            t.personal_fouls_committed += delta.personal_fouls_committed
-            t.technical_fouls_committed += delta.technical_fouls_committed
-            t.timeouts_used += delta.timeouts_used
-            t.possessions_estimate += delta.possessions_estimate
-        else:
-            merged_teams[team_key] = TeamStatDelta(
-                team_key=delta.team_key,
-                team_name=delta.team_name,
-                points_scored=delta.points_scored,
-                personal_fouls_committed=delta.personal_fouls_committed,
-                technical_fouls_committed=delta.technical_fouls_committed,
-                timeouts_used=delta.timeouts_used,
-                possessions_estimate=delta.possessions_estimate,
-            )
-
-    # Merge player deltas (take all, re-bound later)
-    merged_players: dict[str, PlayerStatDelta] = {}
-    for player_key, delta in section_a.player_stat_deltas.items():
-        merged_players[player_key] = PlayerStatDelta(
-            player_key=delta.player_key,
-            player_name=delta.player_name,
-            team_key=delta.team_key,
-            points_scored=delta.points_scored,
-            fg_made=delta.fg_made,
-            three_pt_made=delta.three_pt_made,
-            ft_made=delta.ft_made,
-            personal_foul_count=delta.personal_foul_count,
-            foul_trouble_flag=delta.foul_trouble_flag,
-        )
-
-    for player_key, delta in section_b.player_stat_deltas.items():
-        if player_key in merged_players:
-            p = merged_players[player_key]
-            p.points_scored += delta.points_scored
-            p.fg_made += delta.fg_made
-            p.three_pt_made += delta.three_pt_made
-            p.ft_made += delta.ft_made
-            p.personal_foul_count += delta.personal_foul_count
-            p.foul_trouble_flag = p.personal_foul_count >= 4
-        else:
-            merged_players[player_key] = PlayerStatDelta(
-                player_key=delta.player_key,
-                player_name=delta.player_name,
-                team_key=delta.team_key,
-                points_scored=delta.points_scored,
-                fg_made=delta.fg_made,
-                three_pt_made=delta.three_pt_made,
-                ft_made=delta.ft_made,
-                personal_foul_count=delta.personal_foul_count,
-                foul_trouble_flag=delta.foul_trouble_flag,
-            )
-
-    # Re-bound players (top 3 per team)
-    players_by_team: dict[str, list[PlayerStatDelta]] = {}
-    for p in merged_players.values():
-        team = p.team_key or "unknown"
-        if team not in players_by_team:
-            players_by_team[team] = []
-        players_by_team[team].append(p)
-
-    bounded_players: dict[str, PlayerStatDelta] = {}
-    for players in players_by_team.values():
-        sorted_players = sorted(
-            players,
-            key=lambda x: (-x.points_scored, -x.fg_made, x.player_key),
-        )
-        for p in sorted_players[:3]:
-            bounded_players[p.player_key] = p
-
-    # Regenerate notes
-    notes = generate_section_notes(merged_teams, bounded_players)
-
-    # Phase 2.1: Merge descriptors from both sections
-    merged_descriptors = section_a.descriptors | section_b.descriptors
-
-    return StorySection(
-        section_index=new_index,
-        beat_type=section_a.beat_type,
-        chapters_included=chapters,
-        start_score=section_a.start_score,
-        end_score=section_b.end_score,
-        team_stat_deltas=merged_teams,
-        player_stat_deltas=bounded_players,
-        notes=notes,
-        descriptors=merged_descriptors,  # Phase 2.1
-        break_reason=section_a.break_reason,
-    )
-
-
-def _find_closing_sequence_index(sections: list[StorySection]) -> int | None:
-    """Find the index of the first CLOSING_SEQUENCE section.
-
-    Phase 2.6: Used to prevent merging after CLOSING_SEQUENCE.
-
-    Returns:
-        Index of first CLOSING_SEQUENCE section, or None if not found
-    """
-    for i, section in enumerate(sections):
-        if section.beat_type == BeatType.CLOSING_SEQUENCE:
-            return i
-    return None
-
-
-def _can_merge_pair(
-    sections: list[StorySection],
-    idx: int,
-    closing_sequence_idx: int | None,
-) -> bool:
-    """Check if a pair of sections at idx and idx+1 can be merged.
-
-    Phase 2.6: Prevents merging sections at or after CLOSING_SEQUENCE.
-
-    Args:
-        sections: List of sections
-        idx: Index of first section in pair
-        closing_sequence_idx: Index of CLOSING_SEQUENCE section (or None)
-
-    Returns:
-        True if the pair can be merged
-    """
-    # Check protected sections
-    if _is_protected_section(sections[idx]) or _is_protected_section(sections[idx + 1]):
-        return False
-
-    # Phase 2.6: No merging at or after CLOSING_SEQUENCE
-    if closing_sequence_idx is not None:
-        if idx >= closing_sequence_idx or idx + 1 >= closing_sequence_idx:
-            return False
-
-    return True
-
-
-def enforce_section_count(
-    sections: list[StorySection],
-    min_sections: int = 3,
-    max_sections: int = 10,
-) -> list[StorySection]:
-    """Enforce section count constraints.
-
-    RULES:
-    - If sections < min: Merge earliest adjacent sections
-    - If sections > max: Merge middle sections first
-    - NEVER merge: opening, CRUNCH_SETUP, CLOSING_SEQUENCE, OVERTIME
-    - Phase 2.6: NEVER merge sections at or after CLOSING_SEQUENCE
-
-    Args:
-        sections: List of sections to constrain
-        min_sections: Minimum section count (default: 3)
-        max_sections: Maximum section count (default: 10)
-
-    Returns:
-        List of sections with count in [min, max]
-    """
-    result = list(sections)
-
-    # Phase 2.6: Find CLOSING_SEQUENCE section to prevent merging after it
-    closing_idx = _find_closing_sequence_index(result)
-
-    # Merge if too few sections
-    while len(result) < min_sections and len(result) >= 2:
-        # Update closing index after potential merges
-        closing_idx = _find_closing_sequence_index(result)
-
-        # Find first pair of adjacent non-protected sections to merge
-        merged = False
-        for i in range(len(result) - 1):
-            if _can_merge_pair(result, i, closing_idx):
-                # Merge these two
-                merged_section = _merge_sections(result[i], result[i + 1], i)
-                result = result[:i] + [merged_section] + result[i + 2:]
-
-                # Renumber remaining sections
-                for j, s in enumerate(result):
-                    s.section_index = j
-
-                merged = True
-                break
-
-        if not merged:
-            break  # Can't merge any more
-
-    # Merge if too many sections
-    while len(result) > max_sections:
-        # Update closing index after potential merges
-        closing_idx = _find_closing_sequence_index(result)
-
-        # Find best pair to merge (prefer middle sections)
-        best_pair = None
-        best_distance_from_edges = -1
-
-        for i in range(len(result) - 1):
-            if not _can_merge_pair(result, i, closing_idx):
-                continue
-
-            # Distance from edges (prefer middle)
-            distance = min(i, len(result) - 2 - i)
-            if distance > best_distance_from_edges:
-                best_distance_from_edges = distance
-                best_pair = i
-
-        if best_pair is None:
-            break  # Can't merge any more (all protected)
-
-        # Merge the best pair
-        merged_section = _merge_sections(result[best_pair], result[best_pair + 1], best_pair)
-        result = result[:best_pair] + [merged_section] + result[best_pair + 2:]
-
-        # Renumber remaining sections
-        for j, s in enumerate(result):
-            s.section_index = j
-
-    return result
-
-
-# ============================================================================
 # MAIN BUILDER FUNCTION
 # ============================================================================
+
 
 def build_story_sections(
     chapters: list[Chapter],
     classifications: list[BeatClassification],
     section_deltas: list[SectionDelta] | None = None,
+    snapshots: list[RunningStatsSnapshot] | None = None,
 ) -> list[StorySection]:
     """Build StorySections from chapters and beat classifications.
+
+    PLAYER PROMINENCE:
+    When snapshots are provided, uses prominence-based player selection:
+    - Top 1-2 by section_points (section leaders)
+    - Top 1 by game_points_so_far (game presence)
+    - Max 3 per team, no duplicates
+    Rolling game totals are used ONLY for selection, not passed to AI.
 
     Args:
         chapters: List of chapters in chronological order
         classifications: Beat classification for each chapter
         section_deltas: Stats for each chapter (from running_stats)
+        snapshots: Running stats snapshots for prominence selection (optional)
 
     Returns:
-        List of StorySections (3-10 sections, enforced)
+        List of StorySections (0-10 sections, underpowered sections removed)
     """
     if not chapters or not classifications:
         return []
@@ -1028,12 +651,19 @@ def build_story_sections(
             seen_closing_before = seen_closing
 
         # Check for forced break
-        break_reason = detect_forced_break(meta, prev_meta, seen_crunch_before, seen_closing_before)
+        break_reason = detect_forced_break(
+            meta, prev_meta, seen_crunch_before, seen_closing_before
+        )
 
         if break_reason is not None:
             # Save current group if non-empty
             if current_group:
-                section_groups.append((current_group, current_break_reason or ForcedBreakReason.GAME_START))
+                section_groups.append(
+                    (
+                        current_group,
+                        current_break_reason or ForcedBreakReason.GAME_START,
+                    )
+                )
 
             # Start new group
             current_group = [meta]
@@ -1044,7 +674,9 @@ def build_story_sections(
 
     # Don't forget the last group
     if current_group:
-        section_groups.append((current_group, current_break_reason or ForcedBreakReason.GAME_START))
+        section_groups.append(
+            (current_group, current_break_reason or ForcedBreakReason.GAME_START)
+        )
 
     # Build sections from groups
     sections: list[StorySection] = []
@@ -1058,10 +690,28 @@ def build_story_sections(
                 if idx < len(section_deltas):
                     group_deltas.append(section_deltas[idx])
 
-        section = _build_section(section_idx, group_meta, group_deltas, break_reason)
+        # Get end snapshot for prominence selection (last chapter in section)
+        end_snapshot = None
+        if snapshots and chapter_indices:
+            last_chapter_idx = chapter_indices[-1]
+            if last_chapter_idx < len(snapshots):
+                end_snapshot = snapshots[last_chapter_idx]
+
+        section = _build_section(
+            section_idx, group_meta, group_deltas, break_reason, end_snapshot
+        )
         sections.append(section)
 
-    # Enforce section count constraints
+    # Handle underpowered sections (merge or drop)
+    sections = handle_underpowered_sections(sections, chapters)
+
+    # Handle thin sections (always merge, never drop)
+    sections = handle_thin_sections(sections, chapters)
+
+    # Apply dominance capping to lumpy sections
+    sections = apply_dominance_cap(sections)
+
+    # Enforce section count constraints (max only, min is now 0)
     sections = enforce_section_count(sections)
 
     # Phase 2.5: Apply section-level beat overrides (FAST_START, EARLY_CONTROL)
@@ -1106,13 +756,18 @@ def _apply_opening_section_beat_override(
         debug_info = override.debug_info
         total_pts = debug_info.get("total_points", 0)
         margin = debug_info.get("final_margin", 0)
-        opening.notes.insert(0, f"High-scoring early window: {total_pts} points, {margin}-point margin")
+        opening.notes.insert(
+            0, f"High-scoring early window: {total_pts} points, {margin}-point margin"
+        )
     elif override.beat_type == BeatType.EARLY_CONTROL:
         debug_info = override.debug_info
         leading_team = debug_info.get("leading_team", "unknown")
         margin = debug_info.get("final_margin", 0)
         share_pct = int(debug_info.get("leading_team_share", 0) * 100)
-        opening.notes.insert(0, f"Early control established: {leading_team} team led by {margin}, scored {share_pct}% of points")
+        opening.notes.insert(
+            0,
+            f"Early control established: {leading_team} team led by {margin}, scored {share_pct}% of points",
+        )
 
     return sections
 
@@ -1120,6 +775,7 @@ def _apply_opening_section_beat_override(
 # ============================================================================
 # DEBUG OUTPUT
 # ============================================================================
+
 
 def format_sections_debug(sections: list[StorySection]) -> str:
     """Format sections for debug output.

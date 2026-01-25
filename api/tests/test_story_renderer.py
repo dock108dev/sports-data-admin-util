@@ -37,14 +37,20 @@ from app.services.chapters.story_renderer import (
     validate_render_result,
     format_render_debug,
     _format_section_for_prompt,
+    _parse_section_word_counts,
+    compute_target_word_count,
     # Constants
     SYSTEM_INSTRUCTION,
+    SECTION_MIN_WORDS,
+    SECTION_MAX_WORDS,
+    SECTION_AVG_WORDS,
 )
 
 
 # ============================================================================
 # TEST HELPERS
 # ============================================================================
+
 
 def make_section(
     section_index: int,
@@ -119,14 +125,15 @@ class MockAIClient:
         if self.response:
             return self.response
         # Default mock response
-        return json.dumps({
-            "compact_story": "This is a mock story.\n\nIt has two paragraphs."
-        })
+        return json.dumps(
+            {"compact_story": "This is a mock story.\n\nIt has two paragraphs."}
+        )
 
 
 # ============================================================================
 # TEST: CLOSING CONTEXT
 # ============================================================================
+
 
 class TestClosingContext:
     """Tests for ClosingContext."""
@@ -150,6 +157,7 @@ class TestClosingContext:
 # ============================================================================
 # TEST: SECTION RENDER INPUT
 # ============================================================================
+
 
 class TestSectionRenderInput:
     """Tests for SectionRenderInput."""
@@ -176,6 +184,7 @@ class TestSectionRenderInput:
 # ============================================================================
 # TEST: BUILD SECTION RENDER INPUT
 # ============================================================================
+
 
 class TestBuildSectionRenderInput:
     """Tests for build_section_render_input."""
@@ -205,6 +214,7 @@ class TestBuildSectionRenderInput:
 # ============================================================================
 # TEST: BUILD STORY RENDER INPUT
 # ============================================================================
+
 
 class TestBuildStoryRenderInput:
     """Tests for build_story_render_input."""
@@ -269,6 +279,7 @@ class TestBuildStoryRenderInput:
 # ============================================================================
 # TEST: PROMPT BUILDING
 # ============================================================================
+
 
 class TestPromptBuilding:
     """Tests for prompt construction."""
@@ -382,6 +393,7 @@ class TestPromptBuilding:
 # ============================================================================
 # TEST: RENDER STORY
 # ============================================================================
+
 
 class TestRenderStory:
     """Tests for render_story function."""
@@ -542,6 +554,7 @@ class TestRenderStory:
 # TEST: INPUT VALIDATION
 # ============================================================================
 
+
 class TestInputValidation:
     """Tests for validate_render_input."""
 
@@ -656,16 +669,23 @@ class TestInputValidation:
 # TEST: RESULT VALIDATION
 # ============================================================================
 
+
 class TestResultValidation:
     """Tests for validate_render_result."""
 
     def test_normal_deviation_passes(self):
-        """Normal word count deviation passes."""
+        """Normal word count deviation passes when sections are within bounds."""
+        # Create a multi-section story where each section is within 60-120 words
+        section1 = "Both teams opened fast. " + "word " * 80  # ~85 words
+        section2 = "A stretch of scoring. " + "word " * 80  # ~85 words
+
+        story = f"{section1}\n\n{section2}"
+
         input_data = StoryRenderInput(
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
-            target_word_count=700,
+            target_word_count=180,
             sections=[
                 SectionRenderInput(
                     header="Both teams opened fast.",
@@ -673,7 +693,14 @@ class TestResultValidation:
                     team_stat_deltas=[],
                     player_stat_deltas=[],
                     notes=[],
-                )
+                ),
+                SectionRenderInput(
+                    header="A stretch of scoring.",
+                    beat_type=BeatType.RUN,
+                    team_stat_deltas=[],
+                    player_stat_deltas=[],
+                    notes=[],
+                ),
             ],
             closing=ClosingContext(
                 final_home_score=100,
@@ -685,10 +712,10 @@ class TestResultValidation:
         )
 
         result = StoryRenderResult(
-            compact_story="Both teams opened fast. " + "word " * 650,  # ~650 words
-            word_count=650,
-            target_word_count=700,
-            section_count=1,
+            compact_story=story,
+            word_count=170,
+            target_word_count=180,
+            section_count=2,
         )
 
         errors = validate_render_result(result, input_data)
@@ -735,6 +762,7 @@ class TestResultValidation:
 # ============================================================================
 # TEST: DEBUG OUTPUT
 # ============================================================================
+
 
 class TestDebugOutput:
     """Tests for format_render_debug."""
@@ -798,6 +826,7 @@ class TestDebugOutput:
 # TEST: SERIALIZATION
 # ============================================================================
 
+
 class TestSerialization:
     """Tests for serialization."""
 
@@ -844,6 +873,7 @@ class TestSerialization:
 # TEST: SECTION FORMATTING
 # ============================================================================
 
+
 class TestSectionFormatting:
     """Tests for _format_section_for_prompt."""
 
@@ -857,7 +887,7 @@ class TestSectionFormatting:
             notes=[],
         )
 
-        output = _format_section_for_prompt(section_input, 0)
+        output = _format_section_for_prompt(section_input, 0, "Lakers", "Celtics")
 
         assert "Both teams opened at a fast pace." in output
 
@@ -871,7 +901,7 @@ class TestSectionFormatting:
             notes=[],
         )
 
-        output = _format_section_for_prompt(section_input, 0)
+        output = _format_section_for_prompt(section_input, 0, "Lakers", "Celtics")
 
         assert "RUN" in output
 
@@ -881,13 +911,17 @@ class TestSectionFormatting:
             header="Header.",
             beat_type=BeatType.FAST_START,
             team_stat_deltas=[
-                {"team_name": "Lakers", "points_scored": 15, "personal_fouls_committed": 3}
+                {
+                    "team_name": "Lakers",
+                    "points_scored": 15,
+                    "personal_fouls_committed": 3,
+                }
             ],
             player_stat_deltas=[],
             notes=[],
         )
 
-        output = _format_section_for_prompt(section_input, 0)
+        output = _format_section_for_prompt(section_input, 0, "Lakers", "Celtics")
 
         assert "Lakers" in output
         assert "15 pts" in output
@@ -913,7 +947,7 @@ class TestSectionFormatting:
             notes=[],
         )
 
-        output = _format_section_for_prompt(section_input, 0)
+        output = _format_section_for_prompt(section_input, 0, "Lakers", "Celtics")
 
         assert "LeBron James" in output
         assert "12 pts" in output
@@ -930,7 +964,341 @@ class TestSectionFormatting:
             notes=["Lakers went on 8-0 run", "Timeout called"],
         )
 
-        output = _format_section_for_prompt(section_input, 0)
+        output = _format_section_for_prompt(section_input, 0, "Lakers", "Celtics")
 
         assert "8-0 run" in output
         assert "Timeout" in output
+
+
+# ============================================================================
+# TEST: SECTION LENGTH CONSTANTS
+# ============================================================================
+
+
+class TestSectionLengthConstants:
+    """Tests for section length constants."""
+
+    def test_constants_defined(self):
+        """Section length constants are defined."""
+        assert SECTION_MIN_WORDS == 60
+        assert SECTION_MAX_WORDS == 120
+        assert SECTION_AVG_WORDS == 90
+
+    def test_min_less_than_avg_less_than_max(self):
+        """Constants are in correct order."""
+        assert SECTION_MIN_WORDS < SECTION_AVG_WORDS < SECTION_MAX_WORDS
+
+
+# ============================================================================
+# TEST: COMPUTE TARGET WORD COUNT
+# ============================================================================
+
+
+class TestComputeTargetWordCount:
+    """Tests for compute_target_word_count."""
+
+    def test_single_section(self):
+        """Target for 1 section = 90 words."""
+        assert compute_target_word_count(1) == 90
+
+    def test_three_sections(self):
+        """Target for 3 sections = 270 words."""
+        assert compute_target_word_count(3) == 270
+
+    def test_five_sections(self):
+        """Target for 5 sections = 450 words."""
+        assert compute_target_word_count(5) == 450
+
+    def test_zero_sections(self):
+        """Target for 0 sections = 0 words."""
+        assert compute_target_word_count(0) == 0
+
+
+# ============================================================================
+# TEST: PARSE SECTION WORD COUNTS
+# ============================================================================
+
+
+class TestParseSectionWordCounts:
+    """Tests for _parse_section_word_counts."""
+
+    def test_parses_story_by_headers(self):
+        """Parses story into sections using headers."""
+        story = (
+            "Both teams opened fast. The Lakers scored 15 points "
+            "while the Celtics answered with 12. This was an exciting start.\n\n"
+            "A stretch of scoring created separation. The Lakers went on "
+            "a 10-0 run to take control of the game."
+        )
+        sections = [
+            SectionRenderInput(
+                header="Both teams opened fast.",
+                beat_type=BeatType.FAST_START,
+                team_stat_deltas=[],
+                player_stat_deltas=[],
+                notes=[],
+            ),
+            SectionRenderInput(
+                header="A stretch of scoring created separation.",
+                beat_type=BeatType.RUN,
+                team_stat_deltas=[],
+                player_stat_deltas=[],
+                notes=[],
+            ),
+        ]
+
+        word_counts = _parse_section_word_counts(story, sections)
+
+        assert len(word_counts) == 2
+        # First section has more words
+        assert word_counts[0] > word_counts[1]
+
+    def test_empty_sections_returns_empty(self):
+        """Returns empty list for empty sections."""
+        word_counts = _parse_section_word_counts("Any story text", [])
+        assert word_counts == []
+
+    def test_fallback_to_paragraph_split(self):
+        """Falls back to paragraph split if no headers found."""
+        story = "First paragraph here.\n\nSecond paragraph here."
+        sections = [
+            SectionRenderInput(
+                header="Header not in story.",
+                beat_type=BeatType.FAST_START,
+                team_stat_deltas=[],
+                player_stat_deltas=[],
+                notes=[],
+            ),
+        ]
+
+        word_counts = _parse_section_word_counts(story, sections)
+
+        # Should fall back to paragraph-based counting
+        assert len(word_counts) == 2
+
+
+# ============================================================================
+# TEST: PER-SECTION WORD COUNT VALIDATION
+# ============================================================================
+
+
+class TestPerSectionWordCountValidation:
+    """Tests for per-section word count validation."""
+
+    def test_section_too_short_fails(self):
+        """Section with fewer than 60 words fails."""
+        # Create story with first section too short (30 words)
+        short_section = "Both teams opened fast. " + "word " * 25  # ~30 words
+        long_section = "A stretch of scoring. " + "word " * 85  # ~90 words
+
+        story = f"{short_section}\n\n{long_section}"
+
+        input_data = StoryRenderInput(
+            sport="NBA",
+            home_team_name="Lakers",
+            away_team_name="Celtics",
+            target_word_count=180,
+            sections=[
+                SectionRenderInput(
+                    header="Both teams opened fast.",
+                    beat_type=BeatType.FAST_START,
+                    team_stat_deltas=[],
+                    player_stat_deltas=[],
+                    notes=[],
+                ),
+                SectionRenderInput(
+                    header="A stretch of scoring.",
+                    beat_type=BeatType.RUN,
+                    team_stat_deltas=[],
+                    player_stat_deltas=[],
+                    notes=[],
+                ),
+            ],
+            closing=ClosingContext(
+                final_home_score=100,
+                final_away_score=98,
+                home_team_name="Lakers",
+                away_team_name="Celtics",
+                decisive_factors=[],
+            ),
+        )
+
+        result = StoryRenderResult(
+            compact_story=story,
+            word_count=120,
+            target_word_count=180,
+            section_count=2,
+        )
+
+        errors = validate_render_result(result, input_data)
+
+        assert any("too short" in e.lower() for e in errors)
+        assert any(str(SECTION_MIN_WORDS) in e for e in errors)
+
+    def test_section_too_long_fails(self):
+        """Section with more than 120 words fails."""
+        # Create story with section too long (150 words)
+        long_section = "Both teams opened fast. " + "word " * 145  # ~150 words
+
+        story = long_section
+
+        input_data = StoryRenderInput(
+            sport="NBA",
+            home_team_name="Lakers",
+            away_team_name="Celtics",
+            target_word_count=90,
+            sections=[
+                SectionRenderInput(
+                    header="Both teams opened fast.",
+                    beat_type=BeatType.FAST_START,
+                    team_stat_deltas=[],
+                    player_stat_deltas=[],
+                    notes=[],
+                ),
+            ],
+            closing=ClosingContext(
+                final_home_score=100,
+                final_away_score=98,
+                home_team_name="Lakers",
+                away_team_name="Celtics",
+                decisive_factors=[],
+            ),
+        )
+
+        result = StoryRenderResult(
+            compact_story=story,
+            word_count=150,
+            target_word_count=90,
+            section_count=1,
+        )
+
+        errors = validate_render_result(result, input_data)
+
+        assert any("too long" in e.lower() for e in errors)
+        assert any(str(SECTION_MAX_WORDS) in e for e in errors)
+
+    def test_sections_within_bounds_pass(self):
+        """Sections within 60-120 words pass validation."""
+        # Create story with sections in valid range
+        section1 = "Both teams opened fast. " + "word " * 75  # ~80 words
+        section2 = "A stretch of scoring. " + "word " * 75  # ~80 words
+
+        story = f"{section1}\n\n{section2}"
+
+        input_data = StoryRenderInput(
+            sport="NBA",
+            home_team_name="Lakers",
+            away_team_name="Celtics",
+            target_word_count=180,
+            sections=[
+                SectionRenderInput(
+                    header="Both teams opened fast.",
+                    beat_type=BeatType.FAST_START,
+                    team_stat_deltas=[],
+                    player_stat_deltas=[],
+                    notes=[],
+                ),
+                SectionRenderInput(
+                    header="A stretch of scoring.",
+                    beat_type=BeatType.RUN,
+                    team_stat_deltas=[],
+                    player_stat_deltas=[],
+                    notes=[],
+                ),
+            ],
+            closing=ClosingContext(
+                final_home_score=100,
+                final_away_score=98,
+                home_team_name="Lakers",
+                away_team_name="Celtics",
+                decisive_factors=[],
+            ),
+        )
+
+        result = StoryRenderResult(
+            compact_story=story,
+            word_count=160,
+            target_word_count=180,
+            section_count=2,
+        )
+
+        errors = validate_render_result(result, input_data)
+
+        # Should not have per-section errors
+        assert not any("too short" in e.lower() for e in errors)
+        assert not any("too long" in e.lower() for e in errors)
+
+
+# ============================================================================
+# TEST: FACT-ONLY CONSTRAINT IN PROMPT
+# ============================================================================
+
+
+class TestFactOnlyConstraintInPrompt:
+    """Tests for fact-only constraint in the prompt."""
+
+    def test_prompt_includes_prohibited_language_list(self):
+        """Prompt includes list of prohibited qualitative terms."""
+        sections = [make_section(0, BeatType.FAST_START)]
+        headers = [make_header(BeatType.FAST_START)]
+
+        input_data = build_story_render_input(
+            sections=sections,
+            headers=headers,
+            sport="NBA",
+            home_team_name="Lakers",
+            away_team_name="Celtics",
+            target_word_count=400,
+            decisive_factors=[],
+        )
+
+        prompt = build_render_prompt(input_data)
+
+        # Check for prohibited terms
+        assert "efficient" in prompt.lower()
+        assert "struggled" in prompt.lower()
+        assert "dominant" in prompt.lower()
+        assert "hot start" in prompt.lower()
+        assert "controlled" in prompt.lower()
+
+    def test_prompt_includes_fact_only_rule(self):
+        """Prompt includes fact-only constraint rule."""
+        sections = [make_section(0, BeatType.FAST_START)]
+        headers = [make_header(BeatType.FAST_START)]
+
+        input_data = build_story_render_input(
+            sections=sections,
+            headers=headers,
+            sport="NBA",
+            home_team_name="Lakers",
+            away_team_name="Celtics",
+            target_word_count=400,
+            decisive_factors=[],
+        )
+
+        prompt = build_render_prompt(input_data)
+
+        assert "may NOT infer" in prompt
+        assert "may ONLY restate" in prompt
+        assert "factual information" in prompt.lower()
+
+    def test_prompt_includes_section_word_bounds(self):
+        """Prompt includes per-section word bounds."""
+        sections = [make_section(0, BeatType.FAST_START)]
+        headers = [make_header(BeatType.FAST_START)]
+
+        input_data = build_story_render_input(
+            sections=sections,
+            headers=headers,
+            sport="NBA",
+            home_team_name="Lakers",
+            away_team_name="Celtics",
+            target_word_count=400,
+            decisive_factors=[],
+        )
+
+        prompt = build_render_prompt(input_data)
+
+        assert str(SECTION_MIN_WORDS) in prompt
+        assert str(SECTION_MAX_WORDS) in prompt
+        assert "per section" in prompt.lower() or "per-section" in prompt.lower()

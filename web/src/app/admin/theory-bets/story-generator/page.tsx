@@ -1,55 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import type { GameSummary } from "@/lib/api/sportsAdmin/types";
-import { listGames } from "@/lib/api/sportsAdmin";
 import { bulkGenerateStoriesAsync, getBulkGenerateStatus } from "@/lib/api/sportsAdmin/chapters";
+import { listGames, type GameSummary } from "@/lib/api/sportsAdmin";
 import styles from "./story-generator.module.css";
 
 /**
  * Story Generator Landing Page
- * 
+ *
  * ISSUE 13: Admin UI for Chapters-First System
- * 
- * Lists games with story generation status and provides bulk generation tools.
+ *
+ * Provides bulk generation tools for story generation.
  */
 export default function StoryGeneratorLandingPage() {
-  const [games, setGames] = useState<GameSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
   // Bulk generation state
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedLeagues, setSelectedLeagues] = useState<string[]>(["NBA"]);
   const [generating, setGenerating] = useState(false);
   const [generationResult, setGenerationResult] = useState<string | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ current: number; total: number; status: string } | null>(null);
+  const [forceRegenerate, setForceRegenerate] = useState(false);
+
+  // Games with stories
+  const [gamesWithStories, setGamesWithStories] = useState<GameSummary[]>([]);
+  const [loadingGames, setLoadingGames] = useState(true);
 
   useEffect(() => {
-    loadGames();
+    loadGamesWithStories();
   }, []);
 
-  const loadGames = async () => {
-    setLoading(true);
-    setError(null);
-    
+  const loadGamesWithStories = async () => {
+    setLoadingGames(true);
     try {
-      const response = await listGames({
-        leagues: ["NBA", "NHL", "NCAAB"],
-        limit: 50,
-        offset: 0,
-      });
-      
-      // Filter to games with PBP (only those can have stories)
-      const gamesWithPbp = response.games.filter(g => g.has_pbp);
-      setGames(gamesWithPbp);
+      const response = await listGames({ leagues: ["NBA", "NHL", "NCAAB"], limit: 200 });
+      // Filter to games with stories
+      const withStories = response.games.filter(g => g.has_story);
+      setGamesWithStories(withStories);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load games");
+      console.error("Failed to load games:", err);
     } finally {
-      setLoading(false);
+      setLoadingGames(false);
     }
   };
 
@@ -69,10 +61,9 @@ export default function StoryGeneratorLandingPage() {
         start_date: startDate,
         end_date: endDate,
         leagues: selectedLeagues,
-        force: false,
+        force: forceRegenerate,
       });
       
-      setJobId(job.job_id);
       setGenerationResult("Story generation started...");
       
       // Poll for status
@@ -99,8 +90,6 @@ export default function StoryGeneratorLandingPage() {
                 `✓ Generated stories for ${result.successful} of ${result.total_games} games. ${result.failed > 0 ? `${result.failed} failed.` : ""} (${result.skipped} skipped, ${result.generated} newly generated)`
               );
             }
-            // Reload games to show updated status
-            await loadGames();
           } else if (status.state === "FAILURE") {
             clearInterval(pollInterval);
             setGenerating(false);
@@ -126,22 +115,6 @@ export default function StoryGeneratorLandingPage() {
       setGenerating(false);
     }
   };
-
-  if (loading) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.loading}>Loading games...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.error}>Error: {error}</div>
-      </div>
-    );
-  }
 
   return (
     <div className={styles.container}>
@@ -205,7 +178,18 @@ export default function StoryGeneratorLandingPage() {
               </div>
             </label>
           </div>
-          
+
+          <div className={styles.checkboxGroup}>
+            <label className={styles.checkbox}>
+              <input
+                type="checkbox"
+                checked={forceRegenerate}
+                onChange={(e) => setForceRegenerate(e.target.checked)}
+              />
+              Override existing stories (regenerate all)
+            </label>
+          </div>
+
           <button
             onClick={handleBulkGenerate}
             disabled={generating || !startDate || !endDate || selectedLeagues.length === 0}
@@ -231,53 +215,42 @@ export default function StoryGeneratorLandingPage() {
         </div>
       </div>
 
-      <div className={styles.gamesGrid}>
-        {games.map((game) => (
-          <Link
-            key={game.id}
-            href={`/admin/theory-bets/story-generator/${game.id}`}
-            className={styles.gameCard}
-          >
-            <div className={styles.gameHeader}>
-              <span className={styles.gameDate}>
-                {new Date(game.game_date).toLocaleDateString()}
-              </span>
-              <span className={styles.league}>{game.league_code}</span>
-            </div>
-            
-            <div className={styles.gameMatchup}>
-              <div className={styles.team}>
-                {game.away_team}
-                {game.away_score !== null && (
-                  <span className={styles.score}>{game.away_score}</span>
-                )}
-              </div>
-              <div className={styles.at}>@</div>
-              <div className={styles.team}>
-                {game.home_team}
-                {game.home_score !== null && (
-                  <span className={styles.score}>{game.home_score}</span>
-                )}
-              </div>
-            </div>
+      {/* Games with stories */}
+      <div className={styles.gamesSection}>
+        <h2>Games with Stories ({gamesWithStories.length})</h2>
+        <p className={styles.helpText}>
+          Click a game to view the story pipeline: PBP → Chapters → OpenAI Prompt → Final Story
+        </p>
 
-            <div className={styles.gameStats}>
-              <span className={styles.stat}>
-                {game.play_count} plays
-              </span>
-              {game.has_pbp && (
-                <span className={styles.statusBadge}>✓ PBP</span>
-              )}
-            </div>
-          </Link>
-        ))}
+        {loadingGames ? (
+          <div className={styles.loading}>Loading games...</div>
+        ) : gamesWithStories.length === 0 ? (
+          <div className={styles.emptyState}>
+            No games with stories yet. Use the bulk generator above to create stories.
+          </div>
+        ) : (
+          <div className={styles.gamesList}>
+            {gamesWithStories.map((game) => (
+              <Link
+                key={game.id}
+                href={`/admin/theory-bets/story-generator/${game.id}`}
+                className={styles.gameRow}
+              >
+                <span className={styles.gameDate}>
+                  {new Date(game.game_date).toLocaleDateString()}
+                </span>
+                <span className={styles.gameTeams}>
+                  {game.away_team} @ {game.home_team}
+                </span>
+                <span className={styles.gameLeague}>{game.league_code}</span>
+                <span className={styles.gameScore}>
+                  {game.away_score} - {game.home_score}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
-
-      {games.length === 0 && (
-        <div className={styles.emptyState}>
-          <p>No games with play-by-play data found.</p>
-        </div>
-      )}
     </div>
   );
 }

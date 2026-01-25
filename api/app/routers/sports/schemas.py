@@ -29,6 +29,7 @@ class ScrapeRunConfig(BaseModel):
         Boxscores for future dates simply return no data (graceful no-op).
         """
         from datetime import timedelta
+
         today = date.today()
         max_future = today + timedelta(days=7)
 
@@ -63,7 +64,9 @@ class ScrapeRunConfig(BaseModel):
             "social": self.social,
             "pbp": self.pbp,
             "only_missing": self.only_missing,
-            "updated_before": self.updated_before.isoformat() if self.updated_before else None,
+            "updated_before": self.updated_before.isoformat()
+            if self.updated_before
+            else None,
             "include_books": self.include_books,
         }
 
@@ -104,6 +107,7 @@ class GameSummary(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
+    has_story: bool
     play_count: int
     social_post_count: int
     has_required_data: bool
@@ -123,6 +127,7 @@ class GameListResponse(BaseModel):
     with_odds_count: int | None = 0
     with_social_count: int | None = 0
     with_pbp_count: int | None = 0
+    with_story_count: int | None = 0
 
 
 class TeamStat(BaseModel):
@@ -218,6 +223,7 @@ class GameMeta(BaseModel):
     has_odds: bool
     has_social: bool
     has_pbp: bool
+    has_story: bool
     play_count: int
     social_post_count: int
     home_team_x_handle: str | None = None

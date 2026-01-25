@@ -22,13 +22,14 @@ from sqlalchemy.orm import selectinload
 from ... import db_models
 from ...db import AsyncSession, get_db, AsyncSessionLocal
 from ...services.chapters import PipelineError, StoryValidationError
-from .story_builder import build_game_story_response
+from .story_builder import build_game_story_response, build_pipeline_debug_response
 from .story_schemas import (
     BulkGenerateAsyncResponse,
     BulkGenerateRequest,
     BulkGenerateStatusResponse,
     ChapterEntry,
     GameStoryResponse,
+    PipelineDebugResponse,
     PlayEntry,
     RegenerateRequest,
     RegenerateResponse,
@@ -94,30 +95,34 @@ async def get_cached_story(
             time_range = None
             if ch_data.get("time_range"):
                 time_range = TimeRange(**ch_data["time_range"])
-            chapters.append(ChapterEntry(
-                chapter_id=ch_data["chapter_id"],
-                index=ch_data["index"],
-                play_start_idx=ch_data["play_start_idx"],
-                play_end_idx=ch_data["play_end_idx"],
-                play_count=ch_data["play_count"],
-                reason_codes=ch_data["reason_codes"],
-                period=ch_data.get("period"),
-                time_range=time_range,
-                plays=plays,
-            ))
+            chapters.append(
+                ChapterEntry(
+                    chapter_id=ch_data["chapter_id"],
+                    index=ch_data["index"],
+                    play_start_idx=ch_data["play_start_idx"],
+                    play_end_idx=ch_data["play_end_idx"],
+                    play_count=ch_data["play_count"],
+                    reason_codes=ch_data["reason_codes"],
+                    period=ch_data.get("period"),
+                    time_range=time_range,
+                    plays=plays,
+                )
+            )
 
         # summaries_json stores serialized sections (repurposed field)
         sections = []
         for sec_data in cached.summaries_json or []:
-            sections.append(SectionEntry(
-                section_index=sec_data["section_index"],
-                beat_type=sec_data["beat_type"],
-                header=sec_data["header"],
-                chapters_included=sec_data["chapters_included"],
-                start_score=sec_data["start_score"],
-                end_score=sec_data["end_score"],
-                notes=sec_data.get("notes", []),
-            ))
+            sections.append(
+                SectionEntry(
+                    section_index=sec_data["section_index"],
+                    beat_type=sec_data["beat_type"],
+                    header=sec_data["header"],
+                    chapters_included=sec_data["chapters_included"],
+                    start_score=sec_data["start_score"],
+                    end_score=sec_data["end_score"],
+                    notes=sec_data.get("notes", []),
+                )
+            )
 
         # titles_json stores additional metadata (repurposed field)
         metadata = cached.titles_json or {}
@@ -130,7 +135,9 @@ async def get_cached_story(
             sections=sections,
             chapter_count=cached.chapter_count,
             section_count=len(sections),
-            total_plays=metadata.get("total_plays", sum(ch.play_count for ch in chapters)),
+            total_plays=metadata.get(
+                "total_plays", sum(ch.play_count for ch in chapters)
+            ),
             compact_story=cached.compact_story,
             word_count=metadata.get("word_count"),
             target_word_count=metadata.get("target_word_count"),
@@ -362,11 +369,14 @@ async def _run_bulk_generation(
 # ENDPOINTS
 # ============================================================================
 
+
 @router.get("/games/{game_id}/story", response_model=GameStoryResponse)
 async def get_game_story(
     game_id: int,
     include_debug: bool = Query(False, description="Include debug info"),
-    force_regenerate: bool = Query(False, description="Force regeneration, bypassing cache"),
+    force_regenerate: bool = Query(
+        False, description="Force regeneration, bypassing cache"
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> GameStoryResponse:
     """
@@ -396,7 +406,9 @@ async def get_game_story(
         select(db_models.SportsGame)
         .options(
             selectinload(db_models.SportsGame.league),
-            selectinload(db_models.SportsGame.plays).selectinload(db_models.SportsGamePlay.team),
+            selectinload(db_models.SportsGame.plays).selectinload(
+                db_models.SportsGamePlay.team
+            ),
         )
         .where(db_models.SportsGame.id == game_id)
     )
@@ -404,8 +416,7 @@ async def get_game_story(
 
     if not game:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Game not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
         )
 
     try:
@@ -420,13 +431,64 @@ async def get_game_story(
         logger.error(f"Pipeline error for game {game_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Pipeline failed at stage '{e.stage}': {str(e)}"
+            detail=f"Pipeline failed at stage '{e.stage}': {str(e)}",
         )
     except StoryValidationError as e:
         logger.error(f"Validation error for game {game_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Story validation failed: {str(e)}"
+            detail=f"Story validation failed: {str(e)}",
+        )
+
+
+@router.get("/games/{game_id}/story/pipeline", response_model=PipelineDebugResponse)
+async def get_story_pipeline(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> PipelineDebugResponse:
+    """
+    Get the story generation pipeline debug view.
+
+    Shows the full data transformation from raw PBP to final story:
+    1. Raw PBP sample (first 15 plays)
+    2. Chapter breakdown with reason codes
+    3. Section breakdown with beat types and headers
+    4. The actual OpenAI prompt that was sent
+    5. The raw AI response
+    6. Final story output
+
+    This endpoint runs the full pipeline to capture all debug data.
+    """
+    result = await session.execute(
+        select(db_models.SportsGame)
+        .options(
+            selectinload(db_models.SportsGame.league),
+            selectinload(db_models.SportsGame.plays).selectinload(
+                db_models.SportsGamePlay.team
+            ),
+        )
+        .where(db_models.SportsGame.id == game_id)
+    )
+    game = result.scalar_one_or_none()
+
+    if not game:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
+
+    try:
+        return await build_pipeline_debug_response(game)
+    except PipelineError as e:
+        logger.error(f"Pipeline error for game {game_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Pipeline failed at stage '{e.stage}': {str(e)}",
+        )
+    except StoryValidationError as e:
+        logger.error(f"Validation error for game {game_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Story validation failed: {str(e)}",
         )
 
 
@@ -448,7 +510,9 @@ async def regenerate_story(
             select(db_models.SportsGame)
             .options(
                 selectinload(db_models.SportsGame.league),
-                selectinload(db_models.SportsGame.plays).selectinload(db_models.SportsGamePlay.team),
+                selectinload(db_models.SportsGame.plays).selectinload(
+                    db_models.SportsGamePlay.team
+                ),
             )
             .where(db_models.SportsGame.id == game_id)
         )
@@ -456,8 +520,7 @@ async def regenerate_story(
 
         if not game:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Game not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
             )
 
         # Regenerate story using chapters-first pipeline
@@ -498,6 +561,7 @@ async def regenerate_story(
 # ============================================================================
 # BULK GENERATION ENDPOINTS
 # ============================================================================
+
 
 @router.post("/games/bulk-generate-async", response_model=BulkGenerateAsyncResponse)
 async def bulk_generate_stories_async(
@@ -541,15 +605,16 @@ async def bulk_generate_stories_async(
     )
 
 
-@router.get("/games/bulk-generate-status/{job_id}", response_model=BulkGenerateStatusResponse)
+@router.get(
+    "/games/bulk-generate-status/{job_id}", response_model=BulkGenerateStatusResponse
+)
 async def get_bulk_generate_status(job_id: str) -> BulkGenerateStatusResponse:
     """
     Get status of a bulk generation job.
     """
     if job_id not in _bulk_jobs:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
 
     job = _bulk_jobs[job_id]

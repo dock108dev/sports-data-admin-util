@@ -8,6 +8,9 @@ Builds PBP and social events for game timelines:
 4. Validate timeline structure
 
 Related modules:
+- timeline_types.py: Constants, data classes, exceptions
+- timeline_phases.py: Phase utilities and timing calculations
+- timeline_events.py: PBP event building and timeline merging
 - social_events.py: Social post processing and role assignment
 - timeline_validation.py: Validation and sanity checks
 
@@ -17,8 +20,7 @@ See docs/TIMELINE_ASSEMBLY.md for the assembly contract.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Sequence
 
 from sqlalchemy import select
@@ -26,7 +28,16 @@ from sqlalchemy.orm import selectinload
 
 from .. import db_models
 from ..db import AsyncSession
-from ..utils.datetime_utils import now_utc, parse_clock_to_seconds
+from ..utils.datetime_utils import now_utc
+from .timeline_types import (
+    DEFAULT_TIMELINE_VERSION,
+    SOCIAL_POSTGAME_WINDOW_SECONDS,
+    SOCIAL_PREGAME_WINDOW_SECONDS,
+    TimelineArtifactPayload,
+    TimelineGenerationError,
+)
+from .timeline_phases import compute_phase_boundaries, nba_game_end
+from .timeline_events import build_pbp_events, merge_timeline_events
 from .timeline_validation import validate_and_log, TimelineValidationError
 from .social_events import build_social_events, build_social_events_async
 
@@ -77,6 +88,9 @@ async def build_game_analysis_async(
 async def build_summary_from_timeline_async(
     timeline: list[dict[str, Any]],
     game_analysis: dict[str, Any],
+    game_id: int | None = None,
+    timeline_version: str | None = None,
+    sport: str | None = None,
 ) -> dict[str, Any]:
     """Generate AI summary from timeline and analysis.
 
@@ -91,301 +105,6 @@ async def build_summary_from_timeline_async(
 
 
 # =============================================================================
-# CONSTANTS
-# =============================================================================
-
-NBA_REGULATION_REAL_SECONDS = 75 * 60
-NBA_HALFTIME_REAL_SECONDS = 15 * 60
-NBA_QUARTER_REAL_SECONDS = NBA_REGULATION_REAL_SECONDS // 4
-NBA_QUARTER_GAME_SECONDS = 12 * 60
-NBA_PREGAME_REAL_SECONDS = 10 * 60
-NBA_OVERTIME_PADDING_SECONDS = 30 * 60
-DEFAULT_TIMELINE_VERSION = "v1"
-
-# Social post time windows (configurable)
-# These define how far before/after the game we include social posts
-SOCIAL_PREGAME_WINDOW_SECONDS = 2 * 60 * 60   # 2 hours before game start
-SOCIAL_POSTGAME_WINDOW_SECONDS = 2 * 60 * 60  # 2 hours after game end
-
-# Canonical phase ordering - this is the source of truth for timeline order
-PHASE_ORDER: dict[str, int] = {
-    "pregame": 0,
-    "q1": 1,
-    "q2": 2,
-    "halftime": 3,
-    "q3": 4,
-    "q4": 5,
-    "ot1": 6,
-    "ot2": 7,
-    "ot3": 8,
-    "ot4": 9,
-    "postgame": 99,
-}
-
-
-def _phase_sort_order(phase: str | None) -> int:
-    """Get sort order for a phase. Unknown phases sort after postgame."""
-    if phase is None:
-        return 100
-    return PHASE_ORDER.get(phase, 100)
-
-
-# =============================================================================
-# DATA CLASSES
-# =============================================================================
-
-
-@dataclass
-class TimelineArtifactPayload:
-    """Payload for a generated timeline artifact."""
-    game_id: int
-    sport: str
-    timeline_version: str
-    generated_at: datetime
-    timeline: list[dict[str, Any]]
-    summary: dict[str, Any]
-    game_analysis: dict[str, Any]
-
-
-class TimelineGenerationError(Exception):
-    """Raised when timeline generation fails."""
-
-    def __init__(self, message: str, status_code: int = 500) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-
-
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
-
-
-# Clock parsing moved to utils/datetime_utils.py
-
-
-def _progress_from_index(index: int, total: int) -> float:
-    """
-    Calculate progress through the game based on play index.
-
-    Returns 0.0 at start, 1.0 at end.
-    """
-    if total <= 1:
-        return 0.0
-    return index / (total - 1)
-
-
-# =============================================================================
-# PHASE UTILITIES
-# =============================================================================
-
-
-def _nba_phase_for_quarter(quarter: int | None) -> str:
-    """Map quarter number to narrative phase."""
-    if quarter is None:
-        return "unknown"
-    if quarter == 1:
-        return "q1"
-    if quarter == 2:
-        return "q2"
-    if quarter == 3:
-        return "q3"
-    if quarter == 4:
-        return "q4"
-    if quarter == 5:
-        return "ot1"
-    if quarter == 6:
-        return "ot2"
-    if quarter == 7:
-        return "ot3"
-    if quarter == 8:
-        return "ot4"
-    return f"ot{quarter - 4}" if quarter > 4 else "unknown"
-
-
-def _nba_block_for_quarter(quarter: int | None) -> str:
-    """Map quarter to game block (first_half, second_half, overtime)."""
-    if quarter is None:
-        return "unknown"
-    if quarter <= 2:
-        return "first_half"
-    if quarter <= 4:
-        return "second_half"
-    return "overtime"
-
-
-def _nba_quarter_start(game_start: datetime, quarter: int) -> datetime:
-    """Calculate when a quarter starts in real time."""
-    if quarter == 1:
-        return game_start
-    if quarter == 2:
-        return game_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    if quarter == 3:
-        return game_start + timedelta(
-            seconds=2 * NBA_QUARTER_REAL_SECONDS + NBA_HALFTIME_REAL_SECONDS
-        )
-    if quarter == 4:
-        return game_start + timedelta(
-            seconds=3 * NBA_QUARTER_REAL_SECONDS + NBA_HALFTIME_REAL_SECONDS
-        )
-    # Overtime quarters
-    ot_num = quarter - 4
-    return game_start + timedelta(
-        seconds=NBA_REGULATION_REAL_SECONDS + ot_num * 15 * 60
-    )
-
-
-def _nba_regulation_end(game_start: datetime) -> datetime:
-    """Calculate when regulation ends."""
-    return game_start + timedelta(seconds=NBA_REGULATION_REAL_SECONDS)
-
-
-def _nba_game_end(
-    game_start: datetime, plays: Sequence[db_models.SportsGamePlay]
-) -> datetime:
-    """Calculate actual game end time based on plays."""
-    max_quarter = 4
-    for play in plays:
-        if play.quarter and play.quarter > max_quarter:
-            max_quarter = play.quarter
-
-    if max_quarter <= 4:
-        return _nba_regulation_end(game_start)
-
-    # Has overtime
-    ot_count = max_quarter - 4
-    return game_start + timedelta(
-        seconds=NBA_REGULATION_REAL_SECONDS + ot_count * 15 * 60
-    )
-
-
-def _compute_phase_boundaries(
-    game_start: datetime, has_overtime: bool = False
-) -> dict[str, tuple[datetime, datetime]]:
-    """
-    Compute start/end times for each narrative phase.
-
-    These boundaries are used to assign social posts to phases.
-    The pregame and postgame phases extend beyond the game itself.
-    """
-    boundaries: dict[str, tuple[datetime, datetime]] = {}
-
-    # Pregame: 2 hours before to game start
-    pregame_start = game_start - timedelta(seconds=SOCIAL_PREGAME_WINDOW_SECONDS)
-    boundaries["pregame"] = (pregame_start, game_start)
-
-    # Q1
-    q1_start = game_start
-    q1_end = game_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    boundaries["q1"] = (q1_start, q1_end)
-
-    # Q2
-    q2_start = q1_end
-    q2_end = q2_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    boundaries["q2"] = (q2_start, q2_end)
-
-    # Halftime
-    halftime_start = q2_end
-    halftime_end = halftime_start + timedelta(seconds=NBA_HALFTIME_REAL_SECONDS)
-    boundaries["halftime"] = (halftime_start, halftime_end)
-
-    # Q3
-    q3_start = halftime_end
-    q3_end = q3_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    boundaries["q3"] = (q3_start, q3_end)
-
-    # Q4
-    q4_start = q3_end
-    q4_end = q4_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    boundaries["q4"] = (q4_start, q4_end)
-
-    # Overtime periods (if applicable)
-    if has_overtime:
-        ot_start = q4_end
-        for i in range(1, 5):  # Up to 4 OT periods
-            ot_end = ot_start + timedelta(seconds=15 * 60)
-            boundaries[f"ot{i}"] = (ot_start, ot_end)
-            ot_start = ot_end
-        boundaries["postgame"] = (ot_start, ot_start + timedelta(hours=2))
-    else:
-        boundaries["postgame"] = (q4_end, q4_end + timedelta(hours=2))
-
-    return boundaries
-
-
-# =============================================================================
-# PBP EVENT BUILDING
-# =============================================================================
-
-
-def _build_pbp_events(
-    plays: Sequence[db_models.SportsGamePlay],
-    game_start: datetime,
-) -> list[tuple[datetime, dict[str, Any]]]:
-    """
-    Build PBP events with phase assignment and synthetic timestamps.
-
-    Each event includes:
-    - phase: Narrative phase (q1, q2, etc.)
-    - intra_phase_order: Sort key within phase (clock-based)
-    - synthetic_timestamp: Computed wall-clock time for display
-    - team_abbreviation: Team abbreviation (if team_id is present)
-    - player_name: Player name (if available)
-    """
-    events: list[tuple[datetime, dict[str, Any]]] = []
-    total_plays = len(plays)
-
-    for play in plays:
-        quarter = play.quarter or 1
-        phase = _nba_phase_for_quarter(quarter)
-        block = _nba_block_for_quarter(quarter)
-
-        # Parse game clock
-        clock_seconds = parse_clock_to_seconds(play.game_clock)
-        if clock_seconds is None:
-            # Fallback: use play index for ordering
-            intra_phase_order = play.play_index
-            progress = _progress_from_index(play.play_index, total_plays)
-        else:
-            # Invert clock: 12:00 (720s) -> 0, 0:00 -> 720
-            # So earlier in quarter has lower order (comes first)
-            intra_phase_order = NBA_QUARTER_GAME_SECONDS - clock_seconds
-            progress = (quarter - 1 + (1 - clock_seconds / 720)) / 4
-
-        # Compute synthetic timestamp
-        quarter_start = _nba_quarter_start(game_start, quarter)
-        elapsed_in_quarter = NBA_QUARTER_GAME_SECONDS - (clock_seconds or 0)
-        # Scale game time to real time (roughly 1.5x)
-        real_elapsed = elapsed_in_quarter * (NBA_QUARTER_REAL_SECONDS / NBA_QUARTER_GAME_SECONDS)
-        synthetic_ts = quarter_start + timedelta(seconds=real_elapsed)
-
-        # Extract team abbreviation from relationship
-        team_abbrev = None
-        if hasattr(play, 'team') and play.team:
-            team_abbrev = play.team.abbreviation
-
-        event_payload = {
-            "event_type": "pbp",
-            "phase": phase,
-            "intra_phase_order": intra_phase_order,
-            "play_index": play.play_index,
-            "quarter": quarter,
-            "block": block,
-            "game_clock": play.game_clock,
-            "description": play.description,
-            "play_type": play.play_type,
-            "team_abbreviation": team_abbrev,
-            "player_name": play.player_name,
-            "home_score": play.home_score,
-            "away_score": play.away_score,
-            "synthetic_timestamp": synthetic_ts.isoformat(),
-            "game_progress": round(progress, 3),
-        }
-        events.append((synthetic_ts, event_payload))
-
-    return events
-
-
-# =============================================================================
 # TIMELINE ASSEMBLY
 # =============================================================================
 
@@ -394,7 +113,7 @@ def build_nba_timeline(
     game: db_models.SportsGame,
     plays: Sequence[db_models.SportsGamePlay],
     social_posts: Sequence[db_models.GameSocialPost],
-) -> tuple[list[dict[str, Any]], dict[str, Any], datetime]:
+) -> tuple[list[dict[str, Any]], dict[str, Any], Any]:
     """
     Build a complete timeline for an NBA game.
 
@@ -405,66 +124,17 @@ def build_nba_timeline(
     4. Returns timeline, summary metadata, and computed game end time
     """
     game_start = game.start_time
-    game_end = _nba_game_end(game_start, plays)
+    game_end = nba_game_end(game_start, plays)
     has_overtime = any((play.quarter or 0) > 4 for play in plays)
 
     # Compute phase boundaries for social event assignment
-    phase_boundaries = _compute_phase_boundaries(game_start, has_overtime)
+    phase_boundaries = compute_phase_boundaries(game_start, has_overtime)
 
-    pbp_events = _build_pbp_events(plays, game_start)
+    pbp_events = build_pbp_events(plays, game_start)
     social_events = build_social_events(social_posts, phase_boundaries)
-    timeline = _merge_timeline_events(pbp_events, social_events)
+    timeline = merge_timeline_events(pbp_events, social_events)
     summary = build_nba_summary(game)
     return timeline, summary, game_end
-
-
-def _merge_timeline_events(
-    pbp_events: Sequence[tuple[datetime, dict[str, Any]]],
-    social_events: Sequence[tuple[datetime, dict[str, Any]]],
-) -> list[dict[str, Any]]:
-    """
-    Merge PBP and social events using PHASE-FIRST ordering.
-
-    Ordering is determined by:
-    1. phase_order (from PHASE_ORDER constant) - PRIMARY
-    2. intra_phase_order (clock progress for PBP, seconds for social) - SECONDARY
-    3. event_type tiebreaker (pbp before tweet at same position) - TERTIARY
-
-    synthetic_timestamp is NOT used for ordering. It is retained for
-    display/debugging purposes only.
-
-    See docs/TIMELINE_ASSEMBLY.md for the canonical assembly recipe.
-    """
-    merged = list(pbp_events) + list(social_events)
-
-    def sort_key(
-        item: tuple[datetime, dict[str, Any]]
-    ) -> tuple[int, float, int, int]:
-        _, payload = item
-
-        # Primary: phase order
-        phase = payload.get("phase", "unknown")
-        phase_order = _phase_sort_order(phase)
-
-        # Secondary: intra-phase order
-        intra_order = payload.get("intra_phase_order", 0)
-
-        # Tertiary: event type (pbp=0, tweet=1) so PBP comes first at ties
-        event_type_order = 0 if payload.get("event_type") == "pbp" else 1
-
-        # Quaternary: play_index for PBP stability
-        play_index = payload.get("play_index", 0)
-
-        return (phase_order, intra_order, event_type_order, play_index)
-
-    sorted_events = sorted(merged, key=sort_key)
-
-    # Extract payloads, keeping intra_phase_order for compact mode
-    result = []
-    for _, payload in sorted_events:
-        result.append(payload)
-
-    return result
 
 
 # =============================================================================
@@ -526,20 +196,16 @@ async def generate_timeline_artifact(
         )
         plays = plays_result.scalars().all()
         if not plays:
-            raise TimelineGenerationError(
-                "Missing play-by-play data", status_code=422
-            )
+            raise TimelineGenerationError("Missing play-by-play data", status_code=422)
 
         game_start = game.start_time
-        game_end = _nba_game_end(game_start, plays)
+        game_end = nba_game_end(game_start, plays)
         has_overtime = any((play.quarter or 0) > 4 for play in plays)
 
         # Compute phase boundaries for social event assignment
-        phase_boundaries = _compute_phase_boundaries(game_start, has_overtime)
+        phase_boundaries = compute_phase_boundaries(game_start, has_overtime)
 
         # Only include social posts if we have a reliable tip_time
-        # Without tip_time, social post windows would be based on midnight UTC
-        # which produces incorrect/meaningless results
         posts: list[db_models.GameSocialPost] = []
         if game.has_reliable_start_time:
             social_window_start = game_start - timedelta(
@@ -574,7 +240,7 @@ async def generate_timeline_artifact(
                 "social_posts_skipped_no_tip_time",
                 extra={
                     "game_id": game_id,
-                    "reason": "No reliable tip_time available, social posts excluded from timeline",
+                    "reason": "No reliable tip_time available",
                 },
             )
 
@@ -583,11 +249,9 @@ async def generate_timeline_artifact(
             "timeline_artifact_phase_started",
             extra={"game_id": game_id, "phase": "build_pbp_events"},
         )
-        pbp_events = _build_pbp_events(plays, game_start)
+        pbp_events = build_pbp_events(plays, game_start)
         if not pbp_events:
-            raise TimelineGenerationError(
-                "Missing play-by-play data", status_code=422
-            )
+            raise TimelineGenerationError("Missing play-by-play data", status_code=422)
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
@@ -605,7 +269,7 @@ async def generate_timeline_artifact(
         social_events = await build_social_events_async(
             posts, phase_boundaries, league_code
         )
-        timeline = _merge_timeline_events(pbp_events, social_events)
+        timeline = merge_timeline_events(pbp_events, social_events)
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
@@ -622,15 +286,19 @@ async def generate_timeline_artifact(
             extra={"game_id": game_id, "phase": "game_analysis"},
         )
         base_summary = build_nba_summary(game)
-        
+
         # Build game context for team name resolution
         game_context = {
             "home_team_name": game.home_team.name if game.home_team else "Home",
             "away_team_name": game.away_team.name if game.away_team else "Away",
-            "home_team_abbrev": game.home_team.abbreviation if game.home_team else "HOME",
-            "away_team_abbrev": game.away_team.abbreviation if game.away_team else "AWAY",
+            "home_team_abbrev": game.home_team.abbreviation
+            if game.home_team
+            else "HOME",
+            "away_team_abbrev": game.away_team.abbreviation
+            if game.away_team
+            else "AWAY",
         }
-        
+
         game_analysis = await build_game_analysis_async(
             timeline=timeline,
             summary=base_summary,
@@ -712,7 +380,8 @@ async def generate_timeline_artifact(
             select(db_models.SportsGameTimelineArtifact).where(
                 db_models.SportsGameTimelineArtifact.game_id == game_id,
                 db_models.SportsGameTimelineArtifact.sport == "NBA",
-                db_models.SportsGameTimelineArtifact.timeline_version == timeline_version,
+                db_models.SportsGameTimelineArtifact.timeline_version
+                == timeline_version,
             )
         )
         artifact = artifact_result.scalar_one_or_none()

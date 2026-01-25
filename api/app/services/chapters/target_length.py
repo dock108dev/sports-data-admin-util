@@ -68,6 +68,7 @@ HIGH_TARGET = (HIGH_MIN + HIGH_MAX) // 2  # 1050
 # TARGET SELECTION RESULT
 # ============================================================================
 
+
 @dataclass
 class TargetLengthResult:
     """Result of target word count selection.
@@ -77,6 +78,7 @@ class TargetLengthResult:
     - The input quality that determined it
     - The valid range for reference
     """
+
     target_words: int
     quality: GameQuality
     range_min: int
@@ -95,6 +97,7 @@ class TargetLengthResult:
 # ============================================================================
 # TARGET SELECTION FUNCTION
 # ============================================================================
+
 
 def select_target_word_count(quality: GameQuality) -> TargetLengthResult:
     """Select deterministic target word count from game quality.
@@ -160,6 +163,7 @@ def get_target_words(quality: GameQuality) -> int:
 # ============================================================================
 # DEBUG OUTPUT
 # ============================================================================
+
 
 def format_target_debug(result: TargetLengthResult) -> str:
     """Format target selection for debugging.

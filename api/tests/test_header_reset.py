@@ -10,8 +10,6 @@ These tests validate:
 ISSUE: Header Reset Generator (Chapters-First Architecture)
 """
 
-import pytest
-
 from app.services.chapters.beat_classifier import BeatType
 from app.services.chapters.story_section import StorySection
 from app.services.chapters.header_reset import (
@@ -33,6 +31,7 @@ from app.services.chapters.header_reset import (
 # ============================================================================
 # TEST HELPERS
 # ============================================================================
+
 
 def make_section(
     section_index: int,
@@ -75,6 +74,7 @@ def make_context(
 # TEST: TEMPLATE COVERAGE
 # ============================================================================
 
+
 class TestTemplateCoverage:
     """Tests for template coverage of all beat types."""
 
@@ -82,19 +82,24 @@ class TestTemplateCoverage:
         """Every BeatType has at least one template."""
         for beat_type in BeatType:
             assert beat_type in HEADER_TEMPLATES, f"Missing template for {beat_type}"
-            assert len(HEADER_TEMPLATES[beat_type]) > 0, f"Empty templates for {beat_type}"
+            assert len(HEADER_TEMPLATES[beat_type]) > 0, (
+                f"Empty templates for {beat_type}"
+            )
 
     def test_all_templates_are_valid_sentences(self):
         """Every template is a valid single sentence."""
         for beat_type, templates in HEADER_TEMPLATES.items():
             for template in templates:
                 errors = validate_header(template)
-                assert not errors, f"Invalid template for {beat_type}: {template} - {errors}"
+                assert not errors, (
+                    f"Invalid template for {beat_type}: {template} - {errors}"
+                )
 
 
 # ============================================================================
 # TEST: HEADER GENERATION FOR EACH BEAT TYPE
 # ============================================================================
+
 
 class TestHeaderGenerationByBeatType:
     """Tests for header generation for each beat type."""
@@ -196,6 +201,7 @@ class TestHeaderGenerationByBeatType:
 # TEST: ONE-SENTENCE ENFORCEMENT
 # ============================================================================
 
+
 class TestOneSentenceEnforcement:
     """Tests for one-sentence constraint."""
 
@@ -205,7 +211,9 @@ class TestOneSentenceEnforcement:
             context = make_context(beat_type)
             header = generate_header(context)
 
-            assert header.endswith("."), f"{beat_type} header doesn't end with period: {header}"
+            assert header.endswith("."), (
+                f"{beat_type} header doesn't end with period: {header}"
+            )
 
     def test_header_has_exactly_one_period(self):
         """All headers have exactly one period."""
@@ -214,7 +222,9 @@ class TestOneSentenceEnforcement:
             header = generate_header(context)
 
             period_count = header.count(".")
-            assert period_count == 1, f"{beat_type} header has {period_count} periods: {header}"
+            assert period_count == 1, (
+                f"{beat_type} header has {period_count} periods: {header}"
+            )
 
     def test_header_no_exclamation(self):
         """No headers contain exclamation points."""
@@ -236,6 +246,7 @@ class TestOneSentenceEnforcement:
 # ============================================================================
 # TEST: DETERMINISM
 # ============================================================================
+
 
 class TestDeterminism:
     """Tests for deterministic behavior."""
@@ -280,6 +291,7 @@ class TestDeterminism:
 # TEST: TEMPLATE SELECTION
 # ============================================================================
 
+
 class TestTemplateSelection:
     """Tests for deterministic template selection."""
 
@@ -309,6 +321,7 @@ class TestTemplateSelection:
 # ============================================================================
 # TEST: CONTEXT BUILDING
 # ============================================================================
+
 
 class TestContextBuilding:
     """Tests for building header context from sections."""
@@ -358,6 +371,7 @@ class TestContextBuilding:
 # TEST: BATCH GENERATION
 # ============================================================================
 
+
 class TestBatchGeneration:
     """Tests for batch header generation."""
 
@@ -388,6 +402,7 @@ class TestBatchGeneration:
 # ============================================================================
 # TEST: VALIDATION
 # ============================================================================
+
 
 class TestValidation:
     """Tests for header validation."""
@@ -439,14 +454,15 @@ class TestValidation:
         errors = validate_all_headers(headers)
 
         assert 0 not in errors  # Valid
-        assert 1 in errors      # Has !
+        assert 1 in errors  # Has !
         assert 2 not in errors  # Valid
-        assert 3 in errors      # No period
+        assert 3 in errors  # No period
 
 
 # ============================================================================
 # TEST: DEBUG OUTPUT
 # ============================================================================
+
 
 class TestDebugOutput:
     """Tests for debug output formatting."""
@@ -471,6 +487,7 @@ class TestDebugOutput:
 # TEST: SERIALIZATION
 # ============================================================================
 
+
 class TestSerialization:
     """Tests for serialization."""
 
@@ -494,6 +511,7 @@ class TestSerialization:
 # TEST: CONSTRAINT ENFORCEMENT
 # ============================================================================
 
+
 class TestConstraintEnforcement:
     """Tests for header constraint enforcement."""
 
@@ -501,15 +519,23 @@ class TestConstraintEnforcement:
         """Templates contain no player names."""
         # Common NBA player names that should NOT appear
         forbidden_names = [
-            "LeBron", "Curry", "Durant", "Giannis", "Doncic",
-            "James", "Stephen", "Kevin", "Luka",
+            "LeBron",
+            "Curry",
+            "Durant",
+            "Giannis",
+            "Doncic",
+            "James",
+            "Stephen",
+            "Kevin",
+            "Luka",
         ]
 
         for beat_type, templates in HEADER_TEMPLATES.items():
             for template in templates:
                 for name in forbidden_names:
-                    assert name.lower() not in template.lower(), \
+                    assert name.lower() not in template.lower(), (
                         f"Template for {beat_type} contains player name: {name}"
+                    )
 
     def test_no_numeric_scores_except_allowed(self):
         """Templates don't contain numeric scores (except OT/closing)."""
@@ -519,14 +545,21 @@ class TestConstraintEnforcement:
                 for template in templates:
                     # Check for score-like patterns (numbers)
                     has_numbers = any(c.isdigit() for c in template)
-                    assert not has_numbers, \
+                    assert not has_numbers, (
                         f"Template for {beat_type} contains numbers: {template}"
+                    )
 
     def test_headers_are_boring(self):
         """Headers don't contain hype words."""
         hype_words = [
-            "amazing", "incredible", "unbelievable", "epic",
-            "dominant", "crushing", "explosive", "thrilling",
+            "amazing",
+            "incredible",
+            "unbelievable",
+            "epic",
+            "dominant",
+            "crushing",
+            "explosive",
+            "thrilling",
         ]
 
         for beat_type in BeatType:
@@ -534,5 +567,6 @@ class TestConstraintEnforcement:
             header = generate_header(context)
 
             for word in hype_words:
-                assert word.lower() not in header.lower(), \
+                assert word.lower() not in header.lower(), (
                     f"Header for {beat_type} contains hype word '{word}': {header}"
+                )

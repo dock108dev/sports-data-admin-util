@@ -11,7 +11,11 @@ from .config import settings
 
 @lru_cache(maxsize=1)
 def get_celery_app() -> Celery:
-    app = Celery("sports-data-admin", broker=settings.celery_broker, backend=settings.celery_backend)
+    app = Celery(
+        "sports-data-admin",
+        broker=settings.celery_broker,
+        backend=settings.celery_backend,
+    )
     app.conf.task_default_queue = settings.celery_default_queue
     app.conf.task_routes = {
         "run_scrape_job": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
@@ -19,5 +23,3 @@ def get_celery_app() -> Celery:
     app.conf.task_always_eager = False
     app.conf.task_eager_propagates = True
     return app
-
-

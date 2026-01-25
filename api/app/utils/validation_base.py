@@ -37,4 +37,6 @@ def validate_database_credentials(value: str) -> None:
     """Ensure DATABASE_URL does not use default credentials in production."""
     parsed = urlparse(value)
     if parsed.username == "postgres" and parsed.password == "postgres":
-        raise RuntimeError("DATABASE_URL must not use default postgres credentials in production.")
+        raise RuntimeError(
+            "DATABASE_URL must not use default postgres credentials in production."
+        )

@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ResolutionAttempt:
     """Single resolution attempt for tracking."""
-    
+
     entity_type: str  # "team" or "player"
     source_identifier: str
     source_context: dict[str, Any] | None = None
@@ -80,30 +80,30 @@ class ResolutionAttempt:
 @dataclass
 class ResolutionSummary:
     """Summary of all resolutions for a game or run."""
-    
+
     game_id: int
     pipeline_run_id: int | None = None
-    
+
     # Team resolution stats
     teams_total: int = 0
     teams_resolved: int = 0
     teams_failed: int = 0
     teams_ambiguous: int = 0
-    
+
     # Player resolution stats
     players_total: int = 0
     players_resolved: int = 0
     players_failed: int = 0
-    
+
     # Detailed results
     team_resolutions: list[dict[str, Any]] = field(default_factory=list)
     player_resolutions: list[dict[str, Any]] = field(default_factory=list)
-    
+
     # Issues for review
     unresolved_teams: list[dict[str, Any]] = field(default_factory=list)
     ambiguous_teams: list[dict[str, Any]] = field(default_factory=list)
     unresolved_players: list[dict[str, Any]] = field(default_factory=list)
-    
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "game_id": self.game_id,
@@ -113,13 +113,21 @@ class ResolutionSummary:
                 "resolved": self.teams_resolved,
                 "failed": self.teams_failed,
                 "ambiguous": self.teams_ambiguous,
-                "resolution_rate": round(self.teams_resolved / self.teams_total * 100, 1) if self.teams_total > 0 else 0,
+                "resolution_rate": round(
+                    self.teams_resolved / self.teams_total * 100, 1
+                )
+                if self.teams_total > 0
+                else 0,
             },
             "players": {
                 "total": self.players_total,
                 "resolved": self.players_resolved,
                 "failed": self.players_failed,
-                "resolution_rate": round(self.players_resolved / self.players_total * 100, 1) if self.players_total > 0 else 0,
+                "resolution_rate": round(
+                    self.players_resolved / self.players_total * 100, 1
+                )
+                if self.players_total > 0
+                else 0,
             },
             "issues": {
                 "unresolved_teams": self.unresolved_teams,
@@ -136,10 +144,10 @@ class ResolutionSummary:
 
 class ResolutionTracker:
     """Tracks entity resolutions during PBP processing.
-    
+
     Usage:
         tracker = ResolutionTracker(game_id, pipeline_run_id)
-        
+
         # Track team resolution
         tracker.track_team(
             source_abbrev="LAL",
@@ -148,18 +156,18 @@ class ResolutionTracker:
             method="game_context",
             play_index=45,
         )
-        
+
         # Track failed resolution
         tracker.track_team_failure(
             source_abbrev="XYZ",
             reason="Unknown abbreviation",
             play_index=67,
         )
-        
+
         # Persist all resolutions
         await tracker.persist(session)
     """
-    
+
     def __init__(
         self,
         game_id: int,
@@ -169,8 +177,10 @@ class ResolutionTracker:
         self.pipeline_run_id = pipeline_run_id
         self.attempts: list[ResolutionAttempt] = []
         self._seen_teams: dict[str, int] = {}  # source_id -> first index in attempts
-        self._seen_players: dict[str, int] = {}  # source_name -> first index in attempts
-    
+        self._seen_players: dict[
+            str, int
+        ] = {}  # source_name -> first index in attempts
+
     def track_team(
         self,
         source_abbrev: str,
@@ -183,22 +193,24 @@ class ResolutionTracker:
     ) -> None:
         """Track a successful or partially successful team resolution."""
         key = source_abbrev.upper() if source_abbrev else ""
-        
+
         if key in self._seen_teams:
             # Update occurrence count for existing resolution
             idx = self._seen_teams[key]
             self.attempts[idx].source_context = self.attempts[idx].source_context or {}
-            self.attempts[idx].source_context["occurrence_count"] = \
+            self.attempts[idx].source_context["occurrence_count"] = (
                 self.attempts[idx].source_context.get("occurrence_count", 1) + 1
+            )
             if play_index is not None:
                 self.attempts[idx].source_context["last_play_index"] = play_index
             return
-        
+
         status = "success" if resolved_id else "partial"
         attempt = ResolutionAttempt(
             entity_type="team",
             source_identifier=source_abbrev,
-            source_context=source_context or {"occurrence_count": 1, "first_play_index": play_index},
+            source_context=source_context
+            or {"occurrence_count": 1, "first_play_index": play_index},
             resolved_id=resolved_id,
             resolved_name=resolved_name,
             status=status,
@@ -206,10 +218,10 @@ class ResolutionTracker:
             confidence=confidence,
             play_index=play_index,
         )
-        
+
         self._seen_teams[key] = len(self.attempts)
         self.attempts.append(attempt)
-    
+
     def track_team_failure(
         self,
         source_abbrev: str,
@@ -220,28 +232,30 @@ class ResolutionTracker:
     ) -> None:
         """Track a failed team resolution."""
         key = source_abbrev.upper() if source_abbrev else ""
-        
+
         if key in self._seen_teams:
             idx = self._seen_teams[key]
             self.attempts[idx].source_context = self.attempts[idx].source_context or {}
-            self.attempts[idx].source_context["occurrence_count"] = \
+            self.attempts[idx].source_context["occurrence_count"] = (
                 self.attempts[idx].source_context.get("occurrence_count", 1) + 1
+            )
             return
-        
+
         status = "ambiguous" if candidates and len(candidates) > 1 else "failed"
         attempt = ResolutionAttempt(
             entity_type="team",
             source_identifier=source_abbrev,
-            source_context=source_context or {"occurrence_count": 1, "first_play_index": play_index},
+            source_context=source_context
+            or {"occurrence_count": 1, "first_play_index": play_index},
             status=status,
             failure_reason=reason,
             candidates=candidates,
             play_index=play_index,
         )
-        
+
         self._seen_teams[key] = len(self.attempts)
         self.attempts.append(attempt)
-    
+
     def track_player(
         self,
         source_name: str,
@@ -253,31 +267,33 @@ class ResolutionTracker:
         """Track a player resolution (currently name normalization only)."""
         if not source_name:
             return
-        
+
         key = source_name.lower().strip()
-        
+
         if key in self._seen_players:
             idx = self._seen_players[key]
             self.attempts[idx].source_context = self.attempts[idx].source_context or {}
-            self.attempts[idx].source_context["occurrence_count"] = \
+            self.attempts[idx].source_context["occurrence_count"] = (
                 self.attempts[idx].source_context.get("occurrence_count", 1) + 1
+            )
             if play_index is not None:
                 self.attempts[idx].source_context["last_play_index"] = play_index
             return
-        
+
         attempt = ResolutionAttempt(
             entity_type="player",
             source_identifier=source_name,
-            source_context=source_context or {"occurrence_count": 1, "first_play_index": play_index},
+            source_context=source_context
+            or {"occurrence_count": 1, "first_play_index": play_index},
             resolved_name=resolved_name or source_name,
             status="success",
             method=method,
             play_index=play_index,
         )
-        
+
         self._seen_players[key] = len(self.attempts)
         self.attempts.append(attempt)
-    
+
     def track_player_failure(
         self,
         source_name: str,
@@ -287,12 +303,12 @@ class ResolutionTracker:
         """Track a failed player resolution."""
         if not source_name:
             return
-        
+
         key = source_name.lower().strip()
-        
+
         if key in self._seen_players:
             return  # Already tracked
-        
+
         attempt = ResolutionAttempt(
             entity_type="player",
             source_identifier=source_name,
@@ -301,17 +317,17 @@ class ResolutionTracker:
             failure_reason=reason,
             play_index=play_index,
         )
-        
+
         self._seen_players[key] = len(self.attempts)
         self.attempts.append(attempt)
-    
+
     def get_summary(self) -> ResolutionSummary:
         """Build a summary of all tracked resolutions."""
         summary = ResolutionSummary(
             game_id=self.game_id,
             pipeline_run_id=self.pipeline_run_id,
         )
-        
+
         for attempt in self.attempts:
             if attempt.entity_type == "team":
                 summary.teams_total += 1
@@ -319,56 +335,70 @@ class ResolutionTracker:
                     summary.teams_resolved += 1
                 elif attempt.status == "failed":
                     summary.teams_failed += 1
-                    summary.unresolved_teams.append({
-                        "source": attempt.source_identifier,
-                        "reason": attempt.failure_reason,
-                        "occurrences": attempt.source_context.get("occurrence_count", 1) if attempt.source_context else 1,
-                    })
+                    summary.unresolved_teams.append(
+                        {
+                            "source": attempt.source_identifier,
+                            "reason": attempt.failure_reason,
+                            "occurrences": attempt.source_context.get(
+                                "occurrence_count", 1
+                            )
+                            if attempt.source_context
+                            else 1,
+                        }
+                    )
                 elif attempt.status == "ambiguous":
                     summary.teams_ambiguous += 1
-                    summary.ambiguous_teams.append({
+                    summary.ambiguous_teams.append(
+                        {
+                            "source": attempt.source_identifier,
+                            "candidates": attempt.candidates,
+                            "resolved_to": attempt.resolved_name,
+                        }
+                    )
+
+                summary.team_resolutions.append(
+                    {
                         "source": attempt.source_identifier,
-                        "candidates": attempt.candidates,
-                        "resolved_to": attempt.resolved_name,
-                    })
-                
-                summary.team_resolutions.append({
-                    "source": attempt.source_identifier,
-                    "resolved_id": attempt.resolved_id,
-                    "resolved_name": attempt.resolved_name,
-                    "status": attempt.status,
-                    "method": attempt.method,
-                })
-            
+                        "resolved_id": attempt.resolved_id,
+                        "resolved_name": attempt.resolved_name,
+                        "status": attempt.status,
+                        "method": attempt.method,
+                    }
+                )
+
             elif attempt.entity_type == "player":
                 summary.players_total += 1
                 if attempt.status == "success":
                     summary.players_resolved += 1
                 elif attempt.status == "failed":
                     summary.players_failed += 1
-                    summary.unresolved_players.append({
+                    summary.unresolved_players.append(
+                        {
+                            "source": attempt.source_identifier,
+                            "reason": attempt.failure_reason,
+                        }
+                    )
+
+                summary.player_resolutions.append(
+                    {
                         "source": attempt.source_identifier,
-                        "reason": attempt.failure_reason,
-                    })
-                
-                summary.player_resolutions.append({
-                    "source": attempt.source_identifier,
-                    "resolved_name": attempt.resolved_name,
-                    "status": attempt.status,
-                    "method": attempt.method,
-                })
-        
+                        "resolved_name": attempt.resolved_name,
+                        "status": attempt.status,
+                        "method": attempt.method,
+                    }
+                )
+
         return summary
-    
+
     async def persist(self, session: AsyncSession) -> int:
         """Persist all tracked resolutions to the database.
-        
+
         Returns:
             Number of resolution records created
         """
         if not self.attempts:
             return 0
-        
+
         count = 0
         for attempt in self.attempts:
             ctx = attempt.source_context or {}
@@ -391,9 +421,9 @@ class ResolutionTracker:
             )
             session.add(record)
             count += 1
-        
+
         await session.flush()
-        
+
         logger.info(
             "entity_resolutions_persisted",
             extra={
@@ -402,7 +432,7 @@ class ResolutionTracker:
                 "resolution_count": count,
             },
         )
-        
+
         return count
 
 
@@ -422,9 +452,9 @@ async def get_resolution_summary_for_game(
         .order_by(db_models.EntityResolution.created_at.desc())
     )
     records = result.scalars().all()
-    
+
     summary = ResolutionSummary(game_id=game_id)
-    
+
     for record in records:
         if record.entity_type == "team":
             summary.teams_total += 1
@@ -432,47 +462,57 @@ async def get_resolution_summary_for_game(
                 summary.teams_resolved += 1
             elif record.resolution_status == "failed":
                 summary.teams_failed += 1
-                summary.unresolved_teams.append({
-                    "source": record.source_identifier,
-                    "reason": record.failure_reason,
-                    "occurrences": record.occurrence_count,
-                })
+                summary.unresolved_teams.append(
+                    {
+                        "source": record.source_identifier,
+                        "reason": record.failure_reason,
+                        "occurrences": record.occurrence_count,
+                    }
+                )
             elif record.resolution_status == "ambiguous":
                 summary.teams_ambiguous += 1
-                summary.ambiguous_teams.append({
+                summary.ambiguous_teams.append(
+                    {
+                        "source": record.source_identifier,
+                        "candidates": record.candidates,
+                        "resolved_to": record.resolved_name,
+                    }
+                )
+
+            summary.team_resolutions.append(
+                {
                     "source": record.source_identifier,
-                    "candidates": record.candidates,
-                    "resolved_to": record.resolved_name,
-                })
-            
-            summary.team_resolutions.append({
-                "source": record.source_identifier,
-                "resolved_id": record.resolved_id,
-                "resolved_name": record.resolved_name,
-                "status": record.resolution_status,
-                "method": record.resolution_method,
-                "occurrences": record.occurrence_count,
-            })
-        
+                    "resolved_id": record.resolved_id,
+                    "resolved_name": record.resolved_name,
+                    "status": record.resolution_status,
+                    "method": record.resolution_method,
+                    "occurrences": record.occurrence_count,
+                }
+            )
+
         elif record.entity_type == "player":
             summary.players_total += 1
             if record.resolution_status == "success":
                 summary.players_resolved += 1
             elif record.resolution_status == "failed":
                 summary.players_failed += 1
-                summary.unresolved_players.append({
+                summary.unresolved_players.append(
+                    {
+                        "source": record.source_identifier,
+                        "reason": record.failure_reason,
+                    }
+                )
+
+            summary.player_resolutions.append(
+                {
                     "source": record.source_identifier,
-                    "reason": record.failure_reason,
-                })
-            
-            summary.player_resolutions.append({
-                "source": record.source_identifier,
-                "resolved_name": record.resolved_name,
-                "status": record.resolution_status,
-                "method": record.resolution_method,
-                "occurrences": record.occurrence_count,
-            })
-    
+                    "resolved_name": record.resolved_name,
+                    "status": record.resolution_status,
+                    "method": record.resolution_method,
+                    "occurrences": record.occurrence_count,
+                }
+            )
+
     return summary
 
 
@@ -483,22 +523,22 @@ async def get_resolution_summary_for_run(
     """Get resolution summary for a specific pipeline run."""
     # Get the run to find game_id
     run_result = await session.execute(
-        select(db_models.GamePipelineRun)
-        .where(db_models.GamePipelineRun.id == run_id)
+        select(db_models.GamePipelineRun).where(db_models.GamePipelineRun.id == run_id)
     )
     run = run_result.scalar_one_or_none()
-    
+
     if not run:
         return None
-    
+
     result = await session.execute(
-        select(db_models.EntityResolution)
-        .where(db_models.EntityResolution.pipeline_run_id == run_id)
+        select(db_models.EntityResolution).where(
+            db_models.EntityResolution.pipeline_run_id == run_id
+        )
     )
     records = result.scalars().all()
-    
+
     summary = ResolutionSummary(game_id=run.game_id, pipeline_run_id=run_id)
-    
+
     for record in records:
         if record.entity_type == "team":
             summary.teams_total += 1
@@ -506,37 +546,45 @@ async def get_resolution_summary_for_run(
                 summary.teams_resolved += 1
             elif record.resolution_status == "failed":
                 summary.teams_failed += 1
-                summary.unresolved_teams.append({
-                    "source": record.source_identifier,
-                    "reason": record.failure_reason,
-                    "occurrences": record.occurrence_count,
-                })
+                summary.unresolved_teams.append(
+                    {
+                        "source": record.source_identifier,
+                        "reason": record.failure_reason,
+                        "occurrences": record.occurrence_count,
+                    }
+                )
             elif record.resolution_status == "ambiguous":
                 summary.teams_ambiguous += 1
-                summary.ambiguous_teams.append({
+                summary.ambiguous_teams.append(
+                    {
+                        "source": record.source_identifier,
+                        "candidates": record.candidates,
+                    }
+                )
+
+            summary.team_resolutions.append(
+                {
                     "source": record.source_identifier,
-                    "candidates": record.candidates,
-                })
-            
-            summary.team_resolutions.append({
-                "source": record.source_identifier,
-                "resolved_id": record.resolved_id,
-                "resolved_name": record.resolved_name,
-                "status": record.resolution_status,
-                "method": record.resolution_method,
-            })
-        
+                    "resolved_id": record.resolved_id,
+                    "resolved_name": record.resolved_name,
+                    "status": record.resolution_status,
+                    "method": record.resolution_method,
+                }
+            )
+
         elif record.entity_type == "player":
             summary.players_total += 1
             if record.resolution_status == "success":
                 summary.players_resolved += 1
             elif record.resolution_status == "failed":
                 summary.players_failed += 1
-            
-            summary.player_resolutions.append({
-                "source": record.source_identifier,
-                "resolved_name": record.resolved_name,
-                "status": record.resolution_status,
-            })
-    
+
+            summary.player_resolutions.append(
+                {
+                    "source": record.source_identifier,
+                    "resolved_name": record.resolved_name,
+                    "status": record.resolution_status,
+                }
+            )
+
     return summary
