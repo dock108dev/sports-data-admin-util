@@ -1,7 +1,7 @@
 # Technical Flow: Play-by-Play to Game Story
 
-> **Audience:** Developers working on the sports data pipeline  
-> **Last Updated:** 2026-01-22  
+> **Audience:** Developers working on the sports data pipeline
+> **Last Updated:** 2026-01-24
 > **Status:** Authoritative
 
 ---
@@ -12,8 +12,8 @@ This document traces a game's journey from raw play-by-play data to the final na
 
 The system operates in three distinct phases:
 1. **Ingestion** — Scrape and normalize data
-2. **Structure** — Generate deterministic chapters
-3. **Narrative** — AI-powered story generation
+2. **Structure** — Generate deterministic chapters and sections
+3. **Narrative** — Single AI call renders the complete story
 
 ---
 
@@ -32,26 +32,19 @@ The system operates in three distinct phases:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           STRUCTURE PHASE (Deterministic)                    │
 │                                                                             │
-│  [SportsGamePlay]  ──Chapterizer──▶  [Chapters with Reason Codes]        │
+│  [SportsGamePlay]  ──Chapterizer──▶  [Chapters with Reason Codes]          │
 │                            │                                                │
 │                            ▼                                                │
-│  [Chapters]  ──StoryState Builder──▶  [Running Context]                    │
+│  [Chapters]  ──Section Builder──▶  [StorySections with Stats/Headers]      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           NARRATIVE PHASE (AI)                               │
+│                           NARRATIVE PHASE (Single AI Call)                   │
 │                                                                             │
-│  [Chapters + StoryState]  ──AI Sequential──▶  [Chapter Summaries]          │
-│                                    │                                        │
-│                                    ▼                                        │
-│  [Summaries]  ──AI Independent──▶  [Chapter Titles]                        │
-│                                    │                                        │
-│                                    ▼                                        │
-│  [Summaries]  ──AI Synthesis──▶  [Compact Story]                           │
-│                                    │                                        │
-│                                    ▼                                        │
-│  [GameStory] ──persist──▶ [Admin UI / Apps]                                │
+│  [StorySections + Headers]  ──Story Renderer──▶  [Compact Story]           │
+│                                                                             │
+│  One AI call renders the entire story from the structured outline.         │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -127,29 +120,10 @@ for play in normalized_plays:
 
 Chapters are deterministic structural boundaries based on NBA v1 rules.
 
-**Input:** Ordered list of plays  
-**Output:** List of chapters with reason codes  
-**AI:** None  
+**Input:** Ordered list of plays
+**Output:** List of chapters with reason codes
+**AI:** None
 **Deterministic:** Yes
-
-```python
-from app.services.chapters import build_chapters
-
-# Build chapters from plays
-game_story = build_chapters(
-    timeline=plays,
-    game_id=game_id,
-    sport="NBA",
-)
-
-# Result: GameStory with chapters
-# Each chapter has:
-# - chapter_id (unique)
-# - play_start_idx, play_end_idx (contiguous range)
-# - plays (raw play data)
-# - reason_codes (why boundary exists)
-# - period, time_range (metadata)
-```
 
 **Boundary Rules (NBA v1):**
 
@@ -169,180 +143,143 @@ game_story = build_chapters(
 
 See [NBA_V1_BOUNDARY_RULES.md](NBA_V1_BOUNDARY_RULES.md) for complete rules.
 
-### 2.2 Story State Builder
+### 2.2 Section Building
 
-**Source:** `api/app/services/chapters/story_state.py`
+**Source:** `api/app/services/chapters/story_section.py`
 
-Story State is deterministic context derived from prior chapters only.
+Sections transform chapters into AI-ready input with stats and context.
 
-**Input:** Chapters 0..N-1  
-**Output:** StoryState  
-**AI:** None  
+**Input:** Chapters
+**Output:** StorySections with beat types, stats, and notes
+**AI:** None
 **Deterministic:** Yes
 
 ```python
-from app.services.chapters import derive_story_state_from_chapters
-
-# Build story state from prior chapters
-story_state = derive_story_state_from_chapters(
-    chapters=prior_chapters,
-    sport="NBA",
-)
-
-# Result: StoryState with:
-# - players (top 6 by points_so_far)
-# - teams (score_so_far, momentum_hint)
-# - theme_tags (bounded list, max 8)
-# - constraints (no_future_knowledge: true)
+@dataclass
+class StorySection:
+    section_index: int
+    beat_type: BeatType  # FAST_START, RUN, RESPONSE, STALL, etc.
+    team_stat_deltas: dict[str, TeamStatDelta]
+    player_stat_deltas: dict[str, PlayerStatDelta]
+    notes: list[str]  # Machine-generated observations
+    start_score: dict[str, int]
+    end_score: dict[str, int]
+    start_period: int | None
+    end_period: int | None
+    start_time_remaining: int | None  # Seconds
+    end_time_remaining: int | None
 ```
 
-**Derivation Rules:**
-- Points accumulated from made shots/FTs
-- Notable actions from play text tags (dunk, block, steal, 3PT, etc.)
-- Momentum hints from chapter reason codes
-- Theme tags from play patterns
+**Beat Types:**
+- `FAST_START` — High-scoring opening
+- `MISSED_SHOT_FEST` — Low-efficiency stretch
+- `BACK_AND_FORTH` — Neither team separating
+- `EARLY_CONTROL` — One team establishing lead
+- `RUN` — 8+ unanswered points
+- `RESPONSE` — Comeback after a run
+- `STALL` — Scoring drought
+- `CRUNCH_SETUP` — Late tight game
+- `CLOSING_SEQUENCE` — Final minutes
+- `OVERTIME` — Extra period
 
-**Bounded Lists:**
-- Top 6 players by points
-- Max 5 notable actions per player
-- Max 8 theme tags
+### 2.3 Header Generation
 
-See [AI_CONTEXT_POLICY.md](AI_CONTEXT_POLICY.md) for complete rules.
+**Source:** `api/app/services/chapters/header_reset.py`
+
+Deterministic one-sentence orientation anchors for each section.
+
+**Input:** StorySections
+**Output:** Headers (one per section)
+**AI:** None
+**Deterministic:** Yes
+
+Headers tell the reader WHERE we are, not WHAT happened. They are:
+- Orientation resets for the reader
+- Structural guides for AI rendering
+- NOT narrative or storytelling
+
+**Example Headers:**
+- "The floor was alive from the opening tip." (FAST_START)
+- "One side started pulling away." (RUN)
+- "The trailing team clawed back into it." (RESPONSE)
+- "Scoring dried up on both ends." (STALL)
 
 ---
 
-## Phase 3: Narrative (AI)
+## Phase 3: Narrative (Single AI Call)
 
-### 3.1 Chapter Summary Generation (Sequential)
+### 3.1 Story Rendering
 
-**Source:** `api/app/services/chapters/summary_generator.py`
+**Source:** `api/app/services/chapters/story_renderer.py`
 
-Generate narrative summaries for each chapter sequentially.
+**THE ONLY PLACE AI GENERATES NARRATIVE TEXT.**
 
-**Input:** Current chapter + prior summaries + story state  
-**Output:** Chapter summary (1-3 sentences)  
-**AI:** Yes (OpenAI)  
-**Sequential:** Yes (one chapter at a time)
+The story renderer takes the fully-constructed outline (sections + headers) and renders it into a cohesive prose story in a single AI call.
 
-```python
-from app.services.chapters import generate_summaries_sequentially
-from app.services.openai_client import get_openai_client
+**Input:**
+- StorySections with stats and notes
+- Deterministic headers
+- Team names and final score
+- Target word count
 
-# Get AI client
-ai_client = get_openai_client()
+**Output:**
+- Compact story (prose narrative)
+- Word count
 
-# Generate summaries sequentially
-summary_results = generate_summaries_sequentially(
-    chapters=game_story.chapters,
-    sport="NBA",
-    ai_client=ai_client,
-)
+**AI Role (Strictly Limited):**
+- Turn outline into prose
+- Use provided headers verbatim
+- Match target word count approximately
+- Add language polish WITHOUT adding logic
 
-# Result: List of ChapterSummaryResult
-# Each contains:
-# - chapter_summary (1-3 sentences)
-# - spoiler_warnings (if any)
-# - prompt_used (for debugging)
-```
+**AI Is NOT Allowed To:**
+- Plan or restructure
+- Infer importance
+- Invent context
+- Decide what matters
+- Add drama not supported by input
 
-**Context Rules:**
-- ✅ Prior chapter summaries (0..N-1)
-- ✅ Story state from prior chapters
-- ✅ Current chapter plays
-- ❌ No future chapters
-- ❌ No full game stats
-- ❌ No box score
-
-**Validation:**
-- Spoiler detection (banned phrases)
-- Future knowledge detection
-- Sentence count (1-3)
-- No bullet points
-
-See [AI_CONTEXT_POLICY.md](AI_CONTEXT_POLICY.md) for complete policy.
-
-### 3.2 Chapter Title Generation (Independent)
-
-**Source:** `api/app/services/chapters/title_generator.py`
-
-Generate titles from existing summaries only.
-
-**Input:** Chapter summary only  
-**Output:** Chapter title (3-8 words)  
-**AI:** Yes (OpenAI)  
-**Sequential:** No (independent per chapter)
+### 3.2 Rendering Input Structure
 
 ```python
-from app.services.chapters import generate_titles_for_chapters
+@dataclass
+class SectionRenderInput:
+    header: str  # Deterministic (use verbatim)
+    beat_type: BeatType
+    team_stat_deltas: list[dict]
+    player_stat_deltas: list[dict]  # Top 1-3 per team
+    notes: list[str]
+    start_score: dict[str, int]
+    end_score: dict[str, int]
+    start_period: int | None
+    end_period: int | None
+    start_time_remaining: int | None
+    end_time_remaining: int | None
 
-# Generate titles from summaries
-title_results = generate_titles_for_chapters(
-    chapters=game_story.chapters,
-    summaries=[ch.summary for ch in game_story.chapters],
-    ai_client=ai_client,
-)
-
-# Result: List of ChapterTitleResult
-# Each contains:
-# - chapter_title (3-8 words)
-# - validation_result (pass/fail)
+@dataclass
+class StoryRenderInput:
+    sport: str
+    home_team_name: str
+    away_team_name: str
+    target_word_count: int
+    sections: list[SectionRenderInput]
+    closing: ClosingContext
 ```
 
-**Context Rules:**
-- ✅ Chapter summary only
-- ✅ Optional metadata (period, time_range)
-- ❌ No plays
-- ❌ No story state
-- ❌ No other summaries
+### 3.3 Prompt Rules
 
-**Validation:**
-- Length (3-8 words)
-- No numbers
-- No punctuation (except apostrophes)
-- Spoiler detection
+The AI prompt includes comprehensive rules for:
 
-### 3.3 Compact Story Generation (Full Arc)
+- **Opening Paragraph:** Establish texture, not summary. Create curiosity.
+- **Story Shape:** Build→Swing→Resolve, Early Break→Control→Fade, etc.
+- **Narrative Flow:** Paragraphs build on each other, carry tension forward.
+- **Layer Responsibility:** Overview layer (compact story) vs. detail layer (expanded sections).
+- **Game Time Rules:** Anchor moments in quarters and clock time.
+- **Run Presentation:** Runs are events, not calculations.
+- **Stat Usage:** 0-2 specific stats per section, attached to moments.
+- **Closing Paragraph:** Resolution matching the story's shape.
 
-**Source:** `api/app/services/chapters/compact_story_generator.py`
-
-Generate full game recap from chapter summaries.
-
-**Input:** All chapter summaries (ordered)  
-**Output:** Compact story (4-12 min read)  
-**AI:** Yes (OpenAI)  
-**Hindsight:** Allowed
-
-```python
-from app.services.chapters import generate_compact_story
-
-# Generate compact story from summaries
-compact_result = generate_compact_story(
-    chapter_summaries=[ch.summary for ch in game_story.chapters],
-    chapter_titles=[ch.title for ch in game_story.chapters],
-    sport="NBA",
-    ai_client=ai_client,
-)
-
-# Result: CompactStoryResult
-# Contains:
-# - compact_story (full game recap)
-# - reading_time_minutes (estimated)
-# - word_count
-```
-
-**Context Rules:**
-- ✅ All chapter summaries
-- ✅ Optional chapter titles
-- ✅ Hindsight language allowed
-- ❌ No raw plays
-- ❌ No story state
-- ❌ No box score
-
-**Validation:**
-- Non-empty
-- Paragraph-based (no bullets)
-- No play-by-play listing
-- No new entities (not in summaries)
+See `story_renderer.py` for the complete prompt.
 
 ---
 
@@ -353,12 +290,7 @@ compact_result = generate_compact_story(
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/api/admin/sports/games/{id}/story` | GET | Fetch complete game story |
-| `/api/admin/sports/games/{id}/story-state` | GET | Fetch story state before chapter N |
-| `/api/admin/sports/games/{id}/story/regenerate-chapters` | POST | Regenerate chapters |
-| `/api/admin/sports/games/{id}/story/regenerate-summaries` | POST | Generate AI summaries |
-| `/api/admin/sports/games/{id}/story/regenerate-titles` | POST | Generate AI titles |
-| `/api/admin/sports/games/{id}/story/regenerate-compact` | POST | Generate compact story |
-| `/api/admin/sports/games/{id}/story/regenerate-all` | POST | Full pipeline |
+| `/api/admin/sports/games/{id}/story/regenerate-all` | POST | Full pipeline regeneration |
 | `/api/admin/sports/games/bulk-generate` | POST | Bulk generation for date range |
 
 ### Game Data
@@ -384,91 +316,87 @@ See [API.md](API.md) for complete reference.
 
 ## Data Flow Example
 
-### Example: Generate Story for Game 110536
+### Example: Generate Story for a Game
 
 **Step 1: Fetch PBP**
 ```sql
-SELECT * FROM sports_game_plays 
-WHERE game_id = 110536 
+SELECT * FROM sports_game_plays
+WHERE game_id = 110536
 ORDER BY play_index;
--- Returns 477 plays
+-- Returns ~400-500 plays
 ```
 
 **Step 2: Generate Chapters (Deterministic)**
 ```python
-game_story = build_chapters(timeline=plays, game_id=110536, sport="NBA")
-# Result: 18 chapters with reason codes
+chapters = build_chapters(timeline=plays, game_id=game_id, sport="NBA")
+# Result: ~15-20 chapters with reason codes
 ```
 
-**Step 3: Generate Summaries (Sequential AI)**
+**Step 3: Build Sections (Deterministic)**
 ```python
-summary_results = generate_summaries_sequentially(
-    chapters=game_story.chapters,
+sections = build_story_sections(chapters, sport="NBA")
+# Result: StorySections with beat types, stats, notes
+```
+
+**Step 4: Generate Headers (Deterministic)**
+```python
+headers = generate_all_headers(sections)
+# Result: One deterministic header per section
+```
+
+**Step 5: Render Story (Single AI Call)**
+```python
+render_input = build_story_render_input(
+    sections=sections,
+    headers=headers,
     sport="NBA",
-    ai_client=openai_client,
+    home_team_name="Lakers",
+    away_team_name="Celtics",
+    target_word_count=compute_target_word_count(len(sections)),
+    decisive_factors=["12-0 run in Q3", "Late free throws"],
 )
-# Takes ~30-60 seconds (sequential)
-# Result: 18 chapter summaries
+
+result = render_story(render_input, ai_client=openai_client)
+# Takes ~5-15 seconds
+# Result: Complete prose story
 ```
 
-**Step 4: Generate Titles (Independent AI)**
-```python
-title_results = generate_titles_for_chapters(
-    chapters=game_story.chapters,
-    summaries=[r.chapter_summary for r in summary_results],
-    ai_client=openai_client,
-)
-# Takes ~10-20 seconds
-# Result: 18 chapter titles
-```
-
-**Step 5: Generate Compact Story (Full Arc AI)**
-```python
-compact_result = generate_compact_story(
-    chapter_summaries=[r.chapter_summary for r in summary_results],
-    chapter_titles=[r.chapter_title for r in title_results],
-    sport="NBA",
-    ai_client=openai_client,
-)
-# Takes ~5-10 seconds
-# Result: Full game recap
-```
-
-**Total Time:** ~45-90 seconds for complete story generation
+**Total Time:** ~5-20 seconds for complete story generation
 
 ---
 
 ## AI Usage Principle
 
-> **OpenAI is used only for narrative generation — never for structure, ordering, or boundaries.**
+> **OpenAI is used only for narrative rendering — never for structure, ordering, or boundaries.**
 
 **What AI Does:**
-- ✅ Generate chapter summaries
-- ✅ Generate chapter titles
-- ✅ Generate compact story
-- ✅ Interpret plays with sportscaster voice
+- ✅ Render sections into prose
+- ✅ Use headers verbatim
+- ✅ Follow prompt rules for tone, flow, shape
+- ✅ Polish language
 
 **What AI Does NOT Do:**
-- ❌ Define chapter boundaries
+- ❌ Define section boundaries
 - ❌ Decide structure
 - ❌ Compute importance
 - ❌ Order events
-- ❌ Filter plays
+- ❌ Filter content
+- ❌ Generate chapter summaries or titles (legacy)
 
-**Principle:** Code decides structure. AI adds meaning.
+**Principle:** Code decides structure. AI renders it.
 
 ---
 
 ## Key Modules
 
 | Module | Purpose | AI | Deterministic |
-|--------|---------|----|--------------| 
+|--------|---------|----|--------------|
 | `scraper/` | Data ingestion | No | Yes |
 | `api/app/services/chapters/chapterizer.py` | Chapter boundaries | No | Yes |
-| `api/app/services/chapters/story_state.py` | Running context | No | Yes |
-| `api/app/services/chapters/summary_generator.py` | Chapter summaries | Yes | No |
-| `api/app/services/chapters/title_generator.py` | Chapter titles | Yes | No |
-| `api/app/services/chapters/compact_story_generator.py` | Compact story | Yes | No |
+| `api/app/services/chapters/story_section.py` | Section building | No | Yes |
+| `api/app/services/chapters/beat_classifier.py` | Beat type classification | No | Yes |
+| `api/app/services/chapters/header_reset.py` | Deterministic headers | No | Yes |
+| `api/app/services/chapters/story_renderer.py` | Story rendering | Yes | No |
 | `api/app/services/openai_client.py` | OpenAI integration | Yes | No |
 | `api/app/routers/sports/story.py` | Story API endpoints | Mixed | Mixed |
 
@@ -483,13 +411,12 @@ compact_result = generate_compact_story(
 - `REDIS_URL` — Redis connection string (for Celery)
 
 **Optional (AI Features):**
-- `OPENAI_API_KEY` — Enable AI narrative generation
-- `OPENAI_MODEL_CLASSIFICATION` — Model for classification (default: gpt-4o-mini)
+- `OPENAI_API_KEY` — Enable AI narrative rendering
 
 **Without OpenAI API Key:**
-- Chapters generate normally (deterministic)
+- Chapters and sections generate normally (deterministic)
 - AI endpoints return "API key not configured" error
-- System remains fully functional for structure inspection
+- System remains functional for structure inspection
 
 ---
 
@@ -497,15 +424,14 @@ compact_result = generate_compact_story(
 
 ### Deterministic Operations (Instant)
 - Chapter generation: <1 second for 500 plays
-- Story state derivation: <1 second
+- Section building: <1 second
+- Header generation: <1 second
 - Bulk chapter generation: ~22 games/second
 
-### AI Operations (Sequential)
-- Chapter summaries: ~2-3 seconds per chapter
-- Chapter titles: ~1-2 seconds per chapter
-- Compact story: ~5-10 seconds
+### AI Operations (Single Call)
+- Story rendering: ~5-15 seconds per game
 
-**Example:** 18-chapter game = ~60-90 seconds total
+**Example:** Full game story = ~5-20 seconds total (mostly AI time)
 
 ---
 
@@ -517,16 +443,8 @@ compact_result = generate_compact_story(
 ```bash
 cd api
 pytest tests/test_chapterizer.py
-pytest tests/test_story_state.py
-pytest tests/test_coverage_validator.py
-```
-
-**AI Components (with mocks):**
-```bash
-pytest tests/test_summary_generator.py
-pytest tests/test_title_generator.py
-pytest tests/test_compact_story_generator.py
-pytest tests/test_narrative_validator.py
+pytest tests/test_story_section.py
+pytest tests/test_story_renderer.py
 ```
 
 ### Integration Tests
@@ -540,7 +458,7 @@ pytest tests/test_story_api.py
 
 ## Deployment
 
-**Infrastructure:** Docker Compose  
+**Infrastructure:** Docker Compose
 **Services:** API, Web, Scraper, PostgreSQL, Redis
 
 ```bash
@@ -562,10 +480,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for production setup.
 **Core Concepts:**
 - [Book + Chapters Model](BOOK_CHAPTERS_MODEL.md)
 - [NBA v1 Boundary Rules](NBA_V1_BOUNDARY_RULES.md)
-- [AI Context Policy](AI_CONTEXT_POLICY.md)
 
 **Implementation:**
-- [AI Signals (NBA v1)](AI_SIGNALS_NBA_V1.md)
 - [Admin UI Guide](ADMIN_UI_STORY_GENERATOR.md)
 - [API Reference](API.md)
 
@@ -578,10 +494,10 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for production setup.
 
 ## Summary
 
-**Pipeline:** PBP → Chapters (deterministic) → StoryState (deterministic) → AI (narrative) → GameStory
+**Pipeline:** PBP → Chapters → Sections → Headers → Single AI Call → Compact Story
 
-**Key Principle:** Structure is deterministic. AI adds meaning to existing structure.
+**Key Principle:** Structure is deterministic. AI renders it into prose.
 
-**Performance:** Chapters generate instantly. AI narrative takes ~60-90 seconds for full game.
+**Performance:** Structure generates instantly. AI rendering takes ~5-15 seconds per game.
 
 **Status:** Production-ready for NBA v1.

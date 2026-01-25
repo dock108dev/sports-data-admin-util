@@ -318,14 +318,37 @@ def _extract_chapter_metadata(
     classification: BeatClassification,
 ) -> ChapterMetadata:
     """Extract metadata needed for section construction."""
-    # Extract period
-    period = chapter.period
-    if period is None and chapter.plays:
-        period = chapter.plays[0].raw_data.get("quarter")
+    # Extract start period from first play
+    start_period = None
+    if chapter.plays:
+        start_period = chapter.plays[0].raw_data.get("quarter")
 
-    is_overtime = period is not None and period > 4
+    # Extract end period from last play (used for overtime check)
+    # Always derive from last play to handle chapters that span quarter boundaries
+    end_period = None
+    if chapter.plays:
+        end_period = chapter.plays[-1].raw_data.get("quarter")
+    # Fallback to chapter.period if no plays (shouldn't happen in practice)
+    if end_period is None:
+        end_period = chapter.period
 
-    # Extract time remaining from last play
+    is_overtime = end_period is not None and end_period > 4
+
+    # Extract time remaining from first play (start time)
+    start_time_remaining_seconds = None
+    if chapter.plays:
+        first_play = chapter.plays[0]
+        clock_str = first_play.raw_data.get("game_clock")
+        if clock_str and ":" in clock_str:
+            try:
+                parts = clock_str.split(":")
+                start_time_remaining_seconds = int(parts[0]) * 60 + int(parts[1])
+            except (ValueError, IndexError):
+                # Malformed clock string (e.g., "12:XX") - leave as None
+                # Time context is optional; missing it won't break rendering
+                pass
+
+    # Extract time remaining from last play (end time)
     time_remaining_seconds = None
     if chapter.plays:
         last_play = chapter.plays[-1]
@@ -335,6 +358,7 @@ def _extract_chapter_metadata(
                 parts = clock_str.split(":")
                 time_remaining_seconds = int(parts[0]) * 60 + int(parts[1])
             except (ValueError, IndexError):
+                # Malformed clock string - leave as None (time context is optional)
                 pass
 
     # Extract scores
@@ -356,7 +380,7 @@ def _extract_chapter_metadata(
         chapter_id=chapter.chapter_id,
         chapter_index=classification.debug_info.get("chapter_index", 0),
         beat_type=classification.beat_type,
-        period=period,
+        period=end_period,  # End period (for overtime check and legacy compatibility)
         time_remaining_seconds=time_remaining_seconds,
         is_overtime=is_overtime,
         start_home_score=start_home,
@@ -364,6 +388,8 @@ def _extract_chapter_metadata(
         end_home_score=end_home,
         end_away_score=end_away,
         descriptors=classification.descriptors or set(),  # Phase 2.1
+        start_time_remaining_seconds=start_time_remaining_seconds,
+        start_period=start_period,
     )
 
 
@@ -560,6 +586,12 @@ def _build_section(
         "away": chapters_meta[-1].end_away_score,
     }
 
+    # Get time context from first and last chapters
+    start_period = chapters_meta[0].start_period or chapters_meta[0].period
+    start_time_remaining = chapters_meta[0].start_time_remaining_seconds
+    end_period = chapters_meta[-1].period
+    end_time_remaining = chapters_meta[-1].time_remaining_seconds
+
     # Aggregate stats with prominence-based player selection
     team_deltas, player_deltas = _aggregate_section_deltas(section_deltas, end_snapshot)
 
@@ -576,6 +608,10 @@ def _build_section(
         player_stat_deltas=player_deltas,
         notes=notes,
         descriptors=descriptors,  # Phase 2.1
+        start_period=start_period,
+        end_period=end_period,
+        start_time_remaining=start_time_remaining,
+        end_time_remaining=end_time_remaining,
         break_reason=break_reason,
     )
 
@@ -750,23 +786,20 @@ def _apply_opening_section_beat_override(
     opening = sections[0]
     opening.beat_type = override.beat_type
 
-    # Store override info in notes for debugging
-    # (Notes are deterministic bullets, so we add a factual note about the beat)
+    # Store qualitative texture note for opening paragraph
+    # (Notes should guide AI toward scene-setting, not stat-citing)
     if override.beat_type == BeatType.FAST_START:
         debug_info = override.debug_info
-        total_pts = debug_info.get("total_points", 0)
         margin = debug_info.get("final_margin", 0)
-        opening.notes.insert(
-            0, f"High-scoring early window: {total_pts} points, {margin}-point margin"
-        )
+        if margin <= 3:
+            opening.notes.insert(0, "Uptempo action with neither side pulling away")
+        else:
+            opening.notes.insert(0, "Quick scoring with one side gaining an early edge")
     elif override.beat_type == BeatType.EARLY_CONTROL:
         debug_info = override.debug_info
         leading_team = debug_info.get("leading_team", "unknown")
-        margin = debug_info.get("final_margin", 0)
-        share_pct = int(debug_info.get("leading_team_share", 0) * 100)
         opening.notes.insert(
-            0,
-            f"Early control established: {leading_team} team led by {margin}, scored {share_pct}% of points",
+            0, f"The {leading_team} team began asserting itself early"
         )
 
     return sections

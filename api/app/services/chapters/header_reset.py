@@ -53,33 +53,33 @@ from .story_section import StorySection
 
 HEADER_TEMPLATES: dict[BeatType, list[str]] = {
     BeatType.FAST_START: [
-        "Both teams opened at a fast pace.",
-        "The game began with early energy from both sides.",
+        "The floor was alive from the opening tip.",
+        "Buckets came quick, and neither side blinked.",
     ],
     BeatType.MISSED_SHOT_FEST: [
-        "Scoring was hard to come by as missed shots piled up.",
-        "Neither team found a rhythm as shots failed to fall.",
+        "The rim stayed cold as both offenses searched for rhythm.",
+        "Possessions came and went without much to show for them.",
     ],
     BeatType.BACK_AND_FORTH: [
-        "Neither side could separate as play moved back and forth.",
-        "The teams traded possessions without building significant separation.",
-        "Competitive play continued without a clear advantage for either side.",
+        "Neither side could create separation.",
+        "The scoreboard stayed tight as possessions traded evenly.",
+        "Every small run met an immediate answer.",
     ],
     BeatType.EARLY_CONTROL: [
-        "One team began to establish a modest edge.",
-        "A gap started to form as one side found its footing.",
+        "One side began tilting the floor in its direction.",
+        "A subtle edge emerged before the first timeout.",
     ],
     BeatType.RUN: [
-        "A stretch of scoring created separation on the scoreboard.",
-        "One team strung together consecutive buckets to pull ahead.",
+        "One side started pulling away.",
+        "The scoreboard gap widened quickly.",
     ],
     BeatType.RESPONSE: [
-        "The opposing side answered to keep the game within reach.",
-        "A response brought the trailing team back into contention.",
+        "The trailing team clawed back into it.",
+        "An answer came before the lead could grow.",
     ],
     BeatType.STALL: [
-        "The game slowed with little sustained scoring.",
-        "Action stalled as both teams struggled to generate offense.",
+        "Scoring dried up on both ends.",
+        "Neither offense could find a rhythm.",
     ],
     BeatType.CRUNCH_SETUP: [
         "The game tightened late as every possession began to matter.",

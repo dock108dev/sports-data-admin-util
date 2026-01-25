@@ -118,6 +118,10 @@ class StorySection:
     - team_stat_deltas: Per-team stats for this section
     - player_stat_deltas: Top 1-3 players per team
     - notes: Deterministic machine bullets
+    - start_period: Quarter/period at section start (1-4, 5+ for OT)
+    - end_period: Quarter/period at section end
+    - start_time_remaining: Seconds remaining at section start (in period)
+    - end_time_remaining: Seconds remaining at section end (in period)
 
     Phase 2.1: Added descriptors field for MISSED_SHOT_CONTEXT, etc.
     """
@@ -139,6 +143,12 @@ class StorySection:
 
     # Phase 2.1: Secondary descriptors (union of all chapter descriptors)
     descriptors: set[BeatDescriptor] = field(default_factory=set)
+
+    # Game time context (for reader-facing time anchoring)
+    start_period: int | None = None  # 1-4 for quarters, 5+ for OT
+    end_period: int | None = None
+    start_time_remaining: int | None = None  # Seconds remaining in period
+    end_time_remaining: int | None = None
 
     # Debug info (not part of core schema)
     break_reason: ForcedBreakReason | None = None
@@ -162,6 +172,15 @@ class StorySection:
         # Include descriptors if present
         if self.descriptors:
             result["descriptors"] = [d.value for d in self.descriptors]
+        # Include time context if present
+        if self.start_period is not None:
+            result["start_period"] = self.start_period
+        if self.end_period is not None:
+            result["end_period"] = self.end_period
+        if self.start_time_remaining is not None:
+            result["start_time_remaining"] = self.start_time_remaining
+        if self.end_time_remaining is not None:
+            result["end_time_remaining"] = self.end_time_remaining
         return result
 
     def to_debug_dict(self) -> dict[str, Any]:
@@ -184,10 +203,12 @@ class ChapterMetadata:
     chapter_index: int
     beat_type: BeatType
     period: int | None
-    time_remaining_seconds: int | None
+    time_remaining_seconds: int | None  # End time (from last play)
     is_overtime: bool
     start_home_score: int
     start_away_score: int
     end_home_score: int
     end_away_score: int
     descriptors: set[BeatDescriptor] = field(default_factory=set)  # Phase 2.1
+    start_time_remaining_seconds: int | None = None  # Start time (from first play)
+    start_period: int | None = None  # Period at chapter start (may differ from period at end)
