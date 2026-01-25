@@ -13,9 +13,9 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Sports",
     items: [
-      { href: "/admin/theory-bets/browser", label: "Data Browser" },
-      { href: "/admin/theory-bets/ingestion", label: "Scraper Runs" },
-      { href: "/admin/theory-bets/story-generator", label: "Story Generator" },
+      { href: "/admin/sports/browser", label: "Data Browser" },
+      { href: "/admin/sports/ingestion", label: "Scraper Runs" },
+      { href: "/admin/sports/story-generator", label: "Story Generator" },
     ],
   },
 ];

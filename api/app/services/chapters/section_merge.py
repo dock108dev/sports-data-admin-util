@@ -63,7 +63,6 @@ NON_CRUNCH_BEATS: set[BeatType] = {
     BeatType.RUN,
     BeatType.RESPONSE,
     BeatType.STALL,
-    BeatType.MISSED_SHOT_FEST,  # Deprecated but still in enum
 }
 
 

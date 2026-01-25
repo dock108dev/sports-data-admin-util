@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import httpx
 
-from bets_scraper.db import db_models, get_session
-from bets_scraper.logging import logger
+from sports_scraper.db import db_models, get_session
+from sports_scraper.logging import logger
 
 
 def validate_nhl_handles() -> None:

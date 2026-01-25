@@ -10,10 +10,10 @@ from pathlib import Path
 
 # Files to scan for hardcoded defaults
 CRITICAL_FILES = [
-    "bets_scraper/jobs/tasks.py",
-    "bets_scraper/services/scheduler.py",
-    "bets_scraper/services/ingestion.py",
-    "bets_scraper/services/timeline_generator.py",
+    "sports_scraper/jobs/tasks.py",
+    "sports_scraper/services/scheduler.py",
+    "sports_scraper/services/ingestion.py",
+    "sports_scraper/services/timeline_generator.py",
 ]
 
 # Patterns that indicate hardcoded league defaults
@@ -74,7 +74,7 @@ def test_no_hardcoded_league_defaults():
 def test_config_sports_ssot_exists():
     """Ensure the SSOT configuration file exists."""
     scraper_root = Path(__file__).parent.parent
-    ssot_path = scraper_root / "bets_scraper" / "config_sports.py"
+    ssot_path = scraper_root / "sports_scraper" / "config_sports.py"
     
     assert ssot_path.exists(), f"SSOT config file missing: {ssot_path}"
     
@@ -86,7 +86,7 @@ def test_config_sports_ssot_exists():
 
 def test_all_leagues_have_required_fields():
     """Validate that all league configs have required fields."""
-    from bets_scraper.config_sports import LEAGUE_CONFIG
+    from sports_scraper.config_sports import LEAGUE_CONFIG
     
     required_fields = [
         "code",
@@ -103,7 +103,7 @@ def test_all_leagues_have_required_fields():
 
 def test_validate_league_code_rejects_unknown():
     """Ensure validation rejects unknown leagues."""
-    from bets_scraper.config_sports import validate_league_code
+    from sports_scraper.config_sports import validate_league_code
     import pytest
     
     # Valid codes should pass

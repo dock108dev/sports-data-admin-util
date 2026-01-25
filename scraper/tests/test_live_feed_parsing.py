@@ -14,8 +14,8 @@ if str(SCRAPER_ROOT) not in sys.path:
 # For these pure unit tests, a dummy local URL is sufficient.
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/test_db")
 
-from bets_scraper.live.nba import _parse_nba_clock
-from bets_scraper.persistence.games import resolve_status_transition
+from sports_scraper.live.nba import _parse_nba_clock
+from sports_scraper.persistence.games import resolve_status_transition
 
 
 def test_parse_nba_clock_duration() -> None:

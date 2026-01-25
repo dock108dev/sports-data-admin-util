@@ -46,7 +46,7 @@ docs/                Documentation
 cd api && pip install -r requirements.txt && uvicorn main:app --reload
 
 # Scraper
-cd scraper && uv sync && uv run python -m bets_scraper
+cd scraper && uv sync && uv run python -m sports_scraper
 
 # Web
 cd web && npm install && npm run dev

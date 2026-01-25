@@ -2,7 +2,7 @@
 
 > **Status:** Authoritative
 > **Last Updated:** 2026-01-24
-> **Scope:** NBA v1
+> **Scope:** NBA
 
 ---
 
@@ -65,7 +65,6 @@ Headers are NOT narrative. They're structural guides.
 | Beat Type | Description |
 |-----------|-------------|
 | `FAST_START` | High-scoring opening |
-| `MISSED_SHOT_FEST` | Low-efficiency stretch |
 | `BACK_AND_FORTH` | Neither team separating |
 | `EARLY_CONTROL` | One team establishing lead |
 | `RUN` | 8+ unanswered points |
@@ -224,7 +223,7 @@ All AI-generated text is validated post-generation:
 
 ### Story Generator Landing Page
 
-**Route:** `/admin/theory-bets/story-generator`
+**Route:** `/admin/sports/story-generator`
 
 **Features:**
 - List games with PBP data
@@ -233,7 +232,7 @@ All AI-generated text is validated post-generation:
 
 ### Game Story Detail Page
 
-**Route:** `/admin/theory-bets/story-generator/{gameId}`
+**Route:** `/admin/sports/story-generator/{gameId}`
 
 **Features:**
 - View complete game story
@@ -324,7 +323,7 @@ curl -X POST http://localhost:8000/api/admin/sports/games/bulk-generate \
 
 **Core Concepts:**
 - [Book + Chapters Model](BOOK_CHAPTERS_MODEL.md) — Architecture and definitions
-- [NBA v1 Boundary Rules](NBA_V1_BOUNDARY_RULES.md) — Chapter boundary rules
+- [NBA Boundary Rules](NBA_BOUNDARY_RULES.md) — Chapter boundary rules
 - [Technical Flow](TECHNICAL_FLOW.md) — Complete pipeline details
 
 **Implementation:**
@@ -337,4 +336,4 @@ curl -X POST http://localhost:8000/api/admin/sports/games/bulk-generate \
 **Architecture:** Sections-first, single AI call
 **AI Usage:** Rendering only (never structure)
 **Performance:** ~5-15 seconds per game
-**Status:** Production-ready for NBA v1
+**Status:** Production-ready for NBA

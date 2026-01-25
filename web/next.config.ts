@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 /**
- * Next.js configuration for theory-bets-web app.
+ * Next.js configuration for sports-data-web app.
  *
  * Transpiles @dock108/ui package to ensure compatibility with Next.js
  * build process. This is required for all apps using shared UI components.

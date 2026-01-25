@@ -112,14 +112,6 @@ class TestHeaderGenerationByBeatType:
         assert header
         assert not validate_header(header)
 
-    def test_missed_shot_fest_header(self):
-        """MISSED_SHOT_FEST produces valid header."""
-        context = make_context(BeatType.MISSED_SHOT_FEST)
-        header = generate_header(context)
-
-        assert header
-        assert not validate_header(header)
-
     def test_back_and_forth_header(self):
         """BACK_AND_FORTH produces valid header."""
         context = make_context(BeatType.BACK_AND_FORTH)

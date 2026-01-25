@@ -184,8 +184,8 @@ NHL_HIGH_IMPACT_PLAY_TYPES = frozenset({
 
 ### Current State
 
-**NBA PBP Scraper:** `scraper/bets_scraper/scrapers/nba_sportsref.py`
-**NHL PBP Scraper:** `scraper/bets_scraper/scrapers/nhl_sportsref.py`
+**NBA PBP Scraper:** `scraper/sports_scraper/scrapers/nba_sportsref.py`
+**NHL PBP Scraper:** `scraper/sports_scraper/scrapers/nhl_sportsref.py`
 
 NHL PBP scraping is already implemented.
 
@@ -259,8 +259,8 @@ away_score = parse_score(row, "away")
 ## 6. Odds Handling
 
 ### Current State
-**File:** `scraper/bets_scraper/odds/client.py`
-**File:** `scraper/bets_scraper/odds/synchronizer.py`
+**File:** `scraper/sports_scraper/odds/client.py`
+**File:** `scraper/sports_scraper/odds/synchronizer.py`
 
 ### Sport Key Mapping
 ```python
@@ -306,7 +306,7 @@ SPORT_KEYS = {
 ## 7. Social Integration
 
 ### Current State
-**File:** `scraper/bets_scraper/social/collector.py`
+**File:** `scraper/sports_scraper/social/collector.py`
 **File:** `docs/social-nhl.md`
 
 NHL social integration is **already documented** with parity to NBA:
@@ -508,7 +508,7 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 | `api/app/services/summary_builder.py` | Add `build_nhl_summary()` |
 | `api/app/services/game_analysis.py` | Add NHL thresholds reference |
 | `api/app/config_sports.py` | Already has NHL config ✅ |
-| `scraper/bets_scraper/config_sports.py` | Already has NHL config ✅ |
+| `scraper/sports_scraper/config_sports.py` | Already has NHL config ✅ |
 | Database | Seed NHL thresholds |
 
 ---

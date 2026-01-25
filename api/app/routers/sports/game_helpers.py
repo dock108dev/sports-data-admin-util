@@ -367,8 +367,8 @@ async def enqueue_single_game_run(
     async_result = celery_app.send_task(
         "run_scrape_job",
         args=[run.id, worker_payload],
-        queue="bets-scraper",
-        routing_key="bets-scraper",
+        queue="sports-scraper",
+        routing_key="sports-scraper",
     )
     run.job_id = async_result.id
 

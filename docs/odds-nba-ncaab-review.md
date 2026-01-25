@@ -5,25 +5,25 @@ This document summarizes the existing odds ingestion patterns for NBA and NCAAB 
 ## Components & Flow
 
 1. **Odds API client**
-   - The Odds API (v4) client lives in `scraper/bets_scraper/odds/client.py`.
+   - The Odds API (v4) client lives in `scraper/sports_scraper/odds/client.py`.
    - Live odds are pulled via `/sports/{sport}/odds` for upcoming games.
    - Historical odds are pulled via `/historical/sports/{sport}/odds` for past dates.
    - Caching is enabled under the scraper HTML cache directory (per-league, per-date JSON).
 
 2. **Polling / ingestion jobs**
-   - Odds are fetched by `OddsSynchronizer` (`scraper/bets_scraper/odds/synchronizer.py`).
+   - Odds are fetched by `OddsSynchronizer` (`scraper/sports_scraper/odds/synchronizer.py`).
    - Runs occur either as part of scheduled ingestion or ad-hoc backfills (`run_manager.py`).
    - Live endpoints are used for today/future; historical endpoints are used for past dates.
 
 3. **Normalization & mapping**
-   - Team normalization uses `normalize_team_name` in `scraper/bets_scraper/normalization/__init__.py`.
+   - Team normalization uses `normalize_team_name` in `scraper/sports_scraper/normalization/__init__.py`.
    - Odds market keys map to canonical markets:
      - `spreads` → `spread`
      - `totals` → `total`
      - `h2h` → `moneyline`
 
 4. **Persistence**
-   - `upsert_odds` (`scraper/bets_scraper/persistence/odds.py`) matches odds to games by:
+   - `upsert_odds` (`scraper/sports_scraper/persistence/odds.py`) matches odds to games by:
      1. Team IDs (exact and swapped).
      2. Team names (NCAAB uses normalized matching; other leagues use exact).
    - Odds are stored in `sports_game_odds` with uniqueness on `(game_id, book, market_type, side, is_closing_line)`.

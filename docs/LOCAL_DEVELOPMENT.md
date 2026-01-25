@@ -122,7 +122,7 @@ uv sync
 export DATABASE_URL="postgresql+psycopg://user:pass@localhost:5432/sports"
 export REDIS_URL="redis://localhost:6379/2"
 
-celery -A bets_scraper.celery_app.app worker --loglevel=info --queues=bets-scraper
+celery -A sports_scraper.celery_app.app worker --loglevel=info --queues=sports-scraper
 ```
 
 ### 4. Web Admin

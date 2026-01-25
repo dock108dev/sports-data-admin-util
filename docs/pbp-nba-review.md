@@ -6,17 +6,17 @@ This review covers the existing NBA PBP ingestion paths, including historical sc
 ## Pipeline Overview
 
 ### 1) Scheduling and Orchestration
-- **Entry point:** `ScrapeRunManager.run` toggles PBP ingestion when `config.pbp` is `True`. Live ingestion only runs when `config.live` is `True`. `scraper/bets_scraper/services/run_manager.py`.
-- **Non-live (Sports Reference):** `_ingest_pbp_via_sportsref` selects games by league/date and calls the league scraper’s `fetch_play_by_play`, then persists plays with `upsert_plays`. `scraper/bets_scraper/services/run_manager.py`.
-- **Live feed:** `LiveFeedManager.ingest_live_data` dispatches to NBA (`_sync_nba`) which resolves games via scoreboard data and ingests PBP from the NBA CDN. `scraper/bets_scraper/live/manager.py`.
+- **Entry point:** `ScrapeRunManager.run` toggles PBP ingestion when `config.pbp` is `True`. Live ingestion only runs when `config.live` is `True`. `scraper/sports_scraper/services/run_manager.py`.
+- **Non-live (Sports Reference):** `_ingest_pbp_via_sportsref` selects games by league/date and calls the league scraper’s `fetch_play_by_play`, then persists plays with `upsert_plays`. `scraper/sports_scraper/services/run_manager.py`.
+- **Live feed:** `LiveFeedManager.ingest_live_data` dispatches to NBA (`_sync_nba`) which resolves games via scoreboard data and ingests PBP from the NBA CDN. `scraper/sports_scraper/live/manager.py`.
 
 ### 2) Source Fetchers
-- **Sports Reference (historical):** `NBASportsReferenceScraper.fetch_play_by_play` requests `https://www.basketball-reference.com/boxscores/pbp/{source_game_key}.html` and parses the `table#pbp`. `scraper/bets_scraper/scrapers/nba_sportsref.py`.
-- **NBA Live Feed:** `NBALiveFeedClient.fetch_play_by_play` requests `https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json`. `scraper/bets_scraper/live/nba.py`.
+- **Sports Reference (historical):** `NBASportsReferenceScraper.fetch_play_by_play` requests `https://www.basketball-reference.com/boxscores/pbp/{source_game_key}.html` and parses the `table#pbp`. `scraper/sports_scraper/scrapers/nba_sportsref.py`.
+- **NBA Live Feed:** `NBALiveFeedClient.fetch_play_by_play` requests `https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json`. `scraper/sports_scraper/live/nba.py`.
 
 ### 3) Parsing and Normalization
 - **Sports Reference parsing:**
-  - Quarter detection uses header rows with IDs like `q1`, `q2`, etc. (`current_quarter` is skipped until the first quarter is detected). `scraper/bets_scraper/scrapers/nba_sportsref.py`.
+  - Quarter detection uses header rows with IDs like `q1`, `q2`, etc. (`current_quarter` is skipped until the first quarter is detected). `scraper/sports_scraper/scrapers/nba_sportsref.py`.
   - Each row is parsed into a `NormalizedPlay` with:
     - `play_index`: sequential counter in HTML row order.
     - `quarter`: current quarter number.
@@ -34,7 +34,7 @@ This review covers the existing NBA PBP ingestion paths, including historical sc
 
 ### 4) Persistence
 - **Storage model:** `sports_game_plays` (`SportsGamePlay`), keyed by `(game_id, play_index)` with `UniqueConstraint` and `play_index` ordering. `api/app/db_models.py`.
-- **Persistence entry point:** `upsert_plays` inserts each play with `ON CONFLICT DO NOTHING` to preserve existing events and avoid overwrites. It also updates `sports_games.last_pbp_at`. `scraper/bets_scraper/persistence/plays.py`.
+- **Persistence entry point:** `upsert_plays` inserts each play with `ON CONFLICT DO NOTHING` to preserve existing events and avoid overwrites. It also updates `sports_games.last_pbp_at`. `scraper/sports_scraper/persistence/plays.py`.
 
 ## Event Ordering Guarantees
 - **Sports Reference path:** ordering follows HTML row order with a monotonic `play_index` counter.

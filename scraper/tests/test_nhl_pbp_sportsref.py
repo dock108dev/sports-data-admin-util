@@ -14,7 +14,7 @@ if str(SCRAPER_ROOT) not in sys.path:
 # For these pure unit tests, a dummy local URL is sufficient.
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/test_db")
 
-from bets_scraper.scrapers.nhl_sportsref import NHLSportsReferenceScraper
+from sports_scraper.scrapers.nhl_sportsref import NHLSportsReferenceScraper
 
 
 class StubNHLSportsReferenceScraper(NHLSportsReferenceScraper):

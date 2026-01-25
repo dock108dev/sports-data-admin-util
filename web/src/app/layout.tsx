@@ -12,14 +12,13 @@ export const metadata: Metadata = {
 };
 
 /**
- * Root layout for the theory-bets-web app.
- * 
+ * Root layout for the sports-data-admin web app.
+ *
  * Provides consistent header/footer via shared DockHeader/DockFooter components
  * and applies global theme styles from @dock108/ui.
- * 
- * This app provides betting theory evaluation and sports data administration,
- * with integration to the theory-engine-api backend for evaluation and
- * the theory-bets-scraper service for data ingestion.
+ *
+ * This app provides sports data administration with integration to the
+ * sports-data API backend and sports-data-scraper service for data ingestion.
  */
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (

@@ -87,16 +87,16 @@ graph LR
 #### 1. Chapterizer
 **Input:** Normalized play-by-play events
 **Output:** Chapters with reason codes
-**Logic:** Structural boundary detection (NBA v1 rules)
+**Logic:** Structural boundary detection (NBA rules)
 **Deterministic:** Yes
 **AI:** No
 
 **Boundaries:**
 - Hard: Period start/end, overtime, game end
 - Scene Reset: Timeouts, reviews, challenges
-- Momentum: Crunch time start (minimal v1)
+- Momentum: Crunch time start
 
-See [NBA_V1_BOUNDARY_RULES.md](NBA_V1_BOUNDARY_RULES.md)
+See [NBA_BOUNDARY_RULES.md](NBA_BOUNDARY_RULES.md)
 
 #### 2. Section Builder
 **Input:** Chapters
@@ -317,7 +317,7 @@ npm run dev
 # Scraper
 cd scraper
 uv sync
-uv run python -m bets_scraper
+uv run python -m sports_scraper
 ```
 
 ### Running Tests

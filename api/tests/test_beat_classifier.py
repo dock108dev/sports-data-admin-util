@@ -205,10 +205,9 @@ class TestBeatTypeEnum:
     """Tests for BeatType enum."""
 
     def test_all_beat_types_exist(self):
-        """All 10 beat types are defined."""
+        """All 9 beat types are defined."""
         expected = {
             "FAST_START",
-            "MISSED_SHOT_FEST",
             "BACK_AND_FORTH",
             "EARLY_CONTROL",
             "RUN",
@@ -222,8 +221,8 @@ class TestBeatTypeEnum:
         assert actual == expected
 
     def test_beat_type_count(self):
-        """Exactly 10 beat types exist."""
-        assert len(BeatType) == 10
+        """Exactly 9 beat types exist."""
+        assert len(BeatType) == 9
 
 
 # ============================================================================
@@ -653,8 +652,8 @@ class TestRulePriority:
         result = classify_chapter_beat(ctx)
         assert result.beat_type == BeatType.CRUNCH_SETUP
 
-    def test_run_beats_missed_shot_fest(self):
-        """RUN takes priority over MISSED_SHOT_FEST (now a descriptor)."""
+    def test_run_detected_in_low_scoring_chapter(self):
+        """RUN detected even in low-scoring chapters."""
         ctx = make_context(
             period=2,
             time_remaining_seconds=500,
@@ -1028,14 +1027,10 @@ class TestBeatDescriptorEnum:
 
 
 class TestPrimaryBeats:
-    """Tests for PRIMARY_BEATS set (Phase 2.1)."""
-
-    def test_missed_shot_fest_excluded(self):
-        """MISSED_SHOT_FEST is NOT in PRIMARY_BEATS."""
-        assert BeatType.MISSED_SHOT_FEST not in PRIMARY_BEATS
+    """Tests for PRIMARY_BEATS set."""
 
     def test_primary_beats_count(self):
-        """9 primary beats (10 total - MISSED_SHOT_FEST)."""
+        """All 9 beats are primary beats."""
         assert len(PRIMARY_BEATS) == 9
 
     def test_all_primary_beats_present(self):
@@ -1055,7 +1050,7 @@ class TestPrimaryBeats:
 
 
 class TestBeatPriority:
-    """Tests for BEAT_PRIORITY list (Phase 2.1)."""
+    """Tests for BEAT_PRIORITY list."""
 
     def test_priority_ordering(self):
         """BEAT_PRIORITY has expected order (highest first)."""
@@ -1064,17 +1059,13 @@ class TestBeatPriority:
         assert BEAT_PRIORITY[2] == BeatType.CRUNCH_SETUP
         assert BEAT_PRIORITY[-1] == BeatType.STALL
 
-    def test_priority_excludes_missed_shot_fest(self):
-        """MISSED_SHOT_FEST not in priority list."""
-        assert BeatType.MISSED_SHOT_FEST not in BEAT_PRIORITY
-
     def test_priority_count(self):
         """9 beats in priority list."""
         assert len(BEAT_PRIORITY) == 9
 
 
 class TestMissedShotThreshold:
-    """Tests for MISSED_SHOT_PPP_THRESHOLD constant (Phase 2.1)."""
+    """Tests for MISSED_SHOT_PPP_THRESHOLD constant."""
 
     def test_threshold_value(self):
         """Threshold is 0.35 points per play."""
@@ -1082,7 +1073,7 @@ class TestMissedShotThreshold:
 
 
 class TestComputeDescriptors:
-    """Tests for _compute_descriptors function (Phase 2.1)."""
+    """Tests for _compute_descriptors function."""
 
     def test_low_ppp_gets_descriptor(self):
         """Low points-per-play adds MISSED_SHOT_CONTEXT descriptor."""
@@ -1126,25 +1117,8 @@ class TestComputeDescriptors:
         assert len(descriptors) == 0
 
 
-class TestClassifyChapterBeatPhase21:
-    """Tests for classify_chapter_beat Phase 2.1 changes."""
-
-    def test_never_returns_missed_shot_fest(self):
-        """classify_chapter_beat NEVER returns MISSED_SHOT_FEST as primary beat."""
-        # This context would have triggered MISSED_SHOT_FEST in old system
-        ctx = make_context(
-            period=2,
-            time_remaining_seconds=500,
-            total_plays=15,
-            home_points_scored=2,
-            away_points_scored=2,  # 4 points in 15 plays = 0.27 PPP
-        )
-        result = classify_chapter_beat(ctx)
-
-        # Should NOT be MISSED_SHOT_FEST
-        assert result.beat_type != BeatType.MISSED_SHOT_FEST
-        # Should have the descriptor instead
-        assert BeatDescriptor.MISSED_SHOT_CONTEXT in result.descriptors
+class TestClassifyLowScoringChapters:
+    """Tests for classify_chapter_beat with low-scoring chapters."""
 
     def test_low_ppp_falls_to_stall_or_back_and_forth(self):
         """Low PPP chapter falls through to STALL or BACK_AND_FORTH."""

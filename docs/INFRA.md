@@ -177,7 +177,6 @@ docker exec sports-api alembic revision --autogenerate -m "describe change"
 | `X_CT0` | No | X/Twitter CSRF cookie |
 | `NEXT_PUBLIC_SPORTS_API_URL` | Yes | API URL for frontend |
 | `SPORTS_API_INTERNAL_URL` | No | Internal API URL for server-side fetches in Docker |
-| `NEXT_PUBLIC_THEORY_ENGINE_URL` | No | API URL for non-sports clients (theory, stocks, crypto) |
 | `ALLOWED_CORS_ORIGINS` | Prod | Allowed CORS origins |
 | `CONFIRM_DESTRUCTIVE` | No | Required for restore/reset scripts |
 

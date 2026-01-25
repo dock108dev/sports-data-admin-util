@@ -55,9 +55,9 @@ This document describes where data comes from and how it's ingested.
 **Storage:** `sports_game_plays`
 
 **Implementation:**
-- `scraper/bets_scraper/scrapers/nba_sportsref.py`
-- `scraper/bets_scraper/scrapers/nhl_sportsref.py`
-- `scraper/bets_scraper/scrapers/ncaab_sportsref.py`
+- `scraper/sports_scraper/scrapers/nba_sportsref.py`
+- `scraper/sports_scraper/scrapers/nhl_sportsref.py`
+- `scraper/sports_scraper/scrapers/ncaab_sportsref.py`
 
 See also:
 - [pbp-nba-review.md](pbp-nba-review.md) - NBA PBP implementation details
@@ -69,12 +69,12 @@ See also:
 **NBA:**
 - Source: `cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json`
 - Polling: Every 15 seconds during live games
-- Implementation: `scraper/bets_scraper/live/nba.py`
+- Implementation: `scraper/sports_scraper/live/nba.py`
 
 **NHL:**
 - Source: `statsapi.web.nhl.com/api/v1/game/{game_id}/feed/live`
 - Polling: Every 15 seconds during live games
-- Implementation: `scraper/bets_scraper/live/nhl.py`
+- Implementation: `scraper/sports_scraper/live/nhl.py`
 
 **Play Index Calculation:**
 - Live feeds use `period * 10000 + actionNumber` for stable ordering
@@ -118,9 +118,9 @@ The Odds API (v4): `https://api.the-odds-api.com`
 - Caching: Per-league, per-date JSON files under scraper cache
 
 ### Implementation
-- Client: `scraper/bets_scraper/odds/client.py`
-- Sync: `scraper/bets_scraper/odds/synchronizer.py`
-- Persistence: `scraper/bets_scraper/persistence/odds.py`
+- Client: `scraper/sports_scraper/odds/client.py`
+- Sync: `scraper/sports_scraper/odds/synchronizer.py`
+- Persistence: `scraper/sports_scraper/persistence/odds.py`
 
 See also:
 - [odds-nba-ncaab-review.md](odds-nba-ncaab-review.md) - NBA/NCAAB odds details
@@ -175,9 +175,9 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 - Fields: `post_url`, `posted_at`, `tweet_text`, `has_video`, `video_url`, `image_url`, `media_type`, `reveal_risk`, `reveal_reason`
 
 ### Implementation
-- Collector: `scraper/bets_scraper/social/collector.py`
-- Playwright: `scraper/bets_scraper/social/playwright_collector.py`
-- Registry: `scraper/bets_scraper/social/registry.py`
+- Collector: `scraper/sports_scraper/social/collector.py`
+- Playwright: `scraper/sports_scraper/social/playwright_collector.py`
+- Registry: `scraper/sports_scraper/social/registry.py`
 - Reveal utils: `api/app/utils/reveal_utils.py` (shared with API)
 
 See also:
@@ -219,7 +219,7 @@ See also:
 ## Data Quality
 
 ### Team Name Normalization
-- `scraper/bets_scraper/normalization/__init__.py`
+- `scraper/sports_scraper/normalization/__init__.py`
 - Maps external team names to canonical database names
 - Exhaustive for NBA, partial for NCAAB (by design)
 

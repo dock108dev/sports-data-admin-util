@@ -896,6 +896,61 @@ wheels = [
 ]
 
 [[package]]
+name = "sports-data-scraper"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "alembic" },
+    { name = "beautifulsoup4" },
+    { name = "celery" },
+    { name = "httpx" },
+    { name = "lxml" },
+    { name = "playwright" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "redis" },
+    { name = "sqlalchemy" },
+    { name = "structlog" },
+    { name = "tenacity" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "black" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruff" },
+    { name = "types-beautifulsoup4" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.13.0,<2.0.0" },
+    { name = "beautifulsoup4", specifier = ">=4.12.0,<5.0.0" },
+    { name = "celery", specifier = ">=5.4.0,<6.0.0" },
+    { name = "httpx", specifier = ">=0.27.0,<0.29.0" },
+    { name = "lxml", specifier = ">=5.3.0,<7.0.0" },
+    { name = "playwright", specifier = ">=1.47.0,<2.0.0" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2.0,<4.0.0" },
+    { name = "pydantic", specifier = ">=2.8.0,<3.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.5.0,<3.0.0" },
+    { name = "redis", specifier = ">=5.0.0,<8.0.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.0,<3.0.0" },
+    { name = "structlog", specifier = ">=24.1.0,<26.0.0" },
+    { name = "tenacity", specifier = ">=9.0.0,<10.0.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black", specifier = ">=24.8.0,<25.0.0" },
+    { name = "mypy", specifier = ">=1.11.0,<2.0.0" },
+    { name = "pytest", specifier = ">=8.3.2,<9.0.0" },
+    { name = "ruff", specifier = ">=0.7.0,<0.8.0" },
+    { name = "types-beautifulsoup4", specifier = ">=4.12.0,<5.0.0" },
+]
+
+[[package]]
 name = "sqlalchemy"
 version = "2.0.44"
 source = { registry = "https://pypi.org/simple" }
@@ -948,61 +1003,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0a/d4/2b0cd0fe285e14b36db076e78c93766ff1d529d70408bd1d2a5a84f1d929/tenacity-9.1.2.tar.gz", hash = "sha256:1169d376c297e7de388d18b4481760d478b0e99a777cad3a9c86e556f4b697cb", size = 48036, upload-time = "2025-04-02T08:25:09.966Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/30/643397144bfbfec6f6ef821f36f33e57d35946c44a2352d3c9f0ae847619/tenacity-9.1.2-py3-none-any.whl", hash = "sha256:f77bf36710d8b73a50b2dd155c97b870017ad21afe6ab300326b0371b3b05138", size = 28248, upload-time = "2025-04-02T08:25:07.678Z" },
-]
-
-[[package]]
-name = "theory-bets-scraper"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "alembic" },
-    { name = "beautifulsoup4" },
-    { name = "celery" },
-    { name = "httpx" },
-    { name = "lxml" },
-    { name = "playwright" },
-    { name = "psycopg", extra = ["binary"] },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "redis" },
-    { name = "sqlalchemy" },
-    { name = "structlog" },
-    { name = "tenacity" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "black" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "ruff" },
-    { name = "types-beautifulsoup4" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "alembic", specifier = ">=1.13.0,<2.0.0" },
-    { name = "beautifulsoup4", specifier = ">=4.12.0,<5.0.0" },
-    { name = "celery", specifier = ">=5.4.0,<6.0.0" },
-    { name = "httpx", specifier = ">=0.27.0,<0.29.0" },
-    { name = "lxml", specifier = ">=5.3.0,<7.0.0" },
-    { name = "playwright", specifier = ">=1.47.0,<2.0.0" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2.0,<4.0.0" },
-    { name = "pydantic", specifier = ">=2.8.0,<3.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.5.0,<3.0.0" },
-    { name = "redis", specifier = ">=5.0.0,<8.0.0" },
-    { name = "sqlalchemy", specifier = ">=2.0.0,<3.0.0" },
-    { name = "structlog", specifier = ">=24.1.0,<26.0.0" },
-    { name = "tenacity", specifier = ">=9.0.0,<10.0.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "black", specifier = ">=24.8.0,<25.0.0" },
-    { name = "mypy", specifier = ">=1.11.0,<2.0.0" },
-    { name = "pytest", specifier = ">=8.3.2,<9.0.0" },
-    { name = "ruff", specifier = ">=0.7.0,<0.8.0" },
-    { name = "types-beautifulsoup4", specifier = ">=4.12.0,<5.0.0" },
 ]
 
 [[package]]

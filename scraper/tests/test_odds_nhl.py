@@ -34,7 +34,7 @@ os.environ.setdefault("ODDS_API_KEY", "test_key_for_unit_tests")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 # Now import odds modules directly
-from bets_scraper.odds.client import CLOSING_LINE_HOURS, SPORT_KEY_MAP, OddsAPIClient
+from sports_scraper.odds.client import CLOSING_LINE_HOURS, SPORT_KEY_MAP, OddsAPIClient
 
 
 class TestSportKeyMapping:
@@ -90,8 +90,8 @@ class TestOddsSynchronizerDateRouting:
 
     def test_past_dates_use_historical(self) -> None:
         """Dates in the past should route to historical endpoint."""
-        from bets_scraper.odds.synchronizer import OddsSynchronizer
-        from bets_scraper.models.schemas import IngestionConfig
+        from sports_scraper.odds.synchronizer import OddsSynchronizer
+        from sports_scraper.models.schemas import IngestionConfig
 
         sync = OddsSynchronizer()
         today = date.today()
@@ -115,8 +115,8 @@ class TestOddsSynchronizerDateRouting:
 
     def test_future_dates_use_live(self) -> None:
         """Dates in the future should route to live endpoint."""
-        from bets_scraper.odds.synchronizer import OddsSynchronizer
-        from bets_scraper.models.schemas import IngestionConfig
+        from sports_scraper.odds.synchronizer import OddsSynchronizer
+        from sports_scraper.models.schemas import IngestionConfig
 
         sync = OddsSynchronizer()
         today = date.today()
@@ -140,8 +140,8 @@ class TestOddsSynchronizerDateRouting:
 
     def test_mixed_range_uses_both(self) -> None:
         """Date range spanning past and future should use both endpoints."""
-        from bets_scraper.odds.synchronizer import OddsSynchronizer
-        from bets_scraper.models.schemas import IngestionConfig
+        from sports_scraper.odds.synchronizer import OddsSynchronizer
+        from sports_scraper.models.schemas import IngestionConfig
 
         sync = OddsSynchronizer()
         today = date.today()
@@ -170,7 +170,7 @@ class TestNHLTeamNormalization:
 
     def test_nhl_team_normalization_exists(self) -> None:
         """NHL teams should be in the normalization mappings."""
-        from bets_scraper.normalization import normalize_team_name
+        from sports_scraper.normalization import normalize_team_name
 
         # Test a few representative NHL teams
         teams_to_test = [
@@ -187,7 +187,7 @@ class TestNHLTeamNormalization:
 
     def test_nhl_team_variation_normalization(self) -> None:
         """Common team name variations should normalize correctly."""
-        from bets_scraper.normalization import normalize_team_name
+        from sports_scraper.normalization import normalize_team_name
 
         # Test variations
         canonical, abbr = normalize_team_name("NHL", "LA Kings")
@@ -204,7 +204,7 @@ class TestNormalizedOddsSnapshot:
 
     def test_nhl_snapshot_creation(self) -> None:
         """NHL odds snapshot should be creatable with valid data."""
-        from bets_scraper.models.schemas import NormalizedOddsSnapshot, TeamIdentity
+        from sports_scraper.models.schemas import NormalizedOddsSnapshot, TeamIdentity
 
         home_team = TeamIdentity(
             league_code="NHL",
@@ -247,7 +247,7 @@ class TestOddsOnlyRunConfig:
 
     def test_odds_only_config(self) -> None:
         """Odds-only config should work without boxscores/pbp/social."""
-        from bets_scraper.models.schemas import IngestionConfig
+        from sports_scraper.models.schemas import IngestionConfig
 
         config = IngestionConfig(
             league_code="NHL",
@@ -266,8 +266,8 @@ class TestOddsOnlyRunConfig:
 
     def test_odds_disabled_returns_zero(self) -> None:
         """Synchronizer should return 0 when odds is disabled."""
-        from bets_scraper.odds.synchronizer import OddsSynchronizer
-        from bets_scraper.models.schemas import IngestionConfig
+        from sports_scraper.odds.synchronizer import OddsSynchronizer
+        from sports_scraper.models.schemas import IngestionConfig
 
         sync = OddsSynchronizer()
         config = IngestionConfig(
@@ -285,21 +285,21 @@ class TestSeasonCalculation:
 
     def test_nhl_season_october(self) -> None:
         """October dates should be current season."""
-        from bets_scraper.utils.date_utils import season_from_date
+        from sports_scraper.utils.date_utils import season_from_date
 
         oct_date = date(2024, 10, 15)
         assert season_from_date(oct_date, "NHL") == 2024
 
     def test_nhl_season_january(self) -> None:
         """January dates should be previous year's season."""
-        from bets_scraper.utils.date_utils import season_from_date
+        from sports_scraper.utils.date_utils import season_from_date
 
         jan_date = date(2025, 1, 15)
         assert season_from_date(jan_date, "NHL") == 2024
 
     def test_nhl_season_june(self) -> None:
         """June (playoffs) should be previous year's season."""
-        from bets_scraper.utils.date_utils import season_from_date
+        from sports_scraper.utils.date_utils import season_from_date
 
         june_date = date(2025, 6, 15)
         assert season_from_date(june_date, "NHL") == 2024

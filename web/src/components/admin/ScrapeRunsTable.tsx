@@ -26,7 +26,7 @@ export function ScrapeRunsTable({
   onRefresh,
   onCancel,
   cancellingRunId = null,
-  detailLinkPrefix = "/admin/theory-bets/ingestion",
+  detailLinkPrefix = "/admin/sports/ingestion",
 }: ScrapeRunsTableProps) {
   const latestRuns = useMemo(() => runs.slice(0, 25), [runs]);
   const isCancelable = (status: string) => status === "pending" || status === "running";

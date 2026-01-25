@@ -154,13 +154,13 @@ export class APIClient {
 
 /**
  * Create a default API client instance.
- * Uses NEXT_PUBLIC_THEORY_ENGINE_URL or defaults to localhost:8000.
+ * Uses NEXT_PUBLIC_SPORTS_API_URL or defaults to localhost:8000.
  */
 export function createClient(baseURL?: string): APIClient {
   const url =
     baseURL ||
     (typeof window !== "undefined"
-      ? process.env.NEXT_PUBLIC_THEORY_ENGINE_URL || "http://localhost:8000"
+      ? process.env.NEXT_PUBLIC_SPORTS_API_URL || "http://localhost:8000"
       : "http://localhost:8000");
 
   return new APIClient({

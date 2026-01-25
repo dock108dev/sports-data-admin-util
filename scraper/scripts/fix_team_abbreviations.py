@@ -27,9 +27,9 @@ api_dir = scraper_dir.parent.parent / "api"
 if str(api_dir) not in sys.path:
     sys.path.append(str(api_dir))
 
-from bets_scraper.db import db_models, get_session
-from bets_scraper.logging import logger
-from bets_scraper.normalization import normalize_team_name
+from sports_scraper.db import db_models, get_session
+from sports_scraper.logging import logger
+from sports_scraper.normalization import normalize_team_name
 
 SportsLeague = db_models.SportsLeague
 SportsTeam = db_models.SportsTeam

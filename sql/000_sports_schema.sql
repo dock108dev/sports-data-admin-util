@@ -1,4 +1,4 @@
--- Sports data schema (extracted from dock108 theory-engine + migrations)
+-- Sports data schema (sports-data-admin)
 -- Apply with: psql "$DATABASE_URL" -f sql/000_sports_schema.sql
 
 CREATE TABLE IF NOT EXISTS sports_leagues (
