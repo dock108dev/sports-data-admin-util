@@ -2394,3 +2394,83 @@ class TestLumpySectionConstants:
 
         assert LUMPY_DOMINANCE_THRESHOLD_PCT == 0.65
         assert DOMINANCE_CAP_PCT == 0.60
+
+
+# ============================================================================
+# TEST: SCORE EXTRACTION FROM PLAYS
+# ============================================================================
+
+
+class TestFindPlayWithScore:
+    """Tests for _find_play_with_score function."""
+
+    def test_find_first_play_with_score(self):
+        """Should find first play with valid scores."""
+        from app.services.chapters.story_section import _find_play_with_score
+
+        plays = [
+            Play(index=0, event_type="pbp", raw_data={"home_score": 0, "away_score": 0}),
+            Play(index=1, event_type="pbp", raw_data={"home_score": 2, "away_score": 0}),
+            Play(index=2, event_type="pbp", raw_data={"home_score": 2, "away_score": 3}),
+        ]
+
+        result = _find_play_with_score(plays, reverse=False)
+        assert result == (0, 0)
+
+    def test_find_last_play_with_score(self):
+        """Should find last play with valid scores when reverse=True."""
+        from app.services.chapters.story_section import _find_play_with_score
+
+        plays = [
+            Play(index=0, event_type="pbp", raw_data={"home_score": 0, "away_score": 0}),
+            Play(index=1, event_type="pbp", raw_data={"home_score": 50, "away_score": 48}),
+            Play(index=2, event_type="pbp", raw_data={"home_score": None, "away_score": None}),
+        ]
+
+        result = _find_play_with_score(plays, reverse=True)
+        assert result == (50, 48)
+
+    def test_skip_plays_with_none_scores(self):
+        """Should skip plays that have None scores."""
+        from app.services.chapters.story_section import _find_play_with_score
+
+        plays = [
+            Play(index=0, event_type="pbp", raw_data={"home_score": None, "away_score": None}),
+            Play(index=1, event_type="pbp", raw_data={"home_score": 10, "away_score": 8}),
+            Play(index=2, event_type="pbp", raw_data={}),
+        ]
+
+        result = _find_play_with_score(plays, reverse=False)
+        assert result == (10, 8)
+
+    def test_return_none_when_no_valid_scores(self):
+        """Should return None when no plays have valid scores."""
+        from app.services.chapters.story_section import _find_play_with_score
+
+        plays = [
+            Play(index=0, event_type="pbp", raw_data={"home_score": None, "away_score": None}),
+            Play(index=1, event_type="pbp", raw_data={}),
+        ]
+
+        result = _find_play_with_score(plays, reverse=False)
+        assert result is None
+
+    def test_empty_plays_list(self):
+        """Should return None for empty plays list."""
+        from app.services.chapters.story_section import _find_play_with_score
+
+        result = _find_play_with_score([], reverse=False)
+        assert result is None
+
+    def test_partial_score_none_treated_as_invalid(self):
+        """Should skip plays where only one score is present."""
+        from app.services.chapters.story_section import _find_play_with_score
+
+        plays = [
+            Play(index=0, event_type="pbp", raw_data={"home_score": 10, "away_score": None}),
+            Play(index=1, event_type="pbp", raw_data={"home_score": None, "away_score": 12}),
+            Play(index=2, event_type="pbp", raw_data={"home_score": 15, "away_score": 14}),
+        ]
+
+        result = _find_play_with_score(plays, reverse=False)
+        assert result == (15, 14)

@@ -5,30 +5,28 @@ PURPOSE:
 This module is the single AI rendering call for the chapters-first game story system.
 AI turns a fully-constructed outline into readable prose.
 
-AI'S ROLE (STRICTLY LIMITED):
-- Turn outline into prose
-- Use provided headers verbatim
+AI'S ROLE:
+- Turn outline into prose with creative freedom
+- Use provided themes as GUIDANCE (not verbatim text)
 - Match target word count approximately
-- Add language polish WITHOUT adding logic
+- Add language polish and natural flow
 
 AI IS NOT ALLOWED TO:
-- Plan or restructure
-- Infer importance
-- Invent context
-- Decide what matters
+- Invent context or stats not in the input
 - Add drama not supported by input
+- Copy theme text verbatim into prose
 
 WHAT THE SYSTEM HAS ALREADY DETERMINED:
 - Structure (sections)
 - Pacing (beat types)
 - Stats (deltas)
 - Section boundaries
-- Headers (deterministic)
+- Themes (suggestive, not mandatory text)
 - Target length
 
 CODEBASE REVIEW:
 - compact_story_generator.py uses chapter summaries (old approach)
-- This module uses StorySections with headers (new approach)
+- This module uses StorySections with themes (new approach)
 - This is the ONLY rendering path for chapters-first architecture
 
 ISSUE: AI Story Rendering (Chapters-First Architecture)
@@ -268,18 +266,23 @@ Decisive Factors:
 
 ## RENDERING RULES (NON-NEGOTIABLE)
 
-1. Write ONE cohesive article
-2. Use the provided headers VERBATIM and IN ORDER
-3. Write paragraphs UNDER each header
-4. Do NOT add or remove headers
+1. Write ONE cohesive article with clear paragraph breaks for each section
+2. Each section's "Theme" describes WHAT happened — use it as guidance, not verbatim text
+3. Write in your own voice — rephrase, adapt, or capture the theme's essence naturally
+4. Follow the section ORDER but create your own transitions and flow
 5. Do NOT reference sections, chapters, or beats explicitly
 6. Do NOT invent players, stats, or moments not in the input
-7. Do NOT repeat the same idea across sections
-8. Avoid play-by-play phrasing
+7. Do NOT repeat the same idea or phrasing across sections
+8. Avoid play-by-play phrasing and clichéd sports writing
 9. Tone: confident, observational, like a writer who watched the game
 10. Perspective: assured, post-game — you know what mattered
 11. SCORE MENTIONS: Each section paragraph COULD mention the score at that point. Use end_score in the last paragraph only, and it must be used naturally in context.
 12. INVITE, DON'T COMPLETE: Your narrative should make readers want to know more, not feel they've heard everything. Leave room for the expanded sections to add value.
+
+THEME GUIDANCE:
+- Themes tell you the narrative focus for each section (e.g., "Scoring dried up" means offense stalled)
+- DO NOT copy theme text into your prose — interpret and express it originally
+- Vary your language — if multiple sections have similar themes, find fresh angles
 
 ## OPENING PARAGRAPH RULES (NON-NEGOTIABLE)
 
@@ -594,7 +597,7 @@ def _format_section_for_prompt(
 
     lines = [
         f"### Section {index + 1}",
-        f"Header: {section.header}",
+        f"Theme: {section.header}",
         f"Beat: {section.beat_type.value}",
     ]
 
