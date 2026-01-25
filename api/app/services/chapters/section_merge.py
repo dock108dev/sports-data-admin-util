@@ -821,9 +821,32 @@ def handle_underpowered_sections(
                 )
             changed = True
         else:
-            # No compatible neighbor - drop the section
-            result = result[:underpowered_idx] + result[underpowered_idx + 1 :]
-            changed = True
+            # No compatible neighbor - force merge with ANY neighbor to preserve chapters
+            # Try previous first, then next (never drop chapters)
+            force_neighbor_idx = None
+            if underpowered_idx > 0:
+                force_neighbor_idx = underpowered_idx - 1
+            elif underpowered_idx < len(result) - 1:
+                force_neighbor_idx = underpowered_idx + 1
+
+            if force_neighbor_idx is not None:
+                # Force merge to preserve chapters (even if beat types incompatible)
+                if force_neighbor_idx < underpowered_idx:
+                    merged = _merge_sections(
+                        result[force_neighbor_idx], result[underpowered_idx], force_neighbor_idx
+                    )
+                    result = (
+                        result[:force_neighbor_idx] + [merged] + result[underpowered_idx + 1 :]
+                    )
+                else:
+                    merged = _merge_sections(
+                        result[underpowered_idx], result[force_neighbor_idx], underpowered_idx
+                    )
+                    result = (
+                        result[:underpowered_idx] + [merged] + result[force_neighbor_idx + 1 :]
+                    )
+                changed = True
+            # If only one section and it's underpowered, keep it (can't merge with nothing)
 
         # Renumber remaining sections
         for j, s in enumerate(result):

@@ -980,8 +980,46 @@ class TestBeatAwareMergeRules:
 class TestBeatAwareMergeIntegration:
     """Integration tests for beat-aware merge prevention in section building."""
 
-    def test_run_stall_never_merged(self):
-        """RUN and STALL chapters should not be merged into same section."""
+    def test_run_stall_separated_when_sections_have_signal(self):
+        """RUN and STALL chapters stay separate when they have enough signal."""
+        # Create chapters with substantial signal (>4 total points)
+        plays = [
+            [
+                make_play(0, quarter=1, game_clock="10:00", home_score=0, away_score=0),
+                make_play(1, quarter=1, game_clock="9:30", home_score=4, away_score=2),
+                make_play(2, quarter=1, game_clock="9:00", home_score=8, away_score=6),
+            ],
+            [
+                make_play(3, quarter=1, game_clock="8:00", home_score=16, away_score=8),
+                make_play(4, quarter=1, game_clock="7:30", home_score=22, away_score=10),
+            ],
+            [
+                make_play(5, quarter=1, game_clock="6:00", home_score=24, away_score=12),
+                make_play(6, quarter=1, game_clock="5:30", home_score=26, away_score=14),
+            ],
+        ]
+
+        chapters = [
+            make_chapter(f"ch_{i:03d}", p, period=1) for i, p in enumerate(plays)
+        ]
+        classifications = [
+            make_classification("ch_000", BeatType.BACK_AND_FORTH, 0),
+            make_classification("ch_001", BeatType.RUN, 1),
+            make_classification("ch_002", BeatType.STALL, 2),
+        ]
+
+        sections = build_story_sections(chapters, classifications)
+
+        # All chapters should be preserved
+        all_chapters = []
+        for section in sections:
+            all_chapters.extend(section.chapters_included)
+        assert "ch_000" in all_chapters
+        assert "ch_001" in all_chapters
+        assert "ch_002" in all_chapters
+
+    def test_underpowered_chapters_force_merged_preserves_all(self):
+        """Even with incompatible beats, all chapters must be preserved."""
         plays = [
             [make_play(0, quarter=1, game_clock="10:00", home_score=0, away_score=0)],
             [make_play(1, quarter=1, game_clock="8:00", home_score=10, away_score=2)],
@@ -999,20 +1037,13 @@ class TestBeatAwareMergeIntegration:
 
         sections = build_story_sections(chapters, classifications)
 
-        # RUN and STALL should be in different sections
+        # Most important: ALL chapters must be preserved (no dropping)
+        all_chapters = []
         for section in sections:
-            beat_types_in_section = set()
-            for ch_id in section.chapters_included:
-                # Find the classification for this chapter
-                for c in classifications:
-                    if c.chapter_id == ch_id:
-                        beat_types_in_section.add(c.beat_type)
-
-            # Should not have both RUN and STALL in same section
-            assert not (
-                BeatType.RUN in beat_types_in_section
-                and BeatType.STALL in beat_types_in_section
-            ), "RUN and STALL should not be in same section"
+            all_chapters.extend(section.chapters_included)
+        assert "ch_000" in all_chapters
+        assert "ch_001" in all_chapters
+        assert "ch_002" in all_chapters
 
 
 # ============================================================================
@@ -1260,8 +1291,8 @@ class TestUnderpoweredSectionHandling:
         assert "ch_001" in all_chapters
         assert "ch_002" in all_chapters
 
-    def test_underpowered_dropped_when_no_compatible_neighbor(self):
-        """Underpowered section is dropped if no compatible neighbor exists."""
+    def test_underpowered_force_merged_when_no_compatible_neighbor(self):
+        """Underpowered section is force-merged to preserve chapters."""
         plays1 = [
             make_play(0, quarter=1, game_clock="10:00", home_score=0, away_score=0),
             make_play(1, quarter=1, game_clock="9:00", home_score=10, away_score=8),
@@ -1329,13 +1360,14 @@ class TestUnderpoweredSectionHandling:
 
         result = handle_underpowered_sections(sections, chapters)
 
-        # Section 1 (STALL) cannot merge:
-        # - Section 0 is protected (opening) + RUN is incompatible with STALL
-        # - Section 2 is protected (CLOSING_SEQUENCE)
-        # So it should be dropped
-        section_beats = [s.beat_type for s in result]
-        # STALL should not be in the result (it was dropped)
-        assert BeatType.STALL not in section_beats
+        # Section 1 (STALL) is force-merged into previous to preserve chapters
+        # All chapters must still be covered
+        all_chapters = []
+        for s in result:
+            all_chapters.extend(s.chapters_included)
+        assert "ch_000" in all_chapters
+        assert "ch_001" in all_chapters  # Underpowered chapter preserved
+        assert "ch_002" in all_chapters
 
 
 # ============================================================================

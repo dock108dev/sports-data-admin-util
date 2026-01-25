@@ -18,15 +18,15 @@ WHY DETERMINISM MATTERS:
 4. No external state or randomness to manage
 
 SELECTION METHOD:
-Fixed midpoint of each range:
-- LOW: (300 + 500) / 2 = 400 words
-- MEDIUM: (600 + 800) / 2 = 700 words
-- HIGH: (900 + 1200) / 2 = 1050 words
+Targets calibrated to AI's natural output range (~450-700 words):
+- LOW: 450 words (range 350-500)
+- MEDIUM: 550 words (range 450-650)
+- HIGH: 700 words (range 550-850)
 
-Midpoint was chosen because:
-- Simple and predictable
-- Gives headroom in both directions
-- Easy to change later if needed
+Targets were calibrated based on observed AI output patterns:
+- AI naturally produces 450-700 words regardless of instruction
+- Targets set to align with this natural range
+- Ranges overlap to avoid sharp quality boundaries
 
 CODEBASE REVIEW:
 - No existing target word count selection found
@@ -48,20 +48,23 @@ from .game_quality import GameQuality
 # WORD COUNT RANGES (LOCKED - NO TUNING)
 # ============================================================================
 
-# LOW quality games: shorter stories (300-500 words)
-LOW_MIN = 300
+# LOW quality games: shorter stories (350-500 words)
+# AI naturally outputs 450-550 for simple prompts
+LOW_MIN = 350
 LOW_MAX = 500
-LOW_TARGET = (LOW_MIN + LOW_MAX) // 2  # 400
+LOW_TARGET = 450
 
-# MEDIUM quality games: standard stories (600-800 words)
-MEDIUM_MIN = 600
-MEDIUM_MAX = 800
-MEDIUM_TARGET = (MEDIUM_MIN + MEDIUM_MAX) // 2  # 700
+# MEDIUM quality games: standard stories (450-650 words)
+# AI naturally outputs 500-650 for moderate prompts
+MEDIUM_MIN = 450
+MEDIUM_MAX = 650
+MEDIUM_TARGET = 550
 
-# HIGH quality games: longer stories (900-1200 words)
-HIGH_MIN = 900
-HIGH_MAX = 1200
-HIGH_TARGET = (HIGH_MIN + HIGH_MAX) // 2  # 1050
+# HIGH quality games: longer stories (550-850 words)
+# AI naturally outputs 600-750 for complex prompts
+HIGH_MIN = 550
+HIGH_MAX = 850
+HIGH_TARGET = 700
 
 
 # ============================================================================
@@ -105,10 +108,10 @@ def select_target_word_count(quality: GameQuality) -> TargetLengthResult:
     This is the ONLY target word count selection path.
     The AI rendering layer receives this value as an instruction.
 
-    Selection method: Fixed midpoint of each range.
-    - LOW → 400 words (midpoint of 300-500)
-    - MEDIUM → 700 words (midpoint of 600-800)
-    - HIGH → 1050 words (midpoint of 900-1200)
+    Selection method: Targets calibrated to AI's natural output.
+    - LOW → 450 words (range 350-500)
+    - MEDIUM → 550 words (range 450-650)
+    - HIGH → 700 words (range 550-850)
 
     Args:
         quality: GameQuality enum (LOW, MEDIUM, or HIGH)
