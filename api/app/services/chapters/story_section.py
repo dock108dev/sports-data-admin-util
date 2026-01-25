@@ -27,7 +27,7 @@ See section_merge.py for merge rules and section_signal.py for signal thresholds
 
 from __future__ import annotations
 
-from .types import Chapter
+from .types import Chapter, Play
 from .beat_types import BeatType, BeatDescriptor, BEAT_PRIORITY
 from .beat_classifier import BeatClassification, detect_opening_section_beat
 from .running_stats import SectionDelta, RunningStatsSnapshot, PlayerDelta
@@ -313,7 +313,7 @@ def detect_forced_break(
 # ============================================================================
 
 
-def _find_play_with_score(plays: list, reverse: bool = False) -> tuple[int, int] | None:
+def _find_play_with_score(plays: list[Play], reverse: bool = False) -> tuple[int, int] | None:
     """Find the first/last play with valid scores.
 
     Some plays (like "End of Quarter") may not have scores attached.

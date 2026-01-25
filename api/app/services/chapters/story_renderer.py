@@ -70,7 +70,7 @@ class ClosingContext:
 class SectionRenderInput:
     """Input for rendering a single section."""
 
-    header: str
+    theme: str
     beat_type: BeatType
     team_stat_deltas: list[dict[str, Any]]
     player_stat_deltas: list[dict[str, Any]]
@@ -84,7 +84,7 @@ class SectionRenderInput:
 
     def to_dict(self) -> dict[str, Any]:
         result = {
-            "header": self.header,
+            "theme": self.theme,
             "beat_type": self.beat_type.value,
             "team_stats": self.team_stat_deltas,
             "player_stats": self.player_stat_deltas,
@@ -190,7 +190,7 @@ def _format_section_for_prompt(
 
     lines = [
         f"### Section {index + 1}",
-        f"Theme: {section.header}",
+        f"Theme: {section.theme}",
         f"Beat: {section.beat_type.value}",
     ]
 
@@ -220,10 +220,22 @@ def _format_section_for_prompt(
             lines.append(line)
 
     if section.player_stat_deltas:
-        lines.append("Key Players:")
+        # Group players by team (home vs away)
+        home_players: list[dict[str, Any]] = []
+        away_players: list[dict[str, Any]] = []
+        unknown_players: list[dict[str, Any]] = []
+
         for player in section.player_stat_deltas:
+            team_key = player.get("team_key", "").lower()
+            if team_key == "home":
+                home_players.append(player)
+            elif team_key == "away":
+                away_players.append(player)
+            else:
+                unknown_players.append(player)
+
+        def format_player(player: dict[str, Any]) -> str:
             name = player.get("player_name", "Unknown")
-            team_key = player.get("team_key")
             pts = player.get("points_scored", 0)
             fg = player.get("fg_made", 0)
             three = player.get("three_pt_made", 0)
@@ -243,10 +255,21 @@ def _format_section_for_prompt(
             if trouble:
                 stat_parts.append("(foul trouble)")
 
-            if team_key:
-                lines.append(f"  - {name} ({team_key.upper()}): {', '.join(stat_parts)}")
-            else:
-                lines.append(f"  - {name}: {', '.join(stat_parts)}")
+            return f"    - {name}: {', '.join(stat_parts)}"
+
+        lines.append("Key Players:")
+        if home_players:
+            lines.append(f"  {home_team}:")
+            for player in home_players:
+                lines.append(format_player(player))
+        if away_players:
+            lines.append(f"  {away_team}:")
+            for player in away_players:
+                lines.append(format_player(player))
+        if unknown_players:
+            lines.append("  Other:")
+            for player in unknown_players:
+                lines.append(format_player(player))
 
     if section.notes:
         lines.append("Notes:")
@@ -289,10 +312,10 @@ def build_render_prompt(input_data: StoryRenderInput) -> str:
 # ============================================================================
 
 
-def build_section_render_input(section: StorySection, header: str) -> SectionRenderInput:
+def build_section_render_input(section: StorySection, theme: str) -> SectionRenderInput:
     """Build rendering input from a StorySection."""
     return SectionRenderInput(
-        header=header,
+        theme=theme,
         beat_type=section.beat_type,
         team_stat_deltas=[delta.to_dict() for delta in section.team_stat_deltas.values()],
         player_stat_deltas=[delta.to_dict() for delta in section.player_stat_deltas.values()],
@@ -308,22 +331,22 @@ def build_section_render_input(section: StorySection, header: str) -> SectionRen
 
 def build_story_render_input(
     sections: list[StorySection],
-    headers: list[str],
+    themes: list[str],
     sport: str,
     home_team_name: str,
     away_team_name: str,
     target_word_count: int,
     decisive_factors: list[str],
 ) -> StoryRenderInput:
-    """Build complete rendering input from sections and headers."""
-    if len(sections) != len(headers):
-        raise StoryRenderError(f"Section count ({len(sections)}) != header count ({len(headers)})")
+    """Build complete rendering input from sections and themes."""
+    if len(sections) != len(themes):
+        raise StoryRenderError(f"Section count ({len(sections)}) != theme count ({len(themes)})")
     if not sections:
         raise StoryRenderError("No sections provided")
 
     section_inputs = [
-        build_section_render_input(section, header)
-        for section, header in zip(sections, headers)
+        build_section_render_input(section, theme)
+        for section, theme in zip(sections, themes)
     ]
 
     final_section = sections[-1]
@@ -399,7 +422,7 @@ def _generate_mock_story(input_data: StoryRenderInput) -> str:
     """Generate mock story for testing."""
     paragraphs = []
     for section in input_data.sections:
-        para = section.header
+        para = section.theme
         if section.notes:
             para += f" {section.notes[0]}"
         paragraphs.append(para)
@@ -429,10 +452,10 @@ def validate_render_input(input_data: StoryRenderInput) -> list[str]:
     if not input_data.away_team_name:
         errors.append("Missing away team name")
     for i, section in enumerate(input_data.sections):
-        if not section.header:
-            errors.append(f"Section {i} has no header")
-        if not section.header.endswith("."):
-            errors.append(f"Section {i} header doesn't end with period")
+        if not section.theme:
+            errors.append(f"Section {i} has no theme")
+        if not section.theme.endswith("."):
+            errors.append(f"Section {i} theme doesn't end with period")
     return errors
 
 
@@ -447,12 +470,12 @@ def validate_render_result(result: StoryRenderResult, input_data: StoryRenderInp
             f"Word count deviation too large: {result.word_count} vs target {result.target_word_count} ({deviation_pct:.0f}%)"
         )
 
-    # Check headers are present
+    # Check themes are reflected in story
     story_lower = result.compact_story.lower()
     for section in input_data.sections:
-        header_words = section.header.lower().split()[:3]
-        if not any(word in story_lower for word in header_words if len(word) > 3):
-            errors.append(f"Header may be missing: {section.header[:50]}...")
+        theme_words = section.theme.lower().split()[:3]
+        if not any(word in story_lower for word in theme_words if len(word) > 3):
+            errors.append(f"Theme may be missing: {section.theme[:50]}...")
 
     # Check per-section word counts
     section_word_counts = _parse_section_word_counts(result.compact_story, input_data.sections)
@@ -470,24 +493,24 @@ def _parse_section_word_counts(story: str, sections: list[SectionRenderInput]) -
     if not sections:
         return []
 
-    header_positions: list[tuple[int, int]] = []
+    theme_positions: list[tuple[int, int]] = []
     story_lower = story.lower()
 
     for i, section in enumerate(sections):
-        search_phrase = " ".join(section.header.lower().split()[:4])
+        search_phrase = " ".join(section.theme.lower().split()[:4])
         pos = story_lower.find(search_phrase)
         if pos >= 0:
-            header_positions.append((i, pos))
+            theme_positions.append((i, pos))
 
-    if not header_positions:
+    if not theme_positions:
         paragraphs = [p.strip() for p in story.split("\n\n") if p.strip()]
         return [len(p.split()) for p in paragraphs]
 
-    header_positions.sort(key=lambda x: x[1])
+    theme_positions.sort(key=lambda x: x[1])
 
     word_counts = []
-    for j, (_, start_pos) in enumerate(header_positions):
-        end_pos = header_positions[j + 1][1] if j + 1 < len(header_positions) else len(story)
+    for j, (_, start_pos) in enumerate(theme_positions):
+        end_pos = theme_positions[j + 1][1] if j + 1 < len(theme_positions) else len(story)
         section_text = story[start_pos:end_pos].strip()
         word_counts.append(len(section_text.split()))
 
@@ -513,7 +536,7 @@ def format_render_debug(input_data: StoryRenderInput, result: StoryRenderResult 
     ]
 
     for i, section in enumerate(input_data.sections):
-        lines.append(f"  {i + 1}. [{section.beat_type.value}] {section.header}")
+        lines.append(f"  {i + 1}. [{section.beat_type.value}] {section.theme}")
 
     lines.append("")
     lines.append(f"Closing: {input_data.closing.to_dict()['final_score']}")

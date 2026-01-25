@@ -96,9 +96,9 @@ def make_section(
     return section
 
 
-def make_header(beat_type: BeatType) -> str:
-    """Create a deterministic header for testing."""
-    headers = {
+def make_theme(beat_type: BeatType) -> str:
+    """Create a deterministic theme for testing."""
+    themes = {
         BeatType.FAST_START: "The floor was alive from the opening tip.",
         BeatType.BACK_AND_FORTH: "Neither side could create separation.",
         BeatType.RUN: "One side started pulling away.",
@@ -107,7 +107,7 @@ def make_header(beat_type: BeatType) -> str:
         BeatType.CLOSING_SEQUENCE: "Late possessions took on added importance down the stretch.",
         BeatType.OVERTIME: "Overtime extended the game into a survival phase.",
     }
-    return headers.get(beat_type, "The game continued.")
+    return themes.get(beat_type, "The game continued.")
 
 
 class MockAIClient:
@@ -165,7 +165,7 @@ class TestSectionRenderInput:
     def test_to_dict(self):
         """SectionRenderInput serializes correctly."""
         section_input = SectionRenderInput(
-            header="Both teams opened at a fast pace.",
+            theme="Both teams opened at a fast pace.",
             beat_type=BeatType.FAST_START,
             team_stat_deltas=[{"team_name": "Lakers", "points_scored": 15}],
             player_stat_deltas=[{"player_name": "LeBron", "points_scored": 8}],
@@ -174,7 +174,7 @@ class TestSectionRenderInput:
 
         data = section_input.to_dict()
 
-        assert data["header"] == "Both teams opened at a fast pace."
+        assert data["theme"] == "Both teams opened at a fast pace."
         assert data["beat_type"] == "FAST_START"
         assert len(data["team_stats"]) == 1
         assert len(data["player_stats"]) == 1
@@ -192,11 +192,11 @@ class TestBuildSectionRenderInput:
     def test_builds_from_story_section(self):
         """Builds SectionRenderInput from StorySection."""
         section = make_section(0, BeatType.FAST_START)
-        header = "Both teams opened at a fast pace."
+        theme = "Both teams opened at a fast pace."
 
-        result = build_section_render_input(section, header)
+        result = build_section_render_input(section, theme)
 
-        assert result.header == header
+        assert result.theme == theme
         assert result.beat_type == BeatType.FAST_START
         assert len(result.team_stat_deltas) == 2
         assert len(result.player_stat_deltas) == 1
@@ -204,9 +204,9 @@ class TestBuildSectionRenderInput:
     def test_includes_notes(self):
         """Notes are included in output."""
         section = make_section(0, BeatType.RUN, notes=["Lakers went on a 10-0 run"])
-        header = "A stretch of scoring created separation."
+        theme = "A stretch of scoring created separation."
 
-        result = build_section_render_input(section, header)
+        result = build_section_render_input(section, theme)
 
         assert result.notes == ["Lakers went on a 10-0 run"]
 
@@ -226,11 +226,11 @@ class TestBuildStoryRenderInput:
             make_section(1, BeatType.BACK_AND_FORTH, 50, 48),
             make_section(2, BeatType.CRUNCH_SETUP, 100, 98),
         ]
-        headers = [make_header(s.beat_type) for s in sections]
+        themes = [make_theme(s.beat_type) for s in sections]
 
         result = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -246,15 +246,15 @@ class TestBuildStoryRenderInput:
         assert result.closing.final_home_score == 100
         assert result.closing.final_away_score == 98
 
-    def test_section_header_count_mismatch_raises(self):
-        """Raises error if sections and headers count mismatch."""
+    def test_section_theme_count_mismatch_raises(self):
+        """Raises error if sections and themes count mismatch."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = ["Header 1.", "Header 2."]  # Too many
+        themes = ["Theme 1.", "Theme 2."]  # Too many
 
         with pytest.raises(StoryRenderError, match="Section count"):
             build_story_render_input(
                 sections=sections,
-                headers=headers,
+                themes=themes,
                 sport="NBA",
                 home_team_name="Lakers",
                 away_team_name="Celtics",
@@ -267,7 +267,7 @@ class TestBuildStoryRenderInput:
         with pytest.raises(StoryRenderError, match="No sections"):
             build_story_render_input(
                 sections=[],
-                headers=[],
+                themes=[],
                 sport="NBA",
                 home_team_name="Lakers",
                 away_team_name="Celtics",
@@ -287,11 +287,11 @@ class TestPromptBuilding:
     def test_prompt_includes_system_instruction(self):
         """Prompt includes system instruction."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -306,11 +306,11 @@ class TestPromptBuilding:
     def test_prompt_includes_target_word_count(self):
         """Prompt includes target word count."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -323,20 +323,20 @@ class TestPromptBuilding:
         assert "700" in prompt
         assert "target" in prompt.lower()
 
-    def test_prompt_includes_headers(self):
-        """Prompt includes section headers."""
+    def test_prompt_includes_themes(self):
+        """Prompt includes section themes."""
         sections = [
             make_section(0, BeatType.FAST_START),
             make_section(1, BeatType.RUN),
         ]
-        headers = [
+        themes = [
             "Both teams opened at a fast pace.",
             "A stretch of scoring created separation.",
         ]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -352,11 +352,11 @@ class TestPromptBuilding:
     def test_prompt_includes_team_names(self):
         """Prompt includes team names."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -372,11 +372,11 @@ class TestPromptBuilding:
     def test_prompt_includes_json_output_instruction(self):
         """Prompt specifies JSON output format."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -401,11 +401,11 @@ class TestRenderStory:
     def test_render_with_mock_client(self):
         """Renders story with mock AI client."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -427,11 +427,11 @@ class TestRenderStory:
             make_section(0, BeatType.FAST_START),
             make_section(1, BeatType.CRUNCH_SETUP),
         ]
-        headers = [make_header(s.beat_type) for s in sections]
+        themes = [make_theme(s.beat_type) for s in sections]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -442,17 +442,17 @@ class TestRenderStory:
         result = render_story(input_data, ai_client=None)
 
         assert result.compact_story
-        # Mock should include headers
+        # Mock should include themes
         assert "floor was alive" in result.compact_story.lower()
 
     def test_render_captures_prompt(self):
         """Result includes the prompt used."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -469,11 +469,11 @@ class TestRenderStory:
     def test_render_ai_failure_raises(self):
         """AI failure raises StoryRenderError."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -489,11 +489,11 @@ class TestRenderStory:
     def test_render_invalid_json_raises(self):
         """Invalid JSON response raises StoryRenderError."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -509,11 +509,11 @@ class TestRenderStory:
     def test_render_empty_story_raises(self):
         """Empty story in response raises StoryRenderError."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -529,11 +529,11 @@ class TestRenderStory:
     def test_render_handles_markdown_fences(self):
         """Handles AI response wrapped in markdown fences."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -561,11 +561,11 @@ class TestInputValidation:
     def test_valid_input_passes(self):
         """Valid input has no errors."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -577,8 +577,8 @@ class TestInputValidation:
 
         assert errors == []
 
-    def test_missing_header_fails(self):
-        """Section without header fails validation."""
+    def test_missing_theme_fails(self):
+        """Section without theme fails validation."""
         input_data = StoryRenderInput(
             sport="NBA",
             home_team_name="Lakers",
@@ -586,7 +586,7 @@ class TestInputValidation:
             target_word_count=700,
             sections=[
                 SectionRenderInput(
-                    header="",  # Empty header
+                    theme="",  # Empty theme
                     beat_type=BeatType.FAST_START,
                     team_stat_deltas=[],
                     player_stat_deltas=[],
@@ -604,10 +604,10 @@ class TestInputValidation:
 
         errors = validate_render_input(input_data)
 
-        assert any("no header" in e for e in errors)
+        assert any("no theme" in e for e in errors)
 
-    def test_header_without_period_fails(self):
-        """Header not ending with period fails validation."""
+    def test_theme_without_period_fails(self):
+        """Theme not ending with period fails validation."""
         input_data = StoryRenderInput(
             sport="NBA",
             home_team_name="Lakers",
@@ -615,7 +615,7 @@ class TestInputValidation:
             target_word_count=700,
             sections=[
                 SectionRenderInput(
-                    header="Header without period",  # No period
+                    theme="Theme without period",  # No period
                     beat_type=BeatType.FAST_START,
                     team_stat_deltas=[],
                     player_stat_deltas=[],
@@ -644,7 +644,7 @@ class TestInputValidation:
             target_word_count=0,  # Invalid
             sections=[
                 SectionRenderInput(
-                    header="Valid header.",
+                    theme="Valid theme.",
                     beat_type=BeatType.FAST_START,
                     team_stat_deltas=[],
                     player_stat_deltas=[],
@@ -688,14 +688,14 @@ class TestResultValidation:
             target_word_count=180,
             sections=[
                 SectionRenderInput(
-                    header="Both teams opened fast.",
+                    theme="Both teams opened fast.",
                     beat_type=BeatType.FAST_START,
                     team_stat_deltas=[],
                     player_stat_deltas=[],
                     notes=[],
                 ),
                 SectionRenderInput(
-                    header="A stretch of scoring.",
+                    theme="A stretch of scoring.",
                     beat_type=BeatType.RUN,
                     team_stat_deltas=[],
                     player_stat_deltas=[],
@@ -731,7 +731,7 @@ class TestResultValidation:
             target_word_count=700,
             sections=[
                 SectionRenderInput(
-                    header="Header.",
+                    theme="Theme.",
                     beat_type=BeatType.FAST_START,
                     team_stat_deltas=[],
                     player_stat_deltas=[],
@@ -773,11 +773,11 @@ class TestDebugOutput:
             make_section(0, BeatType.FAST_START),
             make_section(1, BeatType.CRUNCH_SETUP),
         ]
-        headers = [make_header(s.beat_type) for s in sections]
+        themes = [make_theme(s.beat_type) for s in sections]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -797,11 +797,11 @@ class TestDebugOutput:
     def test_format_with_result(self):
         """Debug output includes result when provided."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -833,11 +833,11 @@ class TestSerialization:
     def test_story_render_input_to_dict(self):
         """StoryRenderInput serializes correctly."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -877,10 +877,10 @@ class TestSerialization:
 class TestSectionFormatting:
     """Tests for _format_section_for_prompt."""
 
-    def test_format_includes_header(self):
-        """Formatted section includes header."""
+    def test_format_includes_theme(self):
+        """Formatted section includes theme."""
         section_input = SectionRenderInput(
-            header="Both teams opened at a fast pace.",
+            theme="Both teams opened at a fast pace.",
             beat_type=BeatType.FAST_START,
             team_stat_deltas=[],
             player_stat_deltas=[],
@@ -894,7 +894,7 @@ class TestSectionFormatting:
     def test_format_includes_beat_type(self):
         """Formatted section includes beat type."""
         section_input = SectionRenderInput(
-            header="Header.",
+            theme="Theme.",
             beat_type=BeatType.RUN,
             team_stat_deltas=[],
             player_stat_deltas=[],
@@ -908,7 +908,7 @@ class TestSectionFormatting:
     def test_format_includes_team_stats(self):
         """Formatted section includes team stats."""
         section_input = SectionRenderInput(
-            header="Header.",
+            theme="Theme.",
             beat_type=BeatType.FAST_START,
             team_stat_deltas=[
                 {
@@ -930,7 +930,7 @@ class TestSectionFormatting:
     def test_format_includes_player_stats(self):
         """Formatted section includes player stats."""
         section_input = SectionRenderInput(
-            header="Header.",
+            theme="Theme.",
             beat_type=BeatType.FAST_START,
             team_stat_deltas=[],
             player_stat_deltas=[
@@ -957,7 +957,7 @@ class TestSectionFormatting:
     def test_format_includes_notes(self):
         """Formatted section includes notes."""
         section_input = SectionRenderInput(
-            header="Header.",
+            theme="Theme.",
             beat_type=BeatType.FAST_START,
             team_stat_deltas=[],
             player_stat_deltas=[],
@@ -1022,8 +1022,8 @@ class TestComputeTargetWordCount:
 class TestParseSectionWordCounts:
     """Tests for _parse_section_word_counts."""
 
-    def test_parses_story_by_headers(self):
-        """Parses story into sections using headers."""
+    def test_parses_story_by_themes(self):
+        """Parses story into sections using themes."""
         story = (
             "Both teams opened fast. The Lakers scored 15 points "
             "while the Celtics answered with 12. This was an exciting start.\n\n"
@@ -1032,14 +1032,14 @@ class TestParseSectionWordCounts:
         )
         sections = [
             SectionRenderInput(
-                header="Both teams opened fast.",
+                theme="Both teams opened fast.",
                 beat_type=BeatType.FAST_START,
                 team_stat_deltas=[],
                 player_stat_deltas=[],
                 notes=[],
             ),
             SectionRenderInput(
-                header="A stretch of scoring created separation.",
+                theme="A stretch of scoring created separation.",
                 beat_type=BeatType.RUN,
                 team_stat_deltas=[],
                 player_stat_deltas=[],
@@ -1059,11 +1059,11 @@ class TestParseSectionWordCounts:
         assert word_counts == []
 
     def test_fallback_to_paragraph_split(self):
-        """Falls back to paragraph split if no headers found."""
+        """Falls back to paragraph split if no themes found."""
         story = "First paragraph here.\n\nSecond paragraph here."
         sections = [
             SectionRenderInput(
-                header="Header not in story.",
+                theme="Theme not in story.",
                 beat_type=BeatType.FAST_START,
                 team_stat_deltas=[],
                 player_stat_deltas=[],
@@ -1100,14 +1100,14 @@ class TestPerSectionWordCountValidation:
             target_word_count=180,
             sections=[
                 SectionRenderInput(
-                    header="Both teams opened fast.",
+                    theme="Both teams opened fast.",
                     beat_type=BeatType.FAST_START,
                     team_stat_deltas=[],
                     player_stat_deltas=[],
                     notes=[],
                 ),
                 SectionRenderInput(
-                    header="A stretch of scoring.",
+                    theme="A stretch of scoring.",
                     beat_type=BeatType.RUN,
                     team_stat_deltas=[],
                     player_stat_deltas=[],
@@ -1149,7 +1149,7 @@ class TestPerSectionWordCountValidation:
             target_word_count=90,
             sections=[
                 SectionRenderInput(
-                    header="Both teams opened fast.",
+                    theme="Both teams opened fast.",
                     beat_type=BeatType.FAST_START,
                     team_stat_deltas=[],
                     player_stat_deltas=[],
@@ -1192,14 +1192,14 @@ class TestPerSectionWordCountValidation:
             target_word_count=180,
             sections=[
                 SectionRenderInput(
-                    header="Both teams opened fast.",
+                    theme="Both teams opened fast.",
                     beat_type=BeatType.FAST_START,
                     team_stat_deltas=[],
                     player_stat_deltas=[],
                     notes=[],
                 ),
                 SectionRenderInput(
-                    header="A stretch of scoring.",
+                    theme="A stretch of scoring.",
                     beat_type=BeatType.RUN,
                     team_stat_deltas=[],
                     player_stat_deltas=[],
@@ -1240,11 +1240,11 @@ class TestFactOnlyConstraintInPrompt:
     def test_prompt_includes_prohibited_language_list(self):
         """Prompt includes list of prohibited qualitative terms."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -1263,11 +1263,11 @@ class TestFactOnlyConstraintInPrompt:
     def test_prompt_includes_fact_based_confidence_rule(self):
         """Prompt includes fact-based confidence constraint rule."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
@@ -1284,11 +1284,11 @@ class TestFactOnlyConstraintInPrompt:
     def test_prompt_includes_section_word_bounds(self):
         """Prompt includes per-section word bounds."""
         sections = [make_section(0, BeatType.FAST_START)]
-        headers = [make_header(BeatType.FAST_START)]
+        themes = [make_theme(BeatType.FAST_START)]
 
         input_data = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport="NBA",
             home_team_name="Lakers",
             away_team_name="Celtics",
