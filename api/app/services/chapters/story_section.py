@@ -27,7 +27,7 @@ See section_merge.py for merge rules and section_signal.py for signal thresholds
 
 from __future__ import annotations
 
-from .types import Chapter
+from .types import Chapter, Play
 from .beat_types import BeatType, BeatDescriptor, BEAT_PRIORITY
 from .beat_classifier import BeatClassification, detect_opening_section_beat
 from .running_stats import SectionDelta, RunningStatsSnapshot, PlayerDelta
@@ -313,6 +313,29 @@ def detect_forced_break(
 # ============================================================================
 
 
+def _find_play_with_score(plays: list[Play], reverse: bool = False) -> tuple[int, int] | None:
+    """Find the first/last play with valid scores.
+
+    Some plays (like "End of Quarter") may not have scores attached.
+    This function searches for a play that has valid (non-None) scores.
+
+    Args:
+        plays: List of Play objects to search
+        reverse: If True, search from end to start (for end scores)
+
+    Returns:
+        Tuple of (home_score, away_score) or None if no valid scores found
+    """
+    play_list = reversed(plays) if reverse else plays
+    for play in play_list:
+        home_score = play.raw_data.get("home_score")
+        away_score = play.raw_data.get("away_score")
+        # Both scores must be present and valid (not None)
+        if home_score is not None and away_score is not None:
+            return (home_score, away_score)
+    return None
+
+
 def _extract_chapter_metadata(
     chapter: Chapter,
     classification: BeatClassification,
@@ -361,20 +384,24 @@ def _extract_chapter_metadata(
                 # Malformed clock string - leave as None (time context is optional)
                 pass
 
-    # Extract scores
+    # Extract scores - find plays with valid scores
+    # Some plays (like "End of Quarter") may not have scores, so we search
+    # for the first play with a score (for start) and last play with a score (for end)
     start_home = 0
     start_away = 0
     end_home = 0
     end_away = 0
 
     if chapter.plays:
-        first_play = chapter.plays[0]
-        start_home = first_play.raw_data.get("home_score", 0) or 0
-        start_away = first_play.raw_data.get("away_score", 0) or 0
+        # Find first play with valid scores for start
+        start_scores = _find_play_with_score(chapter.plays, reverse=False)
+        if start_scores:
+            start_home, start_away = start_scores
 
-        last_play = chapter.plays[-1]
-        end_home = last_play.raw_data.get("home_score", 0) or 0
-        end_away = last_play.raw_data.get("away_score", 0) or 0
+        # Find last play with valid scores for end
+        end_scores = _find_play_with_score(chapter.plays, reverse=True)
+        if end_scores:
+            end_home, end_away = end_scores
 
     return ChapterMetadata(
         chapter_id=chapter.chapter_id,

@@ -60,6 +60,7 @@ HEADER_TEMPLATES: dict[BeatType, list[str]] = {
         "Neither side could create separation.",
         "The scoreboard stayed tight as possessions traded evenly.",
         "Every small run met an immediate answer.",
+        "Both teams matched each other point for point.",
     ],
     BeatType.EARLY_CONTROL: [
         "One side began tilting the floor in its direction.",
@@ -76,6 +77,8 @@ HEADER_TEMPLATES: dict[BeatType, list[str]] = {
     BeatType.STALL: [
         "Scoring dried up on both ends.",
         "Neither offense could find a rhythm.",
+        "Both teams struggled to convert on offense.",
+        "The pace slowed as shots stopped falling.",
     ],
     BeatType.CRUNCH_SETUP: [
         "The game tightened late as every possession began to matter.",

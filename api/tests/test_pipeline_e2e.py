@@ -255,8 +255,8 @@ def test_section_count_within_bounds(minimal_timeline, mock_ai_client):
 # ============================================================================
 
 
-def test_headers_are_one_sentence_each(minimal_timeline, mock_ai_client):
-    """Each header is exactly one sentence (ends with period, no exclamations/questions)."""
+def test_themes_are_one_sentence_each(minimal_timeline, mock_ai_client):
+    """Each theme is exactly one sentence (ends with period, no exclamations/questions)."""
     with patch("app.services.chapters.pipeline.validate_post_render"):
         result = build_game_story(
             timeline=minimal_timeline,
@@ -267,16 +267,16 @@ def test_headers_are_one_sentence_each(minimal_timeline, mock_ai_client):
             ai_client=mock_ai_client,
         )
 
-    for i, header in enumerate(result.headers):
-        assert header.strip().endswith("."), (
-            f"Header {i} does not end with period: {header}"
+    for i, theme in enumerate(result.themes):
+        assert theme.strip().endswith("."), (
+            f"Theme {i} does not end with period: {theme}"
         )
-        assert "!" not in header, f"Header {i} contains exclamation: {header}"
-        assert "?" not in header, f"Header {i} contains question mark: {header}"
+        assert "!" not in theme, f"Theme {i} contains exclamation: {theme}"
+        assert "?" not in theme, f"Theme {i} contains question mark: {theme}"
         # Should be exactly one period (one sentence)
-        period_count = header.count(".")
+        period_count = theme.count(".")
         assert period_count == 1, (
-            f"Header {i} has {period_count} periods (expected 1): {header}"
+            f"Theme {i} has {period_count} periods (expected 1): {theme}"
         )
 
 

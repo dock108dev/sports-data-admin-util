@@ -43,7 +43,7 @@ from .story_section import (
     build_story_sections,
     StorySection,
 )
-from .header_reset import generate_all_headers
+from .header_reset import generate_all_headers as generate_all_themes
 from .game_quality import compute_quality_score, QualityScoreResult
 from .target_length import select_target_word_count, TargetLengthResult
 from .story_renderer import (
@@ -97,7 +97,7 @@ class PipelineResult:
     # Structural data
     chapters: list[Chapter]
     sections: list[StorySection]
-    headers: list[str]
+    themes: list[str]
 
     # Quality assessment
     quality: QualityScoreResult
@@ -243,13 +243,13 @@ def build_game_story(
         raise PipelineError("build_story_sections", "No sections produced")
 
     # =========================================================================
-    # STAGE 5: GENERATE HEADERS (Deterministic)
+    # STAGE 5: GENERATE THEMES (Deterministic)
     # =========================================================================
     try:
-        headers = generate_all_headers(sections)
-        logger.info(f"Stage 5: Generated {len(headers)} headers")
+        themes = generate_all_themes(sections)
+        logger.info(f"Stage 5: Generated {len(themes)} themes")
     except Exception as e:
-        raise PipelineError("generate_all_headers", str(e))
+        raise PipelineError("generate_all_themes", str(e))
 
     # =========================================================================
     # STAGE 6: COMPUTE QUALITY SCORE
@@ -313,7 +313,7 @@ def build_game_story(
 
         render_input = build_story_render_input(
             sections=sections,
-            headers=headers,
+            themes=themes,
             sport=sport,
             home_team_name=home_team_name,
             away_team_name=away_team_name,
@@ -358,7 +358,7 @@ def build_game_story(
         target_word_count=target_length.target_words,
         chapters=chapters,
         sections=sections,
-        headers=headers,
+        themes=themes,
         quality=quality,
         target_length=target_length,
         generated_at=datetime.utcnow(),

@@ -154,7 +154,7 @@ def valid_render_input() -> StoryRenderInput:
         target_word_count=700,
         sections=[
             SectionRenderInput(
-                header="The Lakers jumped out to an early lead.",
+                theme="The Lakers jumped out to an early lead.",
                 beat_type=BeatType.FAST_START,
                 team_stat_deltas=[
                     {"team_name": "Lakers", "points_scored": 24},
@@ -627,7 +627,7 @@ class TestNoOutcomeContradictionsValidation:
         # Add an overtime section
         valid_render_input.sections.append(
             SectionRenderInput(
-                header="In overtime, the Lakers pulled ahead.",
+                theme="In overtime, the Lakers pulled ahead.",
                 beat_type=BeatType.OVERTIME,
                 team_stat_deltas=[],
                 player_stat_deltas=[],
