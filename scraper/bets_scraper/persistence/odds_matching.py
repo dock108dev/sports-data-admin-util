@@ -41,6 +41,31 @@ def cache_set(key: tuple, value: int | None) -> None:
         _MATCH_CACHE.popitem(last=False)
 
 
+def cache_clear() -> int:
+    """Clear all cached game lookups. Returns number of entries cleared.
+
+    Call this when games are deleted to prevent stale cache hits.
+    """
+    count = len(_MATCH_CACHE)
+    _MATCH_CACHE.clear()
+    logger.info("odds_match_cache_cleared", entries_cleared=count)
+    return count
+
+
+def cache_invalidate_game(game_id: int) -> int:
+    """Invalidate cache entries for a specific game ID.
+
+    Call this when a single game is deleted.
+    Returns number of entries invalidated.
+    """
+    keys_to_remove = [key for key, value in _MATCH_CACHE.items() if value == game_id]
+    for key in keys_to_remove:
+        del _MATCH_CACHE[key]
+    if keys_to_remove:
+        logger.info("odds_match_cache_invalidated", game_id=game_id, entries_removed=len(keys_to_remove))
+    return len(keys_to_remove)
+
+
 # Simple counters to only log a subset of noisy events
 _LOG_COUNTERS: dict[str, int] = {}
 _LOG_SAMPLE = 50  # log every Nth occurrence per event key

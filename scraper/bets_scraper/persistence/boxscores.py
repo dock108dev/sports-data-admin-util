@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Sequence
 
-from sqlalchemy import cast, Date, literal
+from sqlalchemy import literal
 from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Session
 
@@ -18,7 +18,7 @@ from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedGame, NormalizedPlayerBoxscore, NormalizedTeamBoxscore
 from ..utils.db_queries import get_league_id
-from ..utils.datetime_utils import now_utc
+from ..utils.datetime_utils import date_window_for_matching, now_utc
 from .games import _normalize_status, resolve_status_transition
 from .teams import _find_team_by_name, _upsert_team
 
@@ -322,15 +322,20 @@ def _find_game_for_boxscore(
 ) -> db_models.SportsGame | None:
     """Find an existing game by identity (league, teams, date).
 
-    Uses DATE-only matching to handle different time sources (Odds API vs Sports Reference).
+    Uses a ±1 day window to handle timezone differences between sources:
+    - Odds API may store games with UTC date (Jan 23 00:00 UTC for a 7pm ET game on Jan 22)
+    - Sports Reference uses US local date (Jan 22 for the same game)
+
+    This range-based matching ensures games are found regardless of which source created them.
     """
-    game_date_only = game_date.date()
+    day_start, day_end = date_window_for_matching(game_date.date(), days_before=0, days_after=1)
     return (
         session.query(db_models.SportsGame)
         .filter(db_models.SportsGame.league_id == league_id)
         .filter(db_models.SportsGame.home_team_id == home_team_id)
         .filter(db_models.SportsGame.away_team_id == away_team_id)
-        .filter(cast(db_models.SportsGame.game_date, Date) == game_date_only)
+        .filter(db_models.SportsGame.game_date >= day_start)
+        .filter(db_models.SportsGame.game_date <= day_end)
         .first()
     )
 
