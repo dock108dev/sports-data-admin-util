@@ -2,11 +2,11 @@
 Unit tests for Target Word Count Selection.
 
 These tests validate:
-- LOW quality → correct range (300-500, target 400)
-- MEDIUM quality → correct range (600-800, target 700)
-- HIGH quality → correct range (900-1200, target 1050)
+- LOW quality → correct range (350-500, target 450)
+- MEDIUM quality → correct range (450-650, target 550)
+- HIGH quality → correct range (550-850, target 700)
 - Determinism (same input → same output)
-- Range constants are locked
+- Targets calibrated to AI's natural output range
 
 ISSUE: Target Word Count (Chapters-First Architecture)
 """
@@ -31,42 +31,39 @@ from app.services.chapters.target_length import (
 
 
 # ============================================================================
-# TEST: LOCKED CONSTANTS
+# TEST: CALIBRATED CONSTANTS
 # ============================================================================
 
 
-class TestLockedConstants:
-    """Verify constants match specification."""
+class TestCalibratedConstants:
+    """Verify constants match AI-calibrated specification."""
 
     def test_low_range(self):
-        """LOW range is 300-500."""
-        assert LOW_MIN == 300
+        """LOW range is 350-500."""
+        assert LOW_MIN == 350
         assert LOW_MAX == 500
 
-    def test_low_target_is_midpoint(self):
-        """LOW target is midpoint of range."""
-        assert LOW_TARGET == 400
-        assert LOW_TARGET == (LOW_MIN + LOW_MAX) // 2
+    def test_low_target(self):
+        """LOW target is 450."""
+        assert LOW_TARGET == 450
 
     def test_medium_range(self):
-        """MEDIUM range is 600-800."""
-        assert MEDIUM_MIN == 600
-        assert MEDIUM_MAX == 800
+        """MEDIUM range is 450-650."""
+        assert MEDIUM_MIN == 450
+        assert MEDIUM_MAX == 650
 
-    def test_medium_target_is_midpoint(self):
-        """MEDIUM target is midpoint of range."""
-        assert MEDIUM_TARGET == 700
-        assert MEDIUM_TARGET == (MEDIUM_MIN + MEDIUM_MAX) // 2
+    def test_medium_target(self):
+        """MEDIUM target is 550."""
+        assert MEDIUM_TARGET == 550
 
     def test_high_range(self):
-        """HIGH range is 900-1200."""
-        assert HIGH_MIN == 900
-        assert HIGH_MAX == 1200
+        """HIGH range is 550-850."""
+        assert HIGH_MIN == 550
+        assert HIGH_MAX == 850
 
-    def test_high_target_is_midpoint(self):
-        """HIGH target is midpoint of range."""
-        assert HIGH_TARGET == 1050
-        assert HIGH_TARGET == (HIGH_MIN + HIGH_MAX) // 2
+    def test_high_target(self):
+        """HIGH target is 700."""
+        assert HIGH_TARGET == 700
 
 
 # ============================================================================
@@ -78,14 +75,14 @@ class TestLowQuality:
     """Tests for LOW quality word count selection."""
 
     def test_low_returns_correct_target(self):
-        """LOW quality returns 400 words."""
+        """LOW quality returns 450 words."""
         result = select_target_word_count(GameQuality.LOW)
-        assert result.target_words == 400
+        assert result.target_words == 450
 
     def test_low_returns_correct_range(self):
-        """LOW quality returns 300-500 range."""
+        """LOW quality returns 350-500 range."""
         result = select_target_word_count(GameQuality.LOW)
-        assert result.range_min == 300
+        assert result.range_min == 350
         assert result.range_max == 500
 
     def test_low_returns_correct_quality(self):
@@ -108,15 +105,15 @@ class TestMediumQuality:
     """Tests for MEDIUM quality word count selection."""
 
     def test_medium_returns_correct_target(self):
-        """MEDIUM quality returns 700 words."""
+        """MEDIUM quality returns 550 words."""
         result = select_target_word_count(GameQuality.MEDIUM)
-        assert result.target_words == 700
+        assert result.target_words == 550
 
     def test_medium_returns_correct_range(self):
-        """MEDIUM quality returns 600-800 range."""
+        """MEDIUM quality returns 450-650 range."""
         result = select_target_word_count(GameQuality.MEDIUM)
-        assert result.range_min == 600
-        assert result.range_max == 800
+        assert result.range_min == 450
+        assert result.range_max == 650
 
     def test_medium_returns_correct_quality(self):
         """MEDIUM quality echoes back MEDIUM."""
@@ -138,15 +135,15 @@ class TestHighQuality:
     """Tests for HIGH quality word count selection."""
 
     def test_high_returns_correct_target(self):
-        """HIGH quality returns 1050 words."""
+        """HIGH quality returns 700 words."""
         result = select_target_word_count(GameQuality.HIGH)
-        assert result.target_words == 1050
+        assert result.target_words == 700
 
     def test_high_returns_correct_range(self):
-        """HIGH quality returns 900-1200 range."""
+        """HIGH quality returns 550-850 range."""
         result = select_target_word_count(GameQuality.HIGH)
-        assert result.range_min == 900
-        assert result.range_max == 1200
+        assert result.range_min == 550
+        assert result.range_max == 850
 
     def test_high_returns_correct_quality(self):
         """HIGH quality echoes back HIGH."""
@@ -202,15 +199,15 @@ class TestConvenienceFunction:
 
     def test_get_target_words_low(self):
         """get_target_words returns correct value for LOW."""
-        assert get_target_words(GameQuality.LOW) == 400
+        assert get_target_words(GameQuality.LOW) == 450
 
     def test_get_target_words_medium(self):
         """get_target_words returns correct value for MEDIUM."""
-        assert get_target_words(GameQuality.MEDIUM) == 700
+        assert get_target_words(GameQuality.MEDIUM) == 550
 
     def test_get_target_words_high(self):
         """get_target_words returns correct value for HIGH."""
-        assert get_target_words(GameQuality.HIGH) == 1050
+        assert get_target_words(GameQuality.HIGH) == 700
 
     def test_get_target_words_matches_full_function(self):
         """get_target_words matches select_target_word_count."""
@@ -221,20 +218,22 @@ class TestConvenienceFunction:
 
 
 # ============================================================================
-# TEST: RANGES DO NOT OVERLAP
+# TEST: RANGES OVERLAP INTENTIONALLY
 # ============================================================================
 
 
-class TestRangesSeparation:
-    """Tests verifying ranges don't overlap."""
+class TestRangesOverlap:
+    """Tests verifying ranges overlap intentionally for smooth transitions."""
 
-    def test_low_max_less_than_medium_min(self):
-        """LOW max < MEDIUM min (ranges don't overlap)."""
-        assert LOW_MAX < MEDIUM_MIN
+    def test_low_and_medium_overlap(self):
+        """LOW and MEDIUM ranges overlap."""
+        # LOW max (500) >= MEDIUM min (450)
+        assert LOW_MAX >= MEDIUM_MIN
 
-    def test_medium_max_less_than_high_min(self):
-        """MEDIUM max < HIGH min (ranges don't overlap)."""
-        assert MEDIUM_MAX < HIGH_MIN
+    def test_medium_and_high_overlap(self):
+        """MEDIUM and HIGH ranges overlap."""
+        # MEDIUM max (650) >= HIGH min (550)
+        assert MEDIUM_MAX >= HIGH_MIN
 
     def test_targets_are_distinct(self):
         """All targets are distinct values."""
@@ -259,10 +258,10 @@ class TestSerialization:
         result = select_target_word_count(GameQuality.MEDIUM)
         data = result.to_dict()
 
-        assert data["target_words"] == 700
+        assert data["target_words"] == 550
         assert data["quality"] == "MEDIUM"
-        assert data["range_min"] == 600
-        assert data["range_max"] == 800
+        assert data["range_min"] == 450
+        assert data["range_max"] == 650
 
     def test_all_qualities_serialize(self):
         """All qualities serialize correctly."""
@@ -293,11 +292,11 @@ class TestDebugOutput:
         """Debug output includes target."""
         result = select_target_word_count(GameQuality.MEDIUM)
         output = format_target_debug(result)
-        assert "700" in output
+        assert "550" in output
 
     def test_format_includes_range(self):
         """Debug output includes range."""
         result = select_target_word_count(GameQuality.LOW)
         output = format_target_debug(result)
-        assert "300" in output
+        assert "350" in output
         assert "500" in output
