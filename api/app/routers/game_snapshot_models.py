@@ -79,16 +79,6 @@ class SocialResponse(BaseModel):
     posts: list[SocialPostSnapshot]
 
 
-class RecapResponse(BaseModel):
-    """Recap response for a game."""
-
-    game_id: int
-    reveal: RevealLevel
-    available: bool
-    summary: str | None = None
-    reason: str | None = None
-
-
 class TimelineArtifactResponse(BaseModel):
     """Finalized timeline artifact response."""
 
@@ -187,3 +177,34 @@ class CompactTimelineResponse(BaseModel):
     retention_rate: float
     timeline_json: list[dict[str, Any]]
     summary_json: dict[str, Any] | None
+
+
+class StorySectionSnapshot(BaseModel):
+    """Section entry for app story responses."""
+
+    section_index: int
+    beat_type: str
+    header: str
+    start_score: dict[str, int]
+    end_score: dict[str, int]
+    notes: list[str]
+
+
+class GameStorySnapshot(BaseModel):
+    """Read-only game story for app consumption.
+
+    This is a simplified view of the story - apps get the narrative
+    without the full chapter/play details.
+    """
+
+    game_id: int
+    sport: str
+    story_version: str
+    sections: list[StorySectionSnapshot]
+    section_count: int
+    compact_story: str | None
+    word_count: int | None
+    quality: str | None
+    reading_time_estimate_minutes: float | None
+    generated_at: datetime | None
+    has_story: bool

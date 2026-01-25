@@ -12,17 +12,16 @@ from sqlalchemy.orm import selectinload
 from .. import db_models
 from ..config import settings
 from ..db import AsyncSession, get_db
-from ..services.recap_generator import build_recap
-from ..services.reveal_levels import parse_reveal_level
 from ..utils.datetime_utils import now_utc
 from .game_snapshot_models import (
     CompactTimelineResponse,
     GameSnapshot,
     GameSnapshotResponse,
+    GameStorySnapshot,
     PbpResponse,
-    RecapResponse,
     SocialPostSnapshot,
     SocialResponse,
+    StorySectionSnapshot,
     TimelineArtifactStoredResponse,
     TimelineDiagnosticResponse,
     chunk_plays_by_period,
@@ -515,63 +514,78 @@ async def get_game_timeline_compact(
     )
 
 
-@router.get("/games/{game_id}/recap", response_model=RecapResponse)
-async def get_game_recap(
+@router.get("/games/{game_id}/story", response_model=GameStorySnapshot)
+async def get_game_story(
     game_id: int,
-    reveal: str = Query("pre"),
     session: AsyncSession = Depends(get_db),
-) -> RecapResponse:
+) -> GameStorySnapshot:
     """
-    Generate a recap for a game at the requested reveal level.
+    Get the pre-generated story for a game.
+
+    This is a READ-ONLY endpoint - it returns cached/stored stories only.
+    If no story has been generated for this game, returns 404.
+
+    Stories are generated via the admin API and stored in the database.
+    Apps should never trigger story generation.
 
     Example request:
-        GET /games/123/recap?reveal=pre
+        GET /api/games/123/story
     Example response:
         {
           "game_id": 123,
-          "reveal": "pre",
-          "available": true,
-          "summary": "The game featured momentum swings and key stretches.",
-          "reason": null
+          "sport": "NBA",
+          "story_version": "2.0.0",
+          "sections": [...],
+          "section_count": 5,
+          "compact_story": "The Lakers and Celtics traded blows...",
+          "word_count": 712,
+          "quality": "MEDIUM",
+          "reading_time_estimate_minutes": 3.56,
+          "generated_at": "2026-01-22T15:30:00Z",
+          "has_story": true
         }
     """
-    reveal_level = parse_reveal_level(reveal)
-    if reveal_level is None:
+    # Query for cached story - READ ONLY, no generation
+    query = select(db_models.SportsGameStory).where(
+        db_models.SportsGameStory.game_id == game_id,
+        db_models.SportsGameStory.has_compact_story.is_(True),
+    )
+    result = await session.execute(query)
+    cached = result.scalar_one_or_none()
+
+    if not cached:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reveal value"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Story not found. Stories are generated via admin.",
         )
 
-    game = await session.get(db_models.SportsGame, game_id)
-    if not game:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+    # Reconstruct sections from cached data
+    sections = []
+    for sec_data in cached.summaries_json or []:
+        sections.append(
+            StorySectionSnapshot(
+                section_index=sec_data["section_index"],
+                beat_type=sec_data["beat_type"],
+                header=sec_data["header"],
+                start_score=sec_data["start_score"],
+                end_score=sec_data["end_score"],
+                notes=sec_data.get("notes", []),
+            )
         )
 
-    plays_result = await session.execute(
-        select(db_models.SportsGamePlay)
-        .where(db_models.SportsGamePlay.game_id == game_id)
-        .order_by(db_models.SportsGamePlay.play_index)
-    )
-    plays = plays_result.scalars().all()
+    # Extract metadata
+    metadata = cached.titles_json or {}
 
-    posts_result = await session.execute(
-        select(db_models.GameSocialPost)
-        .options(selectinload(db_models.GameSocialPost.team))
-        .where(db_models.GameSocialPost.game_id == game_id)
-        .order_by(db_models.GameSocialPost.posted_at.asc())
-    )
-    posts = posts_result.scalars().all()
-
-    recap = build_recap(
-        game=game,
-        plays=plays,
-        social_posts=posts,
-        reveal_level=reveal_level,
-    )
-    return RecapResponse(
-        game_id=game_id,
-        reveal=recap.reveal_level,
-        available=recap.available,
-        summary=recap.summary,
-        reason=recap.reason,
+    return GameStorySnapshot(
+        game_id=cached.game_id,
+        sport=cached.sport,
+        story_version=cached.story_version,
+        sections=sections,
+        section_count=len(sections),
+        compact_story=cached.compact_story,
+        word_count=metadata.get("word_count"),
+        quality=metadata.get("quality"),
+        reading_time_estimate_minutes=cached.reading_time_minutes,
+        generated_at=cached.generated_at,
+        has_story=cached.has_compact_story,
     )
