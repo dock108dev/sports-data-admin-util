@@ -63,8 +63,8 @@ async def create_scrape_run(
         async_result = celery_app.send_task(
             "run_scrape_job",
             args=[run.id, worker_payload],
-            queue="bets-scraper",
-            routing_key="bets-scraper",
+            queue="sports-scraper",
+            routing_key="sports-scraper",
         )
         run.job_id = async_result.id
     except Exception as exc:  # pragma: no cover
@@ -156,8 +156,8 @@ async def clear_scraper_cache(
         async_result = celery_app.send_task(
             "clear_scraper_cache",
             args=[league.upper(), days],
-            queue="bets-scraper",
-            routing_key="bets-scraper",
+            queue="sports-scraper",
+            routing_key="sports-scraper",
         )
 
         # Wait for the result (short timeout since this is fast)

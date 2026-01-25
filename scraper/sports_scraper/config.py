@@ -1,5 +1,5 @@
 """
-Typed settings for the Theory Bets scraper service.
+Typed settings for the Sports Data scraper service.
 
 Uses Pydantic Settings to load configuration from environment variables
 with validation and type safety. Settings are loaded from the root .env
@@ -133,7 +133,6 @@ class Settings(BaseSettings):
     odds_config: OddsProviderConfig = Field(default_factory=OddsProviderConfig)
     social_config: SocialConfig = Field(default_factory=SocialConfig)
     timeline_config: TimelineConfig = Field(default_factory=TimelineConfig)
-    theory_engine_app_path: str | None = Field(None, alias="THEORY_ENGINE_APP_PATH")
     api_internal_url: str = Field("http://api:8000", alias="API_INTERNAL_URL")
     scraper_html_cache_dir_override: str | None = Field(None, alias="SCRAPER_HTML_CACHE_DIR")
     scraper_force_cache_refresh_override: bool | None = Field(None, alias="SCRAPER_FORCE_CACHE_REFRESH")

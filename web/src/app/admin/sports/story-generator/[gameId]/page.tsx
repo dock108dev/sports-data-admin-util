@@ -158,7 +158,7 @@ export default function StoryGeneratorPage() {
       <div className={styles.header}>
         <div className={styles.headerTop}>
           <button
-            onClick={() => router.push("/admin/theory-bets/story-generator")}
+            onClick={() => router.push("/admin/sports/story-generator")}
             className={styles.backButton}
           >
             Back

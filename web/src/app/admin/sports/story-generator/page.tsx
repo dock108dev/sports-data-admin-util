@@ -233,7 +233,7 @@ export default function StoryGeneratorLandingPage() {
             {gamesWithStories.map((game) => (
               <Link
                 key={game.id}
-                href={`/admin/theory-bets/story-generator/${game.id}`}
+                href={`/admin/sports/story-generator/${game.id}`}
                 className={styles.gameRow}
               >
                 <span className={styles.gameDate}>

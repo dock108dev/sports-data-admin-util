@@ -132,7 +132,7 @@ services:
     volumes:
       - scraper-cache:/app/scraper/game_data
     healthcheck:
-      test: ["CMD-SHELL", "celery -A bets_scraper.celery_app.app inspect ping -d celery@$(hostname) --timeout=5 | grep -q pong"]
+      test: ["CMD-SHELL", "celery -A sports_scraper.celery_app.app inspect ping -d celery@$(hostname) --timeout=5 | grep -q pong"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -144,7 +144,7 @@ services:
       dockerfile: infra/scraper.Dockerfile
     container_name: sports-scraper-beat
     profiles: ["dev", "prod"]
-    command: ["celery", "-A", "bets_scraper.celery_app.app", "beat", "--loglevel=info"]
+    command: ["celery", "-A", "sports_scraper.celery_app.app", "beat", "--loglevel=info"]
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
       REDIS_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/2
@@ -188,7 +188,6 @@ services:
       dockerfile: infra/web.Dockerfile
       args:
         NEXT_PUBLIC_SPORTS_API_URL: ${NEXT_PUBLIC_SPORTS_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_THEORY_ENGINE_URL: ${NEXT_PUBLIC_THEORY_ENGINE_URL:-http://localhost:8000}
         SPORTS_API_INTERNAL_URL: ${SPORTS_API_INTERNAL_URL:-http://api:8000}
     container_name: sports-web
     profiles: ["dev", "prod"]

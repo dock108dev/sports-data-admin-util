@@ -54,7 +54,7 @@ The system operates in three distinct phases:
 
 ### 1.1 PBP Scraping
 
-**Source:** `scraper/bets_scraper/scrapers/`
+**Source:** `scraper/sports_scraper/scrapers/`
 
 The scraper fetches play-by-play data from external sources after a game is marked `final`.
 
@@ -84,7 +84,7 @@ for row in raw_plays:
 
 ### 1.2 PBP Persistence
 
-**Source:** `scraper/bets_scraper/persistence/plays.py`
+**Source:** `scraper/sports_scraper/persistence/plays.py`
 
 Normalized plays are persisted to PostgreSQL:
 

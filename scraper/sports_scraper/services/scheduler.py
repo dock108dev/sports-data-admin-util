@@ -160,8 +160,8 @@ def schedule_ingestion_runs(
                 async_result = celery_app.send_task(
                     "run_scrape_job",
                     args=[run.id, config.model_dump(mode="json")],
-                    queue="bets-scraper",
-                    routing_key="bets-scraper",
+                    queue="sports-scraper",
+                    routing_key="sports-scraper",
                 )
                 run.job_id = async_result.id
                 logger.info(
@@ -252,8 +252,8 @@ def schedule_single_league_and_wait(
         async_result = celery_app.send_task(
             "run_scrape_job",
             args=[run.id, config.model_dump(mode="json")],
-            queue="bets-scraper",
-            routing_key="bets-scraper",
+            queue="sports-scraper",
+            routing_key="sports-scraper",
         )
         run.job_id = async_result.id
         session.commit()

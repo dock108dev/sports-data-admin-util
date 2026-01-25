@@ -30,8 +30,8 @@ os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:
 
 from bs4 import BeautifulSoup
 
-from bets_scraper.models import TeamIdentity
-from bets_scraper.scrapers.nhl_sportsref import NHLSportsReferenceScraper
+from sports_scraper.models import TeamIdentity
+from sports_scraper.scrapers.nhl_sportsref import NHLSportsReferenceScraper
 
 
 class StubNHLScraper(NHLSportsReferenceScraper):

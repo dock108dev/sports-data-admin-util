@@ -15,8 +15,8 @@ import { ScrapeRunsTable } from "@/components/admin/ScrapeRunsTable";
  * - Monitor scrape run status and results
  * - View scrape run history and summaries
  * 
- * Scrape runs are executed by the theory-bets-scraper Celery workers
- * via the theory-engine-api backend.
+ * Scrape runs are executed by the sports-data-scraper Celery workers
+ * via the sports-data API backend.
  */
 export default function IngestionAdminPage() {
   const { runs, loading, error: runsError, refetch: fetchRuns } = useScrapeRuns();

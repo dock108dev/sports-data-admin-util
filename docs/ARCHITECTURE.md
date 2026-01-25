@@ -317,7 +317,7 @@ npm run dev
 # Scraper
 cd scraper
 uv sync
-uv run python -m bets_scraper
+uv run python -m sports_scraper
 ```
 
 ### Running Tests

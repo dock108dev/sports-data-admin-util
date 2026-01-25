@@ -30,7 +30,7 @@ class Settings(BaseSettings):
         default=None, alias="CELERY_RESULT_BACKEND"
     )
     celery_default_queue: str = Field(
-        default="bets-scraper", alias="CELERY_DEFAULT_QUEUE"
+        default="sports-scraper", alias="CELERY_DEFAULT_QUEUE"
     )
     sql_echo: bool = Field(default=False, alias="SQL_ECHO")
     environment: str = Field(default="development", alias="ENVIRONMENT")

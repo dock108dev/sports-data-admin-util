@@ -98,19 +98,19 @@ export default function AdminDashboardPage() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Quick Actions</h2>
         <div className={styles.quickLinks}>
-          <Link href="/admin/theory-bets/browser" className={styles.quickLink}>
+          <Link href="/admin/sports/browser" className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>Data browser</div>
               <div className={styles.quickLinkDesc}>Filter games, odds, and completeness</div>
             </div>
           </Link>
-          <Link href="/admin/theory-bets/ingestion" className={styles.quickLink}>
+          <Link href="/admin/sports/ingestion" className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>New scrape run</div>
               <div className={styles.quickLinkDesc}>Start a new data ingestion job</div>
             </div>
           </Link>
-          <Link href="/admin/theory-bets/eda" className={styles.quickLink}>
+          <Link href="/admin/sports/eda" className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>EDA</div>
               <div className={styles.quickLinkDesc}>Explore features and targets</div>
@@ -126,7 +126,7 @@ export default function AdminDashboardPage() {
             {recentRuns.map((run) => (
               <Link
                 key={run.id}
-                href={`/admin/theory-bets/ingestion/${run.id}`}
+                href={`/admin/sports/ingestion/${run.id}`}
                 className={styles.runItem}
               >
                 <div className={`${styles.runStatus} ${getStatusClassName(run.status)}`} />

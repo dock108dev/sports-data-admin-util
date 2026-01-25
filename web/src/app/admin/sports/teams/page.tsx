@@ -95,7 +95,7 @@ export default function TeamsAdminPage() {
             {teams.map((team) => (
               <Link
                 key={team.id}
-                href={`/admin/theory-bets/teams/${team.id}`}
+                href={`/admin/sports/teams/${team.id}`}
                 className={styles.teamCard}
               >
                 <div className={styles.teamHeader}>

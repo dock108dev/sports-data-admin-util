@@ -25,7 +25,7 @@ export default async function RunDetailPage({ params }: Params) {
 
   return (
     <div className={styles.container}>
-      <Link href="/admin/theory-bets/ingestion" className={styles.backLink}>
+      <Link href="/admin/sports/ingestion" className={styles.backLink}>
         ← Back to runs
       </Link>
 

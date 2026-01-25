@@ -45,7 +45,7 @@ ALTER TABLE sports_teams ADD COLUMN x_handle VARCHAR(50);
 
 ### Via Admin UI
 
-1. Go to http://localhost:3000/admin/theory-bets/ingestion
+1. Go to http://localhost:3000/admin/sports/ingestion
 2. Select date range and league
 3. Toggle "Social" on
 4. Click "Start Run"

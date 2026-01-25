@@ -26,7 +26,7 @@ The Story Generator admin UI replaces the legacy Moments-based interface with a 
 
 ### 1. Story Generator Landing Page
 
-**Route:** `/admin/theory-bets/story-generator`
+**Route:** `/admin/sports/story-generator`
 
 **Purpose:** List games and provide bulk generation tools
 
@@ -45,7 +45,7 @@ The Story Generator admin UI replaces the legacy Moments-based interface with a 
 
 ### 2. Story Generator — Game Overview Page
 
-**Route:** `/admin/theory-bets/story-generator/[gameId]`
+**Route:** `/admin/sports/story-generator/[gameId]`
 
 **Purpose:** Single-game inspection and control
 

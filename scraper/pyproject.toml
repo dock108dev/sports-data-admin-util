@@ -1,5 +1,5 @@
 [project]
-name = "theory-bets-scraper"
+name = "sports-data-scraper"
 version = "0.1.0"
 description = "Sports data ingestion service for Scroll Down Sports."
 requires-python = ">=3.11"
@@ -33,5 +33,5 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["bets_scraper"]
+packages = ["sports_scraper"]
 

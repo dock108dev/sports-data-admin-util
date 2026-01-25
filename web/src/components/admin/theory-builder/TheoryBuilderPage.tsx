@@ -49,7 +49,7 @@ export function TheoryBuilderPage() {
         <h1 className={styles.title}>Theory Builder</h1>
         <p className={styles.subtitle}>
           Define, analyze, and model sports betting theories.{" "}
-          <Link href="/admin/theory-bets">← Back</Link>
+          <Link href="/admin/sports">← Back</Link>
         </p>
       </header>
 

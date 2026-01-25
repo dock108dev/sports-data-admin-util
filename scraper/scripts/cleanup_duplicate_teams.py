@@ -28,14 +28,14 @@ script_dir = Path(__file__).resolve().parent
 scraper_dir = script_dir.parent
 sys.path.insert(0, str(scraper_dir))
 
-# Add sports-data-admin API to path for db_models (same pattern as bets_scraper/db.py)
+# Add sports-data-admin API to path for db_models (same pattern as sports_scraper/db.py)
 api_dir = scraper_dir.parent.parent / "api"
 if str(api_dir) not in sys.path:
     sys.path.append(str(api_dir))
 
-from bets_scraper.db import db_models, get_session
-from bets_scraper.logging import logger
-from bets_scraper.normalization import normalize_team_name
+from sports_scraper.db import db_models, get_session
+from sports_scraper.logging import logger
+from sports_scraper.normalization import normalize_team_name
 
 # Import models from db_models
 SportsGame = db_models.SportsGame

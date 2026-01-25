@@ -7,14 +7,14 @@ The NBA social integration is a scraper-driven X (Twitter) workflow that attache
 ## Core Components
 
 ### Collection Orchestrator
-- **`scraper/bets_scraper/social/collector.py`**
+- **`scraper/sports_scraper/social/collector.py`**
   - `XPostCollector.collect_for_game()` loads both teams for a game and runs a per-team `PostCollectionJob`.
   - The collection window is derived from `game.game_date`, `game.end_time`, and `SocialConfig` pre/post-game window minutes.
   - Requires PBP to exist before social scraping (guarded by the PBP check before collecting posts).
   - Posts are saved to `game_social_posts` and the game’s `last_social_at` is updated.
 
 ### Collector Strategy (Playwright)
-- **`scraper/bets_scraper/social/playwright_collector.py`**
+- **`scraper/sports_scraper/social/playwright_collector.py`**
   - Uses X advanced search: `from:<handle> since:<date> until:<date>`.
   - Uses X cookies (`X_AUTH_TOKEN`, `X_CT0`) for access to historical search.
   - Filters out **retweets** via `data-testid="socialContext"`.
@@ -22,7 +22,7 @@ The NBA social integration is a scraper-driven X (Twitter) workflow that attache
   - Does **not** explicitly filter replies (replies may be included if returned by search).
 
 ### Registry & Handles
-- **`scraper/bets_scraper/social/registry.py`**
+- **`scraper/sports_scraper/social/registry.py`**
   - `team_social_accounts` registry is queried first; fallback is `sports_teams.x_handle`.
   - Seed data for NBA is stored in `sql/003_seed_nba_x_handles.sql` and can be inserted into `team_social_accounts` via `sql/008_seed_team_social_accounts.sql`.
 
@@ -39,8 +39,8 @@ The NBA social integration is a scraper-driven X (Twitter) workflow that attache
 - Existing posts are updated in place (timestamps, text, media fields, reveal flags).
 
 ### Rate Limiting & Polling Cache
-- **`scraper/bets_scraper/social/rate_limit.py`**: in-memory rate limiter (default 300 requests / 15 minutes).
-- **`scraper/bets_scraper/social/cache.py`**: DB-backed request cache (`social_account_polls`) to avoid repeated polling within a window.
+- **`scraper/sports_scraper/social/rate_limit.py`**: in-memory rate limiter (default 300 requests / 15 minutes).
+- **`scraper/sports_scraper/social/cache.py`**: DB-backed request cache (`social_account_polls`) to avoid repeated polling within a window.
 
 ## Storage Model
 

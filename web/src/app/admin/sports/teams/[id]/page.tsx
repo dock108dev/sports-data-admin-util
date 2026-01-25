@@ -55,7 +55,7 @@ export default function TeamDetailPage() {
 
   return (
     <div className={styles.container}>
-      <Link href="/admin/theory-bets/teams" className={styles.backLink}>
+      <Link href="/admin/sports/teams" className={styles.backLink}>
         ← Back to teams
       </Link>
 

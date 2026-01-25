@@ -46,4 +46,4 @@ USER appuser
 
 ENV PYTHONPATH="/app/api:/app/scraper:${PYTHONPATH}"
 
-CMD ["celery", "-A", "bets_scraper.celery_app.app", "worker", "--loglevel=info", "--queues=bets-scraper"]
+CMD ["celery", "-A", "sports_scraper.celery_app.app", "worker", "--loglevel=info", "--queues=sports-scraper"]

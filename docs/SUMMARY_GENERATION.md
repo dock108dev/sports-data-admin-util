@@ -224,7 +224,7 @@ All AI-generated text is validated post-generation:
 
 ### Story Generator Landing Page
 
-**Route:** `/admin/theory-bets/story-generator`
+**Route:** `/admin/sports/story-generator`
 
 **Features:**
 - List games with PBP data
@@ -233,7 +233,7 @@ All AI-generated text is validated post-generation:
 
 ### Game Story Detail Page
 
-**Route:** `/admin/theory-bets/story-generator/{gameId}`
+**Route:** `/admin/sports/story-generator/{gameId}`
 
 **Features:**
 - View complete game story

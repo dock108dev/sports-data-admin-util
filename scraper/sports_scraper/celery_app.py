@@ -1,4 +1,4 @@
-"""Celery app configuration for bets scraper."""
+"""Celery app configuration for sports scraper."""
 
 from __future__ import annotations
 
@@ -23,21 +23,21 @@ celery_config = {
     "worker_prefetch_multiplier": 1,
     "task_time_limit": 43200,       # 12 hours hard limit
     "task_soft_time_limit": 42600,  # 11h 50m soft limit
-    "task_default_queue": "bets-scraper",
+    "task_default_queue": "sports-scraper",
     "task_routes": {
-        "run_scrape_job": {"queue": "bets-scraper"},
+        "run_scrape_job": {"queue": "sports-scraper"},
     },
 }
 
 app = Celery(
-    "theory-bets-scraper",
+    "sports-data-scraper",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["bets_scraper.jobs.tasks"],
+    include=["sports_scraper.jobs.tasks"],
 )
 app.conf.update(**celery_config)
 app.conf.task_routes = {
-    "run_scrape_job": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
+    "run_scrape_job": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
 }
 # Daily NBA ingestion at 8 AM US Eastern (12:00 UTC during EDT, 13:00 UTC during EST)
 # Using 12:00 UTC to align with 8 AM during Eastern Daylight Time (March-November).
@@ -54,17 +54,17 @@ app.conf.beat_schedule = {
     "daily-nba-ingestion-8am-eastern": {
         "task": "run_scheduled_ingestion",
         "schedule": crontab(minute=0, hour=12),  # 8 AM EDT = 12:00 UTC (DST most of year)
-        "options": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
     "daily-timeline-generation-930am-eastern": {
         "task": "run_scheduled_timeline_generation",
         "schedule": crontab(minute=30, hour=13),  # 9:30 AM EDT = 13:30 UTC (90 min after ingestion)
-        "options": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
     "daily-story-generation-945am-eastern": {
         "task": "run_scheduled_story_generation",
         "schedule": crontab(minute=45, hour=13),  # 9:45 AM EDT = 13:45 UTC (15 min after timeline gen)
-        "options": {"queue": "bets-scraper", "routing_key": "bets-scraper"},
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
 }
 

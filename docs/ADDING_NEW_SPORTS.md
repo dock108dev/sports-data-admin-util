@@ -10,10 +10,10 @@ To add a new league (e.g., MLB):
 
 Edit **both** config files (keep them in sync):
 
-- `scraper/bets_scraper/config_sports.py` — Full config for scraper pipelines
+- `scraper/sports_scraper/config_sports.py` — Full config for scraper pipelines
 - `api/app/config_sports.py` — Matching config for API validation
 
-**Example entry in `scraper/bets_scraper/config_sports.py`:**
+**Example entry in `scraper/sports_scraper/config_sports.py`:**
 ```python
 LEAGUE_CONFIG: dict[str, LeagueConfig] = {
     # ... existing leagues ...
@@ -76,7 +76,7 @@ When ready for production daily runs:
 ### Single League
 ```bash
 # Scraper CLI
-cd scraper && uv run python -m bets_scraper --league NBA
+cd scraper && uv run python -m sports_scraper --league NBA
 
 # API endpoints (pass league_code explicitly)
 curl "http://localhost:8000/api/admin/sports/timelines/missing?league_code=NHL"
@@ -85,7 +85,7 @@ curl "http://localhost:8000/api/admin/sports/timelines/missing?league_code=NHL"
 ### All Scheduled Leagues
 ```bash
 # This runs for all leagues where scheduled_ingestion=True
-cd scraper && uv run python -c "from bets_scraper.services.scheduler import schedule_ingestion_runs; schedule_ingestion_runs()"
+cd scraper && uv run python -c "from sports_scraper.services.scheduler import schedule_ingestion_runs; schedule_ingestion_runs()"
 ```
 
 ## Validation
@@ -99,10 +99,10 @@ The system validates league codes at every entry point:
 
 | File | Purpose |
 |------|---------|
-| `scraper/bets_scraper/config_sports.py` | **SSOT for scraper** |
+| `scraper/sports_scraper/config_sports.py` | **SSOT for scraper** |
 | `api/app/config_sports.py` | **SSOT for API** |
-| `scraper/bets_scraper/services/scheduler.py` | Daily job scheduling |
-| `scraper/bets_scraper/jobs/tasks.py` | Post-scrape triggers |
+| `scraper/sports_scraper/services/scheduler.py` | Daily job scheduling |
+| `scraper/sports_scraper/jobs/tasks.py` | Post-scrape triggers |
 | `web/src/lib/constants/sports.ts` | Frontend league list |
 
 ## Common Mistakes to Avoid
@@ -137,7 +137,7 @@ If the new sport needs custom scraping logic:
 
 ### 1. Create Scraper Class
 
-Extend `BaseSportsReferenceScraper` in `scraper/bets_scraper/scrapers/`:
+Extend `BaseSportsReferenceScraper` in `scraper/sports_scraper/scrapers/`:
 
 ```python
 class NewLeagueScraper(BaseSportsReferenceScraper):
@@ -156,7 +156,7 @@ Build `NormalizedGame` objects with:
 
 ### 3. Register the Scraper
 
-Add to `_SCRAPER_REGISTRY` in `scraper/bets_scraper/scrapers/__init__.py`.
+Add to `_SCRAPER_REGISTRY` in `scraper/sports_scraper/scrapers/__init__.py`.
 
 ### 4. Run Through Orchestrator
 

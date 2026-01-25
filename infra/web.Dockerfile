@@ -24,11 +24,9 @@ FROM deps AS build
 
 # These are needed at build time so Next can inline NEXT_PUBLIC_* into the browser bundle.
 ARG NEXT_PUBLIC_SPORTS_API_URL=http://localhost:8000
-ARG NEXT_PUBLIC_THEORY_ENGINE_URL=http://localhost:8000
 ARG SPORTS_API_INTERNAL_URL=http://api:8000
 
 ENV NEXT_PUBLIC_SPORTS_API_URL=$NEXT_PUBLIC_SPORTS_API_URL \
-    NEXT_PUBLIC_THEORY_ENGINE_URL=$NEXT_PUBLIC_THEORY_ENGINE_URL \
     SPORTS_API_INTERNAL_URL=$SPORTS_API_INTERNAL_URL
 
 # Copy only source files from packages (NOT the entire directory, which would overwrite

@@ -15,7 +15,7 @@ if str(SCRAPER_ROOT) not in sys.path:
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/test_db")
 
-from bets_scraper.live.nhl import (
+from sports_scraper.live.nhl import (
     NHLLiveFeedClient,
     NHL_EVENT_TYPE_MAP,
     NHL_MIN_EXPECTED_PLAYS,
@@ -238,7 +238,7 @@ class TestHelperFunctions:
 class TestNHLClientMocked:
     """Test NHL client with mocked HTTP responses."""
 
-    @patch("bets_scraper.live.nhl.httpx.Client")
+    @patch("sports_scraper.live.nhl.httpx.Client")
     def test_fetch_pbp_success(self, mock_client_class):
         """Test successful PBP fetch."""
         mock_response = MagicMock()
@@ -260,7 +260,7 @@ class TestNHLClientMocked:
         assert result.source_game_key == "2025020767"
         assert len(result.plays) == 2
 
-    @patch("bets_scraper.live.nhl.httpx.Client")
+    @patch("sports_scraper.live.nhl.httpx.Client")
     def test_fetch_pbp_404_returns_empty(self, mock_client_class):
         """Test that 404 returns empty PBP, not error."""
         mock_response = MagicMock()
@@ -276,7 +276,7 @@ class TestNHLClientMocked:
         assert result.source_game_key == "9999999999"
         assert len(result.plays) == 0
 
-    @patch("bets_scraper.live.nhl.httpx.Client")
+    @patch("sports_scraper.live.nhl.httpx.Client")
     def test_unknown_event_type_still_stored(self, mock_client_class):
         """Test that unknown event types are stored (not dropped)."""
         mock_response = MagicMock()

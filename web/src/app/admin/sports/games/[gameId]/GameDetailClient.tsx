@@ -156,7 +156,7 @@ export default function GameDetailClient() {
 
   return (
     <div className={styles.container}>
-      <Link href="/admin/theory-bets/browser" className={styles.backLink}>
+      <Link href="/admin/sports/browser" className={styles.backLink}>
         ← Back to Data Browser
       </Link>
 

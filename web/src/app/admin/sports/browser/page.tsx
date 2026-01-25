@@ -269,7 +269,7 @@ export default function UnifiedBrowserPage() {
 
           {gamesError && <div className={styles.error}>{gamesError}</div>}
           {gamesLoading && games.length === 0 && <div className={styles.loading}>Loading...</div>}
-          {games.length > 0 && <GamesTable games={games} detailLinkPrefix="/admin/theory-bets/games" showCompleteness />}
+          {games.length > 0 && <GamesTable games={games} detailLinkPrefix="/admin/sports/games" showCompleteness />}
           {!gamesLoading && games.length === 0 && !gamesError && (
             <div className={styles.empty}>No games found. Try adjusting your filters.</div>
           )}
@@ -368,7 +368,7 @@ export default function UnifiedBrowserPage() {
           {!runsLoading && !runsError && runs.length > 0 && (
             <div className={styles.runsList}>
               {runs.map((run) => (
-                <Link key={run.id} href={`/admin/theory-bets/ingestion/${run.id}`} className={styles.runCard}>
+                <Link key={run.id} href={`/admin/sports/ingestion/${run.id}`} className={styles.runCard}>
                   <div className={styles.runHeader}>
                     <span className={`${styles.runStatus} ${styles[getStatusClass(run.status)]}`} />
                     <div className={styles.runInfo}>

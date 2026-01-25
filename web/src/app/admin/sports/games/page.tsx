@@ -3,6 +3,6 @@
 import { redirect } from "next/navigation";
 
 export default function GamesAdminPage() {
-  redirect("/admin/theory-bets/browser");
+  redirect("/admin/sports/browser");
 }
 
