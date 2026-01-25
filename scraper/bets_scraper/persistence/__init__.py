@@ -5,8 +5,10 @@ This package provides modular persistence functions organized by domain:
 - games: Game upsert
 - boxscores: Team and player boxscore persistence
 - odds: Odds matching and persistence
+- admin: Administrative operations (deletion, cache management)
 """
 
+from .admin import clear_odds_cache, delete_game, delete_games_batch
 from .boxscores import (
     GamePersistResult,
     PlayerBoxscoreStats,
@@ -20,6 +22,11 @@ from .plays import upsert_plays
 from .teams import _find_team_by_name, _upsert_team
 
 __all__ = [
+    # Admin operations
+    "delete_game",
+    "delete_games_batch",
+    "clear_odds_cache",
+    # Game persistence
     "persist_game_payload",
     "GamePersistResult",
     "PlayerBoxscoreStats",

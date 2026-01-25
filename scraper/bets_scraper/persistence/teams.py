@@ -298,20 +298,37 @@ def _find_team_by_name(
 
         if team_name and " " in team_name:
             first_word = team_name.split()[0]
-            base_stmt = (
-                select(db_models.SportsTeam.id)
-                .where(db_models.SportsTeam.league_id == league_id)
-                .where(
-                    or_(
-                        db_models.SportsTeam.name == first_word,
-                        db_models.SportsTeam.short_name == first_word,
-                        func.lower(db_models.SportsTeam.name) == func.lower(first_word),
-                        func.lower(db_models.SportsTeam.short_name) == func.lower(first_word),
-                        func.lower(db_models.SportsTeam.name).like(func.lower(first_word) + "%"),
-                        func.lower(db_models.SportsTeam.short_name).like(func.lower(first_word) + "%"),
+            # For short first words (like "LA", "NY"), only do exact first-word match,
+            # not prefix matching, to avoid confusing multi-team cities
+            # (e.g., "LA Clippers" vs "LA Lakers", "NY Giants" vs "NY Jets")
+            if len(first_word) <= 3:
+                # Short prefix: only exact match on full name, no prefix expansion
+                base_stmt = (
+                    select(db_models.SportsTeam.id)
+                    .where(db_models.SportsTeam.league_id == league_id)
+                    .where(
+                        or_(
+                            func.lower(db_models.SportsTeam.name) == func.lower(team_name),
+                            func.lower(db_models.SportsTeam.short_name) == func.lower(team_name),
+                        )
                     )
                 )
-            )
+            else:
+                # Longer first word: safe to do prefix matching
+                base_stmt = (
+                    select(db_models.SportsTeam.id)
+                    .where(db_models.SportsTeam.league_id == league_id)
+                    .where(
+                        or_(
+                            db_models.SportsTeam.name == first_word,
+                            db_models.SportsTeam.short_name == first_word,
+                            func.lower(db_models.SportsTeam.name) == func.lower(first_word),
+                            func.lower(db_models.SportsTeam.short_name) == func.lower(first_word),
+                            func.lower(db_models.SportsTeam.name).like(func.lower(first_word) + "%"),
+                            func.lower(db_models.SportsTeam.short_name).like(func.lower(first_word) + "%"),
+                        )
+                    )
+                )
             base_matches = [row[0] for row in session.execute(base_stmt).all()]
             candidate_ids.extend(base_matches)
         elif team_name:
@@ -394,16 +411,22 @@ def _find_team_by_name(
                     total_candidates=len(unique_candidates),
                 )
 
-    def team_score(team_id: int) -> tuple[int, int, int]:
+    def team_score(team_id: int) -> tuple[int, int, int, int, int]:
         """
         Score teams for selection.
         For NCAAB: prioritize usage (games), then canonical match, then shorter name.
-        For others: keep original bias toward canonical and full name, then usage.
+        For others: prioritize exact name match, then canonical, then full name, then usage.
         """
         team = session.get(db_models.SportsTeam, team_id)
         if not team:
-            return (0, 0, 0)
-        
+            return (0, 0, 0, 0, 0)
+
+        # Check if this team's name directly matches the requested name (highest priority)
+        exact_name_match = (
+            team.name.lower() == team_name.lower() or
+            (team.short_name and team.short_name.lower() == team_name.lower())
+        )
+
         matches_canonical = False
         normalized_contains = False
         if league_code:
@@ -413,18 +436,20 @@ def _find_team_by_name(
                 normalized_input = _normalize_ncaab_name_for_matching(team_name)
                 db_name_norm = _normalize_ncaab_name_for_matching(team.name or "")
                 normalized_contains = normalized_input and (normalized_input in db_name_norm or db_name_norm in normalized_input)
-        
+
         has_full_name = " " in team.name
         usage = team_usage(team_id)
         if league_code == "NCAAB":
-            # Prefer exact canonical, then normalized contains, then usage, then shorter name
+            # Prefer exact name match, then canonical, then normalized contains, then usage, then shorter name
             return (
+                1 if exact_name_match else 0,
                 1 if matches_canonical else 0,
                 1 if normalized_contains else 0,
                 usage,
                 -len(team.name or ""),
             )
-        return (10000 if matches_canonical else 0, 1000 if has_full_name else 0, usage)
+        # For non-NCAAB: exact name match is highest priority
+        return (100000 if exact_name_match else 0, 10000 if matches_canonical else 0, 1000 if has_full_name else 0, usage, 0)
     
     scored_candidates = [(team_score(cid), cid) for cid in unique_candidates]
     scored_candidates.sort(reverse=True)
