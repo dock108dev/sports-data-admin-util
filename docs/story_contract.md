@@ -1,4 +1,4 @@
-# Story V2 Contract
+# Story Contract
 
 ## Foundational Axiom
 
@@ -10,7 +10,7 @@ All definitions, constraints, and guarantees in this document derive from this s
 
 ## 1. Purpose and Scope
 
-Story V2 produces a readable, condensed replay of a game.
+Story produces a readable, condensed replay of a game.
 
 - The output is a sequence of condensed moments
 - Each moment is grounded in specific plays
@@ -128,7 +128,7 @@ When a consumer expands a condensed moment:
 
 ## 6. Explicit Non-Goals (Hard Exclusions)
 
-The following are **excluded from Story V2 by design**. These are not deferred features. They are incompatible with the system.
+The following are **excluded from Story by design**. These are not deferred features. They are incompatible with the system.
 
 - **Headers or section titles.** Stories have no named divisions.
 - **Abstract narrative themes.** No "turning points," "momentum swings," or "key stretches" as organizational units.
@@ -145,7 +145,7 @@ An implementation that includes any of the above is non-compliant.
 
 ## 7. Success Criteria
 
-A Story V2 output is correct if and only if:
+A Story output is correct if and only if:
 
 ### Structural tests
 

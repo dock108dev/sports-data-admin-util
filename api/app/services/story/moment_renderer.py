@@ -1,13 +1,13 @@
 """
-Story V2 Moment Renderer: AI-driven narrative generation for condensed moments.
+Story Moment Renderer: AI-driven narrative generation for condensed moments.
 
-This is the ONLY module where AI-generated prose is permitted in Story V2.
+This is the ONLY module where AI-generated prose is permitted in Story.
 All other modules are deterministic.
 
 AUTHORITATIVE INPUTS:
-- docs/story_v2_contract.md
-- story_v2/schema.py
-- story_v2/prompts/moment_render.txt
+- docs/story_contract.md
+- story/schema.py
+- story/prompts/moment_render.txt
 
 RESPONSIBILITIES:
 1. Construct deterministic prompts from CondensedMoment + PlayData

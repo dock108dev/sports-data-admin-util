@@ -1,15 +1,15 @@
 """
-Story V2 Explicit Play Selector: Deterministic selection of plays to narrate.
+Story Explicit Play Selector: Deterministic selection of plays to narrate.
 
 This module determines WHICH plays inside a CondensedMoment MUST be
 explicitly narrated. Selection is deterministic, grounded in concrete
 PBP signals, and contains no narrative generation.
 
 AUTHORITATIVE INPUTS:
-- docs/story_v2_contract.md
-- docs/pbp_story_v2_assumptions.md
-- story_v2/schema.py
-- story_v2/moment_builder.py
+- docs/story_contract.md
+- docs/pbp_story_assumptions.md
+- story/schema.py
+- story/moment_builder.py
 
 SELECTION RULES (applied in priority order):
 

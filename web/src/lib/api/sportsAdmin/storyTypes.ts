@@ -1,9 +1,9 @@
 /**
- * Story V2 Types
+ * Story Types
  *
- * TypeScript definitions matching story_v2/schema.py
+ * TypeScript definitions matching story/schema.py
  *
- * These types are READ-ONLY views of Story V2 data.
+ * These types are READ-ONLY views of Story data.
  * The UI must not modify, augment, or interpret these structures.
  */
 
@@ -16,7 +16,7 @@ export type ScoreTuple = {
 };
 
 /**
- * A condensed moment: the atomic unit of Story V2.
+ * A condensed moment: the atomic unit of Story.
  *
  * Contract guarantees:
  * - play_ids: Non-empty list of unique play identifiers
@@ -35,14 +35,14 @@ export type CondensedMoment = {
 };
 
 /**
- * Story V2 output: an ordered list of condensed moments.
+ * Story output: an ordered list of condensed moments.
  *
  * Contract guarantees:
  * - moments: Non-empty ordered list
  * - Moments are ordered by (period, start_clock) descending clock
  * - No play_id appears in multiple moments
  */
-export type StoryV2Output = {
+export type StoryOutput = {
   moments: CondensedMoment[];
 };
 
@@ -63,23 +63,23 @@ export type PlayData = {
 };
 
 /**
- * API response for Story V2.
+ * API response for Story.
  */
-export type StoryV2Response = {
+export type StoryResponse = {
   game_id: number;
   sport: string;
   home_team: string;
   away_team: string;
-  story: StoryV2Output;
+  story: StoryOutput;
   plays: PlayData[];
   validation_passed: boolean;
   validation_errors: string[];
 };
 
 /**
- * API error response for Story V2.
+ * API error response for Story.
  */
-export type StoryV2ErrorResponse = {
+export type StoryErrorResponse = {
   error: string;
   validation_errors?: string[];
 };

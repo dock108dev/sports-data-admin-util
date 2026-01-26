@@ -1,6 +1,6 @@
-"""Story V2: Condensed moment-based game narratives."""
+"""Story: Condensed moment-based game narratives."""
 
-from .schema import CondensedMoment, StoryV2Output, validate_moment, validate_story
+from .schema import CondensedMoment, StoryOutput, validate_moment, validate_story
 from .moment_builder import (
     PlayData,
     BuilderResult,
@@ -59,7 +59,7 @@ from .validators import (
 __all__ = [
     # Schema
     "CondensedMoment",
-    "StoryV2Output",
+    "StoryOutput",
     "validate_moment",
     "validate_story",
     # Moment Builder

@@ -2,16 +2,16 @@
 
 import { useState, useMemo } from "react";
 import type {
-  StoryV2Output,
+  StoryOutput,
   CondensedMoment,
   PlayData,
-} from "@/lib/api/sportsAdmin/storyV2Types";
-import styles from "./storyV2.module.css";
+} from "@/lib/api/sportsAdmin/storyTypes";
+import styles from "./story.module.css";
 
 /**
- * Story V2 Viewer
+ * Story Viewer
  *
- * READ-ONLY display of Story V2 output.
+ * READ-ONLY display of Story output.
  *
  * This component:
  * - Renders moments in exact order provided
@@ -27,9 +27,9 @@ import styles from "./storyV2.module.css";
  * - Recover from validation failures
  */
 
-interface StoryV2ViewerProps {
-  /** The Story V2 output to display */
-  story: StoryV2Output;
+interface StoryViewerProps {
+  /** The Story output to display */
+  story: StoryOutput;
   /** All plays for expansion view */
   plays: PlayData[];
   /** Whether validation passed */
@@ -38,12 +38,12 @@ interface StoryV2ViewerProps {
   validationErrors: string[];
 }
 
-export function StoryV2Viewer({
+export function StoryViewer({
   story,
   plays,
   validationPassed,
   validationErrors,
-}: StoryV2ViewerProps) {
+}: StoryViewerProps) {
   const [expandedMoments, setExpandedMoments] = useState<Set<number>>(
     new Set()
   );
@@ -73,7 +73,7 @@ export function StoryV2Viewer({
   if (!validationPassed) {
     return (
       <div className={styles.errorState}>
-        <p>Story V2 validation failed</p>
+        <p>Story validation failed</p>
         {validationErrors.length > 0 && (
           <ul>
             {validationErrors.map((error, i) => (
@@ -91,7 +91,7 @@ export function StoryV2Viewer({
   }
 
   return (
-    <div className={styles.storyV2Container}>
+    <div className={styles.storyContainer}>
       {/* Debug toggle */}
       <div className={styles.debugToggle}>
         <label>
@@ -265,4 +265,4 @@ function MomentCard({
   );
 }
 
-export default StoryV2Viewer;
+export default StoryViewer;

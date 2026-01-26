@@ -1,12 +1,12 @@
 /**
- * Story V2 Viewer Styles
+ * Story Viewer Styles
  *
  * Visual styling only. No semantic labels or meaning indicators.
  * Highlighting uses color/weight, not text.
  */
 
 /* Container */
-.storyV2Container {
+.storyContainer {
   display: flex;
   flex-direction: column;
   gap: 0;

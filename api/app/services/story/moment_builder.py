@@ -1,13 +1,13 @@
 """
-Story V2 Moment Builder: Deterministic segmentation of PBP into condensed moments.
+Story Moment Builder: Deterministic segmentation of PBP into condensed moments.
 
 This module partitions an ordered stream of PBP plays into CondensedMoment objects.
 It is pure segmentation logic with no narrative generation.
 
 AUTHORITATIVE INPUTS:
-- docs/story_v2_contract.md
-- docs/pbp_story_v2_assumptions.md
-- story_v2/schema.py
+- docs/story_contract.md
+- docs/pbp_story_assumptions.md
+- story/schema.py
 
 BOUNDARY RULES (applied in order):
 
@@ -52,7 +52,7 @@ from typing import Any, Sequence
 from .schema import (
     CondensedMoment,
     ScoreTuple,
-    StoryV2Output,
+    StoryOutput,
     SchemaValidationError,
     validate_story,
 )
@@ -137,7 +137,7 @@ class PlayData:
     """Normalized view of a single PBP play for moment building.
 
     This is the input contract for the moment builder.
-    All fields match pbp_story_v2_assumptions.md expectations.
+    All fields match pbp_story_assumptions.md expectations.
     """
 
     play_index: int
@@ -488,7 +488,7 @@ def build_condensed_moments(
 
     # Validate against schema
     try:
-        story = StoryV2Output(moments=tuple(moments))
+        story = StoryOutput(moments=tuple(moments))
         validate_story(story)
     except SchemaValidationError as e:
         raise MomentBuildError(f"Schema validation failed: {e}") from e
@@ -546,9 +546,9 @@ def plays_from_raw(
         List of PlayData objects ready for moment building
 
     Note:
-        Per pbp_story_v2_assumptions.md Section 8.5, score forward-fill
+        Per pbp_story_assumptions.md Section 8.5, score forward-fill
         is an upstream normalization concern. This function provides it
-        as a convenience but it should be applied before Story V2.
+        as a convenience but it should be applied before Story.
     """
     result: list[PlayData] = []
     last_home_score = 0

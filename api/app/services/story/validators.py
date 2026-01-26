@@ -1,7 +1,7 @@
 """
-Story V2 Contract Validators: Mechanical enforcement of Story V2 contract.
+Story Contract Validators: Mechanical enforcement of Story contract.
 
-This module enforces ALL requirements from docs/story_v2_contract.md.
+This module enforces ALL requirements from docs/story_contract.md.
 It does NOT modify, repair, or interpret data. It only validates.
 
 PHILOSOPHY:
@@ -11,9 +11,9 @@ PHILOSOPHY:
 - If output violates the contract, it MUST fail
 
 AUTHORITATIVE INPUT:
-- docs/story_v2_contract.md (Section 7: Success Criteria)
+- docs/story_contract.md (Section 7: Success Criteria)
 
-This module makes Story V2 safe. Removing it would allow non-compliant output.
+This module makes Story safe. Removing it would allow non-compliant output.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from typing import Sequence
 
 from .schema import (
     CondensedMoment,
-    StoryV2Output,
+    StoryOutput,
     ScoreTuple,
     _clock_to_seconds,
 )
@@ -32,7 +32,7 @@ from .moment_builder import PlayData
 
 
 class ContractViolation(Exception):
-    """Raised when Story V2 contract is violated.
+    """Raised when Story contract is violated.
 
     Contains structured information about the violation.
     """
@@ -203,7 +203,7 @@ def validate_moment_structure(moment: CondensedMoment) -> list[str]:
     return violations
 
 
-def validate_story_structure(story: StoryV2Output) -> list[str]:
+def validate_story_structure(story: StoryOutput) -> list[str]:
     """Validate structural requirements of a complete story.
 
     Enforces:
@@ -266,7 +266,7 @@ def validate_story_structure(story: StoryV2Output) -> list[str]:
 
 
 def validate_plays_exist(
-    story: StoryV2Output,
+    story: StoryOutput,
     available_play_ids: set[int],
 ) -> list[str]:
     """Validate all play_ids in story exist in source PBP.
@@ -438,7 +438,7 @@ def validate_narrative_traceability(
 
 
 def validate_no_future_references(
-    story: StoryV2Output,
+    story: StoryOutput,
     all_plays: Sequence[PlayData],
 ) -> list[str]:
     """Validate no moment references plays from future moments.
@@ -652,12 +652,12 @@ def explain_moment_backing(
 
 
 def validate_story_contract(
-    story: StoryV2Output,
+    story: StoryOutput,
     plays: Sequence[PlayData] | None = None,
     *,
     strict: bool = True,
 ) -> ValidationResult:
-    """Validate a complete story against the Story V2 contract.
+    """Validate a complete story against the Story contract.
 
     Performs ALL structural and narrative validations.
 
@@ -715,7 +715,7 @@ def validate_moment_contract(
     *,
     strict: bool = True,
 ) -> ValidationResult:
-    """Validate a single moment against the Story V2 contract.
+    """Validate a single moment against the Story contract.
 
     Args:
         moment: The moment to validate

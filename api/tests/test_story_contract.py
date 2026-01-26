@@ -1,8 +1,8 @@
 """
-Story V2 Contract Compliance Test Suite.
+Story Contract Compliance Test Suite.
 
 These tests verify that the validation layer correctly enforces
-ALL requirements from docs/story_v2_contract.md.
+ALL requirements from docs/story_contract.md.
 
 Tests are organized by contract section:
 - Section 3: Required Fields
@@ -15,14 +15,14 @@ Each test explicitly references the contract clause it enforces.
 
 import pytest
 
-from app.services.story_v2.schema import (
+from app.services.story.schema import (
     CondensedMoment,
     ScoreTuple,
-    StoryV2Output,
+    StoryOutput,
     SchemaValidationError,
 )
-from app.services.story_v2.moment_builder import PlayData
-from app.services.story_v2.validators import (
+from app.services.story.moment_builder import PlayData
+from app.services.story.validators import (
     ContractViolation,
     ValidationResult,
     validate_moment_structure,
@@ -108,7 +108,7 @@ def make_valid_moment() -> tuple[CondensedMoment, list[PlayData]]:
     return moment, plays
 
 
-def make_valid_story() -> tuple[StoryV2Output, list[PlayData]]:
+def make_valid_story() -> tuple[StoryOutput, list[PlayData]]:
     """Create a valid story with matching plays for testing."""
     plays = [
         make_play(1, "Smith three-pointer", period=1, game_clock="11:30", home_score=3, away_score=0),
@@ -151,7 +151,7 @@ def make_valid_story() -> tuple[StoryV2Output, list[PlayData]]:
         ),
     )
 
-    story = StoryV2Output(moments=moments)
+    story = StoryOutput(moments=moments)
     return story, plays
 
 
@@ -392,7 +392,7 @@ class TestStructuralValidation:
     def test_empty_story_fails(self):
         """Contract: Story must be non-empty ordered list."""
         with pytest.raises(SchemaValidationError, match="moments must be non-empty"):
-            StoryV2Output(moments=())
+            StoryOutput(moments=())
 
     def test_overlapping_play_ids_fails(self):
         """Contract: No play_id appears in multiple moments."""
@@ -412,7 +412,7 @@ class TestStructuralValidation:
         )
 
         with pytest.raises(SchemaValidationError, match="play_id 2 appears"):
-            StoryV2Output(moments=moments)
+            StoryOutput(moments=moments)
 
     def test_moments_not_ordered_by_period_fails(self):
         """Contract: Moments must be ordered by game time (period)."""
@@ -434,7 +434,7 @@ class TestStructuralValidation:
         )
 
         with pytest.raises(SchemaValidationError, match="not ordered by period"):
-            StoryV2Output(moments=moments)
+            StoryOutput(moments=moments)
 
     def test_moments_not_ordered_by_clock_fails(self):
         """Contract: Moments must be ordered by clock (descending within period)."""
@@ -456,7 +456,7 @@ class TestStructuralValidation:
         )
 
         with pytest.raises(SchemaValidationError, match="not ordered by clock"):
-            StoryV2Output(moments=moments)
+            StoryOutput(moments=moments)
 
     def test_play_ids_exist_in_source(self):
         """Contract: All play_ids must exist in source PBP."""
@@ -473,7 +473,7 @@ class TestStructuralValidation:
             explicit_ids=(1,),
             narrative="Test narrative.",
         )
-        story = StoryV2Output(moments=(moment,))
+        story = StoryOutput(moments=(moment,))
 
         available_ids = {1, 2, 3}
         violations = validate_plays_exist(story, available_ids)
@@ -602,7 +602,7 @@ class TestCompleteContractValidation:
             # Uses forbidden language
             narrative="This was the turning point. The momentum shifted dramatically.",
         )
-        story = StoryV2Output(moments=(moment,))
+        story = StoryOutput(moments=(moment,))
 
         result = validate_story_contract(story, plays, strict=True)
 
@@ -619,7 +619,7 @@ class TestCompleteContractValidation:
             # Multiple forbidden terms
             narrative="The momentum shifted. Throughout the game, the flow changed. Little did they know.",
         )
-        story = StoryV2Output(moments=(moment,))
+        story = StoryOutput(moments=(moment,))
 
         result = validate_story_contract(story, plays, strict=True)
 
@@ -634,31 +634,31 @@ class TestCompleteContractValidation:
 
 
 class TestRegressionPrevention:
-    """Tests to prevent reintroduction of V1 patterns."""
+    """Tests to prevent reintroduction of forbidden patterns."""
 
     def test_story_with_headers_fails(self):
-        """V1 had headers/sections. V2 forbids them."""
+        """Headers and sections are forbidden."""
         result = validate_forbidden_language(
             "## Opening Quarter\n\nThe game begins with intensity."
         )
         assert result, "Headers should be forbidden"
 
     def test_story_with_summary_fails(self):
-        """V1 had game-level summaries. V2 forbids them."""
+        """Game-level summaries are forbidden."""
         result = validate_forbidden_language(
             "Overall, this was a defensive battle throughout the game."
         )
         assert result, "Summary language should be forbidden"
 
     def test_story_with_abstract_themes_fails(self):
-        """V1 used abstract narrative themes. V2 forbids them."""
+        """Abstract narrative themes are forbidden."""
         result = validate_forbidden_language(
             "This was clearly the key moment and turning point of the game."
         )
         assert result, "Abstract themes should be forbidden"
 
     def test_retrospective_narration_fails(self):
-        """V1 allowed retrospective commentary. V2 forbids it."""
+        """Retrospective commentary is forbidden."""
         result = validate_forbidden_language(
             "As we'll see later, this play would prove crucial."
         )

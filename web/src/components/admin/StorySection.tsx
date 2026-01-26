@@ -2,28 +2,28 @@
 
 import { useState } from "react";
 import type {
-  StoryV2Output,
+  StoryOutput,
   PlayData,
-} from "@/lib/api/sportsAdmin/storyV2Types";
-import { StoryV2Viewer } from "./StoryV2Viewer";
-import styles from "./storyV2.module.css";
+} from "@/lib/api/sportsAdmin/storyTypes";
+import { StoryViewer } from "./StoryViewer";
+import styles from "./story.module.css";
 
 /**
- * Story V2 Section
+ * Story Section
  *
- * Wrapper for displaying Story V2 on game detail pages.
+ * Wrapper for displaying Story on game detail pages.
  *
  * This component:
  * - Manages loading/error states
- * - Delegates all display to StoryV2Viewer
+ * - Delegates all display to StoryViewer
  * - Does NOT modify story data
  */
 
-interface StoryV2SectionProps {
+interface StorySectionProps {
   /** Game ID for fetching story */
   gameId: number;
-  /** Story V2 data (if already loaded) */
-  story?: StoryV2Output | null;
+  /** Story data (if already loaded) */
+  story?: StoryOutput | null;
   /** Plays data (if already loaded) */
   plays?: PlayData[] | null;
   /** Loading state */
@@ -36,7 +36,7 @@ interface StoryV2SectionProps {
   validationErrors?: string[];
 }
 
-export function StoryV2Section({
+export function StorySection({
   gameId,
   story,
   plays,
@@ -44,12 +44,12 @@ export function StoryV2Section({
   error = null,
   validationPassed = true,
   validationErrors = [],
-}: StoryV2SectionProps) {
+}: StorySectionProps) {
   // Loading state
   if (loading) {
     return (
       <div className={styles.emptyState}>
-        Loading Story V2...
+        Loading Story...
       </div>
     );
   }
@@ -58,7 +58,7 @@ export function StoryV2Section({
   if (error) {
     return (
       <div className={styles.errorState}>
-        <p>Failed to load Story V2</p>
+        <p>Failed to load Story</p>
         <ul>
           <li>{error}</li>
         </ul>
@@ -70,14 +70,14 @@ export function StoryV2Section({
   if (!story || !story.moments || story.moments.length === 0) {
     return (
       <div className={styles.emptyState}>
-        No Story V2 generated
+        No Story generated
       </div>
     );
   }
 
   // Display story
   return (
-    <StoryV2Viewer
+    <StoryViewer
       story={story}
       plays={plays || []}
       validationPassed={validationPassed}
@@ -86,4 +86,4 @@ export function StoryV2Section({
   );
 }
 
-export default StoryV2Section;
+export default StorySection;

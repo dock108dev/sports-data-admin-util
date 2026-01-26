@@ -1,10 +1,10 @@
 """
-Story V2 Story Builder: Final assembly of condensed moments into a story.
+Story Story Builder: Final assembly of condensed moments into a story.
 
 This module is intentionally minimal. It performs only:
 1. Ordering of already-built moments
 2. Validation of narrative presence
-3. Assembly into StoryV2Output
+3. Assembly into StoryOutput
 
 This module does NOT:
 - Create moments
@@ -13,9 +13,9 @@ This module does NOT:
 - Add metadata, headers, or summaries
 
 AUTHORITATIVE INPUTS:
-- docs/story_v2_contract.md
-- docs/pbp_story_v2_assumptions.md
-- story_v2/schema.py
+- docs/story_contract.md
+- docs/pbp_story_assumptions.md
+- story/schema.py
 
 If this module feels "too simple," it is working correctly.
 """
@@ -26,7 +26,7 @@ from typing import Sequence
 
 from .schema import (
     CondensedMoment,
-    StoryV2Output,
+    StoryOutput,
     SchemaValidationError,
     validate_story,
     _clock_to_seconds,
@@ -48,7 +48,7 @@ def _moment_sort_key(moment: CondensedMoment) -> tuple[int, int, int]:
     3. first play_index (ascending - deterministic tiebreaker)
 
     If clock cannot be parsed, falls back to 0 seconds (sorts last within period).
-    This is documented behavior per pbp_story_v2_assumptions.md Section 4.5.
+    This is documented behavior per pbp_story_assumptions.md Section 4.5.
     """
     period = moment.period
 
@@ -99,19 +99,19 @@ def _validate_no_overlapping_plays(moments: Sequence[CondensedMoment]) -> None:
 
 def assemble_story(
     moments: Sequence[CondensedMoment],
-) -> StoryV2Output:
-    """Assemble condensed moments into a complete StoryV2Output.
+) -> StoryOutput:
+    """Assemble condensed moments into a complete StoryOutput.
 
     This is a pure assembly function. It:
     - Orders moments by (period, start_clock descending, first play_index)
     - Validates all moments have narratives
-    - Returns StoryV2Output
+    - Returns StoryOutput
 
     Args:
         moments: Sequence of CondensedMoments with narratives already populated
 
     Returns:
-        StoryV2Output containing ordered moments
+        StoryOutput containing ordered moments
 
     Raises:
         AssemblyError: If moments are empty, lack narratives, or have overlapping plays
@@ -130,12 +130,12 @@ def assemble_story(
     # Sort moments by (period, clock descending, first play_index)
     sorted_moments = sorted(moments, key=_moment_sort_key)
 
-    # Convert to tuple for StoryV2Output
+    # Convert to tuple for StoryOutput
     moments_tuple = tuple(sorted_moments)
 
     # Construct output (schema validates on construction)
     try:
-        story = StoryV2Output(moments=moments_tuple)
+        story = StoryOutput(moments=moments_tuple)
     except SchemaValidationError as e:
         raise AssemblyError(f"Schema validation failed: {e}") from e
 

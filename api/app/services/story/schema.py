@@ -1,8 +1,8 @@
 """
-Story V2 Schema Definitions.
+Story Schema Definitions.
 
-This module defines the canonical data structures for Story V2 output.
-All definitions derive exclusively from docs/story_v2_contract.md.
+This module defines the canonical data structures for Story output.
+All definitions derive exclusively from docs/story_contract.md.
 
 A story is an ordered list of condensed moments.
 A condensed moment is a small set of Play-by-Play (PBP) plays
@@ -19,7 +19,7 @@ from typing import Sequence
 
 
 class SchemaValidationError(Exception):
-    """Raised when data violates the Story V2 contract."""
+    """Raised when data violates the Story contract."""
 
     pass
 
@@ -55,7 +55,7 @@ class ScoreTuple:
 
 @dataclass(frozen=True)
 class CondensedMoment:
-    """A condensed moment: the atomic unit of Story V2.
+    """A condensed moment: the atomic unit of Story.
 
     A condensed moment is a small set of PBP plays with at least one
     explicitly narrated play. It is the smallest unit that supports
@@ -89,10 +89,10 @@ class CondensedMoment:
 
 
 @dataclass(frozen=True)
-class StoryV2Output:
-    """Story V2 output: an ordered list of condensed moments.
+class StoryOutput:
+    """Story output: an ordered list of condensed moments.
 
-    This is the complete output structure for Story V2.
+    This is the complete output structure for Story.
     It contains no metadata, no summaries, no headers, and no
     game-level narrative. Only the ordered sequence of moments.
 
@@ -198,8 +198,8 @@ def _validate_moment_fields(moment: CondensedMoment) -> None:
         raise SchemaValidationError("narrative must be non-empty")
 
 
-def _validate_story_structure(story: StoryV2Output) -> None:
-    """Validate the structure of a StoryV2Output.
+def _validate_story_structure(story: StoryOutput) -> None:
+    """Validate the structure of a StoryOutput.
 
     Raises SchemaValidationError on any contract violation.
     """
@@ -287,15 +287,15 @@ def validate_moment(moment: CondensedMoment) -> None:
     _validate_moment_fields(moment)
 
 
-def validate_story(story: StoryV2Output) -> None:
-    """Validate a complete StoryV2Output.
+def validate_story(story: StoryOutput) -> None:
+    """Validate a complete StoryOutput.
 
     Raises SchemaValidationError if the story violates the contract.
-    This function is idempotent; StoryV2Output validates on construction.
+    This function is idempotent; StoryOutput validates on construction.
     """
-    if not isinstance(story, StoryV2Output):
+    if not isinstance(story, StoryOutput):
         raise SchemaValidationError(
-            f"Expected StoryV2Output, got {type(story).__name__}"
+            f"Expected StoryOutput, got {type(story).__name__}"
         )
     _validate_story_structure(story)
 
@@ -366,8 +366,8 @@ def moment_from_dict(data: dict) -> CondensedMoment:
     )
 
 
-def story_from_dict(data: dict) -> StoryV2Output:
-    """Construct a StoryV2Output from a dictionary.
+def story_from_dict(data: dict) -> StoryOutput:
+    """Construct a StoryOutput from a dictionary.
 
     Raises SchemaValidationError if data is malformed or violates contract.
     """
@@ -388,4 +388,4 @@ def story_from_dict(data: dict) -> StoryV2Output:
         )
 
     moments = tuple(moment_from_dict(m) for m in moments_data)
-    return StoryV2Output(moments=moments)
+    return StoryOutput(moments=moments)
