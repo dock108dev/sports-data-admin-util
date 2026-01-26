@@ -1,4 +1,6 @@
 """
+LEGACY FLOW-BASED RECAP SYSTEM (V1)
+
 Chapters-First GameStory Pipeline: The ONLY supported pipeline.
 
 This module is the single orchestrator for game story generation.

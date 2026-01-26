@@ -2,6 +2,18 @@
 
 **Centralized sports data hub for all Dock108 apps.**
 
+---
+
+## Story Generation System Status
+
+This branch contains the legacy flow-based recap system.
+
+No new features will be added here.
+
+The story generation pipeline in `api/app/services/chapters/` represents the V1 implementation, which converts play-by-play data into flow-based narrative sections.
+
+---
+
 Automated ingestion, normalization, and serving of sports data. Provides play-by-play, box scores, odds, and social media for NBA, NHL, and NCAAB. Powers narrative story generation for Scroll Down Sports.
 
 ## Quick Start
