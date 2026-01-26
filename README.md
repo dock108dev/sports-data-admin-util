@@ -2,19 +2,7 @@
 
 **Centralized sports data hub for all Dock108 apps.**
 
----
-
-## Story Generation System Status
-
-This branch contains the legacy flow-based recap system.
-
-No new features will be added here.
-
-The story generation pipeline in `api/app/services/chapters/` represents the V1 implementation, which converts play-by-play data into flow-based narrative sections.
-
----
-
-Automated ingestion, normalization, and serving of sports data. Provides play-by-play, box scores, odds, and social media for NBA, NHL, and NCAAB. Powers narrative story generation for Scroll Down Sports.
+Automated ingestion, normalization, and serving of sports data. Provides play-by-play, box scores, odds, and social media for NBA, NHL, and NCAAB.
 
 ## Quick Start
 
@@ -43,15 +31,14 @@ For manual setup, see [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md).
                         │                           │                           │
                         ▼                           ▼                           ▼
                  ┌─────────────┐           ┌───────────────┐           ┌─────────────┐
-                 │  REST API   │           │Story Generator│           │  Admin UI   │
-                 │  (FastAPI)  │           │  (Chapters)   │           │  (Next.js)  │
-                 └──────┬──────┘           └───────┬───────┘           └─────────────┘
-                        │                          │
-                        ▼                          ▼
-                 ┌─────────────┐           ┌───────────────┐
-                 │ Dock108 Apps│           │Scroll Down    │
-                 └─────────────┘           │Sports         │
-                                           └───────────────┘
+                 │  REST API   │           │   Timeline    │           │  Admin UI   │
+                 │  (FastAPI)  │           │  Generator    │           │  (Next.js)  │
+                 └──────┬──────┘           └───────────────┘           └─────────────┘
+                        │
+                        ▼
+                 ┌─────────────┐
+                 │ Dock108 Apps│
+                 └─────────────┘
 ```
 
 ## Tech Stack
@@ -66,7 +53,7 @@ For manual setup, see [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md).
 ## Directory Structure
 
 ```
-api/          FastAPI backend, story generation
+api/          FastAPI backend
 scraper/      Multi-sport data scraper
 web/          Admin UI
 sql/          Database schema and migrations
@@ -82,7 +69,6 @@ docs/         Documentation
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
 | [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) | Development setup |
 | [docs/API.md](docs/API.md) | API reference |
-| [docs/BOOK_CHAPTERS_MODEL.md](docs/BOOK_CHAPTERS_MODEL.md) | Story generation system |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment guide |
 
 ## Contributing

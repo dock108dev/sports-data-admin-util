@@ -8,14 +8,11 @@
 3. **Zero silent failures** — Log everything
 4. **Traceable changes** — Every transformation explainable
 5. **Single source of truth** — Normalized data across sports
-6. **Structure before narrative** — (Story generation) Chapters are deterministic, AI adds meaning
-7. **No future knowledge** — (Story generation) AI sees only prior chapters
 
 ## Tech Stack
 - API: Python, FastAPI, PostgreSQL
 - Scraper: Python, uv, Celery
 - Web Admin: React, TypeScript, Next.js
-- Story Generation: Chapters-first architecture (Scroll Down Sports feature)
 
 ## Coding Standards
 
@@ -33,9 +30,9 @@
 
 ## Directory Structure
 - `api/` — FastAPI backend (REST API, data serving)
-- `api/app/services/chapters/` — Story generation (Scroll Down Sports feature)
+- `api/app/services/story/` — Story generation (condensed moments)
 - `scraper/` — Multi-sport data scraper (automated ingestion)
-- `web/` — Admin UI (data browser, story generator, scraper management)
+- `web/` — Admin UI (data browser, scraper management)
 - `sql/` — Database schema and migrations
 - `infra/` — Docker and deployment
 - `docs/` — Architecture and API documentation
@@ -54,31 +51,20 @@
 
 **Consumers:** All Dock108 sports products
 
-## Story Generation (Scroll Down Sports Feature)
+## Story Generation
 
-**Chapters-First Pipeline:**
-```
-PBP → Chapterizer → Chapters → StoryState → AI → GameStory
-```
+**Architecture:** Condensed moment-based narratives
+
+A story is an ordered list of condensed moments. Each moment is a small set of PBP plays with at least one explicitly narrated play.
+
+**Contract:** See `docs/story_contract.md`
 
 **Key Concepts:**
-- **Chapter:** Structural unit (contiguous play range)
-- **StoryState:** Running context (prior chapters only)
-- **GameStory:** Output contract (chapters + summaries + compact story)
+- **Condensed Moment:** Small set of plays with explicit narration
+- **Traceability:** Every narrative sentence maps to backing plays
+- **No abstraction:** No headers, sections, or thematic groupings
 
-**Rules:**
-- Chapters are structural, not narrative
-- AI never defines boundaries
-- Reason codes explain every boundary
-- No future knowledge during sequential generation
-
-**Scope:** This is one feature of the data hub, specific to Scroll Down Sports.
-
-## Contract
-This API implements `scroll-down-api-spec`. Schema changes require:
-1. Update spec first
-2. Then update implementation
-3. Document breaking changes
+**Code:** `api/app/services/story/`
 
 ## Testing
 - Add comprehensive tests for API endpoints
@@ -88,8 +74,8 @@ This API implements `scroll-down-api-spec`. Schema changes require:
 ## Do NOT
 - **Auto-commit changes** — Wait for user to review and commit manually
 - Run commands that require interactive input to quit
-- Run long-running commands (>5 seconds) without verbose logging (use logging that outputs every 30 seconds or so)
-- Update code on remote servers through SSH unless specifically asked — all code changes should be done locally and applied through approved channels only
+- Run long-running commands (>5 seconds) without verbose logging
+- Update code on remote servers through SSH unless specifically asked
 - Make breaking API changes without spec update
 - Ignore or swallow errors
 - Add dependencies casually

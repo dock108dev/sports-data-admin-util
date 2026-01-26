@@ -580,8 +580,7 @@ From `skaters` and `goalies` tables:
 
 ## See Also
 
-- [BOOK_CHAPTERS_MODEL.md](BOOK_CHAPTERS_MODEL.md) - Chapters-first story architecture
-- [TECHNICAL_FLOW.md](TECHNICAL_FLOW.md) - Timeline generation flow
 - [pbp-nhl-hockey-reference.md](pbp-nhl-hockey-reference.md) - NHL PBP parsing
 - [odds-nhl-validation.md](odds-nhl-validation.md) - NHL odds validation
 - [social-nhl.md](social-nhl.md) - NHL social integration
+- [TIMELINE_ASSEMBLY.md](TIMELINE_ASSEMBLY.md) - Timeline generation

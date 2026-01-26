@@ -14,23 +14,22 @@
 | Guide | Description |
 |-------|-------------|
 | [Adding New Sports](ADDING_NEW_SPORTS.md) | How to enable a new league |
-| [NHL Implementation Guide](NHL_IMPLEMENTATION_GUIDE.md) | **Comprehensive NHL parity reference** |
+| [NHL Implementation Guide](NHL_IMPLEMENTATION_GUIDE.md) | NHL parity reference |
 | [Database Integration](DATABASE_INTEGRATION.md) | Querying the sports database |
 
-## Story Generation System
-
-The core product: turning play-by-play into narrative chapters and stories.
+## Story Generation
 
 | Guide | Description |
 |-------|-------------|
-| [Book + Chapters Model](BOOK_CHAPTERS_MODEL.md) | **Start here:** Core architecture — chapters, sections, rendering |
-| [Technical Flow](TECHNICAL_FLOW.md) | Complete pipeline from PBP to story |
-| [Story Rendering](SUMMARY_GENERATION.md) | Single AI call architecture, prompt rules, validation |
-| [AI Signals (NBA)](AI_SIGNALS_NBA.md) | Exact signals exposed to AI |
-| [NBA Boundary Rules](NBA_BOUNDARY_RULES.md) | Chapter boundary rules for NBA |
-| [Admin UI Guide](ADMIN_UI_STORY_GENERATOR.md) | Story Generator admin interface |
-| [Narrative Time Model](NARRATIVE_TIME_MODEL.md) | How timeline ordering works (narrative vs wall-clock) |
-| [Timeline Assembly](TIMELINE_ASSEMBLY.md) | Timeline generation details |
+| [Story Contract](story_contract.md) | **Authoritative:** Condensed moment model and guarantees |
+| [PBP Story Assumptions](pbp_story_assumptions.md) | Technical assumptions for story generation |
+
+## Timeline System
+
+| Guide | Description |
+|-------|-------------|
+| [Narrative Time Model](NARRATIVE_TIME_MODEL.md) | How timeline ordering works |
+| [Timeline Assembly](TIMELINE_ASSEMBLY.md) | Timeline generation from PBP and social |
 | [Timeline Validation](TIMELINE_VALIDATION.md) | Validation rules and sanity checks |
 | [PBP Timestamp Usage](PBP_TIMESTAMP_USAGE.md) | How PBP timestamps are used |
 | [Social Event Roles](SOCIAL_EVENT_ROLES.md) | Narrative roles for social posts |
@@ -44,13 +43,11 @@ The core product: turning play-by-play into narrative chapters and stories.
 
 ## Sport-Specific Implementation
 
-Technical references for sport-specific parsing and validation.
-
 ### Play-by-Play
 
 | Guide | Description |
 |-------|-------------|
-| [NBA PBP Review](pbp-nba-review.md) | NBA PBP implementation and parity patterns |
+| [NBA PBP Review](pbp-nba-review.md) | NBA PBP implementation |
 | [NHL PBP](pbp-nhl-hockey-reference.md) | NHL PBP via Hockey Reference |
 | [NCAAB PBP](pbp-ncaab-sports-reference.md) | NCAAB PBP via Sports Reference |
 
