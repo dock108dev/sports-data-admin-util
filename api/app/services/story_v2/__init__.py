@@ -35,6 +35,26 @@ from .story_builder import (
     AssemblyError,
     assemble_story,
 )
+from .validators import (
+    ContractViolation,
+    ValidationResult,
+    TraceabilityResult,
+    validate_moment_structure,
+    validate_story_structure,
+    validate_plays_exist,
+    validate_forbidden_language,
+    validate_narrative_traceability,
+    validate_no_future_references,
+    validate_story_contract,
+    validate_moment_contract,
+    trace_sentence_to_plays,
+    trace_narrative_to_plays,
+    explain_moment_backing,
+    FORBIDDEN_ABSTRACT_TERMS,
+    FORBIDDEN_TEMPORAL_TERMS,
+    FORBIDDEN_SUMMARY_TERMS,
+    FORBIDDEN_META_TERMS,
+)
 
 __all__ = [
     # Schema
@@ -72,4 +92,23 @@ __all__ = [
     # Story Builder
     "AssemblyError",
     "assemble_story",
+    # Validators
+    "ContractViolation",
+    "ValidationResult",
+    "TraceabilityResult",
+    "validate_moment_structure",
+    "validate_story_structure",
+    "validate_plays_exist",
+    "validate_forbidden_language",
+    "validate_narrative_traceability",
+    "validate_no_future_references",
+    "validate_story_contract",
+    "validate_moment_contract",
+    "trace_sentence_to_plays",
+    "trace_narrative_to_plays",
+    "explain_moment_backing",
+    "FORBIDDEN_ABSTRACT_TERMS",
+    "FORBIDDEN_TEMPORAL_TERMS",
+    "FORBIDDEN_SUMMARY_TERMS",
+    "FORBIDDEN_META_TERMS",
 ]
