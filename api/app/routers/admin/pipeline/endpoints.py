@@ -5,18 +5,25 @@ This module contains all the FastAPI endpoint handlers for pipeline management.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+import asyncio
+import uuid
+from datetime import datetime
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import selectinload
 from typing import Any
 
 from .... import db_models
-from ....db import AsyncSession, get_db
+from ....db import AsyncSession, get_db, AsyncSessionLocal
 from ....services.pipeline import PipelineExecutor
 from ....services.pipeline.models import PipelineStage
 from ....services.pipeline.executor import PipelineExecutionError
 
 from .models import (
+    BulkGenerateAsyncResponse,
+    BulkGenerateRequest,
+    BulkGenerateStatusResponse,
     ContinuePipelineResponse,
     ExecuteStageRequest,
     ExecuteStageResponse,
@@ -42,6 +49,114 @@ from .helpers import (
 )
 
 router = APIRouter()
+
+
+# =============================================================================
+# BULK GENERATION JOB STORE
+# =============================================================================
+
+_bulk_jobs: dict[str, dict[str, Any]] = {}
+
+
+async def _run_bulk_pipeline_generation(
+    job_id: str,
+    start_date: str,
+    end_date: str,
+    leagues: list[str],
+    force: bool,
+) -> None:
+    """Background task to run bulk pipeline generation."""
+    job = _bulk_jobs[job_id]
+    job["state"] = "PROGRESS"
+
+    # Parse date strings to datetime objects
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    # End date should include the full day
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+
+    async with AsyncSessionLocal() as session:
+        # Query games in the date range for specified leagues
+        query = (
+            select(db_models.SportsGame)
+            .join(db_models.SportsLeague)
+            .options(
+                selectinload(db_models.SportsGame.home_team),
+                selectinload(db_models.SportsGame.away_team),
+            )
+            .where(
+                and_(
+                    db_models.SportsGame.game_date >= start_dt,
+                    db_models.SportsGame.game_date <= end_dt,
+                    db_models.SportsGame.status == "final",
+                )
+            )
+            .order_by(db_models.SportsGame.game_date)
+        )
+
+        # Filter by leagues if specified
+        if leagues:
+            query = query.where(db_models.SportsLeague.code.in_(leagues))
+
+        result = await session.execute(query)
+        games = result.scalars().all()
+
+        # Filter to games that have PBP data
+        games_with_pbp = []
+        for game in games:
+            pbp_count = await session.execute(
+                select(func.count(db_models.SportsGamePlay.id)).where(
+                    db_models.SportsGamePlay.game_id == game.id
+                )
+            )
+            if (pbp_count.scalar() or 0) > 0:
+                games_with_pbp.append(game)
+
+        job["total"] = len(games_with_pbp)
+
+        for i, game in enumerate(games_with_pbp):
+            job["current"] = i + 1
+
+            # Check if game already has a timeline artifact
+            if not force:
+                artifact_result = await session.execute(
+                    select(db_models.SportsGameTimelineArtifact).where(
+                        db_models.SportsGameTimelineArtifact.game_id == game.id
+                    )
+                )
+                existing_artifact = artifact_result.scalar_one_or_none()
+                if existing_artifact:
+                    job["skipped"] += 1
+                    continue
+
+            # Run the full pipeline
+            try:
+                executor = PipelineExecutor(session)
+                await executor.run_full_pipeline(
+                    game_id=game.id,
+                    triggered_by="bulk_admin",
+                )
+                await session.commit()
+                job["successful"] += 1
+            except Exception as e:
+                await session.rollback()
+                job["failed"] += 1
+                # Log but continue processing other games
+                job.setdefault("errors", []).append(
+                    {"game_id": game.id, "error": str(e)}
+                )
+
+            # Small delay to avoid overwhelming the system
+            await asyncio.sleep(0.2)
+
+    job["state"] = "SUCCESS"
+    job["finished_at"] = datetime.utcnow().isoformat()
+    job["result"] = {
+        "total": job["total"],
+        "successful": job["successful"],
+        "failed": job["failed"],
+        "skipped": job["skipped"],
+        "errors": job.get("errors", []),
+    }
 
 
 # =============================================================================
@@ -714,3 +829,86 @@ async def list_pipeline_stages() -> dict[str, Any]:
         "stages": stages,
         "total_stages": len(stages),
     }
+
+
+# =============================================================================
+# ENDPOINTS - Bulk Generation
+# =============================================================================
+
+
+@router.post(
+    "/pipeline/bulk-generate-async",
+    response_model=BulkGenerateAsyncResponse,
+    summary="Start bulk story generation",
+    description="Start an async job to generate stories for multiple games.",
+)
+async def bulk_generate_async(
+    request: BulkGenerateRequest,
+    background_tasks: BackgroundTasks,
+) -> BulkGenerateAsyncResponse:
+    """Start bulk story generation as a background job."""
+    job_id = str(uuid.uuid4())
+
+    # Initialize job state
+    _bulk_jobs[job_id] = {
+        "job_id": job_id,
+        "state": "PENDING",
+        "current": 0,
+        "total": 0,
+        "successful": 0,
+        "failed": 0,
+        "skipped": 0,
+        "result": None,
+        "started_at": datetime.utcnow().isoformat(),
+        "request": {
+            "start_date": request.start_date,
+            "end_date": request.end_date,
+            "leagues": request.leagues,
+            "force": request.force,
+        },
+    }
+
+    # Start background task
+    background_tasks.add_task(
+        _run_bulk_pipeline_generation,
+        job_id=job_id,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        leagues=request.leagues,
+        force=request.force,
+    )
+
+    return BulkGenerateAsyncResponse(
+        job_id=job_id,
+        message="Bulk generation job started",
+        status_url=f"/api/admin/sports/pipeline/bulk-generate-status/{job_id}",
+    )
+
+
+@router.get(
+    "/pipeline/bulk-generate-status/{job_id}",
+    response_model=BulkGenerateStatusResponse,
+    summary="Get bulk generation status",
+    description="Get the status of a bulk generation job.",
+)
+async def get_bulk_generate_status(
+    job_id: str,
+) -> BulkGenerateStatusResponse:
+    """Get the status of a bulk generation job."""
+    job = _bulk_jobs.get(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+        )
+
+    return BulkGenerateStatusResponse(
+        job_id=job["job_id"],
+        state=job["state"],
+        current=job["current"],
+        total=job["total"],
+        successful=job["successful"],
+        failed=job["failed"],
+        skipped=job["skipped"],
+        result=job.get("result"),
+    )

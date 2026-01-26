@@ -28,6 +28,9 @@ from fastapi import APIRouter
 
 from .endpoints import router as endpoints_router
 from .models import (
+    BulkGenerateAsyncResponse,
+    BulkGenerateRequest,
+    BulkGenerateStatusResponse,
     ContinuePipelineResponse,
     ExecuteStageRequest,
     ExecuteStageResponse,
@@ -63,6 +66,7 @@ __all__ = [
     "RerunPipelineRequest",
     "ExecuteStageRequest",
     "RunFullPipelineRequest",
+    "BulkGenerateRequest",
     # Response models
     "StageStatusResponse",
     "StageOutputResponse",
@@ -77,4 +81,6 @@ __all__ = [
     "GamePipelineRunsResponse",
     "GamePipelineSummary",
     "StageComparisonResponse",
+    "BulkGenerateAsyncResponse",
+    "BulkGenerateStatusResponse",
 ]

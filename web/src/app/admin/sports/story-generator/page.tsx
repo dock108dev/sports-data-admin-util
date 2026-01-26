@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 import {
   listGames,
   runFullPipeline,
+  bulkGenerateStoriesAsync,
+  getBulkGenerateStatus,
   type GameSummary,
   type RunFullPipelineResponse,
+  type BulkGenerateStatusResponse,
 } from "@/lib/api/sportsAdmin";
 import { SUPPORTED_LEAGUES } from "@/lib/constants/sports";
 
@@ -20,34 +23,89 @@ interface GenerationResult {
   error?: string;
 }
 
+interface BulkJobState {
+  jobId: string | null;
+  state: BulkGenerateStatusResponse["state"] | null;
+  current: number;
+  total: number;
+  successful: number;
+  failed: number;
+  skipped: number;
+}
+
 /**
  * Story Generator Page
  *
  * Allows generating stories for games via the pipeline system.
  * - Search/filter games
+ * - Bulk generate stories with date range and league selection
  * - Generate stories for individual games
  * - View generation results
  */
 export default function StoryGeneratorPage() {
-  const [league, setLeague] = useState<string>("NBA");
-  const [daysBack, setDaysBack] = useState<number>(7);
+  // Date range state
+  const [startDate, setStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    return new Date().toISOString().split("T")[0];
+  });
+
+  // League selection state
+  const [selectedLeagues, setSelectedLeagues] = useState<Set<string>>(
+    new Set(["NBA"])
+  );
+
+  // Force regenerate option
+  const [forceRegenerate, setForceRegenerate] = useState(false);
+
+  // Games list state (for preview/individual generation)
   const [games, setGames] = useState<GameSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [generationResults, setGenerationResults] = useState<Map<number, GenerationResult>>(new Map());
-  const [batchGenerating, setBatchGenerating] = useState(false);
+  const [generationResults, setGenerationResults] = useState<
+    Map<number, GenerationResult>
+  >(new Map());
 
+  // Bulk job state
+  const [bulkJob, setBulkJob] = useState<BulkJobState>({
+    jobId: null,
+    state: null,
+    current: 0,
+    total: 0,
+    successful: 0,
+    failed: 0,
+    skipped: 0,
+  });
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Toggle league selection
+  const toggleLeague = (league: string) => {
+    setSelectedLeagues((prev) => {
+      const next = new Set(prev);
+      if (next.has(league)) {
+        next.delete(league);
+      } else {
+        next.add(league);
+      }
+      return next;
+    });
+  };
+
+  // Load games for preview
   const loadGames = useCallback(async () => {
+    if (selectedLeagues.size === 0) {
+      setError("Please select at least one league");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const endDate = new Date().toISOString().split("T")[0];
-      const startDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split("T")[0];
-
       const response = await listGames({
-        leagues: [league],
+        leagues: Array.from(selectedLeagues),
         startDate,
         endDate,
         limit: 100,
@@ -61,8 +119,76 @@ export default function StoryGeneratorPage() {
     } finally {
       setLoading(false);
     }
-  }, [league, daysBack]);
+  }, [selectedLeagues, startDate, endDate]);
 
+  // Start bulk generation job
+  const startBulkGeneration = useCallback(async () => {
+    if (selectedLeagues.size === 0) {
+      setError("Please select at least one league");
+      return;
+    }
+
+    setError(null);
+    try {
+      const response = await bulkGenerateStoriesAsync({
+        start_date: startDate,
+        end_date: endDate,
+        leagues: Array.from(selectedLeagues),
+        force: forceRegenerate,
+      });
+
+      setBulkJob({
+        jobId: response.job_id,
+        state: "PENDING",
+        current: 0,
+        total: 0,
+        successful: 0,
+        failed: 0,
+        skipped: 0,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [selectedLeagues, startDate, endDate, forceRegenerate]);
+
+  // Poll for job status
+  useEffect(() => {
+    if (!bulkJob.jobId || bulkJob.state === "SUCCESS" || bulkJob.state === "FAILURE") {
+      return;
+    }
+
+    const pollStatus = async () => {
+      try {
+        const status = await getBulkGenerateStatus(bulkJob.jobId!);
+        setBulkJob({
+          jobId: status.job_id,
+          state: status.state,
+          current: status.current,
+          total: status.total,
+          successful: status.successful,
+          failed: status.failed,
+          skipped: status.skipped,
+        });
+
+        // If job is complete, reload games to show updated status
+        if (status.state === "SUCCESS") {
+          loadGames();
+        }
+      } catch (err) {
+        console.error("Failed to poll job status:", err);
+      }
+    };
+
+    pollingRef.current = setInterval(pollStatus, 2000);
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, [bulkJob.jobId, bulkJob.state, loadGames]);
+
+  // Individual game generation
   const generateStory = useCallback(async (gameId: number) => {
     setGenerationResults((prev) => {
       const next = new Map(prev);
@@ -76,9 +202,9 @@ export default function StoryGeneratorPage() {
         const next = new Map(prev);
         next.set(gameId, {
           gameId,
-          status: response.story_saved ? "success" : "error",
+          status: response.status === "completed" ? "success" : "error",
           response,
-          error: response.story_saved ? undefined : response.message,
+          error: response.status === "completed" ? undefined : response.message,
         });
         return next;
       });
@@ -95,23 +221,13 @@ export default function StoryGeneratorPage() {
     }
   }, []);
 
-  const generateBatch = useCallback(async () => {
-    setBatchGenerating(true);
-    const gamesWithoutStory = games.filter((g) => !g.has_story);
-
-    for (const game of gamesWithoutStory) {
-      await generateStory(game.id);
-    }
-
-    setBatchGenerating(false);
-  }, [games, generateStory]);
-
   const getResultStatus = (gameId: number): GenerationResult | undefined => {
     return generationResults.get(gameId);
   };
 
   const gamesWithStory = games.filter((g) => g.has_story);
   const gamesWithoutStory = games.filter((g) => !g.has_story);
+  const isBulkRunning = bulkJob.state === "PENDING" || bulkJob.state === "PROGRESS";
 
   return (
     <div className={styles.container}>
@@ -123,47 +239,133 @@ export default function StoryGeneratorPage() {
       </header>
 
       <div className={styles.filtersCard}>
-        <div className={styles.filterRow}>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel}>League</label>
-            <select
-              className={styles.input}
-              value={league}
-              onChange={(e) => setLeague(e.target.value)}
-            >
-              {SUPPORTED_LEAGUES.map((lg) => (
-                <option key={lg} value={lg}>
-                  {lg}
-                </option>
-              ))}
-            </select>
+        <div className={styles.filterSection}>
+          <h3 className={styles.filterSectionTitle}>Date Range</h3>
+          <div className={styles.dateRangeRow}>
+            <div className={styles.filterGroup}>
+              <label className={styles.filterLabel}>Start Date</label>
+              <input
+                type="date"
+                className={styles.input}
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                disabled={isBulkRunning}
+              />
+            </div>
+            <div className={styles.filterGroup}>
+              <label className={styles.filterLabel}>End Date</label>
+              <input
+                type="date"
+                className={styles.input}
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                disabled={isBulkRunning}
+              />
+            </div>
           </div>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel}>Days Back</label>
-            <select
-              className={styles.input}
-              value={daysBack}
-              onChange={(e) => setDaysBack(Number(e.target.value))}
-            >
-              <option value={3}>3 days</option>
-              <option value={7}>7 days</option>
-              <option value={14}>14 days</option>
-              <option value={30}>30 days</option>
-            </select>
+        </div>
+
+        <div className={styles.filterSection}>
+          <h3 className={styles.filterSectionTitle}>Leagues</h3>
+          <div className={styles.leagueCheckboxes}>
+            {SUPPORTED_LEAGUES.map((league) => (
+              <label key={league} className={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={selectedLeagues.has(league)}
+                  onChange={() => toggleLeague(league)}
+                  disabled={isBulkRunning}
+                />
+                <span>{league}</span>
+              </label>
+            ))}
           </div>
-          <div className={styles.filterGroup}>
-            <button
-              className={styles.primaryButton}
-              onClick={loadGames}
-              disabled={loading}
-            >
-              {loading ? "Loading..." : "Load Games"}
-            </button>
-          </div>
+        </div>
+
+        <div className={styles.filterSection}>
+          <h3 className={styles.filterSectionTitle}>Options</h3>
+          <label className={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={forceRegenerate}
+              onChange={(e) => setForceRegenerate(e.target.checked)}
+              disabled={isBulkRunning}
+            />
+            <span>Force regenerate (overwrite existing stories)</span>
+          </label>
+        </div>
+
+        <div className={styles.filterActions}>
+          <button
+            className={styles.secondaryButton}
+            onClick={loadGames}
+            disabled={loading || isBulkRunning}
+          >
+            {loading ? "Loading..." : "Preview Games"}
+          </button>
+          <button
+            className={styles.primaryButton}
+            onClick={startBulkGeneration}
+            disabled={isBulkRunning || selectedLeagues.size === 0}
+          >
+            {isBulkRunning ? "Running..." : "Start Bulk Generation"}
+          </button>
         </div>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
+
+      {/* Bulk Job Progress */}
+      {bulkJob.jobId && (
+        <div className={styles.progressCard}>
+          <h3 className={styles.progressTitle}>Bulk Generation Progress</h3>
+          <div className={styles.progressStatus}>
+            <span
+              className={`${styles.statusBadge} ${
+                bulkJob.state === "SUCCESS"
+                  ? styles.statusSuccess
+                  : bulkJob.state === "FAILURE"
+                  ? styles.statusError
+                  : styles.statusRunning
+              }`}
+            >
+              {bulkJob.state}
+            </span>
+          </div>
+          <div className={styles.progressBar}>
+            <div
+              className={styles.progressFill}
+              style={{
+                width: bulkJob.total > 0 ? `${(bulkJob.current / bulkJob.total) * 100}%` : "0%",
+              }}
+            />
+          </div>
+          <div className={styles.progressStats}>
+            <div className={styles.progressStat}>
+              <span className={styles.progressStatValue}>
+                {bulkJob.current} / {bulkJob.total}
+              </span>
+              <span className={styles.progressStatLabel}>Games Processed</span>
+            </div>
+            <div className={styles.progressStat}>
+              <span className={`${styles.progressStatValue} ${styles.successText}`}>
+                {bulkJob.successful}
+              </span>
+              <span className={styles.progressStatLabel}>Successful</span>
+            </div>
+            <div className={styles.progressStat}>
+              <span className={`${styles.progressStatValue} ${styles.errorText}`}>
+                {bulkJob.failed}
+              </span>
+              <span className={styles.progressStatLabel}>Failed</span>
+            </div>
+            <div className={styles.progressStat}>
+              <span className={styles.progressStatValue}>{bulkJob.skipped}</span>
+              <span className={styles.progressStatLabel}>Skipped</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {games.length > 0 && (
         <>
@@ -181,20 +383,6 @@ export default function StoryGeneratorPage() {
               <span className={styles.statLabel}>Missing Story</span>
             </div>
           </div>
-
-          {gamesWithoutStory.length > 0 && (
-            <div className={styles.batchSection}>
-              <button
-                className={styles.batchButton}
-                onClick={generateBatch}
-                disabled={batchGenerating}
-              >
-                {batchGenerating
-                  ? "Generating..."
-                  : `Generate All Missing (${gamesWithoutStory.length})`}
-              </button>
-            </div>
-          )}
 
           <div className={styles.gamesSection}>
             <h2 className={styles.sectionTitle}>Games Missing Stories</h2>
@@ -216,12 +404,12 @@ export default function StoryGeneratorPage() {
                       </div>
                       <div className={styles.gameActions}>
                         {result?.status === "generating" && (
-                          <span className={styles.statusGenerating}>Generating...</span>
+                          <span className={styles.statusGenerating}>
+                            Generating...
+                          </span>
                         )}
                         {result?.status === "success" && (
-                          <span className={styles.statusSuccess}>
-                            Done ({result.response?.moment_count} moments)
-                          </span>
+                          <span className={styles.statusSuccess}>Done</span>
                         )}
                         {result?.status === "error" && (
                           <span className={styles.statusError} title={result.error}>
@@ -232,7 +420,9 @@ export default function StoryGeneratorPage() {
                           <button
                             className={styles.generateButton}
                             onClick={() => generateStory(game.id)}
-                            disabled={result?.status === "generating" || batchGenerating}
+                            disabled={
+                              result?.status === "generating" || isBulkRunning
+                            }
                           >
                             Generate
                           </button>
@@ -272,7 +462,7 @@ export default function StoryGeneratorPage() {
                         onClick={() => generateStory(game.id)}
                         disabled={
                           getResultStatus(game.id)?.status === "generating" ||
-                          batchGenerating
+                          isBulkRunning
                         }
                       >
                         Regenerate
@@ -294,9 +484,13 @@ export default function StoryGeneratorPage() {
 
       {!loading && games.length === 0 && !error && (
         <div className={styles.emptyState}>
-          <p>Select a league and click "Load Games" to find games for story generation.</p>
+          <p>
+            Configure date range and leagues, then click "Preview Games" to see
+            eligible games.
+          </p>
           <p className={styles.hint}>
-            Only final games with play-by-play data are eligible for story generation.
+            Or click "Start Bulk Generation" to generate stories for all matching
+            games.
           </p>
         </div>
       )}
