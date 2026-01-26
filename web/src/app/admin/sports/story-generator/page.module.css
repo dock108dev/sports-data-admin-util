@@ -1,0 +1,300 @@
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.header {
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  margin: 0 0 0.5rem 0;
+}
+
+.subtitle {
+  color: var(--text-secondary, #666);
+  margin: 0;
+}
+
+.filtersCard {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.filterRow {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filterLabel {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+}
+
+.input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  min-width: 150px;
+}
+
+.primaryButton {
+  padding: 0.5rem 1.25rem;
+  background: var(--primary-color, #2563eb);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--primary-hover, #1d4ed8);
+}
+
+.primaryButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.statsRow {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.5rem;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.statValue {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.statLabel {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.batchSection {
+  margin-bottom: 1.5rem;
+}
+
+.batchButton {
+  padding: 0.75rem 1.5rem;
+  background: var(--success-color, #16a34a);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.batchButton:hover:not(:disabled) {
+  background: var(--success-hover, #15803d);
+}
+
+.batchButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.gamesSection {
+  margin-bottom: 2rem;
+}
+
+.sectionTitle {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  margin: 0 0 1rem 0;
+}
+
+.gamesList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.gameCard {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.gameCard:hover {
+  border-color: var(--border-hover, #c0c0c0);
+}
+
+.gameInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.gameMatchup {
+  font-weight: 500;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.gameMeta {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, #666);
+}
+
+.gameActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.generateButton {
+  padding: 0.375rem 0.875rem;
+  background: var(--primary-color, #2563eb);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.generateButton:hover:not(:disabled) {
+  background: var(--primary-hover, #1d4ed8);
+}
+
+.generateButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.regenerateButton {
+  padding: 0.375rem 0.875rem;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.regenerateButton:hover:not(:disabled) {
+  background: var(--bg-hover, #f5f5f5);
+  border-color: var(--border-hover, #c0c0c0);
+}
+
+.regenerateButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.viewLink {
+  padding: 0.375rem 0.875rem;
+  color: var(--primary-color, #2563eb);
+  text-decoration: none;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.viewLink:hover {
+  text-decoration: underline;
+}
+
+.statusGenerating {
+  font-size: 0.8125rem;
+  color: var(--warning-color, #ca8a04);
+  font-weight: 500;
+}
+
+.statusSuccess {
+  font-size: 0.8125rem;
+  color: var(--success-color, #16a34a);
+  font-weight: 500;
+}
+
+.statusError {
+  font-size: 0.8125rem;
+  color: var(--error-color, #dc2626);
+  font-weight: 500;
+  cursor: help;
+}
+
+.statusComplete {
+  font-size: 0.8125rem;
+  color: var(--success-color, #16a34a);
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  background: #f0fdf4;
+  border-radius: 4px;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 3rem 2rem;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  color: var(--text-secondary, #666);
+}
+
+.emptyState p {
+  margin: 0 0 0.5rem 0;
+}
+
+.hint {
+  font-size: 0.875rem;
+  color: var(--text-tertiary, #999);
+}
+
+.emptyMessage {
+  color: var(--text-secondary, #666);
+  font-style: italic;
+}
