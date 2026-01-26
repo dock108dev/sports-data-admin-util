@@ -402,7 +402,6 @@ def validate_narrative_traceability(
     # Extract key terms from explicit plays
     explicit_terms: set[str] = set()
     for desc in explicit_descriptions:
-        desc_lower = desc.lower()
         # Extract player names
         names = _extract_player_names(desc)
         explicit_terms.update(n.lower() for n in names)
@@ -517,8 +516,6 @@ def trace_sentence_to_plays(
     Returns:
         TraceabilityResult with matched play_ids or explanation of failure
     """
-    sentence_lower = sentence.lower()
-
     # Build play map
     play_map = {p.play_index: p for p in plays}
 

@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Protocol, Sequence
 
 from .moment_builder import PlayData
-from .schema import CondensedMoment, ScoreTuple
+from .schema import CondensedMoment
 
 logger = logging.getLogger(__name__)
 

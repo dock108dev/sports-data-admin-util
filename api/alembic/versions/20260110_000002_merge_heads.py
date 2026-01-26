@@ -13,7 +13,6 @@ predictably in Docker and CI.
 from __future__ import annotations
 
 # alembic requires `op` to be importable even for no-op merge revisions
-from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20260110_000002"

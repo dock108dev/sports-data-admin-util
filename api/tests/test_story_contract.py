@@ -25,7 +25,6 @@ from app.services.story.moment_builder import PlayData
 from app.services.story.validators import (
     ContractViolation,
     ValidationResult,
-    validate_moment_structure,
     validate_story_structure,
     validate_plays_exist,
     validate_forbidden_language,
@@ -36,7 +35,6 @@ from app.services.story.validators import (
     trace_sentence_to_plays,
     trace_narrative_to_plays,
     explain_moment_backing,
-    TraceabilityResult,
 )
 
 

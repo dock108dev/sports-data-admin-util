@@ -49,10 +49,9 @@ from .moment_builder import (
     TURNOVER_KEYWORDS,
     FOUL_KEYWORDS,
     FREE_THROW_KEYWORDS,
-    _normalize_text,
     _contains_keyword,
 )
-from .schema import CondensedMoment, ScoreTuple, SchemaValidationError
+from .schema import CondensedMoment
 
 
 class SelectionRule(Enum):
@@ -411,7 +410,7 @@ def validate_selection(
     # Non-empty check
     if not moment.explicitly_narrated_play_ids:
         raise SelectionError(
-            f"Moment has empty explicitly_narrated_play_ids (contract violation)"
+            "Moment has empty explicitly_narrated_play_ids (contract violation)"
         )
 
     # Subset check
@@ -427,5 +426,5 @@ def validate_selection(
     # No duplicates check
     if len(moment.explicitly_narrated_play_ids) != len(narrated_set):
         raise SelectionError(
-            f"explicitly_narrated_play_ids contains duplicates"
+            "explicitly_narrated_play_ids contains duplicates"
         )
