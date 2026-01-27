@@ -7,7 +7,7 @@ STORY CONTRACT ALIGNMENT
 ========================
 This implementation adheres to the Story contract:
 - AI is a renderer, not an author
-- One OpenAI call per moment
+- Moments are batched (up to 25 per call) for efficiency
 - Narrative is grounded strictly in backing plays
 - No story-level prose or summaries
 - Narrative is traceable to explicit plays
@@ -40,7 +40,7 @@ No auto-editing of text. AI output is untrusted until validated.
 
 GUARANTEES
 ==========
-1. One OpenAI call per moment (no more)
+1. Moments batched efficiently (~25 per OpenAI call)
 2. All narratives pass validation
 3. Broken narratives fail loudly
 4. Output includes narrative per moment
@@ -92,6 +92,68 @@ FORBIDDEN_PHRASES = [
 
 # Compile patterns for efficiency
 FORBIDDEN_PATTERNS = [re.compile(p, re.IGNORECASE) for p in FORBIDDEN_PHRASES]
+
+# Number of moments to process in a single OpenAI call
+MOMENTS_PER_BATCH = 25
+
+
+def _build_batch_prompt(
+    moments_batch: list[tuple[int, dict[str, Any], list[dict[str, Any]]]],
+    game_context: dict[str, str],
+) -> str:
+    """Build a compact OpenAI prompt for a batch of moments.
+
+    Minimizes token usage by:
+    - Putting instructions once at the top
+    - Using compact notation for plays
+    - Minimal formatting
+
+    Args:
+        moments_batch: List of (moment_index, moment, moment_plays) tuples
+        game_context: Team names and sport info
+
+    Returns:
+        Prompt string for OpenAI to generate all narratives in the batch
+    """
+    home_team = game_context.get("home_team_name", "Home")
+    away_team = game_context.get("away_team_name", "Away")
+
+    # Build compact moments data
+    moments_lines = []
+    for moment_index, moment, moment_plays in moments_batch:
+        period = moment.get("period", 1)
+        clock = moment.get("start_clock", "")
+        score_after = moment.get("score_after", [0, 0])
+        explicitly_narrated = set(moment.get("explicitly_narrated_play_ids", []))
+
+        # Compact play format: just the essentials
+        plays_compact = []
+        for play in moment_plays:
+            play_index = play.get("play_index")
+            is_explicit = play_index in explicitly_narrated
+            star = "*" if is_explicit else ""
+            desc = play.get("description", "")
+            # Truncate long descriptions
+            if len(desc) > 80:
+                desc = desc[:77] + "..."
+            plays_compact.append(f"{star}{desc}")
+
+        plays_str = "; ".join(plays_compact)
+        moments_lines.append(
+            f"[{moment_index}] Q{period} {clock} ({away_team} {score_after[0]}-{score_after[1]} {home_team}): {plays_str}"
+        )
+
+    moments_block = "\n".join(moments_lines)
+
+    prompt = f"""Write 1-2 sentence narratives for each moment. {away_team} vs {home_team}.
+
+Rules: Describe *starred plays. Concrete actions only (shots/fouls/scores). No: momentum, turning point, crucial, pivotal, speculation.
+
+{moments_block}
+
+JSON array response: [{{"i":0,"n":"narrative"}},...]"""
+
+    return prompt
 
 
 def _build_moment_prompt(
@@ -289,7 +351,8 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
     """Execute the RENDER_NARRATIVES stage.
 
     Generates narrative text for each validated moment using OpenAI.
-    One OpenAI call per moment. Validates all narratives before returning.
+    Moments are batched (up to MOMENTS_PER_BATCH per call) for efficiency.
+    Validates all narratives before returning.
 
     Args:
         stage_input: Input containing previous_output with validated moments
@@ -344,68 +407,104 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
 
     game_context = stage_input.game_context
 
-    output.add_log(f"Rendering narratives for {len(moments)} moments")
+    # Prepare all moments with their plays
+    moments_with_plays: list[tuple[int, dict[str, Any], list[dict[str, Any]]]] = []
+    for i, moment in enumerate(moments):
+        play_ids = moment.get("play_ids", [])
+        moment_plays = [play_lookup[pid] for pid in play_ids if pid in play_lookup]
+        moments_with_plays.append((i, moment, moment_plays))
 
-    # Process each moment
-    enriched_moments: list[dict[str, Any]] = []
+    # Calculate batch count
+    num_batches = (len(moments) + MOMENTS_PER_BATCH - 1) // MOMENTS_PER_BATCH
+    output.add_log(
+        f"Rendering {len(moments)} moments in {num_batches} batches "
+        f"({MOMENTS_PER_BATCH} per batch)"
+    )
+
+    # Process in batches
+    enriched_moments: list[dict[str, Any]] = [None] * len(moments)  # type: ignore
     all_validation_errors: list[str] = []
     successful_renders = 0
     total_openai_calls = 0
 
-    for i, moment in enumerate(moments):
-        # Get plays for this moment
-        play_ids = moment.get("play_ids", [])
-        moment_plays = [play_lookup[pid] for pid in play_ids if pid in play_lookup]
+    for batch_start in range(0, len(moments_with_plays), MOMENTS_PER_BATCH):
+        batch_end = min(batch_start + MOMENTS_PER_BATCH, len(moments_with_plays))
+        batch = moments_with_plays[batch_start:batch_end]
 
-        if not moment_plays:
-            all_validation_errors.append(
-                f"Moment {i}: No plays found for play_ids {play_ids}"
-            )
+        # Check for moments with no plays
+        valid_batch = []
+        for moment_index, moment, moment_plays in batch:
+            if not moment_plays:
+                all_validation_errors.append(
+                    f"Moment {moment_index}: No plays found for play_ids "
+                    f"{moment.get('play_ids', [])}"
+                )
+                enriched_moments[moment_index] = {**moment, "narrative": ""}
+            else:
+                valid_batch.append((moment_index, moment, moment_plays))
+
+        if not valid_batch:
             continue
 
-        # Build prompt
-        prompt = _build_moment_prompt(moment, moment_plays, game_context, i)
+        # Build batch prompt
+        prompt = _build_batch_prompt(valid_batch, game_context)
 
-        # Call OpenAI (one call per moment)
+        # Call OpenAI for this batch
         try:
             total_openai_calls += 1
+            # More tokens for batch response
+            max_tokens = 150 * len(valid_batch)
             response_json = openai_client.generate(
                 prompt=prompt,
-                temperature=0.3,  # Lower temperature for factual consistency
-                max_tokens=200,  # Short narratives only
+                temperature=0.3,
+                max_tokens=max_tokens,
             )
 
-            # Parse response
+            # Parse batch response
             response_data = json.loads(response_json)
-            narrative = response_data.get("narrative", "")
 
-            # Validate narrative (including traceability check)
-            validation_errors = _validate_narrative(narrative, moment, moment_plays, i)
-            if validation_errors:
-                all_validation_errors.extend(validation_errors)
-                output.add_log(
-                    f"Moment {i}: Narrative validation failed", level="error"
+            # Build lookup of narratives by moment_index
+            # Supports both compact ("i", "n") and full ("moment_index", "narrative") keys
+            narrative_lookup: dict[int, str] = {}
+            for item in response_data:
+                idx = item.get("i") or item.get("moment_index")
+                narrative = item.get("n") or item.get("narrative", "")
+                if idx is not None:
+                    narrative_lookup[idx] = narrative
+
+            # Process each moment in the batch
+            for moment_index, moment, moment_plays in valid_batch:
+                narrative = narrative_lookup.get(moment_index, "")
+
+                # Validate narrative
+                validation_errors = _validate_narrative(
+                    narrative, moment, moment_plays, moment_index
                 )
-            else:
-                successful_renders += 1
+                if validation_errors:
+                    all_validation_errors.extend(validation_errors)
+                    output.add_log(
+                        f"Moment {moment_index}: Narrative validation failed",
+                        level="error",
+                    )
+                else:
+                    successful_renders += 1
 
-            # Create enriched moment (include narrative even if validation failed
-            # so errors are inspectable)
-            enriched_moment = {**moment, "narrative": narrative}
-            enriched_moments.append(enriched_moment)
+                enriched_moments[moment_index] = {**moment, "narrative": narrative}
 
         except json.JSONDecodeError as e:
             all_validation_errors.append(
-                f"Moment {i}: OpenAI returned invalid JSON: {e}"
+                f"Batch {batch_start}-{batch_end}: OpenAI returned invalid JSON: {e}"
             )
-            # Still add moment without narrative for inspection
-            enriched_moments.append({**moment, "narrative": ""})
+            # Fill in empty narratives for this batch
+            for moment_index, moment, _ in valid_batch:
+                enriched_moments[moment_index] = {**moment, "narrative": ""}
 
         except Exception as e:
             all_validation_errors.append(
-                f"Moment {i}: OpenAI call failed: {e}"
+                f"Batch {batch_start}-{batch_end}: OpenAI call failed: {e}"
             )
-            enriched_moments.append({**moment, "narrative": ""})
+            for moment_index, moment, _ in valid_batch:
+                enriched_moments[moment_index] = {**moment, "narrative": ""}
 
     output.add_log(f"OpenAI calls made: {total_openai_calls}")
     output.add_log(f"Successful renders: {successful_renders}/{len(moments)}")

@@ -87,6 +87,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
       REDIS_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/0
+      # Must match API's CELERY_BROKER_URL so worker receives tasks
+      CELERY_BROKER_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/2
       ENVIRONMENT: ${ENVIRONMENT:-development}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL_CLASSIFICATION: ${OPENAI_MODEL_CLASSIFICATION:-gpt-4o-mini}
@@ -98,6 +100,7 @@ services:
         condition: service_healthy
     networks:
       - internal
+      - app
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.celery_app.celery_app inspect ping -d celery@$(hostname) --timeout=5 | grep -q pong"]
       interval: 30s
