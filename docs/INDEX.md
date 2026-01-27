@@ -22,6 +22,7 @@
 | Guide | Description |
 |-------|-------------|
 | [Story Contract](story_contract.md) | **Authoritative:** Condensed moment model and guarantees |
+| [Story Pipeline](STORY_PIPELINE.md) | Pipeline stages and implementation details |
 | [PBP Story Assumptions](pbp_story_assumptions.md) | Technical assumptions for story generation |
 
 ## Timeline System

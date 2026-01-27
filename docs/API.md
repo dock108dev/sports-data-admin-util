@@ -12,6 +12,7 @@
 2. [App Endpoints (Read-Only)](#app-endpoints-read-only)
 3. [Admin Endpoints](#admin-endpoints)
    - [Games Management](#games-management)
+   - [Story Pipeline](#story-pipeline)
    - [Timeline Generation](#timeline-generation)
    - [Teams](#teams)
    - [Scraper Runs](#scraper-runs)
@@ -167,6 +168,114 @@ Trigger rescrape for a game.
 #### `POST /games/{game_id}/resync-odds`
 
 Resync odds for a game.
+
+#### `GET /games/{game_id}/story`
+
+Get the story for a game (v2-moments format).
+
+**Response (200):**
+```json
+{
+  "gameId": 123,
+  "story": {
+    "moments": [
+      {
+        "playIds": [1, 2, 3],
+        "explicitlyNarratedPlayIds": [2],
+        "period": 1,
+        "startClock": "11:42",
+        "endClock": "11:00",
+        "scoreBefore": [0, 0],
+        "scoreAfter": [3, 0],
+        "narrative": "Durant sinks a three-pointer from the corner..."
+      }
+    ]
+  },
+  "plays": [...],
+  "validationPassed": true,
+  "validationErrors": []
+}
+```
+
+**Response (404):** No story exists for this game.
+
+---
+
+### Story Pipeline
+
+**Base path:** `/api/admin/sports/pipeline`
+
+Endpoints for managing the story generation pipeline.
+
+#### `POST /runs`
+
+Start a new pipeline run for a game.
+
+**Request:**
+```json
+{
+  "game_id": 123,
+  "auto_chain": true
+}
+```
+
+**Response:**
+```json
+{
+  "run_id": 456,
+  "run_uuid": "abc-123-def",
+  "status": "pending",
+  "message": "Pipeline run created"
+}
+```
+
+#### `GET /runs/{run_id}`
+
+Get pipeline run status and stage details.
+
+**Response:**
+```json
+{
+  "run_id": 456,
+  "run_uuid": "abc-123-def",
+  "game_id": 123,
+  "status": "running",
+  "current_stage": "GENERATE_MOMENTS",
+  "stages": [
+    {
+      "stage": "NORMALIZE_PBP",
+      "status": "success",
+      "started_at": "...",
+      "finished_at": "...",
+      "has_output": true
+    },
+    ...
+  ],
+  "stages_completed": 2,
+  "stages_total": 6,
+  "progress_percent": 33
+}
+```
+
+#### `POST /runs/{run_id}/advance`
+
+Advance to the next stage (when not using auto_chain).
+
+#### `POST /batch`
+
+Run pipeline for multiple games.
+
+**Request:**
+```json
+{
+  "game_ids": [123, 124, 125],
+  "auto_chain": true
+}
+```
+
+#### `GET /stages`
+
+Get pipeline stage definitions and descriptions.
 
 ---
 

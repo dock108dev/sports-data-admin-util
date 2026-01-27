@@ -53,7 +53,7 @@
 
 ## Story Generation
 
-**Architecture:** Condensed moment-based narratives
+**Architecture:** Condensed moment-based narratives via multi-stage pipeline
 
 A story is an ordered list of condensed moments. Each moment is a small set of PBP plays with at least one explicitly narrated play.
 
@@ -63,8 +63,10 @@ A story is an ordered list of condensed moments. Each moment is a small set of P
 - **Condensed Moment:** Small set of plays with explicit narration
 - **Traceability:** Every narrative sentence maps to backing plays
 - **No abstraction:** No headers, sections, or thematic groupings
+- **Mechanical segmentation:** Moment boundaries are deterministic
+- **OpenAI is prose-only:** It renders narratives, not structure
 
-**Code:** `api/app/services/story/`
+**Code:** `api/app/services/pipeline/` (main pipeline), `api/app/services/story/` (schemas)
 
 ## Testing
 - Add comprehensive tests for API endpoints

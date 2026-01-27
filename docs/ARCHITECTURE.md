@@ -75,15 +75,25 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 
 ## Story Generation
 
-The story system converts play-by-play data into condensed moment-based narratives.
+The story system converts play-by-play data into condensed moment-based narratives through a multi-stage pipeline.
 
 ### Architecture
 
 A story is an ordered list of **condensed moments**. Each moment is a small set of PBP plays with at least one explicitly narrated play.
 
 ```
-[PBP Plays] → [Moment Builder] → [Explicit Play Selector] → [Moment Renderer] → [Story]
+NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES → FINALIZE_MOMENTS
 ```
+
+### Pipeline Stages
+
+| Stage | Purpose |
+|-------|---------|
+| NORMALIZE_PBP | Fetch and normalize PBP with phase assignments |
+| GENERATE_MOMENTS | Segment plays into moment boundaries |
+| VALIDATE_MOMENTS | Validate against story contract |
+| RENDER_NARRATIVES | Generate narrative text via OpenAI |
+| FINALIZE_MOMENTS | Persist to database |
 
 ### Core Concept: Condensed Moment
 
@@ -98,10 +108,14 @@ A condensed moment contains:
 - **Traceability:** Every narrative sentence maps to specific plays
 - **No abstraction:** No headers, sections, or thematic groupings
 - **Ordered:** Moments follow game chronology
+- **Mechanical segmentation:** Moment boundaries are deterministic, not AI-driven
+- **OpenAI is prose-only:** It renders narratives, not structure
 
 See [story_contract.md](story_contract.md) for the authoritative specification.
 
-**Code:** `api/app/services/story/`
+See [STORY_PIPELINE.md](STORY_PIPELINE.md) for implementation details.
+
+**Code:** `api/app/services/pipeline/`
 
 ---
 
