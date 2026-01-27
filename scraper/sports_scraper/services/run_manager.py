@@ -96,7 +96,8 @@ class ScrapeRunManager:
             end_date=str(end),
         )
 
-        if not scraper and config.boxscores:
+        # NHL uses official NHL API for boxscores, so scraper is not required
+        if not scraper and config.boxscores and config.league_code != "NHL":
             raise RuntimeError(f"No scraper implemented for {config.league_code}")
 
         self._update_run(run_id, status="running", started_at=now_utc())
@@ -140,7 +141,7 @@ class ScrapeRunManager:
             # STAGE 2: Boxscore scraping (enrichment only - does NOT create games)
             # Boxscores enrich existing games created by Odds API
             # IMPORTANT: Only scrape boxscores for completed games (yesterday and earlier)
-            if config.boxscores and scraper:
+            if config.boxscores:
                 yesterday = today_utc() - timedelta(days=1)
                 boxscore_end = min(end, yesterday)
                 games_skipped = 0
@@ -154,7 +155,10 @@ class ScrapeRunManager:
                         end_date=str(end),
                         reason="All dates are today or in the future - no completed games to scrape",
                     )
-                else:
+                elif config.league_code == "NHL":
+                    # NHL: Use official NHL API for boxscores (faster and more reliable than web scraping)
+                    from .boxscore_ingestion import ingest_boxscores_via_nhl_api
+
                     logger.info(
                         "boxscore_scraping_start",
                         run_id=run_id,
@@ -164,6 +168,41 @@ class ScrapeRunManager:
                         original_end_date=str(end) if end != boxscore_end else None,
                         only_missing=config.only_missing,
                         stage="2_boxscore_enrichment",
+                        source="nhl_api",
+                    )
+
+                    try:
+                        with get_session() as session:
+                            games, enriched = ingest_boxscores_via_nhl_api(
+                                session,
+                                run_id=run_id,
+                                start_date=start,
+                                end_date=boxscore_end,
+                                only_missing=config.only_missing,
+                                updated_before=updated_before_dt,
+                            )
+                            session.commit()
+                        summary["games"] = games
+                        summary["games_enriched"] = enriched
+                    except Exception as exc:
+                        logger.exception(
+                            "nhl_boxscore_ingestion_failed",
+                            run_id=run_id,
+                            league=config.league_code,
+                            error=str(exc),
+                        )
+                elif scraper:
+                    # Other leagues: Continue using Sports Reference scraper
+                    logger.info(
+                        "boxscore_scraping_start",
+                        run_id=run_id,
+                        league=config.league_code,
+                        start_date=str(start),
+                        end_date=str(boxscore_end),
+                        original_end_date=str(end) if end != boxscore_end else None,
+                        only_missing=config.only_missing,
+                        stage="2_boxscore_enrichment",
+                        source="sports_reference",
                     )
 
                     if config.only_missing or updated_before_dt:
@@ -220,6 +259,13 @@ class ScrapeRunManager:
                                         games_skipped += 1
                             except Exception as exc:
                                 logger.exception("game_persist_failed", error=str(exc), run_id=run_id)
+                else:
+                    logger.warning(
+                        "boxscore_scraping_skipped_no_source",
+                        run_id=run_id,
+                        league=config.league_code,
+                        reason="No scraper available for this league",
+                    )
 
                 logger.info(
                     "boxscores_complete",

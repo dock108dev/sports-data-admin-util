@@ -323,21 +323,6 @@ def _validate_narrative(
                 f"Moment {moment_index}: Contains forbidden phrase '{match.group()}'"
             )
 
-    # Rule 3: Narrative must reference at least one explicitly narrated play
-    # NOTE: Disabled for now - too strict, player name matching is imperfect
-    # TODO: Re-enable with better matching (handle initials, nicknames, etc.)
-    # explicitly_narrated_ids = set(moment.get("explicitly_narrated_play_ids", []))
-    # if explicitly_narrated_ids:
-    #     explicit_plays = [p for p in moment_plays if p.get("play_index") in explicitly_narrated_ids]
-    #     all_identifiers: list[str] = []
-    #     for play in explicit_plays:
-    #         all_identifiers.extend(_extract_play_identifiers(play))
-    #     narrative_lower = narrative.lower()
-    #     found_reference = any(identifier in narrative_lower for identifier in all_identifiers)
-    #     if not found_reference and all_identifiers:
-    #         expected = ", ".join(list(set(all_identifiers))[:5])
-    #         errors.append(f"Moment {moment_index}: Narrative does not reference any explicitly narrated play. Expected one of: {expected}")
-
     return errors
 
 

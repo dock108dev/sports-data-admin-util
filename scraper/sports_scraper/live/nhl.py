@@ -1,7 +1,6 @@
-"""Live NHL feed helpers (schedule + play-by-play).
+"""Live NHL feed helpers (schedule, play-by-play, boxscores).
 
-Uses the official NHL API (api-web.nhle.com) for schedule and play-by-play data.
-This replaces the deprecated statsapi.web.nhl.com endpoints.
+Uses the official NHL API (api-web.nhle.com) for all NHL data.
 """
 
 from __future__ import annotations
@@ -14,13 +13,20 @@ import httpx
 
 from ..config import settings
 from ..logging import logger
-from ..models import NormalizedPlay, NormalizedPlayByPlay, TeamIdentity
+from ..models import (
+    NormalizedPlay,
+    NormalizedPlayByPlay,
+    NormalizedPlayerBoxscore,
+    NormalizedTeamBoxscore,
+    TeamIdentity,
+)
 from ..normalization import normalize_team_name
 from ..utils.datetime_utils import now_utc
 
 # New NHL API endpoints (api-web.nhle.com)
 NHL_SCHEDULE_URL = "https://api-web.nhle.com/v1/schedule/{date}"
 NHL_PBP_URL = "https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
+NHL_BOXSCORE_URL = "https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore"
 
 # Play index multiplier to ensure unique ordering across periods
 # Allows up to 10,000 plays per period (sufficient for multi-OT games)
@@ -71,6 +77,24 @@ class NHLLiveGame:
     away_team: TeamIdentity
     home_score: int | None
     away_score: int | None
+
+
+@dataclass
+class NHLBoxscore:
+    """Represents boxscore data from the NHL API.
+
+    Contains team and player stats parsed from the boxscore endpoint.
+    """
+
+    game_id: int
+    game_date: datetime
+    status: str
+    home_team: TeamIdentity
+    away_team: TeamIdentity
+    home_score: int
+    away_score: int
+    team_boxscores: list  # List of NormalizedTeamBoxscore
+    player_boxscores: list  # List of NormalizedPlayerBoxscore
 
 
 class NHLLiveFeedClient:
@@ -257,6 +281,14 @@ class NHLLiveFeedClient:
                 full_name = f"{first_name} {last_name}".strip()
                 player_id_to_name[player_id] = full_name
 
+        # Warn if no roster data found - player names won't be resolved
+        if not player_id_to_name:
+            logger.warning(
+                "nhl_pbp_no_roster_data",
+                game_id=game_id,
+                message="rosterSpots is empty or missing - player names will not be resolved",
+            )
+
         for play in raw_plays:
             normalized = self._normalize_play(play, team_id_to_abbr, player_id_to_name, game_id)
             if normalized:
@@ -431,6 +463,336 @@ class NHLLiveFeedClient:
             return f"Stoppage: {reason}" if reason else "Stoppage"
 
         return type_desc_key.replace("-", " ").title()
+
+    def fetch_boxscore(self, game_id: int) -> NHLBoxscore | None:
+        """Fetch boxscore from NHL API.
+
+        Args:
+            game_id: NHL game ID (e.g., 2025020767)
+
+        Returns:
+            NHLBoxscore with team and player stats, or None if fetch failed
+        """
+        url = NHL_BOXSCORE_URL.format(game_id=game_id)
+        logger.info("nhl_boxscore_fetch", url=url, game_id=game_id)
+
+        try:
+            response = self.client.get(url)
+        except Exception as exc:
+            logger.error("nhl_boxscore_fetch_error", game_id=game_id, error=str(exc))
+            return None
+
+        if response.status_code == 404:
+            logger.warning("nhl_boxscore_not_found", game_id=game_id, status=404)
+            return None
+
+        if response.status_code != 200:
+            logger.warning(
+                "nhl_boxscore_fetch_failed",
+                game_id=game_id,
+                status=response.status_code,
+                body=response.text[:200] if response.text else "",
+            )
+            return None
+
+        payload = response.json()
+        return self._parse_boxscore_response(payload, game_id)
+
+    def _parse_boxscore_response(self, payload: dict, game_id: int) -> NHLBoxscore:
+        """Parse boxscore JSON into normalized structure."""
+        # Extract game info
+        game_date_str = payload.get("gameDate", "")
+        game_date = _parse_datetime(game_date_str + "T00:00:00Z")
+        game_state = payload.get("gameState", "")
+        status = _map_nhl_game_state(game_state)
+
+        # Extract team info
+        home_team_data = payload.get("homeTeam", {})
+        away_team_data = payload.get("awayTeam", {})
+
+        home_team = _build_team_identity_from_new_api(home_team_data)
+        away_team = _build_team_identity_from_new_api(away_team_data)
+
+        home_score = _parse_int(home_team_data.get("score")) or 0
+        away_score = _parse_int(away_team_data.get("score")) or 0
+
+        # Extract team-level stats from boxscore summary
+        team_boxscores: list[NormalizedTeamBoxscore] = []
+        player_boxscores: list[NormalizedPlayerBoxscore] = []
+
+        # Parse player stats for each team
+        player_by_game_stats = payload.get("playerByGameStats", {})
+
+        # Home team players
+        home_players_data = player_by_game_stats.get("homeTeam", {})
+        home_players = self._parse_team_players(home_players_data, home_team, game_id)
+        player_boxscores.extend(home_players)
+
+        # Away team players
+        away_players_data = player_by_game_stats.get("awayTeam", {})
+        away_players = self._parse_team_players(away_players_data, away_team, game_id)
+        player_boxscores.extend(away_players)
+
+        # Build team boxscores from aggregated player stats
+        home_team_boxscore = self._build_team_boxscore_from_players(
+            home_team, is_home=True, score=home_score, players=home_players
+        )
+        away_team_boxscore = self._build_team_boxscore_from_players(
+            away_team, is_home=False, score=away_score, players=away_players
+        )
+        team_boxscores = [away_team_boxscore, home_team_boxscore]
+
+        logger.info(
+            "nhl_boxscore_parsed",
+            game_id=game_id,
+            status=status,
+            home_score=home_score,
+            away_score=away_score,
+            home_players=len([p for p in player_boxscores if p.team.abbreviation == home_team.abbreviation]),
+            away_players=len([p for p in player_boxscores if p.team.abbreviation == away_team.abbreviation]),
+        )
+
+        return NHLBoxscore(
+            game_id=game_id,
+            game_date=game_date,
+            status=status,
+            home_team=home_team,
+            away_team=away_team,
+            home_score=home_score,
+            away_score=away_score,
+            team_boxscores=team_boxscores,
+            player_boxscores=player_boxscores,
+        )
+
+    def _parse_team_players(
+        self,
+        team_data: dict,
+        team_identity: TeamIdentity,
+        game_id: int,
+    ) -> list[NormalizedPlayerBoxscore]:
+        """Parse all players for a team from playerByGameStats."""
+        players: list[NormalizedPlayerBoxscore] = []
+
+        # Parse forwards
+        for player_data in team_data.get("forwards", []):
+            player = self._parse_skater_stats(player_data, team_identity, game_id)
+            if player:
+                players.append(player)
+
+        # Parse defense
+        for player_data in team_data.get("defense", []):
+            player = self._parse_skater_stats(player_data, team_identity, game_id)
+            if player:
+                players.append(player)
+
+        # Parse goalies
+        for player_data in team_data.get("goalies", []):
+            player = self._parse_goalie_stats(player_data, team_identity, game_id)
+            if player:
+                players.append(player)
+
+        return players
+
+    def _parse_skater_stats(
+        self,
+        player_data: dict,
+        team_identity: TeamIdentity,
+        game_id: int,
+    ) -> NormalizedPlayerBoxscore | None:
+        """Parse skater stats (forwards/defense) from NHL API.
+
+        NHL API field mappings:
+        - playerId -> player_external_ref
+        - name.default -> player_name
+        - toi ("12:34") -> minutes (12.57)
+        - goals, assists, points -> same
+        - sog -> shots_on_goal
+        - plusMinus -> raw_stats
+        - pim -> penalties
+        - hits, blocks -> raw_stats
+        """
+        player_id = player_data.get("playerId")
+        if not player_id:
+            return None
+
+        # Get player name
+        name_data = player_data.get("name", {})
+        player_name = name_data.get("default", "")
+        if not player_name:
+            logger.warning(
+                "nhl_boxscore_player_no_name",
+                game_id=game_id,
+                player_id=player_id,
+            )
+            return None
+
+        # Parse time on ice (format: "12:34")
+        toi = player_data.get("toi", "")
+        minutes = _parse_toi_to_minutes(toi)
+
+        # Build raw stats dict for additional fields
+        raw_stats = {
+            "plusMinus": player_data.get("plusMinus"),
+            "pim": player_data.get("pim"),
+            "hits": player_data.get("hits"),
+            "blocks": player_data.get("blockedShots"),
+            "faceoffWinningPctg": player_data.get("faceoffWinningPctg"),
+            "powerPlayGoals": player_data.get("powerPlayGoals"),
+            "shorthandedGoals": player_data.get("shorthandedGoals"),
+            "shifts": player_data.get("shifts"),
+        }
+        # Remove None values
+        raw_stats = {k: v for k, v in raw_stats.items() if v is not None}
+
+        return NormalizedPlayerBoxscore(
+            player_id=str(player_id),
+            player_name=player_name,
+            team=team_identity,
+            player_role="skater",
+            minutes=minutes,
+            goals=_parse_int(player_data.get("goals")),
+            assists=_parse_int(player_data.get("assists")),
+            points=_parse_int(player_data.get("points")),
+            shots_on_goal=_parse_int(player_data.get("sog")),
+            penalties=_parse_int(player_data.get("pim")),
+            # Goalie stats remain None for skaters
+            saves=None,
+            goals_against=None,
+            shots_against=None,
+            save_percentage=None,
+            raw_stats=raw_stats,
+        )
+
+    def _parse_goalie_stats(
+        self,
+        player_data: dict,
+        team_identity: TeamIdentity,
+        game_id: int,
+    ) -> NormalizedPlayerBoxscore | None:
+        """Parse goalie stats from NHL API.
+
+        NHL API field mappings:
+        - playerId -> player_external_ref
+        - name.default -> player_name
+        - toi ("45:00") -> minutes (45.0)
+        - saveShotsAgainst ("25/27") -> saves, shots_against
+        - goalsAgainst -> goals_against
+        - savePctg -> save_percentage
+        """
+        player_id = player_data.get("playerId")
+        if not player_id:
+            return None
+
+        # Get player name
+        name_data = player_data.get("name", {})
+        player_name = name_data.get("default", "")
+        if not player_name:
+            logger.warning(
+                "nhl_boxscore_goalie_no_name",
+                game_id=game_id,
+                player_id=player_id,
+            )
+            return None
+
+        # Parse time on ice (format: "45:00")
+        toi = player_data.get("toi", "")
+        minutes = _parse_toi_to_minutes(toi)
+
+        # Parse saveShotsAgainst (format: "25/27" -> saves=25, shots_against=27)
+        save_shots = player_data.get("saveShotsAgainst", "")
+        saves, shots_against = _parse_save_shots(save_shots)
+
+        # Get goals against
+        goals_against = _parse_int(player_data.get("goalsAgainst"))
+
+        # Get save percentage (comes as decimal like 0.926)
+        save_pctg = player_data.get("savePctg")
+        save_percentage = float(save_pctg) if save_pctg is not None else None
+
+        # Build raw stats dict for additional fields
+        raw_stats = {
+            "evenStrengthShotsAgainst": player_data.get("evenStrengthShotsAgainst"),
+            "powerPlayShotsAgainst": player_data.get("powerPlayShotsAgainst"),
+            "shorthandedShotsAgainst": player_data.get("shorthandedShotsAgainst"),
+            "pim": player_data.get("pim"),
+        }
+        # Remove None values
+        raw_stats = {k: v for k, v in raw_stats.items() if v is not None}
+
+        return NormalizedPlayerBoxscore(
+            player_id=str(player_id),
+            player_name=player_name,
+            team=team_identity,
+            player_role="goalie",
+            minutes=minutes,
+            # Goalie stats
+            saves=saves,
+            goals_against=goals_against,
+            shots_against=shots_against,
+            save_percentage=save_percentage,
+            # Skater stats remain None for goalies
+            goals=None,
+            assists=None,
+            points=None,
+            shots_on_goal=None,
+            penalties=_parse_int(player_data.get("pim")),
+            raw_stats=raw_stats,
+        )
+
+    def _build_team_boxscore_from_players(
+        self,
+        team_identity: TeamIdentity,
+        is_home: bool,
+        score: int,
+        players: list[NormalizedPlayerBoxscore],
+    ) -> NormalizedTeamBoxscore:
+        """Build team boxscore by aggregating player stats."""
+        # Aggregate skater stats
+        skaters = [p for p in players if p.player_role == "skater"]
+
+        total_shots = sum(p.shots_on_goal or 0 for p in skaters)
+        total_pim = sum(p.penalties or 0 for p in skaters)
+        total_assists = sum(p.assists or 0 for p in skaters)
+
+        return NormalizedTeamBoxscore(
+            team=team_identity,
+            is_home=is_home,
+            points=score,
+            shots_on_goal=total_shots if total_shots > 0 else None,
+            penalty_minutes=total_pim if total_pim > 0 else None,
+            assists=total_assists if total_assists > 0 else None,
+            raw_stats={},
+        )
+
+
+def _parse_toi_to_minutes(toi: str) -> float | None:
+    """Parse time on ice string (e.g., '12:34') to decimal minutes (12.57)."""
+    if not toi:
+        return None
+    try:
+        parts = toi.split(":")
+        if len(parts) == 2:
+            mins = int(parts[0])
+            secs = int(parts[1])
+            return round(mins + secs / 60, 2)
+    except (ValueError, IndexError):
+        pass
+    return None
+
+
+def _parse_save_shots(save_shots: str) -> tuple[int | None, int | None]:
+    """Parse saveShotsAgainst string (e.g., '25/27') to (saves, shots_against)."""
+    if not save_shots:
+        return None, None
+    try:
+        parts = save_shots.split("/")
+        if len(parts) == 2:
+            saves = int(parts[0])
+            shots_against = int(parts[1])
+            return saves, shots_against
+    except (ValueError, IndexError):
+        pass
+    return None, None
 
 
 def _build_team_identity_from_new_api(team_data: dict) -> TeamIdentity:

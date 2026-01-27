@@ -4,10 +4,10 @@ Multi-stage pipeline for generating condensed moment-based game stories from pla
 
 ## Overview
 
-The pipeline transforms raw PBP data into narrative stories through 6 sequential stages. Each stage produces output consumed by the next stage.
+The pipeline transforms raw PBP data into narrative stories through 5 sequential stages. Each stage produces output consumed by the next stage.
 
 ```
-NORMALIZE_PBP → DERIVE_SIGNALS → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES → FINALIZE_MOMENTS
+NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES → FINALIZE_MOMENTS
 ```
 
 **Location:** `api/app/services/pipeline/`
@@ -35,17 +35,7 @@ NORMALIZE_PBP → DERIVE_SIGNALS → GENERATE_MOMENTS → VALIDATE_MOMENTS → R
 }
 ```
 
-### 2. DERIVE_SIGNALS
-
-**Purpose:** Compute derived metrics from normalized PBP.
-
-**Status:** Stub - marked for deletion per story contract.
-
-The story contract specifies that moments are derived directly from PBP, not from intermediate signals. This stage exists for pipeline structure compatibility but outputs `{"skipped": true}`.
-
-**Implementation:** `stages/stubs.py`
-
-### 3. GENERATE_MOMENTS
+### 2. GENERATE_MOMENTS
 
 **Purpose:** Segment PBP into condensed moments with explicit narration targets.
 
@@ -78,7 +68,7 @@ The story contract specifies that moments are derived directly from PBP, not fro
 }
 ```
 
-### 4. VALIDATE_MOMENTS
+### 3. VALIDATE_MOMENTS
 
 **Purpose:** Validate moment structure against story contract requirements.
 
@@ -109,7 +99,7 @@ The story contract specifies that moments are derived directly from PBP, not fro
 
 **Failure Behavior:** Stage fails if validation errors exist. No auto-correction.
 
-### 5. RENDER_NARRATIVES
+### 4. RENDER_NARRATIVES
 
 **Purpose:** Generate narrative text for each moment using OpenAI.
 
@@ -149,7 +139,7 @@ The story contract specifies that moments are derived directly from PBP, not fro
 }
 ```
 
-### 6. FINALIZE_MOMENTS
+### 5. FINALIZE_MOMENTS
 
 **Purpose:** Persist completed story to database.
 
@@ -224,14 +214,14 @@ Returns the persisted story exactly as stored:
 }
 ```
 
-Returns 404 if no v2-moments story exists.
+Returns 404 if no story exists.
 
 ### Discovery
 
 Games with stories are discoverable via the `has_story` flag:
 
 ```sql
-has_story = has_compact_story IS TRUE OR moments_json IS NOT NULL
+has_story = moments_json IS NOT NULL
 ```
 
 ## Key Principles

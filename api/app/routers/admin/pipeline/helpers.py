@@ -63,13 +63,6 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
             "has_overtime": output.get("has_overtime", False),
             "phases": list(output.get("phase_boundaries", {}).keys()),
         }
-    elif stage == "DERIVE_SIGNALS":
-        return {
-            "lead_state_count": len(output.get("lead_states", [])),
-            "tier_crossing_count": len(output.get("tier_crossings", [])),
-            "run_count": len(output.get("runs", [])),
-            "thresholds": output.get("thresholds", []),
-        }
     elif stage == "GENERATE_MOMENTS":
         # New format: {"moments": [...]}
         moments = output.get("moments", [])
@@ -236,7 +229,6 @@ def get_stage_description(stage: PipelineStage) -> str:
     """Get human-readable description for a stage."""
     descriptions = {
         PipelineStage.NORMALIZE_PBP: "Read PBP data from database and normalize with phase assignments",
-        PipelineStage.DERIVE_SIGNALS: "Compute lead states, tier crossings, and scoring runs",
         PipelineStage.GENERATE_MOMENTS: "Segment plays into condensed moments with explicit narration targets",
         PipelineStage.VALIDATE_MOMENTS: "Validate moment structure, ordering, and coverage",
         PipelineStage.RENDER_NARRATIVES: "Generate narrative text for each moment using OpenAI",

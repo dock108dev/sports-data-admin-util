@@ -30,13 +30,16 @@ __all__ = [
 
 
 # Scraper registry - maps league codes to scraper classes
+# NHL uses the official NHL API for boxscores and PBP (see live/nhl.py),
+# so it's not registered here. The NHLSportsReferenceScraper is kept for
+# reference but not actively used.
 _SCRAPER_REGISTRY: Dict[str, Type[BaseSportsReferenceScraper]] = {
     "NBA": NBASportsReferenceScraper,
     "NCAAB": NCAABSportsReferenceScraper,
     "NFL": NFLSportsReferenceScraper,
     "NCAAF": NCAAFSportsReferenceScraper,
     "MLB": MLBSportsReferenceScraper,
-    "NHL": NHLSportsReferenceScraper,
+    # "NHL": NHLSportsReferenceScraper,  # Now uses NHL API (live/nhl.py)
 }
 
 

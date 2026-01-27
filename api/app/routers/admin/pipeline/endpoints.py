@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from typing import Any
 
@@ -657,12 +657,6 @@ async def compare_stage_outputs(
         chapters_a = output_a.get("chapter_count", 0)
         chapters_b = output_b.get("chapter_count", 0)
         differences["chapter_count_delta"] = chapters_b - chapters_a
-    elif stage == "DERIVE_SIGNALS":
-        crossings_a = len(output_a.get("tier_crossings", []))
-        crossings_b = len(output_b.get("tier_crossings", []))
-        differences["tier_crossings_delta"] = crossings_b - crossings_a
-        differences["runs_count_a"] = len(output_a.get("runs", []))
-        differences["runs_count_b"] = len(output_b.get("runs", []))
     elif stage == "VALIDATE_MOMENTS":
         differences["passed_a"] = output_a.get("passed", False)
         differences["passed_b"] = output_b.get("passed", False)

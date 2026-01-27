@@ -47,8 +47,8 @@ Source (NBA/NHL API)
     → sports_game_plays (persisted)
     → NORMALIZE_PBP stage (pipeline)
     → Normalized PBP (pipeline stage output + snapshot)
-    → DERIVE_SIGNALS stage
-    → Timeline generation
+    → GENERATE_MOMENTS stage
+    → Story generation
 ```
 """
 

@@ -18,10 +18,10 @@ from .game_snapshot_models import (
     GameSnapshot,
     GameSnapshotResponse,
     GameStorySnapshot,
+    MomentSnapshot,
     PbpResponse,
     SocialPostSnapshot,
     SocialResponse,
-    StorySectionSnapshot,
     TimelineArtifactStoredResponse,
     TimelineDiagnosticResponse,
     chunk_plays_by_period,
@@ -534,21 +534,27 @@ async def get_game_story(
         {
           "game_id": 123,
           "sport": "NBA",
-          "story_version": "2.0.0",
-          "sections": [...],
-          "section_count": 5,
-          "compact_story": "The Lakers and Celtics traded blows...",
-          "word_count": 712,
-          "quality": "MEDIUM",
-          "reading_time_estimate_minutes": 3.56,
+          "story_version": "v2-moments",
+          "moments": [
+            {
+              "period": 1,
+              "start_clock": "12:00",
+              "end_clock": "10:45",
+              "score_before": {"home": 0, "away": 0},
+              "score_after": {"home": 5, "away": 2},
+              "narrative": "The Lakers came out strong...",
+              "play_count": 3
+            }
+          ],
+          "moment_count": 15,
           "generated_at": "2026-01-22T15:30:00Z",
           "has_story": true
         }
     """
-    # Query for cached story - READ ONLY, no generation
+    # Query for story with moments
     query = select(db_models.SportsGameStory).where(
         db_models.SportsGameStory.game_id == game_id,
-        db_models.SportsGameStory.has_compact_story.is_(True),
+        db_models.SportsGameStory.moments_json.isnot(None),
     )
     result = await session.execute(query)
     cached = result.scalar_one_or_none()
@@ -559,33 +565,27 @@ async def get_game_story(
             detail="Story not found. Stories are generated via admin.",
         )
 
-    # Reconstruct sections from cached data
-    sections = []
-    for sec_data in cached.summaries_json or []:
-        sections.append(
-            StorySectionSnapshot(
-                section_index=sec_data["section_index"],
-                beat_type=sec_data["beat_type"],
-                header=sec_data["header"],
-                start_score=sec_data["start_score"],
-                end_score=sec_data["end_score"],
-                notes=sec_data.get("notes", []),
+    # Build moment snapshots from stored data
+    moments = []
+    for moment_data in cached.moments_json or []:
+        moments.append(
+            MomentSnapshot(
+                period=moment_data.get("period", 1),
+                start_clock=moment_data.get("start_clock"),
+                end_clock=moment_data.get("end_clock"),
+                score_before=moment_data.get("score_before", {}),
+                score_after=moment_data.get("score_after", {}),
+                narrative=moment_data.get("narrative", ""),
+                play_count=len(moment_data.get("play_ids", [])),
             )
         )
-
-    # Extract metadata
-    metadata = cached.titles_json or {}
 
     return GameStorySnapshot(
         game_id=cached.game_id,
         sport=cached.sport,
         story_version=cached.story_version,
-        sections=sections,
-        section_count=len(sections),
-        compact_story=cached.compact_story,
-        word_count=metadata.get("word_count"),
-        quality=metadata.get("quality"),
-        reading_time_estimate_minutes=cached.reading_time_minutes,
+        moments=moments,
+        moment_count=len(moments),
         generated_at=cached.generated_at,
-        has_story=cached.has_compact_story,
+        has_story=True,
     )

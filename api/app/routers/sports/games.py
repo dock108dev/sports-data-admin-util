@@ -6,7 +6,7 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import desc, exists, func, or_, select
+from sqlalchemy import desc, exists, func, select
 from sqlalchemy.orm import selectinload
 
 from ... import db_models
@@ -153,15 +153,11 @@ async def list_games(
             select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
         )
     )
-    # has_story: legacy (has_compact_story) OR v2 (moments_json not null)
     with_story_count_stmt = count_stmt.where(
         exists(
             select(1).where(
                 db_models.SportsGameStory.game_id == db_models.SportsGame.id,
-                or_(
-                    db_models.SportsGameStory.has_compact_story.is_(True),
-                    db_models.SportsGameStory.moments_json.isnot(None),
-                ),
+                db_models.SportsGameStory.moments_json.isnot(None),
             )
         )
     )
@@ -176,15 +172,11 @@ async def list_games(
     with_story_count = (await session.execute(with_story_count_stmt)).scalar_one()
 
     # Query which games have stories in SportsGameStory table
-    # has_story: legacy (has_compact_story) OR v2 (moments_json not null)
     game_ids = [game.id for game in games]
     if game_ids:
         story_check_stmt = select(db_models.SportsGameStory.game_id).where(
             db_models.SportsGameStory.game_id.in_(game_ids),
-            or_(
-                db_models.SportsGameStory.has_compact_story.is_(True),
-                db_models.SportsGameStory.moments_json.isnot(None),
-            ),
+            db_models.SportsGameStory.moments_json.isnot(None),
         )
         story_result = await session.execute(story_check_stmt)
         games_with_stories = set(story_result.scalars().all())
@@ -353,14 +345,10 @@ async def get_game(
     ]
 
     # Check if game has a story in SportsGameStory table
-    # has_story: legacy (has_compact_story) OR v2 (moments_json not null)
     story_check = await session.execute(
         select(db_models.SportsGameStory.id).where(
             db_models.SportsGameStory.game_id == game_id,
-            or_(
-                db_models.SportsGameStory.has_compact_story.is_(True),
-                db_models.SportsGameStory.moments_json.isnot(None),
-            ),
+            db_models.SportsGameStory.moments_json.isnot(None),
         ).limit(1)
     )
     has_story = story_check.scalar() is not None
