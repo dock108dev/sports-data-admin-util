@@ -49,13 +49,21 @@ GUARANTEES
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
 import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import select
+
+from .... import db_models
 from ..models import StageInput, StageOutput
 from ...openai_client import get_openai_client
+
+if TYPE_CHECKING:
+    from ....db import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +159,7 @@ Rules: Describe *starred plays. Concrete actions only (shots/fouls/scores). No: 
 
 {moments_block}
 
-JSON array response: [{{"i":0,"n":"narrative"}},...]"""
+JSON response format: {{"items":[{{"i":0,"n":"narrative"}},{{"i":1,"n":"narrative"}},...]}}`"""
 
     return prompt
 
@@ -338,13 +346,84 @@ def _validate_narrative(
 
         if not found_reference and all_identifiers:
             # Provide helpful error with expected identifiers
-            expected = ", ".join(set(all_identifiers)[:5])  # Show first 5
+            expected = ", ".join(list(set(all_identifiers))[:5])  # Show first 5
             errors.append(
                 f"Moment {moment_index}: Narrative does not reference any "
                 f"explicitly narrated play. Expected one of: {expected}"
             )
 
     return errors
+
+
+def _get_batch_cache_key(moment_indices: list[int]) -> str:
+    """Generate a cache key for a batch of moments.
+
+    Args:
+        moment_indices: List of moment indices in the batch
+
+    Returns:
+        SHA256 hash of the sorted indices (first 16 chars)
+    """
+    key_str = ",".join(str(i) for i in sorted(moment_indices))
+    return hashlib.sha256(key_str.encode()).hexdigest()[:16]
+
+
+async def _get_cached_response(
+    session: "AsyncSession",
+    game_id: int,
+    batch_key: str,
+) -> dict[str, Any] | None:
+    """Check cache for an existing OpenAI response.
+
+    Args:
+        session: Database session
+        game_id: Game ID
+        batch_key: Cache key for the batch
+
+    Returns:
+        Cached response data or None if not found
+    """
+    result = await session.execute(
+        select(db_models.OpenAIResponseCache).where(
+            db_models.OpenAIResponseCache.game_id == game_id,
+            db_models.OpenAIResponseCache.batch_key == batch_key,
+        )
+    )
+    cached = result.scalar_one_or_none()
+    if cached:
+        logger.info(f"Cache HIT for game {game_id} batch {batch_key}")
+        return cached.response_json
+    return None
+
+
+async def _store_cached_response(
+    session: "AsyncSession",
+    game_id: int,
+    batch_key: str,
+    prompt_preview: str,
+    response_data: dict[str, Any],
+    model: str,
+) -> None:
+    """Store an OpenAI response in the cache.
+
+    Args:
+        session: Database session
+        game_id: Game ID
+        batch_key: Cache key for the batch
+        prompt_preview: Truncated prompt for debugging
+        response_data: The parsed response from OpenAI
+        model: Model name used
+    """
+    cache_entry = db_models.OpenAIResponseCache(
+        game_id=game_id,
+        batch_key=batch_key,
+        prompt_preview=prompt_preview[:2000] if prompt_preview else None,
+        response_json=response_data,
+        model=model,
+    )
+    session.add(cache_entry)
+    await session.flush()
+    logger.info(f"Cache STORED for game {game_id} batch {batch_key}")
 
 
 async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
@@ -446,15 +525,16 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         if not valid_batch:
             continue
 
-        # Build batch prompt
+        # Build batch prompt and call OpenAI
         prompt = _build_batch_prompt(valid_batch, game_context)
 
-        # Call OpenAI for this batch
         try:
             total_openai_calls += 1
             # More tokens for batch response
             max_tokens = 150 * len(valid_batch)
-            response_json = openai_client.generate(
+            # Run sync OpenAI call in thread to avoid blocking async event loop
+            response_json = await asyncio.to_thread(
+                openai_client.generate,
                 prompt=prompt,
                 temperature=0.3,
                 max_tokens=max_tokens,
@@ -463,41 +543,13 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             # Parse batch response
             response_data = json.loads(response_json)
 
-            # Build lookup of narratives by moment_index
-            # Supports both compact ("i", "n") and full ("moment_index", "narrative") keys
-            narrative_lookup: dict[int, str] = {}
-            for item in response_data:
-                idx = item.get("i") or item.get("moment_index")
-                narrative = item.get("n") or item.get("narrative", "")
-                if idx is not None:
-                    narrative_lookup[idx] = narrative
-
-            # Process each moment in the batch
-            for moment_index, moment, moment_plays in valid_batch:
-                narrative = narrative_lookup.get(moment_index, "")
-
-                # Validate narrative
-                validation_errors = _validate_narrative(
-                    narrative, moment, moment_plays, moment_index
-                )
-                if validation_errors:
-                    all_validation_errors.extend(validation_errors)
-                    output.add_log(
-                        f"Moment {moment_index}: Narrative validation failed",
-                        level="error",
-                    )
-                else:
-                    successful_renders += 1
-
-                enriched_moments[moment_index] = {**moment, "narrative": narrative}
-
         except json.JSONDecodeError as e:
             all_validation_errors.append(
                 f"Batch {batch_start}-{batch_end}: OpenAI returned invalid JSON: {e}"
             )
-            # Fill in empty narratives for this batch
             for moment_index, moment, _ in valid_batch:
                 enriched_moments[moment_index] = {**moment, "narrative": ""}
+            continue
 
         except Exception as e:
             all_validation_errors.append(
@@ -505,6 +557,42 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             )
             for moment_index, moment, _ in valid_batch:
                 enriched_moments[moment_index] = {**moment, "narrative": ""}
+            continue
+
+        # Process response (from cache or fresh API call)
+        # Extract items array from response object
+        # OpenAI JSON mode returns objects, not arrays
+        items = response_data.get("items", [])
+        if not items and isinstance(response_data, list):
+            items = response_data  # Fallback if it's already a list
+
+        # Build lookup of narratives by moment_index
+        # Supports both compact ("i", "n") and full ("moment_index", "narrative") keys
+        narrative_lookup: dict[int, str] = {}
+        for item in items:
+            idx = item.get("i") if item.get("i") is not None else item.get("moment_index")
+            narrative = item.get("n") or item.get("narrative", "")
+            if idx is not None:
+                narrative_lookup[idx] = narrative
+
+        # Process each moment in the batch
+        for moment_index, moment, moment_plays in valid_batch:
+            narrative = narrative_lookup.get(moment_index, "")
+
+            # Validate narrative
+            validation_errors = _validate_narrative(
+                narrative, moment, moment_plays, moment_index
+            )
+            if validation_errors:
+                all_validation_errors.extend(validation_errors)
+                output.add_log(
+                    f"Moment {moment_index}: Narrative validation failed",
+                    level="error",
+                )
+            else:
+                successful_renders += 1
+
+            enriched_moments[moment_index] = {**moment, "narrative": narrative}
 
     output.add_log(f"OpenAI calls made: {total_openai_calls}")
     output.add_log(f"Successful renders: {successful_renders}/{len(moments)}")

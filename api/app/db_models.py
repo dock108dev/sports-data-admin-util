@@ -1531,3 +1531,37 @@ class SportsGameStory(Base):
         Index("idx_game_stories_sport", "sport"),
         Index("idx_game_stories_generated_at", "generated_at"),
     )
+
+
+class OpenAIResponseCache(Base):
+    """Cache for OpenAI API responses to avoid redundant calls during testing.
+
+    Stores responses keyed by game_id + batch_key (hash of moment indices).
+    This allows re-running pipelines without hitting OpenAI again.
+    """
+
+    __tablename__ = "openai_response_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False
+    )
+    # Identifies which batch of moments this response is for
+    batch_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    # The prompt sent to OpenAI (truncated for storage)
+    prompt_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Full response from OpenAI
+    response_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    # Model used
+    model: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    game: Mapped[SportsGame] = relationship("SportsGame")
+
+    __table_args__ = (
+        UniqueConstraint("game_id", "batch_key", name="uq_openai_cache_game_batch"),
+        Index("idx_openai_cache_game_id", "game_id"),
+    )
