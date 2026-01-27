@@ -587,9 +587,10 @@ async def get_game_story(
     ]
 
     # Build response plays (only those referenced by moments, ordered by play_index)
+    # NOTE: playId uses play_index (not DB id) to match moment.playIds contract
     response_plays = [
         StoryPlay(
-            playId=play.id,
+            playId=play.play_index,
             playIndex=play.play_index,
             period=play.quarter or 1,
             clock=play.game_clock,
