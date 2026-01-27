@@ -1083,6 +1083,65 @@ class GamePipelineStage(Base):
         )
 
 
+class BulkStoryJobStatus(str, Enum):
+    """Status of a bulk story generation job."""
+
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+
+
+class BulkStoryGenerationJob(Base):
+    """Tracks bulk story generation jobs.
+
+    This table persists bulk job state so it survives worker restarts
+    and is consistent across multiple worker processes.
+    """
+
+    __tablename__ = "bulk_story_generation_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_uuid: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), nullable=False, server_default=text("gen_random_uuid()")
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="pending", index=True
+    )
+    start_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    end_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    leagues: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    force_regenerate: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    total_games: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    current_game: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    successful: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    errors_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    triggered_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+    __table_args__ = (Index("idx_bulk_story_jobs_uuid", "job_uuid", unique=True),)
+
+
 class PBPSnapshotType(str, Enum):
     """Type of PBP snapshot."""
 
