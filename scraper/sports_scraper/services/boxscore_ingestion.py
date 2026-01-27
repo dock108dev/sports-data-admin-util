@@ -67,13 +67,11 @@ def select_games_for_boxscores_nhl_api(
         db_models.SportsGame.league_id == league.id,
         db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
         db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
-        # nhl_game_pk is required for NHL API boxscore fetch
-        nhl_game_pk_expr.isnot(None),
     )
 
-    # Only fetch boxscores for final games (not scheduled or live)
-    final_status = db_models.GameStatus.final.value
-    query = query.filter(db_models.SportsGame.status == final_status)
+    # No status filter - like NBA, we use date range (yesterday and earlier) to determine
+    # which games should have boxscores. The NHL API will tell us if the game is complete,
+    # and persist_game_payload will update the status to "final".
 
     if only_missing:
         has_boxscores = exists().where(

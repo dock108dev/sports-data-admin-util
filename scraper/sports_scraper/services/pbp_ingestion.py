@@ -127,12 +127,9 @@ def select_games_for_pbp_nhl_api(
         nhl_game_pk_expr.isnot(None),
     )
 
-    # Only fetch PBP for final or live games (not scheduled)
-    final_status = db_models.GameStatus.final.value
-    live_status = db_models.GameStatus.live.value
-    query = query.filter(
-        db_models.SportsGame.status.in_([final_status, live_status])
-    )
+    # No status filter - like NBA's select_games_for_pbp_sportsref, we use date range
+    # (run_manager limits to yesterday and earlier) to determine which games should
+    # have PBP. The NHL API will tell us if data is available.
 
     if only_missing:
         has_pbp = exists().where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
@@ -186,9 +183,10 @@ def _populate_nhl_game_ids(
 
     # Find games without nhl_game_pk
     nhl_game_pk_expr = db_models.SportsGame.external_ids["nhl_game_pk"].astext
-    final_status = db_models.GameStatus.final.value
-    live_status = db_models.GameStatus.live.value
 
+    # No status filter - we populate nhl_game_pk for all games in date range.
+    # Like NBA, we use date range (yesterday and earlier) to determine which games
+    # should be complete. The NHL API will confirm actual status.
     games_missing_pk = (
         session.query(
             db_models.SportsGame.id,
@@ -200,7 +198,6 @@ def _populate_nhl_game_ids(
             db_models.SportsGame.league_id == league.id,
             db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
             db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
-            db_models.SportsGame.status.in_([final_status, live_status]),
             or_(
                 nhl_game_pk_expr.is_(None),
                 nhl_game_pk_expr == "",
