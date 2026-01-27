@@ -602,14 +602,21 @@ class NHLLiveFeedClient:
         """Parse skater stats (forwards/defense) from NHL API.
 
         NHL API field mappings:
-        - playerId -> player_external_ref
+        - playerId -> player_id
+        - sweaterNumber -> sweater_number
         - name.default -> player_name
+        - position -> position
         - toi ("12:34") -> minutes (12.57)
         - goals, assists, points -> same
         - sog -> shots_on_goal
-        - plusMinus -> raw_stats
+        - plusMinus -> plus_minus
         - pim -> penalties
-        - hits, blocks -> raw_stats
+        - hits -> hits
+        - blockedShots -> blocked_shots
+        - shifts -> shifts
+        - giveaways -> giveaways
+        - takeaways -> takeaways
+        - faceoffWinningPctg -> faceoff_pct
         """
         player_id = player_data.get("playerId")
         if not player_id:
@@ -630,16 +637,15 @@ class NHLLiveFeedClient:
         toi = player_data.get("toi", "")
         minutes = _parse_toi_to_minutes(toi)
 
-        # Build raw stats dict for additional fields
+        # Parse faceoff percentage (comes as decimal like 0.55)
+        faceoff_pct = player_data.get("faceoffWinningPctg")
+        if faceoff_pct is not None:
+            faceoff_pct = round(float(faceoff_pct) * 100, 1) if faceoff_pct else None
+
+        # Build raw stats dict for power play/shorthanded goals
         raw_stats = {
-            "plusMinus": player_data.get("plusMinus"),
-            "pim": player_data.get("pim"),
-            "hits": player_data.get("hits"),
-            "blocks": player_data.get("blockedShots"),
-            "faceoffWinningPctg": player_data.get("faceoffWinningPctg"),
             "powerPlayGoals": player_data.get("powerPlayGoals"),
             "shorthandedGoals": player_data.get("shorthandedGoals"),
-            "shifts": player_data.get("shifts"),
         }
         # Remove None values
         raw_stats = {k: v for k, v in raw_stats.items() if v is not None}
@@ -649,12 +655,21 @@ class NHLLiveFeedClient:
             player_name=player_name,
             team=team_identity,
             player_role="skater",
+            position=player_data.get("position"),
+            sweater_number=_parse_int(player_data.get("sweaterNumber")),
             minutes=minutes,
             goals=_parse_int(player_data.get("goals")),
             assists=_parse_int(player_data.get("assists")),
             points=_parse_int(player_data.get("points")),
             shots_on_goal=_parse_int(player_data.get("sog")),
             penalties=_parse_int(player_data.get("pim")),
+            plus_minus=_parse_int(player_data.get("plusMinus")),
+            hits=_parse_int(player_data.get("hits")),
+            blocked_shots=_parse_int(player_data.get("blockedShots")),
+            shifts=_parse_int(player_data.get("shifts")),
+            giveaways=_parse_int(player_data.get("giveaways")),
+            takeaways=_parse_int(player_data.get("takeaways")),
+            faceoff_pct=faceoff_pct,
             # Goalie stats remain None for skaters
             saves=None,
             goals_against=None,
@@ -672,7 +687,8 @@ class NHLLiveFeedClient:
         """Parse goalie stats from NHL API.
 
         NHL API field mappings:
-        - playerId -> player_external_ref
+        - playerId -> player_id
+        - sweaterNumber -> sweater_number
         - name.default -> player_name
         - toi ("45:00") -> minutes (45.0)
         - saveShotsAgainst ("25/27") -> saves, shots_against
@@ -707,14 +723,13 @@ class NHLLiveFeedClient:
 
         # Get save percentage (comes as decimal like 0.926)
         save_pctg = player_data.get("savePctg")
-        save_percentage = float(save_pctg) if save_pctg is not None else None
+        save_percentage = round(float(save_pctg) * 100, 1) if save_pctg is not None else None
 
         # Build raw stats dict for additional fields
         raw_stats = {
             "evenStrengthShotsAgainst": player_data.get("evenStrengthShotsAgainst"),
             "powerPlayShotsAgainst": player_data.get("powerPlayShotsAgainst"),
             "shorthandedShotsAgainst": player_data.get("shorthandedShotsAgainst"),
-            "pim": player_data.get("pim"),
         }
         # Remove None values
         raw_stats = {k: v for k, v in raw_stats.items() if v is not None}
@@ -724,6 +739,8 @@ class NHLLiveFeedClient:
             player_name=player_name,
             team=team_identity,
             player_role="goalie",
+            position="G",
+            sweater_number=_parse_int(player_data.get("sweaterNumber")),
             minutes=minutes,
             # Goalie stats
             saves=saves,
@@ -736,6 +753,13 @@ class NHLLiveFeedClient:
             points=None,
             shots_on_goal=None,
             penalties=_parse_int(player_data.get("pim")),
+            plus_minus=None,
+            hits=None,
+            blocked_shots=None,
+            shifts=None,
+            giveaways=None,
+            takeaways=None,
+            faceoff_pct=None,
             raw_stats=raw_stats,
         )
 

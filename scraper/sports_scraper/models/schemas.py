@@ -54,6 +54,8 @@ class NormalizedPlayerBoxscore(BaseModel):
     player_name: str
     team: TeamIdentity
     player_role: str | None = None  # "skater" or "goalie" for NHL; None for other sports
+    position: str | None = None  # C, LW, RW, D, G for NHL
+    sweater_number: int | None = None
     minutes: float | None = None
     points: int | None = None
     rebounds: int | None = None
@@ -64,6 +66,13 @@ class NormalizedPlayerBoxscore(BaseModel):
     shots_on_goal: int | None = None
     penalties: int | None = None
     goals: int | None = None
+    plus_minus: int | None = None
+    hits: int | None = None
+    blocked_shots: int | None = None
+    shifts: int | None = None
+    giveaways: int | None = None
+    takeaways: int | None = None
+    faceoff_pct: float | None = None
     # Goalie stats (NHL)
     saves: int | None = None
     goals_against: int | None = None

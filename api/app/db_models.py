@@ -127,6 +127,51 @@ class SportsTeam(Base):
     )
 
 
+class SportsPlayer(Base):
+    """Master player records linked to PBP and boxscores."""
+
+    __tablename__ = "sports_players"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    league_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sports_leagues.id"),
+        nullable=False,
+        index=True,
+    )
+    external_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    position: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    sweater_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    team_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sports_teams.id"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    league: Mapped[SportsLeague] = relationship("SportsLeague")
+    team: Mapped[SportsTeam | None] = relationship("SportsTeam")
+    plays: Mapped[list["SportsGamePlay"]] = relationship(
+        "SportsGamePlay", back_populates="player_ref"
+    )
+
+    __table_args__ = (
+        Index("idx_players_external_id", "external_id"),
+        Index("idx_players_name", "name"),
+        Index("uq_player_identity", "league_id", "external_id", unique=True),
+    )
+
+
 class CompactModeThreshold(Base):
     """Compact mode threshold configuration per sport."""
 
@@ -467,6 +512,12 @@ class SportsGamePlay(Base):
     )
     player_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     player_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    player_ref_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sports_players.id"),
+        nullable=True,
+        index=True,
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     home_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     away_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -483,6 +534,9 @@ class SportsGamePlay(Base):
     game: Mapped["SportsGame"] = relationship("SportsGame", back_populates="plays")
     team: Mapped["SportsTeam | None"] = relationship(
         "SportsTeam", foreign_keys=[team_id]
+    )
+    player_ref: Mapped["SportsPlayer | None"] = relationship(
+        "SportsPlayer", back_populates="plays"
     )
 
     __table_args__ = (

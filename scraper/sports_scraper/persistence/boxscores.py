@@ -23,6 +23,52 @@ from .games import _normalize_status, resolve_status_transition
 from .teams import _find_team_by_name, _upsert_team
 
 
+def upsert_player(
+    session: Session,
+    league_id: int,
+    external_id: str,
+    name: str,
+    position: str | None = None,
+    sweater_number: int | None = None,
+    team_id: int | None = None,
+) -> int:
+    """Upsert a player to the sports_players master table.
+
+    Returns the player's internal ID for linking to plays.
+    """
+    stmt = insert(db_models.SportsPlayer).values(
+        league_id=league_id,
+        external_id=external_id,
+        name=name,
+        position=position,
+        sweater_number=sweater_number,
+        team_id=team_id,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["league_id", "external_id"],
+        set_={
+            "name": stmt.excluded.name,
+            "position": stmt.excluded.position,
+            "sweater_number": stmt.excluded.sweater_number,
+            "team_id": stmt.excluded.team_id,
+            "updated_at": now_utc(),
+        },
+    )
+    session.execute(stmt)
+    session.flush()
+
+    # Fetch the player ID
+    player = (
+        session.query(db_models.SportsPlayer)
+        .filter(
+            db_models.SportsPlayer.league_id == league_id,
+            db_models.SportsPlayer.external_id == external_id,
+        )
+        .first()
+    )
+    return player.id if player else 0
+
+
 def _validate_nhl_player_boxscore(payload: NormalizedPlayerBoxscore, game_id: int) -> str | None:
     """Validate NHL player boxscore before insertion.
 
@@ -70,6 +116,9 @@ def _validate_nhl_player_boxscore(payload: NormalizedPlayerBoxscore, game_id: in
             payload.assists is not None,
             payload.points is not None,
             payload.shots_on_goal is not None,
+            payload.plus_minus is not None,
+            payload.hits is not None,
+            payload.blocked_shots is not None,
         ])
     elif payload.player_role == "goalie":
         has_stats = any([
@@ -136,6 +185,10 @@ def _build_player_stats(payload: NormalizedPlayerBoxscore) -> dict:
     # Common fields
     if payload.player_role is not None:
         stats["player_role"] = payload.player_role
+    if payload.position is not None:
+        stats["position"] = payload.position
+    if payload.sweater_number is not None:
+        stats["sweater_number"] = payload.sweater_number
     if payload.minutes is not None:
         stats["minutes"] = payload.minutes
     if payload.points is not None:
@@ -155,6 +208,20 @@ def _build_player_stats(payload: NormalizedPlayerBoxscore) -> dict:
         stats["penalties"] = payload.penalties
     if payload.goals is not None:
         stats["goals"] = payload.goals
+    if payload.plus_minus is not None:
+        stats["plus_minus"] = payload.plus_minus
+    if payload.hits is not None:
+        stats["hits"] = payload.hits
+    if payload.blocked_shots is not None:
+        stats["blocked_shots"] = payload.blocked_shots
+    if payload.shifts is not None:
+        stats["shifts"] = payload.shifts
+    if payload.giveaways is not None:
+        stats["giveaways"] = payload.giveaways
+    if payload.takeaways is not None:
+        stats["takeaways"] = payload.takeaways
+    if payload.faceoff_pct is not None:
+        stats["faceoff_pct"] = payload.faceoff_pct
     # NHL goalie stats
     if payload.saves is not None:
         stats["saves"] = payload.saves
@@ -232,6 +299,19 @@ def upsert_player_boxscores(
         try:
             league_id = get_league_id(session, payload.team.league_code)
             team_id = _upsert_team(session, league_id, payload.team)
+
+            # Upsert to sports_players master table (for linking PBP events)
+            if payload.player_id and payload.player_name:
+                upsert_player(
+                    session,
+                    league_id=league_id,
+                    external_id=payload.player_id,
+                    name=payload.player_name,
+                    position=payload.position,
+                    sweater_number=payload.sweater_number,
+                    team_id=team_id,
+                )
+
             stats = _build_player_stats(payload)
             # Use literal() for proper parameter binding (avoids SQL injection with apostrophes)
             stats_json = literal(stats, type_=JSONB)
