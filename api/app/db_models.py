@@ -1371,15 +1371,25 @@ class SportsGameStory(Base):
     Stories are versioned and can be regenerated when needed.
 
     VERSIONING
-    - story_version: Matches Chapterizer version (e.g., "2.0.0")
+    - story_version: Identifies the story format
+      - Legacy: "2.0.0", "2.1.0" etc (chapter-based)
+      - V2: "v2-moments" (condensed moments format)
     - One story per (game_id, story_version)
-    - Regenerate when chapterizer rules change
 
-    CONTENT STRUCTURE
+    CONTENT STRUCTURE (Legacy)
     - chapters_json: Deterministic chapter structure
     - summaries_json: Section data
     - titles_json: Metadata
     - compact_story: AI-generated full game narrative
+
+    CONTENT STRUCTURE (V2 Moments)
+    - moments_json: Ordered list of condensed moments with narratives
+    - moment_count: Number of moments
+    - validated_at: When pipeline validation passed
+
+    HAS_STORY DETERMINATION
+    - Legacy: has_compact_story = true
+    - V2: moments_json IS NOT NULL
     """
 
     __tablename__ = "sports_game_stories"
@@ -1432,6 +1442,16 @@ class SportsGameStory(Base):
     )
     ai_model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     total_ai_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # V2 Moments-based Story (condensed moments format)
+    # When populated, this represents the new Story contract format
+    moments_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    moment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    validated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

@@ -18,35 +18,14 @@ if TYPE_CHECKING:
 async def execute_derive_signals(stage_input: StageInput) -> StageOutput:
     """Derive signals from normalized PBP data.
 
-    NOT YET IMPLEMENTED - returns no-op output.
+    NOTE: This stage is marked for deletion per Story contract review.
+    The Story contract specifies that moments are derived DIRECTLY from PBP,
+    not from signals. This stub remains only for pipeline structure compatibility.
     """
-    output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
+    output = StageOutput(data={"skipped": True, "reason": "Stage marked for deletion"})
     output.add_log(
-        "DERIVE_SIGNALS stage skipped - not yet implemented", level="warning"
-    )
-    return output
-
-
-async def execute_generate_moments(stage_input: StageInput) -> StageOutput:
-    """Generate moments from derived signals.
-
-    NOT YET IMPLEMENTED - returns no-op output.
-    """
-    output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
-    output.add_log(
-        "GENERATE_MOMENTS stage skipped - not yet implemented", level="warning"
-    )
-    return output
-
-
-async def execute_validate_moments(stage_input: StageInput) -> StageOutput:
-    """Validate generated moments.
-
-    NOT YET IMPLEMENTED - returns no-op output.
-    """
-    output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
-    output.add_log(
-        "VALIDATE_MOMENTS stage skipped - not yet implemented", level="warning"
+        "DERIVE_SIGNALS stage skipped - marked for deletion per Story contract",
+        level="warning",
     )
     return output
 

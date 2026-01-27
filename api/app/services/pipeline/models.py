@@ -23,6 +23,7 @@ class PipelineStage(str, Enum):
     DERIVE_SIGNALS = "DERIVE_SIGNALS"
     GENERATE_MOMENTS = "GENERATE_MOMENTS"
     VALIDATE_MOMENTS = "VALIDATE_MOMENTS"
+    RENDER_NARRATIVES = "RENDER_NARRATIVES"
     FINALIZE_MOMENTS = "FINALIZE_MOMENTS"
 
     @classmethod
@@ -33,6 +34,7 @@ class PipelineStage(str, Enum):
             cls.DERIVE_SIGNALS,
             cls.GENERATE_MOMENTS,
             cls.VALIDATE_MOMENTS,
+            cls.RENDER_NARRATIVES,
             cls.FINALIZE_MOMENTS,
         ]
 
