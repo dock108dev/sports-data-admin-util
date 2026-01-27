@@ -7,8 +7,11 @@ import "./globals.css";
 import { DockFooter, DockHeader } from "@dock108/ui";
 
 export const metadata: Metadata = {
-  title: "Bets - dock108",
-  description: "Evaluate your betting theories with data-driven analysis",
+  title: "Sports Admin - dock108",
+  description: "Centralized sports data administration for Dock108 apps",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 /**
