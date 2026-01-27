@@ -203,6 +203,79 @@ def schedule_ingestion_runs(
     return summary
 
 
+def run_pbp_ingestion_for_league(league_code: str) -> dict:
+    """Run PBP ingestion for a single league.
+
+    Called after stats ingestion completes to fetch play-by-play data.
+
+    Args:
+        league_code: The league to fetch PBP for (NBA, NHL)
+
+    Returns:
+        Dict with pbp_games and pbp_events counts
+    """
+    from .pbp_ingestion import ingest_pbp_via_sportsref, ingest_pbp_via_nhl_api
+    from ..scrapers import get_scraper
+
+    start_dt, end_dt = build_scheduled_window()
+    start_date = start_dt.date()
+    end_date = end_dt.date()
+
+    logger.info(
+        "pbp_ingestion_start",
+        league=league_code,
+        start_date=str(start_date),
+        end_date=str(end_date),
+    )
+
+    pbp_games = 0
+    pbp_events = 0
+
+    with get_session() as session:
+        if league_code == "NHL":
+            # NHL uses dedicated API
+            games, events = ingest_pbp_via_nhl_api(
+                session,
+                run_id=0,  # No run_id for standalone PBP
+                start_date=start_date,
+                end_date=end_date,
+                only_missing=True,  # Only fetch missing PBP
+                updated_before=None,
+            )
+            pbp_games = games
+            pbp_events = events
+        elif league_code in ("NBA", "NCAAB"):
+            # NBA/NCAAB use Sports Reference
+            scraper = get_scraper(league_code)
+            games, events = ingest_pbp_via_sportsref(
+                session,
+                run_id=0,
+                league_code=league_code,
+                scraper=scraper,
+                start_date=start_date,
+                end_date=end_date,
+                only_missing=True,
+                updated_before=None,
+            )
+            pbp_games = games
+            pbp_events = events
+
+        session.commit()
+
+    logger.info(
+        "pbp_ingestion_complete",
+        league=league_code,
+        pbp_games=pbp_games,
+        pbp_events=pbp_events,
+    )
+
+    return {
+        "league": league_code,
+        "pbp_games": pbp_games,
+        "pbp_events": pbp_events,
+    }
+
+
 def schedule_single_league_and_wait(
     league_code: str,
     timeout_seconds: int = 300,

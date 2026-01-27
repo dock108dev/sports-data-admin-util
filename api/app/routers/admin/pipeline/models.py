@@ -315,3 +315,55 @@ class StageComparisonResponse(BaseModel):
     run_a: dict[str, Any]
     run_b: dict[str, Any]
     differences: dict[str, Any] = Field(description="Key differences between outputs")
+
+
+# =============================================================================
+# BULK GENERATION MODELS
+# =============================================================================
+
+
+class BulkGenerateRequest(BaseModel):
+    """Request to start bulk story generation across multiple games."""
+
+    start_date: str = Field(description="Start date (YYYY-MM-DD)")
+    end_date: str = Field(description="End date (YYYY-MM-DD)")
+    leagues: list[str] = Field(description="Leagues to include (NBA, NHL, NCAAB)")
+    force: bool = Field(
+        default=False,
+        description="If True, regenerate stories even if they already exist",
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-07",
+                "leagues": ["NBA", "NHL"],
+                "force": False,
+            }
+        }
+    }
+
+
+class BulkGenerateAsyncResponse(BaseModel):
+    """Response after starting an async bulk generation job."""
+
+    job_id: str = Field(description="Unique job identifier for tracking progress")
+    message: str = Field(description="Status message")
+    status_url: str = Field(description="URL to poll for job status")
+
+
+class BulkGenerateStatusResponse(BaseModel):
+    """Status of a bulk generation job."""
+
+    job_id: str = Field(description="Job identifier")
+    state: str = Field(description="Job state: PENDING, PROGRESS, SUCCESS, FAILURE")
+    current: int = Field(description="Current game being processed (1-indexed)")
+    total: int = Field(description="Total games to process")
+    successful: int = Field(description="Number of games successfully processed")
+    failed: int = Field(description="Number of games that failed")
+    skipped: int = Field(description="Number of games skipped (already have story)")
+    result: dict[str, Any] | None = Field(
+        default=None,
+        description="Final result when job completes",
+    )

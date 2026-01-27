@@ -31,6 +31,7 @@ from .stages import (
     execute_finalize_moments,
     execute_generate_moments,
     execute_normalize_pbp,
+    execute_render_narratives,
     execute_validate_moments,
 )
 
@@ -318,6 +319,8 @@ class PipelineExecutor:
                 output = await execute_generate_moments(stage_input)
             elif stage == PipelineStage.VALIDATE_MOMENTS:
                 output = await execute_validate_moments(stage_input)
+            elif stage == PipelineStage.RENDER_NARRATIVES:
+                output = await execute_render_narratives(stage_input)
             elif stage == PipelineStage.FINALIZE_MOMENTS:
                 output = await execute_finalize_moments(
                     self.session, stage_input, str(run.run_uuid)

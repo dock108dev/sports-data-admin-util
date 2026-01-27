@@ -71,6 +71,23 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
             "thresholds": output.get("thresholds", []),
         }
     elif stage == "GENERATE_MOMENTS":
+        # New format: {"moments": [...]}
+        moments = output.get("moments", [])
+        if moments:
+            sizes = [len(m.get("play_ids", [])) for m in moments]
+            narrated = [len(m.get("explicitly_narrated_play_ids", [])) for m in moments]
+            scoring = sum(1 for m in moments if m.get("score_before") != m.get("score_after"))
+            total_narrated = sum(narrated)
+            total_plays = sum(sizes)
+            return {
+                "moment_count": len(moments),
+                "play_count": total_plays,
+                "avg_moment_size": round(sum(sizes) / len(sizes), 1) if sizes else 0,
+                "scoring_moments": scoring,
+                "narrated_plays": total_narrated,
+                "narration_pct": round(total_narrated / total_plays * 100, 1) if total_plays else 0,
+            }
+        # Legacy format fallback
         return {
             "moment_count": output.get("moment_count", 0),
             "notable_count": len(output.get("notable_moments", [])),
@@ -78,16 +95,32 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
             "within_budget": output.get("within_budget", True),
         }
     elif stage == "VALIDATE_MOMENTS":
+        # New format: {"validated": true/false, "errors": [...]}
         return {
-            "passed": output.get("passed", False),
-            "critical_passed": output.get("critical_passed", False),
+            "validated": output.get("validated", False),
             "error_count": len(output.get("errors", [])),
-            "warning_count": output.get("warnings_count", 0),
+        }
+    elif stage == "RENDER_NARRATIVES":
+        # Format: {"rendered": true/false, "moments": [...], "openai_calls": N}
+        moments = output.get("moments", [])
+        narratives_with_text = sum(1 for m in moments if m.get("narrative"))
+        avg_length = 0
+        if narratives_with_text > 0:
+            total_chars = sum(len(m.get("narrative", "")) for m in moments)
+            avg_length = round(total_chars / narratives_with_text)
+        return {
+            "rendered": output.get("rendered", False),
+            "moment_count": len(moments),
+            "narratives_generated": narratives_with_text,
+            "openai_calls": output.get("openai_calls", 0),
+            "avg_narrative_length": avg_length,
         }
     elif stage == "FINALIZE_MOMENTS":
+        # New format: {"finalized": true, "story_id": N, "moment_count": N, ...}
         return {
-            "artifact_id": output.get("artifact_id"),
-            "timeline_events": output.get("timeline_events", 0),
+            "finalized": output.get("finalized", False),
+            "story_id": output.get("story_id"),
+            "story_version": output.get("story_version"),
             "moment_count": output.get("moment_count", 0),
         }
     return {}
@@ -204,8 +237,9 @@ def get_stage_description(stage: PipelineStage) -> str:
     descriptions = {
         PipelineStage.NORMALIZE_PBP: "Read PBP data from database and normalize with phase assignments",
         PipelineStage.DERIVE_SIGNALS: "Compute lead states, tier crossings, and scoring runs",
-        PipelineStage.GENERATE_MOMENTS: "Partition game into narrative moments using Lead Ladder",
+        PipelineStage.GENERATE_MOMENTS: "Segment plays into condensed moments with explicit narration targets",
         PipelineStage.VALIDATE_MOMENTS: "Validate moment structure, ordering, and coverage",
-        PipelineStage.FINALIZE_MOMENTS: "Merge with social posts and persist timeline artifact",
+        PipelineStage.RENDER_NARRATIVES: "Generate narrative text for each moment using OpenAI",
+        PipelineStage.FINALIZE_MOMENTS: "Persist moments with narratives to story tables",
     }
     return descriptions.get(stage, "Unknown stage")

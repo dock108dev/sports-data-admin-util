@@ -1,6 +1,6 @@
 # Sports Data Admin API
 
-> FastAPI backend for Scroll Down Sports: API, data scraper, admin UI.
+> FastAPI backend for Sports Data Admin: centralized sports data hub.
 
 **Base URL:** `/api`
 
@@ -11,8 +11,8 @@
 1. [Health Check](#health-check)
 2. [App Endpoints (Read-Only)](#app-endpoints-read-only)
 3. [Admin Endpoints](#admin-endpoints)
-   - [Story Generation](#story-generation)
    - [Games Management](#games-management)
+   - [Story Pipeline](#story-pipeline)
    - [Timeline Generation](#timeline-generation)
    - [Teams](#teams)
    - [Scraper Runs](#scraper-runs)
@@ -132,46 +132,6 @@ Compressed timeline for efficient app display.
 |-----------|------|-------------|
 | `level` | `int` | 1=highlights, 2=standard, 3=detailed |
 
-### `GET /api/games/{game_id}/story`
-
-Get the pre-generated story for a game. **Read-only** - returns cached story or 404.
-
-Stories are generated via admin endpoints (`/api/admin/sports/games/{id}/story/regenerate`).
-Apps should never trigger story generation.
-
-**Response:**
-```json
-{
-  "game_id": 123,
-  "sport": "NBA",
-  "story_version": "2.0.0",
-  "sections": [
-    {
-      "section_index": 0,
-      "beat_type": "FAST_START",
-      "header": "Both teams opened at a fast pace.",
-      "start_score": {"home": 0, "away": 0},
-      "end_score": {"home": 24, "away": 22},
-      "notes": ["Lakers scored first 8 points"]
-    }
-  ],
-  "section_count": 5,
-  "compact_story": "The Lakers and Celtics traded blows...",
-  "word_count": 712,
-  "quality": "MEDIUM",
-  "reading_time_estimate_minutes": 3.56,
-  "generated_at": "2026-01-22T15:30:00Z",
-  "has_story": true
-}
-```
-
-**Error (no story generated):**
-```json
-{
-  "detail": "Story not found. Stories are generated via admin."
-}
-```
-
 ---
 
 ## Admin Endpoints
@@ -179,140 +139,6 @@ Apps should never trigger story generation.
 **Base path:** `/api/admin/sports`
 
 These endpoints are for admin UI and internal operations only. **Apps must not use these endpoints.**
-
----
-
-### Story Generation
-
-The chapters-first story generation system provides:
-- **Chapters**: Deterministic structural units (contiguous play ranges)
-- **Sections**: Narrative groupings with beat types (3-10 per game)
-- **Compact Story**: Single AI-generated game recap
-
-#### Architecture Overview
-
-```
-PBP Data → Chapterizer → Chapters → Sections → Headers → AI (single call) → Story
-```
-
-**Pipeline Stages:**
-1. `build_chapters` — Deterministic chapter boundaries from play-by-play
-2. `build_story_sections` — Collapse chapters into narrative sections
-3. `generate_all_headers` — Deterministic one-sentence orientation anchors
-4. `compute_quality_score` — Assess game quality (LOW/MEDIUM/HIGH)
-5. `render_story` — **SINGLE AI CALL** turns outline into prose
-
-#### `GET /games/{game_id}/story`
-
-Get game story. Returns cached story if available, otherwise generates and caches.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `include_debug` | `bool` | Include debug info (fingerprints, boundary logs) |
-| `force_regenerate` | `bool` | Bypass cache and regenerate |
-
-**Response: `GameStoryResponse`**
-
-```json
-{
-  "game_id": 12345,
-  "sport": "NBA",
-  "story_version": "2.0.0",
-  "chapters": [...],
-  "chapter_count": 8,
-  "total_plays": 245,
-  "sections": [
-    {
-      "section_index": 0,
-      "beat_type": "FAST_START",
-      "header": "Both teams opened at a fast pace.",
-      "chapters_included": ["ch_001", "ch_002"],
-      "start_score": { "home": 0, "away": 0 },
-      "end_score": { "home": 24, "away": 22 },
-      "notes": ["Lakers scored first 8 points", "12 lead changes"]
-    }
-  ],
-  "section_count": 5,
-  "compact_story": "The Lakers and Celtics traded blows...",
-  "word_count": 712,
-  "target_word_count": 700,
-  "quality": "MEDIUM",
-  "reading_time_estimate_minutes": 3.56,
-  "generated_at": "2026-01-22T15:30:00Z",
-  "has_compact_story": true,
-  "metadata": {...}
-}
-```
-
-#### `GET /games/{game_id}/story/pipeline`
-
-Get the story generation pipeline debug view. Shows full data transformation.
-
-#### `POST /games/{game_id}/story/regenerate`
-
-Regenerate story from scratch using chapters-first pipeline.
-
-**Request:**
-```json
-{
-  "force": true,
-  "debug": false
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Generated story: 5 sections, 712 words",
-  "story": { ... },
-  "errors": []
-}
-```
-
-#### `POST /games/bulk-generate-async`
-
-Start bulk story generation for games in a date range.
-
-**Request:**
-```json
-{
-  "start_date": "2026-01-15",
-  "end_date": "2026-01-22",
-  "leagues": ["NBA", "NHL"],
-  "force": false
-}
-```
-
-**Response:**
-```json
-{
-  "job_id": "abc-123-def",
-  "message": "Bulk generation started",
-  "status_url": "/api/admin/sports/games/bulk-generate-status/abc-123-def"
-}
-```
-
-#### `GET /games/bulk-generate-status/{job_id}`
-
-Poll status of bulk generation job.
-
-**Response:**
-```json
-{
-  "job_id": "abc-123-def",
-  "state": "PROGRESS",
-  "current": 5,
-  "total": 20,
-  "status": "Processing game 12345",
-  "successful": 4,
-  "failed": 0,
-  "skipped": 0,
-  "result": null
-}
-```
-
-**Job States:** `PENDING`, `PROGRESS`, `SUCCESS`, `FAILURE`
 
 ---
 
@@ -342,6 +168,189 @@ Trigger rescrape for a game.
 #### `POST /games/{game_id}/resync-odds`
 
 Resync odds for a game.
+
+#### `GET /games/{game_id}/story`
+
+Get the story for a game (v2-moments format).
+
+**Response (200):**
+```json
+{
+  "gameId": 123,
+  "story": {
+    "moments": [
+      {
+        "playIds": [1, 2, 3],
+        "explicitlyNarratedPlayIds": [2],
+        "period": 1,
+        "startClock": "11:42",
+        "endClock": "11:00",
+        "scoreBefore": [0, 0],
+        "scoreAfter": [3, 0],
+        "narrative": "Durant sinks a three-pointer from the corner..."
+      }
+    ]
+  },
+  "plays": [
+    {
+      "playId": 1,
+      "playIndex": 1,
+      "period": 1,
+      "clock": "11:42",
+      "playType": "3pt",
+      "description": "K. Durant makes 3-pt shot from 24 ft",
+      "homeScore": 0,
+      "awayScore": 3
+    }
+  ],
+  "validationPassed": true,
+  "validationErrors": []
+}
+```
+
+**Important Notes:**
+- `playId` equals `playIndex` (the sequential play number, not a database ID)
+- To join moments to plays: `plays.filter(p => moment.playIds.includes(p.playId))`
+- `scoreBefore`/`scoreAfter` arrays are `[awayScore, homeScore]`
+- `explicitlyNarratedPlayIds` are the key plays that the narrative must reference
+
+**Response (404):** No story exists for this game.
+
+---
+
+### Story Pipeline
+
+**Base path:** `/api/admin/sports/pipeline`
+
+Endpoints for managing the story generation pipeline.
+
+#### `POST /runs`
+
+Start a new pipeline run for a game.
+
+**Request:**
+```json
+{
+  "game_id": 123,
+  "auto_chain": true
+}
+```
+
+**Response:**
+```json
+{
+  "run_id": 456,
+  "run_uuid": "abc-123-def",
+  "status": "pending",
+  "message": "Pipeline run created"
+}
+```
+
+#### `GET /runs/{run_id}`
+
+Get pipeline run status and stage details.
+
+**Response:**
+```json
+{
+  "run_id": 456,
+  "run_uuid": "abc-123-def",
+  "game_id": 123,
+  "status": "running",
+  "current_stage": "GENERATE_MOMENTS",
+  "stages": [
+    {
+      "stage": "NORMALIZE_PBP",
+      "status": "success",
+      "started_at": "...",
+      "finished_at": "...",
+      "has_output": true
+    },
+    ...
+  ],
+  "stages_completed": 2,
+  "stages_total": 6,
+  "progress_percent": 33
+}
+```
+
+#### `POST /runs/{run_id}/advance`
+
+Advance to the next stage (when not using auto_chain).
+
+#### `POST /batch`
+
+Run pipeline for multiple games.
+
+**Request:**
+```json
+{
+  "game_ids": [123, 124, 125],
+  "auto_chain": true
+}
+```
+
+#### `GET /stages`
+
+Get pipeline stage definitions and descriptions.
+
+#### `POST /bulk-generate-async`
+
+Start bulk story generation for games in a date range.
+
+**Request:**
+```json
+{
+  "start_date": "2026-01-15",
+  "end_date": "2026-01-20",
+  "leagues": ["NBA", "NHL"],
+  "force": false
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `start_date` | `string` | Start date (YYYY-MM-DD) |
+| `end_date` | `string` | End date (YYYY-MM-DD) |
+| `leagues` | `string[]` | League codes to include |
+| `force` | `bool` | Regenerate existing stories |
+
+**Response:**
+```json
+{
+  "job_id": "abc-123-def-456",
+  "message": "Bulk generation job started",
+  "status_url": "/api/admin/sports/pipeline/bulk-generate-status/abc-123-def-456"
+}
+```
+
+#### `GET /bulk-generate-status/{job_id}`
+
+Get bulk generation job progress.
+
+**Response:**
+```json
+{
+  "job_id": "abc-123-def-456",
+  "state": "PROGRESS",
+  "current": 5,
+  "total": 20,
+  "successful": 4,
+  "failed": 0,
+  "skipped": 1,
+  "result": null
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `string` | `PENDING`, `PROGRESS`, `SUCCESS`, `FAILURE` |
+| `current` | `int` | Current game being processed |
+| `total` | `int` | Total games to process |
+| `successful` | `int` | Games with stories generated |
+| `failed` | `int` | Games that failed |
+| `skipped` | `int` | Games already having stories (when force=false) |
+| `result` | `object\|null` | Final summary when complete |
 
 ---
 
@@ -474,89 +483,6 @@ Get reading position.
 
 ## Response Models
 
-### GameStoryResponse
-
-```typescript
-interface GameStoryResponse {
-  game_id: number;
-  sport: string;
-  story_version: string;           // "2.0.0"
-
-  // Structural data
-  chapters: ChapterEntry[];
-  chapter_count: number;
-  total_plays: number;
-
-  // Narrative sections (3-10 per game)
-  sections: SectionEntry[];
-  section_count: number;
-
-  // AI-generated compact story
-  compact_story: string | null;
-  word_count: number | null;
-  target_word_count: number | null;
-  quality: "LOW" | "MEDIUM" | "HIGH" | null;
-  reading_time_estimate_minutes: number | null;
-
-  // Metadata
-  generated_at: string | null;
-  has_compact_story: boolean;
-  metadata: Record<string, any>;
-}
-```
-
-### ChapterEntry
-
-```typescript
-interface ChapterEntry {
-  chapter_id: string;              // "ch_001"
-  index: number;
-  play_start_idx: number;
-  play_end_idx: number;
-  play_count: number;
-  reason_codes: string[];          // Why this chapter exists
-  period: number | null;
-  time_range: TimeRange | null;
-  plays: PlayEntry[];
-}
-```
-
-**Reason Codes:**
-- `period_start` — Start of quarter/period
-- `period_end` — End of quarter/period
-- `timeout` — Timeout called
-- `review` — Official review
-- `overtime_start` — Start of overtime
-- `game_end` — End of game
-
-### SectionEntry
-
-```typescript
-interface SectionEntry {
-  section_index: number;
-  beat_type: BeatType;
-  header: string;                  // Deterministic one-sentence anchor
-  chapters_included: string[];
-  start_score: { home: number; away: number };
-  end_score: { home: number; away: number };
-  notes: string[];
-}
-```
-
-### Beat Types
-
-| Beat Type | Description |
-|-----------|-------------|
-| `FAST_START` | Early energy, both teams scoring quickly |
-| `BACK_AND_FORTH` | Tied or alternating leads |
-| `EARLY_CONTROL` | One team gaining edge |
-| `RUN` | Consecutive scoring (8+ unanswered) |
-| `RESPONSE` | Catch-up attempt after run |
-| `STALL` | Slowed action, scoring drought |
-| `CRUNCH_SETUP` | Late-game tightening (final 5 min, within 5 pts) |
-| `CLOSING_SEQUENCE` | Final minutes determining outcome |
-| `OVERTIME` | Overtime period play |
-
 ### PlayEntry
 
 ```typescript
@@ -572,20 +498,40 @@ interface PlayEntry {
 }
 ```
 
-### Quality & Word Count
+### GameSummary
 
-| Quality | Target Words | Word Range |
-|---------|--------------|------------|
-| `LOW` | 400 | 300-500 |
-| `MEDIUM` | 700 | 600-800 |
-| `HIGH` | 1050 | 900-1200 |
+```typescript
+interface GameSummary {
+  game_id: number;
+  sport: string;
+  status: string;
+  game_date: string;
+  home_team: TeamSummary;
+  away_team: TeamSummary;
+  home_score: number | null;
+  away_score: number | null;
+  has_pbp: boolean;
+  has_social: boolean;
+  play_count: number;
+}
+```
+
+### TeamSummary
+
+```typescript
+interface TeamSummary {
+  team_id: number;
+  name: string;
+  abbreviation: string;
+}
+```
 
 ---
 
 ## Consumers
 
-- `scroll-down-app` (iOS)
-- `scroll-down-sports-ui` (Web)
+- Dock108 iOS apps
+- Dock108 web apps
 
 ## Contract
 

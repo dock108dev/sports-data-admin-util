@@ -1083,6 +1083,65 @@ class GamePipelineStage(Base):
         )
 
 
+class BulkStoryJobStatus(str, Enum):
+    """Status of a bulk story generation job."""
+
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+
+
+class BulkStoryGenerationJob(Base):
+    """Tracks bulk story generation jobs.
+
+    This table persists bulk job state so it survives worker restarts
+    and is consistent across multiple worker processes.
+    """
+
+    __tablename__ = "bulk_story_generation_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_uuid: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), nullable=False, server_default=text("gen_random_uuid()")
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="pending", index=True
+    )
+    start_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    end_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    leagues: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    force_regenerate: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    total_games: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    current_game: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    successful: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    errors_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    triggered_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+    __table_args__ = (Index("idx_bulk_story_jobs_uuid", "job_uuid", unique=True),)
+
+
 class PBPSnapshotType(str, Enum):
     """Type of PBP snapshot."""
 
@@ -1371,15 +1430,25 @@ class SportsGameStory(Base):
     Stories are versioned and can be regenerated when needed.
 
     VERSIONING
-    - story_version: Matches Chapterizer version (e.g., "2.0.0")
+    - story_version: Identifies the story format
+      - Legacy: "2.0.0", "2.1.0" etc (chapter-based)
+      - V2: "v2-moments" (condensed moments format)
     - One story per (game_id, story_version)
-    - Regenerate when chapterizer rules change
 
-    CONTENT STRUCTURE
+    CONTENT STRUCTURE (Legacy)
     - chapters_json: Deterministic chapter structure
     - summaries_json: Section data
     - titles_json: Metadata
     - compact_story: AI-generated full game narrative
+
+    CONTENT STRUCTURE (V2 Moments)
+    - moments_json: Ordered list of condensed moments with narratives
+    - moment_count: Number of moments
+    - validated_at: When pipeline validation passed
+
+    HAS_STORY DETERMINATION
+    - Legacy: has_compact_story = true
+    - V2: moments_json IS NOT NULL
     """
 
     __tablename__ = "sports_game_stories"
@@ -1433,6 +1502,16 @@ class SportsGameStory(Base):
     ai_model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     total_ai_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # V2 Moments-based Story (condensed moments format)
+    # When populated, this represents the new Story contract format
+    moments_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    moment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    validated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -1451,4 +1530,38 @@ class SportsGameStory(Base):
         Index("idx_game_stories_game_id", "game_id"),
         Index("idx_game_stories_sport", "sport"),
         Index("idx_game_stories_generated_at", "generated_at"),
+    )
+
+
+class OpenAIResponseCache(Base):
+    """Cache for OpenAI API responses to avoid redundant calls during testing.
+
+    Stores responses keyed by game_id + batch_key (hash of moment indices).
+    This allows re-running pipelines without hitting OpenAI again.
+    """
+
+    __tablename__ = "openai_response_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sports_games.id", ondelete="CASCADE"), nullable=False
+    )
+    # Identifies which batch of moments this response is for
+    batch_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    # The prompt sent to OpenAI (truncated for storage)
+    prompt_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Full response from OpenAI
+    response_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    # Model used
+    model: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    game: Mapped[SportsGame] = relationship("SportsGame")
+
+    __table_args__ = (
+        UniqueConstraint("game_id", "batch_key", name="uq_openai_cache_game_batch"),
+        Index("idx_openai_cache_game_id", "game_id"),
     )

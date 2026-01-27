@@ -10,15 +10,15 @@
 **Purpose:**
 - Multi-sport data ingestion (NBA, NHL, NCAAB)
 - Normalized API for all Dock108 products
-- Story generation for Scroll Down Sports
+- Story generation (condensed moment-based narratives)
 
 **Tech:** Python/FastAPI (API), Python/Celery (Scraper), React/Next.js (Web)
 
 ## Key Directories
 
 ```
-api/                 FastAPI backend, story generation
-api/app/services/chapters/   Story generation system
+api/                 FastAPI backend
+api/app/services/story/   Story generation system
 scraper/             Multi-sport data scraper
 web/                 Admin UI
 docs/                Documentation
@@ -29,7 +29,7 @@ docs/                Documentation
 1. **Stability over speed** — Downstream apps depend on this
 2. **Predictable schemas** — No silent changes
 3. **Zero silent failures** — Log everything
-4. **Structure before narrative** — Chapters are deterministic, AI adds meaning
+4. **Traceability** — Every narrative maps to specific plays
 
 ## Do NOT
 

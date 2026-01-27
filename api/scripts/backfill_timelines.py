@@ -8,13 +8,10 @@ Usage:
 
 import argparse
 import asyncio
-import json
 import logging
-import sys
 import time
-from datetime import datetime
 
-from sqlalchemy import select, text
+from sqlalchemy import text
 
 from app.db import AsyncSessionLocal
 from app.services.timeline_generator import (

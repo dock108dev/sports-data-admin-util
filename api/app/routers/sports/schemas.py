@@ -388,3 +388,72 @@ class TeamSocialInfo(BaseModel):
     abbreviation: str
     x_handle: str | None = Field(None, alias="xHandle")
     x_profile_url: str | None = Field(None, alias="xProfileUrl")
+
+
+# =============================================================================
+# Story API Response Models (Task 6)
+# =============================================================================
+
+
+class StoryMoment(BaseModel):
+    """A single condensed moment in the Story.
+
+    This matches the Story contract exactly:
+    - play_ids: All plays in this moment
+    - explicitly_narrated_play_ids: Plays that must be narrated
+    - period/clock/score: Context metadata
+    - narrative: AI-generated narrative text
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    play_ids: list[int] = Field(..., alias="playIds")
+    explicitly_narrated_play_ids: list[int] = Field(..., alias="explicitlyNarratedPlayIds")
+    period: int
+    start_clock: str | None = Field(None, alias="startClock")
+    end_clock: str | None = Field(None, alias="endClock")
+    score_before: list[int] = Field(..., alias="scoreBefore")
+    score_after: list[int] = Field(..., alias="scoreAfter")
+    narrative: str
+
+
+class StoryPlay(BaseModel):
+    """A play referenced by a Story moment.
+
+    Only plays referenced in moments are included.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    play_id: int = Field(..., alias="playId")
+    play_index: int = Field(..., alias="playIndex")
+    period: int
+    clock: str | None
+    play_type: str | None = Field(None, alias="playType")
+    description: str | None
+    home_score: int | None = Field(None, alias="homeScore")
+    away_score: int | None = Field(None, alias="awayScore")
+
+
+class StoryContent(BaseModel):
+    """The Story content containing ordered moments."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    moments: list[StoryMoment]
+
+
+class GameStoryResponse(BaseModel):
+    """Response for GET /games/{game_id}/story.
+
+    Returns the persisted Story exactly as stored.
+    No transformation, no aggregation, no additional prose.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    game_id: int = Field(..., alias="gameId")
+    story: StoryContent
+    plays: list[StoryPlay]
+    validation_passed: bool = Field(..., alias="validationPassed")
+    validation_errors: list[str] = Field(default_factory=list, alias="validationErrors")

@@ -6,7 +6,7 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import desc, exists, func, select
+from sqlalchemy import desc, exists, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from ... import db_models
@@ -43,10 +43,14 @@ from .schemas import (
     GameListResponse,
     GameMeta,
     GamePreviewScoreResponse,
+    GameStoryResponse,
     JobResponse,
     NHLGoalieStat,
     NHLSkaterStat,
     OddsEntry,
+    StoryContent,
+    StoryMoment,
+    StoryPlay,
 )
 from ..game_snapshot_models import TimelineArtifactResponse
 
@@ -149,11 +153,15 @@ async def list_games(
             select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
         )
     )
+    # has_story: legacy (has_compact_story) OR v2 (moments_json not null)
     with_story_count_stmt = count_stmt.where(
         exists(
             select(1).where(
                 db_models.SportsGameStory.game_id == db_models.SportsGame.id,
-                db_models.SportsGameStory.has_compact_story.is_(True),
+                or_(
+                    db_models.SportsGameStory.has_compact_story.is_(True),
+                    db_models.SportsGameStory.moments_json.isnot(None),
+                ),
             )
         )
     )
@@ -168,11 +176,15 @@ async def list_games(
     with_story_count = (await session.execute(with_story_count_stmt)).scalar_one()
 
     # Query which games have stories in SportsGameStory table
+    # has_story: legacy (has_compact_story) OR v2 (moments_json not null)
     game_ids = [game.id for game in games]
     if game_ids:
         story_check_stmt = select(db_models.SportsGameStory.game_id).where(
             db_models.SportsGameStory.game_id.in_(game_ids),
-            db_models.SportsGameStory.has_compact_story.is_(True),
+            or_(
+                db_models.SportsGameStory.has_compact_story.is_(True),
+                db_models.SportsGameStory.moments_json.isnot(None),
+            ),
         )
         story_result = await session.execute(story_check_stmt)
         games_with_stories = set(story_result.scalars().all())
@@ -341,10 +353,14 @@ async def get_game(
     ]
 
     # Check if game has a story in SportsGameStory table
+    # has_story: legacy (has_compact_story) OR v2 (moments_json not null)
     story_check = await session.execute(
         select(db_models.SportsGameStory.id).where(
             db_models.SportsGameStory.game_id == game_id,
-            db_models.SportsGameStory.has_compact_story.is_(True),
+            or_(
+                db_models.SportsGameStory.has_compact_story.is_(True),
+                db_models.SportsGameStory.moments_json.isnot(None),
+            ),
         ).limit(1)
     )
     has_story = story_check.scalar() is not None
@@ -486,4 +502,114 @@ async def generate_game_timeline(
         timeline=artifact.timeline,
         summary=artifact.summary,
         game_analysis=artifact.game_analysis,
+    )
+
+
+# =============================================================================
+# Story API (Task 6)
+# =============================================================================
+
+# Story version identifier for v2 moments format
+STORY_VERSION_V2_MOMENTS = "v2-moments"
+
+
+@router.get("/games/{game_id}/story", response_model=GameStoryResponse)
+async def get_game_story(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> GameStoryResponse:
+    """Get the persisted Story for a game.
+
+    Returns the Story exactly as persisted - no transformation, no aggregation.
+
+    Story Contract:
+    - moments: Ordered list of condensed moments with narratives
+    - plays: Only plays referenced by moments
+    - validation_passed: Whether validation passed
+    - validation_errors: Any validation errors (empty if passed)
+
+    Returns:
+        GameStoryResponse with moments, plays, and validation status
+
+    Raises:
+        HTTPException 404: If no v2-moments Story exists for this game
+    """
+    # Load Story from SportsGameStory table
+    # Only load v2-moments format - no fallback to legacy
+    story_result = await session.execute(
+        select(db_models.SportsGameStory).where(
+            db_models.SportsGameStory.game_id == game_id,
+            db_models.SportsGameStory.story_version == STORY_VERSION_V2_MOMENTS,
+            db_models.SportsGameStory.moments_json.isnot(None),
+        )
+    )
+    story_record = story_result.scalar_one_or_none()
+
+    if not story_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No Story found for game {game_id}",
+        )
+
+    # Get moments from persisted data (no transformation)
+    moments_data = story_record.moments_json or []
+
+    # Collect all play_ids referenced by moments
+    all_play_ids: set[int] = set()
+    for moment in moments_data:
+        all_play_ids.update(moment.get("play_ids", []))
+
+    # Load plays by play_ids
+    plays_result = await session.execute(
+        select(db_models.SportsGamePlay).where(
+            db_models.SportsGamePlay.game_id == game_id,
+            db_models.SportsGamePlay.play_index.in_(all_play_ids),
+        )
+    )
+    plays_records = plays_result.scalars().all()
+
+    # Build play lookup for ordering
+    play_lookup = {p.play_index: p for p in plays_records}
+
+    # Build response moments (exact data, no transformation)
+    response_moments = [
+        StoryMoment(
+            playIds=moment["play_ids"],
+            explicitlyNarratedPlayIds=moment["explicitly_narrated_play_ids"],
+            period=moment["period"],
+            startClock=moment.get("start_clock"),
+            endClock=moment.get("end_clock"),
+            scoreBefore=moment["score_before"],
+            scoreAfter=moment["score_after"],
+            narrative=moment["narrative"],
+        )
+        for moment in moments_data
+    ]
+
+    # Build response plays (only those referenced by moments, ordered by play_index)
+    # NOTE: playId uses play_index (not DB id) to match moment.playIds contract
+    response_plays = [
+        StoryPlay(
+            playId=play.play_index,
+            playIndex=play.play_index,
+            period=play.quarter or 1,
+            clock=play.game_clock,
+            playType=play.play_type,
+            description=play.description,
+            homeScore=play.home_score,
+            awayScore=play.away_score,
+        )
+        for play_index in sorted(all_play_ids)
+        if (play := play_lookup.get(play_index))
+    ]
+
+    # Validation status from persisted data
+    validation_passed = story_record.validated_at is not None
+
+    return GameStoryResponse(
+        gameId=game_id,
+        story=StoryContent(moments=response_moments),
+        plays=response_plays,
+        validationPassed=validation_passed,
+        validationErrors=[],
     )

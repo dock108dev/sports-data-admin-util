@@ -11,7 +11,6 @@ Why:
 """
 
 from alembic import op
-import sqlalchemy as sa
 
 
 revision = "20260109_000001"
