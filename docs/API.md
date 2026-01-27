@@ -191,11 +191,28 @@ Get the story for a game (v2-moments format).
       }
     ]
   },
-  "plays": [...],
+  "plays": [
+    {
+      "playId": 1,
+      "playIndex": 1,
+      "period": 1,
+      "clock": "11:42",
+      "playType": "3pt",
+      "description": "K. Durant makes 3-pt shot from 24 ft",
+      "homeScore": 0,
+      "awayScore": 3
+    }
+  ],
   "validationPassed": true,
   "validationErrors": []
 }
 ```
+
+**Important Notes:**
+- `playId` equals `playIndex` (the sequential play number, not a database ID)
+- To join moments to plays: `plays.filter(p => moment.playIds.includes(p.playId))`
+- `scoreBefore`/`scoreAfter` arrays are `[awayScore, homeScore]`
+- `explicitlyNarratedPlayIds` are the key plays that the narrative must reference
 
 **Response (404):** No story exists for this game.
 
@@ -276,6 +293,64 @@ Run pipeline for multiple games.
 #### `GET /stages`
 
 Get pipeline stage definitions and descriptions.
+
+#### `POST /bulk-generate-async`
+
+Start bulk story generation for games in a date range.
+
+**Request:**
+```json
+{
+  "start_date": "2026-01-15",
+  "end_date": "2026-01-20",
+  "leagues": ["NBA", "NHL"],
+  "force": false
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `start_date` | `string` | Start date (YYYY-MM-DD) |
+| `end_date` | `string` | End date (YYYY-MM-DD) |
+| `leagues` | `string[]` | League codes to include |
+| `force` | `bool` | Regenerate existing stories |
+
+**Response:**
+```json
+{
+  "job_id": "abc-123-def-456",
+  "message": "Bulk generation job started",
+  "status_url": "/api/admin/sports/pipeline/bulk-generate-status/abc-123-def-456"
+}
+```
+
+#### `GET /bulk-generate-status/{job_id}`
+
+Get bulk generation job progress.
+
+**Response:**
+```json
+{
+  "job_id": "abc-123-def-456",
+  "state": "PROGRESS",
+  "current": 5,
+  "total": 20,
+  "successful": 4,
+  "failed": 0,
+  "skipped": 1,
+  "result": null
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `string` | `PENDING`, `PROGRESS`, `SUCCESS`, `FAILURE` |
+| `current` | `int` | Current game being processed |
+| `total` | `int` | Total games to process |
+| `successful` | `int` | Games with stories generated |
+| `failed` | `int` | Games that failed |
+| `skipped` | `int` | Games already having stories (when force=false) |
+| `result` | `object\|null` | Final summary when complete |
 
 ---
 

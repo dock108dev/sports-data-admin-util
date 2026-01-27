@@ -106,9 +106,14 @@ export type StoryMoment = {
 /**
  * A play referenced by a story moment.
  * Uses camelCase to match API JSON response.
+ *
+ * IMPORTANT: playId equals playIndex (not a database ID).
+ * To join moments to plays: plays.filter(p => moment.playIds.includes(p.playId))
  */
 export type StoryPlay = {
+  /** Play identifier - equals playIndex for joining with moment.playIds */
   playId: number;
+  /** Sequential play number in the game */
   playIndex: number;
   period: number;
   clock: string | null;
