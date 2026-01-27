@@ -442,10 +442,8 @@ def parse_clock_to_seconds(clock: str) -> int:
 
 ### NHL Clock Format
 ```python
-# Hockey-Reference: "15:30" (mm:ss)
-# Live feed: "PT15M30.00S" (ISO-8601 duration)
-
-# Same parsing logic works for both
+# NHL API: Clock extracted from play data as "mm:ss" or seconds
+# Format varies by play type; normalized during parsing
 ```
 
 ### Intra-Phase Ordering
