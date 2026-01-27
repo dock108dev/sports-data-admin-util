@@ -169,12 +169,27 @@ def upsert_plays(
     if game.away_team:
         team_map[game.away_team.abbreviation.upper()] = game.away_team.id
 
+    # Build player external_id to player.id mapping for this league
+    player_map: dict[str, int] = {}
+    if hasattr(db_models, "SportsPlayer"):
+        players = (
+            session.query(db_models.SportsPlayer.external_id, db_models.SportsPlayer.id)
+            .filter(db_models.SportsPlayer.league_id == game.league_id)
+            .all()
+        )
+        player_map = {str(p.external_id): p.id for p in players}
+
     upserted = 0
     for play in plays:
         # Resolve team_id from abbreviation
         team_id = None
         if play.team_abbreviation:
             team_id = team_map.get(play.team_abbreviation.upper())
+
+        # Resolve player_ref_id from player_id (external_id in sports_players)
+        player_ref_id = None
+        if play.player_id:
+            player_ref_id = player_map.get(str(play.player_id))
 
         stmt = (
             insert(db_models.SportsGamePlay)
@@ -187,6 +202,7 @@ def upsert_plays(
                 team_id=team_id,
                 player_id=play.player_id,
                 player_name=play.player_name,
+                player_ref_id=player_ref_id,
                 description=play.description,
                 home_score=play.home_score,
                 away_score=play.away_score,
@@ -202,6 +218,7 @@ def upsert_plays(
                     "team_id": team_id,
                     "player_id": play.player_id,
                     "player_name": play.player_name,
+                    "player_ref_id": player_ref_id,
                     "description": play.description,
                     "home_score": play.home_score,
                     "away_score": play.away_score,

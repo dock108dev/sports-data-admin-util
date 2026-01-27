@@ -1,0 +1,277 @@
+"""NHL boxscore ingestion via the official NHL API.
+
+This module handles boxscore data ingestion for NHL games using the official
+NHL API (api-web.nhle.com) instead of web scraping from Hockey Reference.
+
+Benefits:
+- Single data source for NHL (schedule, PBP, and boxscores)
+- Faster ingestion - REST API vs web scraping
+- More reliable - official API less likely to break than HTML scraping
+- No Hockey Reference rate limiting
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+from sqlalchemy import exists, not_
+from sqlalchemy.orm import Session
+
+from ..db import db_models
+from ..logging import logger
+from ..models import (
+    GameIdentification,
+    NormalizedGame,
+)
+from ..persistence import persist_game_payload
+from ..utils.datetime_utils import date_to_utc_datetime
+from .pbp_ingestion import _populate_nhl_game_ids
+
+
+def select_games_for_boxscores_nhl_api(
+    session: Session,
+    *,
+    start_date: date,
+    end_date: date,
+    only_missing: bool,
+    updated_before: datetime | None,
+) -> list[tuple[int, int, date]]:
+    """Return game ids and NHL game IDs for NHL API boxscore ingestion.
+
+    NHL boxscores are fetched via the official NHL API using the NHL game ID
+    (like 2025020767) stored in external_ids['nhl_game_pk'].
+
+    Args:
+        session: Database session
+        start_date: Start of date range
+        end_date: End of date range
+        only_missing: Skip games that already have boxscore data
+        updated_before: Only include games with stale boxscore data
+
+    Returns:
+        List of (game_id, nhl_game_id, game_date) tuples for games needing boxscores
+    """
+    league = session.query(db_models.SportsLeague).filter(
+        db_models.SportsLeague.code == "NHL"
+    ).first()
+    if not league:
+        return []
+
+    # NHL game ID is stored in external_ids JSONB field under 'nhl_game_pk' key
+    nhl_game_pk_expr = db_models.SportsGame.external_ids["nhl_game_pk"].astext
+
+    query = session.query(
+        db_models.SportsGame.id,
+        nhl_game_pk_expr.label("nhl_game_pk"),
+        db_models.SportsGame.game_date,
+    ).filter(
+        db_models.SportsGame.league_id == league.id,
+        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
+        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
+    )
+
+    # No status filter - like NBA, we use date range (yesterday and earlier) to determine
+    # which games should have boxscores. The NHL API will tell us if the game is complete,
+    # and persist_game_payload will update the status to "final".
+
+    if only_missing:
+        has_boxscores = exists().where(
+            db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id
+        )
+        query = query.filter(not_(has_boxscores))
+
+    if updated_before:
+        # Filter games with stale boxscore data
+        has_fresh = exists().where(
+            db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id,
+            db_models.SportsTeamBoxscore.updated_at >= updated_before,
+        )
+        query = query.filter(not_(has_fresh))
+
+    rows = query.all()
+    results = []
+    for game_id, nhl_game_pk, game_date in rows:
+        if nhl_game_pk:
+            try:
+                nhl_game_id = int(nhl_game_pk)
+                game_day = game_date.date() if game_date else None
+                if game_day:
+                    results.append((game_id, nhl_game_id, game_day))
+            except (ValueError, TypeError):
+                logger.warning(
+                    "nhl_boxscore_invalid_game_pk",
+                    game_id=game_id,
+                    nhl_game_pk=nhl_game_pk,
+                )
+    return results
+
+
+def _season_from_date(game_date: date) -> int:
+    """Calculate NHL season year from a game date.
+
+    NHL season runs from October to June. Games in January-June belong to
+    the previous calendar year's season (e.g., January 2025 = 2024-25 season = 2025).
+    """
+    if game_date.month >= 10:
+        # October-December: season starts this year
+        return game_date.year + 1
+    else:
+        # January-June: season started last year
+        return game_date.year
+
+
+def ingest_boxscores_via_nhl_api(
+    session: Session,
+    *,
+    run_id: int,
+    start_date: date,
+    end_date: date,
+    only_missing: bool,
+    updated_before: datetime | None,
+) -> tuple[int, int]:
+    """Ingest NHL boxscores using the official NHL API.
+
+    This replaces Hockey Reference scraping for NHL boxscores. The NHL API
+    provides all the same data through a faster and more reliable REST API.
+
+    Flow:
+    1. Populate nhl_game_pk for games missing it (via NHL schedule API)
+    2. Select games with nhl_game_pk that need boxscore data
+    3. Fetch boxscore from NHL API for each game
+    4. Convert to NormalizedGame with team/player boxscores
+    5. Persist via existing persist_game_payload()
+
+    Args:
+        session: Database session
+        run_id: Scrape run ID for logging
+        start_date: Start of date range
+        end_date: End of date range
+        only_missing: Skip games that already have boxscore data
+        updated_before: Only include games with stale boxscore data
+
+    Returns:
+        Tuple of (games_processed, games_enriched)
+    """
+    from ..live.nhl import NHLLiveFeedClient
+
+    # Step 1: Populate missing NHL game IDs
+    _populate_nhl_game_ids(
+        session,
+        run_id=run_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    # Step 2: Select games for boxscore ingestion
+    games = select_games_for_boxscores_nhl_api(
+        session,
+        start_date=start_date,
+        end_date=end_date,
+        only_missing=only_missing,
+        updated_before=updated_before,
+    )
+
+    if not games:
+        logger.info(
+            "nhl_boxscore_no_games_selected",
+            run_id=run_id,
+            start_date=str(start_date),
+            end_date=str(end_date),
+            only_missing=only_missing,
+        )
+        return (0, 0)
+
+    logger.info(
+        "nhl_boxscore_games_selected",
+        run_id=run_id,
+        games=len(games),
+        only_missing=only_missing,
+        updated_before=str(updated_before) if updated_before else None,
+    )
+
+    # Step 3: Fetch and persist boxscores
+    client = NHLLiveFeedClient()
+    games_processed = 0
+    games_enriched = 0
+
+    for game_id, nhl_game_id, game_date in games:
+        try:
+            # Fetch boxscore from NHL API
+            boxscore = client.fetch_boxscore(nhl_game_id)
+
+            if not boxscore:
+                logger.warning(
+                    "nhl_boxscore_empty_response",
+                    run_id=run_id,
+                    game_id=game_id,
+                    nhl_game_id=nhl_game_id,
+                )
+                continue
+
+            # Convert NHLBoxscore to NormalizedGame for persistence
+            normalized_game = _convert_boxscore_to_normalized_game(
+                boxscore, game_date
+            )
+
+            # Persist via existing infrastructure
+            result = persist_game_payload(session, normalized_game)
+
+            if result.game_id is not None:
+                games_processed += 1
+                if result.enriched:
+                    games_enriched += 1
+
+                logger.info(
+                    "nhl_boxscore_ingested",
+                    run_id=run_id,
+                    game_id=game_id,
+                    nhl_game_id=nhl_game_id,
+                    enriched=result.enriched,
+                    player_stats_inserted=result.player_stats.inserted if result.player_stats else 0,
+                )
+
+        except Exception as exc:
+            logger.warning(
+                "nhl_boxscore_fetch_failed",
+                run_id=run_id,
+                game_id=game_id,
+                nhl_game_id=nhl_game_id,
+                error=str(exc),
+            )
+            continue
+
+    logger.info(
+        "nhl_boxscore_ingestion_complete",
+        run_id=run_id,
+        games_processed=games_processed,
+        games_enriched=games_enriched,
+    )
+
+    return (games_processed, games_enriched)
+
+
+def _convert_boxscore_to_normalized_game(
+    boxscore,  # NHLBoxscore from live.nhl
+    game_date: date,
+) -> NormalizedGame:
+    """Convert NHLBoxscore to NormalizedGame for persistence.
+
+    This bridges the NHL API boxscore format to our normalized persistence layer.
+    """
+    identity = GameIdentification(
+        league_code="NHL",
+        season=_season_from_date(game_date),
+        season_type="regular",
+        game_date=date_to_utc_datetime(game_date),
+        home_team=boxscore.home_team,
+        away_team=boxscore.away_team,
+        source_game_key=str(boxscore.game_id),
+    )
+
+    return NormalizedGame(
+        identity=identity,
+        status="completed" if boxscore.status == "final" else boxscore.status,
+        home_score=boxscore.home_score,
+        away_score=boxscore.away_score,
+        team_boxscores=boxscore.team_boxscores,
+        player_boxscores=boxscore.player_boxscores,
+    )

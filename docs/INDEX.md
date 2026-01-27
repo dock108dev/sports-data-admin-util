@@ -49,8 +49,9 @@
 | Guide | Description |
 |-------|-------------|
 | [NBA PBP Review](pbp-nba-review.md) | NBA PBP implementation |
-| [NHL PBP](pbp-nhl-hockey-reference.md) | NHL PBP via Hockey Reference |
 | [NCAAB PBP](pbp-ncaab-sports-reference.md) | NCAAB PBP via Sports Reference |
+
+> **Note:** NHL PBP uses the official NHL API (`api-web.nhle.com`). See [Data Sources](DATA_SOURCES.md).
 
 ### Odds
 

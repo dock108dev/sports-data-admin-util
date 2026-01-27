@@ -1,7 +1,6 @@
 """FINALIZE_MOMENTS Stage Implementation.
 
-This stage persists validated Story data to the database and sets has_story
-indicators so the rest of the system can discover it.
+This stage persists validated Story data to the database.
 
 STORY CONTRACT ALIGNMENT
 ========================
@@ -11,18 +10,13 @@ This stage is a write-only persistence layer:
 - No logic is invented
 - Data is persisted exactly as produced by the pipeline
 
-PERSISTENCE STRATEGY
-====================
-Option A: Extend SportsGameStory (CHOSEN)
-
-We add new fields to the existing SportsGameStory table:
+PERSISTENCE
+===========
+SportsGameStory table stores:
 - moments_json: JSONB containing ordered list of condensed moments
 - moment_count: INTEGER for quick access
 - validated_at: TIMESTAMPTZ when validation passed
-- story_version: "v2-moments" to distinguish from legacy
-
-This allows coexistence with legacy chapter-based stories and
-gradual migration without breaking existing functionality.
+- story_version: "v2-moments"
 
 WHAT GETS WRITTEN
 =================
@@ -52,7 +46,7 @@ GUARANTEES
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -174,21 +168,11 @@ async def execute_finalize_moments(
             game_id=game_id,
             sport=sport,
             story_version=STORY_VERSION_V2_MOMENTS,
-            # V2 moments fields
             moments_json=moments,
             moment_count=len(moments),
             validated_at=validation_time,
-            # Metadata
             generated_at=validation_time,
             total_ai_calls=openai_calls,
-            # Legacy fields (empty for v2)
-            chapters_json=[],
-            chapter_count=0,
-            summaries_json=[],
-            titles_json=[],
-            has_summaries=False,
-            has_titles=False,
-            has_compact_story=False,
         )
         session.add(new_story)
         await session.flush()

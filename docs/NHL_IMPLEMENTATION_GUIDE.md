@@ -209,7 +209,7 @@ NHL PBP scraping is already implemented.
 
 **NHL Event Types:**
 ```python
-# From Hockey-Reference
+# From NHL API play-by-play
 - goal
 - shot (on goal)
 - blocked_shot
@@ -442,10 +442,8 @@ def parse_clock_to_seconds(clock: str) -> int:
 
 ### NHL Clock Format
 ```python
-# Hockey-Reference: "15:30" (mm:ss)
-# Live feed: "PT15M30.00S" (ISO-8601 duration)
-
-# Same parsing logic works for both
+# NHL API: Clock extracted from play data as "mm:ss" or seconds
+# Format varies by play type; normalized during parsing
 ```
 
 ### Intra-Phase Ordering
@@ -534,53 +532,45 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 
 ---
 
-## 15. Hockey-Reference Data Sources
+## 15. NHL Official API
 
-### Entry Points
+NHL data ingestion uses the official NHL API (`api-web.nhle.com`) exclusively. This provides all data through a single, reliable source.
+
+### API Endpoints
 
 | Data Type | URL Pattern |
 |-----------|-------------|
-| Team season stats | `hockey-reference.com/leagues/NHL_{season}.html` |
-| Skater stats | `hockey-reference.com/leagues/NHL_{season}_skaters.html` |
-| Goalie stats | `hockey-reference.com/leagues/NHL_{season}_goalies.html` |
+| Schedule | `api-web.nhle.com/v1/schedule/{date}` |
+| Play-by-Play | `api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play` |
+| Boxscore | `api-web.nhle.com/v1/gamecenter/{game_id}/boxscore` |
 
-**Season identifier:** `NHL_{season}` where `{season}` is the opening year (e.g., `2023` for 2023-24 season).
+### Benefits Over Web Scraping
 
-### Identifier Patterns
+- **Single source:** All NHL data from one API
+- **Reliability:** Official API less likely to break than HTML scraping
+- **Speed:** REST API faster than web scraping
+- **Player names:** Roster data included with player names resolved
 
-- **Team IDs:** Derived from URLs like `/teams/NYR/2024.html` → `NYR`
-- **Player IDs:** Derived from URLs like `/players/m/mcdavco01.html` → `mcdavco01`
-- **Abbreviations:** Hockey-Reference uses NHL-specific abbreviations (VGK, CBJ, etc.)
+### Implementation
 
-### Team Season Stats
+**File:** `scraper/sports_scraper/live/nhl.py`
 
-From the `stats` table:
-- Games played, wins, losses, overtime losses
-- Points / points percentage
-- Goals for/against, goal differential
-- Shots for/against, shooting/save percentages
-- Penalty minutes, power-play %, penalty-kill %
+The `NHLLiveFeedClient` class handles:
+- Schedule fetching for date ranges
+- PBP fetching with player name resolution
+- Boxscore fetching (team and player stats)
 
-### Player Season Stats
+### Boxscore Data
 
-From `skaters` and `goalies` tables:
-- Games played, goals, assists, points
-- Positions (C, LW, RW, D, G)
-- Time on ice (converted to decimal minutes)
-- Goalie-specific fields retained in `raw_stats`
-
-### Notable Quirks vs NBA/NCAAB
-
-- **Tables in HTML comments:** Hockey-Reference ships tables inside comments; scraper scans comment blocks.
-- **Team abbreviations:** NHL-specific (differ from basketball conventions).
-- **TOT rows:** Players who played for multiple teams have `TOT` rows with no linked team ID.
-- **Time on ice:** Expressed as `MM:SS`, converted to decimal minutes.
+Team stats: shots on goal, penalty minutes
+Skater stats: goals, assists, points, +/-, PIM, hits, SOG, TOI, blocks
+Goalie stats: saves, goals against, shots against, save %, TOI
 
 ---
 
 ## See Also
 
-- [pbp-nhl-hockey-reference.md](pbp-nhl-hockey-reference.md) - NHL PBP parsing
+- [DATA_SOURCES.md](DATA_SOURCES.md) - NHL API data source details
 - [odds-nhl-validation.md](odds-nhl-validation.md) - NHL odds validation
 - [social-nhl.md](social-nhl.md) - NHL social integration
 - [TIMELINE_ASSEMBLY.md](TIMELINE_ASSEMBLY.md) - Timeline generation

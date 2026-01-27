@@ -20,7 +20,6 @@ class PipelineStage(str, Enum):
     """
 
     NORMALIZE_PBP = "NORMALIZE_PBP"
-    DERIVE_SIGNALS = "DERIVE_SIGNALS"
     GENERATE_MOMENTS = "GENERATE_MOMENTS"
     VALIDATE_MOMENTS = "VALIDATE_MOMENTS"
     RENDER_NARRATIVES = "RENDER_NARRATIVES"
@@ -31,7 +30,6 @@ class PipelineStage(str, Enum):
         """Return stages in execution order."""
         return [
             cls.NORMALIZE_PBP,
-            cls.DERIVE_SIGNALS,
             cls.GENERATE_MOMENTS,
             cls.VALIDATE_MOMENTS,
             cls.RENDER_NARRATIVES,
@@ -147,28 +145,6 @@ class NormalizedPBPOutput:
             "has_overtime": self.has_overtime,
             "total_plays": self.total_plays,
             "phase_boundaries": self.phase_boundaries,
-        }
-
-
-@dataclass
-class DerivedSignalsOutput:
-    """Output schema for DERIVE_SIGNALS stage.
-
-    Contains the computed lead states, tier crossings, and runs
-    derived from the normalized PBP events.
-    """
-
-    lead_states: list[dict[str, Any]]  # Lead state at each play
-    tier_crossings: list[dict[str, Any]]  # Detected tier crossings
-    runs: list[dict[str, Any]]  # Detected scoring runs
-    thresholds: list[int]  # Lead ladder thresholds used
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "lead_states": self.lead_states,
-            "tier_crossings": self.tier_crossings,
-            "runs": self.runs,
-            "thresholds": self.thresholds,
         }
 
 

@@ -179,32 +179,29 @@ class CompactTimelineResponse(BaseModel):
     summary_json: dict[str, Any] | None
 
 
-class StorySectionSnapshot(BaseModel):
-    """Section entry for app story responses."""
+class MomentSnapshot(BaseModel):
+    """A single condensed moment from the game story."""
 
-    section_index: int
-    beat_type: str
-    header: str
-    start_score: dict[str, int]
-    end_score: dict[str, int]
-    notes: list[str]
+    period: int
+    start_clock: str | None
+    end_clock: str | None
+    score_before: dict[str, int]
+    score_after: dict[str, int]
+    narrative: str
+    play_count: int
 
 
 class GameStorySnapshot(BaseModel):
     """Read-only game story for app consumption.
 
-    This is a simplified view of the story - apps get the narrative
-    without the full chapter/play details.
+    Stories consist of ordered moments, each with a narrative
+    that describes the key plays in that moment.
     """
 
     game_id: int
     sport: str
     story_version: str
-    sections: list[StorySectionSnapshot]
-    section_count: int
-    compact_story: str | None
-    word_count: int | None
-    quality: str | None
-    reading_time_estimate_minutes: float | None
+    moments: list[MomentSnapshot]
+    moment_count: int
     generated_at: datetime | None
     has_story: bool

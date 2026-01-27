@@ -127,6 +127,51 @@ class SportsTeam(Base):
     )
 
 
+class SportsPlayer(Base):
+    """Master player records linked to PBP and boxscores."""
+
+    __tablename__ = "sports_players"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    league_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sports_leagues.id"),
+        nullable=False,
+        index=True,
+    )
+    external_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    position: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    sweater_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    team_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sports_teams.id"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    league: Mapped[SportsLeague] = relationship("SportsLeague")
+    team: Mapped[SportsTeam | None] = relationship("SportsTeam")
+    plays: Mapped[list["SportsGamePlay"]] = relationship(
+        "SportsGamePlay", back_populates="player_ref"
+    )
+
+    __table_args__ = (
+        Index("idx_players_external_id", "external_id"),
+        Index("idx_players_name", "name"),
+        Index("uq_player_identity", "league_id", "external_id", unique=True),
+    )
+
+
 class CompactModeThreshold(Base):
     """Compact mode threshold configuration per sport."""
 
@@ -467,6 +512,12 @@ class SportsGamePlay(Base):
     )
     player_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     player_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    player_ref_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sports_players.id"),
+        nullable=True,
+        index=True,
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     home_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     away_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -483,6 +534,9 @@ class SportsGamePlay(Base):
     game: Mapped["SportsGame"] = relationship("SportsGame", back_populates="plays")
     team: Mapped["SportsTeam | None"] = relationship(
         "SportsTeam", foreign_keys=[team_id]
+    )
+    player_ref: Mapped["SportsPlayer | None"] = relationship(
+        "SportsPlayer", back_populates="plays"
     )
 
     __table_args__ = (
@@ -903,16 +957,16 @@ class PipelineStage(str, Enum):
 
     Each stage has clear input/output contracts:
     - NORMALIZE_PBP: Build normalized PBP events with phases
-    - DERIVE_SIGNALS: Compute lead ladder states and tier crossings
     - GENERATE_MOMENTS: Partition game into narrative moments
     - VALIDATE_MOMENTS: Run validation checks
-    - FINALIZE_MOMENTS: Persist final timeline artifact
+    - RENDER_NARRATIVES: Generate narrative text using OpenAI
+    - FINALIZE_MOMENTS: Persist final story artifact
     """
 
     NORMALIZE_PBP = "NORMALIZE_PBP"
-    DERIVE_SIGNALS = "DERIVE_SIGNALS"
     GENERATE_MOMENTS = "GENERATE_MOMENTS"
     VALIDATE_MOMENTS = "VALIDATE_MOMENTS"
+    RENDER_NARRATIVES = "RENDER_NARRATIVES"
     FINALIZE_MOMENTS = "FINALIZE_MOMENTS"
 
 
@@ -1424,31 +1478,18 @@ class FrontendPayloadVersion(Base):
 
 
 class SportsGameStory(Base):
-    """Cached AI-generated game stories.
+    """AI-generated game stories as condensed moments.
 
-    This table stores expensive AI-generated content to avoid redundant API calls.
-    Stories are versioned and can be regenerated when needed.
+    This table stores AI-generated narrative content for games.
+    Stories consist of ordered moments, each with a narrative.
 
-    VERSIONING
-    - story_version: Identifies the story format
-      - Legacy: "2.0.0", "2.1.0" etc (chapter-based)
-      - V2: "v2-moments" (condensed moments format)
-    - One story per (game_id, story_version)
-
-    CONTENT STRUCTURE (Legacy)
-    - chapters_json: Deterministic chapter structure
-    - summaries_json: Section data
-    - titles_json: Metadata
-    - compact_story: AI-generated full game narrative
-
-    CONTENT STRUCTURE (V2 Moments)
+    CONTENT STRUCTURE
     - moments_json: Ordered list of condensed moments with narratives
     - moment_count: Number of moments
     - validated_at: When pipeline validation passed
 
     HAS_STORY DETERMINATION
-    - Legacy: has_compact_story = true
-    - V2: moments_json IS NOT NULL
+    - moments_json IS NOT NULL
     """
 
     __tablename__ = "sports_game_stories"
@@ -1463,47 +1504,7 @@ class SportsGameStory(Base):
     sport: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     story_version: Mapped[str] = mapped_column(String(20), nullable=False)
 
-    # Chapter structure (deterministic, can be regenerated quickly)
-    chapters_json: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSONB,
-        server_default=text("'[]'::jsonb"),
-        nullable=False,
-    )
-    chapter_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    chapters_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
-
-    # AI-generated content (expensive, should be cached)
-    summaries_json: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSONB,
-        server_default=text("'[]'::jsonb"),
-        nullable=False,
-    )
-    titles_json: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSONB,
-        server_default=text("'[]'::jsonb"),
-        nullable=False,
-    )
-    compact_story: Mapped[str | None] = mapped_column(Text, nullable=True)
-    reading_time_minutes: Mapped[float | None] = mapped_column(Float, nullable=True)
-
-    # Generation metadata
-    has_summaries: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
-    )
-    has_titles: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
-    )
-    has_compact_story: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
-    )
-    generated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    ai_model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    total_ai_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-
-    # V2 Moments-based Story (condensed moments format)
-    # When populated, this represents the new Story contract format
+    # Moments-based Story (condensed moments format)
     moments_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSONB, nullable=True
     )
@@ -1511,6 +1512,13 @@ class SportsGameStory(Base):
     validated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # Generation metadata
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    ai_model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    total_ai_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

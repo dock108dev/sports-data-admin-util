@@ -144,8 +144,13 @@ def _extract_minutes(stats: dict[str, Any]) -> float | None:
 def _get_int_stat(
     stats: dict[str, Any], normalized_key: str, raw_key: str
 ) -> int | None:
-    value = stats.get(normalized_key) or stats.get(raw_key)
-    if value is None:
+    # Check normalized key first, then raw key
+    # Use 'in' check to properly handle 0 values
+    if normalized_key in stats and stats[normalized_key] is not None:
+        value = stats[normalized_key]
+    elif raw_key in stats and stats[raw_key] is not None:
+        value = stats[raw_key]
+    else:
         return None
     try:
         return int(value)
@@ -174,15 +179,31 @@ def serialize_player_stat(player: db_models.SportsPlayerBoxscore) -> PlayerStat:
 
 
 def _extract_toi(stats: dict[str, Any]) -> str | None:
-    """Extract time-on-ice, preserving MM:SS format for NHL."""
+    """Extract time-on-ice, preserving MM:SS format for NHL.
+
+    Handles multiple storage formats:
+    - "toi" as MM:SS string (e.g., "21:12")
+    - "minutes" as decimal float (e.g., 21.2 -> "21:12")
+    - "toi" as total seconds (e.g., 1272 -> "21:12")
+    """
+    # First try toi/time_on_ice
     toi = stats.get("toi") or stats.get("time_on_ice")
     if isinstance(toi, str) and ":" in toi:
         return toi
-    # If stored as seconds, convert to MM:SS
+
+    # Try minutes field (stored as decimal, e.g., 21.2 means 21 min 12 sec)
+    minutes_val = stats.get("minutes")
+    if isinstance(minutes_val, (int, float)) and minutes_val > 0:
+        mins = int(minutes_val)
+        secs = int(round((minutes_val - mins) * 60))
+        return f"{mins}:{secs:02d}"
+
+    # If toi stored as seconds, convert to MM:SS
     if isinstance(toi, (int, float)):
         minutes = int(toi) // 60
         seconds = int(toi) % 60
         return f"{minutes}:{seconds:02d}"
+
     return None
 
 

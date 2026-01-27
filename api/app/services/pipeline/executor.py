@@ -27,7 +27,6 @@ from ...db import AsyncSession
 from ...utils.datetime_utils import now_utc
 from .models import PipelineStage, StageInput, StageOutput, StageResult
 from .stages import (
-    execute_derive_signals,
     execute_finalize_moments,
     execute_generate_moments,
     execute_normalize_pbp,
@@ -313,8 +312,6 @@ class PipelineExecutor:
             # Execute the stage
             if stage == PipelineStage.NORMALIZE_PBP:
                 output = await execute_normalize_pbp(self.session, stage_input, run_id)
-            elif stage == PipelineStage.DERIVE_SIGNALS:
-                output = await execute_derive_signals(stage_input)
             elif stage == PipelineStage.GENERATE_MOMENTS:
                 output = await execute_generate_moments(stage_input)
             elif stage == PipelineStage.VALIDATE_MOMENTS:

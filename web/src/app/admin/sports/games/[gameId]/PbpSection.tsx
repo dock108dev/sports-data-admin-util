@@ -66,6 +66,7 @@ export function PbpSection({ plays }: { plays: AdminGameDetail["plays"] }) {
                     <tr>
                       <th>Time</th>
                       <th>Team</th>
+                      <th>Player</th>
                       <th>Description</th>
                       <th>Score</th>
                     </tr>
@@ -75,6 +76,7 @@ export function PbpSection({ plays }: { plays: AdminGameDetail["plays"] }) {
                       <tr key={`play-${play.play_index}-${idx}`}>
                         <td>{play.game_clock ?? "—"}</td>
                         <td>{play.team_abbreviation ?? "—"}</td>
+                        <td>{play.player_name ?? "—"}</td>
                         <td className={styles.pbpDescription}>{play.description ?? "—"}</td>
                         <td>
                           {play.away_score !== null && play.home_score !== null

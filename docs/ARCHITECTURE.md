@@ -41,7 +41,7 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 **Purpose:** Automated ingestion from external sources
 
 - **Sports:** NBA, NHL, NCAAB
-- **Sources:** ESPN, Hockey Reference, Sports Reference
+- **Sources:** Sports Reference (NBA, NCAAB), NHL API (NHL), The Odds API, X/Twitter
 - **Data Types:** Play-by-play, box scores, odds, social media
 - **Scheduling:** Celery task queue with Redis
 - **Output:** Normalized data to PostgreSQL

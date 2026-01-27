@@ -24,7 +24,7 @@ For manual setup, see [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md).
 ```
 ┌─────────────────┐     ┌──────────────┐     ┌─────────────┐
 │ External Sources│────▶│   Scraper    │────▶│  PostgreSQL │
-│ (ESPN, SportsRef)     │ (Celery/uv)  │     │    Hub      │
+│ (SportsRef, APIs)     │ (Celery/uv)  │     │    Hub      │
 └─────────────────┘     └──────────────┘     └──────┬──────┘
                                                     │
                         ┌───────────────────────────┼───────────────────────────┐
