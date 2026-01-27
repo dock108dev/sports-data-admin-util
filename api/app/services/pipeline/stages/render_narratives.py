@@ -33,6 +33,7 @@ After receiving AI output, we validate:
 1. Narrative is non-empty
 2. No forbidden abstraction language
 3. Response is well-formed JSON
+4. At least one explicitly narrated play is referenced (traceability)
 
 If validation fails, the stage fails. No retries with weaker rules.
 No auto-editing of text. AI output is untrusted until validated.
@@ -189,9 +190,41 @@ Respond with JSON in this exact format:
     return prompt
 
 
+def _extract_play_identifiers(play: dict[str, Any]) -> list[str]:
+    """Extract identifiable tokens from a play for narrative traceability.
+
+    Extracts player names and significant words that should appear in
+    a narrative that references this play.
+
+    Args:
+        play: A normalized PBP event
+
+    Returns:
+        List of lowercase tokens that identify this play
+    """
+    identifiers: list[str] = []
+
+    # Player name is the primary identifier
+    player_name = play.get("player_name")
+    if player_name:
+        # Add full name and last name (most common in narratives)
+        identifiers.append(player_name.lower())
+        parts = player_name.split()
+        if len(parts) > 1:
+            identifiers.append(parts[-1].lower())  # Last name
+
+    # Team abbreviation as fallback
+    team_abbrev = play.get("team_abbreviation")
+    if team_abbrev:
+        identifiers.append(team_abbrev.lower())
+
+    return identifiers
+
+
 def _validate_narrative(
     narrative: str,
     moment: dict[str, Any],
+    moment_plays: list[dict[str, Any]],
     moment_index: int,
 ) -> list[str]:
     """Validate the generated narrative against Story contract rules.
@@ -199,6 +232,7 @@ def _validate_narrative(
     Args:
         narrative: The generated narrative text
         moment: The moment data
+        moment_plays: Full PBP records for plays in this moment
         moment_index: Index for error reporting
 
     Returns:
@@ -217,6 +251,35 @@ def _validate_narrative(
         if match:
             errors.append(
                 f"Moment {moment_index}: Contains forbidden phrase '{match.group()}'"
+            )
+
+    # Rule 3: Narrative must reference at least one explicitly narrated play
+    # This enforces the traceability contract
+    explicitly_narrated_ids = set(moment.get("explicitly_narrated_play_ids", []))
+    if explicitly_narrated_ids:
+        # Get plays that must be narrated
+        explicit_plays = [
+            p for p in moment_plays
+            if p.get("play_index") in explicitly_narrated_ids
+        ]
+
+        # Collect all identifiers from explicitly narrated plays
+        all_identifiers: list[str] = []
+        for play in explicit_plays:
+            all_identifiers.extend(_extract_play_identifiers(play))
+
+        # Check if at least one identifier appears in the narrative
+        narrative_lower = narrative.lower()
+        found_reference = any(
+            identifier in narrative_lower for identifier in all_identifiers
+        )
+
+        if not found_reference and all_identifiers:
+            # Provide helpful error with expected identifiers
+            expected = ", ".join(set(all_identifiers)[:5])  # Show first 5
+            errors.append(
+                f"Moment {moment_index}: Narrative does not reference any "
+                f"explicitly narrated play. Expected one of: {expected}"
             )
 
     return errors
@@ -316,8 +379,8 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             response_data = json.loads(response_json)
             narrative = response_data.get("narrative", "")
 
-            # Validate narrative
-            validation_errors = _validate_narrative(narrative, moment, i)
+            # Validate narrative (including traceability check)
+            validation_errors = _validate_narrative(narrative, moment, moment_plays, i)
             if validation_errors:
                 all_validation_errors.extend(validation_errors)
                 output.add_log(
