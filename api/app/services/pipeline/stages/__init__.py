@@ -4,10 +4,8 @@ from .normalize_pbp import execute_normalize_pbp
 from .generate_moments import execute_generate_moments
 from .validate_moments import execute_validate_moments
 from .render_narratives import execute_render_narratives
-from .stubs import (
-    execute_derive_signals,
-    execute_finalize_moments,
-)
+from .finalize_moments import execute_finalize_moments
+from .stubs import execute_derive_signals
 
 __all__ = [
     "execute_normalize_pbp",

@@ -116,9 +116,11 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
             "avg_narrative_length": avg_length,
         }
     elif stage == "FINALIZE_MOMENTS":
+        # New format: {"finalized": true, "story_id": N, "moment_count": N, ...}
         return {
-            "artifact_id": output.get("artifact_id"),
-            "timeline_events": output.get("timeline_events", 0),
+            "finalized": output.get("finalized", False),
+            "story_id": output.get("story_id"),
+            "story_version": output.get("story_version"),
             "moment_count": output.get("moment_count", 0),
         }
     return {}

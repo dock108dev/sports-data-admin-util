@@ -25,8 +25,9 @@ from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
+# This migration merges the two heads and adds the moments fields
 revision = "20260127_000001"
-down_revision = "20260218_000005"
+down_revision = ("20260218_000005", "20260125_000001")
 branch_labels = None
 depends_on = None
 

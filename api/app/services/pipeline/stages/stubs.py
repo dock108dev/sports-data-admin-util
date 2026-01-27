@@ -7,12 +7,7 @@ while logging that the stage was skipped.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from ..models import StageInput, StageOutput
-
-if TYPE_CHECKING:
-    from ....db import AsyncSession
 
 
 async def execute_derive_signals(stage_input: StageInput) -> StageOutput:
@@ -26,21 +21,5 @@ async def execute_derive_signals(stage_input: StageInput) -> StageOutput:
     output.add_log(
         "DERIVE_SIGNALS stage skipped - marked for deletion per Story contract",
         level="warning",
-    )
-    return output
-
-
-async def execute_finalize_moments(
-    session: "AsyncSession",
-    stage_input: StageInput,
-    run_uuid: str,
-) -> StageOutput:
-    """Finalize moments and persist to database.
-
-    NOT YET IMPLEMENTED - returns no-op output.
-    """
-    output = StageOutput(data={"skipped": True, "reason": "Stage not yet implemented"})
-    output.add_log(
-        "FINALIZE_MOMENTS stage skipped - not yet implemented", level="warning"
     )
     return output
