@@ -1,5 +1,6 @@
 import { request } from "./client";
 import type { AdminGameDetail, GameFilters, GameListResponse, JobResponse } from "./types";
+import type { GameStoryResponse } from "./storyTypes";
 
 export async function listGames(filters: GameFilters): Promise<GameListResponse> {
   const query = new URLSearchParams();
@@ -36,4 +37,21 @@ export async function rescrapeGame(gameId: number): Promise<JobResponse> {
 
 export async function resyncOdds(gameId: number): Promise<JobResponse> {
   return request(`/api/admin/sports/games/${gameId}/resync-odds`, { method: "POST" });
+}
+
+/**
+ * Fetch the v2-moments story for a game.
+ * Returns null if no story exists (404).
+ */
+export async function fetchGameStory(gameId: number): Promise<GameStoryResponse | null> {
+  try {
+    return await request(`/api/admin/sports/games/${gameId}/story`);
+  } catch (err) {
+    // Return null for 404 (no story exists)
+    // Error format is: "Request failed (404): {...}"
+    if (err instanceof Error && err.message.startsWith("Request failed (404)")) {
+      return null;
+    }
+    throw err;
+  }
 }

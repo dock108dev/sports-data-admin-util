@@ -7,6 +7,7 @@ import { fetchGame, rescrapeGame, resyncOdds, type AdminGameDetail } from "@/lib
 import { CollapsibleSection } from "./CollapsibleSection";
 import { PbpSection } from "./PbpSection";
 import { SocialPostsSection } from "./SocialPostsSection";
+import { StorySection } from "./StorySection";
 import styles from "./styles.module.css";
 
 export default function GameDetailClient() {
@@ -47,6 +48,7 @@ export default function GameDetailClient() {
       { label: "Odds", ok: game.game.has_odds },
       { label: `Social (${game.game.social_post_count || 0})`, ok: game.game.has_social },
       { label: `PBP (${game.game.play_count || 0})`, ok: game.game.has_pbp },
+      { label: "Story", ok: game.game.has_story },
     ];
   }, [game]);
 
@@ -476,6 +478,8 @@ export default function GameDetailClient() {
       <SocialPostsSection posts={game.social_posts || []} />
 
       <PbpSection plays={game.plays || []} />
+
+      <StorySection gameId={g.id} hasStory={g.has_story} />
 
       <CollapsibleSection title="Derived Metrics" defaultOpen={false}>
         {Object.keys(game.derived_metrics || {}).length === 0 ? (

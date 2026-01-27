@@ -1,7 +1,7 @@
 /**
  * Story Types
  *
- * TypeScript definitions matching story/schema.py
+ * TypeScript definitions matching story/schema.py and sports/schemas.py
  *
  * These types are READ-ONLY views of Story data.
  * The UI must not modify, augment, or interpret these structures.
@@ -82,4 +82,57 @@ export type StoryResponse = {
 export type StoryErrorResponse = {
   error: string;
   validation_errors?: string[];
+};
+
+// =============================================================================
+// V2 Moments API Types (GET /games/{game_id}/story)
+// =============================================================================
+
+/**
+ * A moment in the v2-moments story format.
+ * Uses camelCase to match API JSON response.
+ */
+export type StoryMoment = {
+  playIds: number[];
+  explicitlyNarratedPlayIds: number[];
+  period: number;
+  startClock: string | null;
+  endClock: string | null;
+  scoreBefore: number[];
+  scoreAfter: number[];
+  narrative: string;
+};
+
+/**
+ * A play referenced by a story moment.
+ * Uses camelCase to match API JSON response.
+ */
+export type StoryPlay = {
+  playId: number;
+  playIndex: number;
+  period: number;
+  clock: string | null;
+  playType: string | null;
+  description: string | null;
+  homeScore: number | null;
+  awayScore: number | null;
+};
+
+/**
+ * Story content containing ordered moments.
+ */
+export type StoryContent = {
+  moments: StoryMoment[];
+};
+
+/**
+ * Response from GET /games/{game_id}/story endpoint.
+ * Returns the persisted v2-moments Story exactly as stored.
+ */
+export type GameStoryResponse = {
+  gameId: number;
+  story: StoryContent;
+  plays: StoryPlay[];
+  validationPassed: boolean;
+  validationErrors: string[];
 };
