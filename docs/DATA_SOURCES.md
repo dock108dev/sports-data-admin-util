@@ -6,8 +6,9 @@ This document describes where data comes from and how it's ingested.
 
 | Data Type | Source | Leagues | Update Frequency |
 |-----------|--------|---------|------------------|
-| Boxscores | Sports Reference | NBA, NHL, NCAAB | Post-game |
-| Play-by-Play (Historical) | Sports Reference | NBA, NHL, NCAAB | Post-game |
+| Boxscores | Sports Reference | NBA, NCAAB | Post-game |
+| Boxscores | NHL API | NHL | Post-game |
+| Play-by-Play (Historical) | Sports Reference | NBA, NCAAB | Post-game |
 | Play-by-Play (Live) | League APIs | NBA, NHL | During game (15s polling) |
 | Odds | The Odds API | NBA, NHL, NCAAB | Pre-game + live |
 | Social | X/Twitter | NBA, NHL | 24-hour game window |
@@ -16,7 +17,7 @@ This document describes where data comes from and how it's ingested.
 
 ### Source
 - **NBA**: basketball-reference.com
-- **NHL**: hockey-reference.com  
+- **NHL**: NHL API (`api-web.nhle.com/v1/gamecenter/{game_id}/boxscore`)
 - **NCAAB**: sports-reference.com/cbb
 
 ### Data Collected
@@ -36,11 +37,10 @@ This document describes where data comes from and how it's ingested.
 
 ## Play-by-Play
 
-### Historical (Sports Reference)
+### Historical (Sports Reference) - NBA/NCAAB
 
 **Source:**
 - **NBA**: `basketball-reference.com/boxscores/pbp/{game_id}.html`
-- **NHL**: `hockey-reference.com/boxscores/{game_id}.html`
 - **NCAAB**: `sports-reference.com/cbb/boxscores/{game_id}.html`
 
 **Format:** HTML tables with quarter headers and play rows
@@ -56,25 +56,26 @@ This document describes where data comes from and how it's ingested.
 
 **Implementation:**
 - `scraper/sports_scraper/scrapers/nba_sportsref.py`
-- `scraper/sports_scraper/scrapers/nhl_sportsref.py`
 - `scraper/sports_scraper/scrapers/ncaab_sportsref.py`
 
 See also:
 - [pbp-nba-review.md](pbp-nba-review.md) - NBA PBP implementation details
-- [pbp-nhl-hockey-reference.md](pbp-nhl-hockey-reference.md) - NHL PBP details
 - [pbp-ncaab-sports-reference.md](pbp-ncaab-sports-reference.md) - NCAAB PBP details
 
-### Live Feeds
+### Live Feeds / NHL API
 
 **NBA:**
 - Source: `cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json`
 - Polling: Every 15 seconds during live games
 - Implementation: `scraper/sports_scraper/live/nba.py`
 
-**NHL:**
-- Source: `statsapi.web.nhl.com/api/v1/game/{game_id}/feed/live`
+**NHL (All PBP + Boxscores):**
+- PBP Source: `api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play`
+- Boxscore Source: `api-web.nhle.com/v1/gamecenter/{game_id}/boxscore`
 - Polling: Every 15 seconds during live games
 - Implementation: `scraper/sports_scraper/live/nhl.py`
+
+NHL uses the official NHL API for ALL data (schedule, PBP, boxscores) rather than web scraping.
 
 **Play Index Calculation:**
 - Live feeds use `period * 10000 + actionNumber` for stable ordering
@@ -82,7 +83,7 @@ See also:
 
 **Clock Parsing:**
 - NBA: `PT11M22.00S` → `11:22`
-- NHL: Similar ISO-8601 duration format
+- NHL: Clock extracted from play data
 
 ## Odds
 

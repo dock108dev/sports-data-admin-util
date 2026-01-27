@@ -158,9 +158,11 @@ Build `NormalizedGame` objects with:
 
 Add to `_SCRAPER_REGISTRY` in `scraper/sports_scraper/scrapers/__init__.py`.
 
+> **Note:** NHL uses the official NHL API instead of the scraper registry. See `scraper/sports_scraper/live/nhl.py` and `scraper/sports_scraper/services/boxscore_ingestion.py` for the API-based approach.
+
 ### 4. Run Through Orchestrator
 
-`ScrapeRunManager` automatically pulls from `get_all_scrapers()`.
+`ScrapeRunManager` automatically pulls from `get_all_scrapers()` for leagues using Sports Reference scrapers. NHL is handled separately via the NHL API.
 
 ---
 
