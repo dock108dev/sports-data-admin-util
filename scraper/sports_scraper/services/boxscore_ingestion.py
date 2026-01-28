@@ -415,12 +415,21 @@ def _populate_ncaab_game_ids(
         )
         cbb_lookup[reverse_key] = (cg.game_id, cg)
 
-    # Log sample API game names for debugging
+    # Log sample API game names for debugging - show raw names too
     sample_api_games = list(cbb_lookup.keys())[:5]
+    sample_raw_names = []
+    for cg in list(cbb_games)[:3]:
+        if cg.status == "final":
+            sample_raw_names.append({
+                "home": cg.home_team_name,
+                "away": cg.away_team_name,
+                "date": str(cg.game_date.astimezone(US_EASTERN).date()),
+            })
     logger.info(
         "ncaab_game_ids_api_sample",
         run_id=run_id,
         sample_keys=sample_api_games,
+        sample_raw_names=sample_raw_names,
         total_api_games=len(cbb_lookup) // 2,  # Divide by 2 since we have both forward and reverse
     )
 
@@ -443,13 +452,20 @@ def _populate_ncaab_game_ids(
         key = _make_ncaab_lookup_key(home_name, away_name, game_day)
         match = cbb_lookup.get(key)
 
-        # Log first few unmatched for debugging
+        # Log first few unmatched for debugging - show both normalized key and raw names
         if not match and len(unmatched_samples) < 5:
+            # Find closest API match for debugging
+            home_norm = _normalize_ncaab_team_name(home_name)
+            away_norm = _normalize_ncaab_team_name(away_name)
+            # Check if any API key contains our home team (partial match)
+            partial_matches = [k for k in cbb_lookup.keys() if home_norm.split()[0] in k][:2]
             unmatched_samples.append({
                 "db_key": key,
-                "home": home_name,
-                "away": away_name,
+                "home_raw": home_name,
+                "home_norm": home_norm,
+                "away_raw": away_name,
                 "date": str(game_day),
+                "partial_api_matches": partial_matches,
             })
 
         if match:
@@ -720,13 +736,36 @@ def ingest_boxscores_via_ncaab_api(
 def _normalize_ncaab_team_name(name: str) -> str:
     """Normalize NCAAB team name for matching.
 
-    Removes punctuation and normalizes whitespace for fuzzy matching.
-    Does NOT expand abbreviations (St. stays as st, not state) to avoid
-    false positives like "St. Louis" -> "State Louis".
+    Expands common abbreviations and normalizes for fuzzy matching.
     """
+    import re
+
     normalized = name.lower().strip()
+
     # Remove punctuation but keep letters, numbers, spaces
     normalized = normalized.replace("'", "").replace(".", "").replace("-", " ").replace("&", "and")
+
+    # Expand common abbreviations BEFORE collapsing spaces
+    # Order matters - do multi-word expansions first
+    abbreviations = [
+        (r"\bunc\b", "north carolina"),
+        (r"\busc\b", "southern california"),
+        (r"\bucla\b", "ucla"),  # Keep as-is, it's the official name
+        (r"\buniv\b", "university"),
+        (r"\bu\b", "university"),  # Single "U" like "Boston U"
+        (r"\bst\b", "state"),  # "St" without period is usually "State"
+        (r"\bmt\b", "mount"),
+        (r"\bft\b", "fort"),
+        (r"\bn\b", "north"),
+        (r"\bs\b", "south"),
+        (r"\be\b", "east"),
+        (r"\bw\b", "west"),
+        (r"\bvmi\b", "virginia military institute"),
+    ]
+
+    for pattern, replacement in abbreviations:
+        normalized = re.sub(pattern, replacement, normalized)
+
     # Collapse multiple spaces
     normalized = " ".join(normalized.split())
     return normalized
