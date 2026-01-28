@@ -23,6 +23,7 @@ from .game_selection import (
     select_games_for_social,
 )
 from .pbp_ingestion import (
+    ingest_pbp_via_ncaab_api,
     ingest_pbp_via_nhl_api,
     ingest_pbp_via_sportsref,
 )
@@ -38,7 +39,7 @@ class ScrapeRunManager:
         # Feature support varies by league. When a toggle is enabled for an unsupported
         # league, we must NOT fail the run; we log and continue.
         self._supported_social_leagues = ("NBA", "NHL")
-        self._supported_live_pbp_leagues = ("NBA", "NHL")
+        self._supported_live_pbp_leagues = ("NBA", "NHL", "NCAAB")
 
     def _update_run(self, run_id: int, **updates) -> None:
         try:
@@ -96,8 +97,8 @@ class ScrapeRunManager:
             end_date=str(end),
         )
 
-        # NHL uses official NHL API for boxscores, so scraper is not required
-        if not scraper and config.boxscores and config.league_code != "NHL":
+        # NHL and NCAAB use official APIs for boxscores, so scraper is not required
+        if not scraper and config.boxscores and config.league_code not in ("NHL", "NCAAB"):
             raise RuntimeError(f"No scraper implemented for {config.league_code}")
 
         self._update_run(run_id, status="running", started_at=now_utc())
@@ -187,6 +188,42 @@ class ScrapeRunManager:
                     except Exception as exc:
                         logger.exception(
                             "nhl_boxscore_ingestion_failed",
+                            run_id=run_id,
+                            league=config.league_code,
+                            error=str(exc),
+                        )
+                elif config.league_code == "NCAAB":
+                    # NCAAB: Use College Basketball Data API for boxscores
+                    from .boxscore_ingestion import ingest_boxscores_via_ncaab_api
+
+                    logger.info(
+                        "boxscore_scraping_start",
+                        run_id=run_id,
+                        league=config.league_code,
+                        start_date=str(start),
+                        end_date=str(boxscore_end),
+                        original_end_date=str(end) if end != boxscore_end else None,
+                        only_missing=config.only_missing,
+                        stage="2_boxscore_enrichment",
+                        source="cbb_api",
+                    )
+
+                    try:
+                        with get_session() as session:
+                            games, enriched = ingest_boxscores_via_ncaab_api(
+                                session,
+                                run_id=run_id,
+                                start_date=start,
+                                end_date=boxscore_end,
+                                only_missing=config.only_missing,
+                                updated_before=updated_before_dt,
+                            )
+                            session.commit()
+                        summary["games"] = games
+                        summary["games_enriched"] = enriched
+                    except Exception as exc:
+                        logger.exception(
+                            "ncaab_boxscore_ingestion_failed",
                             run_id=run_id,
                             league=config.league_code,
                             error=str(exc),
@@ -354,6 +391,29 @@ class ScrapeRunManager:
                         except Exception as exc:
                             logger.exception(
                                 "pbp_nhl_api_failed",
+                                run_id=run_id,
+                                league=config.league_code,
+                                error=str(exc),
+                            )
+                            complete_job_run(pbp_run_id, "error", str(exc))
+                    elif config.league_code == "NCAAB":
+                        # NCAAB: Use College Basketball Data API for PBP
+                        try:
+                            with get_session() as session:
+                                pbp_games, pbp_events = ingest_pbp_via_ncaab_api(
+                                    session,
+                                    run_id=run_id,
+                                    start_date=start,
+                                    end_date=pbp_end,
+                                    only_missing=config.only_missing,
+                                    updated_before=updated_before_dt,
+                                )
+                                session.commit()
+                            summary["pbp_games"] += pbp_games
+                            complete_job_run(pbp_run_id, "success")
+                        except Exception as exc:
+                            logger.exception(
+                                "pbp_ncaab_api_failed",
                                 run_id=run_id,
                                 league=config.league_code,
                                 error=str(exc),

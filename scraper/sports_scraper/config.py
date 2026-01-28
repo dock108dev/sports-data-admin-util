@@ -127,6 +127,7 @@ class Settings(BaseSettings):
         return self
     
     odds_api_key: str | None = Field(None, alias="ODDS_API_KEY")
+    cbb_stats_api_key: str | None = Field(None, alias="CBB_STATS_API_KEY")
     environment: str = Field("development", alias="ENVIRONMENT")
     log_level: str | None = Field(None, alias="LOG_LEVEL")
     scraper_config: ScraperConfig = Field(default_factory=ScraperConfig)
