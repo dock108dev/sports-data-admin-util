@@ -37,32 +37,61 @@ NCAAB_PERIOD_MULTIPLIER = 10000
 NCAAB_MIN_EXPECTED_PLAYS = 100
 
 # Mapping of play types from the CBB API to normalized event types
-# These will be refined once we see actual API responses
+# Based on actual API responses observed in logs
 NCAAB_EVENT_TYPE_MAP: dict[str, str] = {
-    # Scoring events
-    "MadeShot": "MADE_SHOT",
-    "MissedShot": "MISSED_SHOT",
+    # Scoring events - shots
+    "JumpShot": "MADE_SHOT",
+    "Layup": "MADE_SHOT",
+    "Dunk": "MADE_SHOT",
+    "Tip Shot": "MADE_SHOT",
+    "Hook Shot": "MADE_SHOT",
+    "Three Point Jumper": "MADE_SHOT",
+    "Two Point Jumper": "MADE_SHOT",
+    "Missed JumpShot": "MISSED_SHOT",
+    "Missed Layup": "MISSED_SHOT",
+    "Missed Dunk": "MISSED_SHOT",
+    "Missed Three Point Jumper": "MISSED_SHOT",
+    "Missed Two Point Jumper": "MISSED_SHOT",
+    "Missed Tip Shot": "MISSED_SHOT",
+    "Missed Hook Shot": "MISSED_SHOT",
+    # Free throws
+    "Free Throw Made": "MADE_FREE_THROW",
+    "Free Throw Missed": "MISSED_FREE_THROW",
     "MadeFreeThrow": "MADE_FREE_THROW",
     "MissedFreeThrow": "MISSED_FREE_THROW",
     # Rebounds
+    "Offensive Rebound": "OFFENSIVE_REBOUND",
+    "Defensive Rebound": "DEFENSIVE_REBOUND",
     "Rebound": "REBOUND",
-    "OffensiveRebound": "OFFENSIVE_REBOUND",
-    "DefensiveRebound": "DEFENSIVE_REBOUND",
+    "Team Rebound": "REBOUND",
     # Ball movement
     "Turnover": "TURNOVER",
     "Steal": "STEAL",
     "Assist": "ASSIST",
     # Fouls
     "Foul": "FOUL",
-    "PersonalFoul": "PERSONAL_FOUL",
-    "TechnicalFoul": "TECHNICAL_FOUL",
-    "FlagrantFoul": "FLAGRANT_FOUL",
+    "Personal Foul": "PERSONAL_FOUL",
+    "Shooting Foul": "SHOOTING_FOUL",
+    "Offensive Foul": "OFFENSIVE_FOUL",
+    "Technical Foul": "TECHNICAL_FOUL",
+    "Flagrant Foul": "FLAGRANT_FOUL",
     # Game flow
     "Timeout": "TIMEOUT",
+    "TV Timeout": "TIMEOUT",
+    "Team Timeout": "TIMEOUT",
+    "Official Timeout": "TIMEOUT",
     "Substitution": "SUBSTITUTION",
     "JumpBall": "JUMP_BALL",
+    "Jump Ball": "JUMP_BALL",
     # Blocks
     "Block": "BLOCK",
+    "Blocked Shot": "BLOCK",
+    # Period markers
+    "End Period": "END_PERIOD",
+    "End Game": "END_GAME",
+    "End of Period": "END_PERIOD",
+    "Start Period": "START_PERIOD",
+    "Game Start": "GAME_START",
 }
 
 
@@ -308,7 +337,17 @@ class NCAABLiveFeedClient:
                 )
                 return []
 
-            return response.json()
+            data = response.json()
+            # Debug: log sample of response structure
+            if data:
+                sample = data[0] if isinstance(data, list) else data
+                logger.info(
+                    "ncaab_game_teams_response_sample",
+                    game_id=game_id,
+                    row_count=len(data) if isinstance(data, list) else 1,
+                    sample_keys=list(sample.keys()) if isinstance(sample, dict) else str(type(sample)),
+                )
+            return data
 
         except Exception as exc:
             logger.warning(
@@ -343,7 +382,17 @@ class NCAABLiveFeedClient:
                 )
                 return []
 
-            return response.json()
+            data = response.json()
+            # Debug: log sample of response structure
+            if data:
+                sample = data[0] if isinstance(data, list) else data
+                logger.info(
+                    "ncaab_game_players_response_sample",
+                    game_id=game_id,
+                    row_count=len(data) if isinstance(data, list) else 1,
+                    sample_keys=list(sample.keys()) if isinstance(sample, dict) else str(type(sample)),
+                )
+            return data
 
         except Exception as exc:
             logger.warning(
@@ -420,6 +469,118 @@ class NCAABLiveFeedClient:
             game_date=game.game_date,
             status=game.status,
             season=game.season,
+            home_team=home_team,
+            away_team=away_team,
+            home_score=home_score,
+            away_score=away_score,
+            team_boxscores=team_boxscores,
+            player_boxscores=player_boxscores,
+        )
+
+    def fetch_boxscore_by_id(
+        self,
+        game_id: int,
+        season: int,
+        game_date: datetime,
+        home_team_name: str,
+        away_team_name: str,
+    ) -> NCAABBoxscore | None:
+        """Fetch boxscore directly by game ID without needing full game info.
+
+        This is useful when we already have the cbb_game_id stored and don't need
+        to re-fetch the schedule to get team info.
+
+        Args:
+            game_id: CBB game ID
+            season: Season year (ending year, e.g., 2026 for 2025-2026)
+            game_date: Game date
+            home_team_name: Home team name (from DB)
+            away_team_name: Away team name (from DB)
+
+        Returns:
+            NCAABBoxscore with team and player stats, or None if fetch failed
+        """
+        logger.info("ncaab_boxscore_fetch_by_id", game_id=game_id, season=season)
+
+        # Fetch team stats
+        team_stats = self.fetch_game_teams(game_id, season)
+        if not team_stats:
+            logger.warning(
+                "ncaab_boxscore_no_team_stats",
+                game_id=game_id,
+            )
+            return None
+
+        # Fetch player stats
+        player_stats = self.fetch_game_players(game_id, season)
+
+        # Extract team info from team stats response
+        # Each team stat entry has teamId and team (name)
+        home_team_id = None
+        away_team_id = None
+        home_score = 0
+        away_score = 0
+
+        for ts in team_stats:
+            team_name = ts.get("team", "")
+            team_id = ts.get("teamId")
+            points = ts.get("points", 0) or 0
+
+            # Try to match team by checking if our DB team name contains the API team name
+            # or vice versa (fuzzy match)
+            home_norm = home_team_name.lower()
+            away_norm = away_team_name.lower()
+            api_norm = team_name.lower()
+
+            if api_norm in home_norm or home_norm in api_norm or ts.get("homeAway") == "home":
+                home_team_id = team_id
+                home_score = points
+            elif api_norm in away_norm or away_norm in api_norm or ts.get("homeAway") == "away":
+                away_team_id = team_id
+                away_score = points
+
+        # Build team identities using DB team names
+        home_team = _build_team_identity(home_team_name, home_team_id or 0)
+        away_team = _build_team_identity(away_team_name, away_team_id or 0)
+
+        # Parse team boxscores
+        team_boxscores: list[NormalizedTeamBoxscore] = []
+        for ts in team_stats:
+            team_id = ts.get("teamId")
+            is_home = team_id == home_team_id
+            team_identity = home_team if is_home else away_team
+            score = home_score if is_home else away_score
+
+            team_boxscore = self._parse_team_stats(ts, team_identity, is_home, score)
+            team_boxscores.append(team_boxscore)
+
+        # Parse player boxscores
+        player_boxscores: list[NormalizedPlayerBoxscore] = []
+        for ps in player_stats:
+            team_id = ps.get("teamId")
+            is_home = team_id == home_team_id
+            team_identity = home_team if is_home else away_team
+
+            player_boxscore = self._parse_player_stats(ps, team_identity, game_id)
+            if player_boxscore:
+                player_boxscores.append(player_boxscore)
+
+        logger.info(
+            "ncaab_boxscore_parsed_by_id",
+            game_id=game_id,
+            home_team=home_team_name,
+            away_team=away_team_name,
+            home_score=home_score,
+            away_score=away_score,
+            team_stats_count=len(team_boxscores),
+            player_stats_count=len(player_boxscores),
+        )
+
+        return NCAABBoxscore(
+            game_id=game_id,
+            game_date=game_date,
+            status="final",  # We only fetch boxscores for completed games
+            season=season,
             home_team=home_team,
             away_team=away_team,
             home_score=home_score,

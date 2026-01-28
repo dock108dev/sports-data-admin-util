@@ -16,8 +16,13 @@ Benefits:
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
+
 from sqlalchemy import exists, not_, or_
 from sqlalchemy.orm import Session
+
+# US sports use Eastern Time for game dates
+US_EASTERN = ZoneInfo("America/New_York")
 
 from ..db import db_models
 from ..logging import logger
@@ -387,37 +392,65 @@ def _populate_ncaab_game_ids(
         return 0
 
     # Build lookup: (normalized_home_name, normalized_away_name, date) -> (cbb_game_id, api_game)
+    # Normalize dates to Eastern Time to match how Odds API stores dates
     cbb_lookup: dict[str, tuple[int, object]] = {}
     for cg in cbb_games:
         # Only include completed games
         if cg.status != "final":
             continue
+        # Convert UTC datetime to Eastern Time, then extract date
+        # This matches how Odds API normalizes dates for storage
+        game_date_et = cg.game_date.astimezone(US_EASTERN).date()
         key = _make_ncaab_lookup_key(
             cg.home_team_name,
             cg.away_team_name,
-            cg.game_date.date(),
+            game_date_et,
         )
         cbb_lookup[key] = (cg.game_id, cg)
         # Also add reverse key since home/away might be swapped
         reverse_key = _make_ncaab_lookup_key(
             cg.away_team_name,
             cg.home_team_name,
-            cg.game_date.date(),
+            game_date_et,
         )
         cbb_lookup[reverse_key] = (cg.game_id, cg)
 
+    # Log sample API game names for debugging
+    sample_api_games = list(cbb_lookup.keys())[:5]
+    logger.info(
+        "ncaab_game_ids_api_sample",
+        run_id=run_id,
+        sample_keys=sample_api_games,
+        total_api_games=len(cbb_lookup) // 2,  # Divide by 2 since we have both forward and reverse
+    )
+
     # Match and update
     updated = 0
+    unmatched_samples = []
     for game_id, game_date, home_team_id, away_team_id in games_missing_id:
         home_name = team_id_to_name.get(home_team_id, "")
         away_name = team_id_to_name.get(away_team_id, "")
-        game_day = game_date.date() if game_date else None
+        # Convert DB game_date to Eastern Time, then extract date
+        # This matches how Odds API stores dates (midnight ET)
+        if game_date:
+            game_day = game_date.astimezone(US_EASTERN).date()
+        else:
+            game_day = None
 
         if not home_name or not away_name or not game_day:
             continue
 
         key = _make_ncaab_lookup_key(home_name, away_name, game_day)
         match = cbb_lookup.get(key)
+
+        # Log first few unmatched for debugging
+        if not match and len(unmatched_samples) < 5:
+            unmatched_samples.append({
+                "db_key": key,
+                "home": home_name,
+                "away": away_name,
+                "date": str(game_day),
+            })
 
         if match:
             cbb_game_id, _ = match
@@ -438,6 +471,15 @@ def _populate_ncaab_game_ids(
                 )
 
     session.flush()
+
+    # Log unmatched samples for debugging
+    if unmatched_samples:
+        logger.info(
+            "ncaab_game_ids_unmatched_samples",
+            run_id=run_id,
+            samples=unmatched_samples,
+        )
+
     logger.info(
         "ncaab_game_ids_populated",
         run_id=run_id,
@@ -454,7 +496,7 @@ def select_games_for_boxscores_ncaab_api(
     end_date: date,
     only_missing: bool,
     updated_before: datetime | None,
-) -> list[tuple[int, int, date]]:
+) -> list[tuple[int, int, date, str, str]]:
     """Return game ids and CBB game IDs for NCAAB API boxscore ingestion.
 
     NCAAB boxscores are fetched via the CBB API using the CBB game ID
@@ -468,7 +510,7 @@ def select_games_for_boxscores_ncaab_api(
         updated_before: Only include games with stale boxscore data
 
     Returns:
-        List of (game_id, cbb_game_id, game_date) tuples for games needing boxscores
+        List of (game_id, cbb_game_id, game_date, home_team_name, away_team_name) tuples
     """
     league = session.query(db_models.SportsLeague).filter(
         db_models.SportsLeague.code == "NCAAB"
@@ -479,10 +521,22 @@ def select_games_for_boxscores_ncaab_api(
     # CBB game ID is stored in external_ids JSONB field under 'cbb_game_id' key
     cbb_game_id_expr = db_models.SportsGame.external_ids["cbb_game_id"].astext
 
+    # Join with teams to get team names
+    home_team = db_models.SportsTeam.__table__.alias("home_team")
+    away_team = db_models.SportsTeam.__table__.alias("away_team")
+
     query = session.query(
         db_models.SportsGame.id,
         cbb_game_id_expr.label("cbb_game_id"),
         db_models.SportsGame.game_date,
+        home_team.c.name.label("home_team_name"),
+        away_team.c.name.label("away_team_name"),
+    ).join(
+        home_team,
+        db_models.SportsGame.home_team_id == home_team.c.id,
+    ).join(
+        away_team,
+        db_models.SportsGame.away_team_id == away_team.c.id,
     ).filter(
         db_models.SportsGame.league_id == league.id,
         db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
@@ -507,13 +561,13 @@ def select_games_for_boxscores_ncaab_api(
 
     rows = query.all()
     results = []
-    for game_id, cbb_game_id, game_date in rows:
+    for game_id, cbb_game_id, game_date, home_team_name, away_team_name in rows:
         if cbb_game_id:
             try:
                 cbb_id = int(cbb_game_id)
                 game_day = game_date.date() if game_date else None
-                if game_day:
-                    results.append((game_id, cbb_id, game_day))
+                if game_day and home_team_name and away_team_name:
+                    results.append((game_id, cbb_id, game_day, home_team_name, away_team_name))
             except (ValueError, TypeError):
                 logger.warning(
                     "ncaab_boxscore_invalid_game_id",
@@ -602,27 +656,17 @@ def ingest_boxscores_via_ncaab_api(
     games_processed = 0
     games_enriched = 0
 
-    for game_id, cbb_game_id, game_date in games:
+    for game_id, cbb_game_id, game_date, home_team_name, away_team_name in games:
         try:
-            # Fetch the game info first to get team names for boxscore
-            # We fetch a single-day range to get just this game
-            api_games = client.fetch_games(game_date, game_date, season=season)
-            api_game = next(
-                (g for g in api_games if g.game_id == cbb_game_id),
-                None
+            # Fetch boxscore directly by game ID - no need to re-fetch game list
+            game_datetime = datetime.combine(game_date, datetime.min.time(), tzinfo=timezone.utc)
+            boxscore = client.fetch_boxscore_by_id(
+                game_id=cbb_game_id,
+                season=season,
+                game_date=game_datetime,
+                home_team_name=home_team_name,
+                away_team_name=away_team_name,
             )
-
-            if not api_game:
-                logger.warning(
-                    "ncaab_boxscore_game_not_found_in_api",
-                    run_id=run_id,
-                    game_id=game_id,
-                    cbb_game_id=cbb_game_id,
-                )
-                continue
-
-            # Fetch full boxscore
-            boxscore = client.fetch_boxscore(api_game)
 
             if not boxscore:
                 logger.warning(
