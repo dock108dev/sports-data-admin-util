@@ -117,19 +117,54 @@ class NCAABLiveFeedClient:
             "Authorization": f"Bearer {api_key}" if api_key else "",
         }
         self.client = httpx.Client(timeout=timeout, headers=headers)
+        # Cache of team_id -> displayName (e.g., "Cincinnati Bearcats")
+        # Populated lazily on first use
+        self._team_names: dict[int, str] = {}
 
     def _get_season_for_date(self, game_date: date) -> int:
         """Calculate NCAAB season year from a game date.
 
-        NCAAB season runs from November to April. Games in January-April belong to
-        the previous calendar year's season start year (e.g., January 2026 = 2025-26 season = 2025).
+        The CBB API uses the ending year of the season (e.g., 2026 for 2025-2026 season).
+        NCAAB season runs from November to April:
+        - November-December games: season = next year (Nov 2025 -> season 2026)
+        - January-April games: season = current year (Jan 2026 -> season 2026)
         """
         if game_date.month >= 11:
-            # November-December: season starts this year
-            return game_date.year
+            # November-December: season ends next year
+            return game_date.year + 1
         else:
-            # January-April: season started last year
-            return game_date.year - 1
+            # January-April: season ends this year
+            return game_date.year
+
+    def _ensure_team_names(self, season: int) -> None:
+        """Fetch and cache team displayNames for matching against Odds API names.
+
+        The teams endpoint returns displayName (e.g., "Cincinnati Bearcats") which
+        matches what the Odds API uses, while the games endpoint only returns
+        short names (e.g., "Cincinnati").
+        """
+        if self._team_names:
+            return  # Already cached
+
+        try:
+            response = self.client.get(
+                "https://api.collegebasketballdata.com/teams",
+                params={"season": season},
+            )
+            if response.status_code == 200:
+                teams = response.json()
+                for team in teams:
+                    team_id = team.get("id")
+                    display_name = team.get("displayName", "")
+                    if team_id and display_name:
+                        self._team_names[int(team_id)] = display_name
+                logger.info("ncaab_teams_cached", count=len(self._team_names))
+        except Exception as exc:
+            logger.warning("ncaab_teams_fetch_failed", error=str(exc))
+
+    def _get_team_display_name(self, team_id: int, fallback: str) -> str:
+        """Get team displayName from cache, falling back to provided name."""
+        return self._team_names.get(team_id, fallback)
 
     def fetch_games(
         self,
@@ -153,14 +188,17 @@ class NCAABLiveFeedClient:
         if season is None:
             season = self._get_season_for_date(start)
 
+        # Ensure team names are cached for proper matching
+        self._ensure_team_names(season)
+
         games: list[NCAABLiveGame] = []
 
         try:
-            # The API takes startDate and endDate as query params
+            # The API takes startDateRange and endDateRange as query params
             params = {
                 "season": season,
-                "startDate": start.strftime("%Y-%m-%d"),
-                "endDate": end.strftime("%Y-%m-%d"),
+                "startDateRange": start.strftime("%Y-%m-%d"),
+                "endDateRange": end.strftime("%Y-%m-%d"),
             }
 
             response = self.client.get(CBB_GAMES_URL, params=params)
@@ -214,15 +252,18 @@ class NCAABLiveFeedClient:
         else:
             game_date = now_utc()
 
-        # Determine status
-        completed = game.get("completed", False)
-        status = "final" if completed else "scheduled"
+        # Determine status - API returns "final", "scheduled", "cancelled", etc.
+        api_status = game.get("status", "scheduled")
+        status = api_status if api_status in ("final", "scheduled", "cancelled") else "scheduled"
 
-        # Extract team info
+        # Extract team info - use displayName from teams cache for matching
         home_team_id = game.get("homeTeamId")
-        home_team_name = game.get("homeTeam", "")
+        home_team_short = game.get("homeTeam", "")
+        home_team_name = self._get_team_display_name(home_team_id, home_team_short) if home_team_id else home_team_short
+
         away_team_id = game.get("awayTeamId")
-        away_team_name = game.get("awayTeam", "")
+        away_team_short = game.get("awayTeam", "")
+        away_team_name = self._get_team_display_name(away_team_id, away_team_short) if away_team_id else away_team_short
 
         # Extract scores
         home_score = _parse_int(game.get("homeScore"))

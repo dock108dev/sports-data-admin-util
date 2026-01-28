@@ -16,7 +16,7 @@ Benefits:
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from sqlalchemy import exists, not_
+from sqlalchemy import exists, not_, or_
 from sqlalchemy.orm import Session
 
 from ..db import db_models
@@ -288,15 +288,239 @@ def _convert_boxscore_to_normalized_game(
 def _ncaab_season_from_date(game_date: date) -> int:
     """Calculate NCAAB season year from a game date.
 
-    NCAAB season runs from November to April. Games in January-April belong to
-    the previous calendar year's season (e.g., January 2026 = 2025-26 season = 2025).
+    The CBB API uses the ending year of the season (e.g., 2026 for 2025-2026 season).
+    NCAAB season runs from November to April:
+    - November-December games: season = next year (Nov 2025 -> season 2026)
+    - January-April games: season = current year (Jan 2026 -> season 2026)
     """
     if game_date.month >= 11:
-        # November-December: season starts this year
-        return game_date.year
+        # November-December: season ends next year
+        return game_date.year + 1
     else:
-        # January-April: season started last year
-        return game_date.year - 1
+        # January-April: season ends this year
+        return game_date.year
+
+
+def _populate_ncaab_game_ids(
+    session: Session,
+    *,
+    run_id: int,
+    start_date: date,
+    end_date: date,
+) -> int:
+    """Populate cbb_game_id for NCAAB games that don't have it.
+
+    Fetches the CBB schedule and matches games by normalized team name + date
+    to populate the external_ids['cbb_game_id'] field needed for boxscore/PBP fetching.
+
+    This follows the same pattern as NHL's _populate_nhl_game_ids().
+
+    Returns:
+        Number of games updated with CBB game IDs
+    """
+    from ..live.ncaab import NCAABLiveFeedClient
+
+    league = session.query(db_models.SportsLeague).filter(
+        db_models.SportsLeague.code == "NCAAB"
+    ).first()
+    if not league:
+        return 0
+
+    # Find games without cbb_game_id
+    cbb_game_id_expr = db_models.SportsGame.external_ids["cbb_game_id"].astext
+
+    games_missing_id = (
+        session.query(
+            db_models.SportsGame.id,
+            db_models.SportsGame.game_date,
+            db_models.SportsGame.home_team_id,
+            db_models.SportsGame.away_team_id,
+        )
+        .filter(
+            db_models.SportsGame.league_id == league.id,
+            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
+            db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
+            or_(
+                cbb_game_id_expr.is_(None),
+                cbb_game_id_expr == "",
+            ),
+        )
+        .all()
+    )
+
+    if not games_missing_id:
+        logger.info(
+            "ncaab_game_ids_all_present",
+            run_id=run_id,
+            start_date=str(start_date),
+            end_date=str(end_date),
+        )
+        return 0
+
+    logger.info(
+        "ncaab_game_ids_missing",
+        run_id=run_id,
+        count=len(games_missing_id),
+        start_date=str(start_date),
+        end_date=str(end_date),
+    )
+
+    # Build team ID to name mapping
+    teams = session.query(db_models.SportsTeam).filter(
+        db_models.SportsTeam.league_id == league.id
+    ).all()
+    team_id_to_name = {t.id: t.name for t in teams}
+
+    # Fetch CBB schedule
+    client = NCAABLiveFeedClient()
+    season = _ncaab_season_from_date(start_date)
+    cbb_games = client.fetch_games(start_date, end_date, season=season)
+
+    if not cbb_games:
+        logger.info(
+            "ncaab_game_ids_no_api_games",
+            run_id=run_id,
+            start_date=str(start_date),
+            end_date=str(end_date),
+            season=season,
+        )
+        return 0
+
+    # Build lookup: (normalized_home_name, normalized_away_name, date) -> (cbb_game_id, api_game)
+    cbb_lookup: dict[str, tuple[int, object]] = {}
+    for cg in cbb_games:
+        # Only include completed games
+        if cg.status != "final":
+            continue
+        key = _make_ncaab_lookup_key(
+            cg.home_team_name,
+            cg.away_team_name,
+            cg.game_date.date(),
+        )
+        cbb_lookup[key] = (cg.game_id, cg)
+        # Also add reverse key since home/away might be swapped
+        reverse_key = _make_ncaab_lookup_key(
+            cg.away_team_name,
+            cg.home_team_name,
+            cg.game_date.date(),
+        )
+        cbb_lookup[reverse_key] = (cg.game_id, cg)
+
+    # Match and update
+    updated = 0
+    for game_id, game_date, home_team_id, away_team_id in games_missing_id:
+        home_name = team_id_to_name.get(home_team_id, "")
+        away_name = team_id_to_name.get(away_team_id, "")
+        game_day = game_date.date() if game_date else None
+
+        if not home_name or not away_name or not game_day:
+            continue
+
+        key = _make_ncaab_lookup_key(home_name, away_name, game_day)
+        match = cbb_lookup.get(key)
+
+        if match:
+            cbb_game_id, _ = match
+            game = session.query(db_models.SportsGame).get(game_id)
+            if game:
+                # Update external_ids with cbb_game_id
+                new_external_ids = dict(game.external_ids) if game.external_ids else {}
+                new_external_ids["cbb_game_id"] = cbb_game_id
+                game.external_ids = new_external_ids
+                updated += 1
+                logger.info(
+                    "ncaab_game_id_populated",
+                    run_id=run_id,
+                    game_id=game_id,
+                    cbb_game_id=cbb_game_id,
+                    home=home_name,
+                    away=away_name,
+                )
+
+    session.flush()
+    logger.info(
+        "ncaab_game_ids_populated",
+        run_id=run_id,
+        updated=updated,
+        total_missing=len(games_missing_id),
+    )
+    return updated
+
+
+def select_games_for_boxscores_ncaab_api(
+    session: Session,
+    *,
+    start_date: date,
+    end_date: date,
+    only_missing: bool,
+    updated_before: datetime | None,
+) -> list[tuple[int, int, date]]:
+    """Return game ids and CBB game IDs for NCAAB API boxscore ingestion.
+
+    NCAAB boxscores are fetched via the CBB API using the CBB game ID
+    stored in external_ids['cbb_game_id'].
+
+    Args:
+        session: Database session
+        start_date: Start of date range
+        end_date: End of date range
+        only_missing: Skip games that already have boxscore data
+        updated_before: Only include games with stale boxscore data
+
+    Returns:
+        List of (game_id, cbb_game_id, game_date) tuples for games needing boxscores
+    """
+    league = session.query(db_models.SportsLeague).filter(
+        db_models.SportsLeague.code == "NCAAB"
+    ).first()
+    if not league:
+        return []
+
+    # CBB game ID is stored in external_ids JSONB field under 'cbb_game_id' key
+    cbb_game_id_expr = db_models.SportsGame.external_ids["cbb_game_id"].astext
+
+    query = session.query(
+        db_models.SportsGame.id,
+        cbb_game_id_expr.label("cbb_game_id"),
+        db_models.SportsGame.game_date,
+    ).filter(
+        db_models.SportsGame.league_id == league.id,
+        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
+        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
+        # cbb_game_id is required for CBB API boxscore fetch
+        cbb_game_id_expr.isnot(None),
+    )
+
+    if only_missing:
+        has_boxscores = exists().where(
+            db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id
+        )
+        query = query.filter(not_(has_boxscores))
+
+    if updated_before:
+        # Filter games with stale boxscore data
+        has_fresh = exists().where(
+            db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id,
+            db_models.SportsTeamBoxscore.updated_at >= updated_before,
+        )
+        query = query.filter(not_(has_fresh))
+
+    rows = query.all()
+    results = []
+    for game_id, cbb_game_id, game_date in rows:
+        if cbb_game_id:
+            try:
+                cbb_id = int(cbb_game_id)
+                game_day = game_date.date() if game_date else None
+                if game_day:
+                    results.append((game_id, cbb_id, game_day))
+            except (ValueError, TypeError):
+                logger.warning(
+                    "ncaab_boxscore_invalid_game_id",
+                    game_id=game_id,
+                    cbb_game_id=cbb_game_id,
+                )
+    return results
 
 
 def ingest_boxscores_via_ncaab_api(
@@ -533,12 +757,29 @@ def _build_ncaab_game_lookup(
     return lookup
 
 
+def _normalize_ncaab_team_name(name: str) -> str:
+    """Normalize NCAAB team name for matching.
+
+    Removes punctuation and normalizes whitespace for fuzzy matching.
+    Does NOT expand abbreviations (St. stays as st, not state) to avoid
+    false positives like "St. Louis" -> "State Louis".
+    """
+    normalized = name.lower().strip()
+    # Remove punctuation but keep letters, numbers, spaces
+    normalized = normalized.replace("'", "").replace(".", "").replace("-", " ").replace("&", "and")
+    # Collapse multiple spaces
+    normalized = " ".join(normalized.split())
+    return normalized
+
+
 def _make_ncaab_lookup_key(home_team: str, away_team: str, game_date: date) -> str:
     """Create a lookup key for NCAAB game matching.
 
-    Normalizes team names to lowercase for fuzzy matching.
+    Normalizes team names for fuzzy matching.
     """
-    return f"{home_team.lower().strip()}|{away_team.lower().strip()}|{game_date.isoformat()}"
+    home_norm = _normalize_ncaab_team_name(home_team)
+    away_norm = _normalize_ncaab_team_name(away_team)
+    return f"{home_norm}|{away_norm}|{game_date.isoformat()}"
 
 
 def _store_cbb_game_id(session: Session, game_id: int, cbb_game_id: int) -> None:
