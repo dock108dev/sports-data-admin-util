@@ -534,10 +534,10 @@ def ingest_boxscores_via_ncaab_api(
 ) -> tuple[int, int]:
     """Ingest NCAAB boxscores using the College Basketball Data API.
 
-    Flow:
-    1. Fetch games from CBB API for date range
-    2. For each game, fetch team and player boxscores
-    3. Match to existing games in DB (created by Odds API)
+    Flow (follows NHL pattern):
+    1. Populate cbb_game_id for games missing it (via CBB schedule API)
+    2. Select games with cbb_game_id that need boxscore data
+    3. Fetch boxscore from CBB API for each game
     4. Persist via existing persist_game_payload()
 
     Args:
@@ -561,87 +561,66 @@ def ingest_boxscores_via_ncaab_api(
         only_missing=only_missing,
     )
 
-    client = NCAABLiveFeedClient()
-
-    # Fetch games from CBB API
-    season = _ncaab_season_from_date(start_date)
-    api_games = client.fetch_games(start_date, end_date, season=season)
-
-    if not api_games:
-        logger.info(
-            "ncaab_boxscore_no_games_from_api",
-            run_id=run_id,
-            start_date=str(start_date),
-            end_date=str(end_date),
-            season=season,
-        )
-        return (0, 0)
-
-    logger.info(
-        "ncaab_boxscore_games_from_api",
+    # Step 1: Populate missing CBB game IDs
+    _populate_ncaab_game_ids(
+        session,
         run_id=run_id,
-        games=len(api_games),
-        season=season,
+        start_date=start_date,
+        end_date=end_date,
     )
 
-    # Get league ID
-    league = session.query(db_models.SportsLeague).filter(
-        db_models.SportsLeague.code == "NCAAB"
-    ).first()
-    if not league:
-        logger.warning("ncaab_boxscore_no_league", run_id=run_id)
-        return (0, 0)
-
-    # Build lookup of existing games by team names + date
-    # NCAAB games are matched by home_team_name + away_team_name + game_date
-    existing_games = _build_ncaab_game_lookup(
+    # Step 2: Select games for boxscore ingestion
+    games = select_games_for_boxscores_ncaab_api(
         session,
-        league_id=league.id,
         start_date=start_date,
         end_date=end_date,
         only_missing=only_missing,
         updated_before=updated_before,
     )
 
+    if not games:
+        logger.info(
+            "ncaab_boxscore_no_games_selected",
+            run_id=run_id,
+            start_date=str(start_date),
+            end_date=str(end_date),
+            only_missing=only_missing,
+        )
+        return (0, 0)
+
+    logger.info(
+        "ncaab_boxscore_games_selected",
+        run_id=run_id,
+        games=len(games),
+        only_missing=only_missing,
+        updated_before=str(updated_before) if updated_before else None,
+    )
+
+    # Step 3: Fetch and persist boxscores
+    client = NCAABLiveFeedClient()
+    season = _ncaab_season_from_date(start_date)
     games_processed = 0
     games_enriched = 0
 
-    for api_game in api_games:
-        # Only process completed games
-        if api_game.status != "final":
-            continue
-
-        # Try to match to existing game in DB
-        game_day = api_game.game_date.date()
-        lookup_key = _make_ncaab_lookup_key(
-            api_game.home_team_name,
-            api_game.away_team_name,
-            game_day,
-        )
-
-        db_game_id = existing_games.get(lookup_key)
-        if db_game_id is None:
-            # Try reverse order (away @ home)
-            reverse_key = _make_ncaab_lookup_key(
-                api_game.away_team_name,
-                api_game.home_team_name,
-                game_day,
-            )
-            db_game_id = existing_games.get(reverse_key)
-
-        if db_game_id is None:
-            # Game not found in DB - this is normal, Odds API may not have it
-            logger.debug(
-                "ncaab_boxscore_game_not_in_db",
-                run_id=run_id,
-                cbb_game_id=api_game.game_id,
-                home=api_game.home_team_name,
-                away=api_game.away_team_name,
-                game_date=str(game_day),
-            )
-            continue
-
+    for game_id, cbb_game_id, game_date in games:
         try:
+            # Fetch the game info first to get team names for boxscore
+            # We fetch a single-day range to get just this game
+            api_games = client.fetch_games(game_date, game_date, season=season)
+            api_game = next(
+                (g for g in api_games if g.game_id == cbb_game_id),
+                None
+            )
+
+            if not api_game:
+                logger.warning(
+                    "ncaab_boxscore_game_not_found_in_api",
+                    run_id=run_id,
+                    game_id=game_id,
+                    cbb_game_id=cbb_game_id,
+                )
+                continue
+
             # Fetch full boxscore
             boxscore = client.fetch_boxscore(api_game)
 
@@ -649,8 +628,8 @@ def ingest_boxscores_via_ncaab_api(
                 logger.warning(
                     "ncaab_boxscore_empty_response",
                     run_id=run_id,
-                    db_game_id=db_game_id,
-                    cbb_game_id=api_game.game_id,
+                    game_id=game_id,
+                    cbb_game_id=cbb_game_id,
                 )
                 continue
 
@@ -665,14 +644,11 @@ def ingest_boxscores_via_ncaab_api(
                 if result.enriched:
                     games_enriched += 1
 
-                # Store CBB game ID in external_ids for future reference
-                _store_cbb_game_id(session, result.game_id, api_game.game_id)
-
                 logger.info(
                     "ncaab_boxscore_ingested",
                     run_id=run_id,
-                    db_game_id=result.game_id,
-                    cbb_game_id=api_game.game_id,
+                    game_id=game_id,
+                    cbb_game_id=cbb_game_id,
                     enriched=result.enriched,
                     player_stats_inserted=result.player_stats.inserted if result.player_stats else 0,
                 )
@@ -681,7 +657,8 @@ def ingest_boxscores_via_ncaab_api(
             logger.warning(
                 "ncaab_boxscore_fetch_failed",
                 run_id=run_id,
-                cbb_game_id=api_game.game_id,
+                game_id=game_id,
+                cbb_game_id=cbb_game_id,
                 error=str(exc),
             )
             continue
@@ -694,67 +671,6 @@ def ingest_boxscores_via_ncaab_api(
     )
 
     return (games_processed, games_enriched)
-
-
-def _build_ncaab_game_lookup(
-    session: Session,
-    *,
-    league_id: int,
-    start_date: date,
-    end_date: date,
-    only_missing: bool,
-    updated_before: datetime | None,
-) -> dict[str, int]:
-    """Build lookup of NCAAB games by (home_team, away_team, date) -> game_id.
-
-    Since NCAAB teams don't have stable abbreviations, we match by team name.
-    """
-    query = session.query(
-        db_models.SportsGame.id,
-        db_models.SportsGame.game_date,
-        db_models.SportsTeam.name.label("home_team_name"),
-    ).join(
-        db_models.SportsTeam,
-        db_models.SportsGame.home_team_id == db_models.SportsTeam.id,
-    ).filter(
-        db_models.SportsGame.league_id == league_id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
-        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
-    )
-
-    if only_missing:
-        has_boxscores = exists().where(
-            db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id
-        )
-        query = query.filter(not_(has_boxscores))
-
-    if updated_before:
-        has_fresh = exists().where(
-            db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id,
-            db_models.SportsTeamBoxscore.updated_at >= updated_before,
-        )
-        query = query.filter(not_(has_fresh))
-
-    # We need away team name too - do a separate join
-    away_team = db_models.SportsTeam.__table__.alias("away_team")
-    query = query.add_columns(away_team.c.name.label("away_team_name"))
-    query = query.join(
-        away_team,
-        db_models.SportsGame.away_team_id == away_team.c.id,
-    )
-
-    lookup: dict[str, int] = {}
-    for row in query.all():
-        game_id = row[0]
-        game_date = row[1]
-        home_name = row[2]
-        away_name = row[3]
-        game_day = game_date.date() if game_date else None
-        if game_day and home_name and away_name:
-            key = _make_ncaab_lookup_key(home_name, away_name, game_day)
-            lookup[key] = game_id
-
-    return lookup
 
 
 def _normalize_ncaab_team_name(name: str) -> str:
@@ -780,16 +696,6 @@ def _make_ncaab_lookup_key(home_team: str, away_team: str, game_date: date) -> s
     home_norm = _normalize_ncaab_team_name(home_team)
     away_norm = _normalize_ncaab_team_name(away_team)
     return f"{home_norm}|{away_norm}|{game_date.isoformat()}"
-
-
-def _store_cbb_game_id(session: Session, game_id: int, cbb_game_id: int) -> None:
-    """Store CBB game ID in external_ids for future reference."""
-    game = session.query(db_models.SportsGame).get(game_id)
-    if game:
-        new_external_ids = dict(game.external_ids) if game.external_ids else {}
-        if "cbb_game_id" not in new_external_ids:
-            new_external_ids["cbb_game_id"] = cbb_game_id
-            game.external_ids = new_external_ids
 
 
 def _convert_ncaab_boxscore_to_normalized_game(

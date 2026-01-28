@@ -521,12 +521,10 @@ def ingest_pbp_via_ncaab_api(
 ) -> tuple[int, int]:
     """Ingest PBP using the College Basketball Data API.
 
-    Flow:
-    1. Select games with cbb_game_id that need PBP
-    2. Fetch and persist PBP for each game
-
-    Note: cbb_game_id is populated during boxscore ingestion, so boxscores
-    should be ingested before PBP for best results.
+    Flow (follows NHL pattern):
+    1. Populate cbb_game_id for games missing it (via CBB schedule API)
+    2. Select games with cbb_game_id that need PBP
+    3. Fetch and persist PBP for each game
 
     Args:
         session: Database session
@@ -540,6 +538,7 @@ def ingest_pbp_via_ncaab_api(
         Tuple of (games_with_pbp, total_events_inserted)
     """
     from ..live.ncaab import NCAABLiveFeedClient, NCAAB_MIN_EXPECTED_PLAYS
+    from .boxscore_ingestion import _populate_ncaab_game_ids
 
     logger.info(
         "ncaab_pbp_ingestion_start",
@@ -549,7 +548,15 @@ def ingest_pbp_via_ncaab_api(
         only_missing=only_missing,
     )
 
-    # Select games for PBP ingestion
+    # Step 1: Populate missing CBB game IDs
+    _populate_ncaab_game_ids(
+        session,
+        run_id=run_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    # Step 2: Select games for PBP ingestion
     games = select_games_for_pbp_ncaab_api(
         session,
         start_date=start_date,
