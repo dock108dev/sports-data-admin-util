@@ -6,7 +6,8 @@ This document describes where data comes from and how it's ingested.
 
 | Data Type | Source | Leagues | Update Frequency |
 |-----------|--------|---------|------------------|
-| Boxscores | Sports Reference | NBA, NCAAB | Post-game |
+| Boxscores | Sports Reference | NBA | Post-game |
+| Boxscores | CBB Stats API | NCAAB | Post-game |
 | Boxscores | NHL API | NHL | Post-game |
 | Play-by-Play (Historical) | Sports Reference | NBA, NCAAB | Post-game |
 | Play-by-Play (Live) | League APIs | NBA, NHL | During game (15s polling) |
@@ -18,7 +19,7 @@ This document describes where data comes from and how it's ingested.
 ### Source
 - **NBA**: basketball-reference.com
 - **NHL**: NHL API (`api-web.nhle.com/v1/gamecenter/{game_id}/boxscore`)
-- **NCAAB**: sports-reference.com/cbb
+- **NCAAB**: CBB Stats API (`/games/teams`, `/games/players`) with date range batching
 
 ### Data Collected
 - Team stats (points, rebounds, assists, etc.)
@@ -32,7 +33,7 @@ This document describes where data comes from and how it's ingested.
 
 ### Timing
 - Scraped after game status changes to `final`
-- Automatic ingestion runs once daily at 12:00 UTC (8 AM Eastern)
+- Automatic ingestion runs daily at 9:00 UTC (4 AM EST / 5 AM EDT)
 - Manual scraping available via Admin UI
 
 ## Play-by-Play
@@ -190,9 +191,9 @@ See also:
 
 ### Automatic (Scheduled)
 - **Scheduler**: Celery Beat
-- **Ingestion**: Daily at 12:00 UTC (8 AM Eastern) - boxscores, odds, PBP, social
-- **Timeline Generation**: Daily at 13:30 UTC (9:30 AM Eastern)
-- **Story Generation**: Daily at 13:45 UTC (9:45 AM Eastern)
+- **Ingestion**: Daily at 9:00 UTC (4 AM EST) - boxscores, odds, PBP, social
+- **Timeline Generation**: Daily at 10:30 UTC (5:30 AM EST) - 90 min after ingestion
+- **Story Generation**: Daily at 10:45 UTC (5:45 AM EST) - 15 min after timeline gen
 - **Window**: Yesterday through today (catches overnight game completions)
 
 ### Manual (Admin UI)

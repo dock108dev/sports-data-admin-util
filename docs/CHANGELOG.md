@@ -2,14 +2,20 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-01-24] - Current
+## [2026-01-28] - Current
+
+### NCAAB Enhancements
+
+- **Batch API fetching**: Reduced CBB API calls from 2 per game to 2 per date range
+- **API response caching**: Added JSON caching for NCAAB and NHL API responses
+- **Event type normalization**: Comprehensive NCAAB event type mapping for PBP
 
 ### Architecture
 
-- **Chapters-First Story Generation**: Games are split into structural chapters based on periods, timeouts, and reviews
-- **Single AI Call**: One AI call renders the complete story from structured sections
-- **Beat Classification**: 9 beat types (FAST_START, BACK_AND_FORTH, EARLY_CONTROL, RUN, RESPONSE, STALL, CRUNCH_SETUP, CLOSING_SEQUENCE, OVERTIME)
-- **Deterministic Pipeline**: Everything is deterministic until final AI rendering
+- **Condensed Moment Story Model**: Stories are ordered lists of condensed moments backed by specific plays
+- **Multi-Stage Pipeline**: NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES → FINALIZE_MOMENTS
+- **Deterministic Segmentation**: Moment boundaries are mechanical, AI is prose-only
+- **Full Traceability**: Every narrative sentence maps to specific plays
 
 ### Features
 
@@ -17,13 +23,14 @@ All notable changes to Sports Data Admin.
 - Celery scraper workers for NBA, NHL, NCAAB data
 - Next.js admin UI for data browsing and story generation
 - Sports Reference boxscore and PBP scraping
-- NHL live feed integration
-- The Odds API integration
+- NHL official API integration (schedule, PBP, boxscores)
+- NCAAB College Basketball Data API integration
+- The Odds API integration with local JSON caching
 - Social media scraping from X/Twitter team accounts
 - PostgreSQL with JSONB stats storage
 
 ### Documentation
 
-- [BOOK_CHAPTERS_MODEL.md](BOOK_CHAPTERS_MODEL.md) - Story generation architecture
-- [NBA_BOUNDARY_RULES.md](NBA_BOUNDARY_RULES.md) - Chapter boundary rules for NBA
-- [AI_SIGNALS_NBA.md](AI_SIGNALS_NBA.md) - AI signal definitions
+- [story_contract.md](story_contract.md) - Authoritative story specification
+- [STORY_PIPELINE.md](STORY_PIPELINE.md) - Pipeline stages and implementation
+- [NARRATIVE_TIME_MODEL.md](NARRATIVE_TIME_MODEL.md) - Timeline ordering model
