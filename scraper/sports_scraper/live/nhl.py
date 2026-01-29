@@ -21,6 +21,7 @@ from ..models import (
     TeamIdentity,
 )
 from ..normalization import normalize_team_name
+from ..utils.cache import APICache
 from ..utils.datetime_utils import now_utc
 
 # New NHL API endpoints (api-web.nhle.com)
@@ -106,6 +107,8 @@ class NHLLiveFeedClient:
             timeout=timeout,
             headers={"User-Agent": "sports-data-admin-live/1.0"},
         )
+        # API response cache to reduce redundant API calls
+        self._cache = APICache(settings.scraper_config.html_cache_dir, "nhl")
 
     def fetch_schedule(self, start: date, end: date) -> list[NHLLiveGame]:
         """Fetch NHL schedule for a date range.
@@ -196,12 +199,33 @@ class NHLLiveFeedClient:
     def fetch_play_by_play(self, game_id: int) -> NormalizedPlayByPlay:
         """Fetch and normalize play-by-play data for a game.
 
+        Results are cached to avoid redundant API calls.
+
         Args:
             game_id: NHL game ID (e.g., 2025020767)
 
         Returns:
             NormalizedPlayByPlay with all events normalized to canonical format
         """
+        # Check cache first
+        cache_key = f"pbp_{game_id}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            logger.info("nhl_pbp_using_cache", game_id=game_id)
+            plays = self._parse_pbp_response(cached, game_id)
+            # Validation for cached data
+            game_state = cached.get("gameState", "")
+            if game_state == "OFF" and len(plays) < NHL_MIN_EXPECTED_PLAYS:
+                logger.warning(
+                    "nhl_pbp_low_event_count",
+                    game_id=game_id,
+                    play_count=len(plays),
+                    expected_min=NHL_MIN_EXPECTED_PLAYS,
+                    game_state=game_state,
+                    source="cache",
+                )
+            return NormalizedPlayByPlay(source_game_key=str(game_id), plays=plays)
+
         url = NHL_PBP_URL.format(game_id=game_id)
         logger.info("nhl_pbp_fetch", url=url, game_id=game_id)
 
@@ -225,6 +249,10 @@ class NHLLiveFeedClient:
             return NormalizedPlayByPlay(source_game_key=str(game_id), plays=[])
 
         payload = response.json()
+
+        # Cache the raw response
+        self._cache.put(cache_key, payload)
+
         plays = self._parse_pbp_response(payload, game_id)
 
         # Validation: warn if low event count for completed game
@@ -467,12 +495,21 @@ class NHLLiveFeedClient:
     def fetch_boxscore(self, game_id: int) -> NHLBoxscore | None:
         """Fetch boxscore from NHL API.
 
+        Results are cached to avoid redundant API calls.
+
         Args:
             game_id: NHL game ID (e.g., 2025020767)
 
         Returns:
             NHLBoxscore with team and player stats, or None if fetch failed
         """
+        # Check cache first
+        cache_key = f"boxscore_{game_id}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            logger.info("nhl_boxscore_using_cache", game_id=game_id)
+            return self._parse_boxscore_response(cached, game_id)
+
         url = NHL_BOXSCORE_URL.format(game_id=game_id)
         logger.info("nhl_boxscore_fetch", url=url, game_id=game_id)
 
@@ -496,6 +533,10 @@ class NHLLiveFeedClient:
             return None
 
         payload = response.json()
+
+        # Cache the raw response
+        self._cache.put(cache_key, payload)
+
         return self._parse_boxscore_response(payload, game_id)
 
     def _parse_boxscore_response(self, payload: dict, game_id: int) -> NHLBoxscore:

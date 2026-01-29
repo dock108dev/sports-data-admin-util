@@ -20,6 +20,7 @@ from ..models import (
     NormalizedTeamBoxscore,
     TeamIdentity,
 )
+from ..utils.cache import APICache
 from ..utils.datetime_utils import now_utc
 
 # College Basketball Data API endpoints
@@ -38,22 +39,39 @@ NCAAB_MIN_EXPECTED_PLAYS = 100
 
 # Mapping of play types from the CBB API to normalized event types
 # Based on actual API responses observed in logs
+# Note: API uses inconsistent naming (camelCase, spaces, etc.) so we map all variants
 NCAAB_EVENT_TYPE_MAP: dict[str, str] = {
-    # Scoring events - shots
+    # Scoring events - shots (various naming conventions)
     "JumpShot": "MADE_SHOT",
     "Layup": "MADE_SHOT",
+    "LayUpShot": "MADE_SHOT",
     "Dunk": "MADE_SHOT",
+    "DunkShot": "MADE_SHOT",
     "Tip Shot": "MADE_SHOT",
+    "TipShot": "MADE_SHOT",
     "Hook Shot": "MADE_SHOT",
+    "HookShot": "MADE_SHOT",
     "Three Point Jumper": "MADE_SHOT",
+    "ThreePointJumper": "MADE_SHOT",
     "Two Point Jumper": "MADE_SHOT",
+    "TwoPointJumper": "MADE_SHOT",
+    # Missed shots
     "Missed JumpShot": "MISSED_SHOT",
+    "MissedJumpShot": "MISSED_SHOT",
     "Missed Layup": "MISSED_SHOT",
+    "MissedLayup": "MISSED_SHOT",
+    "MissedLayUpShot": "MISSED_SHOT",
     "Missed Dunk": "MISSED_SHOT",
+    "MissedDunk": "MISSED_SHOT",
+    "MissedDunkShot": "MISSED_SHOT",
     "Missed Three Point Jumper": "MISSED_SHOT",
+    "MissedThreePointJumper": "MISSED_SHOT",
     "Missed Two Point Jumper": "MISSED_SHOT",
+    "MissedTwoPointJumper": "MISSED_SHOT",
     "Missed Tip Shot": "MISSED_SHOT",
+    "MissedTipShot": "MISSED_SHOT",
     "Missed Hook Shot": "MISSED_SHOT",
+    "MissedHookShot": "MISSED_SHOT",
     # Free throws
     "Free Throw Made": "MADE_FREE_THROW",
     "Free Throw Missed": "MISSED_FREE_THROW",
@@ -61,37 +79,87 @@ NCAAB_EVENT_TYPE_MAP: dict[str, str] = {
     "MissedFreeThrow": "MISSED_FREE_THROW",
     # Rebounds
     "Offensive Rebound": "OFFENSIVE_REBOUND",
+    "OffensiveRebound": "OFFENSIVE_REBOUND",
     "Defensive Rebound": "DEFENSIVE_REBOUND",
+    "DefensiveRebound": "DEFENSIVE_REBOUND",
     "Rebound": "REBOUND",
     "Team Rebound": "REBOUND",
-    # Ball movement
+    "TeamRebound": "REBOUND",
+    "Dead Ball Rebound": "REBOUND",
+    "DeadBallRebound": "REBOUND",
+    # Ball movement - turnovers
     "Turnover": "TURNOVER",
+    "Lost Ball Turnover": "TURNOVER",
+    "LostBallTurnover": "TURNOVER",
+    "Bad Pass Turnover": "TURNOVER",
+    "BadPassTurnover": "TURNOVER",
+    "Traveling": "TURNOVER",
+    "TravelingTurnover": "TURNOVER",
+    "Out of Bounds Turnover": "TURNOVER",
+    "OutOfBoundsTurnover": "TURNOVER",
+    "Shot Clock Violation": "TURNOVER",
+    "ShotClockViolation": "TURNOVER",
+    "DoublePersonalFoul": "TURNOVER",
+    # Other ball movement
     "Steal": "STEAL",
     "Assist": "ASSIST",
-    # Fouls
+    # Fouls (various naming conventions)
     "Foul": "FOUL",
     "Personal Foul": "PERSONAL_FOUL",
+    "PersonalFoul": "PERSONAL_FOUL",
     "Shooting Foul": "SHOOTING_FOUL",
+    "ShootingFoul": "SHOOTING_FOUL",
     "Offensive Foul": "OFFENSIVE_FOUL",
+    "OffensiveFoul": "OFFENSIVE_FOUL",
     "Technical Foul": "TECHNICAL_FOUL",
+    "TechnicalFoul": "TECHNICAL_FOUL",
     "Flagrant Foul": "FLAGRANT_FOUL",
-    # Game flow
+    "FlagrantFoul": "FLAGRANT_FOUL",
+    "Charging Foul": "OFFENSIVE_FOUL",
+    "ChargingFoul": "OFFENSIVE_FOUL",
+    # Game flow - timeouts
     "Timeout": "TIMEOUT",
     "TV Timeout": "TIMEOUT",
+    "TVTimeout": "TIMEOUT",
     "Team Timeout": "TIMEOUT",
+    "TeamTimeout": "TIMEOUT",
     "Official Timeout": "TIMEOUT",
+    "OfficialTimeout": "TIMEOUT",
+    "OfficialTVTimeOut": "TIMEOUT",
+    "ShortTimeOut": "TIMEOUT",
+    "FullTimeOut": "TIMEOUT",
+    "Media Timeout": "TIMEOUT",
+    "MediaTimeout": "TIMEOUT",
+    # Other game flow
     "Substitution": "SUBSTITUTION",
     "JumpBall": "JUMP_BALL",
+    "Jumpball": "JUMP_BALL",
     "Jump Ball": "JUMP_BALL",
+    # Coach's challenge
+    "Coach's Challenge (Stands)": "CHALLENGE",
+    "Coach's Challenge (Overturned)": "CHALLENGE",
+    "CoachsChallenge": "CHALLENGE",
     # Blocks
     "Block": "BLOCK",
+    "Block Shot": "BLOCK",
+    "BlockShot": "BLOCK",
     "Blocked Shot": "BLOCK",
+    "BlockedShot": "BLOCK",
     # Period markers
     "End Period": "END_PERIOD",
+    "EndPeriod": "END_PERIOD",
     "End Game": "END_GAME",
+    "EndGame": "END_GAME",
     "End of Period": "END_PERIOD",
+    "EndOfPeriod": "END_PERIOD",
     "Start Period": "START_PERIOD",
+    "StartPeriod": "START_PERIOD",
     "Game Start": "GAME_START",
+    "GameStart": "GAME_START",
+    "End of Half": "END_PERIOD",
+    "EndOfHalf": "END_PERIOD",
+    "Start of Half": "START_PERIOD",
+    "StartOfHalf": "START_PERIOD",
 }
 
 
@@ -149,6 +217,8 @@ class NCAABLiveFeedClient:
         # Cache of team_id -> displayName (e.g., "Cincinnati Bearcats")
         # Populated lazily on first use
         self._team_names: dict[int, str] = {}
+        # API response cache to reduce API calls (1000/day limit)
+        self._cache = APICache(settings.scraper_config.html_cache_dir, "cbb")
 
     def _get_season_for_date(self, game_date: date) -> int:
         """Calculate NCAAB season year from a game date.
@@ -319,6 +389,7 @@ class NCAABLiveFeedClient:
 
         The CBB API ignores the gameId parameter and returns all games (paginated).
         Using date range filtering is more efficient - one API call for many games.
+        Results are cached to avoid burning API quota on repeated runs.
 
         Args:
             start_date: Start of date range
@@ -328,6 +399,19 @@ class NCAABLiveFeedClient:
         Returns:
             List of team stats dictionaries for all games in the date range
         """
+        # Check cache first
+        cache_key = f"teams_{start_date}_{end_date}_{season}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            logger.info(
+                "ncaab_game_teams_using_cache",
+                start_date=str(start_date),
+                end_date=str(end_date),
+                season=season,
+                row_count=len(cached) if isinstance(cached, list) else 0,
+            )
+            return cached
+
         logger.info(
             "ncaab_game_teams_fetch_by_date",
             start_date=str(start_date),
@@ -360,6 +444,10 @@ class NCAABLiveFeedClient:
                 end_date=str(end_date),
                 row_count=len(data) if isinstance(data, list) else 1,
             )
+
+            # Cache the response
+            self._cache.put(cache_key, data)
+
             return data
 
         except Exception as exc:
@@ -378,6 +466,7 @@ class NCAABLiveFeedClient:
 
         The CBB API ignores the gameId parameter and returns all games (paginated).
         Using date range filtering is more efficient - one API call for many games.
+        Results are cached to avoid burning API quota on repeated runs.
 
         Args:
             start_date: Start of date range
@@ -387,6 +476,19 @@ class NCAABLiveFeedClient:
         Returns:
             List of player stats dictionaries for all games in the date range
         """
+        # Check cache first
+        cache_key = f"players_{start_date}_{end_date}_{season}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            logger.info(
+                "ncaab_game_players_using_cache",
+                start_date=str(start_date),
+                end_date=str(end_date),
+                season=season,
+                row_count=len(cached) if isinstance(cached, list) else 0,
+            )
+            return cached
+
         logger.info(
             "ncaab_game_players_fetch_by_date",
             start_date=str(start_date),
@@ -419,6 +521,10 @@ class NCAABLiveFeedClient:
                 end_date=str(end_date),
                 row_count=len(data) if isinstance(data, list) else 1,
             )
+
+            # Cache the response
+            self._cache.put(cache_key, data)
+
             return data
 
         except Exception as exc:
@@ -1027,12 +1133,22 @@ class NCAABLiveFeedClient:
     def fetch_play_by_play(self, game_id: int) -> NormalizedPlayByPlay:
         """Fetch and normalize play-by-play data for a game.
 
+        Results are cached to avoid burning API quota on repeated runs.
+
         Args:
             game_id: CBB game ID
 
         Returns:
             NormalizedPlayByPlay with all events normalized to canonical format
         """
+        # Check cache first
+        cache_key = f"pbp_{game_id}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            logger.info("ncaab_pbp_using_cache", game_id=game_id)
+            plays = self._parse_pbp_response(cached, game_id)
+            return NormalizedPlayByPlay(source_game_key=str(game_id), plays=plays)
+
         url = CBB_PLAYS_GAME_URL.format(game_id=game_id)
         logger.info("ncaab_pbp_fetch", url=url, game_id=game_id)
 
@@ -1056,6 +1172,10 @@ class NCAABLiveFeedClient:
             return NormalizedPlayByPlay(source_game_key=str(game_id), plays=[])
 
         payload = response.json()
+
+        # Cache the raw response
+        self._cache.put(cache_key, payload)
+
         plays = self._parse_pbp_response(payload, game_id)
 
         # Log first and last event for debugging
