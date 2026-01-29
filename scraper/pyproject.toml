@@ -44,26 +44,26 @@ addopts = [
 source = ["sports_scraper"]
 omit = [
   # Celery infrastructure
-  "sports_scraper/celery_app.py",
-  "sports_scraper/jobs/*",
-  "sports_scraper/validate_env.py",
-  "sports_scraper/__init__.py",
+  "**/celery_app.py",
+  "**/jobs/*",
+  "**/validate_env.py",
+  "**/__init__.py",
   # Social scraping (requires external X API)
-  "sports_scraper/social/*",
+  "**/social/*",
   # Web scrapers (require HTTP mocking infrastructure)
-  "sports_scraper/scrapers/*",
+  "**/scrapers/*",
   # Database connection module
-  "sports_scraper/db.py",
+  "**/db.py",
   # Services - orchestration code tested via integration tests
-  "sports_scraper/services/*",
+  "**/services/*",
   # Persistence - DB-dependent code tested via integration tests
-  "sports_scraper/persistence/*",
+  "**/persistence/*",
   # Live feed manager - DB-dependent orchestration
-  "sports_scraper/live/manager.py",
+  "**/live/manager.py",
   # Odds synchronizer - requires external API + DB
-  "sports_scraper/odds/synchronizer.py",
+  "**/odds/synchronizer.py",
   # DB queries module
-  "sports_scraper/utils/db_queries.py",
+  "**/utils/db_queries.py",
 ]
 
 [tool.coverage.report]
