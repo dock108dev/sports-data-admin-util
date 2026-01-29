@@ -162,12 +162,19 @@ def upsert_plays(
         logger.warning("upsert_plays_game_not_found", game_id=game_id)
         return 0
 
-    # Build team abbreviation to ID mapping
+    # Build team abbreviation/name to ID mapping
+    # For NCAAB, teams may have full names instead of abbreviations
     team_map: dict[str, int] = {}
     if game.home_team:
-        team_map[game.home_team.abbreviation.upper()] = game.home_team.id
+        if game.home_team.abbreviation:
+            team_map[game.home_team.abbreviation.upper()] = game.home_team.id
+        if game.home_team.name:
+            team_map[game.home_team.name.upper()] = game.home_team.id
     if game.away_team:
-        team_map[game.away_team.abbreviation.upper()] = game.away_team.id
+        if game.away_team.abbreviation:
+            team_map[game.away_team.abbreviation.upper()] = game.away_team.id
+        if game.away_team.name:
+            team_map[game.away_team.name.upper()] = game.away_team.id
 
     # Build player external_id to player.id mapping for this league
     player_map: dict[str, int] = {}
@@ -179,7 +186,7 @@ def upsert_plays(
         )
         player_map = {str(p.external_id): p.id for p in players}
 
-    upserted = 0
+    # Process each play
     for play in plays:
         # Resolve team_id from abbreviation
         team_id = None
@@ -227,10 +234,11 @@ def upsert_plays(
                 },
             )
         )
-        result = session.execute(stmt)
-        if result.rowcount:
-            upserted += result.rowcount
+        session.execute(stmt)
 
+    # PostgreSQL ON CONFLICT DO UPDATE doesn't return meaningful rowcount,
+    # so we use len(plays) as the count of upserted rows
+    upserted = len(plays)
     logger.info("plays_upserted", game_id=game_id, count=upserted)
     if upserted:
         game.last_pbp_at = now_utc()

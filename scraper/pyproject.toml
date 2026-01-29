@@ -56,6 +56,14 @@ omit = [
   "sports_scraper/db.py",
   # Services - orchestration code tested via integration tests
   "sports_scraper/services/*",
+  # Persistence - DB-dependent code tested via integration tests
+  "sports_scraper/persistence/*",
+  # Live feed manager - DB-dependent orchestration
+  "sports_scraper/live/manager.py",
+  # Odds synchronizer - requires external API + DB
+  "sports_scraper/odds/synchronizer.py",
+  # DB queries module
+  "sports_scraper/utils/db_queries.py",
 ]
 
 [tool.coverage.report]
