@@ -128,6 +128,7 @@ NCAAB_EVENT_TYPE_MAP: dict[str, str] = {
     "OfficialTVTimeOut": "TIMEOUT",
     "ShortTimeOut": "TIMEOUT",
     "FullTimeOut": "TIMEOUT",
+    "RegularTimeOut": "TIMEOUT",
     "Media Timeout": "TIMEOUT",
     "MediaTimeout": "TIMEOUT",
     # Other game flow
@@ -1095,7 +1096,8 @@ class NCAABLiveFeedClient:
         if not player_id:
             return None
 
-        player_name = ps.get("player") or ps.get("athleteName") or ""
+        # API uses different field names: "name", "player", or "athleteName"
+        player_name = ps.get("name") or ps.get("player") or ps.get("athleteName") or ""
         if not player_name:
             logger.warning(
                 "ncaab_boxscore_player_no_name",
@@ -1109,7 +1111,7 @@ class NCAABLiveFeedClient:
 
         # Build raw stats dict
         raw_stats = {k: v for k, v in ps.items() if v is not None and k not in [
-            "playerId", "athleteId", "player", "athleteName", "teamId", "team", "minutes"
+            "playerId", "athleteId", "player", "athleteName", "name", "teamId", "team", "minutes"
         ]}
 
         return NormalizedPlayerBoxscore(
