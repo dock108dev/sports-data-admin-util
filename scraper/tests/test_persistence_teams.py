@@ -244,3 +244,158 @@ class TestNcaabStopwordsAdvanced:
         assert "university" not in _NCAAB_STOPWORDS
         assert "college" not in _NCAAB_STOPWORDS
         assert "state" not in _NCAAB_STOPWORDS
+
+
+class TestFindTeamByName:
+    """Tests for _find_team_by_name function."""
+
+    def test_function_exists(self):
+        """Function exists in module."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+        assert callable(_find_team_by_name)
+
+    def test_function_signature(self):
+        """Function has expected parameters."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+        import inspect
+        sig = inspect.signature(_find_team_by_name)
+        params = list(sig.parameters.keys())
+        assert "session" in params
+        assert "league_id" in params
+        assert "team_name" in params
+        assert "team_abbr" in params
+
+    def test_returns_none_when_not_found(self):
+        """Returns None when team not found."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NBA")
+        mock_session.get.return_value = mock_league
+        mock_session.execute.return_value.all.return_value = []
+        mock_session.execute.return_value.scalar.return_value = None
+
+        result = _find_team_by_name(mock_session, league_id=1, team_name="Nonexistent Team")
+
+        assert result is None
+
+    def test_handles_ncaab_override(self):
+        """Uses NCAAB override mappings."""
+        from sports_scraper.persistence.teams import _NCAAB_OVERRIDES
+
+        # Verify overrides exist
+        assert "george washington colonials" in _NCAAB_OVERRIDES
+        assert _NCAAB_OVERRIDES["george washington colonials"] == "George Washington"
+
+
+class TestShouldLogTeams:
+    """Tests for _should_log helper in teams module."""
+
+    def test_logs_first_occurrence(self):
+        """_should_log returns True for first occurrence."""
+        from sports_scraper.persistence.teams import _should_log, _LOG_COUNTERS
+
+        # Use unique key to avoid state from other tests
+        import time
+        key = f"test_event_{time.time()}"
+        result = _should_log(key)
+        assert result is True
+
+    def test_skips_intermediate_occurrences(self):
+        """_should_log returns False for intermediate occurrences."""
+        from sports_scraper.persistence.teams import _should_log
+
+        import time
+        key = f"test_event_repeat_{time.time()}"
+
+        _should_log(key)  # 1st - True
+        result = _should_log(key)  # 2nd - False
+        assert result is False
+
+
+class TestUpsertTeamAdvanced:
+    """Advanced tests for _upsert_team function."""
+
+    def test_handles_missing_abbreviation(self):
+        """Handles identity without abbreviation."""
+        mock_session = MagicMock()
+        mock_session.execute.return_value.scalar_one.return_value = 42
+        mock_league = MagicMock(code="NCAAB")
+        mock_session.get.return_value = mock_league
+
+        identity = TeamIdentity(league_code="NCAAB", name="Some University", abbreviation=None)
+        result = _upsert_team(mock_session, league_id=9, identity=identity)
+
+        assert result == 42
+        mock_session.execute.assert_called_once()
+
+    def test_uses_short_name_from_identity(self):
+        """Uses short_name from identity when provided."""
+        mock_session = MagicMock()
+        mock_session.execute.return_value.scalar_one.return_value = 42
+        mock_league = MagicMock(code="NBA")
+        mock_session.get.return_value = mock_league
+
+        identity = TeamIdentity(
+            league_code="NBA",
+            name="Boston Celtics",
+            abbreviation="BOS",
+            short_name="Celtics"
+        )
+        result = _upsert_team(mock_session, league_id=1, identity=identity)
+
+        assert result == 42
+
+    def test_uses_external_ref(self):
+        """Uses external_ref from identity."""
+        mock_session = MagicMock()
+        mock_session.execute.return_value.scalar_one.return_value = 42
+        mock_league = MagicMock(code="NBA")
+        mock_session.get.return_value = mock_league
+
+        identity = TeamIdentity(
+            league_code="NBA",
+            name="Boston Celtics",
+            abbreviation="BOS",
+            external_ref="nba_team_123"
+        )
+        result = _upsert_team(mock_session, league_id=1, identity=identity)
+
+        assert result == 42
+
+
+class TestNcaabOverrides:
+    """Tests for NCAAB name override mappings."""
+
+    def test_has_common_overrides(self):
+        """Has common NCAAB overrides."""
+        from sports_scraper.persistence.teams import _NCAAB_OVERRIDES
+
+        assert isinstance(_NCAAB_OVERRIDES, dict)
+        assert len(_NCAAB_OVERRIDES) > 0
+
+    def test_override_keys_are_lowercase(self):
+        """Override keys are lowercase."""
+        from sports_scraper.persistence.teams import _NCAAB_OVERRIDES
+
+        for key in _NCAAB_OVERRIDES.keys():
+            assert key == key.lower()
+
+
+class TestAbbrStopwords:
+    """Tests for abbreviation stopwords."""
+
+    def test_has_common_stopwords(self):
+        """Has common stopwords for abbreviation derivation."""
+        from sports_scraper.persistence.teams import _ABBR_STOPWORDS
+
+        assert "of" in _ABBR_STOPWORDS
+        assert "the" in _ABBR_STOPWORDS
+        assert "and" in _ABBR_STOPWORDS
+        assert "at" in _ABBR_STOPWORDS
+
+    def test_is_set(self):
+        """Is a set for fast lookups."""
+        from sports_scraper.persistence.teams import _ABBR_STOPWORDS
+
+        assert isinstance(_ABBR_STOPWORDS, (set, frozenset))

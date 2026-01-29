@@ -170,3 +170,36 @@ class TestModuleImports:
         """Module has create_raw_pbp_snapshot function."""
         from sports_scraper.persistence import plays
         assert hasattr(plays, 'create_raw_pbp_snapshot')
+
+
+class TestUpsertPlaysParameters:
+    """Tests for upsert_plays parameter handling."""
+
+    def test_source_parameter_default(self):
+        """Source parameter defaults to 'unknown'."""
+        import inspect
+        sig = inspect.signature(upsert_plays)
+        params = sig.parameters
+        assert "source" in params
+        assert params["source"].default == "unknown"
+
+    def test_scrape_run_id_parameter(self):
+        """scrape_run_id parameter exists."""
+        import inspect
+        sig = inspect.signature(upsert_plays)
+        params = sig.parameters
+        assert "scrape_run_id" in params
+
+
+class TestCreateRawPbpSnapshotParameters:
+    """Tests for create_raw_pbp_snapshot parameter handling."""
+
+    def test_required_parameters(self):
+        """Required parameters are present."""
+        import inspect
+        sig = inspect.signature(create_raw_pbp_snapshot)
+        params = list(sig.parameters.keys())
+        assert "session" in params
+        assert "game_id" in params
+        assert "plays" in params
+        assert "source" in params

@@ -26,6 +26,7 @@ from sports_scraper.persistence.games import (
     resolve_status_transition,
     merge_external_ids,
 )
+from sports_scraper.models import TeamIdentity
 
 
 class TestNormalizeStatus:
@@ -263,3 +264,367 @@ class TestModuleImports:
         """Module has update_game_from_live_feed function."""
         from sports_scraper.persistence import games
         assert hasattr(games, 'update_game_from_live_feed')
+
+
+class TestUpsertGameStub:
+    """Tests for upsert_game_stub function."""
+
+    @patch("sports_scraper.persistence.games._upsert_team")
+    @patch("sports_scraper.persistence.games.get_league_id")
+    def test_creates_new_game(self, mock_get_league_id, mock_upsert_team):
+        """Creates a new game when none exists."""
+        from sports_scraper.persistence.games import upsert_game_stub
+
+        mock_session = MagicMock()
+        mock_get_league_id.return_value = 1
+        mock_upsert_team.side_effect = [10, 20]  # home_team_id, away_team_id
+        mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = None
+
+        home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
+        away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
+
+        game_id, created = upsert_game_stub(
+            mock_session,
+            league_code="NBA",
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            home_team=home_team,
+            away_team=away_team,
+            status="scheduled",
+        )
+
+        assert created is True
+        mock_session.add.assert_called_once()
+        mock_session.flush.assert_called()
+
+    @patch("sports_scraper.persistence.games._upsert_team")
+    @patch("sports_scraper.persistence.games.get_league_id")
+    def test_updates_existing_game(self, mock_get_league_id, mock_upsert_team):
+        """Updates an existing game."""
+        from sports_scraper.persistence.games import upsert_game_stub
+
+        mock_session = MagicMock()
+        mock_get_league_id.return_value = 1
+        mock_upsert_team.side_effect = [10, 20]
+
+        existing_game = MagicMock()
+        existing_game.id = 42
+        existing_game.status = "scheduled"
+        existing_game.home_score = None
+        existing_game.away_score = None
+        existing_game.venue = None
+        existing_game.external_ids = {}
+        existing_game.tip_time = None
+        mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = existing_game
+
+        home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
+        away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
+
+        game_id, created = upsert_game_stub(
+            mock_session,
+            league_code="NBA",
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            home_team=home_team,
+            away_team=away_team,
+            status="live",
+            home_score=55,
+            away_score=48,
+        )
+
+        assert game_id == 42
+        assert created is False
+        assert existing_game.home_score == 55
+        assert existing_game.away_score == 48
+
+    @patch("sports_scraper.persistence.games._upsert_team")
+    @patch("sports_scraper.persistence.games.get_league_id")
+    def test_updates_venue(self, mock_get_league_id, mock_upsert_team):
+        """Updates venue when changed."""
+        from sports_scraper.persistence.games import upsert_game_stub
+
+        mock_session = MagicMock()
+        mock_get_league_id.return_value = 1
+        mock_upsert_team.side_effect = [10, 20]
+
+        existing_game = MagicMock()
+        existing_game.id = 42
+        existing_game.status = "scheduled"
+        existing_game.home_score = None
+        existing_game.away_score = None
+        existing_game.venue = None
+        existing_game.external_ids = {}
+        existing_game.tip_time = None
+        mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = existing_game
+
+        home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
+        away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
+
+        game_id, created = upsert_game_stub(
+            mock_session,
+            league_code="NBA",
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            home_team=home_team,
+            away_team=away_team,
+            status="scheduled",
+            venue="Staples Center",
+        )
+
+        assert existing_game.venue == "Staples Center"
+
+    @patch("sports_scraper.persistence.games._upsert_team")
+    @patch("sports_scraper.persistence.games.get_league_id")
+    def test_sets_tip_time_when_null(self, mock_get_league_id, mock_upsert_team):
+        """Sets tip_time when existing game has none."""
+        from sports_scraper.persistence.games import upsert_game_stub
+
+        mock_session = MagicMock()
+        mock_get_league_id.return_value = 1
+        mock_upsert_team.side_effect = [10, 20]
+
+        existing_game = MagicMock()
+        existing_game.id = 42
+        existing_game.status = "scheduled"
+        existing_game.home_score = None
+        existing_game.away_score = None
+        existing_game.venue = None
+        existing_game.external_ids = {}
+        existing_game.tip_time = None
+        mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = existing_game
+
+        home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
+        away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
+        tip_time = datetime(2024, 1, 15, 19, 30, tzinfo=timezone.utc)
+
+        upsert_game_stub(
+            mock_session,
+            league_code="NBA",
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            home_team=home_team,
+            away_team=away_team,
+            status="scheduled",
+            tip_time=tip_time,
+        )
+
+        assert existing_game.tip_time == tip_time
+
+    @patch("sports_scraper.persistence.games._upsert_team")
+    @patch("sports_scraper.persistence.games.get_league_id")
+    def test_merges_external_ids(self, mock_get_league_id, mock_upsert_team):
+        """Merges external_ids with existing."""
+        from sports_scraper.persistence.games import upsert_game_stub
+
+        mock_session = MagicMock()
+        mock_get_league_id.return_value = 1
+        mock_upsert_team.side_effect = [10, 20]
+
+        existing_game = MagicMock()
+        existing_game.id = 42
+        existing_game.status = "scheduled"
+        existing_game.home_score = None
+        existing_game.away_score = None
+        existing_game.venue = None
+        existing_game.external_ids = {"existing": "123"}
+        existing_game.tip_time = None
+        mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = existing_game
+
+        home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
+        away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
+
+        upsert_game_stub(
+            mock_session,
+            league_code="NBA",
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            home_team=home_team,
+            away_team=away_team,
+            status="scheduled",
+            external_ids={"new": "456"},
+        )
+
+        assert existing_game.external_ids == {"existing": "123", "new": "456"}
+
+
+class TestUpdateGameFromLiveFeed:
+    """Tests for update_game_from_live_feed function."""
+
+    def test_updates_score(self):
+        """Updates home and away scores."""
+        from sports_scraper.persistence.games import update_game_from_live_feed
+
+        mock_session = MagicMock()
+        mock_game = MagicMock()
+        mock_game.status = "live"
+        mock_game.home_score = 50
+        mock_game.away_score = 48
+        mock_game.venue = None
+        mock_game.external_ids = {}
+        mock_game.tip_time = None
+
+        result = update_game_from_live_feed(
+            mock_session,
+            game=mock_game,
+            status="live",
+            home_score=55,
+            away_score=52,
+        )
+
+        assert result is True
+        assert mock_game.home_score == 55
+        assert mock_game.away_score == 52
+
+    def test_updates_venue(self):
+        """Updates venue."""
+        from sports_scraper.persistence.games import update_game_from_live_feed
+
+        mock_session = MagicMock()
+        mock_game = MagicMock()
+        mock_game.status = "scheduled"
+        mock_game.home_score = None
+        mock_game.away_score = None
+        mock_game.venue = None
+        mock_game.external_ids = {}
+        mock_game.tip_time = None
+
+        result = update_game_from_live_feed(
+            mock_session,
+            game=mock_game,
+            status="scheduled",
+            home_score=None,
+            away_score=None,
+            venue="Madison Square Garden",
+        )
+
+        assert result is True
+        assert mock_game.venue == "Madison Square Garden"
+
+    def test_merges_external_ids(self):
+        """Merges external IDs."""
+        from sports_scraper.persistence.games import update_game_from_live_feed
+
+        mock_session = MagicMock()
+        mock_game = MagicMock()
+        mock_game.status = "scheduled"
+        mock_game.home_score = None
+        mock_game.away_score = None
+        mock_game.venue = None
+        mock_game.external_ids = {"existing": "123"}
+        mock_game.tip_time = None
+
+        result = update_game_from_live_feed(
+            mock_session,
+            game=mock_game,
+            status="scheduled",
+            home_score=None,
+            away_score=None,
+            external_ids={"new": "456"},
+        )
+
+        assert result is True
+        assert mock_game.external_ids == {"existing": "123", "new": "456"}
+
+    def test_no_update_when_unchanged(self):
+        """Returns False when nothing changed."""
+        from sports_scraper.persistence.games import update_game_from_live_feed
+
+        mock_session = MagicMock()
+        mock_game = MagicMock()
+        mock_game.status = "scheduled"
+        mock_game.home_score = None
+        mock_game.away_score = None
+        mock_game.venue = None
+        mock_game.external_ids = {}
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+
+        result = update_game_from_live_feed(
+            mock_session,
+            game=mock_game,
+            status="scheduled",
+            home_score=None,
+            away_score=None,
+        )
+
+        assert result is False
+        mock_session.flush.assert_not_called()
+
+
+class TestUpsertGame:
+    """Tests for upsert_game function."""
+
+    @patch("sports_scraper.persistence.games._upsert_team")
+    @patch("sports_scraper.persistence.games.get_league_id")
+    def test_upserts_game(self, mock_get_league_id, mock_upsert_team):
+        """Upserts a game via PostgreSQL insert."""
+        from sports_scraper.persistence.games import upsert_game
+        from sports_scraper.models import GameIdentification, NormalizedGame, NormalizedTeamBoxscore
+
+        mock_session = MagicMock()
+        mock_get_league_id.return_value = 1
+        mock_upsert_team.side_effect = [10, 20]
+        mock_session.execute.return_value.first.return_value = (42, True)
+
+        home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
+        away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
+        identity = GameIdentification(
+            league_code="NBA",
+            season=2024,
+            season_type="regular",
+            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            home_team=home_team,
+            away_team=away_team,
+            source_game_key="nba_123",
+        )
+        # NormalizedGame requires non-empty team_boxscores
+        team_boxscores = [
+            NormalizedTeamBoxscore(team=home_team, is_home=True, points=110),
+            NormalizedTeamBoxscore(team=away_team, is_home=False, points=105),
+        ]
+        normalized = NormalizedGame(
+            identity=identity,
+            home_score=110,
+            away_score=105,
+            status="final",
+            venue="Staples Center",
+            team_boxscores=team_boxscores,
+        )
+
+        game_id, inserted = upsert_game(mock_session, normalized)
+
+        assert game_id == 42
+        assert inserted is True
+        mock_session.execute.assert_called_once()
+
+    @patch("sports_scraper.persistence.games._upsert_team")
+    @patch("sports_scraper.persistence.games.get_league_id")
+    def test_raises_on_failed_upsert(self, mock_get_league_id, mock_upsert_team):
+        """Raises RuntimeError when upsert fails."""
+        from sports_scraper.persistence.games import upsert_game
+        from sports_scraper.models import GameIdentification, NormalizedGame, NormalizedTeamBoxscore
+
+        mock_session = MagicMock()
+        mock_get_league_id.return_value = 1
+        mock_upsert_team.side_effect = [10, 20]
+        mock_session.execute.return_value.first.return_value = None
+
+        home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
+        away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
+        identity = GameIdentification(
+            league_code="NBA",
+            season=2024,
+            season_type="regular",
+            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            home_team=home_team,
+            away_team=away_team,
+            source_game_key="nba_123",
+        )
+        team_boxscores = [
+            NormalizedTeamBoxscore(team=home_team, is_home=True, points=110),
+            NormalizedTeamBoxscore(team=away_team, is_home=False, points=105),
+        ]
+        normalized = NormalizedGame(
+            identity=identity,
+            home_score=110,
+            away_score=105,
+            status="final",
+            team_boxscores=team_boxscores,
+        )
+
+        with pytest.raises(RuntimeError, match="Failed to upsert game"):
+            upsert_game(mock_session, normalized)
