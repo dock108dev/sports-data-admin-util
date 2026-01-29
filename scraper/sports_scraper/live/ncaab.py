@@ -40,9 +40,9 @@ class NCAABLiveFeedClient:
 
     def __init__(self) -> None:
         """Initialize the NCAAB live feed client."""
-        api_key = settings.CBB_API_KEY
+        api_key = settings.cbb_stats_api_key
         if not api_key:
-            logger.warning("ncaab_no_api_key", msg="CBB_API_KEY not set")
+            logger.warning("ncaab_no_api_key", msg="CBB_STATS_API_KEY not set")
 
         self.client = httpx.Client(
             headers={"Authorization": f"Bearer {api_key}"} if api_key else {},

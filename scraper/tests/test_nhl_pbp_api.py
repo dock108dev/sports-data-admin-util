@@ -273,9 +273,15 @@ class TestNHLClientMocked:
         assert result.source_game_key == "9999999999"
         assert len(result.plays) == 0
 
+    @patch("sports_scraper.live.nhl_pbp.APICache")
     @patch("sports_scraper.live.nhl.httpx.Client")
-    def test_unknown_event_type_still_stored(self, mock_client_class):
+    def test_unknown_event_type_still_stored(self, mock_client_class, mock_cache_class):
         """Test that unknown event types are stored (not dropped)."""
+        # Mock cache to return None (no cached data)
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+        mock_cache_class.return_value = mock_cache
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -299,6 +305,8 @@ class TestNHLClientMocked:
         mock_client_class.return_value = mock_client
 
         client = NHLLiveFeedClient()
+        # Need to also mock the cache on the PBP fetcher
+        client._pbp_fetcher._cache = mock_cache
         result = client.fetch_play_by_play(2025020767)
 
         assert len(result.plays) == 1
