@@ -34,11 +34,14 @@ jobs:
           uv pip install -e ./scraper
           uv pip install pytest pytest-cov
       - name: Run unit tests with coverage
+        working-directory: scraper
         run: |
-          uv run pytest scraper/tests/ \
-            --cov=scraper/sports_scraper \
+          uv run pytest tests/ \
+            --cov=sports_scraper \
+            --cov-config=pyproject.toml \
             --cov-report=term-missing \
-            --cov-report=xml \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:coverage_html \
             --cov-fail-under=80
 
   build:
