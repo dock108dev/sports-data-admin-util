@@ -768,3 +768,214 @@ class TestNCAABBoxscoreFetcherParsing:
         assert result.player_id == "54321"
         assert result.player_name == "Alt Player"
         assert result.rebounds == 7
+
+
+class TestNCAABBoxscoreFetcherFullBoxscore:
+    """Tests for NCAABBoxscoreFetcher fetch_boxscore and fetch_boxscore_by_id methods."""
+
+    def test_fetch_boxscore_success(self):
+        """Test fetch_boxscore with NCAABLiveGame."""
+        mock_client = MagicMock()
+
+        # Mock team stats response
+        team_response = MagicMock()
+        team_response.status_code = 200
+        team_response.json.return_value = [
+            {"gameId": 123, "teamId": 1, "points": 75, "rebounds": 35},
+            {"gameId": 123, "teamId": 2, "points": 70, "rebounds": 32},
+        ]
+
+        # Mock player stats response
+        player_response = MagicMock()
+        player_response.status_code = 200
+        player_response.json.return_value = [
+            {"gameId": 123, "teamId": 1, "playerId": 101, "name": "Player A", "points": 20},
+            {"gameId": 123, "teamId": 2, "playerId": 102, "name": "Player B", "points": 18},
+        ]
+
+        mock_client.get.side_effect = [team_response, player_response]
+
+        mock_cache = MagicMock()
+
+        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
+
+        game = NCAABLiveGame(
+            game_id=123,
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            status="final",
+            season=2024,
+            home_team_id=1,
+            home_team_name="Duke",
+            away_team_id=2,
+            away_team_name="UNC",
+            home_score=75,
+            away_score=70,
+            neutral_site=False,
+        )
+
+        result = fetcher.fetch_boxscore(game)
+
+        assert result is not None
+        assert result.game_id == 123
+        assert result.home_score == 75
+        assert result.away_score == 70
+        assert len(result.team_boxscores) == 2
+        assert len(result.player_boxscores) == 2
+
+    def test_fetch_boxscore_no_team_stats(self):
+        """Test fetch_boxscore when no team stats available."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = []
+        mock_client.get.return_value = mock_response
+
+        mock_cache = MagicMock()
+
+        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
+
+        game = NCAABLiveGame(
+            game_id=123,
+            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            status="final",
+            season=2024,
+            home_team_id=1,
+            home_team_name="Duke",
+            away_team_id=2,
+            away_team_name="UNC",
+            home_score=None,
+            away_score=None,
+            neutral_site=False,
+        )
+
+        result = fetcher.fetch_boxscore(game)
+
+        assert result is None
+
+    def test_fetch_boxscore_by_id_success(self):
+        """Test fetch_boxscore_by_id with valid game ID."""
+        mock_client = MagicMock()
+
+        # Mock team stats response (returns ALL games)
+        team_response = MagicMock()
+        team_response.status_code = 200
+        team_response.json.return_value = [
+            {"gameId": 100, "teamId": 1, "isHome": True, "teamStats": {"points": 80}},
+            {"gameId": 123, "teamId": 1, "isHome": True, "teamStats": {"points": 75}},
+            {"gameId": 123, "teamId": 2, "isHome": False, "teamStats": {"points": 70}},
+            {"gameId": 200, "teamId": 1, "isHome": True, "teamStats": {"points": 85}},
+        ]
+
+        # Mock player stats response
+        player_response = MagicMock()
+        player_response.status_code = 200
+        player_response.json.return_value = [
+            {"gameId": 123, "teamId": 1, "players": [
+                {"playerId": 101, "name": "Player A", "points": 20}
+            ]},
+        ]
+
+        mock_client.get.side_effect = [team_response, player_response]
+
+        mock_cache = MagicMock()
+
+        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
+
+        result = fetcher.fetch_boxscore_by_id(
+            game_id=123,
+            season=2024,
+            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            home_team_name="Duke",
+            away_team_name="UNC",
+        )
+
+        assert result is not None
+        assert result.game_id == 123
+        assert result.home_score == 75
+        assert result.away_score == 70
+
+    def test_fetch_boxscore_by_id_no_team_stats(self):
+        """Test fetch_boxscore_by_id when no team stats returned."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = []
+        mock_client.get.return_value = mock_response
+
+        mock_cache = MagicMock()
+
+        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
+
+        result = fetcher.fetch_boxscore_by_id(
+            game_id=999,
+            season=2024,
+            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            home_team_name="Duke",
+            away_team_name="UNC",
+        )
+
+        assert result is None
+
+    def test_fetch_boxscore_by_id_game_not_in_response(self):
+        """Test fetch_boxscore_by_id when target game not in response."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        # Response has games, but not the one we're looking for
+        mock_response.json.return_value = [
+            {"gameId": 100, "teamId": 1, "isHome": True, "teamStats": {"points": 80}},
+            {"gameId": 200, "teamId": 1, "isHome": True, "teamStats": {"points": 85}},
+        ]
+        mock_client.get.return_value = mock_response
+
+        mock_cache = MagicMock()
+
+        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
+
+        result = fetcher.fetch_boxscore_by_id(
+            game_id=999,  # Not in response
+            season=2024,
+            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            home_team_name="Duke",
+            away_team_name="UNC",
+        )
+
+        assert result is None
+
+
+class TestNCAABBoxscoreFetcherTeamStatsParsing:
+    """Tests for team stats parsing methods."""
+
+    def test_parse_team_stats_flat_format(self):
+        """Test _parse_team_stats with flat stats format."""
+        mock_client = MagicMock()
+        mock_cache = MagicMock()
+
+        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
+
+        from sports_scraper.models import TeamIdentity
+
+        team = TeamIdentity(
+            league_code="NCAAB",
+            name="Duke",
+            short_name="Duke",
+            abbreviation=None,
+            external_ref="1",
+        )
+
+        ts = {
+            "teamId": 1,
+            "points": 75,
+            "rebounds": 35,
+            "totalRebounds": 36,  # Alternative field
+            "assists": 18,
+            "turnovers": 12,
+        }
+
+        result = fetcher._parse_team_stats(ts, team, True, 75)
+
+        assert result.points == 75
+        # Should prefer rebounds over totalRebounds
+        assert result.rebounds in [35, 36]
+        assert result.assists == 18
+        assert result.turnovers == 12

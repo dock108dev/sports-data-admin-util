@@ -276,6 +276,165 @@ class TestOddsAPIClientFetchMainlines:
         result = client.fetch_mainlines("INVALID", date(2024, 1, 15), date(2024, 1, 15))
         assert result == []
 
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_mainlines_cache_hit(self, mock_settings, tmp_path):
+        """Test that cached data is returned without API call."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        # Create cached response
+        cache_dir = tmp_path / "odds" / "NBA"
+        cache_dir.mkdir(parents=True)
+        cache_file = cache_dir / "2024-01-15_live.json"
+        cached_data = [
+            {
+                "id": "cached123",
+                "commence_time": "2024-01-15T00:00:00Z",
+                "home_team": "Boston Celtics",
+                "away_team": "Los Angeles Lakers",
+                "bookmakers": []
+            }
+        ]
+        cache_file.write_text(json.dumps(cached_data))
+
+        client = OddsAPIClient()
+        # Mock the HTTP client to verify it's not called
+        client.client = MagicMock()
+
+        result = client.fetch_mainlines("NBA", date(2024, 1, 15), date(2024, 1, 15))
+
+        # HTTP client should not be called when cache hits
+        client.client.get.assert_not_called()
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_mainlines_api_success(self, mock_settings, tmp_path):
+        """Test successful API call on cache miss."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+
+        # Mock successful API response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"x-requests-remaining": "950"}
+        mock_response.json.return_value = [
+            {
+                "id": "api123",
+                "commence_time": "2024-01-15T19:00:00Z",
+                "home_team": "Boston Celtics",
+                "away_team": "Los Angeles Lakers",
+                "bookmakers": [
+                    {
+                        "key": "pinnacle",
+                        "title": "Pinnacle",
+                        "last_update": "2024-01-14T23:00:00Z",
+                        "markets": [
+                            {
+                                "key": "h2h",
+                                "outcomes": [
+                                    {"name": "Boston Celtics", "price": -180},
+                                    {"name": "Los Angeles Lakers", "price": 150},
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        result = client.fetch_mainlines("NBA", date(2024, 1, 15), date(2024, 1, 15))
+
+        # Verify API was called
+        client.client.get.assert_called_once()
+        call_args = client.client.get.call_args
+        assert "/sports/basketball_nba/odds" in call_args[0][0]
+
+        # Verify results parsed
+        assert len(result) == 2  # 2 moneyline outcomes
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_mainlines_api_error(self, mock_settings, tmp_path):
+        """Test handling of API errors."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+
+        # Mock error response
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        result = client.fetch_mainlines("NBA", date(2024, 1, 15), date(2024, 1, 15))
+
+        assert result == []
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_mainlines_with_books_filter(self, mock_settings, tmp_path):
+        """Test API call with books parameter."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = []
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        client.fetch_mainlines("NBA", date(2024, 1, 15), date(2024, 1, 15), books=["pinnacle", "draftkings"])
+
+        # Verify bookmakers param included
+        call_args = client.client.get.call_args
+        params = call_args[1]["params"]
+        assert params["bookmakers"] == "pinnacle,draftkings"
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_mainlines_writes_cache(self, mock_settings, tmp_path):
+        """Test that successful responses are cached."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = [
+            {
+                "id": "test",
+                "commence_time": "2024-01-15T19:00:00Z",
+                "home_team": "Boston Celtics",
+                "away_team": "Los Angeles Lakers",
+                "bookmakers": []
+            }
+        ]
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        client.fetch_mainlines("NBA", date(2024, 1, 15), date(2024, 1, 15))
+
+        # Verify cache file was written
+        cache_file = tmp_path / "odds" / "NBA" / "2024-01-15_live.json"
+        assert cache_file.exists()
+
 
 class TestOddsAPIClientFetchHistorical:
     """Tests for fetch_historical_odds method."""
@@ -301,6 +460,251 @@ class TestOddsAPIClientFetchHistorical:
         client = OddsAPIClient()
         result = client.fetch_historical_odds("INVALID", date(2024, 1, 15))
         assert result == []
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_historical_cache_hit(self, mock_settings, tmp_path):
+        """Test that cached historical data is returned without API call."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        # Create cached response with historical format (data wrapper)
+        cache_dir = tmp_path / "odds" / "NBA"
+        cache_dir.mkdir(parents=True)
+        cache_file = cache_dir / "2024-01-15_historical.json"
+        cached_data = {
+            "data": [
+                {
+                    "id": "cached123",
+                    "commence_time": "2024-01-15T00:00:00Z",
+                    "home_team": "Boston Celtics",
+                    "away_team": "Los Angeles Lakers",
+                    "bookmakers": []
+                }
+            ],
+            "timestamp": "2024-01-15T23:00:00Z"
+        }
+        cache_file.write_text(json.dumps(cached_data))
+
+        client = OddsAPIClient()
+        client.client = MagicMock()
+
+        result = client.fetch_historical_odds("NBA", date(2024, 1, 15))
+
+        # HTTP client should not be called when cache hits
+        client.client.get.assert_not_called()
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_historical_cache_hit_list_format(self, mock_settings, tmp_path):
+        """Test cache hit with older list format (no data wrapper)."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        # Create cached response in list format (legacy)
+        cache_dir = tmp_path / "odds" / "NBA"
+        cache_dir.mkdir(parents=True)
+        cache_file = cache_dir / "2024-01-15_historical.json"
+        cached_data = [
+            {
+                "id": "cached123",
+                "commence_time": "2024-01-15T00:00:00Z",
+                "home_team": "Boston Celtics",
+                "away_team": "Los Angeles Lakers",
+                "bookmakers": []
+            }
+        ]
+        cache_file.write_text(json.dumps(cached_data))
+
+        client = OddsAPIClient()
+        client.client = MagicMock()
+
+        result = client.fetch_historical_odds("NBA", date(2024, 1, 15))
+        client.client.get.assert_not_called()
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_historical_api_success(self, mock_settings, tmp_path):
+        """Test successful historical API call on cache miss."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {
+            "x-requests-remaining": "920",
+            "x-requests-used": "80",
+            "x-requests-last": "30",
+        }
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "id": "historical123",
+                    "commence_time": "2024-01-15T19:00:00Z",
+                    "home_team": "Boston Celtics",
+                    "away_team": "Los Angeles Lakers",
+                    "bookmakers": [
+                        {
+                            "key": "pinnacle",
+                            "title": "Pinnacle",
+                            "last_update": "2024-01-14T23:00:00Z",
+                            "markets": [
+                                {
+                                    "key": "spreads",
+                                    "outcomes": [
+                                        {"name": "Boston Celtics", "price": -110, "point": -5.5},
+                                        {"name": "Los Angeles Lakers", "price": -110, "point": 5.5},
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "timestamp": "2024-01-15T23:00:00Z"
+        }
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        result = client.fetch_historical_odds("NBA", date(2024, 1, 15))
+
+        # Verify API was called with historical endpoint
+        client.client.get.assert_called_once()
+        call_args = client.client.get.call_args
+        assert "/historical/sports/basketball_nba/odds" in call_args[0][0]
+
+        # Verify results parsed
+        assert len(result) == 2  # 2 spread outcomes
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_historical_api_error(self, mock_settings, tmp_path):
+        """Test handling of historical API errors."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.text = "Forbidden - insufficient credits"
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        result = client.fetch_historical_odds("NBA", date(2024, 1, 15))
+
+        assert result == []
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_historical_empty_data(self, mock_settings, tmp_path):
+        """Test handling of empty historical data response."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "data": [],
+            "timestamp": "2024-01-15T23:00:00Z"
+        }
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        result = client.fetch_historical_odds("NBA", date(2024, 1, 15))
+
+        assert result == []
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_historical_with_books_filter(self, mock_settings, tmp_path):
+        """Test historical API call with books parameter."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {"data": []}
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        client.fetch_historical_odds("NBA", date(2024, 1, 15), books=["fanduel"])
+
+        call_args = client.client.get.call_args
+        params = call_args[1]["params"]
+        assert params["bookmakers"] == "fanduel"
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_historical_writes_cache(self, mock_settings, tmp_path):
+        """Test that successful historical responses are cached."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "id": "test",
+                    "commence_time": "2024-01-15T19:00:00Z",
+                    "home_team": "Boston Celtics",
+                    "away_team": "Los Angeles Lakers",
+                    "bookmakers": []
+                }
+            ],
+            "timestamp": "2024-01-15T23:00:00Z"
+        }
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        client.fetch_historical_odds("NBA", date(2024, 1, 15))
+
+        # Verify cache file was written
+        cache_file = tmp_path / "odds" / "NBA" / "2024-01-15_historical.json"
+        assert cache_file.exists()
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_fetch_historical_uses_correct_closing_hour(self, mock_settings, tmp_path):
+        """Test that different sports use their correct closing line hours."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {"data": []}
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        # Test NFL uses 17:00 UTC
+        client.fetch_historical_odds("NFL", date(2024, 1, 14))
+
+        call_args = client.client.get.call_args
+        params = call_args[1]["params"]
+        assert "T17:00:00Z" in params["date"]
 
 
 class TestOddsAPIClientParseEvents:
@@ -475,3 +879,210 @@ class TestOddsAPIClientParseEvents:
 
         result = client._parse_odds_events("NBA", events, None)
         assert len(result) == 2  # Both moneylines should be parsed
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_parse_event_totals_market(self, mock_settings, tmp_path):
+        """Test totals (over/under) market parsing."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+        events = [
+            {
+                "id": "abc123",
+                "commence_time": "2024-01-15T00:00:00Z",
+                "home_team": "Boston Celtics",
+                "away_team": "Los Angeles Lakers",
+                "bookmakers": [
+                    {
+                        "key": "pinnacle",
+                        "title": "Pinnacle",
+                        "last_update": "2024-01-14T23:00:00Z",
+                        "markets": [
+                            {
+                                "key": "totals",
+                                "outcomes": [
+                                    {"name": "Over", "price": -110, "point": 220.5},
+                                    {"name": "Under", "price": -110, "point": 220.5},
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+
+        result = client._parse_odds_events("NBA", events, None)
+        assert len(result) == 2
+        assert result[0].market_type == "total"
+        assert result[0].line == 220.5
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_parse_event_ncaab_no_abbreviation_warning(self, mock_settings, tmp_path):
+        """Test NCAAB teams don't trigger abbreviation warning (they're expected to be None)."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+        events = [
+            {
+                "id": "abc123",
+                "commence_time": "2024-01-15T00:00:00Z",
+                "home_team": "Duke Blue Devils",
+                "away_team": "North Carolina Tar Heels",
+                "bookmakers": [
+                    {
+                        "key": "pinnacle",
+                        "title": "Pinnacle",
+                        "last_update": "2024-01-14T23:00:00Z",
+                        "markets": [
+                            {
+                                "key": "h2h",
+                                "outcomes": [
+                                    {"name": "Duke Blue Devils", "price": -150},
+                                    {"name": "North Carolina Tar Heels", "price": 130},
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+
+        # Should not raise or log warning for NCAAB abbreviation
+        result = client._parse_odds_events("NCAAB", events, None)
+        assert len(result) == 2
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_parse_event_unknown_market_skipped(self, mock_settings, tmp_path):
+        """Test unknown market types are skipped."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+        events = [
+            {
+                "id": "abc123",
+                "commence_time": "2024-01-15T00:00:00Z",
+                "home_team": "Boston Celtics",
+                "away_team": "Los Angeles Lakers",
+                "bookmakers": [
+                    {
+                        "key": "pinnacle",
+                        "title": "Pinnacle",
+                        "last_update": "2024-01-14T23:00:00Z",
+                        "markets": [
+                            {
+                                "key": "player_points",  # Unknown market type
+                                "outcomes": [
+                                    {"name": "Over", "price": -110, "point": 25.5},
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+
+        result = client._parse_odds_events("NBA", events, None)
+        assert len(result) == 0  # Unknown markets skipped
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_parse_event_timezone_handling(self, mock_settings, tmp_path):
+        """Test correct timezone conversion for US sports."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+        # Game at midnight UTC on Jan 15 = 7pm ET on Jan 14
+        events = [
+            {
+                "id": "abc123",
+                "commence_time": "2024-01-15T00:00:00Z",
+                "home_team": "Boston Celtics",
+                "away_team": "Los Angeles Lakers",
+                "bookmakers": [
+                    {
+                        "key": "pinnacle",
+                        "title": "Pinnacle",
+                        "last_update": "2024-01-14T23:00:00Z",
+                        "markets": [
+                            {
+                                "key": "h2h",
+                                "outcomes": [
+                                    {"name": "Boston Celtics", "price": -180},
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+
+        result = client._parse_odds_events("NBA", events, None)
+        assert len(result) == 1
+        # Game date should be converted to ET date (Jan 14, not Jan 15)
+        assert result[0].game_date is not None
+
+    @patch("sports_scraper.odds.client.settings")
+    def test_parse_event_multiple_markets(self, mock_settings, tmp_path):
+        """Test parsing event with multiple market types."""
+        mock_settings.odds_api_key = "test_key"
+        mock_settings.odds_config.base_url = "https://api.test.com"
+        mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.scraper_config.html_cache_dir = str(tmp_path)
+
+        client = OddsAPIClient()
+        events = [
+            {
+                "id": "abc123",
+                "commence_time": "2024-01-15T19:00:00Z",
+                "home_team": "Boston Celtics",
+                "away_team": "Los Angeles Lakers",
+                "bookmakers": [
+                    {
+                        "key": "pinnacle",
+                        "title": "Pinnacle",
+                        "last_update": "2024-01-15T18:00:00Z",
+                        "markets": [
+                            {
+                                "key": "h2h",
+                                "outcomes": [
+                                    {"name": "Boston Celtics", "price": -180},
+                                    {"name": "Los Angeles Lakers", "price": 150},
+                                ]
+                            },
+                            {
+                                "key": "spreads",
+                                "outcomes": [
+                                    {"name": "Boston Celtics", "price": -110, "point": -5.5},
+                                    {"name": "Los Angeles Lakers", "price": -110, "point": 5.5},
+                                ]
+                            },
+                            {
+                                "key": "totals",
+                                "outcomes": [
+                                    {"name": "Over", "price": -110, "point": 220.5},
+                                    {"name": "Under", "price": -110, "point": 220.5},
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+
+        result = client._parse_odds_events("NBA", events, None)
+        # 2 moneyline + 2 spread + 2 total = 6 outcomes
+        assert len(result) == 6
+
+        market_types = {r.market_type for r in result}
+        assert market_types == {"moneyline", "spread", "total"}
