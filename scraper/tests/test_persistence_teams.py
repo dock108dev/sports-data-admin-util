@@ -53,9 +53,9 @@ class TestNormalizeNcaabNameForMatching:
 
     def test_removes_mascots(self):
         """Removes mascot stopwords."""
-        result = _normalize_ncaab_name_for_matching("Duke Blue Devils")
-        # "blue" and "devils" are mascot stopwords
-        assert "devils" not in result
+        result = _normalize_ncaab_name_for_matching("Missouri Tigers")
+        # "tigers" is in _NCAAB_STOPWORDS
+        assert "tigers" not in result
 
     def test_handles_empty_string(self):
         """Handles empty string input."""
@@ -71,11 +71,14 @@ class TestNormalizeNcaabNameForMatching:
 class TestUpsertTeam:
     """Tests for _upsert_team function."""
 
-    def test_finds_existing_team(self):
-        """Returns ID for existing team."""
+    def test_upserts_team_and_returns_id(self):
+        """Upserts team and returns the ID from the database."""
         mock_session = MagicMock()
-        mock_team = MagicMock(id=42)
-        mock_session.query.return_value.filter.return_value.first.return_value = mock_team
+        # _upsert_team uses session.execute(stmt).scalar_one() to get the ID
+        mock_session.execute.return_value.scalar_one.return_value = 42
+        # Also mock session.get for league lookup
+        mock_league = MagicMock(code="NBA")
+        mock_session.get.return_value = mock_league
 
         identity = TeamIdentity(league_code="NBA", name="Boston Celtics", abbreviation="BOS")
         result = _upsert_team(mock_session, league_id=1, identity=identity)

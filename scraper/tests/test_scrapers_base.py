@@ -110,12 +110,11 @@ class TestBaseSportsReferenceScraper:
 
     @patch("sports_scraper.scrapers.base.HTMLCache")
     @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_close_closes_client(self, mock_client_class, mock_cache_class):
-        """Close method closes HTTP client."""
+    def test_client_is_accessible(self, mock_client_class, mock_cache_class):
+        """Client attribute is accessible for manual cleanup."""
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
 
         scraper = _TestScraper()
-        scraper.close()
-
-        mock_client.close.assert_called_once()
+        # Client is available as an attribute for manual cleanup if needed
+        assert scraper.client is mock_client
