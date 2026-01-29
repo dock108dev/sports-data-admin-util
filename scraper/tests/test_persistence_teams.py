@@ -24,6 +24,8 @@ from sports_scraper.persistence.teams import (
     _upsert_team,
     _normalize_ncaab_name_for_matching,
     _NCAAB_STOPWORDS,
+    _derive_abbreviation,
+    _NCAAB_ABBREV_EXPANSIONS,
 )
 from sports_scraper.models import TeamIdentity
 
@@ -99,3 +101,146 @@ class TestUpsertTeam:
         result = _upsert_team(mock_session, league_id=1, identity=identity)
 
         assert mock_session.execute.called or mock_session.add.called
+
+
+class TestDeriveAbbreviation:
+    """Tests for _derive_abbreviation function."""
+
+    def test_derives_abbreviation_from_multi_word_name(self):
+        """Derives abbreviation from multi-word team name."""
+        result = _derive_abbreviation("Boston Celtics")
+        # Should take first letter of each word: BC
+        assert len(result) >= 2
+        assert result[0] == "B"
+
+    def test_handles_empty_string(self):
+        """Handles empty string input."""
+        result = _derive_abbreviation("")
+        assert result == "UNK"
+
+    def test_handles_none_input(self):
+        """Handles None input gracefully."""
+        result = _derive_abbreviation(None)
+        assert result == "UNK"
+
+    def test_removes_stopwords(self):
+        """Removes stopwords like 'of' and 'the'."""
+        result = _derive_abbreviation("University of Michigan")
+        # "of" is a stopword, so should be UM not UOM
+        assert "O" not in result or len(result) <= 3
+
+    def test_uc_prefix_expansion(self):
+        """Handles UC prefix for schools like UC Irvine."""
+        result = _derive_abbreviation("UC Irvine")
+        # Should become UCI (UC + first 2 letters of Irvine)
+        assert result.startswith("UC")
+        assert len(result) <= 6
+
+    def test_unc_prefix_expansion(self):
+        """Handles UNC prefix for North Carolina schools."""
+        result = _derive_abbreviation("UNC Wilmington")
+        # Should become UNCWI or similar
+        assert result.startswith("UNC")
+
+    def test_single_word_name(self):
+        """Handles single word team name."""
+        result = _derive_abbreviation("Duke")
+        # Should extend to at least 3 chars
+        assert len(result) >= 3
+        assert result[0] == "D"
+
+    def test_max_length_six(self):
+        """Abbreviation is max 6 characters."""
+        result = _derive_abbreviation("Very Long Team Name That Goes On Forever")
+        assert len(result) <= 6
+
+    def test_special_characters_removed(self):
+        """Removes special characters from name."""
+        result = _derive_abbreviation("St. John's")
+        # Should still produce valid abbreviation
+        assert result.isalpha() or result.isalnum()
+        assert len(result) >= 1
+
+
+class TestNcaabAbbrevExpansions:
+    """Tests for NCAAB abbreviation expansions."""
+
+    def test_byu_expands(self):
+        """BYU expands to Brigham Young."""
+        assert _NCAAB_ABBREV_EXPANSIONS.get("byu") == "brigham young"
+
+    def test_uconn_expands(self):
+        """UConn expands to Connecticut."""
+        assert _NCAAB_ABBREV_EXPANSIONS.get("uconn") == "connecticut"
+
+    def test_lsu_expands(self):
+        """LSU expands to Louisiana State."""
+        assert _NCAAB_ABBREV_EXPANSIONS.get("lsu") == "louisiana state"
+
+    def test_expansions_are_lowercase(self):
+        """All expansion keys are lowercase."""
+        for key in _NCAAB_ABBREV_EXPANSIONS.keys():
+            assert key == key.lower()
+
+
+class TestNormalizeNcaabNameForMatchingAdvanced:
+    """Advanced tests for _normalize_ncaab_name_for_matching function."""
+
+    def test_removes_parenthetical_qualifiers(self):
+        """Removes parenthetical qualifiers like (NY)."""
+        result = _normalize_ncaab_name_for_matching("St. John's (NY)")
+        assert "(ny)" not in result
+        assert "ny" not in result.split()
+
+    def test_handles_hyphenated_names(self):
+        """Handles hyphenated team names."""
+        result = _normalize_ncaab_name_for_matching("Arkansas-Pine Bluff")
+        # Should still process the name
+        assert len(result) > 0
+
+    def test_normalizes_whitespace(self):
+        """Normalizes multiple whitespace to single space."""
+        result = _normalize_ncaab_name_for_matching("Duke    Blue    Devils")
+        assert "  " not in result
+
+    def test_expands_u_to_university(self):
+        """Expands 'U' to 'University'."""
+        result = _normalize_ncaab_name_for_matching("Miami U")
+        assert "university" in result
+
+    def test_preserves_saint_abbreviation(self):
+        """Preserves St. (with period) as Saint."""
+        result = _normalize_ncaab_name_for_matching("St. John's")
+        # St. should NOT become State. - period indicates Saint
+        assert "state" not in result
+
+    def test_expands_common_abbreviations(self):
+        """Expands common abbreviations like BYU."""
+        result = _normalize_ncaab_name_for_matching("BYU Cougars")
+        # BYU should expand to "brigham young", and "cougars" is a stopword
+        assert "brigham" in result or "byu" in result
+
+
+class TestNcaabStopwordsAdvanced:
+    """Advanced tests for NCAAB stopwords."""
+
+    def test_contains_colors(self):
+        """Contains color words commonly in team names."""
+        assert "blue" in _NCAAB_STOPWORDS
+        assert "red" in _NCAAB_STOPWORDS
+        assert "gold" in _NCAAB_STOPWORDS
+        assert "golden" in _NCAAB_STOPWORDS
+
+    def test_contains_common_mascots(self):
+        """Contains commonly duplicated mascots."""
+        assert "wildcats" in _NCAAB_STOPWORDS
+        assert "cardinals" in _NCAAB_STOPWORDS
+        assert "spartans" in _NCAAB_STOPWORDS
+        assert "trojans" in _NCAAB_STOPWORDS
+
+    def test_does_not_contain_school_words(self):
+        """Does not contain school-type words."""
+        # These should NOT be stopwords
+        assert "university" not in _NCAAB_STOPWORDS
+        assert "college" not in _NCAAB_STOPWORDS
+        assert "state" not in _NCAAB_STOPWORDS

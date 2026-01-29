@@ -156,3 +156,110 @@ class TestMergeExternalIds:
         result = merge_external_ids(existing, new_ids)
 
         assert result["nhl_game_pk"] == "123"
+
+    def test_overwrites_existing_with_new(self):
+        """New values overwrite existing values."""
+        existing = {"odds_api_event_id": "old_value"}
+        new_ids = {"odds_api_event_id": "new_value"}
+
+        result = merge_external_ids(existing, new_ids)
+
+        assert result["odds_api_event_id"] == "new_value"
+
+    def test_skips_none_values_in_new(self):
+        """Skips None values in new dict."""
+        existing = {"nhl_game_pk": "123"}
+        new_ids = {"cbb_game_id": "456", "empty_key": None}
+
+        result = merge_external_ids(existing, new_ids)
+
+        assert result["nhl_game_pk"] == "123"
+        assert result["cbb_game_id"] == "456"
+        assert "empty_key" not in result
+
+
+class TestNormalizeStatusCaseInsensitive:
+    """Tests for case insensitivity of _normalize_status."""
+
+    def test_normalizes_uppercase_final(self):
+        """Normalizes 'FINAL' status."""
+        result = _normalize_status("FINAL")
+        assert result == "final"
+
+    def test_normalizes_mixed_case_completed(self):
+        """Normalizes 'Completed' to 'final'."""
+        result = _normalize_status("Completed")
+        assert result == "final"
+
+    def test_normalizes_uppercase_live(self):
+        """Normalizes 'LIVE' status."""
+        result = _normalize_status("LIVE")
+        assert result == "live"
+
+    def test_normalizes_uppercase_scheduled(self):
+        """Normalizes 'SCHEDULED' status."""
+        result = _normalize_status("SCHEDULED")
+        assert result == "scheduled"
+
+
+class TestResolveStatusTransitionAdvanced:
+    """Advanced tests for resolve_status_transition function."""
+
+    def test_scheduled_to_scheduled_stays_scheduled(self):
+        """Scheduled to scheduled stays scheduled."""
+        result = resolve_status_transition("scheduled", "scheduled")
+        assert result == "scheduled"
+
+    def test_live_to_live_stays_live(self):
+        """Live to live stays live."""
+        result = resolve_status_transition("live", "live")
+        assert result == "live"
+
+    def test_final_to_final_stays_final(self):
+        """Final to final stays final."""
+        result = resolve_status_transition("final", "final")
+        assert result == "final"
+
+    def test_live_cannot_go_back_to_scheduled(self):
+        """Live cannot regress to scheduled."""
+        result = resolve_status_transition("live", "scheduled")
+        assert result == "live"
+
+    def test_none_to_none_is_scheduled(self):
+        """None to None defaults to scheduled."""
+        result = resolve_status_transition(None, None)
+        assert result == "scheduled"
+
+
+class TestModuleImports:
+    """Tests for games module imports."""
+
+    def test_has_normalize_status(self):
+        """Module has _normalize_status function."""
+        from sports_scraper.persistence import games
+        assert hasattr(games, '_normalize_status')
+
+    def test_has_resolve_status_transition(self):
+        """Module has resolve_status_transition function."""
+        from sports_scraper.persistence import games
+        assert hasattr(games, 'resolve_status_transition')
+
+    def test_has_merge_external_ids(self):
+        """Module has merge_external_ids function."""
+        from sports_scraper.persistence import games
+        assert hasattr(games, 'merge_external_ids')
+
+    def test_has_upsert_game_stub(self):
+        """Module has upsert_game_stub function."""
+        from sports_scraper.persistence import games
+        assert hasattr(games, 'upsert_game_stub')
+
+    def test_has_upsert_game(self):
+        """Module has upsert_game function."""
+        from sports_scraper.persistence import games
+        assert hasattr(games, 'upsert_game')
+
+    def test_has_update_game_from_live_feed(self):
+        """Module has update_game_from_live_feed function."""
+        from sports_scraper.persistence import games
+        assert hasattr(games, 'update_game_from_live_feed')

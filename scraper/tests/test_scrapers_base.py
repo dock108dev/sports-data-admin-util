@@ -118,3 +118,109 @@ class TestBaseSportsReferenceScraper:
         scraper = _TestScraper()
         # Client is available as an attribute for manual cleanup if needed
         assert scraper.client is mock_client
+
+    @patch("sports_scraper.scrapers.base.HTMLCache")
+    @patch("sports_scraper.scrapers.base.httpx.Client")
+    def test_scoreboard_url_format(self, mock_client_class, mock_cache_class):
+        """scoreboard_url returns URL with date params."""
+        scraper = _TestScraper()
+        url = scraper.scoreboard_url(date(2024, 1, 15))
+        assert "month=1" in url
+        assert "day=15" in url
+        assert "year=2024" in url
+
+    @patch("sports_scraper.scrapers.base.HTMLCache")
+    @patch("sports_scraper.scrapers.base.httpx.Client")
+    def test_iter_dates_single_day(self, mock_client_class, mock_cache_class):
+        """iter_dates handles single day range."""
+        scraper = _TestScraper()
+        dates = list(scraper.iter_dates(date(2024, 1, 15), date(2024, 1, 15)))
+        assert len(dates) == 1
+        assert dates[0] == date(2024, 1, 15)
+
+    @patch("sports_scraper.scrapers.base.HTMLCache")
+    @patch("sports_scraper.scrapers.base.httpx.Client")
+    def test_iter_dates_month_boundary(self, mock_client_class, mock_cache_class):
+        """iter_dates crosses month boundaries correctly."""
+        scraper = _TestScraper()
+        dates = list(scraper.iter_dates(date(2024, 1, 30), date(2024, 2, 2)))
+        assert len(dates) == 4
+        assert dates[0] == date(2024, 1, 30)
+        assert dates[1] == date(2024, 1, 31)
+        assert dates[2] == date(2024, 2, 1)
+        assert dates[3] == date(2024, 2, 2)
+
+    @patch("sports_scraper.scrapers.base.HTMLCache")
+    @patch("sports_scraper.scrapers.base.httpx.Client")
+    def test_has_internal_delay_settings(self, mock_client_class, mock_cache_class):
+        """Scraper has delay settings for polite scraping."""
+        scraper = _TestScraper()
+        assert hasattr(scraper, "_min_delay")
+        assert hasattr(scraper, "_max_delay")
+        assert hasattr(scraper, "_rate_limit_wait")
+
+    @patch("sports_scraper.scrapers.base.HTMLCache")
+    @patch("sports_scraper.scrapers.base.httpx.Client")
+    def test_season_from_date_method_exists(self, mock_client_class, mock_cache_class):
+        """_season_from_date method exists."""
+        scraper = _TestScraper()
+        assert hasattr(scraper, "_season_from_date")
+        assert callable(scraper._season_from_date)
+
+
+class TestScraperConstants:
+    """Tests for scraper module constants."""
+
+    def test_scraper_error_is_runtime_error(self):
+        """ScraperError is a RuntimeError subclass."""
+        assert issubclass(ScraperError, RuntimeError)
+
+    def test_no_games_found_error_is_scraper_error(self):
+        """NoGamesFoundError is a ScraperError subclass."""
+        assert issubclass(NoGamesFoundError, ScraperError)
+
+    def test_scraper_error_message(self):
+        """ScraperError preserves message."""
+        error = ScraperError("Test error message")
+        assert str(error) == "Test error message"
+
+    def test_no_games_found_error_message(self):
+        """NoGamesFoundError preserves message."""
+        error = NoGamesFoundError("No games for date")
+        assert "No games" in str(error)
+
+
+class TestBaseSportsReferenceScraperAbstractMethods:
+    """Tests for abstract methods in BaseSportsReferenceScraper."""
+
+    @patch("sports_scraper.scrapers.base.HTMLCache")
+    @patch("sports_scraper.scrapers.base.httpx.Client")
+    def test_fetch_games_for_date_raises(self, mock_client_class, mock_cache_class):
+        """fetch_games_for_date raises NotImplementedError."""
+        scraper = _TestScraper()
+        with pytest.raises(NotImplementedError):
+            scraper.fetch_games_for_date(date(2024, 1, 15))
+
+    @patch("sports_scraper.scrapers.base.HTMLCache")
+    @patch("sports_scraper.scrapers.base.httpx.Client")
+    def test_pbp_url_raises(self, mock_client_class, mock_cache_class):
+        """pbp_url raises NotImplementedError."""
+        scraper = _TestScraper()
+        with pytest.raises(NotImplementedError):
+            scraper.pbp_url("GAME123")
+
+    @patch("sports_scraper.scrapers.base.HTMLCache")
+    @patch("sports_scraper.scrapers.base.httpx.Client")
+    def test_fetch_play_by_play_raises(self, mock_client_class, mock_cache_class):
+        """fetch_play_by_play raises NotImplementedError."""
+        scraper = _TestScraper()
+        with pytest.raises(NotImplementedError):
+            scraper.fetch_play_by_play("GAME123", date(2024, 1, 15))
+
+    @patch("sports_scraper.scrapers.base.HTMLCache")
+    @patch("sports_scraper.scrapers.base.httpx.Client")
+    def test_fetch_single_boxscore_raises(self, mock_client_class, mock_cache_class):
+        """fetch_single_boxscore raises NotImplementedError."""
+        scraper = _TestScraper()
+        with pytest.raises(NotImplementedError):
+            scraper.fetch_single_boxscore("GAME123", date(2024, 1, 15))
