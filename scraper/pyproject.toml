@@ -54,6 +54,8 @@ omit = [
   "sports_scraper/scrapers/*",
   # Database connection module
   "sports_scraper/db.py",
+  # Services - orchestration code tested via integration tests
+  "sports_scraper/services/*",
 ]
 
 [tool.coverage.report]
