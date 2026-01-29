@@ -314,7 +314,8 @@ def ingest_pbp_via_nhl_api(
     Returns:
         Tuple of (games_with_pbp, total_events_inserted)
     """
-    from ..live.nhl import NHLLiveFeedClient, NHL_MIN_EXPECTED_PLAYS
+    from ..live.nhl import NHLLiveFeedClient
+    from ..live.nhl_constants import NHL_MIN_EXPECTED_PLAYS
 
     # Step 1: Populate missing NHL game IDs
     _populate_nhl_game_ids(
@@ -537,7 +538,8 @@ def ingest_pbp_via_ncaab_api(
     Returns:
         Tuple of (games_with_pbp, total_events_inserted)
     """
-    from ..live.ncaab import NCAABLiveFeedClient, NCAAB_MIN_EXPECTED_PLAYS
+    from ..live.ncaab import NCAABLiveFeedClient
+    from ..live.ncaab_constants import NCAAB_MIN_EXPECTED_PLAYS
     from .boxscore_ingestion import _populate_ncaab_game_ids
 
     logger.info(

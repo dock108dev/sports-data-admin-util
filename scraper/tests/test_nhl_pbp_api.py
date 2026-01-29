@@ -15,13 +15,10 @@ if str(SCRAPER_ROOT) not in sys.path:
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/test_db")
 
-from sports_scraper.live.nhl import (
-    NHLLiveFeedClient,
-    NHL_EVENT_TYPE_MAP,
-    NHL_MIN_EXPECTED_PLAYS,
-    _map_nhl_game_state,
-    _parse_int,
-)
+from sports_scraper.live.nhl import NHLLiveFeedClient
+from sports_scraper.live.nhl_constants import NHL_EVENT_TYPE_MAP, NHL_MIN_EXPECTED_PLAYS
+from sports_scraper.live.nhl_helpers import map_nhl_game_state
+from sports_scraper.utils.parsing import parse_int
 
 
 # Sample play data from the real NHL API
@@ -124,20 +121,20 @@ class TestNHLGameStateMapping:
     """Test game state to status mapping."""
 
     def test_final_states(self):
-        assert _map_nhl_game_state("OFF") == "final"
-        assert _map_nhl_game_state("FINAL") == "final"
+        assert map_nhl_game_state("OFF") == "final"
+        assert map_nhl_game_state("FINAL") == "final"
 
     def test_live_states(self):
-        assert _map_nhl_game_state("LIVE") == "live"
-        assert _map_nhl_game_state("CRIT") == "live"
+        assert map_nhl_game_state("LIVE") == "live"
+        assert map_nhl_game_state("CRIT") == "live"
 
     def test_scheduled_states(self):
-        assert _map_nhl_game_state("FUT") == "scheduled"
-        assert _map_nhl_game_state("PRE") == "scheduled"
+        assert map_nhl_game_state("FUT") == "scheduled"
+        assert map_nhl_game_state("PRE") == "scheduled"
 
     def test_unknown_defaults_to_scheduled(self):
-        assert _map_nhl_game_state("UNKNOWN") == "scheduled"
-        assert _map_nhl_game_state("") == "scheduled"
+        assert map_nhl_game_state("UNKNOWN") == "scheduled"
+        assert map_nhl_game_state("") == "scheduled"
 
 
 class TestNHLPlayNormalization:
@@ -225,14 +222,14 @@ class TestNHLPBPValidation:
 class TestHelperFunctions:
     """Test helper functions."""
 
-    def test_parse_int_valid(self):
-        assert _parse_int(123) == 123
-        assert _parse_int("456") == 456
+    def testparse_int_valid(self):
+        assert parse_int(123) == 123
+        assert parse_int("456") == 456
 
-    def test_parse_int_invalid(self):
-        assert _parse_int(None) is None
-        assert _parse_int("abc") is None
-        assert _parse_int({}) is None
+    def testparse_int_invalid(self):
+        assert parse_int(None) is None
+        assert parse_int("abc") is None
+        assert parse_int({}) is None
 
 
 class TestNHLClientMocked:
