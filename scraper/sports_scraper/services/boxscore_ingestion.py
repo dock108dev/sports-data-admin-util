@@ -403,16 +403,41 @@ def _populate_ncaab_game_ids(
         )
         return 0
 
-    # Build lookup: (cbb_home_id, cbb_away_id, startDate_utc) -> cbb_game_id
-    # Direct match on team IDs + exact UTC time
-    cbb_lookup: dict[tuple[int, int, datetime], int] = {}
+    # Build lookup structures for flexible matching
+    # Primary: (cbb_home_id, cbb_away_id, date) -> list of (game_date, game_id)
+    # Secondary: (home_name_lower, away_name_lower, date) -> list of (game_date, game_id)
+    from datetime import timedelta
+
+    cbb_by_teams_date: dict[tuple[int, int, date], list[tuple[datetime, int]]] = {}
+    cbb_by_names_date: dict[tuple[str, str, date], list[tuple[datetime, int]]] = {}
+
     for cg in cbb_games:
         if cg.status != "final":
             continue
-        # cg.game_date is parsed from startDate (actual UTC time)
-        cbb_lookup[(cg.home_team_id, cg.away_team_id, cg.game_date)] = cg.game_id
-        # Also reverse key in case home/away swapped
-        cbb_lookup[(cg.away_team_id, cg.home_team_id, cg.game_date)] = cg.game_id
+        game_day = cg.game_date.date()
+
+        # Index by team IDs
+        key_ids = (cg.home_team_id, cg.away_team_id, game_day)
+        if key_ids not in cbb_by_teams_date:
+            cbb_by_teams_date[key_ids] = []
+        cbb_by_teams_date[key_ids].append((cg.game_date, cg.game_id))
+
+        # Also reverse order
+        key_ids_rev = (cg.away_team_id, cg.home_team_id, game_day)
+        if key_ids_rev not in cbb_by_teams_date:
+            cbb_by_teams_date[key_ids_rev] = []
+        cbb_by_teams_date[key_ids_rev].append((cg.game_date, cg.game_id))
+
+        # Index by team names (for fallback matching)
+        key_names = (cg.home_team_name.lower(), cg.away_team_name.lower(), game_day)
+        if key_names not in cbb_by_names_date:
+            cbb_by_names_date[key_names] = []
+        cbb_by_names_date[key_names].append((cg.game_date, cg.game_id))
+
+        key_names_rev = (cg.away_team_name.lower(), cg.home_team_name.lower(), game_day)
+        if key_names_rev not in cbb_by_names_date:
+            cbb_by_names_date[key_names_rev] = []
+        cbb_by_names_date[key_names_rev].append((cg.game_date, cg.game_id))
 
     logger.info(
         "ncaab_game_ids_api_games",
@@ -421,19 +446,69 @@ def _populate_ncaab_game_ids(
         final_games=sum(1 for cg in cbb_games if cg.status == "final"),
     )
 
-    # Match: tip_time (UTC) == startDate (UTC)
+    # Build team_id -> team_name mapping for fallback
+    team_id_to_name: dict[int, str] = {}
+    all_teams = session.query(
+        db_models.SportsTeam.id,
+        db_models.SportsTeam.name,
+    ).filter(
+        db_models.SportsTeam.league_id == league.id
+    ).all()
+    for team_id, team_name in all_teams:
+        if team_name:
+            team_id_to_name[team_id] = team_name.lower()
+
+    # Match using flexible criteria:
+    # 1. Try cbb_team_id + date (within 30 min window)
+    # 2. Fallback to team name + date (within 30 min window)
+    TIME_WINDOW = timedelta(minutes=30)
+
     updated = 0
     unmatched = 0
+    unmatched_reasons: dict[str, int] = {"no_team_mapping": 0, "no_api_match": 0, "time_mismatch": 0}
+
     for game_id, tip_time, home_team_id, away_team_id in games_missing_id:
         cbb_home_id = team_to_cbb_id.get(home_team_id)
         cbb_away_id = team_to_cbb_id.get(away_team_id)
+        game_day = tip_time.date() if tip_time else None
 
-        if not cbb_home_id or not cbb_away_id:
+        if not game_day:
             unmatched += 1
             continue
 
-        # Direct match: team IDs + tip_time
-        cbb_game_id = cbb_lookup.get((cbb_home_id, cbb_away_id, tip_time))
+        cbb_game_id = None
+
+        # Try matching by team IDs first
+        if cbb_home_id and cbb_away_id:
+            key_ids = (cbb_home_id, cbb_away_id, game_day)
+            candidates = cbb_by_teams_date.get(key_ids, [])
+
+            # Find best match within time window
+            for cbb_time, cbb_id in candidates:
+                if tip_time and abs((cbb_time - tip_time).total_seconds()) <= TIME_WINDOW.total_seconds():
+                    cbb_game_id = cbb_id
+                    break
+
+            # If no match in window but only one game that day, use it
+            if not cbb_game_id and len(candidates) == 1:
+                cbb_game_id = candidates[0][1]
+
+        # Fallback: try matching by team names
+        if not cbb_game_id:
+            home_name = team_id_to_name.get(home_team_id, "").lower()
+            away_name = team_id_to_name.get(away_team_id, "").lower()
+
+            if home_name and away_name:
+                key_names = (home_name, away_name, game_day)
+                candidates = cbb_by_names_date.get(key_names, [])
+
+                for cbb_time, cbb_id in candidates:
+                    if tip_time and abs((cbb_time - tip_time).total_seconds()) <= TIME_WINDOW.total_seconds():
+                        cbb_game_id = cbb_id
+                        break
+
+                if not cbb_game_id and len(candidates) == 1:
+                    cbb_game_id = candidates[0][1]
 
         if cbb_game_id:
             game = session.query(db_models.SportsGame).get(game_id)
@@ -444,6 +519,11 @@ def _populate_ncaab_game_ids(
                 updated += 1
         else:
             unmatched += 1
+            # Track reason for debugging
+            if not cbb_home_id or not cbb_away_id:
+                unmatched_reasons["no_team_mapping"] += 1
+            else:
+                unmatched_reasons["no_api_match"] += 1
 
     session.flush()
     logger.info(
@@ -451,6 +531,7 @@ def _populate_ncaab_game_ids(
         run_id=run_id,
         updated=updated,
         unmatched=unmatched,
+        unmatched_reasons=unmatched_reasons,
         total_missing=len(games_missing_id),
     )
     return updated
