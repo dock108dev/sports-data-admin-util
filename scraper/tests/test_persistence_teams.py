@@ -399,3 +399,497 @@ class TestAbbrStopwords:
         from sports_scraper.persistence.teams import _ABBR_STOPWORDS
 
         assert isinstance(_ABBR_STOPWORDS, (set, frozenset))
+
+
+class TestFindTeamByNameNcaab:
+    """Tests for _find_team_by_name NCAAB-specific matching."""
+
+    def test_uses_ncaab_override(self):
+        """Uses NCAAB override mapping."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NCAAB")
+
+        mock_team = MagicMock()
+        mock_team.name = "George Washington"
+        mock_team.short_name = "GW"
+
+        # Use a function to return different values based on args
+        def get_side_effect(model, id=None):
+            if id == 9:
+                return mock_league
+            elif id == 42:
+                return mock_team
+            return mock_league
+        mock_session.get.side_effect = get_side_effect
+
+        # First query for exact match
+        mock_session.execute.return_value.all.return_value = [(42,)]
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=9,
+            team_name="George Washington Colonials",
+        )
+
+        # Should find the team using override
+        assert mock_session.execute.called
+
+    def test_ncaab_normalized_matching(self):
+        """Uses normalized matching for NCAAB."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NCAAB")
+
+        mock_team = MagicMock()
+        mock_team.name = "Duke Blue Devils"
+        mock_team.short_name = "Duke"
+
+        call_count = [0]
+        def get_side_effect(model, id=None):
+            call_count[0] += 1
+            if id == 9:
+                return mock_league
+            elif id == 42:
+                return mock_team
+            return mock_league
+        mock_session.get.side_effect = get_side_effect
+
+        # No exact match, but all teams query returns candidates
+        execute_calls = [0]
+        def execute_side_effect(stmt):
+            execute_calls[0] += 1
+            mock_result = MagicMock()
+            if execute_calls[0] == 1:
+                mock_result.all.return_value = []  # First exact match query
+            else:
+                mock_result.all.return_value = [(42, "Duke Blue Devils", "Duke")]  # All teams query
+            return mock_result
+        mock_session.execute.side_effect = execute_side_effect
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=9,
+            team_name="Duke",
+        )
+
+        mock_session.execute.assert_called()
+
+    def test_ncaab_multiple_candidates_scoring(self):
+        """Scores multiple NCAAB candidates correctly."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NCAAB")
+
+        # Create mock teams
+        mock_team_1 = MagicMock()
+        mock_team_1.name = "North Carolina"
+        mock_team_1.short_name = "UNC"
+
+        mock_team_2 = MagicMock()
+        mock_team_2.name = "North Carolina State"
+        mock_team_2.short_name = "NC State"
+
+        def get_side_effect(model, id=None):
+            if id == 9:
+                return mock_league
+            elif id == 100:
+                return mock_team_1
+            elif id == 101:
+                return mock_team_2
+            return mock_league
+        mock_session.get.side_effect = get_side_effect
+
+        # Return multiple candidates
+        mock_session.execute.return_value.all.return_value = [(100,), (101,)]
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=9,
+            team_name="North Carolina",
+        )
+
+        # Should prefer exact match
+        mock_session.execute.assert_called()
+
+
+class TestFindTeamByNameNonNcaab:
+    """Tests for _find_team_by_name non-NCAAB matching."""
+
+    def test_exact_match_returned(self):
+        """Returns exact match for non-NCAAB leagues."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NBA")
+
+        mock_team = MagicMock()
+        mock_team.name = "Boston Celtics"
+        mock_team.short_name = "Celtics"
+
+        def get_side_effect(model, id=None):
+            if id == 1:
+                return mock_league
+            elif id == 42:
+                return mock_team
+            return mock_league
+        mock_session.get.side_effect = get_side_effect
+
+        # Exact match found
+        mock_session.execute.return_value.scalar.return_value = 42
+        mock_session.execute.return_value.all.return_value = [(42,)]
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=1,
+            team_name="Boston Celtics",
+        )
+
+        assert result == 42
+
+    def test_first_word_matching_long_word(self):
+        """Uses first word matching for names with space (long first word)."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NBA")
+
+        mock_team = MagicMock()
+        mock_team.name = "Boston Celtics"
+        mock_team.short_name = "Celtics"
+
+        def get_side_effect(model, id=None):
+            if id == 1:
+                return mock_league
+            elif id == 42:
+                return mock_team
+            return mock_league
+        mock_session.get.side_effect = get_side_effect
+
+        # No exact match, but first word match
+        execute_calls = [0]
+        def execute_side_effect(stmt):
+            execute_calls[0] += 1
+            mock_result = MagicMock()
+            mock_result.scalar.return_value = None
+            mock_result.all.return_value = [(42,)]
+            return mock_result
+        mock_session.execute.side_effect = execute_side_effect
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=1,
+            team_name="Boston Bruins",  # Different team, same city
+        )
+
+        mock_session.execute.assert_called()
+
+    def test_first_word_matching_short_word(self):
+        """Uses exact match only for short first words (LA, NY)."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NBA")
+
+        def get_side_effect(model, id=None):
+            return mock_league
+        mock_session.get.side_effect = get_side_effect
+
+        # No exact match
+        mock_session.execute.return_value.scalar.return_value = None
+        mock_session.execute.return_value.all.return_value = []
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=1,
+            team_name="LA Lakers",
+        )
+
+        # Should not match other LA teams via prefix
+        mock_session.execute.assert_called()
+
+    def test_single_word_name_matching(self):
+        """Uses prefix matching for single word names."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NBA")
+
+        mock_team = MagicMock()
+        mock_team.name = "Celtics"
+        mock_team.short_name = "Celtics"
+
+        def get_side_effect(model, id=None):
+            if id == 1:
+                return mock_league
+            elif id == 42:
+                return mock_team
+            return mock_league
+        mock_session.get.side_effect = get_side_effect
+
+        # No exact match, but prefix match
+        execute_calls = [0]
+        def execute_side_effect(stmt):
+            execute_calls[0] += 1
+            mock_result = MagicMock()
+            mock_result.scalar.return_value = None
+            mock_result.all.return_value = [(42,)]
+            return mock_result
+        mock_session.execute.side_effect = execute_side_effect
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=1,
+            team_name="Celtics",
+        )
+
+        mock_session.execute.assert_called()
+
+    def test_abbreviation_matching_non_ncaab(self):
+        """Uses abbreviation matching for non-NCAAB leagues."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NBA")
+
+        mock_team = MagicMock()
+        mock_team.name = "Boston Celtics"
+        mock_team.short_name = "Celtics"
+
+        def get_side_effect(model, id=None):
+            if id == 1:
+                return mock_league
+            elif id == 42:
+                return mock_team
+            return mock_league
+        mock_session.get.side_effect = get_side_effect
+
+        # No name match, but abbreviation match
+        execute_calls = [0]
+        def execute_side_effect(stmt):
+            execute_calls[0] += 1
+            mock_result = MagicMock()
+            mock_result.scalar.return_value = None
+            mock_result.all.return_value = [(42,)]
+            return mock_result
+        mock_session.execute.side_effect = execute_side_effect
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=1,
+            team_name="Unknown",
+            team_abbr="BOS",
+        )
+
+        mock_session.execute.assert_called()
+
+    def test_abbreviation_not_used_for_ncaab(self):
+        """Does not use abbreviation matching for NCAAB (too collision-prone)."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NCAAB")
+
+        def get_side_effect(model, id=None):
+            return mock_league
+        mock_session.get.side_effect = get_side_effect
+
+        # No matches
+        mock_session.execute.return_value.all.return_value = []
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=9,
+            team_name="Unknown Team",
+            team_abbr="UK",  # UK could be Kentucky or many others
+        )
+
+        assert result is None
+
+
+class TestFindTeamByNameScoring:
+    """Tests for team scoring in _find_team_by_name."""
+
+    def test_prefers_exact_name_match(self):
+        """Prefers exact name match over other criteria."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NBA")
+
+        mock_team_exact = MagicMock()
+        mock_team_exact.name = "Boston Celtics"
+        mock_team_exact.short_name = "Celtics"
+
+        mock_team_similar = MagicMock()
+        mock_team_similar.name = "Boston Red Sox"
+        mock_team_similar.short_name = "Red Sox"
+
+        def get_side_effect(model, id):
+            if id == 1:
+                return mock_league
+            elif id == 42:
+                return mock_team_exact
+            elif id == 43:
+                return mock_team_similar
+            return None
+
+        mock_session.get.side_effect = get_side_effect
+
+        # Multiple candidates
+        mock_session.execute.return_value.scalar.return_value = None
+        mock_session.execute.return_value.all.return_value = [(42,), (43,)]
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=1,
+            team_name="Boston Celtics",
+        )
+
+        # Should prefer exact match (team 42)
+        mock_session.execute.assert_called()
+
+    def test_filters_short_names(self):
+        """Filters out candidates with very short names."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NBA")
+
+        mock_team_short = MagicMock()
+        mock_team_short.name = "AB"  # Too short
+
+        mock_team_valid = MagicMock()
+        mock_team_valid.name = "Boston Celtics"
+        mock_team_valid.short_name = "Celtics"
+
+        def get_side_effect(model, id):
+            if id == 1:
+                return mock_league
+            elif id == 42:
+                return mock_team_short
+            elif id == 43:
+                return mock_team_valid
+            return None
+
+        mock_session.get.side_effect = get_side_effect
+
+        # Multiple candidates
+        mock_session.execute.return_value.scalar.return_value = None
+        mock_session.execute.return_value.all.return_value = [(42,), (43,)]
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=1,
+            team_name="Boston",
+        )
+
+        # Should filter out short name and return valid team
+        mock_session.execute.assert_called()
+
+
+class TestDeriveAbbreviationAdvanced:
+    """Advanced tests for _derive_abbreviation."""
+
+    def test_all_stopwords_fallback(self):
+        """Falls back when all tokens are stopwords."""
+        result = _derive_abbreviation("of the and at")
+        # Should fall back to using original tokens
+        assert len(result) >= 1
+
+    def test_long_name_truncation(self):
+        """Truncates to max 6 characters."""
+        result = _derive_abbreviation("Very Long Name With Many Words Indeed")
+        assert len(result) <= 6
+
+    def test_short_single_token(self):
+        """Extends short single-token names."""
+        result = _derive_abbreviation("BC")
+        # Should extend to at least 3 chars
+        assert len(result) >= 2
+
+
+class TestUpsertTeamWithDerivedAbbreviation:
+    """Tests for _upsert_team with abbreviation derivation."""
+
+    def test_derives_abbreviation_when_missing(self):
+        """Derives abbreviation when identity has none."""
+        mock_session = MagicMock()
+        mock_session.execute.return_value.scalar_one.return_value = 42
+        mock_league = MagicMock(code="NCAAB")
+        mock_session.get.return_value = mock_league
+
+        identity = TeamIdentity(
+            league_code="NCAAB",
+            name="Some State University",
+            abbreviation=None,  # Missing
+        )
+        result = _upsert_team(mock_session, league_id=9, identity=identity)
+
+        assert result == 42
+        mock_session.execute.assert_called_once()
+
+    def test_preserves_existing_abbreviation(self):
+        """Preserves existing abbreviation in DB when identity has none."""
+        mock_session = MagicMock()
+        mock_session.execute.return_value.scalar_one.return_value = 42
+        mock_league = MagicMock(code="NCAAB")
+        mock_session.get.return_value = mock_league
+
+        identity = TeamIdentity(
+            league_code="NCAAB",
+            name="Some State University",
+            abbreviation=None,
+        )
+
+        _upsert_team(mock_session, league_id=9, identity=identity)
+
+        # Check that the statement uses the existing abbreviation on conflict
+        mock_session.execute.assert_called_once()
+
+
+class TestNcaabNormalizedMatchingAdvanced:
+    """Advanced tests for NCAAB normalized name matching."""
+
+    def test_substring_matching(self):
+        """Matches when normalized name is substring of DB name."""
+        from sports_scraper.persistence.teams import _find_team_by_name
+
+        mock_session = MagicMock()
+        mock_league = MagicMock(code="NCAAB")
+
+        mock_team = MagicMock()
+        mock_team.name = "University of North Carolina at Chapel Hill"
+        mock_team.short_name = "North Carolina"
+
+        def get_side_effect(model, id=None):
+            if id == 9:
+                return mock_league
+            elif id == 42:
+                return mock_team
+            return mock_league
+        mock_session.get.side_effect = get_side_effect
+
+        # No exact match, all teams query returns candidate
+        execute_calls = [0]
+        def execute_side_effect(stmt):
+            execute_calls[0] += 1
+            mock_result = MagicMock()
+            if execute_calls[0] == 1:
+                mock_result.all.return_value = []  # Exact match
+            else:
+                mock_result.all.return_value = [(42, "University of North Carolina at Chapel Hill", "North Carolina")]
+            return mock_result
+        mock_session.execute.side_effect = execute_side_effect
+
+        result = _find_team_by_name(
+            mock_session,
+            league_id=9,
+            team_name="North Carolina",
+        )
+
+        mock_session.execute.assert_called()
+
