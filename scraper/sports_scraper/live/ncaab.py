@@ -21,7 +21,6 @@ from ..utils.cache import APICache
 from ..utils.parsing import parse_int
 from .ncaab_boxscore import NCAABBoxscoreFetcher
 from .ncaab_constants import CBB_GAMES_URL
-from .ncaab_helpers import build_team_identity
 from .ncaab_models import NCAABBoxscore, NCAABLiveGame
 from .ncaab_pbp import NCAABPbpFetcher
 
