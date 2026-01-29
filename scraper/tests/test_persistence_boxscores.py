@@ -62,10 +62,22 @@ class TestBuildPlayerStats:
             player_name="Jayson Tatum",
             team=TeamIdentity(league_code="NBA", name="Boston Celtics", abbreviation="BOS"),
             points=28,
+            minutes=36.5,
         )
         result = _build_player_stats(boxscore)
         assert isinstance(result, dict)
+        # Only non-None values are included
         assert result.get("points") == 28
+        assert result.get("minutes") == 36.5
+
+    def test_returns_empty_dict_for_no_stats(self):
+        """Returns empty dict when all stats are None."""
+        boxscore = NormalizedPlayerBoxscore(
+            player_name="Test Player",
+            team=TeamIdentity(league_code="NBA", name="Boston Celtics", abbreviation="BOS"),
+        )
+        result = _build_player_stats(boxscore)
+        assert isinstance(result, dict)
 
 
 class TestGamePersistResult:
