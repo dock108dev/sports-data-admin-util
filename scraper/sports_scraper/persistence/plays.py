@@ -144,7 +144,9 @@ def upsert_plays(
         create_snapshot: Whether to create a raw PBP snapshot
 
     Returns:
-        Number of plays upserted (inserted or updated)
+        Number of plays processed (each play is either inserted if new or
+        updated if it already exists). This equals len(plays), not the count
+        of newly inserted rows.
     """
     if not plays:
         return 0
@@ -236,13 +238,14 @@ def upsert_plays(
         )
         session.execute(stmt)
 
-    # PostgreSQL ON CONFLICT DO UPDATE doesn't return meaningful rowcount,
-    # so we use len(plays) as the count of upserted rows
-    upserted = len(plays)
-    logger.info("plays_upserted", game_id=game_id, count=upserted)
-    if upserted:
+    # Return the number of plays processed. With ON CONFLICT DO UPDATE,
+    # every play is either inserted (if new) or updated (if exists).
+    # This count represents plays written to the database, not net new inserts.
+    plays_processed = len(plays)
+    logger.info("plays_upserted", game_id=game_id, count=plays_processed)
+    if plays_processed:
         game.last_pbp_at = now_utc()
-        
+
         # Set end_time if game is final and we have tip_time
         # Estimate: tip_time + 2.5 hours for typical NBA/NHL game
         if game.status == db_models.GameStatus.final.value and game.end_time is None:
@@ -255,6 +258,6 @@ def upsert_plays(
                     tip_time=str(game.tip_time),
                     end_time=str(game.end_time),
                 )
-        
+
         session.flush()
-    return upserted
+    return plays_processed

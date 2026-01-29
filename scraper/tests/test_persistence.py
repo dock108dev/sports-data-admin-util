@@ -6,8 +6,6 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 # Ensure the scraper package is importable

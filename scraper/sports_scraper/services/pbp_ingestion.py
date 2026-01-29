@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from ..db import db_models
 from ..logging import logger
 from ..persistence.plays import upsert_plays
+from ..utils.date_utils import ncaab_season_for_cbb_api
 from .game_selection import select_games_for_pbp_sportsref
 
 
@@ -422,22 +423,6 @@ def ingest_pbp_via_nhl_api(
 # -----------------------------------------------------------------------------
 # NCAAB PBP ingestion via College Basketball Data API
 # -----------------------------------------------------------------------------
-
-
-def _ncaab_season_from_date(game_date: date) -> int:
-    """Calculate NCAAB season year from a game date.
-
-    The CBB API uses the ending year of the season (e.g., 2026 for 2025-2026 season).
-    NCAAB season runs from November to April:
-    - November-December games: season = next year (Nov 2025 -> season 2026)
-    - January-April games: season = current year (Jan 2026 -> season 2026)
-    """
-    if game_date.month >= 11:
-        # November-December: season ends next year
-        return game_date.year + 1
-    else:
-        # January-April: season ends this year
-        return game_date.year
 
 
 def select_games_for_pbp_ncaab_api(

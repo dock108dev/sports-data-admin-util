@@ -6,8 +6,6 @@ import os
 import sys
 from pathlib import Path
 
-import pytest
-
 # Ensure the scraper package is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRAPER_ROOT = REPO_ROOT / "scraper"
@@ -176,8 +174,9 @@ class TestNormalizeTeamNameEdgeCases:
         assert canonical == ""
 
     def test_whitespace_only(self):
-        canonical, abbr = normalize_team_name("NBA", "   ")
-        # Should handle gracefully
+        canonical, _ = normalize_team_name("NBA", "   ")
+        # Should handle gracefully - whitespace only returns trimmed empty string
+        assert canonical == ""
 
     def test_unknown_league(self):
         # Unknown leagues should still work with fallback

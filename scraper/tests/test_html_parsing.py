@@ -6,7 +6,6 @@ import os
 import sys
 from pathlib import Path
 
-import pytest
 from bs4 import BeautifulSoup
 
 # Ensure the scraper package is importable

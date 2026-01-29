@@ -14,8 +14,6 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any
-
 import httpx
 from alembic import op
 from sqlalchemy import text

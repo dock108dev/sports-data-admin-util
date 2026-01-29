@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 # Ensure the scraper package is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -27,7 +25,6 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.live.nba import (
     NBALiveFeedClient,
-    NBALiveGame,
     _parse_nba_game_datetime,
     _parse_nba_clock,
 )
@@ -461,7 +458,6 @@ class TestNCAABLiveFeedClient:
 # ============================================================================
 
 from sports_scraper.live.ncaab_boxscore import NCAABBoxscoreFetcher
-from sports_scraper.utils.cache import APICache
 
 
 class TestNCAABBoxscoreFetcher:

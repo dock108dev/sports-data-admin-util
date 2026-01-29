@@ -1,4 +1,14 @@
-"""Fail-fast environment validation for the scraper/worker service."""
+"""Fail-fast environment validation for the scraper/worker service.
+
+NOTE: The functions require_env, validate_environment_value, validate_non_local_url,
+and validate_database_credentials are intentionally duplicated from
+api/app/utils/validation_base.py. This duplication exists because the scraper
+and api are separate Python packages in this monorepo, and the scraper cannot
+import from the api without creating a circular dependency.
+
+These implementations MUST remain identical to their api counterparts.
+See tests/test_validation_equivalence.py for behavioral equivalence tests.
+"""
 
 from __future__ import annotations
 

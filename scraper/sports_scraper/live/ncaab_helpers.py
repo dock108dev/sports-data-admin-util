@@ -59,12 +59,14 @@ def parse_minutes(value: str | int | float | None) -> float | None:
                     secs = int(parts[1])
                     return round(mins + secs / 60, 2)
             except (ValueError, IndexError):
+                # If "MM:SS" parsing fails, fall through to numeric parsing
                 pass
 
         # Try parsing as plain number
         try:
             return float(value)
         except ValueError:
+            # If numeric parsing fails, return None below
             pass
 
     return None

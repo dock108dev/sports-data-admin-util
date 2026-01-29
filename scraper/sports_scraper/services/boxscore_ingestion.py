@@ -31,6 +31,7 @@ from ..models import (
     NormalizedGame,
 )
 from ..persistence import persist_game_payload
+from ..utils.date_utils import ncaab_season_for_cbb_api
 from ..utils.datetime_utils import date_to_utc_datetime
 from .pbp_ingestion import _populate_nhl_game_ids
 
@@ -290,22 +291,6 @@ def _convert_boxscore_to_normalized_game(
 # -----------------------------------------------------------------------------
 
 
-def _ncaab_season_from_date(game_date: date) -> int:
-    """Calculate NCAAB season year from a game date.
-
-    The CBB API uses the ending year of the season (e.g., 2026 for 2025-2026 season).
-    NCAAB season runs from November to April:
-    - November-December games: season = next year (Nov 2025 -> season 2026)
-    - January-April games: season = current year (Jan 2026 -> season 2026)
-    """
-    if game_date.month >= 11:
-        # November-December: season ends next year
-        return game_date.year + 1
-    else:
-        # January-April: season ends this year
-        return game_date.year
-
-
 def _populate_ncaab_game_ids(
     session: Session,
     *,
@@ -390,7 +375,7 @@ def _populate_ncaab_game_ids(
 
     # Fetch CBB schedule
     client = NCAABLiveFeedClient()
-    season = _ncaab_season_from_date(start_date)
+    season = ncaab_season_for_cbb_api(start_date)
     cbb_games = client.fetch_games(start_date, end_date, season=season)
 
     if not cbb_games:
@@ -705,7 +690,7 @@ def ingest_boxscores_via_ncaab_api(
 
     # Step 3: Batch fetch boxscores (2 API calls total instead of 2 per game)
     client = NCAABLiveFeedClient()
-    season = _ncaab_season_from_date(start_date)
+    season = ncaab_season_for_cbb_api(start_date)
 
     # Build lookup structures for batch fetch
     cbb_game_ids = [cbb_game_id for _, cbb_game_id, _, _, _ in games]

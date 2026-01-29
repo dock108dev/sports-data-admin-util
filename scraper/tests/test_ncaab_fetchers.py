@@ -6,9 +6,7 @@ import os
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 # Ensure the scraper package is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]

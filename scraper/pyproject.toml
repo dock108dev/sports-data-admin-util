@@ -19,8 +19,8 @@ dependencies = [
   "playwright>=1.47.0,<2.0.0",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
   "black>=24.8.0,<25.0.0",
   "ruff>=0.7.0,<0.8.0",
   "pytest>=8.3.2,<9.0.0",
@@ -37,33 +37,19 @@ addopts = [
   "--cov=sports_scraper",
   "--cov-report=term-missing",
   "--cov-report=html:coverage_html",
-  "--cov-fail-under=80",
+  "--cov-fail-under=90",
 ]
 
 [tool.coverage.run]
 source = ["sports_scraper"]
 omit = [
-  # Celery infrastructure
+  # Celery infrastructure (requires running broker)
   "**/celery_app.py",
   "**/jobs/*",
+  # Environment validation script (entry point)
   "**/validate_env.py",
+  # Init files (no logic)
   "**/__init__.py",
-  # Social scraping (requires external X API)
-  "**/social/*",
-  # Web scrapers (require HTTP mocking infrastructure)
-  "**/scrapers/*",
-  # Database connection module
-  "**/db.py",
-  # Services - orchestration code tested via integration tests
-  "**/services/*",
-  # Persistence - DB-dependent code tested via integration tests
-  "**/persistence/*",
-  # Live feed manager - DB-dependent orchestration
-  "**/live/manager.py",
-  # Odds synchronizer - requires external API + DB
-  "**/odds/synchronizer.py",
-  # DB queries module
-  "**/utils/db_queries.py",
 ]
 
 [tool.coverage.report]
