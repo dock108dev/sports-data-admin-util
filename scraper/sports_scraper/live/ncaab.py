@@ -48,7 +48,8 @@ class NCAABLiveFeedClient:
             headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
             timeout=30.0,
         )
-        self._cache = APICache(namespace="ncaab", ttl_minutes=60)
+        cache_dir = settings.scraper_config.html_cache_dir
+        self._cache = APICache(cache_dir=cache_dir, api_name="ncaab")
 
         # Team names cache for display purposes
         self._team_names: dict[int, str] = {}

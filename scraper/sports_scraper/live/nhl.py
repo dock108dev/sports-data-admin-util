@@ -50,7 +50,8 @@ class NHLLiveFeedClient:
             timeout=timeout,
             headers={"User-Agent": "sports-data-admin-live/1.0"},
         )
-        self._cache = APICache(namespace="nhl", ttl_minutes=60)
+        cache_dir = settings.scraper_config.html_cache_dir
+        self._cache = APICache(cache_dir=cache_dir, api_name="nhl")
 
         # Compose fetchers
         self._boxscore_fetcher = NHLBoxscoreFetcher(self.client, self._cache)

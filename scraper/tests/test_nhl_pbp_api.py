@@ -146,7 +146,7 @@ class TestNHLPlayNormalization:
         team_id_to_abbr = {25: "DAL", 14: "TBL"}
         player_id_to_name: dict[int, str] = {}
 
-        play = client._normalize_play(SAMPLE_GOAL_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
+        play = client._pbp_fetcher._normalize_play(SAMPLE_GOAL_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
 
         assert play is not None
         assert play.quarter == 1  # Period 1
@@ -164,7 +164,7 @@ class TestNHLPlayNormalization:
         team_id_to_abbr = {25: "DAL", 14: "TBL"}
         player_id_to_name: dict[int, str] = {}
 
-        play = client._normalize_play(SAMPLE_PENALTY_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
+        play = client._pbp_fetcher._normalize_play(SAMPLE_PENALTY_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
 
         assert play is not None
         assert play.quarter == 1
@@ -181,7 +181,7 @@ class TestNHLPlayNormalization:
         team_id_to_abbr = {25: "DAL", 14: "TBL"}
         player_id_to_name: dict[int, str] = {}
 
-        play = client._normalize_play(SAMPLE_FACEOFF_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
+        play = client._pbp_fetcher._normalize_play(SAMPLE_FACEOFF_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
 
         assert play is not None
         assert play.quarter == 1
@@ -197,7 +197,7 @@ class TestNHLPlayNormalization:
         player_id_to_name: dict[int, str] = {}
 
         # Period 1, sortOrder 67
-        play = client._normalize_play(SAMPLE_GOAL_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
+        play = client._pbp_fetcher._normalize_play(SAMPLE_GOAL_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
         assert play is not None
         assert play.play_index == 1 * 10000 + 67  # 10067
 
@@ -206,7 +206,7 @@ class TestNHLPlayNormalization:
         client = NHLLiveFeedClient()
         play_without_sort = {"eventId": 1, "typeDescKey": "goal"}
 
-        result = client._normalize_play(play_without_sort, {}, {}, game_id=123)
+        result = client._pbp_fetcher._normalize_play(play_without_sort, {}, {}, game_id=123)
         assert result is None
 
 
@@ -222,11 +222,11 @@ class TestNHLPBPValidation:
 class TestHelperFunctions:
     """Test helper functions."""
 
-    def testparse_int_valid(self):
+    def test_parse_int_valid(self):
         assert parse_int(123) == 123
         assert parse_int("456") == 456
 
-    def testparse_int_invalid(self):
+    def test_parse_int_invalid(self):
         assert parse_int(None) is None
         assert parse_int("abc") is None
         assert parse_int({}) is None
