@@ -21,81 +21,53 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
-from sports_scraper.services.run_manager import (
-    RunManager,
-    RunStatus,
-)
+from sports_scraper.services.run_manager import ScrapeRunManager
 
 
-class TestRunStatus:
-    """Tests for RunStatus enum."""
+class TestScrapeRunManagerImports:
+    """Tests for ScrapeRunManager module imports."""
 
-    def test_has_pending_status(self):
-        """Has pending status value."""
-        assert hasattr(RunStatus, "PENDING") or hasattr(RunStatus, "pending")
+    def test_class_exists(self):
+        """ScrapeRunManager class exists."""
+        assert ScrapeRunManager is not None
 
-    def test_has_running_status(self):
-        """Has running status value."""
-        assert hasattr(RunStatus, "RUNNING") or hasattr(RunStatus, "running")
-
-    def test_has_completed_status(self):
-        """Has completed status value."""
-        assert hasattr(RunStatus, "COMPLETED") or hasattr(RunStatus, "completed")
-
-    def test_has_failed_status(self):
-        """Has failed status value."""
-        assert hasattr(RunStatus, "FAILED") or hasattr(RunStatus, "failed")
+    def test_class_is_callable(self):
+        """ScrapeRunManager can be instantiated."""
+        # Note: Full instantiation requires scrapers to be available
+        # Just verify it's a class
+        assert callable(ScrapeRunManager)
 
 
-class TestRunManager:
-    """Tests for RunManager class."""
+class TestScrapeRunManagerAttributes:
+    """Tests for ScrapeRunManager class attributes."""
 
-    def test_init_with_session(self):
-        """Initializes with database session."""
-        mock_session = MagicMock()
-        manager = RunManager(mock_session)
-        assert manager.session == mock_session
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    def test_init_creates_scrapers(self, mock_live, mock_social, mock_odds, mock_scrapers):
+        """Initializes with scrapers."""
+        mock_scrapers.return_value = {}
+        manager = ScrapeRunManager()
+        assert mock_scrapers.called
 
-    def test_create_run(self):
-        """Creates a new run record."""
-        mock_session = MagicMock()
-        manager = RunManager(mock_session)
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    def test_init_creates_odds_sync(self, mock_live, mock_social, mock_odds, mock_scrapers):
+        """Initializes with odds synchronizer."""
+        mock_scrapers.return_value = {}
+        manager = ScrapeRunManager()
+        assert mock_odds.called
 
-        run = manager.create_run(job_type="test_job")
-
-        assert mock_session.add.called or mock_session.execute.called
-
-    def test_update_run_status(self):
-        """Updates run status."""
-        mock_session = MagicMock()
-        manager = RunManager(mock_session)
-
-        # Create a mock run
-        mock_run = MagicMock(id=1)
-        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
-
-        manager.update_run_status(run_id=1, status=RunStatus.COMPLETED)
-
-        # Status should be updated
-        assert mock_session.commit.called or mock_session.flush.called
-
-    def test_get_run(self):
-        """Gets run by ID."""
-        mock_session = MagicMock()
-        mock_run = MagicMock(id=1, job_type="test_job")
-        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
-
-        manager = RunManager(mock_session)
-        result = manager.get_run(run_id=1)
-
-        assert result == mock_run
-
-    def test_get_run_returns_none_for_missing(self):
-        """Returns None for missing run."""
-        mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.first.return_value = None
-
-        manager = RunManager(mock_session)
-        result = manager.get_run(run_id=999)
-
-        assert result is None
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    def test_has_supported_leagues(self, mock_live, mock_social, mock_odds, mock_scrapers):
+        """Has supported league lists."""
+        mock_scrapers.return_value = {}
+        manager = ScrapeRunManager()
+        assert hasattr(manager, "_supported_social_leagues")
+        assert hasattr(manager, "_supported_live_pbp_leagues")

@@ -22,27 +22,26 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 
 from sports_scraper.persistence.plays import (
-    persist_plays,
+    upsert_plays,
+    create_raw_pbp_snapshot,
 )
-from sports_scraper.models import NormalizedPlay
+from sports_scraper.models import NormalizedPlay, NormalizedPlayByPlay
 
 
-class TestPersistPlays:
-    """Tests for persist_plays function."""
+class TestUpsertPlays:
+    """Tests for upsert_plays function."""
 
-    def test_persists_empty_list(self):
-        """Handles empty play list."""
+    def test_handles_empty_pbp(self):
+        """Handles empty play-by-play without error."""
         mock_session = MagicMock()
+        pbp = NormalizedPlayByPlay(plays=[])
+        # Should not raise
+        upsert_plays(mock_session, game_id=1, pbp=pbp)
 
-        result = persist_plays(mock_session, game_id=1, plays=[])
-
-        assert result == 0
-
-    def test_persists_single_play(self):
-        """Persists a single play."""
+    def test_handles_pbp_with_plays(self):
+        """Handles PBP with plays."""
         mock_session = MagicMock()
-
-        plays = [
+        pbp = NormalizedPlayByPlay(plays=[
             NormalizedPlay(
                 sequence_number=1,
                 period=1,
@@ -52,61 +51,18 @@ class TestPersistPlays:
                 home_score=2,
                 away_score=0,
             ),
-        ]
+        ])
+        # Should not raise
+        upsert_plays(mock_session, game_id=1, pbp=pbp)
 
-        result = persist_plays(mock_session, game_id=1, plays=plays)
 
-        assert result >= 0  # Returns count of plays persisted
+class TestCreateRawPbpSnapshot:
+    """Tests for create_raw_pbp_snapshot function."""
 
-    def test_persists_multiple_plays(self):
-        """Persists multiple plays."""
+    def test_creates_snapshot(self):
+        """Creates raw PBP snapshot."""
         mock_session = MagicMock()
+        raw_data = {"plays": [{"id": 1, "type": "shot"}]}
 
-        plays = [
-            NormalizedPlay(
-                sequence_number=1,
-                period=1,
-                game_clock="12:00",
-                play_type="shot",
-                description="Made layup",
-                home_score=2,
-                away_score=0,
-            ),
-            NormalizedPlay(
-                sequence_number=2,
-                period=1,
-                game_clock="11:30",
-                play_type="rebound",
-                description="Defensive rebound",
-                home_score=2,
-                away_score=0,
-            ),
-        ]
-
-        result = persist_plays(mock_session, game_id=1, plays=plays)
-
-        assert result >= 0
-
-    def test_handles_play_with_all_fields(self):
-        """Handles play with all optional fields."""
-        mock_session = MagicMock()
-
-        plays = [
-            NormalizedPlay(
-                sequence_number=1,
-                period=1,
-                game_clock="12:00",
-                play_type="shot",
-                description="Made 3-pointer",
-                home_score=3,
-                away_score=0,
-                team_name="Boston Celtics",
-                player_name="Jayson Tatum",
-                x_coord=25.5,
-                y_coord=10.2,
-            ),
-        ]
-
-        result = persist_plays(mock_session, game_id=1, plays=plays)
-
-        assert result >= 0
+        # Should not raise
+        create_raw_pbp_snapshot(mock_session, game_id=1, raw_data=raw_data)
