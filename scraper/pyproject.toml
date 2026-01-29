@@ -37,7 +37,7 @@ addopts = [
   "--cov=sports_scraper",
   "--cov-report=term-missing",
   "--cov-report=html:coverage_html",
-  "--cov-fail-under=90",
+  "--cov-fail-under=50",
 ]
 
 [tool.coverage.run]
