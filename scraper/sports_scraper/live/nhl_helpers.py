@@ -23,6 +23,7 @@ def parse_toi_to_minutes(toi: str) -> float | None:
             secs = int(parts[1])
             return round(mins + secs / 60, 2)
     except (ValueError, IndexError):
+        # Invalid format, return None below
         pass
     return None
 
@@ -38,6 +39,7 @@ def parse_save_shots(save_shots: str) -> tuple[int | None, int | None]:
             shots_against = int(parts[1])
             return saves, shots_against
     except (ValueError, IndexError):
+        # Invalid format, return (None, None) below
         pass
     return None, None
 
