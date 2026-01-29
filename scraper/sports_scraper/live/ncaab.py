@@ -312,15 +312,329 @@ class NCAABLiveFeedClient:
             neutral_site=game.get("neutralSite", False),
         )
 
-    def fetch_game_teams(self, game_id: int, season: int) -> list[dict]:
-        """Fetch team-level boxscore stats for a game.
+    def fetch_game_teams_by_date_range(
+        self, start_date: date, end_date: date, season: int
+    ) -> list[dict]:
+        """Fetch team-level boxscore stats for a date range.
+
+        The CBB API ignores the gameId parameter and returns all games (paginated).
+        Using date range filtering is more efficient - one API call for many games.
 
         Args:
-            game_id: CBB game ID
+            start_date: Start of date range
+            end_date: End of date range
             season: Season year
 
         Returns:
-            List of team stats dictionaries
+            List of team stats dictionaries for all games in the date range
+        """
+        logger.info(
+            "ncaab_game_teams_fetch_by_date",
+            start_date=str(start_date),
+            end_date=str(end_date),
+            season=season,
+        )
+
+        try:
+            params = {
+                "season": season,
+                "startDateRange": start_date.strftime("%Y-%m-%d"),
+                "endDateRange": end_date.strftime("%Y-%m-%d"),
+            }
+            response = self.client.get(CBB_GAMES_TEAMS_URL, params=params)
+
+            if response.status_code != 200:
+                logger.warning(
+                    "ncaab_game_teams_fetch_failed",
+                    start_date=str(start_date),
+                    end_date=str(end_date),
+                    status=response.status_code,
+                    body=response.text[:200] if response.text else "",
+                )
+                return []
+
+            data = response.json()
+            logger.info(
+                "ncaab_game_teams_fetched",
+                start_date=str(start_date),
+                end_date=str(end_date),
+                row_count=len(data) if isinstance(data, list) else 1,
+            )
+            return data
+
+        except Exception as exc:
+            logger.warning(
+                "ncaab_game_teams_fetch_error",
+                start_date=str(start_date),
+                end_date=str(end_date),
+                error=str(exc),
+            )
+            return []
+
+    def fetch_game_players_by_date_range(
+        self, start_date: date, end_date: date, season: int
+    ) -> list[dict]:
+        """Fetch player-level boxscore stats for a date range.
+
+        The CBB API ignores the gameId parameter and returns all games (paginated).
+        Using date range filtering is more efficient - one API call for many games.
+
+        Args:
+            start_date: Start of date range
+            end_date: End of date range
+            season: Season year
+
+        Returns:
+            List of player stats dictionaries for all games in the date range
+        """
+        logger.info(
+            "ncaab_game_players_fetch_by_date",
+            start_date=str(start_date),
+            end_date=str(end_date),
+            season=season,
+        )
+
+        try:
+            params = {
+                "season": season,
+                "startDateRange": start_date.strftime("%Y-%m-%d"),
+                "endDateRange": end_date.strftime("%Y-%m-%d"),
+            }
+            response = self.client.get(CBB_GAMES_PLAYERS_URL, params=params)
+
+            if response.status_code != 200:
+                logger.warning(
+                    "ncaab_game_players_fetch_failed",
+                    start_date=str(start_date),
+                    end_date=str(end_date),
+                    status=response.status_code,
+                    body=response.text[:200] if response.text else "",
+                )
+                return []
+
+            data = response.json()
+            logger.info(
+                "ncaab_game_players_fetched",
+                start_date=str(start_date),
+                end_date=str(end_date),
+                row_count=len(data) if isinstance(data, list) else 1,
+            )
+            return data
+
+        except Exception as exc:
+            logger.warning(
+                "ncaab_game_players_fetch_error",
+                start_date=str(start_date),
+                end_date=str(end_date),
+                error=str(exc),
+            )
+            return []
+
+    def fetch_boxscores_batch(
+        self,
+        game_ids: list[int],
+        start_date: date,
+        end_date: date,
+        season: int,
+        team_names_by_game: dict[int, tuple[str, str]],
+    ) -> dict[int, NCAABBoxscore]:
+        """Fetch boxscores for multiple games in batch API calls.
+
+        Instead of calling the API once per game (which returns all games anyway),
+        this method makes just 2 API calls (teams + players) for the entire date range
+        and filters the results to the requested game IDs.
+
+        Args:
+            game_ids: List of CBB game IDs to fetch boxscores for
+            start_date: Start of date range
+            end_date: End of date range
+            season: Season year
+            team_names_by_game: Dict mapping game_id -> (home_team_name, away_team_name)
+
+        Returns:
+            Dict mapping game_id -> NCAABBoxscore for successfully fetched games
+        """
+        from collections import defaultdict
+
+        logger.info(
+            "ncaab_boxscores_batch_fetch",
+            game_count=len(game_ids),
+            start_date=str(start_date),
+            end_date=str(end_date),
+            season=season,
+        )
+
+        # Convert to set for fast lookup
+        game_id_set = set(game_ids)
+
+        # Fetch all team stats for date range (1 API call)
+        all_team_stats = self.fetch_game_teams_by_date_range(start_date, end_date, season)
+
+        # Fetch all player stats for date range (1 API call)
+        all_player_stats = self.fetch_game_players_by_date_range(start_date, end_date, season)
+
+        # Group team stats by gameId
+        team_stats_by_game: dict[int, list[dict]] = defaultdict(list)
+        for ts in all_team_stats:
+            gid = ts.get("gameId")
+            if gid and int(gid) in game_id_set:
+                team_stats_by_game[int(gid)].append(ts)
+
+        # Group player stats by gameId
+        player_stats_by_game: dict[int, list[dict]] = defaultdict(list)
+        for ps in all_player_stats:
+            gid = ps.get("gameId")
+            if gid and int(gid) in game_id_set:
+                player_stats_by_game[int(gid)].append(ps)
+
+        logger.info(
+            "ncaab_boxscores_batch_grouped",
+            requested_games=len(game_ids),
+            games_with_team_stats=len(team_stats_by_game),
+            games_with_player_stats=len(player_stats_by_game),
+        )
+
+        # Build boxscores for requested game_ids
+        results: dict[int, NCAABBoxscore] = {}
+        for gid in game_ids:
+            team_stats = team_stats_by_game.get(gid, [])
+            if not team_stats:
+                # No team stats found for this game
+                continue
+
+            player_stats = player_stats_by_game.get(gid, [])
+            team_names = team_names_by_game.get(gid)
+            if not team_names:
+                continue
+
+            home_team_name, away_team_name = team_names
+
+            boxscore = self._build_boxscore_from_batch(
+                gid, team_stats, player_stats, home_team_name, away_team_name, season
+            )
+            if boxscore:
+                results[gid] = boxscore
+
+        logger.info(
+            "ncaab_boxscores_batch_complete",
+            requested_games=len(game_ids),
+            boxscores_built=len(results),
+        )
+
+        return results
+
+    def _build_boxscore_from_batch(
+        self,
+        game_id: int,
+        team_stats: list[dict],
+        player_stats: list[dict],
+        home_team_name: str,
+        away_team_name: str,
+        season: int,
+    ) -> NCAABBoxscore | None:
+        """Build a boxscore from pre-fetched team and player stats.
+
+        Args:
+            game_id: CBB game ID
+            team_stats: Team stats rows for this game
+            player_stats: Player stats rows for this game
+            home_team_name: Home team name from DB
+            away_team_name: Away team name from DB
+            season: Season year
+
+        Returns:
+            NCAABBoxscore or None if data is incomplete
+        """
+        # Parse team stats to determine home/away and extract scores
+        home_team_id = None
+        away_team_id = None
+        home_score = 0
+        away_score = 0
+        home_team_stats_raw = None
+        away_team_stats_raw = None
+
+        for ts in team_stats:
+            team_id = ts.get("teamId")
+            is_home = ts.get("isHome", False)
+            stats = ts.get("teamStats", {}) or {}
+            points = stats.get("points", 0) or 0
+
+            if is_home:
+                home_team_id = team_id
+                home_score = points
+                home_team_stats_raw = ts
+            else:
+                away_team_id = team_id
+                away_score = points
+                away_team_stats_raw = ts
+
+        # Build team identities using DB team names
+        home_team = _build_team_identity(home_team_name, home_team_id or 0)
+        away_team = _build_team_identity(away_team_name, away_team_id or 0)
+
+        # Parse team boxscores
+        team_boxscores: list[NormalizedTeamBoxscore] = []
+        if home_team_stats_raw:
+            team_boxscore = self._parse_team_stats_nested(
+                home_team_stats_raw, home_team, True, home_score
+            )
+            team_boxscores.append(team_boxscore)
+        if away_team_stats_raw:
+            team_boxscore = self._parse_team_stats_nested(
+                away_team_stats_raw, away_team, False, away_score
+            )
+            team_boxscores.append(team_boxscore)
+
+        # Parse player boxscores from nested "players" array
+        player_boxscores: list[NormalizedPlayerBoxscore] = []
+        for ps in player_stats:
+            team_id = ps.get("teamId")
+            is_home = team_id == home_team_id
+            team_identity = home_team if is_home else away_team
+
+            players_list = ps.get("players", []) or []
+            for player in players_list:
+                player_boxscore = self._parse_player_stats(player, team_identity, game_id)
+                if player_boxscore:
+                    player_boxscores.append(player_boxscore)
+
+        logger.info(
+            "ncaab_boxscore_built_from_batch",
+            game_id=game_id,
+            home_team=home_team_name,
+            away_team=away_team_name,
+            home_score=home_score,
+            away_score=away_score,
+            team_stats_count=len(team_boxscores),
+            player_stats_count=len(player_boxscores),
+        )
+
+        return NCAABBoxscore(
+            game_id=game_id,
+            game_date=now_utc(),  # Will be overwritten with actual date in ingestion
+            status="final",
+            season=season,
+            home_team=home_team,
+            away_team=away_team,
+            home_score=home_score,
+            away_score=away_score,
+            team_boxscores=team_boxscores,
+            player_boxscores=player_boxscores,
+        )
+
+    # Legacy methods kept for backwards compatibility but deprecated
+    def fetch_game_teams(self, game_id: int, season: int) -> list[dict]:
+        """Fetch team-level boxscore stats for a game.
+
+        DEPRECATED: This method makes an API call that returns ALL games regardless
+        of the gameId parameter. Use fetch_boxscores_batch() instead for efficiency.
+
+        Args:
+            game_id: CBB game ID (ignored by API)
+            season: Season year
+
+        Returns:
+            List of team stats dictionaries (for ALL games, not filtered)
         """
         logger.info("ncaab_game_teams_fetch", game_id=game_id, season=season)
 
@@ -360,12 +674,15 @@ class NCAABLiveFeedClient:
     def fetch_game_players(self, game_id: int, season: int) -> list[dict]:
         """Fetch player-level boxscore stats for a game.
 
+        DEPRECATED: This method makes an API call that returns ALL games regardless
+        of the gameId parameter. Use fetch_boxscores_batch() instead for efficiency.
+
         Args:
-            game_id: CBB game ID
+            game_id: CBB game ID (ignored by API)
             season: Season year
 
         Returns:
-            List of player stats dictionaries
+            List of player stats dictionaries (for ALL games, not filtered)
         """
         logger.info("ncaab_game_players_fetch", game_id=game_id, season=season)
 
