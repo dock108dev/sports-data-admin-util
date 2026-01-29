@@ -261,12 +261,13 @@ class TestLiveFeedManager:
 
     @patch("sports_scraper.live.manager.NHLLiveFeedClient")
     @patch("sports_scraper.live.manager.NBALiveFeedClient")
-    def test_ingest_unknown_league_returns_empty_summary(self, mock_nba_client, mock_nhl_client):
-        """ingest_live_data for unknown league returns empty summary."""
+    def test_ingest_mlb_returns_empty_summary(self, mock_nba_client, mock_nhl_client):
+        """ingest_live_data for MLB returns empty summary (no live feed implemented)."""
         manager = LiveFeedManager()
         mock_session = MagicMock()
+        # MLB is a valid league code but has no live feed implementation
         config = IngestionConfig(
-            league_code="UNKNOWN",
+            league_code="MLB",
             start_date=date(2024, 1, 15),
             end_date=date(2024, 1, 15),
         )

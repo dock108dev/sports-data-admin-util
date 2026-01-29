@@ -23,54 +23,48 @@ os.environ.setdefault("ENVIRONMENT", "development")
 class TestGetSession:
     """Tests for get_session context manager."""
 
-    def test_yields_session_and_commits(self):
+    @patch("sports_scraper.db.SessionLocal")
+    def test_yields_session_and_commits(self, mock_session_local):
         """get_session yields a session and commits on success."""
-        from sports_scraper.db import SessionLocal
+        mock_session = MagicMock()
+        mock_session_local.return_value = mock_session
 
-        with patch.object(SessionLocal, '__call__') as mock_session_factory:
-            mock_session = MagicMock()
-            mock_session_factory.return_value = mock_session
+        from sports_scraper.db import get_session
+        with get_session() as session:
+            pass  # Just use the session
 
-            from sports_scraper.db import get_session
-            with get_session() as session:
-                assert session is mock_session
+        mock_session.commit.assert_called_once()
+        mock_session.close.assert_called_once()
 
-            mock_session.commit.assert_called_once()
-            mock_session.close.assert_called_once()
-
-    def test_rolls_back_on_exception(self):
+    @patch("sports_scraper.db.SessionLocal")
+    def test_rolls_back_on_exception(self, mock_session_local):
         """get_session rolls back on exception."""
-        from sports_scraper.db import SessionLocal
+        mock_session = MagicMock()
+        mock_session_local.return_value = mock_session
 
-        with patch.object(SessionLocal, '__call__') as mock_session_factory:
-            mock_session = MagicMock()
-            mock_session_factory.return_value = mock_session
+        from sports_scraper.db import get_session
+        with pytest.raises(ValueError):
+            with get_session() as session:
+                raise ValueError("test error")
 
-            from sports_scraper.db import get_session
-            with pytest.raises(ValueError):
-                with get_session() as session:
-                    raise ValueError("test error")
+        mock_session.rollback.assert_called_once()
+        mock_session.close.assert_called_once()
+        mock_session.commit.assert_not_called()
 
-            mock_session.rollback.assert_called_once()
-            mock_session.close.assert_called_once()
-            mock_session.commit.assert_not_called()
-
-    def test_closes_session_always(self):
+    @patch("sports_scraper.db.SessionLocal")
+    def test_closes_session_always(self, mock_session_local):
         """get_session always closes the session."""
-        from sports_scraper.db import SessionLocal
+        mock_session = MagicMock()
+        mock_session_local.return_value = mock_session
 
-        with patch.object(SessionLocal, '__call__') as mock_session_factory:
-            mock_session = MagicMock()
-            mock_session_factory.return_value = mock_session
+        from sports_scraper.db import get_session
+        try:
+            with get_session() as session:
+                raise RuntimeError("error")
+        except RuntimeError:
+            pass
 
-            from sports_scraper.db import get_session
-            try:
-                with get_session() as session:
-                    raise RuntimeError("error")
-            except RuntimeError:
-                pass
-
-            mock_session.close.assert_called_once()
+        mock_session.close.assert_called_once()
 
 
 class TestModuleExports:
