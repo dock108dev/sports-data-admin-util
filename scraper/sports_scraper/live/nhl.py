@@ -23,6 +23,7 @@ from ..models import (
 from ..normalization import normalize_team_name
 from ..utils.cache import APICache
 from ..utils.datetime_utils import now_utc
+from ..utils.parsing import parse_int
 
 # New NHL API endpoints (api-web.nhle.com)
 NHL_SCHEDULE_URL = "https://api-web.nhle.com/v1/schedule/{date}"
@@ -189,8 +190,8 @@ class NHLLiveFeedClient:
                         status_text=game_state,
                         home_team=home_team,
                         away_team=away_team,
-                        home_score=_parse_int(home_data.get("score")),
-                        away_score=_parse_int(away_data.get("score")),
+                        home_score=parse_int(home_data.get("score")),
+                        away_score=parse_int(away_data.get("score")),
                     )
                 )
 
@@ -340,11 +341,11 @@ class NHLLiveFeedClient:
         """
         # Extract period info
         period_desc = play.get("periodDescriptor", {})
-        period = _parse_int(period_desc.get("number"))
+        period = parse_int(period_desc.get("number"))
         period_type = period_desc.get("periodType", "REG")
 
         # Get sort order as play index (canonical ordering)
-        sort_order = _parse_int(play.get("sortOrder"))
+        sort_order = parse_int(play.get("sortOrder"))
         if sort_order is None:
             return None
 
@@ -366,7 +367,7 @@ class NHLLiveFeedClient:
         details = play.get("details", {})
 
         # Get team abbreviation from eventOwnerTeamId
-        event_owner_team_id = _parse_int(details.get("eventOwnerTeamId"))
+        event_owner_team_id = parse_int(details.get("eventOwnerTeamId"))
         team_abbr = team_id_to_abbr.get(event_owner_team_id) if event_owner_team_id else None
 
         # Get primary player (scorer, shooter, penalty taker, etc.)
@@ -375,8 +376,8 @@ class NHLLiveFeedClient:
         player_name = player_id_to_name.get(player_id) if player_id else None
 
         # Get scores (only present on goal events)
-        home_score = _parse_int(details.get("homeScore"))
-        away_score = _parse_int(details.get("awayScore"))
+        home_score = parse_int(details.get("homeScore"))
+        away_score = parse_int(details.get("awayScore"))
 
         # Build raw_data with all source-specific details
         raw_data = {
@@ -437,28 +438,28 @@ class NHLLiveFeedClient:
         """
         # Priority order for primary player based on event type
         if type_desc_key == "goal":
-            return _parse_int(details.get("scoringPlayerId"))
+            return parse_int(details.get("scoringPlayerId"))
         elif type_desc_key == "shot-on-goal":
-            return _parse_int(details.get("shootingPlayerId"))
+            return parse_int(details.get("shootingPlayerId"))
         elif type_desc_key == "missed-shot":
-            return _parse_int(details.get("shootingPlayerId"))
+            return parse_int(details.get("shootingPlayerId"))
         elif type_desc_key == "blocked-shot":
-            return _parse_int(details.get("blockingPlayerId"))
+            return parse_int(details.get("blockingPlayerId"))
         elif type_desc_key == "hit":
-            return _parse_int(details.get("hittingPlayerId"))
+            return parse_int(details.get("hittingPlayerId"))
         elif type_desc_key == "penalty":
-            return _parse_int(details.get("committedByPlayerId"))
+            return parse_int(details.get("committedByPlayerId"))
         elif type_desc_key == "faceoff":
-            return _parse_int(details.get("winningPlayerId"))
+            return parse_int(details.get("winningPlayerId"))
         elif type_desc_key == "giveaway":
-            return _parse_int(details.get("playerId"))
+            return parse_int(details.get("playerId"))
         elif type_desc_key == "takeaway":
-            return _parse_int(details.get("playerId"))
+            return parse_int(details.get("playerId"))
 
         # Generic fallback - look for any playerId field
         for key in ["playerId", "shootingPlayerId", "scoringPlayerId"]:
             if key in details:
-                return _parse_int(details.get(key))
+                return parse_int(details.get(key))
 
         return None
 
@@ -554,8 +555,8 @@ class NHLLiveFeedClient:
         home_team = _build_team_identity_from_new_api(home_team_data)
         away_team = _build_team_identity_from_new_api(away_team_data)
 
-        home_score = _parse_int(home_team_data.get("score")) or 0
-        away_score = _parse_int(away_team_data.get("score")) or 0
+        home_score = parse_int(home_team_data.get("score")) or 0
+        away_score = parse_int(away_team_data.get("score")) or 0
 
         # Extract team-level stats from boxscore summary
         team_boxscores: list[NormalizedTeamBoxscore] = []
@@ -697,19 +698,19 @@ class NHLLiveFeedClient:
             team=team_identity,
             player_role="skater",
             position=player_data.get("position"),
-            sweater_number=_parse_int(player_data.get("sweaterNumber")),
+            sweater_number=parse_int(player_data.get("sweaterNumber")),
             minutes=minutes,
-            goals=_parse_int(player_data.get("goals")),
-            assists=_parse_int(player_data.get("assists")),
-            points=_parse_int(player_data.get("points")),
-            shots_on_goal=_parse_int(player_data.get("sog")),
-            penalties=_parse_int(player_data.get("pim")),
-            plus_minus=_parse_int(player_data.get("plusMinus")),
-            hits=_parse_int(player_data.get("hits")),
-            blocked_shots=_parse_int(player_data.get("blockedShots")),
-            shifts=_parse_int(player_data.get("shifts")),
-            giveaways=_parse_int(player_data.get("giveaways")),
-            takeaways=_parse_int(player_data.get("takeaways")),
+            goals=parse_int(player_data.get("goals")),
+            assists=parse_int(player_data.get("assists")),
+            points=parse_int(player_data.get("points")),
+            shots_on_goal=parse_int(player_data.get("sog")),
+            penalties=parse_int(player_data.get("pim")),
+            plus_minus=parse_int(player_data.get("plusMinus")),
+            hits=parse_int(player_data.get("hits")),
+            blocked_shots=parse_int(player_data.get("blockedShots")),
+            shifts=parse_int(player_data.get("shifts")),
+            giveaways=parse_int(player_data.get("giveaways")),
+            takeaways=parse_int(player_data.get("takeaways")),
             faceoff_pct=faceoff_pct,
             # Goalie stats remain None for skaters
             saves=None,
@@ -760,7 +761,7 @@ class NHLLiveFeedClient:
         saves, shots_against = _parse_save_shots(save_shots)
 
         # Get goals against
-        goals_against = _parse_int(player_data.get("goalsAgainst"))
+        goals_against = parse_int(player_data.get("goalsAgainst"))
 
         # Get save percentage (comes as decimal like 0.926)
         save_pctg = player_data.get("savePctg")
@@ -781,7 +782,7 @@ class NHLLiveFeedClient:
             team=team_identity,
             player_role="goalie",
             position="G",
-            sweater_number=_parse_int(player_data.get("sweaterNumber")),
+            sweater_number=parse_int(player_data.get("sweaterNumber")),
             minutes=minutes,
             # Goalie stats
             saves=saves,
@@ -793,7 +794,7 @@ class NHLLiveFeedClient:
             assists=None,
             points=None,
             shots_on_goal=None,
-            penalties=_parse_int(player_data.get("pim")),
+            penalties=parse_int(player_data.get("pim")),
             plus_minus=None,
             hits=None,
             blocked_shots=None,
@@ -901,16 +902,6 @@ def _parse_datetime(value: str | None) -> datetime:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
     except ValueError:
         return now_utc()
-
-
-def _parse_int(value: str | int | None) -> int | None:
-    """Safely parse an integer value."""
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _one_day():
