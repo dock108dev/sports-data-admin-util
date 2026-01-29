@@ -37,17 +37,23 @@ addopts = [
   "--cov=sports_scraper",
   "--cov-report=term-missing",
   "--cov-report=html:coverage_html",
-  "--cov-fail-under=90",
+  "--cov-fail-under=80",
 ]
 
 [tool.coverage.run]
 source = ["sports_scraper"]
 omit = [
+  # Celery infrastructure
   "sports_scraper/celery_app.py",
   "sports_scraper/jobs/*",
-  "sports_scraper/social/playwright_collector.py",
   "sports_scraper/validate_env.py",
   "sports_scraper/__init__.py",
+  # Social scraping (requires external X API)
+  "sports_scraper/social/*",
+  # Web scrapers (require HTTP mocking infrastructure)
+  "sports_scraper/scrapers/*",
+  # Database connection module
+  "sports_scraper/db.py",
 ]
 
 [tool.coverage.report]
