@@ -6,7 +6,7 @@ import os
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -267,10 +267,6 @@ class TestSelectGamesForPbpSportsref:
         mock_league.id = 1
         mock_session.query.return_value.filter.return_value.first.return_value = mock_league
 
-        mock_game = MagicMock()
-        mock_game.id = 100
-        mock_game.source_game_key = "202401150BOS"
-        mock_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
         mock_session.query.return_value.filter.return_value.all.return_value = [
             (100, "202401150BOS", datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc))
         ]
@@ -426,32 +422,30 @@ class TestDetectExternalIdConflicts:
 # ============================================================================
 
 from sports_scraper.services.job_runs import (
-    create_scrape_run,
-    complete_scrape_run,
+    start_job_run,
+    complete_job_run,
 )
 
 
-class TestCreateScrapeRun:
-    """Tests for create_scrape_run function."""
+class TestStartJobRun:
+    """Tests for start_job_run function."""
 
-    def test_creates_run_record(self):
-        """Creates a scrape run record and returns ID."""
+    @patch("sports_scraper.services.job_runs.get_session")
+    def test_creates_run_record(self, mock_get_session):
+        """Creates a job run record and returns ID."""
         mock_session = MagicMock()
         mock_run = MagicMock()
         mock_run.id = 123
-        mock_session.add.return_value = None
-        mock_session.flush.return_value = None
 
-        # Mock the ScrapeRun class
+        # Mock context manager
+        mock_get_session.return_value.__enter__.return_value = mock_session
+
         with patch("sports_scraper.services.job_runs.db_models") as mock_db:
-            mock_db.ScrapeRun.return_value = mock_run
+            mock_db.SportsJobRun.return_value = mock_run
 
-            result = create_scrape_run(
-                mock_session,
-                job_type="boxscore_ingestion",
-                league_code="NBA",
-                start_date=date(2024, 1, 15),
-                end_date=date(2024, 1, 15),
+            result = start_job_run(
+                phase="boxscore_ingestion",
+                leagues=["NBA", "NHL"],
             )
 
             assert result == 123
@@ -459,55 +453,91 @@ class TestCreateScrapeRun:
             mock_session.flush.assert_called_once()
 
 
-class TestCompleteScrapeRun:
-    """Tests for complete_scrape_run function."""
+class TestCompleteJobRun:
+    """Tests for complete_job_run function."""
 
-    def test_updates_run_record(self):
-        """Updates scrape run with completion data."""
+    @patch("sports_scraper.services.job_runs.get_session")
+    def test_updates_run_record(self, mock_get_session):
+        """Updates job run with completion data."""
         mock_session = MagicMock()
         mock_run = MagicMock()
-        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_run.started_at = datetime.now(timezone.utc)
+        mock_session.get.return_value = mock_run
 
-        complete_scrape_run(
-            mock_session,
+        mock_get_session.return_value.__enter__.return_value = mock_session
+
+        complete_job_run(
             run_id=123,
             status="completed",
-            records_processed=50,
-            errors=[],
         )
 
         assert mock_run.status == "completed"
-        assert mock_run.records_processed == 50
         mock_session.flush.assert_called_once()
 
-    def test_handles_missing_run(self):
+    @patch("sports_scraper.services.job_runs.get_session")
+    def test_handles_missing_run(self, mock_get_session):
         """Handles case when run not found."""
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.first.return_value = None
+        mock_session.get.return_value = None
+
+        mock_get_session.return_value.__enter__.return_value = mock_session
 
         # Should not raise
-        complete_scrape_run(
-            mock_session,
+        complete_job_run(
             run_id=999,
             status="completed",
-            records_processed=0,
-            errors=[],
         )
+
+    @patch("sports_scraper.services.job_runs.get_session")
+    def test_updates_with_error(self, mock_get_session):
+        """Updates job run with error summary."""
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_run.started_at = datetime.now(timezone.utc)
+        mock_session.get.return_value = mock_run
+
+        mock_get_session.return_value.__enter__.return_value = mock_session
+
+        complete_job_run(
+            run_id=123,
+            status="failed",
+            error_summary="Connection timeout",
+        )
+
+        assert mock_run.status == "failed"
+        assert mock_run.error_summary == "Connection timeout"
 
 
 # ============================================================================
 # Tests for services/ingestion.py
 # ============================================================================
 
-from sports_scraper.services.ingestion import (
-    INGESTION_MAPPING,
-)
+from sports_scraper.services.ingestion import run_ingestion
 
 
-class TestIngestionMapping:
-    """Tests for ingestion mapping constants."""
+class TestRunIngestion:
+    """Tests for run_ingestion function."""
 
-    def test_mapping_exists(self):
-        """Verify ingestion mapping is defined."""
-        assert INGESTION_MAPPING is not None
-        assert isinstance(INGESTION_MAPPING, dict)
+    @patch("sports_scraper.services.ingestion.ScrapeRunManager")
+    @patch("sports_scraper.services.ingestion.IngestionConfig")
+    def test_creates_manager_and_runs(self, mock_config_cls, mock_manager_cls):
+        """Creates manager and calls run method."""
+        mock_config = MagicMock()
+        mock_config_cls.return_value = mock_config
+
+        mock_manager = MagicMock()
+        mock_manager.run.return_value = {"status": "completed", "records": 50}
+        mock_manager_cls.return_value = mock_manager
+
+        config_payload = {
+            "league_code": "NBA",
+            "start_date": "2024-01-15",
+            "end_date": "2024-01-15",
+            "phases": ["boxscore"],
+        }
+
+        result = run_ingestion(run_id=123, config_payload=config_payload)
+
+        mock_config_cls.assert_called_once_with(**config_payload)
+        mock_manager.run.assert_called_once_with(123, mock_config)
+        assert result == {"status": "completed", "records": 50}
