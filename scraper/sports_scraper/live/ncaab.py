@@ -663,7 +663,7 @@ class NCAABLiveFeedClient:
             team_id = ts.get("teamId")
             is_home = ts.get("isHome", False)
             stats = ts.get("teamStats", {}) or {}
-            points = stats.get("points", 0) or 0
+            points = _extract_points(stats.get("points"))
 
             if is_home:
                 home_team_id = team_id
@@ -1316,6 +1316,23 @@ def _parse_int(value: str | int | float | None) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _extract_points(value: int | dict | None) -> int:
+    """Extract points from API response which may be int or dict.
+
+    The CBB API sometimes returns points as an integer, and sometimes as a dict:
+    {"total": 89, "byPeriod": [...], "offTurnovers": 17}
+
+    This handles both formats.
+    """
+    if value is None:
+        return 0
+    if isinstance(value, dict):
+        # New format: {"total": 89, ...}
+        return _parse_int(value.get("total")) or 0
+    # Old format: just an integer
+    return _parse_int(value) or 0
 
 
 def _parse_minutes(value: str | int | float | None) -> float | None:
