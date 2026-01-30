@@ -201,7 +201,7 @@ class TestIngestBoxscoresViaNhlApi:
     @patch("sports_scraper.services.boxscore_ingestion._populate_nhl_game_ids")
     @patch("sports_scraper.services.boxscore_ingestion.select_games_for_boxscores_nhl_api")
     def test_returns_zero_when_no_games(self, mock_select, mock_populate):
-        """Returns (0, 0) when no games selected."""
+        """Returns (0, 0, 0) when no games selected."""
         mock_session = MagicMock()
         mock_select.return_value = []
 
@@ -214,7 +214,7 @@ class TestIngestBoxscoresViaNhlApi:
             updated_before=None,
         )
 
-        assert result == (0, 0)
+        assert result == (0, 0, 0)
 
     @patch("sports_scraper.services.boxscore_ingestion.persist_game_payload")
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
@@ -255,7 +255,9 @@ class TestIngestBoxscoresViaNhlApi:
             updated_before=None,
         )
 
-        assert result == (1, 1)
+        # Returns (games_processed, games_enriched, games_with_stats)
+        assert result[0] == 1  # games processed
+        assert result[1] == 1  # games enriched
 
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
     @patch("sports_scraper.services.boxscore_ingestion._populate_nhl_game_ids")
@@ -278,7 +280,7 @@ class TestIngestBoxscoresViaNhlApi:
             updated_before=None,
         )
 
-        assert result == (0, 0)
+        assert result == (0, 0, 0)
 
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
     @patch("sports_scraper.services.boxscore_ingestion._populate_nhl_game_ids")
@@ -301,7 +303,7 @@ class TestIngestBoxscoresViaNhlApi:
             updated_before=None,
         )
 
-        assert result == (0, 0)
+        assert result == (0, 0, 0)
 
 
 class TestIngestBoxscoresViaNcaabApi:
@@ -310,7 +312,7 @@ class TestIngestBoxscoresViaNcaabApi:
     @patch("sports_scraper.services.boxscore_ingestion._populate_ncaab_game_ids")
     @patch("sports_scraper.services.boxscore_ingestion.select_games_for_boxscores_ncaab_api")
     def test_returns_zero_when_no_games(self, mock_select, mock_populate):
-        """Returns (0, 0) when no games selected."""
+        """Returns (0, 0, 0) when no games selected."""
         mock_session = MagicMock()
         mock_select.return_value = []
 
@@ -323,7 +325,7 @@ class TestIngestBoxscoresViaNcaabApi:
             updated_before=None,
         )
 
-        assert result == (0, 0)
+        assert result == (0, 0, 0)
 
     @patch("sports_scraper.services.boxscore_ingestion.persist_game_payload")
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
@@ -366,7 +368,9 @@ class TestIngestBoxscoresViaNcaabApi:
             updated_before=None,
         )
 
-        assert result == (1, 1)
+        # Returns (games_processed, games_enriched, games_with_stats)
+        assert result[0] == 1  # games processed
+        assert result[1] == 1  # games enriched
 
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
     @patch("sports_scraper.services.boxscore_ingestion._populate_ncaab_game_ids")
@@ -389,7 +393,7 @@ class TestIngestBoxscoresViaNcaabApi:
             updated_before=None,
         )
 
-        assert result == (0, 0)
+        assert result == (0, 0, 0)
 
     @patch("sports_scraper.services.boxscore_ingestion.persist_game_payload")
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
@@ -431,7 +435,7 @@ class TestIngestBoxscoresViaNcaabApi:
             updated_before=None,
         )
 
-        assert result == (0, 0)
+        assert result == (0, 0, 0)
 
 
 class TestPopulateNcaabGameIds:

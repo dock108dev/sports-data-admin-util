@@ -362,7 +362,7 @@ class TestScrapeRunManagerBoxscores:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_ingest.return_value = (5, 3)
+        mock_ingest.return_value = (5, 3, 2)  # (games, enriched, with_stats)
 
         manager = ScrapeRunManager()
         # Use a date in the past to avoid "future dates" skip
@@ -381,6 +381,7 @@ class TestScrapeRunManagerBoxscores:
 
         assert result["games"] == 5
         assert result["games_enriched"] == 3
+        assert result["games_with_stats"] == 2
 
     @patch("sports_scraper.services.boxscore_ingestion.ingest_boxscores_via_nhl_api")
     @patch("sports_scraper.services.run_manager.get_session")
@@ -487,7 +488,7 @@ class TestScrapeRunManagerBoxscores:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_ingest.return_value = (10, 8)
+        mock_ingest.return_value = (10, 8, 5)  # (games, enriched, with_stats)
 
         manager = ScrapeRunManager()
         past_date = date.today() - timedelta(days=5)
@@ -505,6 +506,7 @@ class TestScrapeRunManagerBoxscores:
 
         assert result["games"] == 10
         assert result["games_enriched"] == 8
+        assert result["games_with_stats"] == 5
 
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
