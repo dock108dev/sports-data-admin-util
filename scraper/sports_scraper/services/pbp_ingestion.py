@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 from ..db import db_models
 from ..logging import logger
 from ..persistence.plays import upsert_plays
-from ..utils.date_utils import ncaab_season_for_cbb_api
 from .game_selection import select_games_for_pbp_sportsref
 
 

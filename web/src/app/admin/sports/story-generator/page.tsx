@@ -485,12 +485,12 @@ export default function StoryGeneratorPage() {
       {!loading && games.length === 0 && !error && (
         <div className={styles.emptyState}>
           <p>
-            Configure date range and leagues, then click "Preview Games" to see
-            eligible games.
+            Configure date range and leagues, then click &quot;Preview
+            Games&quot; to see eligible games.
           </p>
           <p className={styles.hint}>
-            Or click "Start Bulk Generation" to generate flows for all matching
-            games.
+            Or click &quot;Start Bulk Generation&quot; to generate flows for all
+            matching games.
           </p>
         </div>
       )}
