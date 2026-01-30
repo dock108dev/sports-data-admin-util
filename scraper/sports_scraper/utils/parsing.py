@@ -8,8 +8,11 @@ to ensure it can be used for parsing data from any source (API, JSON, CLI).
 from __future__ import annotations
 
 
-def parse_int(value: str | None) -> int | None:
-    """Parse a string value to an integer, handling common edge cases."""
+def parse_int(value: str | int | float | None) -> int | None:
+    """Parse a value to an integer, handling common edge cases.
+
+    Accepts strings, ints, floats, or None. Returns None for empty strings or "-".
+    """
     if value in (None, "", "-"):
         return None
     try:

@@ -12,6 +12,7 @@ from ..config import settings
 from ..logging import logger
 from ..models import NormalizedPlay, NormalizedPlayByPlay
 from ..utils.datetime_utils import now_utc
+from ..utils.parsing import parse_int
 
 NBA_SCOREBOARD_URL = "https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_{date}.json"
 NBA_PBP_URL = "https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
@@ -72,8 +73,8 @@ class NBALiveFeedClient:
                     status_text=status_text,
                     home_abbr=str(home_team.get("teamTricode", "")),
                     away_abbr=str(away_team.get("teamTricode", "")),
-                    home_score=_parse_int(home_team.get("score")),
-                    away_score=_parse_int(away_team.get("score")),
+                    home_score=parse_int(home_team.get("score")),
+                    away_score=parse_int(away_team.get("score")),
                 )
             )
 
@@ -92,8 +93,8 @@ class NBALiveFeedClient:
         actions = payload.get("game", {}).get("actions", [])
         plays: list[NormalizedPlay] = []
         for action in actions:
-            period = _parse_int(action.get("period"))
-            sequence = _parse_int(action.get("actionNumber"))
+            period = parse_int(action.get("period"))
+            sequence = parse_int(action.get("actionNumber"))
             if sequence is None:
                 continue
 
@@ -110,8 +111,8 @@ class NBALiveFeedClient:
                     player_id=str(action.get("personId")) if action.get("personId") else None,
                     player_name=action.get("playerName"),
                     description=action.get("description"),
-                    home_score=_parse_int(action.get("scoreHome")),
-                    away_score=_parse_int(action.get("scoreAway")),
+                    home_score=parse_int(action.get("scoreHome")),
+                    away_score=parse_int(action.get("scoreAway")),
                     raw_data={
                         "event_time": action.get("timeActual") or action.get("timeActualUTC"),
                         "clock": action.get("clock"),
@@ -147,10 +148,3 @@ def _parse_nba_clock(value: str | None) -> str | None:
     return value
 
 
-def _parse_int(value: str | int | None) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None

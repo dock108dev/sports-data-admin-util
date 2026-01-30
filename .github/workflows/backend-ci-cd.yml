@@ -32,10 +32,17 @@ jobs:
           uv venv --python 3.12
           uv pip install -r api/requirements.txt
           uv pip install -e ./scraper
-          uv pip install pytest
-      - name: Run unit tests
+          uv pip install pytest pytest-cov
+      - name: Run unit tests with coverage
+        working-directory: scraper
         run: |
-          uv run pytest
+          uv run pytest tests/ \
+            --cov=sports_scraper \
+            --cov-config=pyproject.toml \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:coverage_html \
+            --cov-fail-under=80
 
   build:
     runs-on: ubuntu-latest

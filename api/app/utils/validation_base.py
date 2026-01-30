@@ -1,4 +1,11 @@
-"""Shared environment validation helpers."""
+"""Shared environment validation helpers.
+
+NOTE: The functions in this module are duplicated in scraper/sports_scraper/validate_env.py.
+This duplication exists because the scraper and api are separate Python packages in this
+monorepo. When modifying these functions, ensure the scraper version is updated as well.
+
+See scraper/tests/test_validation_equivalence.py for behavioral equivalence tests.
+"""
 
 from __future__ import annotations
 

@@ -53,3 +53,4 @@ scraper/game_data/
 *.sql.gz
 *.dump
 data/
+*/.coverage

@@ -209,12 +209,12 @@ def run_pbp_ingestion_for_league(league_code: str) -> dict:
     Called after stats ingestion completes to fetch play-by-play data.
 
     Args:
-        league_code: The league to fetch PBP for (NBA, NHL)
+        league_code: The league to fetch PBP for (NBA, NHL, NCAAB)
 
     Returns:
         Dict with pbp_games and pbp_events counts
     """
-    from .pbp_ingestion import ingest_pbp_via_sportsref, ingest_pbp_via_nhl_api
+    from .pbp_ingestion import ingest_pbp_via_sportsref, ingest_pbp_via_nhl_api, ingest_pbp_via_ncaab_api
     from ..scrapers import get_scraper
 
     start_dt, end_dt = build_scheduled_window()
@@ -233,7 +233,7 @@ def run_pbp_ingestion_for_league(league_code: str) -> dict:
 
     with get_session() as session:
         if league_code == "NHL":
-            # NHL uses dedicated API
+            # NHL uses dedicated NHL API
             games, events = ingest_pbp_via_nhl_api(
                 session,
                 run_id=0,  # No run_id for standalone PBP
@@ -244,8 +244,20 @@ def run_pbp_ingestion_for_league(league_code: str) -> dict:
             )
             pbp_games = games
             pbp_events = events
-        elif league_code in ("NBA", "NCAAB"):
-            # NBA/NCAAB use Sports Reference
+        elif league_code == "NCAAB":
+            # NCAAB uses College Basketball Data API
+            games, events = ingest_pbp_via_ncaab_api(
+                session,
+                run_id=0,
+                start_date=start_date,
+                end_date=end_date,
+                only_missing=True,
+                updated_before=None,
+            )
+            pbp_games = games
+            pbp_events = events
+        elif league_code == "NBA":
+            # NBA uses Sports Reference
             scraper = get_scraper(league_code)
             games, events = ingest_pbp_via_sportsref(
                 session,

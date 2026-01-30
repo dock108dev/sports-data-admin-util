@@ -19,13 +19,45 @@ dependencies = [
   "playwright>=1.47.0,<2.0.0",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
   "black>=24.8.0,<25.0.0",
   "ruff>=0.7.0,<0.8.0",
   "pytest>=8.3.2,<9.0.0",
+  "pytest-cov>=4.1.0,<6.0.0",
   "mypy>=1.11.0,<2.0.0",
   "types-beautifulsoup4>=4.12.0,<5.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+  "--cov=sports_scraper",
+  "--cov-report=term-missing",
+  "--cov-report=html:coverage_html",
+  "--cov-fail-under=90",
+]
+
+[tool.coverage.run]
+source = ["sports_scraper"]
+omit = [
+  # Celery infrastructure (requires running broker)
+  "**/celery_app.py",
+  "**/jobs/*",
+  # Environment validation script (entry point)
+  "**/validate_env.py",
+  # Init files (no logic)
+  "**/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "@abstractmethod",
 ]
 
 [build-system]

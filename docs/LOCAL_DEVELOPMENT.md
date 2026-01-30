@@ -24,8 +24,8 @@ The Docker Compose setup starts:
 | postgres | 5432 | PostgreSQL database |
 | redis | 6379 | Redis for Celery queue |
 | api | 8000 | FastAPI backend |
-| scraper-worker | — | Celery worker for data ingestion |
-| scraper-beat | — | Celery scheduler (13:00-02:00 UTC) |
+| scraper | — | Celery worker for data ingestion |
+| scraper-beat | — | Celery scheduler (daily at 9:00 UTC) |
 | web | 3000 | Next.js admin UI |
 
 ## Verify Everything Works
@@ -166,7 +166,7 @@ Key variables in `infra/.env`:
 # Restart affected service
 docker compose restart api        # For API changes
 docker compose restart web        # For web changes
-docker compose restart scraper-worker  # For scraper changes
+docker compose restart scraper  # For scraper changes
 
 # View logs
 docker compose logs -f api

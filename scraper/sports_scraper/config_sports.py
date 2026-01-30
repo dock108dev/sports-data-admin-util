@@ -62,7 +62,7 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         social_enabled=False,  # No social integration yet
         pbp_enabled=True,
         timeline_enabled=True,
-        scheduled_ingestion=False,  # Not yet scheduled
+        scheduled_ingestion=True,  # Uses api.collegebasketballdata.com
     ),
 }
 

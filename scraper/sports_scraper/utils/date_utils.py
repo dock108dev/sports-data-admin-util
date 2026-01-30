@@ -11,6 +11,31 @@ from __future__ import annotations
 from datetime import date
 
 
+def ncaab_season_for_cbb_api(game_date: date) -> int:
+    """Calculate NCAAB season year for the College Basketball Data API.
+
+    The CBB API uses the ENDING year of the season (e.g., 2026 for 2025-2026 season).
+    NCAAB season runs from October/November to April:
+    - October-December games: season = next year (Oct 2025 -> season 2026)
+    - January-September games: season = current year (Jan 2026 -> season 2026)
+
+    Uses October as the cutoff to handle early exhibition games that may occur
+    in late October before the official November start.
+
+    Args:
+        game_date: Date of the game
+
+    Returns:
+        Season ending year (e.g., 2026 for the 2025-26 season)
+    """
+    if game_date.month >= 10:
+        # October-December: season ends next year
+        return game_date.year + 1
+    else:
+        # January-September: season ends this year
+        return game_date.year
+
+
 def season_from_date(day: date, league_code: str) -> int:
     """Calculate season year from a date based on league.
     

@@ -1,10 +1,12 @@
-"""HTML caching utilities for scrapers."""
+"""Caching utilities for scrapers (HTML and JSON API responses)."""
 
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from ..logging import logger
@@ -191,5 +193,130 @@ class HTMLCache:
             days=days,
             deleted_count=len(deleted_files),
         )
+
+        return {"deleted_count": len(deleted_files), "deleted_files": deleted_files}
+
+
+class APICache:
+    """Local file cache for API JSON responses.
+
+    Stores JSON in a structured directory:
+      {cache_dir}/{api_name}/{filename}.json
+
+    This reduces API calls for rate-limited APIs like College Basketball Data API.
+    """
+
+    def __init__(self, cache_dir: str | Path, api_name: str) -> None:
+        self.cache_dir = Path(cache_dir)
+        self.api_name = api_name
+
+    def _get_cache_path(self, cache_key: str) -> Path:
+        """Build cache path for a cache key."""
+        # Sanitize the key for filesystem
+        safe_key = cache_key.replace("/", "_").replace(":", "_").replace("?", "_")
+        return self.cache_dir / self.api_name / f"{safe_key}.json"
+
+    def get(self, cache_key: str) -> Any | None:
+        """Load JSON from cache if it exists.
+
+        Args:
+            cache_key: Unique key for this cached item (e.g., "teams_2026-01-20_2026-01-27")
+
+        Returns:
+            Parsed JSON data, or None if not cached
+        """
+        cache_path = self._get_cache_path(cache_key)
+
+        if cache_path.exists():
+            try:
+                data = json.loads(cache_path.read_text(encoding="utf-8"))
+                logger.info(
+                    "api_cache_hit",
+                    api=self.api_name,
+                    key=cache_key,
+                    path=str(cache_path),
+                )
+                return data
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(
+                    "api_cache_read_error",
+                    api=self.api_name,
+                    key=cache_key,
+                    path=str(cache_path),
+                    error=str(e),
+                )
+                return None
+
+        logger.debug("api_cache_miss", api=self.api_name, key=cache_key)
+        return None
+
+    def put(self, cache_key: str, data: Any) -> Path | None:
+        """Save JSON to cache.
+
+        Args:
+            cache_key: Unique key for this cached item
+            data: JSON-serializable data to cache
+
+        Returns:
+            Path where data was cached, or None on error
+        """
+        cache_path = self._get_cache_path(cache_key)
+
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(
+                json.dumps(data, indent=2, default=str),
+                encoding="utf-8",
+            )
+            logger.info(
+                "api_cache_saved",
+                api=self.api_name,
+                key=cache_key,
+                path=str(cache_path),
+                size_kb=len(json.dumps(data)) // 1024,
+            )
+            return cache_path
+        except (IOError, TypeError) as e:
+            logger.warning(
+                "api_cache_write_error",
+                api=self.api_name,
+                key=cache_key,
+                path=str(cache_path),
+                error=str(e),
+            )
+            return None
+
+    def clear(self, pattern: str | None = None) -> dict:
+        """Clear cached files.
+
+        Args:
+            pattern: Optional glob pattern to match (e.g., "teams_*"). If None, clears all.
+
+        Returns:
+            Dict with count of deleted files
+        """
+        api_cache_dir = self.cache_dir / self.api_name
+        if not api_cache_dir.exists():
+            return {"deleted_count": 0, "deleted_files": []}
+
+        deleted_files = []
+        glob_pattern = f"{pattern}.json" if pattern else "*.json"
+
+        for cache_file in api_cache_dir.glob(glob_pattern):
+            try:
+                cache_file.unlink()
+                deleted_files.append(str(cache_file))
+                logger.info(
+                    "api_cache_file_deleted",
+                    api=self.api_name,
+                    path=str(cache_file),
+                )
+            except Exception as e:
+                logger.warning(
+                    "api_cache_delete_error",
+                    api=self.api_name,
+                    path=str(cache_file),
+                    error=str(e),
+                )
 
         return {"deleted_count": len(deleted_files), "deleted_files": deleted_files}

@@ -15,13 +15,10 @@ if str(SCRAPER_ROOT) not in sys.path:
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/test_db")
 
-from sports_scraper.live.nhl import (
-    NHLLiveFeedClient,
-    NHL_EVENT_TYPE_MAP,
-    NHL_MIN_EXPECTED_PLAYS,
-    _map_nhl_game_state,
-    _parse_int,
-)
+from sports_scraper.live.nhl import NHLLiveFeedClient
+from sports_scraper.live.nhl_constants import NHL_EVENT_TYPE_MAP, NHL_MIN_EXPECTED_PLAYS
+from sports_scraper.live.nhl_helpers import map_nhl_game_state
+from sports_scraper.utils.parsing import parse_int
 
 
 # Sample play data from the real NHL API
@@ -124,20 +121,20 @@ class TestNHLGameStateMapping:
     """Test game state to status mapping."""
 
     def test_final_states(self):
-        assert _map_nhl_game_state("OFF") == "final"
-        assert _map_nhl_game_state("FINAL") == "final"
+        assert map_nhl_game_state("OFF") == "final"
+        assert map_nhl_game_state("FINAL") == "final"
 
     def test_live_states(self):
-        assert _map_nhl_game_state("LIVE") == "live"
-        assert _map_nhl_game_state("CRIT") == "live"
+        assert map_nhl_game_state("LIVE") == "live"
+        assert map_nhl_game_state("CRIT") == "live"
 
     def test_scheduled_states(self):
-        assert _map_nhl_game_state("FUT") == "scheduled"
-        assert _map_nhl_game_state("PRE") == "scheduled"
+        assert map_nhl_game_state("FUT") == "scheduled"
+        assert map_nhl_game_state("PRE") == "scheduled"
 
     def test_unknown_defaults_to_scheduled(self):
-        assert _map_nhl_game_state("UNKNOWN") == "scheduled"
-        assert _map_nhl_game_state("") == "scheduled"
+        assert map_nhl_game_state("UNKNOWN") == "scheduled"
+        assert map_nhl_game_state("") == "scheduled"
 
 
 class TestNHLPlayNormalization:
@@ -149,7 +146,7 @@ class TestNHLPlayNormalization:
         team_id_to_abbr = {25: "DAL", 14: "TBL"}
         player_id_to_name: dict[int, str] = {}
 
-        play = client._normalize_play(SAMPLE_GOAL_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
+        play = client._pbp_fetcher._normalize_play(SAMPLE_GOAL_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
 
         assert play is not None
         assert play.quarter == 1  # Period 1
@@ -167,7 +164,7 @@ class TestNHLPlayNormalization:
         team_id_to_abbr = {25: "DAL", 14: "TBL"}
         player_id_to_name: dict[int, str] = {}
 
-        play = client._normalize_play(SAMPLE_PENALTY_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
+        play = client._pbp_fetcher._normalize_play(SAMPLE_PENALTY_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
 
         assert play is not None
         assert play.quarter == 1
@@ -184,7 +181,7 @@ class TestNHLPlayNormalization:
         team_id_to_abbr = {25: "DAL", 14: "TBL"}
         player_id_to_name: dict[int, str] = {}
 
-        play = client._normalize_play(SAMPLE_FACEOFF_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
+        play = client._pbp_fetcher._normalize_play(SAMPLE_FACEOFF_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
 
         assert play is not None
         assert play.quarter == 1
@@ -200,7 +197,7 @@ class TestNHLPlayNormalization:
         player_id_to_name: dict[int, str] = {}
 
         # Period 1, sortOrder 67
-        play = client._normalize_play(SAMPLE_GOAL_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
+        play = client._pbp_fetcher._normalize_play(SAMPLE_GOAL_PLAY, team_id_to_abbr, player_id_to_name, game_id=123)
         assert play is not None
         assert play.play_index == 1 * 10000 + 67  # 10067
 
@@ -209,7 +206,7 @@ class TestNHLPlayNormalization:
         client = NHLLiveFeedClient()
         play_without_sort = {"eventId": 1, "typeDescKey": "goal"}
 
-        result = client._normalize_play(play_without_sort, {}, {}, game_id=123)
+        result = client._pbp_fetcher._normalize_play(play_without_sort, {}, {}, game_id=123)
         assert result is None
 
 
@@ -226,13 +223,13 @@ class TestHelperFunctions:
     """Test helper functions."""
 
     def test_parse_int_valid(self):
-        assert _parse_int(123) == 123
-        assert _parse_int("456") == 456
+        assert parse_int(123) == 123
+        assert parse_int("456") == 456
 
     def test_parse_int_invalid(self):
-        assert _parse_int(None) is None
-        assert _parse_int("abc") is None
-        assert _parse_int({}) is None
+        assert parse_int(None) is None
+        assert parse_int("abc") is None
+        assert parse_int({}) is None
 
 
 class TestNHLClientMocked:
@@ -276,9 +273,15 @@ class TestNHLClientMocked:
         assert result.source_game_key == "9999999999"
         assert len(result.plays) == 0
 
+    @patch("sports_scraper.live.nhl_pbp.APICache")
     @patch("sports_scraper.live.nhl.httpx.Client")
-    def test_unknown_event_type_still_stored(self, mock_client_class):
+    def test_unknown_event_type_still_stored(self, mock_client_class, mock_cache_class):
         """Test that unknown event types are stored (not dropped)."""
+        # Mock cache to return None (no cached data)
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+        mock_cache_class.return_value = mock_cache
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -302,6 +305,8 @@ class TestNHLClientMocked:
         mock_client_class.return_value = mock_client
 
         client = NHLLiveFeedClient()
+        # Need to also mock the cache on the PBP fetcher
+        client._pbp_fetcher._cache = mock_cache
         result = client.fetch_play_by_play(2025020767)
 
         assert len(result.plays) == 1

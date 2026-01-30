@@ -35,6 +35,8 @@ def run_scheduled_ingestion() -> dict:
     2. NBA PBP ingestion
     3. NHL stats ingestion
     4. NHL PBP ingestion
+    5. NCAAB stats ingestion
+    6. NCAAB PBP ingestion
 
     This ensures PBP is fetched for newly scraped games.
     """
@@ -66,8 +68,20 @@ def run_scheduled_ingestion() -> dict:
     results["NHL_PBP"] = nhl_pbp_result
     logger.info("scheduled_ingestion_nhl_pbp_complete", **nhl_pbp_result)
 
+    # Run NCAAB stats after NHL PBP
+    logger.info("scheduled_ingestion_ncaab_start")
+    ncaab_result = schedule_single_league_and_wait("NCAAB")
+    results["NCAAB"] = ncaab_result
+    logger.info("scheduled_ingestion_ncaab_complete", **ncaab_result)
+
+    # Run NCAAB PBP after stats complete
+    logger.info("scheduled_ingestion_ncaab_pbp_start")
+    ncaab_pbp_result = run_pbp_ingestion_for_league("NCAAB")
+    results["NCAAB_PBP"] = ncaab_pbp_result
+    logger.info("scheduled_ingestion_ncaab_pbp_complete", **ncaab_pbp_result)
+
     return {
         "leagues": results,
-        "total_runs_created": nba_result["runs_created"] + nhl_result["runs_created"],
-        "total_pbp_games": nba_pbp_result["pbp_games"] + nhl_pbp_result["pbp_games"],
+        "total_runs_created": nba_result["runs_created"] + nhl_result["runs_created"] + ncaab_result["runs_created"],
+        "total_pbp_games": nba_pbp_result["pbp_games"] + nhl_pbp_result["pbp_games"] + ncaab_pbp_result["pbp_games"],
     }

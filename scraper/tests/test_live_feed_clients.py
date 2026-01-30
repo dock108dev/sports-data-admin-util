@@ -1,0 +1,790 @@
+"""Comprehensive tests for live feed client classes with mocked HTTP."""
+
+from __future__ import annotations
+
+import os
+import sys
+from datetime import date, datetime
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+# Ensure the scraper package is importable
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCRAPER_ROOT = REPO_ROOT / "scraper"
+if str(SCRAPER_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRAPER_ROOT))
+
+os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://user:pass@localhost:5432/test_db")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("ENVIRONMENT", "development")
+
+
+# ============================================================================
+# Tests for live/nba.py - NBALiveFeedClient
+# ============================================================================
+
+from sports_scraper.live.nba import (
+    NBALiveFeedClient,
+    _parse_nba_game_datetime,
+    _parse_nba_clock,
+)
+
+
+class TestParseNBAGameDatetime:
+    """Tests for _parse_nba_game_datetime helper."""
+
+    def test_parse_iso_format(self):
+        result = _parse_nba_game_datetime("2024-01-15T19:30:00Z")
+        assert result.year == 2024
+        assert result.month == 1
+        assert result.day == 15
+
+    def test_parse_with_offset(self):
+        result = _parse_nba_game_datetime("2024-01-15T19:30:00-05:00")
+        assert result.year == 2024
+
+    def test_empty_returns_now(self):
+        result = _parse_nba_game_datetime("")
+        assert isinstance(result, datetime)
+
+    def test_none_returns_now(self):
+        result = _parse_nba_game_datetime(None)
+        assert isinstance(result, datetime)
+
+    def test_invalid_returns_now(self):
+        result = _parse_nba_game_datetime("not-a-date")
+        assert isinstance(result, datetime)
+
+
+class TestParseNBAClock:
+    """Tests for _parse_nba_clock helper."""
+
+    def test_parse_pt_format_minutes_seconds(self):
+        result = _parse_nba_clock("PT10M30S")
+        assert result == "10:30"
+
+    def test_parse_pt_format_only_seconds(self):
+        result = _parse_nba_clock("PT45S")
+        assert result == "0:45"
+
+    def test_parse_pt_format_only_minutes(self):
+        result = _parse_nba_clock("PT5M")
+        assert result == "5:00"
+
+    def test_parse_non_pt_format_passthrough(self):
+        result = _parse_nba_clock("10:30")
+        assert result == "10:30"
+
+    def test_empty_returns_none(self):
+        result = _parse_nba_clock("")
+        assert result is None
+
+    def test_none_returns_none(self):
+        result = _parse_nba_clock(None)
+        assert result is None
+
+
+class TestNBALiveFeedClient:
+    """Tests for NBALiveFeedClient with mocked HTTP."""
+
+    def test_fetch_scoreboard_success(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "scoreboard": {
+                "games": [
+                    {
+                        "gameId": "0022400123",
+                        "gameStatus": 3,
+                        "gameStatusText": "Final",
+                        "gameEt": "2024-01-15T19:30:00Z",
+                        "homeTeam": {"teamTricode": "BOS", "score": 110},
+                        "awayTeam": {"teamTricode": "LAL", "score": 105},
+                    }
+                ]
+            }
+        }
+
+        client = NBALiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_scoreboard(date(2024, 1, 15))
+
+        assert len(games) == 1
+        assert games[0].game_id == "0022400123"
+        assert games[0].status == "final"
+        assert games[0].home_abbr == "BOS"
+        assert games[0].away_abbr == "LAL"
+        assert games[0].home_score == 110
+        assert games[0].away_score == 105
+
+    def test_fetch_scoreboard_live_game(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "scoreboard": {
+                "games": [
+                    {
+                        "gameId": "0022400124",
+                        "gameStatus": 2,  # Live
+                        "gameStatusText": "Q3 5:30",
+                        "gameEt": "2024-01-15T19:30:00Z",
+                        "homeTeam": {"teamTricode": "MIA", "score": 75},
+                        "awayTeam": {"teamTricode": "CHI", "score": 72},
+                    }
+                ]
+            }
+        }
+
+        client = NBALiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_scoreboard(date(2024, 1, 15))
+
+        assert games[0].status == "live"
+
+    def test_fetch_scoreboard_scheduled_game(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "scoreboard": {
+                "games": [
+                    {
+                        "gameId": "0022400125",
+                        "gameStatus": 1,  # Scheduled
+                        "gameStatusText": "7:30 PM ET",
+                        "gameEt": "2024-01-15T19:30:00Z",
+                        "homeTeam": {"teamTricode": "NYK", "score": None},
+                        "awayTeam": {"teamTricode": "BKN", "score": None},
+                    }
+                ]
+            }
+        }
+
+        client = NBALiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_scoreboard(date(2024, 1, 15))
+
+        assert games[0].status == "scheduled"
+        assert games[0].home_score is None
+
+    def test_fetch_scoreboard_failure(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = "Not Found"
+
+        client = NBALiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_scoreboard(date(2024, 1, 15))
+
+        assert games == []
+
+    def test_fetch_play_by_play_success(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "game": {
+                "actions": [
+                    {
+                        "actionNumber": 1,
+                        "period": 1,
+                        "clock": "PT12M00S",
+                        "actionType": "jumpball",
+                        "teamTricode": "BOS",
+                        "description": "Jump ball won",
+                    },
+                    {
+                        "actionNumber": 2,
+                        "period": 1,
+                        "clock": "PT11M45S",
+                        "actionType": "2pt",
+                        "teamTricode": "BOS",
+                        "personId": 203500,
+                        "playerName": "J. Tatum",
+                        "description": "J. Tatum makes 2-pt shot",
+                        "scoreHome": 2,
+                        "scoreAway": 0,
+                    },
+                ]
+            }
+        }
+
+        client = NBALiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        result = client.fetch_play_by_play("0022400123")
+
+        assert result.source_game_key == "0022400123"
+        assert len(result.plays) == 2
+        assert result.plays[0].play_type == "jumpball"
+        assert result.plays[1].player_name == "J. Tatum"
+        assert result.plays[1].home_score == 2
+
+    def test_fetch_play_by_play_failure(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+
+        client = NBALiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        result = client.fetch_play_by_play("0022400123")
+
+        assert result.source_game_key == "0022400123"
+        assert result.plays == []
+
+
+# ============================================================================
+# Tests for live/nhl.py - NHLLiveFeedClient
+# ============================================================================
+
+from sports_scraper.live.nhl import NHLLiveFeedClient
+
+
+class TestNHLLiveFeedClient:
+    """Tests for NHLLiveFeedClient with mocked HTTP."""
+
+    def test_fetch_schedule_success(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        # NHL API uses gameWeek structure with nested dates
+        mock_response.json.return_value = {
+            "gameWeek": [
+                {
+                    "date": "2024-10-15",
+                    "games": [
+                        {
+                            "id": 2025020001,
+                            "startTimeUTC": "2024-10-15T23:00:00Z",
+                            "gameState": "OFF",
+                            "homeTeam": {
+                                "abbrev": "TBL",
+                                "commonName": {"default": "Lightning"},
+                                "placeName": {"default": "Tampa Bay"},
+                                "score": 4,
+                            },
+                            "awayTeam": {
+                                "abbrev": "BOS",
+                                "commonName": {"default": "Bruins"},
+                                "placeName": {"default": "Boston"},
+                                "score": 3,
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+
+        client = NHLLiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_schedule(date(2024, 10, 15), date(2024, 10, 15))
+
+        assert len(games) == 1
+        assert games[0].game_id == 2025020001
+        assert games[0].status == "final"
+        assert games[0].home_score == 4
+        assert games[0].away_score == 3
+
+    def test_fetch_schedule_live_game(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "gameWeek": [
+                {
+                    "date": "2024-10-15",
+                    "games": [
+                        {
+                            "id": 2025020002,
+                            "startTimeUTC": "2024-10-15T23:00:00Z",
+                            "gameState": "LIVE",
+                            "homeTeam": {
+                                "abbrev": "NYR",
+                                "commonName": {"default": "Rangers"},
+                                "placeName": {"default": "New York"},
+                                "score": 2,
+                            },
+                            "awayTeam": {
+                                "abbrev": "NJD",
+                                "commonName": {"default": "Devils"},
+                                "placeName": {"default": "New Jersey"},
+                                "score": 2,
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+
+        client = NHLLiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_schedule(date(2024, 10, 15), date(2024, 10, 15))
+
+        assert games[0].status == "live"
+
+    def test_fetch_schedule_failure(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Server Error"
+
+        client = NHLLiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_schedule(date(2024, 10, 15), date(2024, 10, 15))
+
+        assert games == []
+
+
+# ============================================================================
+# Tests for live/ncaab.py - NCAABLiveFeedClient
+# ============================================================================
+
+from sports_scraper.live.ncaab import NCAABLiveFeedClient
+
+
+class TestNCAABLiveFeedClient:
+    """Tests for NCAABLiveFeedClient with mocked HTTP."""
+
+    @patch("sports_scraper.live.ncaab.settings")
+    def test_fetch_games_success(self, mock_settings):
+        mock_settings.cbb_stats_api_key = "test-api-key"
+        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "gameId": 12345,
+                "gameDate": "2024-01-15T19:00:00Z",
+                "status": "final",
+                "homeTeam": {"teamId": 1, "team": "Duke"},
+                "awayTeam": {"teamId": 2, "team": "UNC"},
+                "homeScore": 75,
+                "awayScore": 70,
+                "neutralSite": False,
+            }
+        ]
+
+        client = NCAABLiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_games(date(2024, 1, 15), date(2024, 1, 15))
+
+        assert len(games) == 1
+        assert games[0].game_id == 12345
+        assert games[0].status == "final"
+        assert games[0].home_team_name == "Duke"
+        assert games[0].home_score == 75
+
+    @patch("sports_scraper.live.ncaab.settings")
+    def test_fetch_games_live_status(self, mock_settings):
+        mock_settings.cbb_stats_api_key = "test-api-key"
+        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "gameId": 12346,
+                "gameDate": "2024-01-15T19:00:00Z",
+                "status": "in progress",
+                "homeTeam": {"teamId": 3, "team": "Kentucky"},
+                "awayTeam": {"teamId": 4, "team": "Louisville"},
+                "homeScore": 45,
+                "awayScore": 42,
+                "neutralSite": False,
+            }
+        ]
+
+        client = NCAABLiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_games(date(2024, 1, 15), date(2024, 1, 15))
+
+        assert games[0].status == "live"
+
+    @patch("sports_scraper.live.ncaab.settings")
+    def test_fetch_games_failure(self, mock_settings):
+        mock_settings.cbb_stats_api_key = "test-api-key"
+        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+
+        client = NCAABLiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_games(date(2024, 1, 15), date(2024, 1, 15))
+
+        assert games == []
+
+    @patch("sports_scraper.live.ncaab.settings")
+    def test_get_season_for_date_fall(self, mock_settings):
+        mock_settings.cbb_stats_api_key = None
+        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+
+        client = NCAABLiveFeedClient()
+        # October-December: next year's season
+        assert client._get_season_for_date(date(2024, 11, 15)) == 2025
+        assert client._get_season_for_date(date(2024, 12, 1)) == 2025
+
+    @patch("sports_scraper.live.ncaab.settings")
+    def test_get_season_for_date_spring(self, mock_settings):
+        mock_settings.cbb_stats_api_key = None
+        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+
+        client = NCAABLiveFeedClient()
+        # January-September: current year's season
+        assert client._get_season_for_date(date(2024, 1, 15)) == 2024
+        assert client._get_season_for_date(date(2024, 3, 15)) == 2024
+
+
+# ============================================================================
+# Tests for live/ncaab_boxscore.py - NCAABBoxscoreFetcher
+# ============================================================================
+
+from sports_scraper.live.ncaab_boxscore import NCAABBoxscoreFetcher
+
+
+class TestNCAABBoxscoreFetcher:
+    """Tests for NCAABBoxscoreFetcher with mocked HTTP."""
+
+    def test_fetch_game_teams_by_date_range_success(self):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "gameId": 12345,
+                "teamId": 1,
+                "isHome": True,
+                "teamStats": {"points": 75, "rebounds": 35},
+            },
+            {
+                "gameId": 12345,
+                "teamId": 2,
+                "isHome": False,
+                "teamStats": {"points": 70, "rebounds": 32},
+            },
+        ]
+        mock_client.get.return_value = mock_response
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None  # No cache
+
+        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
+        result = fetcher.fetch_game_teams_by_date_range(
+            date(2024, 1, 15), date(2024, 1, 15), 2024
+        )
+
+        assert len(result) == 2
+        assert result[0]["teamStats"]["points"] == 75
+
+    def test_fetch_game_teams_uses_cache(self):
+        mock_client = MagicMock()
+        cached_data = [{"gameId": 12345, "teamId": 1}]
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = cached_data
+
+        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
+        result = fetcher.fetch_game_teams_by_date_range(
+            date(2024, 1, 15), date(2024, 1, 15), 2024
+        )
+
+        assert result == cached_data
+        mock_client.get.assert_not_called()
+
+    def test_fetch_game_teams_failure(self):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Server Error"
+        mock_client.get.return_value = mock_response
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
+        result = fetcher.fetch_game_teams_by_date_range(
+            date(2024, 1, 15), date(2024, 1, 15), 2024
+        )
+
+        assert result == []
+
+    def test_fetch_boxscores_batch(self):
+        mock_client = MagicMock()
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        # Mock team stats response
+        team_response = MagicMock()
+        team_response.status_code = 200
+        team_response.json.return_value = [
+            {
+                "gameId": 12345,
+                "teamId": 1,
+                "isHome": True,
+                "teamStats": {"points": 75, "rebounds": 35, "assists": 15},
+            },
+            {
+                "gameId": 12345,
+                "teamId": 2,
+                "isHome": False,
+                "teamStats": {"points": 70, "rebounds": 32, "assists": 12},
+            },
+        ]
+
+        # Mock player stats response
+        player_response = MagicMock()
+        player_response.status_code = 200
+        player_response.json.return_value = [
+            {
+                "gameId": 12345,
+                "teamId": 1,
+                "players": [
+                    {"playerId": 101, "name": "Player A", "points": 25, "rebounds": 10},
+                    {"playerId": 102, "name": "Player B", "points": 18, "rebounds": 8},
+                ],
+            }
+        ]
+
+        mock_client.get.side_effect = [team_response, player_response]
+
+        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
+        result = fetcher.fetch_boxscores_batch(
+            game_ids=[12345],
+            start_date=date(2024, 1, 15),
+            end_date=date(2024, 1, 15),
+            season=2024,
+            team_names_by_game={12345: ("Duke", "UNC")},
+        )
+
+        assert 12345 in result
+        assert result[12345].home_score == 75
+        assert result[12345].away_score == 70
+
+
+# ============================================================================
+# Tests for live/nhl_boxscore.py - NHLBoxscoreFetcher
+# ============================================================================
+
+from sports_scraper.live.nhl_boxscore import NHLBoxscoreFetcher
+
+
+class TestNHLBoxscoreFetcher:
+    """Tests for NHLBoxscoreFetcher with mocked HTTP."""
+
+    def test_fetch_boxscore_success(self):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "gameDate": "2024-10-15",
+            "gameState": "OFF",
+            "homeTeam": {
+                "abbrev": "TBL",
+                "commonName": {"default": "Lightning"},
+                "placeName": {"default": "Tampa Bay"},
+                "score": 4,
+            },
+            "awayTeam": {
+                "abbrev": "BOS",
+                "commonName": {"default": "Bruins"},
+                "placeName": {"default": "Boston"},
+                "score": 3,
+            },
+            "playerByGameStats": {
+                "homeTeam": {
+                    "forwards": [
+                        {
+                            "playerId": 8478010,
+                            "name": {"default": "Brayden Point"},
+                            "position": "C",
+                            "sweaterNumber": 21,
+                            "goals": 2,
+                            "assists": 1,
+                            "points": 3,
+                            "sog": 5,
+                            "toi": "18:45",
+                        }
+                    ],
+                    "defense": [],
+                    "goalies": [
+                        {
+                            "playerId": 8476883,
+                            "name": {"default": "Andrei Vasilevskiy"},
+                            "saveShotsAgainst": "30/33",
+                            "goalsAgainst": 3,
+                            "savePctg": 0.909,
+                            "toi": "60:00",
+                        }
+                    ],
+                },
+                "awayTeam": {
+                    "forwards": [],
+                    "defense": [],
+                    "goalies": [],
+                },
+            },
+        }
+        mock_client.get.return_value = mock_response
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        fetcher = NHLBoxscoreFetcher(mock_client, mock_cache)
+        result = fetcher.fetch_boxscore(2025020001)
+
+        assert result is not None
+        assert result.game_id == 2025020001
+        assert result.status == "final"
+        assert result.home_score == 4
+        assert result.away_score == 3
+        assert len(result.player_boxscores) > 0
+
+    def test_fetch_boxscore_uses_cache(self):
+        mock_client = MagicMock()
+        cached_payload = {
+            "gameDate": "2024-10-15",
+            "gameState": "OFF",
+            "homeTeam": {
+                "abbrev": "TBL",
+                "commonName": {"default": "Lightning"},
+                "placeName": {"default": "Tampa Bay"},
+                "score": 4,
+            },
+            "awayTeam": {
+                "abbrev": "BOS",
+                "commonName": {"default": "Bruins"},
+                "placeName": {"default": "Boston"},
+                "score": 3,
+            },
+            "playerByGameStats": {
+                "homeTeam": {"forwards": [], "defense": [], "goalies": []},
+                "awayTeam": {"forwards": [], "defense": [], "goalies": []},
+            },
+        }
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = cached_payload
+
+        fetcher = NHLBoxscoreFetcher(mock_client, mock_cache)
+        result = fetcher.fetch_boxscore(2025020001)
+
+        assert result is not None
+        mock_client.get.assert_not_called()
+
+    def test_fetch_boxscore_404(self):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_client.get.return_value = mock_response
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        fetcher = NHLBoxscoreFetcher(mock_client, mock_cache)
+        result = fetcher.fetch_boxscore(2025020999)
+
+        assert result is None
+
+    def test_fetch_boxscore_error(self):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Server Error"
+        mock_client.get.return_value = mock_response
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        fetcher = NHLBoxscoreFetcher(mock_client, mock_cache)
+        result = fetcher.fetch_boxscore(2025020001)
+
+        assert result is None
+
+    def test_parse_skater_stats(self):
+        mock_client = MagicMock()
+        mock_cache = MagicMock()
+        fetcher = NHLBoxscoreFetcher(mock_client, mock_cache)
+
+        from sports_scraper.models import TeamIdentity
+
+        team_identity = TeamIdentity(
+            league_code="NHL",
+            name="Tampa Bay Lightning",
+            short_name="Lightning",
+            abbreviation="TBL",
+            external_ref="TBL",
+        )
+
+        player_data = {
+            "playerId": 8478010,
+            "name": {"default": "Brayden Point"},
+            "position": "C",
+            "sweaterNumber": 21,
+            "goals": 2,
+            "assists": 1,
+            "points": 3,
+            "sog": 5,
+            "toi": "18:45",
+            "plusMinus": 2,
+        }
+
+        result = fetcher._parse_skater_stats(player_data, team_identity, 2025020001)
+
+        assert result is not None
+        assert result.player_id == "8478010"
+        assert result.player_name == "Brayden Point"
+        assert result.goals == 2
+        assert result.assists == 1
+        assert result.player_role == "skater"
+
+    def test_parse_goalie_stats(self):
+        mock_client = MagicMock()
+        mock_cache = MagicMock()
+        fetcher = NHLBoxscoreFetcher(mock_client, mock_cache)
+
+        from sports_scraper.models import TeamIdentity
+
+        team_identity = TeamIdentity(
+            league_code="NHL",
+            name="Tampa Bay Lightning",
+            short_name="Lightning",
+            abbreviation="TBL",
+            external_ref="TBL",
+        )
+
+        player_data = {
+            "playerId": 8476883,
+            "name": {"default": "Andrei Vasilevskiy"},
+            "saveShotsAgainst": "30/33",
+            "goalsAgainst": 3,
+            "savePctg": 0.909,
+            "toi": "60:00",
+        }
+
+        result = fetcher._parse_goalie_stats(player_data, team_identity, 2025020001)
+
+        assert result is not None
+        assert result.player_id == "8476883"
+        assert result.player_name == "Andrei Vasilevskiy"
+        assert result.saves == 30
+        assert result.shots_against == 33
+        assert result.goals_against == 3
+        assert result.player_role == "goalie"
