@@ -174,7 +174,7 @@ class ScrapeRunManager:
 
                     try:
                         with get_session() as session:
-                            games, enriched = ingest_boxscores_via_nhl_api(
+                            games, enriched, with_stats = ingest_boxscores_via_nhl_api(
                                 session,
                                 run_id=run_id,
                                 start_date=start,
@@ -185,6 +185,7 @@ class ScrapeRunManager:
                             session.commit()
                         summary["games"] = games
                         summary["games_enriched"] = enriched
+                        summary["games_with_stats"] = with_stats
                     except Exception as exc:
                         logger.exception(
                             "nhl_boxscore_ingestion_failed",

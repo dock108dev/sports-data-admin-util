@@ -123,9 +123,12 @@ class NCAABLiveFeedClient:
 
         params: dict[str, Any] = {"season": season}
 
-        # Add date range filters
-        params["startDateRange"] = start_date.strftime("%Y-%m-%d")
-        params["endDateRange"] = end_date.strftime("%Y-%m-%d")
+        # Add date range filters - API requires ISO 8601 format with time
+        # Use start of day for start, and start of next day for end (to include full end date)
+        from datetime import timedelta
+        params["startDateRange"] = start_date.strftime("%Y-%m-%dT00:00:00Z")
+        end_inclusive = end_date + timedelta(days=1)
+        params["endDateRange"] = end_inclusive.strftime("%Y-%m-%dT00:00:00Z")
 
         logger.info(
             "ncaab_games_fetch",
