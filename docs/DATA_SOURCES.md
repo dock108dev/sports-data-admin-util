@@ -21,6 +21,19 @@ This document describes where data comes from and how it's ingested.
 - **NHL**: NHL API (`api-web.nhle.com/v1/gamecenter/{game_id}/boxscore`)
 - **NCAAB**: CBB Stats API (`/games/teams`, `/games/players`) with date range batching
 
+### NCAAB Team Mapping
+NCAAB boxscore ingestion requires `cbb_team_id` in `sports_teams.external_codes` to match games to the CBB API.
+
+**How it's populated:**
+- Alembic migration fetches teams from CBB API and maps by normalized name
+- Requires `CBB_STATS_API_KEY` in migrate container environment
+- Configured in `infra/docker-compose.yml`
+
+**If games aren't getting boxscores:**
+1. Check `sports_teams` has `external_codes.cbb_team_id` populated
+2. Verify `CBB_STATS_API_KEY` is set in `.env`
+3. Re-run migrations if needed
+
 ### Data Collected
 - Team stats (points, rebounds, assists, etc.)
 - Player stats (minutes, points, shooting percentages, etc.)
@@ -33,7 +46,7 @@ This document describes where data comes from and how it's ingested.
 
 ### Timing
 - Scraped after game status changes to `final`
-- Automatic ingestion runs daily at 9:00 UTC (4 AM EST / 5 AM EDT)
+- Automatic ingestion runs daily at 10:30 UTC (5:30 AM EST / 6:30 AM EDT)
 - Manual scraping available via Admin UI
 
 ## Play-by-Play
@@ -191,10 +204,12 @@ See also:
 
 ### Automatic (Scheduled)
 - **Scheduler**: Celery Beat
-- **Ingestion**: Daily at 9:00 UTC (4 AM EST) - boxscores, odds, PBP, social
-- **Timeline Generation**: Daily at 10:30 UTC (5:30 AM EST) - 90 min after ingestion
-- **Story Generation**: Daily at 10:45 UTC (5:45 AM EST) - 15 min after timeline gen
+- **Ingestion**: Daily at 10:30 UTC (5:30 AM EST) - boxscores, odds, PBP, social
+- **Timeline Generation**: Daily at 12:00 UTC (7:00 AM EST) - 90 min after ingestion
+- **Story Generation**: Daily at 12:15 UTC (7:15 AM EST) - 15 min after timeline gen
 - **Window**: Yesterday through today (catches overnight game completions)
+
+Configuration: `scraper/sports_scraper/celery_app.py`
 
 ### Manual (Admin UI)
 - Create scrape run via `/api/admin/sports/scraper/runs`

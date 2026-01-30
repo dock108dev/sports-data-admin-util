@@ -31,6 +31,17 @@ docs/                Documentation
 3. **Zero silent failures** — Log everything
 4. **Traceability** — Every narrative maps to specific plays
 
+## Data Sources
+
+- **NBA**: Basketball Reference (boxscores, PBP) — matched via `source_game_key`
+- **NHL**: NHL API — matched via `external_ids.nhl_game_pk`
+- **NCAAB**: CBB API — matched via `external_ids.cbb_game_id` (requires `CBB_STATS_API_KEY`)
+
+## Scheduled Tasks
+
+Daily at 5:30 AM EST: ingestion → 7:00 AM: timelines → 7:15 AM: flows
+Config: `scraper/sports_scraper/celery_app.py`
+
 ## Do NOT
 
 - Auto-commit changes

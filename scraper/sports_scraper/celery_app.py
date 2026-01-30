@@ -39,9 +39,9 @@ app.conf.update(**celery_config)
 app.conf.task_routes = {
     "run_scrape_job": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
 }
-# Daily sports ingestion at 4 AM US Eastern (9:00 UTC during EST, 8:00 UTC during EDT)
-# Using 9:00 UTC to align with 4 AM during Eastern Standard Time (November-March).
-# During Eastern Daylight Time (March-November), this will run at 5 AM EDT.
+# Daily sports ingestion at 5:30 AM US Eastern (10:30 UTC during EST, 9:30 UTC during EDT)
+# Using 10:30 UTC to align with 5:30 AM during Eastern Standard Time (November-March).
+# During Eastern Daylight Time (March-November), this will run at 6:30 AM EDT.
 #
 # Ingestion runs leagues sequentially: NBA -> NHL -> NCAAB
 #
@@ -51,19 +51,19 @@ app.conf.task_routes = {
 # NBA Flow generation runs 15 minutes after timeline generation (when NCAAB is done).
 # It generates AI flows for NBA games in the last 72 hours. Skips existing flows.
 app.conf.beat_schedule = {
-    "daily-sports-ingestion-4am-eastern": {
+    "daily-sports-ingestion-530am-eastern": {
         "task": "run_scheduled_ingestion",
-        "schedule": crontab(minute=0, hour=9),  # 4 AM EST = 9:00 UTC
+        "schedule": crontab(minute=30, hour=10),  # 5:30 AM EST = 10:30 UTC
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    "daily-timeline-generation-530am-eastern": {
+    "daily-timeline-generation-7am-eastern": {
         "task": "run_scheduled_timeline_generation",
-        "schedule": crontab(minute=30, hour=10),  # 5:30 AM EST = 10:30 UTC (90 min after ingestion)
+        "schedule": crontab(minute=0, hour=12),  # 7:00 AM EST = 12:00 UTC (90 min after ingestion)
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    "daily-nba-flow-generation-545am-eastern": {
+    "daily-nba-flow-generation-715am-eastern": {
         "task": "run_scheduled_nba_flow_generation",
-        "schedule": crontab(minute=45, hour=10),  # 5:45 AM EST = 10:45 UTC (15 min after timeline gen)
+        "schedule": crontab(minute=15, hour=12),  # 7:15 AM EST = 12:15 UTC (15 min after timeline gen)
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
 }
