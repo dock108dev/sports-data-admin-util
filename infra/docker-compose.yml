@@ -186,6 +186,7 @@ services:
         condition: service_healthy
     networks:
       - internal
+      - app  # Needed for external API calls during data migrations
 
   web:
     image: ghcr.io/dock108dev/sports-data-admin-util-web:latest
