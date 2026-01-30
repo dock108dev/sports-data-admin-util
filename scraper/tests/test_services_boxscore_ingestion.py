@@ -470,7 +470,7 @@ class TestPopulateNcaabGameIds:
 
         assert result == 0
 
-    @patch("sports_scraper.services.boxscore_ingestion.NCAABLiveFeedClient")
+    @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
     def test_returns_zero_when_no_api_games(self, mock_client_class):
         """Returns 0 when API returns no games."""
         mock_session = MagicMock()
@@ -503,7 +503,7 @@ class TestPopulateNcaabGameIds:
 
         assert result == 0
 
-    @patch("sports_scraper.services.boxscore_ingestion.NCAABLiveFeedClient")
+    @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
     def test_matches_games_by_team_id_and_time(self, mock_client_class):
         """Matches games by team ID and time window."""
         mock_session = MagicMock()

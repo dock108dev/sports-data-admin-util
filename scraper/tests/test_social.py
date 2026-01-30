@@ -501,6 +501,152 @@ class TestSocialRequestCache:
         assert decision.allowed is False
         assert decision.reason == "rate_limited"
 
+    def test_should_poll_poll_interval(self):
+        """Should not poll when within poll interval."""
+        cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
+        now = datetime.now(timezone.utc)
+
+        # Create mock recent poll record within interval (no rate limit)
+        mock_poll = MagicMock()
+        mock_poll.created_at = now - timedelta(seconds=30)  # 30 seconds ago
+        mock_poll.rate_limited_until = None
+
+        mock_session = MagicMock()
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = mock_poll
+
+        decision = cache.should_poll(
+            mock_session,
+            platform="x",
+            handle="warriors",
+            window_start=now - timedelta(hours=3),
+            window_end=now,
+            now=now,
+            is_backfill=False,
+        )
+        assert decision.allowed is False
+        assert decision.reason == "poll_interval"
+
+    def test_should_poll_skips_interval_for_backfill(self):
+        """Should skip poll interval for backfill."""
+        cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
+        now = datetime.now(timezone.utc)
+
+        # Create mock recent poll record within interval
+        mock_poll = MagicMock()
+        mock_poll.created_at = now - timedelta(seconds=30)
+        mock_poll.rate_limited_until = None
+
+        mock_session = MagicMock()
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = mock_poll
+
+        decision = cache.should_poll(
+            mock_session,
+            platform="x",
+            handle="warriors",
+            window_start=now - timedelta(hours=3),
+            window_end=now,
+            now=now,
+            is_backfill=True,  # Backfill skips interval
+        )
+        assert decision.allowed is True
+
+    def test_should_poll_cached_window(self):
+        """Should not poll when window is cached with success."""
+        cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
+        now = datetime.now(timezone.utc)
+        window_start = now - timedelta(hours=3)
+        window_end = now
+
+        # No recent poll (outside interval)
+        mock_recent = MagicMock()
+        mock_recent.created_at = now - timedelta(seconds=120)
+        mock_recent.rate_limited_until = None
+
+        # Cached window with success and posts
+        mock_cached = MagicMock()
+        mock_cached.created_at = now - timedelta(minutes=30)  # Within TTL
+        mock_cached.status = "success"
+        mock_cached.posts_found = 5  # Found posts
+
+        mock_session = MagicMock()
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.side_effect = [mock_recent, mock_cached]
+
+        decision = cache.should_poll(
+            mock_session,
+            platform="x",
+            handle="warriors",
+            window_start=window_start,
+            window_end=window_end,
+            now=now,
+        )
+        assert decision.allowed is False
+        assert decision.reason == "cached_window"
+
+    def test_record_creates_new_entry(self):
+        """Record creates new poll entry."""
+        cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
+        now = datetime.now(timezone.utc)
+
+        mock_session = MagicMock()
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.first.return_value = None  # No existing record
+
+        result = cache.record(
+            mock_session,
+            platform="x",
+            handle="warriors",
+            window_start=now - timedelta(hours=3),
+            window_end=now,
+            status="success",
+            posts_found=10,
+        )
+
+        mock_session.add.assert_called_once()
+        mock_session.flush.assert_called_once()
+
+    def test_record_updates_existing_entry(self):
+        """Record updates existing poll entry."""
+        cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
+        now = datetime.now(timezone.utc)
+
+        mock_existing = MagicMock()
+        mock_existing.status = "pending"
+        mock_existing.posts_found = 0
+
+        mock_session = MagicMock()
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.first.return_value = mock_existing
+
+        result = cache.record(
+            mock_session,
+            platform="x",
+            handle="warriors",
+            window_start=now - timedelta(hours=3),
+            window_end=now,
+            status="success",
+            posts_found=10,
+        )
+
+        assert mock_existing.status == "success"
+        assert mock_existing.posts_found == 10
+        mock_session.flush.assert_called_once()
+
 
 # ============================================================================
 # Tests for social/collector_base.py
