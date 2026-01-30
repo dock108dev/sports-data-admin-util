@@ -129,6 +129,17 @@ def _build_batch_prompt(
     """
     home_team = game_context.get("home_team_name", "Home")
     away_team = game_context.get("away_team_name", "Away")
+    player_names = game_context.get("player_names", {})
+
+    # Build player name reference for the prompt (abbrev -> full name)
+    # Only include mappings for abbreviated names (X. Lastname format)
+    name_mappings = []
+    for abbrev, full in player_names.items():
+        if ". " in abbrev:  # Only abbreviated forms like "D. Mitchell"
+            name_mappings.append(f"{abbrev}={full}")
+
+    # Limit to avoid bloating prompt - take first 40 unique players
+    name_ref = ", ".join(name_mappings[:40]) if name_mappings else ""
 
     # Build compact moments data
     moments_lines = []
@@ -157,9 +168,17 @@ def _build_batch_prompt(
 
     moments_block = "\n".join(moments_lines)
 
+    # Build prompt with player name rule
+    name_rule = "- Player names: FULL NAME on first mention (e.g., \"Donovan Mitchell\"), LAST NAME only after (e.g., \"Mitchell\"). Never use initials like \"D. Mitchell\"."
+    if name_ref:
+        name_rule += f"\n- Name reference: {name_ref}"
+
     prompt = f"""Write 1-2 sentence narratives for each moment. {away_team} vs {home_team}.
 
-Rules: Describe *starred plays. Concrete actions only (shots/fouls/scores). No: momentum, turning point, crucial, pivotal, speculation.
+Rules:
+- Describe *starred plays. Concrete actions only (shots/fouls/scores).
+{name_rule}
+- No: momentum, turning point, crucial, pivotal, speculation.
 
 {moments_block}
 

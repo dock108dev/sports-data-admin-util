@@ -185,8 +185,8 @@ class PipelineExecutor:
 
         return stage_record
 
-    async def _get_game_context(self, game_id: int) -> dict[str, str]:
-        """Build game context for team name resolution."""
+    async def _get_game_context(self, game_id: int) -> dict[str, Any]:
+        """Build game context for team name resolution and player name mapping."""
         result = await self.session.execute(
             select(db_models.SportsGame)
             .options(
@@ -201,6 +201,10 @@ class PipelineExecutor:
         if not game:
             return {}
 
+        # Build player name mapping from boxscores
+        # Maps "D. Mitchell" -> "Donovan Mitchell"
+        player_names = await self._build_player_name_mapping(game_id)
+
         return {
             "sport": game.league.code if game.league else "NBA",
             "home_team_name": game.home_team.name if game.home_team else "Home",
@@ -211,7 +215,39 @@ class PipelineExecutor:
             "away_team_abbrev": game.away_team.abbreviation
             if game.away_team
             else "AWAY",
+            "player_names": player_names,
         }
+
+    async def _build_player_name_mapping(self, game_id: int) -> dict[str, str]:
+        """Build mapping from abbreviated names to full names.
+
+        Maps formats like "D. Mitchell" -> "Donovan Mitchell"
+        using player boxscore data.
+        """
+        result = await self.session.execute(
+            select(db_models.SportsPlayerBoxscore.player_name)
+            .where(db_models.SportsPlayerBoxscore.game_id == game_id)
+            .where(db_models.SportsPlayerBoxscore.player_name.isnot(None))
+        )
+        full_names = [row[0] for row in result.fetchall()]
+
+        mapping: dict[str, str] = {}
+        for full_name in full_names:
+            if not full_name or " " not in full_name:
+                continue
+
+            parts = full_name.split()
+            if len(parts) >= 2:
+                # Build abbreviated form: "D. Mitchell" from "Donovan Mitchell"
+                first_initial = parts[0][0].upper()
+                last_name = parts[-1]
+                abbrev = f"{first_initial}. {last_name}"
+                mapping[abbrev] = full_name
+
+                # Also map last name only for lookups
+                mapping[last_name] = full_name
+
+        return mapping
 
     async def _accumulate_outputs(
         self,
