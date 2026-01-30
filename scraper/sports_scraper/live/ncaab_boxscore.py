@@ -18,7 +18,7 @@ from ..models import (
     TeamIdentity,
 )
 from ..utils.cache import APICache
-from ..utils.datetime_utils import now_utc
+from ..utils.datetime_utils import eastern_date_range_to_utc_iso, now_utc
 from ..utils.parsing import parse_int
 from .ncaab_constants import CBB_GAMES_PLAYERS_URL, CBB_GAMES_TEAMS_URL
 from .ncaab_helpers import build_team_identity, extract_points, parse_minutes
@@ -80,23 +80,11 @@ class NCAABBoxscoreFetcher:
 
         try:
             # API requires ISO 8601 format in UTC
-            # User-submitted dates are in EST, convert to UTC
-            from datetime import timedelta
-            from zoneinfo import ZoneInfo
-
-            est = ZoneInfo("America/New_York")
-            utc = ZoneInfo("UTC")
-
-            start_est = datetime.combine(start_date, datetime.min.time(), tzinfo=est)
-            start_utc = start_est.astimezone(utc)
-
-            end_est = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=est)
-            end_utc = end_est.astimezone(utc)
-
+            start_utc_iso, end_utc_iso = eastern_date_range_to_utc_iso(start_date, end_date)
             params = {
                 "season": season,
-                "startDateRange": start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "endDateRange": end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "startDateRange": start_utc_iso,
+                "endDateRange": end_utc_iso,
             }
             response = self.client.get(CBB_GAMES_TEAMS_URL, params=params)
 
@@ -171,23 +159,11 @@ class NCAABBoxscoreFetcher:
 
         try:
             # API requires ISO 8601 format in UTC
-            # User-submitted dates are in EST, convert to UTC
-            from datetime import timedelta
-            from zoneinfo import ZoneInfo
-
-            est = ZoneInfo("America/New_York")
-            utc = ZoneInfo("UTC")
-
-            start_est = datetime.combine(start_date, datetime.min.time(), tzinfo=est)
-            start_utc = start_est.astimezone(utc)
-
-            end_est = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=est)
-            end_utc = end_est.astimezone(utc)
-
+            start_utc_iso, end_utc_iso = eastern_date_range_to_utc_iso(start_date, end_date)
             params = {
                 "season": season,
-                "startDateRange": start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "endDateRange": end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "startDateRange": start_utc_iso,
+                "endDateRange": end_utc_iso,
             }
             response = self.client.get(CBB_GAMES_PLAYERS_URL, params=params)
 

@@ -19,6 +19,7 @@ from ..logging import logger
 from ..models import NormalizedPlayByPlay
 from ..utils.cache import APICache
 from ..utils.date_utils import ncaab_season_for_cbb_api
+from ..utils.datetime_utils import eastern_date_range_to_utc_iso
 from ..utils.parsing import parse_int
 from .ncaab_boxscore import NCAABBoxscoreFetcher
 from .ncaab_constants import CBB_GAMES_URL
@@ -124,25 +125,9 @@ class NCAABLiveFeedClient:
         params: dict[str, Any] = {"season": season}
 
         # Add date range filters - API requires ISO 8601 format in UTC
-        # User-submitted dates are in EST, so we convert to UTC:
-        # - EST is UTC-5, so start of day EST = 05:00 UTC same day
-        # - End of day EST = 05:00 UTC next day
-        from datetime import timedelta
-        from zoneinfo import ZoneInfo
-
-        est = ZoneInfo("America/New_York")
-        utc = ZoneInfo("UTC")
-
-        # Start of start_date in EST, converted to UTC
-        start_est = datetime.combine(start_date, datetime.min.time(), tzinfo=est)
-        start_utc = start_est.astimezone(utc)
-
-        # Start of day AFTER end_date in EST (to include full end_date), converted to UTC
-        end_est = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=est)
-        end_utc = end_est.astimezone(utc)
-
-        params["startDateRange"] = start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-        params["endDateRange"] = end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        start_utc_iso, end_utc_iso = eastern_date_range_to_utc_iso(start_date, end_date)
+        params["startDateRange"] = start_utc_iso
+        params["endDateRange"] = end_utc_iso
 
         logger.info(
             "ncaab_games_fetch",

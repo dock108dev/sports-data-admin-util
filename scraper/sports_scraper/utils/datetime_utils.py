@@ -10,6 +10,7 @@ date_utils.py.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 
 def now_utc() -> datetime:
@@ -43,14 +44,14 @@ def date_to_datetime_range(day: date) -> tuple[datetime, datetime]:
 
 def date_window_for_matching(day: date, days_before: int = 1, days_after: int = 1) -> tuple[datetime, datetime]:
     """Get a datetime window for matching games by date.
-    
+
     Useful when games are stored at midnight but odds use actual tipoff times.
-    
+
     Args:
         day: Target date
         days_before: Days before to include in window
         days_after: Days after to include in window
-        
+
     Returns:
         Tuple of (window_start, window_end) in UTC
     """
@@ -59,4 +60,42 @@ def date_window_for_matching(day: date, days_before: int = 1, days_after: int = 
     start = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
     end = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
     return start, end
+
+
+def eastern_date_range_to_utc_iso(
+    start_date: date, end_date: date
+) -> tuple[str, str]:
+    """Convert Eastern Time date range to UTC ISO 8601 strings for API calls.
+
+    User-submitted dates are in Eastern Time. This function converts them to UTC
+    for APIs that require ISO 8601 timestamps. America/New_York automatically
+    handles both EST (UTC-5) and EDT (UTC-4) depending on the time of year.
+
+    The end date is treated as inclusive - the returned end timestamp is the
+    start of the day AFTER end_date to include all games on that day.
+
+    Args:
+        start_date: Start date (inclusive) in Eastern Time
+        end_date: End date (inclusive) in Eastern Time
+
+    Returns:
+        Tuple of (start_utc_iso, end_utc_iso) formatted as "YYYY-MM-DDTHH:MM:SSZ"
+    """
+    eastern = ZoneInfo("America/New_York")
+    utc = ZoneInfo("UTC")
+
+    # Start of start_date in Eastern Time, converted to UTC
+    start_eastern = datetime.combine(start_date, datetime.min.time(), tzinfo=eastern)
+    start_utc = start_eastern.astimezone(utc)
+
+    # Start of day AFTER end_date in Eastern Time (to include full end_date)
+    end_eastern = datetime.combine(
+        end_date + timedelta(days=1), datetime.min.time(), tzinfo=eastern
+    )
+    end_utc = end_eastern.astimezone(utc)
+
+    return (
+        start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
 
