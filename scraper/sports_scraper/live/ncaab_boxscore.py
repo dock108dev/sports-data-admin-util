@@ -79,10 +79,24 @@ class NCAABBoxscoreFetcher:
         )
 
         try:
+            # API requires ISO 8601 format in UTC
+            # User-submitted dates are in EST, convert to UTC
+            from datetime import timedelta
+            from zoneinfo import ZoneInfo
+
+            est = ZoneInfo("America/New_York")
+            utc = ZoneInfo("UTC")
+
+            start_est = datetime.combine(start_date, datetime.min.time(), tzinfo=est)
+            start_utc = start_est.astimezone(utc)
+
+            end_est = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=est)
+            end_utc = end_est.astimezone(utc)
+
             params = {
                 "season": season,
-                "startDateRange": start_date.strftime("%Y-%m-%d"),
-                "endDateRange": end_date.strftime("%Y-%m-%d"),
+                "startDateRange": start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "endDateRange": end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
             }
             response = self.client.get(CBB_GAMES_TEAMS_URL, params=params)
 
@@ -156,10 +170,24 @@ class NCAABBoxscoreFetcher:
         )
 
         try:
+            # API requires ISO 8601 format in UTC
+            # User-submitted dates are in EST, convert to UTC
+            from datetime import timedelta
+            from zoneinfo import ZoneInfo
+
+            est = ZoneInfo("America/New_York")
+            utc = ZoneInfo("UTC")
+
+            start_est = datetime.combine(start_date, datetime.min.time(), tzinfo=est)
+            start_utc = start_est.astimezone(utc)
+
+            end_est = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=est)
+            end_utc = end_est.astimezone(utc)
+
             params = {
                 "season": season,
-                "startDateRange": start_date.strftime("%Y-%m-%d"),
-                "endDateRange": end_date.strftime("%Y-%m-%d"),
+                "startDateRange": start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "endDateRange": end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
             }
             response = self.client.get(CBB_GAMES_PLAYERS_URL, params=params)
 
