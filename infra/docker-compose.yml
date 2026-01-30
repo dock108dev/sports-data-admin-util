@@ -89,10 +89,14 @@ services:
       REDIS_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/0
       # Must match API's CELERY_BROKER_URL so worker receives tasks
       CELERY_BROKER_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/2
+      ALLOWED_CORS_ORIGINS: ${ALLOWED_CORS_ORIGINS:-}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL_CLASSIFICATION: ${OPENAI_MODEL_CLASSIFICATION:-gpt-4o-mini}
       OPENAI_MODEL_SUMMARY: ${OPENAI_MODEL_SUMMARY:-gpt-4o}
+      ENABLE_AI_SOCIAL_ROLES: ${ENABLE_AI_SOCIAL_ROLES:-true}
+      ENABLE_AI_SEGMENT_ENRICHMENT: ${ENABLE_AI_SEGMENT_ENRICHMENT:-true}
+      ENABLE_AI_SUMMARY: ${ENABLE_AI_SUMMARY:-true}
     depends_on:
       postgres:
         condition: service_healthy
