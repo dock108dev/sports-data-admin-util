@@ -29,7 +29,6 @@ from .nhl_helpers import (
 from .nhl_models import NHLBoxscore, NHLLiveGame
 from .nhl_pbp import NHLPbpFetcher
 
-# Re-export for backwards compatibility
 __all__ = [
     "NHLLiveGame",
     "NHLBoxscore",

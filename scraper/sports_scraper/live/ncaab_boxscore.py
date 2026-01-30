@@ -373,12 +373,11 @@ class NCAABBoxscoreFetcher:
             player_boxscores=player_boxscores,
         )
 
-    # Legacy methods kept for backwards compatibility
     def fetch_game_teams(self, game_id: int, season: int) -> list[dict]:
         """Fetch team-level boxscore stats for a game.
 
-        DEPRECATED: This method makes an API call that returns ALL games regardless
-        of the gameId parameter. Use fetch_boxscores_batch() instead for efficiency.
+        Note: The API returns all games in the response regardless of gameId filter.
+        For bulk operations, prefer fetch_boxscores_batch() for efficiency.
         """
         logger.info("ncaab_game_teams_fetch", game_id=game_id, season=season)
 
@@ -417,8 +416,8 @@ class NCAABBoxscoreFetcher:
     def fetch_game_players(self, game_id: int, season: int) -> list[dict]:
         """Fetch player-level boxscore stats for a game.
 
-        DEPRECATED: This method makes an API call that returns ALL games regardless
-        of the gameId parameter. Use fetch_boxscores_batch() instead for efficiency.
+        Note: The API returns all games in the response regardless of gameId filter.
+        For bulk operations, prefer fetch_boxscores_batch() for efficiency.
         """
         logger.info("ncaab_game_players_fetch", game_id=game_id, season=season)
 
