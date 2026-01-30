@@ -411,15 +411,21 @@ def upgrade() -> None:
     print(f"Seeding {len(NCAAB_TEAMS)} NCAAB teams...")
 
     insert_stmt = text("""
-        INSERT INTO sports_teams (league_id, name, abbreviation, external_codes)
-        VALUES (:lid, :name, :abbr, CAST(:codes AS jsonb))
+        INSERT INTO sports_teams (league_id, name, short_name, abbreviation, external_codes)
+        VALUES (:lid, :name, :short_name, :abbr, CAST(:codes AS jsonb))
     """)
 
     for name, abbr, cbb_team_id in NCAAB_TEAMS:
+        # Derive short_name by removing the mascot (last word)
+        # e.g., "Abilene Christian Wildcats" -> "Abilene Christian"
+        parts = name.rsplit(" ", 1)
+        short_name = parts[0] if len(parts) > 1 else name
+
         codes = json.dumps({"cbb_team_id": cbb_team_id})
         conn.execute(insert_stmt, {
             "lid": league_id,
             "name": name,
+            "short_name": short_name,
             "abbr": abbr,
             "codes": codes,
         })
