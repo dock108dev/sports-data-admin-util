@@ -16,7 +16,8 @@ import os
 import re
 import httpx
 from alembic import op
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
+from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "20260130_000001"
 down_revision = "20260129_000001"
@@ -120,6 +121,11 @@ def upgrade() -> None:
 
     matched, unmatched = 0, []
 
+    # Prepare the update statement with proper JSONB type binding
+    update_stmt = text(
+        "UPDATE sports_teams SET external_codes = CAST(:codes AS jsonb) WHERE id = :id"
+    )
+
     for team_id, team_name, ext_codes in db_teams:
         db_strict = _normalize_strict(team_name)
         db_expanded = _normalize_with_expansions(team_name)
@@ -145,10 +151,7 @@ def upgrade() -> None:
         if cbb_team_id:
             codes = dict(ext_codes) if ext_codes else {}
             codes["cbb_team_id"] = cbb_team_id
-            conn.execute(
-                text("UPDATE sports_teams SET external_codes = :codes::jsonb WHERE id = :id"),
-                {"codes": json.dumps(codes), "id": team_id}
-            )
+            conn.execute(update_stmt, {"codes": json.dumps(codes), "id": team_id})
             matched += 1
         else:
             unmatched.append(team_name)
