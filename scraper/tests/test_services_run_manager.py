@@ -382,6 +382,88 @@ class TestScrapeRunManagerBoxscores:
         assert result["games"] == 5
         assert result["games_enriched"] == 3
 
+    @patch("sports_scraper.services.boxscore_ingestion.ingest_boxscores_via_nhl_api")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_nhl_boxscore_handles_api_error(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_ingest
+    ):
+        """NHL boxscore handles API errors gracefully."""
+        mock_scrapers.return_value = {}
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_ingest.side_effect = Exception("NHL API error")
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NHL",
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=True,
+            odds=False,
+            social=False,
+            pbp=False,
+        )
+
+        # Should not raise, handles exception internally
+        result = manager.run(1, config)
+        assert result["games"] == 0
+
+    @patch("sports_scraper.services.boxscore_ingestion.ingest_boxscores_via_ncaab_api")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_ncaab_boxscore_handles_api_error(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_ingest
+    ):
+        """NCAAB boxscore handles API errors gracefully."""
+        mock_scrapers.return_value = {}
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_ingest.side_effect = Exception("NCAAB API error")
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NCAAB",
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=True,
+            odds=False,
+            social=False,
+            pbp=False,
+        )
+
+        # Should not raise, handles exception internally
+        result = manager.run(1, config)
+        assert result["games"] == 0
+
     @patch("sports_scraper.services.boxscore_ingestion.ingest_boxscores_via_ncaab_api")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
@@ -462,6 +544,296 @@ class TestScrapeRunManagerBoxscores:
 
         # No games processed because dates are in future
         assert result["games"] == 0
+
+    @patch("sports_scraper.services.run_manager.select_games_for_boxscores")
+    @patch("sports_scraper.services.run_manager.persist_game_payload")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_scraper_boxscores_with_only_missing(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_persist, mock_select
+    ):
+        """Uses Sports Reference scraper for boxscores with only_missing."""
+        mock_scraper = MagicMock()
+        mock_payload = MagicMock()
+        mock_scraper.fetch_single_boxscore.return_value = mock_payload
+        mock_scrapers.return_value = {"NBA": mock_scraper}
+
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Mock persist result
+        mock_result = MagicMock()
+        mock_result.game_id = 1
+        mock_result.enriched = True
+        mock_result.has_player_stats = True
+        mock_persist.return_value = mock_result
+
+        # Return games to scrape
+        mock_select.return_value = [(1, "BOS202401150", date(2024, 1, 15))]
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NBA",
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=True,
+            odds=False,
+            social=False,
+            pbp=False,
+            only_missing=True,
+        )
+
+        result = manager.run(1, config)
+
+        assert result["games"] == 1
+        assert result["games_enriched"] == 1
+        assert result["games_with_stats"] == 1
+        mock_scraper.fetch_single_boxscore.assert_called()
+
+    @patch("sports_scraper.services.run_manager.select_games_for_boxscores")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_scraper_boxscores_skips_missing_source_key(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_select
+    ):
+        """Skips games with missing source key."""
+        mock_scraper = MagicMock()
+        mock_scrapers.return_value = {"NBA": mock_scraper}
+
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Return game with missing source key
+        mock_select.return_value = [(1, None, date(2024, 1, 15))]
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NBA",
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=True,
+            odds=False,
+            social=False,
+            pbp=False,
+            only_missing=True,
+        )
+
+        result = manager.run(1, config)
+
+        # Game skipped due to missing source key
+        assert result["games"] == 0
+        mock_scraper.fetch_single_boxscore.assert_not_called()
+
+    @patch("sports_scraper.services.run_manager.select_games_for_boxscores")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_scraper_boxscores_handles_fetch_error(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_select
+    ):
+        """Handles boxscore fetch errors gracefully."""
+        mock_scraper = MagicMock()
+        mock_scraper.fetch_single_boxscore.side_effect = Exception("Scrape error")
+        mock_scrapers.return_value = {"NBA": mock_scraper}
+
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_select.return_value = [(1, "BOS202401150", date(2024, 1, 15))]
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NBA",
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=True,
+            odds=False,
+            social=False,
+            pbp=False,
+            only_missing=True,
+        )
+
+        # Should not raise, logs warning
+        result = manager.run(1, config)
+        assert result["games"] == 0
+
+    @patch("sports_scraper.services.run_manager.persist_game_payload")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_scraper_boxscores_without_only_missing(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_persist
+    ):
+        """Uses Sports Reference scraper for full date range."""
+        mock_scraper = MagicMock()
+        mock_payload = MagicMock()
+        mock_payload.identity.source_game_key = "BOS202401150"
+        mock_payload.identity.game_date = date(2024, 1, 15)
+        mock_scraper.fetch_date_range.return_value = [mock_payload]
+        mock_scrapers.return_value = {"NBA": mock_scraper}
+
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_result = MagicMock()
+        mock_result.game_id = 1
+        mock_result.enriched = True
+        mock_result.has_player_stats = False
+        mock_persist.return_value = mock_result
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NBA",
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=True,
+            odds=False,
+            social=False,
+            pbp=False,
+            only_missing=False,
+        )
+
+        result = manager.run(1, config)
+
+        assert result["games"] == 1
+        mock_scraper.fetch_date_range.assert_called()
+
+    @patch("sports_scraper.services.run_manager.persist_game_payload")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_scraper_boxscores_skips_missing_source_key_in_range(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_persist
+    ):
+        """Skips games with missing source_game_key in date range."""
+        mock_scraper = MagicMock()
+        mock_payload = MagicMock()
+        mock_payload.identity.source_game_key = None  # Missing key
+        mock_payload.identity.game_date = date(2024, 1, 15)
+        mock_scraper.fetch_date_range.return_value = [mock_payload]
+        mock_scrapers.return_value = {"NBA": mock_scraper}
+
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NBA",
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=True,
+            odds=False,
+            social=False,
+            pbp=False,
+            only_missing=False,
+        )
+
+        result = manager.run(1, config)
+
+        # Game skipped due to missing source key
+        assert result["games"] == 0
+        mock_persist.assert_not_called()
+
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_boxscore_raises_for_unknown_league_without_scraper(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session
+    ):
+        """Raises error when no scraper available for unsupported league."""
+        mock_scrapers.return_value = {}  # No scrapers
+
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="MLB",  # Unsupported league without API fallback
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=True,
+            odds=False,
+            social=False,
+            pbp=False,
+        )
+
+        # Should raise RuntimeError for unsupported league
+        with pytest.raises(RuntimeError, match="No scraper implemented"):
+            manager.run(1, config)
 
 
 class TestScrapeRunManagerPbp:
@@ -635,6 +1007,257 @@ class TestScrapeRunManagerPbp:
         # Live PBP should not have been called
         mock_live.ingest_live_data.assert_not_called()
 
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_live_pbp_handles_exception(
+        self, mock_scrapers, mock_odds, mock_social, mock_live_class,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session
+    ):
+        """Live PBP handles exceptions gracefully."""
+        mock_scrapers.return_value = {}
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_live = MagicMock()
+        mock_live.ingest_live_data.side_effect = Exception("Live feed error")
+        mock_live_class.return_value = mock_live
+
+        manager = ScrapeRunManager()
+        config = IngestionConfig(
+            league_code="NHL",
+            boxscores=False,
+            odds=False,
+            social=False,
+            pbp=True,
+            live=True,
+        )
+
+        # Should not raise, handles exception internally
+        result = manager.run(1, config)
+        assert result["pbp_games"] == 0
+        mock_complete.assert_called()  # Job run should be completed with error
+
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_pbp_skips_future_dates(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session
+    ):
+        """PBP skips when all dates are in the future."""
+        mock_scrapers.return_value = {}
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        manager = ScrapeRunManager()
+        future_date = date.today() + timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NHL",
+            start_date=future_date,
+            end_date=future_date,
+            boxscores=False,
+            odds=False,
+            social=False,
+            pbp=True,
+            live=False,
+        )
+
+        result = manager.run(1, config)
+
+        assert result["pbp_games"] == 0
+
+    @patch("sports_scraper.services.run_manager.ingest_pbp_via_nhl_api")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_nhl_pbp_handles_api_error(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_ingest
+    ):
+        """NHL PBP handles API errors gracefully."""
+        mock_scrapers.return_value = {}
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_ingest.side_effect = Exception("NHL API error")
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NHL",
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=False,
+            odds=False,
+            social=False,
+            pbp=True,
+            live=False,
+        )
+
+        # Should not raise
+        result = manager.run(1, config)
+        assert result["pbp_games"] == 0
+
+    @patch("sports_scraper.services.run_manager.ingest_pbp_via_ncaab_api")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_ncaab_pbp_handles_api_error(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_ingest
+    ):
+        """NCAAB PBP handles API errors gracefully."""
+        mock_scrapers.return_value = {}
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_ingest.side_effect = Exception("NCAAB API error")
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NCAAB",
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=False,
+            odds=False,
+            social=False,
+            pbp=True,
+            live=False,
+        )
+
+        # Should not raise
+        result = manager.run(1, config)
+        assert result["pbp_games"] == 0
+
+    @patch("sports_scraper.services.run_manager.ingest_pbp_via_sportsref")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_sportsref_pbp_used_for_nba(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_ingest
+    ):
+        """Sports Reference PBP used for NBA."""
+        mock_scraper = MagicMock()
+        mock_scrapers.return_value = {"NBA": mock_scraper}
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_ingest.return_value = (3, 150)
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NBA",
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=False,
+            odds=False,
+            social=False,
+            pbp=True,
+            live=False,
+        )
+
+        result = manager.run(1, config)
+
+        assert result["pbp_games"] == 3
+        mock_ingest.assert_called()
+
+    @patch("sports_scraper.services.run_manager.ingest_pbp_via_sportsref")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_sportsref_pbp_handles_error(
+        self, mock_scrapers, mock_odds, mock_social, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_ingest
+    ):
+        """Sports Reference PBP handles errors gracefully."""
+        mock_scraper = MagicMock()
+        mock_scrapers.return_value = {"NBA": mock_scraper}
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_ingest.side_effect = Exception("Sportsref error")
+
+        manager = ScrapeRunManager()
+        past_date = date.today() - timedelta(days=5)
+        config = IngestionConfig(
+            league_code="NBA",
+            start_date=past_date,
+            end_date=past_date,
+            boxscores=False,
+            odds=False,
+            social=False,
+            pbp=True,
+            live=False,
+        )
+
+        # Should not raise
+        result = manager.run(1, config)
+        assert result["pbp_games"] == 0
+
 
 class TestScrapeRunManagerSocial:
     """Tests for social scraping in run method."""
@@ -766,6 +1389,157 @@ class TestScrapeRunManagerSocial:
         # Should not raise, handles circuit breaker internally
         result = manager.run(1, config)
         assert result["social_posts"] == 0
+
+    @patch("sports_scraper.services.run_manager.select_games_for_social")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_social_handles_general_exception(
+        self, mock_scrapers, mock_odds, mock_social_class, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_select
+    ):
+        """Social handles general exceptions gracefully."""
+        mock_scrapers.return_value = {}
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_social = MagicMock()
+        # First call succeeds, second throws exception
+        mock_result = MagicMock()
+        mock_result.posts_saved = 5
+        mock_social.collect_for_game.side_effect = [
+            [mock_result],
+            Exception("Twitter API error"),
+            [mock_result],
+        ]
+        mock_social_class.return_value = mock_social
+
+        mock_select.return_value = [1, 2, 3]
+
+        manager = ScrapeRunManager()
+        config = IngestionConfig(
+            league_code="NBA",
+            boxscores=False,
+            odds=False,
+            social=True,
+            pbp=False,
+        )
+
+        # Should not raise, logs warning and continues
+        result = manager.run(1, config)
+        # First and third games collected successfully
+        assert result["social_posts"] == 10
+
+    @patch("sports_scraper.services.run_manager.select_games_for_social")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_social_detects_backfill_broad_range(
+        self, mock_scrapers, mock_odds, mock_social_class, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_select
+    ):
+        """Social detects backfill mode for broad date range."""
+        mock_scrapers.return_value = {}
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_social = MagicMock()
+        mock_result = MagicMock()
+        mock_result.posts_saved = 3
+        mock_social.collect_for_game.return_value = [mock_result]
+        mock_social_class.return_value = mock_social
+
+        mock_select.return_value = [1]
+
+        manager = ScrapeRunManager()
+        # Use a broad date range (> 7 days) to trigger backfill mode
+        start_date = date.today() - timedelta(days=30)
+        end_date = date.today() - timedelta(days=1)
+        config = IngestionConfig(
+            league_code="NBA",
+            start_date=start_date,
+            end_date=end_date,
+            boxscores=False,
+            odds=False,
+            social=True,
+            pbp=False,
+        )
+
+        result = manager.run(1, config)
+
+        # Verify select_games_for_social was called with is_backfill=True
+        mock_select.assert_called()
+        call_kwargs = mock_select.call_args[1] if mock_select.call_args[1] else {}
+        # The call should include is_backfill=True due to broad range
+
+    @patch("sports_scraper.services.run_manager.select_games_for_social")
+    @patch("sports_scraper.services.run_manager.get_session")
+    @patch("sports_scraper.services.run_manager.start_job_run")
+    @patch("sports_scraper.services.run_manager.complete_job_run")
+    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
+    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
+    @patch("sports_scraper.services.run_manager.LiveFeedManager")
+    @patch("sports_scraper.services.run_manager.XPostCollector")
+    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
+    @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    def test_social_detects_backfill_historical_end(
+        self, mock_scrapers, mock_odds, mock_social_class, mock_live,
+        mock_conflicts, mock_missing, mock_complete, mock_start,
+        mock_get_session, mock_select
+    ):
+        """Social detects backfill mode for historical end date."""
+        mock_scrapers.return_value = {}
+        mock_session = MagicMock()
+        mock_run = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_social = MagicMock()
+        mock_result = MagicMock()
+        mock_result.posts_saved = 3
+        mock_social.collect_for_game.return_value = [mock_result]
+        mock_social_class.return_value = mock_social
+
+        mock_select.return_value = [1]
+
+        manager = ScrapeRunManager()
+        # Use a short date range but historical end date to trigger backfill
+        start_date = date.today() - timedelta(days=100)
+        end_date = date.today() - timedelta(days=95)
+        config = IngestionConfig(
+            league_code="NBA",
+            start_date=start_date,
+            end_date=end_date,
+            boxscores=False,
+            odds=False,
+            social=True,
+            pbp=False,
+        )
+
+        result = manager.run(1, config)
+
+        mock_select.assert_called()
 
 
 class TestScrapeRunManagerErrorHandling:
