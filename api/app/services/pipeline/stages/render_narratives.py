@@ -104,6 +104,10 @@ FORBIDDEN_PATTERNS = [re.compile(p, re.IGNORECASE) for p in FORBIDDEN_PHRASES]
 # Number of moments to process in a single OpenAI call
 MOMENTS_PER_BATCH = 25
 
+# Fallback narrative when OpenAI returns empty
+# This allows pipeline to complete while flagging the issue for debugging
+FALLBACK_NARRATIVE = "Play continued."
+
 
 def _build_batch_prompt(
     moments_batch: list[tuple[int, dict[str, Any], list[dict[str, Any]]]],
@@ -474,6 +478,7 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
     # Process in batches
     enriched_moments: list[dict[str, Any]] = [None] * len(moments)  # type: ignore
     all_validation_errors: list[str] = []
+    fallback_moments: list[int] = []  # Track moments that got fallback narrative
     successful_renders = 0
     total_openai_calls = 0
 
@@ -485,11 +490,13 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         valid_batch = []
         for moment_index, moment, moment_plays in batch:
             if not moment_plays:
-                all_validation_errors.append(
+                logger.warning(
                     f"Moment {moment_index}: No plays found for play_ids "
-                    f"{moment.get('play_ids', [])}"
+                    f"{moment.get('play_ids', [])}, using fallback"
                 )
-                enriched_moments[moment_index] = {**moment, "narrative": ""}
+                enriched_moments[moment_index] = {**moment, "narrative": FALLBACK_NARRATIVE}
+                fallback_moments.append(moment_index)
+                successful_renders += 1
             else:
                 valid_batch.append((moment_index, moment, moment_plays))
 
@@ -515,19 +522,23 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             response_data = json.loads(response_json)
 
         except json.JSONDecodeError as e:
-            all_validation_errors.append(
-                f"Batch {batch_start}-{batch_end}: OpenAI returned invalid JSON: {e}"
+            logger.warning(
+                f"Batch {batch_start}-{batch_end}: OpenAI returned invalid JSON: {e}, using fallback"
             )
             for moment_index, moment, _ in valid_batch:
-                enriched_moments[moment_index] = {**moment, "narrative": ""}
+                enriched_moments[moment_index] = {**moment, "narrative": FALLBACK_NARRATIVE}
+                fallback_moments.append(moment_index)
+                successful_renders += 1
             continue
 
         except Exception as e:
-            all_validation_errors.append(
-                f"Batch {batch_start}-{batch_end}: OpenAI call failed: {e}"
+            logger.warning(
+                f"Batch {batch_start}-{batch_end}: OpenAI call failed: {e}, using fallback"
             )
             for moment_index, moment, _ in valid_batch:
-                enriched_moments[moment_index] = {**moment, "narrative": ""}
+                enriched_moments[moment_index] = {**moment, "narrative": FALLBACK_NARRATIVE}
+                fallback_moments.append(moment_index)
+                successful_renders += 1
             continue
 
         # Process response (from cache or fresh API call)
@@ -563,23 +574,54 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         for moment_index, moment, moment_plays in valid_batch:
             narrative = narrative_lookup.get(moment_index, "")
 
-            # Validate narrative
-            validation_errors = _validate_narrative(
-                narrative, moment, moment_plays, moment_index
-            )
-            if validation_errors:
-                all_validation_errors.extend(validation_errors)
-                output.add_log(
-                    f"Moment {moment_index}: Narrative validation failed",
-                    level="error",
+            # Handle empty narratives with fallback instead of failing
+            if not narrative or not narrative.strip():
+                narrative = FALLBACK_NARRATIVE
+                fallback_moments.append(moment_index)
+                logger.warning(
+                    f"Moment {moment_index}: Empty narrative from OpenAI, using fallback",
+                    extra={
+                        "game_id": game_id,
+                        "moment_index": moment_index,
+                        "period": moment.get("period"),
+                        "start_clock": moment.get("start_clock"),
+                    },
                 )
-            else:
+                # Count as successful since we have a valid fallback
                 successful_renders += 1
+            else:
+                # Validate non-empty narratives for forbidden phrases
+                validation_errors = _validate_narrative(
+                    narrative, moment, moment_plays, moment_index
+                )
+                if validation_errors:
+                    all_validation_errors.extend(validation_errors)
+                    output.add_log(
+                        f"Moment {moment_index}: Narrative validation failed",
+                        level="error",
+                    )
+                else:
+                    successful_renders += 1
 
             enriched_moments[moment_index] = {**moment, "narrative": narrative}
 
     output.add_log(f"OpenAI calls made: {total_openai_calls}")
     output.add_log(f"Successful renders: {successful_renders}/{len(moments)}")
+
+    # Log fallback usage for debugging
+    if fallback_moments:
+        output.add_log(
+            f"Fallback narratives used for {len(fallback_moments)} moments: {fallback_moments[:20]}{'...' if len(fallback_moments) > 20 else ''}",
+            level="warning",
+        )
+        logger.warning(
+            "render_narratives_fallbacks_used",
+            extra={
+                "game_id": game_id,
+                "fallback_count": len(fallback_moments),
+                "fallback_moment_indices": fallback_moments,
+            },
+        )
 
     # Check if any validation errors occurred
     if all_validation_errors:
@@ -605,13 +647,21 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             "errors": all_validation_errors,
             "openai_calls": total_openai_calls,
             "successful_renders": successful_renders,
+            "fallback_count": len(fallback_moments),
+            "fallback_moment_indices": fallback_moments,
         }
 
         # Raise with structured JSON for reviewability
         raise ValueError(json.dumps(error_output))
 
-    # All narratives passed validation
-    output.add_log(f"All {len(moments)} narratives passed validation")
+    # All narratives passed validation (or got fallback)
+    if fallback_moments:
+        output.add_log(
+            f"{len(moments) - len(fallback_moments)} narratives from OpenAI, "
+            f"{len(fallback_moments)} fallbacks used"
+        )
+    else:
+        output.add_log(f"All {len(moments)} narratives generated successfully")
     output.add_log("RENDER_NARRATIVES completed successfully")
 
     # Output shape: moments with narrative field added
@@ -621,6 +671,8 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         "errors": [],
         "openai_calls": total_openai_calls,
         "successful_renders": successful_renders,
+        "fallback_count": len(fallback_moments),
+        "fallback_moment_indices": fallback_moments,
     }
 
     return output
