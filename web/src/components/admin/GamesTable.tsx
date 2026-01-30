@@ -31,7 +31,7 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/sports/games", sh
                 <th>Odds</th>
                 <th>Social</th>
                 <th>PBP</th>
-                <th>Story</th>
+                <th>Flow</th>
               </>
             )}
           </tr>

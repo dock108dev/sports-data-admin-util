@@ -118,8 +118,8 @@ export default function AdminDashboardPage() {
           </Link>
           <Link href="/admin/sports/story-generator" className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
-              <div className={styles.quickLinkTitle}>Story Generator</div>
-              <div className={styles.quickLinkDesc}>Generate and inspect game stories</div>
+              <div className={styles.quickLinkTitle}>Flow Generator</div>
+              <div className={styles.quickLinkDesc}>Generate and inspect game flow data</div>
             </div>
           </Link>
         </div>

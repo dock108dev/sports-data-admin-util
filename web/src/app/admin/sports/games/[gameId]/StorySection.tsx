@@ -120,7 +120,7 @@ export function StorySection({ gameId, hasStory }: StorySectionProps) {
       const data = await fetchGameStory(gameId);
       setStory(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load story");
+      setError(err instanceof Error ? err.message : "Failed to load game flow");
     } finally {
       setLoading(false);
     }
@@ -138,13 +138,13 @@ export function StorySection({ gameId, hasStory }: StorySectionProps) {
   }
 
   return (
-    <CollapsibleSection title="Story" defaultOpen={true}>
-      {loading && <div className={styles.subtle}>Loading story...</div>}
+    <CollapsibleSection title="Game Flow" defaultOpen={true}>
+      {loading && <div className={styles.subtle}>Loading game flow...</div>}
 
       {error && <div className={styles.storyError}>Error: {error}</div>}
 
       {!loading && !error && !story && (
-        <div className={styles.subtle}>No story found.</div>
+        <div className={styles.subtle}>No game flow found.</div>
       )}
 
       {story && (
