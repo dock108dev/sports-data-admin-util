@@ -291,6 +291,64 @@ def _convert_boxscore_to_normalized_game(
 # -----------------------------------------------------------------------------
 
 
+def _normalize_team_name(name: str) -> str:
+    """Normalize team name for fuzzy matching.
+
+    Handles common variations between database and CBB API names:
+    - Punctuation (apostrophes, periods, hyphens)
+    - Common abbreviations (St. -> Saint, Int'l -> International)
+    - Parenthetical location indicators (Loyola (MD) -> Loyola Maryland)
+    """
+    import re
+
+    if not name:
+        return ""
+
+    # Convert to lowercase
+    normalized = name.lower()
+
+    # Replace parenthetical locations with space-separated
+    # e.g., "Loyola (MD)" -> "Loyola MD"
+    normalized = re.sub(r"\s*\(([^)]+)\)\s*", r" \1 ", normalized)
+
+    # Common abbreviations
+    replacements = [
+        (r"\bst\.\s*", "saint "),
+        (r"\bmt\.\s*", "mount "),
+        (r"\bint'l\b", "international"),
+        (r"\bgw\b", "george washington"),
+        (r"\buconn\b", "connecticut"),
+        (r"\bsmu\b", "southern methodist"),
+        (r"\btcu\b", "texas christian"),
+        (r"\bucla\b", "ucla"),  # Keep as is
+        (r"\busc\b", "southern california"),
+        (r"\blsu\b", "louisiana state"),
+        (r"\bole miss\b", "mississippi"),
+        (r"\bumkc\b", "missouri kansas city"),
+        (r"\butsa\b", "texas san antonio"),
+        (r"\butep\b", "texas el paso"),
+        (r"\buab\b", "alabama birmingham"),
+        (r"\biupui\b", "indiana purdue indianapolis"),
+        (r"\bliu\b", "long island"),
+        (r"\bunc\b", "north carolina"),
+        (r"\bvcu\b", "virginia commonwealth"),
+        (r"\bucf\b", "central florida"),
+        (r"\bfiu\b", "florida international"),
+        (r"\bcsu\b", "colorado state"),
+        (r"\bfau\b", "florida atlantic"),
+    ]
+
+    for pattern, replacement in replacements:
+        normalized = re.sub(pattern, replacement, normalized)
+
+    # Remove remaining punctuation and extra whitespace
+    normalized = re.sub(r"['\.\-]", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = normalized.strip()
+
+    return normalized
+
+
 def _populate_ncaab_game_ids(
     session: Session,
     *,
@@ -413,13 +471,16 @@ def _populate_ncaab_game_ids(
             cbb_by_teams_date[key_ids_rev] = []
         cbb_by_teams_date[key_ids_rev].append((cg.game_date, cg.game_id))
 
-        # Index by team names (for fallback matching)
-        key_names = (cg.home_team_name.lower(), cg.away_team_name.lower(), game_day)
+        # Index by normalized team names (for fallback matching)
+        home_norm = _normalize_team_name(cg.home_team_name)
+        away_norm = _normalize_team_name(cg.away_team_name)
+
+        key_names = (home_norm, away_norm, game_day)
         if key_names not in cbb_by_names_date:
             cbb_by_names_date[key_names] = []
         cbb_by_names_date[key_names].append((cg.game_date, cg.game_id))
 
-        key_names_rev = (cg.away_team_name.lower(), cg.home_team_name.lower(), game_day)
+        key_names_rev = (away_norm, home_norm, game_day)
         if key_names_rev not in cbb_by_names_date:
             cbb_by_names_date[key_names_rev] = []
         cbb_by_names_date[key_names_rev].append((cg.game_date, cg.game_id))
@@ -431,7 +492,7 @@ def _populate_ncaab_game_ids(
         final_games=sum(1 for cg in cbb_games if cg.status == "final"),
     )
 
-    # Build team_id -> team_name mapping for fallback
+    # Build team_id -> normalized team name mapping for fallback
     team_id_to_name: dict[int, str] = {}
     all_teams = session.query(
         db_models.SportsTeam.id,
@@ -441,7 +502,7 @@ def _populate_ncaab_game_ids(
     ).all()
     for team_id, team_name in all_teams:
         if team_name:
-            team_id_to_name[team_id] = team_name.lower()
+            team_id_to_name[team_id] = _normalize_team_name(team_name)
 
     # Match using flexible criteria:
     # 1. Try cbb_team_id + date (within 30 min window)
@@ -478,10 +539,10 @@ def _populate_ncaab_game_ids(
             if not cbb_game_id and len(candidates) == 1:
                 cbb_game_id = candidates[0][1]
 
-        # Fallback: try matching by team names
+        # Fallback: try matching by normalized team names
         if not cbb_game_id:
-            home_name = team_id_to_name.get(home_team_id, "").lower()
-            away_name = team_id_to_name.get(away_team_id, "").lower()
+            home_name = team_id_to_name.get(home_team_id, "")
+            away_name = team_id_to_name.get(away_team_id, "")
 
             if home_name and away_name:
                 key_names = (home_name, away_name, game_day)
@@ -509,6 +570,22 @@ def _populate_ncaab_game_ids(
                 unmatched_reasons["no_team_mapping"] += 1
             else:
                 unmatched_reasons["no_api_match"] += 1
+
+            # Log details for first few unmatched games to help debug
+            if unmatched <= 5:
+                db_home_name = team_id_to_name.get(home_team_id, "")
+                db_away_name = team_id_to_name.get(away_team_id, "")
+                logger.debug(
+                    "ncaab_game_unmatched_detail",
+                    game_id=game_id,
+                    game_day=str(game_day),
+                    home_team_id=home_team_id,
+                    away_team_id=away_team_id,
+                    cbb_home_id=cbb_home_id,
+                    cbb_away_id=cbb_away_id,
+                    home_name_normalized=db_home_name if db_home_name else None,
+                    away_name_normalized=db_away_name if db_away_name else None,
+                )
 
     session.flush()
     logger.info(

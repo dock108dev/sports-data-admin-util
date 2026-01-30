@@ -81,10 +81,11 @@ class NCAABLiveFeedClient:
             if response.status_code == 200:
                 games = response.json()
                 for game in games[:500]:  # Limit to avoid memory issues
-                    home_id = game.get("homeTeam", {}).get("teamId")
-                    away_id = game.get("awayTeam", {}).get("teamId")
-                    home_name = game.get("homeTeam", {}).get("team")
-                    away_name = game.get("awayTeam", {}).get("team")
+                    # API returns team IDs and names at root level
+                    home_id = game.get("homeTeamId")
+                    away_id = game.get("awayTeamId")
+                    home_name = game.get("homeTeam")
+                    away_name = game.get("awayTeam")
 
                     if home_id and home_name:
                         self._team_names[home_id] = home_name
@@ -170,12 +171,13 @@ class NCAABLiveFeedClient:
 
     def _parse_game(self, game: dict, season: int) -> NCAABLiveGame | None:
         """Parse a game from the API response."""
-        game_id = game.get("gameId")
+        # API uses 'id' not 'gameId'
+        game_id = game.get("id")
         if not game_id:
             return None
 
-        # Parse game date
-        date_str = game.get("gameDate") or game.get("startTime")
+        # API uses 'startDate' not 'gameDate'
+        date_str = game.get("startDate")
         if date_str:
             try:
                 game_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
@@ -184,14 +186,13 @@ class NCAABLiveFeedClient:
         else:
             game_date = datetime.now()
 
-        # Extract team info
-        home_team = game.get("homeTeam", {})
-        away_team = game.get("awayTeam", {})
+        # Team IDs are at root level, not nested
+        home_team_id = game.get("homeTeamId") or 0
+        away_team_id = game.get("awayTeamId") or 0
 
-        home_team_id = home_team.get("teamId") or 0
-        away_team_id = away_team.get("teamId") or 0
-        home_team_name = home_team.get("team") or self._get_team_display_name(home_team_id, "Unknown")
-        away_team_name = away_team.get("team") or self._get_team_display_name(away_team_id, "Unknown")
+        # Team names are strings at root level
+        home_team_name = game.get("homeTeam") or self._get_team_display_name(home_team_id, "Unknown")
+        away_team_name = game.get("awayTeam") or self._get_team_display_name(away_team_id, "Unknown")
 
         # Map status
         status_raw = game.get("status") or ""
@@ -202,9 +203,9 @@ class NCAABLiveFeedClient:
         else:
             status = "scheduled"
 
-        # Extract scores
-        home_score = parse_int(game.get("homeScore"))
-        away_score = parse_int(game.get("awayScore"))
+        # API uses 'homePoints'/'awayPoints' not 'homeScore'/'awayScore'
+        home_score = parse_int(game.get("homePoints"))
+        away_score = parse_int(game.get("awayPoints"))
 
         return NCAABLiveGame(
             game_id=game_id,
