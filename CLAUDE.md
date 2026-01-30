@@ -68,6 +68,25 @@ A story is an ordered list of condensed moments. Each moment is a small set of P
 
 **Code:** `api/app/services/pipeline/` (main pipeline), `api/app/services/story/` (schemas)
 
+## Scheduled Scraping
+
+**Daily Schedule (US Eastern Time):**
+- **5:30 AM** — Sports ingestion (NBA → NHL → NCAAB sequentially)
+- **7:00 AM** — Timeline generation (90 min after ingestion)
+- **7:15 AM** — NBA flow generation (15 min after timeline)
+
+Configured in `scraper/sports_scraper/celery_app.py`
+
+## Data Sources by League
+
+| League | Boxscores | Play-by-Play | Game Matching |
+|--------|-----------|--------------|---------------|
+| NBA | Basketball Reference | Basketball Reference | `source_game_key` (e.g., `202601290ATL`) |
+| NHL | NHL API | NHL API | `external_ids.nhl_game_pk` |
+| NCAAB | CBB API | CBB API | `external_ids.cbb_game_id` |
+
+**NCAAB Team Mapping:** Requires `CBB_STATS_API_KEY` in migrate container to populate `sports_teams.external_codes.cbb_team_id` via Alembic migrations.
+
 ## Testing
 - Add comprehensive tests for API endpoints
 - Test data transformation logic
