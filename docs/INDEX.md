@@ -10,6 +10,12 @@
 | [Architecture](ARCHITECTURE.md) | System components, data flow, database schema |
 | [API Reference](API.md) | FastAPI endpoints and usage |
 
+## External App Integration
+
+| Guide | Description |
+|-------|-------------|
+| [API Integration Guide](API.md#external-app-integration-guide) | **For app developers:** How to consume game data across all sports |
+
 ## Development
 
 | Guide | Description |
