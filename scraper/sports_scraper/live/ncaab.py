@@ -19,6 +19,7 @@ from ..logging import logger
 from ..models import NormalizedPlayByPlay
 from ..utils.cache import APICache
 from ..utils.date_utils import ncaab_season_for_cbb_api
+from ..utils.datetime_utils import eastern_date_range_to_utc_iso
 from ..utils.parsing import parse_int
 from .ncaab_boxscore import NCAABBoxscoreFetcher
 from .ncaab_constants import CBB_GAMES_URL
@@ -123,9 +124,10 @@ class NCAABLiveFeedClient:
 
         params: dict[str, Any] = {"season": season}
 
-        # Add date range filters
-        params["startDateRange"] = start_date.strftime("%Y-%m-%d")
-        params["endDateRange"] = end_date.strftime("%Y-%m-%d")
+        # Add date range filters - API requires ISO 8601 format in UTC
+        start_utc_iso, end_utc_iso = eastern_date_range_to_utc_iso(start_date, end_date)
+        params["startDateRange"] = start_utc_iso
+        params["endDateRange"] = end_utc_iso
 
         logger.info(
             "ncaab_games_fetch",

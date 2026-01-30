@@ -18,7 +18,7 @@ from ..models import (
     TeamIdentity,
 )
 from ..utils.cache import APICache
-from ..utils.datetime_utils import now_utc
+from ..utils.datetime_utils import eastern_date_range_to_utc_iso, now_utc
 from ..utils.parsing import parse_int
 from .ncaab_constants import CBB_GAMES_PLAYERS_URL, CBB_GAMES_TEAMS_URL
 from .ncaab_helpers import build_team_identity, extract_points, parse_minutes
@@ -79,10 +79,12 @@ class NCAABBoxscoreFetcher:
         )
 
         try:
+            # API requires ISO 8601 format in UTC
+            start_utc_iso, end_utc_iso = eastern_date_range_to_utc_iso(start_date, end_date)
             params = {
                 "season": season,
-                "startDateRange": start_date.strftime("%Y-%m-%d"),
-                "endDateRange": end_date.strftime("%Y-%m-%d"),
+                "startDateRange": start_utc_iso,
+                "endDateRange": end_utc_iso,
             }
             response = self.client.get(CBB_GAMES_TEAMS_URL, params=params)
 
@@ -156,10 +158,12 @@ class NCAABBoxscoreFetcher:
         )
 
         try:
+            # API requires ISO 8601 format in UTC
+            start_utc_iso, end_utc_iso = eastern_date_range_to_utc_iso(start_date, end_date)
             params = {
                 "season": season,
-                "startDateRange": start_date.strftime("%Y-%m-%d"),
-                "endDateRange": end_date.strftime("%Y-%m-%d"),
+                "startDateRange": start_utc_iso,
+                "endDateRange": end_utc_iso,
             }
             response = self.client.get(CBB_GAMES_PLAYERS_URL, params=params)
 
