@@ -25,6 +25,7 @@ from .timeline_tasks import (
     run_scheduled_timeline_generation,
 )
 from .story_tasks import (
+    run_scheduled_nba_flow_generation,
     run_scheduled_story_generation,
 )
 from .utility_tasks import (
@@ -41,7 +42,8 @@ __all__ = [
     "generate_missing_timelines_task",
     "regenerate_timeline_task",
     "run_scheduled_timeline_generation",
-    # Story tasks
+    # Story/Flow tasks
+    "run_scheduled_nba_flow_generation",
     "run_scheduled_story_generation",
     # Utility tasks
     "clear_scraper_cache_task",
