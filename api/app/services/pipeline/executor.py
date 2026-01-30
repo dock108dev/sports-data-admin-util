@@ -232,6 +232,18 @@ class PipelineExecutor:
         full_names = [row[0] for row in result.fetchall()]
 
         mapping: dict[str, str] = {}
+
+        # First pass: collect last names and detect duplicates
+        last_name_counts: dict[str, int] = {}
+        for full_name in full_names:
+            if not full_name or " " not in full_name:
+                continue
+            parts = full_name.split()
+            if len(parts) >= 2:
+                last_name = parts[-1]
+                last_name_counts[last_name] = last_name_counts.get(last_name, 0) + 1
+
+        # Second pass: build mappings
         for full_name in full_names:
             if not full_name or " " not in full_name:
                 continue
@@ -244,8 +256,10 @@ class PipelineExecutor:
                 abbrev = f"{first_initial}. {last_name}"
                 mapping[abbrev] = full_name
 
-                # Also map last name only for lookups
-                mapping[last_name] = full_name
+                # Only map last name alone if it's unique in this game
+                # (e.g., skip "Green" if both "Jalen Green" and "Draymond Green" play)
+                if last_name_counts.get(last_name, 0) == 1:
+                    mapping[last_name] = full_name
 
         return mapping
 
