@@ -201,6 +201,7 @@ def ingest_boxscores_via_nhl_api(
     client = NHLLiveFeedClient()
     games_processed = 0
     games_enriched = 0
+    games_with_stats = 0
 
     for game_id, nhl_game_id, game_date in games:
         try:
@@ -228,6 +229,8 @@ def ingest_boxscores_via_nhl_api(
                 games_processed += 1
                 if result.enriched:
                     games_enriched += 1
+                if result.has_player_stats:
+                    games_with_stats += 1
 
                 logger.info(
                     "nhl_boxscore_ingested",
@@ -253,9 +256,10 @@ def ingest_boxscores_via_nhl_api(
         run_id=run_id,
         games_processed=games_processed,
         games_enriched=games_enriched,
+        games_with_stats=games_with_stats,
     )
 
-    return (games_processed, games_enriched)
+    return (games_processed, games_enriched, games_with_stats)
 
 
 def _convert_boxscore_to_normalized_game(
