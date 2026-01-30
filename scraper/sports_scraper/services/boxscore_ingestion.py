@@ -21,9 +21,6 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import exists, not_, or_
 from sqlalchemy.orm import Session
 
-# US sports use Eastern Time for game dates
-US_EASTERN = ZoneInfo("America/New_York")
-
 from ..db import db_models
 from ..logging import logger
 from ..models import (
@@ -34,6 +31,9 @@ from ..persistence import persist_game_payload
 from ..utils.date_utils import ncaab_season_for_cbb_api
 from ..utils.datetime_utils import date_to_utc_datetime
 from .pbp_ingestion import _populate_nhl_game_ids
+
+# US sports use Eastern Time for game dates
+US_EASTERN = ZoneInfo("America/New_York")
 
 
 def select_games_for_boxscores_nhl_api(

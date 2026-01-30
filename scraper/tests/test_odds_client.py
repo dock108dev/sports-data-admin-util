@@ -505,7 +505,7 @@ class TestOddsAPIClientFetchHistorical:
         mock_settings.odds_config.request_timeout_seconds = 10
         mock_settings.scraper_config.html_cache_dir = str(tmp_path)
 
-        # Create cached response in list format (legacy)
+        # Create cached response in list format
         cache_dir = tmp_path / "odds" / "NBA"
         cache_dir.mkdir(parents=True)
         cache_file = cache_dir / "2024-01-15_historical.json"

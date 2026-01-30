@@ -25,7 +25,6 @@ from .ncaab_constants import CBB_GAMES_URL
 from .ncaab_models import NCAABBoxscore, NCAABLiveGame
 from .ncaab_pbp import NCAABPbpFetcher
 
-# Re-export for backwards compatibility
 __all__ = [
     "NCAABLiveGame",
     "NCAABBoxscore",
@@ -246,14 +245,6 @@ class NCAABLiveFeedClient:
         return self._boxscore_fetcher.fetch_boxscores_batch(
             game_ids, start_date, end_date, season, team_names_by_game
         )
-
-    def fetch_game_teams(self, game_id: int, season: int) -> list[dict]:
-        """Fetch team-level boxscore stats for a game (deprecated)."""
-        return self._boxscore_fetcher.fetch_game_teams(game_id, season)
-
-    def fetch_game_players(self, game_id: int, season: int) -> list[dict]:
-        """Fetch player-level boxscore stats for a game (deprecated)."""
-        return self._boxscore_fetcher.fetch_game_players(game_id, season)
 
     def fetch_boxscore(self, game: NCAABLiveGame) -> NCAABBoxscore | None:
         """Fetch full boxscore for a game."""

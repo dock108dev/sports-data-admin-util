@@ -200,7 +200,7 @@ export default function UnifiedBrowserPage() {
                 </div>
                 <div className={styles.stat}>
                   <span className={styles.statValue}>{aggregateStats.storyPercent}%</span>
-                  <span className={styles.statLabel}>Stories</span>
+                  <span className={styles.statLabel}>Flow</span>
                 </div>
               </>
             )}

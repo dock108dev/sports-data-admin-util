@@ -497,8 +497,8 @@ async def generate_game_timeline(
 # Story API (Task 6)
 # =============================================================================
 
-# Story version identifier for v2 moments format
-STORY_VERSION_V2_MOMENTS = "v2-moments"
+# Story version identifier
+STORY_VERSION = "v2-moments"
 
 
 @router.get("/games/{game_id}/story", response_model=GameStoryResponse)
@@ -520,14 +520,12 @@ async def get_game_story(
         GameStoryResponse with moments, plays, and validation status
 
     Raises:
-        HTTPException 404: If no v2-moments Story exists for this game
+        HTTPException 404: If no Story exists for this game
     """
-    # Load Story from SportsGameStory table
-    # Only load v2-moments format - no fallback to legacy
     story_result = await session.execute(
         select(db_models.SportsGameStory).where(
             db_models.SportsGameStory.game_id == game_id,
-            db_models.SportsGameStory.story_version == STORY_VERSION_V2_MOMENTS,
+            db_models.SportsGameStory.story_version == STORY_VERSION,
             db_models.SportsGameStory.moments_json.isnot(None),
         )
     )

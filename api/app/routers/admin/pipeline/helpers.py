@@ -64,28 +64,21 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
             "phases": list(output.get("phase_boundaries", {}).keys()),
         }
     elif stage == "GENERATE_MOMENTS":
-        # New format: {"moments": [...]}
         moments = output.get("moments", [])
-        if moments:
-            sizes = [len(m.get("play_ids", [])) for m in moments]
-            narrated = [len(m.get("explicitly_narrated_play_ids", [])) for m in moments]
-            scoring = sum(1 for m in moments if m.get("score_before") != m.get("score_after"))
-            total_narrated = sum(narrated)
-            total_plays = sum(sizes)
-            return {
-                "moment_count": len(moments),
-                "play_count": total_plays,
-                "avg_moment_size": round(sum(sizes) / len(sizes), 1) if sizes else 0,
-                "scoring_moments": scoring,
-                "narrated_plays": total_narrated,
-                "narration_pct": round(total_narrated / total_plays * 100, 1) if total_plays else 0,
-            }
-        # Legacy format fallback
+        if not moments:
+            return {"moment_count": 0}
+        sizes = [len(m.get("play_ids", [])) for m in moments]
+        narrated = [len(m.get("explicitly_narrated_play_ids", [])) for m in moments]
+        scoring = sum(1 for m in moments if m.get("score_before") != m.get("score_after"))
+        total_narrated = sum(narrated)
+        total_plays = sum(sizes)
         return {
-            "moment_count": output.get("moment_count", 0),
-            "notable_count": len(output.get("notable_moments", [])),
-            "budget": output.get("budget", 30),
-            "within_budget": output.get("within_budget", True),
+            "moment_count": len(moments),
+            "play_count": total_plays,
+            "avg_moment_size": round(sum(sizes) / len(sizes), 1) if sizes else 0,
+            "scoring_moments": scoring,
+            "narrated_plays": total_narrated,
+            "narration_pct": round(total_narrated / total_plays * 100, 1) if total_plays else 0,
         }
     elif stage == "VALIDATE_MOMENTS":
         # New format: {"validated": true/false, "errors": [...]}

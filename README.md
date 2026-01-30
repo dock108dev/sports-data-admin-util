@@ -74,3 +74,7 @@ docs/         Documentation
 ## Contributing
 
 See [CLAUDE.md](CLAUDE.md) for coding standards and development principles.
+
+## AI Agents
+
+See [AGENTS.md](AGENTS.md) for quick context for AI assistants (Codex, Cursor, Copilot, Claude).

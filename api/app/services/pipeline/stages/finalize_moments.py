@@ -60,8 +60,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Story version identifier for v2 moments format
-STORY_VERSION_V2_MOMENTS = "v2-moments"
+# Story version identifier for moments-based stories
+STORY_VERSION = "v2-moments"
 
 
 async def execute_finalize_moments(
@@ -144,7 +144,7 @@ async def execute_finalize_moments(
     existing_result = await session.execute(
         select(db_models.SportsGameStory).where(
             db_models.SportsGameStory.game_id == game_id,
-            db_models.SportsGameStory.story_version == STORY_VERSION_V2_MOMENTS,
+            db_models.SportsGameStory.story_version == STORY_VERSION,
         )
     )
     existing_story = existing_result.scalar_one_or_none()
@@ -167,7 +167,7 @@ async def execute_finalize_moments(
         new_story = db_models.SportsGameStory(
             game_id=game_id,
             sport=sport,
-            story_version=STORY_VERSION_V2_MOMENTS,
+            story_version=STORY_VERSION,
             moments_json=moments,
             moment_count=len(moments),
             validated_at=validation_time,
@@ -188,7 +188,7 @@ async def execute_finalize_moments(
         "finalized": True,
         "story_id": story_id,
         "game_id": game_id,
-        "story_version": STORY_VERSION_V2_MOMENTS,
+        "story_version": STORY_VERSION,
         "moment_count": len(moments),
         "validated_at": validation_time.isoformat(),
         "openai_calls": openai_calls,

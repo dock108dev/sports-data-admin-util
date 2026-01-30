@@ -40,8 +40,8 @@ export async function resyncOdds(gameId: number): Promise<JobResponse> {
 }
 
 /**
- * Fetch the v2-moments story for a game.
- * Returns null if no story exists (404).
+ * Fetch the game flow for a game.
+ * Returns null if no flow exists (404).
  */
 export async function fetchGameStory(gameId: number): Promise<GameStoryResponse | null> {
   try {

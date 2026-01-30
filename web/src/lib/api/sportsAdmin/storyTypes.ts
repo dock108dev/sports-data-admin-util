@@ -85,11 +85,11 @@ export type StoryErrorResponse = {
 };
 
 // =============================================================================
-// V2 Moments API Types (GET /games/{game_id}/story)
+// Game Flow API Types (GET /games/{game_id}/story)
 // =============================================================================
 
 /**
- * A moment in the v2-moments story format.
+ * A moment in the game flow.
  * Uses camelCase to match API JSON response.
  */
 export type StoryMoment = {
@@ -132,7 +132,7 @@ export type StoryContent = {
 
 /**
  * Response from GET /games/{game_id}/story endpoint.
- * Returns the persisted v2-moments Story exactly as stored.
+ * Returns the persisted game flow data.
  */
 export type GameStoryResponse = {
   gameId: number;

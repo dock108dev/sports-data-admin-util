@@ -530,11 +530,11 @@ class TestNCAABBoxscoreFetcherBatch:
         assert 123 not in result
 
 
-class TestNCAABBoxscoreFetcherLegacy:
-    """Tests for NCAABBoxscoreFetcher legacy methods."""
+class TestNCAABBoxscoreFetcherSingleGame:
+    """Tests for NCAABBoxscoreFetcher single-game fetch methods."""
 
     def test_fetch_game_teams_success(self):
-        """Test legacy single-game team fetch."""
+        """Test single-game team fetch."""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -551,7 +551,7 @@ class TestNCAABBoxscoreFetcherLegacy:
         assert len(result) == 1
 
     def test_fetch_game_teams_failure(self):
-        """Test legacy single-game team fetch handles failure."""
+        """Test single-game team fetch handles failure."""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 500
@@ -566,7 +566,7 @@ class TestNCAABBoxscoreFetcherLegacy:
         assert result == []
 
     def test_fetch_game_teams_exception(self):
-        """Test legacy single-game team fetch handles exceptions."""
+        """Test single-game team fetch handles exceptions."""
         mock_client = MagicMock()
         mock_client.get.side_effect = Exception("Network error")
 
@@ -578,7 +578,7 @@ class TestNCAABBoxscoreFetcherLegacy:
         assert result == []
 
     def test_fetch_game_players_success(self):
-        """Test legacy single-game player fetch."""
+        """Test single-game player fetch."""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -595,7 +595,7 @@ class TestNCAABBoxscoreFetcherLegacy:
         assert len(result) == 1
 
     def test_fetch_game_players_failure(self):
-        """Test legacy single-game player fetch handles failure."""
+        """Test single-game player fetch handles failure."""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 404

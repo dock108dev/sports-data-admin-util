@@ -1,7 +1,7 @@
 # AI Agent Context — Sports Data Admin
 
 > For AI agents (Codex, Cursor, Copilot, Claude) working on this codebase.
-> See [CLAUDE.md](../CLAUDE.md) for complete coding standards and principles.
+> See [CLAUDE.md](CLAUDE.md) for complete coding standards and principles.
 
 ## Quick Context
 
@@ -55,4 +55,4 @@ cd web && npm install && npm run dev
 cd api && alembic upgrade head
 ```
 
-See [CLAUDE.md](../CLAUDE.md) for complete standards.
+See [CLAUDE.md](CLAUDE.md) for complete standards.

@@ -43,15 +43,13 @@ app.conf.task_routes = {
 # Using 9:00 UTC to align with 4 AM during Eastern Standard Time (November-March).
 # During Eastern Daylight Time (March-November), this will run at 5 AM EDT.
 #
-# Ingestion runs leagues sequentially: NBA -> NHL (15 min later) -> NCAAB (15 min later)
+# Ingestion runs leagues sequentially: NBA -> NHL -> NCAAB
 #
 # Timeline generation runs 90 minutes after ingestion to allow scraping to complete.
-# It processes:
-# - Games missing timelines (newly completed games with PBP data)
-# - Games needing regeneration (PBP or social updated after timeline was generated)
+# It processes games missing timelines (newly completed games with PBP data).
 #
-# Story generation runs 15 minutes after timeline generation to allow timelines to complete.
-# It generates AI stories for all games in the last 3 days that have PBP data.
+# NBA Flow generation runs 15 minutes after timeline generation (when NCAAB is done).
+# It generates AI flows for NBA games in the last 72 hours. Skips existing flows.
 app.conf.beat_schedule = {
     "daily-sports-ingestion-4am-eastern": {
         "task": "run_scheduled_ingestion",
@@ -63,8 +61,8 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute=30, hour=10),  # 5:30 AM EST = 10:30 UTC (90 min after ingestion)
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    "daily-story-generation-545am-eastern": {
-        "task": "run_scheduled_story_generation",
+    "daily-nba-flow-generation-545am-eastern": {
+        "task": "run_scheduled_nba_flow_generation",
         "schedule": crontab(minute=45, hour=10),  # 5:45 AM EST = 10:45 UTC (15 min after timeline gen)
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },

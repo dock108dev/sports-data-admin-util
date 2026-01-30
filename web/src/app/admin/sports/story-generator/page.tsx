@@ -34,12 +34,12 @@ interface BulkJobState {
 }
 
 /**
- * Story Generator Page
+ * Flow Generator Page
  *
- * Allows generating stories for games via the pipeline system.
+ * Allows generating game flows for games via the pipeline system.
  * - Search/filter games
- * - Bulk generate stories with date range and league selection
- * - Generate stories for individual games
+ * - Bulk generate flows with date range and league selection
+ * - Generate flows for individual games
  * - View generation results
  */
 export default function StoryGeneratorPage() {
@@ -232,9 +232,9 @@ export default function StoryGeneratorPage() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Story Generator</h1>
+        <h1 className={styles.title}>Flow Generator</h1>
         <p className={styles.subtitle}>
-          Generate condensed moment stories from play-by-play data
+          Generate game flow from play-by-play data
         </p>
       </header>
 
@@ -291,7 +291,7 @@ export default function StoryGeneratorPage() {
               onChange={(e) => setForceRegenerate(e.target.checked)}
               disabled={isBulkRunning}
             />
-            <span>Force regenerate (overwrite existing stories)</span>
+            <span>Force regenerate (overwrite existing flows)</span>
           </label>
         </div>
 
@@ -376,18 +376,18 @@ export default function StoryGeneratorPage() {
             </div>
             <div className={styles.stat}>
               <span className={styles.statValue}>{gamesWithStory.length}</span>
-              <span className={styles.statLabel}>With Story</span>
+              <span className={styles.statLabel}>Has Flow</span>
             </div>
             <div className={styles.stat}>
               <span className={styles.statValue}>{gamesWithoutStory.length}</span>
-              <span className={styles.statLabel}>Missing Story</span>
+              <span className={styles.statLabel}>No Flow</span>
             </div>
           </div>
 
           <div className={styles.gamesSection}>
-            <h2 className={styles.sectionTitle}>Games Missing Stories</h2>
+            <h2 className={styles.sectionTitle}>Games Without Flow</h2>
             {gamesWithoutStory.length === 0 ? (
-              <p className={styles.emptyMessage}>All games have stories!</p>
+              <p className={styles.emptyMessage}>All games have flow data!</p>
             ) : (
               <div className={styles.gamesList}>
                 {gamesWithoutStory.map((game) => {
@@ -443,7 +443,7 @@ export default function StoryGeneratorPage() {
 
           {gamesWithStory.length > 0 && (
             <div className={styles.gamesSection}>
-              <h2 className={styles.sectionTitle}>Games With Stories</h2>
+              <h2 className={styles.sectionTitle}>Games With Flow</h2>
               <div className={styles.gamesList}>
                 {gamesWithStory.map((game) => (
                   <div key={game.id} className={styles.gameCard}>
@@ -456,7 +456,7 @@ export default function StoryGeneratorPage() {
                       </div>
                     </div>
                     <div className={styles.gameActions}>
-                      <span className={styles.statusComplete}>Has Story</span>
+                      <span className={styles.statusComplete}>Has Flow</span>
                       <button
                         className={styles.regenerateButton}
                         onClick={() => generateStory(game.id)}
@@ -485,12 +485,12 @@ export default function StoryGeneratorPage() {
       {!loading && games.length === 0 && !error && (
         <div className={styles.emptyState}>
           <p>
-            Configure date range and leagues, then click "Preview Games" to see
-            eligible games.
+            Configure date range and leagues, then click &quot;Preview
+            Games&quot; to see eligible games.
           </p>
           <p className={styles.hint}>
-            Or click "Start Bulk Generation" to generate stories for all matching
-            games.
+            Or click &quot;Start Bulk Generation&quot; to generate flows for all
+            matching games.
           </p>
         </div>
       )}

@@ -175,9 +175,16 @@ def _build_pbp_events(
     - phase: Narrative phase (q1, q2, etc.)
     - intra_phase_order: Sort key within phase (clock-based)
     - synthetic_timestamp: Computed wall-clock time for display
+
+    Scores are carried forward from the last known value to handle plays
+    that don't have explicit score data (period ends, timeouts, etc.).
     """
     events: list[dict[str, Any]] = []
     total_plays = len(plays)
+
+    # Track last known scores to carry forward
+    last_home_score = 0
+    last_away_score = 0
 
     for play in plays:
         quarter = play.quarter or 1
@@ -207,6 +214,12 @@ def _build_pbp_events(
         if hasattr(play, "team") and play.team:
             team_abbrev = play.team.abbreviation
 
+        # Use explicit score if available, otherwise carry forward last known
+        if play.home_score is not None:
+            last_home_score = play.home_score
+        if play.away_score is not None:
+            last_away_score = play.away_score
+
         event_payload = {
             "event_type": "pbp",
             "phase": phase,
@@ -219,8 +232,8 @@ def _build_pbp_events(
             "play_type": play.play_type,
             "team_abbreviation": team_abbrev,
             "player_name": play.player_name,
-            "home_score": play.home_score,
-            "away_score": play.away_score,
+            "home_score": last_home_score,
+            "away_score": last_away_score,
             "synthetic_timestamp": synthetic_ts.isoformat(),
             "game_progress": round(progress, 3),
         }
