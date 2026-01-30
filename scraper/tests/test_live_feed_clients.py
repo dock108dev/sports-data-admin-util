@@ -365,13 +365,15 @@ class TestNCAABLiveFeedClient:
         mock_response.status_code = 200
         mock_response.json.return_value = [
             {
-                "gameId": 12345,
-                "gameDate": "2024-01-15T19:00:00Z",
+                "id": 12345,
+                "startDate": "2024-01-15T19:00:00Z",
                 "status": "final",
-                "homeTeam": {"teamId": 1, "team": "Duke"},
-                "awayTeam": {"teamId": 2, "team": "UNC"},
-                "homeScore": 75,
-                "awayScore": 70,
+                "homeTeamId": 1,
+                "homeTeam": "Duke",
+                "awayTeamId": 2,
+                "awayTeam": "UNC",
+                "homePoints": 75,
+                "awayPoints": 70,
                 "neutralSite": False,
             }
         ]
