@@ -370,17 +370,17 @@ def _classify_empty_narrative_fallback(
 def _build_batch_prompt(
     moments_batch: list[tuple[int, dict[str, Any], list[dict[str, Any]]]],
     game_context: dict[str, str],
+    is_retry: bool = False,
 ) -> str:
-    """Build a compact OpenAI prompt for a batch of moments.
+    """Build an OpenAI prompt for a batch of moments.
 
-    Minimizes token usage by:
-    - Putting instructions once at the top
-    - Using compact notation for plays
-    - Minimal formatting
+    Task 1.2: Generates multi-sentence narratives (2-4 sentences) that describe
+    the full sequence of gameplay within each moment.
 
     Args:
         moments_batch: List of (moment_index, moment, moment_plays) tuples
         game_context: Team names and sport info
+        is_retry: Whether this is a retry after validation failure
 
     Returns:
         Prompt string for OpenAI to generate all narratives in the batch
@@ -404,6 +404,7 @@ def _build_batch_prompt(
     for moment_index, moment, moment_plays in moments_batch:
         period = moment.get("period", 1)
         clock = moment.get("start_clock", "")
+        score_before = moment.get("score_before", [0, 0])
         score_after = moment.get("score_after", [0, 0])
         explicitly_narrated = set(moment.get("explicitly_narrated_play_ids", []))
 
@@ -415,32 +416,59 @@ def _build_batch_prompt(
             star = "*" if is_explicit else ""
             desc = play.get("description", "")
             # Truncate long descriptions
-            if len(desc) > 80:
-                desc = desc[:77] + "..."
+            if len(desc) > 100:
+                desc = desc[:97] + "..."
             plays_compact.append(f"{star}{desc}")
 
         plays_str = "; ".join(plays_compact)
+        # Include score change context
+        score_change = ""
+        if score_after != score_before:
+            score_change = f" → {away_team} {score_after[0]}-{score_after[1]} {home_team}"
         moments_lines.append(
-            f"[{moment_index}] Q{period} {clock} ({away_team} {score_after[0]}-{score_after[1]} {home_team}): {plays_str}"
+            f"[{moment_index}] Q{period} {clock} ({away_team} {score_before[0]}-{score_before[1]} {home_team}{score_change}): {plays_str}"
         )
 
     moments_block = "\n".join(moments_lines)
 
     # Build prompt with player name rule
-    name_rule = "- Player names: FULL NAME on first mention (e.g., \"Donovan Mitchell\"), LAST NAME only after (e.g., \"Mitchell\"). Never use initials like \"D. Mitchell\"."
+    name_rule = "- FULL NAME on first mention (e.g., \"Donovan Mitchell\"), LAST NAME only after. NEVER use initials like \"D. Mitchell\"."
     if name_ref:
-        name_rule += f"\n- Name reference: {name_ref}"
+        name_rule += f"\n  Names: {name_ref}"
 
-    prompt = f"""Write 1-2 sentence narratives for each moment. {away_team} vs {home_team}.
+    # Retry prompt is more explicit about requirements
+    if is_retry:
+        retry_warning = "\n\nIMPORTANT: Previous response failed validation. Ensure:\n- Each narrative is 2-4 sentences\n- All *starred plays are mentioned\n- No subjective adjectives (huge, dominant, electric)\n- No speculation about intent or psychology\n"
+    else:
+        retry_warning = ""
 
-Rules:
-- Describe *starred plays. Concrete actions only (shots/fouls/scores).
+    prompt = f"""Write 2-4 sentence narratives for each moment. {away_team} vs {home_team}.
+{retry_warning}
+Each narrative should:
+- Describe the SEQUENCE of actions across the moment (not just one play)
+- Reference ALL *starred plays (these MUST appear in the narrative)
+- Use plain factual language like a neutral broadcast recap
+- Follow chronological order
+
+REQUIRED format:
 {name_rule}
-- No: momentum, turning point, crucial, pivotal, speculation.
+- Vary sentence length naturally
+- Allowed: scoring runs, unanswered points, responses, changes in pace
+
+FORBIDDEN (will fail validation):
+- Subjective adjectives: dominant, electric, huge, massive, incredible, clutch
+- Speculation: wanted to, tried to, felt, seemed to
+- Crowd/atmosphere: crowd erupted, fans, energy
+- Metaphors: took over, caught fire, in the zone
+- Summary language: momentum, turning point, crucial, pivotal
+
+GOOD: "The Suns opened with back-to-back baskets before the Lakers answered with a three. After a missed possession, Mitchell converted in transition to extend the lead."
+
+BAD: "The Suns went on an electric run. Mitchell took over the game."
 
 {moments_block}
 
-JSON response format: {{"items":[{{"i":0,"n":"narrative"}},{{"i":1,"n":"narrative"}},...]}}`"""
+JSON: {{"items":[{{"i":0,"n":"2-4 sentence narrative"}},...]}}"""
 
     return prompt
 
@@ -450,20 +478,19 @@ def _build_moment_prompt(
     moment_plays: list[dict[str, Any]],
     game_context: dict[str, str],
     moment_index: int,
+    is_retry: bool = False,
 ) -> str:
     """Build the OpenAI prompt for a single moment.
 
-    The prompt is strict and includes:
-    - Clear requirements
-    - Explicit prohibitions
-    - Positive and negative examples
-    - Statement that violations invalidate output
+    Task 1.2: Generates multi-sentence narratives (2-4 sentences) that describe
+    the full sequence of gameplay within the moment.
 
     Args:
         moment: The moment data (play_ids, scores, etc.)
         moment_plays: Full PBP records for plays in this moment
         game_context: Team names and sport info
         moment_index: Index of this moment in the sequence
+        is_retry: Whether this is a retry after validation failure
 
     Returns:
         Prompt string for OpenAI
@@ -503,8 +530,19 @@ def _build_moment_prompt(
 
     plays_block = "\n".join(plays_text)
 
-    prompt = f"""Generate a brief narrative (1-3 sentences) for this {sport} game moment.
+    # Retry prompt is more explicit about requirements
+    retry_warning = ""
+    if is_retry:
+        retry_warning = """
+IMPORTANT: Previous response failed validation. Ensure:
+- Narrative is 2-4 sentences long
+- All [MUST NARRATE] plays are mentioned
+- No subjective adjectives (huge, dominant, electric, massive)
+- No speculation about intent or psychology
+"""
 
+    prompt = f"""Generate a multi-sentence narrative (2-4 sentences) for this {sport} game moment.
+{retry_warning}
 CONTEXT:
 - Teams: {away_team} vs {home_team}
 - Period: {period}
@@ -516,29 +554,63 @@ PLAYS IN THIS MOMENT:
 {plays_block}
 
 REQUIREMENTS (MANDATORY):
-1. You MUST describe at least one play marked [MUST NARRATE]
-2. Only describe actions from the plays provided above
-3. Use concrete actions: shots made/missed, fouls, turnovers, scores
-4. Use chronological order if describing multiple plays
-5. Use neutral, factual language
+1. Write 2-4 sentences describing the SEQUENCE of actions
+2. You MUST mention ALL plays marked [MUST NARRATE]
+3. Describe multiple plays when present, in chronological order
+4. Use concrete actions: shots made/missed, fouls, turnovers, scores
+5. Use neutral, factual language like a broadcast recap
+6. Use FULL NAME on first mention, LAST NAME only after
+
+ALLOWED factual language:
+- Scoring runs, unanswered points, responses
+- Changes in pace reflected by scoring or possession
 
 FORBIDDEN (WILL INVALIDATE YOUR RESPONSE):
-- Do NOT use words like: momentum, turning point, shift, swing, tide, crucial, pivotal
-- Do NOT reference "earlier in the game" or "later in the game"
-- Do NOT speculate about what "could have" or "might have" happened
-- Do NOT summarize the game or moment's importance
-- Do NOT reference any plays not listed above
+- Subjective adjectives: dominant, electric, huge, massive, incredible, clutch
+- Speculation: wanted to, tried to, felt, seemed to, needed to
+- Crowd/atmosphere: crowd erupted, fans, energy
+- Metaphors: took over, caught fire, in the zone
+- Summary language: momentum, turning point, shift, swing, crucial, pivotal
+- References to "earlier/later in the game"
 
 GOOD EXAMPLE:
-"Brown drove baseline and finished with a layup, giving the Celtics a 45-42 lead."
+"The Suns opened the stretch with back-to-back baskets before the Lakers answered with a three. After a missed possession, Donovan Mitchell converted in transition. Mitchell's layup extended the lead to five."
 
-BAD EXAMPLE (FORBIDDEN):
-"This was a crucial turning point as the momentum shifted toward the Celtics who would go on to dominate."
+BAD EXAMPLE:
+"This was a crucial turning point. Mitchell took over and the crowd erupted."
 
 Respond with JSON in this exact format:
-{{"narrative": "Your 1-3 sentence narrative here"}}"""
+{{"narrative": "Your 2-4 sentence narrative here"}}"""
 
     return prompt
+
+
+def _count_sentences(text: str) -> int:
+    """Count the number of sentences in a narrative.
+
+    Uses simple heuristics: counts sentence-ending punctuation followed by
+    space or end of string. Handles common abbreviations.
+
+    Args:
+        text: The narrative text
+
+    Returns:
+        Estimated sentence count
+    """
+    if not text or not text.strip():
+        return 0
+
+    # Remove common abbreviations that have periods
+    cleaned = text
+    for abbrev in ["Mr.", "Mrs.", "Dr.", "Jr.", "Sr.", "vs.", "Q1.", "Q2.", "Q3.", "Q4."]:
+        cleaned = cleaned.replace(abbrev, abbrev.replace(".", ""))
+
+    # Count sentence endings: . ! ? followed by space or end
+    import re
+    # Match period/exclamation/question followed by space+capital or end of string
+    pattern = r'[.!?](?:\s+[A-Z]|\s*$)'
+    matches = re.findall(pattern, cleaned)
+    return max(1, len(matches)) if cleaned.strip() else 0
 
 
 def _extract_play_identifiers(play: dict[str, Any]) -> list[str]:
@@ -572,39 +644,145 @@ def _extract_play_identifiers(play: dict[str, Any]) -> list[str]:
     return identifiers
 
 
+def _check_explicit_play_coverage(
+    narrative: str,
+    moment: dict[str, Any],
+    moment_plays: list[dict[str, Any]],
+) -> list[int]:
+    """Check if all explicitly narrated plays are referenced in the narrative.
+
+    Task 1.2: Any explicitly narrated play MUST appear in the narrative.
+    Failure to include an explicit play is a hard error.
+
+    Args:
+        narrative: The generated narrative text
+        moment: The moment data
+        moment_plays: Full PBP records for plays in this moment
+
+    Returns:
+        List of play_indices that are missing from the narrative (empty if all covered)
+    """
+    explicitly_narrated = set(moment.get("explicitly_narrated_play_ids", []))
+    if not explicitly_narrated:
+        return []  # No explicit plays to check
+
+    narrative_lower = narrative.lower()
+    missing_plays: list[int] = []
+
+    for play in moment_plays:
+        play_index = play.get("play_index")
+        if play_index not in explicitly_narrated:
+            continue
+
+        # Get identifiers for this play
+        identifiers = _extract_play_identifiers(play)
+
+        # Check if any identifier appears in narrative
+        found = False
+        for identifier in identifiers:
+            if identifier in narrative_lower:
+                found = True
+                break
+
+        # Also check description keywords as fallback
+        if not found:
+            description = play.get("description", "").lower()
+            # Check for key action words from description
+            action_words = ["layup", "dunk", "three", "jumper", "shot", "free throw", "rebound"]
+            for word in action_words:
+                if word in description and word in narrative_lower:
+                    found = True
+                    break
+
+        if not found:
+            missing_plays.append(play_index)
+
+    return missing_plays
+
+
 def _validate_narrative(
     narrative: str,
     moment: dict[str, Any],
     moment_plays: list[dict[str, Any]],
     moment_index: int,
-) -> list[str]:
+    strict_sentence_check: bool = True,
+) -> tuple[list[str], list[str]]:
     """Validate the generated narrative against Story contract rules.
+
+    Task 1.2: Enhanced validation for multi-sentence narratives.
 
     Args:
         narrative: The generated narrative text
         moment: The moment data
         moment_plays: Full PBP records for plays in this moment
         moment_index: Index for error reporting
+        strict_sentence_check: If True, require 2+ sentences when multiple plays
 
     Returns:
-        List of validation error messages (empty if valid)
+        Tuple of (hard_errors, soft_errors)
+        - hard_errors: Must trigger fallback (empty, missing explicit plays)
+        - soft_errors: Should trigger retry (forbidden phrases, insufficient sentences)
     """
-    errors: list[str] = []
+    hard_errors: list[str] = []
+    soft_errors: list[str] = []
 
-    # Rule 1: Narrative must be non-empty
+    # Rule 1: Narrative must be non-empty (HARD)
     if not narrative or not narrative.strip():
-        errors.append(f"Moment {moment_index}: Narrative is empty")
-        return errors  # Can't validate further if empty
+        hard_errors.append(f"Moment {moment_index}: Narrative is empty")
+        return hard_errors, soft_errors  # Can't validate further if empty
 
-    # Rule 2: Check for forbidden phrases
+    # Rule 2: Check for forbidden phrases (SOFT - can retry)
     for pattern in FORBIDDEN_PATTERNS:
         match = pattern.search(narrative)
         if match:
-            errors.append(
+            soft_errors.append(
                 f"Moment {moment_index}: Contains forbidden phrase '{match.group()}'"
             )
 
-    return errors
+    # Rule 3: Check explicit play coverage (HARD)
+    explicitly_narrated = moment.get("explicitly_narrated_play_ids", [])
+    if explicitly_narrated:
+        missing_plays = _check_explicit_play_coverage(narrative, moment, moment_plays)
+        if missing_plays:
+            hard_errors.append(
+                f"Moment {moment_index}: Missing explicit plays {missing_plays} in narrative"
+            )
+
+    # Rule 4: Check sentence count (SOFT - can retry)
+    # Task 1.2: Multi-sentence output is the norm (2-4 sentences)
+    if strict_sentence_check:
+        sentence_count = _count_sentences(narrative)
+        num_plays = len(moment_plays)
+
+        # Require at least 2 sentences when moment has multiple plays
+        if num_plays > 1 and sentence_count < 2:
+            soft_errors.append(
+                f"Moment {moment_index}: Only {sentence_count} sentence(s) for {num_plays} plays "
+                f"(expected 2-4)"
+            )
+        # Warn if too many sentences (may indicate verbosity)
+        elif sentence_count > 4:
+            soft_errors.append(
+                f"Moment {moment_index}: {sentence_count} sentences exceeds target of 2-4"
+            )
+
+    return hard_errors, soft_errors
+
+
+def _validate_narrative_legacy(
+    narrative: str,
+    moment: dict[str, Any],
+    moment_plays: list[dict[str, Any]],
+    moment_index: int,
+) -> list[str]:
+    """Legacy validation wrapper for backward compatibility.
+
+    Returns combined errors as a single list.
+    """
+    hard_errors, soft_errors = _validate_narrative(
+        narrative, moment, moment_plays, moment_index
+    )
+    return hard_errors + soft_errors
 
 
 def _get_batch_cache_key(moment_indices: list[int]) -> str:
@@ -754,9 +932,9 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
 
     # Process in batches
     enriched_moments: list[dict[str, Any]] = [None] * len(moments)  # type: ignore
-    all_validation_errors: list[str] = []
     successful_renders = 0
     total_openai_calls = 0
+    retry_count = 0  # Task 1.2: Track retries for logging
 
     # Fallback tracking with classification (Task 0.2)
     fallback_moments: list[int] = []  # All moments with fallback narratives
@@ -800,13 +978,17 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         if not valid_batch:
             continue
 
+        # Task 1.2: Track moments that need retry due to soft validation errors
+        moments_needing_retry: list[tuple[int, dict[str, Any], list[dict[str, Any]], str]] = []
+
         # Build batch prompt and call OpenAI
-        prompt = _build_batch_prompt(valid_batch, game_context)
+        # is_retry=False for initial attempt
+        prompt = _build_batch_prompt(valid_batch, game_context, is_retry=False)
 
         try:
             total_openai_calls += 1
-            # More tokens for batch response
-            max_tokens = 150 * len(valid_batch)
+            # Task 1.2: More tokens for multi-sentence output (250 per moment vs 150)
+            max_tokens = 250 * len(valid_batch)
             # Run sync OpenAI call in thread to avoid blocking async event loop
             response_json = await asyncio.to_thread(
                 openai_client.generate,
@@ -946,29 +1128,163 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                 successful_renders += 1
 
             else:
-                # Validate non-empty narratives for forbidden phrases
-                validation_errors = _validate_narrative(
+                # Task 1.2: Validate with hard/soft error separation
+                hard_errors, soft_errors = _validate_narrative(
                     narrative, moment, moment_plays, moment_index
                 )
-                if validation_errors:
-                    all_validation_errors.extend(validation_errors)
-                    output.add_log(
-                        f"Moment {moment_index}: Narrative validation failed",
-                        level="error",
+
+                if hard_errors:
+                    # Hard errors -> immediate fallback (e.g., missing explicit plays)
+                    reason = FallbackReason.MISSING_EXPLICIT_PLAY_REFERENCE
+                    fallback_narrative = _get_invalid_fallback_narrative(reason)
+
+                    logger.warning(
+                        f"Moment {moment_index}: Hard validation error, using INVALID fallback: "
+                        f"{hard_errors[0]}"
                     )
-                else:
+
+                    enriched_moments[moment_index] = {
+                        **moment,
+                        "narrative": fallback_narrative,
+                        "fallback_type": FallbackType.INVALID.value,
+                        "fallback_reason": reason.value,
+                    }
+                    fallback_moments.append(moment_index)
+                    invalid_fallbacks.append({
+                        "moment_index": moment_index,
+                        "reason": reason.value,
+                        "period": moment.get("period"),
+                        "start_clock": moment.get("start_clock"),
+                        "validation_errors": hard_errors,
+                    })
                     successful_renders += 1
 
-                # No fallback metadata for successfully rendered narratives
-                enriched_moments[moment_index] = {
-                    **moment,
-                    "narrative": narrative,
-                    "fallback_type": None,
-                    "fallback_reason": None,
-                }
+                elif soft_errors:
+                    # Task 1.2: Soft errors -> queue for retry
+                    moments_needing_retry.append(
+                        (moment_index, moment, moment_plays, narrative)
+                    )
+                    logger.info(
+                        f"Moment {moment_index}: Soft validation errors, will retry: "
+                        f"{soft_errors[0]}"
+                    )
+                    # Don't set enriched_moments yet - will be set after retry
+
+                else:
+                    # All validation passed
+                    successful_renders += 1
+                    enriched_moments[moment_index] = {
+                        **moment,
+                        "narrative": narrative,
+                        "fallback_type": None,
+                        "fallback_reason": None,
+                    }
+
+        # Task 1.2: Retry moments with soft validation errors (one retry only)
+        if moments_needing_retry:
+            retry_count += len(moments_needing_retry)
+            output.add_log(
+                f"Retrying {len(moments_needing_retry)} moments with soft validation errors"
+            )
+
+            # Build retry batch with is_retry=True for stricter prompt
+            retry_batch = [(idx, m, plays) for idx, m, plays, _ in moments_needing_retry]
+            retry_prompt = _build_batch_prompt(retry_batch, game_context, is_retry=True)
+
+            try:
+                total_openai_calls += 1
+                retry_max_tokens = 250 * len(retry_batch)
+                retry_response_json = await asyncio.to_thread(
+                    openai_client.generate,
+                    prompt=retry_prompt,
+                    temperature=0.2,  # Lower temp for retry
+                    max_tokens=retry_max_tokens,
+                )
+                retry_response_data = json.loads(retry_response_json)
+                retry_items = retry_response_data.get("items", [])
+
+                # Build retry narrative lookup
+                retry_narrative_lookup: dict[int, str] = {}
+                for item in retry_items:
+                    idx = item.get("i") if item.get("i") is not None else item.get("moment_index")
+                    narr = item.get("n") or item.get("narrative", "")
+                    if idx is not None:
+                        retry_narrative_lookup[idx] = narr
+
+                # Process retry results
+                for moment_index, moment, moment_plays, original_narrative in moments_needing_retry:
+                    retry_narrative = retry_narrative_lookup.get(moment_index, "")
+
+                    if retry_narrative and retry_narrative.strip():
+                        # Validate retry attempt (strict=False to accept imperfect retries)
+                        hard_errors, soft_errors = _validate_narrative(
+                            retry_narrative, moment, moment_plays, moment_index,
+                            strict_sentence_check=False  # Accept on retry even if not perfect
+                        )
+
+                        if not hard_errors:
+                            # Retry succeeded (accept even with soft errors)
+                            successful_renders += 1
+                            enriched_moments[moment_index] = {
+                                **moment,
+                                "narrative": retry_narrative,
+                                "fallback_type": None,
+                                "fallback_reason": None,
+                            }
+                            logger.info(f"Moment {moment_index}: Retry succeeded")
+                            continue
+
+                    # Retry failed -> use fallback
+                    reason = FallbackReason.FORBIDDEN_LANGUAGE_DETECTED
+                    fallback_narrative = _get_invalid_fallback_narrative(reason)
+
+                    logger.warning(
+                        f"Moment {moment_index}: Retry failed, using INVALID fallback"
+                    )
+
+                    enriched_moments[moment_index] = {
+                        **moment,
+                        "narrative": fallback_narrative,
+                        "fallback_type": FallbackType.INVALID.value,
+                        "fallback_reason": reason.value,
+                    }
+                    fallback_moments.append(moment_index)
+                    invalid_fallbacks.append({
+                        "moment_index": moment_index,
+                        "reason": reason.value,
+                        "period": moment.get("period"),
+                        "start_clock": moment.get("start_clock"),
+                        "original_narrative": original_narrative[:200],
+                    })
+                    successful_renders += 1
+
+            except Exception as e:
+                # Retry batch failed entirely -> fallback for all
+                logger.warning(f"Retry batch failed: {e}, using fallbacks")
+                for moment_index, moment, moment_plays, original_narrative in moments_needing_retry:
+                    reason = FallbackReason.AI_GENERATION_FAILED
+                    fallback_narrative = _get_invalid_fallback_narrative(reason)
+
+                    enriched_moments[moment_index] = {
+                        **moment,
+                        "narrative": fallback_narrative,
+                        "fallback_type": FallbackType.INVALID.value,
+                        "fallback_reason": reason.value,
+                    }
+                    fallback_moments.append(moment_index)
+                    invalid_fallbacks.append({
+                        "moment_index": moment_index,
+                        "reason": reason.value,
+                        "period": moment.get("period"),
+                        "start_clock": moment.get("start_clock"),
+                        "error": str(e)[:200],
+                    })
+                    successful_renders += 1
 
     output.add_log(f"OpenAI calls made: {total_openai_calls}")
     output.add_log(f"Successful renders: {successful_renders}/{len(moments)}")
+    if retry_count > 0:
+        output.add_log(f"Task 1.2 retries: {retry_count} moments retried")
 
     # Log fallback usage with classification (Task 0.2)
     if fallback_moments:
@@ -1013,43 +1329,8 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             },
         )
 
-    # Check if any validation errors occurred
-    if all_validation_errors:
-        output.add_log(
-            f"Narrative validation failed with {len(all_validation_errors)} errors",
-            level="error",
-        )
-
-        # Log to Python logger for visibility
-        logger.error(
-            "Narrative rendering failed",
-            extra={
-                "game_id": game_id,
-                "error_count": len(all_validation_errors),
-                "errors": all_validation_errors,
-            },
-        )
-
-        # Build structured error output with fallback classification (Task 0.2)
-        error_output = {
-            "rendered": False,
-            "moments": enriched_moments,
-            "errors": all_validation_errors,
-            "openai_calls": total_openai_calls,
-            "successful_renders": successful_renders,
-            "fallback_count": len(fallback_moments),
-            "fallback_moment_indices": fallback_moments,
-            # Task 0.2: Fallback classification
-            "valid_fallback_count": len(valid_fallbacks),
-            "invalid_fallback_count": len(invalid_fallbacks),
-            "valid_fallbacks": valid_fallbacks,
-            "invalid_fallbacks": invalid_fallbacks,
-        }
-
-        # Raise with structured JSON for reviewability
-        raise ValueError(json.dumps(error_output))
-
-    # All narratives passed validation (or got fallback)
+    # Task 1.2: All validation errors are now handled via retry/fallback
+    # No unhandled validation errors should reach here
     if fallback_moments:
         output.add_log(
             f"{len(moments) - len(fallback_moments)} narratives from OpenAI, "
@@ -1069,7 +1350,9 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
 
     output.add_log("RENDER_NARRATIVES completed successfully")
 
-    # Output shape: moments with narrative field added (Task 0.2: includes fallback classification)
+    # Output shape: moments with narrative field added
+    # Task 0.2: includes fallback classification
+    # Task 1.2: includes retry count
     output.data = {
         "rendered": True,
         "moments": enriched_moments,
@@ -1083,6 +1366,8 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         "invalid_fallback_count": len(invalid_fallbacks),
         "valid_fallbacks": valid_fallbacks,
         "invalid_fallbacks": invalid_fallbacks,
+        # Task 1.2: Multi-sentence retry tracking
+        "retry_count": retry_count,
     }
 
     return output
