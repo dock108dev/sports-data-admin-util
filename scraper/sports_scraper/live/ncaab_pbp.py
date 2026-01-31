@@ -133,6 +133,21 @@ class NCAABPbpFetcher:
                 sample_play=str(play)[:500],
             )
 
+        # Log a scoring play to see team/player/description data
+        play_type_raw = play.get("playType") or ""
+        if index < 30 and play_type_raw in ("JumpShot", "Layup", "Dunk", "ThreePointer"):
+            logger.info(
+                "ncaab_pbp_scoring_play_sample",
+                game_id=game_id,
+                index=index,
+                play_type=play_type_raw,
+                team=play.get("team"),
+                team_id=play.get("teamId"),
+                play_text=play.get("playText"),
+                participants=str(play.get("participants"))[:300],
+                is_home=play.get("isHomeTeam"),
+            )
+
         # Extract period/half info - try multiple keys
         period = (
             parse_int(play.get("period"))
@@ -233,6 +248,12 @@ class NCAABPbpFetcher:
             "elapsed": elapsed,
             "play_type_raw": play_type_raw,
         }
+        # Store teamId for team resolution in upsert_plays
+        if play.get("teamId"):
+            raw_data["cbb_team_id"] = play.get("teamId")
+        # Store team name as fallback
+        if team_name:
+            raw_data["team_name"] = team_name
         # Add any additional fields from the API
         for key in ["shotType", "shotOutcome", "assistPlayerId", "foulType", "shotDistance", "points"]:
             if key in play and play[key] is not None:
