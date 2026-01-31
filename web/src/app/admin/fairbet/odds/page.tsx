@@ -11,7 +11,8 @@ import {
   type BetDefinition,
   type FairbetOddsFilters,
 } from "@/lib/api/fairbet";
-import { createScrapeRun } from "@/lib/api/sportsAdmin";
+import { createScrapeRun, listScrapeRuns } from "@/lib/api/sportsAdmin";
+import type { ScrapeRunResponse } from "@/lib/api/sportsAdmin/types";
 
 const LEAGUES = ["NBA", "NHL", "NCAAB"];
 
@@ -30,6 +31,7 @@ export default function FairbetOddsPage() {
   // Sync state
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [lastOddsSync, setLastOddsSync] = useState<string | null>(null);
 
   const loadOdds = useCallback(async () => {
     try {
@@ -58,6 +60,26 @@ export default function FairbetOddsPage() {
   useEffect(() => {
     loadOdds();
   }, [loadOdds]);
+
+  const loadLastOddsSync = useCallback(async () => {
+    try {
+      // Fetch recent scrape runs and find the last completed odds sync
+      const runs = await listScrapeRuns({ status: "completed" });
+      const oddsRun = runs.find(
+        (run: ScrapeRunResponse) => run.config?.odds === true && run.finished_at
+      );
+      if (oddsRun?.finished_at) {
+        setLastOddsSync(oddsRun.finished_at);
+      }
+    } catch (err) {
+      // Silently fail - this is informational only
+      console.error("Failed to load last odds sync time:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLastOddsSync();
+  }, [loadLastOddsSync]);
 
   async function syncOdds() {
     setSyncing(true);
@@ -94,9 +116,10 @@ export default function FairbetOddsPage() {
         `Odds sync started for ${leagueNames} (Run #${runIds}). Refresh in a moment to see results.`
       );
 
-      // Reload odds after a short delay
+      // Reload odds and last sync time after a short delay
       setTimeout(() => {
         loadOdds();
+        loadLastOddsSync();
       }, 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -109,6 +132,26 @@ export default function FairbetOddsPage() {
     const date = new Date(dateStr);
     return date.toLocaleDateString("en-US", {
       weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  function formatLastSync(dateStr: string): string {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+
+    return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       hour: "numeric",
@@ -172,7 +215,12 @@ export default function FairbetOddsPage() {
           <span className={styles.bookCount}>{booksAvailable.length}</span>
         </div>
 
-        <div className={styles.filterGroup} style={{ marginLeft: "auto" }}>
+        <div className={styles.filterGroup} style={{ marginLeft: "auto", textAlign: "right" }}>
+          {lastOddsSync && (
+            <span className={styles.lastSync}>
+              Last sync: {formatLastSync(lastOddsSync)}
+            </span>
+          )}
           <button
             className={styles.syncButton}
             onClick={syncOdds}
