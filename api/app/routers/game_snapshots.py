@@ -32,7 +32,7 @@ from .game_snapshot_models import (
 router = APIRouter(prefix="/api", tags=["game-snapshots"])
 logger = logging.getLogger(__name__)
 
-_VALID_RANGES = {"last2", "current", "next24"}
+_VALID_RANGES = {"last2", "current", "next24", "yesterday", "earlier"}
 
 
 def _validate_range(range_value: str) -> None:
@@ -76,10 +76,19 @@ async def list_games(
     """
     List games by time window.
 
+    Range values:
+    - current: today's games plus any live games (default)
+    - yesterday: games from yesterday only
+    - last2: games from the past 48 hours
+    - earlier: all games before yesterday (historical archive)
+    - next24: games in the next 24 hours
+
     Example request:
         GET /api/games?range=current
     Example request (single league):
         GET /api/games?range=current&league=NBA
+    Example request (yesterday's games):
+        GET /api/games?range=yesterday
     Example response:
         {
           "range": "current",
@@ -93,6 +102,7 @@ async def list_games(
               "away_team": {"id": 2, "name": "Lakers", "abbreviation": "LAL"},
               "has_pbp": true,
               "has_social": false,
+              "has_story": true,
               "last_updated_at": "2026-01-15T03:00:00Z"
             }
           ]
@@ -118,6 +128,8 @@ async def list_games(
     window_start: datetime
     window_end: datetime
 
+    start_of_today = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+
     if range == "last2":
         window_start = now - timedelta(hours=48)
         window_end = now
@@ -132,12 +144,23 @@ async def list_games(
             db_models.SportsGame.game_date >= window_start,
             db_models.SportsGame.game_date <= window_end,
         )
+    elif range == "yesterday":
+        # Yesterday only: from start of yesterday to start of today
+        start_of_yesterday = start_of_today - timedelta(days=1)
+        filters = and_(
+            db_models.SportsGame.game_date >= start_of_yesterday,
+            db_models.SportsGame.game_date < start_of_today,
+        )
+    elif range == "earlier":
+        # All games before yesterday (historical archive)
+        start_of_yesterday = start_of_today - timedelta(days=1)
+        filters = db_models.SportsGame.game_date < start_of_yesterday
     else:
-        start_of_day = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
-        end_of_day = start_of_day + timedelta(days=1)
+        # "current" - today's games plus any live games
+        end_of_day = start_of_today + timedelta(days=1)
         filters = or_(
             and_(
-                db_models.SportsGame.game_date >= start_of_day,
+                db_models.SportsGame.game_date >= start_of_today,
                 db_models.SportsGame.game_date < end_of_day,
             ),
             db_models.SportsGame.status == db_models.GameStatus.live.value,
@@ -148,6 +171,12 @@ async def list_games(
     )
     has_social = exists(
         select(1).where(db_models.GameSocialPost.game_id == db_models.SportsGame.id)
+    )
+    has_story = exists(
+        select(1).where(
+            db_models.SportsGameStory.game_id == db_models.SportsGame.id,
+            db_models.SportsGameStory.moments_json.isnot(None),
+        )
     )
 
     conflict_exists = exists(
@@ -175,6 +204,7 @@ async def list_games(
                 db_models.SportsGame,
                 has_pbp.label("has_pbp"),
                 has_social.label("has_social"),
+                has_story.label("has_story"),
                 conflict_exists.label("has_conflict"),
             )
             .options(
@@ -202,7 +232,7 @@ async def list_games(
     games: list[GameSnapshot] = []
     excluded = 0
     league_codes: set[str] = set()
-    for game, has_pbp_value, has_social_value, has_conflict in rows:
+    for game, has_pbp_value, has_social_value, has_story_value, has_conflict in rows:
         league_code = game.league.code if game.league else "UNK"
         if league_filter and league_code != league_filter:
             # Safety guard: if the DB layer ever returns mixed leagues, do not serve them.
@@ -259,6 +289,7 @@ async def list_games(
                 away_team=team_snapshot(game.away_team),
                 has_pbp=bool(has_pbp_value),
                 has_social=bool(has_social_value),
+                has_story=bool(has_story_value),
                 last_updated_at=last_updated,
             )
         )
@@ -275,6 +306,100 @@ async def list_games(
         leagues=sorted(league_codes),
     )
     return GameSnapshotResponse(range=range, games=games)
+
+
+@router.get("/games/{game_id}", response_model=GameSnapshot)
+async def get_game(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> GameSnapshot:
+    """
+    Get a single game by ID.
+
+    Example request:
+        GET /api/games/123
+    Example response:
+        {
+          "id": 123,
+          "league": "NBA",
+          "status": "final",
+          "start_time": "2026-01-15T02:00:00Z",
+          "home_team": {"id": 1, "name": "Warriors", "abbreviation": "GSW"},
+          "away_team": {"id": 2, "name": "Lakers", "abbreviation": "LAL"},
+          "has_pbp": true,
+          "has_social": true,
+          "has_story": true,
+          "last_updated_at": "2026-01-15T05:00:00Z"
+        }
+    """
+    has_pbp = exists(
+        select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
+    )
+    has_social = exists(
+        select(1).where(db_models.GameSocialPost.game_id == db_models.SportsGame.id)
+    )
+    has_story = exists(
+        select(1).where(
+            db_models.SportsGameStory.game_id == db_models.SportsGame.id,
+            db_models.SportsGameStory.moments_json.isnot(None),
+        )
+    )
+
+    stmt = (
+        select(
+            db_models.SportsGame,
+            has_pbp.label("has_pbp"),
+            has_social.label("has_social"),
+            has_story.label("has_story"),
+        )
+        .options(
+            selectinload(db_models.SportsGame.league),
+            selectinload(db_models.SportsGame.home_team),
+            selectinload(db_models.SportsGame.away_team),
+        )
+        .where(db_models.SportsGame.id == game_id)
+    )
+    result = await session.execute(stmt)
+    row = result.one_or_none()
+
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
+
+    game, has_pbp_value, has_social_value, has_story_value = row
+    league_code = game.league.code if game.league else "UNK"
+
+    # Validate team mappings exist
+    if not game.home_team or not game.away_team:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Game has missing team mappings",
+        )
+
+    timestamps = [
+        game.last_ingested_at,
+        game.last_pbp_at,
+        game.last_social_at,
+        game.last_scraped_at,
+        game.updated_at,
+    ]
+    last_updated = max(
+        [dt for dt in timestamps if dt is not None], default=game.game_date
+    )
+
+    return GameSnapshot(
+        id=game.id,
+        league=league_code,
+        status=game.status,
+        start_time=game.game_date,
+        home_team=team_snapshot(game.home_team),
+        away_team=team_snapshot(game.away_team),
+        has_pbp=bool(has_pbp_value),
+        has_social=bool(has_social_value),
+        has_story=bool(has_story_value),
+        last_updated_at=last_updated,
+    )
 
 
 @router.get("/games/{game_id}/pbp", response_model=PbpResponse)

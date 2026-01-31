@@ -34,10 +34,13 @@ This section is for **external Dock108 apps** consuming sports data. Use only th
 
 ```
 1. GET /api/games?range=current&league=NBA     → List today's games
-2. GET /api/games/{game_id}/pbp                → Get play-by-play
-3. GET /api/games/{game_id}/social             → Get social posts
-4. GET /api/games/{game_id}/story              → Get AI-generated narrative (if available)
-5. GET /api/games/{game_id}/timeline           → Get full timeline artifact (if available)
+   GET /api/games?range=yesterday&league=NBA   → List yesterday's games
+   GET /api/games?range=earlier&league=NBA     → List historical games
+2. GET /api/games/{game_id}                    → Get single game details
+3. GET /api/games/{game_id}/pbp                → Get play-by-play
+4. GET /api/games/{game_id}/social             → Get social posts
+5. GET /api/games/{game_id}/story              → Get AI-generated narrative (if available)
+6. GET /api/games/{game_id}/timeline           → Get full timeline artifact (if available)
 ```
 
 ### Supported Sports
@@ -55,11 +58,12 @@ This section is for **external Dock108 apps** consuming sports data. Use only th
 GET /api/games?range=current&league=NBA
 ```
 
-Response includes `has_pbp` and `has_social` flags to indicate data availability.
+Response includes `has_pbp`, `has_social`, and `has_story` flags to indicate data availability.
 
 **Step 2: Check what's available per game**
 - `has_pbp: true` → Play-by-play is available at `/api/games/{id}/pbp`
 - `has_social: true` → Social posts available at `/api/games/{id}/social`
+- `has_story: true` → AI-generated story available at `/api/games/{id}/story`
 
 **Step 3: Fetch detailed data**
 Use the endpoints below to fetch PBP, social, timeline, and story data.
@@ -178,8 +182,18 @@ List games by time window.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `range` | `string` | `last2`, `current`, `next24` |
-| `league` | `string` | Filter by league |
+| `range` | `string` | Time window filter (see below) |
+| `league` | `string` | Filter by league code (e.g., `NBA`, `NHL`, `NCAAB`) |
+
+**Range Values:**
+
+| Range | Description |
+|-------|-------------|
+| `current` | Today's games plus any live games (default) |
+| `yesterday` | Games from yesterday only |
+| `last2` | Games from the past 48 hours |
+| `earlier` | All games before yesterday (historical archive) |
+| `next24` | Games in the next 24 hours |
 
 **Response:**
 ```json
@@ -195,11 +209,34 @@ List games by time window.
       "away_team": {"id": 2, "name": "Lakers", "abbreviation": "LAL"},
       "has_pbp": true,
       "has_social": false,
+      "has_story": true,
       "last_updated_at": "2026-01-15T03:00:00Z"
     }
   ]
 }
 ```
+
+### `GET /api/games/{game_id}`
+
+Get a single game by ID.
+
+**Response:**
+```json
+{
+  "id": 123,
+  "league": "NBA",
+  "status": "final",
+  "start_time": "2026-01-15T02:00:00Z",
+  "home_team": {"id": 1, "name": "Warriors", "abbreviation": "GSW"},
+  "away_team": {"id": 2, "name": "Lakers", "abbreviation": "LAL"},
+  "has_pbp": true,
+  "has_social": true,
+  "has_story": true,
+  "last_updated_at": "2026-01-15T05:00:00Z"
+}
+```
+
+**Response (404):** Game not found or has missing team mappings.
 
 ### `GET /api/games/{game_id}/pbp`
 
@@ -660,7 +697,7 @@ Get reading position.
 
 These models are returned by the `/api/*` endpoints that external apps should use.
 
-#### GameSnapshot (from `GET /api/games`)
+#### GameSnapshot (from `GET /api/games` and `GET /api/games/{game_id}`)
 
 ```typescript
 interface GameSnapshot {
@@ -672,6 +709,7 @@ interface GameSnapshot {
   away_team: TeamSnapshot;
   has_pbp: boolean;         // PBP data available
   has_social: boolean;      // Social posts available
+  has_story: boolean;       // AI-generated story available
   last_updated_at: string;  // ISO 8601 datetime
 }
 

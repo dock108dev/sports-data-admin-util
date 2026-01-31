@@ -31,6 +31,7 @@ class GameSnapshot(BaseModel):
     away_team: TeamSnapshot
     has_pbp: bool
     has_social: bool
+    has_story: bool
     last_updated_at: datetime
 
 
