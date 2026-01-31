@@ -8,19 +8,53 @@
 
 ## Table of Contents
 
-1. [External App Integration Guide](#external-app-integration-guide)
-2. [Health Check](#health-check)
-3. [App Endpoints (Read-Only)](#app-endpoints-read-only)
-4. [Admin Endpoints](#admin-endpoints)
+1. [Date & Time Convention](#date--time-convention)
+2. [External App Integration Guide](#external-app-integration-guide)
+3. [Health Check](#health-check)
+4. [App Endpoints (Read-Only)](#app-endpoints-read-only)
+5. [Admin Endpoints](#admin-endpoints)
    - [Games Management](#games-management)
    - [Story Pipeline](#story-pipeline)
    - [Timeline Generation](#timeline-generation)
    - [Teams](#teams)
    - [Scraper Runs](#scraper-runs)
    - [Diagnostics](#diagnostics)
-5. [Social](#social)
-6. [Reading Positions](#reading-positions)
-7. [Response Models](#response-models)
+6. [Social](#social)
+7. [Reading Positions](#reading-positions)
+8. [Response Models](#response-models)
+
+---
+
+## Date & Time Convention
+
+### Game Dates (Request Parameters)
+
+**All date parameters use Eastern Time (America/New_York).**
+
+This represents "game day" as fans understand it:
+- A 10:00 PM ET game on January 22 is a **"January 22 game"**
+- Even though it's January 23 in UTC
+
+Eastern Time automatically handles EST ↔ EDT transitions.
+
+### Timestamps (Response Fields)
+
+**All datetime fields in responses are UTC (ISO 8601).**
+
+| Field | Timezone | Example |
+|-------|----------|---------|
+| `start_date` (request) | Eastern | `2026-01-22` |
+| `end_date` (request) | Eastern | `2026-01-22` |
+| `start_time` (response) | UTC | `2026-01-23T03:00:00Z` |
+| `last_updated_at` (response) | UTC | `2026-01-23T05:30:00Z` |
+
+### Client Display
+
+For user-facing display, convert UTC to device local time:
+```javascript
+// JavaScript
+new Date(game.start_time).toLocaleString()
+```
 
 ---
 
@@ -33,14 +67,32 @@ This section is for **external Dock108 apps** consuming sports data. Use only th
 **Recommended integration pattern:**
 
 ```
-1. GET /api/games?range=current&league=NBA     → List today's games
-   GET /api/games?range=yesterday&league=NBA   → List yesterday's games
-   GET /api/games?range=earlier&league=NBA     → List historical games
+1. GET /api/games?start_date=2026-01-22&end_date=2026-01-22&league=NBA
+   → List games for a specific day
+
 2. GET /api/games/{game_id}                    → Get single game details
 3. GET /api/games/{game_id}/pbp                → Get play-by-play
 4. GET /api/games/{game_id}/social             → Get social posts
-5. GET /api/games/{game_id}/story              → Get AI-generated narrative (if available)
-6. GET /api/games/{game_id}/timeline           → Get full timeline artifact (if available)
+5. GET /api/games/{game_id}/story              → Get AI-generated narrative
+6. GET /api/games/{game_id}/timeline           → Get full timeline artifact
+```
+
+**Common date queries:**
+```
+# Today's games (client determines "today" in Eastern Time)
+GET /api/games?start_date=2026-01-22&end_date=2026-01-22
+
+# Yesterday's games
+GET /api/games?start_date=2026-01-21&end_date=2026-01-21
+
+# Date range (weekend games)
+GET /api/games?start_date=2026-01-18&end_date=2026-01-19
+
+# All historical games (no end date)
+GET /api/games?end_date=2026-01-21
+
+# Include live games regardless of date
+GET /api/games?start_date=2026-01-22&end_date=2026-01-22&include_live=true
 ```
 
 ### Supported Sports
@@ -55,7 +107,7 @@ This section is for **external Dock108 apps** consuming sports data. Use only th
 
 **Step 1: List available games**
 ```http
-GET /api/games?range=current&league=NBA
+GET /api/games?start_date=2026-01-22&end_date=2026-01-22&league=NBA
 ```
 
 Response includes `has_pbp`, `has_social`, and `has_story` flags to indicate data availability.
@@ -178,42 +230,63 @@ These endpoints serve pre-computed data to mobile/web apps. **Apps should only u
 
 ### `GET /api/games`
 
-List games by time window.
+List games by date range.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `range` | `string` | Time window filter (see below) |
-| `league` | `string` | Filter by league code (e.g., `NBA`, `NHL`, `NCAAB`) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `start_date` | `date` | No | Games on or after this date (Eastern Time) |
+| `end_date` | `date` | No | Games on or before this date (Eastern Time) |
+| `league` | `string` | No | Filter by league code (`NBA`, `NHL`, `NCAAB`) |
+| `include_live` | `bool` | No | Include live games regardless of date filter |
 
-**Range Values:**
+**Date Format:** `YYYY-MM-DD` (e.g., `2026-01-22`)
 
-| Range | Description |
-|-------|-------------|
-| `current` | Today's games plus any live games (default) |
-| `yesterday` | Games from yesterday only |
-| `last2` | Games from the past 48 hours |
-| `earlier` | All games before yesterday (historical archive) |
-| `next24` | Games in the next 24 hours |
+**Important:** Dates are interpreted as **Eastern Time** (America/New_York). A game at 10pm ET on Jan 22 is a "Jan 22 game" even though it's Jan 23 in UTC.
+
+**Example Requests:**
+```http
+# Single day
+GET /api/games?start_date=2026-01-22&end_date=2026-01-22
+
+# NBA games on a specific day
+GET /api/games?start_date=2026-01-22&end_date=2026-01-22&league=NBA
+
+# Date range
+GET /api/games?start_date=2026-01-18&end_date=2026-01-22
+
+# All games from a date onward
+GET /api/games?start_date=2026-01-01
+
+# All games up to a date
+GET /api/games?end_date=2026-01-22
+
+# Today's games plus any currently live
+GET /api/games?start_date=2026-01-22&end_date=2026-01-22&include_live=true
+```
 
 **Response:**
 ```json
 {
-  "range": "current",
+  "start_date": "2026-01-22",
+  "end_date": "2026-01-22",
   "games": [
     {
       "id": 123,
       "league": "NBA",
       "status": "final",
-      "start_time": "2026-01-15T02:00:00Z",
+      "start_time": "2026-01-23T00:00:00Z",
       "home_team": {"id": 1, "name": "Warriors", "abbreviation": "GSW"},
       "away_team": {"id": 2, "name": "Lakers", "abbreviation": "LAL"},
       "has_pbp": true,
       "has_social": false,
       "has_story": true,
-      "last_updated_at": "2026-01-15T03:00:00Z"
+      "last_updated_at": "2026-01-23T03:00:00Z"
     }
   ]
 }
+```
+
+**Note:** `start_time` is UTC. The game above shows `2026-01-23T00:00:00Z` (midnight UTC) which is 7:00 PM ET on January 22. The request used `start_date=2026-01-22` (Eastern) to find this game.
 ```
 
 ### `GET /api/games/{game_id}`
@@ -697,6 +770,16 @@ Get reading position.
 
 These models are returned by the `/api/*` endpoints that external apps should use.
 
+#### GameSnapshotResponse (from `GET /api/games`)
+
+```typescript
+interface GameSnapshotResponse {
+  start_date: string | null;  // Filter start date (Eastern Time), YYYY-MM-DD
+  end_date: string | null;    // Filter end date (Eastern Time), YYYY-MM-DD
+  games: GameSnapshot[];
+}
+```
+
 #### GameSnapshot (from `GET /api/games` and `GET /api/games/{game_id}`)
 
 ```typescript
@@ -704,13 +787,13 @@ interface GameSnapshot {
   id: number;
   league: string;           // "NBA", "NHL", "NCAAB"
   status: string;           // "scheduled", "live", "final"
-  start_time: string;       // ISO 8601 datetime
+  start_time: string;       // ISO 8601 datetime (UTC)
   home_team: TeamSnapshot;
   away_team: TeamSnapshot;
   has_pbp: boolean;         // PBP data available
   has_social: boolean;      // Social posts available
   has_story: boolean;       // AI-generated story available
-  last_updated_at: string;  // ISO 8601 datetime
+  last_updated_at: string;  // ISO 8601 datetime (UTC)
 }
 
 interface TeamSnapshot {
@@ -718,6 +801,9 @@ interface TeamSnapshot {
   name: string;
   abbreviation: string | null;
 }
+```
+
+**Timezone Note:** `start_time` and `last_updated_at` are UTC. Use request date parameters (Eastern Time) to understand "game day".
 ```
 
 #### PbpResponse (from `GET /api/games/{id}/pbp`)

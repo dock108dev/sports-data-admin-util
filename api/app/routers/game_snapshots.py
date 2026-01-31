@@ -1,8 +1,16 @@
-"""Snapshot API endpoints for app consumption."""
+"""Snapshot API endpoints for app consumption.
+
+DATE CONVENTION:
+All date parameters use Eastern Time (America/New_York).
+This represents "game day" as fans understand it - a 10pm ET game
+on Jan 22 is a "Jan 22 game", regardless of UTC date.
+
+Eastern Time automatically handles EST/EDT transitions.
+"""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -10,9 +18,8 @@ from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import selectinload
 
 from .. import db_models
-from ..config import settings
 from ..db import AsyncSession, get_db
-from ..utils.datetime_utils import now_utc
+from ..utils.datetime_utils import eastern_date_to_utc_range, now_utc
 from .game_snapshot_models import (
     CompactTimelineResponse,
     GameSnapshot,
@@ -32,15 +39,32 @@ from .game_snapshot_models import (
 router = APIRouter(prefix="/api", tags=["game-snapshots"])
 logger = logging.getLogger(__name__)
 
-_VALID_RANGES = {"last2", "current", "next24", "yesterday", "earlier"}
 
+def _build_date_filters(
+    start_date: date | None,
+    end_date: date | None,
+) -> any:
+    """Build SQLAlchemy filter for date range.
 
-def _validate_range(range_value: str) -> None:
-    if range_value not in _VALID_RANGES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid range value",
+    Dates are interpreted as Eastern Time game days.
+    """
+    if start_date is None and end_date is None:
+        # No date filter - return all games
+        return True
+
+    if start_date and end_date:
+        start_utc, _ = eastern_date_to_utc_range(start_date)
+        _, end_utc = eastern_date_to_utc_range(end_date)
+        return and_(
+            db_models.SportsGame.game_date >= start_utc,
+            db_models.SportsGame.game_date < end_utc,
         )
+    elif start_date:
+        start_utc, _ = eastern_date_to_utc_range(start_date)
+        return db_models.SportsGame.game_date >= start_utc
+    else:  # end_date only
+        _, end_utc = eastern_date_to_utc_range(end_date)
+        return db_models.SportsGame.game_date < end_utc
 
 
 async def _record_snapshot_job_run(
@@ -68,103 +92,84 @@ async def _record_snapshot_job_run(
 
 @router.get("/games", response_model=GameSnapshotResponse)
 async def list_games(
-    range: str = Query("current"),
-    league: str | None = Query(None),
-    assume_now: datetime | None = Query(None),
+    start_date: date | None = Query(
+        None,
+        description="Start date (Eastern Time). Games on or after this date.",
+        example="2026-01-22",
+    ),
+    end_date: date | None = Query(
+        None,
+        description="End date (Eastern Time). Games on or before this date.",
+        example="2026-01-22",
+    ),
+    league: str | None = Query(
+        None, description="Filter by league code (NBA, NHL, NCAAB)"
+    ),
+    include_live: bool = Query(
+        False, description="Include live games regardless of date filter"
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> GameSnapshotResponse:
     """
-    List games by time window.
+    List games by date range.
 
-    Range values:
-    - current: today's games plus any live games (default)
-    - yesterday: games from yesterday only
-    - last2: games from the past 48 hours
-    - earlier: all games before yesterday (historical archive)
-    - next24: games in the next 24 hours
+    **Date Convention:** All dates are Eastern Time (America/New_York).
+    This represents "game day" as fans understand it - a 10pm ET game
+    on Jan 22 is a "Jan 22 game".
 
-    Example request:
-        GET /api/games?range=current
-    Example request (single league):
-        GET /api/games?range=current&league=NBA
-    Example request (yesterday's games):
-        GET /api/games?range=yesterday
-    Example response:
+    **Parameters:**
+    - start_date: Include games on or after this date (Eastern Time)
+    - end_date: Include games on or before this date (Eastern Time)
+    - league: Filter by league code (NBA, NHL, NCAAB)
+    - include_live: Also include any currently live games
+
+    **Examples:**
+    - Single day: `?start_date=2026-01-22&end_date=2026-01-22`
+    - Date range: `?start_date=2026-01-20&end_date=2026-01-22`
+    - All games from date: `?start_date=2026-01-22`
+    - NBA only today: `?start_date=2026-01-22&end_date=2026-01-22&league=NBA`
+
+    **Response:**
+    ```json
+    {
+      "start_date": "2026-01-22",
+      "end_date": "2026-01-22",
+      "games": [
         {
-          "range": "current",
-          "games": [
-            {
-              "id": 123,
-              "league": "NBA",
-              "status": "live",
-              "start_time": "2026-01-15T02:00:00Z",
-              "home_team": {"id": 1, "name": "Warriors", "abbreviation": "GSW"},
-              "away_team": {"id": 2, "name": "Lakers", "abbreviation": "LAL"},
-              "has_pbp": true,
-              "has_social": false,
-              "has_story": true,
-              "last_updated_at": "2026-01-15T03:00:00Z"
-            }
-          ]
+          "id": 123,
+          "league": "NBA",
+          "status": "final",
+          "start_time": "2026-01-23T00:00:00Z",
+          "home_team": {"id": 1, "name": "Warriors", "abbreviation": "GSW"},
+          "away_team": {"id": 2, "name": "Lakers", "abbreviation": "LAL"},
+          "has_pbp": true,
+          "has_social": false,
+          "has_story": true,
+          "last_updated_at": "2026-01-23T03:00:00Z"
         }
+      ]
+    }
+    ```
+
+    Note: `start_time` in response is UTC. A game showing `2026-01-23T00:00:00Z`
+    is a 7pm ET game on Jan 22 (Eastern Time date = Jan 22).
     """
-    _validate_range(range)
     started_at = now_utc()
     league_filter: str | None = league.strip().upper() if league else None
     if league_filter == "":
         league_filter = None
-    if assume_now is not None and settings.environment != "development":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="assume_now is only available in development",
-        )
-    if assume_now is not None:
-        # If a naive datetime is provided, treat it as UTC for local testing.
-        if assume_now.tzinfo is None or assume_now.tzinfo.utcoffset(assume_now) is None:
-            assume_now = assume_now.replace(tzinfo=timezone.utc)
-        now = assume_now.astimezone(timezone.utc)
-    else:
-        now = now_utc()
-    window_start: datetime
-    window_end: datetime
 
-    start_of_today = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    # Build date filter using Eastern Time interpretation
+    date_filters = _build_date_filters(start_date, end_date)
 
-    if range == "last2":
-        window_start = now - timedelta(hours=48)
-        window_end = now
-        filters = and_(
-            db_models.SportsGame.game_date >= window_start,
-            db_models.SportsGame.game_date <= window_end,
-        )
-    elif range == "next24":
-        window_start = now
-        window_end = now + timedelta(hours=24)
-        filters = and_(
-            db_models.SportsGame.game_date >= window_start,
-            db_models.SportsGame.game_date <= window_end,
-        )
-    elif range == "yesterday":
-        # Yesterday only: from start of yesterday to start of today
-        start_of_yesterday = start_of_today - timedelta(days=1)
-        filters = and_(
-            db_models.SportsGame.game_date >= start_of_yesterday,
-            db_models.SportsGame.game_date < start_of_today,
-        )
-    elif range == "earlier":
-        # All games before yesterday (historical archive)
-        start_of_yesterday = start_of_today - timedelta(days=1)
-        filters = db_models.SportsGame.game_date < start_of_yesterday
-    else:
-        # "current" - today's games plus any live games
-        end_of_day = start_of_today + timedelta(days=1)
+    # Optionally include live games regardless of date
+    if include_live:
         filters = or_(
-            and_(
-                db_models.SportsGame.game_date >= start_of_today,
-                db_models.SportsGame.game_date < end_of_day,
-            ),
+            date_filters,
             db_models.SportsGame.status == db_models.GameStatus.live.value,
         )
+    else:
+        filters = date_filters
 
     has_pbp = exists(
         select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
@@ -296,7 +301,12 @@ async def list_games(
 
     if excluded:
         logger.info(
-            "snapshot_games_excluded", extra={"range": range, "excluded": excluded}
+            "snapshot_games_excluded",
+            extra={
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+                "excluded": excluded,
+            },
         )
 
     await _record_snapshot_job_run(
@@ -305,7 +315,11 @@ async def list_games(
         status_value="success",
         leagues=sorted(league_codes),
     )
-    return GameSnapshotResponse(range=range, games=games)
+    return GameSnapshotResponse(
+        start_date=start_date,
+        end_date=end_date,
+        games=games,
+    )
 
 
 @router.get("/games/{game_id}", response_model=GameSnapshot)
