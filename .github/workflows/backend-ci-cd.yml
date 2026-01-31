@@ -50,7 +50,6 @@ jobs:
     env:
       ENVIRONMENT: development
       DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
-      PYTHONPATH: api
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -64,9 +63,11 @@ jobs:
         run: |
           uv venv --python 3.12
           uv pip install -r api/requirements.txt
-          uv pip install pytest pytest-cov
+          uv pip install pytest pytest-cov pytest-asyncio
       - name: Run API tests with coverage
         working-directory: api
+        env:
+          PYTHONPATH: .
         run: |
           source ../.venv/bin/activate
           pytest tests/ \
