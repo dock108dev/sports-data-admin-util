@@ -920,17 +920,49 @@ Create/update account.
 
 **Base path:** `/api/fairbet`
 
-Bet-centric odds comparison endpoints for the FairBet product.
+FairBet is a **simple odds comparison tool** that displays betting lines from multiple sportsbooks side-by-side for upcoming games.
+
+> **Important:** FairBet is NOT an EV calculator. It does NOT compute expected value, fair odds, Kelly sizing, or any betting analytics. It simply shows what odds each sportsbook offers for comparison.
+
+### Supported Leagues
+
+- NBA
+- NHL
+- NCAAB
+
+(NFL, MLB, Soccer, Tennis, MMA are NOT supported)
+
+### Data Model
+
+**Table: `fairbet_game_odds_work`**
+
+A work table storing one row per (bet × book) combination. NOT historical — rows are upserted per scrape.
+
+**Composite Primary Key:**
+- `game_id` (FK → sports_games.id)
+- `market_key` (string: `"h2h"`, `"spreads"`, `"totals"`)
+- `selection_key` (string: `"team:los_angeles_lakers"`, `"total:over"`)
+- `line_value` (float: spread/total value, 0 for moneyline)
+- `book` (string: sportsbook name)
+
+**Additional Columns:**
+- `price` (float: American odds)
+- `observed_at` (timestamp: when odds were captured)
 
 ### `GET /odds`
 
 Get bet-centric odds for cross-book comparison.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `league` | `string` | Filter by league code (NBA, NHL, NCAAB) |
-| `limit` | `int` | Max results (1-500, default 100) |
-| `offset` | `int` | Pagination offset |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `league` | `string` | — | Filter by league code (NBA, NHL, NCAAB) |
+| `limit` | `int` | 100 | Max results (1-500) |
+| `offset` | `int` | 0 | Pagination offset |
+
+**Filtering Logic:**
+- Excludes games with status `"final"` or `"completed"`
+- Excludes games that started more than 4 hours ago
+- Groups rows by bet definition, aggregating books into array
 
 **Response:**
 ```json
@@ -939,39 +971,73 @@ Get bet-centric odds for cross-book comparison.
     {
       "game_id": 123,
       "league_code": "NBA",
-      "home_team": "Lakers",
-      "away_team": "Warriors",
-      "game_date": "2026-01-22T03:00:00Z",
+      "home_team": "Los Angeles Lakers",
+      "away_team": "Boston Celtics",
+      "game_date": "2025-01-31T19:00:00Z",
       "market_key": "spreads",
-      "selection_key": "team:lakers",
-      "line_value": -5.5,
+      "selection_key": "team:los_angeles_lakers",
+      "line_value": -3.5,
       "books": [
-        {
-          "book": "draftkings",
-          "price": -110,
-          "observed_at": "2026-01-22T02:30:00Z"
-        },
-        {
-          "book": "fanduel",
-          "price": -108,
-          "observed_at": "2026-01-22T02:30:00Z"
-        }
+        {"book": "DraftKings", "price": -110, "observed_at": "2025-01-31T18:00:00Z"},
+        {"book": "FanDuel", "price": -108, "observed_at": "2025-01-31T18:00:00Z"}
       ]
     }
   ],
-  "total": 250,
-  "books_available": ["draftkings", "fanduel", "betmgm", "caesars"]
+  "total": 245,
+  "books_available": ["DraftKings", "FanDuel", "BetMGM", "Caesars", "PointsBet"]
 }
 ```
 
-**Notes:**
-- Only includes non-final games (scheduled, live)
-- Bets are grouped by definition (game + market + selection + line)
-- Books within each bet are sorted by best odds
-- `line_value` of 0 is sentinel for moneyline (no line)
-- `selection_key` format: `{entity_type}:{entity_slug}` (e.g., `team:lakers`, `total:over`)
+**Field Notes:**
+- `market_key`: `"h2h"` (moneyline), `"spreads"`, or `"totals"`
+- `selection_key` format: `{entity_type}:{entity_slug}` (e.g., `"team:los_angeles_lakers"`, `"total:over"`)
+- `line_value`: The spread or total number; `0` for moneyline bets
+- `books`: Array of sportsbook prices, best odds first
 
-**Data Source:** `fairbet_game_odds_work` table, populated during odds ingestion for non-completed games.
+### Web UI
+
+**Page:** `/admin/fairbet/odds`
+
+**Features:**
+1. **League Filter** — Dropdown to filter by NBA, NHL, or NCAAB (or show all)
+2. **Books Available Counter** — Shows how many sportsbooks have odds
+3. **Sync Button** — Triggers odds scrape for selected league (or all if none selected)
+4. **Bet Cards** — Grid of cards showing:
+   - League badge + game date/time
+   - Matchup (Away @ Home)
+   - Market type (Moneyline/Spread/Total) + selection + line
+   - All book odds with **best odds highlighted**
+5. **Pagination** — Previous/Next with "Showing X-Y of Z"
+
+### Sync Mechanism
+
+The "Sync Odds" button calls `POST /api/admin/sports/scrape-runs` with:
+- `config.odds`: `true` (other flags false)
+- `config.leagueCode`: selected league, or each of `[NBA, NHL, NCAAB]` if none selected
+- `config.startDate` / `config.endDate`: today's date
+
+Creates Celery task(s) to fetch fresh odds from upstream provider (The Odds API).
+
+### Data Flow
+
+```
+1. Scraper ingests odds from The Odds API → stores in sports_odds table
+2. Pipeline populates fairbet_game_odds_work from sports_odds for non-completed games
+3. API queries work table, groups by bet definition, returns with book arrays
+4. UI renders cards with all books, highlights best price
+```
+
+### What Does NOT Exist
+
+- ❌ No EV calculations
+- ❌ No fair value / sharp odds comparison
+- ❌ No Kelly bet sizing
+- ❌ No favorites / bookmarking
+- ❌ No parlay builder
+- ❌ No price movement tracking
+- ❌ No historical data
+- ❌ No "insight cards" or ratings
+- ❌ No MVVM architecture or local Swift models
 
 ---
 
