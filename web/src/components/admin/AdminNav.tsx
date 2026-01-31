@@ -18,6 +18,12 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: "/admin/sports/story-generator", label: "Flow Generator" },
     ],
   },
+  {
+    title: "FairBet",
+    items: [
+      { href: "/admin/fairbet/odds", label: "Odds Comparison" },
+    ],
+  },
 ];
 
 export function AdminNav() {
