@@ -15,6 +15,10 @@ Benefits:
 
 from __future__ import annotations
 
+# Re-export shared dependencies for test patching
+from ..persistence import persist_game_payload  # noqa: F401
+from .pbp_ingestion import _populate_nhl_game_ids  # noqa: F401
+
 # Re-export NHL functions
 from .nhl_boxscore_ingestion import (
     select_games_for_boxscores_nhl_api,
