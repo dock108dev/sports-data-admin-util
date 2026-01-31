@@ -281,11 +281,11 @@ def _validate_score_never_decreases(moments: list[dict[str, Any]]) -> list[Valid
         score_before = moment.get("score_before", [0, 0])
         score_after = moment.get("score_after", [0, 0])
 
-        # Unpack scores (format: [away, home])
-        away_before = score_before[0] if len(score_before) > 0 else 0
-        home_before = score_before[1] if len(score_before) > 1 else 0
-        away_after = score_after[0] if len(score_after) > 0 else 0
-        home_after = score_after[1] if len(score_after) > 1 else 0
+        # Unpack scores (format: [home, away] per score_detection.py)
+        home_before = score_before[0] if len(score_before) > 0 else 0
+        away_before = score_before[1] if len(score_before) > 1 else 0
+        home_after = score_after[0] if len(score_after) > 0 else 0
+        away_after = score_after[1] if len(score_after) > 1 else 0
 
         # Check score_before doesn't decrease from previous moment's score_after
         if away_before < prev_away_score or home_before < prev_home_score:

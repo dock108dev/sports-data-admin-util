@@ -627,6 +627,10 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                 for moment_index, moment, moment_plays, original_narrative, initial_missing in moments_needing_retry:
                     explicit_play_ids = moment.get("explicitly_narrated_play_ids", [])
 
+                    # Only attempt injection if we have both:
+                    # 1. initial_missing: specific plays that need coverage (otherwise nothing to inject)
+                    # 2. original_narrative: a base narrative to append to (if empty, the initial
+                    #    render failed completely and injection won't help - go straight to fallback)
                     if initial_missing and original_narrative:
                         injection_count += 1
                         injected_narrative = inject_missing_explicit_plays(
