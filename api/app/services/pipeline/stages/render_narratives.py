@@ -77,6 +77,7 @@ from .prompt_builders import build_batch_prompt
 from .coverage_helpers import (
     count_sentences,
     check_explicit_play_coverage,
+    generate_deterministic_sentence,
     inject_missing_explicit_plays,
     log_coverage_resolution,
     validate_narrative,
@@ -91,6 +92,45 @@ _classify_empty_narrative_fallback = classify_empty_narrative_fallback
 _build_batch_prompt = build_batch_prompt
 _count_sentences = count_sentences
 _validate_narrative = validate_narrative
+_generate_deterministic_sentence = generate_deterministic_sentence
+_inject_missing_explicit_plays = inject_missing_explicit_plays
+
+
+def _log_coverage_resolution(
+    game_id: int,
+    moment_index: int,
+    resolution: CoverageResolution,
+    explicit_play_ids: list[int],
+    missing_after_initial: list[int] | None = None,
+    missing_after_regen: list[int] | None = None,
+    injections: list[dict] | None = None,
+) -> dict[str, Any]:
+    """Return structured coverage resolution data for logging/testing.
+
+    Backward-compatible wrapper that returns structured data for tests
+    while also logging the resolution.
+    """
+    data: dict[str, Any] = {
+        "game_id": game_id,
+        "moment_index": moment_index,
+        "resolution": resolution.value,
+        "explicit_play_count": len(explicit_play_ids),
+    }
+
+    if missing_after_initial is not None:
+        data["missing_after_initial"] = missing_after_initial
+        data["missing_after_initial_count"] = len(missing_after_initial)
+
+    if missing_after_regen is not None:
+        data["missing_after_regen"] = missing_after_regen
+        data["missing_after_regen_count"] = len(missing_after_regen)
+
+    if injections is not None:
+        data["injections"] = injections
+        data["injection_count"] = len(injections)
+
+    logger.info("coverage_resolution", **data)
+    return data
 
 
 def _check_explicit_play_coverage(

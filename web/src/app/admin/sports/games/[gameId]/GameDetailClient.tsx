@@ -483,18 +483,31 @@ export default function GameDetailClient() {
               {Object.entries(playerStatsByTeam).map(([team, rows]) => {
                 // Helper to get stat from raw_stats - handles both flat and nested formats
                 const getStat = (p: typeof rows[0], ...keys: string[]): number | null => {
+                  // Helper to coerce value to number (handles numeric strings)
+                  const toNumber = (v: unknown): number | null => {
+                    if (typeof v === "number") return v;
+                    if (typeof v === "string") {
+                      const parsed = Number(v);
+                      return isNaN(parsed) ? null : parsed;
+                    }
+                    return null;
+                  };
+
                   for (const key of keys) {
                     const val = p.raw_stats?.[key];
                     if (val !== null && val !== undefined) {
-                      // Direct number value
-                      if (typeof val === "number") return val;
+                      // Direct number or numeric string
+                      const num = toNumber(val);
+                      if (num !== null) return num;
                       // Nested object formats (CBB API)
                       if (typeof val === "object" && !Array.isArray(val)) {
                         const obj = val as Record<string, unknown>;
                         // Try "total" key first (points, rebounds, etc.)
-                        if (typeof obj.total === "number") return obj.total;
+                        const total = toNumber(obj.total);
+                        if (total !== null) return total;
                         // Try "personal" key for fouls
-                        if (typeof obj.personal === "number") return obj.personal;
+                        const personal = toNumber(obj.personal);
+                        if (personal !== null) return personal;
                       }
                     }
                   }

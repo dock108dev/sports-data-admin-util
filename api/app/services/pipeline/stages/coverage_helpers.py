@@ -269,10 +269,10 @@ def generate_deterministic_sentence(
 
 def inject_missing_explicit_plays(
     narrative: str,
-    missing_play_ids: set[int],
+    missing_play_ids: set[int] | list[int],
     moment_plays: list[dict[str, Any]],
     game_context: dict[str, str],
-) -> str:
+) -> tuple[str, list[dict[str, Any]]]:
     """Inject deterministic sentences for missing explicit plays.
 
     Appends minimal factual sentences to ensure all explicit plays
@@ -285,24 +285,32 @@ def inject_missing_explicit_plays(
         game_context: Team names for sentence generation
 
     Returns:
-        Enhanced narrative with injected sentences
+        Tuple of (enhanced_narrative, list of injection details)
     """
-    if not missing_play_ids:
-        return narrative
+    # Normalize to set
+    missing_set = set(missing_play_ids) if isinstance(missing_play_ids, list) else missing_play_ids
+
+    if not missing_set:
+        return narrative, []
 
     # Build lookup
     play_lookup = {p.get("play_index"): p for p in moment_plays}
 
     # Generate sentences for missing plays (in play_index order)
+    injections: list[dict[str, Any]] = []
     injected_sentences = []
-    for play_id in sorted(missing_play_ids):
+    for play_id in sorted(missing_set):
         play = play_lookup.get(play_id)
         if play:
             sentence = generate_deterministic_sentence(play, game_context)
             injected_sentences.append(sentence)
+            injections.append({
+                "play_index": play_id,
+                "injected_sentence": sentence,
+            })
 
     if not injected_sentences:
-        return narrative
+        return narrative, []
 
     # Append to narrative
     enhanced = narrative.rstrip()
@@ -310,7 +318,7 @@ def inject_missing_explicit_plays(
         enhanced += "."
     enhanced += " " + " ".join(injected_sentences)
 
-    return enhanced
+    return enhanced, injections
 
 
 def log_coverage_resolution(

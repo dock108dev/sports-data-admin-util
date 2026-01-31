@@ -104,6 +104,82 @@ class TestDeterministicSentenceGeneration:
         assert "O'Neal" in sentence
         assert "miss" in sentence.lower() or "free throw" in sentence.lower()
 
+    def test_three_pointer_missed(self):
+        """Missed three-pointer generates correct sentence (not 'hit')."""
+        from app.services.pipeline.stages.render_narratives import (
+            _generate_deterministic_sentence,
+        )
+
+        play = {
+            "player_name": "Stephen Curry",
+            "description": "Curry misses 3-pt shot from 28 ft",
+            "play_type": "shot",
+        }
+        game_context = {"home_team_name": "Warriors", "away_team_name": "Lakers"}
+
+        sentence = _generate_deterministic_sentence(play, game_context)
+
+        assert "Curry" in sentence or "Stephen Curry" in sentence
+        assert "miss" in sentence.lower()
+        assert "hit" not in sentence.lower()
+
+    def test_layup_missed(self):
+        """Missed layup generates correct sentence (not 'scored')."""
+        from app.services.pipeline.stages.render_narratives import (
+            _generate_deterministic_sentence,
+        )
+
+        play = {
+            "player_name": "LeBron James",
+            "description": "James misses driving layup",
+            "play_type": "shot",
+        }
+        game_context = {"home_team_name": "Lakers", "away_team_name": "Suns"}
+
+        sentence = _generate_deterministic_sentence(play, game_context)
+
+        assert "James" in sentence or "LeBron" in sentence
+        assert "miss" in sentence.lower()
+        assert "scored" not in sentence.lower()
+
+    def test_dunk_missed(self):
+        """Missed dunk generates correct sentence (not 'finished')."""
+        from app.services.pipeline.stages.render_narratives import (
+            _generate_deterministic_sentence,
+        )
+
+        play = {
+            "player_name": "Ja Morant",
+            "description": "Morant misses dunk attempt",
+            "play_type": "shot",
+        }
+        game_context = {"home_team_name": "Grizzlies", "away_team_name": "Lakers"}
+
+        sentence = _generate_deterministic_sentence(play, game_context)
+
+        assert "Morant" in sentence
+        assert "miss" in sentence.lower()
+        assert "finished" not in sentence.lower()
+
+    def test_jumper_missed(self):
+        """Missed jumper generates correct sentence (not 'hit')."""
+        from app.services.pipeline.stages.render_narratives import (
+            _generate_deterministic_sentence,
+        )
+
+        play = {
+            "player_name": "Kevin Durant",
+            "description": "Durant misses 18-foot jumper",
+            "play_type": "shot",
+        }
+        game_context = {"home_team_name": "Suns", "away_team_name": "Lakers"}
+
+        sentence = _generate_deterministic_sentence(play, game_context)
+
+        assert "Durant" in sentence
+        assert "miss" in sentence.lower()
+        assert "hit" not in sentence.lower()
+
     def test_rebound_generates_sentence(self):
         """Rebound generates correct sentence."""
         from app.services.pipeline.stages.render_narratives import (
