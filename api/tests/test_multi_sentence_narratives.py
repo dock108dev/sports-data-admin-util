@@ -163,7 +163,8 @@ class TestNarrativeValidation:
         moment = {"explicitly_narrated_play_ids": []}
         moment_plays = [{"play_index": 1, "description": "Shot"}]
 
-        hard_errors, soft_errors = _validate_narrative("", moment, moment_plays, 0)
+        # Task 2.2: Now returns 3 values (hard_errors, soft_errors, style_details)
+        hard_errors, soft_errors, _ = _validate_narrative("", moment, moment_plays, 0)
 
         assert len(hard_errors) > 0
         assert "empty" in hard_errors[0].lower()
@@ -178,7 +179,7 @@ class TestNarrativeValidation:
         ]
         narrative = "The Lakers played well this quarter."
 
-        hard_errors, soft_errors = _validate_narrative(narrative, moment, moment_plays, 0)
+        hard_errors, soft_errors, _ = _validate_narrative(narrative, moment, moment_plays, 0)
 
         assert len(hard_errors) > 0
         assert "explicit" in hard_errors[0].lower() or "missing" in hard_errors[0].lower()
@@ -191,7 +192,7 @@ class TestNarrativeValidation:
         moment_plays = [{"play_index": 1, "description": "Shot"}]
         narrative = "This was a crucial turning point in the game."
 
-        hard_errors, soft_errors = _validate_narrative(narrative, moment, moment_plays, 0)
+        hard_errors, soft_errors, _ = _validate_narrative(narrative, moment, moment_plays, 0)
 
         assert len(hard_errors) == 0
         assert len(soft_errors) > 0
@@ -209,7 +210,7 @@ class TestNarrativeValidation:
         ]
         narrative = "Mitchell scored on a layup."  # Only 1 sentence for 3 plays
 
-        hard_errors, soft_errors = _validate_narrative(
+        hard_errors, soft_errors, _ = _validate_narrative(
             narrative, moment, moment_plays, 0, strict_sentence_check=True
         )
 
@@ -231,7 +232,9 @@ class TestNarrativeValidation:
             "The Lakers grabbed the rebound on the next possession."
         )
 
-        hard_errors, soft_errors = _validate_narrative(narrative, moment, moment_plays, 0)
+        hard_errors, soft_errors, _ = _validate_narrative(
+            narrative, moment, moment_plays, 0, check_style=False  # Disable style check
+        )
 
         assert len(hard_errors) == 0
         assert len(soft_errors) == 0

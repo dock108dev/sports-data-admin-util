@@ -442,6 +442,17 @@ def _build_batch_prompt(
     else:
         retry_warning = ""
 
+    # Task 2.2: Style guidance for retry prompts
+    if is_retry:
+        style_emphasis = """
+STYLE (must sound natural when read aloud):
+- Vary sentence length (mix short and longer sentences)
+- Don't start multiple sentences the same way
+- Lead with actions, not statistics
+- Avoid templated patterns like "X scored, then Y answered" repeated"""
+    else:
+        style_emphasis = ""
+
     prompt = f"""Write 2-4 sentence narratives for each moment. {away_team} vs {home_team}.
 {retry_warning}
 Each narrative should:
@@ -449,22 +460,27 @@ Each narrative should:
 - Reference ALL *starred plays (these MUST appear in the narrative)
 - Use plain factual language like a neutral broadcast recap
 - Follow chronological order
+- Sound natural when read aloud (like a broadcast recap, not a stat sheet)
 
 REQUIRED format:
 {name_rule}
-- Vary sentence length naturally
-- Allowed: scoring runs, unanswered points, responses, changes in pace
-
+- Vary sentence length naturally (mix short and compound sentences)
+- Vary sentence openers (don't start every sentence the same way)
+- Lead with actions, not statistics
+- Allowed: scoring runs, unanswered points, responses
+{style_emphasis}
 FORBIDDEN (will fail validation):
 - Subjective adjectives: dominant, electric, huge, massive, incredible, clutch
 - Speculation: wanted to, tried to, felt, seemed to
 - Crowd/atmosphere: crowd erupted, fans, energy
 - Metaphors: took over, caught fire, in the zone
 - Summary language: momentum, turning point, crucial, pivotal
+- Metric-first sentences: "Mitchell scored 12 points" (say action first)
 
-GOOD: "The Suns opened with back-to-back baskets before the Lakers answered with a three. After a missed possession, Mitchell converted in transition to extend the lead."
+GOOD: "The Suns opened with back-to-back baskets before the Lakers answered with a three. Mitchell converted in transition. The lead grew to five."
 
-BAD: "The Suns went on an electric run. Mitchell took over the game."
+BAD: "The Suns scored. The Lakers scored. The Suns scored again." (repetitive structure)
+BAD: "Mitchell scored 12 points in the quarter." (metric-first)
 
 {moments_block}
 
@@ -997,10 +1013,12 @@ def _validate_narrative(
     moment_plays: list[dict[str, Any]],
     moment_index: int,
     strict_sentence_check: bool = True,
-) -> tuple[list[str], list[str]]:
+    check_style: bool = True,
+) -> tuple[list[str], list[str], list[dict[str, Any]]]:
     """Validate the generated narrative against Story contract rules.
 
     Task 1.2: Enhanced validation for multi-sentence narratives.
+    Task 2.2: Style validation for natural readability.
 
     Args:
         narrative: The generated narrative text
@@ -1008,19 +1026,22 @@ def _validate_narrative(
         moment_plays: Full PBP records for plays in this moment
         moment_index: Index for error reporting
         strict_sentence_check: If True, require 2+ sentences when multiple plays
+        check_style: If True, check for style violations (Task 2.2)
 
     Returns:
-        Tuple of (hard_errors, soft_errors)
+        Tuple of (hard_errors, soft_errors, style_details)
         - hard_errors: Must trigger fallback (empty, missing explicit plays)
-        - soft_errors: Should trigger retry (forbidden phrases, insufficient sentences)
+        - soft_errors: Should trigger retry (forbidden phrases, insufficient sentences, style)
+        - style_details: Detailed style violation info for logging
     """
     hard_errors: list[str] = []
     soft_errors: list[str] = []
+    style_details: list[dict[str, Any]] = []
 
     # Rule 1: Narrative must be non-empty (HARD)
     if not narrative or not narrative.strip():
         hard_errors.append(f"Moment {moment_index}: Narrative is empty")
-        return hard_errors, soft_errors  # Can't validate further if empty
+        return hard_errors, soft_errors, style_details  # Can't validate further if empty
 
     # Rule 2: Check for forbidden phrases (SOFT - can retry)
     for pattern in FORBIDDEN_PATTERNS:
@@ -1057,7 +1078,12 @@ def _validate_narrative(
                 f"Moment {moment_index}: {sentence_count} sentences exceeds target of 2-4"
             )
 
-    return hard_errors, soft_errors
+    # Rule 5: Check narrative style (SOFT - Task 2.2)
+    if check_style:
+        style_warnings, style_details = _validate_narrative_style(narrative, moment_index)
+        soft_errors.extend(style_warnings)
+
+    return hard_errors, soft_errors, style_details
 
 
 def _validate_narrative_legacy(
@@ -1070,10 +1096,330 @@ def _validate_narrative_legacy(
 
     Returns combined errors as a single list.
     """
-    hard_errors, soft_errors = _validate_narrative(
-        narrative, moment, moment_plays, moment_index
+    hard_errors, soft_errors, _ = _validate_narrative(
+        narrative, moment, moment_plays, moment_index, check_style=False
     )
     return hard_errors + soft_errors
+
+
+# =============================================================================
+# TASK 2.2: SENTENCE STYLE CONSTRAINTS
+# =============================================================================
+# Style validation to ensure narratives read naturally when spoken aloud.
+# Style violations are SOFT errors - they trigger retry but don't block pipeline.
+
+
+class StyleViolationType(str, Enum):
+    """Types of style violations detected in narratives."""
+
+    REPEATED_OPENER = "repeated_opener"  # Same sentence opener used multiple times
+    UNIFORM_LENGTH = "uniform_length"  # All sentences near-identical length
+    METRIC_FIRST = "metric_first"  # Sentences leading with statistics
+    TEMPLATE_REPETITION = "template_repetition"  # Same sentence structure repeated
+
+
+# Common sentence openers to detect repetition
+COMMON_OPENERS = [
+    r"^(The \w+)",  # "The Lakers", "The team"
+    r"^(\w+ scored)",  # "Mitchell scored"
+    r"^(\w+ made)",  # "Brown made"
+    r"^(\w+ hit)",  # "Curry hit"
+    r"^(After)",  # "After the timeout"
+    r"^(Following)",  # "Following the play"
+    r"^(On the)",  # "On the next possession"
+]
+
+# Patterns that indicate metric-first sentences
+METRIC_FIRST_PATTERNS = [
+    r"^\w+ scored \d+ points",  # "Mitchell scored 12 points"
+    r"^\w+ had \d+",  # "James had 8 rebounds"
+    r"^The team shot \d+-of-\d+",  # "The team shot 4-of-5"
+    r"^\d+ points",  # "12 points came from"
+    r"^\d+-\d+ run",  # "8-2 run"
+    r"^With \d+ points",  # "With 15 points"
+    r"^\w+ went \d+-for-\d+",  # "Curry went 3-for-4"
+]
+
+# Compile metric patterns
+METRIC_FIRST_COMPILED = [re.compile(p, re.IGNORECASE) for p in METRIC_FIRST_PATTERNS]
+
+
+def _split_into_sentences(text: str) -> list[str]:
+    """Split narrative text into individual sentences.
+
+    Args:
+        text: The narrative text
+
+    Returns:
+        List of sentence strings
+    """
+    if not text or not text.strip():
+        return []
+
+    # Simple sentence splitting on . ! ? followed by space or end
+    # Handle abbreviations by not splitting on common ones
+    cleaned = text
+    for abbrev in ["Mr.", "Mrs.", "Dr.", "Jr.", "Sr.", "vs.", "Q1.", "Q2.", "Q3.", "Q4."]:
+        cleaned = cleaned.replace(abbrev, abbrev.replace(".", "<<<DOT>>>"))
+
+    # Split on sentence endings
+    sentences = re.split(r'[.!?]+\s*', cleaned)
+
+    # Restore abbreviation dots and clean up
+    result = []
+    for s in sentences:
+        s = s.replace("<<<DOT>>>", ".").strip()
+        if s:
+            result.append(s)
+
+    return result
+
+
+def _get_sentence_opener(sentence: str, word_count: int = 3) -> str:
+    """Extract the opening words of a sentence for comparison.
+
+    Args:
+        sentence: The sentence text
+        word_count: Number of opening words to extract
+
+    Returns:
+        Lowercase opening words
+    """
+    words = sentence.split()[:word_count]
+    return " ".join(words).lower()
+
+
+def _check_sentence_length_variance(sentences: list[str]) -> tuple[bool, float]:
+    """Check if sentences have natural length variance.
+
+    Task 2.2: Narratives should exhibit natural sentence length variation.
+
+    Args:
+        sentences: List of sentence strings
+
+    Returns:
+        Tuple of (has_variance, variance_score)
+        - has_variance: True if length variance is acceptable
+        - variance_score: Coefficient of variation (0-1, higher = more variance)
+    """
+    if len(sentences) < 3:
+        # For 2 sentences, be lenient - natural to have similar lengths
+        return True, 1.0
+
+    lengths = [len(s.split()) for s in sentences]
+    mean_length = sum(lengths) / len(lengths)
+
+    if mean_length == 0:
+        return True, 1.0
+
+    # Calculate coefficient of variation (std dev / mean)
+    variance = sum((l - mean_length) ** 2 for l in lengths) / len(lengths)
+    std_dev = variance ** 0.5
+    cv = std_dev / mean_length
+
+    # Check for extremely uniform lengths (all within 15% of mean AND all same length)
+    # Only flag if ALL sentences are nearly identical length
+    uniform = all(abs(l - mean_length) / max(mean_length, 1) < 0.15 for l in lengths)
+
+    # Check if min/max range is very small for 3+ sentences
+    length_range = max(lengths) - min(lengths)
+    very_narrow_range = length_range <= 2  # 2 or fewer words difference
+
+    # Only fail if both conditions are met (very uniform AND very narrow range)
+    has_variance = not (uniform and very_narrow_range)
+    return has_variance, cv
+
+
+def _check_repeated_openers(sentences: list[str]) -> list[str]:
+    """Check for repeated sentence openers.
+
+    Task 2.2: Avoid reusing the same sentence structure repeatedly.
+
+    Args:
+        sentences: List of sentence strings
+
+    Returns:
+        List of repeated openers found (empty if none)
+    """
+    if len(sentences) < 2:
+        return []
+
+    # Get openers (first 2-3 words)
+    openers = [_get_sentence_opener(s, 2) for s in sentences]
+
+    # Count occurrences
+    opener_counts: dict[str, int] = {}
+    for opener in openers:
+        opener_counts[opener] = opener_counts.get(opener, 0) + 1
+
+    # Find repeated openers (appearing more than once)
+    repeated = [opener for opener, count in opener_counts.items() if count > 1]
+    return repeated
+
+
+def _check_metric_first_sentences(sentences: list[str]) -> list[str]:
+    """Check for sentences that lead with statistics/metrics.
+
+    Task 2.2: Avoid leading sentences with statistics unless contextually meaningful.
+
+    Args:
+        sentences: List of sentence strings
+
+    Returns:
+        List of metric-first sentences found
+    """
+    metric_first = []
+    for sentence in sentences:
+        for pattern in METRIC_FIRST_COMPILED:
+            if pattern.match(sentence):
+                metric_first.append(sentence)
+                break
+    return metric_first
+
+
+def _check_template_repetition(sentences: list[str]) -> bool:
+    """Check if sentences follow a repetitive template pattern.
+
+    Task 2.2: Narratives MUST NOT reuse the same sentence structure repeatedly.
+
+    Detects patterns like:
+    - "X scored on a layup"
+    - "Y scored on a dunk"
+    - "Z scored on a jumper"
+
+    Args:
+        sentences: List of sentence strings
+
+    Returns:
+        True if template repetition detected
+    """
+    if len(sentences) < 3:
+        # Need at least 3 sentences to detect a pattern
+        return False
+
+    # Extract structural patterns (replace names/numbers with placeholders)
+    patterns = []
+    for sentence in sentences:
+        # Normalize: lowercase first
+        pattern = sentence.lower()
+        # Replace player names (capitalized words in original) with PLAYER
+        pattern = re.sub(r'\b[a-z]+\b', lambda m: 'WORD', pattern)
+        # Replace numbers with NUM
+        pattern = re.sub(r'\b\d+\b', 'NUM', pattern)
+        # Extract just the structure: verb patterns
+        patterns.append(pattern.strip())
+
+    # Alternative: Check for same verb phrase structure
+    verb_patterns = []
+    for sentence in sentences:
+        # Extract key verb + preposition pattern
+        # e.g., "scored on a", "answered with a", "hit a"
+        match = re.search(r'\b(scored|made|hit|answered|converted|grabbed|blocked|called)\b.*?(?:\ba\b|\bthe\b|\bwith\b)', sentence.lower())
+        if match:
+            verb_patterns.append(match.group())
+        else:
+            verb_patterns.append("")
+
+    # Check if most sentences have the same verb pattern
+    if verb_patterns:
+        pattern_counts: dict[str, int] = {}
+        for p in verb_patterns:
+            if p:  # Only count non-empty patterns
+                pattern_counts[p] = pattern_counts.get(p, 0) + 1
+
+        # If any pattern appears in majority of sentences (>= 2/3), it's repetition
+        threshold = max(2, len(sentences) * 2 // 3)
+        if any(count >= threshold for count in pattern_counts.values()):
+            return True
+
+    # Also check for identical sentence openers (first 3 words)
+    openers = [" ".join(s.split()[:3]).lower() for s in sentences]
+    opener_counts: dict[str, int] = {}
+    for o in openers:
+        opener_counts[o] = opener_counts.get(o, 0) + 1
+
+    # If same opener appears in majority, it's repetition
+    threshold = max(2, len(sentences) * 2 // 3)
+    return any(count >= threshold for count in opener_counts.values())
+
+
+def _validate_narrative_style(
+    narrative: str,
+    moment_index: int,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Validate narrative style for natural readability.
+
+    Task 2.2: Ensure narratives read like neutral human recaps.
+
+    Args:
+        narrative: The generated narrative text
+        moment_index: Index for error reporting
+
+    Returns:
+        Tuple of (style_warnings, style_details)
+        - style_warnings: List of warning messages
+        - style_details: List of detailed violation info for logging
+    """
+    warnings: list[str] = []
+    details: list[dict[str, Any]] = []
+
+    if not narrative or not narrative.strip():
+        return warnings, details
+
+    sentences = _split_into_sentences(narrative)
+    if len(sentences) < 2:
+        return warnings, details  # Not enough sentences to check style
+
+    # Check 1: Sentence length variance
+    has_variance, variance_score = _check_sentence_length_variance(sentences)
+    if not has_variance:
+        warnings.append(
+            f"Moment {moment_index}: Uniform sentence lengths (variance={variance_score:.2f})"
+        )
+        details.append({
+            "type": StyleViolationType.UNIFORM_LENGTH.value,
+            "moment_index": moment_index,
+            "variance_score": variance_score,
+            "sentence_lengths": [len(s.split()) for s in sentences],
+        })
+
+    # Check 2: Repeated sentence openers
+    repeated_openers = _check_repeated_openers(sentences)
+    if repeated_openers:
+        warnings.append(
+            f"Moment {moment_index}: Repeated sentence openers: {repeated_openers[:2]}"
+        )
+        details.append({
+            "type": StyleViolationType.REPEATED_OPENER.value,
+            "moment_index": moment_index,
+            "repeated_openers": repeated_openers,
+        })
+
+    # Check 3: Metric-first sentences
+    metric_first = _check_metric_first_sentences(sentences)
+    # Only flag if more than half of sentences are metric-first
+    if len(metric_first) > len(sentences) / 2:
+        warnings.append(
+            f"Moment {moment_index}: Excessive metric-first sentences ({len(metric_first)}/{len(sentences)})"
+        )
+        details.append({
+            "type": StyleViolationType.METRIC_FIRST.value,
+            "moment_index": moment_index,
+            "metric_first_count": len(metric_first),
+            "total_sentences": len(sentences),
+        })
+
+    # Check 4: Template repetition
+    if _check_template_repetition(sentences):
+        warnings.append(
+            f"Moment {moment_index}: Template repetition detected"
+        )
+        details.append({
+            "type": StyleViolationType.TEMPLATE_REPETITION.value,
+            "moment_index": moment_index,
+        })
+
+    return warnings, details
 
 
 def _get_batch_cache_key(moment_indices: list[int]) -> str:
@@ -1227,6 +1573,9 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
     total_openai_calls = 0
     retry_count = 0  # Task 1.2: Track retries for logging
     injection_count = 0  # Task 1.3: Track deterministic injections
+
+    # Task 2.2: Style violation tracking
+    all_style_violations: list[dict[str, Any]] = []
 
     # Fallback tracking with classification (Task 0.2)
     fallback_moments: list[int] = []  # All moments with fallback narratives
@@ -1420,10 +1769,14 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                 successful_renders += 1
 
             else:
-                # Task 1.2: Validate with hard/soft error separation
-                hard_errors, soft_errors = _validate_narrative(
+                # Task 1.2/2.2: Validate with hard/soft error separation and style checks
+                hard_errors, soft_errors, moment_style_details = _validate_narrative(
                     narrative, moment, moment_plays, moment_index
                 )
+
+                # Task 2.2: Track style violations
+                if moment_style_details:
+                    all_style_violations.extend(moment_style_details)
 
                 # Task 1.3: Check explicit play coverage separately
                 explicit_play_ids = moment.get("explicitly_narrated_play_ids", [])
@@ -1536,10 +1889,11 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
 
                     if not missing_after_regen:
                         # Retry succeeded - all explicit plays covered
-                        # Validate for other issues (strict=False for sentence count)
-                        hard_errors, soft_errors = _validate_narrative(
+                        # Validate for other issues (strict=False for sentence count, no style check on retry)
+                        hard_errors, soft_errors, _ = _validate_narrative(
                             retry_narrative, moment, moment_plays, moment_index,
-                            strict_sentence_check=False
+                            strict_sentence_check=False,
+                            check_style=False  # Task 2.2: Don't block on style in retry
                         )
 
                         # Accept even with soft errors if explicit plays are covered
@@ -1718,6 +2072,31 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             f"Task 1.3 injections: {injection_count} moments required deterministic injection"
         )
 
+    # Task 2.2: Log style violations (non-blocking, for monitoring)
+    if all_style_violations:
+        # Group by type for summary
+        violation_types: dict[str, int] = {}
+        for v in all_style_violations:
+            vtype = v.get("type", "unknown")
+            violation_types[vtype] = violation_types.get(vtype, 0) + 1
+
+        output.add_log(
+            f"Task 2.2 style violations: {len(all_style_violations)} total "
+            f"({', '.join(f'{t}:{c}' for t, c in violation_types.items())})",
+            level="info",
+        )
+
+        # Log to Python logger for monitoring
+        logger.info(
+            "render_narratives_style_violations",
+            extra={
+                "game_id": game_id,
+                "style_violation_count": len(all_style_violations),
+                "violation_types": violation_types,
+                "violations": all_style_violations[:10],  # First 10 for debugging
+            },
+        )
+
     # Log fallback usage with classification (Task 0.2)
     if fallback_moments:
         output.add_log(
@@ -1786,6 +2165,7 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
     # Task 0.2: includes fallback classification
     # Task 1.2: includes retry count
     # Task 1.3: includes injection count
+    # Task 2.2: includes style violation tracking
     output.data = {
         "rendered": True,
         "moments": enriched_moments,
@@ -1803,6 +2183,9 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         "retry_count": retry_count,
         # Task 1.3: Explicit play coverage injection tracking
         "injection_count": injection_count,
+        # Task 2.2: Style violation tracking (non-blocking)
+        "style_violation_count": len(all_style_violations),
+        "style_violations": all_style_violations,
     }
 
     return output
