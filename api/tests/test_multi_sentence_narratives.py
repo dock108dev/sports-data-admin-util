@@ -8,7 +8,6 @@ These tests verify:
 5. Prompt generates 2-4 sentence narratives
 """
 
-import pytest
 
 
 class TestSentenceCounting:

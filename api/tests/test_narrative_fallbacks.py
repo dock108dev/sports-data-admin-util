@@ -7,7 +7,6 @@ These tests verify:
 4. Fallback narratives are never empty
 """
 
-import pytest
 
 
 class TestFallbackClassification:

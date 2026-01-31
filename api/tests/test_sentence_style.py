@@ -8,7 +8,6 @@ These tests verify:
 5. Style validation integration
 """
 
-import pytest
 
 
 class TestSentenceSplitting:

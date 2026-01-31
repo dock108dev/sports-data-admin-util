@@ -4,7 +4,6 @@ These tests verify the score continuity validation rules (Rules 6 and 7)
 added to validate_moments.py as part of Phase 0 Task 0.1.
 """
 
-import pytest
 
 
 class TestScoreNeverDecreases:

@@ -16,8 +16,7 @@ import os
 import re
 import httpx
 from alembic import op
-from sqlalchemy import text, bindparam
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import text
 
 revision = "20260130_000001"
 down_revision = "20260129_000001"

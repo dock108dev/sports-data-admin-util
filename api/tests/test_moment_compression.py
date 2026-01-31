@@ -8,7 +8,6 @@ These tests verify:
 5. Max 2 explicitly narrated plays per moment
 """
 
-import pytest
 
 
 class TestLeadChangeDetection:
@@ -254,7 +253,6 @@ class TestCompressionMetrics:
         """Metrics should calculate percentages correctly."""
         from app.services.pipeline.stages.generate_moments import (
             CompressionMetrics,
-            SOFT_CAP_PLAYS,
         )
 
         metrics = CompressionMetrics()

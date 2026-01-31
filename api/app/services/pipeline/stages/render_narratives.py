@@ -753,10 +753,7 @@ def _generate_deterministic_sentence(
     # Extract play data
     player_name = play.get("player_name", "")
     description = play.get("description", "")
-    play_type = play.get("play_type", "")
     team_abbrev = play.get("team_abbreviation", "")
-    home_score = play.get("home_score", 0)
-    away_score = play.get("away_score", 0)
 
     # Get team names from context
     home_team = game_context.get("home_team_name", "Home")
@@ -833,12 +830,12 @@ def _generate_deterministic_sentence(
     if "foul" in desc_lower:
         if player_name:
             return f"{player_name} was called for a foul."
-        return f"A foul was called."
+        return "A foul was called."
 
     if "block" in desc_lower:
         if player_name:
             return f"{player_name} blocked the shot."
-        return f"The shot was blocked."
+        return "The shot was blocked."
 
     if "timeout" in desc_lower:
         return f"{team_name or 'The team'} called timeout."
@@ -1194,13 +1191,13 @@ def _check_sentence_length_variance(sentences: list[str]) -> tuple[bool, float]:
         return True, 1.0
 
     # Calculate coefficient of variation (std dev / mean)
-    variance = sum((l - mean_length) ** 2 for l in lengths) / len(lengths)
+    variance = sum((slen - mean_length) ** 2 for slen in lengths) / len(lengths)
     std_dev = variance ** 0.5
     cv = std_dev / mean_length
 
     # Check for extremely uniform lengths (all within 15% of mean AND all same length)
     # Only flag if ALL sentences are nearly identical length
-    uniform = all(abs(l - mean_length) / max(mean_length, 1) < 0.15 for l in lengths)
+    uniform = all(abs(slen - mean_length) / max(mean_length, 1) < 0.15 for slen in lengths)
 
     # Check if min/max range is very small for 3+ sentences
     length_range = max(lengths) - min(lengths)

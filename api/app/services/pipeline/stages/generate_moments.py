@@ -950,11 +950,8 @@ def _segment_plays_into_moments(
             )
         prev_first_play = first_play
 
-    # VERIFICATION: No cross-period moments
-    for idx, moment in enumerate(moments):
-        period = moment.get("period")
-        # All plays in a moment should have the same period
-        # (enforced by period boundary being a HARD break)
+    # Note: Cross-period moments are prevented by period boundary being a HARD break
+    # during moment generation, so no post-hoc verification is needed.
 
     return moments, metrics
 

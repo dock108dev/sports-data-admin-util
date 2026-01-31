@@ -8,7 +8,6 @@ These tests verify:
 5. Invariant enforcement (no missing explicit plays)
 """
 
-import pytest
 
 
 class TestDeterministicSentenceGeneration:
