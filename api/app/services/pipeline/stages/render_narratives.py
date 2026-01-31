@@ -54,6 +54,7 @@ import hashlib
 import json
 import logging
 import re
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
@@ -66,6 +67,52 @@ if TYPE_CHECKING:
     from ....db import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# FALLBACK CLASSIFICATION (Task 0.2)
+# =============================================================================
+# Deterministic narrative fallbacks with explicit classification:
+# - VALID: Normal low-signal gameplay (expected basketball behavior)
+# - INVALID: Pipeline/AI failure (needs debugging, visible in beta)
+
+
+class FallbackType(str, Enum):
+    """Classification of fallback narrative type."""
+
+    VALID = "VALID"  # Normal low-signal gameplay, expected
+    INVALID = "INVALID"  # Pipeline/AI failure, needs debugging
+
+
+class FallbackReason(str, Enum):
+    """Specific reason codes for INVALID fallbacks.
+
+    These are diagnostic codes for beta debugging.
+    Each reason indicates a specific failure mode.
+    """
+
+    # AI generation failures
+    AI_GENERATION_FAILED = "ai_generation_failed"
+    AI_RETURNED_EMPTY = "ai_returned_empty"
+    AI_INVALID_JSON = "ai_invalid_json"
+
+    # Data quality issues
+    MISSING_PLAY_METADATA = "missing_play_metadata"
+    SCORE_CONTEXT_INVALID = "score_context_invalid"
+    EMPTY_NARRATIVE_WITH_EXPLICIT_PLAYS = "empty_narrative_with_explicit_plays"
+
+    # Pipeline state issues
+    UNEXPECTED_PIPELINE_STATE = "unexpected_pipeline_state"
+
+
+# Valid low-signal fallback texts (rotated deterministically)
+VALID_FALLBACK_NARRATIVES = [
+    "No scoring on this sequence.",
+    "Possession traded without a basket.",
+]
+
+# Invalid fallback format (beta-only, intentionally obvious)
+INVALID_FALLBACK_TEMPLATE = "[Narrative unavailable — {reason}]"
 
 # Forbidden phrases that indicate abstraction beyond the moment
 FORBIDDEN_PHRASES = [
@@ -104,9 +151,175 @@ FORBIDDEN_PATTERNS = [re.compile(p, re.IGNORECASE) for p in FORBIDDEN_PHRASES]
 # Number of moments to process in a single OpenAI call
 MOMENTS_PER_BATCH = 25
 
-# Fallback narrative when OpenAI returns empty
-# This allows pipeline to complete while flagging the issue for debugging
+# Legacy fallback (deprecated, use classification-aware fallbacks instead)
 FALLBACK_NARRATIVE = "Play continued."
+
+
+def _get_valid_fallback_narrative(moment_index: int) -> str:
+    """Get a valid low-signal fallback narrative.
+
+    Uses deterministic rotation based on moment index for variety.
+
+    Args:
+        moment_index: Index of the moment for deterministic selection
+
+    Returns:
+        A valid fallback narrative string
+    """
+    return VALID_FALLBACK_NARRATIVES[moment_index % len(VALID_FALLBACK_NARRATIVES)]
+
+
+def _get_invalid_fallback_narrative(reason: FallbackReason) -> str:
+    """Get an invalid fallback narrative with diagnostic reason.
+
+    Format is intentionally obvious for beta debugging:
+    "[Narrative unavailable — {reason}]"
+
+    Args:
+        reason: The specific failure reason
+
+    Returns:
+        A diagnostic fallback narrative string
+    """
+    # Convert enum to human-readable text
+    reason_text = reason.value.replace("_", " ")
+    return INVALID_FALLBACK_TEMPLATE.format(reason=reason_text)
+
+
+def _is_valid_score_context(moment: dict[str, Any]) -> bool:
+    """Check if a moment has valid score context.
+
+    Valid score context means:
+    - score_before and score_after are present
+    - Both are lists with 2 elements
+    - Scores are non-negative
+    - Score doesn't decrease (monotonic within moment)
+
+    Args:
+        moment: The moment data
+
+    Returns:
+        True if score context is valid
+    """
+    score_before = moment.get("score_before")
+    score_after = moment.get("score_after")
+
+    # Must have both scores
+    if score_before is None or score_after is None:
+        return False
+
+    # Must be lists with 2 elements
+    if not isinstance(score_before, (list, tuple)) or len(score_before) != 2:
+        return False
+    if not isinstance(score_after, (list, tuple)) or len(score_after) != 2:
+        return False
+
+    # Scores must be non-negative
+    try:
+        if score_before[0] < 0 or score_before[1] < 0:
+            return False
+        if score_after[0] < 0 or score_after[1] < 0:
+            return False
+    except (TypeError, IndexError):
+        return False
+
+    # Score shouldn't decrease within moment (monotonic)
+    try:
+        if score_after[0] < score_before[0] or score_after[1] < score_before[1]:
+            return False
+    except (TypeError, IndexError):
+        return False
+
+    return True
+
+
+def _has_valid_play_metadata(moment_plays: list[dict[str, Any]]) -> bool:
+    """Check if moment plays have required metadata.
+
+    Required fields for narrative generation:
+    - play_index
+    - description (non-empty)
+
+    Args:
+        moment_plays: List of PBP events for the moment
+
+    Returns:
+        True if all plays have valid metadata
+    """
+    if not moment_plays:
+        return False
+
+    for play in moment_plays:
+        if play.get("play_index") is None:
+            return False
+        # Description can be empty but should exist
+        if "description" not in play:
+            return False
+
+    return True
+
+
+def _classify_empty_narrative_fallback(
+    moment: dict[str, Any],
+    moment_plays: list[dict[str, Any]],
+    moment_index: int,
+) -> tuple[str, FallbackType, FallbackReason | None]:
+    """Classify and generate fallback for empty narrative from OpenAI.
+
+    This is the core classification logic for Task 0.2.
+
+    Classification rules:
+    - VALID if: no explicit plays AND valid score context AND valid play metadata
+    - INVALID otherwise (with specific reason)
+
+    Args:
+        moment: The moment data
+        moment_plays: PBP events for the moment
+        moment_index: Index for deterministic fallback selection
+
+    Returns:
+        Tuple of (narrative_text, fallback_type, fallback_reason)
+    """
+    explicitly_narrated = moment.get("explicitly_narrated_play_ids", [])
+    has_explicit_plays = bool(explicitly_narrated)
+    has_valid_scores = _is_valid_score_context(moment)
+    has_valid_metadata = _has_valid_play_metadata(moment_plays)
+
+    # Case 1: Explicit plays exist but narrative is empty -> INVALID
+    if has_explicit_plays:
+        reason = FallbackReason.EMPTY_NARRATIVE_WITH_EXPLICIT_PLAYS
+        return (
+            _get_invalid_fallback_narrative(reason),
+            FallbackType.INVALID,
+            reason,
+        )
+
+    # Case 2: Score context is invalid -> INVALID
+    if not has_valid_scores:
+        reason = FallbackReason.SCORE_CONTEXT_INVALID
+        return (
+            _get_invalid_fallback_narrative(reason),
+            FallbackType.INVALID,
+            reason,
+        )
+
+    # Case 3: Play metadata is missing -> INVALID
+    if not has_valid_metadata:
+        reason = FallbackReason.MISSING_PLAY_METADATA
+        return (
+            _get_invalid_fallback_narrative(reason),
+            FallbackType.INVALID,
+            reason,
+        )
+
+    # Case 4: Valid low-signal gameplay -> VALID
+    # No explicit plays, valid scores, valid metadata
+    # This is expected basketball behavior (nothing notable happened)
+    return (
+        _get_valid_fallback_narrative(moment_index),
+        FallbackType.VALID,
+        None,  # No reason needed for valid fallbacks
+    )
 
 
 def _build_batch_prompt(
@@ -497,24 +710,44 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
     # Process in batches
     enriched_moments: list[dict[str, Any]] = [None] * len(moments)  # type: ignore
     all_validation_errors: list[str] = []
-    fallback_moments: list[int] = []  # Track moments that got fallback narrative
     successful_renders = 0
     total_openai_calls = 0
+
+    # Fallback tracking with classification (Task 0.2)
+    fallback_moments: list[int] = []  # All moments with fallback narratives
+    valid_fallbacks: list[dict[str, Any]] = []  # VALID fallback details
+    invalid_fallbacks: list[dict[str, Any]] = []  # INVALID fallback details (for debugging)
 
     for batch_start in range(0, len(moments_with_plays), MOMENTS_PER_BATCH):
         batch_end = min(batch_start + MOMENTS_PER_BATCH, len(moments_with_plays))
         batch = moments_with_plays[batch_start:batch_end]
 
-        # Check for moments with no plays
+        # Check for moments with no plays -> INVALID fallback
         valid_batch = []
         for moment_index, moment, moment_plays in batch:
             if not moment_plays:
+                # No plays = missing play metadata -> INVALID
+                reason = FallbackReason.MISSING_PLAY_METADATA
+                fallback_narrative = _get_invalid_fallback_narrative(reason)
+
                 logger.warning(
                     f"Moment {moment_index}: No plays found for play_ids "
-                    f"{moment.get('play_ids', [])}, using fallback"
+                    f"{moment.get('play_ids', [])}, using INVALID fallback"
                 )
-                enriched_moments[moment_index] = {**moment, "narrative": FALLBACK_NARRATIVE}
+
+                enriched_moments[moment_index] = {
+                    **moment,
+                    "narrative": fallback_narrative,
+                    "fallback_type": FallbackType.INVALID.value,
+                    "fallback_reason": reason.value,
+                }
                 fallback_moments.append(moment_index)
+                invalid_fallbacks.append({
+                    "moment_index": moment_index,
+                    "reason": reason.value,
+                    "period": moment.get("period"),
+                    "start_clock": moment.get("start_clock"),
+                })
                 successful_renders += 1
             else:
                 valid_batch.append((moment_index, moment, moment_plays))
@@ -541,22 +774,54 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             response_data = json.loads(response_json)
 
         except json.JSONDecodeError as e:
+            # OpenAI returned invalid JSON -> INVALID fallback
+            reason = FallbackReason.AI_INVALID_JSON
             logger.warning(
-                f"Batch {batch_start}-{batch_end}: OpenAI returned invalid JSON: {e}, using fallback"
+                f"Batch {batch_start}-{batch_end}: OpenAI returned invalid JSON: {e}, "
+                f"using INVALID fallback"
             )
             for moment_index, moment, _ in valid_batch:
-                enriched_moments[moment_index] = {**moment, "narrative": FALLBACK_NARRATIVE}
+                fallback_narrative = _get_invalid_fallback_narrative(reason)
+                enriched_moments[moment_index] = {
+                    **moment,
+                    "narrative": fallback_narrative,
+                    "fallback_type": FallbackType.INVALID.value,
+                    "fallback_reason": reason.value,
+                }
                 fallback_moments.append(moment_index)
+                invalid_fallbacks.append({
+                    "moment_index": moment_index,
+                    "reason": reason.value,
+                    "period": moment.get("period"),
+                    "start_clock": moment.get("start_clock"),
+                    "error": str(e)[:200],
+                })
                 successful_renders += 1
             continue
 
         except Exception as e:
+            # OpenAI call failed -> INVALID fallback
+            reason = FallbackReason.AI_GENERATION_FAILED
             logger.warning(
-                f"Batch {batch_start}-{batch_end}: OpenAI call failed: {e}, using fallback"
+                f"Batch {batch_start}-{batch_end}: OpenAI call failed: {e}, "
+                f"using INVALID fallback"
             )
             for moment_index, moment, _ in valid_batch:
-                enriched_moments[moment_index] = {**moment, "narrative": FALLBACK_NARRATIVE}
+                fallback_narrative = _get_invalid_fallback_narrative(reason)
+                enriched_moments[moment_index] = {
+                    **moment,
+                    "narrative": fallback_narrative,
+                    "fallback_type": FallbackType.INVALID.value,
+                    "fallback_reason": reason.value,
+                }
                 fallback_moments.append(moment_index)
+                invalid_fallbacks.append({
+                    "moment_index": moment_index,
+                    "reason": reason.value,
+                    "period": moment.get("period"),
+                    "start_clock": moment.get("start_clock"),
+                    "error": str(e)[:200],
+                })
                 successful_renders += 1
             continue
 
@@ -593,21 +858,48 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         for moment_index, moment, moment_plays in valid_batch:
             narrative = narrative_lookup.get(moment_index, "")
 
-            # Handle empty narratives with fallback instead of failing
+            # Handle empty narratives with classified fallback (Task 0.2)
             if not narrative or not narrative.strip():
-                narrative = FALLBACK_NARRATIVE
-                fallback_moments.append(moment_index)
-                logger.warning(
-                    f"Moment {moment_index}: Empty narrative from OpenAI, using fallback",
-                    extra={
-                        "game_id": game_id,
-                        "moment_index": moment_index,
-                        "period": moment.get("period"),
-                        "start_clock": moment.get("start_clock"),
-                    },
+                # Classify the fallback based on moment context
+                fallback_narrative, fallback_type, fallback_reason = (
+                    _classify_empty_narrative_fallback(moment, moment_plays, moment_index)
                 )
-                # Count as successful since we have a valid fallback
+
+                fallback_moments.append(moment_index)
+
+                # Track by type for debugging
+                fallback_detail = {
+                    "moment_index": moment_index,
+                    "period": moment.get("period"),
+                    "start_clock": moment.get("start_clock"),
+                    "fallback_type": fallback_type.value,
+                }
+                if fallback_reason:
+                    fallback_detail["reason"] = fallback_reason.value
+
+                if fallback_type == FallbackType.VALID:
+                    valid_fallbacks.append(fallback_detail)
+                    logger.info(
+                        f"Moment {moment_index}: Empty narrative, using VALID fallback "
+                        f"(low-signal gameplay)",
+                        extra={"game_id": game_id, **fallback_detail},
+                    )
+                else:
+                    invalid_fallbacks.append(fallback_detail)
+                    logger.warning(
+                        f"Moment {moment_index}: Empty narrative, using INVALID fallback "
+                        f"(reason: {fallback_reason.value if fallback_reason else 'unknown'})",
+                        extra={"game_id": game_id, **fallback_detail},
+                    )
+
+                enriched_moments[moment_index] = {
+                    **moment,
+                    "narrative": fallback_narrative,
+                    "fallback_type": fallback_type.value,
+                    "fallback_reason": fallback_reason.value if fallback_reason else None,
+                }
                 successful_renders += 1
+
             else:
                 # Validate non-empty narratives for forbidden phrases
                 validation_errors = _validate_narrative(
@@ -622,23 +914,57 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                 else:
                     successful_renders += 1
 
-            enriched_moments[moment_index] = {**moment, "narrative": narrative}
+                # No fallback metadata for successfully rendered narratives
+                enriched_moments[moment_index] = {
+                    **moment,
+                    "narrative": narrative,
+                    "fallback_type": None,
+                    "fallback_reason": None,
+                }
 
     output.add_log(f"OpenAI calls made: {total_openai_calls}")
     output.add_log(f"Successful renders: {successful_renders}/{len(moments)}")
 
-    # Log fallback usage for debugging
+    # Log fallback usage with classification (Task 0.2)
     if fallback_moments:
         output.add_log(
-            f"Fallback narratives used for {len(fallback_moments)} moments: {fallback_moments[:20]}{'...' if len(fallback_moments) > 20 else ''}",
-            level="warning",
+            f"Fallback narratives used: {len(fallback_moments)} total "
+            f"({len(valid_fallbacks)} VALID, {len(invalid_fallbacks)} INVALID)",
+            level="warning" if invalid_fallbacks else "info",
         )
+
+        if valid_fallbacks:
+            output.add_log(
+                f"  VALID fallbacks (low-signal gameplay): {len(valid_fallbacks)}",
+                level="info",
+            )
+
+        if invalid_fallbacks:
+            output.add_log(
+                f"  INVALID fallbacks (needs debugging): {len(invalid_fallbacks)}",
+                level="warning",
+            )
+            # Log first few invalid fallbacks for visibility
+            for fb in invalid_fallbacks[:5]:
+                output.add_log(
+                    f"    Moment {fb['moment_index']}: {fb.get('reason', 'unknown')}",
+                    level="warning",
+                )
+            if len(invalid_fallbacks) > 5:
+                output.add_log(
+                    f"    ... and {len(invalid_fallbacks) - 5} more INVALID fallbacks",
+                    level="warning",
+                )
+
         logger.warning(
             "render_narratives_fallbacks_used",
             extra={
                 "game_id": game_id,
                 "fallback_count": len(fallback_moments),
+                "valid_fallback_count": len(valid_fallbacks),
+                "invalid_fallback_count": len(invalid_fallbacks),
                 "fallback_moment_indices": fallback_moments,
+                "invalid_fallback_details": invalid_fallbacks[:10],
             },
         )
 
@@ -659,7 +985,7 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             },
         )
 
-        # Build structured error output
+        # Build structured error output with fallback classification (Task 0.2)
         error_output = {
             "rendered": False,
             "moments": enriched_moments,
@@ -668,6 +994,11 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             "successful_renders": successful_renders,
             "fallback_count": len(fallback_moments),
             "fallback_moment_indices": fallback_moments,
+            # Task 0.2: Fallback classification
+            "valid_fallback_count": len(valid_fallbacks),
+            "invalid_fallback_count": len(invalid_fallbacks),
+            "valid_fallbacks": valid_fallbacks,
+            "invalid_fallbacks": invalid_fallbacks,
         }
 
         # Raise with structured JSON for reviewability
@@ -677,13 +1008,23 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
     if fallback_moments:
         output.add_log(
             f"{len(moments) - len(fallback_moments)} narratives from OpenAI, "
-            f"{len(fallback_moments)} fallbacks used"
+            f"{len(fallback_moments)} fallbacks used "
+            f"({len(valid_fallbacks)} valid, {len(invalid_fallbacks)} invalid)"
         )
     else:
         output.add_log(f"All {len(moments)} narratives generated successfully")
+
+    # Task 0.2: Flag if any INVALID fallbacks remain
+    if invalid_fallbacks:
+        output.add_log(
+            f"WARNING: {len(invalid_fallbacks)} INVALID fallbacks detected - "
+            f"these indicate pipeline issues that need debugging",
+            level="warning",
+        )
+
     output.add_log("RENDER_NARRATIVES completed successfully")
 
-    # Output shape: moments with narrative field added
+    # Output shape: moments with narrative field added (Task 0.2: includes fallback classification)
     output.data = {
         "rendered": True,
         "moments": enriched_moments,
@@ -692,6 +1033,11 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         "successful_renders": successful_renders,
         "fallback_count": len(fallback_moments),
         "fallback_moment_indices": fallback_moments,
+        # Task 0.2: Fallback classification for monitoring
+        "valid_fallback_count": len(valid_fallbacks),
+        "invalid_fallback_count": len(invalid_fallbacks),
+        "valid_fallbacks": valid_fallbacks,
+        "invalid_fallbacks": invalid_fallbacks,
     }
 
     return output

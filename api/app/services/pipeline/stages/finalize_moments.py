@@ -127,6 +127,24 @@ async def execute_finalize_moments(
 
     output.add_log(f"Persisting {len(moments)} moments with narratives")
 
+    # Task 0.2: Track fallback statistics for monitoring
+    fallback_count = previous_output.get("fallback_count", 0)
+    valid_fallback_count = previous_output.get("valid_fallback_count", 0)
+    invalid_fallback_count = previous_output.get("invalid_fallback_count", 0)
+
+    if fallback_count > 0:
+        output.add_log(
+            f"Fallback stats: {fallback_count} total "
+            f"({valid_fallback_count} VALID, {invalid_fallback_count} INVALID)"
+        )
+
+    if invalid_fallback_count > 0:
+        output.add_log(
+            f"WARNING: {invalid_fallback_count} INVALID fallbacks will be persisted - "
+            f"these are visible in beta for debugging",
+            level="warning",
+        )
+
     # Get game to determine sport
     game_result = await session.execute(
         select(db_models.SportsGame)
@@ -183,7 +201,7 @@ async def execute_finalize_moments(
     output.add_log(f"validated_at={validation_time.isoformat()}")
     output.add_log("FINALIZE_MOMENTS completed successfully")
 
-    # Output shape for reviewability
+    # Output shape for reviewability (Task 0.2: includes fallback stats)
     output.data = {
         "finalized": True,
         "story_id": story_id,
@@ -192,6 +210,10 @@ async def execute_finalize_moments(
         "moment_count": len(moments),
         "validated_at": validation_time.isoformat(),
         "openai_calls": openai_calls,
+        # Task 0.2: Fallback classification for monitoring
+        "fallback_count": fallback_count,
+        "valid_fallback_count": valid_fallback_count,
+        "invalid_fallback_count": invalid_fallback_count,
     }
 
     return output
