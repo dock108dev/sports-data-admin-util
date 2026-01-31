@@ -1,19 +1,21 @@
-"""Tests for services/boxscore_ingestion.py module."""
+"""Tests for boxscore ingestion modules (NHL and NCAAB)."""
 
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from sports_scraper.services.boxscore_ingestion import (
-    _season_from_date,
-    _convert_boxscore_to_normalized_game,
-    _convert_ncaab_boxscore_to_normalized_game,
+from sports_scraper.services.nhl_boxscore_ingestion import (
+    season_from_date as _season_from_date,
+    convert_nhl_boxscore_to_normalized_game as _convert_boxscore_to_normalized_game,
     select_games_for_boxscores_nhl_api,
-    select_games_for_boxscores_ncaab_api,
     ingest_boxscores_via_nhl_api,
+)
+from sports_scraper.services.ncaab_boxscore_ingestion import (
+    convert_ncaab_boxscore_to_normalized_game as _convert_ncaab_boxscore_to_normalized_game,
+    select_games_for_boxscores_ncaab_api,
     ingest_boxscores_via_ncaab_api,
-    _populate_ncaab_game_ids,
+    populate_ncaab_game_ids as _populate_ncaab_game_ids,
 )
 
 
@@ -635,28 +637,3 @@ class TestSelectGamesForBoxscoresNcaabApiFilters:
         )
 
         assert result == []
-
-
-class TestModuleImports:
-    """Tests for module imports."""
-
-    def test_has_nhl_ingestion_function(self):
-        """Module has NHL ingestion function."""
-        from sports_scraper.services import boxscore_ingestion
-        assert hasattr(boxscore_ingestion, 'ingest_boxscores_via_nhl_api')
-
-    def test_has_ncaab_ingestion_function(self):
-        """Module has NCAAB ingestion function."""
-        from sports_scraper.services import boxscore_ingestion
-        assert hasattr(boxscore_ingestion, 'ingest_boxscores_via_ncaab_api')
-
-    def test_has_convert_functions(self):
-        """Module has conversion functions."""
-        from sports_scraper.services import boxscore_ingestion
-        assert hasattr(boxscore_ingestion, '_convert_boxscore_to_normalized_game')
-        assert hasattr(boxscore_ingestion, '_convert_ncaab_boxscore_to_normalized_game')
-
-    def test_has_populate_function(self):
-        """Module has populate function."""
-        from sports_scraper.services import boxscore_ingestion
-        assert hasattr(boxscore_ingestion, '_populate_ncaab_game_ids')
