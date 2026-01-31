@@ -101,6 +101,11 @@ class FallbackReason(str, Enum):
     SCORE_CONTEXT_INVALID = "score_context_invalid"
     EMPTY_NARRATIVE_WITH_EXPLICIT_PLAYS = "empty_narrative_with_explicit_plays"
 
+    # Task 1.2: Multi-sentence validation failures
+    INSUFFICIENT_SENTENCES = "insufficient_sentences"
+    FORBIDDEN_LANGUAGE_DETECTED = "forbidden_language_detected"
+    MISSING_EXPLICIT_PLAY_REFERENCE = "missing_explicit_play_reference"
+
     # Pipeline state issues
     UNEXPECTED_PIPELINE_STATE = "unexpected_pipeline_state"
 
@@ -143,6 +148,46 @@ FORBIDDEN_PHRASES = [
     r"\bshould have\b",
     r"\bseemed to\b",
     r"\bappeared to\b",
+    # Task 1.2: Subjective adjectives (must remain neutral)
+    r"\bdominant\b",
+    r"\bdominated\b",
+    r"\belectric\b",
+    r"\bhuge\b",
+    r"\bmassive\b",
+    r"\bincredible\b",
+    r"\bamazing\b",
+    r"\bspectacular\b",
+    r"\bunstoppable\b",
+    r"\bclutch\b",
+    r"\bexplosive\b",
+    r"\bbrilliant\b",
+    r"\bdazzling\b",
+    r"\bsensational\b",
+    # Task 1.2: Crowd/atmosphere references
+    r"\bcrowd erupted\b",
+    r"\bcrowd went\b",
+    r"\bfans\b",
+    r"\batmosphere\b",
+    r"\benergy in\b",
+    r"\bbuilding\b.*\brocked\b",
+    # Task 1.2: Metaphorical/narrative flourish
+    r"\btook over\b",
+    r"\btook control\b",
+    r"\bcaught fire\b",
+    r"\bon fire\b",
+    r"\bheat(ed|ing)? up\b",
+    r"\bin the zone\b",
+    r"\bowned\b",
+    # Task 1.2: Intent/psychology speculation
+    r"\bwanted to\b",
+    r"\btried to\b",
+    r"\bneeded to\b",
+    r"\bhad to\b",
+    r"\bfelt\b",
+    r"\bfrustrat\w+\b",
+    r"\bdesper\w+\b",
+    r"\bconfident\b",
+    r"\bnervous\b",
 ]
 
 # Compile patterns for efficiency
