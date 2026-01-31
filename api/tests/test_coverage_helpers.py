@@ -456,3 +456,152 @@ class TestValidateNarrative:
 
         hard, soft, details = validate_narrative(narrative, moment, plays, 0)
         assert len(soft) > 0
+
+    def test_too_few_sentences_soft_error(self):
+        """Too few sentences is a soft error."""
+        from app.services.pipeline.stages.coverage_helpers import validate_narrative
+
+        narrative = "One sentence only."  # Less than 2 sentences
+        moment = {"explicitly_narrated_play_ids": []}
+
+        hard, soft, details = validate_narrative(narrative, moment, [], 0)
+        assert any("sentence" in s.lower() for s in soft)
+
+    def test_too_many_sentences_soft_error(self):
+        """Too many sentences is a soft error."""
+        from app.services.pipeline.stages.coverage_helpers import validate_narrative
+
+        narrative = "One. Two. Three. Four. Five. Six. Seven."  # More than 5 sentences
+        moment = {"explicitly_narrated_play_ids": []}
+
+        hard, soft, details = validate_narrative(narrative, moment, [], 0)
+        assert any("sentence" in s.lower() for s in soft)
+
+    def test_style_disabled(self):
+        """Style validation can be disabled."""
+        from app.services.pipeline.stages.coverage_helpers import validate_narrative
+
+        narrative = "Smith scored. Jones scored."
+        moment = {"explicitly_narrated_play_ids": []}
+
+        hard, soft, details = validate_narrative(
+            narrative, moment, [], 0, check_style=False
+        )
+        # With style disabled, fewer soft errors
+        assert len(hard) == 0
+
+
+class TestExtractPlayIdentifiersMore:
+    """Additional tests for extract_play_identifiers function."""
+
+    def test_free_throw(self):
+        """Extracts free throw keyword."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            extract_play_identifiers,
+        )
+
+        play = {"description": "Smith makes free throw 1 of 2"}
+        identifiers = extract_play_identifiers(play)
+        assert "free throw" in identifiers
+
+    def test_jumper(self):
+        """Extracts jumper keyword."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            extract_play_identifiers,
+        )
+
+        play = {"description": "Jones makes 18-foot jumper"}
+        identifiers = extract_play_identifiers(play)
+        assert "jumper" in identifiers
+
+    def test_jump_shot(self):
+        """Extracts jump shot keyword."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            extract_play_identifiers,
+        )
+
+        play = {"description": "Brown makes 15-foot jump shot"}
+        identifiers = extract_play_identifiers(play)
+        assert "jump shot" in identifiers
+
+    def test_foul_extraction(self):
+        """Extracts foul keyword."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            extract_play_identifiers,
+        )
+
+        play = {"description": "Davis personal foul on Smith"}
+        identifiers = extract_play_identifiers(play)
+        assert "foul" in identifiers
+
+    def test_assist(self):
+        """Extracts assist keyword."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            extract_play_identifiers,
+        )
+
+        play = {"description": "Smith assist"}
+        identifiers = extract_play_identifiers(play)
+        assert "assist" in identifiers
+
+
+class TestLogCoverageResolution:
+    """Tests for log_coverage_resolution function."""
+
+    def test_initial_pass(self):
+        """Initial pass logs correctly."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            log_coverage_resolution,
+            CoverageResolution,
+        )
+
+        # Should not raise
+        log_coverage_resolution(
+            moment_index=0,
+            resolution=CoverageResolution.INITIAL_PASS,
+            original_coverage=(True, {1, 2}, set()),
+        )
+
+    def test_regeneration_pass(self):
+        """Regeneration pass logs correctly."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            log_coverage_resolution,
+            CoverageResolution,
+        )
+
+        # Should not raise
+        log_coverage_resolution(
+            moment_index=0,
+            resolution=CoverageResolution.REGENERATION_PASS,
+            original_coverage=(True, {1, 2}, set()),
+        )
+
+    def test_injection_required(self):
+        """Injection required logs correctly."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            log_coverage_resolution,
+            CoverageResolution,
+        )
+
+        # Should not raise
+        log_coverage_resolution(
+            moment_index=0,
+            resolution=CoverageResolution.INJECTION_REQUIRED,
+            original_coverage=(False, {1}, {2}),
+            final_coverage=(True, {1, 2}, set()),
+        )
+
+    def test_injection_without_final(self):
+        """Injection without final coverage logs correctly."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            log_coverage_resolution,
+            CoverageResolution,
+        )
+
+        # Should not raise
+        log_coverage_resolution(
+            moment_index=0,
+            resolution=CoverageResolution.INJECTION_REQUIRED,
+            original_coverage=(False, {1}, {2}),
+            final_coverage=None,
+        )
