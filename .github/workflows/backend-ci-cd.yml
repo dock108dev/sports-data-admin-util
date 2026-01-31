@@ -35,7 +35,8 @@ jobs:
       - name: Run scraper tests with coverage
         working-directory: scraper
         run: |
-          uv run pytest tests/ \
+          source ../.venv/bin/activate
+          pytest tests/ \
             --cov=sports_scraper \
             --cov-config=pyproject.toml \
             --cov-report=term-missing \
@@ -67,7 +68,8 @@ jobs:
       - name: Run API tests with coverage
         working-directory: api
         run: |
-          uv run pytest tests/ \
+          source ../.venv/bin/activate
+          pytest tests/ \
             --cov=app \
             --cov-config=pyproject.toml \
             --cov-report=term-missing \
