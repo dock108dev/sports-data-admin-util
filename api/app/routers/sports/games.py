@@ -6,7 +6,7 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import desc, exists, func, select
+from sqlalchemy import desc, exists, func, not_, or_, select
 from sqlalchemy.orm import selectinload
 
 from ... import db_models
@@ -51,8 +51,8 @@ from .schemas import (
     StoryContent,
     StoryMoment,
     StoryPlay,
+    TimelineArtifactResponse,
 )
-from ..game_snapshot_models import TimelineArtifactResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -71,6 +71,10 @@ async def list_games(
     missingOdds: bool = Query(False, alias="missingOdds"),
     missingSocial: bool = Query(False, alias="missingSocial"),
     missingAny: bool = Query(False, alias="missingAny"),
+    safe: bool = Query(
+        False,
+        description="Exclude games with conflicts or missing team mappings (app-safe mode)",
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> GameListResponse:
@@ -100,6 +104,27 @@ async def list_games(
         missing_any=missingAny,
     )
 
+    # Safety filtering: exclude games with conflicts or missing team mappings
+    if safe:
+        # Exclude games with unresolved conflicts
+        conflict_exists = exists(
+            select(1)
+            .where(db_models.SportsGameConflict.resolved_at.is_(None))
+            .where(
+                or_(
+                    db_models.SportsGameConflict.game_id == db_models.SportsGame.id,
+                    db_models.SportsGameConflict.conflict_game_id
+                    == db_models.SportsGame.id,
+                )
+            )
+        )
+        base_stmt = base_stmt.where(not_(conflict_exists))
+        # Exclude games with missing team mappings
+        base_stmt = base_stmt.where(
+            db_models.SportsGame.home_team_id.isnot(None),
+            db_models.SportsGame.away_team_id.isnot(None),
+        )
+
     stmt = (
         base_stmt.order_by(desc(db_models.SportsGame.game_date))
         .offset(offset)
@@ -122,6 +147,26 @@ async def list_games(
         missing_social=missingSocial,
         missing_any=missingAny,
     )
+
+    # Apply same safety filtering to count query
+    if safe:
+        conflict_exists_count = exists(
+            select(1)
+            .where(db_models.SportsGameConflict.resolved_at.is_(None))
+            .where(
+                or_(
+                    db_models.SportsGameConflict.game_id == db_models.SportsGame.id,
+                    db_models.SportsGameConflict.conflict_game_id
+                    == db_models.SportsGame.id,
+                )
+            )
+        )
+        count_stmt = count_stmt.where(not_(conflict_exists_count))
+        count_stmt = count_stmt.where(
+            db_models.SportsGame.home_team_id.isnot(None),
+            db_models.SportsGame.away_team_id.isnot(None),
+        )
+
     total = (await session.execute(count_stmt)).scalar_one()
 
     with_boxscore_count_stmt = count_stmt.where(

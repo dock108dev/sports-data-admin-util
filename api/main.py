@@ -12,7 +12,7 @@ from app.db import _get_engine
 from app.logging_config import configure_logging
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.routers import game_snapshots, reading_positions, social, sports
+from app.routers import reading_positions, social, sports
 from app.routers.admin import pbp, pipeline, resolution, timeline_jobs
 from app.routers import fairbet
 
@@ -38,7 +38,6 @@ app.add_middleware(
 app.include_router(sports.router)
 app.include_router(social.router)
 app.include_router(reading_positions.router)
-app.include_router(game_snapshots.router)
 app.include_router(timeline_jobs.router, prefix="/api/admin/sports", tags=["admin"])
 app.include_router(pipeline.router, prefix="/api/admin/sports", tags=["admin", "pipeline"])
 app.include_router(pbp.router, prefix="/api/admin/sports", tags=["admin", "pbp"])
