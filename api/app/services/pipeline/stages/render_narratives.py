@@ -700,6 +700,297 @@ def _check_explicit_play_coverage(
     return missing_plays
 
 
+# =============================================================================
+# TASK 1.3: EXPLICIT PLAY COVERAGE INVARIANT
+# =============================================================================
+# Deterministic sentence injection as fail-safe for missing explicit plays.
+# This guarantees narrative trust by ensuring every explicit play is represented.
+
+
+class CoverageResolution(str, Enum):
+    """Resolution path for explicit play coverage."""
+
+    INITIAL_PASS = "initial_pass"  # Initial generation covered all plays
+    REGENERATION_PASS = "regeneration_pass"  # Regeneration covered all plays
+    INJECTION_REQUIRED = "injection_required"  # Deterministic injection was needed
+    INJECTION_FAILED = "injection_failed"  # Injection failed (should never happen)
+
+
+def _generate_deterministic_sentence(
+    play: dict[str, Any],
+    game_context: dict[str, str],
+) -> str:
+    """Generate a deterministic, factual sentence for a single play.
+
+    Task 1.3: This is the fail-safe injection when AI fails to cover an explicit play.
+
+    The sentence must be:
+    - Factual and neutral
+    - Derived directly from PBP data
+    - Free of adjectives or interpretation
+    - Grammatically complete
+
+    Args:
+        play: The PBP event data
+        game_context: Team names and sport info
+
+    Returns:
+        A deterministic sentence describing the play
+    """
+    # Extract play data
+    player_name = play.get("player_name", "")
+    description = play.get("description", "")
+    play_type = play.get("play_type", "")
+    team_abbrev = play.get("team_abbreviation", "")
+    home_score = play.get("home_score", 0)
+    away_score = play.get("away_score", 0)
+
+    # Get team names from context
+    home_team = game_context.get("home_team_name", "Home")
+    away_team = game_context.get("away_team_name", "Away")
+
+    # Determine which team the player is on
+    team_name = ""
+    if team_abbrev:
+        # Match abbreviation to team name (simplified)
+        if team_abbrev.upper() in home_team.upper():
+            team_name = home_team
+        elif team_abbrev.upper() in away_team.upper():
+            team_name = away_team
+        else:
+            team_name = team_abbrev  # Fall back to abbreviation
+
+    # Build sentence based on play type
+    desc_lower = description.lower()
+
+    # Scoring plays
+    if "three" in desc_lower or "3-pt" in desc_lower or "3pt" in desc_lower:
+        if player_name:
+            return f"{player_name} hit a three-pointer."
+        return f"{team_name or 'The team'} made a three-pointer."
+
+    if "layup" in desc_lower:
+        if player_name:
+            return f"{player_name} scored on a layup."
+        return f"{team_name or 'The team'} scored on a layup."
+
+    if "dunk" in desc_lower:
+        if player_name:
+            return f"{player_name} finished with a dunk."
+        return f"{team_name or 'The team'} scored on a dunk."
+
+    if "free throw" in desc_lower:
+        if "makes" in desc_lower or "made" in desc_lower:
+            if player_name:
+                return f"{player_name} converted the free throw."
+            return f"{team_name or 'The team'} made a free throw."
+        elif "misses" in desc_lower or "missed" in desc_lower:
+            if player_name:
+                return f"{player_name} missed the free throw."
+            return f"{team_name or 'The team'} missed a free throw."
+
+    if "jumper" in desc_lower or "jump shot" in desc_lower:
+        if "makes" in desc_lower or "made" in desc_lower:
+            if player_name:
+                return f"{player_name} hit a jump shot."
+            return f"{team_name or 'The team'} made a jump shot."
+
+    # Generic scoring detection
+    if any(word in desc_lower for word in ["makes", "made", "scores", "scored"]):
+        if player_name:
+            return f"{player_name} scored."
+        return f"{team_name or 'The team'} scored."
+
+    # Non-scoring plays
+    if "rebound" in desc_lower:
+        if player_name:
+            return f"{player_name} grabbed the rebound."
+        return f"{team_name or 'The team'} secured the rebound."
+
+    if "steal" in desc_lower:
+        if player_name:
+            return f"{player_name} made a steal."
+        return f"{team_name or 'The team'} forced a turnover."
+
+    if "turnover" in desc_lower:
+        if player_name:
+            return f"{player_name} committed a turnover."
+        return f"{team_name or 'The team'} turned the ball over."
+
+    if "foul" in desc_lower:
+        if player_name:
+            return f"{player_name} was called for a foul."
+        return f"A foul was called."
+
+    if "block" in desc_lower:
+        if player_name:
+            return f"{player_name} blocked the shot."
+        return f"The shot was blocked."
+
+    if "timeout" in desc_lower:
+        return f"{team_name or 'The team'} called timeout."
+
+    # Fallback: Use description directly if we can't parse it
+    if player_name and description:
+        # Clean up description for use in sentence
+        clean_desc = description.strip()
+        if clean_desc.endswith("."):
+            clean_desc = clean_desc[:-1]
+        return f"{player_name}: {clean_desc}."
+
+    if description:
+        clean_desc = description.strip()
+        if not clean_desc.endswith("."):
+            clean_desc += "."
+        return clean_desc
+
+    # Ultimate fallback
+    return "Play occurred."
+
+
+def _inject_missing_explicit_plays(
+    narrative: str,
+    missing_play_indices: list[int],
+    moment_plays: list[dict[str, Any]],
+    game_context: dict[str, str],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Inject deterministic sentences for missing explicit plays.
+
+    Task 1.3: Fail-safe injection to guarantee explicit play coverage.
+
+    Rules:
+    - Each missing play gets its own sentence
+    - Sentences are inserted in chronological order
+    - Preserves narrative flow where possible
+
+    Args:
+        narrative: The existing narrative text
+        missing_play_indices: List of play indices that need injection
+        moment_plays: Full PBP records for plays in this moment
+        game_context: Team names and sport info
+
+    Returns:
+        Tuple of (updated_narrative, injection_details)
+        - updated_narrative: Narrative with injected sentences
+        - injection_details: List of dicts with injection metadata
+    """
+    if not missing_play_indices:
+        return narrative, []
+
+    # Build play lookup
+    play_lookup = {p.get("play_index"): p for p in moment_plays}
+
+    # Sort missing plays by play_index (chronological order)
+    sorted_missing = sorted(missing_play_indices)
+
+    # Generate deterministic sentences for each missing play
+    injections: list[dict[str, Any]] = []
+    sentences_to_inject: list[str] = []
+
+    for play_index in sorted_missing:
+        play = play_lookup.get(play_index)
+        if not play:
+            continue
+
+        sentence = _generate_deterministic_sentence(play, game_context)
+        sentences_to_inject.append(sentence)
+
+        injections.append({
+            "play_index": play_index,
+            "injected_sentence": sentence,
+            "player_name": play.get("player_name"),
+            "description": play.get("description"),
+        })
+
+    if not sentences_to_inject:
+        return narrative, []
+
+    # Combine injected sentences
+    injection_block = " ".join(sentences_to_inject)
+
+    # Append to existing narrative (cleanest approach)
+    # Ensure proper spacing
+    if narrative and not narrative.rstrip().endswith("."):
+        narrative = narrative.rstrip() + "."
+
+    if narrative:
+        updated_narrative = f"{narrative.rstrip()} {injection_block}"
+    else:
+        updated_narrative = injection_block
+
+    return updated_narrative, injections
+
+
+def _log_coverage_resolution(
+    game_id: int,
+    moment_index: int,
+    resolution: CoverageResolution,
+    explicit_play_ids: list[int],
+    missing_after_initial: list[int] | None = None,
+    missing_after_regen: list[int] | None = None,
+    injections: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Log the resolution path for explicit play coverage.
+
+    Task 1.3: Required for pipeline health monitoring.
+
+    Args:
+        game_id: Game ID
+        moment_index: Moment index
+        resolution: How coverage was achieved
+        explicit_play_ids: All explicit play IDs in the moment
+        missing_after_initial: Play IDs missing after initial generation
+        missing_after_regen: Play IDs missing after regeneration
+        injections: Injection details if injection was used
+
+    Returns:
+        Dict containing the logged resolution data
+    """
+    log_data = {
+        "game_id": game_id,
+        "moment_index": moment_index,
+        "resolution": resolution.value,
+        "explicit_play_count": len(explicit_play_ids),
+        "explicit_play_ids": explicit_play_ids,
+    }
+
+    if missing_after_initial:
+        log_data["missing_after_initial"] = missing_after_initial
+        log_data["missing_after_initial_count"] = len(missing_after_initial)
+
+    if missing_after_regen:
+        log_data["missing_after_regen"] = missing_after_regen
+        log_data["missing_after_regen_count"] = len(missing_after_regen)
+
+    if injections:
+        log_data["injections"] = injections
+        log_data["injection_count"] = len(injections)
+
+    # Log based on resolution type
+    if resolution == CoverageResolution.INITIAL_PASS:
+        logger.debug(
+            "explicit_play_coverage_pass",
+            extra=log_data,
+        )
+    elif resolution == CoverageResolution.REGENERATION_PASS:
+        logger.info(
+            "explicit_play_coverage_regen_required",
+            extra=log_data,
+        )
+    elif resolution == CoverageResolution.INJECTION_REQUIRED:
+        logger.warning(
+            "explicit_play_coverage_injection_required",
+            extra=log_data,
+        )
+    elif resolution == CoverageResolution.INJECTION_FAILED:
+        logger.error(
+            "explicit_play_coverage_injection_failed",
+            extra=log_data,
+        )
+
+    return log_data
+
+
 def _validate_narrative(
     narrative: str,
     moment: dict[str, Any],
@@ -935,6 +1226,7 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
     successful_renders = 0
     total_openai_calls = 0
     retry_count = 0  # Task 1.2: Track retries for logging
+    injection_count = 0  # Task 1.3: Track deterministic injections
 
     # Fallback tracking with classification (Task 0.2)
     fallback_moments: list[int] = []  # All moments with fallback narratives
@@ -1133,8 +1425,12 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                     narrative, moment, moment_plays, moment_index
                 )
 
-                if hard_errors:
-                    # Hard errors -> immediate fallback (e.g., missing explicit plays)
+                # Task 1.3: Check explicit play coverage separately
+                explicit_play_ids = moment.get("explicitly_narrated_play_ids", [])
+                missing_explicit = _check_explicit_play_coverage(narrative, moment, moment_plays)
+
+                if hard_errors and "explicit" not in hard_errors[0].lower():
+                    # Non-explicit-play hard errors -> fallback
                     reason = FallbackReason.MISSING_EXPLICIT_PLAY_REFERENCE
                     fallback_narrative = _get_invalid_fallback_narrative(reason)
 
@@ -1159,36 +1455,49 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                     })
                     successful_renders += 1
 
-                elif soft_errors:
-                    # Task 1.2: Soft errors -> queue for retry
+                elif soft_errors or missing_explicit:
+                    # Task 1.2/1.3: Soft errors or missing explicit plays -> queue for retry
                     moments_needing_retry.append(
-                        (moment_index, moment, moment_plays, narrative)
+                        (moment_index, moment, moment_plays, narrative, missing_explicit)
                     )
-                    logger.info(
-                        f"Moment {moment_index}: Soft validation errors, will retry: "
-                        f"{soft_errors[0]}"
-                    )
-                    # Don't set enriched_moments yet - will be set after retry
+                    if missing_explicit:
+                        logger.info(
+                            f"Moment {moment_index}: Missing explicit plays {missing_explicit}, will retry"
+                        )
+                    else:
+                        logger.info(
+                            f"Moment {moment_index}: Soft validation errors, will retry: "
+                            f"{soft_errors[0]}"
+                        )
+                    # Don't set enriched_moments yet - will be set after retry/injection
 
                 else:
-                    # All validation passed
+                    # All validation passed - Task 1.3: Log coverage resolution
+                    if explicit_play_ids:
+                        _log_coverage_resolution(
+                            game_id=game_id,
+                            moment_index=moment_index,
+                            resolution=CoverageResolution.INITIAL_PASS,
+                            explicit_play_ids=explicit_play_ids,
+                        )
                     successful_renders += 1
                     enriched_moments[moment_index] = {
                         **moment,
                         "narrative": narrative,
                         "fallback_type": None,
                         "fallback_reason": None,
+                        "coverage_resolution": CoverageResolution.INITIAL_PASS.value if explicit_play_ids else None,
                     }
 
-        # Task 1.2: Retry moments with soft validation errors (one retry only)
+        # Task 1.2/1.3: Retry moments with soft validation errors or missing explicit plays
         if moments_needing_retry:
             retry_count += len(moments_needing_retry)
             output.add_log(
-                f"Retrying {len(moments_needing_retry)} moments with soft validation errors"
+                f"Retrying {len(moments_needing_retry)} moments with validation issues"
             )
 
             # Build retry batch with is_retry=True for stricter prompt
-            retry_batch = [(idx, m, plays) for idx, m, plays, _ in moments_needing_retry]
+            retry_batch = [(idx, m, plays) for idx, m, plays, _, _ in moments_needing_retry]
             retry_prompt = _build_batch_prompt(retry_batch, game_context, is_retry=True)
 
             try:
@@ -1212,34 +1521,116 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                         retry_narrative_lookup[idx] = narr
 
                 # Process retry results
-                for moment_index, moment, moment_plays, original_narrative in moments_needing_retry:
-                    retry_narrative = retry_narrative_lookup.get(moment_index, "")
+                for moment_index, moment, moment_plays, original_narrative, initial_missing in moments_needing_retry:
+                    retry_narrative = retry_narrative_lookup.get(moment_index, original_narrative)
+                    explicit_play_ids = moment.get("explicitly_narrated_play_ids", [])
 
-                    if retry_narrative and retry_narrative.strip():
-                        # Validate retry attempt (strict=False to accept imperfect retries)
+                    # Use original narrative as fallback if retry returned empty
+                    if not retry_narrative or not retry_narrative.strip():
+                        retry_narrative = original_narrative
+
+                    # Task 1.3: Check explicit play coverage after retry
+                    missing_after_regen = _check_explicit_play_coverage(
+                        retry_narrative, moment, moment_plays
+                    )
+
+                    if not missing_after_regen:
+                        # Retry succeeded - all explicit plays covered
+                        # Validate for other issues (strict=False for sentence count)
                         hard_errors, soft_errors = _validate_narrative(
                             retry_narrative, moment, moment_plays, moment_index,
-                            strict_sentence_check=False  # Accept on retry even if not perfect
+                            strict_sentence_check=False
                         )
 
-                        if not hard_errors:
-                            # Retry succeeded (accept even with soft errors)
+                        # Accept even with soft errors if explicit plays are covered
+                        if not hard_errors or "explicit" in str(hard_errors).lower():
+                            if explicit_play_ids:
+                                _log_coverage_resolution(
+                                    game_id=game_id,
+                                    moment_index=moment_index,
+                                    resolution=CoverageResolution.REGENERATION_PASS,
+                                    explicit_play_ids=explicit_play_ids,
+                                    missing_after_initial=initial_missing,
+                                )
                             successful_renders += 1
                             enriched_moments[moment_index] = {
                                 **moment,
                                 "narrative": retry_narrative,
                                 "fallback_type": None,
                                 "fallback_reason": None,
+                                "coverage_resolution": CoverageResolution.REGENERATION_PASS.value if initial_missing else None,
                             }
                             logger.info(f"Moment {moment_index}: Retry succeeded")
                             continue
 
-                    # Retry failed -> use fallback
+                    # Task 1.3: Regeneration failed to cover explicit plays -> INJECT
+                    if missing_after_regen:
+                        injection_count += 1
+                        logger.warning(
+                            f"Moment {moment_index}: Regeneration failed to cover plays "
+                            f"{missing_after_regen}, injecting deterministic sentences"
+                        )
+
+                        # Inject deterministic sentences for missing plays
+                        injected_narrative, injections = _inject_missing_explicit_plays(
+                            retry_narrative, missing_after_regen, moment_plays, game_context
+                        )
+
+                        # Verify injection succeeded
+                        still_missing = _check_explicit_play_coverage(
+                            injected_narrative, moment, moment_plays
+                        )
+
+                        if still_missing:
+                            # Task 1.3: Injection failed - this is a hard error
+                            logger.error(
+                                f"Moment {moment_index}: Injection failed, still missing {still_missing}"
+                            )
+                            _log_coverage_resolution(
+                                game_id=game_id,
+                                moment_index=moment_index,
+                                resolution=CoverageResolution.INJECTION_FAILED,
+                                explicit_play_ids=explicit_play_ids,
+                                missing_after_initial=initial_missing,
+                                missing_after_regen=missing_after_regen,
+                                injections=injections,
+                            )
+                            raise ValueError(
+                                f"Explicit play coverage invariant violated: "
+                                f"Moment {moment_index} still missing plays {still_missing} after injection"
+                            )
+
+                        # Injection succeeded
+                        _log_coverage_resolution(
+                            game_id=game_id,
+                            moment_index=moment_index,
+                            resolution=CoverageResolution.INJECTION_REQUIRED,
+                            explicit_play_ids=explicit_play_ids,
+                            missing_after_initial=initial_missing,
+                            missing_after_regen=missing_after_regen,
+                            injections=injections,
+                        )
+                        successful_renders += 1
+                        enriched_moments[moment_index] = {
+                            **moment,
+                            "narrative": injected_narrative,
+                            "fallback_type": None,
+                            "fallback_reason": None,
+                            "coverage_resolution": CoverageResolution.INJECTION_REQUIRED.value,
+                            "injections": injections,
+                        }
+                        logger.info(
+                            f"Moment {moment_index}: Injection succeeded, "
+                            f"added {len(injections)} deterministic sentence(s)"
+                        )
+                        continue
+
+                    # No missing explicit plays but other hard errors -> fallback
                     reason = FallbackReason.FORBIDDEN_LANGUAGE_DETECTED
                     fallback_narrative = _get_invalid_fallback_narrative(reason)
 
                     logger.warning(
-                        f"Moment {moment_index}: Retry failed, using INVALID fallback"
+                        f"Moment {moment_index}: Retry failed with non-coverage errors, using INVALID fallback"
                     )
 
                     enriched_moments[moment_index] = {
@@ -1258,10 +1649,47 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                     })
                     successful_renders += 1
 
+            except ValueError:
+                # Re-raise explicit play coverage violations
+                raise
             except Exception as e:
-                # Retry batch failed entirely -> fallback for all
-                logger.warning(f"Retry batch failed: {e}, using fallbacks")
-                for moment_index, moment, moment_plays, original_narrative in moments_needing_retry:
+                # Retry batch failed entirely -> try injection on original narratives
+                logger.warning(f"Retry batch failed: {e}, attempting injection on original narratives")
+                for moment_index, moment, moment_plays, original_narrative, initial_missing in moments_needing_retry:
+                    explicit_play_ids = moment.get("explicitly_narrated_play_ids", [])
+
+                    if initial_missing and original_narrative:
+                        # Task 1.3: Try injection on original narrative
+                        injection_count += 1
+                        injected_narrative, injections = _inject_missing_explicit_plays(
+                            original_narrative, initial_missing, moment_plays, game_context
+                        )
+
+                        still_missing = _check_explicit_play_coverage(
+                            injected_narrative, moment, moment_plays
+                        )
+
+                        if not still_missing:
+                            _log_coverage_resolution(
+                                game_id=game_id,
+                                moment_index=moment_index,
+                                resolution=CoverageResolution.INJECTION_REQUIRED,
+                                explicit_play_ids=explicit_play_ids,
+                                missing_after_initial=initial_missing,
+                                injections=injections,
+                            )
+                            successful_renders += 1
+                            enriched_moments[moment_index] = {
+                                **moment,
+                                "narrative": injected_narrative,
+                                "fallback_type": None,
+                                "fallback_reason": None,
+                                "coverage_resolution": CoverageResolution.INJECTION_REQUIRED.value,
+                                "injections": injections,
+                            }
+                            continue
+
+                    # Injection not possible or failed -> fallback
                     reason = FallbackReason.AI_GENERATION_FAILED
                     fallback_narrative = _get_invalid_fallback_narrative(reason)
 
@@ -1285,6 +1713,10 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
     output.add_log(f"Successful renders: {successful_renders}/{len(moments)}")
     if retry_count > 0:
         output.add_log(f"Task 1.2 retries: {retry_count} moments retried")
+    if injection_count > 0:
+        output.add_log(
+            f"Task 1.3 injections: {injection_count} moments required deterministic injection"
+        )
 
     # Log fallback usage with classification (Task 0.2)
     if fallback_moments:
@@ -1353,6 +1785,7 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
     # Output shape: moments with narrative field added
     # Task 0.2: includes fallback classification
     # Task 1.2: includes retry count
+    # Task 1.3: includes injection count
     output.data = {
         "rendered": True,
         "moments": enriched_moments,
@@ -1368,6 +1801,8 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         "invalid_fallbacks": invalid_fallbacks,
         # Task 1.2: Multi-sentence retry tracking
         "retry_count": retry_count,
+        # Task 1.3: Explicit play coverage injection tracking
+        "injection_count": injection_count,
     }
 
     return output
