@@ -8,18 +8,149 @@
 
 ## Table of Contents
 
-1. [Health Check](#health-check)
-2. [App Endpoints (Read-Only)](#app-endpoints-read-only)
-3. [Admin Endpoints](#admin-endpoints)
+1. [External App Integration Guide](#external-app-integration-guide)
+2. [Health Check](#health-check)
+3. [App Endpoints (Read-Only)](#app-endpoints-read-only)
+4. [Admin Endpoints](#admin-endpoints)
    - [Games Management](#games-management)
    - [Story Pipeline](#story-pipeline)
    - [Timeline Generation](#timeline-generation)
    - [Teams](#teams)
    - [Scraper Runs](#scraper-runs)
    - [Diagnostics](#diagnostics)
-4. [Social](#social)
-5. [Reading Positions](#reading-positions)
-6. [Response Models](#response-models)
+5. [Social](#social)
+6. [Reading Positions](#reading-positions)
+7. [Response Models](#response-models)
+
+---
+
+## External App Integration Guide
+
+This section is for **external Dock108 apps** consuming sports data. Use only the app endpoints (`/api/*`) listed here.
+
+### Quick Start
+
+**Recommended integration pattern:**
+
+```
+1. GET /api/games?range=current&league=NBA     → List today's games
+2. GET /api/games/{game_id}/pbp                → Get play-by-play
+3. GET /api/games/{game_id}/social             → Get social posts
+4. GET /api/games/{game_id}/story              → Get AI-generated narrative (if available)
+5. GET /api/games/{game_id}/timeline           → Get full timeline artifact (if available)
+```
+
+### Supported Sports
+
+| League | Code | Data Available |
+|--------|------|----------------|
+| NBA | `NBA` | Boxscores, PBP, Social, Odds, Stories, Timelines |
+| NHL | `NHL` | Boxscores, PBP, Social, Odds, Timelines |
+| NCAAB | `NCAAB` | Boxscores, PBP, Social, Odds, Timelines |
+
+### Getting Games with All Data
+
+**Step 1: List available games**
+```http
+GET /api/games?range=current&league=NBA
+```
+
+Response includes `has_pbp` and `has_social` flags to indicate data availability.
+
+**Step 2: Check what's available per game**
+- `has_pbp: true` → Play-by-play is available at `/api/games/{id}/pbp`
+- `has_social: true` → Social posts available at `/api/games/{id}/social`
+
+**Step 3: Fetch detailed data**
+Use the endpoints below to fetch PBP, social, timeline, and story data.
+
+### Sport-Specific Display Considerations
+
+#### NBA
+- **Periods**: 4 quarters (1-4), overtime periods (5+)
+- **Clock format**: `MM:SS` (12:00 → 0:00 per period)
+- **Story support**: Full narrative stories available via `/api/games/{id}/story`
+- **PBP play types**: `tip`, `made_shot`, `missed_shot`, `rebound`, `turnover`, `foul`, `free_throw`, etc.
+
+#### NHL
+- **Periods**: 3 periods (1-3), overtime (4), shootout (5)
+- **Clock format**: `MM:SS` (20:00 → 0:00 per period)
+- **Player stats**: Separate models for skaters vs goalies
+- **PBP event types**: `faceoff`, `shot`, `goal`, `penalty`, `hit`, `block`, `giveaway`, `takeaway`, etc.
+
+#### NCAAB
+- **Periods**: 2 halves (1-2), overtime periods (3+)
+- **Clock format**: `MM:SS` (20:00 → 0:00 per half)
+- **Team names**: May include seeding info (e.g., "(1) Duke")
+- **PBP play types**: Similar to NBA
+
+### Stories vs Play-by-Play (NBA Flows)
+
+**What are Stories?**
+
+Stories are AI-generated narrative summaries built from play-by-play data. They condense a game into "moments" - small groups of related plays with narrative text.
+
+**When to use Stories:**
+- Display a readable game summary
+- Show key moments without full PBP detail
+- Provide spoiler-safe progressive reveal
+
+**When to use raw PBP:**
+- Build custom visualizations
+- Show complete game timeline
+- Need play-level granularity
+
+**Story structure:**
+```json
+{
+  "moments": [
+    {
+      "period": 1,
+      "start_clock": "12:00",
+      "end_clock": "10:45",
+      "score_before": {"home": 0, "away": 0},
+      "score_after": {"home": 5, "away": 2},
+      "narrative": "The Lakers came out strong with a quick 5-0 run...",
+      "play_count": 3
+    }
+  ]
+}
+```
+
+**Availability:**
+- NBA: Stories generated daily for recent games (via scheduled pipeline)
+- NHL/NCAAB: Timeline artifacts available, stories coming soon
+
+### Timeline vs Story
+
+| Feature | Timeline | Story |
+|---------|----------|-------|
+| Purpose | Merged PBP + Social events | AI narrative moments |
+| Granularity | Individual events | Grouped moments |
+| Social included | Yes | No |
+| Narrative text | No | Yes |
+| Use case | Full chronological view | Summary/highlights |
+
+### Data Freshness
+
+| Data Type | Update Frequency |
+|-----------|------------------|
+| Game list | Real-time |
+| Boxscores | Post-game (within ~30 min of final) |
+| Play-by-play | Post-game (historical) or live polling |
+| Social posts | 24-hour game window |
+| Stories | Daily batch (7:15 AM ET for NBA) |
+| Timelines | Daily batch (7:00 AM ET) |
+
+### Error Handling
+
+All endpoints return standard HTTP status codes:
+- `200` - Success
+- `404` - Game or resource not found
+- `400` - Invalid parameters
+- `500` - Server error
+
+**Best practice:** Always check for `404` when fetching PBP, social, story, or timeline. Not all games have all data types.
 
 ---
 
@@ -131,6 +262,48 @@ Compressed timeline for efficient app display.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `level` | `int` | 1=highlights, 2=standard, 3=detailed |
+
+### `GET /api/games/{game_id}/story`
+
+Get the pre-generated story (AI narrative) for a game.
+
+**Response (200):**
+```json
+{
+  "game_id": 123,
+  "sport": "NBA",
+  "story_version": "v2-moments",
+  "moments": [
+    {
+      "period": 1,
+      "start_clock": "12:00",
+      "end_clock": "10:45",
+      "score_before": {"home": 0, "away": 0},
+      "score_after": {"home": 5, "away": 2},
+      "narrative": "The Lakers came out strong with a quick 5-0 run...",
+      "play_count": 3
+    }
+  ],
+  "moment_count": 15,
+  "generated_at": "2026-01-22T15:30:00Z",
+  "has_story": true
+}
+```
+
+**Response (404):** Story not found. Stories are generated via admin pipeline.
+
+**Notes:**
+- This is a READ-ONLY endpoint returning cached stories
+- Stories are generated daily for NBA games (7:15 AM ET)
+- NHL/NCAAB story support coming soon
+- Use `moments` array for progressive display
+- `score_before`/`score_after` use `{home, away}` format in app endpoint
+
+### `GET /api/games/{game_id}/timeline/diagnostic`
+
+Diagnostic endpoint to inspect timeline artifact contents (for debugging).
+
+Returns event type breakdown, first/last events, and timestamp ranges.
 
 ---
 
@@ -483,7 +656,133 @@ Get reading position.
 
 ## Response Models
 
-### PlayEntry
+### App Endpoint Models
+
+These models are returned by the `/api/*` endpoints that external apps should use.
+
+#### GameSnapshot (from `GET /api/games`)
+
+```typescript
+interface GameSnapshot {
+  id: number;
+  league: string;           // "NBA", "NHL", "NCAAB"
+  status: string;           // "scheduled", "live", "final"
+  start_time: string;       // ISO 8601 datetime
+  home_team: TeamSnapshot;
+  away_team: TeamSnapshot;
+  has_pbp: boolean;         // PBP data available
+  has_social: boolean;      // Social posts available
+  last_updated_at: string;  // ISO 8601 datetime
+}
+
+interface TeamSnapshot {
+  id: number;
+  name: string;
+  abbreviation: string | null;
+}
+```
+
+#### PbpResponse (from `GET /api/games/{id}/pbp`)
+
+```typescript
+interface PbpResponse {
+  periods: PbpPeriod[];
+}
+
+interface PbpPeriod {
+  period: number | null;    // 1-4 for NBA, 1-3 for NHL, 1-2 for NCAAB
+  events: PbpEvent[];
+}
+
+interface PbpEvent {
+  index: number;            // Sequential play index
+  clock: string | null;     // "MM:SS" format
+  description: string | null;
+  play_type: string | null; // Sport-specific play type
+}
+```
+
+#### SocialResponse (from `GET /api/games/{id}/social`)
+
+```typescript
+interface SocialResponse {
+  posts: SocialPostSnapshot[];
+}
+
+interface SocialPostSnapshot {
+  id: number;
+  team: TeamSnapshot;
+  content: string | null;
+  posted_at: string;        // ISO 8601 datetime
+  reveal_level: "pre" | "post";  // "pre" = safe, "post" = may contain spoilers
+}
+```
+
+#### GameStorySnapshot (from `GET /api/games/{id}/story`)
+
+```typescript
+interface GameStorySnapshot {
+  game_id: number;
+  sport: string;
+  story_version: string;    // e.g., "v2-moments"
+  moments: MomentSnapshot[];
+  moment_count: number;
+  generated_at: string | null;
+  has_story: boolean;
+}
+
+interface MomentSnapshot {
+  period: number;
+  start_clock: string | null;
+  end_clock: string | null;
+  score_before: { home: number; away: number };
+  score_after: { home: number; away: number };
+  narrative: string;        // AI-generated text
+  play_count: number;       // Number of plays in this moment
+}
+```
+
+#### TimelineArtifactStoredResponse (from `GET /api/games/{id}/timeline`)
+
+```typescript
+interface TimelineArtifactStoredResponse {
+  game_id: number;
+  sport: string;
+  timeline_version: string;
+  generated_at: string;
+  timeline_json: TimelineEvent[];     // Ordered events
+  game_analysis_json: object;         // Analysis metadata
+  summary_json: object;               // Summary data
+}
+
+interface TimelineEvent {
+  event_type: "pbp" | "tweet";
+  synthetic_timestamp: string;        // For ordering
+  // Additional fields vary by event_type
+}
+```
+
+#### CompactTimelineResponse (from `GET /api/games/{id}/timeline/compact`)
+
+```typescript
+interface CompactTimelineResponse {
+  game_id: number;
+  sport: string;
+  timeline_version: string;
+  compression_level: number;          // 1=highlights, 2=standard, 3=detailed
+  original_event_count: number;
+  compressed_event_count: number;
+  retention_rate: number;             // 0.0-1.0
+  timeline_json: TimelineEvent[];
+  summary_json: object | null;
+}
+```
+
+### Admin Endpoint Models
+
+These models are for admin operations only. External apps should not use these.
+
+#### PlayEntry (Admin)
 
 ```typescript
 interface PlayEntry {
@@ -498,31 +797,62 @@ interface PlayEntry {
 }
 ```
 
-### GameSummary
+#### GameSummary (Admin)
 
 ```typescript
 interface GameSummary {
-  game_id: number;
-  sport: string;
-  status: string;
+  id: number;
+  league_code: string;
   game_date: string;
-  home_team: TeamSummary;
-  away_team: TeamSummary;
+  home_team: string;
+  away_team: string;
   home_score: number | null;
   away_score: number | null;
-  has_pbp: boolean;
+  has_boxscore: boolean;
+  has_player_stats: boolean;
+  has_odds: boolean;
   has_social: boolean;
+  has_pbp: boolean;
+  has_story: boolean;
   play_count: number;
+  social_post_count: number;
+  has_required_data: boolean;
+  scrape_version: number | null;
+  last_scraped_at: string | null;
+  last_ingested_at: string | null;
+  last_pbp_at: string | null;
+  last_social_at: string | null;
 }
 ```
 
-### TeamSummary
+#### NHL-Specific Player Stats (Admin)
 
 ```typescript
-interface TeamSummary {
-  team_id: number;
-  name: string;
-  abbreviation: string;
+// NHL uses separate models for skaters and goalies
+interface NHLSkaterStat {
+  team: string;
+  player_name: string;
+  toi: string | null;          // "MM:SS"
+  goals: number | null;
+  assists: number | null;
+  points: number | null;
+  shots_on_goal: number | null;
+  plus_minus: number | null;
+  penalty_minutes: number | null;
+  hits: number | null;
+  blocked_shots: number | null;
+  raw_stats: object;
+}
+
+interface NHLGoalieStat {
+  team: string;
+  player_name: string;
+  toi: string | null;          // "MM:SS"
+  shots_against: number | null;
+  saves: number | null;
+  goals_against: number | null;
+  save_percentage: number | null;
+  raw_stats: object;
 }
 ```
 
@@ -530,9 +860,50 @@ interface TeamSummary {
 
 ## Consumers
 
-- Dock108 iOS apps
-- Dock108 web apps
+- Dock108 iOS apps (use `/api/*` endpoints only)
+- Dock108 web apps (use `/api/*` endpoints only)
+- Admin UI (uses `/api/admin/*` endpoints)
 
 ## Contract
 
 Implements `scroll-down-api-spec`. Schema changes require spec update first.
+
+---
+
+## Appendix: Play Types by Sport
+
+### NBA Play Types
+- `tip` - Jump ball / tip-off
+- `made_shot` - Made field goal
+- `missed_shot` - Missed field goal
+- `3pt` - Three-point shot
+- `free_throw` - Free throw attempt
+- `rebound` - Offensive or defensive rebound
+- `turnover` - Turnover
+- `steal` - Steal
+- `block` - Blocked shot
+- `foul` - Personal foul
+- `timeout` - Timeout
+- `substitution` - Player substitution
+- `period_end` - End of period
+
+### NHL Event Types
+- `faceoff` - Face-off
+- `shot` - Shot on goal
+- `goal` - Goal scored
+- `save` - Goalie save
+- `miss` - Missed shot
+- `block` - Blocked shot
+- `hit` - Body check
+- `penalty` - Penalty called
+- `giveaway` - Puck giveaway
+- `takeaway` - Puck takeaway
+- `period_start` - Period start
+- `period_end` - Period end
+- `stoppage` - Play stoppage
+
+### NCAAB Play Types
+- Similar to NBA play types
+- `made_shot`, `missed_shot`, `3pt`, `free_throw`
+- `rebound`, `turnover`, `steal`, `block`, `foul`
+- `timeout`, `substitution`

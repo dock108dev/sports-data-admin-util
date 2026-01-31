@@ -178,6 +178,14 @@ def upsert_plays(
         if game.away_team.name:
             team_map[game.away_team.name.upper()] = game.away_team.id
 
+    # Build CBB team ID to DB team ID mapping (for NCAAB)
+    cbb_team_map: dict[int, int] = {}
+    for team in [game.home_team, game.away_team]:
+        if team and team.external_codes:
+            cbb_id = team.external_codes.get("cbb_team_id")
+            if cbb_id is not None:
+                cbb_team_map[int(cbb_id)] = team.id
+
     # Build player external_id to player.id mapping for this league
     player_map: dict[str, int] = {}
     if hasattr(db_models, "SportsPlayer"):
@@ -190,9 +198,12 @@ def upsert_plays(
 
     # Process each play
     for play in plays:
-        # Resolve team_id from abbreviation
+        # Resolve team_id - try cbb_team_id first (for NCAAB), then abbreviation/name
         team_id = None
-        if play.team_abbreviation:
+        if play.raw_data and play.raw_data.get("cbb_team_id"):
+            cbb_id = play.raw_data.get("cbb_team_id")
+            team_id = cbb_team_map.get(int(cbb_id))
+        if team_id is None and play.team_abbreviation:
             team_id = team_map.get(play.team_abbreviation.upper())
 
         # Resolve player_ref_id from player_id (external_id in sports_players)

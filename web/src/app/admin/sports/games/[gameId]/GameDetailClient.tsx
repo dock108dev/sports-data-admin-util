@@ -10,6 +10,149 @@ import { SocialPostsSection } from "./SocialPostsSection";
 import { StorySection } from "./StorySection";
 import styles from "./styles.module.css";
 
+/**
+ * Format a stat value for display, handling nested objects.
+ * Handles common CBB/NCAAB API patterns:
+ * - {total: 89, byPeriod: [...]} -> "89"
+ * - {made: 24, attempted: 50} -> "24/50"
+ * - {offensive: 10, defensive: 32, total: 42} -> "42 (10 off, 32 def)"
+ */
+function formatStatValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+
+  if (typeof value !== "object") {
+    // Primitive value - format numbers nicely
+    if (typeof value === "number") {
+      return Number.isInteger(value) ? String(value) : value.toFixed(1);
+    }
+    return String(value);
+  }
+
+  // Handle arrays - show count for large arrays, values for small ones
+  if (Array.isArray(value)) {
+    if (value.length > 4) {
+      return `[${value.length} items]`;
+    }
+    return value.map(formatStatValue).join(", ");
+  }
+
+  // Handle objects
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj);
+
+  // Pattern: {total: X, byPeriod: [...]} - common for points/rebounds/turnovers in CBB API
+  // Just show the total since byPeriod is detail we don't need inline
+  if (keys.includes("total") && typeof obj.total === "number") {
+    const total = obj.total as number;
+    // Check for offensive/defensive breakdown (rebounds)
+    if (keys.includes("offensive") && keys.includes("defensive")) {
+      const off = obj.offensive as number;
+      const def = obj.defensive as number;
+      return `${total} (${off} off, ${def} def)`;
+    }
+    // Check for forced turnovers
+    if (keys.includes("forced") && typeof obj.forced === "number") {
+      return `${total} (${obj.forced} forced)`;
+    }
+    // Just return total for other cases
+    return String(total);
+  }
+
+  // Pattern: {made: X, attempted: Y} - shooting stats
+  if (
+    (keys.includes("made") && keys.includes("attempted")) ||
+    (keys.includes("makes") && keys.includes("attempts"))
+  ) {
+    const made = (obj.made ?? obj.makes ?? 0) as number;
+    const attempted = (obj.attempted ?? obj.attempts ?? 0) as number;
+    const pct = obj.percentage ?? obj.pct;
+    if (pct !== undefined && typeof pct === "number") {
+      return `${made}/${attempted} (${pct.toFixed(1)}%)`;
+    }
+    // Calculate percentage if we have attempts
+    if (attempted > 0) {
+      const calcPct = ((made / attempted) * 100).toFixed(1);
+      return `${made}/${attempted} (${calcPct}%)`;
+    }
+    return `${made}/${attempted}`;
+  }
+
+  // Pattern: {personal: X, technical: Y} - fouls
+  if (keys.includes("personal") && keys.includes("technical")) {
+    const personal = obj.personal as number;
+    const technical = obj.technical ?? 0;
+    return technical ? `${personal} (${technical} tech)` : String(personal);
+  }
+
+  // Pattern: Four factors stats - just show key metrics
+  if (keys.includes("effectiveFieldGoalPercentage") || keys.includes("turnoverPercentage")) {
+    const efg = obj.effectiveFieldGoalPercentage;
+    const to = obj.turnoverPercentage;
+    const orb = obj.offensiveReboundPercentage;
+    const ft = obj.freeThrowRate;
+    const parts: string[] = [];
+    if (typeof efg === "number") parts.push(`eFG%: ${efg.toFixed(1)}`);
+    if (typeof to === "number") parts.push(`TO%: ${to.toFixed(1)}`);
+    if (typeof orb === "number") parts.push(`ORB%: ${orb.toFixed(1)}`);
+    if (typeof ft === "number") parts.push(`FTR: ${ft.toFixed(2)}`);
+    return parts.length > 0 ? parts.join(", ") : "—";
+  }
+
+  // For other objects, format as "key: value" pairs (skip arrays/byPeriod)
+  return keys
+    .filter((k) => {
+      const v = obj[k];
+      return v !== null && v !== undefined && k !== "byPeriod" && !Array.isArray(v);
+    })
+    .map((k) => `${k}: ${formatStatValue(obj[k])}`)
+    .join(", ");
+}
+
+/**
+ * Flatten nested stats object for better display.
+ * Converts nested objects into flattened key-value pairs with descriptive keys.
+ */
+function flattenStats(
+  stats: Record<string, unknown>,
+): Array<{ key: string; label: string; value: string }> {
+  const result: Array<{ key: string; label: string; value: string }> = [];
+
+  // Stats to display in order, with display labels
+  const displayStats: Array<{ key: string; label: string }> = [
+    { key: "points", label: "Points" },
+    { key: "rebounds", label: "Rebounds" },
+    { key: "assists", label: "Assists" },
+    { key: "steals", label: "Steals" },
+    { key: "blocks", label: "Blocks" },
+    { key: "turnovers", label: "Turnovers" },
+    { key: "fouls", label: "Fouls" },
+    { key: "fieldGoals", label: "FG" },
+    { key: "twoPointFieldGoals", label: "2PT" },
+    { key: "threePointFieldGoals", label: "3PT" },
+    { key: "freeThrows", label: "FT" },
+    { key: "possessions", label: "Possessions" },
+    { key: "trueShooting", label: "TS%" },
+  ];
+
+  for (const { key, label } of displayStats) {
+    const value = stats[key];
+
+    if (value === null || value === undefined) {
+      continue;
+    }
+
+    result.push({
+      key,
+      label,
+      value: formatStatValue(value),
+    });
+  }
+
+  return result;
+}
+
 export default function GameDetailClient() {
   const params = useParams<{ gameId?: string }>();
   const gameIdParam = params?.gameId ?? "";
@@ -217,24 +360,27 @@ export default function GameDetailClient() {
           <div style={{ color: "#475569" }}>No team stats found.</div>
         ) : (
           <div className={styles.teamStatsGrid}>
-            {game.team_stats.map((t) => (
-              <div key={t.team} className={styles.teamStatsCard}>
-                <div className={styles.teamStatsHeader}>
-                  <h3>{t.team}</h3>
-                  <span className={styles.badge}>{t.is_home ? "Home" : "Away"}</span>
+            {game.team_stats.map((t) => {
+              const flattenedStats = flattenStats(t.stats || {});
+              return (
+                <div key={t.team} className={styles.teamStatsCard}>
+                  <div className={styles.teamStatsHeader}>
+                    <h3>{t.team}</h3>
+                    <span className={styles.badge}>{t.is_home ? "Home" : "Away"}</span>
+                  </div>
+                  <table className={styles.table}>
+                    <tbody>
+                      {flattenedStats.map(({ key, label, value }) => (
+                        <tr key={key}>
+                          <td>{label}</td>
+                          <td>{value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <table className={styles.table}>
-                  <tbody>
-                    {Object.entries(t.stats || {}).map(([k, v]) => (
-                      <tr key={k}>
-                        <td>{k}</td>
-                        <td>{String(v ?? "—")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CollapsibleSection>
@@ -334,35 +480,111 @@ export default function GameDetailClient() {
             <div style={{ color: "#475569" }}>No player stats found.</div>
           ) : (
             <div className={styles.playerStatsGrid}>
-              {Object.entries(playerStatsByTeam).map(([team, rows]) => (
-                <div key={team} className={styles.teamStatsCard}>
-                  <div className={styles.teamStatsHeader}>
-                    <h3>{team}</h3>
+              {Object.entries(playerStatsByTeam).map(([team, rows]) => {
+                // Helper to get stat from raw_stats - handles both flat and nested formats
+                const getStat = (p: typeof rows[0], ...keys: string[]): number | null => {
+                  // Helper to coerce value to number (handles numeric strings)
+                  const toNumber = (v: unknown): number | null => {
+                    if (typeof v === "number") return v;
+                    if (typeof v === "string") {
+                      const parsed = Number(v);
+                      return isNaN(parsed) ? null : parsed;
+                    }
+                    return null;
+                  };
+
+                  for (const key of keys) {
+                    const val = p.raw_stats?.[key];
+                    if (val !== null && val !== undefined) {
+                      // Direct number or numeric string
+                      const num = toNumber(val);
+                      if (num !== null) return num;
+                      // Nested object formats (CBB API)
+                      if (typeof val === "object" && !Array.isArray(val)) {
+                        const obj = val as Record<string, unknown>;
+                        // Try "total" key first (points, rebounds, etc.)
+                        const total = toNumber(obj.total);
+                        if (total !== null) return total;
+                        // Try "personal" key for fouls
+                        const personal = toNumber(obj.personal);
+                        if (personal !== null) return personal;
+                      }
+                    }
+                  }
+                  return null;
+                };
+                // Format shooting stat as "made/att" - handles multiple formats
+                const formatShootingStat = (
+                  p: typeof rows[0],
+                  flatMadeKey: string,
+                  flatAttKey: string,
+                  nestedKey: string,
+                ): string => {
+                  // First try flat keys (from updated scraper)
+                  let made = getStat(p, flatMadeKey);
+                  let att = getStat(p, flatAttKey);
+
+                  // Fallback: try nested CBB API format (e.g., fieldGoals: {made: X, attempted: Y})
+                  if (made === null && att === null) {
+                    const nested = p.raw_stats?.[nestedKey];
+                    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+                      const obj = nested as Record<string, unknown>;
+                      made = toNumber(obj.made);
+                      att = toNumber(obj.attempted);
+                    }
+                  }
+
+                  // Return "—" if we don't have complete data (both made and att)
+                  // Partial data like "5/null" would be misleading
+                  if (made === null || att === null) return "—";
+                  return `${made}/${att}`;
+                };
+                return (
+                  <div key={team} className={styles.teamStatsCard}>
+                    <div className={styles.teamStatsHeader}>
+                      <h3>{team}</h3>
+                    </div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table className={styles.table} style={{ fontSize: "0.85rem" }}>
+                        <thead>
+                          <tr>
+                            <th>Player</th>
+                            <th>Min</th>
+                            <th>Pts</th>
+                            <th>Reb</th>
+                            <th>Ast</th>
+                            <th>Stl</th>
+                            <th>Blk</th>
+                            <th>TO</th>
+                            <th>FG</th>
+                            <th>3PT</th>
+                            <th>FT</th>
+                            <th>PF</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((p, idx) => (
+                            <tr key={`${team}-${idx}-${p.player_name}`}>
+                              <td>{p.player_name}</td>
+                              <td>{p.minutes != null ? Math.round(p.minutes) : "—"}</td>
+                              <td>{p.points ?? "—"}</td>
+                              <td>{p.rebounds ?? getStat(p, "rebounds", "totalRebounds") ?? "—"}</td>
+                              <td>{p.assists ?? "—"}</td>
+                              <td>{getStat(p, "steals") ?? "—"}</td>
+                              <td>{getStat(p, "blocks", "blocked_shots") ?? "—"}</td>
+                              <td>{getStat(p, "turnovers") ?? "—"}</td>
+                              <td>{formatShootingStat(p, "fgMade", "fgAttempted", "fieldGoals")}</td>
+                              <td>{formatShootingStat(p, "fg3Made", "fg3Attempted", "threePointFieldGoals")}</td>
+                              <td>{formatShootingStat(p, "ftMade", "ftAttempted", "freeThrows")}</td>
+                              <td>{getStat(p, "fouls", "personalFouls") ?? "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Player</th>
-                        <th>Minutes</th>
-                        <th>Points</th>
-                        <th>Reb</th>
-                        <th>Ast</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((p, idx) => (
-                        <tr key={`${team}-${idx}-${p.player_name}`}>
-                          <td>{p.player_name}</td>
-                          <td>{p.minutes ?? "—"}</td>
-                          <td>{p.points ?? "—"}</td>
-                          <td>{p.rebounds ?? "—"}</td>
-                          <td>{p.assists ?? "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )
         )}
@@ -477,7 +699,7 @@ export default function GameDetailClient() {
 
       <SocialPostsSection posts={game.social_posts || []} />
 
-      <PbpSection plays={game.plays || []} />
+      <PbpSection plays={game.plays || []} leagueCode={g.league_code} />
 
       <StorySection gameId={g.id} hasStory={g.has_story} />
 

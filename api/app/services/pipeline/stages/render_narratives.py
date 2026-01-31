@@ -50,374 +50,109 @@ GUARANTEES
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
-import re
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
-
-from .... import db_models
 from ..models import StageInput, StageOutput
 from ...openai_client import get_openai_client
 
+# Import from modular helpers
+from .narrative_types import (
+    FallbackType,
+    FallbackReason,
+    CoverageResolution,
+    MOMENTS_PER_BATCH,
+    VALID_FALLBACK_NARRATIVES,  # noqa: F401 - re-exported for tests
+    FORBIDDEN_PATTERNS,  # noqa: F401 - re-exported for tests
+)
+from .fallback_helpers import (
+    get_valid_fallback_narrative,
+    get_invalid_fallback_narrative,
+    is_valid_score_context,
+    has_valid_play_metadata,
+    classify_empty_narrative_fallback,
+)
+from .prompt_builders import build_batch_prompt
+from .coverage_helpers import (
+    count_sentences,
+    check_explicit_play_coverage,
+    generate_deterministic_sentence,
+    inject_missing_explicit_plays,
+    log_coverage_resolution,
+    validate_narrative,
+)
+
+# Backward compatibility aliases for tests (underscore-prefixed versions)
+_get_valid_fallback_narrative = get_valid_fallback_narrative
+_get_invalid_fallback_narrative = get_invalid_fallback_narrative
+_is_valid_score_context = is_valid_score_context
+_has_valid_play_metadata = has_valid_play_metadata
+_classify_empty_narrative_fallback = classify_empty_narrative_fallback
+_build_batch_prompt = build_batch_prompt
+_count_sentences = count_sentences
+_validate_narrative = validate_narrative
+_generate_deterministic_sentence = generate_deterministic_sentence
+_inject_missing_explicit_plays = inject_missing_explicit_plays
+
+
+def _log_coverage_resolution(
+    game_id: int,
+    moment_index: int,
+    resolution: CoverageResolution,
+    explicit_play_ids: list[int],
+    missing_after_initial: list[int] | None = None,
+    missing_after_regen: list[int] | None = None,
+    injections: list[dict] | None = None,
+) -> dict[str, Any]:
+    """Return structured coverage resolution data for logging/testing.
+
+    Backward-compatible wrapper that returns structured data for tests
+    while also logging the resolution.
+    """
+    data: dict[str, Any] = {
+        "game_id": game_id,
+        "moment_index": moment_index,
+        "resolution": resolution.value,
+        "explicit_play_count": len(explicit_play_ids),
+    }
+
+    if missing_after_initial is not None:
+        data["missing_after_initial"] = missing_after_initial
+        data["missing_after_initial_count"] = len(missing_after_initial)
+
+    if missing_after_regen is not None:
+        data["missing_after_regen"] = missing_after_regen
+        data["missing_after_regen_count"] = len(missing_after_regen)
+
+    if injections is not None:
+        data["injections"] = injections
+        data["injection_count"] = len(injections)
+
+    logger.info("coverage_resolution", **data)
+    return data
+
+
+def _check_explicit_play_coverage(
+    narrative: str,
+    moment: dict,
+    moment_plays: list,
+) -> list[int]:
+    """Backward-compatible wrapper for check_explicit_play_coverage.
+
+    Old API: takes moment dict, returns list of missing play indices.
+    New API: takes explicit_play_ids set, returns (all_covered, covered, missing) tuple.
+    """
+    explicit_ids = set(moment.get("explicitly_narrated_play_ids", []))
+    if not explicit_ids:
+        return []
+    _, _, missing_ids = check_explicit_play_coverage(narrative, explicit_ids, moment_plays)
+    return list(missing_ids)
+
 if TYPE_CHECKING:
-    from ....db import AsyncSession
+    pass
 
 logger = logging.getLogger(__name__)
-
-# Forbidden phrases that indicate abstraction beyond the moment
-FORBIDDEN_PHRASES = [
-    # Momentum/flow language
-    r"\bmomentum\b",
-    r"\bturning point\b",
-    r"\bshift(ed|ing)?\b",
-    r"\bswing\b",
-    r"\btide\b",
-    # Temporal references outside the moment
-    r"\bearlier in the game\b",
-    r"\blater in the game\b",
-    r"\bpreviously\b",
-    r"\bwould (later|eventually)\b",
-    r"\bforeshadow\b",
-    # Summary/retrospective language
-    r"\bin summary\b",
-    r"\boverall\b",
-    r"\bultimately\b",
-    r"\bin the end\b",
-    r"\bkey moment\b",
-    r"\bcrucial\b",
-    r"\bpivotal\b",
-    # Speculation
-    r"\bcould have\b",
-    r"\bmight have\b",
-    r"\bwould have\b",
-    r"\bshould have\b",
-    r"\bseemed to\b",
-    r"\bappeared to\b",
-]
-
-# Compile patterns for efficiency
-FORBIDDEN_PATTERNS = [re.compile(p, re.IGNORECASE) for p in FORBIDDEN_PHRASES]
-
-# Number of moments to process in a single OpenAI call
-MOMENTS_PER_BATCH = 25
-
-# Fallback narrative when OpenAI returns empty
-# This allows pipeline to complete while flagging the issue for debugging
-FALLBACK_NARRATIVE = "Play continued."
-
-
-def _build_batch_prompt(
-    moments_batch: list[tuple[int, dict[str, Any], list[dict[str, Any]]]],
-    game_context: dict[str, str],
-) -> str:
-    """Build a compact OpenAI prompt for a batch of moments.
-
-    Minimizes token usage by:
-    - Putting instructions once at the top
-    - Using compact notation for plays
-    - Minimal formatting
-
-    Args:
-        moments_batch: List of (moment_index, moment, moment_plays) tuples
-        game_context: Team names and sport info
-
-    Returns:
-        Prompt string for OpenAI to generate all narratives in the batch
-    """
-    home_team = game_context.get("home_team_name", "Home")
-    away_team = game_context.get("away_team_name", "Away")
-    player_names = game_context.get("player_names", {})
-
-    # Build player name reference for the prompt (abbrev -> full name)
-    # Only include mappings for abbreviated names (X. Lastname format)
-    name_mappings = []
-    for abbrev, full in player_names.items():
-        if ". " in abbrev:  # Only abbreviated forms like "D. Mitchell"
-            name_mappings.append(f"{abbrev}={full}")
-
-    # Limit to avoid bloating prompt - take first 40 unique players
-    name_ref = ", ".join(name_mappings[:40]) if name_mappings else ""
-
-    # Build compact moments data
-    moments_lines = []
-    for moment_index, moment, moment_plays in moments_batch:
-        period = moment.get("period", 1)
-        clock = moment.get("start_clock", "")
-        score_after = moment.get("score_after", [0, 0])
-        explicitly_narrated = set(moment.get("explicitly_narrated_play_ids", []))
-
-        # Compact play format: just the essentials
-        plays_compact = []
-        for play in moment_plays:
-            play_index = play.get("play_index")
-            is_explicit = play_index in explicitly_narrated
-            star = "*" if is_explicit else ""
-            desc = play.get("description", "")
-            # Truncate long descriptions
-            if len(desc) > 80:
-                desc = desc[:77] + "..."
-            plays_compact.append(f"{star}{desc}")
-
-        plays_str = "; ".join(plays_compact)
-        moments_lines.append(
-            f"[{moment_index}] Q{period} {clock} ({away_team} {score_after[0]}-{score_after[1]} {home_team}): {plays_str}"
-        )
-
-    moments_block = "\n".join(moments_lines)
-
-    # Build prompt with player name rule
-    name_rule = "- Player names: FULL NAME on first mention (e.g., \"Donovan Mitchell\"), LAST NAME only after (e.g., \"Mitchell\"). Never use initials like \"D. Mitchell\"."
-    if name_ref:
-        name_rule += f"\n- Name reference: {name_ref}"
-
-    prompt = f"""Write 1-2 sentence narratives for each moment. {away_team} vs {home_team}.
-
-Rules:
-- Describe *starred plays. Concrete actions only (shots/fouls/scores).
-{name_rule}
-- No: momentum, turning point, crucial, pivotal, speculation.
-
-{moments_block}
-
-JSON response format: {{"items":[{{"i":0,"n":"narrative"}},{{"i":1,"n":"narrative"}},...]}}`"""
-
-    return prompt
-
-
-def _build_moment_prompt(
-    moment: dict[str, Any],
-    moment_plays: list[dict[str, Any]],
-    game_context: dict[str, str],
-    moment_index: int,
-) -> str:
-    """Build the OpenAI prompt for a single moment.
-
-    The prompt is strict and includes:
-    - Clear requirements
-    - Explicit prohibitions
-    - Positive and negative examples
-    - Statement that violations invalidate output
-
-    Args:
-        moment: The moment data (play_ids, scores, etc.)
-        moment_plays: Full PBP records for plays in this moment
-        game_context: Team names and sport info
-        moment_index: Index of this moment in the sequence
-
-    Returns:
-        Prompt string for OpenAI
-    """
-    # Extract context
-    home_team = game_context.get("home_team_name", "Home Team")
-    away_team = game_context.get("away_team_name", "Away Team")
-    sport = game_context.get("sport", "basketball")
-
-    # Extract moment data
-    period = moment.get("period", 1)
-    start_clock = moment.get("start_clock", "")
-    end_clock = moment.get("end_clock", "")
-    score_before = moment.get("score_before", [0, 0])
-    score_after = moment.get("score_after", [0, 0])
-    explicitly_narrated = set(moment.get("explicitly_narrated_play_ids", []))
-
-    # Format plays for the prompt
-    plays_text = []
-    for play in moment_plays:
-        play_index = play.get("play_index")
-        is_explicit = play_index in explicitly_narrated
-        marker = "[MUST NARRATE]" if is_explicit else ""
-
-        # Build play description
-        clock = play.get("game_clock", "")
-        description = play.get("description", "")
-        play_type = play.get("play_type", "")
-        home_score = play.get("home_score", 0)
-        away_score = play.get("away_score", 0)
-
-        play_line = (
-            f"- Play {play_index} {marker}: {clock} | {play_type} | "
-            f"{description} | Score: {away_team} {away_score} - {home_team} {home_score}"
-        )
-        plays_text.append(play_line)
-
-    plays_block = "\n".join(plays_text)
-
-    prompt = f"""Generate a brief narrative (1-3 sentences) for this {sport} game moment.
-
-CONTEXT:
-- Teams: {away_team} vs {home_team}
-- Period: {period}
-- Time: {start_clock} to {end_clock}
-- Score before: {away_team} {score_before[0]} - {home_team} {score_before[1]}
-- Score after: {away_team} {score_after[0]} - {home_team} {score_after[1]}
-
-PLAYS IN THIS MOMENT:
-{plays_block}
-
-REQUIREMENTS (MANDATORY):
-1. You MUST describe at least one play marked [MUST NARRATE]
-2. Only describe actions from the plays provided above
-3. Use concrete actions: shots made/missed, fouls, turnovers, scores
-4. Use chronological order if describing multiple plays
-5. Use neutral, factual language
-
-FORBIDDEN (WILL INVALIDATE YOUR RESPONSE):
-- Do NOT use words like: momentum, turning point, shift, swing, tide, crucial, pivotal
-- Do NOT reference "earlier in the game" or "later in the game"
-- Do NOT speculate about what "could have" or "might have" happened
-- Do NOT summarize the game or moment's importance
-- Do NOT reference any plays not listed above
-
-GOOD EXAMPLE:
-"Brown drove baseline and finished with a layup, giving the Celtics a 45-42 lead."
-
-BAD EXAMPLE (FORBIDDEN):
-"This was a crucial turning point as the momentum shifted toward the Celtics who would go on to dominate."
-
-Respond with JSON in this exact format:
-{{"narrative": "Your 1-3 sentence narrative here"}}"""
-
-    return prompt
-
-
-def _extract_play_identifiers(play: dict[str, Any]) -> list[str]:
-    """Extract identifiable tokens from a play for narrative traceability.
-
-    Extracts player names and significant words that should appear in
-    a narrative that references this play.
-
-    Args:
-        play: A normalized PBP event
-
-    Returns:
-        List of lowercase tokens that identify this play
-    """
-    identifiers: list[str] = []
-
-    # Player name is the primary identifier
-    player_name = play.get("player_name")
-    if player_name:
-        # Add full name and last name (most common in narratives)
-        identifiers.append(player_name.lower())
-        parts = player_name.split()
-        if len(parts) > 1:
-            identifiers.append(parts[-1].lower())  # Last name
-
-    # Team abbreviation as fallback
-    team_abbrev = play.get("team_abbreviation")
-    if team_abbrev:
-        identifiers.append(team_abbrev.lower())
-
-    return identifiers
-
-
-def _validate_narrative(
-    narrative: str,
-    moment: dict[str, Any],
-    moment_plays: list[dict[str, Any]],
-    moment_index: int,
-) -> list[str]:
-    """Validate the generated narrative against Story contract rules.
-
-    Args:
-        narrative: The generated narrative text
-        moment: The moment data
-        moment_plays: Full PBP records for plays in this moment
-        moment_index: Index for error reporting
-
-    Returns:
-        List of validation error messages (empty if valid)
-    """
-    errors: list[str] = []
-
-    # Rule 1: Narrative must be non-empty
-    if not narrative or not narrative.strip():
-        errors.append(f"Moment {moment_index}: Narrative is empty")
-        return errors  # Can't validate further if empty
-
-    # Rule 2: Check for forbidden phrases
-    for pattern in FORBIDDEN_PATTERNS:
-        match = pattern.search(narrative)
-        if match:
-            errors.append(
-                f"Moment {moment_index}: Contains forbidden phrase '{match.group()}'"
-            )
-
-    return errors
-
-
-def _get_batch_cache_key(moment_indices: list[int]) -> str:
-    """Generate a cache key for a batch of moments.
-
-    Args:
-        moment_indices: List of moment indices in the batch
-
-    Returns:
-        SHA256 hash of the sorted indices (first 16 chars)
-    """
-    key_str = ",".join(str(i) for i in sorted(moment_indices))
-    return hashlib.sha256(key_str.encode()).hexdigest()[:16]
-
-
-async def _get_cached_response(
-    session: "AsyncSession",
-    game_id: int,
-    batch_key: str,
-) -> dict[str, Any] | None:
-    """Check cache for an existing OpenAI response.
-
-    Args:
-        session: Database session
-        game_id: Game ID
-        batch_key: Cache key for the batch
-
-    Returns:
-        Cached response data or None if not found
-    """
-    result = await session.execute(
-        select(db_models.OpenAIResponseCache).where(
-            db_models.OpenAIResponseCache.game_id == game_id,
-            db_models.OpenAIResponseCache.batch_key == batch_key,
-        )
-    )
-    cached = result.scalar_one_or_none()
-    if cached:
-        logger.info(f"Cache HIT for game {game_id} batch {batch_key}")
-        return cached.response_json
-    return None
-
-
-async def _store_cached_response(
-    session: "AsyncSession",
-    game_id: int,
-    batch_key: str,
-    prompt_preview: str,
-    response_data: dict[str, Any],
-    model: str,
-) -> None:
-    """Store an OpenAI response in the cache.
-
-    Args:
-        session: Database session
-        game_id: Game ID
-        batch_key: Cache key for the batch
-        prompt_preview: Truncated prompt for debugging
-        response_data: The parsed response from OpenAI
-        model: Model name used
-    """
-    cache_entry = db_models.OpenAIResponseCache(
-        game_id=game_id,
-        batch_key=batch_key,
-        prompt_preview=prompt_preview[:2000] if prompt_preview else None,
-        response_json=response_data,
-        model=model,
-    )
-    session.add(cache_entry)
-    await session.flush()
-    logger.info(f"Cache STORED for game {game_id} batch {batch_key}")
 
 
 async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
@@ -496,25 +231,48 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
 
     # Process in batches
     enriched_moments: list[dict[str, Any]] = [None] * len(moments)  # type: ignore
-    all_validation_errors: list[str] = []
-    fallback_moments: list[int] = []  # Track moments that got fallback narrative
     successful_renders = 0
     total_openai_calls = 0
+    retry_count = 0
+    injection_count = 0
+
+    # Style violation tracking
+    all_style_violations: list[dict[str, Any]] = []
+
+    # Fallback tracking with classification
+    fallback_moments: list[int] = []
+    valid_fallbacks: list[dict[str, Any]] = []
+    invalid_fallbacks: list[dict[str, Any]] = []
 
     for batch_start in range(0, len(moments_with_plays), MOMENTS_PER_BATCH):
         batch_end = min(batch_start + MOMENTS_PER_BATCH, len(moments_with_plays))
         batch = moments_with_plays[batch_start:batch_end]
 
-        # Check for moments with no plays
+        # Check for moments with no plays -> INVALID fallback
         valid_batch = []
         for moment_index, moment, moment_plays in batch:
             if not moment_plays:
+                reason = FallbackReason.MISSING_PLAY_METADATA
+                fallback_narrative = get_invalid_fallback_narrative(reason)
+
                 logger.warning(
                     f"Moment {moment_index}: No plays found for play_ids "
-                    f"{moment.get('play_ids', [])}, using fallback"
+                    f"{moment.get('play_ids', [])}, using INVALID fallback"
                 )
-                enriched_moments[moment_index] = {**moment, "narrative": FALLBACK_NARRATIVE}
+
+                enriched_moments[moment_index] = {
+                    **moment,
+                    "narrative": fallback_narrative,
+                    "fallback_type": FallbackType.INVALID.value,
+                    "fallback_reason": reason.value,
+                }
                 fallback_moments.append(moment_index)
+                invalid_fallbacks.append({
+                    "moment_index": moment_index,
+                    "reason": reason.value,
+                    "period": moment.get("period"),
+                    "start_clock": moment.get("start_clock"),
+                })
                 successful_renders += 1
             else:
                 valid_batch.append((moment_index, moment, moment_plays))
@@ -522,59 +280,84 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         if not valid_batch:
             continue
 
+        # Track moments that need retry due to soft validation errors
+        moments_needing_retry: list[tuple[int, dict[str, Any], list[dict[str, Any]], str, list[int]]] = []
+
         # Build batch prompt and call OpenAI
-        prompt = _build_batch_prompt(valid_batch, game_context)
+        prompt = build_batch_prompt(valid_batch, game_context, is_retry=False)
 
         try:
             total_openai_calls += 1
-            # More tokens for batch response
-            max_tokens = 150 * len(valid_batch)
-            # Run sync OpenAI call in thread to avoid blocking async event loop
+            max_tokens = 250 * len(valid_batch)
             response_json = await asyncio.to_thread(
                 openai_client.generate,
                 prompt=prompt,
                 temperature=0.3,
                 max_tokens=max_tokens,
             )
-
-            # Parse batch response
             response_data = json.loads(response_json)
 
         except json.JSONDecodeError as e:
+            reason = FallbackReason.AI_INVALID_JSON
             logger.warning(
-                f"Batch {batch_start}-{batch_end}: OpenAI returned invalid JSON: {e}, using fallback"
+                f"Batch {batch_start}-{batch_end}: OpenAI returned invalid JSON: {e}, "
+                f"using INVALID fallback"
             )
             for moment_index, moment, _ in valid_batch:
-                enriched_moments[moment_index] = {**moment, "narrative": FALLBACK_NARRATIVE}
+                fallback_narrative = get_invalid_fallback_narrative(reason)
+                enriched_moments[moment_index] = {
+                    **moment,
+                    "narrative": fallback_narrative,
+                    "fallback_type": FallbackType.INVALID.value,
+                    "fallback_reason": reason.value,
+                }
                 fallback_moments.append(moment_index)
+                invalid_fallbacks.append({
+                    "moment_index": moment_index,
+                    "reason": reason.value,
+                    "period": moment.get("period"),
+                    "start_clock": moment.get("start_clock"),
+                    "error": str(e)[:200],
+                })
                 successful_renders += 1
             continue
 
         except Exception as e:
+            reason = FallbackReason.AI_GENERATION_FAILED
             logger.warning(
-                f"Batch {batch_start}-{batch_end}: OpenAI call failed: {e}, using fallback"
+                f"Batch {batch_start}-{batch_end}: OpenAI call failed: {e}, "
+                f"using INVALID fallback"
             )
             for moment_index, moment, _ in valid_batch:
-                enriched_moments[moment_index] = {**moment, "narrative": FALLBACK_NARRATIVE}
+                fallback_narrative = get_invalid_fallback_narrative(reason)
+                enriched_moments[moment_index] = {
+                    **moment,
+                    "narrative": fallback_narrative,
+                    "fallback_type": FallbackType.INVALID.value,
+                    "fallback_reason": reason.value,
+                }
                 fallback_moments.append(moment_index)
+                invalid_fallbacks.append({
+                    "moment_index": moment_index,
+                    "reason": reason.value,
+                    "period": moment.get("period"),
+                    "start_clock": moment.get("start_clock"),
+                    "error": str(e)[:200],
+                })
                 successful_renders += 1
             continue
 
-        # Process response (from cache or fresh API call)
-        # Extract items array from response object
-        # OpenAI JSON mode returns objects, not arrays
+        # Extract items array from response
         items = response_data.get("items", [])
         if not items and isinstance(response_data, list):
-            items = response_data  # Fallback if it's already a list
+            items = response_data
 
-        # Log for debugging
         logger.info(
             f"Batch {batch_start}-{batch_end}: Got {len(items)} items from OpenAI "
             f"(expected {len(valid_batch)})"
         )
 
         # Build lookup of narratives by moment_index
-        # Supports both compact ("i", "n") and full ("moment_index", "narrative") keys
         narrative_lookup: dict[int, str] = {}
         for item in items:
             idx = item.get("i") if item.get("i") is not None else item.get("moment_index")
@@ -593,97 +376,399 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         for moment_index, moment, moment_plays in valid_batch:
             narrative = narrative_lookup.get(moment_index, "")
 
-            # Handle empty narratives with fallback instead of failing
+            # Handle empty narratives with classified fallback
             if not narrative or not narrative.strip():
-                narrative = FALLBACK_NARRATIVE
+                fallback_narrative, fallback_type, fallback_reason = (
+                    classify_empty_narrative_fallback(moment, moment_plays, moment_index)
+                )
+
                 fallback_moments.append(moment_index)
-                logger.warning(
-                    f"Moment {moment_index}: Empty narrative from OpenAI, using fallback",
-                    extra={
-                        "game_id": game_id,
-                        "moment_index": moment_index,
-                        "period": moment.get("period"),
-                        "start_clock": moment.get("start_clock"),
-                    },
-                )
-                # Count as successful since we have a valid fallback
-                successful_renders += 1
-            else:
-                # Validate non-empty narratives for forbidden phrases
-                validation_errors = _validate_narrative(
-                    narrative, moment, moment_plays, moment_index
-                )
-                if validation_errors:
-                    all_validation_errors.extend(validation_errors)
-                    output.add_log(
-                        f"Moment {moment_index}: Narrative validation failed",
-                        level="error",
+
+                fallback_detail = {
+                    "moment_index": moment_index,
+                    "period": moment.get("period"),
+                    "start_clock": moment.get("start_clock"),
+                    "fallback_type": fallback_type.value,
+                }
+                if fallback_reason:
+                    fallback_detail["reason"] = fallback_reason.value
+
+                if fallback_type == FallbackType.VALID:
+                    valid_fallbacks.append(fallback_detail)
+                    logger.info(
+                        f"Moment {moment_index}: Empty narrative, using VALID fallback "
+                        f"(low-signal gameplay)",
+                        extra={"game_id": game_id, **fallback_detail},
                     )
                 else:
+                    invalid_fallbacks.append(fallback_detail)
+                    logger.warning(
+                        f"Moment {moment_index}: Empty narrative, using INVALID fallback "
+                        f"(reason: {fallback_reason.value if fallback_reason else 'unknown'})",
+                        extra={"game_id": game_id, **fallback_detail},
+                    )
+
+                enriched_moments[moment_index] = {
+                    **moment,
+                    "narrative": fallback_narrative,
+                    "fallback_type": fallback_type.value,
+                    "fallback_reason": fallback_reason.value if fallback_reason else None,
+                }
+                successful_renders += 1
+
+            else:
+                # Validate with hard/soft error separation and style checks
+                hard_errors, soft_errors, moment_style_details = validate_narrative(
+                    narrative, moment, moment_plays, moment_index
+                )
+
+                if moment_style_details:
+                    all_style_violations.extend(moment_style_details)
+
+                # Check explicit play coverage separately
+                explicit_play_ids = moment.get("explicitly_narrated_play_ids", [])
+                missing_explicit = _check_explicit_coverage(narrative, moment, moment_plays)
+
+                if hard_errors and "explicit" not in hard_errors[0].lower():
+                    reason = FallbackReason.MISSING_EXPLICIT_PLAY_REFERENCE
+                    fallback_narrative = get_invalid_fallback_narrative(reason)
+
+                    logger.warning(
+                        f"Moment {moment_index}: Hard validation error, using INVALID fallback: "
+                        f"{hard_errors[0]}"
+                    )
+
+                    enriched_moments[moment_index] = {
+                        **moment,
+                        "narrative": fallback_narrative,
+                        "fallback_type": FallbackType.INVALID.value,
+                        "fallback_reason": reason.value,
+                    }
+                    fallback_moments.append(moment_index)
+                    invalid_fallbacks.append({
+                        "moment_index": moment_index,
+                        "reason": reason.value,
+                        "period": moment.get("period"),
+                        "start_clock": moment.get("start_clock"),
+                        "validation_errors": hard_errors,
+                    })
                     successful_renders += 1
 
-            enriched_moments[moment_index] = {**moment, "narrative": narrative}
+                elif soft_errors or missing_explicit:
+                    moments_needing_retry.append(
+                        (moment_index, moment, moment_plays, narrative, missing_explicit)
+                    )
+                    if missing_explicit:
+                        logger.info(
+                            f"Moment {moment_index}: Missing explicit plays {missing_explicit}, will retry"
+                        )
+                    else:
+                        logger.info(
+                            f"Moment {moment_index}: Soft validation errors, will retry: "
+                            f"{soft_errors[0]}"
+                        )
+
+                else:
+                    if explicit_play_ids:
+                        log_coverage_resolution(
+                            moment_index,
+                            CoverageResolution.INITIAL_PASS,
+                            (True, set(explicit_play_ids), set()),
+                        )
+                    successful_renders += 1
+                    enriched_moments[moment_index] = {
+                        **moment,
+                        "narrative": narrative,
+                        "fallback_type": None,
+                        "fallback_reason": None,
+                        "coverage_resolution": CoverageResolution.INITIAL_PASS.value if explicit_play_ids else None,
+                    }
+
+        # Retry moments with soft validation errors or missing explicit plays
+        if moments_needing_retry:
+            retry_count += len(moments_needing_retry)
+            output.add_log(
+                f"Retrying {len(moments_needing_retry)} moments with validation issues"
+            )
+
+            retry_batch = [(idx, m, plays) for idx, m, plays, _, _ in moments_needing_retry]
+            retry_prompt = build_batch_prompt(retry_batch, game_context, is_retry=True)
+
+            try:
+                total_openai_calls += 1
+                retry_max_tokens = 250 * len(retry_batch)
+                retry_response_json = await asyncio.to_thread(
+                    openai_client.generate,
+                    prompt=retry_prompt,
+                    temperature=0.2,
+                    max_tokens=retry_max_tokens,
+                )
+                retry_response_data = json.loads(retry_response_json)
+                retry_items = retry_response_data.get("items", [])
+
+                retry_narrative_lookup: dict[int, str] = {}
+                for item in retry_items:
+                    idx = item.get("i") if item.get("i") is not None else item.get("moment_index")
+                    narr = item.get("n") or item.get("narrative", "")
+                    if idx is not None:
+                        retry_narrative_lookup[idx] = narr
+
+                for moment_index, moment, moment_plays, original_narrative, initial_missing in moments_needing_retry:
+                    retry_narrative = retry_narrative_lookup.get(moment_index, original_narrative)
+                    explicit_play_ids = moment.get("explicitly_narrated_play_ids", [])
+
+                    if not retry_narrative or not retry_narrative.strip():
+                        retry_narrative = original_narrative
+
+                    missing_after_regen = _check_explicit_coverage(
+                        retry_narrative, moment, moment_plays
+                    )
+
+                    if not missing_after_regen:
+                        hard_errors, soft_errors, _ = validate_narrative(
+                            retry_narrative, moment, moment_plays, moment_index,
+                            check_style=False
+                        )
+
+                        if not hard_errors or "explicit" in str(hard_errors).lower():
+                            if explicit_play_ids:
+                                log_coverage_resolution(
+                                    moment_index,
+                                    CoverageResolution.REGENERATION_PASS,
+                                    (True, set(explicit_play_ids), set()),
+                                    (False, set(explicit_play_ids) - set(initial_missing), set(initial_missing)),
+                                )
+                            successful_renders += 1
+                            enriched_moments[moment_index] = {
+                                **moment,
+                                "narrative": retry_narrative,
+                                "fallback_type": None,
+                                "fallback_reason": None,
+                                "coverage_resolution": CoverageResolution.REGENERATION_PASS.value if initial_missing else None,
+                            }
+                            logger.info(f"Moment {moment_index}: Retry succeeded")
+                            continue
+
+                    if missing_after_regen:
+                        injection_count += 1
+                        logger.warning(
+                            f"Moment {moment_index}: Regeneration failed to cover plays "
+                            f"{missing_after_regen}, injecting deterministic sentences"
+                        )
+
+                        injected_narrative = inject_missing_explicit_plays(
+                            retry_narrative, set(missing_after_regen), moment_plays, game_context
+                        )
+
+                        still_missing = _check_explicit_coverage(
+                            injected_narrative, moment, moment_plays
+                        )
+
+                        if still_missing:
+                            logger.error(
+                                f"Moment {moment_index}: Injection failed, still missing {still_missing}"
+                            )
+                            log_coverage_resolution(
+                                moment_index,
+                                CoverageResolution.INJECTION_REQUIRED,
+                                (False, set(explicit_play_ids) - set(still_missing), set(still_missing)),
+                            )
+                            raise ValueError(
+                                f"Explicit play coverage invariant violated: "
+                                f"Moment {moment_index} still missing plays {still_missing} after injection"
+                            )
+
+                        log_coverage_resolution(
+                            moment_index,
+                            CoverageResolution.INJECTION_REQUIRED,
+                            (True, set(explicit_play_ids), set()),
+                            (False, set(explicit_play_ids) - set(missing_after_regen), set(missing_after_regen)),
+                        )
+                        successful_renders += 1
+                        enriched_moments[moment_index] = {
+                            **moment,
+                            "narrative": injected_narrative,
+                            "fallback_type": None,
+                            "fallback_reason": None,
+                            "coverage_resolution": CoverageResolution.INJECTION_REQUIRED.value,
+                        }
+                        logger.info(
+                            f"Moment {moment_index}: Injection succeeded"
+                        )
+                        continue
+
+                    reason = FallbackReason.FORBIDDEN_LANGUAGE_DETECTED
+                    fallback_narrative = get_invalid_fallback_narrative(reason)
+
+                    logger.warning(
+                        f"Moment {moment_index}: Retry failed with non-coverage errors, using INVALID fallback"
+                    )
+
+                    enriched_moments[moment_index] = {
+                        **moment,
+                        "narrative": fallback_narrative,
+                        "fallback_type": FallbackType.INVALID.value,
+                        "fallback_reason": reason.value,
+                    }
+                    fallback_moments.append(moment_index)
+                    invalid_fallbacks.append({
+                        "moment_index": moment_index,
+                        "reason": reason.value,
+                        "period": moment.get("period"),
+                        "start_clock": moment.get("start_clock"),
+                        "original_narrative": original_narrative[:200],
+                    })
+                    successful_renders += 1
+
+            except ValueError:
+                raise
+            except Exception as e:
+                logger.warning(f"Retry batch failed: {e}, attempting injection on original narratives")
+                for moment_index, moment, moment_plays, original_narrative, initial_missing in moments_needing_retry:
+                    explicit_play_ids = moment.get("explicitly_narrated_play_ids", [])
+
+                    # Only attempt injection if we have both:
+                    # 1. initial_missing: specific plays that need coverage (otherwise nothing to inject)
+                    # 2. original_narrative: a base narrative to append to (if empty, the initial
+                    #    render failed completely and injection won't help - go straight to fallback)
+                    if initial_missing and original_narrative:
+                        injection_count += 1
+                        injected_narrative = inject_missing_explicit_plays(
+                            original_narrative, set(initial_missing), moment_plays, game_context
+                        )
+
+                        still_missing = _check_explicit_coverage(
+                            injected_narrative, moment, moment_plays
+                        )
+
+                        if not still_missing:
+                            log_coverage_resolution(
+                                moment_index,
+                                CoverageResolution.INJECTION_REQUIRED,
+                                (True, set(explicit_play_ids), set()),
+                                (False, set(explicit_play_ids) - set(initial_missing), set(initial_missing)),
+                            )
+                            successful_renders += 1
+                            enriched_moments[moment_index] = {
+                                **moment,
+                                "narrative": injected_narrative,
+                                "fallback_type": None,
+                                "fallback_reason": None,
+                                "coverage_resolution": CoverageResolution.INJECTION_REQUIRED.value,
+                            }
+                            continue
+
+                    reason = FallbackReason.AI_GENERATION_FAILED
+                    fallback_narrative = get_invalid_fallback_narrative(reason)
+
+                    enriched_moments[moment_index] = {
+                        **moment,
+                        "narrative": fallback_narrative,
+                        "fallback_type": FallbackType.INVALID.value,
+                        "fallback_reason": reason.value,
+                    }
+                    fallback_moments.append(moment_index)
+                    invalid_fallbacks.append({
+                        "moment_index": moment_index,
+                        "reason": reason.value,
+                        "period": moment.get("period"),
+                        "start_clock": moment.get("start_clock"),
+                        "error": str(e)[:200],
+                    })
+                    successful_renders += 1
 
     output.add_log(f"OpenAI calls made: {total_openai_calls}")
     output.add_log(f"Successful renders: {successful_renders}/{len(moments)}")
+    if retry_count > 0:
+        output.add_log(f"Retries: {retry_count} moments retried")
+    if injection_count > 0:
+        output.add_log(
+            f"Injections: {injection_count} moments required deterministic injection"
+        )
 
-    # Log fallback usage for debugging
+    # Log style violations (non-blocking, for monitoring)
+    if all_style_violations:
+        violation_types: dict[str, int] = {}
+        for v in all_style_violations:
+            vtype = v.get("type", v.get("violation_type", "unknown"))
+            violation_types[vtype] = violation_types.get(vtype, 0) + 1
+
+        output.add_log(
+            f"Style violations: {len(all_style_violations)} total "
+            f"({', '.join(f'{t}:{c}' for t, c in violation_types.items())})",
+            level="info",
+        )
+
+        logger.info(
+            "render_narratives_style_violations",
+            extra={
+                "game_id": game_id,
+                "style_violation_count": len(all_style_violations),
+                "violation_types": violation_types,
+                "violations": all_style_violations[:10],
+            },
+        )
+
+    # Log fallback usage with classification
     if fallback_moments:
         output.add_log(
-            f"Fallback narratives used for {len(fallback_moments)} moments: {fallback_moments[:20]}{'...' if len(fallback_moments) > 20 else ''}",
-            level="warning",
+            f"Fallback narratives used: {len(fallback_moments)} total "
+            f"({len(valid_fallbacks)} VALID, {len(invalid_fallbacks)} INVALID)",
+            level="warning" if invalid_fallbacks else "info",
         )
+
+        if valid_fallbacks:
+            output.add_log(
+                f"  VALID fallbacks (low-signal gameplay): {len(valid_fallbacks)}",
+                level="info",
+            )
+
+        if invalid_fallbacks:
+            output.add_log(
+                f"  INVALID fallbacks (needs debugging): {len(invalid_fallbacks)}",
+                level="warning",
+            )
+            for fb in invalid_fallbacks[:5]:
+                output.add_log(
+                    f"    Moment {fb['moment_index']}: {fb.get('reason', 'unknown')}",
+                    level="warning",
+                )
+            if len(invalid_fallbacks) > 5:
+                output.add_log(
+                    f"    ... and {len(invalid_fallbacks) - 5} more INVALID fallbacks",
+                    level="warning",
+                )
+
         logger.warning(
             "render_narratives_fallbacks_used",
             extra={
                 "game_id": game_id,
                 "fallback_count": len(fallback_moments),
+                "valid_fallback_count": len(valid_fallbacks),
+                "invalid_fallback_count": len(invalid_fallbacks),
                 "fallback_moment_indices": fallback_moments,
+                "invalid_fallback_details": invalid_fallbacks[:10],
             },
         )
 
-    # Check if any validation errors occurred
-    if all_validation_errors:
-        output.add_log(
-            f"Narrative validation failed with {len(all_validation_errors)} errors",
-            level="error",
-        )
-
-        # Log to Python logger for visibility
-        logger.error(
-            "Narrative rendering failed",
-            extra={
-                "game_id": game_id,
-                "error_count": len(all_validation_errors),
-                "errors": all_validation_errors,
-            },
-        )
-
-        # Build structured error output
-        error_output = {
-            "rendered": False,
-            "moments": enriched_moments,
-            "errors": all_validation_errors,
-            "openai_calls": total_openai_calls,
-            "successful_renders": successful_renders,
-            "fallback_count": len(fallback_moments),
-            "fallback_moment_indices": fallback_moments,
-        }
-
-        # Raise with structured JSON for reviewability
-        raise ValueError(json.dumps(error_output))
-
-    # All narratives passed validation (or got fallback)
     if fallback_moments:
         output.add_log(
             f"{len(moments) - len(fallback_moments)} narratives from OpenAI, "
-            f"{len(fallback_moments)} fallbacks used"
+            f"{len(fallback_moments)} fallbacks used "
+            f"({len(valid_fallbacks)} valid, {len(invalid_fallbacks)} invalid)"
         )
     else:
         output.add_log(f"All {len(moments)} narratives generated successfully")
+
+    if invalid_fallbacks:
+        output.add_log(
+            f"WARNING: {len(invalid_fallbacks)} INVALID fallbacks detected - "
+            f"these indicate pipeline issues that need debugging",
+            level="warning",
+        )
+
     output.add_log("RENDER_NARRATIVES completed successfully")
 
-    # Output shape: moments with narrative field added
     output.data = {
         "rendered": True,
         "moments": enriched_moments,
@@ -692,6 +777,39 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         "successful_renders": successful_renders,
         "fallback_count": len(fallback_moments),
         "fallback_moment_indices": fallback_moments,
+        "valid_fallback_count": len(valid_fallbacks),
+        "invalid_fallback_count": len(invalid_fallbacks),
+        "valid_fallbacks": valid_fallbacks,
+        "invalid_fallbacks": invalid_fallbacks,
+        "retry_count": retry_count,
+        "injection_count": injection_count,
+        "style_violation_count": len(all_style_violations),
+        "style_violations": all_style_violations,
     }
 
     return output
+
+
+def _check_explicit_coverage(
+    narrative: str,
+    moment: dict[str, Any],
+    moment_plays: list[dict[str, Any]],
+) -> list[int]:
+    """Wrapper for check_explicit_play_coverage that returns missing play IDs.
+
+    Args:
+        narrative: The narrative text
+        moment: The moment data
+        moment_plays: PBP events for the moment
+
+    Returns:
+        List of missing play indices
+    """
+    explicit_ids = set(moment.get("explicitly_narrated_play_ids", []))
+    if not explicit_ids:
+        return []
+
+    all_covered, covered_ids, missing_ids = check_explicit_play_coverage(
+        narrative, explicit_ids, moment_plays
+    )
+    return list(missing_ids)

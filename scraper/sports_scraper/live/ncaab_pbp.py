@@ -120,37 +120,117 @@ class NCAABPbpFetcher:
         index: int,
         game_id: int,
     ) -> NormalizedPlay | None:
-        """Normalize a single play event from the CBB API."""
-        # Extract period info
-        period = parse_int(play.get("period"))
+        """Normalize a single play event from the CBB API.
+
+        The CBB API uses various field names. We try multiple keys for each field.
+        """
+        # Log first play's keys to understand API format (only once per game)
+        if index == 0:
+            logger.info(
+                "ncaab_pbp_play_keys",
+                game_id=game_id,
+                keys=list(play.keys()),
+                sample_play=str(play)[:500],
+            )
+
+        # Check if this is a scoring play we want to sample (logged after successful normalization)
+        play_type_raw_initial = play.get("playType") or ""
+        should_log_scoring_sample = (
+            index < 30 and play_type_raw_initial in ("JumpShot", "Layup", "Dunk", "ThreePointer")
+        )
+
+        # Extract period/half info - try multiple keys
+        period = (
+            parse_int(play.get("period"))
+            or parse_int(play.get("half"))
+            or parse_int(play.get("periodNumber"))
+        )
 
         # Get sequence number if available, otherwise use index
-        sequence = parse_int(play.get("sequenceNumber")) or index
+        sequence = (
+            parse_int(play.get("sequenceNumber"))
+            or parse_int(play.get("playNumber"))
+            or parse_int(play.get("eventNumber"))
+            or parse_int(play.get("id"))
+            or index
+        )
 
         # Build play_index: period * multiplier + sequence for stable ordering
         play_index = (period or 0) * NCAAB_PERIOD_MULTIPLIER + sequence
 
-        # Get timing info
-        clock = play.get("clock") or play.get("timeRemaining")
+        # Get timing info - try multiple keys
+        clock = (
+            play.get("clock")
+            or play.get("timeRemaining")
+            or play.get("gameClockDisplay")
+            or play.get("time")
+            or play.get("displayClock")
+        )
         elapsed = play.get("elapsed") or play.get("secondsRemaining")
 
-        # Get event type
-        play_type_raw = play.get("playType") or play.get("type") or ""
+        # Get event type - try multiple keys
+        play_type_raw = (
+            play.get("playType")
+            or play.get("type")
+            or play.get("eventType")
+            or play.get("typeText")
+            or ""
+        )
         play_type = self._map_event_type(play_type_raw, game_id)
 
-        # Extract team info
-        team_name = play.get("team") or play.get("teamName")
+        # Extract team info - try multiple keys
+        team_name = (
+            play.get("team")
+            or play.get("teamName")
+            or play.get("offenseTeam")
+            or play.get("teamAbbreviation")
+            or play.get("offense")
+        )
+        # Team might be nested
+        if isinstance(play.get("team"), dict):
+            team_name = play["team"].get("name") or play["team"].get("abbreviation")
 
-        # Extract player info
-        player_id = play.get("playerId") or play.get("athleteId")
-        player_name = play.get("player") or play.get("athleteName")
+        # Extract player info - try multiple keys
+        player_id = (
+            play.get("playerId")
+            or play.get("athleteId")
+            or play.get("participantId")
+        )
+        player_name = (
+            play.get("player")
+            or play.get("athleteName")
+            or play.get("playerName")
+            or play.get("participant")
+        )
+        # Player might be nested
+        if isinstance(play.get("athlete"), dict):
+            player_name = play["athlete"].get("displayName") or play["athlete"].get("name")
+            player_id = player_id or play["athlete"].get("id")
+        if isinstance(play.get("participants"), list) and play["participants"]:
+            p = play["participants"][0]
+            if isinstance(p, dict):
+                player_name = player_name or p.get("displayName") or p.get("name")
+                player_id = player_id or p.get("id")
 
-        # Get scores
-        home_score = parse_int(play.get("homeScore"))
-        away_score = parse_int(play.get("awayScore"))
+        # Get scores - try multiple keys
+        home_score = (
+            parse_int(play.get("homeScore"))
+            or parse_int(play.get("homeTeamScore"))
+        )
+        away_score = (
+            parse_int(play.get("awayScore"))
+            or parse_int(play.get("awayTeamScore"))
+        )
 
-        # Get description
-        description = play.get("description") or play.get("text")
+        # Get description - try multiple keys
+        description = (
+            play.get("description")
+            or play.get("text")
+            or play.get("playText")
+            or play.get("scoreText")
+            or play.get("displayValue")
+            or play.get("shortText")
+        )
 
         # Build raw_data with all source-specific details
         raw_data = {
@@ -159,14 +239,20 @@ class NCAABPbpFetcher:
             "elapsed": elapsed,
             "play_type_raw": play_type_raw,
         }
+        # Store teamId for team resolution in upsert_plays
+        if play.get("teamId"):
+            raw_data["cbb_team_id"] = play.get("teamId")
+        # Store team name as fallback
+        if team_name:
+            raw_data["team_name"] = team_name
         # Add any additional fields from the API
-        for key in ["shotType", "shotOutcome", "assistPlayerId", "foulType"]:
+        for key in ["shotType", "shotOutcome", "assistPlayerId", "foulType", "shotDistance", "points"]:
             if key in play and play[key] is not None:
                 raw_data[key] = play[key]
 
-        return NormalizedPlay(
+        normalized = NormalizedPlay(
             play_index=play_index,
-            quarter=period,  # Using quarter field for period (NCAA has halves, but API may use periods)
+            quarter=period,  # Using quarter field for period (NCAA has halves: 1=1st half, 2=2nd half)
             game_clock=clock,
             play_type=play_type,
             team_abbreviation=team_name,  # Using full name since NCAAB has no standard abbreviations
@@ -177,6 +263,28 @@ class NCAABPbpFetcher:
             away_score=away_score,
             raw_data=raw_data,
         )
+
+        # Log scoring play sample after successful normalization
+        if should_log_scoring_sample:
+            logger.info(
+                "ncaab_pbp_scoring_play_sample",
+                game_id=game_id,
+                index=index,
+                # Raw API data
+                raw_play_type=play_type_raw_initial,
+                raw_team=play.get("team"),
+                raw_team_id=play.get("teamId"),
+                raw_play_text=play.get("playText"),
+                raw_participants=str(play.get("participants"))[:300],
+                raw_is_home=play.get("isHomeTeam"),
+                # Normalized result
+                normalized_play_type=normalized.play_type,
+                normalized_team=normalized.team_abbreviation,
+                normalized_player=normalized.player_name,
+                normalized_description=normalized.description,
+            )
+
+        return normalized
 
     def _map_event_type(self, play_type_raw: str, game_id: int) -> str:
         """Map CBB play type to normalized event type.

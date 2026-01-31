@@ -132,26 +132,20 @@ def upgrade() -> None:
         db_expanded = _normalize_with_expansions(team_name)
 
         cbb_team_id = None
-        match_type = None
-
         # Priority 1: Manual mapping
         if db_strict in MANUAL_MAPPINGS:
             cbb_team_id = MANUAL_MAPPINGS[db_strict]
-            match_type = "manual"
             manual_matched += 1
 
         # Priority 2: Exact match on strict normalized name
         elif db_strict in cbb_by_exact:
             cbb_team_id = cbb_by_exact[db_strict]["id"]
-            match_type = "exact"
 
         # Priority 3: Exact match on expanded name (St -> State, etc.)
         elif db_expanded in cbb_by_exact:
             cbb_team_id = cbb_by_exact[db_expanded]["id"]
-            match_type = "expanded_exact"
         elif db_expanded in cbb_by_expanded:
             cbb_team_id = cbb_by_expanded[db_expanded]["id"]
-            match_type = "expanded"
 
         # Priority 4: Try without mascot (last word)
         if not cbb_team_id:
@@ -160,7 +154,6 @@ def upgrade() -> None:
                 school_only = " ".join(words[:-1])
                 if school_only in cbb_by_exact:
                     cbb_team_id = cbb_by_exact[school_only]["id"]
-                    match_type = "school_only"
 
         # NO SUBSTRING MATCHING - this caused the original bug
 
@@ -175,12 +168,12 @@ def upgrade() -> None:
         else:
             unmatched.append(team_name)
 
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  Matched: {matched} (including {manual_matched} manual)")
     print(f"  Unmatched: {len(unmatched)}")
 
     if unmatched:
-        print(f"\nUnmatched teams (add to MANUAL_MAPPINGS if needed):")
+        print("\nUnmatched teams (add to MANUAL_MAPPINGS if needed):")
         for name in sorted(unmatched):
             print(f"  - {name}")
 
