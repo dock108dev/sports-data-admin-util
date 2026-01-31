@@ -174,33 +174,57 @@ def generate_deterministic_sentence(
     # Build sentence based on play type
     desc_lower = description.lower()
 
-    # Scoring plays
+    # Detect made vs missed shots
+    is_miss = "miss" in desc_lower  # Matches "miss", "misses", "missed"
+    is_make = "make" in desc_lower or "made" in desc_lower
+
+    # Scoring plays - three-pointer
     if "three" in desc_lower or "3-pt" in desc_lower or "3pt" in desc_lower:
+        if is_miss:
+            if player_name:
+                return f"{player_name} missed a three-pointer."
+            return f"{team_name or 'The team'} missed a three-pointer."
         if player_name:
             return f"{player_name} hit a three-pointer."
         return f"{team_name or 'The team'} made a three-pointer."
 
+    # Layup
     if "layup" in desc_lower:
+        if is_miss:
+            if player_name:
+                return f"{player_name} missed a layup."
+            return f"{team_name or 'The team'} missed a layup."
         if player_name:
             return f"{player_name} scored on a layup."
         return f"{team_name or 'The team'} scored on a layup."
 
+    # Dunk
     if "dunk" in desc_lower:
+        if is_miss:
+            if player_name:
+                return f"{player_name} missed a dunk attempt."
+            return f"{team_name or 'The team'} missed a dunk attempt."
         if player_name:
             return f"{player_name} finished with a dunk."
         return f"{team_name or 'The team'} scored on a dunk."
 
+    # Free throw
     if "free throw" in desc_lower:
-        if "makes" in desc_lower or "made" in desc_lower:
+        if is_make:
             if player_name:
                 return f"{player_name} converted the free throw."
             return f"{team_name or 'The team'} made a free throw."
-        elif "misses" in desc_lower or "missed" in desc_lower:
+        elif is_miss:
             if player_name:
                 return f"{player_name} missed the free throw."
             return f"{team_name or 'The team'} missed a free throw."
 
+    # Jumper / jump shot
     if "jumper" in desc_lower or "jump shot" in desc_lower:
+        if is_miss:
+            if player_name:
+                return f"{player_name} missed a jumper."
+            return f"{team_name or 'The team'} missed a shot."
         if player_name:
             return f"{player_name} hit a jumper."
         return f"{team_name or 'The team'} made a shot."

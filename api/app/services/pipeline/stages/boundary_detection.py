@@ -116,6 +116,8 @@ def is_merge_eligible(
     """Check if game flow suggests we should continue merging plays.
 
     Merge eligibility can override SOFT (but not HARD) boundary conditions.
+    Note: SOFT_CAP_REACHED is explicitly excluded from override in the caller,
+    so we don't check soft cap here.
 
     Conditions for merge eligibility:
     - No scoring has occurred in the current moment
@@ -130,10 +132,6 @@ def is_merge_eligible(
     Returns:
         True if merge should be encouraged
     """
-    # Don't encourage merge if moment is already getting large
-    if len(current_moment_plays) >= SOFT_CAP_PLAYS:
-        return False
-
     # Check if any scoring has occurred in this moment
     if len(current_moment_plays) > 1:
         for j in range(1, len(current_moment_plays)):
