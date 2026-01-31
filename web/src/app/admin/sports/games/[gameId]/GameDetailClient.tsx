@@ -481,18 +481,18 @@ export default function GameDetailClient() {
           ) : (
             <div className={styles.playerStatsGrid}>
               {Object.entries(playerStatsByTeam).map(([team, rows]) => {
+                // Helper to coerce value to number (handles numeric strings)
+                const toNumber = (v: unknown): number | null => {
+                  if (typeof v === "number") return v;
+                  if (typeof v === "string") {
+                    const parsed = Number(v);
+                    return isNaN(parsed) ? null : parsed;
+                  }
+                  return null;
+                };
+
                 // Helper to get stat from raw_stats - handles both flat and nested formats
                 const getStat = (p: typeof rows[0], ...keys: string[]): number | null => {
-                  // Helper to coerce value to number (handles numeric strings)
-                  const toNumber = (v: unknown): number | null => {
-                    if (typeof v === "number") return v;
-                    if (typeof v === "string") {
-                      const parsed = Number(v);
-                      return isNaN(parsed) ? null : parsed;
-                    }
-                    return null;
-                  };
-
                   for (const key of keys) {
                     const val = p.raw_stats?.[key];
                     if (val !== null && val !== undefined) {
