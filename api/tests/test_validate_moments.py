@@ -564,3 +564,222 @@ class TestValidateScoreContinuity:
         ]
         errors = _validate_score_continuity(moments)
         assert len(errors) == 2
+
+
+import pytest
+
+
+class TestExecuteValidateMoments:
+    """Tests for execute_validate_moments function."""
+
+    def _make_valid_moment(self, play_ids, score_before, score_after):
+        """Create a valid moment with all required fields."""
+        return {
+            "play_ids": play_ids,
+            "explicitly_narrated_play_ids": [play_ids[0]] if play_ids else [],
+            "score_before": score_before,
+            "score_after": score_after,
+            "period": 1,
+            "start_clock": "12:00",
+            "end_clock": "11:30",
+        }
+
+    @pytest.mark.asyncio
+    async def test_requires_previous_output(self):
+        """Raises if no previous output."""
+        from app.services.pipeline.stages.validate_moments import (
+            execute_validate_moments,
+        )
+        from app.services.pipeline.models import StageInput
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output=None,
+        )
+
+        with pytest.raises(ValueError, match="requires previous stage output"):
+            await execute_validate_moments(stage_input)
+
+    @pytest.mark.asyncio
+    async def test_requires_moments(self):
+        """Raises if no moments in previous output."""
+        from app.services.pipeline.stages.validate_moments import (
+            execute_validate_moments,
+        )
+        from app.services.pipeline.models import StageInput
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output={"pbp_events": [{"play_index": 1}]},
+        )
+
+        with pytest.raises(ValueError, match="No moments"):
+            await execute_validate_moments(stage_input)
+
+    @pytest.mark.asyncio
+    async def test_requires_pbp_events(self):
+        """Raises if no pbp_events in previous output."""
+        from app.services.pipeline.stages.validate_moments import (
+            execute_validate_moments,
+        )
+        from app.services.pipeline.models import StageInput
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output={"moments": []},
+        )
+
+        with pytest.raises(ValueError, match="No pbp_events"):
+            await execute_validate_moments(stage_input)
+
+    @pytest.mark.asyncio
+    async def test_valid_moments_pass(self):
+        """Valid moments pass all validation rules."""
+        from app.services.pipeline.stages.validate_moments import (
+            execute_validate_moments,
+        )
+        from app.services.pipeline.models import StageInput
+
+        moments = [
+            self._make_valid_moment([1, 2], [0, 0], [2, 0]),
+            self._make_valid_moment([3, 4], [2, 0], [4, 0]),
+            self._make_valid_moment([5], [4, 0], [6, 0]),
+        ]
+        pbp_events = [{"play_index": i} for i in range(1, 6)]
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output={"moments": moments, "pbp_events": pbp_events},
+        )
+
+        result = await execute_validate_moments(stage_input)
+
+        assert result.data["validated"] is True
+        assert result.data["errors"] == []
+
+    @pytest.mark.asyncio
+    async def test_empty_moments_passes(self):
+        """Empty moments list passes validation."""
+        from app.services.pipeline.stages.validate_moments import (
+            execute_validate_moments,
+        )
+        from app.services.pipeline.models import StageInput
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output={"moments": [], "pbp_events": [{"play_index": 1}]},
+        )
+
+        result = await execute_validate_moments(stage_input)
+
+        assert result.data["validated"] is True
+
+    @pytest.mark.asyncio
+    async def test_validation_failure_raises(self):
+        """Validation failures raise ValueError with JSON details."""
+        from app.services.pipeline.stages.validate_moments import (
+            execute_validate_moments,
+        )
+        from app.services.pipeline.models import StageInput
+        import json
+
+        # Invalid moment: empty play_ids
+        moments = [{"play_ids": [], "explicitly_narrated_play_ids": []}]
+        pbp_events = [{"play_index": 1}]
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output={"moments": moments, "pbp_events": pbp_events},
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            await execute_validate_moments(stage_input)
+
+        # Parse the JSON error message
+        error_data = json.loads(str(exc_info.value))
+        assert error_data["validated"] is False
+        assert len(error_data["errors"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_overlapping_plays_fails(self):
+        """Overlapping plays fail validation."""
+        from app.services.pipeline.stages.validate_moments import (
+            execute_validate_moments,
+        )
+        from app.services.pipeline.models import StageInput
+        import json
+
+        moments = [
+            self._make_valid_moment([1, 2], [0, 0], [2, 0]),
+            self._make_valid_moment([2, 3], [2, 0], [4, 0]),  # 2 overlaps
+        ]
+        pbp_events = [{"play_index": i} for i in range(1, 4)]
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output={"moments": moments, "pbp_events": pbp_events},
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            await execute_validate_moments(stage_input)
+
+        error_data = json.loads(str(exc_info.value))
+        assert error_data["validated"] is False
+        assert any(e["code"] == "OVERLAPPING_PLAY_IDS" for e in error_data["errors"])
+
+    @pytest.mark.asyncio
+    async def test_invalid_play_reference_fails(self):
+        """Invalid play reference fails validation."""
+        from app.services.pipeline.stages.validate_moments import (
+            execute_validate_moments,
+        )
+        from app.services.pipeline.models import StageInput
+        import json
+
+        moments = [
+            self._make_valid_moment([1, 99], [0, 0], [2, 0]),  # 99 doesn't exist
+        ]
+        pbp_events = [{"play_index": 1}]  # Only play 1 exists
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output={"moments": moments, "pbp_events": pbp_events},
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            await execute_validate_moments(stage_input)
+
+        error_data = json.loads(str(exc_info.value))
+        assert any(e["code"] == "INVALID_PLAY_REFERENCE" for e in error_data["errors"])
+
+    @pytest.mark.asyncio
+    async def test_logs_added(self):
+        """Execution adds log entries."""
+        from app.services.pipeline.stages.validate_moments import (
+            execute_validate_moments,
+        )
+        from app.services.pipeline.models import StageInput
+
+        moments = [self._make_valid_moment([1], [0, 0], [2, 0])]
+        pbp_events = [{"play_index": 1}]
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output={"moments": moments, "pbp_events": pbp_events},
+        )
+
+        result = await execute_validate_moments(stage_input)
+
+        assert len(result.logs) > 0
+        log_messages = [log["message"] for log in result.logs]
+        assert any("Starting VALIDATE_MOMENTS" in msg for msg in log_messages)
+        assert any("Rule 1 PASSED" in msg for msg in log_messages)
