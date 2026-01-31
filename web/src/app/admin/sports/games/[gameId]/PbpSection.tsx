@@ -4,12 +4,30 @@ import { useMemo, useState } from "react";
 import type { AdminGameDetail } from "@/lib/api/sportsAdmin";
 import styles from "./styles.module.css";
 
-const getQuarterLabel = (quarter: number) => {
-  if (quarter <= 4) return `Q${quarter}`;
-  return `OT${quarter - 4}`;
+/**
+ * Get period label based on league format.
+ * - NBA: Q1, Q2, Q3, Q4, OT1, OT2...
+ * - NHL: P1, P2, P3, OT, SO
+ * - NCAAB: 1st Half, 2nd Half, OT1, OT2...
+ */
+const getPeriodLabel = (period: number, leagueCode?: string) => {
+  if (leagueCode === "NCAAB") {
+    // NCAAB uses halves
+    if (period === 1) return "1st Half";
+    if (period === 2) return "2nd Half";
+    return `OT${period - 2}`;
+  }
+  if (leagueCode === "NHL") {
+    if (period <= 3) return `P${period}`;
+    if (period === 4) return "OT";
+    return "SO";
+  }
+  // Default: NBA-style quarters
+  if (period <= 4) return `Q${period}`;
+  return `OT${period - 4}`;
 };
 
-export function PbpSection({ plays }: { plays: AdminGameDetail["plays"] }) {
+export function PbpSection({ plays, leagueCode }: { plays: AdminGameDetail["plays"]; leagueCode?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedQuarter, setSelectedQuarter] = useState<number | null>(null);
 
@@ -53,7 +71,7 @@ export function PbpSection({ plays }: { plays: AdminGameDetail["plays"] }) {
                     className={`${styles.quarterTab} ${effectiveQuarter === q ? styles.quarterTabActive : ""}`}
                     onClick={() => setSelectedQuarter(q)}
                   >
-                    {getQuarterLabel(q)}
+                    {getPeriodLabel(q, leagueCode)}
                     <span className={styles.quarterCount}>
                       {plays.filter((p) => p.quarter === q).length}
                     </span>

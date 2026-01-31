@@ -682,7 +682,14 @@ class NCAABBoxscoreFetcher:
         team_identity: TeamIdentity,
         game_id: int,
     ) -> NormalizedPlayerBoxscore | None:
-        """Parse player-level stats from games/players endpoint."""
+        """Parse player-level stats from games/players endpoint.
+
+        The CBB API can return stats as either:
+        - Simple integers: {"points": 17, "rebounds": 5}
+        - Nested objects: {"points": {"total": 17}, "rebounds": {"total": 5, "offensive": 2}}
+
+        This handles both formats.
+        """
         player_id = ps.get("playerId") or ps.get("athleteId")
         if not player_id:
             return None
@@ -698,9 +705,52 @@ class NCAABBoxscoreFetcher:
 
         minutes = parse_minutes(ps.get("minutes"))
 
+        # Helper to extract int from value that may be int or {"total": int, ...}
+        def extract_total(value: int | dict | None) -> int | None:
+            if value is None:
+                return None
+            if isinstance(value, dict):
+                return parse_int(value.get("total"))
+            return parse_int(value)
+
+        # Extract stats handling both flat and nested formats
+        points = extract_total(ps.get("points"))
+        rebounds = extract_total(ps.get("rebounds")) or extract_total(ps.get("totalRebounds"))
+        assists = extract_total(ps.get("assists"))
+        steals = extract_total(ps.get("steals"))
+        blocks = extract_total(ps.get("blocks"))
+        turnovers = extract_total(ps.get("turnovers"))
+
+        # Shooting stats
+        fg_made = extract_total(ps.get("fieldGoalsMade")) or extract_total(ps.get("fieldGoals", {}).get("made") if isinstance(ps.get("fieldGoals"), dict) else None)
+        fg_att = extract_total(ps.get("fieldGoalsAttempted")) or extract_total(ps.get("fieldGoals", {}).get("attempted") if isinstance(ps.get("fieldGoals"), dict) else None)
+        fg3_made = extract_total(ps.get("threePointFieldGoalsMade")) or extract_total(ps.get("threePointFieldGoals", {}).get("made") if isinstance(ps.get("threePointFieldGoals"), dict) else None)
+        fg3_att = extract_total(ps.get("threePointFieldGoalsAttempted")) or extract_total(ps.get("threePointFieldGoals", {}).get("attempted") if isinstance(ps.get("threePointFieldGoals"), dict) else None)
+        ft_made = extract_total(ps.get("freeThrowsMade")) or extract_total(ps.get("freeThrows", {}).get("made") if isinstance(ps.get("freeThrows"), dict) else None)
+        ft_att = extract_total(ps.get("freeThrowsAttempted")) or extract_total(ps.get("freeThrows", {}).get("attempted") if isinstance(ps.get("freeThrows"), dict) else None)
+        fouls = extract_total(ps.get("fouls")) or extract_total(ps.get("personalFouls"))
+
+        # Build raw_stats with flattened values for display
         raw_stats = {k: v for k, v in ps.items() if v is not None and k not in [
             "playerId", "athleteId", "player", "athleteName", "name", "teamId", "team", "minutes"
         ]}
+
+        # Add flattened shooting stats to raw_stats for frontend display
+        if fg_made is not None or fg_att is not None:
+            raw_stats["fgMade"] = fg_made
+            raw_stats["fgAttempted"] = fg_att
+        if fg3_made is not None or fg3_att is not None:
+            raw_stats["fg3Made"] = fg3_made
+            raw_stats["fg3Attempted"] = fg3_att
+        if ft_made is not None or ft_att is not None:
+            raw_stats["ftMade"] = ft_made
+            raw_stats["ftAttempted"] = ft_att
+        if steals is not None:
+            raw_stats["steals"] = steals
+        if turnovers is not None:
+            raw_stats["turnovers"] = turnovers
+        if fouls is not None:
+            raw_stats["fouls"] = fouls
 
         return NormalizedPlayerBoxscore(
             player_id=str(player_id),
@@ -710,11 +760,11 @@ class NCAABBoxscoreFetcher:
             position=ps.get("position"),
             sweater_number=None,
             minutes=minutes,
-            points=parse_int(ps.get("points")),
-            rebounds=parse_int(ps.get("rebounds")) or parse_int(ps.get("totalRebounds")),
-            assists=parse_int(ps.get("assists")),
-            goals=parse_int(ps.get("fieldGoalsMade")),
-            shots_on_goal=parse_int(ps.get("fieldGoalsAttempted")),
-            blocked_shots=parse_int(ps.get("blocks")),
+            points=points,
+            rebounds=rebounds,
+            assists=assists,
+            goals=fg_made,
+            shots_on_goal=fg_att,
+            blocked_shots=blocks,
             raw_stats=raw_stats,
         )

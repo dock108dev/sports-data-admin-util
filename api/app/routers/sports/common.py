@@ -158,18 +158,42 @@ def _get_int_stat(
         return None
 
 
+def _get_nested_int(stats: dict[str, Any], key: str) -> int | None:
+    """Extract int from nested CBB format like {"total": 5, "offensive": 2}."""
+    value = stats.get(key)
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        total = value.get("total")
+        if total is not None:
+            try:
+                return int(total)
+            except (ValueError, TypeError):
+                pass
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def serialize_player_stat(player: db_models.SportsPlayerBoxscore) -> PlayerStat:
     """Serialize player boxscore, flattening stats for frontend display."""
     stats = player.stats or {}
     minutes_val = _extract_minutes(stats)
 
+    # Rebounds: try multiple keys, handling nested format
+    rebounds = _get_int_stat(stats, "rebounds", "trb")
+    if rebounds is None:
+        rebounds = _get_nested_int(stats, "rebounds") or _get_nested_int(stats, "totalRebounds")
+
     return PlayerStat(
         team=player.team.name if player.team else "Unknown",
         player_name=player.player_name,
         minutes=round(minutes_val, 1) if minutes_val is not None else None,
-        points=_get_int_stat(stats, "points", "pts"),
-        rebounds=_get_int_stat(stats, "rebounds", "trb"),
-        assists=_get_int_stat(stats, "assists", "ast"),
+        points=_get_int_stat(stats, "points", "pts") or _get_nested_int(stats, "points"),
+        rebounds=rebounds,
+        assists=_get_int_stat(stats, "assists", "ast") or _get_nested_int(stats, "assists"),
         yards=_get_int_stat(stats, "yards", "yds"),
         touchdowns=_get_int_stat(stats, "touchdowns", "td"),
         raw_stats=stats,
