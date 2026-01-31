@@ -133,20 +133,11 @@ class NCAABPbpFetcher:
                 sample_play=str(play)[:500],
             )
 
-        # Log a scoring play to see team/player/description data
-        play_type_raw = play.get("playType") or ""
-        if index < 30 and play_type_raw in ("JumpShot", "Layup", "Dunk", "ThreePointer"):
-            logger.info(
-                "ncaab_pbp_scoring_play_sample",
-                game_id=game_id,
-                index=index,
-                play_type=play_type_raw,
-                team=play.get("team"),
-                team_id=play.get("teamId"),
-                play_text=play.get("playText"),
-                participants=str(play.get("participants"))[:300],
-                is_home=play.get("isHomeTeam"),
-            )
+        # Check if this is a scoring play we want to sample (logged after successful normalization)
+        play_type_raw_initial = play.get("playType") or ""
+        should_log_scoring_sample = (
+            index < 30 and play_type_raw_initial in ("JumpShot", "Layup", "Dunk", "ThreePointer")
+        )
 
         # Extract period/half info - try multiple keys
         period = (
@@ -259,7 +250,7 @@ class NCAABPbpFetcher:
             if key in play and play[key] is not None:
                 raw_data[key] = play[key]
 
-        return NormalizedPlay(
+        normalized = NormalizedPlay(
             play_index=play_index,
             quarter=period,  # Using quarter field for period (NCAA has halves: 1=1st half, 2=2nd half)
             game_clock=clock,
@@ -272,6 +263,28 @@ class NCAABPbpFetcher:
             away_score=away_score,
             raw_data=raw_data,
         )
+
+        # Log scoring play sample after successful normalization
+        if should_log_scoring_sample:
+            logger.info(
+                "ncaab_pbp_scoring_play_sample",
+                game_id=game_id,
+                index=index,
+                # Raw API data
+                raw_play_type=play_type_raw_initial,
+                raw_team=play.get("team"),
+                raw_team_id=play.get("teamId"),
+                raw_play_text=play.get("playText"),
+                raw_participants=str(play.get("participants"))[:300],
+                raw_is_home=play.get("isHomeTeam"),
+                # Normalized result
+                normalized_play_type=normalized.play_type,
+                normalized_team=normalized.team_abbreviation,
+                normalized_player=normalized.player_name,
+                normalized_description=normalized.description,
+            )
+
+        return normalized
 
     def _map_event_type(self, play_type_raw: str, game_id: int) -> str:
         """Map CBB play type to normalized event type.
