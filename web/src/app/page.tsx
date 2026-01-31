@@ -20,6 +20,10 @@ export default function Home() {
           <div className={styles.cardTitle}>Data Browser</div>
           <div className={styles.cardBody}>Explore games, teams, and scrape runs.</div>
         </Link>
+        <Link href="/admin/fairbet/odds" className={styles.card}>
+          <div className={styles.cardTitle}>FairBet Odds</div>
+          <div className={styles.cardBody}>Compare odds across sportsbooks.</div>
+        </Link>
       </div>
     </div>
   );

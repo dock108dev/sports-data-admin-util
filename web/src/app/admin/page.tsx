@@ -122,6 +122,12 @@ export default function AdminDashboardPage() {
               <div className={styles.quickLinkDesc}>Generate and inspect game flow data</div>
             </div>
           </Link>
+          <Link href="/admin/fairbet/odds" className={styles.quickLink}>
+            <div className={styles.quickLinkContent}>
+              <div className={styles.quickLinkTitle}>FairBet Odds</div>
+              <div className={styles.quickLinkDesc}>Compare odds across books</div>
+            </div>
+          </Link>
         </div>
       </AdminCard>
 

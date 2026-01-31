@@ -27,6 +27,7 @@ from .odds_matching import (
 )
 from .games import upsert_game_stub
 from .teams import _find_team_by_name, _upsert_team
+from ..odds.fairbet import upsert_fairbet_odds
 
 
 def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
@@ -98,7 +99,7 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
                 game_id=game_id,
                 tip_time=str(snapshot.tip_time),
             )
-        
+
         side_value = snapshot.side if snapshot.side else None
         stmt = (
             insert(db_models.SportsGameOdds)
@@ -127,6 +128,11 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
             )
         )
         session.execute(stmt)
+
+        # FairBet work table: append odds for non-completed games (cached path)
+        if game is not None:
+            upsert_fairbet_odds(session, game_id, game.status, snapshot)
+
         return True
     day_start = datetime.combine(game_day - timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
     day_end = datetime.combine(game_day + timedelta(days=1), datetime.max.time(), tzinfo=timezone.utc)
@@ -367,5 +373,11 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
         )
     )
     session.execute(stmt)
+
+    # FairBet work table: append odds for non-completed games
+    # This enables cross-book comparison in FairBet
+    if game is not None:
+        upsert_fairbet_odds(session, game_id, game.status, snapshot)
+
     cache_set(cache_key, game_id)
     return True

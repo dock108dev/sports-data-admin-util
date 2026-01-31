@@ -142,7 +142,8 @@ See [TIMELINE_ASSEMBLY.md](TIMELINE_ASSEMBLY.md) for details.
 - `sports_game_plays` - Play-by-play events
 - `sports_team_boxscores` - Team stats
 - `sports_player_boxscores` - Player stats
-- `sports_game_odds` - Betting lines
+- `sports_game_odds` - Betting lines (game-centric)
+- `fairbet_game_odds_work` - Bet-centric odds for cross-book comparison
 - `game_social_posts` - Social media content
 
 See `sql/` for complete schema.
@@ -151,14 +152,21 @@ See `sql/` for complete schema.
 
 ## API Endpoints
 
-### Game Data
-- `GET /api/admin/sports/games` - List games
-- `GET /api/admin/sports/games/{id}` - Game details
-- `GET /api/admin/sports/games/{id}/plays` - Play-by-play
+### App Endpoints (for external apps)
+- `GET /api/games` - List games by date range
+- `GET /api/games/{id}` - Single game details
+- `GET /api/games/{id}/pbp` - Play-by-play by period
+- `GET /api/games/{id}/story` - AI-generated story
 
-### Scraper
-- `GET /api/admin/sports/scrape-runs` - List scraper runs
-- `POST /api/admin/sports/scrape-runs` - Start scraper
+### Admin Endpoints
+- `GET /api/admin/sports/games` - List games with filtering
+- `GET /api/admin/sports/games/{id}` - Full game detail
+- `GET /api/admin/sports/scraper/runs` - List scraper runs
+- `POST /api/admin/sports/scraper/runs` - Create scraper run
+- `GET /api/admin/sports/pipeline/run/{id}` - Pipeline run status
+
+### FairBet Endpoints
+- `GET /api/fairbet/odds` - Cross-book odds comparison
 
 See [API.md](API.md) for complete reference.
 

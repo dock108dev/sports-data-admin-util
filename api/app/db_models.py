@@ -491,6 +491,60 @@ class SportsGameOdds(Base):
     )
 
 
+class FairbetGameOddsWork(Base):
+    """FairBet work table: derived, disposable, upserted odds for comparison.
+
+    This table stores one row per (bet × book) for non-completed games.
+    It enables FairBet to compare odds across many books for each bet definition.
+
+    Bet identity: (game_id, market_key, selection_key, line_value)
+    Books are variants, not schema - each book is a separate row.
+
+    This table is NOT historical - rows are overwritten per book per bet.
+    Only populated for non-final games (scheduled, live).
+
+    Note: line_value uses 0 as sentinel for NULL (moneyline has no line).
+    """
+
+    __tablename__ = "fairbet_game_odds_work"
+
+    game_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sports_games.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    market_key: Mapped[str] = mapped_column(
+        String(50), primary_key=True, nullable=False
+    )
+    selection_key: Mapped[str] = mapped_column(
+        Text, primary_key=True, nullable=False
+    )
+    line_value: Mapped[float] = mapped_column(
+        Float, primary_key=True, nullable=False, default=0.0
+    )
+    book: Mapped[str] = mapped_column(
+        String(50), primary_key=True, nullable=False
+    )
+    price: Mapped[float] = mapped_column(Float, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    game: Mapped[SportsGame] = relationship("SportsGame")
+
+    __table_args__ = (
+        Index("idx_fairbet_odds_game", "game_id"),
+        Index("idx_fairbet_odds_observed", "observed_at"),
+    )
+
+
 class SportsGamePlay(Base):
     """Play-by-play events for games."""
 

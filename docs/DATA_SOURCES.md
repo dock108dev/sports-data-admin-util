@@ -124,9 +124,21 @@ The Odds API (v4): `https://api.the-odds-api.com`
 3. If no match, log warning and skip
 
 ### Storage
-- `sports_game_odds` table
+- `sports_game_odds` table (game-centric, for historical analysis)
 - Unique constraint: `(game_id, book, market_type, side, is_closing_line)`
 - Upsert strategy: `ON CONFLICT DO UPDATE`
+
+### FairBet Work Table
+
+A separate bet-centric table for cross-book odds comparison:
+
+- `fairbet_game_odds_work` table
+- **Purpose:** Store odds by bet definition (game + market + selection + line) with books as rows
+- **Populated:** During odds ingestion for non-completed games only
+- **Primary key:** `(game_id, market_key, selection_key, line_value, book)`
+- **Note:** `line_value` of 0 is sentinel for moneylines (no line)
+
+This table enables efficient cross-book comparison without the game-centric structure of `sports_game_odds`.
 
 ### Rate Limiting
 - Historical endpoint: 5-day delay between requests (API rate limits)
