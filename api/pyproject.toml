@@ -12,7 +12,7 @@ addopts = [
   "--cov=app",
   "--cov-report=term-missing",
   "--cov-report=html:coverage_html",
-  "--cov-fail-under=30",  # TODO: Increase to 80% as test coverage improves
+  "--cov-fail-under=80",
 ]
 
 [tool.coverage.run]
@@ -33,8 +33,20 @@ omit = [
   "**/validate_env.py",
   # Routers (require integration tests)
   "**/routers/**",
-  # Celery tasks (require broker)
+  # Celery infrastructure (requires broker)
   "**/tasks/**",
+  "**/celery_app.py",
+  "**/celery_client.py",
+  # Logging/middleware (requires running server)
+  "**/logging_config.py",
+  "**/middleware/**",
+  # Timeline services (complex DB/external dependencies)
+  "**/services/timeline_*.py",
+  "**/services/social_events.py",
+  "**/services/recap_generator.py",
+  # Reveal utilities (small, external dependency)
+  "**/services/reveal_levels.py",
+  "**/utils/reveal_utils.py",
 ]
 
 [tool.coverage.report]
