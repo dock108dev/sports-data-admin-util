@@ -112,7 +112,7 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                     job.current_game = i + 1
                     await session.commit()
 
-                    # Check if game already has a v2-moments story
+                    # Check if game already has a story
                     if not job.force_regenerate:
                         story_result = await session.execute(
                             select(db_models.SportsGameStory).where(

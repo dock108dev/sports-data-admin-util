@@ -196,9 +196,6 @@ FORBIDDEN_PATTERNS = [re.compile(p, re.IGNORECASE) for p in FORBIDDEN_PHRASES]
 # Number of moments to process in a single OpenAI call
 MOMENTS_PER_BATCH = 25
 
-# Legacy fallback (deprecated, use classification-aware fallbacks instead)
-FALLBACK_NARRATIVE = "Play continued."
-
 
 def _get_valid_fallback_narrative(moment_index: int) -> str:
     """Get a valid low-signal fallback narrative.
@@ -1084,22 +1081,6 @@ def _validate_narrative(
         soft_errors.extend(style_warnings)
 
     return hard_errors, soft_errors, style_details
-
-
-def _validate_narrative_legacy(
-    narrative: str,
-    moment: dict[str, Any],
-    moment_plays: list[dict[str, Any]],
-    moment_index: int,
-) -> list[str]:
-    """Legacy validation wrapper for backward compatibility.
-
-    Returns combined errors as a single list.
-    """
-    hard_errors, soft_errors, _ = _validate_narrative(
-        narrative, moment, moment_plays, moment_index, check_style=False
-    )
-    return hard_errors + soft_errors
 
 
 # =============================================================================

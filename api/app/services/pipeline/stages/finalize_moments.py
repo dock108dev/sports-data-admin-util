@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Story version identifier for moments-based stories
+# Story version identifier
 STORY_VERSION = "v2-moments"
 
 

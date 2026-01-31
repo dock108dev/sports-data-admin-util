@@ -98,9 +98,6 @@ MAX_EXPLICIT_PLAYS_PER_MOMENT = 2
 # Target: prefer ≤1 explicit play per moment
 PREFERRED_EXPLICIT_PLAYS = 1
 
-# Legacy constant for backward compatibility
-MAX_PLAYS_PER_MOMENT = SOFT_CAP_PLAYS
-
 
 class BoundaryType(str, Enum):
     """Classification of boundary decision type."""
@@ -432,7 +429,7 @@ def _should_start_new_moment(
 
     BOUNDARY RULES (in priority order):
     1. Period boundary: Always start new moment at period change
-    2. Hard maximum: Start new moment if current would exceed MAX_PLAYS_PER_MOMENT
+    2. Hard maximum: Start new moment if current would exceed SOFT_CAP_PLAYS
     3. After scoring: Previous play was a scoring play
     4. After stoppage: Previous play was a timeout/review
 
@@ -453,7 +450,7 @@ def _should_start_new_moment(
         return True
 
     # Rule 2: Hard maximum exceeded
-    if current_moment_size >= MAX_PLAYS_PER_MOMENT:
+    if current_moment_size >= SOFT_CAP_PLAYS:
         return True
 
     # Rule 3: Previous play was a scoring play
