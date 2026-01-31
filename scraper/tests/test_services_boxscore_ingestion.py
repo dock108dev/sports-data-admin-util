@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from sports_scraper.services.boxscore_ingestion import (
     _season_from_date,
@@ -198,8 +196,8 @@ class TestConvertNcaabBoxscoreToNormalizedGame:
 class TestIngestBoxscoresViaNhlApi:
     """Tests for ingest_boxscores_via_nhl_api."""
 
-    @patch("sports_scraper.services.boxscore_ingestion._populate_nhl_game_ids")
-    @patch("sports_scraper.services.boxscore_ingestion.select_games_for_boxscores_nhl_api")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion._populate_nhl_game_ids")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.select_games_for_boxscores_nhl_api")
     def test_returns_zero_when_no_games(self, mock_select, mock_populate):
         """Returns (0, 0, 0) when no games selected."""
         mock_session = MagicMock()
@@ -216,10 +214,10 @@ class TestIngestBoxscoresViaNhlApi:
 
         assert result == (0, 0, 0)
 
-    @patch("sports_scraper.services.boxscore_ingestion.persist_game_payload")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.persist_game_payload")
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
-    @patch("sports_scraper.services.boxscore_ingestion._populate_nhl_game_ids")
-    @patch("sports_scraper.services.boxscore_ingestion.select_games_for_boxscores_nhl_api")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion._populate_nhl_game_ids")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.select_games_for_boxscores_nhl_api")
     def test_processes_games_successfully(self, mock_select, mock_populate, mock_client_class, mock_persist):
         """Processes games and returns counts."""
         from sports_scraper.models import TeamIdentity, NormalizedTeamBoxscore
@@ -260,8 +258,8 @@ class TestIngestBoxscoresViaNhlApi:
         assert result[1] == 1  # games enriched
 
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
-    @patch("sports_scraper.services.boxscore_ingestion._populate_nhl_game_ids")
-    @patch("sports_scraper.services.boxscore_ingestion.select_games_for_boxscores_nhl_api")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion._populate_nhl_game_ids")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.select_games_for_boxscores_nhl_api")
     def test_handles_empty_boxscore_response(self, mock_select, mock_populate, mock_client_class):
         """Handles empty boxscore response gracefully."""
         mock_session = MagicMock()
@@ -283,8 +281,8 @@ class TestIngestBoxscoresViaNhlApi:
         assert result == (0, 0, 0)
 
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
-    @patch("sports_scraper.services.boxscore_ingestion._populate_nhl_game_ids")
-    @patch("sports_scraper.services.boxscore_ingestion.select_games_for_boxscores_nhl_api")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion._populate_nhl_game_ids")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.select_games_for_boxscores_nhl_api")
     def test_handles_fetch_exception(self, mock_select, mock_populate, mock_client_class):
         """Handles fetch exceptions gracefully."""
         mock_session = MagicMock()
@@ -309,8 +307,8 @@ class TestIngestBoxscoresViaNhlApi:
 class TestIngestBoxscoresViaNcaabApi:
     """Tests for ingest_boxscores_via_ncaab_api."""
 
-    @patch("sports_scraper.services.boxscore_ingestion._populate_ncaab_game_ids")
-    @patch("sports_scraper.services.boxscore_ingestion.select_games_for_boxscores_ncaab_api")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.select_games_for_boxscores_ncaab_api")
     def test_returns_zero_when_no_games(self, mock_select, mock_populate):
         """Returns (0, 0, 0) when no games selected."""
         mock_session = MagicMock()
@@ -327,10 +325,10 @@ class TestIngestBoxscoresViaNcaabApi:
 
         assert result == (0, 0, 0)
 
-    @patch("sports_scraper.services.boxscore_ingestion.persist_game_payload")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.persist_game_payload")
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
-    @patch("sports_scraper.services.boxscore_ingestion._populate_ncaab_game_ids")
-    @patch("sports_scraper.services.boxscore_ingestion.select_games_for_boxscores_ncaab_api")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.select_games_for_boxscores_ncaab_api")
     def test_processes_games_successfully(self, mock_select, mock_populate, mock_client_class, mock_persist):
         """Processes games and returns counts."""
         from sports_scraper.models import TeamIdentity, NormalizedTeamBoxscore
@@ -373,8 +371,8 @@ class TestIngestBoxscoresViaNcaabApi:
         assert result[1] == 1  # games enriched
 
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
-    @patch("sports_scraper.services.boxscore_ingestion._populate_ncaab_game_ids")
-    @patch("sports_scraper.services.boxscore_ingestion.select_games_for_boxscores_ncaab_api")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.select_games_for_boxscores_ncaab_api")
     def test_handles_missing_boxscore_in_batch(self, mock_select, mock_populate, mock_client_class):
         """Handles missing boxscore in batch result."""
         mock_session = MagicMock()
@@ -395,10 +393,10 @@ class TestIngestBoxscoresViaNcaabApi:
 
         assert result == (0, 0, 0)
 
-    @patch("sports_scraper.services.boxscore_ingestion.persist_game_payload")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.persist_game_payload")
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
-    @patch("sports_scraper.services.boxscore_ingestion._populate_ncaab_game_ids")
-    @patch("sports_scraper.services.boxscore_ingestion.select_games_for_boxscores_ncaab_api")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.select_games_for_boxscores_ncaab_api")
     def test_handles_persist_exception(self, mock_select, mock_populate, mock_client_class, mock_persist):
         """Handles persist exceptions gracefully."""
         from sports_scraper.models import TeamIdentity, NormalizedTeamBoxscore
