@@ -1,0 +1,66 @@
+[project]
+name = "sports-data-api"
+version = "0.1.0"
+description = "FastAPI backend for Sports Data Admin"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+  "--cov=app",
+  "--cov-report=term-missing",
+  "--cov-report=html:coverage_html",
+  "--cov-fail-under=80",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+  # Entry points
+  "**/main.py",
+  # Alembic migrations
+  "**/alembic/**",
+  # Init files (no logic)
+  "**/__init__.py",
+  # Database models (schema definitions)
+  "**/db_models.py",
+  # Database connection (requires running database)
+  "**/db.py",
+  # Configuration (environment-dependent)
+  "**/config.py",
+  "**/validate_env.py",
+  # Routers (require integration tests)
+  "**/routers/**",
+  # Celery infrastructure (requires broker)
+  "**/tasks/**",
+  "**/celery_app.py",
+  "**/celery_client.py",
+  # Logging/middleware (requires running server)
+  "**/logging_config.py",
+  "**/middleware/**",
+  # Timeline services (complex DB/external dependencies)
+  "**/services/timeline_*.py",
+  "**/services/social_events.py",
+  "**/services/recap_generator.py",
+  # Reveal utilities (small, external dependency)
+  "**/services/reveal_levels.py",
+  "**/utils/reveal_utils.py",
+  # Pipeline stages requiring OpenAI API
+  "**/services/pipeline/stages/render_narratives.py",
+  "**/services/openai_client.py",
+  # Pipeline stages requiring database
+  "**/services/pipeline/stages/finalize_moments.py",
+  "**/services/pipeline/executor.py",
+  # Sports configuration (constants only)
+  "**/config_sports.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "@abstractmethod",
+]

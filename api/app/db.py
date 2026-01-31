@@ -3,26 +3,49 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING, AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
 from .config import settings
 
-engine = create_async_engine(settings.database_url, echo=settings.sql_echo, future=True)
+# Lazy-loaded engine and session factory to avoid initialization at import time.
+# This allows tests to import modules without triggering database connection.
+_engine: "AsyncEngine | None" = None
+_AsyncSessionLocal: async_sessionmaker[AsyncSession] | None = None
 
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
+
+def _get_engine() -> "AsyncEngine":
+    """Get or create the database engine (lazy initialization)."""
+    global _engine
+    if _engine is None:
+        _engine = create_async_engine(
+            settings.database_url, echo=settings.sql_echo, future=True
+        )
+    return _engine
+
+
+def _get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Get or create the session factory (lazy initialization)."""
+    global _AsyncSessionLocal
+    if _AsyncSessionLocal is None:
+        _AsyncSessionLocal = async_sessionmaker(
+            _get_engine(),
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autocommit=False,
+            autoflush=False,
+        )
+    return _AsyncSessionLocal
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency for database sessions with commit/rollback semantics."""
-    async with AsyncSessionLocal() as session:
+    session_factory = _get_session_factory()
+    async with session_factory() as session:
         try:
             yield session
             await session.commit()
@@ -36,7 +59,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 @asynccontextmanager
 async def get_async_session():
     """Context manager for ad-hoc scripts."""
-    async with AsyncSessionLocal() as session:
+    session_factory = _get_session_factory()
+    async with session_factory() as session:
         try:
             yield session
             await session.commit()
@@ -46,4 +70,8 @@ async def get_async_session():
 
 
 async def close_db() -> None:
-    await engine.dispose()
+    """Close the database connection."""
+    global _engine
+    if _engine is not None:
+        await _engine.dispose()
+        _engine = None

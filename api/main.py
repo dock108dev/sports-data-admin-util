@@ -8,7 +8,7 @@ from sqlalchemy import text
 from starlette.responses import JSONResponse
 
 from app.config import settings
-from app.db import engine
+from app.db import _get_engine
 from app.logging_config import configure_logging
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -49,7 +49,7 @@ async def healthcheck() -> JSONResponse:
     components: dict[str, str] = {"app": "ok", "db": "ok"}
 
     try:
-        async with engine.connect() as conn:
+        async with _get_engine().connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception:
         logger.exception("Healthcheck database connectivity failed.")

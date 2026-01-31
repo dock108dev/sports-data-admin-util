@@ -1,11 +1,17 @@
-"""Shared Pydantic models and helpers for game snapshot routes."""
+"""Shared Pydantic models and helpers for game snapshot routes.
+
+DATE CONVENTION:
+All date fields use Eastern Time (America/New_York).
+This represents "game day" as fans understand it.
+Datetime fields (start_time, last_updated_at) are UTC.
+"""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Iterable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import db_models
 from ..services.reveal_levels import RevealLevel
@@ -21,24 +27,35 @@ class TeamSnapshot(BaseModel):
 
 
 class GameSnapshot(BaseModel):
-    """Minimal game record for app snapshots."""
+    """Minimal game record for app snapshots.
+
+    Note: start_time is UTC. Use the request's date parameters
+    (Eastern Time) to understand the "game day".
+    """
 
     id: int
     league: str
     status: str
-    start_time: datetime
+    start_time: datetime  # UTC
     home_team: TeamSnapshot
     away_team: TeamSnapshot
     has_pbp: bool
     has_social: bool
     has_story: bool
-    last_updated_at: datetime
+    last_updated_at: datetime  # UTC
 
 
 class GameSnapshotResponse(BaseModel):
-    """List response for snapshot games."""
+    """List response for snapshot games.
 
-    range: str
+    Date fields are Eastern Time (America/New_York).
+    Datetime fields in games are UTC.
+    """
+
+    start_date: date | None = Field(
+        None, description="Filter start date (Eastern Time)"
+    )
+    end_date: date | None = Field(None, description="Filter end date (Eastern Time)")
     games: list[GameSnapshot]
 
 
