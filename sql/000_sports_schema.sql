@@ -118,6 +118,25 @@ CREATE TABLE IF NOT EXISTS sports_game_odds (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_sports_game_odds_identity ON sports_game_odds(game_id, book, market_type, side, is_closing_line);
 
+-- FairBet work table (derived, disposable, upserted)
+-- One row per (bet × book) for non-completed games
+-- Bet identity: (game_id, market_key, selection_key, line)
+-- Books are variants, not schema
+-- Note: line_value uses 0 as sentinel for NULL (moneyline has no line)
+CREATE TABLE IF NOT EXISTS fairbet_game_odds_work (
+    game_id INTEGER NOT NULL REFERENCES sports_games(id) ON DELETE CASCADE,
+    market_key VARCHAR(50) NOT NULL,
+    selection_key TEXT NOT NULL,
+    line_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+    book VARCHAR(50) NOT NULL,
+    price DOUBLE PRECISION NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (game_id, market_key, selection_key, line_value, book)
+);
+CREATE INDEX IF NOT EXISTS idx_fairbet_odds_game ON fairbet_game_odds_work(game_id);
+CREATE INDEX IF NOT EXISTS idx_fairbet_odds_observed ON fairbet_game_odds_work(observed_at);
+
 -- Scrape runs
 CREATE TABLE IF NOT EXISTS sports_scrape_runs (
     id SERIAL PRIMARY KEY,
