@@ -15,6 +15,7 @@ from __future__ import annotations
 from .scrape_tasks import (
     run_scrape_job,
     run_scheduled_ingestion,
+    run_scheduled_odds_sync,
 )
 from .pipeline_tasks import (
     trigger_game_pipelines_task,
@@ -36,6 +37,7 @@ __all__ = [
     # Scrape tasks
     "run_scrape_job",
     "run_scheduled_ingestion",
+    "run_scheduled_odds_sync",
     # Pipeline tasks
     "trigger_game_pipelines_task",
     # Timeline tasks

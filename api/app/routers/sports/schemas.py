@@ -95,54 +95,68 @@ class ScrapeRunResponse(BaseModel):
 
 
 class GameSummary(BaseModel):
+    """Game summary for list view with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     id: int
-    league_code: str
-    game_date: datetime
-    home_team: str
-    away_team: str
-    home_score: int | None
-    away_score: int | None
-    has_boxscore: bool
-    has_player_stats: bool
-    has_odds: bool
-    has_social: bool
-    has_pbp: bool
-    has_story: bool
-    play_count: int
-    social_post_count: int
-    has_required_data: bool
-    scrape_version: int | None
-    last_scraped_at: datetime | None
-    last_ingested_at: datetime | None
-    last_pbp_at: datetime | None
-    last_social_at: datetime | None
+    league_code: str = Field(..., alias="leagueCode")
+    game_date: datetime = Field(..., alias="gameDate")
+    home_team: str = Field(..., alias="homeTeam")
+    away_team: str = Field(..., alias="awayTeam")
+    home_score: int | None = Field(None, alias="homeScore")
+    away_score: int | None = Field(None, alias="awayScore")
+    has_boxscore: bool = Field(..., alias="hasBoxscore")
+    has_player_stats: bool = Field(..., alias="hasPlayerStats")
+    has_odds: bool = Field(..., alias="hasOdds")
+    has_social: bool = Field(..., alias="hasSocial")
+    has_pbp: bool = Field(..., alias="hasPbp")
+    has_story: bool = Field(..., alias="hasStory")
+    play_count: int = Field(..., alias="playCount")
+    social_post_count: int = Field(..., alias="socialPostCount")
+    has_required_data: bool = Field(..., alias="hasRequiredData")
+    scrape_version: int | None = Field(None, alias="scrapeVersion")
+    last_scraped_at: datetime | None = Field(None, alias="lastScrapedAt")
+    last_ingested_at: datetime | None = Field(None, alias="lastIngestedAt")
+    last_pbp_at: datetime | None = Field(None, alias="lastPbpAt")
+    last_social_at: datetime | None = Field(None, alias="lastSocialAt")
 
 
 class GameListResponse(BaseModel):
+    """Game list response with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     games: list[GameSummary]
     total: int
-    next_offset: int | None
-    with_boxscore_count: int | None = 0
-    with_player_stats_count: int | None = 0
-    with_odds_count: int | None = 0
-    with_social_count: int | None = 0
-    with_pbp_count: int | None = 0
-    with_story_count: int | None = 0
+    next_offset: int | None = Field(None, alias="nextOffset")
+    with_boxscore_count: int | None = Field(0, alias="withBoxscoreCount")
+    with_player_stats_count: int | None = Field(0, alias="withPlayerStatsCount")
+    with_odds_count: int | None = Field(0, alias="withOddsCount")
+    with_social_count: int | None = Field(0, alias="withSocialCount")
+    with_pbp_count: int | None = Field(0, alias="withPbpCount")
+    with_story_count: int | None = Field(0, alias="withStoryCount")
 
 
 class TeamStat(BaseModel):
+    """Team boxscore stats with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     team: str
-    is_home: bool
+    is_home: bool = Field(..., alias="isHome")
     stats: dict[str, Any]
     source: str | None = None
-    updated_at: datetime | None = None
+    updated_at: datetime | None = Field(None, alias="updatedAt")
 
 
 class PlayerStat(BaseModel):
-    """Generic player stat for NBA/NCAAB/NFL."""
+    """Generic player stat for NBA/NCAAB/NFL with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     team: str
-    player_name: str
+    player_name: str = Field(..., alias="playerName")
     # Flattened common stats for frontend display
     minutes: float | None = None
     points: int | None = None
@@ -151,184 +165,230 @@ class PlayerStat(BaseModel):
     yards: int | None = None
     touchdowns: int | None = None
     # Full raw stats dict for detail view
-    raw_stats: dict[str, Any] = Field(default_factory=dict)
+    raw_stats: dict[str, Any] = Field(default_factory=dict, alias="rawStats")
     source: str | None = None
-    updated_at: datetime | None = None
+    updated_at: datetime | None = Field(None, alias="updatedAt")
 
 
 class NHLSkaterStat(BaseModel):
-    """NHL skater (non-goalie) stats."""
+    """NHL skater (non-goalie) stats with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     team: str
-    player_name: str
+    player_name: str = Field(..., alias="playerName")
     # Time on ice in MM:SS format
     toi: str | None = None
     goals: int | None = None
     assists: int | None = None
     points: int | None = None
-    shots_on_goal: int | None = None
-    plus_minus: int | None = None
-    penalty_minutes: int | None = None
+    shots_on_goal: int | None = Field(None, alias="shotsOnGoal")
+    plus_minus: int | None = Field(None, alias="plusMinus")
+    penalty_minutes: int | None = Field(None, alias="penaltyMinutes")
     hits: int | None = None
-    blocked_shots: int | None = None
-    raw_stats: dict[str, Any] = Field(default_factory=dict)
+    blocked_shots: int | None = Field(None, alias="blockedShots")
+    raw_stats: dict[str, Any] = Field(default_factory=dict, alias="rawStats")
     source: str | None = None
-    updated_at: datetime | None = None
+    updated_at: datetime | None = Field(None, alias="updatedAt")
 
 
 class NHLGoalieStat(BaseModel):
-    """NHL goalie stats."""
+    """NHL goalie stats with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     team: str
-    player_name: str
+    player_name: str = Field(..., alias="playerName")
     # Time on ice in MM:SS format
     toi: str | None = None
-    shots_against: int | None = None
+    shots_against: int | None = Field(None, alias="shotsAgainst")
     saves: int | None = None
-    goals_against: int | None = None
-    save_percentage: float | None = None
-    raw_stats: dict[str, Any] = Field(default_factory=dict)
+    goals_against: int | None = Field(None, alias="goalsAgainst")
+    save_percentage: float | None = Field(None, alias="savePercentage")
+    raw_stats: dict[str, Any] = Field(default_factory=dict, alias="rawStats")
     source: str | None = None
-    updated_at: datetime | None = None
+    updated_at: datetime | None = Field(None, alias="updatedAt")
 
 
 class OddsEntry(BaseModel):
+    """Odds entry with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     book: str
-    market_type: str
-    side: str | None
-    line: float | None
-    price: float | None
-    is_closing_line: bool
-    observed_at: datetime | None
+    market_type: str = Field(..., alias="marketType")
+    side: str | None = None
+    line: float | None = None
+    price: float | None = None
+    is_closing_line: bool = Field(..., alias="isClosingLine")
+    observed_at: datetime | None = Field(None, alias="observedAt")
 
 
 class GameMeta(BaseModel):
+    """Game metadata with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     id: int
-    league_code: str
+    league_code: str = Field(..., alias="leagueCode")
     season: int
-    season_type: str | None
-    game_date: datetime
-    home_team: str
-    away_team: str
-    home_score: int | None
-    away_score: int | None
+    season_type: str | None = Field(None, alias="seasonType")
+    game_date: datetime = Field(..., alias="gameDate")
+    home_team: str = Field(..., alias="homeTeam")
+    away_team: str = Field(..., alias="awayTeam")
+    home_score: int | None = Field(None, alias="homeScore")
+    away_score: int | None = Field(None, alias="awayScore")
     status: str
-    scrape_version: int | None
-    last_scraped_at: datetime | None
-    last_ingested_at: datetime | None
-    last_pbp_at: datetime | None
-    last_social_at: datetime | None
-    has_boxscore: bool
-    has_player_stats: bool
-    has_odds: bool
-    has_social: bool
-    has_pbp: bool
-    has_story: bool
-    play_count: int
-    social_post_count: int
-    home_team_x_handle: str | None = None
-    away_team_x_handle: str | None = None
+    scrape_version: int | None = Field(None, alias="scrapeVersion")
+    last_scraped_at: datetime | None = Field(None, alias="lastScrapedAt")
+    last_ingested_at: datetime | None = Field(None, alias="lastIngestedAt")
+    last_pbp_at: datetime | None = Field(None, alias="lastPbpAt")
+    last_social_at: datetime | None = Field(None, alias="lastSocialAt")
+    has_boxscore: bool = Field(..., alias="hasBoxscore")
+    has_player_stats: bool = Field(..., alias="hasPlayerStats")
+    has_odds: bool = Field(..., alias="hasOdds")
+    has_social: bool = Field(..., alias="hasSocial")
+    has_pbp: bool = Field(..., alias="hasPbp")
+    has_story: bool = Field(..., alias="hasStory")
+    play_count: int = Field(..., alias="playCount")
+    social_post_count: int = Field(..., alias="socialPostCount")
+    home_team_x_handle: str | None = Field(None, alias="homeTeamXHandle")
+    away_team_x_handle: str | None = Field(None, alias="awayTeamXHandle")
 
 
 class GamePreviewScoreResponse(BaseModel):
-    game_id: str
-    excitement_score: int
-    quality_score: int
+    """Game preview score with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    game_id: str = Field(..., alias="gameId")
+    excitement_score: int = Field(..., alias="excitementScore")
+    quality_score: int = Field(..., alias="qualityScore")
     tags: list[str]
     nugget: str
 
 
 class SocialPostEntry(BaseModel):
+    """Social post entry with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     id: int
-    post_url: str
-    posted_at: datetime
-    has_video: bool
-    team_abbreviation: str
-    tweet_text: str | None = None
-    video_url: str | None = None
-    image_url: str | None = None
-    source_handle: str | None = None
-    media_type: str | None = None
+    post_url: str = Field(..., alias="postUrl")
+    posted_at: datetime = Field(..., alias="postedAt")
+    has_video: bool = Field(..., alias="hasVideo")
+    team_abbreviation: str = Field(..., alias="teamAbbreviation")
+    tweet_text: str | None = Field(None, alias="tweetText")
+    video_url: str | None = Field(None, alias="videoUrl")
+    image_url: str | None = Field(None, alias="imageUrl")
+    source_handle: str | None = Field(None, alias="sourceHandle")
+    media_type: str | None = Field(None, alias="mediaType")
 
 
 class PlayEntry(BaseModel):
-    play_index: int
+    """Play entry with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    play_index: int = Field(..., alias="playIndex")
     quarter: int | None = None
-    game_clock: str | None = None
-    play_type: str | None = None
-    team_abbreviation: str | None = None
-    player_name: str | None = None
+    game_clock: str | None = Field(None, alias="gameClock")
+    play_type: str | None = Field(None, alias="playType")
+    team_abbreviation: str | None = Field(None, alias="teamAbbreviation")
+    player_name: str | None = Field(None, alias="playerName")
     description: str | None = None
-    home_score: int | None = None
-    away_score: int | None = None
+    home_score: int | None = Field(None, alias="homeScore")
+    away_score: int | None = Field(None, alias="awayScore")
 
 
 class NHLDataHealth(BaseModel):
-    """NHL-specific data health indicators.
+    """NHL-specific data health indicators with camelCase output.
 
     Helps distinguish between legitimate empty data vs ingestion failure.
     Only populated for NHL games.
     """
 
-    skater_count: int = 0
-    goalie_count: int = 0
-    is_healthy: bool = True
+    model_config = ConfigDict(populate_by_name=True)
+
+    skater_count: int = Field(0, alias="skaterCount")
+    goalie_count: int = Field(0, alias="goalieCount")
+    is_healthy: bool = Field(True, alias="isHealthy")
     issues: list[str] = Field(default_factory=list)
 
 
 class GameDetailResponse(BaseModel):
+    """Game detail response with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     game: GameMeta
-    team_stats: list[TeamStat]
+    team_stats: list[TeamStat] = Field(..., alias="teamStats")
     # Generic player stats (NBA, NCAAB, NFL, etc.)
-    player_stats: list[PlayerStat]
+    player_stats: list[PlayerStat] = Field(..., alias="playerStats")
     # NHL-specific player stats (only populated for NHL games)
-    nhl_skaters: list[NHLSkaterStat] | None = None
-    nhl_goalies: list[NHLGoalieStat] | None = None
+    nhl_skaters: list[NHLSkaterStat] | None = Field(None, alias="nhlSkaters")
+    nhl_goalies: list[NHLGoalieStat] | None = Field(None, alias="nhlGoalies")
     odds: list[OddsEntry]
-    social_posts: list[SocialPostEntry]
+    social_posts: list[SocialPostEntry] = Field(..., alias="socialPosts")
     plays: list[PlayEntry]
-    derived_metrics: dict[str, Any]
-    raw_payloads: dict[str, Any]
+    derived_metrics: dict[str, Any] = Field(..., alias="derivedMetrics")
+    raw_payloads: dict[str, Any] = Field(..., alias="rawPayloads")
     # NHL-specific data health (only populated for NHL games)
-    data_health: NHLDataHealth | None = None
+    data_health: NHLDataHealth | None = Field(None, alias="dataHealth")
 
 
 class JobResponse(BaseModel):
-    run_id: int
-    job_id: str | None
+    """Job response with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    run_id: int = Field(..., alias="runId")
+    job_id: str | None = Field(None, alias="jobId")
     message: str
 
 
 class JobRunResponse(BaseModel):
+    """Job run response with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     id: int
     phase: str
     leagues: list[str]
     status: str
-    started_at: datetime
-    finished_at: datetime | None
-    duration_seconds: float | None
-    error_summary: str | None
-    created_at: datetime
+    started_at: datetime = Field(..., alias="startedAt")
+    finished_at: datetime | None = Field(None, alias="finishedAt")
+    duration_seconds: float | None = Field(None, alias="durationSeconds")
+    error_summary: str | None = Field(None, alias="errorSummary")
+    created_at: datetime = Field(..., alias="createdAt")
 
 
 class MissingPbpEntry(BaseModel):
-    game_id: int
-    league_code: str
+    """Missing PBP entry with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    game_id: int = Field(..., alias="gameId")
+    league_code: str = Field(..., alias="leagueCode")
     status: str
     reason: str
-    detected_at: datetime
-    updated_at: datetime
+    detected_at: datetime = Field(..., alias="detectedAt")
+    updated_at: datetime = Field(..., alias="updatedAt")
 
 
 class GameConflictEntry(BaseModel):
-    league_code: str
-    game_id: int
-    conflict_game_id: int
-    external_id: str
+    """Game conflict entry with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    league_code: str = Field(..., alias="leagueCode")
+    game_id: int = Field(..., alias="gameId")
+    conflict_game_id: int = Field(..., alias="conflictGameId")
+    external_id: str = Field(..., alias="externalId")
     source: str
-    conflict_fields: dict[str, Any]
-    created_at: datetime
-    resolved_at: datetime | None
+    conflict_fields: dict[str, Any] = Field(..., alias="conflictFields")
+    created_at: datetime = Field(..., alias="createdAt")
+    resolved_at: datetime | None = Field(None, alias="resolvedAt")
 
 
 class TeamSummary(BaseModel):
@@ -405,7 +465,7 @@ class StoryMoment(BaseModel):
     - narrative: AI-generated narrative text
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     play_ids: list[int] = Field(..., alias="playIds")
     explicitly_narrated_play_ids: list[int] = Field(..., alias="explicitlyNarratedPlayIds")
@@ -423,7 +483,7 @@ class StoryPlay(BaseModel):
     Only plays referenced in moments are included.
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     play_id: int = Field(..., alias="playId")
     play_index: int = Field(..., alias="playIndex")
@@ -438,7 +498,7 @@ class StoryPlay(BaseModel):
 class StoryContent(BaseModel):
     """The Story content containing ordered moments."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     moments: list[StoryMoment]
 
@@ -450,10 +510,24 @@ class GameStoryResponse(BaseModel):
     No transformation, no aggregation, no additional prose.
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     game_id: int = Field(..., alias="gameId")
     story: StoryContent
     plays: list[StoryPlay]
     validation_passed: bool = Field(..., alias="validationPassed")
     validation_errors: list[str] = Field(default_factory=list, alias="validationErrors")
+
+
+class TimelineArtifactResponse(BaseModel):
+    """Finalized timeline artifact response."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    game_id: int = Field(..., alias="gameId")
+    sport: str
+    timeline_version: str = Field(..., alias="timelineVersion")
+    generated_at: datetime = Field(..., alias="generatedAt")
+    timeline: list[dict[str, Any]]
+    summary: dict[str, Any]
+    game_analysis: dict[str, Any] = Field(..., alias="gameAnalysis")

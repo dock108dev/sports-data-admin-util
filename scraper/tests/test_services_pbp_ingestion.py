@@ -502,7 +502,7 @@ class TestIngestPbpViaNhlApi:
 class TestIngestPbpViaNcaabApi:
     """Tests for ingest_pbp_via_ncaab_api."""
 
-    @patch("sports_scraper.services.boxscore_ingestion._populate_ncaab_game_ids")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
     @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_ncaab_api")
     def test_returns_zero_when_no_games(self, mock_select, mock_populate):
         """Returns (0, 0) when no games selected."""
@@ -522,7 +522,7 @@ class TestIngestPbpViaNcaabApi:
 
     @patch("sports_scraper.services.pbp_ingestion.upsert_plays")
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
-    @patch("sports_scraper.services.boxscore_ingestion._populate_ncaab_game_ids")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
     @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_ncaab_api")
     def test_successful_ingestion(self, mock_select, mock_populate, mock_client_class, mock_upsert):
         """Successfully ingests PBP."""

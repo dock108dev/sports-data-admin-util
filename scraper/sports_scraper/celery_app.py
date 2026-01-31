@@ -50,6 +50,8 @@ app.conf.task_routes = {
 #
 # NBA Flow generation runs 15 minutes after timeline generation (when NCAAB is done).
 # It generates AI flows for NBA games in the last 72 hours. Skips existing flows.
+#
+# Odds sync runs every 30 minutes to keep FairBet data fresh for all 3 leagues.
 app.conf.beat_schedule = {
     "daily-sports-ingestion-530am-eastern": {
         "task": "run_scheduled_ingestion",
@@ -64,6 +66,11 @@ app.conf.beat_schedule = {
     "daily-nba-flow-generation-715am-eastern": {
         "task": "run_scheduled_nba_flow_generation",
         "schedule": crontab(minute=15, hour=12),  # 7:15 AM EST = 12:15 UTC (15 min after timeline gen)
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    },
+    "odds-sync-every-30-minutes": {
+        "task": "run_scheduled_odds_sync",
+        "schedule": crontab(minute="*/30"),  # Every 30 minutes
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
 }

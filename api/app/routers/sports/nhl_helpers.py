@@ -83,7 +83,6 @@ def compute_nhl_data_health(
     # Check for schema pollution (non-hockey fields)
     if has_non_hockey_fields:
         issues.append("non_hockey_fields_detected")
-        # This indicates legacy or corrupted data
         is_healthy = False
 
     # Log issues for visibility

@@ -158,7 +158,7 @@ class ScrapeRunManager:
                     )
                 elif config.league_code == "NHL":
                     # NHL: Use official NHL API for boxscores (faster and more reliable than web scraping)
-                    from .boxscore_ingestion import ingest_boxscores_via_nhl_api
+                    from .nhl_boxscore_ingestion import ingest_boxscores_via_nhl_api
 
                     logger.info(
                         "boxscore_scraping_start",
@@ -195,7 +195,7 @@ class ScrapeRunManager:
                         )
                 elif config.league_code == "NCAAB":
                     # NCAAB: Use College Basketball Data API for boxscores
-                    from .boxscore_ingestion import ingest_boxscores_via_ncaab_api
+                    from .ncaab_boxscore_ingestion import ingest_boxscores_via_ncaab_api
 
                     logger.info(
                         "boxscore_scraping_start",
