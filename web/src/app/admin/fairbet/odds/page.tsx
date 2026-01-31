@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import styles from "./styles.module.css";
 import {
   fetchFairbetOdds,
@@ -31,9 +31,33 @@ export default function FairbetOddsPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
+  const loadOdds = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const filters: FairbetOddsFilters = {
+        limit,
+        offset,
+      };
+      if (selectedLeague) {
+        filters.league = selectedLeague;
+      }
+
+      const response = await fetchFairbetOdds(filters);
+      setBets(response.bets);
+      setBooksAvailable(response.books_available);
+      setTotal(response.total);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [limit, offset, selectedLeague]);
+
   useEffect(() => {
     loadOdds();
-  }, [selectedLeague, offset]);
+  }, [loadOdds]);
 
   async function syncOdds() {
     setSyncing(true);
@@ -78,30 +102,6 @@ export default function FairbetOddsPage() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSyncing(false);
-    }
-  }
-
-  async function loadOdds() {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const filters: FairbetOddsFilters = {
-        limit,
-        offset,
-      };
-      if (selectedLeague) {
-        filters.league = selectedLeague;
-      }
-
-      const response = await fetchFairbetOdds(filters);
-      setBets(response.bets);
-      setBooksAvailable(response.books_available);
-      setTotal(response.total);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
     }
   }
 
