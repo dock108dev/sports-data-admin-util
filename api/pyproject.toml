@@ -47,6 +47,14 @@ omit = [
   # Reveal utilities (small, external dependency)
   "**/services/reveal_levels.py",
   "**/utils/reveal_utils.py",
+  # Pipeline stages requiring OpenAI API
+  "**/services/pipeline/render_narratives.py",
+  "**/services/pipeline/openai_client.py",
+  # Pipeline stages requiring database
+  "**/services/pipeline/finalize_moments.py",
+  "**/services/pipeline/executor.py",
+  # Sports configuration (constants only)
+  "**/config_sports.py",
 ]
 
 [tool.coverage.report]
