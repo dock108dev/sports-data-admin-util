@@ -49,9 +49,36 @@ docker compose --profile prod up -d
 - A DNS record pointing at the VM (Cloudflare recommended)
 - `infra/.env` created on the server (from `infra/.env.example`)
 
-### Edge Routing
+### Edge Routing (Caddy)
 
-If you use Caddy at the edge, ensure `/api/*` routes to the FastAPI container without stripping the prefix. See [EDGE_PROXY.md](EDGE_PROXY.md).
+If you use Caddy at the edge, ensure `/api/*` routes to the FastAPI container without stripping the prefix.
+
+**Caddyfile example:**
+```caddy
+sports-data-admin.dock108.ai {
+  encode gzip
+
+  # API routes (preserve /api prefix)
+  handle /api/* {
+    reverse_proxy localhost:8000
+  }
+
+  # Web app
+  handle {
+    reverse_proxy localhost:3000
+  }
+}
+```
+
+**Common pitfall:** Avoid `handle_path` which strips the matched prefix:
+```caddy
+# DON'T DO THIS - strips /api prefix
+handle_path /api/* {
+  reverse_proxy localhost:8000
+}
+```
+
+With `handle_path`, a request to `/api/admin/sports/games` becomes `/admin/sports/games` upstream, causing FastAPI to return 404.
 
 ---
 

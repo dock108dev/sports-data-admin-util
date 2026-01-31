@@ -11,8 +11,9 @@ import {
   type BetDefinition,
   type FairbetOddsFilters,
 } from "@/lib/api/fairbet";
+import { createScrapeRun } from "@/lib/api/sportsAdmin";
 
-const LEAGUES = ["NBA", "NHL", "NCAAB", "NFL", "MLB", "NCAAF"];
+const LEAGUES = ["NBA", "NHL", "NCAAB"];
 
 export default function FairbetOddsPage() {
   const [bets, setBets] = useState<BetDefinition[]>([]);
@@ -26,9 +27,59 @@ export default function FairbetOddsPage() {
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
 
+  // Sync state
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
   useEffect(() => {
     loadOdds();
   }, [selectedLeague, offset]);
+
+  async function syncOdds() {
+    setSyncing(true);
+    setSyncMessage(null);
+    setError(null);
+
+    try {
+      // Get today's date for the sync
+      const today = new Date().toISOString().split("T")[0];
+
+      // If a league is selected, sync just that one; otherwise sync all
+      const leaguesToSync = selectedLeague ? [selectedLeague] : LEAGUES;
+
+      const results = await Promise.all(
+        leaguesToSync.map((league) =>
+          createScrapeRun({
+            requestedBy: "fairbet-ui",
+            config: {
+              leagueCode: league,
+              startDate: today,
+              endDate: today,
+              boxscores: false,
+              odds: true,
+              social: false,
+              pbp: false,
+            },
+          })
+        )
+      );
+
+      const runIds = results.map((r) => r.id).join(", ");
+      const leagueNames = leaguesToSync.join(", ");
+      setSyncMessage(
+        `Odds sync started for ${leagueNames} (Run #${runIds}). Refresh in a moment to see results.`
+      );
+
+      // Reload odds after a short delay
+      setTimeout(() => {
+        loadOdds();
+      }, 5000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function loadOdds() {
     try {
@@ -120,7 +171,25 @@ export default function FairbetOddsPage() {
           <span className={styles.filterLabel}>Books Available</span>
           <span className={styles.bookCount}>{booksAvailable.length}</span>
         </div>
+
+        <div className={styles.filterGroup} style={{ marginLeft: "auto" }}>
+          <button
+            className={styles.syncButton}
+            onClick={syncOdds}
+            disabled={syncing}
+          >
+            {syncing
+              ? "Syncing..."
+              : selectedLeague
+              ? `Sync ${selectedLeague} Odds`
+              : "Sync All Odds"}
+          </button>
+        </div>
       </div>
+
+      {syncMessage && (
+        <div className={styles.syncMessage}>{syncMessage}</div>
+      )}
 
       {loading ? (
         <div className={styles.loading}>Loading odds...</div>

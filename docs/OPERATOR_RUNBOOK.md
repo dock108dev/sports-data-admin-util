@@ -255,5 +255,4 @@ Containers validate required environment at startup and exit if misconfigured.
 ## See Also
 
 - [INFRA.md](INFRA.md) - Docker configuration and local development
-- [DEPLOYMENT.md](DEPLOYMENT.md) - Full deployment flow
-- [EDGE_PROXY.md](EDGE_PROXY.md) - Caddy/Nginx routing
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Full deployment flow and edge routing

@@ -5,12 +5,12 @@ Provides bet-centric odds views for cross-book comparison.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from ... import db_models
@@ -61,8 +61,18 @@ async def get_fairbet_odds(
     Returns bets grouped by definition (game + market + selection + line),
     with all available book prices for each bet.
 
-    Only includes non-final games (scheduled, live).
+    Only includes upcoming games (start_time in future or within last 4 hours for live games).
     """
+    # Filter: games that haven't started OR started within last 4 hours (could be live)
+    now = datetime.now(timezone.utc)
+    live_cutoff = now - timedelta(hours=4)
+
+    # Use COALESCE to get actual start time (tip_time preferred, else game_date)
+    game_start = func.coalesce(
+        db_models.SportsGame.tip_time,
+        db_models.SportsGame.game_date,
+    )
+
     # Query the fairbet work table with game info
     stmt = (
         select(db_models.FairbetGameOddsWork)
@@ -79,6 +89,7 @@ async def get_fairbet_odds(
             ),
         )
         .where(db_models.SportsGame.status.notin_(["final", "completed"]))
+        .where(game_start > live_cutoff)  # Only games starting after cutoff
     )
 
     if league:

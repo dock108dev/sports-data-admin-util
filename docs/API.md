@@ -19,9 +19,13 @@
    - [Teams](#teams)
    - [Scraper Runs](#scraper-runs)
    - [Diagnostics](#diagnostics)
+   - [Jobs](#jobs)
+   - [PBP Inspection](#pbp-inspection)
+   - [Entity Resolution](#entity-resolution)
 6. [Social](#social)
-7. [Reading Positions](#reading-positions)
-8. [Response Models](#response-models)
+7. [FairBet](#fairbet)
+8. [Reading Positions](#reading-positions)
+9. [Response Models](#response-models)
 
 ---
 
@@ -716,6 +720,168 @@ Unresolved game conflicts.
 
 ---
 
+### Jobs
+
+**Base path:** `/api/admin/sports`
+
+#### `GET /jobs`
+
+List job runs (timeline generation, story generation, etc.).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | `int` | Max results (1-200, default 50) |
+| `phase` | `string` | Filter by phase: `timeline_generation`, `story_generation` |
+
+**Response:**
+```json
+[
+  {
+    "id": 123,
+    "phase": "timeline_generation",
+    "leagues": ["NBA", "NHL"],
+    "status": "completed",
+    "started_at": "2026-01-22T12:00:00Z",
+    "finished_at": "2026-01-22T12:05:00Z",
+    "duration_seconds": 300,
+    "error_summary": null,
+    "created_at": "2026-01-22T12:00:00Z"
+  }
+]
+```
+
+---
+
+### PBP Inspection
+
+**Base path:** `/api/admin/sports/pbp`
+
+Endpoints for inspecting play-by-play data at every stage of processing.
+
+#### `GET /pbp/game/{game_id}`
+
+Get current PBP for a game from `sports_game_plays` table.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | `int` | Max plays (1-1000, default 500) |
+| `offset` | `int` | Starting play index |
+
+#### `GET /pbp/game/{game_id}/detail`
+
+Get detailed PBP including raw data for each play.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | `int` | Max plays (1-500, default 100) |
+| `offset` | `int` | Starting play index |
+| `quarter` | `int` | Filter by quarter (1-10) |
+
+#### `GET /pbp/game/{game_id}/play/{play_index}`
+
+Get a single play by index with full details.
+
+#### `GET /pbp/game/{game_id}/snapshots`
+
+List all PBP snapshots (raw, normalized, resolved) for a game.
+
+#### `GET /pbp/snapshot/{snapshot_id}`
+
+Get full details of a PBP snapshot including all plays.
+
+#### `GET /pbp/pipeline-run/{run_id}`
+
+Get PBP data associated with a specific pipeline run.
+
+#### `GET /pbp/game/{game_id}/compare`
+
+Compare current PBP with a specific snapshot.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `snapshot_id` | `int` | Yes | Snapshot to compare against |
+
+#### `GET /pbp/game/{game_id}/resolution-issues`
+
+List plays with resolution issues (missing team, player, etc.).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue_type` | `string` | Type: `team`, `player`, `score`, `all` |
+
+---
+
+### Entity Resolution
+
+**Base path:** `/api/admin/sports/resolution`
+
+Endpoints for inspecting how teams and players are resolved from source identifiers.
+
+#### `GET /resolution/game/{game_id}`
+
+Get entity resolution summary for a game from persisted records.
+
+**Response:**
+```json
+{
+  "game_id": 123,
+  "pipeline_run_id": 456,
+  "game_info": {
+    "game_date": "2026-01-22",
+    "home_team": "Lakers",
+    "away_team": "Warriors"
+  },
+  "teams": {
+    "total": 10,
+    "resolved": 10,
+    "failed": 0,
+    "resolution_rate": 100.0
+  },
+  "players": {
+    "total": 24,
+    "resolved": 24,
+    "failed": 0,
+    "resolution_rate": 100.0
+  },
+  "team_resolutions": [...],
+  "player_resolutions": [...],
+  "issues": {
+    "unresolved_teams": [],
+    "ambiguous_teams": [],
+    "unresolved_players": []
+  }
+}
+```
+
+#### `GET /resolution/game/{game_id}/live`
+
+Analyze current PBP data for resolution issues without persisted records.
+
+#### `GET /resolution/pipeline-run/{run_id}`
+
+Get entity resolution summary for a specific pipeline run.
+
+#### `GET /resolution/game/{game_id}/entity/{entity_type}/{source_identifier}`
+
+Get detailed resolution for a specific entity.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `entity_type` | `string` | `team` or `player` |
+| `source_identifier` | `string` | Source identifier to look up |
+
+#### `GET /resolution/issues`
+
+List games with resolution issues.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `entity_type` | `string` | Filter by type: `team` or `player` |
+| `status_filter` | `string` | Filter: `failed`, `ambiguous`, or `all` |
+| `limit` | `int` | Max results (1-200, default 50) |
+
+---
+
 ## Social
 
 **Base path:** `/api/social`
@@ -747,6 +913,65 @@ List social accounts.
 ### `POST /accounts`
 
 Create/update account.
+
+---
+
+## FairBet
+
+**Base path:** `/api/fairbet`
+
+Bet-centric odds comparison endpoints for the FairBet product.
+
+### `GET /odds`
+
+Get bet-centric odds for cross-book comparison.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `league` | `string` | Filter by league code (NBA, NHL, NCAAB) |
+| `limit` | `int` | Max results (1-500, default 100) |
+| `offset` | `int` | Pagination offset |
+
+**Response:**
+```json
+{
+  "bets": [
+    {
+      "game_id": 123,
+      "league_code": "NBA",
+      "home_team": "Lakers",
+      "away_team": "Warriors",
+      "game_date": "2026-01-22T03:00:00Z",
+      "market_key": "spreads",
+      "selection_key": "team:lakers",
+      "line_value": -5.5,
+      "books": [
+        {
+          "book": "draftkings",
+          "price": -110,
+          "observed_at": "2026-01-22T02:30:00Z"
+        },
+        {
+          "book": "fanduel",
+          "price": -108,
+          "observed_at": "2026-01-22T02:30:00Z"
+        }
+      ]
+    }
+  ],
+  "total": 250,
+  "books_available": ["draftkings", "fanduel", "betmgm", "caesars"]
+}
+```
+
+**Notes:**
+- Only includes non-final games (scheduled, live)
+- Bets are grouped by definition (game + market + selection + line)
+- Books within each bet are sorted by best odds
+- `line_value` of 0 is sentinel for moneyline (no line)
+- `selection_key` format: `{entity_type}:{entity_slug}` (e.g., `team:lakers`, `total:over`)
+
+**Data Source:** `fairbet_game_odds_work` table, populated during odds ingestion for non-completed games.
 
 ---
 

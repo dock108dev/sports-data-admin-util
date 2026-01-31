@@ -21,7 +21,8 @@ DATABASE_URL = "postgresql+psycopg://user:pass@host:5432/sports"
 | sports_games | Games with scores, dates, status |
 | sports_team_boxscores | Team stats as JSONB |
 | sports_player_boxscores | Player stats as JSONB |
-| sports_game_odds | Spreads, totals, moneylines |
+| sports_game_odds | Spreads, totals, moneylines (game-centric) |
+| fairbet_game_odds_work | Cross-book odds (bet-centric) |
 | sports_game_plays | Play-by-play events |
 | game_social_posts | X/Twitter posts per game |
 | game_reading_positions | User reading position tracking |

@@ -79,7 +79,6 @@
 | Guide | Description |
 |-------|-------------|
 | [Operator Runbook](OPERATOR_RUNBOOK.md) | Production operations and monitoring |
-| [Deployment](DEPLOYMENT.md) | Server setup, deploy flow, rollbacks |
+| [Deployment](DEPLOYMENT.md) | Server setup, deploy flow, edge routing, rollbacks |
 | [Infrastructure](INFRA.md) | Docker configuration and profiles |
-| [Edge Proxy](EDGE_PROXY.md) | Caddy/Nginx routing configuration |
 | [Changelog](CHANGELOG.md) | Recent changes and releases |
