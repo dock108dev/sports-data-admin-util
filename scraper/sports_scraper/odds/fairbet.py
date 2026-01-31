@@ -6,14 +6,19 @@ This module provides:
 
 Selection Key Format
 --------------------
-{entity_type}:{entity_slug}:{outcome_type}
+{entity_type}:{entity_slug}
+
+The selection_key identifies WHAT is being bet on (team or total direction),
+while market_key identifies the bet TYPE (h2h, spreads, totals).
 
 Examples:
-- team:lakers (moneyline on Lakers)
-- team:lakers:spread (spread on Lakers)
+- team:los_angeles_lakers (bet on Lakers - used for both moneyline and spread)
 - total:over (game total over)
 - total:under (game total under)
-- player:lebron_james:points:over (future: player prop)
+
+The same selection_key can appear with different market_keys:
+- game_id=1, market_key="h2h", selection_key="team:lakers" (moneyline)
+- game_id=1, market_key="spreads", selection_key="team:lakers" (spread)
 """
 
 from __future__ import annotations
