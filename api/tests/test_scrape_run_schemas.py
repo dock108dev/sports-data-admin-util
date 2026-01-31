@@ -18,7 +18,18 @@ os.environ.setdefault(
 )
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 
-from app.routers.sports.schemas import ScrapeRunConfig
+# Use importlib to load the schemas module directly, bypassing the package __init__.py
+# which would otherwise trigger database initialization through router imports
+import importlib.util
+
+spec = importlib.util.spec_from_file_location(
+    "schemas",
+    os.path.join(os.path.dirname(__file__), "..", "app", "routers", "sports", "schemas.py"),
+)
+assert spec is not None and spec.loader is not None
+schemas_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(schemas_module)
+ScrapeRunConfig = schemas_module.ScrapeRunConfig
 
 
 class TestScrapeRunConfigDateValidation:

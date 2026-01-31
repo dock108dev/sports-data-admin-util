@@ -15,10 +15,10 @@ class TestSentenceSplitting:
 
     def test_split_simple_sentences(self):
         """Split simple sentences correctly."""
-        from app.services.pipeline.stages.render_narratives import _split_into_sentences
+        from app.services.pipeline.stages.style_validation import split_into_sentences
 
         text = "Mitchell scored. Brown answered with a three."
-        sentences = _split_into_sentences(text)
+        sentences = split_into_sentences(text)
 
         assert len(sentences) == 2
         assert "Mitchell scored" in sentences[0]
@@ -26,27 +26,27 @@ class TestSentenceSplitting:
 
     def test_split_handles_abbreviations(self):
         """Abbreviations should not cause splits."""
-        from app.services.pipeline.stages.render_narratives import _split_into_sentences
+        from app.services.pipeline.stages.style_validation import split_into_sentences
 
         text = "Lakers vs. Celtics was great. The game ended in overtime."
-        sentences = _split_into_sentences(text)
+        sentences = split_into_sentences(text)
 
         assert len(sentences) == 2
 
     def test_split_handles_empty_text(self):
         """Empty text returns empty list."""
-        from app.services.pipeline.stages.render_narratives import _split_into_sentences
+        from app.services.pipeline.stages.style_validation import split_into_sentences
 
-        assert _split_into_sentences("") == []
-        assert _split_into_sentences("   ") == []
-        assert _split_into_sentences(None) == []
+        assert split_into_sentences("") == []
+        assert split_into_sentences("   ") == []
+        assert split_into_sentences(None) == []
 
     def test_split_handles_exclamation_marks(self):
         """Exclamation marks end sentences."""
-        from app.services.pipeline.stages.render_narratives import _split_into_sentences
+        from app.services.pipeline.stages.style_validation import split_into_sentences
 
         text = "What a shot! Mitchell delivered. The crowd reacted."
-        sentences = _split_into_sentences(text)
+        sentences = split_into_sentences(text)
 
         assert len(sentences) == 3
 

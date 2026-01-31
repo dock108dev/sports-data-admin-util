@@ -11,13 +11,45 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  test-scraper:
+    name: Test Scraper
     runs-on: ubuntu-latest
     env:
       ENVIRONMENT: development
       DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
       REDIS_URL: redis://localhost:6379/0
-      PYTHONPATH: api:scraper
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: |
+          uv venv --python 3.12
+          uv pip install -e ./scraper
+          uv pip install pytest pytest-cov
+      - name: Run scraper tests with coverage
+        working-directory: scraper
+        run: |
+          uv run pytest tests/ \
+            --cov=sports_scraper \
+            --cov-config=pyproject.toml \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:coverage_html \
+            --cov-fail-under=80
+
+  test-api:
+    name: Test API
+    runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+      PYTHONPATH: api
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -31,22 +63,42 @@ jobs:
         run: |
           uv venv --python 3.12
           uv pip install -r api/requirements.txt
-          uv pip install -e ./scraper
           uv pip install pytest pytest-cov
-      - name: Run unit tests with coverage
-        working-directory: scraper
+      - name: Run API tests with coverage
+        working-directory: api
         run: |
           uv run pytest tests/ \
-            --cov=sports_scraper \
+            --cov=app \
             --cov-config=pyproject.toml \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
             --cov-report=html:coverage_html \
             --cov-fail-under=80
 
+  lint-web:
+    name: Lint & Type-check Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Type check
+        working-directory: web
+        run: pnpm exec tsc --noEmit
+      - name: Lint
+        working-directory: web
+        run: pnpm lint
+
   build:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test-scraper, test-api, lint-web]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
@@ -98,15 +150,15 @@ jobs:
           envs: GHCR_TOKEN,GH_ACTOR,GH_REPO,DEPLOY_PATH
           script: |
             set -euo pipefail
-          
+
             BASE_DIR="$DEPLOY_PATH"
             REPO_URL="https://x-access-token:${GHCR_TOKEN}@github.com/${GH_REPO}.git"
             BRANCH="main"
-          
+
             echo "Ensuring base directory exists..."
             mkdir -p "$BASE_DIR"
             cd "$BASE_DIR"
-          
+
             if [ ! -d ".git" ]; then
               echo "No git repo found. Initializing..."
               git init
@@ -115,14 +167,14 @@ jobs:
               echo "Updating remote URL with token..."
               git remote set-url origin "$REPO_URL"
             fi
-          
+
             echo "Fetching latest code..."
             git fetch origin
-          
+
             echo "Resetting to origin/$BRANCH..."
             git checkout -B "$BRANCH" "origin/$BRANCH"
             git reset --hard "origin/$BRANCH"
-          
+
             if [ ! -f "infra/.env" ]; then
               echo "ERROR: infra/.env file missing in $BASE_DIR"
               exit 1
@@ -130,18 +182,18 @@ jobs:
 
             echo "Changing to infra directory (loads .env + correct relative volume mounts)..."
             cd infra
-          
+
             echo "Logging into GHCR..."
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-          
+
             echo "Pulling images..."
             docker compose --profile prod pull
-          
+
             echo "Running migrations..."
             docker compose --profile prod run --rm migrate
-          
+
             echo "Starting services..."
             docker compose --profile prod up -d
-          
+
             echo "Deployment status:"
             docker compose --profile prod ps
