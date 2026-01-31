@@ -2,7 +2,7 @@
  * FairBet API client
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { getApiBase } from "../apiBase";
 
 export interface BookOdds {
   book: string;
@@ -43,7 +43,7 @@ export async function fetchFairbetOdds(
   if (filters.limit) params.set("limit", filters.limit.toString());
   if (filters.offset) params.set("offset", filters.offset.toString());
 
-  const url = `${API_BASE}/api/fairbet/odds?${params.toString()}`;
+  const url = `${getApiBase()}/api/fairbet/odds?${params.toString()}`;
   const res = await fetch(url);
 
   if (!res.ok) {
