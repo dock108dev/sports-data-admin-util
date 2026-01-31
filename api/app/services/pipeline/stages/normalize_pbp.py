@@ -168,7 +168,8 @@ def _progress_from_index(index: int, total: int) -> float:
 def _build_pbp_events(
     plays: Sequence[db_models.SportsGamePlay],
     game_start: datetime,
-) -> list[dict[str, Any]]:
+    game_id: int | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build normalized PBP events with phase assignment and synthetic timestamps.
 
     Each event includes:
@@ -176,17 +177,25 @@ def _build_pbp_events(
     - intra_phase_order: Sort key within phase (clock-based)
     - synthetic_timestamp: Computed wall-clock time for display
 
-    Scores are carried forward from the last known value to handle plays
-    that don't have explicit score data (period ends, timeouts, etc.).
+    SCORE CONTINUITY ENFORCEMENT:
+    Scores are cumulative and NEVER reset except at true game start.
+    At period boundaries, the raw PBP data may contain [0, 0] scores which
+    are invalid. This function detects and corrects these score resets by
+    carrying forward the last known valid score.
+
+    Returns:
+        Tuple of (events, score_violations) where score_violations is a list
+        of detected score reset violations for logging/debugging.
     """
     events: list[dict[str, Any]] = []
+    score_violations: list[dict[str, Any]] = []
     total_plays = len(plays)
 
-    # Track last known scores to carry forward
-    last_home_score = 0
-    last_away_score = 0
+    # Track last known valid scores (cumulative, never reset)
+    last_valid_home_score = 0
+    last_valid_away_score = 0
 
-    for play in plays:
+    for idx, play in enumerate(plays):
         quarter = play.quarter or 1
         phase = _nba_phase_for_quarter(quarter)
         block = _nba_block_for_quarter(quarter)
@@ -214,11 +223,83 @@ def _build_pbp_events(
         if hasattr(play, "team") and play.team:
             team_abbrev = play.team.abbreviation
 
-        # Use explicit score if available, otherwise carry forward last known
-        if play.home_score is not None:
-            last_home_score = play.home_score
-        if play.away_score is not None:
-            last_away_score = play.away_score
+        # SCORE CONTINUITY ENFORCEMENT
+        # Detect and reject invalid score resets at period boundaries
+        raw_home = play.home_score
+        raw_away = play.away_score
+
+        # Determine if this is the true game start (first play of Q1)
+        is_true_game_start = idx == 0 and quarter == 1
+
+        # Check for score reset violations
+        if raw_home is not None and raw_away is not None:
+            # Both scores provided - check for invalid reset
+            is_score_reset = (
+                raw_home == 0 and raw_away == 0 and
+                (last_valid_home_score > 0 or last_valid_away_score > 0)
+            )
+            is_score_decrease = (
+                raw_home < last_valid_home_score or
+                raw_away < last_valid_away_score
+            )
+
+            if is_score_reset and not is_true_game_start:
+                # Invalid score reset detected - log and carry forward
+                score_violations.append({
+                    "type": "SCORE_RESET",
+                    "game_id": game_id,
+                    "play_index": play.play_index,
+                    "period": quarter,
+                    "game_clock": play.game_clock,
+                    "raw_scores": [raw_home, raw_away],
+                    "carried_scores": [last_valid_home_score, last_valid_away_score],
+                    "message": f"Score reset from [{last_valid_home_score}, {last_valid_away_score}] to [0, 0] at period {quarter}",
+                })
+                # Carry forward - do NOT update last_valid scores
+            elif is_score_decrease and not is_true_game_start:
+                # Score decreased (shouldn't happen) - log and carry forward
+                score_violations.append({
+                    "type": "SCORE_DECREASE",
+                    "game_id": game_id,
+                    "play_index": play.play_index,
+                    "period": quarter,
+                    "game_clock": play.game_clock,
+                    "raw_scores": [raw_home, raw_away],
+                    "carried_scores": [last_valid_home_score, last_valid_away_score],
+                    "message": f"Score decreased from [{last_valid_home_score}, {last_valid_away_score}] to [{raw_home}, {raw_away}]",
+                })
+                # Carry forward - do NOT update last_valid scores
+            else:
+                # Valid score update - accept and update tracking
+                last_valid_home_score = raw_home
+                last_valid_away_score = raw_away
+        elif raw_home is not None:
+            # Only home score provided - check for decrease
+            if raw_home >= last_valid_home_score:
+                last_valid_home_score = raw_home
+            else:
+                score_violations.append({
+                    "type": "SCORE_DECREASE",
+                    "game_id": game_id,
+                    "play_index": play.play_index,
+                    "period": quarter,
+                    "raw_scores": [raw_home, raw_away],
+                    "carried_scores": [last_valid_home_score, last_valid_away_score],
+                })
+        elif raw_away is not None:
+            # Only away score provided - check for decrease
+            if raw_away >= last_valid_away_score:
+                last_valid_away_score = raw_away
+            else:
+                score_violations.append({
+                    "type": "SCORE_DECREASE",
+                    "game_id": game_id,
+                    "play_index": play.play_index,
+                    "period": quarter,
+                    "raw_scores": [raw_home, raw_away],
+                    "carried_scores": [last_valid_home_score, last_valid_away_score],
+                })
+        # else: Neither score provided - carry forward implicitly (no update needed)
 
         event_payload = {
             "event_type": "pbp",
@@ -232,14 +313,14 @@ def _build_pbp_events(
             "play_type": play.play_type,
             "team_abbreviation": team_abbrev,
             "player_name": play.player_name,
-            "home_score": last_home_score,
-            "away_score": last_away_score,
+            "home_score": last_valid_home_score,
+            "away_score": last_valid_away_score,
             "synthetic_timestamp": synthetic_ts.isoformat(),
             "game_progress": round(progress, 3),
         }
         events.append(event_payload)
 
-    return events
+    return events, score_violations
 
 
 def _compute_resolution_stats(plays: list) -> dict[str, Any]:
@@ -424,10 +505,28 @@ async def execute_normalize_pbp(
     if has_overtime:
         output.add_log("Game went to overtime")
 
-    # Build normalized PBP events
-    pbp_events = _build_pbp_events(plays, game_start)
+    # Build normalized PBP events with score continuity enforcement
+    pbp_events, score_violations = _build_pbp_events(plays, game_start, game_id)
 
     output.add_log(f"Normalized {len(pbp_events)} PBP events")
+
+    # Log score violations if any were detected
+    if score_violations:
+        output.add_log(
+            f"SCORE CONTINUITY: Corrected {len(score_violations)} score violations",
+            "warning",
+        )
+        for violation in score_violations[:5]:  # Log first 5 for visibility
+            output.add_log(
+                f"  {violation['type']}: period {violation.get('period')}, "
+                f"play {violation.get('play_index')}: {violation.get('message', '')}",
+                "warning",
+            )
+        if len(score_violations) > 5:
+            output.add_log(
+                f"  ... and {len(score_violations) - 5} more violations",
+                "warning",
+            )
 
     # Compute phase boundaries for later use
     phase_boundaries = _compute_phase_boundaries(game_start, has_overtime)
@@ -473,10 +572,12 @@ async def execute_normalize_pbp(
         phase_boundaries=phase_boundaries_str,
     )
 
-    # Add resolution stats to output for visibility
+    # Add resolution stats and score violations to output for visibility
     output.data = {
         **normalized_output.to_dict(),
         "resolution_stats": resolution_stats,
+        "score_violations": score_violations,
+        "score_violations_count": len(score_violations),
     }
     output.add_log("NORMALIZE_PBP completed successfully")
 

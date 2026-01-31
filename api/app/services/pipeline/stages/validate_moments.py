@@ -19,6 +19,8 @@ VALIDATION RULES
 3. No Overlapping Plays - No play_id may appear in more than one moment
 4. Canonical Ordering - Moments must be strictly ordered by first play_index
 5. Valid Play References - All play_ids must exist in normalized PBP data
+6. Score Never Decreases - Score values are cumulative and must never decrease
+7. Score Continuity - score_before(n) must equal score_after(n-1) for all moments
 
 GUARANTEES
 ==========
@@ -258,6 +260,107 @@ def _validate_play_references(
     return errors
 
 
+def _validate_score_never_decreases(moments: list[dict[str, Any]]) -> list[ValidationError]:
+    """Rule 6: Score values must never decrease within a game.
+
+    Scores are cumulative. A score decrease indicates data corruption
+    or a normalization failure.
+
+    Args:
+        moments: List of moment dicts with score_before and score_after
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    errors: list[ValidationError] = []
+
+    prev_home_score = 0
+    prev_away_score = 0
+
+    for idx, moment in enumerate(moments):
+        score_before = moment.get("score_before", [0, 0])
+        score_after = moment.get("score_after", [0, 0])
+
+        # Unpack scores (format: [away, home])
+        away_before = score_before[0] if len(score_before) > 0 else 0
+        home_before = score_before[1] if len(score_before) > 1 else 0
+        away_after = score_after[0] if len(score_after) > 0 else 0
+        home_after = score_after[1] if len(score_after) > 1 else 0
+
+        # Check score_before doesn't decrease from previous moment's score_after
+        if away_before < prev_away_score or home_before < prev_home_score:
+            errors.append(
+                ValidationError(
+                    code="SCORE_DECREASE_BEFORE",
+                    message=(
+                        f"Moment {idx} score_before [{away_before}, {home_before}] is less than "
+                        f"previous score [{prev_away_score}, {prev_home_score}]"
+                    ),
+                    moment_indices=[idx],
+                )
+            )
+
+        # Check score_after doesn't decrease from score_before
+        if away_after < away_before or home_after < home_before:
+            errors.append(
+                ValidationError(
+                    code="SCORE_DECREASE_WITHIN",
+                    message=(
+                        f"Moment {idx} score_after [{away_after}, {home_after}] is less than "
+                        f"score_before [{away_before}, {home_before}]"
+                    ),
+                    moment_indices=[idx],
+                )
+            )
+
+        # Update tracking for next iteration
+        prev_away_score = away_after
+        prev_home_score = home_after
+
+    return errors
+
+
+def _validate_score_continuity(moments: list[dict[str, Any]]) -> list[ValidationError]:
+    """Rule 7: score_before(n) must equal score_after(n-1) for all adjacent moments.
+
+    This is the CRITICAL invariant that ensures narrative continuity.
+    Any gap means plays are missing or scores were corrupted.
+
+    Args:
+        moments: List of moment dicts with score_before and score_after
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    errors: list[ValidationError] = []
+
+    if len(moments) < 2:
+        return errors  # Need at least 2 moments to check continuity
+
+    for idx in range(1, len(moments)):
+        prev_moment = moments[idx - 1]
+        curr_moment = moments[idx]
+
+        prev_score_after = prev_moment.get("score_after", [0, 0])
+        curr_score_before = curr_moment.get("score_before", [0, 0])
+
+        # Compare scores
+        if prev_score_after != curr_score_before:
+            errors.append(
+                ValidationError(
+                    code="SCORE_CONTINUITY_BREAK",
+                    message=(
+                        f"Score continuity violation between moments {idx - 1} and {idx}: "
+                        f"moment {idx - 1} score_after={prev_score_after} != "
+                        f"moment {idx} score_before={curr_score_before}"
+                    ),
+                    moment_indices=[idx - 1, idx],
+                )
+            )
+
+    return errors
+
+
 async def execute_validate_moments(stage_input: StageInput) -> StageOutput:
     """Execute the VALIDATE_MOMENTS stage.
 
@@ -352,6 +455,24 @@ async def execute_validate_moments(stage_input: StageInput) -> StageOutput:
         output.add_log(f"Rule 5 FAILED: {len(rule5_errors)} violations", level="error")
     else:
         output.add_log("Rule 5 PASSED")
+
+    # Rule 6: Score Never Decreases
+    output.add_log("Checking Rule 6: Score never decreases")
+    rule6_errors = _validate_score_never_decreases(moments)
+    all_errors.extend(rule6_errors)
+    if rule6_errors:
+        output.add_log(f"Rule 6 FAILED: {len(rule6_errors)} violations", level="error")
+    else:
+        output.add_log("Rule 6 PASSED")
+
+    # Rule 7: Score Continuity (score_before[n] == score_after[n-1])
+    output.add_log("Checking Rule 7: Score continuity across moments")
+    rule7_errors = _validate_score_continuity(moments)
+    all_errors.extend(rule7_errors)
+    if rule7_errors:
+        output.add_log(f"Rule 7 FAILED: {len(rule7_errors)} violations", level="error")
+    else:
+        output.add_log("Rule 7 PASSED")
 
     # Build validation result
     if all_errors:
