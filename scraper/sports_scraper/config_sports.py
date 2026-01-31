@@ -121,3 +121,8 @@ def is_social_enabled(league_code: str) -> bool:
 def is_timeline_enabled(league_code: str) -> bool:
     """Check if timeline generation is enabled for a league."""
     return LEAGUE_CONFIG.get(league_code, LeagueConfig(code="", display_name="")).timeline_enabled
+
+
+def get_odds_enabled_leagues() -> list[str]:
+    """Get leagues with odds scraping enabled."""
+    return [code for code, cfg in LEAGUE_CONFIG.items() if cfg.odds_enabled]
