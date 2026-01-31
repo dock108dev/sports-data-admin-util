@@ -23,7 +23,7 @@ else:  # pragma: no cover - optional dependency
     sync_playwright = None
 
 
-def playwright_available() -> bool:
+def playwright_available() -> bool:  # pragma: no cover
     return sync_playwright is not None
 
 
@@ -286,7 +286,7 @@ class PlaywrightXCollector(XCollectorStrategy):
         except Exception:
             return None
 
-    def collect_posts(
+    def collect_posts(  # pragma: no cover - requires browser
         self,
         x_handle: str,
         window_start: datetime,

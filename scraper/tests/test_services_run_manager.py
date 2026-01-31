@@ -339,7 +339,7 @@ class TestScrapeRunManagerRun:
 class TestScrapeRunManagerBoxscores:
     """Tests for boxscore scraping in run method."""
 
-    @patch("sports_scraper.services.boxscore_ingestion.ingest_boxscores_via_nhl_api")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.ingest_boxscores_via_nhl_api")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
     @patch("sports_scraper.services.run_manager.complete_job_run")
@@ -383,7 +383,7 @@ class TestScrapeRunManagerBoxscores:
         assert result["games_enriched"] == 3
         assert result["games_with_stats"] == 2
 
-    @patch("sports_scraper.services.boxscore_ingestion.ingest_boxscores_via_nhl_api")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.ingest_boxscores_via_nhl_api")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
     @patch("sports_scraper.services.run_manager.complete_job_run")
@@ -424,7 +424,7 @@ class TestScrapeRunManagerBoxscores:
         result = manager.run(1, config)
         assert result["games"] == 0
 
-    @patch("sports_scraper.services.boxscore_ingestion.ingest_boxscores_via_ncaab_api")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.ingest_boxscores_via_ncaab_api")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
     @patch("sports_scraper.services.run_manager.complete_job_run")
@@ -465,7 +465,7 @@ class TestScrapeRunManagerBoxscores:
         result = manager.run(1, config)
         assert result["games"] == 0
 
-    @patch("sports_scraper.services.boxscore_ingestion.ingest_boxscores_via_ncaab_api")
+    @patch("sports_scraper.services.ncaab_boxscore_ingestion.ingest_boxscores_via_ncaab_api")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
     @patch("sports_scraper.services.run_manager.complete_job_run")
