@@ -30,7 +30,7 @@
 
 ## Directory Structure
 - `api/` — FastAPI backend (REST API, data serving)
-- `api/app/services/story/` — Story generation (condensed moments)
+- `api/app/services/pipeline/` — Story generation pipeline (condensed moments)
 - `scraper/` — Multi-sport data scraper (automated ingestion)
 - `web/` — Admin UI (data browser, scraper management)
 - `sql/` — Database schema and migrations
@@ -66,7 +66,7 @@ A story is an ordered list of condensed moments. Each moment is a small set of P
 - **Mechanical segmentation:** Moment boundaries are deterministic
 - **OpenAI is prose-only:** It renders narratives, not structure
 
-**Code:** `api/app/services/pipeline/` (main pipeline), `api/app/services/story/` (schemas)
+**Code:** `api/app/services/pipeline/`
 
 ## Scheduled Scraping
 

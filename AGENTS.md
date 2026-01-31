@@ -17,11 +17,11 @@
 ## Key Directories
 
 ```
-api/                 FastAPI backend
-api/app/services/story/   Story generation system
-scraper/             Multi-sport data scraper
-web/                 Admin UI
-docs/                Documentation
+api/                      FastAPI backend
+api/app/services/pipeline/     Story generation pipeline
+scraper/                  Multi-sport data scraper
+web/                      Admin UI
+docs/                     Documentation
 ```
 
 ## Core Principles
