@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, distinct, func, select
 from sqlalchemy.orm import selectinload
 
 from ... import db_models
@@ -49,6 +49,33 @@ class FairbetOddsResponse(BaseModel):
     books_available: list[str]
 
 
+def _build_base_filters(
+    league: str | None,
+) -> tuple:
+    """Build common filter conditions for FairBet queries.
+
+    Returns (game_start_expr, filter_conditions) tuple.
+    """
+    now = datetime.now(timezone.utc)
+    live_cutoff = now - timedelta(hours=4)
+
+    # Use COALESCE to get actual start time (tip_time preferred, else game_date)
+    game_start = func.coalesce(
+        db_models.SportsGame.tip_time,
+        db_models.SportsGame.game_date,
+    )
+
+    conditions = [
+        db_models.SportsGame.status.notin_(["final", "completed"]),
+        game_start > live_cutoff,
+    ]
+
+    if league:
+        conditions.append(db_models.SportsGame.league.has(code=league.upper()))
+
+    return game_start, conditions
+
+
 @router.get("/odds", response_model=FairbetOddsResponse)
 async def get_fairbet_odds(
     session: AsyncSession = Depends(get_db),
@@ -62,20 +89,64 @@ async def get_fairbet_odds(
     with all available book prices for each bet.
 
     Only includes upcoming games (start_time in future or within last 4 hours for live games).
+
+    Uses database-level pagination for efficiency.
     """
-    # Filter: games that haven't started OR started within last 4 hours (could be live)
-    now = datetime.now(timezone.utc)
-    live_cutoff = now - timedelta(hours=4)
+    _, conditions = _build_base_filters(league)
 
-    # Use COALESCE to get actual start time (tip_time preferred, else game_date)
-    game_start = func.coalesce(
-        db_models.SportsGame.tip_time,
-        db_models.SportsGame.game_date,
+    # Step 1: Count total distinct bet definitions (for pagination metadata)
+    count_subq = (
+        select(
+            db_models.FairbetGameOddsWork.game_id,
+            db_models.FairbetGameOddsWork.market_key,
+            db_models.FairbetGameOddsWork.selection_key,
+            db_models.FairbetGameOddsWork.line_value,
+        )
+        .distinct()
+        .join(db_models.SportsGame)
+        .where(*conditions)
+        .subquery()
     )
+    count_stmt = select(func.count()).select_from(count_subq)
+    total = (await session.execute(count_stmt)).scalar() or 0
 
-    # Query the fairbet work table with game info
+    if total == 0:
+        return FairbetOddsResponse(bets=[], total=0, books_available=[])
+
+    # Step 2: Get paginated bet definitions using CTE
+    # This applies LIMIT/OFFSET at the database level
+    paginated_bets_cte = (
+        select(
+            db_models.FairbetGameOddsWork.game_id,
+            db_models.FairbetGameOddsWork.market_key,
+            db_models.FairbetGameOddsWork.selection_key,
+            db_models.FairbetGameOddsWork.line_value,
+        )
+        .distinct()
+        .join(db_models.SportsGame)
+        .where(*conditions)
+        .order_by(
+            db_models.FairbetGameOddsWork.game_id,
+            db_models.FairbetGameOddsWork.market_key,
+            db_models.FairbetGameOddsWork.selection_key,
+            db_models.FairbetGameOddsWork.line_value,
+        )
+        .limit(limit)
+        .offset(offset)
+    ).cte("paginated_bets")
+
+    # Step 3: Join CTE back to get all books for paginated bet definitions only
     stmt = (
         select(db_models.FairbetGameOddsWork)
+        .join(
+            paginated_bets_cte,
+            and_(
+                db_models.FairbetGameOddsWork.game_id == paginated_bets_cte.c.game_id,
+                db_models.FairbetGameOddsWork.market_key == paginated_bets_cte.c.market_key,
+                db_models.FairbetGameOddsWork.selection_key == paginated_bets_cte.c.selection_key,
+                db_models.FairbetGameOddsWork.line_value == paginated_bets_cte.c.line_value,
+            ),
+        )
         .join(db_models.SportsGame)
         .options(
             selectinload(db_models.FairbetGameOddsWork.game).selectinload(
@@ -88,26 +159,28 @@ async def get_fairbet_odds(
                 db_models.SportsGame.away_team
             ),
         )
-        .where(db_models.SportsGame.status.notin_(["final", "completed"]))
-        .where(game_start > live_cutoff)  # Only games starting after cutoff
-    )
-
-    if league:
-        stmt = stmt.where(db_models.SportsGame.league.has(code=league.upper()))
-
-    stmt = stmt.order_by(
-        db_models.FairbetGameOddsWork.game_id,
-        db_models.FairbetGameOddsWork.market_key,
-        db_models.FairbetGameOddsWork.selection_key,
-        db_models.FairbetGameOddsWork.line_value,
+        .order_by(
+            db_models.FairbetGameOddsWork.game_id,
+            db_models.FairbetGameOddsWork.market_key,
+            db_models.FairbetGameOddsWork.selection_key,
+            db_models.FairbetGameOddsWork.line_value,
+        )
     )
 
     result = await session.execute(stmt)
     rows = result.scalars().all()
 
-    # Group by bet definition
+    # Step 4: Get available books (all books across filtered games, not just paginated)
+    books_stmt = (
+        select(distinct(db_models.FairbetGameOddsWork.book))
+        .join(db_models.SportsGame)
+        .where(*conditions)
+    )
+    books_result = await session.execute(books_stmt)
+    all_books = sorted([row[0] for row in books_result.all()])
+
+    # Step 5: Group rows by bet definition (only paginated rows now)
     bets_map: dict[tuple, dict[str, Any]] = {}
-    all_books: set[str] = set()
 
     for row in rows:
         game = row.game
@@ -133,19 +206,14 @@ async def get_fairbet_odds(
                 observed_at=row.observed_at,
             )
         )
-        all_books.add(row.book)
 
-    # Convert to list and apply pagination
-    all_bets = list(bets_map.values())
-    total = len(all_bets)
-    paginated_bets = all_bets[offset : offset + limit]
-
-    # Sort books within each bet by price (best odds first for positive, worst for negative)
-    for bet in paginated_bets:
-        bet["books"].sort(key=lambda b: -b.price if b.price > 0 else b.price)
+    # Sort books within each bet by price (best odds first)
+    # For American odds, higher values are always better: +150 > +120, -105 > -110
+    for bet in bets_map.values():
+        bet["books"].sort(key=lambda b: -b.price)
 
     return FairbetOddsResponse(
-        bets=[BetDefinition(**bet) for bet in paginated_bets],
+        bets=[BetDefinition(**bet) for bet in bets_map.values()],
         total=total,
-        books_available=sorted(all_books),
+        books_available=all_books,
     )
