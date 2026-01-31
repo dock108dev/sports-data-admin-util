@@ -529,13 +529,15 @@ export default function GameDetailClient() {
                     const nested = p.raw_stats?.[nestedKey];
                     if (nested && typeof nested === "object" && !Array.isArray(nested)) {
                       const obj = nested as Record<string, unknown>;
-                      if (typeof obj.made === "number") made = obj.made;
-                      if (typeof obj.attempted === "number") att = obj.attempted;
+                      made = toNumber(obj.made);
+                      att = toNumber(obj.attempted);
                     }
                   }
 
-                  if (made === null && att === null) return "—";
-                  return `${made ?? 0}/${att ?? 0}`;
+                  // Return "—" if we don't have complete data (both made and att)
+                  // Partial data like "5/null" would be misleading
+                  if (made === null || att === null) return "—";
+                  return `${made}/${att}`;
                 };
                 return (
                   <div key={team} className={styles.teamStatsCard}>
