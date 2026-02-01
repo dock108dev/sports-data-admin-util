@@ -52,7 +52,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ..models import StageInput, StageOutput
 from ...openai_client import get_openai_client
@@ -64,19 +64,12 @@ from .narrative_types import (
     MOMENTS_PER_BATCH,
 )
 from .fallback_helpers import (
-    get_valid_fallback_narrative,
     get_invalid_fallback_narrative,
     classify_empty_narrative_fallback,
 )
 from .prompt_builders import build_batch_prompt
-from .coverage_helpers import (
-    check_explicit_play_coverage,
-    validate_narrative,
-)
+from .coverage_helpers import validate_narrative
 from .game_stats_helpers import compute_cumulative_box_score
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
