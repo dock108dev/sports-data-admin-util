@@ -29,6 +29,8 @@ NBA_REGULATION_REAL_SECONDS = 75 * 60
 NBA_HALFTIME_REAL_SECONDS = 15 * 60
 NBA_QUARTER_REAL_SECONDS = NBA_REGULATION_REAL_SECONDS // 4
 NBA_QUARTER_GAME_SECONDS = 12 * 60
+NBA_OT_GAME_SECONDS = 5 * 60             # 5-minute OT periods
+NBA_OT_REAL_SECONDS = 10 * 60            # ~10 min real time per OT
 
 # NCAAB Constants (20-minute halves)
 NCAAB_REGULATION_REAL_SECONDS = 75 * 60  # ~75 min real time (similar to NBA)
@@ -36,6 +38,7 @@ NCAAB_HALFTIME_REAL_SECONDS = 20 * 60    # 20-minute halftime
 NCAAB_HALF_REAL_SECONDS = NCAAB_REGULATION_REAL_SECONDS // 2
 NCAAB_HALF_GAME_SECONDS = 20 * 60        # 20 min per half
 NCAAB_OT_GAME_SECONDS = 5 * 60           # 5-minute OT periods
+NCAAB_OT_REAL_SECONDS = 10 * 60          # ~10 min real time per OT
 
 # NHL Constants (20-minute periods)
 NHL_REGULATION_REAL_SECONDS = 90 * 60    # ~90 min real time for 3 periods
@@ -43,6 +46,8 @@ NHL_INTERMISSION_REAL_SECONDS = 18 * 60  # 18-minute intermissions
 NHL_PERIOD_REAL_SECONDS = NHL_REGULATION_REAL_SECONDS // 3
 NHL_PERIOD_GAME_SECONDS = 20 * 60        # 20 min per period
 NHL_OT_GAME_SECONDS = 5 * 60             # 5-minute OT (regular season)
+NHL_OT_REAL_SECONDS = 10 * 60            # ~10 min real time per OT
+NHL_PLAYOFF_OT_GAME_SECONDS = 20 * 60    # 20-minute playoff OT periods
 
 # Social post time windows
 SOCIAL_PREGAME_WINDOW_SECONDS = 2 * 60 * 60
@@ -439,16 +444,10 @@ def _build_pbp_events(
     is_nhl = league_code == "NHL"
 
     if is_nhl:
-        period_game_seconds = NHL_PERIOD_GAME_SECONDS
-        period_real_seconds = NHL_PERIOD_REAL_SECONDS
         num_regulation_periods = 3
     elif is_ncaab:
-        period_game_seconds = NCAAB_HALF_GAME_SECONDS
-        period_real_seconds = NCAAB_HALF_REAL_SECONDS
         num_regulation_periods = 2
     else:
-        period_game_seconds = NBA_QUARTER_GAME_SECONDS
-        period_real_seconds = NBA_QUARTER_REAL_SECONDS
         num_regulation_periods = 4
 
     # Track last known valid scores (cumulative, never reset)
@@ -469,9 +468,48 @@ def _build_pbp_events(
             phase = _nba_phase_for_quarter(period)
             block = _nba_block_for_quarter(period)
 
+        # Determine period-specific timing (regulation vs OT)
+        is_overtime = period > num_regulation_periods
+        is_shootout = is_nhl and period == 5
+
+        if is_shootout:
+            # NHL shootout has no game clock - use play index for ordering
+            period_game_seconds = 0
+            period_real_seconds = NHL_OT_REAL_SECONDS
+        elif is_nhl:
+            if is_overtime:
+                # NHL regular season OT is 5 min; playoff OT is 20 min
+                # Period 4 = OT1 (5 min regular season), periods 6+ = playoff OT (20 min)
+                if period == 4:
+                    period_game_seconds = NHL_OT_GAME_SECONDS
+                    period_real_seconds = NHL_OT_REAL_SECONDS
+                else:
+                    # Playoff extended OT (20-minute periods)
+                    period_game_seconds = NHL_PLAYOFF_OT_GAME_SECONDS
+                    period_real_seconds = NHL_PERIOD_REAL_SECONDS
+            else:
+                period_game_seconds = NHL_PERIOD_GAME_SECONDS
+                period_real_seconds = NHL_PERIOD_REAL_SECONDS
+        elif is_ncaab:
+            if is_overtime:
+                period_game_seconds = NCAAB_OT_GAME_SECONDS
+                period_real_seconds = NCAAB_OT_REAL_SECONDS
+            else:
+                period_game_seconds = NCAAB_HALF_GAME_SECONDS
+                period_real_seconds = NCAAB_HALF_REAL_SECONDS
+        else:
+            # NBA
+            if is_overtime:
+                period_game_seconds = NBA_OT_GAME_SECONDS
+                period_real_seconds = NBA_OT_REAL_SECONDS
+            else:
+                period_game_seconds = NBA_QUARTER_GAME_SECONDS
+                period_real_seconds = NBA_QUARTER_REAL_SECONDS
+
         # Parse game clock
         clock_seconds = parse_clock_to_seconds(play.game_clock)
-        if clock_seconds is None:
+        if clock_seconds is None or is_shootout:
+            # No clock (or shootout) - use play index for ordering
             intra_phase_order = play.play_index
             progress = _progress_from_index(play.play_index, total_plays)
         else:
@@ -487,8 +525,12 @@ def _build_pbp_events(
         else:
             period_start = _nba_quarter_start(game_start, period)
 
-        elapsed_in_period = period_game_seconds - (clock_seconds or 0)
-        real_elapsed = elapsed_in_period * (period_real_seconds / period_game_seconds)
+        if is_shootout or period_game_seconds == 0:
+            # Shootout has no clock - distribute plays evenly across the period
+            real_elapsed = period_real_seconds * (play.play_index / max(total_plays, 1))
+        else:
+            elapsed_in_period = period_game_seconds - (clock_seconds or 0)
+            real_elapsed = elapsed_in_period * (period_real_seconds / period_game_seconds)
         synthetic_ts = period_start + timedelta(seconds=real_elapsed)
 
         # Extract team abbreviation from relationship

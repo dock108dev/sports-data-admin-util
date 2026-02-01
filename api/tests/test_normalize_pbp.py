@@ -1310,3 +1310,138 @@ class TestBuildPbpEventsNhl:
         assert events[1]["phase"] == "ot4"
         assert events[0]["block"] == "overtime"
         assert events[1]["block"] == "overtime"
+
+
+class TestOvertimeTiming:
+    """Tests for correct OT timing calculations (5-minute periods)."""
+
+    def _make_play(
+        self,
+        play_index,
+        quarter=1,
+        game_clock="5:00",
+        home_score=0,
+        away_score=0,
+    ):
+        """Create a mock play object."""
+        from unittest.mock import MagicMock
+
+        play = MagicMock()
+        play.play_index = play_index
+        play.quarter = quarter
+        play.game_clock = game_clock
+        play.home_score = home_score
+        play.away_score = away_score
+        play.description = ""
+        play.play_type = "other"
+        play.player_name = None
+        play.team = None
+        return play
+
+    def test_nba_ot_uses_5_minute_period(self):
+        """NBA OT uses 5-minute period for intra_phase_order calculation."""
+        from app.services.pipeline.stages.normalize_pbp import (
+            _build_pbp_events,
+            NBA_OT_GAME_SECONDS,
+        )
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        # Play at 2:30 remaining in OT (5-minute period)
+        plays = [self._make_play(1, quarter=5, game_clock="2:30", home_score=100, away_score=100)]
+        events, _ = _build_pbp_events(plays, game_start, league_code="NBA")
+
+        # intra_phase_order should be based on 5-minute period (300 seconds)
+        # 2:30 = 150 seconds remaining, so elapsed = 300 - 150 = 150
+        assert events[0]["intra_phase_order"] == NBA_OT_GAME_SECONDS - 150
+
+    def test_ncaab_ot_uses_5_minute_period(self):
+        """NCAAB OT uses 5-minute period for intra_phase_order calculation."""
+        from app.services.pipeline.stages.normalize_pbp import (
+            _build_pbp_events,
+            NCAAB_OT_GAME_SECONDS,
+        )
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        # Play at 3:00 remaining in OT1 (period 3)
+        plays = [self._make_play(1, quarter=3, game_clock="3:00", home_score=70, away_score=70)]
+        events, _ = _build_pbp_events(plays, game_start, league_code="NCAAB")
+
+        # intra_phase_order should be based on 5-minute period (300 seconds)
+        # 3:00 = 180 seconds remaining, so elapsed = 300 - 180 = 120
+        assert events[0]["intra_phase_order"] == NCAAB_OT_GAME_SECONDS - 180
+
+    def test_nhl_ot_uses_5_minute_period(self):
+        """NHL regular season OT uses 5-minute period for intra_phase_order."""
+        from app.services.pipeline.stages.normalize_pbp import (
+            _build_pbp_events,
+            NHL_OT_GAME_SECONDS,
+        )
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        # Play at 4:00 remaining in OT (period 4)
+        plays = [self._make_play(1, quarter=4, game_clock="4:00", home_score=2, away_score=2)]
+        events, _ = _build_pbp_events(plays, game_start, league_code="NHL")
+
+        # intra_phase_order should be based on 5-minute period (300 seconds)
+        # 4:00 = 240 seconds remaining, so elapsed = 300 - 240 = 60
+        assert events[0]["intra_phase_order"] == NHL_OT_GAME_SECONDS - 240
+
+    def test_nhl_shootout_uses_play_index(self):
+        """NHL shootout uses play_index for ordering (no game clock)."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        # Shootout plays (period 5) - clock is irrelevant
+        plays = [
+            self._make_play(10, quarter=5, game_clock="0:00", home_score=2, away_score=2),
+            self._make_play(11, quarter=5, game_clock="0:00", home_score=2, away_score=2),
+            self._make_play(12, quarter=5, game_clock="0:00", home_score=3, away_score=2),
+        ]
+        events, _ = _build_pbp_events(plays, game_start, league_code="NHL")
+
+        # Shootout should use play_index for ordering
+        assert events[0]["intra_phase_order"] == 10
+        assert events[1]["intra_phase_order"] == 11
+        assert events[2]["intra_phase_order"] == 12
+
+    def test_nhl_playoff_ot_uses_20_minute_period(self):
+        """NHL playoff OT (periods 6+) uses 20-minute period."""
+        from app.services.pipeline.stages.normalize_pbp import (
+            _build_pbp_events,
+            NHL_PLAYOFF_OT_GAME_SECONDS,
+        )
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        # Play at 15:00 remaining in 2nd playoff OT (period 6)
+        plays = [self._make_play(1, quarter=6, game_clock="15:00", home_score=3, away_score=3)]
+        events, _ = _build_pbp_events(plays, game_start, league_code="NHL")
+
+        # intra_phase_order should be based on 20-minute period (1200 seconds)
+        # 15:00 = 900 seconds remaining, so elapsed = 1200 - 900 = 300
+        assert events[0]["intra_phase_order"] == NHL_PLAYOFF_OT_GAME_SECONDS - 900
+
+    def test_regulation_period_still_uses_full_length(self):
+        """Regulation periods still use correct full-length timing."""
+        from app.services.pipeline.stages.normalize_pbp import (
+            _build_pbp_events,
+            NBA_QUARTER_GAME_SECONDS,
+            NCAAB_HALF_GAME_SECONDS,
+            NHL_PERIOD_GAME_SECONDS,
+        )
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+
+        # NBA Q1 at 6:00 remaining (12-minute quarter)
+        nba_plays = [self._make_play(1, quarter=1, game_clock="6:00", home_score=20, away_score=18)]
+        nba_events, _ = _build_pbp_events(nba_plays, game_start, league_code="NBA")
+        assert nba_events[0]["intra_phase_order"] == NBA_QUARTER_GAME_SECONDS - 360
+
+        # NCAAB H1 at 10:00 remaining (20-minute half)
+        ncaab_plays = [self._make_play(1, quarter=1, game_clock="10:00", home_score=25, away_score=22)]
+        ncaab_events, _ = _build_pbp_events(ncaab_plays, game_start, league_code="NCAAB")
+        assert ncaab_events[0]["intra_phase_order"] == NCAAB_HALF_GAME_SECONDS - 600
+
+        # NHL P1 at 10:00 remaining (20-minute period)
+        nhl_plays = [self._make_play(1, quarter=1, game_clock="10:00", home_score=1, away_score=0)]
+        nhl_events, _ = _build_pbp_events(nhl_plays, game_start, league_code="NHL")
+        assert nhl_events[0]["intra_phase_order"] == NHL_PERIOD_GAME_SECONDS - 600
