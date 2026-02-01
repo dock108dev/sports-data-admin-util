@@ -582,6 +582,8 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
     # Attach cumulative box scores to each moment
     home_team = game_context.get("home_team_name", "Home")
     away_team = game_context.get("away_team_name", "Away")
+    home_team_abbrev = game_context.get("home_team_abbrev", "")
+    away_team_abbrev = game_context.get("away_team_abbrev", "")
     league_code = game_context.get("sport", "NBA")
 
     for moment_index, moment in enumerate(enriched_moments):
@@ -593,7 +595,13 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         if play_ids:
             last_play_idx = max(play_ids)
             box_score = compute_cumulative_box_score(
-                pbp_events, last_play_idx, home_team, away_team, league_code
+                pbp_events,
+                last_play_idx,
+                home_team,
+                away_team,
+                league_code,
+                home_team_abbrev,
+                away_team_abbrev,
             )
             moment["cumulative_box_score"] = box_score
 

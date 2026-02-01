@@ -491,7 +491,7 @@ class MomentTeamBoxScore(BaseModel):
 
     team: str
     score: int
-    players: list[dict[str, Any]]
+    players: list[MomentPlayerStat]
     goalie: MomentGoalieStat | None = None
 
 
@@ -525,7 +525,7 @@ class StoryMoment(BaseModel):
     score_before: list[int] = Field(..., alias="scoreBefore")
     score_after: list[int] = Field(..., alias="scoreAfter")
     narrative: str
-    cumulative_box_score: dict[str, Any] | None = Field(None, alias="cumulativeBoxScore")
+    cumulative_box_score: MomentBoxScore | None = Field(None, alias="cumulativeBoxScore")
 
 
 class StoryPlay(BaseModel):

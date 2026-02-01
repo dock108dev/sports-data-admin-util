@@ -50,7 +50,7 @@ def build_batch_prompt(
 ) -> str:
     """Build an OpenAI prompt for a batch of moments.
 
-    Generates multi-sentence narratives (2-4 sentences) that describe
+    Generates 2-3 paragraph narratives (6-10 sentences) that describe
     the full sequence of gameplay within each moment.
 
     Args:
@@ -148,7 +148,7 @@ def build_batch_prompt(
 
     # Retry prompt is more explicit about requirements
     if is_retry:
-        retry_warning = "\n\nIMPORTANT: Previous response failed validation. Ensure:\n- Each narrative is 2-4 sentences\n- All *starred plays are mentioned\n- No subjective adjectives (huge, dominant, electric)\n- No speculation about intent or psychology\n"
+        retry_warning = "\n\nIMPORTANT: Previous response failed validation. Ensure:\n- Each narrative is 2-3 paragraphs (6-10 sentences total)\n- All *starred plays are mentioned\n- No subjective adjectives (huge, dominant, electric)\n- No speculation about intent or psychology\n"
     else:
         retry_warning = ""
 

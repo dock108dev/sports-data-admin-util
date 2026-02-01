@@ -300,6 +300,8 @@ def compute_cumulative_box_score(
     home_team: str,
     away_team: str,
     league_code: str = "NBA",
+    home_team_abbrev: str = "",
+    away_team_abbrev: str = "",
 ) -> dict[str, Any]:
     """Compute full cumulative box score up to a specific play.
 
@@ -308,9 +310,11 @@ def compute_cumulative_box_score(
     Args:
         pbp_events: All PBP events for the game
         up_to_play_index: Compute stats up to and including this play index
-        home_team: Home team name
-        away_team: Away team name
+        home_team: Home team name (for display)
+        away_team: Away team name (for display)
         league_code: League code (NBA, NCAAB, NHL)
+        home_team_abbrev: Home team abbreviation (for matching, e.g., "GSW")
+        away_team_abbrev: Away team abbreviation (for matching, e.g., "LAC")
 
     Returns:
         Box score dict with home/away team stats:
@@ -401,32 +405,40 @@ def compute_cumulative_box_score(
             _accumulate_basketball_stats(player_stats[player], play_type, desc)
 
     # Determine which players belong to which team
-    # This is a heuristic based on team abbreviation matching
+    # Match by abbreviation (preferred) or fall back to name matching
     home_players: list[dict[str, Any]] = []
     away_players: list[dict[str, Any]] = []
+
+    # Normalize abbreviations for matching
+    home_abbrev_upper = home_team_abbrev.upper() if home_team_abbrev else ""
+    away_abbrev_upper = away_team_abbrev.upper() if away_team_abbrev else ""
 
     for player_name, stats in player_stats.items():
         team_abbrev = player_teams.get(player_name, "")
 
         player_entry = {"name": player_name, **stats}
 
-        # Try to match team abbreviation to home/away
-        if team_abbrev:
-            team_upper = team_abbrev.upper()
+        if not team_abbrev:
+            # No team info - skip player
+            continue
+
+        team_upper = team_abbrev.upper()
+
+        # Primary matching: abbreviation-to-abbreviation (exact match)
+        if home_abbrev_upper and team_upper == home_abbrev_upper:
+            home_players.append(player_entry)
+        elif away_abbrev_upper and team_upper == away_abbrev_upper:
+            away_players.append(player_entry)
+        else:
+            # Fallback: try name-based matching (for backwards compatibility)
             home_upper = home_team.upper()
             away_upper = away_team.upper()
 
-            # Check if abbreviation matches home or away team
             if team_upper in home_upper or home_upper.startswith(team_upper):
                 home_players.append(player_entry)
             elif team_upper in away_upper or away_upper.startswith(team_upper):
                 away_players.append(player_entry)
-            else:
-                # Fallback: put in away if can't determine
-                away_players.append(player_entry)
-        else:
-            # No team info - skip or put in neutral bucket
-            pass
+            # If still no match, skip the player rather than guessing
 
     # Sort by contribution (points for basketball, goals+assists for hockey)
     def _nhl_sort_key(p: dict[str, Any]) -> tuple[int, int]:
