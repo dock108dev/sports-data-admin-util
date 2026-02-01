@@ -129,34 +129,21 @@ STYLE (must sound natural when read aloud):
     else:
         style_emphasis = ""
 
-    prompt = f"""Write 3-4 sentence broadcast-style recaps for each moment. {away_team} vs {home_team}.
+    prompt = f"""Write 3-4 sentence recaps for each moment. {away_team} vs {home_team}.
 {retry_warning}
-You are writing game recaps. Cover the key action naturally - don't just list what happened play-by-play.
-
-GUIDELINES:
-- Write 3-4 sentences that flow naturally together
-- Mention ALL *starred plays, but weave them into the narrative naturally
-- Use context like [Lead: ...] and [Stats: ...] when provided - e.g., "his second three of the quarter" or "extending the lead to 8"
-- Describe HOW plays happened (fast break, off a steal, contested shot) not just THAT they happened
-- Group related action together instead of listing plays chronologically
-
+RULES:
+- 3-4 sentences per moment, flowing naturally
+- Mention *starred plays by player name
+- Use [Lead:] context naturally (e.g., "extending the lead to 8", "cutting the deficit to 3")
+- Use [Stats:] context when notable (e.g., "his third three of the quarter")
+- Describe HOW plays happened, don't just list them
 {name_rule}
+
+AVOID: momentum, turning point, dominant, electric, huge, clutch, crowd erupted, wanted to, felt
 {style_emphasis}
-
-GOOD EXAMPLE (3-4 flowing sentences):
-"Miami opened hot from deep, with Adebayo drilling a three from the left wing on the game's first possession. Chicago answered quickly as Smith finished through contact and Wiggins converted in transition off a Bulls steal. The back-and-forth continued with Smith's dunk capping a 5-0 Chicago run, giving the Bulls a one-point edge."
-
-BAD (just listing plays):
-"Adebayo made a three-pointer. Then Smith made a shot. Then Wiggins made a layup. Then Smith dunked."
-
-BAD (too short):
-"Chicago took the lead. Miami answered."
-
-FORBIDDEN: dominant, electric, huge, massive, incredible, clutch, momentum, turning point, crowd erupted, wanted to, felt, seemed to
-
 {moments_block}
 
-JSON: {{"items":[{{"i":0,"n":"3-4 sentence recap"}},...]}}"""
+JSON: {{"items":[{{"i":0,"n":"recap"}},...]}}"""
 
     return prompt
 
