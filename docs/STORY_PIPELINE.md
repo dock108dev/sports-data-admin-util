@@ -109,9 +109,9 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
 **Implementation:** `stages/render_narratives.py`
 
 **OpenAI Usage:**
-- One API call per moment
-- Input: Play descriptions, scores, clock values
-- Output: Narrative string describing the plays
+- Moments batched (up to 15 per call) for efficiency
+- Input: Play descriptions, scores, clock values per batch
+- Output: Narrative strings for all moments in the batch
 
 **Constraints:**
 - OpenAI only writes prose - it does not decide moment boundaries

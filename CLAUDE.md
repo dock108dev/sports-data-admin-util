@@ -75,6 +75,9 @@ A story is an ordered list of condensed moments. Each moment is a small set of P
 - **7:00 AM** — Timeline generation (90 min after ingestion)
 - **7:15 AM** — NBA flow generation (15 min after timeline)
 
+**Recurring Tasks:**
+- **Every 30 min** — Odds sync (all leagues, keeps FairBet data fresh)
+
 Configured in `scraper/sports_scraper/celery_app.py`
 
 ## Data Sources by League
