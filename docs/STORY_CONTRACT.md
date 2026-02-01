@@ -60,6 +60,41 @@ A condensed moment is the smallest unit that supports both narrative coherence a
 | `narrative` | string | Non-empty; 2-3 paragraphs (~6-10 sentences) describing plays from `explicitly_narrated_play_ids` | The readable text | Without this, the moment is data, not story |
 | `cumulative_box_score` | object | Contains home/away team stats and top player stats | Running stats snapshot at this moment | Without this, statistical context is lost |
 
+### Cumulative Box Score Structure
+
+The `cumulative_box_score` provides a running statistical snapshot at each moment:
+
+```json
+{
+  "home": {
+    "team": "Philadelphia 76ers",
+    "score": 54,
+    "players": [
+      {"name": "Joel Embiid", "pts": 18, "reb": 6, "ast": 2, "3pm": 1}
+    ],
+    "goalie": null
+  },
+  "away": {
+    "team": "Sacramento Kings",
+    "score": 48,
+    "players": [
+      {"name": "De'Aaron Fox", "pts": 14, "reb": 2, "ast": 5, "3pm": 2}
+    ],
+    "goalie": null
+  }
+}
+```
+
+**Field details:**
+- `team`: Full team name
+- `score`: Running score at end of this moment (matches `score_after`)
+- `players`: Top 5 contributors sorted by points (basketball) or goals+assists (hockey)
+- `goalie`: NHL only - goalie stats with saves, goals against, save percentage
+
+**Sport-specific player stats:**
+- **Basketball (NBA/NCAAB):** `pts`, `reb`, `ast`, `3pm`, `fgm`, `ftm`
+- **Hockey (NHL):** `goals`, `assists`, `sog` (shots on goal), `plusMinus`
+
 ---
 
 ## 4. Narrative Rules

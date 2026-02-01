@@ -231,7 +231,23 @@ Get the AI-generated story for a game.
         "endClock": "11:00",
         "scoreBefore": [0, 0],
         "scoreAfter": [3, 0],
-        "narrative": "Durant sinks a three-pointer from the corner..."
+        "narrative": "Durant sinks a three-pointer from the corner...",
+        "cumulativeBoxScore": {
+          "home": {
+            "team": "Lakers",
+            "score": 0,
+            "players": [],
+            "goalie": null
+          },
+          "away": {
+            "team": "Suns",
+            "score": 3,
+            "players": [
+              {"name": "Kevin Durant", "pts": 3, "reb": 0, "ast": 0, "3pm": 1}
+            ],
+            "goalie": null
+          }
+        }
       }
     ]
   },
@@ -257,6 +273,7 @@ Get the AI-generated story for a game.
 - To join moments to plays: `plays.filter(p => moment.playIds.includes(p.playId))`
 - `scoreBefore`/`scoreAfter` arrays are `[awayScore, homeScore]`
 - `explicitlyNarratedPlayIds` are the key plays referenced in the narrative
+- `cumulativeBoxScore` contains running team scores and top player stats at this moment
 
 **Response (404):** No story exists for this game.
 
@@ -721,6 +738,42 @@ interface StoryMoment {
   scoreBefore: number[];      // [away, home]
   scoreAfter: number[];       // [away, home]
   narrative: string;
+  cumulativeBoxScore: MomentBoxScore | null;  // Running stats snapshot
+}
+
+// Cumulative box score at a moment in time
+interface MomentBoxScore {
+  home: MomentTeamBoxScore;
+  away: MomentTeamBoxScore;
+}
+
+interface MomentTeamBoxScore {
+  team: string;               // Team name
+  score: number;              // Running score at this moment
+  players: MomentPlayerStat[];  // Top contributors (up to 5)
+  goalie: MomentGoalieStat | null;  // NHL only
+}
+
+// Basketball player stats (NBA/NCAAB)
+interface MomentPlayerStat {
+  name: string;
+  pts?: number;    // Points
+  reb?: number;    // Rebounds
+  ast?: number;    // Assists
+  "3pm"?: number;  // Three-pointers made
+  // NHL stats (when league is NHL)
+  goals?: number;
+  assists?: number;
+  sog?: number;    // Shots on goal
+  plusMinus?: number;
+}
+
+// NHL goalie stats
+interface MomentGoalieStat {
+  name: string;
+  saves: number;
+  ga: number;       // Goals against
+  savePct: number;  // Save percentage (0.0-1.0)
 }
 
 interface StoryPlay {
