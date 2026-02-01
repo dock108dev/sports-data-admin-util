@@ -1228,6 +1228,7 @@ class BulkStoryGenerationJob(Base):
     force_regenerate: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    max_games: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     total_games: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     current_game: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     successful: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

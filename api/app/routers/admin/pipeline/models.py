@@ -332,6 +332,10 @@ class BulkGenerateRequest(BaseModel):
         default=False,
         description="If True, regenerate stories even if they already exist",
     )
+    max_games: int | None = Field(
+        default=None,
+        description="Maximum number of games to process (None = no limit)",
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -340,6 +344,7 @@ class BulkGenerateRequest(BaseModel):
                 "end_date": "2024-01-07",
                 "leagues": ["NBA", "NHL"],
                 "force": False,
+                "max_games": None,
             }
         }
     }

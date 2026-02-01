@@ -7,20 +7,19 @@ from celery import shared_task
 from ..logging import logger
 
 
-@shared_task(
-    name="run_scheduled_nba_flow_generation",
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_kwargs={"max_retries": 2},
-)
-def run_scheduled_nba_flow_generation() -> dict:
+def _run_flow_generation(
+    league: str,
+    max_games: int | None = None,
+) -> dict:
     """
-    Scheduled task to generate flows for NBA games in the last 72 hours.
+    Common implementation for scheduled flow generation tasks.
 
-    Runs 15 minutes after NCAAB ingestion completes.
-    Only generates flows for games that don't already have them (force=False).
+    Args:
+        league: League code (NBA, NHL, NCAAB)
+        max_games: Maximum number of games to process (None = no limit)
 
-    Uses a 3-day (72 hour) window: today, yesterday, and 2 days ago.
+    Returns:
+        dict with job result
     """
     import httpx
     import time
@@ -33,30 +32,35 @@ def run_scheduled_nba_flow_generation() -> dict:
     end_date = today
 
     logger.info(
-        "scheduled_nba_flow_gen_start",
+        f"scheduled_{league.lower()}_flow_gen_start",
         start_date=str(start_date),
         end_date=str(end_date),
+        max_games=max_games,
     )
 
     api_base = settings.api_internal_url
 
     try:
-        # Start the bulk generation job - NBA only, don't force regenerate
+        # Start the bulk generation job
+        request_body = {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "leagues": [league],
+            "force": False,  # Don't regenerate existing flows
+        }
+        if max_games is not None:
+            request_body["max_games"] = max_games
+
         with httpx.Client(timeout=60.0) as client:
             response = client.post(
                 f"{api_base}/api/admin/sports/pipeline/bulk-generate-async",
-                json={
-                    "start_date": start_date.isoformat(),
-                    "end_date": end_date.isoformat(),
-                    "leagues": ["NBA"],
-                    "force": False,  # Don't regenerate existing flows
-                },
+                json=request_body,
             )
             response.raise_for_status()
             job_data = response.json()
 
         job_id = job_data["job_id"]
-        logger.info("scheduled_nba_flow_gen_job_started", job_id=job_id)
+        logger.info(f"scheduled_{league.lower()}_flow_gen_job_started", job_id=job_id)
 
         # Poll for completion (max 30 minutes, check every 30 seconds)
         max_polls = 60
@@ -76,7 +80,7 @@ def run_scheduled_nba_flow_generation() -> dict:
 
             if state == "PROGRESS":
                 logger.info(
-                    "scheduled_nba_flow_gen_progress",
+                    f"scheduled_{league.lower()}_flow_gen_progress",
                     job_id=job_id,
                     current=status.get("current"),
                     total=status.get("total"),
@@ -87,7 +91,7 @@ def run_scheduled_nba_flow_generation() -> dict:
             elif state == "SUCCESS":
                 result = status.get("result", {})
                 logger.info(
-                    "scheduled_nba_flow_gen_complete",
+                    f"scheduled_{league.lower()}_flow_gen_complete",
                     job_id=job_id,
                     total_games=result.get("total_games", 0),
                     successful=result.get("successful", 0),
@@ -100,12 +104,12 @@ def run_scheduled_nba_flow_generation() -> dict:
                     "state": "SUCCESS",
                     "start_date": str(start_date),
                     "end_date": str(end_date),
-                    "leagues": ["NBA"],
+                    "leagues": [league],
                     **result,
                 }
             elif state == "FAILURE":
                 logger.error(
-                    "scheduled_nba_flow_gen_failed",
+                    f"scheduled_{league.lower()}_flow_gen_failed",
                     job_id=job_id,
                     status=status.get("status"),
                 )
@@ -114,13 +118,13 @@ def run_scheduled_nba_flow_generation() -> dict:
                     "state": "FAILURE",
                     "start_date": str(start_date),
                     "end_date": str(end_date),
-                    "leagues": ["NBA"],
+                    "leagues": [league],
                     "error": status.get("status"),
                 }
 
         # Timed out waiting for completion
         logger.warning(
-            "scheduled_nba_flow_gen_timeout",
+            f"scheduled_{league.lower()}_flow_gen_timeout",
             job_id=job_id,
             max_wait_minutes=max_polls * poll_interval / 60,
         )
@@ -129,13 +133,13 @@ def run_scheduled_nba_flow_generation() -> dict:
             "state": "TIMEOUT",
             "start_date": str(start_date),
             "end_date": str(end_date),
-            "leagues": ["NBA"],
+            "leagues": [league],
             "error": "Timed out waiting for job completion",
         }
 
     except httpx.HTTPStatusError as exc:
         logger.error(
-            "scheduled_nba_flow_gen_http_error",
+            f"scheduled_{league.lower()}_flow_gen_http_error",
             status_code=exc.response.status_code,
             error=exc.response.text,
         )
@@ -143,15 +147,64 @@ def run_scheduled_nba_flow_generation() -> dict:
             "state": "ERROR",
             "start_date": str(start_date),
             "end_date": str(end_date),
-            "leagues": ["NBA"],
+            "leagues": [league],
             "error": f"HTTP {exc.response.status_code}: {exc.response.text}",
         }
     except Exception as exc:
         logger.exception(
-            "scheduled_nba_flow_gen_error",
+            f"scheduled_{league.lower()}_flow_gen_error",
             error=str(exc),
         )
         raise  # Let Celery retry
+
+
+@shared_task(
+    name="run_scheduled_nba_flow_generation",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def run_scheduled_nba_flow_generation() -> dict:
+    """
+    Scheduled task to generate flows for NBA games in the last 72 hours.
+
+    Runs 15 minutes after timeline generation completes (7:15 AM EST).
+    Only generates flows for games that don't already have them (force=False).
+    """
+    return _run_flow_generation("NBA")
+
+
+@shared_task(
+    name="run_scheduled_nhl_flow_generation",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def run_scheduled_nhl_flow_generation() -> dict:
+    """
+    Scheduled task to generate flows for NHL games in the last 72 hours.
+
+    Runs 15 minutes after NBA flow generation (7:30 AM EST).
+    Only generates flows for games that don't already have them (force=False).
+    """
+    return _run_flow_generation("NHL")
+
+
+@shared_task(
+    name="run_scheduled_ncaab_flow_generation",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def run_scheduled_ncaab_flow_generation() -> dict:
+    """
+    Scheduled task to generate flows for NCAAB games in the last 72 hours.
+
+    Runs 15 minutes after NHL flow generation (7:45 AM EST).
+    Only generates flows for games that don't already have them (force=False).
+    Limited to 10 games per run to manage OpenAI costs.
+    """
+    return _run_flow_generation("NCAAB", max_games=10)
 
 
 @shared_task(
