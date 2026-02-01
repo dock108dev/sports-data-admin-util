@@ -204,10 +204,11 @@ class TestIsMergeEligible:
 
         assert is_merge_eligible(plays, current, prev, next_event) is True
 
-    def test_not_merge_eligible_scoring_occurred(self):
-        """Not merge eligible when scoring occurred in moment."""
+    def test_small_moment_merge_eligible_despite_scoring(self):
+        """Small moments (< MIN_PLAYS_BEFORE_SOFT_CLOSE) merge even with scoring."""
         from app.services.pipeline.stages.boundary_detection import is_merge_eligible
 
+        # Only 2 plays - small moment should still be eligible to merge
         plays = [
             make_event(1, home_score=0, away_score=0, quarter=1),
             make_event(2, home_score=2, away_score=0, quarter=1),  # Scoring
@@ -215,6 +216,25 @@ class TestIsMergeEligible:
         current = plays[-1]
         prev = plays[-2]
         next_event = make_event(3, quarter=1)
+
+        # Small moments merge regardless of scoring to avoid tiny 1-2 play moments
+        assert is_merge_eligible(plays, current, prev, next_event) is True
+
+    def test_not_merge_eligible_scoring_in_large_moment(self):
+        """Not merge eligible when scoring occurred in larger moment (>= 5 plays)."""
+        from app.services.pipeline.stages.boundary_detection import is_merge_eligible
+
+        # 5 plays with scoring - larger moment should NOT be eligible
+        plays = [
+            make_event(1, home_score=0, away_score=0, quarter=1),
+            make_event(2, home_score=0, away_score=0, quarter=1),
+            make_event(3, home_score=2, away_score=0, quarter=1),  # Scoring
+            make_event(4, home_score=2, away_score=0, quarter=1),
+            make_event(5, home_score=2, away_score=0, quarter=1),
+        ]
+        current = plays[-1]
+        prev = plays[-2]
+        next_event = make_event(6, quarter=1)
 
         assert is_merge_eligible(plays, current, prev, next_event) is False
 
