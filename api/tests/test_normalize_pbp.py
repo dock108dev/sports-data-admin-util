@@ -683,3 +683,233 @@ class TestBuildPbpEvents:
 
         assert events[0]["home_score"] == 0  # Default
         assert events[0]["away_score"] == 10
+
+    def test_ncaab_league_uses_half_phases(self):
+        """NCAAB games use h1/h2 phases instead of q1-q4."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=1, home_score=20, away_score=15),
+            self._make_play(2, quarter=2, home_score=60, away_score=55),
+        ]
+        events, _ = _build_pbp_events(plays, game_start, league_code="NCAAB")
+
+        assert events[0]["phase"] == "h1"
+        assert events[1]["phase"] == "h2"
+        assert events[0]["block"] == "first_half"
+        assert events[1]["block"] == "second_half"
+
+    def test_ncaab_overtime_phases(self):
+        """NCAAB overtime uses ot1, ot2 starting from period 3."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=3, home_score=70, away_score=70),  # OT1
+            self._make_play(2, quarter=4, home_score=80, away_score=80),  # OT2
+        ]
+        events, _ = _build_pbp_events(plays, game_start, league_code="NCAAB")
+
+        assert events[0]["phase"] == "ot1"
+        assert events[1]["phase"] == "ot2"
+        assert events[0]["block"] == "overtime"
+        assert events[1]["block"] == "overtime"
+
+
+class TestNcaabPhaseForPeriod:
+    """Tests for _ncaab_phase_for_period function."""
+
+    def test_half_1(self):
+        """Period 1 returns h1."""
+        from app.services.pipeline.stages.normalize_pbp import _ncaab_phase_for_period
+
+        assert _ncaab_phase_for_period(1) == "h1"
+
+    def test_half_2(self):
+        """Period 2 returns h2."""
+        from app.services.pipeline.stages.normalize_pbp import _ncaab_phase_for_period
+
+        assert _ncaab_phase_for_period(2) == "h2"
+
+    def test_overtime_1(self):
+        """Period 3 (OT1) returns ot1."""
+        from app.services.pipeline.stages.normalize_pbp import _ncaab_phase_for_period
+
+        assert _ncaab_phase_for_period(3) == "ot1"
+
+    def test_overtime_2(self):
+        """Period 4 (OT2) returns ot2."""
+        from app.services.pipeline.stages.normalize_pbp import _ncaab_phase_for_period
+
+        assert _ncaab_phase_for_period(4) == "ot2"
+
+    def test_none_returns_unknown(self):
+        """None returns unknown."""
+        from app.services.pipeline.stages.normalize_pbp import _ncaab_phase_for_period
+
+        assert _ncaab_phase_for_period(None) == "unknown"
+
+
+class TestNcaabBlockForPeriod:
+    """Tests for _ncaab_block_for_period function."""
+
+    def test_first_half(self):
+        """Period 1 is first_half."""
+        from app.services.pipeline.stages.normalize_pbp import _ncaab_block_for_period
+
+        assert _ncaab_block_for_period(1) == "first_half"
+
+    def test_second_half(self):
+        """Period 2 is second_half."""
+        from app.services.pipeline.stages.normalize_pbp import _ncaab_block_for_period
+
+        assert _ncaab_block_for_period(2) == "second_half"
+
+    def test_overtime(self):
+        """Periods 3+ are overtime."""
+        from app.services.pipeline.stages.normalize_pbp import _ncaab_block_for_period
+
+        assert _ncaab_block_for_period(3) == "overtime"
+        assert _ncaab_block_for_period(4) == "overtime"
+
+    def test_none_returns_unknown(self):
+        """None returns unknown."""
+        from app.services.pipeline.stages.normalize_pbp import _ncaab_block_for_period
+
+        assert _ncaab_block_for_period(None) == "unknown"
+
+
+class TestNcaabPeriodStart:
+    """Tests for _ncaab_period_start function."""
+
+    def test_half_1_starts_at_game_start(self):
+        """First half starts at game start."""
+        from app.services.pipeline.stages.normalize_pbp import _ncaab_period_start
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        result = _ncaab_period_start(game_start, 1)
+        assert result == game_start
+
+    def test_half_2_timing(self):
+        """Second half starts after H1 + halftime."""
+        from app.services.pipeline.stages.normalize_pbp import (
+            _ncaab_period_start,
+            NCAAB_HALF_REAL_SECONDS,
+            NCAAB_HALFTIME_REAL_SECONDS,
+        )
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        result = _ncaab_period_start(game_start, 2)
+        expected = game_start + timedelta(
+            seconds=NCAAB_HALF_REAL_SECONDS + NCAAB_HALFTIME_REAL_SECONDS
+        )
+        assert result == expected
+
+    def test_overtime_timing(self):
+        """Overtime periods start after regulation."""
+        from app.services.pipeline.stages.normalize_pbp import (
+            _ncaab_period_start,
+            NCAAB_REGULATION_REAL_SECONDS,
+        )
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        result = _ncaab_period_start(game_start, 3)  # OT1
+        expected = game_start + timedelta(
+            seconds=NCAAB_REGULATION_REAL_SECONDS + 10 * 60
+        )
+        assert result == expected
+
+
+class TestNcaabGameEnd:
+    """Tests for _ncaab_game_end function."""
+
+    def test_regulation_game(self):
+        """Regulation game ends after 2 halves."""
+        from app.services.pipeline.stages.normalize_pbp import (
+            _ncaab_game_end,
+            NCAAB_REGULATION_REAL_SECONDS,
+        )
+        from unittest.mock import MagicMock
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+
+        play1 = MagicMock()
+        play1.quarter = 1
+        play2 = MagicMock()
+        play2.quarter = 2
+
+        plays = [play1, play2]
+        result = _ncaab_game_end(game_start, plays)
+
+        expected = game_start + timedelta(seconds=NCAAB_REGULATION_REAL_SECONDS)
+        assert result == expected
+
+    def test_single_overtime(self):
+        """Game with 1 OT ends after period 3."""
+        from app.services.pipeline.stages.normalize_pbp import (
+            _ncaab_game_end,
+            NCAAB_REGULATION_REAL_SECONDS,
+        )
+        from unittest.mock import MagicMock
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+
+        play1 = MagicMock()
+        play1.quarter = 2
+        play2 = MagicMock()
+        play2.quarter = 3  # OT1
+
+        plays = [play1, play2]
+        result = _ncaab_game_end(game_start, plays)
+
+        expected = game_start + timedelta(seconds=NCAAB_REGULATION_REAL_SECONDS + 10 * 60)
+        assert result == expected
+
+
+class TestComputeNcaabPhaseBoundaries:
+    """Tests for _compute_ncaab_phase_boundaries function."""
+
+    def test_has_all_phases(self):
+        """All standard NCAAB phases are present."""
+        from app.services.pipeline.stages.normalize_pbp import _compute_ncaab_phase_boundaries
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        boundaries = _compute_ncaab_phase_boundaries(game_start, has_overtime=False)
+
+        assert "pregame" in boundaries
+        assert "h1" in boundaries
+        assert "halftime" in boundaries
+        assert "h2" in boundaries
+        assert "postgame" in boundaries
+
+    def test_overtime_phases(self):
+        """Overtime phases present when has_overtime=True."""
+        from app.services.pipeline.stages.normalize_pbp import _compute_ncaab_phase_boundaries
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        boundaries = _compute_ncaab_phase_boundaries(game_start, has_overtime=True)
+
+        assert "ot1" in boundaries
+        assert "ot2" in boundaries
+        assert "ot3" in boundaries
+        assert "ot4" in boundaries
+
+    def test_no_overtime_phases_when_false(self):
+        """No overtime phases when has_overtime=False."""
+        from app.services.pipeline.stages.normalize_pbp import _compute_ncaab_phase_boundaries
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        boundaries = _compute_ncaab_phase_boundaries(game_start, has_overtime=False)
+
+        assert "ot1" not in boundaries
+
+    def test_h1_starts_at_game_start(self):
+        """H1 starts when game starts."""
+        from app.services.pipeline.stages.normalize_pbp import _compute_ncaab_phase_boundaries
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        boundaries = _compute_ncaab_phase_boundaries(game_start)
+
+        h1_start, _ = boundaries["h1"]
+        assert h1_start == game_start
