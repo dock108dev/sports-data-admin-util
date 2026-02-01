@@ -74,6 +74,8 @@ A story is an ordered list of condensed moments. Each moment is a small set of P
 - **5:30 AM** — Sports ingestion (NBA → NHL → NCAAB sequentially)
 - **7:00 AM** — Timeline generation (90 min after ingestion)
 - **7:15 AM** — NBA flow generation (15 min after timeline)
+- **7:30 AM** — NHL flow generation (15 min after NBA)
+- **7:45 AM** — NCAAB flow generation (15 min after NHL, max 10 games)
 
 **Recurring Tasks:**
 - **Every 30 min** — Odds sync (all leagues, keeps FairBet data fresh)
