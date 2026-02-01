@@ -556,7 +556,7 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                             f"{missing_after_regen}, injecting deterministic sentences"
                         )
 
-                        injected_narrative = inject_missing_explicit_plays(
+                        injected_narrative, _ = inject_missing_explicit_plays(
                             retry_narrative, set(missing_after_regen), moment_plays, game_context
                         )
 
@@ -633,7 +633,7 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                     #    render failed completely and injection won't help - go straight to fallback)
                     if initial_missing and original_narrative:
                         injection_count += 1
-                        injected_narrative = inject_missing_explicit_plays(
+                        injected_narrative, _ = inject_missing_explicit_plays(
                             original_narrative, set(initial_missing), moment_plays, game_context
                         )
 
