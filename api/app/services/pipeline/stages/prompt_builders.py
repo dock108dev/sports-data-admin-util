@@ -145,6 +145,11 @@ RULES:
 - Use [Lead:] context naturally (e.g., "extending the lead to 8", "cutting the deficit to 3")
 - Use [Stats:] context when notable (e.g., "his third three of the quarter")
 {name_rule}
+- TEAM ATTRIBUTION: On first mention of each player, tie them to their team naturally. Vary the style:
+  * "Miami's Bam Adebayo" or "Chicago's Jalen Smith" (possessive)
+  * "Adebayo for Miami" or "Smith for Chicago" (scoring context)
+  * After first mention, just use last name
+  * Don't use parentheses like "(MIA)" - keep it broadcast-style
 
 AVOID: momentum, turning point, dominant, electric, huge, clutch, crowd erupted, wanted to, felt
 {style_emphasis}
@@ -240,6 +245,7 @@ Write like a broadcaster giving a quick recap:
 - Focus on the outcome and margin, not every play
 - Mention *starred players naturally
 - {name_rule}
+- Tie players to their team on first mention (e.g., "Miami's Adebayo", "Smith for Chicago") - no parentheses
 - 2-3 SHORT sentences
 
 FORBIDDEN: dominant, electric, huge, momentum, turning point, wanted to, felt
