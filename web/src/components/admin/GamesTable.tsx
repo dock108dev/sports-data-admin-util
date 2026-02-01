@@ -45,9 +45,8 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/sports/games", sh
             </tr>
           ) : (
             games.map((game) => {
-              const gameIds = game as unknown as { id?: number | string; game_id?: number | string };
-              const gameId = gameIds.id ?? gameIds.game_id;
-              const hasValidId = gameId !== undefined && gameId !== null && gameId !== "" && gameId !== "NaN";
+              const gameId = game.id;
+              const hasValidId = gameId !== undefined && gameId !== null;
               const idContent = hasValidId ? (
                 <Link href={`${detailLinkPrefix}/${gameId}`} className={styles.link}>
                   {gameId}
@@ -57,38 +56,38 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/sports/games", sh
               );
 
               return (
-              <tr key={gameId ?? `${game.away_team}-${game.home_team}-${game.game_date}`}>
+              <tr key={gameId ?? `${game.awayTeam}-${game.homeTeam}-${game.gameDate}`}>
                 <td>{idContent}</td>
-                <td>{new Date(game.game_date).toLocaleDateString()}</td>
-                <td>{game.league_code}</td>
+                <td>{new Date(game.gameDate).toLocaleDateString()}</td>
+                <td>{game.leagueCode}</td>
                 <td>
-                  {game.away_team} @ {game.home_team}
+                  {game.awayTeam} @ {game.homeTeam}
                 </td>
                 {showCompleteness && (
                   <>
                     <td>
-                      <span className={`${styles.statusDot} ${game.has_boxscore ? styles.dotOk : styles.dotMissing}`} />
+                      <span className={`${styles.statusDot} ${game.hasBoxscore ? styles.dotOk : styles.dotMissing}`} />
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.has_player_stats ? styles.dotOk : styles.dotMissing}`} />
+                      <span className={`${styles.statusDot} ${game.hasPlayerStats ? styles.dotOk : styles.dotMissing}`} />
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.has_odds ? styles.dotOk : styles.dotMissing}`} />
+                      <span className={`${styles.statusDot} ${game.hasOdds ? styles.dotOk : styles.dotMissing}`} />
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.has_social ? styles.dotOk : styles.dotMissing}`} />
-                      {game.social_post_count > 0 && (
-                        <span className={styles.statusLabel}>{game.social_post_count}</span>
+                      <span className={`${styles.statusDot} ${game.hasSocial ? styles.dotOk : styles.dotMissing}`} />
+                      {game.socialPostCount > 0 && (
+                        <span className={styles.statusLabel}>{game.socialPostCount}</span>
                       )}
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.has_pbp ? styles.dotOk : styles.dotMissing}`} />
-                      {game.play_count > 0 && (
-                        <span className={styles.statusLabel}>{game.play_count}</span>
+                      <span className={`${styles.statusDot} ${game.hasPbp ? styles.dotOk : styles.dotMissing}`} />
+                      {game.playCount > 0 && (
+                        <span className={styles.statusLabel}>{game.playCount}</span>
                       )}
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.has_story ? styles.dotOk : styles.dotMissing}`} />
+                      <span className={`${styles.statusDot} ${game.hasStory ? styles.dotOk : styles.dotMissing}`} />
                     </td>
                   </>
                 )}

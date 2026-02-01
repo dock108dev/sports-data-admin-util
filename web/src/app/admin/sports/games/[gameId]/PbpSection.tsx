@@ -91,14 +91,14 @@ export function PbpSection({ plays, leagueCode }: { plays: AdminGameDetail["play
                   </thead>
                   <tbody>
                     {filteredPlays.map((play, idx) => (
-                      <tr key={`play-${play.play_index}-${idx}`}>
-                        <td>{play.game_clock ?? "—"}</td>
-                        <td>{play.team_abbreviation ?? "—"}</td>
-                        <td>{play.player_name ?? "—"}</td>
+                      <tr key={`play-${play.playIndex}-${idx}`}>
+                        <td>{play.gameClock ?? "—"}</td>
+                        <td>{play.teamAbbreviation ?? "—"}</td>
+                        <td>{play.playerName ?? "—"}</td>
                         <td className={styles.pbpDescription}>{play.description ?? "—"}</td>
                         <td>
-                          {play.away_score !== null && play.home_score !== null
-                            ? `${play.away_score}-${play.home_score}`
+                          {play.awayScore !== null && play.homeScore !== null
+                            ? `${play.awayScore}-${play.homeScore}`
                             : "—"}
                         </td>
                       </tr>

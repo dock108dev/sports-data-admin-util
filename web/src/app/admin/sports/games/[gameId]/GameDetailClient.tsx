@@ -186,12 +186,12 @@ export default function GameDetailClient() {
   const flags = useMemo(() => {
     if (!game) return [];
     return [
-      { label: "Boxscore", ok: game.game.has_boxscore },
-      { label: "Player stats", ok: game.game.has_player_stats },
-      { label: "Odds", ok: game.game.has_odds },
-      { label: `Social (${game.game.social_post_count || 0})`, ok: game.game.has_social },
-      { label: `PBP (${game.game.play_count || 0})`, ok: game.game.has_pbp },
-      { label: "Flow", ok: game.game.has_story },
+      { label: "Boxscore", ok: game.game.hasBoxscore },
+      { label: "Player stats", ok: game.game.hasPlayerStats },
+      { label: "Odds", ok: game.game.hasOdds },
+      { label: `Social (${game.game.socialPostCount || 0})`, ok: game.game.hasSocial },
+      { label: `PBP (${game.game.playCount || 0})`, ok: game.game.hasPbp },
+      { label: "Flow", ok: game.game.hasStory },
     ];
   }, [game]);
 
@@ -212,15 +212,15 @@ export default function GameDetailClient() {
   }, [game, selectedBook]);
 
   const oddsByMarket = useMemo(() => {
-    const spread = filteredOdds.filter((o) => o.market_type === "spread");
-    const total = filteredOdds.filter((o) => o.market_type === "total");
-    const moneyline = filteredOdds.filter((o) => o.market_type === "moneyline");
+    const spread = filteredOdds.filter((o) => o.marketType === "spread");
+    const total = filteredOdds.filter((o) => o.marketType === "total");
+    const moneyline = filteredOdds.filter((o) => o.marketType === "moneyline");
     return { spread, total, moneyline };
   }, [filteredOdds]);
 
   const playerStatsByTeam = useMemo(() => {
     if (!game) return {};
-    return game.player_stats.reduce<Record<string, typeof game.player_stats>>((acc, p) => {
+    return game.playerStats.reduce<Record<string, typeof game.playerStats>>((acc, p) => {
       acc[p.team] = acc[p.team] || [];
       acc[p.team].push(p);
       return acc;
@@ -229,8 +229,8 @@ export default function GameDetailClient() {
 
   // NHL-specific: Group skaters by team
   const nhlSkatersByTeam = useMemo(() => {
-    if (!game || !game.nhl_skaters) return {};
-    return game.nhl_skaters.reduce<Record<string, NonNullable<typeof game.nhl_skaters>>>((acc, p) => {
+    if (!game || !game.nhlSkaters) return {};
+    return game.nhlSkaters.reduce<Record<string, NonNullable<typeof game.nhlSkaters>>>((acc, p) => {
       acc[p.team] = acc[p.team] || [];
       acc[p.team].push(p);
       return acc;
@@ -239,8 +239,8 @@ export default function GameDetailClient() {
 
   // NHL-specific: Group goalies by team
   const nhlGoaliesByTeam = useMemo(() => {
-    if (!game || !game.nhl_goalies) return {};
-    return game.nhl_goalies.reduce<Record<string, NonNullable<typeof game.nhl_goalies>>>((acc, p) => {
+    if (!game || !game.nhlGoalies) return {};
+    return game.nhlGoalies.reduce<Record<string, NonNullable<typeof game.nhlGoalies>>>((acc, p) => {
       acc[p.team] = acc[p.team] || [];
       acc[p.team].push(p);
       return acc;
@@ -248,7 +248,7 @@ export default function GameDetailClient() {
   }, [game]);
 
   // Determine if this is an NHL game
-  const isNHL = game?.game.league_code === "NHL";
+  const isNHL = game?.game.leagueCode === "NHL";
 
   const handleRescrape = async () => {
     setActionStatus(null);
@@ -282,7 +282,7 @@ export default function GameDetailClient() {
   if (!game) return <div className={styles.container}>Game not found.</div>;
 
   const g = game.game;
-  const gameDate = new Date(g.game_date).toLocaleString();
+  const gameDate = new Date(g.gameDate).toLocaleString();
 
   return (
     <div className={styles.container}>
@@ -292,21 +292,21 @@ export default function GameDetailClient() {
 
       <div className={styles.card}>
         <h1>
-          Game {g.id} — {g.league_code}
+          Game {g.id} — {g.leagueCode}
         </h1>
         <div className={styles.meta}>
-          {gameDate} · {g.season_type ?? "season"} · Last scraped: {g.last_scraped_at ?? "—"}
+          {gameDate} · {g.seasonType ?? "season"} · Last scraped: {g.lastScrapedAt ?? "—"}
         </div>
         <div className={styles.scoreLine}>
           <div>
-            <strong>{g.away_team}</strong>
+            <strong>{g.awayTeam}</strong>
             <span>Away</span>
-            <span>{g.away_score ?? "—"}</span>
+            <span>{g.awayScore ?? "—"}</span>
           </div>
           <div>
-            <strong>{g.home_team}</strong>
+            <strong>{g.homeTeam}</strong>
             <span>Home</span>
-            <span>{g.home_score ?? "—"}</span>
+            <span>{g.homeScore ?? "—"}</span>
           </div>
         </div>
         <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
@@ -356,17 +356,17 @@ export default function GameDetailClient() {
       </div>
 
       <CollapsibleSection title="Team Stats" defaultOpen={false}>
-        {game.team_stats.length === 0 ? (
+        {game.teamStats.length === 0 ? (
           <div style={{ color: "#475569" }}>No team stats found.</div>
         ) : (
           <div className={styles.teamStatsGrid}>
-            {game.team_stats.map((t) => {
+            {game.teamStats.map((t) => {
               const flattenedStats = flattenStats(t.stats || {});
               return (
                 <div key={t.team} className={styles.teamStatsCard}>
                   <div className={styles.teamStatsHeader}>
                     <h3>{t.team}</h3>
-                    <span className={styles.badge}>{t.is_home ? "Home" : "Away"}</span>
+                    <span className={styles.badge}>{t.isHome ? "Home" : "Away"}</span>
                   </div>
                   <table className={styles.table}>
                     <tbody>
@@ -421,17 +421,17 @@ export default function GameDetailClient() {
                           </thead>
                           <tbody>
                             {nhlSkatersByTeam[team].map((p, idx) => (
-                              <tr key={`${team}-skater-${idx}-${p.player_name}`}>
-                                <td>{p.player_name}</td>
+                              <tr key={`${team}-skater-${idx}-${p.playerName}`}>
+                                <td>{p.playerName}</td>
                                 <td>{p.toi ?? "—"}</td>
                                 <td>{p.goals ?? "—"}</td>
                                 <td>{p.assists ?? "—"}</td>
                                 <td>{p.points ?? "—"}</td>
-                                <td>{p.plus_minus ?? "—"}</td>
-                                <td>{p.shots_on_goal ?? "—"}</td>
+                                <td>{p.plusMinus ?? "—"}</td>
+                                <td>{p.shotsOnGoal ?? "—"}</td>
                                 <td>{p.hits ?? "—"}</td>
-                                <td>{p.blocked_shots ?? "—"}</td>
-                                <td>{p.penalty_minutes ?? "—"}</td>
+                                <td>{p.blockedShots ?? "—"}</td>
+                                <td>{p.penaltyMinutes ?? "—"}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -457,13 +457,13 @@ export default function GameDetailClient() {
                         </thead>
                         <tbody>
                           {nhlGoaliesByTeam[team].map((p, idx) => (
-                            <tr key={`${team}-goalie-${idx}-${p.player_name}`}>
-                              <td>{p.player_name}</td>
+                            <tr key={`${team}-goalie-${idx}-${p.playerName}`}>
+                              <td>{p.playerName}</td>
                               <td>{p.toi ?? "—"}</td>
-                              <td>{p.shots_against ?? "—"}</td>
+                              <td>{p.shotsAgainst ?? "—"}</td>
                               <td>{p.saves ?? "—"}</td>
-                              <td>{p.goals_against ?? "—"}</td>
-                              <td>{p.save_percentage != null ? `${(p.save_percentage * 100).toFixed(1)}%` : "—"}</td>
+                              <td>{p.goalsAgainst ?? "—"}</td>
+                              <td>{p.savePercentage != null ? `${(p.savePercentage * 100).toFixed(1)}%` : "—"}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -494,7 +494,7 @@ export default function GameDetailClient() {
                 // Helper to get stat from raw_stats - handles both flat and nested formats
                 const getStat = (p: typeof rows[0], ...keys: string[]): number | null => {
                   for (const key of keys) {
-                    const val = p.raw_stats?.[key];
+                    const val = p.rawStats?.[key];
                     if (val !== null && val !== undefined) {
                       // Direct number or numeric string
                       const num = toNumber(val);
@@ -526,7 +526,7 @@ export default function GameDetailClient() {
 
                   // Fallback: try nested CBB API format (e.g., fieldGoals: {made: X, attempted: Y})
                   if (made === null && att === null) {
-                    const nested = p.raw_stats?.[nestedKey];
+                    const nested = p.rawStats?.[nestedKey];
                     if (nested && typeof nested === "object" && !Array.isArray(nested)) {
                       const obj = nested as Record<string, unknown>;
                       made = toNumber(obj.made);
@@ -564,8 +564,8 @@ export default function GameDetailClient() {
                         </thead>
                         <tbody>
                           {rows.map((p, idx) => (
-                            <tr key={`${team}-${idx}-${p.player_name}`}>
-                              <td>{p.player_name}</td>
+                            <tr key={`${team}-${idx}-${p.playerName}`}>
+                              <td>{p.playerName}</td>
                               <td>{p.minutes != null ? Math.round(p.minutes) : "—"}</td>
                               <td>{p.points ?? "—"}</td>
                               <td>{p.rebounds ?? getStat(p, "rebounds", "totalRebounds") ?? "—"}</td>
@@ -632,7 +632,7 @@ export default function GameDetailClient() {
                         <td>{o.side ?? "—"}</td>
                         <td>{o.line ?? "—"}</td>
                         <td>{o.price ?? "—"}</td>
-                        <td>{o.observed_at ?? "—"}</td>
+                        <td>{o.observedAt ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -660,7 +660,7 @@ export default function GameDetailClient() {
                         <td>{o.side ?? "—"}</td>
                         <td>{o.line ?? "—"}</td>
                         <td>{o.price ?? "—"}</td>
-                        <td>{o.observed_at ?? "—"}</td>
+                        <td>{o.observedAt ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -686,7 +686,7 @@ export default function GameDetailClient() {
                       <tr key={`${o.side}-${idx}`}>
                         <td>{o.side ?? "—"}</td>
                         <td>{o.price ?? "—"}</td>
-                        <td>{o.observed_at ?? "—"}</td>
+                        <td>{o.observedAt ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -697,14 +697,14 @@ export default function GameDetailClient() {
         )}
       </CollapsibleSection>
 
-      <SocialPostsSection posts={game.social_posts || []} />
+      <SocialPostsSection posts={game.socialPosts || []} />
 
-      <PbpSection plays={game.plays || []} leagueCode={g.league_code} />
+      <PbpSection plays={game.plays || []} leagueCode={g.leagueCode} />
 
-      <StorySection gameId={g.id} hasStory={g.has_story} />
+      <StorySection gameId={g.id} hasStory={g.hasStory} />
 
       <CollapsibleSection title="Derived Metrics" defaultOpen={false}>
-        {Object.keys(game.derived_metrics || {}).length === 0 ? (
+        {Object.keys(game.derivedMetrics || {}).length === 0 ? (
           <div style={{ color: "#475569" }}>No derived metrics.</div>
         ) : (
           <table className={styles.table}>
@@ -715,7 +715,7 @@ export default function GameDetailClient() {
               </tr>
             </thead>
             <tbody>
-              {Object.entries(game.derived_metrics).map(([k, v]) => (
+              {Object.entries(game.derivedMetrics).map(([k, v]) => (
                 <tr key={k}>
                   <td>{k}</td>
                   <td>{String(v)}</td>

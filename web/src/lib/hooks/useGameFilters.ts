@@ -90,14 +90,14 @@ export function useGameFilters(options: UseGameFiltersOptions = {}): UseGameFilt
         
         setTotal(response.total);
         setAggregates({
-          withBoxscore: response.with_boxscore_count ?? 0,
-          withPlayerStats: response.with_player_stats_count ?? 0,
-          withOdds: response.with_odds_count ?? 0,
-          withSocial: response.with_social_count ?? 0,
-          withPbp: response.with_pbp_count ?? 0,
-          withStory: response.with_story_count ?? 0,
+          withBoxscore: response.withBoxscoreCount ?? 0,
+          withPlayerStats: response.withPlayerStatsCount ?? 0,
+          withOdds: response.withOddsCount ?? 0,
+          withSocial: response.withSocialCount ?? 0,
+          withPbp: response.withPbpCount ?? 0,
+          withStory: response.withStoryCount ?? 0,
         });
-        setNextOffset(response.next_offset);
+        setNextOffset(response.nextOffset);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Failed to load games");

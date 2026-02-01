@@ -112,7 +112,7 @@ export default function StoryGeneratorPage() {
       });
 
       // Filter to games with PBP data (eligible for story generation)
-      const eligibleGames = response.games.filter((g) => g.has_pbp);
+      const eligibleGames = response.games.filter((g) => g.hasPbp);
       setGames(eligibleGames);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -225,8 +225,8 @@ export default function StoryGeneratorPage() {
     return generationResults.get(gameId);
   };
 
-  const gamesWithStory = games.filter((g) => g.has_story);
-  const gamesWithoutStory = games.filter((g) => !g.has_story);
+  const gamesWithStory = games.filter((g) => g.hasStory);
+  const gamesWithoutStory = games.filter((g) => !g.hasStory);
   const isBulkRunning = bulkJob.state === "PENDING" || bulkJob.state === "PROGRESS";
 
   return (
@@ -396,10 +396,10 @@ export default function StoryGeneratorPage() {
                     <div key={game.id} className={styles.gameCard}>
                       <div className={styles.gameInfo}>
                         <div className={styles.gameMatchup}>
-                          {game.away_team} @ {game.home_team}
+                          {game.awayTeam} @ {game.homeTeam}
                         </div>
                         <div className={styles.gameMeta}>
-                          {game.game_date} | {game.play_count} plays
+                          {game.gameDate} | {game.playCount} plays
                         </div>
                       </div>
                       <div className={styles.gameActions}>
@@ -449,10 +449,10 @@ export default function StoryGeneratorPage() {
                   <div key={game.id} className={styles.gameCard}>
                     <div className={styles.gameInfo}>
                       <div className={styles.gameMatchup}>
-                        {game.away_team} @ {game.home_team}
+                        {game.awayTeam} @ {game.homeTeam}
                       </div>
                       <div className={styles.gameMeta}>
-                        {game.game_date} | {game.play_count} plays
+                        {game.gameDate} | {game.playCount} plays
                       </div>
                     </div>
                     <div className={styles.gameActions}>

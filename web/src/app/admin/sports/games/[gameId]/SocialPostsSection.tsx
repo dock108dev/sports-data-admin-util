@@ -8,7 +8,7 @@ import styles from "./styles.module.css";
 
 const POSTS_PER_PAGE = 10;
 
-export function SocialPostsSection({ posts }: { posts: AdminGameDetail["social_posts"] }) {
+export function SocialPostsSection({ posts }: { posts: AdminGameDetail["socialPosts"] }) {
   const [page, setPage] = useState(0);
 
   const filteredPosts = useMemo(() => {
@@ -17,11 +17,11 @@ export function SocialPostsSection({ posts }: { posts: AdminGameDetail["social_p
     // Timestamps do not imply causality or reading order.
     return [...(posts || [])].filter(
         (post) =>
-          post.tweet_text ||
-          post.image_url ||
-          post.video_url ||
-          post.media_type === "video" ||
-          post.media_type === "image"
+          post.tweetText ||
+          post.imageUrl ||
+          post.videoUrl ||
+          post.mediaType === "video" ||
+          post.mediaType === "image"
       );
   }, [posts]);
 
@@ -43,29 +43,29 @@ export function SocialPostsSection({ posts }: { posts: AdminGameDetail["social_p
             {paginatedPosts.map((post) => (
               <div key={post.id} className={styles.socialPostCard}>
                 <div className={styles.socialPostHeader}>
-                  <span className={styles.badge}>{post.team_abbreviation}</span>
-                  {post.source_handle && (
-                    <span className={styles.handleBadge}>@{post.source_handle}</span>
+                  <span className={styles.badge}>{post.teamAbbreviation}</span>
+                  {post.sourceHandle && (
+                    <span className={styles.handleBadge}>@{post.sourceHandle}</span>
                   )}
-                  {post.media_type === "video" && <span className={styles.videoBadge}>🎥 Video</span>}
-                  {post.media_type === "image" && <span className={styles.imageBadge}>🖼️ Image</span>}
+                  {post.mediaType === "video" && <span className={styles.videoBadge}>🎥 Video</span>}
+                  {post.mediaType === "image" && <span className={styles.imageBadge}>🖼️ Image</span>}
                 </div>
 
-                {post.media_type === "video" ? (
-                  <TwitterEmbed tweetUrl={post.post_url} />
+                {post.mediaType === "video" ? (
+                  <TwitterEmbed tweetUrl={post.postUrl} />
                 ) : (
                   <>
-                    {post.tweet_text && <div className={styles.tweetText}>{post.tweet_text}</div>}
-                    {post.image_url && (
+                    {post.tweetText && <div className={styles.tweetText}>{post.tweetText}</div>}
+                    {post.imageUrl && (
                       <img
-                        src={post.image_url}
+                        src={post.imageUrl}
                         alt="Post media"
                         className={styles.socialPostImage}
                         loading="lazy"
                       />
                     )}
                     <a
-                      href={post.post_url}
+                      href={post.postUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={styles.socialPostLink}
@@ -75,7 +75,7 @@ export function SocialPostsSection({ posts }: { posts: AdminGameDetail["social_p
                   </>
                 )}
 
-                <div className={styles.socialPostMeta}>{new Date(post.posted_at).toLocaleString()}</div>
+                <div className={styles.socialPostMeta}>{new Date(post.postedAt).toLocaleString()}</div>
               </div>
             ))}
           </div>
