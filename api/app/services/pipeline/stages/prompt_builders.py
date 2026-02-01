@@ -175,8 +175,7 @@ def build_moment_prompt(
 ) -> str:
     """Build the OpenAI prompt for a single moment.
 
-    Generates multi-sentence narratives (2-4 sentences) that describe
-    the full sequence of gameplay within the moment.
+    Generates broadcast-style recaps that summarize the action.
 
     Args:
         moment: The moment data
@@ -198,14 +197,19 @@ def build_moment_prompt(
     score_after = moment.get("score_after", [0, 0])
     explicitly_narrated = set(moment.get("explicitly_narrated_play_ids", []))
 
+    # Compute scoring context
+    away_pts = score_after[0] - score_before[0]
+    home_pts = score_after[1] - score_before[1]
+    lead_after = score_after[1] - score_after[0]  # positive = home leads
+
     # Build play descriptions
     plays_desc = []
     for play in moment_plays:
         play_index = play.get("play_index")
         is_explicit = play_index in explicitly_narrated
-        marker = "[MUST REFERENCE]" if is_explicit else ""
+        marker = "*" if is_explicit else ""
         desc = play.get("description", "No description")
-        plays_desc.append(f"  {marker} {desc}")
+        plays_desc.append(f"  {marker}{desc}")
 
     plays_block = "\n".join(plays_desc)
 
@@ -216,32 +220,40 @@ def build_moment_prompt(
             name_mappings.append(f"{abbrev}={full}")
     name_ref = ", ".join(name_mappings[:30]) if name_mappings else ""
 
-    name_rule = "Use FULL NAME on first mention, LAST NAME only after. NEVER use initials."
+    name_rule = "Use FULL NAME on first mention, LAST NAME only after."
     if name_ref:
         name_rule += f" Names: {name_ref}"
 
     if is_retry:
-        retry_note = "\n\nPREVIOUS RESPONSE FAILED VALIDATION. Requirements:\n- 2-4 sentences\n- All [MUST REFERENCE] plays mentioned\n- No subjective adjectives\n"
+        retry_note = "\n\nPREVIOUS RESPONSE FAILED. Mention all *starred plays by player name.\n"
     else:
         retry_note = ""
 
-    prompt = f"""Write a 2-4 sentence narrative for this moment. {away_team} vs {home_team}.
+    # Build margin context
+    if lead_after > 0:
+        margin_ctx = f"{home_team} leads by {lead_after}"
+    elif lead_after < 0:
+        margin_ctx = f"{away_team} leads by {abs(lead_after)}"
+    else:
+        margin_ctx = "Game tied"
+
+    prompt = f"""Write a broadcast-style recap (2-3 sentences). {away_team} vs {home_team}.
 {retry_note}
-Context: Q{period} at {clock}
-Score: {away_team} {score_before[0]} - {home_team} {score_before[1]} → {away_team} {score_after[0]} - {home_team} {score_after[1]}
+Q{period} at {clock}
+Score: {away_team} {score_before[0]}-{score_before[1]} {home_team} → {away_team} {score_after[0]}-{score_after[1]} {home_team}
+Scoring: {away_team} +{away_pts}, {home_team} +{home_pts}. {margin_ctx}.
 
 Plays:
 {plays_block}
 
-Rules:
-- Describe the SEQUENCE of actions (not just one play)
-- ALL [MUST REFERENCE] plays MUST appear in the narrative
+Write like a broadcaster giving a quick recap:
+- Focus on the outcome and margin, not every play
+- Mention *starred players naturally
 - {name_rule}
-- Plain factual language, neutral broadcast style
-- Vary sentence length and structure
+- 2-3 SHORT sentences
 
-FORBIDDEN: momentum, turning point, dominant, electric, wanted to, felt, crowd erupted
+FORBIDDEN: dominant, electric, huge, momentum, turning point, wanted to, felt
 
-Respond with ONLY the narrative text (2-4 sentences, no JSON)."""
+Respond with ONLY the recap text."""
 
     return prompt
