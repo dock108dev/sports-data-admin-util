@@ -274,3 +274,14 @@ class TestIsMergeEligible:
         next_event = make_event(2, quarter=1)
 
         assert is_merge_eligible(plays, current, None, next_event) is True
+
+    def test_large_moment_no_next_event(self):
+        """Large moment without next event is not merge eligible."""
+        from app.services.pipeline.stages.boundary_detection import is_merge_eligible
+
+        # 5+ plays, no scoring, but no next event
+        plays = [make_event(i, quarter=1) for i in range(6)]
+        current = plays[-1]
+        prev = plays[-2]
+
+        assert is_merge_eligible(plays, current, prev, None) is False

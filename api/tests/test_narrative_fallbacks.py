@@ -289,6 +289,52 @@ class TestScoreContextValidation:
         }
         assert _is_valid_score_context(moment) is False
 
+    def test_wrong_score_after_format(self):
+        """Invalid when score_after format is wrong."""
+        from app.services.pipeline.stages.render_narratives import (
+            _is_valid_score_context,
+        )
+
+        # Single value instead of list for score_after
+        moment = {"score_before": [10, 12], "score_after": 15}
+        assert _is_valid_score_context(moment) is False
+
+        # Wrong length for score_after
+        moment = {"score_before": [10, 12], "score_after": [15]}
+        assert _is_valid_score_context(moment) is False
+
+    def test_negative_score_after(self):
+        """Invalid when score_after values are negative."""
+        from app.services.pipeline.stages.render_narratives import (
+            _is_valid_score_context,
+        )
+
+        moment = {
+            "score_before": [10, 12],
+            "score_after": [-1, 15],  # Negative score_after
+        }
+        assert _is_valid_score_context(moment) is False
+
+        moment = {
+            "score_before": [10, 12],
+            "score_after": [15, -2],  # Negative score_after (home)
+        }
+        assert _is_valid_score_context(moment) is False
+
+    def test_score_with_non_numeric_values(self):
+        """Invalid when scores contain non-numeric values."""
+        from app.services.pipeline.stages.render_narratives import (
+            _is_valid_score_context,
+        )
+
+        # Non-numeric in score_before
+        moment = {"score_before": ["a", 12], "score_after": [10, 12]}
+        assert _is_valid_score_context(moment) is False
+
+        # Non-numeric in score_after
+        moment = {"score_before": [10, 12], "score_after": [10, "b"]}
+        assert _is_valid_score_context(moment) is False
+
 
 class TestPlayMetadataValidation:
     """Tests for play metadata validation helper."""
