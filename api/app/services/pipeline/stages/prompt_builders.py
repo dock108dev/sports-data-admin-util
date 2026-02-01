@@ -143,7 +143,8 @@ AVOID: momentum, turning point, dominant, electric, huge, clutch, crowd erupted,
 {style_emphasis}
 {moments_block}
 
-JSON: {{"items":[{{"i":0,"n":"recap"}},...]}}"""
+Return JSON with your narratives:
+{{"items":[{{"i":0,"n":"Your 3-4 sentence narrative for moment 0 here"}},{{"i":1,"n":"Your narrative for moment 1 here"}}...]}}"""
 
     return prompt
 
