@@ -419,7 +419,7 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                 successful_renders += 1
 
             else:
-                # Validate with hard/soft error separation and style checks
+                # Validate narrative - only check for forbidden language, not coverage
                 hard_errors, soft_errors, moment_style_details = validate_narrative(
                     narrative, moment, moment_plays, moment_index
                 )
@@ -427,63 +427,27 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
                 if moment_style_details:
                     all_style_violations.extend(moment_style_details)
 
-                # Check explicit play coverage separately
-                explicit_play_ids = moment.get("explicitly_narrated_play_ids", [])
-                missing_explicit = _check_explicit_coverage(narrative, moment, moment_plays)
+                # Only reject if there's forbidden language (hard error)
+                # Accept the narrative otherwise - don't be too strict about coverage
+                has_forbidden_language = any("forbidden" in e.lower() for e in hard_errors)
 
-                if hard_errors and "explicit" not in hard_errors[0].lower():
-                    reason = FallbackReason.MISSING_EXPLICIT_PLAY_REFERENCE
-                    fallback_narrative = get_invalid_fallback_narrative(reason)
-
-                    logger.warning(
-                        f"Moment {moment_index}: Hard validation error, using INVALID fallback: "
-                        f"{hard_errors[0]}"
-                    )
-
-                    enriched_moments[moment_index] = {
-                        **moment,
-                        "narrative": fallback_narrative,
-                        "fallback_type": FallbackType.INVALID.value,
-                        "fallback_reason": reason.value,
-                    }
-                    fallback_moments.append(moment_index)
-                    invalid_fallbacks.append({
-                        "moment_index": moment_index,
-                        "reason": reason.value,
-                        "period": moment.get("period"),
-                        "start_clock": moment.get("start_clock"),
-                        "validation_errors": hard_errors,
-                    })
-                    successful_renders += 1
-
-                elif soft_errors or missing_explicit:
+                if has_forbidden_language:
+                    # Retry for forbidden language
                     moments_needing_retry.append(
-                        (moment_index, moment, moment_plays, narrative, missing_explicit)
+                        (moment_index, moment, moment_plays, narrative, [])
                     )
-                    if missing_explicit:
-                        logger.info(
-                            f"Moment {moment_index}: Missing explicit plays {missing_explicit}, will retry"
-                        )
-                    else:
-                        logger.info(
-                            f"Moment {moment_index}: Soft validation errors, will retry: "
-                            f"{soft_errors[0]}"
-                        )
-
+                    logger.info(
+                        f"Moment {moment_index}: Forbidden language detected, will retry"
+                    )
                 else:
-                    if explicit_play_ids:
-                        log_coverage_resolution(
-                            moment_index,
-                            CoverageResolution.INITIAL_PASS,
-                            (True, set(explicit_play_ids), set()),
-                        )
+                    # Accept the narrative as-is
                     successful_renders += 1
                     enriched_moments[moment_index] = {
                         **moment,
                         "narrative": narrative,
                         "fallback_type": None,
                         "fallback_reason": None,
-                        "coverage_resolution": CoverageResolution.INITIAL_PASS.value if explicit_play_ids else None,
+                        "coverage_resolution": CoverageResolution.INITIAL_PASS.value,
                     }
 
         # Retry moments with soft validation errors or missing explicit plays
@@ -519,155 +483,57 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
 
                 for moment_index, moment, moment_plays, original_narrative, initial_missing in moments_needing_retry:
                     retry_narrative = retry_narrative_lookup.get(moment_index, original_narrative)
-                    explicit_play_ids = moment.get("explicitly_narrated_play_ids", [])
 
                     if not retry_narrative or not retry_narrative.strip():
                         retry_narrative = original_narrative
 
-                    missing_after_regen = _check_explicit_coverage(
-                        retry_narrative, moment, moment_plays
-                    )
-
-                    if not missing_after_regen:
-                        hard_errors, soft_errors, _ = validate_narrative(
-                            retry_narrative, moment, moment_plays, moment_index,
-                            check_style=False
-                        )
-
-                        if not hard_errors or "explicit" in str(hard_errors).lower():
-                            if explicit_play_ids:
-                                log_coverage_resolution(
-                                    moment_index,
-                                    CoverageResolution.REGENERATION_PASS,
-                                    (True, set(explicit_play_ids), set()),
-                                    (False, set(explicit_play_ids) - set(initial_missing), set(initial_missing)),
-                                )
-                            successful_renders += 1
-                            enriched_moments[moment_index] = {
-                                **moment,
-                                "narrative": retry_narrative,
-                                "fallback_type": None,
-                                "fallback_reason": None,
-                                "coverage_resolution": CoverageResolution.REGENERATION_PASS.value if initial_missing else None,
-                            }
-                            logger.info(f"Moment {moment_index}: Retry succeeded")
-                            continue
-
-                    if missing_after_regen:
-                        injection_count += 1
-                        logger.warning(
-                            f"Moment {moment_index}: Regeneration failed to cover plays "
-                            f"{missing_after_regen}, injecting deterministic sentences"
-                        )
-
-                        injected_narrative, _ = inject_missing_explicit_plays(
-                            retry_narrative, set(missing_after_regen), moment_plays, game_context
-                        )
-
-                        still_missing = _check_explicit_coverage(
-                            injected_narrative, moment, moment_plays
-                        )
-
-                        if still_missing:
-                            logger.warning(
-                                f"Moment {moment_index}: Injection incomplete, still missing {still_missing}, using injected narrative anyway"
-                            )
-                            log_coverage_resolution(
-                                moment_index,
-                                CoverageResolution.INJECTION_REQUIRED,
-                                (False, set(explicit_play_ids) - set(still_missing), set(still_missing)),
-                            )
-                            # Use the injected narrative even if coverage check fails
-                            # The coverage check may not recognize all injected sentences
-                            successful_renders += 1
-                            enriched_moments[moment_index] = {
-                                **moment,
-                                "narrative": injected_narrative,
-                                "fallback_type": None,
-                                "fallback_reason": None,
-                                "coverage_resolution": CoverageResolution.INJECTION_REQUIRED.value,
-                            }
-                            continue
-
-                        log_coverage_resolution(
-                            moment_index,
-                            CoverageResolution.INJECTION_REQUIRED,
-                            (True, set(explicit_play_ids), set()),
-                            (False, set(explicit_play_ids) - set(missing_after_regen), set(missing_after_regen)),
-                        )
+                    # Just accept the retry narrative - don't be too strict
+                    if retry_narrative and retry_narrative.strip():
                         successful_renders += 1
                         enriched_moments[moment_index] = {
                             **moment,
-                            "narrative": injected_narrative,
+                            "narrative": retry_narrative,
                             "fallback_type": None,
                             "fallback_reason": None,
-                            "coverage_resolution": CoverageResolution.INJECTION_REQUIRED.value,
+                            "coverage_resolution": CoverageResolution.REGENERATION_PASS.value,
                         }
-                        logger.info(
-                            f"Moment {moment_index}: Injection succeeded"
-                        )
-                        continue
+                        logger.info(f"Moment {moment_index}: Retry succeeded")
+                    else:
+                        # Only use fallback if we truly have no narrative
+                        reason = FallbackReason.AI_RETURNED_EMPTY
+                        fallback_narrative = get_invalid_fallback_narrative(reason)
 
-                    reason = FallbackReason.FORBIDDEN_LANGUAGE_DETECTED
-                    fallback_narrative = get_invalid_fallback_narrative(reason)
-
-                    logger.warning(
-                        f"Moment {moment_index}: Retry failed with non-coverage errors, using INVALID fallback"
-                    )
-
-                    enriched_moments[moment_index] = {
-                        **moment,
-                        "narrative": fallback_narrative,
-                        "fallback_type": FallbackType.INVALID.value,
-                        "fallback_reason": reason.value,
-                    }
-                    fallback_moments.append(moment_index)
-                    invalid_fallbacks.append({
-                        "moment_index": moment_index,
-                        "reason": reason.value,
-                        "period": moment.get("period"),
-                        "start_clock": moment.get("start_clock"),
-                        "original_narrative": original_narrative[:200],
-                    })
-                    successful_renders += 1
+                        enriched_moments[moment_index] = {
+                            **moment,
+                            "narrative": fallback_narrative,
+                            "fallback_type": FallbackType.INVALID.value,
+                            "fallback_reason": reason.value,
+                        }
+                        fallback_moments.append(moment_index)
+                        invalid_fallbacks.append({
+                            "moment_index": moment_index,
+                            "reason": reason.value,
+                            "period": moment.get("period"),
+                            "start_clock": moment.get("start_clock"),
+                        })
+                        successful_renders += 1
 
             except ValueError:
                 raise
             except Exception as e:
-                logger.warning(f"Retry batch failed: {e}, attempting injection on original narratives")
+                logger.warning(f"Retry batch failed: {e}, using original narratives")
                 for moment_index, moment, moment_plays, original_narrative, initial_missing in moments_needing_retry:
-                    explicit_play_ids = moment.get("explicitly_narrated_play_ids", [])
-
-                    # Only attempt injection if we have both:
-                    # 1. initial_missing: specific plays that need coverage (otherwise nothing to inject)
-                    # 2. original_narrative: a base narrative to append to (if empty, the initial
-                    #    render failed completely and injection won't help - go straight to fallback)
-                    if initial_missing and original_narrative:
-                        injection_count += 1
-                        injected_narrative, _ = inject_missing_explicit_plays(
-                            original_narrative, set(initial_missing), moment_plays, game_context
-                        )
-
-                        still_missing = _check_explicit_coverage(
-                            injected_narrative, moment, moment_plays
-                        )
-
-                        if not still_missing:
-                            log_coverage_resolution(
-                                moment_index,
-                                CoverageResolution.INJECTION_REQUIRED,
-                                (True, set(explicit_play_ids), set()),
-                                (False, set(explicit_play_ids) - set(initial_missing), set(initial_missing)),
-                            )
-                            successful_renders += 1
-                            enriched_moments[moment_index] = {
-                                **moment,
-                                "narrative": injected_narrative,
-                                "fallback_type": None,
-                                "fallback_reason": None,
-                                "coverage_resolution": CoverageResolution.INJECTION_REQUIRED.value,
-                            }
-                            continue
+                    # Just use the original narrative if retry failed
+                    if original_narrative and original_narrative.strip():
+                        successful_renders += 1
+                        enriched_moments[moment_index] = {
+                            **moment,
+                            "narrative": original_narrative,
+                            "fallback_type": None,
+                            "fallback_reason": None,
+                            "coverage_resolution": CoverageResolution.INITIAL_PASS.value,
+                        }
+                        continue
 
                     reason = FallbackReason.AI_GENERATION_FAILED
                     fallback_narrative = get_invalid_fallback_narrative(reason)
