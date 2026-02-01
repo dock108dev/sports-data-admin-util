@@ -351,8 +351,8 @@ def _build_pbp_events(
         raw_home = play.home_score
         raw_away = play.away_score
 
-        # Determine if this is the true game start (first play of Q1)
-        is_true_game_start = idx == 0 and quarter == 1
+        # Determine if this is the true game start (first play of period 1)
+        is_true_game_start = idx == 0 and period == 1
 
         # Check for score reset violations
         if raw_home is not None and raw_away is not None:
@@ -372,11 +372,11 @@ def _build_pbp_events(
                     "type": "SCORE_RESET",
                     "game_id": game_id,
                     "play_index": play.play_index,
-                    "period": quarter,
+                    "period": period,
                     "game_clock": play.game_clock,
                     "raw_scores": [raw_home, raw_away],
                     "carried_scores": [last_valid_home_score, last_valid_away_score],
-                    "message": f"Score reset from [{last_valid_home_score}, {last_valid_away_score}] to [0, 0] at period {quarter}",
+                    "message": f"Score reset from [{last_valid_home_score}, {last_valid_away_score}] to [0, 0] at period {period}",
                 })
                 # Carry forward - do NOT update last_valid scores
             elif is_score_decrease and not is_true_game_start:
@@ -385,7 +385,7 @@ def _build_pbp_events(
                     "type": "SCORE_DECREASE",
                     "game_id": game_id,
                     "play_index": play.play_index,
-                    "period": quarter,
+                    "period": period,
                     "game_clock": play.game_clock,
                     "raw_scores": [raw_home, raw_away],
                     "carried_scores": [last_valid_home_score, last_valid_away_score],
@@ -405,7 +405,7 @@ def _build_pbp_events(
                     "type": "SCORE_DECREASE",
                     "game_id": game_id,
                     "play_index": play.play_index,
-                    "period": quarter,
+                    "period": period,
                     "raw_scores": [raw_home, raw_away],
                     "carried_scores": [last_valid_home_score, last_valid_away_score],
                 })
@@ -418,7 +418,7 @@ def _build_pbp_events(
                     "type": "SCORE_DECREASE",
                     "game_id": game_id,
                     "play_index": play.play_index,
-                    "period": quarter,
+                    "period": period,
                     "raw_scores": [raw_home, raw_away],
                     "carried_scores": [last_valid_home_score, last_valid_away_score],
                 })
@@ -429,7 +429,7 @@ def _build_pbp_events(
             "phase": phase,
             "intra_phase_order": intra_phase_order,
             "play_index": play.play_index,
-            "quarter": quarter,
+            "quarter": period,  # Keep "quarter" key for compatibility but use period value
             "block": block,
             "game_clock": play.game_clock,
             "description": play.description,
