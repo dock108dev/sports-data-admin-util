@@ -81,6 +81,7 @@ from .coverage_helpers import (
     inject_missing_explicit_plays,
     validate_narrative,
 )
+from .game_stats_helpers import compute_cumulative_box_score
 
 # Backward compatibility aliases for tests (underscore-prefixed versions)
 _get_valid_fallback_narrative = get_valid_fallback_narrative
@@ -289,7 +290,8 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
 
         try:
             total_openai_calls += 1
-            max_tokens = 250 * len(valid_batch)
+            # 800 tokens per moment for 2-3 paragraph narratives
+            max_tokens = 800 * len(valid_batch)
             response_json = await asyncio.to_thread(
                 openai_client.generate,
                 prompt=prompt,
@@ -475,7 +477,8 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
 
             try:
                 total_openai_calls += 1
-                retry_max_tokens = 250 * len(retry_batch)
+                # 800 tokens per moment for 2-3 paragraph narratives
+                retry_max_tokens = 800 * len(retry_batch)
                 retry_response_json = await asyncio.to_thread(
                     openai_client.generate,
                     prompt=retry_prompt,
@@ -656,6 +659,26 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         )
 
     output.add_log("RENDER_NARRATIVES completed successfully")
+
+    # Attach cumulative box scores to each moment
+    home_team = game_context.get("home_team_name", "Home")
+    away_team = game_context.get("away_team_name", "Away")
+    league_code = game_context.get("sport", "NBA")
+
+    for moment_index, moment in enumerate(enriched_moments):
+        if moment is None:
+            continue
+
+        # Get the last play index in this moment
+        play_ids = moment.get("play_ids", [])
+        if play_ids:
+            last_play_idx = max(play_ids)
+            box_score = compute_cumulative_box_score(
+                pbp_events, last_play_idx, home_team, away_team, league_code
+            )
+            moment["cumulative_box_score"] = box_score
+
+    output.add_log(f"Attached cumulative box scores to {len([m for m in enriched_moments if m and m.get('cumulative_box_score')])} moments")
 
     output.data = {
         "rendered": True,

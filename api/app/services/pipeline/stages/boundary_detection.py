@@ -71,6 +71,7 @@ def should_prefer_close_moment(
     """Check if a SOFT boundary condition suggests closing the moment.
 
     SOFT conditions prefer closing but can be overridden by merge eligibility.
+    With larger moments (30-50 plays), we're more permissive about soft boundaries.
 
     Args:
         current_moment_plays: Plays currently in the moment (including current)
@@ -82,23 +83,39 @@ def should_prefer_close_moment(
     Returns:
         (should_close, reason) tuple
     """
-    # SOFT: Soft cap reached
-    if len(current_moment_plays) >= SOFT_CAP_PLAYS:
+    play_count = len(current_moment_plays)
+
+    # SOFT: Soft cap reached - always prefer close at this point
+    if play_count >= SOFT_CAP_PLAYS:
         return True, BoundaryReason.SOFT_CAP_REACHED
 
-    # SOFT: Scoring play (but not lead change, that's HARD)
-    if previous_event and is_scoring_play(current_event, previous_event):
-        return True, BoundaryReason.SCORING_PLAY
+    # For smaller moments, we're more permissive to encourage growth
+    # Only apply scoring/stoppage/turnover soft boundaries after minimum threshold
+    if play_count < MIN_PLAYS_BEFORE_SOFT_CLOSE:
+        # Still check for too many explicit plays even in small moments
+        narrated = select_explicitly_narrated_plays(
+            current_moment_plays, all_events, moment_start_idx
+        )
+        if len(narrated) > PREFERRED_EXPLICIT_PLAYS:
+            return True, BoundaryReason.SECOND_EXPLICIT_PLAY
+        return False, None
 
-    # SOFT: Stoppage play
+    # SOFT: Stoppage play (timeouts, reviews) - good natural break points
     if is_stoppage_play(current_event):
         return True, BoundaryReason.STOPPAGE
 
-    # SOFT: Turnover / possession change
-    if is_turnover_play(current_event):
-        return True, BoundaryReason.POSSESSION_CHANGE
+    # SOFT: Only close on scoring plays after reaching 2/3 of soft cap
+    # This allows scoring runs to be captured in single moments
+    if play_count >= (SOFT_CAP_PLAYS * 2 // 3):
+        if previous_event and is_scoring_play(current_event, previous_event):
+            return True, BoundaryReason.SCORING_PLAY
 
-    # SOFT: Second explicitly narrated play encountered
+    # SOFT: Turnovers are weaker boundaries - only close if moment is moderately sized
+    if play_count >= (SOFT_CAP_PLAYS // 2):
+        if is_turnover_play(current_event):
+            return True, BoundaryReason.POSSESSION_CHANGE
+
+    # SOFT: Too many explicitly narrated plays (now allows up to PREFERRED_EXPLICIT_PLAYS)
     narrated = select_explicitly_narrated_plays(
         current_moment_plays, all_events, moment_start_idx
     )
@@ -120,9 +137,12 @@ def is_merge_eligible(
     Note: SOFT_CAP_REACHED is explicitly excluded from override in the caller,
     so we don't check soft cap here.
 
+    With larger target moments (30-50 plays), we're more aggressive about merging
+    to create richer, more comprehensive moment narratives.
+
     Conditions for merge eligibility:
-    - Small moments (< MIN_PLAYS_BEFORE_SOFT_CLOSE) always encourage merge
-    - Larger moments only merge if no scoring has occurred
+    - Small/medium moments (< 2/3 of SOFT_CAP) encourage merge within same period
+    - Larger moments are more selective but still allow continuation
     - Game flow appears continuous (same period)
 
     Args:
@@ -134,9 +154,13 @@ def is_merge_eligible(
     Returns:
         True if merge should be encouraged
     """
-    # Small moments should always be allowed to grow
-    # This prevents creating tiny 1-2 play moments on every score
-    if len(current_moment_plays) < MIN_PLAYS_BEFORE_SOFT_CLOSE:
+    play_count = len(current_moment_plays)
+
+    # Small/medium moments should encourage merging within the same period
+    # This helps build larger, richer moments
+    merge_threshold = (SOFT_CAP_PLAYS * 2) // 3  # ~20 plays
+
+    if play_count < merge_threshold:
         if next_event:
             curr_period = current_event.get("quarter") or 1
             next_period = next_event.get("quarter") or 1
@@ -144,13 +168,28 @@ def is_merge_eligible(
                 return True
         return False
 
-    # For larger moments, check if scoring has occurred
-    # If so, we prefer closing to keep moments focused
-    for j in range(1, len(current_moment_plays)):
-        prev = current_moment_plays[j - 1]
-        curr = current_moment_plays[j]
-        if is_scoring_play(curr, prev):
-            # Scoring occurred in a large enough moment, don't encourage merge
+    # For larger moments (20+ plays), still allow merging but be more selective
+    # Only discourage merge if there have been multiple scoring plays AND
+    # a significant score change (6+ points total)
+    if play_count >= merge_threshold:
+        scoring_play_count = 0
+        total_pts_scored = 0
+
+        if len(current_moment_plays) >= 2:
+            first_play = current_moment_plays[0]
+            last_play = current_moment_plays[-1]
+            home_pts = (last_play.get("home_score") or 0) - (first_play.get("home_score") or 0)
+            away_pts = (last_play.get("away_score") or 0) - (first_play.get("away_score") or 0)
+            total_pts_scored = home_pts + away_pts
+
+        for j in range(1, len(current_moment_plays)):
+            prev = current_moment_plays[j - 1]
+            curr = current_moment_plays[j]
+            if is_scoring_play(curr, prev):
+                scoring_play_count += 1
+
+        # If significant scoring has occurred, discourage further merging
+        if scoring_play_count >= 4 and total_pts_scored >= 10:
             return False
 
     # If next event is in the same period and game is flowing, encourage merge
@@ -158,7 +197,6 @@ def is_merge_eligible(
         curr_period = current_event.get("quarter") or 1
         next_period = next_event.get("quarter") or 1
         if curr_period == next_period:
-            # Same period, game is flowing
             return True
 
     return False

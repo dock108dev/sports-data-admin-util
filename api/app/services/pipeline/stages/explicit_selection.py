@@ -25,15 +25,16 @@ def select_explicitly_narrated_plays(
     1. SCORING PLAYS: Any play where score differs from the previous play.
        These are the most concrete, verifiable events.
 
-    2. NOTABLE PLAYS: If no scoring plays, select plays with notable
-       play_types (blocks, steals, turnovers, etc.).
+    2. NOTABLE PLAYS: Select plays with notable play_types (blocks, steals,
+       turnovers, etc.) to enrich the narrative.
 
     3. FALLBACK: If no scoring or notable plays, select the last play.
        Every moment must have at least one narrated play.
 
-    CONSTRAINT (Task 1.1):
-    - Maximum MAX_EXPLICIT_PLAYS_PER_MOMENT (2) plays can be narrated
-    - If more candidates exist, prefer scoring plays, then most recent
+    CONSTRAINT:
+    - Maximum MAX_EXPLICIT_PLAYS_PER_MOMENT (5) plays can be narrated
+    - Prioritize: major scoring runs, lead changes, notable defensive plays
+    - For larger moments, select a representative sample across the moment
 
     Args:
         moment_plays: List of PBP events in this moment
@@ -72,15 +73,41 @@ def select_explicitly_narrated_plays(
 
     # If we have candidates, cap at MAX_EXPLICIT_PLAYS_PER_MOMENT
     if candidates:
-        # Prefer keeping scoring plays, take most recent if we must cap
         if len(candidates) > MAX_EXPLICIT_PLAYS_PER_MOMENT:
-            # Keep the most significant ones (scoring plays preferred)
-            if len(scoring_ids) >= MAX_EXPLICIT_PLAYS_PER_MOMENT:
-                # Take last N scoring plays (most recent scoring events)
-                candidates = scoring_ids[-MAX_EXPLICIT_PLAYS_PER_MOMENT:]
+            # For larger candidate sets, select a representative sample:
+            # - First scoring play (scene-setter)
+            # - Last scoring play (conclusion)
+            # - Middle scoring plays (fill remaining slots)
+            # - Notable plays if room remains
+
+            selected: list[int] = []
+
+            if len(scoring_ids) >= 2:
+                # Include first and last scoring plays for narrative arc
+                selected.append(scoring_ids[0])
+                selected.append(scoring_ids[-1])
+
+                # Fill middle slots with distributed scoring plays
+                remaining_slots = MAX_EXPLICIT_PLAYS_PER_MOMENT - 2
+                middle_scores = scoring_ids[1:-1]
+
+                if middle_scores and remaining_slots > 0:
+                    # Distribute evenly through middle
+                    step = max(1, len(middle_scores) // (remaining_slots + 1))
+                    for j in range(0, len(middle_scores), step):
+                        if len(selected) < MAX_EXPLICIT_PLAYS_PER_MOMENT:
+                            selected.append(middle_scores[j])
+
+                # Add notable plays if room remains
+                for nid in notable_ids:
+                    if nid not in selected and len(selected) < MAX_EXPLICIT_PLAYS_PER_MOMENT:
+                        selected.append(nid)
+
+                candidates = sorted(selected)  # Keep in play order
             else:
-                # Take all scoring + remaining from notable up to cap
+                # Few scoring plays - take most recent candidates
                 candidates = candidates[-MAX_EXPLICIT_PLAYS_PER_MOMENT:]
+
         return candidates
 
     # RULE 3: Fallback - select the last play

@@ -455,6 +455,55 @@ class TeamSocialInfo(BaseModel):
 # =============================================================================
 
 
+class MomentPlayerStat(BaseModel):
+    """Player stat entry for cumulative box score."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    # Basketball stats
+    pts: int | None = None
+    reb: int | None = None
+    ast: int | None = None
+    three_pm: int | None = Field(None, alias="3pm")
+    # Hockey stats
+    goals: int | None = None
+    assists: int | None = None
+    sog: int | None = None
+    plus_minus: int | None = Field(None, alias="plusMinus")
+
+
+class MomentGoalieStat(BaseModel):
+    """Goalie stat entry for NHL box score."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    saves: int
+    ga: int
+    save_pct: float = Field(..., alias="savePct")
+
+
+class MomentTeamBoxScore(BaseModel):
+    """Team box score for a moment."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    team: str
+    score: int
+    players: list[dict[str, Any]]
+    goalie: MomentGoalieStat | None = None
+
+
+class MomentBoxScore(BaseModel):
+    """Cumulative box score at a moment in time."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    home: MomentTeamBoxScore
+    away: MomentTeamBoxScore
+
+
 class StoryMoment(BaseModel):
     """A single condensed moment in the Story.
 
@@ -463,6 +512,7 @@ class StoryMoment(BaseModel):
     - explicitly_narrated_play_ids: Plays that must be narrated
     - period/clock/score: Context metadata
     - narrative: AI-generated narrative text
+    - cumulative_box_score: Running player stats snapshot at this moment
     """
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -475,6 +525,7 @@ class StoryMoment(BaseModel):
     score_before: list[int] = Field(..., alias="scoreBefore")
     score_after: list[int] = Field(..., alias="scoreAfter")
     narrative: str
+    cumulative_box_score: dict[str, Any] | None = Field(None, alias="cumulativeBoxScore")
 
 
 class StoryPlay(BaseModel):

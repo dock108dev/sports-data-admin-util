@@ -292,3 +292,252 @@ def format_player_stat_hint(player: str, stats: dict[str, int]) -> str | None:
     # Use last name only
     last_name = player.split()[-1] if " " in player else player
     return f"{last_name}: {', '.join(parts)}"
+
+
+def compute_cumulative_box_score(
+    pbp_events: list[dict[str, Any]],
+    up_to_play_index: int,
+    home_team: str,
+    away_team: str,
+    league_code: str = "NBA",
+) -> dict[str, Any]:
+    """Compute full cumulative box score up to a specific play.
+
+    Returns sport-specific stats for top contributors on each team.
+
+    Args:
+        pbp_events: All PBP events for the game
+        up_to_play_index: Compute stats up to and including this play index
+        home_team: Home team name
+        away_team: Away team name
+        league_code: League code (NBA, NCAAB, NHL)
+
+    Returns:
+        Box score dict with home/away team stats:
+        {
+            "home": {
+                "team": "Hawks",
+                "score": 45,
+                "players": [
+                    {"name": "Trae Young", "pts": 12, "reb": 2, "ast": 5, "3pm": 2},
+                    ...
+                ]
+            },
+            "away": {
+                "team": "Celtics",
+                "score": 42,
+                "players": [...]
+            }
+        }
+
+        For NHL:
+        {
+            "home": {
+                "team": "Bruins",
+                "score": 3,
+                "players": [
+                    {"name": "David Pastrnak", "goals": 1, "assists": 1, "sog": 4, "plusMinus": 2},
+                    ...
+                ],
+                "goalie": {"name": "Jeremy Swayman", "saves": 24, "ga": 2, "savePct": 0.923}
+            },
+            "away": {...}
+        }
+    """
+    # Track stats by player and team
+    player_stats: dict[str, dict[str, Any]] = {}
+    player_teams: dict[str, str] = {}  # player_name -> team_abbrev
+
+    # Get final scores up to this point
+    home_score = 0
+    away_score = 0
+
+    for event in pbp_events:
+        if event.get("play_index", 0) > up_to_play_index:
+            break
+
+        # Track scores
+        home_score = event.get("home_score") or home_score
+        away_score = event.get("away_score") or away_score
+
+        player = event.get("player_name")
+        team_abbrev = event.get("team_abbreviation", "")
+
+        if not player:
+            continue
+
+        # Track which team this player is on
+        if player not in player_teams and team_abbrev:
+            player_teams[player] = team_abbrev
+
+        if player not in player_stats:
+            if league_code == "NHL":
+                player_stats[player] = {
+                    "goals": 0,
+                    "assists": 0,
+                    "sog": 0,  # shots on goal
+                    "plusMinus": 0,
+                    "saves": 0,
+                    "ga": 0,  # goals against (for goalies)
+                    "is_goalie": False,
+                }
+            else:
+                # NBA/NCAAB
+                player_stats[player] = {
+                    "pts": 0,
+                    "reb": 0,
+                    "ast": 0,
+                    "3pm": 0,
+                    "fgm": 0,
+                    "ftm": 0,
+                }
+
+        play_type = (event.get("play_type") or "").lower()
+        desc = (event.get("description") or "").lower()
+
+        if league_code == "NHL":
+            _accumulate_nhl_stats(player_stats[player], play_type, desc)
+        else:
+            _accumulate_basketball_stats(player_stats[player], play_type, desc)
+
+    # Determine which players belong to which team
+    # This is a heuristic based on team abbreviation matching
+    home_players: list[dict[str, Any]] = []
+    away_players: list[dict[str, Any]] = []
+
+    for player_name, stats in player_stats.items():
+        team_abbrev = player_teams.get(player_name, "")
+
+        player_entry = {"name": player_name, **stats}
+
+        # Try to match team abbreviation to home/away
+        if team_abbrev:
+            team_upper = team_abbrev.upper()
+            home_upper = home_team.upper()
+            away_upper = away_team.upper()
+
+            # Check if abbreviation matches home or away team
+            if team_upper in home_upper or home_upper.startswith(team_upper):
+                home_players.append(player_entry)
+            elif team_upper in away_upper or away_upper.startswith(team_upper):
+                away_players.append(player_entry)
+            else:
+                # Fallback: put in away if can't determine
+                away_players.append(player_entry)
+        else:
+            # No team info - skip or put in neutral bucket
+            pass
+
+    # Sort by contribution (points for basketball, goals+assists for hockey)
+    if league_code == "NHL":
+        sort_key = lambda p: (p.get("goals", 0) + p.get("assists", 0), p.get("sog", 0))
+    else:
+        sort_key = lambda p: (p.get("pts", 0), p.get("ast", 0))
+
+    home_players.sort(key=sort_key, reverse=True)
+    away_players.sort(key=sort_key, reverse=True)
+
+    # Take top 5 contributors per team
+    max_players = 5
+    home_top = home_players[:max_players]
+    away_top = away_players[:max_players]
+
+    # Build result
+    result: dict[str, Any] = {
+        "home": {
+            "team": home_team,
+            "score": home_score,
+            "players": home_top,
+        },
+        "away": {
+            "team": away_team,
+            "score": away_score,
+            "players": away_top,
+        },
+    }
+
+    # For NHL, extract goalie stats
+    if league_code == "NHL":
+        for side, players in [("home", home_players), ("away", away_players)]:
+            goalies = [p for p in players if p.get("is_goalie")]
+            if goalies:
+                goalie = goalies[0]
+                saves = goalie.get("saves", 0)
+                ga = goalie.get("ga", 0)
+                shots_faced = saves + ga
+                save_pct = round(saves / shots_faced, 3) if shots_faced > 0 else 0.0
+                result[side]["goalie"] = {
+                    "name": goalie["name"],
+                    "saves": saves,
+                    "ga": ga,
+                    "savePct": save_pct,
+                }
+
+    return result
+
+
+def _accumulate_basketball_stats(
+    stats: dict[str, int],
+    play_type: str,
+    desc: str,
+) -> None:
+    """Accumulate basketball stats for a player from a play event."""
+    # Detect made shots from play_type
+    if play_type in ("made_shot", "field_goal_made", "2pt_made", "3pt_made"):
+        stats["fgm"] += 1
+        if _is_three_pointer(play_type, desc):
+            stats["3pm"] += 1
+            stats["pts"] += 3
+        else:
+            stats["pts"] += 2
+    elif play_type in ("free_throw_made", "ft_made"):
+        stats["ftm"] += 1
+        stats["pts"] += 1
+    elif play_type == "rebound":
+        stats["reb"] += 1
+    elif play_type == "assist":
+        stats["ast"] += 1
+    else:
+        # Fallback: parse description for shot types
+        if "makes" in desc or "made" in desc:
+            if "3-pt" in desc or "three" in desc or "3pt" in desc:
+                stats["3pm"] += 1
+                stats["fgm"] += 1
+                stats["pts"] += 3
+            elif "free throw" in desc or "ft" in desc:
+                stats["ftm"] += 1
+                stats["pts"] += 1
+            elif "dunk" in desc or "layup" in desc or "jumper" in desc or "shot" in desc:
+                stats["fgm"] += 1
+                stats["pts"] += 2
+
+
+def _accumulate_nhl_stats(
+    stats: dict[str, Any],
+    play_type: str,
+    desc: str,
+) -> None:
+    """Accumulate NHL stats for a player from a play event."""
+    if play_type in ("goal", "scored"):
+        stats["goals"] += 1
+    elif play_type == "assist":
+        stats["assists"] += 1
+    elif play_type in ("shot", "shot_on_goal", "sog"):
+        stats["sog"] += 1
+    elif play_type == "save":
+        stats["saves"] += 1
+        stats["is_goalie"] = True
+    elif play_type in ("goal_against", "goal_allowed"):
+        stats["ga"] += 1
+        stats["is_goalie"] = True
+    else:
+        # Parse description
+        if "goal" in desc and "saved" not in desc:
+            stats["goals"] += 1
+        elif "assist" in desc:
+            stats["assists"] += 1
+        elif "shot" in desc and "blocked" not in desc:
+            stats["sog"] += 1
+        elif "save" in desc:
+            stats["saves"] += 1
+            stats["is_goalie"] = True

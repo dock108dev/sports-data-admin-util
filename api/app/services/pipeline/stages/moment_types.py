@@ -17,21 +17,23 @@ from typing import Any
 # These values are tunable without code changes.
 
 # Soft cap: prefer closing at this point
-SOFT_CAP_PLAYS = 8
+# With 30 plays, moments will typically contain 10-15 possessions
+SOFT_CAP_PLAYS = 30
 
 # Absolute cap: must close (safety valve, should be rare)
-ABSOLUTE_MAX_PLAYS = 12
+# Allows for large moments that cover significant game stretches
+ABSOLUTE_MAX_PLAYS = 50
 
 # Minimum plays before soft boundaries take effect
-# Prevents creating tiny moments on every score
-# With 5 plays min, moments will typically contain 2-3 possessions
-MIN_PLAYS_BEFORE_SOFT_CLOSE = 5
+# Prevents creating tiny moments; with 15 plays min, moments cover 5-8 possessions
+MIN_PLAYS_BEFORE_SOFT_CLOSE = 15
 
 # Maximum explicitly narrated plays per moment
-MAX_EXPLICIT_PLAYS_PER_MOMENT = 2
+# Increased to allow richer narratives covering more key plays
+MAX_EXPLICIT_PLAYS_PER_MOMENT = 5
 
-# Target: prefer <=1 explicit play per moment
-PREFERRED_EXPLICIT_PLAYS = 1
+# Target: prefer <=3 explicit plays per moment for balanced narratives
+PREFERRED_EXPLICIT_PLAYS = 3
 
 
 class BoundaryType(str, Enum):
