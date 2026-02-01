@@ -429,10 +429,13 @@ def compute_cumulative_box_score(
             pass
 
     # Sort by contribution (points for basketball, goals+assists for hockey)
-    if league_code == "NHL":
-        sort_key = lambda p: (p.get("goals", 0) + p.get("assists", 0), p.get("sog", 0))
-    else:
-        sort_key = lambda p: (p.get("pts", 0), p.get("ast", 0))
+    def _nhl_sort_key(p: dict[str, Any]) -> tuple[int, int]:
+        return (p.get("goals", 0) + p.get("assists", 0), p.get("sog", 0))
+
+    def _basketball_sort_key(p: dict[str, Any]) -> tuple[int, int]:
+        return (p.get("pts", 0), p.get("ast", 0))
+
+    sort_key = _nhl_sort_key if league_code == "NHL" else _basketball_sort_key
 
     home_players.sort(key=sort_key, reverse=True)
     away_players.sort(key=sort_key, reverse=True)
