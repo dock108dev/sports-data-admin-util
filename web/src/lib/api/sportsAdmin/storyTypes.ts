@@ -89,6 +89,51 @@ export type StoryErrorResponse = {
 // =============================================================================
 
 /**
+ * Player stat entry in cumulative box score.
+ */
+export type MomentPlayerStat = {
+  name: string;
+  // Basketball stats
+  pts?: number | null;
+  reb?: number | null;
+  ast?: number | null;
+  "3pm"?: number | null;
+  // Hockey stats
+  goals?: number | null;
+  assists?: number | null;
+  sog?: number | null;
+  plusMinus?: number | null;
+};
+
+/**
+ * Goalie stat entry for NHL box score.
+ */
+export type MomentGoalieStat = {
+  name: string;
+  saves: number;
+  ga: number;
+  savePct: number;
+};
+
+/**
+ * Team box score for a moment.
+ */
+export type MomentTeamBoxScore = {
+  team: string;
+  score: number;
+  players: MomentPlayerStat[];
+  goalie?: MomentGoalieStat | null;
+};
+
+/**
+ * Cumulative box score at a moment in time.
+ */
+export type MomentBoxScore = {
+  home: MomentTeamBoxScore;
+  away: MomentTeamBoxScore;
+};
+
+/**
  * A moment in the game flow.
  * Uses camelCase to match API JSON response.
  */
@@ -101,6 +146,7 @@ export type StoryMoment = {
   scoreBefore: number[];
   scoreAfter: number[];
   narrative: string;
+  cumulativeBoxScore?: MomentBoxScore | null;
 };
 
 /**

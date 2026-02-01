@@ -55,12 +55,13 @@
 
 **Architecture:** Condensed moment-based narratives via multi-stage pipeline
 
-A story is an ordered list of condensed moments. Each moment is a small set of PBP plays with at least one explicitly narrated play.
+A story is an ordered list of condensed moments. Each moment is a contiguous set of 15-50 PBP plays with 1-5 explicitly narrated plays. Games typically produce 15-25 moments.
 
 **Contract:** See `docs/STORY_CONTRACT.md`
 
 **Key Concepts:**
-- **Condensed Moment:** Small set of plays with explicit narration
+- **Condensed Moment:** 15-50 plays with 1-5 explicit narrations and 2-3 paragraph narrative
+- **Cumulative Box Score:** Each moment includes running player stats snapshot
 - **Traceability:** Every narrative sentence maps to backing plays
 - **No abstraction:** No headers, sections, or thematic groupings
 - **Mechanical segmentation:** Moment boundaries are deterministic

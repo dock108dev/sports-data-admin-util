@@ -2,7 +2,7 @@
 
 ## Foundational Axiom
 
-**A story is an ordered list of condensed moments. A condensed moment is a small set of Play-by-Play (PBP) plays with at least one explicitly narrated play.**
+**A story is an ordered list of condensed moments. A condensed moment is a contiguous set of Play-by-Play (PBP) plays (typically 15-50) with 1-5 explicitly narrated plays.**
 
 All definitions, constraints, and guarantees in this document derive from this statement.
 
@@ -24,8 +24,8 @@ Story produces a readable, condensed replay of a game.
 
 A **condensed moment** is:
 
-- A small, contiguous set of PBP plays (typically 1–5)
-- At least one play in the set is explicitly narrated
+- A contiguous set of PBP plays (typically 15–50 plays, covering multiple possessions)
+- At least one play (up to 5) in the set is explicitly narrated
 - The set represents a discrete, meaningful segment of game action
 
 ### What a condensed moment is NOT
@@ -51,15 +51,14 @@ A condensed moment is the smallest unit that supports both narrative coherence a
 | Field | Type | Guarantees | Purpose | Failure Mode |
 |-------|------|------------|---------|--------------|
 | `play_ids` | list of unique identifiers | Non-empty; all IDs exist in source PBP | Defines the plays backing this moment | Without this, narrative is ungrounded |
-| `explicitly_narrated_play_ids` | list of unique identifiers | Non-empty; strict subset of `play_ids` | Identifies which plays are directly described | Without this, no guarantee of narrative traceability |
+| `explicitly_narrated_play_ids` | list of unique identifiers | Non-empty (1-5 plays); strict subset of `play_ids` | Identifies which plays are directly described | Without this, no guarantee of narrative traceability |
 | `start_clock` | game clock value | Valid clock at first play | Anchors moment in game time | Without this, ordering is ambiguous |
 | `end_clock` | game clock value | Valid clock at last play | Bounds the moment | Without this, moment boundaries are undefined |
 | `period` | integer | Valid period number | Places moment in game structure | Without this, clock values are uninterpretable |
 | `score_before` | tuple (home, away) | Score at moment start | Provides context | Without this, score progression is lost |
 | `score_after` | tuple (home, away) | Score at moment end | Provides context | Without this, impact is unclear |
-| `narrative` | string | Non-empty; describes at least one play from `explicitly_narrated_play_ids` | The readable text | Without this, the moment is data, not story |
-
-No optional fields are defined. Extensions require contract amendment.
+| `narrative` | string | Non-empty; 2-3 paragraphs (~6-10 sentences) describing plays from `explicitly_narrated_play_ids` | The readable text | Without this, the moment is data, not story |
+| `cumulative_box_score` | object | Contains home/away team stats and top player stats | Running stats snapshot at this moment | Without this, statistical context is lost |
 
 ---
 

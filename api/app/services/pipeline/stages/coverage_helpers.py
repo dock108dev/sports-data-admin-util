@@ -391,16 +391,16 @@ def validate_narrative(
         hard_errors.append(f"Moment {moment_index}: Empty narrative")
         return hard_errors, soft_errors, style_details
 
-    # Soft validation: sentence count (2-4 preferred)
+    # Soft validation: sentence count (6-10 preferred for 2-3 paragraph narratives)
     sentences = split_into_sentences(narrative)
     sentence_count = len(sentences)
-    if sentence_count < 2:
+    if sentence_count < 5:
         soft_errors.append(
-            f"Moment {moment_index}: Only {sentence_count} sentence(s), expected 2-4"
+            f"Moment {moment_index}: Only {sentence_count} sentence(s), expected 6-10"
         )
-    elif sentence_count > 5:
+    elif sentence_count > 12:
         soft_errors.append(
-            f"Moment {moment_index}: {sentence_count} sentences, expected 2-4"
+            f"Moment {moment_index}: {sentence_count} sentences, expected 6-10"
         )
 
     # Hard validation: forbidden language

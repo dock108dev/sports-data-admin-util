@@ -50,7 +50,7 @@ def build_batch_prompt(
 ) -> str:
     """Build an OpenAI prompt for a batch of moments.
 
-    Generates multi-sentence narratives (2-4 sentences) that describe
+    Generates 2-3 paragraph narratives (6-10 sentences) that describe
     the full sequence of gameplay within each moment.
 
     Args:
@@ -148,7 +148,7 @@ def build_batch_prompt(
 
     # Retry prompt is more explicit about requirements
     if is_retry:
-        retry_warning = "\n\nIMPORTANT: Previous response failed validation. Ensure:\n- Each narrative is 2-4 sentences\n- All *starred plays are mentioned\n- No subjective adjectives (huge, dominant, electric)\n- No speculation about intent or psychology\n"
+        retry_warning = "\n\nIMPORTANT: Previous response failed validation. Ensure:\n- Each narrative is 2-3 paragraphs (6-10 sentences total)\n- All *starred plays are mentioned\n- No subjective adjectives (huge, dominant, electric)\n- No speculation about intent or psychology\n"
     else:
         retry_warning = ""
 
@@ -163,15 +163,20 @@ STYLE (must sound natural when read aloud):
     else:
         style_emphasis = ""
 
-    prompt = f"""Write 3-4 sentence recaps for each moment. {away_team} vs {home_team}.
+    prompt = f"""Write 2-3 paragraph recaps (6-10 sentences total) for each moment. {away_team} vs {home_team}.
 {retry_warning}
 CRITICAL: Each moment has its own plays listed between ---MOMENT X--- markers.
 ONLY describe the plays listed for THAT specific moment. Do NOT include plays from other moments.
 
+STRUCTURE EACH MOMENT'S NARRATIVE:
+- Paragraph 1: Set the scene, opening action, initial plays
+- Paragraph 2: Key plays, responses, back-and-forth action
+- Paragraph 3: Resolution, score state, outcome
+
 RULES:
-- 3-4 sentences per moment, flowing naturally
+- 6-10 sentences per moment across 2-3 paragraphs, flowing like broadcast commentary
 - ONLY describe plays listed in "PLAYS FOR THIS MOMENT ONLY" section
-- Mention *starred plays by player name
+- Mention *starred plays by player name - integrate them naturally into the narrative flow
 - Use [Lead:] context naturally (e.g., "extending the lead to 8", "cutting the deficit to 3")
 - Use [Stats:] context when notable (e.g., "his third three of the quarter")
 {name_rule}
@@ -181,12 +186,14 @@ RULES:
   * After first mention, just use last name
   * Don't use parentheses like "(MIA)" - keep it broadcast-style
 
+PARAGRAPH BREAKS: Use \\n\\n between paragraphs for natural flow. Each paragraph should cover a phase of the action.
+
 AVOID: momentum, turning point, dominant, electric, huge, clutch, crowd erupted, wanted to, felt
 {style_emphasis}
 {moments_block}
 
 Return JSON - use the EXACT moment number from each ---MOMENT X--- marker:
-{{"items":[{{"i":0,"n":"Narrative for moment 0 ONLY describing its plays"}},{{"i":1,"n":"Narrative for moment 1 ONLY describing its plays"}}...]}}"""
+{{"items":[{{"i":0,"n":"Multi-paragraph narrative for moment 0 ONLY"}},{{"i":1,"n":"Multi-paragraph narrative for moment 1 ONLY"}}...]}}"""
 
     return prompt
 
@@ -264,7 +271,7 @@ def build_moment_prompt(
         margin_ctx = "Game tied"
 
     period_str = _format_period(period, league_code)
-    prompt = f"""Write a broadcast-style recap (2-3 sentences). {away_team} vs {home_team}.
+    prompt = f"""Write a broadcast-style recap (2-3 paragraphs, 6-10 sentences total). {away_team} vs {home_team}.
 {retry_note}
 {period_str} at {clock}
 Score: {away_team} {score_before[0]}-{score_before[1]} {home_team} → {away_team} {score_after[0]}-{score_after[1]} {home_team}
@@ -273,15 +280,17 @@ Scoring: {away_team} +{away_pts}, {home_team} +{home_pts}. {margin_ctx}.
 Plays:
 {plays_block}
 
-Write like a broadcaster giving a quick recap:
-- Focus on the outcome and margin, not every play
-- Mention *starred players naturally
+Write like a broadcaster giving detailed game action:
+- Paragraph 1: Set the scene and opening action
+- Paragraph 2: Key plays and back-and-forth
+- Paragraph 3: Resolution and score state
+- Mention *starred players naturally, integrating them into the flow
 - {name_rule}
 - Tie players to their team on first mention (e.g., "Miami's Adebayo", "Smith for Chicago") - no parentheses
-- 2-3 SHORT sentences
+- Use \\n\\n between paragraphs
 
 FORBIDDEN: dominant, electric, huge, momentum, turning point, wanted to, felt
 
-Respond with ONLY the recap text."""
+Respond with ONLY the recap text (2-3 paragraphs)."""
 
     return prompt

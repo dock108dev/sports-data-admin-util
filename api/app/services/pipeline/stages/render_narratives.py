@@ -52,104 +52,24 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ..models import StageInput, StageOutput
 from ...openai_client import get_openai_client
 
-# Import from modular helpers
 from .narrative_types import (
     FallbackType,
     FallbackReason,
     CoverageResolution,
     MOMENTS_PER_BATCH,
-    VALID_FALLBACK_NARRATIVES,  # noqa: F401 - re-exported for tests
-    FORBIDDEN_PATTERNS,  # noqa: F401 - re-exported for tests
 )
 from .fallback_helpers import (
-    get_valid_fallback_narrative,
     get_invalid_fallback_narrative,
-    is_valid_score_context,
-    has_valid_play_metadata,
     classify_empty_narrative_fallback,
 )
 from .prompt_builders import build_batch_prompt
-from .coverage_helpers import (
-    count_sentences,
-    check_explicit_play_coverage,
-    generate_deterministic_sentence,
-    inject_missing_explicit_plays,
-    validate_narrative,
-)
-
-# Backward compatibility aliases for tests (underscore-prefixed versions)
-_get_valid_fallback_narrative = get_valid_fallback_narrative
-_get_invalid_fallback_narrative = get_invalid_fallback_narrative
-_is_valid_score_context = is_valid_score_context
-_has_valid_play_metadata = has_valid_play_metadata
-_classify_empty_narrative_fallback = classify_empty_narrative_fallback
-_build_batch_prompt = build_batch_prompt
-_count_sentences = count_sentences
-_validate_narrative = validate_narrative
-_generate_deterministic_sentence = generate_deterministic_sentence
-_inject_missing_explicit_plays = inject_missing_explicit_plays
-
-
-def _log_coverage_resolution(
-    game_id: int,
-    moment_index: int,
-    resolution: CoverageResolution,
-    explicit_play_ids: list[int],
-    missing_after_initial: list[int] | None = None,
-    missing_after_regen: list[int] | None = None,
-    injections: list[dict] | None = None,
-) -> dict[str, Any]:
-    """Return structured coverage resolution data for logging/testing.
-
-    Backward-compatible wrapper that returns structured data for tests
-    while also logging the resolution.
-    """
-    data: dict[str, Any] = {
-        "game_id": game_id,
-        "moment_index": moment_index,
-        "resolution": resolution.value,
-        "explicit_play_count": len(explicit_play_ids),
-    }
-
-    if missing_after_initial is not None:
-        data["missing_after_initial"] = missing_after_initial
-        data["missing_after_initial_count"] = len(missing_after_initial)
-
-    if missing_after_regen is not None:
-        data["missing_after_regen"] = missing_after_regen
-        data["missing_after_regen_count"] = len(missing_after_regen)
-
-    if injections is not None:
-        data["injections"] = injections
-        data["injection_count"] = len(injections)
-
-    logger.info("coverage_resolution", **data)
-    return data
-
-
-def _check_explicit_play_coverage(
-    narrative: str,
-    moment: dict,
-    moment_plays: list,
-) -> list[int]:
-    """Backward-compatible wrapper for check_explicit_play_coverage.
-
-    Old API: takes moment dict, returns list of missing play indices.
-    New API: takes explicit_play_ids set, returns (all_covered, covered, missing) tuple.
-    """
-    explicit_ids = set(moment.get("explicitly_narrated_play_ids", []))
-    if not explicit_ids:
-        return []
-    _, _, missing_ids = check_explicit_play_coverage(narrative, explicit_ids, moment_plays)
-    return list(missing_ids)
-
-if TYPE_CHECKING:
-    pass
+from .coverage_helpers import validate_narrative
+from .game_stats_helpers import compute_cumulative_box_score
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +209,8 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
 
         try:
             total_openai_calls += 1
-            max_tokens = 250 * len(valid_batch)
+            # 800 tokens per moment for 2-3 paragraph narratives
+            max_tokens = 800 * len(valid_batch)
             response_json = await asyncio.to_thread(
                 openai_client.generate,
                 prompt=prompt,
@@ -475,7 +396,8 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
 
             try:
                 total_openai_calls += 1
-                retry_max_tokens = 250 * len(retry_batch)
+                # 800 tokens per moment for 2-3 paragraph narratives
+                retry_max_tokens = 800 * len(retry_batch)
                 retry_response_json = await asyncio.to_thread(
                     openai_client.generate,
                     prompt=retry_prompt,
@@ -657,6 +579,34 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
 
     output.add_log("RENDER_NARRATIVES completed successfully")
 
+    # Attach cumulative box scores to each moment
+    home_team = game_context.get("home_team_name", "Home")
+    away_team = game_context.get("away_team_name", "Away")
+    home_team_abbrev = game_context.get("home_team_abbrev", "")
+    away_team_abbrev = game_context.get("away_team_abbrev", "")
+    league_code = game_context.get("sport", "NBA")
+
+    for moment_index, moment in enumerate(enriched_moments):
+        if moment is None:
+            continue
+
+        # Get the last play index in this moment
+        play_ids = moment.get("play_ids", [])
+        if play_ids:
+            last_play_idx = max(play_ids)
+            box_score = compute_cumulative_box_score(
+                pbp_events,
+                last_play_idx,
+                home_team,
+                away_team,
+                league_code,
+                home_team_abbrev,
+                away_team_abbrev,
+            )
+            moment["cumulative_box_score"] = box_score
+
+    output.add_log(f"Attached cumulative box scores to {len([m for m in enriched_moments if m and m.get('cumulative_box_score')])} moments")
+
     output.data = {
         "rendered": True,
         "moments": enriched_moments,
@@ -676,28 +626,3 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
     }
 
     return output
-
-
-def _check_explicit_coverage(
-    narrative: str,
-    moment: dict[str, Any],
-    moment_plays: list[dict[str, Any]],
-) -> list[int]:
-    """Wrapper for check_explicit_play_coverage that returns missing play IDs.
-
-    Args:
-        narrative: The narrative text
-        moment: The moment data
-        moment_plays: PBP events for the moment
-
-    Returns:
-        List of missing play indices
-    """
-    explicit_ids = set(moment.get("explicitly_narrated_play_ids", []))
-    if not explicit_ids:
-        return []
-
-    all_covered, covered_ids, missing_ids = check_explicit_play_coverage(
-        narrative, explicit_ids, moment_plays
-    )
-    return list(missing_ids)

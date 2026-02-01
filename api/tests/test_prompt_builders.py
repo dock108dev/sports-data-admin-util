@@ -149,7 +149,7 @@ class TestBuildBatchPrompt:
         result = build_batch_prompt(moments_batch, game_context, is_retry=True)
 
         assert "IMPORTANT: Previous response failed validation" in result
-        assert "2-4 sentences" in result
+        assert "6-10 sentences" in result
 
     def test_no_retry_warning_by_default(self):
         """Non-retry prompts don't have warning."""
@@ -471,9 +471,9 @@ class TestBuildMomentPrompt:
 
         result = build_moment_prompt(moment, plays, game_context, moment_index=0)
 
-        # Specifies recap-only output and sentence count
+        # Specifies recap-only output and paragraph count
         assert "ONLY the recap text" in result
-        assert "2-3 sentences" in result
+        assert "2-3 paragraphs" in result
 
     def test_default_values(self):
         """Missing fields use defaults."""

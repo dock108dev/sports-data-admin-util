@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchGameStory } from "@/lib/api/sportsAdmin";
-import type { GameStoryResponse, StoryMoment, StoryPlay } from "@/lib/api/sportsAdmin/storyTypes";
+import type { GameStoryResponse, StoryMoment, StoryPlay, MomentBoxScore, MomentPlayerStat } from "@/lib/api/sportsAdmin/storyTypes";
 import { CollapsibleSection } from "./CollapsibleSection";
 import styles from "./styles.module.css";
 
@@ -16,6 +16,71 @@ type MomentCardProps = {
   momentIndex: number;
   plays: StoryPlay[];
 };
+
+function formatPlayerStats(player: MomentPlayerStat): string {
+  const parts: string[] = [];
+  // Basketball stats
+  if (player.pts != null && player.pts > 0) parts.push(`${player.pts} pts`);
+  if (player.reb != null && player.reb > 0) parts.push(`${player.reb} reb`);
+  if (player.ast != null && player.ast > 0) parts.push(`${player.ast} ast`);
+  if (player["3pm"] != null && player["3pm"] > 0) parts.push(`${player["3pm"]} 3pm`);
+  // Hockey stats
+  if (player.goals != null && player.goals > 0) parts.push(`${player.goals} G`);
+  if (player.assists != null && player.assists > 0) parts.push(`${player.assists} A`);
+  if (player.sog != null && player.sog > 0) parts.push(`${player.sog} SOG`);
+  return parts.join(", ");
+}
+
+function MiniBoxScore({ boxScore }: { boxScore: MomentBoxScore }) {
+  const hasPlayers = boxScore.home.players.length > 0 || boxScore.away.players.length > 0;
+
+  return (
+    <div className={styles.miniBoxScore}>
+      <div className={styles.miniBoxScoreTeams}>
+        <div className={styles.miniBoxScoreTeam}>
+          <div className={styles.miniBoxScoreHeader}>
+            <span className={styles.miniBoxScoreTeamName}>{boxScore.away.team}</span>
+            <span className={styles.miniBoxScoreScore}>{boxScore.away.score}</span>
+          </div>
+          {hasPlayers && boxScore.away.players.slice(0, 3).map((player, i) => (
+            <div key={i} className={styles.miniBoxScorePlayer}>
+              <span className={styles.miniBoxScorePlayerName}>{player.name}</span>
+              <span className={styles.miniBoxScorePlayerStats}>{formatPlayerStats(player)}</span>
+            </div>
+          ))}
+          {boxScore.away.goalie && (
+            <div className={styles.miniBoxScorePlayer}>
+              <span className={styles.miniBoxScorePlayerName}>{boxScore.away.goalie.name}</span>
+              <span className={styles.miniBoxScorePlayerStats}>
+                {boxScore.away.goalie.saves} SV, {boxScore.away.goalie.ga} GA
+              </span>
+            </div>
+          )}
+        </div>
+        <div className={styles.miniBoxScoreTeam}>
+          <div className={styles.miniBoxScoreHeader}>
+            <span className={styles.miniBoxScoreTeamName}>{boxScore.home.team}</span>
+            <span className={styles.miniBoxScoreScore}>{boxScore.home.score}</span>
+          </div>
+          {hasPlayers && boxScore.home.players.slice(0, 3).map((player, i) => (
+            <div key={i} className={styles.miniBoxScorePlayer}>
+              <span className={styles.miniBoxScorePlayerName}>{player.name}</span>
+              <span className={styles.miniBoxScorePlayerStats}>{formatPlayerStats(player)}</span>
+            </div>
+          ))}
+          {boxScore.home.goalie && (
+            <div className={styles.miniBoxScorePlayer}>
+              <span className={styles.miniBoxScorePlayerName}>{boxScore.home.goalie.name}</span>
+              <span className={styles.miniBoxScorePlayerStats}>
+                {boxScore.home.goalie.saves} SV, {boxScore.home.goalie.ga} GA
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function MomentCard({ moment, momentIndex, plays }: MomentCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -66,6 +131,10 @@ function MomentCard({ moment, momentIndex, plays }: MomentCardProps) {
       </div>
 
       <div className={styles.momentNarrative}>{moment.narrative}</div>
+
+      {moment.cumulativeBoxScore && (
+        <MiniBoxScore boxScore={moment.cumulativeBoxScore} />
+      )}
 
       {isExpanded && (
         <div className={styles.momentPlays}>

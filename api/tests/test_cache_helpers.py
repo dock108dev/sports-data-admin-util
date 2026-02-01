@@ -1,7 +1,7 @@
 """Tests for cache_helpers module."""
 
 import hashlib
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 

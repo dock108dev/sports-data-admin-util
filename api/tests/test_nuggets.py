@@ -1,7 +1,6 @@
 """Tests for game_metadata nuggets module."""
 
 from datetime import datetime
-from unittest.mock import MagicMock
 
 
 class TestNormalizeTags:

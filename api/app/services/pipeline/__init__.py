@@ -1,6 +1,6 @@
 """Game Pipeline Service.
 
-Pipeline framework for chapter generation stages.
+Pipeline framework for moment-based story generation.
 """
 
 from .executor import PipelineExecutor

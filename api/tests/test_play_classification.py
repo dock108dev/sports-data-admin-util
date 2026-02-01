@@ -296,8 +296,8 @@ class TestShouldStartNewMoment:
 
         prev = {"quarter": 1}
         curr = {"quarter": 1}
-        # SOFT_CAP_PLAYS is 8, so at 8 we should start new
-        assert should_start_new_moment(curr, prev, 8) is True
+        # SOFT_CAP_PLAYS is 30, so at 30 we should start new
+        assert should_start_new_moment(curr, prev, 30) is True
 
     def test_after_stoppage_starts_moment(self):
         """Play after stoppage starts a new moment."""

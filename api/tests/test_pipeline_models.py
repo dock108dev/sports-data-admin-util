@@ -214,7 +214,7 @@ class TestValidationOutput:
 
     def test_to_dict_minimal(self):
         """to_dict with minimal fields."""
-        from app.services.pipeline.models import ValidationOutput, QualityStatus
+        from app.services.pipeline.models import ValidationOutput
 
         output = ValidationOutput(
             passed=True,
@@ -234,7 +234,6 @@ class TestValidationOutput:
         """to_dict includes override when present."""
         from app.services.pipeline.models import (
             ValidationOutput,
-            QualityStatus,
             ScoreContinuityOverride,
         )
 

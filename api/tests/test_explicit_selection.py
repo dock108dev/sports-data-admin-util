@@ -60,8 +60,8 @@ class TestSelectExplicitlyNarratedPlays:
         result = select_explicitly_narrated_plays(moment_plays, all_events, 0)
         assert result == [3]
 
-    def test_max_two_explicit_plays(self):
-        """At most MAX_EXPLICIT_PLAYS_PER_MOMENT (2) plays selected."""
+    def test_max_five_explicit_plays(self):
+        """At most MAX_EXPLICIT_PLAYS_PER_MOMENT (5) plays selected."""
         from app.services.pipeline.stages.explicit_selection import (
             select_explicitly_narrated_plays,
         )
@@ -71,10 +71,13 @@ class TestSelectExplicitlyNarratedPlays:
             {"play_index": 2, "home_score": 2, "away_score": 0},  # Scoring
             {"play_index": 3, "home_score": 2, "away_score": 3},  # Scoring
             {"play_index": 4, "home_score": 5, "away_score": 3},  # Scoring
+            {"play_index": 5, "home_score": 7, "away_score": 3},  # Scoring
+            {"play_index": 6, "home_score": 7, "away_score": 5},  # Scoring
+            {"play_index": 7, "home_score": 9, "away_score": 5},  # Scoring
         ]
         all_events = moment_plays
         result = select_explicitly_narrated_plays(moment_plays, all_events, 0)
-        assert len(result) <= 2
+        assert len(result) <= 5
 
     def test_scoring_plays_preferred_over_notable(self):
         """Scoring plays are preferred over notable plays."""
@@ -121,7 +124,7 @@ class TestSelectExplicitlyNarratedPlays:
         assert result == [5]
 
     def test_multiple_notable_plays_capped(self):
-        """Multiple notable plays capped at max."""
+        """Multiple notable plays capped at max (5)."""
         from app.services.pipeline.stages.explicit_selection import (
             select_explicitly_narrated_plays,
         )
@@ -130,10 +133,14 @@ class TestSelectExplicitlyNarratedPlays:
             {"play_index": 1, "home_score": 0, "away_score": 0, "play_type": "block"},
             {"play_index": 2, "home_score": 0, "away_score": 0, "play_type": "steal"},
             {"play_index": 3, "home_score": 0, "away_score": 0, "play_type": "block"},
+            {"play_index": 4, "home_score": 0, "away_score": 0, "play_type": "steal"},
+            {"play_index": 5, "home_score": 0, "away_score": 0, "play_type": "block"},
+            {"play_index": 6, "home_score": 0, "away_score": 0, "play_type": "steal"},
+            {"play_index": 7, "home_score": 0, "away_score": 0, "play_type": "block"},
         ]
         all_events = moment_plays
         result = select_explicitly_narrated_plays(moment_plays, all_events, 0)
-        assert len(result) <= 2
+        assert len(result) <= 5
 
 
 class TestCountExplicitPlaysIfAdded:
