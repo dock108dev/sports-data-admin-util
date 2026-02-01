@@ -1,6 +1,5 @@
 """Tests for validation_base module."""
 
-import os
 import pytest
 
 

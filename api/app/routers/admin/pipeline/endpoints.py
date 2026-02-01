@@ -654,9 +654,9 @@ async def compare_stage_outputs(
     differences: dict[str, Any] = {}
 
     if stage == "GENERATE_MOMENTS":
-        chapters_a = output_a.get("chapter_count", 0)
-        chapters_b = output_b.get("chapter_count", 0)
-        differences["chapter_count_delta"] = chapters_b - chapters_a
+        moments_a = output_a.get("moment_count", len(output_a.get("moments", [])))
+        moments_b = output_b.get("moment_count", len(output_b.get("moments", [])))
+        differences["moment_count_delta"] = moments_b - moments_a
     elif stage == "VALIDATE_MOMENTS":
         differences["passed_a"] = output_a.get("passed", False)
         differences["passed_b"] = output_b.get("passed", False)

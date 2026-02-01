@@ -1,7 +1,6 @@
 """Tests for datetime_utils module."""
 
-from datetime import date, datetime, timezone, time
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, timezone
 
 
 class TestNowUtc:

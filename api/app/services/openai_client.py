@@ -1,8 +1,7 @@
 """
 OpenAI Client for Story Generation.
 
-Provides a simple wrapper around OpenAI API for chapter summaries,
-titles, and compact stories.
+Provides a simple wrapper around OpenAI API for narrative generation.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ class OpenAIClient:
     """OpenAI client for story generation.
 
     This client provides a simple .generate(prompt) interface
-    that the chapter generators expect.
+    for narrative rendering.
     """
 
     def __init__(self, api_key: str | None = None, model: str = "gpt-4o-mini"):
