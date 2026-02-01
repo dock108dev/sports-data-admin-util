@@ -79,7 +79,6 @@ from .coverage_helpers import (
     check_explicit_play_coverage,
     generate_deterministic_sentence,
     inject_missing_explicit_plays,
-    log_coverage_resolution,
     validate_narrative,
 )
 

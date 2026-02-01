@@ -109,9 +109,9 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
 **Implementation:** `stages/render_narratives.py`
 
 **OpenAI Usage:**
-- One API call per moment
-- Input: Play descriptions, scores, clock values
-- Output: Narrative string describing the plays
+- Moments batched (up to 15 per call) for efficiency
+- Input: Play descriptions, scores, clock values per batch
+- Output: Narrative strings for all moments in the batch
 
 **Constraints:**
 - OpenAI only writes prose - it does not decide moment boundaries
@@ -192,7 +192,7 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
 
 ## Story Output
 
-The final story is an ordered list of condensed moments matching the [Story Contract](story_contract.md).
+The final story is an ordered list of condensed moments matching the [Story Contract](STORY_CONTRACT.md).
 
 ### API Access
 
@@ -234,6 +234,6 @@ has_story = moments_json IS NOT NULL
 
 ## See Also
 
-- [story_contract.md](story_contract.md) - Authoritative story specification
-- [pbp_story_assumptions.md](pbp_story_assumptions.md) - PBP data requirements
+- [STORY_CONTRACT.md](STORY_CONTRACT.md) - Authoritative story specification
+- [PBP_STORY_ASSUMPTIONS.md](PBP_STORY_ASSUMPTIONS.md) - PBP data requirements
 - [API.md](API.md) - Complete API reference

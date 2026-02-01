@@ -31,6 +31,6 @@ All notable changes to Sports Data Admin.
 
 ### Documentation
 
-- [story_contract.md](story_contract.md) - Authoritative story specification
+- [STORY_CONTRACT.md](STORY_CONTRACT.md) - Authoritative story specification
 - [STORY_PIPELINE.md](STORY_PIPELINE.md) - Pipeline stages and implementation
 - [NARRATIVE_TIME_MODEL.md](NARRATIVE_TIME_MODEL.md) - Timeline ordering model

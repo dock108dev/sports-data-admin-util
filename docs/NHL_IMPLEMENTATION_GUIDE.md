@@ -67,12 +67,14 @@ NBA_HALFTIME_REAL_SECONDS = 15 * 60
 # Quarter detection: play.quarter == 1 → "q1", etc.
 ```
 
-### NHL Structure (TO IMPLEMENT)
+### NHL Structure (IMPLEMENTED)
 ```python
-# NHL constants (to add)
-NHL_PERIOD_GAME_SECONDS = 20 * 60  # 1200 seconds
-NHL_REGULATION_REAL_SECONDS = 90 * 60  # ~90 min including stoppages
-NHL_INTERMISSION_REAL_SECONDS = 18 * 60
+# NHL constants (in normalize_pbp.py)
+NHL_PERIOD_GAME_SECONDS = 20 * 60        # 1200 seconds
+NHL_REGULATION_REAL_SECONDS = 90 * 60    # ~90 min including stoppages
+NHL_INTERMISSION_REAL_SECONDS = 18 * 60  # 18-minute intermissions
+NHL_OT_GAME_SECONDS = 5 * 60             # 5-minute OT (regular season)
+NHL_PLAYOFF_OT_GAME_SECONDS = 20 * 60    # 20-minute playoff OT
 
 # Phases: pregame, p1, p2, int1, p3, ot, shootout, postgame
 # Period detection: play.quarter == 1 → "p1", etc.
@@ -88,11 +90,11 @@ NHL_INTERMISSION_REAL_SECONDS = 18 * 60
 | play.quarter = 1-4 + OT | play.quarter = 1-3, 4=OT, 5=SO |
 
 ### Action Required
-- [ ] Add `_nhl_phase_for_period()` function
-- [ ] Add `_nhl_block_for_period()` function
-- [ ] Add `_nhl_period_start()` function
+- [x] Add `_nhl_phase_for_period()` function ✅ (in `normalize_pbp.py`)
+- [x] Add `_nhl_block_for_period()` function ✅ (in `normalize_pbp.py`)
+- [x] Add `_nhl_period_start()` function ✅ (in `normalize_pbp.py`)
 - [ ] Add `build_nhl_timeline()` function (parallel to `build_nba_timeline()`)
-- [ ] Handle shootout as distinct phase
+- [x] Handle shootout as distinct phase ✅ (period 5 = shootout)
 
 ---
 
@@ -123,9 +125,9 @@ async def generate_timeline_artifact(...):
 | `build_nba_summary()` | Summary generation | `build_nhl_summary()` |
 
 ### Action Required
-- [ ] Create `build_nhl_timeline()` function
-- [ ] Add NHL phase/period mapping functions
-- [ ] Handle OT + shootout phases
+- [ ] Create `build_nhl_timeline()` function (not yet needed for story pipeline)
+- [x] Add NHL phase/period mapping functions ✅ (in `normalize_pbp.py`)
+- [x] Handle OT + shootout phases ✅ (shootout = period 5)
 - [ ] Update `generate_timeline_artifact()` to dispatch by league
 
 ---
@@ -407,25 +409,20 @@ PHASE_ORDER = {
 }
 ```
 
-### NHL Phase Boundaries (TO ADD)
+### NHL Phase Boundaries (IMPLEMENTED)
 ```python
-NHL_PHASE_ORDER = {
-    "pregame": 0,
-    "p1": 1,          # 1st period
-    "int1": 2,        # 1st intermission
-    "p2": 3,          # 2nd period
-    "int2": 4,        # 2nd intermission
-    "p3": 5,          # 3rd period
-    "ot": 6,          # Overtime (5 min 3-on-3)
-    "shootout": 7,    # Shootout
-    "postgame": 99,
-}
+# In _compute_nhl_phase_boundaries() in normalize_pbp.py
+# Phases computed: p1, int1, p2, int2, p3, ot, shootout
+# Phase mapping via _nhl_phase_for_period():
+#   period 1 → "p1", period 2 → "p2", period 3 → "p3"
+#   period 4 → "ot", period 5 → "shootout"
+#   period 6+ → "ot2", "ot3", etc. (playoff extended OT)
 ```
 
 ### Action Required
-- [ ] Add NHL_PHASE_ORDER constant
-- [ ] Map period numbers to phase codes
-- [ ] Handle intermissions as phases (like halftime)
+- [x] Add NHL phase boundary computation ✅ (`_compute_nhl_phase_boundaries()`)
+- [x] Map period numbers to phase codes ✅ (`_nhl_phase_for_period()`)
+- [x] Handle intermissions as phases ✅ (int1, int2 computed)
 
 ---
 
@@ -458,8 +455,8 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 ```
 
 ### Action Required
-- [ ] Add `NHL_PERIOD_GAME_SECONDS = 1200` constant
-- [ ] Use in intra-phase ordering calculations
+- [x] Add `NHL_PERIOD_GAME_SECONDS = 1200` constant ✅ (in `normalize_pbp.py`)
+- [x] Use in intra-phase ordering calculations ✅ (in `_build_pbp_events()`)
 
 ---
 
@@ -472,10 +469,10 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 - [ ] Verify NHL social scraping works
 
 ### Phase 2: Timeline Generation
-- [ ] Add NHL phase/period mapping functions
-- [ ] Add NHL timing constants
+- [x] Add NHL phase/period mapping functions ✅
+- [x] Add NHL timing constants ✅
 - [ ] Create `build_nhl_timeline()` function
-- [ ] Handle shootout as distinct phase
+- [x] Handle shootout as distinct phase ✅
 - [ ] Update `generate_timeline_artifact()` to support NHL
 
 ### Phase 3: Moment Detection
@@ -499,15 +496,17 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 
 ## 13. Files to Modify
 
-| File | Changes |
-|------|---------|
-| `api/app/services/timeline_generator.py` | Add NHL functions, update dispatch |
-| `api/app/services/moments/` | Add NHL high-impact types to config |
-| `api/app/services/summary_builder.py` | Add `build_nhl_summary()` |
-| `api/app/services/game_analysis.py` | Add NHL thresholds reference |
-| `api/app/config_sports.py` | Already has NHL config ✅ |
-| `scraper/sports_scraper/config_sports.py` | Already has NHL config ✅ |
-| Database | Seed NHL thresholds |
+| File | Changes | Status |
+|------|---------|--------|
+| `api/app/services/pipeline/stages/normalize_pbp.py` | NHL phase/timing/constants | ✅ Done |
+| `api/app/services/pipeline/stages/prompt_builders.py` | NHL period formatting | ✅ Done |
+| `api/app/services/timeline_generator.py` | Add NHL functions, update dispatch | Pending |
+| `api/app/services/moments/` | Add NHL high-impact types to config | Pending |
+| `api/app/services/summary_builder.py` | Add `build_nhl_summary()` | Pending |
+| `api/app/services/game_analysis.py` | Add NHL thresholds reference | Pending |
+| `api/app/config_sports.py` | Already has NHL config | ✅ Done |
+| `scraper/sports_scraper/config_sports.py` | Already has NHL config | ✅ Done |
+| Database | Seed NHL thresholds | Pending |
 
 ---
 

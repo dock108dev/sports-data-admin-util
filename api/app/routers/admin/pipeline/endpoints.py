@@ -751,6 +751,7 @@ async def bulk_generate_async(
         end_date=end_dt,
         leagues=request.leagues,
         force_regenerate=request.force,
+        max_games=request.max_games,
         triggered_by="admin",
     )
     session.add(job)

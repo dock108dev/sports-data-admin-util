@@ -14,6 +14,34 @@ from .game_stats_helpers import (
 )
 
 
+def _format_period(period: int, league_code: str = "NBA") -> str:
+    """Format period for display based on league.
+
+    Args:
+        period: Period number (1, 2, 3, etc.)
+        league_code: League code (NBA, NCAAB, NHL, etc.)
+
+    Returns:
+        Formatted period string (Q1-Q4, H1-H2, P1-P3, OT, SO, etc.)
+    """
+    if league_code == "NHL":
+        if period <= 3:
+            return f"P{period}"  # P1, P2, P3
+        if period == 4:
+            return "OT"
+        if period == 5:
+            return "SO"  # Shootout
+        return f"OT{period - 3}"  # Extended OT (playoffs): OT2, OT3, etc.
+    if league_code == "NCAAB":
+        if period <= 2:
+            return f"H{period}"
+        return f"OT{period - 2}"
+    # NBA/default: quarters
+    if period <= 4:
+        return f"Q{period}"
+    return f"OT{period - 4}"
+
+
 def build_batch_prompt(
     moments_batch: list[tuple[int, dict[str, Any], list[dict[str, Any]]]],
     game_context: dict[str, str],
@@ -37,6 +65,7 @@ def build_batch_prompt(
     home_team = game_context.get("home_team_name", "Home")
     away_team = game_context.get("away_team_name", "Away")
     player_names = game_context.get("player_names", {})
+    league_code = game_context.get("sport", "NBA")
 
     # Build player name reference for the prompt (abbrev -> full name)
     name_mappings = []
@@ -82,7 +111,7 @@ def build_batch_prompt(
             play_index = play.get("play_index")
             is_explicit = play_index in explicitly_narrated
             star = "*" if is_explicit else ""
-            desc = play.get("description", "")
+            desc = play.get("description") or ""
             if len(desc) > 100:
                 desc = desc[:97] + "..."
             plays_compact.append(f"{star}{desc}")
@@ -102,9 +131,10 @@ def build_batch_prompt(
         context_line = f" [{', '.join(context_parts)}]" if context_parts else ""
 
         # Use clear boundary format to prevent AI from mixing up plays
+        period_str = _format_period(period, league_code)
         moments_lines.append(
             f"---MOMENT {moment_index}---\n"
-            f"Q{period} {clock} | {away_team} {score_before[0]}-{score_before[1]} {home_team}{score_change}{context_line}\n"
+            f"{period_str} {clock} | {away_team} {score_before[0]}-{score_before[1]} {home_team}{score_change}{context_line}\n"
             f"PLAYS FOR THIS MOMENT ONLY: {plays_str}\n"
             f"---END MOMENT {moment_index}---"
         )
@@ -185,6 +215,7 @@ def build_moment_prompt(
     home_team = game_context.get("home_team_name", "Home")
     away_team = game_context.get("away_team_name", "Away")
     player_names = game_context.get("player_names", {})
+    league_code = game_context.get("sport", "NBA")
 
     period = moment.get("period", 1)
     clock = moment.get("start_clock", "")
@@ -203,7 +234,7 @@ def build_moment_prompt(
         play_index = play.get("play_index")
         is_explicit = play_index in explicitly_narrated
         marker = "*" if is_explicit else ""
-        desc = play.get("description", "No description")
+        desc = play.get("description") or "No description"
         plays_desc.append(f"  {marker}{desc}")
 
     plays_block = "\n".join(plays_desc)
@@ -232,9 +263,10 @@ def build_moment_prompt(
     else:
         margin_ctx = "Game tied"
 
+    period_str = _format_period(period, league_code)
     prompt = f"""Write a broadcast-style recap (2-3 sentences). {away_team} vs {home_team}.
 {retry_note}
-Q{period} at {clock}
+{period_str} at {clock}
 Score: {away_team} {score_before[0]}-{score_before[1]} {home_team} → {away_team} {score_after[0]}-{score_after[1]} {home_team}
 Scoring: {away_team} +{away_pts}, {home_team} +{home_pts}. {margin_ctx}.
 

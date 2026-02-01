@@ -29,6 +29,25 @@ NBA_REGULATION_REAL_SECONDS = 75 * 60
 NBA_HALFTIME_REAL_SECONDS = 15 * 60
 NBA_QUARTER_REAL_SECONDS = NBA_REGULATION_REAL_SECONDS // 4
 NBA_QUARTER_GAME_SECONDS = 12 * 60
+NBA_OT_GAME_SECONDS = 5 * 60             # 5-minute OT periods
+NBA_OT_REAL_SECONDS = 10 * 60            # ~10 min real time per OT
+
+# NCAAB Constants (20-minute halves)
+NCAAB_REGULATION_REAL_SECONDS = 75 * 60  # ~75 min real time (similar to NBA)
+NCAAB_HALFTIME_REAL_SECONDS = 20 * 60    # 20-minute halftime
+NCAAB_HALF_REAL_SECONDS = NCAAB_REGULATION_REAL_SECONDS // 2
+NCAAB_HALF_GAME_SECONDS = 20 * 60        # 20 min per half
+NCAAB_OT_GAME_SECONDS = 5 * 60           # 5-minute OT periods
+NCAAB_OT_REAL_SECONDS = 10 * 60          # ~10 min real time per OT
+
+# NHL Constants (20-minute periods)
+NHL_REGULATION_REAL_SECONDS = 90 * 60    # ~90 min real time for 3 periods
+NHL_INTERMISSION_REAL_SECONDS = 18 * 60  # 18-minute intermissions
+NHL_PERIOD_REAL_SECONDS = NHL_REGULATION_REAL_SECONDS // 3
+NHL_PERIOD_GAME_SECONDS = 20 * 60        # 20 min per period
+NHL_OT_GAME_SECONDS = 5 * 60             # 5-minute OT (regular season)
+NHL_OT_REAL_SECONDS = 10 * 60            # ~10 min real time per OT
+NHL_PLAYOFF_OT_GAME_SECONDS = 20 * 60    # 20-minute playoff OT periods
 
 # Social post time windows
 SOCIAL_PREGAME_WINDOW_SECONDS = 2 * 60 * 60
@@ -69,6 +88,56 @@ def _nba_block_for_quarter(quarter: int | None) -> str:
     return "overtime"
 
 
+def _ncaab_phase_for_period(period: int | None) -> str:
+    """Map NCAAB period to narrative phase (h1, h2, ot1, etc.)."""
+    if period is None:
+        return "unknown"
+    if period == 1:
+        return "h1"
+    if period == 2:
+        return "h2"
+    return f"ot{period - 2}" if period > 2 else "unknown"
+
+
+def _ncaab_block_for_period(period: int | None) -> str:
+    """Map NCAAB period to game block."""
+    if period is None:
+        return "unknown"
+    if period == 1:
+        return "first_half"
+    if period == 2:
+        return "second_half"
+    return "overtime"
+
+
+def _nhl_phase_for_period(period: int | None) -> str:
+    """Map NHL period to narrative phase (p1, p2, p3, ot, shootout)."""
+    if period is None:
+        return "unknown"
+    if period == 1:
+        return "p1"
+    if period == 2:
+        return "p2"
+    if period == 3:
+        return "p3"
+    if period == 4:
+        return "ot"
+    if period == 5:
+        return "shootout"
+    return f"ot{period - 3}"  # Extended OT (playoffs)
+
+
+def _nhl_block_for_period(period: int | None) -> str:
+    """Map NHL period to game block."""
+    if period is None:
+        return "unknown"
+    if period <= 3:
+        return "regulation"
+    if period == 4:
+        return "overtime"
+    return "shootout" if period == 5 else "overtime"
+
+
 def _nba_quarter_start(game_start: datetime, quarter: int) -> datetime:
     """Calculate when a quarter starts in real time."""
     if quarter == 1:
@@ -106,6 +175,78 @@ def _nba_game_end(
     ot_count = max_quarter - 4
     return game_start + timedelta(
         seconds=NBA_REGULATION_REAL_SECONDS + ot_count * 15 * 60
+    )
+
+
+def _ncaab_period_start(game_start: datetime, period: int) -> datetime:
+    """Calculate when a NCAAB period starts in real time."""
+    if period == 1:
+        return game_start
+    if period == 2:
+        return game_start + timedelta(
+            seconds=NCAAB_HALF_REAL_SECONDS + NCAAB_HALFTIME_REAL_SECONDS
+        )
+    # Overtime periods (~10 min real per OT)
+    ot_num = period - 2
+    return game_start + timedelta(
+        seconds=NCAAB_REGULATION_REAL_SECONDS + ot_num * 10 * 60
+    )
+
+
+def _ncaab_game_end(
+    game_start: datetime, plays: Sequence[db_models.SportsGamePlay]
+) -> datetime:
+    """Calculate NCAAB game end time based on plays."""
+    max_period = 2
+    for play in plays:
+        if play.quarter and play.quarter > max_period:
+            max_period = play.quarter
+
+    if max_period <= 2:
+        return game_start + timedelta(seconds=NCAAB_REGULATION_REAL_SECONDS)
+
+    # Has overtime
+    ot_count = max_period - 2
+    return game_start + timedelta(
+        seconds=NCAAB_REGULATION_REAL_SECONDS + ot_count * 10 * 60
+    )
+
+
+def _nhl_period_start(game_start: datetime, period: int) -> datetime:
+    """Calculate when an NHL period starts in real time."""
+    if period == 1:
+        return game_start
+    if period == 2:
+        return game_start + timedelta(
+            seconds=NHL_PERIOD_REAL_SECONDS + NHL_INTERMISSION_REAL_SECONDS
+        )
+    if period == 3:
+        return game_start + timedelta(
+            seconds=2 * NHL_PERIOD_REAL_SECONDS + 2 * NHL_INTERMISSION_REAL_SECONDS
+        )
+    # Overtime and shootout (~10 min real per OT/shootout period)
+    ot_num = period - 3
+    return game_start + timedelta(
+        seconds=NHL_REGULATION_REAL_SECONDS + ot_num * 10 * 60
+    )
+
+
+def _nhl_game_end(
+    game_start: datetime, plays: Sequence[db_models.SportsGamePlay]
+) -> datetime:
+    """Calculate NHL game end time based on plays."""
+    max_period = 3
+    for play in plays:
+        if play.quarter and play.quarter > max_period:
+            max_period = play.quarter
+
+    if max_period <= 3:
+        return game_start + timedelta(seconds=NHL_REGULATION_REAL_SECONDS)
+
+    # Has overtime or shootout
+    ot_count = max_period - 3
+    return game_start + timedelta(
+        seconds=NHL_REGULATION_REAL_SECONDS + ot_count * 10 * 60
     )
 
 
@@ -158,6 +299,106 @@ def _compute_phase_boundaries(
     return boundaries
 
 
+def _compute_ncaab_phase_boundaries(
+    game_start: datetime, has_overtime: bool = False
+) -> dict[str, tuple[datetime, datetime]]:
+    """Compute start/end times for each NCAAB narrative phase."""
+    boundaries: dict[str, tuple[datetime, datetime]] = {}
+
+    # Pregame: 2 hours before to game start
+    pregame_start = game_start - timedelta(seconds=SOCIAL_PREGAME_WINDOW_SECONDS)
+    boundaries["pregame"] = (pregame_start, game_start)
+
+    # H1 (first half)
+    h1_start = game_start
+    h1_end = game_start + timedelta(seconds=NCAAB_HALF_REAL_SECONDS)
+    boundaries["h1"] = (h1_start, h1_end)
+
+    # Halftime
+    halftime_start = h1_end
+    halftime_end = halftime_start + timedelta(seconds=NCAAB_HALFTIME_REAL_SECONDS)
+    boundaries["halftime"] = (halftime_start, halftime_end)
+
+    # H2 (second half)
+    h2_start = halftime_end
+    h2_end = h2_start + timedelta(seconds=NCAAB_HALF_REAL_SECONDS)
+    boundaries["h2"] = (h2_start, h2_end)
+
+    # Overtime periods (if applicable)
+    if has_overtime:
+        ot_start = h2_end
+        for i in range(1, 5):  # Up to 4 OT periods
+            ot_end = ot_start + timedelta(seconds=10 * 60)  # ~10 min real per OT
+            boundaries[f"ot{i}"] = (ot_start, ot_end)
+            ot_start = ot_end
+        boundaries["postgame"] = (ot_start, ot_start + timedelta(hours=2))
+    else:
+        boundaries["postgame"] = (h2_end, h2_end + timedelta(hours=2))
+
+    return boundaries
+
+
+def _compute_nhl_phase_boundaries(
+    game_start: datetime,
+    has_overtime: bool = False,
+    has_shootout: bool = False,
+) -> dict[str, tuple[datetime, datetime]]:
+    """Compute start/end times for each NHL narrative phase.
+
+    NHL has 3 periods with 2 intermissions, plus optional OT and shootout.
+    """
+    boundaries: dict[str, tuple[datetime, datetime]] = {}
+
+    # Pregame: 2 hours before to game start
+    pregame_start = game_start - timedelta(seconds=SOCIAL_PREGAME_WINDOW_SECONDS)
+    boundaries["pregame"] = (pregame_start, game_start)
+
+    # P1 (first period)
+    p1_start = game_start
+    p1_end = game_start + timedelta(seconds=NHL_PERIOD_REAL_SECONDS)
+    boundaries["p1"] = (p1_start, p1_end)
+
+    # First intermission
+    int1_start = p1_end
+    int1_end = int1_start + timedelta(seconds=NHL_INTERMISSION_REAL_SECONDS)
+    boundaries["int1"] = (int1_start, int1_end)
+
+    # P2 (second period)
+    p2_start = int1_end
+    p2_end = p2_start + timedelta(seconds=NHL_PERIOD_REAL_SECONDS)
+    boundaries["p2"] = (p2_start, p2_end)
+
+    # Second intermission
+    int2_start = p2_end
+    int2_end = int2_start + timedelta(seconds=NHL_INTERMISSION_REAL_SECONDS)
+    boundaries["int2"] = (int2_start, int2_end)
+
+    # P3 (third period)
+    p3_start = int2_end
+    p3_end = p3_start + timedelta(seconds=NHL_PERIOD_REAL_SECONDS)
+    boundaries["p3"] = (p3_start, p3_end)
+
+    # Overtime (if applicable)
+    if has_overtime:
+        ot_start = p3_end
+        ot_end = ot_start + timedelta(seconds=10 * 60)  # ~10 min real for OT
+        boundaries["ot"] = (ot_start, ot_end)
+        last_end = ot_end
+    else:
+        last_end = p3_end
+
+    # Shootout (if applicable)
+    if has_shootout:
+        so_start = last_end
+        so_end = so_start + timedelta(seconds=10 * 60)  # ~10 min for shootout
+        boundaries["shootout"] = (so_start, so_end)
+        last_end = so_end
+
+    boundaries["postgame"] = (last_end, last_end + timedelta(hours=2))
+
+    return boundaries
+
+
 def _progress_from_index(index: int, total: int) -> float:
     """Calculate progress through the game based on play index."""
     if total <= 1:
@@ -169,11 +410,12 @@ def _build_pbp_events(
     plays: Sequence[db_models.SportsGamePlay],
     game_start: datetime,
     game_id: int | None = None,
+    league_code: str = "NBA",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build normalized PBP events with phase assignment and synthetic timestamps.
 
     Each event includes:
-    - phase: Narrative phase (q1, q2, etc.)
+    - phase: Narrative phase (q1, q2, h1, h2, etc. depending on league)
     - intra_phase_order: Sort key within phase (clock-based)
     - synthetic_timestamp: Computed wall-clock time for display
 
@@ -183,6 +425,12 @@ def _build_pbp_events(
     are invalid. This function detects and corrects these score resets by
     carrying forward the last known valid score.
 
+    Args:
+        plays: Sequence of play records
+        game_start: Game start timestamp
+        game_id: Optional game ID for logging
+        league_code: League code (NBA, NCAAB, etc.)
+
     Returns:
         Tuple of (events, score_violations) where score_violations is a list
         of detected score reset violations for logging/debugging.
@@ -191,32 +439,99 @@ def _build_pbp_events(
     score_violations: list[dict[str, Any]] = []
     total_plays = len(plays)
 
+    # League-specific configuration
+    is_ncaab = league_code == "NCAAB"
+    is_nhl = league_code == "NHL"
+
+    if is_nhl:
+        num_regulation_periods = 3
+    elif is_ncaab:
+        num_regulation_periods = 2
+    else:
+        num_regulation_periods = 4
+
     # Track last known valid scores (cumulative, never reset)
     last_valid_home_score = 0
     last_valid_away_score = 0
 
     for idx, play in enumerate(plays):
-        quarter = play.quarter or 1
-        phase = _nba_phase_for_quarter(quarter)
-        block = _nba_block_for_quarter(quarter)
+        period = play.quarter or 1
+
+        # League-specific phase/block mapping
+        if is_nhl:
+            phase = _nhl_phase_for_period(period)
+            block = _nhl_block_for_period(period)
+        elif is_ncaab:
+            phase = _ncaab_phase_for_period(period)
+            block = _ncaab_block_for_period(period)
+        else:
+            phase = _nba_phase_for_quarter(period)
+            block = _nba_block_for_quarter(period)
+
+        # Determine period-specific timing (regulation vs OT)
+        is_overtime = period > num_regulation_periods
+        is_shootout = is_nhl and period == 5
+
+        if is_shootout:
+            # NHL shootout has no game clock - use play index for ordering
+            period_game_seconds = 0
+            period_real_seconds = NHL_OT_REAL_SECONDS
+        elif is_nhl:
+            if is_overtime:
+                # NHL regular season OT is 5 min; playoff OT is 20 min
+                # Period 4 = OT1 (5 min regular season), periods 6+ = playoff OT (20 min)
+                if period == 4:
+                    period_game_seconds = NHL_OT_GAME_SECONDS
+                    period_real_seconds = NHL_OT_REAL_SECONDS
+                else:
+                    # Playoff extended OT (20-minute periods)
+                    period_game_seconds = NHL_PLAYOFF_OT_GAME_SECONDS
+                    period_real_seconds = NHL_PERIOD_REAL_SECONDS
+            else:
+                period_game_seconds = NHL_PERIOD_GAME_SECONDS
+                period_real_seconds = NHL_PERIOD_REAL_SECONDS
+        elif is_ncaab:
+            if is_overtime:
+                period_game_seconds = NCAAB_OT_GAME_SECONDS
+                period_real_seconds = NCAAB_OT_REAL_SECONDS
+            else:
+                period_game_seconds = NCAAB_HALF_GAME_SECONDS
+                period_real_seconds = NCAAB_HALF_REAL_SECONDS
+        else:
+            # NBA
+            if is_overtime:
+                period_game_seconds = NBA_OT_GAME_SECONDS
+                period_real_seconds = NBA_OT_REAL_SECONDS
+            else:
+                period_game_seconds = NBA_QUARTER_GAME_SECONDS
+                period_real_seconds = NBA_QUARTER_REAL_SECONDS
 
         # Parse game clock
         clock_seconds = parse_clock_to_seconds(play.game_clock)
-        if clock_seconds is None:
+        if clock_seconds is None or is_shootout:
+            # No clock (or shootout) - use play index for ordering
             intra_phase_order = play.play_index
             progress = _progress_from_index(play.play_index, total_plays)
         else:
-            # Invert clock: 12:00 (720s) -> 0, 0:00 -> 720
-            intra_phase_order = NBA_QUARTER_GAME_SECONDS - clock_seconds
-            progress = (quarter - 1 + (1 - clock_seconds / 720)) / 4
+            # Invert clock: period_game_seconds -> 0, 0:00 -> period_game_seconds
+            intra_phase_order = period_game_seconds - clock_seconds
+            progress = (period - 1 + (1 - clock_seconds / period_game_seconds)) / num_regulation_periods
 
         # Compute synthetic timestamp
-        quarter_start = _nba_quarter_start(game_start, quarter)
-        elapsed_in_quarter = NBA_QUARTER_GAME_SECONDS - (clock_seconds or 0)
-        real_elapsed = elapsed_in_quarter * (
-            NBA_QUARTER_REAL_SECONDS / NBA_QUARTER_GAME_SECONDS
-        )
-        synthetic_ts = quarter_start + timedelta(seconds=real_elapsed)
+        if is_nhl:
+            period_start = _nhl_period_start(game_start, period)
+        elif is_ncaab:
+            period_start = _ncaab_period_start(game_start, period)
+        else:
+            period_start = _nba_quarter_start(game_start, period)
+
+        if is_shootout or period_game_seconds == 0:
+            # Shootout has no clock - distribute plays evenly across the period
+            real_elapsed = period_real_seconds * (play.play_index / max(total_plays, 1))
+        else:
+            elapsed_in_period = period_game_seconds - (clock_seconds or 0)
+            real_elapsed = elapsed_in_period * (period_real_seconds / period_game_seconds)
+        synthetic_ts = period_start + timedelta(seconds=real_elapsed)
 
         # Extract team abbreviation from relationship
         team_abbrev = None
@@ -228,8 +543,8 @@ def _build_pbp_events(
         raw_home = play.home_score
         raw_away = play.away_score
 
-        # Determine if this is the true game start (first play of Q1)
-        is_true_game_start = idx == 0 and quarter == 1
+        # Determine if this is the true game start (first play of period 1)
+        is_true_game_start = idx == 0 and period == 1
 
         # Check for score reset violations
         if raw_home is not None and raw_away is not None:
@@ -249,11 +564,11 @@ def _build_pbp_events(
                     "type": "SCORE_RESET",
                     "game_id": game_id,
                     "play_index": play.play_index,
-                    "period": quarter,
+                    "period": period,
                     "game_clock": play.game_clock,
                     "raw_scores": [raw_home, raw_away],
                     "carried_scores": [last_valid_home_score, last_valid_away_score],
-                    "message": f"Score reset from [{last_valid_home_score}, {last_valid_away_score}] to [0, 0] at period {quarter}",
+                    "message": f"Score reset from [{last_valid_home_score}, {last_valid_away_score}] to [0, 0] at period {period}",
                 })
                 # Carry forward - do NOT update last_valid scores
             elif is_score_decrease and not is_true_game_start:
@@ -262,7 +577,7 @@ def _build_pbp_events(
                     "type": "SCORE_DECREASE",
                     "game_id": game_id,
                     "play_index": play.play_index,
-                    "period": quarter,
+                    "period": period,
                     "game_clock": play.game_clock,
                     "raw_scores": [raw_home, raw_away],
                     "carried_scores": [last_valid_home_score, last_valid_away_score],
@@ -282,7 +597,7 @@ def _build_pbp_events(
                     "type": "SCORE_DECREASE",
                     "game_id": game_id,
                     "play_index": play.play_index,
-                    "period": quarter,
+                    "period": period,
                     "raw_scores": [raw_home, raw_away],
                     "carried_scores": [last_valid_home_score, last_valid_away_score],
                 })
@@ -295,7 +610,7 @@ def _build_pbp_events(
                     "type": "SCORE_DECREASE",
                     "game_id": game_id,
                     "play_index": play.play_index,
-                    "period": quarter,
+                    "period": period,
                     "raw_scores": [raw_home, raw_away],
                     "carried_scores": [last_valid_home_score, last_valid_away_score],
                 })
@@ -306,7 +621,7 @@ def _build_pbp_events(
             "phase": phase,
             "intra_phase_order": intra_phase_order,
             "play_index": play.play_index,
-            "quarter": quarter,
+            "quarter": period,  # Keep "quarter" key for compatibility but use period value
             "block": block,
             "game_clock": play.game_clock,
             "description": play.description,
@@ -416,7 +731,9 @@ async def execute_normalize_pbp(
     if not game.is_final:
         raise ValueError(f"Game {game_id} is not final (status: {game.status})")
 
-    output.add_log(f"Game found: {game.away_team.name} @ {game.home_team.name}")
+    # Get league code for sport-specific handling
+    league_code = game.league.code if game.league else "NBA"
+    output.add_log(f"Game found: {game.away_team.name} @ {game.home_team.name} ({league_code})")
 
     # Fetch plays with team relationship
     plays_result = await session.execute(
@@ -496,17 +813,35 @@ async def execute_normalize_pbp(
     except Exception as e:
         output.add_log(f"Warning: Failed to persist entity resolutions: {e}", "warning")
 
-    # Compute game timing
+    # Compute game timing (league-specific)
     game_start = game.start_time
-    game_end = _nba_game_end(game_start, plays)
-    has_overtime = any((play.quarter or 0) > 4 for play in plays)
+    is_ncaab = league_code == "NCAAB"
+    is_nhl = league_code == "NHL"
+
+    if is_nhl:
+        regulation_periods = 3
+    elif is_ncaab:
+        regulation_periods = 2
+    else:
+        regulation_periods = 4
+
+    if is_nhl:
+        game_end = _nhl_game_end(game_start, plays)
+    elif is_ncaab:
+        game_end = _ncaab_game_end(game_start, plays)
+    else:
+        game_end = _nba_game_end(game_start, plays)
+
+    has_overtime = any((play.quarter or 0) > regulation_periods for play in plays)
 
     output.add_log(f"Game timing: {game_start.isoformat()} to {game_end.isoformat()}")
     if has_overtime:
         output.add_log("Game went to overtime")
 
     # Build normalized PBP events with score continuity enforcement
-    pbp_events, score_violations = _build_pbp_events(plays, game_start, game_id)
+    pbp_events, score_violations = _build_pbp_events(
+        plays, game_start, game_id, league_code=league_code
+    )
 
     output.add_log(f"Normalized {len(pbp_events)} PBP events")
 
@@ -528,8 +863,17 @@ async def execute_normalize_pbp(
                 "warning",
             )
 
-    # Compute phase boundaries for later use
-    phase_boundaries = _compute_phase_boundaries(game_start, has_overtime)
+    # Compute phase boundaries for later use (league-specific)
+    if is_nhl:
+        # Check for shootout (period 5)
+        has_shootout = any((play.quarter or 0) == 5 for play in plays)
+        phase_boundaries = _compute_nhl_phase_boundaries(
+            game_start, has_overtime, has_shootout
+        )
+    elif is_ncaab:
+        phase_boundaries = _compute_ncaab_phase_boundaries(game_start, has_overtime)
+    else:
+        phase_boundaries = _compute_phase_boundaries(game_start, has_overtime)
 
     # Convert datetime boundaries to ISO strings for JSON serialization
     phase_boundaries_str = {
@@ -553,6 +897,7 @@ async def execute_normalize_pbp(
                 "phase_boundaries": phase_boundaries_str,
                 "home_team": game.home_team.name if game.home_team else None,
                 "away_team": game.away_team.name if game.away_team else None,
+                "league_code": league_code,
             },
             resolution_stats=resolution_stats,
         )

@@ -48,8 +48,11 @@ app.conf.task_routes = {
 # Timeline generation runs 90 minutes after ingestion to allow scraping to complete.
 # It processes games missing timelines (newly completed games with PBP data).
 #
-# NBA Flow generation runs 15 minutes after timeline generation (when NCAAB is done).
-# It generates AI flows for NBA games in the last 72 hours. Skips existing flows.
+# Flow generation runs in sequence, 15 minutes apart:
+#   7:15 AM EST - NBA flow generation
+#   7:30 AM EST - NHL flow generation
+#   7:45 AM EST - NCAAB flow generation (capped at 10 games per run)
+# Each generates AI flows for games in the last 72 hours. Skips existing flows.
 #
 # Odds sync runs every 30 minutes to keep FairBet data fresh for all 3 leagues.
 app.conf.beat_schedule = {
@@ -66,6 +69,16 @@ app.conf.beat_schedule = {
     "daily-nba-flow-generation-715am-eastern": {
         "task": "run_scheduled_nba_flow_generation",
         "schedule": crontab(minute=15, hour=12),  # 7:15 AM EST = 12:15 UTC (15 min after timeline gen)
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    },
+    "daily-nhl-flow-generation-730am-eastern": {
+        "task": "run_scheduled_nhl_flow_generation",
+        "schedule": crontab(minute=30, hour=12),  # 7:30 AM EST = 12:30 UTC (15 min after NBA flow)
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    },
+    "daily-ncaab-flow-generation-745am-eastern": {
+        "task": "run_scheduled_ncaab_flow_generation",
+        "schedule": crontab(minute=45, hour=12),  # 7:45 AM EST = 12:45 UTC (15 min after NHL flow)
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
     "odds-sync-every-30-minutes": {

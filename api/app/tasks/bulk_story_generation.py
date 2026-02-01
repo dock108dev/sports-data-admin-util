@@ -101,6 +101,13 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                     if (pbp_count.scalar() or 0) > 0:
                         games_with_pbp.append(game)
 
+                # Apply max_games limit if specified
+                if job.max_games is not None and job.max_games > 0:
+                    games_with_pbp = games_with_pbp[: job.max_games]
+                    logger.info(
+                        f"Job {job_id}: Limited to {job.max_games} games (max_games)"
+                    )
+
                 job.total_games = len(games_with_pbp)
                 await session.commit()
 
