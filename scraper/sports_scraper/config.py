@@ -22,6 +22,8 @@ class OddsProviderConfig(BaseModel):
     api_key: str | None = None
     default_books: list[str] = Field(default_factory=lambda: ["pinnacle", "fanduel"])
     request_timeout_seconds: int = 15
+    # TTL for live odds cache (future games) - expires before the 30-min sync interval
+    live_odds_cache_ttl_seconds: int = Field(default=1500)  # 25 minutes
 
 
 class ScraperConfig(BaseModel):

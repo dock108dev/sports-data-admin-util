@@ -81,10 +81,27 @@ class OddsAPIClient:
         prefix = "historical" if is_historical else "live"
         return self._cache_dir / league / f"{game_date}_{prefix}.json"
 
-    def _read_cache(self, cache_path: Path) -> dict | None:
-        """Read cached JSON response if it exists."""
+    def _read_cache(self, cache_path: Path, max_age_seconds: int | None = None) -> dict | None:
+        """Read cached JSON response if it exists and is fresh enough.
+
+        Args:
+            cache_path: Path to the cache file
+            max_age_seconds: If set, cache is only valid if younger than this many seconds
+        """
         if cache_path.exists():
             try:
+                # Check TTL if specified
+                if max_age_seconds is not None:
+                    file_age = datetime.now().timestamp() - cache_path.stat().st_mtime
+                    if file_age > max_age_seconds:
+                        logger.info(
+                            "odds_cache_expired",
+                            path=str(cache_path),
+                            age_seconds=int(file_age),
+                            max_age_seconds=max_age_seconds,
+                        )
+                        return None
+
                 data = json.loads(cache_path.read_text())
                 logger.debug("odds_cache_hit", path=str(cache_path))
                 return data
@@ -127,8 +144,10 @@ class OddsAPIClient:
             return []
 
         # Check cache first (use start_date as key for live odds)
+        # Live odds cache expires after TTL to ensure fresh data for scheduled syncs
         cache_path = self._get_cache_path(league_code, start_date, is_historical=False)
-        cached = self._read_cache(cache_path)
+        live_cache_ttl = settings.odds_config.live_odds_cache_ttl_seconds
+        cached = self._read_cache(cache_path, max_age_seconds=live_cache_ttl)
         if cached is not None:
             logger.info("odds_using_cache", league=league_code, date=str(start_date), type="live")
             return self._parse_odds_events(league_code, cached, books)
