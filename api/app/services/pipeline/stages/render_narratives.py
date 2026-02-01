@@ -283,8 +283,10 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
         # Track moments that need retry due to soft validation errors
         moments_needing_retry: list[tuple[int, dict[str, Any], list[dict[str, Any]], str, list[int]]] = []
 
-        # Build batch prompt and call OpenAI
-        prompt = build_batch_prompt(valid_batch, game_context, is_retry=False)
+        # Build batch prompt and call OpenAI (pass full PBP for context stats)
+        prompt = build_batch_prompt(
+            valid_batch, game_context, is_retry=False, all_pbp_events=pbp_events
+        )
 
         try:
             total_openai_calls += 1
@@ -492,7 +494,9 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             )
 
             retry_batch = [(idx, m, plays) for idx, m, plays, _, _ in moments_needing_retry]
-            retry_prompt = build_batch_prompt(retry_batch, game_context, is_retry=True)
+            retry_prompt = build_batch_prompt(
+                retry_batch, game_context, is_retry=True, all_pbp_events=pbp_events
+            )
 
             try:
                 total_openai_calls += 1
