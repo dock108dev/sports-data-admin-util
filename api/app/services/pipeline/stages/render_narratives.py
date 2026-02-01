@@ -359,13 +359,25 @@ async def execute_render_narratives(stage_input: StageInput) -> StageOutput:
             f"(expected {len(valid_batch)})"
         )
 
+        # Build mapping from batch position to actual moment index
+        # (in case AI returns 0-indexed items instead of actual indices)
+        batch_position_to_moment_idx = {
+            pos: moment_idx for pos, (moment_idx, _, _) in enumerate(valid_batch)
+        }
+
         # Build lookup of narratives by moment_index
         narrative_lookup: dict[int, str] = {}
         for item in items:
             idx = item.get("i") if item.get("i") is not None else item.get("moment_index")
             narrative = item.get("n") or item.get("narrative", "")
             if idx is not None:
-                narrative_lookup[idx] = narrative
+                # If the index is in the batch position range, map it to actual moment index
+                if idx in batch_position_to_moment_idx:
+                    actual_idx = batch_position_to_moment_idx[idx]
+                    narrative_lookup[actual_idx] = narrative
+                else:
+                    # Otherwise assume it's the actual moment index
+                    narrative_lookup[idx] = narrative
 
         # Log if we're missing narratives
         missing = [idx for idx, _, _ in valid_batch if idx not in narrative_lookup]
