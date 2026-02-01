@@ -858,3 +858,72 @@
   border: 1px solid #fcd34d;
   border-radius: 2px;
 }
+
+/* Mini Box Score */
+.miniBoxScore {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.miniBoxScoreTeams {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.miniBoxScoreTeam {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.miniBoxScoreHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 0.25rem;
+}
+
+.miniBoxScoreTeamName {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70%;
+}
+
+.miniBoxScoreScore {
+  font-weight: 700;
+  color: #3b82f6;
+  font-size: 1rem;
+}
+
+.miniBoxScorePlayer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  padding: 0.15rem 0;
+}
+
+.miniBoxScorePlayerName {
+  color: #475569;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
+}
+
+.miniBoxScorePlayerStats {
+  color: #64748b;
+  font-size: 0.75rem;
+  text-align: right;
+}
