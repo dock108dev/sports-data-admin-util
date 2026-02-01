@@ -171,26 +171,26 @@ def is_merge_eligible(
     # For larger moments (20+ plays), still allow merging but be more selective
     # Only discourage merge if there have been multiple scoring plays AND
     # a significant score change (6+ points total)
-    if play_count >= merge_threshold:
-        scoring_play_count = 0
-        total_pts_scored = 0
+    # Note: We only reach here when play_count >= merge_threshold (early return above)
+    scoring_play_count = 0
+    total_pts_scored = 0
 
-        if len(current_moment_plays) >= 2:
-            first_play = current_moment_plays[0]
-            last_play = current_moment_plays[-1]
-            home_pts = (last_play.get("home_score") or 0) - (first_play.get("home_score") or 0)
-            away_pts = (last_play.get("away_score") or 0) - (first_play.get("away_score") or 0)
-            total_pts_scored = home_pts + away_pts
+    if len(current_moment_plays) >= 2:
+        first_play = current_moment_plays[0]
+        last_play = current_moment_plays[-1]
+        home_pts = (last_play.get("home_score") or 0) - (first_play.get("home_score") or 0)
+        away_pts = (last_play.get("away_score") or 0) - (first_play.get("away_score") or 0)
+        total_pts_scored = home_pts + away_pts
 
-        for j in range(1, len(current_moment_plays)):
-            prev = current_moment_plays[j - 1]
-            curr = current_moment_plays[j]
-            if is_scoring_play(curr, prev):
-                scoring_play_count += 1
+    for j in range(1, len(current_moment_plays)):
+        prev = current_moment_plays[j - 1]
+        curr = current_moment_plays[j]
+        if is_scoring_play(curr, prev):
+            scoring_play_count += 1
 
-        # If significant scoring has occurred, discourage further merging
-        if scoring_play_count >= 4 and total_pts_scored >= 10:
-            return False
+    # If significant scoring has occurred, discourage further merging
+    if scoring_play_count >= 4 and total_pts_scored >= 10:
+        return False
 
     # If next event is in the same period and game is flowing, encourage merge
     if next_event:
