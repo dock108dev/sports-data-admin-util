@@ -101,8 +101,12 @@ def build_batch_prompt(
 
         context_line = f" [{', '.join(context_parts)}]" if context_parts else ""
 
+        # Use clear boundary format to prevent AI from mixing up plays
         moments_lines.append(
-            f"[{moment_index}] Q{period} {clock} ({away_team} {score_before[0]}-{score_before[1]} {home_team}{score_change}){context_line}: {plays_str}"
+            f"---MOMENT {moment_index}---\n"
+            f"Q{period} {clock} | {away_team} {score_before[0]}-{score_before[1]} {home_team}{score_change}{context_line}\n"
+            f"PLAYS FOR THIS MOMENT ONLY: {plays_str}\n"
+            f"---END MOMENT {moment_index}---"
         )
 
     moments_block = "\n".join(moments_lines)
@@ -131,20 +135,23 @@ STYLE (must sound natural when read aloud):
 
     prompt = f"""Write 3-4 sentence recaps for each moment. {away_team} vs {home_team}.
 {retry_warning}
+CRITICAL: Each moment has its own plays listed between ---MOMENT X--- markers.
+ONLY describe the plays listed for THAT specific moment. Do NOT include plays from other moments.
+
 RULES:
 - 3-4 sentences per moment, flowing naturally
+- ONLY describe plays listed in "PLAYS FOR THIS MOMENT ONLY" section
 - Mention *starred plays by player name
 - Use [Lead:] context naturally (e.g., "extending the lead to 8", "cutting the deficit to 3")
 - Use [Stats:] context when notable (e.g., "his third three of the quarter")
-- Describe HOW plays happened, don't just list them
 {name_rule}
 
 AVOID: momentum, turning point, dominant, electric, huge, clutch, crowd erupted, wanted to, felt
 {style_emphasis}
 {moments_block}
 
-Return JSON with your narratives:
-{{"items":[{{"i":0,"n":"Your 3-4 sentence narrative for moment 0 here"}},{{"i":1,"n":"Your narrative for moment 1 here"}}...]}}"""
+Return JSON - use the EXACT moment number from each ---MOMENT X--- marker:
+{{"items":[{{"i":0,"n":"Narrative for moment 0 ONLY describing its plays"}},{{"i":1,"n":"Narrative for moment 1 ONLY describing its plays"}}...]}}"""
 
     return prompt
 
