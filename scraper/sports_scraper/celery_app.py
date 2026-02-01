@@ -39,46 +39,39 @@ app.conf.update(**celery_config)
 app.conf.task_routes = {
     "run_scrape_job": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
 }
-# Daily sports ingestion at 5:30 AM US Eastern (10:30 UTC during EST, 9:30 UTC during EDT)
-# Using 10:30 UTC to align with 5:30 AM during Eastern Standard Time (November-March).
-# During Eastern Daylight Time (March-November), this will run at 6:30 AM EDT.
+# Daily sports ingestion at 8:00 AM US Eastern (13:00 UTC during EST, 12:00 UTC during EDT)
+# Using 13:00 UTC to align with 8:00 AM during Eastern Standard Time (November-March).
+# During Eastern Daylight Time (March-November), this will run at 9:00 AM EDT.
 #
 # Ingestion runs leagues sequentially: NBA -> NHL -> NCAAB
 #
-# Timeline generation runs 90 minutes after ingestion to allow scraping to complete.
-# It processes games missing timelines (newly completed games with PBP data).
-#
-# Flow generation runs in sequence, 15 minutes apart:
-#   7:15 AM EST - NBA flow generation
-#   7:30 AM EST - NHL flow generation
-#   7:45 AM EST - NCAAB flow generation (capped at 10 games per run)
+# Flow generation runs 90 minutes after ingestion to allow scraping to complete.
+# Each league runs in sequence, 15 minutes apart:
+#   9:30 AM EST - NBA flow generation
+#   9:45 AM EST - NHL flow generation
+#   10:00 AM EST - NCAAB flow generation (capped at 10 games per run)
 # Each generates AI flows for games in the last 72 hours. Skips existing flows.
 #
 # Odds sync runs every 30 minutes to keep FairBet data fresh for all 3 leagues.
 app.conf.beat_schedule = {
-    "daily-sports-ingestion-530am-eastern": {
+    "daily-sports-ingestion-8am-eastern": {
         "task": "run_scheduled_ingestion",
-        "schedule": crontab(minute=30, hour=10),  # 5:30 AM EST = 10:30 UTC
+        "schedule": crontab(minute=0, hour=13),  # 8:00 AM EST = 13:00 UTC
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    "daily-timeline-generation-7am-eastern": {
-        "task": "run_scheduled_timeline_generation",
-        "schedule": crontab(minute=0, hour=12),  # 7:00 AM EST = 12:00 UTC (90 min after ingestion)
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
-    },
-    "daily-nba-flow-generation-715am-eastern": {
+    "daily-nba-flow-generation-930am-eastern": {
         "task": "run_scheduled_nba_flow_generation",
-        "schedule": crontab(minute=15, hour=12),  # 7:15 AM EST = 12:15 UTC (15 min after timeline gen)
+        "schedule": crontab(minute=30, hour=14),  # 9:30 AM EST = 14:30 UTC (90 min after ingestion)
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    "daily-nhl-flow-generation-730am-eastern": {
+    "daily-nhl-flow-generation-945am-eastern": {
         "task": "run_scheduled_nhl_flow_generation",
-        "schedule": crontab(minute=30, hour=12),  # 7:30 AM EST = 12:30 UTC (15 min after NBA flow)
+        "schedule": crontab(minute=45, hour=14),  # 9:45 AM EST = 14:45 UTC (15 min after NBA flow)
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    "daily-ncaab-flow-generation-745am-eastern": {
+    "daily-ncaab-flow-generation-10am-eastern": {
         "task": "run_scheduled_ncaab_flow_generation",
-        "schedule": crontab(minute=45, hour=12),  # 7:45 AM EST = 12:45 UTC (15 min after NHL flow)
+        "schedule": crontab(minute=0, hour=15),  # 10:00 AM EST = 15:00 UTC (15 min after NHL flow)
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
     "odds-sync-every-30-minutes": {

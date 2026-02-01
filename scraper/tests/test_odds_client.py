@@ -280,6 +280,7 @@ class TestOddsAPIClientFetchMainlines:
         mock_settings.odds_api_key = "test_key"
         mock_settings.odds_config.base_url = "https://api.test.com"
         mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.odds_config.live_odds_cache_ttl_seconds = 1500
         mock_settings.scraper_config.html_cache_dir = str(tmp_path)
 
         # Create cached response
