@@ -453,3 +453,9 @@
 .errorText {
   color: var(--error-color, #dc2626);
 }
+
+.loadMoreContainer {
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem 0;
+}

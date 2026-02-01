@@ -182,6 +182,7 @@ export type GameFilters = {
   missingOdds?: boolean;
   missingSocial?: boolean;
   missingAny?: boolean;
+  hasPbp?: boolean;
   limit?: number;
   offset?: number;
 };

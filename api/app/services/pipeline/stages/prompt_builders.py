@@ -111,7 +111,7 @@ def build_batch_prompt(
             play_index = play.get("play_index")
             is_explicit = play_index in explicitly_narrated
             star = "*" if is_explicit else ""
-            desc = play.get("description", "")
+            desc = play.get("description") or ""
             if len(desc) > 100:
                 desc = desc[:97] + "..."
             plays_compact.append(f"{star}{desc}")
@@ -234,7 +234,7 @@ def build_moment_prompt(
         play_index = play.get("play_index")
         is_explicit = play_index in explicitly_narrated
         marker = "*" if is_explicit else ""
-        desc = play.get("description", "No description")
+        desc = play.get("description") or "No description"
         plays_desc.append(f"  {marker}{desc}")
 
     plays_block = "\n".join(plays_desc)

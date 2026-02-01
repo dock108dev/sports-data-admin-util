@@ -71,6 +71,11 @@ async def list_games(
     missingOdds: bool = Query(False, alias="missingOdds"),
     missingSocial: bool = Query(False, alias="missingSocial"),
     missingAny: bool = Query(False, alias="missingAny"),
+    hasPbp: bool = Query(
+        False,
+        alias="hasPbp",
+        description="Only return games with play-by-play data",
+    ),
     safe: bool = Query(
         False,
         description="Exclude games with conflicts or missing team mappings (app-safe mode)",
@@ -103,6 +108,15 @@ async def list_games(
         missing_social=missingSocial,
         missing_any=missingAny,
     )
+
+    # Filter to games with play-by-play data
+    if hasPbp:
+        pbp_exists = exists(
+            select(1).where(
+                db_models.SportsGamePlay.game_id == db_models.SportsGame.id
+            )
+        )
+        base_stmt = base_stmt.where(pbp_exists)
 
     # Safety filtering: exclude games with conflicts or missing team mappings
     if safe:
@@ -147,6 +161,15 @@ async def list_games(
         missing_social=missingSocial,
         missing_any=missingAny,
     )
+
+    # Apply hasPbp filter to count query
+    if hasPbp:
+        pbp_exists_count = exists(
+            select(1).where(
+                db_models.SportsGamePlay.game_id == db_models.SportsGame.id
+            )
+        )
+        count_stmt = count_stmt.where(pbp_exists_count)
 
     # Apply same safety filtering to count query
     if safe:

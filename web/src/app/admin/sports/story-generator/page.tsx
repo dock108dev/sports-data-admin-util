@@ -64,6 +64,9 @@ export default function StoryGeneratorPage() {
   // Games list state (for preview/individual generation)
   const [games, setGames] = useState<GameSummary[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [totalGames, setTotalGames] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [generationResults, setGenerationResults] = useState<
     Map<number, GenerationResult>
@@ -94,7 +97,7 @@ export default function StoryGeneratorPage() {
     });
   };
 
-  // Load games for preview
+  // Load games for preview (initial load)
   const loadGames = useCallback(async () => {
     if (selectedLeagues.size === 0) {
       setError("Please select at least one league");
@@ -108,18 +111,43 @@ export default function StoryGeneratorPage() {
         leagues: Array.from(selectedLeagues),
         startDate,
         endDate,
-        limit: 100,
+        hasPbp: true,  // Filter server-side to only games with PBP data
+        limit: 200,  // Max allowed by API
       });
 
-      // Filter to games with PBP data (eligible for story generation)
-      const eligibleGames = response.games.filter((g) => g.hasPbp);
-      setGames(eligibleGames);
+      setGames(response.games);
+      setNextOffset(response.nextOffset);
+      setTotalGames(response.total);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
   }, [selectedLeagues, startDate, endDate]);
+
+  // Load more games (pagination)
+  const loadMoreGames = useCallback(async () => {
+    if (nextOffset === null || loadingMore) return;
+
+    setLoadingMore(true);
+    try {
+      const response = await listGames({
+        leagues: Array.from(selectedLeagues),
+        startDate,
+        endDate,
+        hasPbp: true,
+        limit: 200,
+        offset: nextOffset,
+      });
+
+      setGames((prev) => [...prev, ...response.games]);
+      setNextOffset(response.nextOffset);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [selectedLeagues, startDate, endDate, nextOffset, loadingMore]);
 
   // Start bulk generation job
   const startBulkGeneration = useCallback(async () => {
@@ -371,8 +399,8 @@ export default function StoryGeneratorPage() {
         <>
           <div className={styles.statsRow}>
             <div className={styles.stat}>
-              <span className={styles.statValue}>{games.length}</span>
-              <span className={styles.statLabel}>Total Games</span>
+              <span className={styles.statValue}>{games.length}{totalGames > games.length ? ` / ${totalGames}` : ""}</span>
+              <span className={styles.statLabel}>Games Loaded</span>
             </div>
             <div className={styles.stat}>
               <span className={styles.statValue}>{gamesWithStory.length}</span>
@@ -477,6 +505,18 @@ export default function StoryGeneratorPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {nextOffset !== null && (
+            <div className={styles.loadMoreContainer}>
+              <button
+                className={styles.secondaryButton}
+                onClick={loadMoreGames}
+                disabled={loadingMore || isBulkRunning}
+              >
+                {loadingMore ? "Loading..." : `Load More (${totalGames - games.length} remaining)`}
+              </button>
             </div>
           )}
         </>

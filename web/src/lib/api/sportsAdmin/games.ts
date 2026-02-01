@@ -17,6 +17,7 @@ export async function listGames(filters: GameFilters): Promise<GameListResponse>
   if (filters?.missingOdds) query.append("missingOdds", "true");
   if (filters?.missingSocial) query.append("missingSocial", "true");
   if (filters?.missingAny) query.append("missingAny", "true");
+  if (filters?.hasPbp) query.append("hasPbp", "true");
   if (typeof filters?.limit === "number") query.append("limit", String(filters.limit));
   if (typeof filters?.offset === "number") query.append("offset", String(filters.offset));
   const qs = query.toString();
