@@ -129,39 +129,34 @@ STYLE (must sound natural when read aloud):
     else:
         style_emphasis = ""
 
-    prompt = f"""Write broadcast-style recaps for each moment. {away_team} vs {home_team}.
+    prompt = f"""Write 3-4 sentence broadcast-style recaps for each moment. {away_team} vs {home_team}.
 {retry_warning}
-You are a sports broadcaster summarizing game action. DO NOT transcribe each play - instead, tell the STORY of what happened.
+You are writing game recaps. Cover the key action naturally - don't just list what happened play-by-play.
 
-WHAT TO WRITE:
-- Focus on OUTCOMES: who scored, the margin, scoring runs
-- Use the [Lead: ...] context to describe how the score changed: "pushed the lead to 8" or "trimmed the deficit to 3"
-- Use the [Stats: ...] context for player milestones: "his third three of the half" or "already at 12 points"
-- Mention *starred plays by player name, but don't describe every play in sequence
-- Write like you're giving a 10-second recap between commercials
+GUIDELINES:
+- Write 3-4 sentences that flow naturally together
+- Mention ALL *starred plays, but weave them into the narrative naturally
+- Use context like [Lead: ...] and [Stats: ...] when provided - e.g., "his second three of the quarter" or "extending the lead to 8"
+- Describe HOW plays happened (fast break, off a steal, contested shot) not just THAT they happened
+- Group related action together instead of listing plays chronologically
 
-STYLE:
-- 2-3 SHORT punchy sentences, not long compound sentences
-- Lead with the result, not the sequence of events
-- Skip routine plays (rebounds, inbounds) unless they led to something
 {name_rule}
 {style_emphasis}
 
-GOOD EXAMPLES:
-"Miami opened with a quick 5-0 run, Adebayo draining a three on the first possession. Chicago answered through Smith, who finished with a dunk to cut it to one."
+GOOD EXAMPLE (3-4 flowing sentences):
+"Miami opened hot from deep, with Adebayo drilling a three from the left wing on the game's first possession. Chicago answered quickly as Smith finished through contact and Wiggins converted in transition off a Bulls steal. The back-and-forth continued with Smith's dunk capping a 5-0 Chicago run, giving the Bulls a one-point edge."
 
-"The Bulls went on a 7-0 run to take their first lead. Vučević's jumper capped the spurt, putting Chicago up 12-10."
+BAD (just listing plays):
+"Adebayo made a three-pointer. Then Smith made a shot. Then Wiggins made a layup. Then Smith dunked."
 
-"Back-to-back turnovers led to easy Miami points. Larsson converted at the line to extend the lead to four."
+BAD (too short):
+"Chicago took the lead. Miami answered."
 
-BAD (too play-by-play):
-"Adebayo won the tip and Powell got the ball. Adebayo then made a three-pointer from 26 feet. Smith made a jump shot. Wiggins made a layup assisted by Jakučionis."
-
-FORBIDDEN: dominant, electric, huge, massive, incredible, clutch, momentum, turning point, crowd erupted, wanted to, felt
+FORBIDDEN: dominant, electric, huge, massive, incredible, clutch, momentum, turning point, crowd erupted, wanted to, felt, seemed to
 
 {moments_block}
 
-JSON: {{"items":[{{"i":0,"n":"recap"}},...]}}"""
+JSON: {{"items":[{{"i":0,"n":"3-4 sentence recap"}},...]}}"""
 
     return prompt
 
