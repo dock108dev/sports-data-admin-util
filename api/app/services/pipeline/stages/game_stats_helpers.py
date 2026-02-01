@@ -195,7 +195,6 @@ def _build_margin_description(
 
     # Home team scored (lead increased or deficit decreased)
     if lead_after > lead_before:
-        team = home_team
         if lead_before <= 0 and lead_after > 0:
             # Took the lead
             return f"take a {abs_after} point lead"
@@ -210,7 +209,6 @@ def _build_margin_description(
 
     # Away team scored (lead decreased or deficit increased)
     else:
-        team = away_team
         if lead_before >= 0 and lead_after < 0:
             # Took the lead
             return f"take a {abs_after} point lead"

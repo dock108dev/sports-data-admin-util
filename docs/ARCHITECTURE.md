@@ -111,7 +111,7 @@ A condensed moment contains:
 - **Mechanical segmentation:** Moment boundaries are deterministic, not AI-driven
 - **OpenAI is prose-only:** It renders narratives, not structure
 
-See [story_contract.md](story_contract.md) for the authoritative specification.
+See [STORY_CONTRACT.md](STORY_CONTRACT.md) for the authoritative specification.
 
 See [STORY_PIPELINE.md](STORY_PIPELINE.md) for implementation details.
 

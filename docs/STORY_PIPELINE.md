@@ -192,7 +192,7 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
 
 ## Story Output
 
-The final story is an ordered list of condensed moments matching the [Story Contract](story_contract.md).
+The final story is an ordered list of condensed moments matching the [Story Contract](STORY_CONTRACT.md).
 
 ### API Access
 
@@ -234,6 +234,6 @@ has_story = moments_json IS NOT NULL
 
 ## See Also
 
-- [story_contract.md](story_contract.md) - Authoritative story specification
-- [pbp_story_assumptions.md](pbp_story_assumptions.md) - PBP data requirements
+- [STORY_CONTRACT.md](STORY_CONTRACT.md) - Authoritative story specification
+- [PBP_STORY_ASSUMPTIONS.md](PBP_STORY_ASSUMPTIONS.md) - PBP data requirements
 - [API.md](API.md) - Complete API reference

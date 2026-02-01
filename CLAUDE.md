@@ -57,7 +57,7 @@
 
 A story is an ordered list of condensed moments. Each moment is a small set of PBP plays with at least one explicitly narrated play.
 
-**Contract:** See `docs/story_contract.md`
+**Contract:** See `docs/STORY_CONTRACT.md`
 
 **Key Concepts:**
 - **Condensed Moment:** Small set of plays with explicit narration

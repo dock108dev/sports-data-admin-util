@@ -2,7 +2,7 @@
 
 This document defines the explicit guarantees that Story assumes about Play-by-Play (PBP) data. It is derived from a comprehensive audit of existing schemas, ingestion paths, and data samples.
 
-**Authoritative Reference:** `docs/story_contract.md`
+**Authoritative Reference:** `docs/STORY_CONTRACT.md`
 
 ---
 
