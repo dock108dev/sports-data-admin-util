@@ -19,11 +19,19 @@ def _format_period(period: int, league_code: str = "NBA") -> str:
 
     Args:
         period: Period number (1, 2, 3, etc.)
-        league_code: League code (NBA, NCAAB, etc.)
+        league_code: League code (NBA, NCAAB, NHL, etc.)
 
     Returns:
-        Formatted period string (Q1-Q4, H1-H2, OT1, etc.)
+        Formatted period string (Q1-Q4, H1-H2, P1-P3, OT, SO, etc.)
     """
+    if league_code == "NHL":
+        if period <= 3:
+            return f"P{period}"  # P1, P2, P3
+        if period == 4:
+            return "OT"
+        if period == 5:
+            return "SO"  # Shootout
+        return f"OT{period - 3}"  # Extended OT (playoffs): OT2, OT3, etc.
     if league_code == "NCAAB":
         if period <= 2:
             return f"H{period}"

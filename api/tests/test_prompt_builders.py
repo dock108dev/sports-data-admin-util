@@ -41,6 +41,33 @@ class TestFormatPeriod:
         assert _format_period(1) == "Q1"
         assert _format_period(2) == "Q2"
 
+    def test_nhl_periods(self):
+        """NHL uses P1-P3 for periods."""
+        from app.services.pipeline.stages.prompt_builders import _format_period
+
+        assert _format_period(1, "NHL") == "P1"
+        assert _format_period(2, "NHL") == "P2"
+        assert _format_period(3, "NHL") == "P3"
+
+    def test_nhl_overtime(self):
+        """NHL overtime uses OT."""
+        from app.services.pipeline.stages.prompt_builders import _format_period
+
+        assert _format_period(4, "NHL") == "OT"
+
+    def test_nhl_shootout(self):
+        """NHL shootout uses SO."""
+        from app.services.pipeline.stages.prompt_builders import _format_period
+
+        assert _format_period(5, "NHL") == "SO"
+
+    def test_nhl_extended_overtime(self):
+        """NHL playoff overtime uses OT2, OT3, etc."""
+        from app.services.pipeline.stages.prompt_builders import _format_period
+
+        assert _format_period(6, "NHL") == "OT3"
+        assert _format_period(7, "NHL") == "OT4"
+
 
 class TestBuildBatchPrompt:
     """Tests for build_batch_prompt function."""
