@@ -38,9 +38,9 @@ SOFT BREAK CONDITIONS (prefer closing):
 5. Second explicitly narrated play encountered
 
 MERGE ELIGIBILITY (encourage continuing):
-- No scoring in current moment
-- Possession alternates normally
-- Time delta below threshold
+- Small moments (< MIN_PLAYS_BEFORE_SOFT_CLOSE) always merge
+- Larger moments merge if no scoring has occurred
+- Game flow is continuous (same period)
 
 TARGET DISTRIBUTION:
 - ~80% of moments <= 8 plays
@@ -274,14 +274,15 @@ def _segment_plays_into_moments(
             )
 
             # Only override soft conditions if:
-            # 1. Merge is eligible
+            # 1. Merge is eligible (checks moment size and game flow)
             # 2. We haven't hit soft cap yet
-            # 3. The soft reason isn't critical (scoring allowed to override merge)
+            # 3. The soft reason isn't the cap itself
+            # Note: SCORING_PLAY can be overridden to allow grouping
+            # of back-to-back scores into coherent moments
             should_override = (
                 merge_eligible
                 and len(current_moment_plays) < SOFT_CAP_PLAYS
                 and soft_reason not in {
-                    BoundaryReason.SCORING_PLAY,  # Don't override scoring
                     BoundaryReason.SOFT_CAP_REACHED,  # Don't override cap
                 }
             )

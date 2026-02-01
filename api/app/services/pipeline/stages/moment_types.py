@@ -22,6 +22,11 @@ SOFT_CAP_PLAYS = 8
 # Absolute cap: must close (safety valve, should be rare)
 ABSOLUTE_MAX_PLAYS = 12
 
+# Minimum plays before soft boundaries take effect
+# Prevents creating tiny moments on every score
+# With 5 plays min, moments will typically contain 2-3 possessions
+MIN_PLAYS_BEFORE_SOFT_CLOSE = 5
+
 # Maximum explicitly narrated plays per moment
 MAX_EXPLICIT_PLAYS_PER_MOMENT = 2
 

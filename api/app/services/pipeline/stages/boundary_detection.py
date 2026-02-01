@@ -12,6 +12,7 @@ from .moment_types import (
     ABSOLUTE_MAX_PLAYS,
     BoundaryReason,
     MAX_EXPLICIT_PLAYS_PER_MOMENT,
+    MIN_PLAYS_BEFORE_SOFT_CLOSE,
     PREFERRED_EXPLICIT_PLAYS,
     SOFT_CAP_PLAYS,
 )
@@ -120,8 +121,9 @@ def is_merge_eligible(
     so we don't check soft cap here.
 
     Conditions for merge eligibility:
-    - No scoring has occurred in the current moment
-    - Game flow appears continuous (not fragmented)
+    - Small moments (< MIN_PLAYS_BEFORE_SOFT_CLOSE) always encourage merge
+    - Larger moments only merge if no scoring has occurred
+    - Game flow appears continuous (same period)
 
     Args:
         current_moment_plays: Plays currently in the moment
@@ -132,14 +134,24 @@ def is_merge_eligible(
     Returns:
         True if merge should be encouraged
     """
-    # Check if any scoring has occurred in this moment
-    if len(current_moment_plays) > 1:
-        for j in range(1, len(current_moment_plays)):
-            prev = current_moment_plays[j - 1]
-            curr = current_moment_plays[j]
-            if is_scoring_play(curr, prev):
-                # Scoring occurred, don't encourage merge
-                return False
+    # Small moments should always be allowed to grow
+    # This prevents creating tiny 1-2 play moments on every score
+    if len(current_moment_plays) < MIN_PLAYS_BEFORE_SOFT_CLOSE:
+        if next_event:
+            curr_period = current_event.get("quarter") or 1
+            next_period = next_event.get("quarter") or 1
+            if curr_period == next_period:
+                return True
+        return False
+
+    # For larger moments, check if scoring has occurred
+    # If so, we prefer closing to keep moments focused
+    for j in range(1, len(current_moment_plays)):
+        prev = current_moment_plays[j - 1]
+        curr = current_moment_plays[j]
+        if is_scoring_play(curr, prev):
+            # Scoring occurred in a large enough moment, don't encourage merge
+            return False
 
     # If next event is in the same period and game is flowing, encourage merge
     if next_event:
