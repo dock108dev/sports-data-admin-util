@@ -150,4 +150,6 @@ FORBIDDEN_PHRASES = [
 FORBIDDEN_PATTERNS = [re.compile(p, re.IGNORECASE) for p in FORBIDDEN_PHRASES]
 
 # Number of moments to process in a single OpenAI call
-MOMENTS_PER_BATCH = 25
+# With 3-4 sentence narratives (~100 tokens each), need smaller batches
+# to avoid output truncation. 15 moments * 100 tokens = ~1500 output tokens
+MOMENTS_PER_BATCH = 15

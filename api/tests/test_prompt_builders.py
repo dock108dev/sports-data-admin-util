@@ -193,8 +193,9 @@ class TestBuildBatchPrompt:
 
         result = build_batch_prompt(moments_batch, game_context)
 
-        assert "[0]" in result
-        assert "[1]" in result
+        # Uses ---MOMENT X--- boundary markers
+        assert "---MOMENT 0---" in result
+        assert "---MOMENT 1---" in result
         assert "First moment play" in result
         assert "Second moment play" in result
 
@@ -247,7 +248,10 @@ class TestBuildBatchPrompt:
 
         result = build_batch_prompt(moments_batch, game_context)
 
-        assert '{"items":[{"i":0,"n":"2-4 sentence narrative"}' in result
+        # Specifies JSON format with items array and i/n keys
+        assert '{"items":[{' in result
+        assert '"i":' in result
+        assert '"n":' in result
 
     def test_forbidden_words_listed(self):
         """Prompt lists forbidden words."""
@@ -272,7 +276,7 @@ class TestBuildBatchPrompt:
 
         assert "dominant" in result
         assert "electric" in result
-        assert "FORBIDDEN" in result
+        assert "AVOID" in result  # Uses AVOID: prefix for forbidden words
 
 
 class TestBuildMomentPrompt:
@@ -300,7 +304,7 @@ class TestBuildMomentPrompt:
         assert "8:00" in result
 
     def test_must_reference_marker(self):
-        """Explicit plays are marked MUST REFERENCE."""
+        """Explicit plays are marked with asterisk."""
         from app.services.pipeline.stages.prompt_builders import build_moment_prompt
 
         moment = {
@@ -318,8 +322,8 @@ class TestBuildMomentPrompt:
 
         result = build_moment_prompt(moment, plays, game_context, moment_index=0)
 
-        assert "[MUST REFERENCE]" in result
-        assert "[MUST REFERENCE] Explicit play" in result
+        # Uses * asterisk to mark explicit plays
+        assert "*Explicit play" in result
 
     def test_retry_note_included(self):
         """Retry prompts include validation note."""
@@ -339,7 +343,7 @@ class TestBuildMomentPrompt:
             moment, plays, game_context, moment_index=0, is_retry=True
         )
 
-        assert "PREVIOUS RESPONSE FAILED VALIDATION" in result
+        assert "PREVIOUS RESPONSE FAILED" in result
 
     def test_score_display(self):
         """Scores are displayed correctly."""
@@ -357,8 +361,9 @@ class TestBuildMomentPrompt:
 
         result = build_moment_prompt(moment, plays, game_context, moment_index=0)
 
-        assert "Celtics 100 - Lakers 98" in result
-        assert "Celtics 100 - Lakers 101" in result
+        # Format is: Away Score-Score Home (e.g., "Celtics 100-98 Lakers")
+        assert "Celtics 100-98 Lakers" in result
+        assert "Celtics 100-101 Lakers" in result
 
     def test_player_names_in_prompt(self):
         """Player name rules included."""
@@ -398,8 +403,9 @@ class TestBuildMomentPrompt:
 
         result = build_moment_prompt(moment, plays, game_context, moment_index=0)
 
-        assert "ONLY the narrative text" in result
-        assert "2-4 sentences" in result
+        # Specifies recap-only output and sentence count
+        assert "ONLY the recap text" in result
+        assert "2-3 sentences" in result
 
     def test_default_values(self):
         """Missing fields use defaults."""

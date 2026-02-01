@@ -7,11 +7,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from .game_stats_helpers import (
+    compute_running_player_stats,
+    compute_lead_context,
+    format_player_stat_hint,
+)
+
 
 def build_batch_prompt(
     moments_batch: list[tuple[int, dict[str, Any], list[dict[str, Any]]]],
     game_context: dict[str, str],
     is_retry: bool = False,
+    all_pbp_events: list[dict[str, Any]] | None = None,
 ) -> str:
     """Build an OpenAI prompt for a batch of moments.
 
@@ -22,6 +29,7 @@ def build_batch_prompt(
         moments_batch: List of (moment_index, moment, moment_plays) tuples
         game_context: Team names and sport info
         is_retry: Whether this is a retry after validation failure
+        all_pbp_events: Full PBP event list for computing running stats
 
     Returns:
         Prompt string for OpenAI to generate all narratives in the batch
@@ -39,7 +47,7 @@ def build_batch_prompt(
     # Limit to avoid bloating prompt
     name_ref = ", ".join(name_mappings[:40]) if name_mappings else ""
 
-    # Build compact moments data
+    # Build compact moments data with contextual stats
     moments_lines = []
     for moment_index, moment, moment_plays in moments_batch:
         period = moment.get("period", 1)
@@ -47,6 +55,26 @@ def build_batch_prompt(
         score_before = moment.get("score_before", [0, 0])
         score_after = moment.get("score_after", [0, 0])
         explicitly_narrated = set(moment.get("explicitly_narrated_play_ids", []))
+
+        # Compute lead context for this moment
+        lead_ctx = compute_lead_context(score_before, score_after, home_team, away_team)
+
+        # Compute running player stats if PBP events are available
+        player_hints = []
+        if all_pbp_events and moment_plays:
+            first_play_idx = min(
+                (p.get("play_index", 0) for p in moment_plays), default=0
+            )
+            running_stats = compute_running_player_stats(
+                all_pbp_events, first_play_idx - 1
+            )
+            # Get hints for players in this moment
+            moment_players = {p.get("player_name") for p in moment_plays if p.get("player_name")}
+            for player in moment_players:
+                if player in running_stats:
+                    hint = format_player_stat_hint(player, running_stats[player])
+                    if hint:
+                        player_hints.append(hint)
 
         # Compact play format: just the essentials
         plays_compact = []
@@ -63,8 +91,22 @@ def build_batch_prompt(
         score_change = ""
         if score_after != score_before:
             score_change = f" → {away_team} {score_after[0]}-{score_after[1]} {home_team}"
+
+        # Build context line with lead info and player stats
+        context_parts = []
+        if lead_ctx.get("margin_description"):
+            context_parts.append(f"Lead: {lead_ctx['margin_description']}")
+        if player_hints:
+            context_parts.append(f"Stats: {'; '.join(player_hints[:3])}")
+
+        context_line = f" [{', '.join(context_parts)}]" if context_parts else ""
+
+        # Use clear boundary format to prevent AI from mixing up plays
         moments_lines.append(
-            f"[{moment_index}] Q{period} {clock} ({away_team} {score_before[0]}-{score_before[1]} {home_team}{score_change}): {plays_str}"
+            f"---MOMENT {moment_index}---\n"
+            f"Q{period} {clock} | {away_team} {score_before[0]}-{score_before[1]} {home_team}{score_change}{context_line}\n"
+            f"PLAYS FOR THIS MOMENT ONLY: {plays_str}\n"
+            f"---END MOMENT {moment_index}---"
         )
 
     moments_block = "\n".join(moments_lines)
@@ -91,38 +133,30 @@ STYLE (must sound natural when read aloud):
     else:
         style_emphasis = ""
 
-    prompt = f"""Write 2-4 sentence narratives for each moment. {away_team} vs {home_team}.
+    prompt = f"""Write 3-4 sentence recaps for each moment. {away_team} vs {home_team}.
 {retry_warning}
-Each narrative should:
-- Describe the SEQUENCE of actions across the moment (not just one play)
-- Reference ALL *starred plays (these MUST appear in the narrative)
-- Use plain factual language like a neutral broadcast recap
-- Follow chronological order
-- Sound natural when read aloud (like a broadcast recap, not a stat sheet)
+CRITICAL: Each moment has its own plays listed between ---MOMENT X--- markers.
+ONLY describe the plays listed for THAT specific moment. Do NOT include plays from other moments.
 
-REQUIRED format:
+RULES:
+- 3-4 sentences per moment, flowing naturally
+- ONLY describe plays listed in "PLAYS FOR THIS MOMENT ONLY" section
+- Mention *starred plays by player name
+- Use [Lead:] context naturally (e.g., "extending the lead to 8", "cutting the deficit to 3")
+- Use [Stats:] context when notable (e.g., "his third three of the quarter")
 {name_rule}
-- Vary sentence length naturally (mix short and compound sentences)
-- Vary sentence openers (don't start every sentence the same way)
-- Lead with actions, not statistics
-- Allowed: scoring runs, unanswered points, responses
+- TEAM ATTRIBUTION: On first mention of each player, tie them to their team naturally. Vary the style:
+  * "Miami's Bam Adebayo" or "Chicago's Jalen Smith" (possessive)
+  * "Adebayo for Miami" or "Smith for Chicago" (scoring context)
+  * After first mention, just use last name
+  * Don't use parentheses like "(MIA)" - keep it broadcast-style
+
+AVOID: momentum, turning point, dominant, electric, huge, clutch, crowd erupted, wanted to, felt
 {style_emphasis}
-FORBIDDEN (will fail validation):
-- Subjective adjectives: dominant, electric, huge, massive, incredible, clutch
-- Speculation: wanted to, tried to, felt, seemed to
-- Crowd/atmosphere: crowd erupted, fans, energy
-- Metaphors: took over, caught fire, in the zone
-- Summary language: momentum, turning point, crucial, pivotal
-- Metric-first sentences: "Mitchell scored 12 points" (say action first)
-
-GOOD: "The Suns opened with back-to-back baskets before the Lakers answered with a three. Mitchell converted in transition. The lead grew to five."
-
-BAD: "The Suns scored. The Lakers scored. The Suns scored again." (repetitive structure)
-BAD: "Mitchell scored 12 points in the quarter." (metric-first)
-
 {moments_block}
 
-JSON: {{"items":[{{"i":0,"n":"2-4 sentence narrative"}},...]}}"""
+Return JSON - use the EXACT moment number from each ---MOMENT X--- marker:
+{{"items":[{{"i":0,"n":"Narrative for moment 0 ONLY describing its plays"}},{{"i":1,"n":"Narrative for moment 1 ONLY describing its plays"}}...]}}"""
 
     return prompt
 
@@ -136,8 +170,7 @@ def build_moment_prompt(
 ) -> str:
     """Build the OpenAI prompt for a single moment.
 
-    Generates multi-sentence narratives (2-4 sentences) that describe
-    the full sequence of gameplay within the moment.
+    Generates broadcast-style recaps that summarize the action.
 
     Args:
         moment: The moment data
@@ -159,14 +192,19 @@ def build_moment_prompt(
     score_after = moment.get("score_after", [0, 0])
     explicitly_narrated = set(moment.get("explicitly_narrated_play_ids", []))
 
+    # Compute scoring context
+    away_pts = score_after[0] - score_before[0]
+    home_pts = score_after[1] - score_before[1]
+    lead_after = score_after[1] - score_after[0]  # positive = home leads
+
     # Build play descriptions
     plays_desc = []
     for play in moment_plays:
         play_index = play.get("play_index")
         is_explicit = play_index in explicitly_narrated
-        marker = "[MUST REFERENCE]" if is_explicit else ""
+        marker = "*" if is_explicit else ""
         desc = play.get("description", "No description")
-        plays_desc.append(f"  {marker} {desc}")
+        plays_desc.append(f"  {marker}{desc}")
 
     plays_block = "\n".join(plays_desc)
 
@@ -177,32 +215,41 @@ def build_moment_prompt(
             name_mappings.append(f"{abbrev}={full}")
     name_ref = ", ".join(name_mappings[:30]) if name_mappings else ""
 
-    name_rule = "Use FULL NAME on first mention, LAST NAME only after. NEVER use initials."
+    name_rule = "Use FULL NAME on first mention, LAST NAME only after."
     if name_ref:
         name_rule += f" Names: {name_ref}"
 
     if is_retry:
-        retry_note = "\n\nPREVIOUS RESPONSE FAILED VALIDATION. Requirements:\n- 2-4 sentences\n- All [MUST REFERENCE] plays mentioned\n- No subjective adjectives\n"
+        retry_note = "\n\nPREVIOUS RESPONSE FAILED. Mention all *starred plays by player name.\n"
     else:
         retry_note = ""
 
-    prompt = f"""Write a 2-4 sentence narrative for this moment. {away_team} vs {home_team}.
+    # Build margin context
+    if lead_after > 0:
+        margin_ctx = f"{home_team} leads by {lead_after}"
+    elif lead_after < 0:
+        margin_ctx = f"{away_team} leads by {abs(lead_after)}"
+    else:
+        margin_ctx = "Game tied"
+
+    prompt = f"""Write a broadcast-style recap (2-3 sentences). {away_team} vs {home_team}.
 {retry_note}
-Context: Q{period} at {clock}
-Score: {away_team} {score_before[0]} - {home_team} {score_before[1]} → {away_team} {score_after[0]} - {home_team} {score_after[1]}
+Q{period} at {clock}
+Score: {away_team} {score_before[0]}-{score_before[1]} {home_team} → {away_team} {score_after[0]}-{score_after[1]} {home_team}
+Scoring: {away_team} +{away_pts}, {home_team} +{home_pts}. {margin_ctx}.
 
 Plays:
 {plays_block}
 
-Rules:
-- Describe the SEQUENCE of actions (not just one play)
-- ALL [MUST REFERENCE] plays MUST appear in the narrative
+Write like a broadcaster giving a quick recap:
+- Focus on the outcome and margin, not every play
+- Mention *starred players naturally
 - {name_rule}
-- Plain factual language, neutral broadcast style
-- Vary sentence length and structure
+- Tie players to their team on first mention (e.g., "Miami's Adebayo", "Smith for Chicago") - no parentheses
+- 2-3 SHORT sentences
 
-FORBIDDEN: momentum, turning point, dominant, electric, wanted to, felt, crowd erupted
+FORBIDDEN: dominant, electric, huge, momentum, turning point, wanted to, felt
 
-Respond with ONLY the narrative text (2-4 sentences, no JSON)."""
+Respond with ONLY the recap text."""
 
     return prompt

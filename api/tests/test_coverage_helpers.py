@@ -344,6 +344,137 @@ class TestGenerateDeterministicSentence:
         result = generate_deterministic_sentence(play, {})
         assert "Unknown" in result
 
+    def test_three_pointer_no_player(self):
+        """Three pointer without player name uses team abbreviation."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"description": "makes 3-pt shot", "team_abbreviation": "LAL"}
+        context = {"home_team_name": "Lakers", "away_team_name": "Celtics"}
+        result = generate_deterministic_sentence(play, context)
+        # Uses abbreviation when no player name
+        assert "LAL" in result or "three" in result.lower()
+
+    def test_missed_layup_no_player(self):
+        """Missed layup without player name uses team."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"description": "misses layup", "team_abbreviation": "BOS"}
+        context = {"home_team_name": "Lakers", "away_team_name": "Celtics"}
+        result = generate_deterministic_sentence(play, context)
+        assert "missed" in result.lower()
+
+    def test_missed_dunk_no_player(self):
+        """Missed dunk without player name uses team."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"description": "misses dunk attempt"}
+        result = generate_deterministic_sentence(play, {})
+        assert "missed" in result.lower() and "dunk" in result.lower()
+
+    def test_free_throw_made(self):
+        """Free throw made generates correct sentence."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"player_name": "Smith", "description": "Smith makes free throw 1 of 2"}
+        result = generate_deterministic_sentence(play, {})
+        assert "Smith" in result
+        assert "free throw" in result.lower()
+
+    def test_free_throw_missed(self):
+        """Free throw missed generates correct sentence."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"player_name": "Jones", "description": "Jones misses free throw"}
+        result = generate_deterministic_sentence(play, {})
+        assert "Jones" in result
+        assert "missed" in result.lower()
+
+    def test_free_throw_no_player(self):
+        """Free throw without player name uses team."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"description": "makes free throw", "team_abbreviation": "LAL"}
+        context = {"home_team_name": "Lakers", "away_team_name": "Celtics"}
+        result = generate_deterministic_sentence(play, context)
+        assert "free throw" in result.lower()
+
+    def test_jumper_made(self):
+        """Jumper made generates correct sentence."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"player_name": "Brown", "description": "Brown makes 18-foot jumper"}
+        result = generate_deterministic_sentence(play, {})
+        assert "Brown" in result
+        assert "jumper" in result.lower()
+
+    def test_jumper_missed(self):
+        """Jumper missed generates correct sentence."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"player_name": "Davis", "description": "Davis misses jumper"}
+        result = generate_deterministic_sentence(play, {})
+        assert "Davis" in result
+        assert "missed" in result.lower()
+
+    def test_jumper_no_player(self):
+        """Jumper without player name uses team."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"description": "makes jumper"}
+        result = generate_deterministic_sentence(play, {})
+        assert "jumper" in result.lower() or "shot" in result.lower()
+
+    def test_offensive_rebound(self):
+        """Offensive rebound generates correct sentence."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"player_name": "Carter", "description": "Carter offensive rebound"}
+        result = generate_deterministic_sentence(play, {})
+        assert "Carter" in result
+        assert "offensive rebound" in result.lower()
+
+    def test_offensive_rebound_no_player(self):
+        """Offensive rebound without player uses team."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"description": "offensive rebound", "team_abbreviation": "MIA"}
+        context = {"home_team_name": "Heat", "away_team_name": "Celtics"}
+        result = generate_deterministic_sentence(play, context)
+        assert "offensive rebound" in result.lower()
+
+    def test_team_abbrev_matches_away(self):
+        """Team abbreviation matching away team."""
+        from app.services.pipeline.stages.coverage_helpers import (
+            generate_deterministic_sentence,
+        )
+
+        play = {"description": "makes 3-pt shot", "team_abbreviation": "CEL"}
+        context = {"home_team_name": "Lakers", "away_team_name": "Celtics"}
+        result = generate_deterministic_sentence(play, context)
+        assert "Celtics" in result or "three" in result.lower()
+
 
 class TestInjectMissingExplicitPlays:
     """Tests for inject_missing_explicit_plays function."""
