@@ -150,4 +150,7 @@ FORBIDDEN_PHRASES = [
 FORBIDDEN_PATTERNS = [re.compile(p, re.IGNORECASE) for p in FORBIDDEN_PHRASES]
 
 # Number of moments to process in a single OpenAI call
-MOMENTS_PER_BATCH = 25
+# Larger batches = fewer API calls but more tokens per call
+# Max output: 16,384 tokens / 250 per moment ≈ 65 moments max
+# Using 50 for safety margin (12,500 tokens max output)
+MOMENTS_PER_BATCH = 50
