@@ -79,7 +79,7 @@ The story system converts play-by-play data into condensed moment-based narrativ
 
 ### Architecture
 
-A story is an ordered list of **condensed moments**. Each moment is a small set of PBP plays with at least one explicitly narrated play.
+A story is an ordered list of **condensed moments**. Each moment contains 15-50 PBP plays with 1-5 explicitly narrated plays. A typical game produces 15-25 moments.
 
 ```
 NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES → FINALIZE_MOMENTS
@@ -98,9 +98,10 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
 ### Core Concept: Condensed Moment
 
 A condensed moment contains:
-- `play_ids`: The backing plays
-- `explicitly_narrated_play_ids`: Plays directly described in narrative
-- `narrative`: Text describing the plays
+- `play_ids`: The backing plays (15-50 plays)
+- `explicitly_narrated_play_ids`: Plays directly described in narrative (1-5 plays)
+- `narrative`: 2-3 paragraph text (~6-10 sentences) describing the plays
+- `cumulative_box_score`: Running player stats snapshot at this point
 - Time and score context
 
 ### Key Properties

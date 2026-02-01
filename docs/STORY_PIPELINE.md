@@ -45,10 +45,11 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
 **Implementation:** `stages/generate_moments.py`
 
 **Segmentation Rules:**
-- Moments are contiguous sets of plays (typically 1-5)
-- Natural boundaries: timeouts, dead balls, period ends
-- Score-change boundaries when applicable
+- Moments are contiguous sets of plays (typically 15-50 plays per moment)
+- Hard boundaries: period ends, large lead changes (6+ points)
+- Soft boundaries: timeouts, stoppages, scoring plays (after minimum threshold)
 - No play appears in multiple moments
+- Each moment has 1-5 explicitly narrated plays
 
 **Output Schema:**
 ```python
@@ -109,9 +110,9 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
 **Implementation:** `stages/render_narratives.py`
 
 **OpenAI Usage:**
-- Moments batched (up to 15 per call) for efficiency
-- Input: Play descriptions, scores, clock values per batch
-- Output: Narrative strings for all moments in the batch
+- Moments batched (up to 5 per call) for longer narratives
+- Input: Play descriptions, scores, clock values, running stats per batch
+- Output: 2-3 paragraph narratives (~6-10 sentences) for each moment
 
 **Constraints:**
 - OpenAI only writes prose - it does not decide moment boundaries
@@ -131,13 +132,19 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
         {
             "play_ids": [...],
             "explicitly_narrated_play_ids": [...],
-            "narrative": "Durant sinks a three-pointer from the corner...",
+            "narrative": "The Hawks opened with a strong defensive stand...",
+            "cumulative_box_score": {
+                "home": {"team": "Hawks", "score": 45, "players": [...]},
+                "away": {"team": "Celtics", "score": 42, "players": [...]}
+            },
             ...
         }
     ],
-    "openai_calls": 15
+    "openai_calls": 5
 }
 ```
+
+Each moment includes a `cumulative_box_score` snapshot showing running stats up to that point in the game.
 
 ### 5. FINALIZE_MOMENTS
 

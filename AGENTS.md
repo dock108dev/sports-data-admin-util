@@ -10,7 +10,7 @@
 **Purpose:**
 - Multi-sport data ingestion (NBA, NHL, NCAAB)
 - Normalized API for all Dock108 products
-- Story generation (condensed moment-based narratives)
+- Story generation (condensed moments with 2-3 paragraph narratives and cumulative box scores)
 
 **Tech:** Python/FastAPI (API), Python/Celery (Scraper), React/Next.js (Web)
 
