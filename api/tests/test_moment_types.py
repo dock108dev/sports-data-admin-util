@@ -223,7 +223,7 @@ class TestConstants:
             PREFERRED_EXPLICIT_PLAYS,
         )
 
-        assert SOFT_CAP_PLAYS == 8
-        assert ABSOLUTE_MAX_PLAYS == 12
-        assert MAX_EXPLICIT_PLAYS_PER_MOMENT == 2
-        assert PREFERRED_EXPLICIT_PLAYS == 1
+        assert SOFT_CAP_PLAYS == 30
+        assert ABSOLUTE_MAX_PLAYS == 50
+        assert MAX_EXPLICIT_PLAYS_PER_MOMENT == 5
+        assert PREFERRED_EXPLICIT_PLAYS == 3

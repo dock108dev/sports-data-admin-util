@@ -251,8 +251,8 @@ class TestSegmentPlaysIntoMoments:
         for m in moments:
             assert len(m["explicitly_narrated_play_ids"]) >= 1
 
-    def test_max_two_narrated_per_moment(self):
-        """No moment has more than 2 narrated plays."""
+    def test_max_five_narrated_per_moment(self):
+        """No moment has more than 5 narrated plays."""
         from app.services.pipeline.stages.generate_moments import (
             _segment_plays_into_moments,
         )
@@ -266,7 +266,7 @@ class TestSegmentPlaysIntoMoments:
         moments, _ = _segment_plays_into_moments(events)
 
         for m in moments:
-            assert len(m["explicitly_narrated_play_ids"]) <= 2
+            assert len(m["explicitly_narrated_play_ids"]) <= 5
 
     def test_metrics_computed(self):
         """Compression metrics are computed."""

@@ -30,8 +30,8 @@ class TestShouldForceCloseMoment:
         )
         from app.services.pipeline.stages.moment_types import BoundaryReason
 
-        # ABSOLUTE_MAX_PLAYS is 12
-        plays = [make_event(i) for i in range(12)]
+        # ABSOLUTE_MAX_PLAYS is 50
+        plays = [make_event(i) for i in range(50)]
         current = plays[-1]
         prev = plays[-2]
         all_events = plays
@@ -103,8 +103,8 @@ class TestShouldPreferCloseMoment:
         )
         from app.services.pipeline.stages.moment_types import BoundaryReason
 
-        # SOFT_CAP_PLAYS is 8
-        plays = [make_event(i) for i in range(8)]
+        # SOFT_CAP_PLAYS is 30
+        plays = [make_event(i) for i in range(30)]
         current = plays[-1]
         prev = plays[-2]
         all_events = plays
@@ -116,15 +116,17 @@ class TestShouldPreferCloseMoment:
         assert reason == BoundaryReason.SOFT_CAP_REACHED
 
     def test_scoring_play_prefers_close(self):
-        """Scoring play prefers closure."""
+        """Scoring play prefers closure after 2/3 of soft cap (~20 plays)."""
         from app.services.pipeline.stages.boundary_detection import (
             should_prefer_close_moment,
         )
         from app.services.pipeline.stages.moment_types import BoundaryReason
 
-        prev = make_event(1, home_score=10, away_score=5)
-        current = make_event(2, home_score=12, away_score=5)
-        plays = [prev, current]
+        # Need 20+ plays (2/3 of SOFT_CAP=30) for scoring play to trigger close
+        plays = [make_event(i, home_score=10, away_score=5) for i in range(20)]
+        current = make_event(20, home_score=12, away_score=5)  # Scoring play
+        plays.append(current)
+        prev = plays[-2]
         all_events = plays
 
         should_close, reason = should_prefer_close_moment(
@@ -134,15 +136,17 @@ class TestShouldPreferCloseMoment:
         assert reason == BoundaryReason.SCORING_PLAY
 
     def test_stoppage_prefers_close(self):
-        """Stoppage play prefers closure."""
+        """Stoppage play prefers closure after MIN_PLAYS_BEFORE_SOFT_CLOSE (15 plays)."""
         from app.services.pipeline.stages.boundary_detection import (
             should_prefer_close_moment,
         )
         from app.services.pipeline.stages.moment_types import BoundaryReason
 
-        prev = make_event(1)
-        current = make_event(2, play_type="timeout")
-        plays = [prev, current]
+        # Need 15+ plays (MIN_PLAYS_BEFORE_SOFT_CLOSE) for stoppage to trigger close
+        plays = [make_event(i) for i in range(15)]
+        current = make_event(15, play_type="timeout")
+        plays.append(current)
+        prev = plays[-2]
         all_events = plays
 
         should_close, reason = should_prefer_close_moment(
@@ -152,15 +156,17 @@ class TestShouldPreferCloseMoment:
         assert reason == BoundaryReason.STOPPAGE
 
     def test_turnover_prefers_close(self):
-        """Turnover play prefers closure."""
+        """Turnover play prefers closure after half of soft cap (15 plays)."""
         from app.services.pipeline.stages.boundary_detection import (
             should_prefer_close_moment,
         )
         from app.services.pipeline.stages.moment_types import BoundaryReason
 
-        prev = make_event(1)
-        current = make_event(2, play_type="turnover")
-        plays = [prev, current]
+        # Need 15+ plays (half of SOFT_CAP=30) for turnover to trigger close
+        plays = [make_event(i) for i in range(15)]
+        current = make_event(15, play_type="turnover")
+        plays.append(current)
+        prev = plays[-2]
         all_events = plays
 
         should_close, reason = should_prefer_close_moment(
@@ -221,20 +227,35 @@ class TestIsMergeEligible:
         assert is_merge_eligible(plays, current, prev, next_event) is True
 
     def test_not_merge_eligible_scoring_in_large_moment(self):
-        """Not merge eligible when scoring occurred in larger moment (>= 5 plays)."""
+        """Not merge eligible when significant scoring in larger moment (20+ plays, 4+ scores, 10+ pts)."""
         from app.services.pipeline.stages.boundary_detection import is_merge_eligible
 
-        # 5 plays with scoring - larger moment should NOT be eligible
+        # 20+ plays with 4+ scoring plays and 10+ points - should NOT be eligible
         plays = [
             make_event(1, home_score=0, away_score=0, quarter=1),
             make_event(2, home_score=0, away_score=0, quarter=1),
-            make_event(3, home_score=2, away_score=0, quarter=1),  # Scoring
-            make_event(4, home_score=2, away_score=0, quarter=1),
-            make_event(5, home_score=2, away_score=0, quarter=1),
+            make_event(3, home_score=3, away_score=0, quarter=1),  # Scoring +3
+            make_event(4, home_score=3, away_score=0, quarter=1),
+            make_event(5, home_score=5, away_score=0, quarter=1),  # Scoring +2
+            make_event(6, home_score=5, away_score=0, quarter=1),
+            make_event(7, home_score=5, away_score=0, quarter=1),
+            make_event(8, home_score=8, away_score=0, quarter=1),  # Scoring +3
+            make_event(9, home_score=8, away_score=0, quarter=1),
+            make_event(10, home_score=8, away_score=0, quarter=1),
+            make_event(11, home_score=8, away_score=0, quarter=1),
+            make_event(12, home_score=8, away_score=0, quarter=1),
+            make_event(13, home_score=8, away_score=0, quarter=1),
+            make_event(14, home_score=8, away_score=0, quarter=1),
+            make_event(15, home_score=8, away_score=0, quarter=1),
+            make_event(16, home_score=8, away_score=0, quarter=1),
+            make_event(17, home_score=8, away_score=0, quarter=1),
+            make_event(18, home_score=8, away_score=0, quarter=1),
+            make_event(19, home_score=8, away_score=0, quarter=1),
+            make_event(20, home_score=11, away_score=0, quarter=1),  # Scoring +3, total 11pts
         ]
         current = plays[-1]
         prev = plays[-2]
-        next_event = make_event(6, quarter=1)
+        next_event = make_event(21, quarter=1)
 
         assert is_merge_eligible(plays, current, prev, next_event) is False
 
