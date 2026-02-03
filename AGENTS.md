@@ -10,7 +10,7 @@
 **Purpose:**
 - Multi-sport data ingestion (NBA, NHL, NCAAB)
 - Normalized API for all Dock108 products
-- Story generation (condensed moments with 2-3 paragraph narratives and cumulative box scores)
+- Story generation (4-7 narrative blocks per game, 20-60 second read time)
 
 **Tech:** Python/FastAPI (API), Python/Celery (Scraper), React/Next.js (Web)
 
@@ -39,7 +39,7 @@ docs/                     Documentation
 
 ## Scheduled Tasks
 
-Daily at 5:30 AM EST: ingestion → 7:00 AM: timelines → 7:15 AM: flows
+Daily at 8:00 AM ET: sports ingestion → 9:30 AM: flow generation
 Config: `scraper/sports_scraper/celery_app.py`
 
 ## Do NOT

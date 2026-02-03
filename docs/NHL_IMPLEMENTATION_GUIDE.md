@@ -309,7 +309,7 @@ SPORT_KEYS = {
 
 ### Current State
 **File:** `scraper/sports_scraper/social/collector.py`
-**File:** `docs/social-nhl.md`
+**File:** `docs/SOCIAL_NHL.md`
 
 NHL social integration is **already documented** with parity to NBA:
 - Same scraping mechanism (Playwright)
@@ -570,6 +570,6 @@ Goalie stats: saves, goals against, shots against, save %, TOI
 ## See Also
 
 - [DATA_SOURCES.md](DATA_SOURCES.md) - NHL API data source details
-- [odds-nhl-validation.md](odds-nhl-validation.md) - NHL odds validation
-- [social-nhl.md](social-nhl.md) - NHL social integration
+- [ODDS_NHL_VALIDATION.md](ODDS_NHL_VALIDATION.md) - NHL odds validation
+- [SOCIAL_NHL.md](SOCIAL_NHL.md) - NHL social integration
 - [TIMELINE_ASSEMBLY.md](TIMELINE_ASSEMBLY.md) - Timeline generation

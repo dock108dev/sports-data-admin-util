@@ -38,8 +38,6 @@ from .timeline_types import (
     NBA_OT_BUFFER_MINUTES,
     NHL_REGULATION_REAL_MINUTES,
     NHL_OT_BUFFER_MINUTES,
-    POSTGAME_WINDOW_HOURS,
-    LEAGUE_SEGMENTS,
 )
 
 
@@ -270,10 +268,7 @@ def classify_tweet_phase(
     if tweet_time <= estimated_end:
         return "in_game"
 
-    # Postgame window: up to 4 hours after estimated game end
-    postgame_cutoff = estimated_end + timedelta(hours=POSTGAME_WINDOW_HOURS)
-
-    # Everything after game end is postgame (even if beyond window)
+    # Everything after game end is postgame
     return "postgame"
 
 

@@ -73,8 +73,8 @@ NCAAB boxscore ingestion requires `cbb_team_id` in `sports_teams.external_codes`
 - `scraper/sports_scraper/scrapers/ncaab_sportsref.py`
 
 See also:
-- [pbp-nba-review.md](pbp-nba-review.md) - NBA PBP implementation details
-- [pbp-ncaab-sports-reference.md](pbp-ncaab-sports-reference.md) - NCAAB PBP details
+- [PBP_NBA_REVIEW.md](PBP_NBA_REVIEW.md) - NBA PBP implementation details
+- [PBP_NCAAB_SPORTS_REFERENCE.md](PBP_NCAAB_SPORTS_REFERENCE.md) - NCAAB PBP details
 
 ### Live Feeds / NHL API
 
@@ -150,8 +150,8 @@ This table enables efficient cross-book comparison without the game-centric stru
 - Persistence: `scraper/sports_scraper/persistence/odds.py`
 
 See also:
-- [odds-nba-ncaab-review.md](odds-nba-ncaab-review.md) - NBA/NCAAB odds details
-- [odds-nhl-validation.md](odds-nhl-validation.md) - NHL odds validation
+- [ODDS_NBA_NCAAB_REVIEW.md](ODDS_NBA_NCAAB_REVIEW.md) - NBA/NCAAB odds details
+- [ODDS_NHL_VALIDATION.md](ODDS_NHL_VALIDATION.md) - NHL odds validation
 
 ## Social Media (X/Twitter)
 
@@ -209,8 +209,8 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 
 See also:
 - [X_INTEGRATION.md](X_INTEGRATION.md) - X/Twitter integration architecture
-- [social-nba-review.md](social-nba-review.md) - NBA social implementation
-- [social-nhl.md](social-nhl.md) - NHL social accounts
+- [SOCIAL_NBA_REVIEW.md](SOCIAL_NBA_REVIEW.md) - NBA social implementation
+- [SOCIAL_NHL.md](SOCIAL_NHL.md) - NHL social accounts
 
 ## Scraper Execution
 

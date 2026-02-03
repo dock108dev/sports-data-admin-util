@@ -265,6 +265,24 @@ Get the AI-generated story for a game.
 {
   "gameId": 123,
   "story": {
+    "blocks": [
+      {
+        "blockIndex": 0,
+        "role": "SETUP",
+        "momentIndices": [0, 1, 2],
+        "scoreBefore": [0, 0],
+        "scoreAfter": [15, 12],
+        "narrative": "The Suns jumped out early, with Durant draining two three-pointers in the opening minutes to set the tone."
+      },
+      {
+        "blockIndex": 1,
+        "role": "MOMENTUM_SHIFT",
+        "momentIndices": [3, 4, 5],
+        "scoreBefore": [15, 12],
+        "scoreAfter": [28, 32],
+        "narrative": "The Lakers responded with a 20-13 run spanning the late first and early second quarter, taking their first lead on a Davis alley-oop."
+      }
+    ],
     "moments": [
       {
         "playIds": [1, 2, 3],
@@ -273,24 +291,7 @@ Get the AI-generated story for a game.
         "startClock": "11:42",
         "endClock": "11:00",
         "scoreBefore": [0, 0],
-        "scoreAfter": [3, 0],
-        "narrative": "Durant sinks a three-pointer from the corner...",
-        "cumulativeBoxScore": {
-          "home": {
-            "team": "Lakers",
-            "score": 0,
-            "players": [],
-            "goalie": null
-          },
-          "away": {
-            "team": "Suns",
-            "score": 3,
-            "players": [
-              {"name": "Kevin Durant", "pts": 3, "reb": 0, "ast": 0, "3pm": 1}
-            ],
-            "goalie": null
-          }
-        }
+        "scoreAfter": [3, 0]
       }
     ]
   },
@@ -312,22 +313,27 @@ Get the AI-generated story for a game.
 ```
 
 **Key Notes:**
-- `playId` equals `playIndex` (sequential play number)
-- To join moments to plays: `plays.filter(p => moment.playIds.includes(p.playId))`
+- **Blocks are the primary output** — Use `blocks` for consumer-facing game summaries (4-7 blocks, 20-60 second read time)
+- **Moments are for traceability** — Use `moments` to link narratives back to specific plays
+- Each block has a semantic `role`: SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, or RESOLUTION
 - `scoreBefore`/`scoreAfter` arrays are `[awayScore, homeScore]`
-- `explicitlyNarratedPlayIds` are the key plays referenced in the narrative
-- `cumulativeBoxScore` contains running team scores and top player stats at this moment
+- `playId` equals `playIndex` (sequential play number)
 
 **Response (404):** No story exists for this game.
 
 ### Story Structure
 
-Stories are AI-generated narrative summaries built from play-by-play data. They condense a game into "moments" - small groups of related plays with narrative text.
+Stories are AI-generated narrative summaries built from play-by-play data. Each story contains 4-7 **blocks** — short narratives (1-2 sentences each) designed for 20-60 second total read time.
 
-**When to use Stories:**
-- Display a readable game summary
-- Show key moments without full PBP detail
-- Provide progressive reveal of game events
+**Blocks** are the consumer-facing output:
+- Each block has a semantic role (SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION)
+- First block is always SETUP, last block is always RESOLUTION
+- Total word count ≤ 350 words
+
+**Moments** remain for internal traceability:
+- Link blocks back to specific plays
+- 15-25 moments per game (more granular than blocks)
+- No consumer-facing narrative text
 
 ---
 
@@ -769,9 +775,31 @@ interface GameStoryResponse {
 }
 
 interface StoryContent {
-  moments: StoryMoment[];
+  blocks: StoryBlock[];       // Consumer-facing narratives (4-7 per game)
+  moments: StoryMoment[];     // Internal traceability (15-25 per game)
 }
 
+// Consumer-facing narrative block (1-2 sentences, ~35 words)
+interface StoryBlock {
+  blockIndex: number;         // Position (0-6)
+  role: SemanticRole;         // SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION
+  momentIndices: number[];    // Which moments are grouped in this block
+  scoreBefore: number[];      // [away, home]
+  scoreAfter: number[];       // [away, home]
+  narrative: string;          // 1-2 sentences (~35 words)
+  embeddedTweet?: EmbeddedTweet | null;  // Optional (max 1 per block, 5 per game)
+}
+
+type SemanticRole = "SETUP" | "MOMENTUM_SHIFT" | "RESPONSE" | "DECISION_POINT" | "RESOLUTION";
+
+interface EmbeddedTweet {
+  tweetId: string;
+  authorHandle: string;
+  text: string;
+  mediaUrl?: string;
+}
+
+// Internal traceability: links blocks to specific plays
 interface StoryMoment {
   playIds: number[];
   explicitlyNarratedPlayIds: number[];
@@ -780,43 +808,6 @@ interface StoryMoment {
   endClock: string | null;
   scoreBefore: number[];      // [away, home]
   scoreAfter: number[];       // [away, home]
-  narrative: string;
-  cumulativeBoxScore: MomentBoxScore | null;  // Running stats snapshot
-}
-
-// Cumulative box score at a moment in time
-interface MomentBoxScore {
-  home: MomentTeamBoxScore;
-  away: MomentTeamBoxScore;
-}
-
-interface MomentTeamBoxScore {
-  team: string;               // Team name
-  score: number;              // Running score at this moment
-  players: MomentPlayerStat[];  // Top contributors (up to 5)
-  goalie: MomentGoalieStat | null;  // NHL only
-}
-
-// Basketball player stats (NBA/NCAAB)
-interface MomentPlayerStat {
-  name: string;
-  pts?: number;    // Points
-  reb?: number;    // Rebounds
-  ast?: number;    // Assists
-  "3pm"?: number;  // Three-pointers made
-  // NHL stats (when league is NHL)
-  goals?: number;
-  assists?: number;
-  sog?: number;    // Shots on goal
-  plusMinus?: number;
-}
-
-// NHL goalie stats
-interface MomentGoalieStat {
-  name: string;
-  saves: number;
-  ga: number;       // Goals against
-  savePct: number;  // Save percentage (0.0-1.0)
 }
 
 interface StoryPlay {

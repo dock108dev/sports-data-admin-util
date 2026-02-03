@@ -2,209 +2,206 @@
 
 ## Foundational Axiom
 
-**A story is an ordered list of condensed moments. A condensed moment is a contiguous set of Play-by-Play (PBP) plays (typically 15-50) with 1-5 explicitly narrated plays.**
+**A story consists of 4-7 narrative blocks. Each block is grounded in one or more moments. Each moment is backed by specific plays.**
 
-All definitions, constraints, and guarantees in this document derive from this statement.
+This creates a two-level structure:
+- **Blocks** — Consumer-facing narratives (4-7 per game, 1-2 sentences each)
+- **Moments** — Internal traceability (15-25 per game, linking blocks to plays)
 
 ---
 
 ## 1. Purpose and Scope
 
-Story produces a readable, condensed replay of a game.
+Story produces a readable, condensed replay of a game designed for 20-60 second consumption.
 
-- The output is a sequence of condensed moments
-- Each moment is grounded in specific plays
+- The output is a sequence of narrative blocks
+- Each block has a semantic role (SETUP, MOMENTUM_SHIFT, RESOLUTION, etc.)
 - The sequence preserves game chronology
+- Total read time: 20-60 seconds (~350 words max)
 
 **This system is not a recap generator.** It does not summarize. It does not abstract. It condenses and narrates concrete events.
 
 ---
 
-## 2. Core Unit: Condensed Moment
+## 2. Core Units
 
-A **condensed moment** is:
+### Narrative Block (Consumer-Facing)
 
-- A contiguous set of PBP plays (typically 15–50 plays, covering multiple possessions)
-- At least one play (up to 5) in the set is explicitly narrated
-- The set represents a discrete, meaningful segment of game action
+A **narrative block** is:
 
-### What a condensed moment is NOT
+- A short narrative (1-2 sentences, ~35 words)
+- Assigned a semantic role describing its function
+- Grounded in one or more moments
+- Part of a 4-7 block sequence
 
-| Concept | Why it differs |
-|---------|----------------|
-| Quarter | A quarter is a time boundary. A condensed moment is a meaning boundary. |
-| Section | A section implies hierarchy and headers. A condensed moment has no title. |
-| Beat | A beat is a narrative abstraction. A condensed moment is play-backed. |
-| Summary paragraph | A summary describes without grounding. A condensed moment narrates specific plays. |
+**Semantic Roles:**
+| Role | Description |
+|------|-------------|
+| SETUP | Early context, how game began (always first) |
+| MOMENTUM_SHIFT | First meaningful swing |
+| RESPONSE | Counter-run, stabilization |
+| DECISION_POINT | Sequence that decided outcome |
+| RESOLUTION | How game ended (always last) |
 
-### Why condensed moments are the atomic unit
+**Block Limits:**
+- Minimum: 4 blocks per game
+- Maximum: 7 blocks per game
+- No role appears more than twice
 
-- **Nothing smaller works.** A single play lacks sufficient context for narrative flow.
-- **Nothing larger works.** Aggregating beyond a small set loses traceability. Every sentence must map to plays.
+### Moment (Internal Traceability)
 
-A condensed moment is the smallest unit that supports both narrative coherence and full play traceability.
+A **moment** is:
+
+- A contiguous set of PBP plays (typically 15-50 plays)
+- At least one play (up to 5) is explicitly narrated
+- A discrete, meaningful segment of game action
+- Used for tracing blocks back to specific plays
+
+Moments do not have consumer-facing narratives. They exist for auditability.
 
 ---
 
-## 3. Required Fields of a Condensed Moment
+## 3. Required Fields
 
-| Field | Type | Guarantees | Purpose | Failure Mode |
-|-------|------|------------|---------|--------------|
-| `play_ids` | list of unique identifiers | Non-empty; all IDs exist in source PBP | Defines the plays backing this moment | Without this, narrative is ungrounded |
-| `explicitly_narrated_play_ids` | list of unique identifiers | Non-empty (1-5 plays); strict subset of `play_ids` | Identifies which plays are directly described | Without this, no guarantee of narrative traceability |
-| `start_clock` | game clock value | Valid clock at first play | Anchors moment in game time | Without this, ordering is ambiguous |
-| `end_clock` | game clock value | Valid clock at last play | Bounds the moment | Without this, moment boundaries are undefined |
-| `period` | integer | Valid period number | Places moment in game structure | Without this, clock values are uninterpretable |
-| `score_before` | tuple (home, away) | Score at moment start | Provides context | Without this, score progression is lost |
-| `score_after` | tuple (home, away) | Score at moment end | Provides context | Without this, impact is unclear |
-| `narrative` | string | Non-empty; 2-3 paragraphs (~6-10 sentences) describing plays from `explicitly_narrated_play_ids` | The readable text | Without this, the moment is data, not story |
-| `cumulative_box_score` | object | Contains home/away team stats and top player stats | Running stats snapshot at this moment | Without this, statistical context is lost |
+### Block Fields
 
-### Cumulative Box Score Structure
+| Field | Type | Purpose |
+|-------|------|---------|
+| `block_index` | int | Position (0-6) |
+| `role` | string | Semantic role |
+| `moment_indices` | list[int] | Which moments are grouped |
+| `score_before` | [home, away] | Score at block start |
+| `score_after` | [home, away] | Score at block end |
+| `narrative` | string | 1-2 sentences (~35 words) |
+| `embedded_tweet` | object | null | Optional tweet (max 1 per block) |
 
-The `cumulative_box_score` provides a running statistical snapshot at each moment:
+### Moment Fields (Traceability)
 
-```json
-{
-  "home": {
-    "team": "Philadelphia 76ers",
-    "score": 54,
-    "players": [
-      {"name": "Joel Embiid", "pts": 18, "reb": 6, "ast": 2, "3pm": 1}
-    ],
-    "goalie": null
-  },
-  "away": {
-    "team": "Sacramento Kings",
-    "score": 48,
-    "players": [
-      {"name": "De'Aaron Fox", "pts": 14, "reb": 2, "ast": 5, "3pm": 2}
-    ],
-    "goalie": null
-  }
-}
-```
-
-**Field details:**
-- `team`: Full team name
-- `score`: Running score at end of this moment (matches `score_after`)
-- `players`: Top 5 contributors sorted by points (basketball) or goals+assists (hockey)
-- `goalie`: NHL only - goalie stats with saves, goals against, save percentage
-
-**Sport-specific player stats:**
-- **Basketball (NBA/NCAAB):** `pts`, `reb`, `ast`, `3pm`, `fgm`, `ftm`
-- **Hockey (NHL):** `goals`, `assists`, `sog` (shots on goal), `plusMinus`
+| Field | Type | Purpose |
+|-------|------|---------|
+| `play_ids` | list[int] | Backing plays |
+| `explicitly_narrated_play_ids` | list[int] | Key plays (1-5) |
+| `period` | int | Game period |
+| `start_clock` | string | Clock at first play |
+| `end_clock` | string | Clock at last play |
+| `score_before` | [home, away] | Score at moment start |
+| `score_after` | [home, away] | Score at moment end |
 
 ---
 
 ## 4. Narrative Rules
 
-### Explicit narration requirement
+### Block Narratives
 
-Every condensed moment contains at least one explicitly narrated play. "Explicitly narrated" means:
+Each block narrative:
+- Is 1-2 sentences, approximately 35 words
+- Describes concrete game actions
+- References key plays from its underlying moments
+- Is role-aware (SETUP blocks set context, RESOLUTION blocks conclude)
 
-- The play is directly referenced in the narrative text
-- A reader can identify which play is being described
-- The narrative sentence makes a claim that the play substantiates
+### Forbidden Language
 
-### Traceability requirement
+Narratives must not contain:
+- "momentum", "turning point", "shift"
+- "crucial", "pivotal", "key moment"
+- "dominant", "clutch", "huge", "massive"
+- Retrospective commentary ("would later prove...")
+- Speculation ("appeared to", "seemed to")
 
-Every narrative sentence must be traceable to one or more plays in `play_ids`. No sentence may make claims unsupported by the backing plays.
+### Traceability
 
-### Ordering, not abstraction
-
-Narrative flow emerges from the sequence of condensed moments. The system achieves coherence through:
-
-- Chronological ordering
-- Score progression
-- Explicit transitions between moments
-
-The system does not achieve coherence through:
-
-- Thematic grouping
-- Abstract narrative arcs
-- Retrospective commentary
-
-### Implied vs. stated
-
-- **Stated:** Any claim about what happened (who scored, what play occurred)
-- **Implied:** Emotional stakes, momentum shifts, significance
-
-Implied content is permitted only when it follows directly from stated facts. Implied content must never contradict or extend beyond the backing plays.
+Every narrative claim is traceable:
+1. Block → Moments (via `moment_indices`)
+2. Moment → Plays (via `play_ids`)
+3. Play → Source data (via PBP records)
 
 ---
 
-## 5. Expansion Contract
+## 5. Embedded Tweets (Phase 4)
 
-**Expansion is a consumption concern, not a generation concern.**
+Blocks may contain embedded tweets that add social context.
 
-When a consumer expands a condensed moment:
+**Constraints:**
+- Maximum 5 embedded tweets per game
+- Maximum 1 embedded tweet per block
+- Tweets are optional — removing all tweets produces the same story structure
+- Tweets do not influence narrative content
 
-- The full list of `play_ids` is revealed
-- Each play's raw PBP data becomes visible
-- The relationship between narrative and plays becomes inspectable
-
-### Expansion guarantees
-
-- Expansion shows exactly the plays in `play_ids`
-- Expansion shows which plays are in `explicitly_narrated_play_ids`
-- Expansion never introduces new narrative claims
-- Expansion never reorders plays
-- Expansion never adds plays not in `play_ids`
-
-### Expansion does not
-
-- Generate additional text
-- Summarize the expanded plays
-- Provide commentary beyond the original narrative
+**Selection Criteria:**
+- In-game tweets preferred over pregame/postgame
+- High engagement and media content preferred
+- Distributed across blocks (early, mid, late)
 
 ---
 
-## 6. Explicit Non-Goals (Hard Exclusions)
+## 6. Guardrail Invariants (Non-Negotiable)
 
-The following are **excluded from Story by design**. These are not deferred features. They are incompatible with the system.
+| Invariant | Limit | Enforcement |
+|-----------|-------|-------------|
+| Block count | 4-7 | Pipeline fails on violation |
+| Embedded tweets | ≤ 5 per game | Hard cap enforced |
+| Tweet per block | ≤ 1 | Hard cap enforced |
+| Total words | ≤ 350 | Warning, not failure |
+| Read time | 20-60 seconds | Implicit via word limits |
 
-- **Headers or section titles.** Stories have no named divisions.
-- **Abstract narrative themes.** No "turning points," "momentum swings," or "key stretches" as organizational units.
-- **Beat-based prose guidance.** No prescribed narrative structures.
-- **Word count targets.** Length is a function of moments, not a parameter.
-- **Quarter-based storytelling.** Quarters are metadata, not narrative boundaries.
-- **Game flow summaries.** Any summary not backed by specific plays is prohibited.
-- **Retrospective narration.** No moment may reference plays that occur after it.
-- **Interpretive headlines.** No text exists outside the ordered moment sequence.
-
-An implementation that includes any of the above is non-compliant.
+Violations are logged at ERROR level with full context.
 
 ---
 
-## 7. Success Criteria
+## 7. Social Independence
+
+**Zero required social dependencies.** The story structure must be identical with or without social data.
+
+Validation checks:
+- Block count is identical with/without social
+- Block narratives are identical with/without social
+- Semantic roles are identical with/without social
+
+Social content (embedded tweets) is additive, never structural.
+
+---
+
+## 8. Success Criteria
 
 A Story output is correct if and only if:
 
-### Structural tests
+### Structural Tests
 
-- [ ] The story is a non-empty ordered list of condensed moments
-- [ ] Each moment contains all required fields
-- [ ] All `play_ids` exist in source PBP data
-- [ ] All `explicitly_narrated_play_ids` are subsets of their moment's `play_ids`
-- [ ] Moments are ordered by game time (period, then clock)
-- [ ] No plays appear in multiple moments
+- [ ] The story contains 4-7 blocks
+- [ ] Each block has a semantic role
+- [ ] First block is SETUP, last block is RESOLUTION
+- [ ] No role appears more than twice
+- [ ] Score continuity across block boundaries
 
-### Narrative tests
+### Narrative Tests
 
-- [ ] Each moment's narrative references at least one play from `explicitly_narrated_play_ids`
-- [ ] No narrative sentence makes claims unsupported by `play_ids`
-- [ ] No narrative references plays outside its moment's `play_ids`
-- [ ] No narrative references future events
+- [ ] Each narrative is 10-50 words
+- [ ] Total word count ≤ 350
+- [ ] No forbidden phrases
+- [ ] No retrospective commentary
 
-### Verification questions
+### Traceability Tests
+
+- [ ] Each block maps to moments via `moment_indices`
+- [ ] Each moment maps to plays via `play_ids`
+- [ ] All play references exist in source PBP
+
+### Social Independence Tests
+
+- [ ] Removing embedded tweets changes nothing but tweet fields
+- [ ] Block count, roles, and narratives are social-independent
+
+---
+
+## 9. Verification Questions
 
 A compliant system answers these questions for any output:
 
-1. "Which plays back this sentence?" → Returns specific `play_ids`
-2. "What was the score when this moment occurred?" → Returns `score_before` and `score_after`
-3. "What plays are in this moment but not explicitly narrated?" → Returns `play_ids` minus `explicitly_narrated_play_ids`
-4. "Is this moment grounded in PBP data?" → Always yes
+1. "How many blocks?" → 4-7
+2. "What role is block N?" → One of the semantic roles
+3. "Which plays back this block?" → Via moments → plays
+4. "Total read time?" → 20-60 seconds
+5. "Does this work without social?" → Yes, identical structure
 
 ---
 

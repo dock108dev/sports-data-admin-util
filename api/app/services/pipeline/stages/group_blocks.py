@@ -45,16 +45,19 @@ from .block_types import (
     SemanticRole,
     MIN_BLOCKS,
     MAX_BLOCKS,
-    MIN_KEY_PLAYS,
     MAX_KEY_PLAYS,
 )
+from .block_analysis import (
+    count_lead_changes,
+    find_lead_change_indices,
+    find_scoring_runs,
+    find_period_boundaries,
+    detect_blowout,
+    find_garbage_time_start,
+)
 
-# Task 1.5: Blowout handling constants
-BLOWOUT_MARGIN_THRESHOLD = 20  # Point margin to consider a blowout
-BLOWOUT_SUSTAINED_PERIODS = 2  # Periods margin must be maintained
-GARBAGE_TIME_MARGIN = 25  # Margin where garbage time kicks in
-GARBAGE_TIME_PERIOD_MIN = 3  # Minimum period for garbage time (3rd quarter/period)
-BLOWOUT_MAX_BLOCKS = 5  # Fewer blocks for blowout games (less narrative needed)
+# Blowout games get fewer blocks (less narrative needed)
+BLOWOUT_MAX_BLOCKS = 5
 
 logger = logging.getLogger(__name__)
 
@@ -88,218 +91,6 @@ def calculate_block_count(
 
     return min(base, MAX_BLOCKS)
 
-
-def _count_lead_changes(moments: list[dict[str, Any]]) -> int:
-    """Count lead changes across all moments."""
-    lead_changes = 0
-    prev_leader: int | None = None  # -1 = away, 0 = tie, 1 = home
-
-    for moment in moments:
-        score_after = moment.get("score_after", [0, 0])
-        home, away = score_after[0], score_after[1]
-
-        if home > away:
-            current_leader = 1
-        elif away > home:
-            current_leader = -1
-        else:
-            current_leader = 0
-
-        if prev_leader is not None and prev_leader != 0 and current_leader != 0:
-            if prev_leader != current_leader:
-                lead_changes += 1
-
-        if current_leader != 0:
-            prev_leader = current_leader
-
-    return lead_changes
-
-
-def _find_lead_change_indices(moments: list[dict[str, Any]]) -> list[int]:
-    """Find indices of moments where lead changes occur."""
-    lead_change_indices: list[int] = []
-    prev_leader: int | None = None
-
-    for i, moment in enumerate(moments):
-        score_before = moment.get("score_before", [0, 0])
-        score_after = moment.get("score_after", [0, 0])
-
-        # Check leader at start of moment
-        home_before, away_before = score_before[0], score_before[1]
-        if home_before > away_before:
-            leader_before = 1
-        elif away_before > home_before:
-            leader_before = -1
-        else:
-            leader_before = 0
-
-        # Check leader at end of moment
-        home_after, away_after = score_after[0], score_after[1]
-        if home_after > away_after:
-            leader_after = 1
-        elif away_after > home_after:
-            leader_after = -1
-        else:
-            leader_after = 0
-
-        # Lead change within this moment
-        if leader_before != 0 and leader_after != 0 and leader_before != leader_after:
-            lead_change_indices.append(i)
-
-        prev_leader = leader_after if leader_after != 0 else prev_leader
-
-    return lead_change_indices
-
-
-def _find_scoring_runs(
-    moments: list[dict[str, Any]],
-    min_run_size: int = 8,
-) -> list[tuple[int, int, int]]:
-    """Find significant scoring runs (unanswered points).
-
-    Returns list of (start_idx, end_idx, run_size) tuples.
-    """
-    runs: list[tuple[int, int, int]] = []
-
-    # Track unanswered scoring
-    current_run_start = 0
-    current_run_team: int | None = None  # 1 = home, -1 = away
-    current_run_points = 0
-
-    for i, moment in enumerate(moments):
-        score_before = moment.get("score_before", [0, 0])
-        score_after = moment.get("score_after", [0, 0])
-
-        home_delta = score_after[0] - score_before[0]
-        away_delta = score_after[1] - score_before[1]
-
-        # Determine who scored
-        if home_delta > 0 and away_delta == 0:
-            scoring_team = 1
-            points = home_delta
-        elif away_delta > 0 and home_delta == 0:
-            scoring_team = -1
-            points = away_delta
-        elif home_delta > 0 and away_delta > 0:
-            # Both scored - run broken
-            if current_run_points >= min_run_size:
-                runs.append((current_run_start, i - 1, current_run_points))
-            current_run_team = None
-            current_run_points = 0
-            current_run_start = i + 1
-            continue
-        else:
-            # No scoring - continue current run
-            continue
-
-        # Check if run continues or breaks
-        if current_run_team is None:
-            current_run_team = scoring_team
-            current_run_start = i
-            current_run_points = points
-        elif scoring_team == current_run_team:
-            current_run_points += points
-        else:
-            # Run broken by other team scoring
-            if current_run_points >= min_run_size:
-                runs.append((current_run_start, i - 1, current_run_points))
-            current_run_team = scoring_team
-            current_run_start = i
-            current_run_points = points
-
-    # Check final run
-    if current_run_points >= min_run_size:
-        runs.append((current_run_start, len(moments) - 1, current_run_points))
-
-    return runs
-
-
-def _find_period_boundaries(moments: list[dict[str, Any]]) -> list[int]:
-    """Find indices where period changes occur."""
-    boundaries: list[int] = []
-
-    for i in range(1, len(moments)):
-        prev_period = moments[i - 1].get("period", 1)
-        curr_period = moments[i].get("period", 1)
-        if prev_period != curr_period:
-            boundaries.append(i)
-
-    return boundaries
-
-
-def _detect_blowout(moments: list[dict[str, Any]]) -> tuple[bool, int | None, int]:
-    """Detect if game is a blowout and find when it became decisive.
-
-    Task 1.5: Blowout handling.
-
-    A blowout is detected when:
-    - Margin reaches BLOWOUT_MARGIN_THRESHOLD (20 points)
-    - Margin is sustained for BLOWOUT_SUSTAINED_PERIODS (2+ periods)
-
-    Args:
-        moments: List of validated moments
-
-    Returns:
-        Tuple of (is_blowout, decisive_moment_idx, max_margin)
-    """
-    if not moments:
-        return False, None, 0
-
-    decisive_moment_idx: int | None = None
-    margin_start_period: int | None = None
-    margin_start_idx: int | None = None
-    max_margin = 0
-
-    for i, moment in enumerate(moments):
-        score_after = moment.get("score_after", [0, 0])
-        period = moment.get("period", 1)
-        home, away = score_after[0], score_after[1]
-        margin = abs(home - away)
-
-        max_margin = max(max_margin, margin)
-
-        if margin >= BLOWOUT_MARGIN_THRESHOLD:
-            if margin_start_period is None:
-                # Start tracking sustained margin
-                margin_start_period = period
-                margin_start_idx = i
-            else:
-                # Check if margin has been sustained
-                periods_elapsed = period - margin_start_period
-                if periods_elapsed >= BLOWOUT_SUSTAINED_PERIODS:
-                    decisive_moment_idx = margin_start_idx
-                    return True, decisive_moment_idx, max_margin
-        else:
-            # Margin dropped below threshold, reset tracking
-            margin_start_period = None
-            margin_start_idx = None
-
-    return False, decisive_moment_idx, max_margin
-
-
-def _find_garbage_time_start(moments: list[dict[str, Any]]) -> int | None:
-    """Find when garbage time begins (if at all).
-
-    Task 1.5: Garbage time is when:
-    - Margin exceeds GARBAGE_TIME_MARGIN (25 points)
-    - Period is GARBAGE_TIME_PERIOD_MIN or later (3rd quarter+)
-
-    Args:
-        moments: List of validated moments
-
-    Returns:
-        Moment index where garbage time starts, or None
-    """
-    for i, moment in enumerate(moments):
-        score_after = moment.get("score_after", [0, 0])
-        period = moment.get("period", 1)
-        home, away = score_after[0], score_after[1]
-        margin = abs(home - away)
-
-        if margin >= GARBAGE_TIME_MARGIN and period >= GARBAGE_TIME_PERIOD_MIN:
-            return i
-
-    return None
 
 
 def _compress_blowout_blocks(
@@ -359,8 +150,7 @@ def _compress_blowout_blocks(
 
     # Ensure we have at least MIN_BLOCKS - 1 split points
     while len(split_points) < MIN_BLOCKS - 1:
-        # Add evenly distributed splits
-        gaps = [split_points[0]] if split_points else [n // 2]
+        # Add evenly distributed splits between existing points
         for i in range(len(split_points) - 1):
             gap = split_points[i + 1] - split_points[i]
             if gap > 2:
@@ -399,9 +189,9 @@ def _find_split_points(
         return list(range(1, n))
 
     # Collect candidate split points with priorities
-    lead_changes = _find_lead_change_indices(moments)
-    scoring_runs = _find_scoring_runs(moments)
-    period_boundaries = _find_period_boundaries(moments)
+    lead_changes = find_lead_change_indices(moments)
+    scoring_runs = find_scoring_runs(moments)
+    period_boundaries = find_period_boundaries(moments)
 
     # Build set of all candidate points with priorities
     candidates: dict[int, int] = {}  # index -> priority (lower = better)
@@ -741,17 +531,17 @@ async def execute_group_blocks(stage_input: StageInput) -> StageOutput:
     output.add_log(f"Processing {len(moments)} moments")
 
     # Calculate game metrics
-    lead_changes = _count_lead_changes(moments)
+    lead_changes = count_lead_changes(moments)
     total_plays = sum(len(m.get("play_ids", [])) for m in moments)
-    scoring_runs = _find_scoring_runs(moments)
+    scoring_runs = find_scoring_runs(moments)
     largest_run = max((r[2] for r in scoring_runs), default=0)
 
     output.add_log(f"Game metrics: {lead_changes} lead changes, {total_plays} plays")
     output.add_log(f"Found {len(scoring_runs)} scoring runs, largest: {largest_run}")
 
     # Task 1.5: Check for blowout
-    is_blowout, decisive_idx, max_margin = _detect_blowout(moments)
-    garbage_time_idx = _find_garbage_time_start(moments) if is_blowout else None
+    is_blowout, decisive_idx, max_margin = detect_blowout(moments)
+    garbage_time_idx = find_garbage_time_start(moments) if is_blowout else None
 
     if is_blowout:
         output.add_log(

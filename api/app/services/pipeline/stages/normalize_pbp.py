@@ -21,142 +21,45 @@ from ....db import AsyncSession
 from ....utils.datetime_utils import parse_clock_to_seconds
 from ....services.resolution_tracker import ResolutionTracker
 from ..models import NormalizedPBPOutput, StageInput, StageOutput
+from .pbp_sport_config import (
+    # NBA Constants
+    NBA_REGULATION_REAL_SECONDS,
+    NBA_HALFTIME_REAL_SECONDS,
+    NBA_QUARTER_REAL_SECONDS,
+    NBA_QUARTER_GAME_SECONDS,
+    NBA_OT_GAME_SECONDS,
+    NBA_OT_REAL_SECONDS,
+    # NCAAB Constants
+    NCAAB_REGULATION_REAL_SECONDS,
+    NCAAB_HALFTIME_REAL_SECONDS,
+    NCAAB_HALF_REAL_SECONDS,
+    NCAAB_HALF_GAME_SECONDS,
+    NCAAB_OT_GAME_SECONDS,
+    NCAAB_OT_REAL_SECONDS,
+    # NHL Constants
+    NHL_REGULATION_REAL_SECONDS,
+    NHL_INTERMISSION_REAL_SECONDS,
+    NHL_PERIOD_REAL_SECONDS,
+    NHL_PERIOD_GAME_SECONDS,
+    NHL_OT_GAME_SECONDS,
+    NHL_OT_REAL_SECONDS,
+    NHL_PLAYOFF_OT_GAME_SECONDS,
+    # Social windows
+    SOCIAL_PREGAME_WINDOW_SECONDS,
+    # Phase mapping
+    nba_phase_for_quarter,
+    nba_block_for_quarter,
+    ncaab_phase_for_period,
+    ncaab_block_for_period,
+    nhl_phase_for_period,
+    nhl_block_for_period,
+    # Period timing
+    nba_quarter_start,
+    ncaab_period_start,
+    nhl_period_start,
+)
 
 logger = logging.getLogger(__name__)
-
-# Constants from timeline_generator.py
-NBA_REGULATION_REAL_SECONDS = 75 * 60
-NBA_HALFTIME_REAL_SECONDS = 15 * 60
-NBA_QUARTER_REAL_SECONDS = NBA_REGULATION_REAL_SECONDS // 4
-NBA_QUARTER_GAME_SECONDS = 12 * 60
-NBA_OT_GAME_SECONDS = 5 * 60             # 5-minute OT periods
-NBA_OT_REAL_SECONDS = 10 * 60            # ~10 min real time per OT
-
-# NCAAB Constants (20-minute halves)
-NCAAB_REGULATION_REAL_SECONDS = 75 * 60  # ~75 min real time (similar to NBA)
-NCAAB_HALFTIME_REAL_SECONDS = 20 * 60    # 20-minute halftime
-NCAAB_HALF_REAL_SECONDS = NCAAB_REGULATION_REAL_SECONDS // 2
-NCAAB_HALF_GAME_SECONDS = 20 * 60        # 20 min per half
-NCAAB_OT_GAME_SECONDS = 5 * 60           # 5-minute OT periods
-NCAAB_OT_REAL_SECONDS = 10 * 60          # ~10 min real time per OT
-
-# NHL Constants (20-minute periods)
-NHL_REGULATION_REAL_SECONDS = 90 * 60    # ~90 min real time for 3 periods
-NHL_INTERMISSION_REAL_SECONDS = 18 * 60  # 18-minute intermissions
-NHL_PERIOD_REAL_SECONDS = NHL_REGULATION_REAL_SECONDS // 3
-NHL_PERIOD_GAME_SECONDS = 20 * 60        # 20 min per period
-NHL_OT_GAME_SECONDS = 5 * 60             # 5-minute OT (regular season)
-NHL_OT_REAL_SECONDS = 10 * 60            # ~10 min real time per OT
-NHL_PLAYOFF_OT_GAME_SECONDS = 20 * 60    # 20-minute playoff OT periods
-
-# Social post time windows
-SOCIAL_PREGAME_WINDOW_SECONDS = 2 * 60 * 60
-SOCIAL_POSTGAME_WINDOW_SECONDS = 2 * 60 * 60
-
-
-def _nba_phase_for_quarter(quarter: int | None) -> str:
-    """Map quarter number to narrative phase."""
-    if quarter is None:
-        return "unknown"
-    if quarter == 1:
-        return "q1"
-    if quarter == 2:
-        return "q2"
-    if quarter == 3:
-        return "q3"
-    if quarter == 4:
-        return "q4"
-    if quarter == 5:
-        return "ot1"
-    if quarter == 6:
-        return "ot2"
-    if quarter == 7:
-        return "ot3"
-    if quarter == 8:
-        return "ot4"
-    return f"ot{quarter - 4}" if quarter > 4 else "unknown"
-
-
-def _nba_block_for_quarter(quarter: int | None) -> str:
-    """Map quarter to game block (first_half, second_half, overtime)."""
-    if quarter is None:
-        return "unknown"
-    if quarter <= 2:
-        return "first_half"
-    if quarter <= 4:
-        return "second_half"
-    return "overtime"
-
-
-def _ncaab_phase_for_period(period: int | None) -> str:
-    """Map NCAAB period to narrative phase (h1, h2, ot1, etc.)."""
-    if period is None:
-        return "unknown"
-    if period == 1:
-        return "h1"
-    if period == 2:
-        return "h2"
-    return f"ot{period - 2}" if period > 2 else "unknown"
-
-
-def _ncaab_block_for_period(period: int | None) -> str:
-    """Map NCAAB period to game block."""
-    if period is None:
-        return "unknown"
-    if period == 1:
-        return "first_half"
-    if period == 2:
-        return "second_half"
-    return "overtime"
-
-
-def _nhl_phase_for_period(period: int | None) -> str:
-    """Map NHL period to narrative phase (p1, p2, p3, ot, shootout)."""
-    if period is None:
-        return "unknown"
-    if period == 1:
-        return "p1"
-    if period == 2:
-        return "p2"
-    if period == 3:
-        return "p3"
-    if period == 4:
-        return "ot"
-    if period == 5:
-        return "shootout"
-    return f"ot{period - 3}"  # Extended OT (playoffs)
-
-
-def _nhl_block_for_period(period: int | None) -> str:
-    """Map NHL period to game block."""
-    if period is None:
-        return "unknown"
-    if period <= 3:
-        return "regulation"
-    if period == 4:
-        return "overtime"
-    return "shootout" if period == 5 else "overtime"
-
-
-def _nba_quarter_start(game_start: datetime, quarter: int) -> datetime:
-    """Calculate when a quarter starts in real time."""
-    if quarter == 1:
-        return game_start
-    if quarter == 2:
-        return game_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    if quarter == 3:
-        return game_start + timedelta(
-            seconds=2 * NBA_QUARTER_REAL_SECONDS + NBA_HALFTIME_REAL_SECONDS
-        )
-    if quarter == 4:
-        return game_start + timedelta(
-            seconds=3 * NBA_QUARTER_REAL_SECONDS + NBA_HALFTIME_REAL_SECONDS
-        )
-    # Overtime quarters
-    ot_num = quarter - 4
-    return game_start + timedelta(
-        seconds=NBA_REGULATION_REAL_SECONDS + ot_num * 15 * 60
-    )
 
 
 def _nba_game_end(
@@ -171,25 +74,9 @@ def _nba_game_end(
     if max_quarter <= 4:
         return game_start + timedelta(seconds=NBA_REGULATION_REAL_SECONDS)
 
-    # Has overtime
     ot_count = max_quarter - 4
     return game_start + timedelta(
         seconds=NBA_REGULATION_REAL_SECONDS + ot_count * 15 * 60
-    )
-
-
-def _ncaab_period_start(game_start: datetime, period: int) -> datetime:
-    """Calculate when a NCAAB period starts in real time."""
-    if period == 1:
-        return game_start
-    if period == 2:
-        return game_start + timedelta(
-            seconds=NCAAB_HALF_REAL_SECONDS + NCAAB_HALFTIME_REAL_SECONDS
-        )
-    # Overtime periods (~10 min real per OT)
-    ot_num = period - 2
-    return game_start + timedelta(
-        seconds=NCAAB_REGULATION_REAL_SECONDS + ot_num * 10 * 60
     )
 
 
@@ -205,29 +92,9 @@ def _ncaab_game_end(
     if max_period <= 2:
         return game_start + timedelta(seconds=NCAAB_REGULATION_REAL_SECONDS)
 
-    # Has overtime
     ot_count = max_period - 2
     return game_start + timedelta(
         seconds=NCAAB_REGULATION_REAL_SECONDS + ot_count * 10 * 60
-    )
-
-
-def _nhl_period_start(game_start: datetime, period: int) -> datetime:
-    """Calculate when an NHL period starts in real time."""
-    if period == 1:
-        return game_start
-    if period == 2:
-        return game_start + timedelta(
-            seconds=NHL_PERIOD_REAL_SECONDS + NHL_INTERMISSION_REAL_SECONDS
-        )
-    if period == 3:
-        return game_start + timedelta(
-            seconds=2 * NHL_PERIOD_REAL_SECONDS + 2 * NHL_INTERMISSION_REAL_SECONDS
-        )
-    # Overtime and shootout (~10 min real per OT/shootout period)
-    ot_num = period - 3
-    return game_start + timedelta(
-        seconds=NHL_REGULATION_REAL_SECONDS + ot_num * 10 * 60
     )
 
 
@@ -243,7 +110,6 @@ def _nhl_game_end(
     if max_period <= 3:
         return game_start + timedelta(seconds=NHL_REGULATION_REAL_SECONDS)
 
-    # Has overtime or shootout
     ot_count = max_period - 3
     return game_start + timedelta(
         seconds=NHL_REGULATION_REAL_SECONDS + ot_count * 10 * 60
@@ -459,14 +325,14 @@ def _build_pbp_events(
 
         # League-specific phase/block mapping
         if is_nhl:
-            phase = _nhl_phase_for_period(period)
-            block = _nhl_block_for_period(period)
+            phase = nhl_phase_for_period(period)
+            block = nhl_block_for_period(period)
         elif is_ncaab:
-            phase = _ncaab_phase_for_period(period)
-            block = _ncaab_block_for_period(period)
+            phase = ncaab_phase_for_period(period)
+            block = ncaab_block_for_period(period)
         else:
-            phase = _nba_phase_for_quarter(period)
-            block = _nba_block_for_quarter(period)
+            phase = nba_phase_for_quarter(period)
+            block = nba_block_for_quarter(period)
 
         # Determine period-specific timing (regulation vs OT)
         is_overtime = period > num_regulation_periods
@@ -519,11 +385,11 @@ def _build_pbp_events(
 
         # Compute synthetic timestamp
         if is_nhl:
-            period_start = _nhl_period_start(game_start, period)
+            period_start = nhl_period_start(game_start, period)
         elif is_ncaab:
-            period_start = _ncaab_period_start(game_start, period)
+            period_start = ncaab_period_start(game_start, period)
         else:
-            period_start = _nba_quarter_start(game_start, period)
+            period_start = nba_quarter_start(game_start, period)
 
         if is_shootout or period_game_seconds == 0:
             # Shootout has no clock - distribute plays evenly across the period

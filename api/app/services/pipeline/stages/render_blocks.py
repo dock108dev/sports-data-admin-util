@@ -35,11 +35,9 @@ from typing import Any
 from ..models import StageInput, StageOutput
 from ...openai_client import get_openai_client
 from .block_types import (
-    NarrativeBlock,
     SemanticRole,
     MIN_WORDS_PER_BLOCK,
     MAX_WORDS_PER_BLOCK,
-    TARGET_WORDS_PER_BLOCK,
 )
 
 logger = logging.getLogger(__name__)
@@ -184,9 +182,6 @@ def _generate_play_injection_sentence(
     player_name = event.get("player_name", "")
     description = event.get("description", "")
     play_type = event.get("play_type", "")
-
-    # Extract team info if available
-    team_abbrev = event.get("team_abbrev", "")
 
     # Build a simple, factual sentence
     if player_name and description:

@@ -184,12 +184,11 @@ async def execute_finalize_moments(
         existing_story.generated_at = validation_time
         existing_story.total_ai_calls = openai_calls
 
-        # Update blocks if present
-        if has_blocks:
-            existing_story.blocks_json = blocks
-            existing_story.block_count = len(blocks)
-            existing_story.blocks_version = BLOCKS_VERSION
-            existing_story.blocks_validated_at = validation_time
+        # Update blocks
+        existing_story.blocks_json = blocks
+        existing_story.block_count = len(blocks)
+        existing_story.blocks_version = BLOCKS_VERSION
+        existing_story.blocks_validated_at = validation_time
 
         story_id = existing_story.id
     else:
@@ -206,12 +205,11 @@ async def execute_finalize_moments(
             total_ai_calls=openai_calls,
         )
 
-        # Add blocks if present
-        if has_blocks:
-            new_story.blocks_json = blocks
-            new_story.block_count = len(blocks)
-            new_story.blocks_version = BLOCKS_VERSION
-            new_story.blocks_validated_at = validation_time
+        # Add blocks
+        new_story.blocks_json = blocks
+        new_story.block_count = len(blocks)
+        new_story.blocks_version = BLOCKS_VERSION
+        new_story.blocks_validated_at = validation_time
 
         session.add(new_story)
         await session.flush()
@@ -219,11 +217,9 @@ async def execute_finalize_moments(
 
     output.add_log(f"Story persisted with id={story_id}")
     output.add_log(f"moment_count={len(moments)}")
-
-    if has_blocks:
-        output.add_log(f"block_count={len(blocks)}")
-        output.add_log(f"blocks_version={BLOCKS_VERSION}")
-        output.add_log(f"total_words={total_words}")
+    output.add_log(f"block_count={len(blocks)}")
+    output.add_log(f"blocks_version={BLOCKS_VERSION}")
+    output.add_log(f"total_words={total_words}")
 
     output.add_log(f"validated_at={validation_time.isoformat()}")
     output.add_log("FINALIZE_MOMENTS completed successfully")
@@ -237,17 +233,11 @@ async def execute_finalize_moments(
         "moment_count": len(moments),
         "validated_at": validation_time.isoformat(),
         "openai_calls": openai_calls,
-        # Fallback classification for monitoring
         "fallback_count": fallback_count,
-        "valid_fallback_count": valid_fallback_count,
-        "invalid_fallback_count": invalid_fallback_count,
+        "block_count": len(blocks),
+        "blocks_version": BLOCKS_VERSION,
+        "total_words": total_words,
+        "blocks_validated_at": validation_time.isoformat(),
     }
-
-    # Add blocks data if present
-    if has_blocks:
-        output.data["block_count"] = len(blocks)
-        output.data["blocks_version"] = BLOCKS_VERSION
-        output.data["total_words"] = total_words
-        output.data["blocks_validated_at"] = validation_time.isoformat()
 
     return output
