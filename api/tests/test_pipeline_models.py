@@ -37,7 +37,8 @@ class TestPipelineStage:
         from app.services.pipeline.models import PipelineStage
 
         assert PipelineStage.GENERATE_MOMENTS.previous_stage() == PipelineStage.NORMALIZE_PBP
-        assert PipelineStage.FINALIZE_MOMENTS.previous_stage() == PipelineStage.RENDER_NARRATIVES
+        # Phase 1: Block-based pipeline - FINALIZE_MOMENTS follows VALIDATE_BLOCKS
+        assert PipelineStage.FINALIZE_MOMENTS.previous_stage() == PipelineStage.VALIDATE_BLOCKS
 
     def test_previous_stage_first(self):
         """previous_stage returns None for first stage."""
