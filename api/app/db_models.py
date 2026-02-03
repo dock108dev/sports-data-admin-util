@@ -1027,14 +1027,18 @@ class PipelineStage(str, Enum):
     - NORMALIZE_PBP: Build normalized PBP events with phases
     - GENERATE_MOMENTS: Partition game into narrative moments
     - VALIDATE_MOMENTS: Run validation checks
-    - RENDER_NARRATIVES: Generate narrative text using OpenAI
+    - GROUP_BLOCKS: Group moments into 4-7 narrative blocks
+    - RENDER_BLOCKS: Generate short narratives for each block
+    - VALIDATE_BLOCKS: Validate block constraints
     - FINALIZE_MOMENTS: Persist final story artifact
     """
 
     NORMALIZE_PBP = "NORMALIZE_PBP"
     GENERATE_MOMENTS = "GENERATE_MOMENTS"
     VALIDATE_MOMENTS = "VALIDATE_MOMENTS"
-    RENDER_NARRATIVES = "RENDER_NARRATIVES"
+    GROUP_BLOCKS = "GROUP_BLOCKS"
+    RENDER_BLOCKS = "RENDER_BLOCKS"
+    VALIDATE_BLOCKS = "VALIDATE_BLOCKS"
     FINALIZE_MOMENTS = "FINALIZE_MOMENTS"
 
 

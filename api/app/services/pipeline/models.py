@@ -26,15 +26,11 @@ class PipelineStage(str, Enum):
     5. RENDER_BLOCKS - Generate short narratives for each block
     6. VALIDATE_BLOCKS - Validate block constraints
     7. FINALIZE_MOMENTS - Persist final story artifact
-
-    Note: RENDER_NARRATIVES is deprecated but kept for backward compatibility.
-    New pipelines use GROUP_BLOCKS -> RENDER_BLOCKS -> VALIDATE_BLOCKS.
     """
 
     NORMALIZE_PBP = "NORMALIZE_PBP"
     GENERATE_MOMENTS = "GENERATE_MOMENTS"
     VALIDATE_MOMENTS = "VALIDATE_MOMENTS"
-    RENDER_NARRATIVES = "RENDER_NARRATIVES"  # Deprecated, kept for compatibility
     GROUP_BLOCKS = "GROUP_BLOCKS"
     RENDER_BLOCKS = "RENDER_BLOCKS"
     VALIDATE_BLOCKS = "VALIDATE_BLOCKS"
@@ -42,14 +38,7 @@ class PipelineStage(str, Enum):
 
     @classmethod
     def ordered_stages(cls) -> list["PipelineStage"]:
-        """Return stages in execution order.
-
-        Uses the new block-based pipeline:
-        NORMALIZE_PBP -> GENERATE_MOMENTS -> VALIDATE_MOMENTS ->
-        GROUP_BLOCKS -> RENDER_BLOCKS -> VALIDATE_BLOCKS -> FINALIZE_MOMENTS
-
-        RENDER_NARRATIVES is skipped in favor of the block system.
-        """
+        """Return stages in execution order."""
         return [
             cls.NORMALIZE_PBP,
             cls.GENERATE_MOMENTS,

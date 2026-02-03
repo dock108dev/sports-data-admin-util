@@ -109,74 +109,45 @@ async def execute_finalize_moments(
             f"Got validated={validated}"
         )
 
-    # Check for blocks (new pipeline) or rendered narratives (old pipeline)
+    # Verify VALIDATE_BLOCKS completed
     blocks_validated = previous_output.get("blocks_validated")
-    rendered = previous_output.get("rendered")
 
     # Get moments
     moments = previous_output.get("moments")
     if not moments:
         raise ValueError("No moments in previous stage output")
 
-    # Get blocks if present (new pipeline)
+    # Get blocks (required)
     blocks = previous_output.get("blocks")
-    has_blocks = blocks is not None and len(blocks) > 0
+    if not blocks:
+        raise ValueError(
+            "FINALIZE_MOMENTS requires blocks from VALIDATE_BLOCKS stage. "
+            f"Got blocks_validated={blocks_validated}"
+        )
 
-    if has_blocks:
-        # New block-based pipeline
-        if blocks_validated is not True:
-            output.add_log(
-                f"WARNING: blocks_validated={blocks_validated}, proceeding with blocks anyway",
-                level="warning",
-            )
+    if blocks_validated is not True:
+        output.add_log(
+            f"WARNING: blocks_validated={blocks_validated}, proceeding with blocks anyway",
+            level="warning",
+        )
 
-        # Verify blocks have narratives
-        missing_block_narratives = [
-            i for i, b in enumerate(blocks) if not b.get("narrative")
-        ]
-        if missing_block_narratives:
-            output.add_log(
-                f"WARNING: Blocks missing narratives at indices: {missing_block_narratives}",
-                level="warning",
-            )
+    # Verify blocks have narratives
+    missing_block_narratives = [
+        i for i, b in enumerate(blocks) if not b.get("narrative")
+    ]
+    if missing_block_narratives:
+        output.add_log(
+            f"WARNING: Blocks missing narratives at indices: {missing_block_narratives}",
+            level="warning",
+        )
 
-        output.add_log(f"Persisting {len(moments)} moments and {len(blocks)} blocks")
-    else:
-        # Legacy moment narrative pipeline
-        if rendered is not True:
-            raise ValueError(
-                "FINALIZE_MOMENTS requires either VALIDATE_BLOCKS or RENDER_NARRATIVES to complete. "
-                f"Got blocks_validated={blocks_validated}, rendered={rendered}"
-            )
-
-        # Verify all moments have narratives
-        missing_narratives = [
-            i for i, m in enumerate(moments) if not m.get("narrative")
-        ]
-        if missing_narratives:
-            raise ValueError(
-                f"Moments missing narratives at indices: {missing_narratives}"
-            )
-
-        output.add_log(f"Persisting {len(moments)} moments with narratives (legacy mode)")
+    output.add_log(f"Persisting {len(moments)} moments and {len(blocks)} blocks")
 
     # Track fallback statistics for monitoring
     fallback_count = previous_output.get("fallback_count", 0)
-    valid_fallback_count = previous_output.get("valid_fallback_count", 0)
-    invalid_fallback_count = previous_output.get("invalid_fallback_count", 0)
 
     if fallback_count > 0:
-        output.add_log(
-            f"Fallback stats: {fallback_count} total "
-            f"({valid_fallback_count} VALID, {invalid_fallback_count} INVALID)"
-        )
-
-    if invalid_fallback_count > 0:
-        output.add_log(
-            f"WARNING: {invalid_fallback_count} INVALID fallbacks will be persisted - "
-            f"these are visible in beta for debugging",
-            level="warning",
-        )
+        output.add_log(f"Fallback narratives used: {fallback_count}")
 
     # Get game to determine sport
     game_result = await session.execute(

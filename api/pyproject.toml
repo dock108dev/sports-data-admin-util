@@ -48,7 +48,7 @@ omit = [
   "**/services/reveal_levels.py",
   "**/utils/reveal_utils.py",
   # Pipeline stages requiring OpenAI API
-  "**/services/pipeline/stages/render_narratives.py",
+  "**/services/pipeline/stages/render_blocks.py",
   "**/services/openai_client.py",
   # Pipeline stages requiring database
   "**/services/pipeline/stages/finalize_moments.py",
