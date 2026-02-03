@@ -151,9 +151,17 @@ def build_nba_timeline(
 
     # Compute phase boundaries for social event assignment
     phase_boundaries = compute_phase_boundaries(game_start, has_overtime)
+    league_code = game.league.code if game.league else "NBA"
 
     pbp_events = build_pbp_events(plays, game_start)
-    social_events = build_social_events(social_posts, phase_boundaries)
+    # Phase 3: Pass game_start and has_overtime for time-based classification
+    social_events = build_social_events(
+        social_posts,
+        phase_boundaries,
+        game_start=game_start,
+        league_code=league_code,
+        has_overtime=has_overtime,
+    )
     timeline = merge_timeline_events(pbp_events, social_events)
     summary = build_game_summary(game)
     return timeline, summary, game_end
@@ -282,12 +290,17 @@ async def generate_timeline_artifact(
         )
 
         # Build social events with AI-enhanced roles
+        # Phase 3: Pass game_start and has_overtime for time-based classification
         logger.info(
             "timeline_artifact_phase_started",
             extra={"game_id": game_id, "phase": "build_social_events"},
         )
         social_events = await build_social_events_async(
-            posts, phase_boundaries, league_code
+            posts,
+            phase_boundaries,
+            sport=league_code,
+            game_start=game_start,
+            has_overtime=has_overtime,
         )
         timeline = merge_timeline_events(pbp_events, social_events)
         logger.info(
