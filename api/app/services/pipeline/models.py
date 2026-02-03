@@ -17,22 +17,46 @@ class PipelineStage(str, Enum):
 
     Stages are executed in order. Each stage consumes the output of the
     previous stage and produces output for the next stage.
+
+    Stage order:
+    1. NORMALIZE_PBP - Build normalized PBP events with phases
+    2. GENERATE_MOMENTS - Partition game into narrative moments
+    3. VALIDATE_MOMENTS - Run validation checks on moments
+    4. GROUP_BLOCKS - Group moments into 4-7 narrative blocks
+    5. RENDER_BLOCKS - Generate short narratives for each block
+    6. VALIDATE_BLOCKS - Validate block constraints
+    7. FINALIZE_MOMENTS - Persist final story artifact
+
+    Note: RENDER_NARRATIVES is deprecated but kept for backward compatibility.
+    New pipelines use GROUP_BLOCKS -> RENDER_BLOCKS -> VALIDATE_BLOCKS.
     """
 
     NORMALIZE_PBP = "NORMALIZE_PBP"
     GENERATE_MOMENTS = "GENERATE_MOMENTS"
     VALIDATE_MOMENTS = "VALIDATE_MOMENTS"
-    RENDER_NARRATIVES = "RENDER_NARRATIVES"
+    RENDER_NARRATIVES = "RENDER_NARRATIVES"  # Deprecated, kept for compatibility
+    GROUP_BLOCKS = "GROUP_BLOCKS"
+    RENDER_BLOCKS = "RENDER_BLOCKS"
+    VALIDATE_BLOCKS = "VALIDATE_BLOCKS"
     FINALIZE_MOMENTS = "FINALIZE_MOMENTS"
 
     @classmethod
     def ordered_stages(cls) -> list["PipelineStage"]:
-        """Return stages in execution order."""
+        """Return stages in execution order.
+
+        Uses the new block-based pipeline:
+        NORMALIZE_PBP -> GENERATE_MOMENTS -> VALIDATE_MOMENTS ->
+        GROUP_BLOCKS -> RENDER_BLOCKS -> VALIDATE_BLOCKS -> FINALIZE_MOMENTS
+
+        RENDER_NARRATIVES is skipped in favor of the block system.
+        """
         return [
             cls.NORMALIZE_PBP,
             cls.GENERATE_MOMENTS,
             cls.VALIDATE_MOMENTS,
-            cls.RENDER_NARRATIVES,
+            cls.GROUP_BLOCKS,
+            cls.RENDER_BLOCKS,
+            cls.VALIDATE_BLOCKS,
             cls.FINALIZE_MOMENTS,
         ]
 
@@ -267,6 +291,9 @@ class FinalizedOutput:
     quality_status: str = "PASSED"
     # Phase 0: Moment distribution summary
     moment_distribution: dict[str, Any] | None = None
+    # Phase 1: Block system
+    block_count: int | None = None
+    blocks_version: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = {
@@ -278,4 +305,83 @@ class FinalizedOutput:
         }
         if self.moment_distribution:
             result["moment_distribution"] = self.moment_distribution
+        if self.block_count is not None:
+            result["block_count"] = self.block_count
+        if self.blocks_version is not None:
+            result["blocks_version"] = self.blocks_version
         return result
+
+
+@dataclass
+class GroupBlocksOutput:
+    """Output schema for GROUP_BLOCKS stage.
+
+    Contains the grouped blocks with metadata for validation.
+    """
+
+    blocks: list[dict[str, Any]]
+    block_count: int
+    total_moments: int
+    lead_changes: int
+    largest_run: int
+    split_points: list[int]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "blocks": self.blocks,
+            "block_count": self.block_count,
+            "total_moments": self.total_moments,
+            "lead_changes": self.lead_changes,
+            "largest_run": self.largest_run,
+            "split_points": self.split_points,
+        }
+
+
+@dataclass
+class RenderBlocksOutput:
+    """Output schema for RENDER_BLOCKS stage.
+
+    Contains blocks with narratives and rendering statistics.
+    """
+
+    blocks: list[dict[str, Any]]
+    block_count: int
+    total_words: int
+    openai_calls: int
+    fallback_count: int
+    errors: list[str]
+    warnings: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "blocks": self.blocks,
+            "block_count": self.block_count,
+            "total_words": self.total_words,
+            "openai_calls": self.openai_calls,
+            "fallback_count": self.fallback_count,
+            "errors": self.errors,
+            "warnings": self.warnings,
+        }
+
+
+@dataclass
+class ValidateBlocksOutput:
+    """Output schema for VALIDATE_BLOCKS stage.
+
+    Contains validation results for blocks.
+    """
+
+    passed: bool
+    block_count: int
+    total_words: int
+    errors: list[str]
+    warnings: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "passed": self.passed,
+            "block_count": self.block_count,
+            "total_words": self.total_words,
+            "errors": self.errors,
+            "warnings": self.warnings,
+        }

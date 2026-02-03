@@ -1568,6 +1568,16 @@ class SportsGameStory(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Blocks-based Story (Phase 1: 4-7 narrative blocks)
+    blocks_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    block_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    blocks_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    blocks_validated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Generation metadata
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

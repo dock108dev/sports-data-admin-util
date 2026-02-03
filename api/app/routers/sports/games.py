@@ -48,6 +48,7 @@ from .schemas import (
     NHLGoalieStat,
     NHLSkaterStat,
     OddsEntry,
+    StoryBlock,
     StoryContent,
     StoryMoment,
     StoryPlay,
@@ -583,9 +584,11 @@ async def get_game_story(
     - plays: Only plays referenced by moments
     - validation_passed: Whether validation passed
     - validation_errors: Any validation errors (empty if passed)
+    - blocks: 4-7 narrative blocks (Phase 1, consumer-facing output)
+    - total_words: Total word count across all block narratives
 
     Returns:
-        GameStoryResponse with moments, plays, and validation status
+        GameStoryResponse with moments, plays, blocks, and validation status
 
     Raises:
         HTTPException 404: If no Story exists for this game
@@ -658,6 +661,33 @@ async def get_game_story(
         if (play := play_lookup.get(play_index))
     ]
 
+    # Build response blocks if present (Phase 1)
+    response_blocks: list[StoryBlock] | None = None
+    total_words: int | None = None
+
+    blocks_data = story_record.blocks_json
+    if blocks_data:
+        response_blocks = [
+            StoryBlock(
+                blockIndex=block["block_index"],
+                role=block["role"],
+                momentIndices=block["moment_indices"],
+                periodStart=block["period_start"],
+                periodEnd=block["period_end"],
+                scoreBefore=block["score_before"],
+                scoreAfter=block["score_after"],
+                playIds=block["play_ids"],
+                keyPlayIds=block["key_play_ids"],
+                narrative=block.get("narrative"),
+            )
+            for block in blocks_data
+        ]
+        # Calculate total words from block narratives
+        total_words = sum(
+            len((block.get("narrative") or "").split())
+            for block in blocks_data
+        )
+
     # Validation status from persisted data
     validation_passed = story_record.validated_at is not None
 
@@ -667,4 +697,6 @@ async def get_game_story(
         plays=response_plays,
         validationPassed=validation_passed,
         validationErrors=[],
+        blocks=response_blocks,
+        totalWords=total_words,
     )
