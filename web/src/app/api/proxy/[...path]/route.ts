@@ -42,12 +42,19 @@ async function proxyRequest(
   }
 
   try {
+    // For POST/PUT/PATCH, pass the body stream directly to preserve encoding
+    let body: BodyInit | undefined;
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      // Clone the request to get a fresh body stream
+      body = request.body ?? undefined;
+    }
+
     const response = await fetch(targetUrl, {
       method: request.method,
       headers,
-      body: request.method !== "GET" && request.method !== "HEAD"
-        ? await request.text()
-        : undefined,
+      body,
+      // @ts-expect-error - duplex is required for streaming body in Node.js fetch
+      duplex: body ? "half" : undefined,
     });
 
     const data = await response.text();
