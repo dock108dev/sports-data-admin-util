@@ -8,23 +8,66 @@
 
 ## Table of Contents
 
-1. [Date & Time Convention](#date--time-convention)
-2. [Quick Start](#quick-start)
-3. [Health Check](#health-check)
-4. [Games](#games)
-5. [Stories](#stories)
-6. [Timeline Generation](#timeline-generation)
-7. [Teams](#teams)
-8. [Scraper Runs](#scraper-runs)
-9. [Story Pipeline](#story-pipeline)
-10. [Diagnostics](#diagnostics)
-11. [Jobs](#jobs)
-12. [PBP Inspection](#pbp-inspection)
-13. [Entity Resolution](#entity-resolution)
-14. [Social](#social)
-15. [FairBet](#fairbet)
-16. [Reading Positions](#reading-positions)
-17. [Response Models](#response-models)
+1. [Authentication](#authentication)
+2. [Date & Time Convention](#date--time-convention)
+3. [Quick Start](#quick-start)
+4. [Health Check](#health-check)
+5. [Games](#games)
+6. [Stories](#stories)
+7. [Timeline Generation](#timeline-generation)
+8. [Teams](#teams)
+9. [Scraper Runs](#scraper-runs)
+10. [Story Pipeline](#story-pipeline)
+11. [Diagnostics](#diagnostics)
+12. [Jobs](#jobs)
+13. [PBP Inspection](#pbp-inspection)
+14. [Entity Resolution](#entity-resolution)
+15. [Social](#social)
+16. [FairBet](#fairbet)
+17. [Reading Positions](#reading-positions)
+18. [Response Models](#response-models)
+
+---
+
+## Authentication
+
+All API endpoints (except `/healthz`) require API key authentication.
+
+### Request Header
+
+Include your API key in the `X-API-Key` header:
+
+```http
+GET /api/admin/sports/games HTTP/1.1
+Host: sports-data-admin.dock108.ai
+X-API-Key: your-api-key-here
+```
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| `401 Unauthorized` | Missing or invalid API key |
+
+**Example error response:**
+```json
+{
+  "detail": "Missing API key"
+}
+```
+
+### Configuration
+
+The API key is configured via the `API_KEY` environment variable on the server.
+
+**Requirements:**
+- Must be set in production/staging environments
+- Minimum 32 characters
+- Generate with: `openssl rand -hex 32`
+
+### Health Check Exception
+
+The `/healthz` endpoint does not require authentication to support infrastructure monitoring.
 
 ---
 
