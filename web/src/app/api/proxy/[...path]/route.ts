@@ -42,19 +42,23 @@ async function proxyRequest(
   }
 
   try {
-    // For POST/PUT/PATCH, pass the body stream directly to preserve encoding
-    let body: BodyInit | undefined;
+    // For POST/PUT/PATCH, get the body and re-encode to ensure proper JSON
+    let body: string | undefined;
     if (request.method !== "GET" && request.method !== "HEAD") {
-      // Clone the request to get a fresh body stream
-      body = request.body ?? undefined;
+      const contentType = request.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        // Parse and re-stringify to ensure clean JSON encoding
+        const jsonBody = await request.json();
+        body = JSON.stringify(jsonBody);
+      } else {
+        body = await request.text();
+      }
     }
 
     const response = await fetch(targetUrl, {
       method: request.method,
       headers,
       body,
-      // @ts-expect-error - duplex is required for streaming body in Node.js fetch
-      duplex: body ? "half" : undefined,
     });
 
     const data = await response.text();
