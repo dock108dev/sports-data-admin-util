@@ -544,7 +544,11 @@ async def generate_game_timeline(
     game_id: int,
     session: AsyncSession = Depends(get_db),
 ) -> TimelineArtifactResponse:
-    """Generate and store a finalized NBA timeline artifact."""
+    """Generate and store a finalized timeline artifact for any league.
+
+    Social data is optional and gracefully degrades to empty for leagues
+    without social scraping configured (NHL, NCAAB).
+    """
     try:
         artifact = await generate_timeline_artifact(session, game_id)
     except TimelineGenerationError as exc:

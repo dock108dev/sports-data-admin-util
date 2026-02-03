@@ -1,9 +1,28 @@
 """
 Social event processing for timeline generation.
 
+SOCIAL DECOUPLING CONTRACT (Phase 2)
+====================================
+Social data is FULLY DECOUPLED from play-by-play and story logic:
+
+1. NO PLAY COUPLING: Tweets are NEVER linked to specific play_ids or moment_ids
+2. TIME-BASED ONLY: Posts are ordered solely by posted_at timestamp within phases
+3. OPTIONAL: All code must handle zero social posts gracefully
+4. NON-AUTHORITATIVE: Tweets do not explain plays or justify moments
+5. STANDALONE: Each tweet is contextual, not evidentiary
+
+The system MUST render identically whether social data:
+- is present
+- is partially present
+- is completely absent
+
+🚫 DO NOT add tweet → play/moment coupling
+🚫 DO NOT use tweets as evidence for narrative decisions
+🚫 DO NOT require tweets for any rendering path
+
 Handles:
 1. Social post role assignment (heuristic-based)
-2. Phase assignment for social posts
+2. Phase assignment for social posts (time-based only)
 3. Building social timeline events
 
 Related modules:

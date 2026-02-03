@@ -756,7 +756,21 @@ class SportsMissingPbp(Base):
 
 
 class GameSocialPost(Base):
-    """Social media posts linked to games for timeline display."""
+    """Social media posts linked to games for timeline display.
+
+    SOCIAL DECOUPLING CONTRACT (Phase 2)
+    ====================================
+    Posts are linked to games ONLY - never to specific plays or moments.
+
+    This model intentionally has NO:
+    - play_id foreign key
+    - moment_id foreign key
+    - play_index field
+    - Any other PBP coupling
+
+    Posts are time-based (posted_at) and standalone. They provide
+    contextual flavor but never explain or justify narrative content.
+    """
 
     __tablename__ = "game_social_posts"
 

@@ -9,12 +9,15 @@ class TestPipelineStage:
         from app.services.pipeline.models import PipelineStage
 
         stages = PipelineStage.ordered_stages()
-        assert len(stages) == 5
+        # Phase 1: Block-based pipeline (7 stages)
+        assert len(stages) == 7
         assert stages[0] == PipelineStage.NORMALIZE_PBP
         assert stages[1] == PipelineStage.GENERATE_MOMENTS
         assert stages[2] == PipelineStage.VALIDATE_MOMENTS
-        assert stages[3] == PipelineStage.RENDER_NARRATIVES
-        assert stages[4] == PipelineStage.FINALIZE_MOMENTS
+        assert stages[3] == PipelineStage.GROUP_BLOCKS
+        assert stages[4] == PipelineStage.RENDER_BLOCKS
+        assert stages[5] == PipelineStage.VALIDATE_BLOCKS
+        assert stages[6] == PipelineStage.FINALIZE_MOMENTS
 
     def test_next_stage_normal(self):
         """next_stage returns the next stage."""

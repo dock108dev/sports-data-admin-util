@@ -1,6 +1,16 @@
 """Timeline event building and merging.
 
 Handles PBP event construction and timeline assembly.
+
+SOCIAL DECOUPLING CONTRACT (Phase 2)
+====================================
+The merge_timeline_events function treats social events as:
+- TIME-BASED ONLY: Ordered by phase, then intra_phase_order
+- OPTIONAL: Empty social_events list is valid and expected
+- NON-COUPLED: No linkage between social events and specific plays
+
+PBP events and social events are merged using PHASE-FIRST ordering.
+Social events never modify, explain, or depend on PBP event content.
 """
 
 from __future__ import annotations

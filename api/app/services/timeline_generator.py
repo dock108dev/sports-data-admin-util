@@ -1,9 +1,28 @@
 """
 Timeline artifact generation for finalized games.
 
+SOCIAL DECOUPLING CONTRACT (Phase 2)
+====================================
+Timeline generation treats social data as OPTIONAL:
+- Works identically with or without social posts
+- No league-specific branching for social data availability
+- Social posts gracefully degrade to empty list for all leagues
+
+The timeline MUST render completely when:
+- Social posts are present
+- Social posts are partially present
+- Social posts are completely absent
+
+Current social scraping status:
+- NBA: Social scraping configured (posts may exist)
+- NHL: No social scraping (posts will be empty)
+- NCAAB: No social scraping (posts will be empty)
+
+This is acceptable and requires NO special handling.
+
 Builds PBP and social events for game timelines:
 1. PBP events from game plays (with phase assignment)
-2. Social events from posts (with phase and role assignment)
+2. Social events from posts (with phase and role assignment) - OPTIONAL
 3. Merge events using phase-first ordering
 4. Validate timeline structure
 
@@ -50,13 +69,16 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
-def build_nba_summary(game: db_models.SportsGame) -> dict[str, Any]:
+def build_game_summary(game: db_models.SportsGame) -> dict[str, Any]:
     """Build basic summary dict from game data.
 
     Returns minimal game metadata for timeline context.
+    League-agnostic - works for NBA, NHL, NCAAB.
     """
+    league_code = game.league.code if game.league else "UNK"
     return {
         "game_id": game.id,
+        "league": league_code,
         "home_team": game.home_team.name if game.home_team else None,
         "away_team": game.away_team.name if game.away_team else None,
         "home_score": game.home_score,
@@ -133,7 +155,7 @@ def build_nba_timeline(
     pbp_events = build_pbp_events(plays, game_start)
     social_events = build_social_events(social_posts, phase_boundaries)
     timeline = merge_timeline_events(pbp_events, social_events)
-    summary = build_nba_summary(game)
+    summary = build_game_summary(game)
     return timeline, summary, game_end
 
 
@@ -181,11 +203,9 @@ async def generate_timeline_artifact(
         if not game.is_final:
             raise TimelineGenerationError("Game is not final", status_code=409)
 
-        league_code = game.league.code if game.league else ""
-        if league_code != "NBA":
-            raise TimelineGenerationError(
-                "Timeline generation only supported for NBA", status_code=422
-            )
+        # Phase 2: Timeline generation is league-agnostic
+        # Social data is optional and gracefully degrades to empty for all leagues
+        league_code = game.league.code if game.league else "UNK"
 
         # Fetch plays with team relationship for team_abbreviation
         plays_result = await session.execute(
@@ -285,7 +305,7 @@ async def generate_timeline_artifact(
             "timeline_artifact_phase_started",
             extra={"game_id": game_id, "phase": "game_analysis"},
         )
-        base_summary = build_nba_summary(game)
+        base_summary = build_game_summary(game)
 
         # Build game context for team name resolution
         game_context = {
@@ -379,7 +399,7 @@ async def generate_timeline_artifact(
         artifact_result = await session.execute(
             select(db_models.SportsGameTimelineArtifact).where(
                 db_models.SportsGameTimelineArtifact.game_id == game_id,
-                db_models.SportsGameTimelineArtifact.sport == "NBA",
+                db_models.SportsGameTimelineArtifact.sport == league_code,
                 db_models.SportsGameTimelineArtifact.timeline_version
                 == timeline_version,
             )
@@ -389,7 +409,7 @@ async def generate_timeline_artifact(
         if artifact is None:
             artifact = db_models.SportsGameTimelineArtifact(
                 game_id=game_id,
-                sport="NBA",
+                sport=league_code,
                 timeline_version=timeline_version,
                 generated_at=generated_at,
                 timeline_json=timeline,
@@ -426,7 +446,7 @@ async def generate_timeline_artifact(
 
         return TimelineArtifactPayload(
             game_id=game_id,
-            sport="NBA",
+            sport=league_code,
             timeline_version=timeline_version,
             generated_at=generated_at,
             timeline=timeline,
