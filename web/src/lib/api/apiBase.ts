@@ -33,17 +33,12 @@ export function getApiBase(options?: ApiBaseOptions): string {
   const isBrowser = typeof window !== "undefined";
 
   if (isBrowser) {
-    const { protocol, hostname } = window.location;
-    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
-    if (isLocalhost) {
-      const port = options?.localhostPort ?? 8000;
-      return `${protocol}//${hostname}:${port}`;
-    }
-
-    // Production: same-origin requests to /api/* avoids CORS and mixed-content issues.
-    return "";
+    // Browser requests go through the Next.js proxy to add the API key
+    // The proxy is at /api/proxy/... and forwards to the backend
+    return "/api/proxy";
   }
 
+  // Server-side requests can call the backend directly with the API key
   const serverInternalBase = options?.serverInternalBaseEnv;
   if (serverInternalBase) return serverInternalBase;
 
