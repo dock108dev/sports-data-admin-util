@@ -1,5 +1,27 @@
 "use client";
 
+/**
+ * Story Section (Legacy Moment-based View)
+ *
+ * PHASE 5 CONTRACT NOTE
+ * =====================
+ * This component displays the moment-based story view for debugging/admin.
+ *
+ * For the consumer-facing collapsed game flow, use:
+ * - CollapsedGameFlow (narrative blocks only)
+ * - GameFlowView (blocks + optional social sections)
+ *
+ * These components are in: @/components/story/
+ *
+ * Critical rules:
+ * - Social content is SEPARATE from story content
+ * - No UI elements imply tweets explain plays
+ * - The "Show X plays" button is for debugging, not consumer display
+ *
+ * 🚫 DO NOT add tweet counts or social indicators to moment cards
+ * 🚫 DO NOT imply tweets are related to specific plays
+ */
+
 import { useCallback, useEffect, useState } from "react";
 import { fetchGameStory } from "@/lib/api/sportsAdmin";
 import type { GameStoryResponse, StoryMoment, StoryPlay, MomentBoxScore, MomentPlayerStat } from "@/lib/api/sportsAdmin/storyTypes";

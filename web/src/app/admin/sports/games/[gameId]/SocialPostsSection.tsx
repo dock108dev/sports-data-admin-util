@@ -1,5 +1,26 @@
 "use client";
 
+/**
+ * Social Posts Section
+ *
+ * PHASE 5 CONTRACT COMPLIANCE
+ * ===========================
+ * This component displays social posts in a SEPARATE, OPTIONAL section.
+ *
+ * Critical rules:
+ * - Posts are NEVER linked to specific plays or moments
+ * - Posts are ordered by time only, not by game events
+ * - No "related plays" or similar language
+ * - No tweet count badges tied to plays/moments
+ * - No styling implying tweets explain or verify plays
+ *
+ * Tweets are REACTION, not EVIDENCE.
+ *
+ * 🚫 DO NOT add affordances that imply tweets explain plays
+ * 🚫 DO NOT add links between tweets and specific game events
+ * 🚫 DO NOT add "X tweets about this play" indicators
+ */
+
 import { useMemo, useState } from "react";
 import type { AdminGameDetail } from "@/lib/api/sportsAdmin";
 import { TwitterEmbed } from "@/components/social/TwitterEmbed";

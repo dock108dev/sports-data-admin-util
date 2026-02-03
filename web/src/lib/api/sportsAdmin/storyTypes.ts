@@ -187,3 +187,90 @@ export type GameStoryResponse = {
   validationPassed: boolean;
   validationErrors: string[];
 };
+
+// =============================================================================
+// Phase 5: Block-based Narrative Types
+// =============================================================================
+
+/**
+ * Semantic role for a narrative block.
+ * Describes the block's function in the game's narrative arc.
+ */
+export type SemanticRole =
+  | "SETUP"
+  | "MOMENTUM_SHIFT"
+  | "RESPONSE"
+  | "DECISION_POINT"
+  | "RESOLUTION";
+
+/**
+ * Embedded tweet in a narrative block.
+ * Selected high-signal tweet for inline display.
+ */
+export type EmbeddedTweet = {
+  tweetId: string;
+  postedAt: string;
+  text: string;
+  author: string;
+  phase: string;
+  score: number;
+  position: "EARLY" | "MID" | "LATE";
+  hasMedia: boolean;
+  mediaType?: string | null;
+};
+
+/**
+ * A narrative block in the collapsed game flow.
+ * Replaces moment-level narratives with 1-2 sentences.
+ */
+export type NarrativeBlock = {
+  blockIndex: number;
+  role: SemanticRole;
+  momentIndices: number[];
+  periodStart: number;
+  periodEnd: number;
+  scoreBefore: number[];
+  scoreAfter: number[];
+  playIds: number[];
+  keyPlayIds: number[];
+  narrative: string | null;
+  embeddedTweet?: EmbeddedTweet | null;
+};
+
+/**
+ * Social post for expandable sections.
+ * Categorized by phase for organization.
+ */
+export type CategorizedSocialPost = {
+  id: string | number;
+  text: string;
+  author: string;
+  postedAt: string;
+  phase: string;
+  segment?: string | null;
+  hasMedia: boolean;
+  mediaType?: string | null;
+  postUrl?: string;
+};
+
+/**
+ * Grouped social posts for expandable sections.
+ */
+export type SocialPostsByPhase = {
+  pregame: CategorizedSocialPost[];
+  inGame: Record<string, CategorizedSocialPost[]>; // Keyed by segment (q1, q2, etc.)
+  postgame: CategorizedSocialPost[];
+};
+
+/**
+ * Response for block-based game flow.
+ */
+export type BlockStoryResponse = {
+  gameId: number;
+  leagueCode: string;
+  blocks: NarrativeBlock[];
+  totalWords: number;
+  socialPosts?: SocialPostsByPhase;
+  validationPassed: boolean;
+  validationErrors: string[];
+};
