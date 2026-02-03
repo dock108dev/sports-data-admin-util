@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import http from "http";
 
 const API_BASE =
   process.env.SPORTS_API_INTERNAL_URL ||
@@ -22,60 +23,62 @@ async function proxyRequest(
   const { path } = await params;
   const pathStr = path.join("/");
   const url = new URL(request.url);
-  const targetUrl = `${API_BASE}/${pathStr}${url.search}`;
+  const targetPath = `/${pathStr}${url.search}`;
 
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
+  // Parse the API base URL
+  const apiUrl = new URL(API_BASE);
 
-  if (API_KEY) {
-    headers["X-API-Key"] = API_KEY;
+  // Get request body
+  let body: string | undefined;
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    body = await request.text();
   }
 
-  // Forward relevant headers from the original request
-  const forwardHeaders = ["accept", "content-type"];
-  for (const header of forwardHeaders) {
-    const value = request.headers.get(header);
-    if (value) {
-      headers[header] = value;
-    }
-  }
-
-  try {
-    // For POST/PUT/PATCH, get the body and re-encode to ensure proper JSON
-    let body: string | undefined;
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      const contentType = request.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        // Parse and re-stringify to ensure clean JSON encoding
-        const jsonBody = await request.json();
-        body = JSON.stringify(jsonBody);
-      } else {
-        body = await request.text();
-      }
-    }
-
-    const response = await fetch(targetUrl, {
+  return new Promise((resolve) => {
+    const options: http.RequestOptions = {
+      hostname: apiUrl.hostname,
+      port: apiUrl.port || 80,
+      path: targetPath,
       method: request.method,
-      headers,
-      body,
-    });
-
-    const data = await response.text();
-
-    return new NextResponse(data, {
-      status: response.status,
       headers: {
-        "Content-Type": response.headers.get("Content-Type") || "application/json",
+        "Content-Type": request.headers.get("content-type") || "application/json",
+        ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
+        ...(body ? { "Content-Length": Buffer.byteLength(body) } : {}),
       },
+    };
+
+    const req = http.request(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => {
+        data += chunk;
+      });
+      res.on("end", () => {
+        resolve(
+          new NextResponse(data, {
+            status: res.statusCode || 500,
+            headers: {
+              "Content-Type": res.headers["content-type"] || "application/json",
+            },
+          })
+        );
+      });
     });
-  } catch (error) {
-    console.error("Proxy error:", error);
-    return NextResponse.json(
-      { error: "Failed to proxy request to backend" },
-      { status: 502 }
-    );
-  }
+
+    req.on("error", (error) => {
+      console.error("Proxy error:", error);
+      resolve(
+        NextResponse.json(
+          { error: "Failed to proxy request to backend" },
+          { status: 502 }
+        )
+      );
+    });
+
+    if (body) {
+      req.write(body);
+    }
+    req.end();
+  });
 }
 
 export async function GET(
