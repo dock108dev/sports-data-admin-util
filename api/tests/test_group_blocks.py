@@ -8,19 +8,21 @@ from app.services.pipeline.stages.block_types import (
     MAX_BLOCKS,
     SemanticRole,
 )
+from app.services.pipeline.stages.block_analysis import (
+    count_lead_changes,
+    find_lead_change_indices,
+    find_scoring_runs,
+    find_period_boundaries,
+    detect_blowout,
+    find_garbage_time_start,
+    BLOWOUT_MARGIN_THRESHOLD,
+)
 from app.services.pipeline.stages.group_blocks import (
     calculate_block_count,
-    _count_lead_changes,
-    _find_lead_change_indices,
-    _find_scoring_runs,
-    _find_period_boundaries,
     _find_split_points,
     _assign_roles,
     _create_blocks,
-    _detect_blowout,
-    _find_garbage_time_start,
     _compress_blowout_blocks,
-    BLOWOUT_MARGIN_THRESHOLD,
 )
 
 
@@ -90,7 +92,7 @@ class TestCountLeadChanges:
             {"score_after": [20, 10]},
             {"score_after": [30, 15]},
         ]
-        assert _count_lead_changes(moments) == 0
+        assert count_lead_changes(moments) == 0
 
     def test_single_lead_change(self) -> None:
         """Detect single lead change."""
@@ -99,7 +101,7 @@ class TestCountLeadChanges:
             {"score_after": [12, 15]},  # Away takes lead
             {"score_after": [15, 20]},  # Away still leads
         ]
-        assert _count_lead_changes(moments) == 1
+        assert count_lead_changes(moments) == 1
 
     def test_multiple_lead_changes(self) -> None:
         """Detect multiple lead changes."""
@@ -109,7 +111,7 @@ class TestCountLeadChanges:
             {"score_after": [20, 18]},  # Home leads again
             {"score_after": [22, 25]},  # Away leads again
         ]
-        assert _count_lead_changes(moments) == 3
+        assert count_lead_changes(moments) == 3
 
     def test_tie_not_counted_as_lead_change(self) -> None:
         """Tie scores don't count as lead changes."""
@@ -118,7 +120,7 @@ class TestCountLeadChanges:
             {"score_after": [10, 10]},  # Tie
             {"score_after": [15, 10]},  # Home leads (not a lead change from tie)
         ]
-        assert _count_lead_changes(moments) == 0
+        assert count_lead_changes(moments) == 0
 
 
 class TestFindLeadChangeIndices:
@@ -130,7 +132,7 @@ class TestFindLeadChangeIndices:
             {"score_before": [0, 0], "score_after": [10, 5]},
             {"score_before": [10, 5], "score_after": [20, 10]},
         ]
-        assert _find_lead_change_indices(moments) == []
+        assert find_lead_change_indices(moments) == []
 
     def test_find_lead_change_index(self) -> None:
         """Find index of moment containing lead change."""
@@ -139,7 +141,7 @@ class TestFindLeadChangeIndices:
             {"score_before": [10, 5], "score_after": [12, 15]},  # Lead change here
             {"score_before": [12, 15], "score_after": [15, 20]},
         ]
-        indices = _find_lead_change_indices(moments)
+        indices = find_lead_change_indices(moments)
         assert 1 in indices
 
 
@@ -153,7 +155,7 @@ class TestFindScoringRuns:
             {"score_before": [2, 0], "score_after": [2, 2]},
             {"score_before": [2, 2], "score_after": [4, 2]},
         ]
-        runs = _find_scoring_runs(moments, min_run_size=5)
+        runs = find_scoring_runs(moments, min_run_size=5)
         assert runs == []
 
     def test_detect_scoring_run(self) -> None:
@@ -163,7 +165,7 @@ class TestFindScoringRuns:
             {"score_before": [3, 0], "score_after": [6, 0]},
             {"score_before": [6, 0], "score_after": [10, 0]},  # 10-0 run
         ]
-        runs = _find_scoring_runs(moments, min_run_size=8)
+        runs = find_scoring_runs(moments, min_run_size=8)
         assert len(runs) == 1
         assert runs[0][2] == 10  # Run size
 
@@ -178,7 +180,7 @@ class TestFindPeriodBoundaries:
             {"period": 1},
             {"period": 1},
         ]
-        assert _find_period_boundaries(moments) == []
+        assert find_period_boundaries(moments) == []
 
     def test_find_period_boundary(self) -> None:
         """Find index where period changes."""
@@ -188,7 +190,7 @@ class TestFindPeriodBoundaries:
             {"period": 2},  # Boundary at index 2
             {"period": 2},
         ]
-        boundaries = _find_period_boundaries(moments)
+        boundaries = find_period_boundaries(moments)
         assert boundaries == [2]
 
     def test_multiple_period_boundaries(self) -> None:
@@ -199,7 +201,7 @@ class TestFindPeriodBoundaries:
             {"period": 3},  # Boundary at index 2
             {"period": 4},  # Boundary at index 3
         ]
-        boundaries = _find_period_boundaries(moments)
+        boundaries = find_period_boundaries(moments)
         assert boundaries == [1, 2, 3]
 
 
@@ -364,7 +366,7 @@ class TestBlockConstraints:
 class TestBlowoutDetection:
     """Tests for Task 1.5: Blowout detection and handling."""
 
-    def test_detect_blowout_with_sustained_margin(self) -> None:
+    def testdetect_blowout_with_sustained_margin(self) -> None:
         """Detects blowout when margin is sustained across periods."""
         moments = [
             {"score_after": [10, 8], "period": 1},   # Close
@@ -376,7 +378,7 @@ class TestBlowoutDetection:
             {"score_after": [85, 40], "period": 3},  # Still sustained
             {"score_after": [100, 50], "period": 4}, # Period 4 - sustained 2+ periods
         ]
-        is_blowout, decisive_idx, max_margin = _detect_blowout(moments)
+        is_blowout, decisive_idx, max_margin = detect_blowout(moments)
         assert is_blowout is True
         assert decisive_idx is not None
         assert max_margin >= BLOWOUT_MARGIN_THRESHOLD
@@ -392,7 +394,7 @@ class TestBlowoutDetection:
             {"score_after": [52, 55], "period": 3},
             {"score_after": [60, 58], "period": 4},
         ]
-        is_blowout, decisive_idx, max_margin = _detect_blowout(moments)
+        is_blowout, decisive_idx, max_margin = detect_blowout(moments)
         assert is_blowout is False
 
     def test_margin_not_sustained_is_not_blowout(self) -> None:
@@ -404,7 +406,7 @@ class TestBlowoutDetection:
             {"score_after": [35, 32], "period": 2}, # Close again
             {"score_after": [40, 38], "period": 2},
         ]
-        is_blowout, decisive_idx, max_margin = _detect_blowout(moments)
+        is_blowout, decisive_idx, max_margin = detect_blowout(moments)
         # Had a large margin but wasn't sustained
         assert is_blowout is False
 
@@ -420,7 +422,7 @@ class TestGarbageTimeStart:
             {"score_after": [50, 20], "period": 3},  # 30 point margin, period 3 - garbage time
             {"score_after": [60, 25], "period": 3},
         ]
-        idx = _find_garbage_time_start(moments)
+        idx = find_garbage_time_start(moments)
         assert idx == 2  # Third moment where period >= 3 and margin >= 25
 
     def test_no_garbage_time_early_periods(self) -> None:
@@ -429,7 +431,7 @@ class TestGarbageTimeStart:
             {"score_after": [10, 8], "period": 1},
             {"score_after": [40, 10], "period": 2},  # 30 point margin but period 2
         ]
-        idx = _find_garbage_time_start(moments)
+        idx = find_garbage_time_start(moments)
         assert idx is None
 
     def test_no_garbage_time_close_game(self) -> None:
@@ -438,7 +440,7 @@ class TestGarbageTimeStart:
             {"score_after": [25, 22], "period": 3},
             {"score_after": [30, 28], "period": 4},
         ]
-        idx = _find_garbage_time_start(moments)
+        idx = find_garbage_time_start(moments)
         assert idx is None
 
 
