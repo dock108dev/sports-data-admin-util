@@ -53,6 +53,8 @@ services:
       ALLOWED_CORS_ORIGINS: ${ALLOWED_CORS_ORIGINS:-}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-false}
+      # API authentication key (required for production/staging)
+      API_KEY: ${API_KEY:-}
       # OpenAI configuration for AI-enhanced timeline generation
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL_CLASSIFICATION: ${OPENAI_MODEL_CLASSIFICATION:-gpt-4o-mini}

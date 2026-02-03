@@ -43,6 +43,10 @@ class Settings(BaseSettings):
         default=60, alias="RATE_LIMIT_WINDOW_SECONDS"
     )
 
+    # API Authentication
+    # Required in production - all endpoints except /healthz require this key
+    api_key: str | None = Field(default=None, alias="API_KEY")
+
     # OpenAI Configuration
     # AI is used for interpretation/narration only, never for ordering/filtering
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
@@ -102,6 +106,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "ALLOWED_CORS_ORIGINS must not include localhost in production or staging."
                 )
+            if not self.api_key:
+                raise ValueError("API_KEY must be set for production or staging.")
+            if len(self.api_key) < 32:
+                raise ValueError("API_KEY must be at least 32 characters long.")
         if self.rate_limit_requests <= 0 or self.rate_limit_window_seconds <= 0:
             raise ValueError("Rate limit settings must be positive integers.")
         return self
