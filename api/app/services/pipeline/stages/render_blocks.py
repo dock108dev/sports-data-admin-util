@@ -84,6 +84,179 @@ PROHIBITED_PATTERNS = [
 MAX_REGENERATION_ATTEMPTS = 2
 
 
+def _check_play_coverage(
+    narrative: str,
+    key_play_ids: list[int],
+    pbp_events: list[dict[str, Any]],
+) -> tuple[list[int], list[dict[str, Any]]]:
+    """Check if key plays are referenced in the narrative.
+
+    Task 1.3: Explicit play coverage invariant.
+
+    Args:
+        narrative: The generated narrative text
+        key_play_ids: IDs of plays that must be referenced
+        pbp_events: PBP events with play descriptions
+
+    Returns:
+        Tuple of (missing_play_ids, missing_play_events)
+    """
+    if not narrative or not key_play_ids:
+        return [], []
+
+    # Build play lookup
+    play_lookup: dict[int, dict[str, Any]] = {
+        e.get("play_index", e.get("play_id")): e
+        for e in pbp_events
+        if e.get("play_index") is not None or e.get("play_id") is not None
+    }
+
+    narrative_lower = narrative.lower()
+    missing_ids: list[int] = []
+    missing_events: list[dict[str, Any]] = []
+
+    for play_id in key_play_ids:
+        event = play_lookup.get(play_id, {})
+        if not event:
+            continue
+
+        # Check if play is referenced in narrative
+        # Look for player name, action keywords from description
+        description = event.get("description", "")
+        player_name = event.get("player_name", "")
+
+        # Extract keywords from description
+        found = False
+
+        # Check for player name (first or last name)
+        if player_name:
+            name_parts = player_name.lower().split()
+            for part in name_parts:
+                if len(part) > 2 and part in narrative_lower:
+                    found = True
+                    break
+
+        # Check for key action words from description
+        if not found and description:
+            # Look for key action words (3-pointer, dunk, layup, etc.)
+            # Map both description keywords and their narrative equivalents
+            action_keyword_pairs = [
+                (["three", "3-point", "3pt", "3-pointer"], ["three", "3-point", "three-pointer"]),
+                (["dunk"], ["dunk"]),
+                (["layup"], ["layup"]),
+                (["jumper", "jump shot"], ["jumper", "jump shot"]),
+                (["free throw"], ["free throw"]),
+                (["steal"], ["steal"]),
+                (["block"], ["block"]),
+                (["rebound"], ["rebound"]),
+                (["assist"], ["assist"]),
+            ]
+            desc_lower = description.lower()
+            for desc_keywords, narr_keywords in action_keyword_pairs:
+                desc_has_keyword = any(kw in desc_lower for kw in desc_keywords)
+                narr_has_keyword = any(kw in narrative_lower for kw in narr_keywords)
+                if desc_has_keyword and narr_has_keyword:
+                    found = True
+                    break
+
+        if not found:
+            missing_ids.append(play_id)
+            missing_events.append(event)
+
+    return missing_ids, missing_events
+
+
+def _generate_play_injection_sentence(
+    event: dict[str, Any],
+    game_context: dict[str, str],
+) -> str:
+    """Generate a deterministic sentence for a missing play.
+
+    Task 1.3: Recovery strategy when a key play is not referenced.
+
+    Args:
+        event: The PBP event that needs to be mentioned
+        game_context: Team abbreviations
+
+    Returns:
+        A simple sentence describing the play
+    """
+    player_name = event.get("player_name", "")
+    description = event.get("description", "")
+    play_type = event.get("play_type", "")
+
+    # Extract team info if available
+    team_abbrev = event.get("team_abbrev", "")
+
+    # Build a simple, factual sentence
+    if player_name and description:
+        # Clean up the description
+        desc_clean = description.strip()
+        if desc_clean.endswith("."):
+            desc_clean = desc_clean[:-1]
+        return f"{player_name} {desc_clean.lower()}."
+
+    if player_name and play_type:
+        return f"{player_name} made a {play_type.lower().replace('_', ' ')}."
+
+    if description:
+        return f"{description}."
+
+    return ""
+
+
+def _validate_style_constraints(
+    narrative: str,
+    block_idx: int,
+) -> tuple[list[str], list[str]]:
+    """Validate narrative against style constraints.
+
+    Task 1.4: Sentence style constraints.
+    - No stat-feed prose patterns
+    - No subjective adjectives
+    - Broadcast tone
+
+    Args:
+        narrative: The generated narrative text
+        block_idx: Block index for error messages
+
+    Returns:
+        Tuple of (errors, warnings)
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not narrative:
+        return errors, warnings
+
+    narrative_lower = narrative.lower()
+
+    # Check for prohibited patterns
+    for pattern in PROHIBITED_PATTERNS:
+        if re.search(pattern, narrative_lower, re.IGNORECASE):
+            warnings.append(
+                f"Block {block_idx}: Style violation - matches prohibited pattern '{pattern}'"
+            )
+
+    # Check for overly long sentences (stat-feed indicator)
+    sentences = re.split(r'[.!?]+', narrative)
+    for sentence in sentences:
+        words = sentence.split()
+        if len(words) > 40:
+            warnings.append(
+                f"Block {block_idx}: Sentence too long ({len(words)} words) - may be stat-feed style"
+            )
+
+    # Check for too many numbers (stat-feed indicator)
+    numbers_in_narrative = re.findall(r'\b\d+\b', narrative)
+    if len(numbers_in_narrative) > 6:
+        warnings.append(
+            f"Block {block_idx}: Too many numbers ({len(numbers_in_narrative)}) - may be stat-feed style"
+        )
+
+    return errors, warnings
+
+
 def _build_block_prompt(
     blocks: list[dict[str, Any]],
     game_context: dict[str, str],
@@ -114,7 +287,7 @@ def _build_block_prompt(
         "",
         "RULES:",
         "- Write 1-2 sentences per block (~35 words)",
-        "- Focus on the key plays provided",
+        "- Focus on the key plays provided - EVERY key play must be referenced",
         "- Describe concrete actions and score changes",
         "- Use the semantic role to guide tone:",
         "  - SETUP: Set the stage, establish early context",
@@ -122,6 +295,13 @@ def _build_block_prompt(
         "  - RESPONSE: How the other team answered",
         "  - DECISION_POINT: The sequence that decided the outcome",
         "  - RESOLUTION: How the game concluded",
+        "",
+        "STYLE REQUIREMENTS (Task 1.4):",
+        "- Use broadcast tone, not stat-feed prose",
+        "- NO stat-listing patterns like 'X had Y points' or 'X finished with Y'",
+        "- NO subjective adjectives (incredible, amazing, unbelievable, insane)",
+        "- Describe ACTIONS, not statistics",
+        "- Keep sentences concise (under 25 words each)",
         "",
         "FORBIDDEN WORDS (do not use):",
         ", ".join(FORBIDDEN_WORDS),
@@ -196,18 +376,25 @@ def _validate_block_narrative(
         if word.lower() in narrative_lower:
             warnings.append(f"Block {block_idx}: Contains forbidden word '{word}'")
 
+    # Task 1.4: Check style constraints
+    style_errors, style_warnings = _validate_style_constraints(narrative, block_idx)
+    errors.extend(style_errors)
+    warnings.extend(style_warnings)
+
     return errors, warnings
 
 
 def _generate_fallback_narrative(
     block: dict[str, Any],
     game_context: dict[str, str],
+    is_garbage_time: bool = False,
 ) -> str:
     """Generate a simple fallback narrative when AI fails.
 
     Args:
         block: Block data
         game_context: Team names
+        is_garbage_time: If True, generate minimal garbage time narrative
 
     Returns:
         Simple descriptive narrative
@@ -221,6 +408,14 @@ def _generate_fallback_narrative(
 
     home_delta = score_after[0] - score_before[0]
     away_delta = score_after[1] - score_before[1]
+
+    # Task 1.5: Minimal garbage time narrative
+    if is_garbage_time:
+        leading_team = home_team if score_after[0] > score_after[1] else away_team
+        return (
+            f"{leading_team} maintained control as the game wound down. "
+            f"Final stretch score: {home_team} {score_after[0]}, {away_team} {score_after[1]}."
+        )
 
     if role == SemanticRole.SETUP.value:
         return (
@@ -250,6 +445,32 @@ def _generate_fallback_narrative(
                 f"Both teams scored evenly in this stretch. "
                 f"Score: {home_team} {score_after[0]}, {away_team} {score_after[1]}."
             )
+
+
+def _is_garbage_time_block(
+    block: dict[str, Any],
+    garbage_time_start_idx: int | None,
+) -> bool:
+    """Check if a block is in garbage time.
+
+    Task 1.5: Garbage time handling.
+
+    Args:
+        block: Block data with moment_indices
+        garbage_time_start_idx: Index where garbage time starts
+
+    Returns:
+        True if block is entirely in garbage time
+    """
+    if garbage_time_start_idx is None:
+        return False
+
+    moment_indices = block.get("moment_indices", [])
+    if not moment_indices:
+        return False
+
+    # Block is garbage time if all its moments are at or after garbage time start
+    return all(idx >= garbage_time_start_idx for idx in moment_indices)
 
 
 async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
@@ -302,6 +523,13 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
 
     output.add_log(f"Rendering narratives for {len(blocks)} blocks")
 
+    # Task 1.5: Get blowout metrics from previous stage
+    is_blowout = previous_output.get("is_blowout", False)
+    garbage_time_start_idx = previous_output.get("garbage_time_start_idx")
+
+    if is_blowout:
+        output.add_log("Processing blowout game with compressed narratives")
+
     # Build prompt and call OpenAI
     prompt = _build_block_prompt(blocks, game_context, pbp_events)
 
@@ -321,9 +549,10 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         output.add_log(f"OpenAI returned invalid JSON: {e}", level="error")
         output.add_log("Using fallback narratives for all blocks", level="warning")
 
-        # Use fallbacks
+        # Use fallbacks with garbage time awareness
         for block in blocks:
-            block["narrative"] = _generate_fallback_narrative(block, game_context)
+            is_garbage = _is_garbage_time_block(block, garbage_time_start_idx)
+            block["narrative"] = _generate_fallback_narrative(block, game_context, is_garbage)
 
         output.data = {
             "blocks_rendered": True,
@@ -344,7 +573,8 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         output.add_log("Using fallback narratives for all blocks", level="warning")
 
         for block in blocks:
-            block["narrative"] = _generate_fallback_narrative(block, game_context)
+            is_garbage = _is_garbage_time_block(block, garbage_time_start_idx)
+            block["narrative"] = _generate_fallback_narrative(block, game_context, is_garbage)
 
         output.data = {
             "blocks_rendered": True,
@@ -379,17 +609,21 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
     all_warnings: list[str] = []
     fallback_count = 0
     total_words = 0
+    play_injections = 0
 
     for block in blocks:
         block_idx = block["block_index"]
         narrative = narrative_lookup.get(block_idx, "")
+
+        # Task 1.5: Check if this block is in garbage time
+        is_garbage = _is_garbage_time_block(block, garbage_time_start_idx)
 
         if not narrative or not narrative.strip():
             output.add_log(
                 f"Block {block_idx}: No narrative from AI, using fallback",
                 level="warning",
             )
-            narrative = _generate_fallback_narrative(block, game_context)
+            narrative = _generate_fallback_narrative(block, game_context, is_garbage)
             fallback_count += 1
 
         # Validate
@@ -399,14 +633,43 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
 
         # If hard errors, use fallback
         if errors:
-            narrative = _generate_fallback_narrative(block, game_context)
+            narrative = _generate_fallback_narrative(block, game_context, is_garbage)
             fallback_count += 1
+
+        # Task 1.3: Check play coverage - ensure key plays are mentioned
+        key_play_ids = block.get("key_play_ids", [])
+        if key_play_ids:
+            missing_ids, missing_events = _check_play_coverage(
+                narrative, key_play_ids, pbp_events
+            )
+
+            if missing_events:
+                output.add_log(
+                    f"Block {block_idx}: {len(missing_events)} key plays not referenced, injecting sentences",
+                    level="warning",
+                )
+
+                # Recovery strategy: inject deterministic sentences for missing plays
+                for event in missing_events:
+                    injection = _generate_play_injection_sentence(event, game_context)
+                    if injection:
+                        narrative = narrative.rstrip()
+                        if not narrative.endswith("."):
+                            narrative += "."
+                        narrative = f"{narrative} {injection}"
+                        play_injections += 1
+
+                all_warnings.append(
+                    f"Block {block_idx}: Injected {len(missing_events)} play references"
+                )
 
         block["narrative"] = narrative
         total_words += len(narrative.split())
 
     output.add_log(f"Total word count: {total_words}")
     output.add_log(f"Fallback narratives used: {fallback_count}")
+    if play_injections > 0:
+        output.add_log(f"Play injection sentences added: {play_injections}")
 
     if all_warnings:
         output.add_log(f"Warnings: {len(all_warnings)}", level="warning")
@@ -422,6 +685,7 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         "total_words": total_words,
         "openai_calls": 1,
         "fallback_count": fallback_count,
+        "play_injections": play_injections,  # Task 1.3 metric
         "errors": all_errors,
         "warnings": all_warnings,
         # Pass through

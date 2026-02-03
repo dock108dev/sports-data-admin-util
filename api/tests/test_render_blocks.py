@@ -8,7 +8,12 @@ from app.services.pipeline.stages.render_blocks import (
     _build_block_prompt,
     _validate_block_narrative,
     _generate_fallback_narrative,
+    _check_play_coverage,
+    _generate_play_injection_sentence,
+    _validate_style_constraints,
+    _is_garbage_time_block,
     FORBIDDEN_WORDS,
+    PROHIBITED_PATTERNS,
 )
 from app.services.pipeline.stages.block_types import (
     SemanticRole,
@@ -252,3 +257,146 @@ class TestForbiddenWords:
             narrative = f"The team showed {word} in this stretch."
             errors, warnings = _validate_block_narrative(narrative, 0)
             assert any(word.lower() in w.lower() for w in warnings), f"'{word}' not caught"
+
+
+class TestPlayCoverage:
+    """Tests for Task 1.3: Explicit play coverage invariant."""
+
+    def test_play_referenced_by_player_name(self) -> None:
+        """Play is detected when player name appears in narrative."""
+        narrative = "LeBron James scored on a drive to the basket."
+        pbp_events = [
+            {"play_index": 1, "player_name": "LeBron James", "description": "James layup"}
+        ]
+        missing_ids, _ = _check_play_coverage(narrative, [1], pbp_events)
+        assert len(missing_ids) == 0
+
+    def test_missing_play_detected(self) -> None:
+        """Missing play is detected when not referenced."""
+        narrative = "The home team extended their lead."
+        pbp_events = [
+            {"play_index": 1, "player_name": "Anthony Davis", "description": "Davis dunk"}
+        ]
+        missing_ids, missing_events = _check_play_coverage(narrative, [1], pbp_events)
+        assert 1 in missing_ids
+        assert len(missing_events) == 1
+
+    def test_play_referenced_by_action_keyword(self) -> None:
+        """Play is detected via action keywords."""
+        narrative = "A three-pointer from the corner extended the lead."
+        pbp_events = [
+            {"play_index": 1, "player_name": "Curry", "description": "Curry 3-pointer"}
+        ]
+        missing_ids, _ = _check_play_coverage(narrative, [1], pbp_events)
+        assert len(missing_ids) == 0
+
+    def test_empty_narrative_returns_no_missing(self) -> None:
+        """Empty narrative returns empty list."""
+        missing_ids, _ = _check_play_coverage("", [1], [])
+        assert missing_ids == []
+
+
+class TestPlayInjection:
+    """Tests for Task 1.3: Play injection recovery."""
+
+    def test_generates_sentence_with_player_and_description(self) -> None:
+        """Generates sentence with player name and action."""
+        event = {
+            "player_name": "LeBron James",
+            "description": "makes driving layup"
+        }
+        sentence = _generate_play_injection_sentence(event, {})
+        assert "LeBron James" in sentence
+        assert "makes driving layup" in sentence.lower()
+
+    def test_generates_sentence_with_play_type(self) -> None:
+        """Falls back to play type when description missing."""
+        event = {
+            "player_name": "Curry",
+            "play_type": "THREE_POINTER"
+        }
+        sentence = _generate_play_injection_sentence(event, {})
+        assert "Curry" in sentence
+        assert "three pointer" in sentence.lower()
+
+
+class TestStyleConstraints:
+    """Tests for Task 1.4: Sentence style constraints."""
+
+    def test_detects_stat_feed_pattern(self) -> None:
+        """Detects 'X had Y points' patterns."""
+        narrative = "James had 32 points in the game."
+        errors, warnings = _validate_style_constraints(narrative, 0)
+        assert len(warnings) > 0
+
+    def test_detects_finished_with_pattern(self) -> None:
+        """Detects 'finished with X' patterns."""
+        narrative = "Davis finished with 28 in the quarter."
+        errors, warnings = _validate_style_constraints(narrative, 0)
+        assert len(warnings) > 0
+
+    def test_detects_subjective_adjectives(self) -> None:
+        """Detects subjective adjectives."""
+        narrative = "An incredible performance by the team."
+        errors, warnings = _validate_style_constraints(narrative, 0)
+        assert len(warnings) > 0
+
+    def test_valid_broadcast_style_passes(self) -> None:
+        """Valid broadcast-style narrative passes."""
+        narrative = "James drove to the basket and scored. The Lakers extended their lead to ten."
+        errors, warnings = _validate_style_constraints(narrative, 0)
+        # May have some warnings but should not be stat-feed related
+        stat_warnings = [w for w in warnings if "stat" in w.lower() or "pattern" in w.lower()]
+        assert len(stat_warnings) == 0
+
+    def test_detects_too_many_numbers(self) -> None:
+        """Detects stat-feed style from excessive numbers."""
+        narrative = "He scored 10, 15, 8, 12, 7, 9, 11 points across stretches."
+        errors, warnings = _validate_style_constraints(narrative, 0)
+        assert any("numbers" in w.lower() for w in warnings)
+
+
+class TestGarbageTimeBlock:
+    """Tests for Task 1.5: Garbage time detection."""
+
+    def test_block_in_garbage_time(self) -> None:
+        """Block with moments after garbage time start is garbage time."""
+        block = {"moment_indices": [10, 11, 12]}
+        assert _is_garbage_time_block(block, garbage_time_start_idx=8) is True
+
+    def test_block_before_garbage_time(self) -> None:
+        """Block with moments before garbage time start is not garbage time."""
+        block = {"moment_indices": [5, 6, 7]}
+        assert _is_garbage_time_block(block, garbage_time_start_idx=10) is False
+
+    def test_block_spanning_garbage_time(self) -> None:
+        """Block spanning garbage time boundary is not fully garbage time."""
+        block = {"moment_indices": [8, 9, 10, 11]}
+        assert _is_garbage_time_block(block, garbage_time_start_idx=10) is False
+
+    def test_no_garbage_time(self) -> None:
+        """Block is not garbage time when no garbage time index."""
+        block = {"moment_indices": [10, 11, 12]}
+        assert _is_garbage_time_block(block, garbage_time_start_idx=None) is False
+
+
+class TestGarbageTimeFallback:
+    """Tests for Task 1.5: Garbage time fallback narratives."""
+
+    def test_garbage_time_narrative_is_minimal(self) -> None:
+        """Garbage time fallback is shorter and more neutral."""
+        block = {
+            "role": SemanticRole.RESPONSE.value,
+            "score_before": [90, 60],
+            "score_after": [100, 68],
+        }
+        game_context = {"home_team_abbrev": "LAL", "away_team_abbrev": "BOS"}
+
+        # Normal narrative
+        normal = _generate_fallback_narrative(block, game_context, is_garbage_time=False)
+
+        # Garbage time narrative
+        garbage = _generate_fallback_narrative(block, game_context, is_garbage_time=True)
+
+        # Garbage time should mention "wound down" or "maintained"
+        assert "wound down" in garbage.lower() or "maintained" in garbage.lower()

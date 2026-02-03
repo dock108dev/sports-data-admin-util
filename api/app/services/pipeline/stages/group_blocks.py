@@ -49,6 +49,13 @@ from .block_types import (
     MAX_KEY_PLAYS,
 )
 
+# Task 1.5: Blowout handling constants
+BLOWOUT_MARGIN_THRESHOLD = 20  # Point margin to consider a blowout
+BLOWOUT_SUSTAINED_PERIODS = 2  # Periods margin must be maintained
+GARBAGE_TIME_MARGIN = 25  # Margin where garbage time kicks in
+GARBAGE_TIME_PERIOD_MIN = 3  # Minimum period for garbage time (3rd quarter/period)
+BLOWOUT_MAX_BLOCKS = 5  # Fewer blocks for blowout games (less narrative needed)
+
 logger = logging.getLogger(__name__)
 
 
@@ -218,6 +225,158 @@ def _find_period_boundaries(moments: list[dict[str, Any]]) -> list[int]:
             boundaries.append(i)
 
     return boundaries
+
+
+def _detect_blowout(moments: list[dict[str, Any]]) -> tuple[bool, int | None, int]:
+    """Detect if game is a blowout and find when it became decisive.
+
+    Task 1.5: Blowout handling.
+
+    A blowout is detected when:
+    - Margin reaches BLOWOUT_MARGIN_THRESHOLD (20 points)
+    - Margin is sustained for BLOWOUT_SUSTAINED_PERIODS (2+ periods)
+
+    Args:
+        moments: List of validated moments
+
+    Returns:
+        Tuple of (is_blowout, decisive_moment_idx, max_margin)
+    """
+    if not moments:
+        return False, None, 0
+
+    decisive_moment_idx: int | None = None
+    margin_start_period: int | None = None
+    margin_start_idx: int | None = None
+    max_margin = 0
+
+    for i, moment in enumerate(moments):
+        score_after = moment.get("score_after", [0, 0])
+        period = moment.get("period", 1)
+        home, away = score_after[0], score_after[1]
+        margin = abs(home - away)
+
+        max_margin = max(max_margin, margin)
+
+        if margin >= BLOWOUT_MARGIN_THRESHOLD:
+            if margin_start_period is None:
+                # Start tracking sustained margin
+                margin_start_period = period
+                margin_start_idx = i
+            else:
+                # Check if margin has been sustained
+                periods_elapsed = period - margin_start_period
+                if periods_elapsed >= BLOWOUT_SUSTAINED_PERIODS:
+                    decisive_moment_idx = margin_start_idx
+                    return True, decisive_moment_idx, max_margin
+        else:
+            # Margin dropped below threshold, reset tracking
+            margin_start_period = None
+            margin_start_idx = None
+
+    return False, decisive_moment_idx, max_margin
+
+
+def _find_garbage_time_start(moments: list[dict[str, Any]]) -> int | None:
+    """Find when garbage time begins (if at all).
+
+    Task 1.5: Garbage time is when:
+    - Margin exceeds GARBAGE_TIME_MARGIN (25 points)
+    - Period is GARBAGE_TIME_PERIOD_MIN or later (3rd quarter+)
+
+    Args:
+        moments: List of validated moments
+
+    Returns:
+        Moment index where garbage time starts, or None
+    """
+    for i, moment in enumerate(moments):
+        score_after = moment.get("score_after", [0, 0])
+        period = moment.get("period", 1)
+        home, away = score_after[0], score_after[1]
+        margin = abs(home - away)
+
+        if margin >= GARBAGE_TIME_MARGIN and period >= GARBAGE_TIME_PERIOD_MIN:
+            return i
+
+    return None
+
+
+def _compress_blowout_blocks(
+    moments: list[dict[str, Any]],
+    decisive_idx: int,
+    garbage_time_idx: int | None,
+) -> list[int]:
+    """Generate split points for blowout games.
+
+    Task 1.5: Blowout compression strategy:
+    - 1-2 blocks before decisive moment (the interesting part)
+    - 1 block for the decisive stretch
+    - 1 block for everything after (compressed)
+
+    Args:
+        moments: List of validated moments
+        decisive_idx: Index where game became decisive
+        garbage_time_idx: Index where garbage time starts (if any)
+
+    Returns:
+        List of split point indices
+    """
+    n = len(moments)
+    split_points: list[int] = []
+
+    # Ensure we have at least MIN_BLOCKS
+    # For blowout: [SETUP][MOMENTUM_SHIFT][RESPONSE or compress][RESOLUTION]
+
+    if decisive_idx is None:
+        decisive_idx = n // 3  # Default to 1/3 mark
+
+    # First split: After SETUP (first ~15-20% of moments, but before decisive)
+    setup_end = min(max(1, n // 6), decisive_idx - 1)
+    if setup_end > 0:
+        split_points.append(setup_end)
+
+    # Second split: The decisive moment (where blowout began)
+    if decisive_idx > setup_end:
+        split_points.append(decisive_idx)
+
+    # Third split: If garbage time exists, compress everything after
+    if garbage_time_idx is not None and garbage_time_idx > decisive_idx:
+        # Put garbage time in its own minimal block
+        split_points.append(garbage_time_idx)
+    else:
+        # If no garbage time, split remaining ~evenly
+        remaining_start = max(split_points) if split_points else 0
+        remaining = n - remaining_start
+        if remaining > n // 3:
+            # Add one more split for DECISION_POINT
+            mid_remaining = remaining_start + remaining // 2
+            if mid_remaining not in split_points and mid_remaining > remaining_start:
+                split_points.append(mid_remaining)
+
+    # Ensure unique and sorted
+    split_points = sorted(set(sp for sp in split_points if 0 < sp < n))
+
+    # Ensure we have at least MIN_BLOCKS - 1 split points
+    while len(split_points) < MIN_BLOCKS - 1:
+        # Add evenly distributed splits
+        gaps = [split_points[0]] if split_points else [n // 2]
+        for i in range(len(split_points) - 1):
+            gap = split_points[i + 1] - split_points[i]
+            if gap > 2:
+                new_split = split_points[i] + gap // 2
+                if new_split not in split_points:
+                    split_points.append(new_split)
+                    break
+        else:
+            # Add at end if needed
+            if split_points and split_points[-1] < n - 2:
+                split_points.append(split_points[-1] + (n - split_points[-1]) // 2)
+            else:
+                break
+        split_points = sorted(set(split_points))
+
+    return split_points[:BLOWOUT_MAX_BLOCKS - 1]  # Cap at blowout max
 
 
 def _find_split_points(
@@ -417,6 +576,11 @@ def _assign_roles(blocks: list[NarrativeBlock]) -> None:
         return
 
     n = len(blocks)
+
+    # Reset all roles to None first - blocks may come with pre-assigned roles
+    for block in blocks:
+        block.role = None  # type: ignore
+
     role_counts: dict[SemanticRole, int] = {r: 0 for r in SemanticRole}
 
     def can_assign(role: SemanticRole) -> bool:
@@ -585,12 +749,33 @@ async def execute_group_blocks(stage_input: StageInput) -> StageOutput:
     output.add_log(f"Game metrics: {lead_changes} lead changes, {total_plays} plays")
     output.add_log(f"Found {len(scoring_runs)} scoring runs, largest: {largest_run}")
 
-    # Calculate target block count
-    target_blocks = calculate_block_count(moments, lead_changes, total_plays)
-    output.add_log(f"Target block count: {target_blocks}")
+    # Task 1.5: Check for blowout
+    is_blowout, decisive_idx, max_margin = _detect_blowout(moments)
+    garbage_time_idx = _find_garbage_time_start(moments) if is_blowout else None
 
-    # Find optimal split points
-    split_points = _find_split_points(moments, target_blocks)
+    if is_blowout:
+        output.add_log(
+            f"BLOWOUT DETECTED: Max margin {max_margin}, decisive at moment {decisive_idx}",
+            level="warning",
+        )
+        if garbage_time_idx is not None:
+            output.add_log(
+                f"Garbage time starts at moment {garbage_time_idx}",
+                level="warning",
+            )
+
+        # Use blowout compression for split points
+        split_points = _compress_blowout_blocks(moments, decisive_idx, garbage_time_idx)
+        target_blocks = len(split_points) + 1
+        output.add_log(f"Using blowout compression: {target_blocks} blocks")
+    else:
+        # Calculate target block count normally
+        target_blocks = calculate_block_count(moments, lead_changes, total_plays)
+        output.add_log(f"Target block count: {target_blocks}")
+
+        # Find optimal split points
+        split_points = _find_split_points(moments, target_blocks)
+
     output.add_log(f"Split points: {split_points}")
 
     # Create blocks
@@ -629,6 +814,11 @@ async def execute_group_blocks(stage_input: StageInput) -> StageOutput:
         "lead_changes": lead_changes,
         "largest_run": largest_run,
         "split_points": split_points,
+        # Task 1.5: Blowout metrics
+        "is_blowout": is_blowout,
+        "max_margin": max_margin,
+        "decisive_moment_idx": decisive_idx,
+        "garbage_time_start_idx": garbage_time_idx,
         # Pass through from previous stages
         "moments": moments,
         "pbp_events": pbp_events,
