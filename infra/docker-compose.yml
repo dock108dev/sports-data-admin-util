@@ -215,6 +215,8 @@ services:
       NEXT_PUBLIC_SPORTS_API_URL: ${NEXT_PUBLIC_SPORTS_API_URL:-http://localhost:8000}
       # Server-side Next.js fetches run inside the web container; use the internal service name.
       SPORTS_API_INTERNAL_URL: ${SPORTS_API_INTERNAL_URL:-http://api:8000}
+      # API authentication key for backend requests
+      SPORTS_API_KEY: ${API_KEY:-}
       # Basic auth for production (uses same password as postgres)
       ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-}
       ENVIRONMENT: ${ENVIRONMENT:-development}
