@@ -1,0 +1,357 @@
+/**
+ * Phase 6: Guardrails & Invariant Enforcement (Frontend)
+ *
+ * This module enforces hard invariants at render time.
+ * Violations are CORRECTNESS BUGS, not stylistic issues.
+ *
+ * INVARIANTS (Non-negotiable)
+ * ===========================
+ * 1. Narrative blocks ≤ 7
+ * 2. Embedded tweets ≤ 5
+ * 3. Zero required social dependencies
+ *
+ * ENFORCEMENT RULES
+ * =================
+ * - Violations must be logged LOUDLY (console.error with context)
+ * - Violations must be visible in dev builds
+ * - NO silent truncation
+ * - NO auto-correction without surfacing the issue
+ *
+ * If a future change violates any invariant, the change is INCORRECT.
+ * These guardrails define the product.
+ */
+
+import type { NarrativeBlock } from "./api/sportsAdmin/storyTypes";
+
+// =============================================================================
+// INVARIANT CONSTANTS
+// =============================================================================
+
+/** Maximum number of narrative blocks per game */
+export const MAX_BLOCKS = 7;
+
+/** Minimum number of narrative blocks per game */
+export const MIN_BLOCKS = 4;
+
+/** Maximum embedded tweets per game */
+export const MAX_EMBEDDED_TWEETS = 5;
+
+/** Maximum tweets per block */
+export const MAX_TWEETS_PER_BLOCK = 1;
+
+/** Target read time bounds (seconds) */
+export const MIN_READ_TIME_SECONDS = 20;
+export const MAX_READ_TIME_SECONDS = 60;
+
+/** Words per minute for read time calculation */
+export const WORDS_PER_MINUTE = 250;
+
+/** Maximum words derived from read time */
+export const MAX_TOTAL_WORDS = Math.floor(
+  (MAX_READ_TIME_SECONDS / 60) * WORDS_PER_MINUTE
+);
+
+// =============================================================================
+// VALIDATION TYPES
+// =============================================================================
+
+export type ViolationSeverity = "error" | "warning";
+
+export interface GuardrailViolation {
+  invariant: string;
+  message: string;
+  actualValue: unknown;
+  limitValue: unknown;
+  severity: ViolationSeverity;
+}
+
+export interface GuardrailResult {
+  gameId: number | null;
+  passed: boolean;
+  violations: GuardrailViolation[];
+  metrics: {
+    blockCount: number;
+    embeddedTweetCount: number;
+    totalWords: number;
+    hasSocialData: boolean;
+    socialRequired: boolean;
+  };
+}
+
+// =============================================================================
+// PRE-RENDER VALIDATION
+// =============================================================================
+
+/**
+ * Validate blocks before rendering.
+ *
+ * Call this in components before rendering block-based content.
+ * Logs violations loudly in development.
+ *
+ * @param blocks - Blocks to validate
+ * @param gameId - Game identifier for logging
+ * @returns Validation result
+ */
+export function validateBlocksPreRender(
+  blocks: NarrativeBlock[],
+  gameId: number | null = null
+): GuardrailResult {
+  const violations: GuardrailViolation[] = [];
+
+  // Count metrics
+  const blockCount = blocks.length;
+  const embeddedTweetCount = blocks.filter((b) => b.embeddedTweet).length;
+  const totalWords = blocks.reduce((sum, b) => {
+    const words = (b.narrative || "").split(/\s+/).filter(Boolean).length;
+    return sum + words;
+  }, 0);
+
+  // Check block count upper bound
+  if (blockCount > MAX_BLOCKS) {
+    violations.push({
+      invariant: "MAX_BLOCKS",
+      message: `Block count ${blockCount} exceeds maximum ${MAX_BLOCKS}`,
+      actualValue: blockCount,
+      limitValue: MAX_BLOCKS,
+      severity: "error",
+    });
+  }
+
+  // Check block count lower bound (warning)
+  if (blockCount > 0 && blockCount < MIN_BLOCKS) {
+    violations.push({
+      invariant: "MIN_BLOCKS",
+      message: `Block count ${blockCount} below minimum ${MIN_BLOCKS}`,
+      actualValue: blockCount,
+      limitValue: MIN_BLOCKS,
+      severity: "warning",
+    });
+  }
+
+  // Check embedded tweet count
+  if (embeddedTweetCount > MAX_EMBEDDED_TWEETS) {
+    violations.push({
+      invariant: "MAX_EMBEDDED_TWEETS",
+      message: `Embedded tweet count ${embeddedTweetCount} exceeds maximum ${MAX_EMBEDDED_TWEETS}`,
+      actualValue: embeddedTweetCount,
+      limitValue: MAX_EMBEDDED_TWEETS,
+      severity: "error",
+    });
+  }
+
+  // Check total word count (warning)
+  if (totalWords > MAX_TOTAL_WORDS) {
+    violations.push({
+      invariant: "MAX_TOTAL_WORDS",
+      message: `Total word count ${totalWords} may exceed ${MAX_READ_TIME_SECONDS}s read time`,
+      actualValue: totalWords,
+      limitValue: MAX_TOTAL_WORDS,
+      severity: "warning",
+    });
+  }
+
+  // Check block structure
+  blocks.forEach((block, i) => {
+    // Required fields
+    if (block.narrative === null || block.narrative === undefined) {
+      violations.push({
+        invariant: "BLOCK_STRUCTURE",
+        message: `Block ${i} missing narrative`,
+        actualValue: block.narrative,
+        limitValue: "non-null string",
+        severity: "error",
+      });
+    }
+
+    if (!block.role) {
+      violations.push({
+        invariant: "BLOCK_STRUCTURE",
+        message: `Block ${i} missing role`,
+        actualValue: block.role,
+        limitValue: "valid role",
+        severity: "error",
+      });
+    }
+  });
+
+  const passed = !violations.some((v) => v.severity === "error");
+
+  const result: GuardrailResult = {
+    gameId,
+    passed,
+    violations,
+    metrics: {
+      blockCount,
+      embeddedTweetCount,
+      totalWords,
+      hasSocialData: embeddedTweetCount > 0,
+      socialRequired: false,
+    },
+  };
+
+  // Log violations loudly
+  logValidationResult(result, "pre_render");
+
+  return result;
+}
+
+/**
+ * Validate that removing social data doesn't change structure.
+ *
+ * @param blocksWithSocial - Blocks including embedded tweets
+ * @param blocksWithoutSocial - Blocks without social (optional)
+ * @param gameId - Game identifier
+ * @returns Validation result
+ */
+export function validateSocialIndependence(
+  blocksWithSocial: NarrativeBlock[],
+  blocksWithoutSocial: NarrativeBlock[] | null,
+  gameId: number | null = null
+): GuardrailResult {
+  const violations: GuardrailViolation[] = [];
+  let socialRequired = false;
+
+  if (blocksWithoutSocial !== null) {
+    // Block count must match
+    if (blocksWithSocial.length !== blocksWithoutSocial.length) {
+      violations.push({
+        invariant: "SOCIAL_INDEPENDENCE",
+        message: `Block count differs with/without social: ${blocksWithSocial.length} vs ${blocksWithoutSocial.length}`,
+        actualValue: blocksWithSocial.length,
+        limitValue: blocksWithoutSocial.length,
+        severity: "error",
+      });
+      socialRequired = true;
+    }
+
+    // Narratives must match
+    blocksWithSocial.forEach((block, i) => {
+      const other = blocksWithoutSocial[i];
+      if (other && block.narrative !== other.narrative) {
+        violations.push({
+          invariant: "SOCIAL_INDEPENDENCE",
+          message: `Block ${i} narrative differs with/without social`,
+          actualValue: "with_social",
+          limitValue: "without_social",
+          severity: "error",
+        });
+        socialRequired = true;
+      }
+    });
+  }
+
+  const passed = !violations.some((v) => v.severity === "error");
+
+  const result: GuardrailResult = {
+    gameId,
+    passed,
+    violations,
+    metrics: {
+      blockCount: blocksWithSocial.length,
+      embeddedTweetCount: blocksWithSocial.filter((b) => b.embeddedTweet).length,
+      totalWords: 0,
+      hasSocialData: blocksWithSocial.some((b) => b.embeddedTweet),
+      socialRequired,
+    },
+  };
+
+  logValidationResult(result, "social_independence");
+
+  return result;
+}
+
+// =============================================================================
+// LOGGING
+// =============================================================================
+
+/**
+ * Log validation result with appropriate level.
+ *
+ * Violations are logged LOUDLY as required by Phase 6 contract.
+ */
+function logValidationResult(result: GuardrailResult, checkpoint: string): void {
+  // Only log in development or when there are violations
+  const isDev = process.env.NODE_ENV === "development";
+
+  if (result.passed && result.violations.length === 0) {
+    if (isDev) {
+      console.log(
+        `[GUARDRAIL] ✓ ${checkpoint} passed`,
+        {
+          gameId: result.gameId,
+          ...result.metrics,
+        }
+      );
+    }
+    return;
+  }
+
+  // Log each violation
+  result.violations.forEach((violation) => {
+    const logFn = violation.severity === "error" ? console.error : console.warn;
+    logFn(
+      `[GUARDRAIL VIOLATION] ${violation.invariant}`,
+      {
+        checkpoint,
+        gameId: result.gameId,
+        message: violation.message,
+        actual: violation.actualValue,
+        limit: violation.limitValue,
+        severity: violation.severity,
+      }
+    );
+  });
+
+  // Summary
+  const errorCount = result.violations.filter((v) => v.severity === "error").length;
+  const warningCount = result.violations.filter((v) => v.severity === "warning").length;
+
+  if (errorCount > 0) {
+    console.error(
+      `[GUARDRAIL] ✗ ${checkpoint} FAILED`,
+      {
+        gameId: result.gameId,
+        errors: errorCount,
+        warnings: warningCount,
+        metrics: result.metrics,
+      }
+    );
+  } else {
+    console.warn(
+      `[GUARDRAIL] ⚠ ${checkpoint} passed with warnings`,
+      {
+        gameId: result.gameId,
+        warnings: warningCount,
+        metrics: result.metrics,
+      }
+    );
+  }
+}
+
+// =============================================================================
+// CONVENIENCE HOOKS
+// =============================================================================
+
+/**
+ * React hook for guardrail validation.
+ *
+ * Use in components to validate blocks on render.
+ *
+ * @example
+ * function MyComponent({ blocks, gameId }) {
+ *   const guardrailResult = useGuardrails(blocks, gameId);
+ *
+ *   if (!guardrailResult.passed) {
+ *     // Handle error state
+ *   }
+ *
+ *   return <div>...</div>;
+ * }
+ */
+export function useGuardrails(
+  blocks: NarrativeBlock[],
+  gameId: number | null
+): GuardrailResult {
+  // Validate on every render (memoization would hide violations)
+  return validateBlocksPreRender(blocks, gameId);
+}

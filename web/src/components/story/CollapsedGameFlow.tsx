@@ -1,6 +1,8 @@
 "use client";
 
+import { useMemo } from "react";
 import type { NarrativeBlock, EmbeddedTweet } from "@/lib/api/sportsAdmin/storyTypes";
+import { validateBlocksPreRender, type GuardrailResult } from "@/lib/guardrails";
 import styles from "./CollapsedGameFlow.module.css";
 
 /**
@@ -32,6 +34,8 @@ import styles from "./CollapsedGameFlow.module.css";
 interface CollapsedGameFlowProps {
   /** Narrative blocks to display */
   blocks: NarrativeBlock[];
+  /** Game ID for guardrail logging */
+  gameId?: number;
   /** Home team name for score display */
   homeTeam?: string;
   /** Away team name for score display */
@@ -164,10 +168,18 @@ function BlockCard({
  */
 export function CollapsedGameFlow({
   blocks,
+  gameId,
   homeTeam,
   awayTeam,
   showDebug = false,
 }: CollapsedGameFlowProps) {
+  // Phase 6: Run guardrail validation on every render
+  // This ensures violations are immediately visible during development
+  const guardrailResult = useMemo(
+    () => validateBlocksPreRender(blocks, gameId ?? null),
+    [blocks, gameId]
+  );
+
   // Empty state - no blocks
   if (!blocks || blocks.length === 0) {
     return (
@@ -188,10 +200,25 @@ export function CollapsedGameFlow({
 
   return (
     <div className={styles.container}>
+      {/* Guardrail violation warning - visible in dev */}
+      {!guardrailResult.passed && (
+        <div className={styles.guardrailWarning}>
+          <strong>Guardrail Violations:</strong>
+          <ul>
+            {guardrailResult.violations
+              .filter((v) => v.severity === "error")
+              .map((v, i) => (
+                <li key={i}>{v.message}</li>
+              ))}
+          </ul>
+        </div>
+      )}
+
       {/* Summary line */}
       <div className={styles.summary}>
         {blocks.length} blocks · ~{totalWords} words
         {embeddedTweetCount > 0 && ` · ${embeddedTweetCount} embedded tweets`}
+        {!guardrailResult.passed && " · ⚠️ VIOLATIONS"}
       </div>
 
       {/* Blocks list - vertical flow */}

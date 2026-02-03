@@ -15,6 +15,16 @@ from .embedded_tweets import (
     select_and_assign_embedded_tweets,
     DefaultTweetScorer,
 )
+from .guardrails import (
+    validate_blocks_post_generation,
+    validate_blocks_pre_render,
+    validate_social_independence,
+    enforce_guardrails,
+    assert_guardrails,
+    GuardrailViolationError,
+    MAX_BLOCKS,
+    MAX_EMBEDDED_TWEETS,
+)
 
 __all__ = [
     "execute_normalize_pbp",
@@ -31,4 +41,13 @@ __all__ = [
     "apply_embedded_tweets_to_blocks",
     "select_and_assign_embedded_tweets",
     "DefaultTweetScorer",
+    # Guardrails (Phase 6)
+    "validate_blocks_post_generation",
+    "validate_blocks_pre_render",
+    "validate_social_independence",
+    "enforce_guardrails",
+    "assert_guardrails",
+    "GuardrailViolationError",
+    "MAX_BLOCKS",
+    "MAX_EMBEDDED_TWEETS",
 ]
