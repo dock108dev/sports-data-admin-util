@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from app.services.pipeline.stages.validate_blocks import (
     _validate_block_count,
@@ -16,7 +15,6 @@ from app.services.pipeline.stages.block_types import (
     SemanticRole,
     MIN_BLOCKS,
     MAX_BLOCKS,
-    MIN_WORDS_PER_BLOCK,
     MAX_WORDS_PER_BLOCK,
     MAX_TOTAL_WORDS,
 )

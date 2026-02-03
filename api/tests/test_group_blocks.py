@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from app.services.pipeline.stages.block_types import (
     MIN_BLOCKS,
@@ -22,7 +21,6 @@ from app.services.pipeline.stages.group_blocks import (
     _find_garbage_time_start,
     _compress_blowout_blocks,
     BLOWOUT_MARGIN_THRESHOLD,
-    GARBAGE_TIME_MARGIN,
 )
 
 

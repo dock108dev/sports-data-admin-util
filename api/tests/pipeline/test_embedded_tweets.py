@@ -13,11 +13,8 @@ from app.services.pipeline.stages.embedded_tweets import (
     MAX_EMBEDDED_TWEETS,
     MAX_TWEETS_PER_BLOCK,
     MIN_EMBEDDED_TWEETS,
-    PREFERRED_MIN_EMBEDDED,
-    # Types
     TweetPosition,
     ScoredTweet,
-    EmbeddedTweetSelection,
     BlockTweetAssignment,
     # Scorer
     DefaultTweetScorer,

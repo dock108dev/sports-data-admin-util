@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from app.services.pipeline.stages.render_blocks import (
     _build_block_prompt,
@@ -13,11 +12,9 @@ from app.services.pipeline.stages.render_blocks import (
     _validate_style_constraints,
     _is_garbage_time_block,
     FORBIDDEN_WORDS,
-    PROHIBITED_PATTERNS,
 )
 from app.services.pipeline.stages.block_types import (
     SemanticRole,
-    MIN_WORDS_PER_BLOCK,
     MAX_WORDS_PER_BLOCK,
 )
 
@@ -392,11 +389,11 @@ class TestGarbageTimeFallback:
         }
         game_context = {"home_team_abbrev": "LAL", "away_team_abbrev": "BOS"}
 
-        # Normal narrative
+        # Normal narrative should not contain garbage time language
         normal = _generate_fallback_narrative(block, game_context, is_garbage_time=False)
+        assert "wound down" not in normal.lower()
+        assert "maintained" not in normal.lower()
 
-        # Garbage time narrative
+        # Garbage time narrative should mention "wound down" or "maintained"
         garbage = _generate_fallback_narrative(block, game_context, is_garbage_time=True)
-
-        # Garbage time should mention "wound down" or "maintained"
         assert "wound down" in garbage.lower() or "maintained" in garbage.lower()
