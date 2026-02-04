@@ -150,8 +150,9 @@ def compute_lead_context(
     if not score_after or len(score_after) < 2:
         score_after = [0, 0]
 
-    away_before, home_before = score_before[0], score_before[1]
-    away_after, home_after = score_after[0], score_after[1]
+    # Format is [home, away] per score_detection.py
+    home_before, away_before = score_before[0], score_before[1]
+    home_after, away_after = score_after[0], score_after[1]
 
     lead_before = home_before - away_before
     lead_after = home_after - away_after

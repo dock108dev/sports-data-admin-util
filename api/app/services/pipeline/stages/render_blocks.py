@@ -207,11 +207,12 @@ def _normalize_player_name(name: str) -> str:
     """Convert 'j. smith' or 'J. Smith' to 'Smith'.
 
     Handles initial-style names from PBP data to produce cleaner narratives.
+    Supports international names with diacritical marks (e.g., Dončić, Schröder).
     """
     if not name:
         return ""
-    # Match patterns like "j. smith" or "J. Smith"
-    if re.match(r"^[A-Za-z]\.\s+\w+", name):
+    # Match patterns like "j. smith" or "J. Dončić" - use \S+ for Unicode support
+    if re.match(r"^[A-Za-z]\.\s+\S+", name):
         return name.split()[-1].title()
     return name.title() if name.islower() else name
 
@@ -308,15 +309,17 @@ def _validate_style_constraints(
 
 
 # Patterns to clean up raw PBP artifacts from narratives
+# Use \S+ for name matching to support international names (e.g., Dončić, Schröder)
+# Order matters: more specific patterns (like "tip to") must come before general patterns
 PBP_ARTIFACT_PATTERNS = [
+    # Jump ball tip patterns like "tip to j. smith" - must come before general initial removal
+    (r"tip to [a-zA-Z]\.\s*\S+", "won the tip"),
     # "j. smith" style initials - match single letter followed by period and name
-    (r"\b[a-z]\.\s+[a-z]+(?=\s|[.,!?]|$)", ""),
-    # Jump ball tip patterns like "tip to j. smith"
-    (r"tip to [a-z]\.\s*[a-z]+", "won the tip"),
+    (r"\b[a-zA-Z]\.\s+\S+(?=\s|[.,!?]|$)", ""),
     # Score artifacts like ": 45-42"
     (r"\s*:\s*\d+-\d+", ""),
     # Raw PBP colons followed by lowercase play text
-    (r":\s+[a-z]", lambda m: ". " + m.group(0)[-1].upper()),
+    (r":\s+[a-zA-Z]", lambda m: ". " + m.group(0)[-1].upper()),
 ]
 
 

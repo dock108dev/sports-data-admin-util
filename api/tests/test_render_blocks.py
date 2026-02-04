@@ -255,6 +255,16 @@ class TestPlayInjection:
         assert "Smith" in sentence
         assert "j." not in sentence.lower()
 
+    def test_handles_international_names(self) -> None:
+        """Handles names with diacritical marks (e.g., Dončić)."""
+        event = {
+            "player_name": "l. dončić",
+            "play_type": "3pt",
+        }
+        sentence = _generate_play_injection_sentence(event, {})
+        assert "Dončić" in sentence
+        assert "l." not in sentence.lower()
+
     def test_fallback_to_scored_when_no_match(self) -> None:
         """Falls back to 'scored' when play type not recognized."""
         event = {

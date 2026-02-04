@@ -22,14 +22,15 @@ curl -H "X-API-Key: YOUR_KEY" \
 
 ## What You Get
 
-Each game flow contains **4-7 narrative blocks** designed for a **20-60 second read**.
+Each game flow contains **4-7 narrative blocks** designed for a **60-90 second read**.
 
 | Property | Value |
 |----------|-------|
 | Blocks per game | 4-7 |
-| Words per block | 10-50 (~35 avg) |
-| Total words | ≤ 350 |
-| Read time | 20-60 seconds |
+| Words per block | 30-100 (~65 avg) |
+| Sentences per block | 2-4 |
+| Total words | ≤ 500 |
+| Read time | 60-90 seconds |
 
 ---
 
@@ -115,7 +116,7 @@ Blocks are the consumer-facing output. Each block is a narrative segment:
   "periodStart": 1,
   "periodEnd": 1,
   "scoreBefore": [0, 0],
-  "scoreAfter": [12, 15],
+  "scoreAfter": [15, 12],
   "playIds": [1, 2, 3, 4, 5],
   "keyPlayIds": [2, 4],
   "narrative": "The Lakers jumped out early, with James orchestrating a 15-12 lead through balanced scoring in the opening minutes.",
@@ -145,9 +146,9 @@ Blocks are the consumer-facing output. Each block is a narrative segment:
 |-------|------|-------------|
 | `blockIndex` | `int` | Position (0 to N-1) |
 | `role` | `string` | Semantic role (see below) |
-| `scoreBefore` | `[away, home]` | Score at block start |
-| `scoreAfter` | `[away, home]` | Score at block end |
-| `narrative` | `string` | 1-2 sentences (~35 words) |
+| `scoreBefore` | `[home, away]` | Score at block start |
+| `scoreAfter` | `[home, away]` | Score at block end |
+| `narrative` | `string` | 2-4 sentences (~65 words) |
 | `miniBox` | `object` | Player stats for this segment |
 | `embeddedTweet` | `object?` | Optional social context (max 1 per block) |
 
@@ -267,7 +268,7 @@ interface GameFlowBlock {
   momentIndices: number[];
   periodStart: number;
   periodEnd: number;
-  scoreBefore: [number, number];  // [away, home]
+  scoreBefore: [number, number];  // [home, away]
   scoreAfter: [number, number];
   playIds: number[];
   keyPlayIds: number[];
