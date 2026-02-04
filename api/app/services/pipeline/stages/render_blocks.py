@@ -1,26 +1,44 @@
 """RENDER_BLOCKS Stage Implementation.
 
-This stage generates short narrative text for each block using OpenAI.
-Each block gets 1-2 sentences (~35 words) describing that stretch of play.
+This stage generates narrative text for each block using OpenAI.
+Each block gets 2-4 sentences (~65 words) describing that stretch of play.
+
+TWO-PASS RENDERING
+==================
+1. Initial render: Per-block narrative generation with role-aware prompting
+2. Game-level flow pass: Single call that sees all blocks and smooths transitions
 
 RENDERING RULES
 ===============
 The prompt REQUIRES:
-- 1-2 sentences per block (~35 words)
+- 2-4 sentences per block (~50-80 words)
 - Role-aware context (SETUP, MOMENTUM_SHIFT, etc.)
 - Focus on key plays identified
 - Concrete actions and score changes
+- SportsCenter-style prose describing stretches of play
 
 The prompt FORBIDS:
 - momentum, turning point, dominant, huge, clutch
 - Speculation or interpretation
 - References to plays not in the block
+- Raw PBP artifacts (initials like "j. smith")
+
+GAME-LEVEL FLOW PASS
+====================
+After initial narratives are generated, a second OpenAI call smooths
+the entire game flow:
+- Acknowledges time progression (early → middle → late)
+- Reduces repetition across blocks
+- Preserves all facts, scores, and structure
+- Uses low temperature (0.2) for consistency
+- Safe fallback: if output count != input count, uses originals
 
 VALIDATION
 ==========
 Post-generation validation ensures:
 - Non-empty narratives
-- Word count within limits (10-50 words)
+- Word count within limits (30-100 words)
+- Sentence count within limits (2-4 sentences)
 - No forbidden language
 """
 
@@ -164,39 +182,76 @@ def _check_play_coverage(
     return missing_ids, missing_events
 
 
+# Natural language mappings for play types
+PLAY_TYPE_VERBS = {
+    "2pt": "scored inside",
+    "3pt": "hit a three-pointer",
+    "dunk": "threw down a dunk",
+    "layup": "finished at the rim",
+    "freethrow": "converted from the line",
+    "free throw": "converted from the line",
+    "steal": "came up with a steal",
+    "block": "rejected the shot",
+    "rebound": "grabbed the rebound",
+    "assist": "delivered the assist",
+    "jump shot": "knocked down a jumper",
+    "jumper": "knocked down a jumper",
+    "hook": "hit a hook shot",
+    "tip": "tipped one in",
+    "alley oop": "finished the alley-oop",
+    "putback": "scored on the putback",
+}
+
+
+def _normalize_player_name(name: str) -> str:
+    """Convert 'j. smith' or 'J. Smith' to 'Smith'.
+
+    Handles initial-style names from PBP data to produce cleaner narratives.
+    """
+    if not name:
+        return ""
+    # Match patterns like "j. smith" or "J. Smith"
+    if re.match(r"^[A-Za-z]\.\s+\w+", name):
+        return name.split()[-1].title()
+    return name.title() if name.islower() else name
+
+
 def _generate_play_injection_sentence(
     event: dict[str, Any],
     game_context: dict[str, str],
 ) -> str:
-    """Generate a deterministic sentence for a missing play.
+    """Generate a natural language sentence for a missing play.
 
     Task 1.3: Recovery strategy when a key play is not referenced.
+    Produces SportsCenter-style prose instead of raw PBP artifacts.
 
     Args:
         event: The PBP event that needs to be mentioned
         game_context: Team abbreviations
 
     Returns:
-        A simple sentence describing the play
+        A natural, broadcast-style sentence describing the play
     """
-    player_name = event.get("player_name", "")
-    description = event.get("description", "")
-    play_type = event.get("play_type", "")
+    player_name = _normalize_player_name(event.get("player_name", ""))
+    play_type = (event.get("play_type") or "").lower()
+    description = (event.get("description") or "").lower()
 
-    # Build a simple, factual sentence
-    if player_name and description:
-        # Clean up the description
-        desc_clean = description.strip()
-        if desc_clean.endswith("."):
-            desc_clean = desc_clean[:-1]
-        return f"{player_name} {desc_clean.lower()}."
+    # Try to find a matching verb from play type
+    verb = PLAY_TYPE_VERBS.get(play_type)
 
-    if player_name and play_type:
-        return f"{player_name} made a {play_type.lower().replace('_', ' ')}."
+    # If no direct match, try to extract from description
+    if not verb and description:
+        for key, val in PLAY_TYPE_VERBS.items():
+            if key in description:
+                verb = val
+                break
 
-    if description:
-        return f"{description}."
+    # Fallback verb
+    if not verb:
+        verb = "scored"
 
+    if player_name:
+        return f"{player_name} {verb}."
     return ""
 
 
@@ -252,6 +307,203 @@ def _validate_style_constraints(
     return errors, warnings
 
 
+# Patterns to clean up raw PBP artifacts from narratives
+PBP_ARTIFACT_PATTERNS = [
+    # "j. smith" style initials - match single letter followed by period and name
+    (r"\b[a-z]\.\s+[a-z]+(?=\s|[.,!?]|$)", ""),
+    # Jump ball tip patterns like "tip to j. smith"
+    (r"tip to [a-z]\.\s*[a-z]+", "won the tip"),
+    # Score artifacts like ": 45-42"
+    (r"\s*:\s*\d+-\d+", ""),
+    # Raw PBP colons followed by lowercase play text
+    (r":\s+[a-z]", lambda m: ". " + m.group(0)[-1].upper()),
+]
+
+
+def _cleanup_pbp_artifacts(narrative: str) -> str:
+    """Remove raw PBP artifacts from narrative text.
+
+    Cleans up patterns like:
+    - "j. smith" initials → removed (should use full names)
+    - "tip to j. smith" → "won the tip"
+    - ": 45-42" score artifacts → removed
+
+    Args:
+        narrative: The generated narrative text
+
+    Returns:
+        Cleaned narrative without raw PBP artifacts
+    """
+    if not narrative:
+        return narrative
+
+    cleaned = narrative
+    for pattern, replacement in PBP_ARTIFACT_PATTERNS:
+        if callable(replacement):
+            cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
+        else:
+            cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
+
+    # Normalize whitespace
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+# Game-level flow pass prompt - intentionally tight and low-token
+GAME_FLOW_PASS_PROMPT = """You are given the full Game Flow for a single game as a sequence of blocks.
+
+Each block is already correct and final in structure, timing, and scoring.
+Your job is to lightly rewrite the narrative text so the blocks flow naturally
+as a single game recap, while keeping each block as its own paragraph.
+
+Rules:
+- Preserve block order and boundaries
+- Do not add or remove events
+- Do not change scores, players, or periods
+- Each block should be 2-4 sentences in one paragraph
+- Improve flow, reduce repetition, and acknowledge the passage of time across blocks
+- No hype, no speculation, no raw play-by-play
+
+If a block already flows well, make minimal changes.
+
+Return JSON: {"blocks": [{"i": block_index, "n": "revised narrative"}]}"""
+
+
+def _build_game_flow_pass_prompt(
+    blocks: list[dict[str, Any]],
+    game_context: dict[str, str],
+) -> str:
+    """Build prompt for game-level flow pass.
+
+    This is a single call that receives all blocks and smooths transitions
+    while preserving facts, scores, and structure.
+
+    Args:
+        blocks: List of block dicts with narratives already generated
+        game_context: Team names and context
+
+    Returns:
+        Prompt string for the flow pass
+    """
+    home_team = game_context.get("home_team_name", "Home")
+    away_team = game_context.get("away_team_name", "Away")
+
+    prompt_parts = [
+        GAME_FLOW_PASS_PROMPT,
+        "",
+        f"Game: {away_team} at {home_team}",
+        "",
+        "BLOCKS:",
+    ]
+
+    for block in blocks:
+        block_idx = block["block_index"]
+        role = block.get("role", "")
+        period_start = block.get("period_start", 1)
+        period_end = block.get("period_end", period_start)
+        score_before = block.get("score_before", [0, 0])
+        score_after = block.get("score_after", [0, 0])
+        narrative = block.get("narrative", "")
+
+        # Period label
+        if period_start == period_end:
+            period_label = f"Q{period_start}" if period_start <= 4 else f"OT{period_start - 4}"
+        else:
+            period_label = f"Q{period_start}-Q{period_end}"
+
+        prompt_parts.append(f"\nBlock {block_idx} ({role}, {period_label}):")
+        prompt_parts.append(
+            f"Score: {away_team} {score_before[1]}-{score_before[0]} {home_team} "
+            f"-> {away_team} {score_after[1]}-{score_after[0]} {home_team}"
+        )
+        prompt_parts.append(f"Current narrative: {narrative}")
+
+    return "\n".join(prompt_parts)
+
+
+async def _apply_game_level_flow_pass(
+    blocks: list[dict[str, Any]],
+    game_context: dict[str, str],
+    openai_client: Any,
+    output: StageOutput,
+) -> list[dict[str, Any]]:
+    """Apply game-level flow pass to smooth transitions across blocks.
+
+    This is a single OpenAI call that sees all blocks and rewrites narratives
+    so they flow naturally as one coherent recap while preserving all facts.
+
+    Args:
+        blocks: List of block dicts with initial narratives
+        game_context: Team names and context
+        openai_client: OpenAI client instance
+        output: StageOutput for logging
+
+    Returns:
+        Blocks with smoothed narratives (or original if pass fails)
+    """
+    if len(blocks) < 2:
+        output.add_log("Skipping flow pass: fewer than 2 blocks")
+        return blocks
+
+    output.add_log(f"Applying game-level flow pass to {len(blocks)} blocks")
+
+    prompt = _build_game_flow_pass_prompt(blocks, game_context)
+
+    try:
+        # Low temperature for consistency, ~100 tokens per block
+        max_tokens = 100 * len(blocks)
+
+        response_json = await asyncio.to_thread(
+            openai_client.generate,
+            prompt=prompt,
+            temperature=0.2,  # Low for consistency
+            max_tokens=max_tokens,
+        )
+        response_data = json.loads(response_json)
+
+    except json.JSONDecodeError as e:
+        output.add_log(f"Flow pass returned invalid JSON, using originals: {e}", level="warning")
+        return blocks
+
+    except Exception as e:
+        output.add_log(f"Flow pass failed, using originals: {e}", level="warning")
+        return blocks
+
+    # Extract revised narratives
+    block_items = response_data.get("blocks", [])
+    if not block_items and isinstance(response_data, list):
+        block_items = response_data
+
+    # Safety check: output count must match input count
+    if len(block_items) != len(blocks):
+        output.add_log(
+            f"Flow pass output count mismatch ({len(block_items)} vs {len(blocks)}), using originals",
+            level="warning",
+        )
+        return blocks
+
+    # Build lookup by block index
+    narrative_lookup: dict[int, str] = {}
+    for item in block_items:
+        idx = item.get("i") if item.get("i") is not None else item.get("block_index")
+        narrative = item.get("n") or item.get("narrative", "")
+        if idx is not None and narrative:
+            narrative_lookup[idx] = narrative
+
+    # Apply revised narratives
+    revised_count = 0
+    for block in blocks:
+        block_idx = block["block_index"]
+        if block_idx in narrative_lookup:
+            new_narrative = narrative_lookup[block_idx].strip()
+            if new_narrative and new_narrative != block.get("narrative", ""):
+                block["narrative"] = new_narrative
+                revised_count += 1
+
+    output.add_log(f"Flow pass revised {revised_count}/{len(blocks)} block narratives")
+    return blocks
+
+
 def _build_block_prompt(
     blocks: list[dict[str, Any]],
     game_context: dict[str, str],
@@ -276,20 +528,28 @@ def _build_block_prompt(
     }
 
     prompt_parts = [
-        "Generate short narrative summaries for game blocks.",
+        "Generate broadcast-quality narrative blocks for a game recap.",
         "",
         f"Teams: {away_team} (away) vs {home_team} (home)",
         "",
-        "RULES:",
-        "- Write 1-2 sentences per block (~35 words)",
+        "NARRATIVE STRUCTURE:",
+        "- Write 2-4 sentences per block (~50-80 words)",
+        "- Each block describes a STRETCH of play, not isolated events",
+        "- Connect plays with cause-and-effect",
+        "- Vary sentence openings",
         "- Focus on the key plays provided - EVERY key play must be referenced",
-        "- Describe concrete actions and score changes",
-        "- Use the semantic role to guide tone:",
-        "  - SETUP: Set the stage, establish early context",
-        "  - MOMENTUM_SHIFT: Describe the swing in the game",
-        "  - RESPONSE: How the other team answered",
-        "  - DECISION_POINT: The sequence that decided the outcome",
-        "  - RESOLUTION: How the game concluded",
+        "",
+        "CONNECTING PHRASES TO USE:",
+        "- 'building on that', 'in response', 'shortly after'",
+        "- 'over the next several possessions', 'as the quarter progressed'",
+        "- 'trading baskets', 'the teams exchanged leads'",
+        "",
+        "ROLE-SPECIFIC GUIDANCE:",
+        "- SETUP: Opening tone, early pace, how the game began",
+        "- MOMENTUM_SHIFT: What triggered the change, how it unfolded over several plays",
+        "- RESPONSE: How the trailing team fought back, the adjustment they made",
+        "- DECISION_POINT: The pivotal stretch that determined the outcome",
+        "- RESOLUTION: How the game concluded, the final sequence",
         "",
         "PLAYER NAMES (CRITICAL):",
         "- Use FULL NAME on first mention (e.g., 'Donovan Mitchell', 'Brandon Miller')",
@@ -309,7 +569,7 @@ def _build_block_prompt(
         "- NO stat-listing patterns like 'X had Y points' or 'X finished with Y'",
         "- NO subjective adjectives (incredible, amazing, unbelievable, insane)",
         "- Describe ACTIONS, not statistics",
-        "- Keep sentences concise (under 25 words each)",
+        "- Keep individual sentences concise (under 30 words each)",
         "",
         "FORBIDDEN WORDS (do not use):",
         ", ".join(FORBIDDEN_WORDS),
@@ -396,7 +656,7 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
     """Execute the RENDER_BLOCKS stage.
 
     Generates narrative text for each block using OpenAI.
-    Each block gets 1-2 sentences (~35 words).
+    Each block gets 2-4 sentences (~65 words).
 
     Args:
         stage_input: Input containing previous_output with grouped blocks
@@ -453,13 +713,13 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
     prompt = _build_block_prompt(blocks, game_context, pbp_events)
 
     try:
-        # Estimate tokens: ~100 words per block max
-        max_tokens = 150 * len(blocks)
+        # Estimate tokens: ~200 per block for 2-4 sentences
+        max_tokens = 200 * len(blocks)
 
         response_json = await asyncio.to_thread(
             openai_client.generate,
             prompt=prompt,
-            temperature=0.3,
+            temperature=0.5,  # Higher for more natural prose variation
             max_tokens=max_tokens,
         )
         response_data = json.loads(response_json)
@@ -500,6 +760,9 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         if not narrative or not narrative.strip():
             # Fail fast - no fallback narratives
             raise ValueError(f"Block {block_idx}: No narrative from AI")
+
+        # Clean up any raw PBP artifacts from the narrative
+        narrative = _cleanup_pbp_artifacts(narrative)
 
         # Validate
         errors, warnings = _validate_block_narrative(narrative, block_idx)
@@ -549,6 +812,16 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         for w in all_warnings[:5]:
             output.add_log(f"  {w}", level="warning")
 
+    # Game-level flow pass: smooth transitions across all blocks
+    # This is a second OpenAI call that sees all blocks at once
+    blocks = await _apply_game_level_flow_pass(
+        blocks, game_context, openai_client, output
+    )
+
+    # Recalculate total words after flow pass
+    total_words = sum(len(b.get("narrative", "").split()) for b in blocks)
+    output.add_log(f"Final word count after flow pass: {total_words}")
+
     output.add_log("RENDER_BLOCKS completed successfully")
 
     output.data = {
@@ -556,7 +829,7 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         "blocks": blocks,
         "block_count": len(blocks),
         "total_words": total_words,
-        "openai_calls": 1,
+        "openai_calls": 2,  # Initial render + flow pass
         "play_injections": play_injections,
         "errors": all_errors,
         "warnings": all_warnings,

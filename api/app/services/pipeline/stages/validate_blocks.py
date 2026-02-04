@@ -6,12 +6,13 @@ VALIDATION RULES
 ================
 1. Block count in range [4, 7]
 2. No role appears more than twice
-3. Each narrative >= 10 words (meaningful content)
-4. Each narrative <= 50 words (buffer over 35 target)
+3. Each narrative >= 30 words (meaningful content, 2+ sentences)
+4. Each narrative <= 100 words (up to 4 sentences)
 5. First block role = SETUP
 6. Last block role = RESOLUTION
 7. Score continuity across block boundaries
-8. Total word count <= 350 (60-second read target)
+8. Total word count <= 500 (~90-second read target)
+9. Each narrative has 2-4 sentences
 
 GUARANTEES
 ==========
@@ -23,6 +24,7 @@ GUARANTEES
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from ..models import StageInput, StageOutput
@@ -36,6 +38,22 @@ from .block_types import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Sentence count constraints
+MIN_SENTENCES_PER_BLOCK = 2
+MAX_SENTENCES_PER_BLOCK = 4
+
+
+def _count_sentences(text: str) -> int:
+    """Count the number of sentences in text.
+
+    Uses sentence-ending punctuation (. ! ?) to split.
+    Filters out empty results from the split.
+    """
+    if not text:
+        return 0
+    sentences = re.split(r"[.!?]+", text)
+    return len([s for s in sentences if s.strip()])
 
 
 def _validate_block_count(blocks: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
@@ -91,7 +109,7 @@ def _validate_role_constraints(blocks: list[dict[str, Any]]) -> tuple[list[str],
 
 
 def _validate_word_counts(blocks: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
-    """Validate word counts for each block and total."""
+    """Validate word counts and sentence counts for each block and total."""
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -116,6 +134,18 @@ def _validate_word_counts(blocks: list[dict[str, Any]]) -> tuple[list[str], list
         if word_count > MAX_WORDS_PER_BLOCK:
             warnings.append(
                 f"Block {block_idx}: Too long ({word_count} words, max: {MAX_WORDS_PER_BLOCK})"
+            )
+
+        # Validate sentence count
+        sentence_count = _count_sentences(narrative)
+        if sentence_count < MIN_SENTENCES_PER_BLOCK:
+            warnings.append(
+                f"Block {block_idx}: Too few sentences ({sentence_count}, min: {MIN_SENTENCES_PER_BLOCK})"
+            )
+
+        if sentence_count > MAX_SENTENCES_PER_BLOCK:
+            warnings.append(
+                f"Block {block_idx}: Too many sentences ({sentence_count}, max: {MAX_SENTENCES_PER_BLOCK})"
             )
 
     if total_words > MAX_TOTAL_WORDS:

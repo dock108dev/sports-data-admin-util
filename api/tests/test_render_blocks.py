@@ -5,11 +5,13 @@ from __future__ import annotations
 
 from app.services.pipeline.stages.render_blocks import (
     _build_block_prompt,
+    _build_game_flow_pass_prompt,
     _validate_block_narrative,
     _check_play_coverage,
     _generate_play_injection_sentence,
     _validate_style_constraints,
     FORBIDDEN_WORDS,
+    GAME_FLOW_PASS_PROMPT,
 )
 from app.services.pipeline.stages.block_types import (
     SemanticRole,
@@ -219,27 +221,48 @@ class TestPlayCoverage:
 
 
 class TestPlayInjection:
-    """Tests for Task 1.3: Play injection recovery."""
+    """Tests for Task 1.3: Play injection recovery with natural language."""
 
-    def test_generates_sentence_with_player_and_description(self) -> None:
-        """Generates sentence with player name and action."""
+    def test_generates_sentence_with_player_and_layup(self) -> None:
+        """Generates natural language sentence for layup plays."""
         event = {
             "player_name": "LeBron James",
-            "description": "makes driving layup"
+            "description": "makes driving layup",
+            "play_type": "layup",
         }
         sentence = _generate_play_injection_sentence(event, {})
         assert "LeBron James" in sentence
-        assert "makes driving layup" in sentence.lower()
+        # Should produce natural language, not raw PBP
+        assert "finished at the rim" in sentence.lower()
 
-    def test_generates_sentence_with_play_type(self) -> None:
-        """Falls back to play type when description missing."""
+    def test_generates_sentence_with_3pt_play_type(self) -> None:
+        """Uses play_type to generate natural verb."""
         event = {
             "player_name": "Curry",
-            "play_type": "THREE_POINTER"
+            "play_type": "3pt",
         }
         sentence = _generate_play_injection_sentence(event, {})
         assert "Curry" in sentence
-        assert "three pointer" in sentence.lower()
+        assert "three-pointer" in sentence.lower()
+
+    def test_normalizes_initial_style_names(self) -> None:
+        """Converts 'j. smith' to 'Smith'."""
+        event = {
+            "player_name": "j. smith",
+            "play_type": "dunk",
+        }
+        sentence = _generate_play_injection_sentence(event, {})
+        assert "Smith" in sentence
+        assert "j." not in sentence.lower()
+
+    def test_fallback_to_scored_when_no_match(self) -> None:
+        """Falls back to 'scored' when play type not recognized."""
+        event = {
+            "player_name": "Player",
+            "play_type": "unknown_play",
+        }
+        sentence = _generate_play_injection_sentence(event, {})
+        assert "Player scored" in sentence
 
 
 class TestStyleConstraints:
@@ -276,3 +299,126 @@ class TestStyleConstraints:
         narrative = "He scored 10, 15, 8, 12, 7, 9, 11 points across stretches."
         errors, warnings = _validate_style_constraints(narrative, 0)
         assert any("numbers" in w.lower() for w in warnings)
+
+
+class TestGameLevelFlowPass:
+    """Tests for game-level flow pass functionality."""
+
+    def test_flow_prompt_includes_game_context(self) -> None:
+        """Flow pass prompt includes team names."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": "SETUP",
+                "period_start": 1,
+                "period_end": 1,
+                "score_before": [0, 0],
+                "score_after": [12, 10],
+                "narrative": "The Lakers set the early tone with quick ball movement.",
+            },
+            {
+                "block_index": 1,
+                "role": "RESOLUTION",
+                "period_start": 4,
+                "period_end": 4,
+                "score_before": [95, 92],
+                "score_after": [102, 98],
+                "narrative": "The Lakers closed out the game at the free throw line.",
+            },
+        ]
+        game_context = {"home_team_name": "Lakers", "away_team_name": "Celtics"}
+
+        prompt = _build_game_flow_pass_prompt(blocks, game_context)
+
+        assert "Lakers" in prompt
+        assert "Celtics" in prompt
+        assert "SETUP" in prompt
+        assert "RESOLUTION" in prompt
+
+    def test_flow_prompt_includes_all_blocks(self) -> None:
+        """Flow pass prompt includes narratives from all blocks."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": "SETUP",
+                "period_start": 1,
+                "period_end": 1,
+                "score_before": [0, 0],
+                "score_after": [12, 10],
+                "narrative": "First block narrative here.",
+            },
+            {
+                "block_index": 1,
+                "role": "MOMENTUM_SHIFT",
+                "period_start": 2,
+                "period_end": 2,
+                "score_before": [12, 10],
+                "score_after": [25, 28],
+                "narrative": "Second block narrative here.",
+            },
+        ]
+        game_context = {"home_team_name": "Home", "away_team_name": "Away"}
+
+        prompt = _build_game_flow_pass_prompt(blocks, game_context)
+
+        assert "First block narrative here" in prompt
+        assert "Second block narrative here" in prompt
+        assert "Block 0" in prompt
+        assert "Block 1" in prompt
+
+    def test_flow_prompt_includes_period_labels(self) -> None:
+        """Flow pass prompt includes period labels."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": "SETUP",
+                "period_start": 1,
+                "period_end": 1,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "narrative": "Opening narrative.",
+            },
+            {
+                "block_index": 1,
+                "role": "RESOLUTION",
+                "period_start": 5,  # OT1
+                "period_end": 5,
+                "score_before": [100, 100],
+                "score_after": [108, 105],
+                "narrative": "Overtime narrative.",
+            },
+        ]
+        game_context = {"home_team_name": "Home", "away_team_name": "Away"}
+
+        prompt = _build_game_flow_pass_prompt(blocks, game_context)
+
+        assert "Q1" in prompt
+        assert "OT1" in prompt
+
+    def test_flow_pass_prompt_constant_exists(self) -> None:
+        """The game flow pass prompt constant is defined."""
+        assert GAME_FLOW_PASS_PROMPT is not None
+        assert "flow naturally" in GAME_FLOW_PASS_PROMPT.lower()
+        assert "preserve" in GAME_FLOW_PASS_PROMPT.lower()
+
+    def test_flow_prompt_includes_scores(self) -> None:
+        """Flow pass prompt includes score transitions."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": "SETUP",
+                "period_start": 1,
+                "period_end": 1,
+                "score_before": [0, 0],
+                "score_after": [15, 12],
+                "narrative": "Test narrative.",
+            },
+        ]
+        game_context = {"home_team_name": "Home", "away_team_name": "Away"}
+
+        prompt = _build_game_flow_pass_prompt(blocks, game_context)
+
+        # Should show score transition
+        assert "0-0" in prompt or "0" in prompt
+        assert "15" in prompt
+        assert "12" in prompt

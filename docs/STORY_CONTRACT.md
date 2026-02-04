@@ -5,19 +5,19 @@
 **A story consists of 4-7 narrative blocks. Each block is grounded in one or more moments. Each moment is backed by specific plays.**
 
 This creates a two-level structure:
-- **Blocks** — Consumer-facing narratives (4-7 per game, 1-2 sentences each)
+- **Blocks** — Consumer-facing narratives (4-7 per game, 2-4 sentences each, ~65 words)
 - **Moments** — Internal traceability (15-25 per game, linking blocks to plays)
 
 ---
 
 ## 1. Purpose and Scope
 
-Story produces a readable, condensed replay of a game designed for 20-60 second consumption.
+Story produces a readable, condensed replay of a game designed for 60-90 second consumption.
 
 - The output is a sequence of narrative blocks
 - Each block has a semantic role (SETUP, MOMENTUM_SHIFT, RESOLUTION, etc.)
 - The sequence preserves game chronology
-- Total read time: 20-60 seconds (~350 words max)
+- Total read time: 60-90 seconds (~500 words max)
 
 **This system is not a recap generator.** It does not summarize. It does not abstract. It condenses and narrates concrete events.
 
@@ -29,7 +29,7 @@ Story produces a readable, condensed replay of a game designed for 20-60 second 
 
 A **narrative block** is:
 
-- A short narrative (1-2 sentences, ~35 words)
+- A short narrative (2-4 sentences, ~65 words)
 - Assigned a semantic role describing its function
 - Grounded in one or more moments
 - Part of a 4-7 block sequence
@@ -72,7 +72,7 @@ Moments do not have consumer-facing narratives. They exist for auditability.
 | `moment_indices` | list[int] | Which moments are grouped |
 | `score_before` | [home, away] | Score at block start |
 | `score_after` | [home, away] | Score at block end |
-| `narrative` | string | 1-2 sentences (~35 words) |
+| `narrative` | string | 2-4 sentences (~65 words) |
 | `embedded_tweet` | object | null | Optional tweet (max 1 per block) |
 
 ### Moment Fields (Traceability)
@@ -94,10 +94,11 @@ Moments do not have consumer-facing narratives. They exist for auditability.
 ### Block Narratives
 
 Each block narrative:
-- Is 1-2 sentences, approximately 35 words
-- Describes concrete game actions
+- Is 2-4 sentences, approximately 65 words
+- Describes a stretch of play with cause-and-effect connections
 - References key plays from its underlying moments
 - Is role-aware (SETUP blocks set context, RESOLUTION blocks conclude)
+- Uses SportsCenter-style broadcast prose
 
 ### Forbidden Language
 
@@ -141,8 +142,10 @@ Blocks may contain embedded tweets that add social context.
 | Block count | 4-7 | Pipeline fails on violation |
 | Embedded tweets | ≤ 5 per game | Hard cap enforced |
 | Tweet per block | ≤ 1 | Hard cap enforced |
-| Total words | ≤ 350 | Warning, not failure |
-| Read time | 20-60 seconds | Implicit via word limits |
+| Total words | ≤ 500 | Warning, not failure |
+| Words per block | 30-100 | Warning, not failure |
+| Sentences per block | 2-4 | Warning, not failure |
+| Read time | 60-90 seconds | Implicit via word limits |
 
 Violations are logged at ERROR level with full context.
 
@@ -175,10 +178,12 @@ A Story output is correct if and only if:
 
 ### Narrative Tests
 
-- [ ] Each narrative is 10-50 words
-- [ ] Total word count ≤ 350
+- [ ] Each narrative is 30-100 words
+- [ ] Each narrative has 2-4 sentences
+- [ ] Total word count ≤ 500
 - [ ] No forbidden phrases
 - [ ] No retrospective commentary
+- [ ] No raw PBP artifacts (initials, score artifacts)
 
 ### Traceability Tests
 
@@ -200,7 +205,7 @@ A compliant system answers these questions for any output:
 1. "How many blocks?" → 4-7
 2. "What role is block N?" → One of the semantic roles
 3. "Which plays back this block?" → Via moments → plays
-4. "Total read time?" → 20-60 seconds
+4. "Total read time?" → 60-90 seconds
 5. "Does this work without social?" → Yes, identical structure
 
 ---
