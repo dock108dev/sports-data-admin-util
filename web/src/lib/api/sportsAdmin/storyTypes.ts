@@ -224,6 +224,50 @@ export type EmbeddedTweet = {
 };
 
 /**
+ * Player stat with delta showing segment production.
+ */
+export type BlockPlayerStat = {
+  name: string;
+  // Basketball stats (cumulative)
+  pts?: number;
+  reb?: number;
+  ast?: number;
+  "3pm"?: number;
+  fgm?: number;
+  ftm?: number;
+  // Basketball deltas (this block's production)
+  delta_pts?: number;
+  delta_reb?: number;
+  delta_ast?: number;
+  // Hockey stats (cumulative)
+  goals?: number;
+  assists?: number;
+  sog?: number;
+  plusMinus?: number;
+  // Hockey deltas
+  delta_goals?: number;
+  delta_assists?: number;
+};
+
+/**
+ * Team mini box score for a block.
+ */
+export type BlockTeamMiniBox = {
+  team: string;
+  players: BlockPlayerStat[];
+};
+
+/**
+ * Mini box score for a block with cumulative stats and segment deltas.
+ */
+export type BlockMiniBox = {
+  home: BlockTeamMiniBox;
+  away: BlockTeamMiniBox;
+  /** Top contributors in this segment (last names) */
+  block_stars: string[];
+};
+
+/**
  * A narrative block in the collapsed game flow.
  * Replaces moment-level narratives with 1-2 sentences.
  */
@@ -239,6 +283,8 @@ export type NarrativeBlock = {
   keyPlayIds: number[];
   narrative: string | null;
   embeddedTweet?: EmbeddedTweet | null;
+  /** Cumulative box score with segment deltas */
+  miniBox?: BlockMiniBox | null;
 };
 
 /**

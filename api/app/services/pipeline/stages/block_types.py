@@ -78,6 +78,7 @@ class NarrativeBlock:
         play_ids: All play_indices in this block
         key_play_ids: 1-3 most important plays for narrative focus
         narrative: Generated narrative text (1-2 sentences, ~35 words)
+        mini_box: Cumulative box score at end of block with segment deltas
     """
 
     block_index: int
@@ -90,10 +91,11 @@ class NarrativeBlock:
     play_ids: list[int]
     key_play_ids: list[int]
     narrative: str | None = None
+    mini_box: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
-        return {
+        result = {
             "block_index": self.block_index,
             "role": self.role.value,
             "moment_indices": self.moment_indices,
@@ -105,6 +107,9 @@ class NarrativeBlock:
             "key_play_ids": self.key_play_ids,
             "narrative": self.narrative,
         }
+        if self.mini_box is not None:
+            result["mini_box"] = self.mini_box
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "NarrativeBlock":
@@ -120,6 +125,7 @@ class NarrativeBlock:
             play_ids=data["play_ids"],
             key_play_ids=data["key_play_ids"],
             narrative=data.get("narrative"),
+            mini_box=data.get("mini_box"),
         )
 
     @property

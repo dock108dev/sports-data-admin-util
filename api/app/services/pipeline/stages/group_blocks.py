@@ -55,6 +55,7 @@ from .block_analysis import (
     detect_blowout,
     find_garbage_time_start,
 )
+from .game_stats_helpers import compute_block_mini_box
 
 # Blowout games get fewer blocks (less narrative needed)
 BLOWOUT_MAX_BLOCKS = 5
@@ -779,12 +780,23 @@ def _create_blocks(
     moments: list[dict[str, Any]],
     split_points: list[int],
     pbp_events: list[dict[str, Any]],
+    game_context: dict[str, str] | None = None,
+    league_code: str = "NBA",
 ) -> list[NarrativeBlock]:
     """Create NarrativeBlock objects from moments and split points."""
     blocks: list[NarrativeBlock] = []
 
     # Add 0 at start and len(moments) at end for boundary handling
     boundaries = [0] + split_points + [len(moments)]
+
+    # Extract game context for mini_box computation
+    home_team = (game_context or {}).get("home_team_name", "Home")
+    away_team = (game_context or {}).get("away_team_name", "Away")
+    home_abbrev = (game_context or {}).get("home_team_abbrev", "")
+    away_abbrev = (game_context or {}).get("away_team_abbrev", "")
+
+    # Track previous block's last play index for delta computation
+    prev_block_end_play_idx: int | None = None
 
     for i in range(len(boundaries) - 1):
         start_idx = boundaries[i]
@@ -810,6 +822,22 @@ def _create_blocks(
         # Select key plays
         key_play_ids = _select_key_plays(moments, moment_indices, pbp_events)
 
+        # Compute mini box score with deltas
+        block_start_play_idx = min(all_play_ids) if all_play_ids else 0
+        block_end_play_idx = max(all_play_ids) if all_play_ids else 0
+
+        mini_box = compute_block_mini_box(
+            pbp_events=pbp_events,
+            block_start_play_idx=block_start_play_idx,
+            block_end_play_idx=block_end_play_idx,
+            prev_block_end_play_idx=prev_block_end_play_idx,
+            home_team=home_team,
+            away_team=away_team,
+            league_code=league_code,
+            home_team_abbrev=home_abbrev,
+            away_team_abbrev=away_abbrev,
+        )
+
         block = NarrativeBlock(
             block_index=i,
             role=SemanticRole.RESPONSE,  # Placeholder, will be assigned later
@@ -821,8 +849,12 @@ def _create_blocks(
             play_ids=all_play_ids,
             key_play_ids=key_play_ids,
             narrative=None,
+            mini_box=mini_box,
         )
         blocks.append(block)
+
+        # Update prev_block_end_play_idx for next iteration
+        prev_block_end_play_idx = block_end_play_idx
 
     return blocks
 
@@ -914,9 +946,13 @@ async def execute_group_blocks(stage_input: StageInput) -> StageOutput:
 
     output.add_log(f"Split points: {split_points}")
 
-    # Create blocks
-    blocks = _create_blocks(moments, split_points, pbp_events)
-    output.add_log(f"Created {len(blocks)} blocks")
+    # Create blocks with mini boxscores
+    game_context = stage_input.game_context
+    league_code = game_context.get("sport", "NBA") if game_context else "NBA"
+    blocks = _create_blocks(
+        moments, split_points, pbp_events, game_context, league_code
+    )
+    output.add_log(f"Created {len(blocks)} blocks with mini boxscores")
 
     # Assign semantic roles
     _assign_roles(blocks)

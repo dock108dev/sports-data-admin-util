@@ -554,6 +554,16 @@ class StoryContent(BaseModel):
     moments: list[StoryMoment]
 
 
+class BlockMiniBox(BaseModel):
+    """Mini box score for a narrative block with cumulative stats and segment deltas."""
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    home: dict[str, Any]  # {team, players: [{name, pts, delta_pts, ...}]}
+    away: dict[str, Any]
+    block_stars: list[str] = Field(default_factory=list)
+
+
 class StoryBlock(BaseModel):
     """A narrative block grouping multiple moments.
 
@@ -573,6 +583,7 @@ class StoryBlock(BaseModel):
     play_ids: list[int] = Field(..., alias="playIds")
     key_play_ids: list[int] = Field(..., alias="keyPlayIds")
     narrative: str | None = None
+    mini_box: BlockMiniBox | None = Field(None, alias="miniBox")
 
 
 class GameStoryResponse(BaseModel):

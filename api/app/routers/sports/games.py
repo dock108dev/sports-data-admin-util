@@ -683,6 +683,7 @@ async def get_game_story(
                 playIds=block["play_ids"],
                 keyPlayIds=block["key_play_ids"],
                 narrative=block.get("narrative"),
+                miniBox=block.get("mini_box"),
             )
             for block in blocks_data
         ]

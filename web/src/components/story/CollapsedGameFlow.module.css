@@ -158,6 +158,87 @@
   font-style: italic;
 }
 
+/* Mini box score - compact stats display */
+.miniBox {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: #f8fafc;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.miniBoxTeam {
+  flex: 1;
+  min-width: 140px;
+}
+
+.miniBoxTeamName {
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 0.25rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.miniBoxPlayers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.miniBoxPlayer {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  color: #475569;
+}
+
+.miniBoxPlayerName {
+  font-weight: 500;
+  color: #334155;
+}
+
+.miniBoxStat {
+  color: #64748b;
+}
+
+.miniBoxDelta {
+  color: #059669;
+  font-weight: 600;
+  font-size: 0.7rem;
+}
+
+.miniBoxDeltaNegative {
+  color: #dc2626;
+}
+
+.blockStars {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid #e2e8f0;
+  margin-top: 0.25rem;
+  color: #475569;
+  font-size: 0.7rem;
+}
+
+.blockStarsLabel {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.blockStar {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
 /* Debug info - development only */
 .debugInfo {
   display: flex;

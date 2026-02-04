@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { NarrativeBlock, EmbeddedTweet } from "@/lib/api/sportsAdmin/storyTypes";
+import type { NarrativeBlock, EmbeddedTweet, BlockMiniBox, BlockPlayerStat } from "@/lib/api/sportsAdmin/storyTypes";
 import { validateBlocksPreRender, type GuardrailResult } from "@/lib/guardrails";
 import styles from "./CollapsedGameFlow.module.css";
 
@@ -73,6 +73,110 @@ function getRoleBadgeClass(role: string): string {
 }
 
 /**
+ * Format player stat with optional delta.
+ */
+function formatStatWithDelta(
+  value: number | undefined,
+  delta: number | undefined,
+  label: string
+): string | null {
+  if (!value && value !== 0) return null;
+  if (delta && delta > 0) {
+    return `${value} ${label} (+${delta})`;
+  }
+  return `${value} ${label}`;
+}
+
+/**
+ * Mini Box Score Display
+ *
+ * Shows cumulative stats with segment deltas for top performers.
+ */
+function MiniBoxDisplay({ miniBox }: { miniBox: BlockMiniBox }) {
+  const formatPlayer = (player: BlockPlayerStat, isHockey: boolean) => {
+    const lastName = player.name.split(" ").pop() || player.name;
+
+    if (isHockey) {
+      const goals = player.goals || 0;
+      const assists = player.assists || 0;
+      const deltaG = player.delta_goals || 0;
+      const deltaA = player.delta_assists || 0;
+
+      if (goals === 0 && assists === 0) return null;
+
+      const parts: string[] = [];
+      if (goals > 0) {
+        parts.push(deltaG > 0 ? `${goals}G (+${deltaG})` : `${goals}G`);
+      }
+      if (assists > 0) {
+        parts.push(deltaA > 0 ? `${assists}A (+${deltaA})` : `${assists}A`);
+      }
+
+      return { name: lastName, stats: parts.join(", ") };
+    } else {
+      const pts = player.pts || 0;
+      const deltaPts = player.delta_pts || 0;
+
+      if (pts === 0) return null;
+
+      const ptsStr = deltaPts > 0 ? `${pts} pts (+${deltaPts})` : `${pts} pts`;
+      return { name: lastName, stats: ptsStr };
+    }
+  };
+
+  const isHockey = miniBox.home.players.some(p => p.goals !== undefined);
+
+  const homePlayers = miniBox.home.players
+    .map(p => formatPlayer(p, isHockey))
+    .filter(Boolean)
+    .slice(0, 2);
+
+  const awayPlayers = miniBox.away.players
+    .map(p => formatPlayer(p, isHockey))
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (homePlayers.length === 0 && awayPlayers.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={styles.miniBox}>
+      <div className={styles.miniBoxTeam}>
+        <div className={styles.miniBoxTeamName}>{miniBox.home.team}</div>
+        <div className={styles.miniBoxPlayers}>
+          {homePlayers.map((p, i) => (
+            <div key={i} className={styles.miniBoxPlayer}>
+              <span className={styles.miniBoxPlayerName}>{p!.name}:</span>
+              <span className={styles.miniBoxStat}>{p!.stats}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className={styles.miniBoxTeam}>
+        <div className={styles.miniBoxTeamName}>{miniBox.away.team}</div>
+        <div className={styles.miniBoxPlayers}>
+          {awayPlayers.map((p, i) => (
+            <div key={i} className={styles.miniBoxPlayer}>
+              <span className={styles.miniBoxPlayerName}>{p!.name}:</span>
+              <span className={styles.miniBoxStat}>{p!.stats}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {miniBox.block_stars && miniBox.block_stars.length > 0 && (
+        <div className={styles.blockStars}>
+          <span className={styles.blockStarsLabel}>Stars:</span>
+          {miniBox.block_stars.map((star, i) => (
+            <span key={i} className={styles.blockStar}>{star}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Embedded Tweet Display
  *
  * Renders a single embedded tweet inline with the narrative.
@@ -141,6 +245,9 @@ function BlockCard({
 
       {/* Narrative text - the primary content */}
       <p className={styles.narrative}>{block.narrative || "No narrative"}</p>
+
+      {/* Mini box score - cumulative stats with deltas */}
+      {block.miniBox && <MiniBoxDisplay miniBox={block.miniBox} />}
 
       {/* Embedded tweet - optional, visually secondary */}
       {block.embeddedTweet && (

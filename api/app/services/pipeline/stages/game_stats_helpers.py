@@ -556,3 +556,135 @@ def _accumulate_nhl_stats(
         elif "save" in desc:
             stats["saves"] += 1
             stats["is_goalie"] = True
+
+
+def compute_block_mini_box(
+    pbp_events: list[dict[str, Any]],
+    block_start_play_idx: int,
+    block_end_play_idx: int,
+    prev_block_end_play_idx: int | None,
+    home_team: str,
+    away_team: str,
+    league_code: str = "NBA",
+    home_team_abbrev: str = "",
+    away_team_abbrev: str = "",
+) -> dict[str, Any]:
+    """Compute mini box score for a block with cumulative stats and segment deltas.
+
+    Returns a mini box with:
+    - Cumulative stats at end of block (top 3 performers per team)
+    - Delta stats showing production during this block segment (+x)
+    - Block segment contributors highlighted
+
+    Args:
+        pbp_events: All PBP events for the game
+        block_start_play_idx: First play index in this block
+        block_end_play_idx: Last play index in this block
+        prev_block_end_play_idx: Last play index of previous block (None for first block)
+        home_team: Home team name
+        away_team: Away team name
+        league_code: League code (NBA, NCAAB, NHL)
+        home_team_abbrev: Home team abbreviation
+        away_team_abbrev: Away team abbreviation
+
+    Returns:
+        Mini box dict:
+        {
+            "home": {
+                "team": "Hawks",
+                "players": [
+                    {"name": "Trae Young", "pts": 18, "delta_pts": 6, "reb": 2, "ast": 7},
+                    ...
+                ]
+            },
+            "away": {...},
+            "block_stars": ["Young", "Mitchell"]  # Top contributors this segment
+        }
+    """
+    # Get cumulative box at end of this block
+    cumulative = compute_cumulative_box_score(
+        pbp_events,
+        block_end_play_idx,
+        home_team,
+        away_team,
+        league_code,
+        home_team_abbrev,
+        away_team_abbrev,
+    )
+
+    # Get cumulative box at end of previous block (for deltas)
+    if prev_block_end_play_idx is not None:
+        prev_cumulative = compute_cumulative_box_score(
+            pbp_events,
+            prev_block_end_play_idx,
+            home_team,
+            away_team,
+            league_code,
+            home_team_abbrev,
+            away_team_abbrev,
+        )
+    else:
+        # First block - no previous stats
+        prev_cumulative = {
+            "home": {"team": home_team, "score": 0, "players": []},
+            "away": {"team": away_team, "score": 0, "players": []},
+        }
+
+    # Build lookup for previous stats
+    prev_home_stats: dict[str, dict[str, int]] = {
+        p["name"]: p for p in prev_cumulative["home"].get("players", [])
+    }
+    prev_away_stats: dict[str, dict[str, int]] = {
+        p["name"]: p for p in prev_cumulative["away"].get("players", [])
+    }
+
+    # Key stat for sorting (points for basketball, goals+assists for hockey)
+    if league_code == "NHL":
+        key_stat = "goals"
+        delta_key = "delta_goals"
+    else:
+        key_stat = "pts"
+        delta_key = "delta_pts"
+
+    block_stars: list[str] = []
+
+    # Add deltas to cumulative stats
+    for side, prev_stats in [("home", prev_home_stats), ("away", prev_away_stats)]:
+        for player in cumulative[side].get("players", []):
+            name = player["name"]
+            prev = prev_stats.get(name, {})
+
+            # Calculate deltas for key stats
+            if league_code == "NHL":
+                player["delta_goals"] = player.get("goals", 0) - prev.get("goals", 0)
+                player["delta_assists"] = player.get("assists", 0) - prev.get("assists", 0)
+                delta_contribution = player["delta_goals"] + player["delta_assists"]
+            else:
+                player["delta_pts"] = player.get("pts", 0) - prev.get("pts", 0)
+                player["delta_reb"] = player.get("reb", 0) - prev.get("reb", 0)
+                player["delta_ast"] = player.get("ast", 0) - prev.get("ast", 0)
+                delta_contribution = player["delta_pts"]
+
+            # Track block stars (players who contributed significantly this segment)
+            if delta_contribution >= 5 or (league_code == "NHL" and delta_contribution >= 1):
+                last_name = name.split()[-1] if " " in name else name
+                block_stars.append(last_name)
+
+    # Trim to top 3 per team for mini box
+    for side in ["home", "away"]:
+        players = cumulative[side].get("players", [])
+        # Sort by cumulative contribution, then by delta
+        players.sort(
+            key=lambda p: (p.get(key_stat, 0), p.get(delta_key, 0)),
+            reverse=True,
+        )
+        cumulative[side]["players"] = players[:3]
+
+    # Remove scores from mini_box (already in block score_before/after)
+    cumulative["home"].pop("score", None)
+    cumulative["away"].pop("score", None)
+
+    # Add block stars (top 2)
+    cumulative["block_stars"] = block_stars[:2]
+
+    return cumulative
