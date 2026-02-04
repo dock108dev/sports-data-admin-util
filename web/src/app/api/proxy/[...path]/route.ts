@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import http from "http";
+import https from "https";
 
 const API_BASE =
   process.env.SPORTS_API_INTERNAL_URL ||
@@ -27,6 +28,9 @@ async function proxyRequest(
 
   // Parse the API base URL
   const apiUrl = new URL(API_BASE);
+  const isHttps = apiUrl.protocol === "https:";
+  const httpModule = isHttps ? https : http;
+  const defaultPort = isHttps ? 443 : 80;
 
   // Get request body
   let body: string | undefined;
@@ -37,7 +41,7 @@ async function proxyRequest(
   return new Promise((resolve) => {
     const options: http.RequestOptions = {
       hostname: apiUrl.hostname,
-      port: apiUrl.port || 80,
+      port: apiUrl.port || defaultPort,
       path: targetPath,
       method: request.method,
       headers: {
@@ -47,7 +51,7 @@ async function proxyRequest(
       },
     };
 
-    const req = http.request(options, (res) => {
+    const req = httpModule.request(options, (res) => {
       let data = "";
       res.on("data", (chunk) => {
         data += chunk;

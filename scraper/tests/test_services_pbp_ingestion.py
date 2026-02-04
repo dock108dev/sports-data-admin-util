@@ -73,7 +73,7 @@ class TestSelectGamesForPbpNbaApi:
         mock_query.all.return_value = [mock_row]
         mock_session.query.return_value.filter.return_value = mock_query
 
-        result = select_games_for_pbp_nba_api(
+        _result = select_games_for_pbp_nba_api(
             mock_session,
             start_date=date(2024, 10, 1),
             end_date=date(2024, 10, 31),
@@ -81,7 +81,7 @@ class TestSelectGamesForPbpNbaApi:
             updated_before=None,
         )
 
-        # Verify filter was called for only_missing
+        # Verify filter was called for only_missing (result not checked, just filter behavior)
         assert mock_query.filter.called
 
     def test_filters_with_updated_before(self):

@@ -35,9 +35,17 @@ async def verify_api_key(
         HTTPException: 401 if key is missing or invalid.
     """
     if not settings.api_key:
-        # If no API key is configured, allow all requests (dev mode)
-        # This should never happen in production due to config validation
-        logger.warning("API_KEY not configured - allowing unauthenticated request")
+        # Fail-fast in production/staging - never allow unauthenticated access
+        if settings.environment in {"production", "staging"}:
+            logger.error(
+                "API_KEY not configured in production/staging - rejecting request"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Server authentication misconfigured",
+            )
+        # In development, allow unauthenticated requests with a warning
+        logger.warning("API_KEY not configured - allowing unauthenticated request (dev mode)")
         return ""
 
     if not api_key:
