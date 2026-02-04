@@ -143,12 +143,6 @@ async def execute_finalize_moments(
 
     output.add_log(f"Persisting {len(moments)} moments and {len(blocks)} blocks")
 
-    # Track fallback statistics for monitoring
-    fallback_count = previous_output.get("fallback_count", 0)
-
-    if fallback_count > 0:
-        output.add_log(f"Fallback narratives used: {fallback_count}")
-
     # Get game to determine sport
     game_result = await session.execute(
         select(db_models.SportsGame)
@@ -233,7 +227,6 @@ async def execute_finalize_moments(
         "moment_count": len(moments),
         "validated_at": validation_time.isoformat(),
         "openai_calls": openai_calls,
-        "fallback_count": fallback_count,
         "block_count": len(blocks),
         "blocks_version": BLOCKS_VERSION,
         "total_words": total_words,

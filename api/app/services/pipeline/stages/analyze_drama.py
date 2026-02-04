@@ -146,26 +146,17 @@ Respond with ONLY valid JSON:
 
 
 def _parse_ai_response(response_text: str) -> dict[str, Any]:
-    """Parse AI response, with fallback for malformed JSON."""
-    try:
-        # Try to extract JSON from response
-        text = response_text.strip()
+    """Parse AI response. Fails on malformed JSON."""
+    # Extract JSON from response
+    text = response_text.strip()
 
-        # Handle markdown code blocks
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
+    # Handle markdown code blocks
+    if "```json" in text:
+        text = text.split("```json")[1].split("```")[0].strip()
+    elif "```" in text:
+        text = text.split("```")[1].split("```")[0].strip()
 
-        return json.loads(text)
-    except (json.JSONDecodeError, IndexError) as e:
-        logger.warning(f"Failed to parse AI response: {e}")
-        return {
-            "quarter_weights": DEFAULT_QUARTER_WEIGHTS.copy(),
-            "peak_quarter": "Q4",
-            "story_type": "standard",
-            "headline": "Game summary",
-        }
+    return json.loads(text)
 
 
 async def execute_analyze_drama(stage_input: StageInput) -> StageOutput:
@@ -246,28 +237,18 @@ async def execute_analyze_drama(stage_input: StageInput) -> StageOutput:
 
         output.add_log(f"Calling OpenAI for drama analysis (~{len(prompt.split())} words)")
 
-        try:
-            response_text = await asyncio.to_thread(
-                openai_client.generate,
-                prompt=prompt,
-                temperature=0.3,  # Low temp for consistency
-                max_tokens=200,  # Response is compact JSON
-            )
+        response_text = await asyncio.to_thread(
+            openai_client.generate,
+            prompt=prompt,
+            temperature=0.3,  # Low temp for consistency
+            max_tokens=200,  # Response is compact JSON
+        )
 
-            drama_result = _parse_ai_response(response_text)
-            output.add_log(
-                f"Drama analysis: peak={drama_result.get('peak_quarter')}, "
-                f"type={drama_result.get('story_type')}"
-            )
-
-        except Exception as e:
-            output.add_log(f"OpenAI call failed: {e}, using defaults", level="error")
-            drama_result = {
-                "quarter_weights": DEFAULT_QUARTER_WEIGHTS.copy(),
-                "peak_quarter": "Q4",
-                "story_type": "standard",
-                "headline": "",
-            }
+        drama_result = _parse_ai_response(response_text)
+        output.add_log(
+            f"Drama analysis: peak={drama_result.get('peak_quarter')}, "
+            f"type={drama_result.get('story_type')}"
+        )
 
     # Validate and normalize weights
     quarter_weights = drama_result.get("quarter_weights", DEFAULT_QUARTER_WEIGHTS)

@@ -392,95 +392,6 @@ def _validate_block_narrative(
     return errors, warnings
 
 
-def _generate_fallback_narrative(
-    block: dict[str, Any],
-    game_context: dict[str, str],
-    is_garbage_time: bool = False,
-) -> str:
-    """Generate a simple fallback narrative when AI fails.
-
-    Args:
-        block: Block data
-        game_context: Team names
-        is_garbage_time: If True, generate minimal garbage time narrative
-
-    Returns:
-        Simple descriptive narrative
-    """
-    home_team = game_context.get("home_team_abbrev", "Home")
-    away_team = game_context.get("away_team_abbrev", "Away")
-
-    score_before = block["score_before"]
-    score_after = block["score_after"]
-    role = block["role"]
-
-    home_delta = score_after[0] - score_before[0]
-    away_delta = score_after[1] - score_before[1]
-
-    # Task 1.5: Minimal garbage time narrative
-    if is_garbage_time:
-        leading_team = home_team if score_after[0] > score_after[1] else away_team
-        return (
-            f"{leading_team} maintained control as the game wound down. "
-            f"Final stretch score: {home_team} {score_after[0]}, {away_team} {score_after[1]}."
-        )
-
-    if role == SemanticRole.SETUP.value:
-        return (
-            f"The game began with {away_team} and {home_team} trading baskets. "
-            f"Score moved to {home_team} {score_after[0]}, {away_team} {score_after[1]}."
-        )
-    elif role == SemanticRole.RESOLUTION.value:
-        return (
-            f"The game concluded with a final score of "
-            f"{home_team} {score_after[0]}, {away_team} {score_after[1]}."
-        )
-    else:
-        if home_delta > away_delta:
-            return (
-                f"{home_team} outscored {away_team} {home_delta}-{away_delta} "
-                f"in this stretch, moving the score to {home_team} {score_after[0]}, "
-                f"{away_team} {score_after[1]}."
-            )
-        elif away_delta > home_delta:
-            return (
-                f"{away_team} outscored {home_team} {away_delta}-{home_delta} "
-                f"in this stretch, moving the score to {home_team} {score_after[0]}, "
-                f"{away_team} {score_after[1]}."
-            )
-        else:
-            return (
-                f"Both teams scored evenly in this stretch. "
-                f"Score: {home_team} {score_after[0]}, {away_team} {score_after[1]}."
-            )
-
-
-def _is_garbage_time_block(
-    block: dict[str, Any],
-    garbage_time_start_idx: int | None,
-) -> bool:
-    """Check if a block is in garbage time.
-
-    Task 1.5: Garbage time handling.
-
-    Args:
-        block: Block data with moment_indices
-        garbage_time_start_idx: Index where garbage time starts
-
-    Returns:
-        True if block is entirely in garbage time
-    """
-    if garbage_time_start_idx is None:
-        return False
-
-    moment_indices = block.get("moment_indices", [])
-    if not moment_indices:
-        return False
-
-    # Block is garbage time if all its moments are at or after garbage time start
-    return all(idx >= garbage_time_start_idx for idx in moment_indices)
-
-
 async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
     """Execute the RENDER_BLOCKS stage.
 
@@ -554,48 +465,12 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         response_data = json.loads(response_json)
 
     except json.JSONDecodeError as e:
-        output.add_log(f"OpenAI returned invalid JSON: {e}", level="error")
-        output.add_log("Using fallback narratives for all blocks", level="warning")
-
-        # Use fallbacks with garbage time awareness
-        for block in blocks:
-            is_garbage = _is_garbage_time_block(block, garbage_time_start_idx)
-            block["narrative"] = _generate_fallback_narrative(block, game_context, is_garbage)
-
-        output.data = {
-            "blocks_rendered": True,
-            "blocks": blocks,
-            "openai_calls": 1,
-            "fallback_count": len(blocks),
-            "errors": [f"JSON parse error: {e}"],
-            # Pass through
-            "moments": previous_output.get("moments", []),
-            "pbp_events": pbp_events,
-            "validated": True,
-            "blocks_grouped": True,
-        }
-        return output
+        # Fail fast - no fallback narratives
+        raise ValueError(f"OpenAI returned invalid JSON: {e}") from e
 
     except Exception as e:
-        output.add_log(f"OpenAI call failed: {e}", level="error")
-        output.add_log("Using fallback narratives for all blocks", level="warning")
-
-        for block in blocks:
-            is_garbage = _is_garbage_time_block(block, garbage_time_start_idx)
-            block["narrative"] = _generate_fallback_narrative(block, game_context, is_garbage)
-
-        output.data = {
-            "blocks_rendered": True,
-            "blocks": blocks,
-            "openai_calls": 1,
-            "fallback_count": len(blocks),
-            "errors": [f"OpenAI error: {e}"],
-            "moments": previous_output.get("moments", []),
-            "pbp_events": pbp_events,
-            "validated": True,
-            "blocks_grouped": True,
-        }
-        return output
+        # Fail fast - no fallback narratives
+        raise ValueError(f"OpenAI call failed: {e}") from e
 
     # Extract narratives from response
     block_items = response_data.get("blocks", [])
@@ -615,7 +490,6 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
     # Apply narratives to blocks with validation
     all_errors: list[str] = []
     all_warnings: list[str] = []
-    fallback_count = 0
     total_words = 0
     play_injections = 0
 
@@ -623,26 +497,18 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         block_idx = block["block_index"]
         narrative = narrative_lookup.get(block_idx, "")
 
-        # Task 1.5: Check if this block is in garbage time
-        is_garbage = _is_garbage_time_block(block, garbage_time_start_idx)
-
         if not narrative or not narrative.strip():
-            output.add_log(
-                f"Block {block_idx}: No narrative from AI, using fallback",
-                level="warning",
-            )
-            narrative = _generate_fallback_narrative(block, game_context, is_garbage)
-            fallback_count += 1
+            # Fail fast - no fallback narratives
+            raise ValueError(f"Block {block_idx}: No narrative from AI")
 
         # Validate
         errors, warnings = _validate_block_narrative(narrative, block_idx)
         all_errors.extend(errors)
         all_warnings.extend(warnings)
 
-        # If hard errors, use fallback
+        # If hard errors, fail fast
         if errors:
-            narrative = _generate_fallback_narrative(block, game_context, is_garbage)
-            fallback_count += 1
+            raise ValueError(f"Block {block_idx} validation failed: {errors}")
 
         # Task 1.3: Check play coverage - ensure key plays are mentioned
         key_play_ids = block.get("key_play_ids", [])
@@ -675,7 +541,6 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         total_words += len(narrative.split())
 
     output.add_log(f"Total word count: {total_words}")
-    output.add_log(f"Fallback narratives used: {fallback_count}")
     if play_injections > 0:
         output.add_log(f"Play injection sentences added: {play_injections}")
 
@@ -692,8 +557,7 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         "block_count": len(blocks),
         "total_words": total_words,
         "openai_calls": 1,
-        "fallback_count": fallback_count,
-        "play_injections": play_injections,  # Task 1.3 metric
+        "play_injections": play_injections,
         "errors": all_errors,
         "warnings": all_warnings,
         # Pass through

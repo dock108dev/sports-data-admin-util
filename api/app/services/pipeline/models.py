@@ -340,7 +340,6 @@ class RenderBlocksOutput:
     block_count: int
     total_words: int
     openai_calls: int
-    fallback_count: int
     errors: list[str]
     warnings: list[str]
 
@@ -350,7 +349,6 @@ class RenderBlocksOutput:
             "block_count": self.block_count,
             "total_words": self.total_words,
             "openai_calls": self.openai_calls,
-            "fallback_count": self.fallback_count,
             "errors": self.errors,
             "warnings": self.warnings,
         }

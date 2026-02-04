@@ -6,11 +6,9 @@ from __future__ import annotations
 from app.services.pipeline.stages.render_blocks import (
     _build_block_prompt,
     _validate_block_narrative,
-    _generate_fallback_narrative,
     _check_play_coverage,
     _generate_play_injection_sentence,
     _validate_style_constraints,
-    _is_garbage_time_block,
     FORBIDDEN_WORDS,
 )
 from app.services.pipeline.stages.block_types import (
@@ -162,79 +160,6 @@ class TestValidateBlockNarrative:
         assert len(forbidden_warnings) >= 2
 
 
-class TestGenerateFallbackNarrative:
-    """Tests for fallback narrative generation."""
-
-    def test_setup_fallback_describes_game_start(self) -> None:
-        """SETUP fallback describes how game began."""
-        block = {
-            "role": SemanticRole.SETUP.value,
-            "score_before": [0, 0],
-            "score_after": [10, 8],
-        }
-        game_context = {"home_team_abbrev": "LAL", "away_team_abbrev": "BOS"}
-
-        narrative = _generate_fallback_narrative(block, game_context)
-
-        assert "began" in narrative.lower() or "score" in narrative.lower()
-
-    def test_resolution_fallback_describes_final_score(self) -> None:
-        """RESOLUTION fallback includes final score."""
-        block = {
-            "role": SemanticRole.RESOLUTION.value,
-            "score_before": [100, 95],
-            "score_after": [110, 105],
-        }
-        game_context = {"home_team_abbrev": "LAL", "away_team_abbrev": "BOS"}
-
-        narrative = _generate_fallback_narrative(block, game_context)
-
-        assert "concluded" in narrative.lower() or "final" in narrative.lower()
-        assert "110" in narrative
-        assert "105" in narrative
-
-    def test_middle_block_describes_scoring_stretch(self) -> None:
-        """Middle block fallback describes who outscored whom."""
-        block = {
-            "role": SemanticRole.RESPONSE.value,
-            "score_before": [50, 45],
-            "score_after": [60, 48],  # Home outscored 10-3
-        }
-        game_context = {"home_team_abbrev": "LAL", "away_team_abbrev": "BOS"}
-
-        narrative = _generate_fallback_narrative(block, game_context)
-
-        assert "outscored" in narrative.lower()
-        assert "LAL" in narrative
-
-    def test_even_scoring_stretch(self) -> None:
-        """Even scoring stretch produces valid fallback."""
-        block = {
-            "role": SemanticRole.RESPONSE.value,
-            "score_before": [50, 45],
-            "score_after": [55, 50],  # Both scored 5
-        }
-        game_context = {"home_team_abbrev": "LAL", "away_team_abbrev": "BOS"}
-
-        narrative = _generate_fallback_narrative(block, game_context)
-
-        assert "even" in narrative.lower() or "score" in narrative.lower()
-
-    def test_fallback_includes_team_abbreviations(self) -> None:
-        """Fallback narratives include team abbreviations."""
-        block = {
-            "role": SemanticRole.MOMENTUM_SHIFT.value,
-            "score_before": [30, 25],
-            "score_after": [32, 35],  # Away takes lead
-        }
-        game_context = {"home_team_abbrev": "MIA", "away_team_abbrev": "NYK"}
-
-        narrative = _generate_fallback_narrative(block, game_context)
-
-        # Should include at least one team abbreviation
-        assert "MIA" in narrative or "NYK" in narrative
-
-
 class TestForbiddenWords:
     """Tests for forbidden words list."""
 
@@ -351,49 +276,3 @@ class TestStyleConstraints:
         narrative = "He scored 10, 15, 8, 12, 7, 9, 11 points across stretches."
         errors, warnings = _validate_style_constraints(narrative, 0)
         assert any("numbers" in w.lower() for w in warnings)
-
-
-class TestGarbageTimeBlock:
-    """Tests for Task 1.5: Garbage time detection."""
-
-    def test_block_in_garbage_time(self) -> None:
-        """Block with moments after garbage time start is garbage time."""
-        block = {"moment_indices": [10, 11, 12]}
-        assert _is_garbage_time_block(block, garbage_time_start_idx=8) is True
-
-    def test_block_before_garbage_time(self) -> None:
-        """Block with moments before garbage time start is not garbage time."""
-        block = {"moment_indices": [5, 6, 7]}
-        assert _is_garbage_time_block(block, garbage_time_start_idx=10) is False
-
-    def test_block_spanning_garbage_time(self) -> None:
-        """Block spanning garbage time boundary is not fully garbage time."""
-        block = {"moment_indices": [8, 9, 10, 11]}
-        assert _is_garbage_time_block(block, garbage_time_start_idx=10) is False
-
-    def test_no_garbage_time(self) -> None:
-        """Block is not garbage time when no garbage time index."""
-        block = {"moment_indices": [10, 11, 12]}
-        assert _is_garbage_time_block(block, garbage_time_start_idx=None) is False
-
-
-class TestGarbageTimeFallback:
-    """Tests for Task 1.5: Garbage time fallback narratives."""
-
-    def test_garbage_time_narrative_is_minimal(self) -> None:
-        """Garbage time fallback is shorter and more neutral."""
-        block = {
-            "role": SemanticRole.RESPONSE.value,
-            "score_before": [90, 60],
-            "score_after": [100, 68],
-        }
-        game_context = {"home_team_abbrev": "LAL", "away_team_abbrev": "BOS"}
-
-        # Normal narrative should not contain garbage time language
-        normal = _generate_fallback_narrative(block, game_context, is_garbage_time=False)
-        assert "wound down" not in normal.lower()
-        assert "maintained" not in normal.lower()
-
-        # Garbage time narrative should mention "wound down" or "maintained"
-        garbage = _generate_fallback_narrative(block, game_context, is_garbage_time=True)
-        assert "wound down" in garbage.lower() or "maintained" in garbage.lower()

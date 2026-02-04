@@ -101,7 +101,6 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
             "block_count": len(blocks),
             "total_words": output.get("total_words", 0),
             "openai_calls": output.get("openai_calls", 0),
-            "fallback_count": output.get("fallback_count", 0),
         }
     elif stage == "VALIDATE_BLOCKS":
         # Format: {"blocks_validated": true/false, "errors": [...]}
@@ -233,6 +232,7 @@ def get_stage_description(stage: PipelineStage) -> str:
         PipelineStage.NORMALIZE_PBP: "Read PBP data from database and normalize with phase assignments",
         PipelineStage.GENERATE_MOMENTS: "Segment plays into condensed moments with explicit narration targets",
         PipelineStage.VALIDATE_MOMENTS: "Validate moment structure, ordering, and coverage",
+        PipelineStage.ANALYZE_DRAMA: "Identify dramatic peak and weight quarters for block distribution",
         PipelineStage.GROUP_BLOCKS: "Group moments into 4-7 narrative blocks with semantic roles",
         PipelineStage.RENDER_BLOCKS: "Generate short narratives for each block using OpenAI",
         PipelineStage.VALIDATE_BLOCKS: "Validate block count, word limits, and constraints",
