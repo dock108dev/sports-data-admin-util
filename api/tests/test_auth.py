@@ -89,6 +89,7 @@ class TestVerifyApiKey:
         """When no API key configured (dev mode), requests are allowed."""
         with patch("app.dependencies.auth.settings") as mock_settings:
             mock_settings.api_key = None
+            mock_settings.environment = "development"
 
             result = await verify_api_key(mock_request, None)
 
@@ -101,6 +102,7 @@ class TestVerifyApiKey:
         """When API key is empty string (dev mode), requests are allowed."""
         with patch("app.dependencies.auth.settings") as mock_settings:
             mock_settings.api_key = ""
+            mock_settings.environment = "development"
 
             result = await verify_api_key(mock_request, None)
 
@@ -111,13 +113,44 @@ class TestVerifyApiKey:
         """Dev mode logs a warning about unauthenticated request."""
         with patch("app.dependencies.auth.settings") as mock_settings:
             mock_settings.api_key = None
+            mock_settings.environment = "development"
 
             with patch("app.dependencies.auth.logger") as mock_logger:
                 await verify_api_key(mock_request, None)
 
                 mock_logger.warning.assert_called_once_with(
-                    "API_KEY not configured - allowing unauthenticated request"
+                    "API_KEY not configured - allowing unauthenticated request (dev mode)"
                 )
+
+    @pytest.mark.asyncio
+    async def test_production_no_api_key_returns_500(
+        self, mock_request: MagicMock
+    ) -> None:
+        """Production environment without API key configured returns 500."""
+        with patch("app.dependencies.auth.settings") as mock_settings:
+            mock_settings.api_key = None
+            mock_settings.environment = "production"
+
+            with pytest.raises(HTTPException) as exc_info:
+                await verify_api_key(mock_request, None)
+
+            assert exc_info.value.status_code == 500
+            assert exc_info.value.detail == "Server authentication misconfigured"
+
+    @pytest.mark.asyncio
+    async def test_staging_no_api_key_returns_500(
+        self, mock_request: MagicMock
+    ) -> None:
+        """Staging environment without API key configured returns 500."""
+        with patch("app.dependencies.auth.settings") as mock_settings:
+            mock_settings.api_key = None
+            mock_settings.environment = "staging"
+
+            with pytest.raises(HTTPException) as exc_info:
+                await verify_api_key(mock_request, None)
+
+            assert exc_info.value.status_code == 500
+            assert exc_info.value.detail == "Server authentication misconfigured"
 
     @pytest.mark.asyncio
     async def test_missing_key_logs_warning_with_context(
