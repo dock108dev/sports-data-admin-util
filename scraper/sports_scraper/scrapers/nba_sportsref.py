@@ -1,10 +1,7 @@
 """NBA scraper powered by Basketball Reference.
 
-Note:
-This module is intentionally a bit "wide" (≈500 LOC) because the parsing logic is
-most readable when kept close together and ordered to match the source HTML.
-If/when it grows further, split helpers into a sibling `_nba_sportsref_parse.py`
-module.
+Provides boxscore scraping for NBA games. Play-by-play data is fetched
+via the official NBA API (see live/nba.py).
 """
 
 from __future__ import annotations
@@ -21,8 +18,6 @@ from ..models import (
     NormalizedGame,
     NormalizedPlayerBoxscore,
     NormalizedTeamBoxscore,
-    NormalizedPlay,
-    NormalizedPlayByPlay,
     TeamIdentity,
 )
 from ..normalization import normalize_team_name
@@ -52,9 +47,6 @@ class NBASportsReferenceScraper(BaseSportsReferenceScraper):
     sport = "nba"
     league_code = "NBA"
     base_url = "https://www.basketball-reference.com/boxscores/"
-
-    def pbp_url(self, source_game_key: str) -> str:
-        return f"https://www.basketball-reference.com/boxscores/pbp/{source_game_key}.html"
 
     def _extract_team_stats(self, soup: BeautifulSoup, team_abbr: str) -> dict:
         """Extract team stats from boxscore table."""
@@ -353,168 +345,3 @@ class NBASportsReferenceScraper(BaseSportsReferenceScraper):
             team_boxscores=team_boxscores,
             player_boxscores=player_boxscores,
         )
-
-    def _parse_scorebox_abbreviations(self, soup: BeautifulSoup) -> tuple[str | None, str | None]:
-        """Extract away/home abbreviations from the scorebox."""
-        scorebox = soup.find("div", class_="scorebox")
-        if not scorebox:
-            return None, None
-
-        team_divs = scorebox.find_all("div", recursive=False)
-        if len(team_divs) < 2:
-            return None, None
-
-        def parse_abbr(div: BeautifulSoup) -> str | None:
-            team_link = div.find("a", itemprop="name")
-            if not team_link:
-                strong = div.find("strong")
-                team_link = strong.find("a") if strong else None
-            if not team_link:
-                return None
-            team_name = team_link.text.strip()
-            _, abbr = normalize_team_name(self.league_code, team_name)
-            return abbr
-
-        away_abbr = parse_abbr(team_divs[0])
-        home_abbr = parse_abbr(team_divs[1])
-        return away_abbr, home_abbr
-
-    def _parse_pbp_row(
-        self,
-        row: BeautifulSoup,
-        quarter: int,
-        away_abbr: str | None,
-        home_abbr: str | None,
-        play_index: int,
-    ) -> NormalizedPlay | None:
-        """Parse a single play-by-play row.
-
-        Basketball Reference PBP table has 6 columns:
-        - Time | Away Action | (empty) | Score | (empty) | Home Action
-        - Some rows (jump balls, timeouts) have colspan spanning multiple cells
-        """
-        if "thead" in row.get("class", []):
-            return None
-
-        cells = row.find_all("td")
-        if not cells:
-            return None
-
-        game_clock = cells[0].text.strip() or None
-
-        # Handle colspan rows (neutral plays like jump balls)
-        if len(cells) == 2:
-            # Colspan format: Time | full description
-            description = cells[1].text.strip()
-            return NormalizedPlay(
-                play_index=play_index,
-                quarter=quarter,
-                game_clock=game_clock,
-                play_type=None,
-                team_abbreviation=None,
-                player_id=None,
-                player_name=None,
-                description=description,
-                home_score=None,
-                away_score=None,
-                raw_data={"full_description": description},
-            )
-
-        # Standard format: Time | Away | (empty) | Score | (empty) | Home
-        if len(cells) < 6:
-            return None
-
-        away_action = cells[1].text.strip()
-        score_text = cells[3].text.strip()
-        home_action = cells[5].text.strip()
-
-        description_parts = []
-        if away_action:
-            description_parts.append(away_action)
-        if home_action:
-            description_parts.append(home_action)
-        description = " | ".join(description_parts) if description_parts else None
-
-        team_abbr = None
-        if away_action:
-            team_abbr = away_abbr
-        elif home_action:
-            team_abbr = home_abbr
-
-        away_score = None
-        home_score = None
-        if score_text and "-" in score_text:
-            parts = score_text.split("-")
-            if len(parts) == 2:
-                away_score = parse_int(parts[0].strip())
-                home_score = parse_int(parts[1].strip())
-
-        return NormalizedPlay(
-            play_index=play_index,
-            quarter=quarter,
-            game_clock=game_clock,
-            play_type=None,
-            team_abbreviation=team_abbr,
-            player_id=None,
-            player_name=None,
-            description=description,
-            home_score=home_score,
-            away_score=away_score,
-            raw_data={"away_action": away_action, "home_action": home_action, "score": score_text},
-        )
-
-    def fetch_play_by_play(self, source_game_key: str, game_date: date) -> NormalizedPlayByPlay:
-        """Fetch and parse play-by-play for a single game.
-
-        Basketball Reference PBP page has a single table with id="pbp".
-        Quarters are marked by rows with class="thead" and id="q1", "q2", etc.
-        """
-        url = self.pbp_url(source_game_key)
-        soup = self.fetch_html(url, game_date=game_date)
-
-        away_abbr, home_abbr = self._parse_scorebox_abbreviations(soup)
-
-        plays: list[NormalizedPlay] = []
-        play_index = 0
-
-        # Find the single PBP table by id
-        table = soup.find("table", id="pbp")
-        if not table:
-            logger.warning("pbp_table_not_found", game_key=source_game_key)
-            return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)
-
-        current_quarter = 0
-        # Rows are directly in table (no tbody)
-        for row in table.find_all("tr"):
-            row_classes = row.get("class", [])
-            row_id = row.get("id", "")
-
-            # Check for quarter header rows (e.g., id="q1", id="q2", etc.)
-            if row_id and row_id.startswith("q") and len(row_id) == 2:
-                try:
-                    current_quarter = int(row_id[1])
-                except ValueError:
-                    pass
-                continue
-
-            # Skip other thead rows (column headers)
-            if "thead" in row_classes:
-                continue
-
-            # Skip if we haven't found a quarter yet
-            if current_quarter == 0:
-                continue
-
-            play = self._parse_pbp_row(row, current_quarter, away_abbr, home_abbr, play_index)
-            if play:
-                plays.append(play)
-                play_index += 1
-
-        logger.info(
-            "pbp_parsed",
-            game_key=source_game_key,
-            game_date=str(game_date),
-            plays=len(plays),
-        )
-
-        return NormalizedPlayByPlay(source_game_key=source_game_key, plays=plays)

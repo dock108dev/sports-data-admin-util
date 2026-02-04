@@ -214,8 +214,7 @@ def run_pbp_ingestion_for_league(league_code: str) -> dict:
     Returns:
         Dict with pbp_games and pbp_events counts
     """
-    from .pbp_ingestion import ingest_pbp_via_sportsref, ingest_pbp_via_nhl_api, ingest_pbp_via_ncaab_api
-    from ..scrapers import get_scraper
+    from .pbp_ingestion import ingest_pbp_via_nba_api, ingest_pbp_via_nhl_api, ingest_pbp_via_ncaab_api
 
     start_dt, end_dt = build_scheduled_window()
     start_date = start_dt.date()
@@ -257,13 +256,10 @@ def run_pbp_ingestion_for_league(league_code: str) -> dict:
             pbp_games = games
             pbp_events = events
         elif league_code == "NBA":
-            # NBA uses Sports Reference
-            scraper = get_scraper(league_code)
-            games, events = ingest_pbp_via_sportsref(
+            # NBA uses official NBA API
+            games, events = ingest_pbp_via_nba_api(
                 session,
                 run_id=0,
-                league_code=league_code,
-                scraper=scraper,
                 start_date=start_date,
                 end_date=end_date,
                 only_missing=True,
