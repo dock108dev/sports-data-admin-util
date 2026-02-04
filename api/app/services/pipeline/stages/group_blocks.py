@@ -277,8 +277,14 @@ def _find_weighted_split_points(
 ) -> list[int]:
     """Find split points that allocate more blocks to high-drama quarters.
 
-    Uses quarter_weights from ANALYZE_DRAMA to distribute blocks.
-    Higher weight = more blocks allocated to that quarter.
+    Bell-curve distribution: large early blocks (quick setup), more granular
+    blocks in dramatic quarters (detailed climax), condensed resolution.
+
+    Strategy:
+    1. Calculate target blocks per quarter based on drama weights
+    2. Ensure SETUP block covers entire low-drama early period
+    3. Add more splits (smaller blocks) in high-drama quarters
+    4. Condense resolution
 
     Args:
         moments: List of validated moments
@@ -301,92 +307,126 @@ def _find_weighted_split_points(
             quarter_moments[q_key] = []
         quarter_moments[q_key].append(i)
 
-    # Calculate block allocation per quarter based on weights
-    total_weight = sum(quarter_weights.get(q, 1.0) for q in quarter_moments.keys())
+    sorted_quarters = sorted(quarter_moments.keys())
+    period_boundaries = find_period_boundaries(moments)
+
+    # Calculate target blocks per quarter based on weights
+    total_weight = sum(quarter_weights.get(q, 1.0) for q in sorted_quarters)
     if total_weight == 0:
         total_weight = len(quarter_moments)
 
-    # Allocate blocks proportionally to weights (excluding SETUP and RESOLUTION blocks)
-    # We reserve 1 block for SETUP and 1 for RESOLUTION, distribute the rest
-    distributable_blocks = max(1, target_blocks - 2)
+    # Distribute blocks proportionally to drama weights
+    quarter_target_blocks: dict[str, int] = {}
+    remaining_blocks = target_blocks
 
-    quarter_block_allocation: dict[str, float] = {}
-    for q_key in quarter_moments.keys():
+    for q_key in sorted_quarters:
         weight = quarter_weights.get(q_key, 1.0)
-        allocation = (weight / total_weight) * distributable_blocks
-        quarter_block_allocation[q_key] = allocation
+        # Proportional allocation, minimum 1 block per quarter with moments
+        raw_allocation = (weight / total_weight) * target_blocks
+        quarter_target_blocks[q_key] = max(1, round(raw_allocation))
+        remaining_blocks -= quarter_target_blocks[q_key]
 
-    logger.info(f"Quarter block allocation: {quarter_block_allocation}")
+    # Adjust if we over/under allocated
+    if remaining_blocks != 0:
+        # Find highest-weight quarter and adjust
+        peak_quarter = max(sorted_quarters, key=lambda q: quarter_weights.get(q, 1.0))
+        quarter_target_blocks[peak_quarter] = max(
+            1, quarter_target_blocks[peak_quarter] + remaining_blocks
+        )
 
-    # Find split points respecting the allocation
-    # Strategy: More splits in high-weight quarters, fewer in low-weight quarters
+    logger.info(f"Quarter target blocks: {quarter_target_blocks}")
+
+    # Build split points: add splits WITHIN quarters that need multiple blocks
     split_points: list[int] = []
-    period_boundaries = find_period_boundaries(moments)
 
-    # Always include period boundaries as potential splits
-    for boundary in period_boundaries:
-        if 0 < boundary < n:
-            split_points.append(boundary)
-
-    # Add additional splits within high-weight quarters
-    sorted_quarters = sorted(quarter_moments.keys())
     for q_key in sorted_quarters:
         moment_indices = quarter_moments[q_key]
         if not moment_indices:
             continue
 
-        allocation = quarter_block_allocation.get(q_key, 1.0)
+        target_for_quarter = quarter_target_blocks.get(q_key, 1)
         quarter_moment_count = len(moment_indices)
 
-        # Calculate how many internal splits this quarter should have
-        # based on its allocation relative to its moment count
-        if allocation >= 1.5 and quarter_moment_count >= 4:
-            # High-drama quarter: add 1-2 internal splits
-            internal_splits = min(2, int(allocation))
-            interval = quarter_moment_count // (internal_splits + 1)
+        # Add period boundary at END of this quarter (if not last quarter)
+        q_idx = sorted_quarters.index(q_key)
+        if q_idx < len(sorted_quarters) - 1:
+            # Find the boundary after this quarter
+            for boundary in period_boundaries:
+                if boundary > moment_indices[-1]:
+                    if boundary not in split_points:
+                        split_points.append(boundary)
+                    break
 
-            for i in range(1, internal_splits + 1):
-                split_idx = moment_indices[0] + (i * interval)
-                if split_idx not in split_points and 0 < split_idx < n:
-                    # Only add if not too close to existing splits
-                    too_close = any(abs(split_idx - s) < 2 for s in split_points)
+        # Add internal splits if this quarter needs multiple blocks
+        internal_splits_needed = target_for_quarter - 1
+        if internal_splits_needed > 0 and quarter_moment_count >= 2:
+            interval = quarter_moment_count / (internal_splits_needed + 1)
+            for i in range(1, internal_splits_needed + 1):
+                split_idx = moment_indices[0] + int(i * interval)
+                if 0 < split_idx < n and split_idx not in split_points:
+                    # Don't add if too close to period boundary
+                    too_close = any(abs(split_idx - b) < 2 for b in period_boundaries)
                     if not too_close:
                         split_points.append(split_idx)
 
-    # Sort and dedupe
+    # Sort and limit
     split_points = sorted(set(split_points))
-
-    # Trim to target - 1 splits (target_blocks - 1 splits = target_blocks blocks)
     needed_splits = target_blocks - 1
-    if len(split_points) > needed_splits:
-        # Keep the most important ones: period boundaries + high-drama internal splits
-        # Priority: period boundaries first, then by quarter weight
-        priority_splits = []
-        other_splits = []
+
+    # If we have too many splits, remove from low-drama quarters first
+    while len(split_points) > needed_splits:
+        # Find the split in the lowest-weight quarter and remove it
+        lowest_score = float('inf')
+        split_to_remove = None
+
         for sp in split_points:
+            # Skip period boundaries - prefer to keep structure
             if sp in period_boundaries:
-                priority_splits.append(sp)
+                continue
+            # Find which quarter this split is in
+            for q_key, indices in quarter_moments.items():
+                if indices and indices[0] <= sp <= indices[-1]:
+                    score = quarter_weights.get(q_key, 1.0)
+                    if score < lowest_score:
+                        lowest_score = score
+                        split_to_remove = sp
+                    break
+
+        if split_to_remove is not None:
+            split_points.remove(split_to_remove)
+        else:
+            # Remove first non-boundary split
+            for sp in split_points:
+                if sp not in period_boundaries:
+                    split_points.remove(sp)
+                    break
             else:
-                other_splits.append(sp)
+                # Last resort: remove first split
+                split_points.pop(0)
 
-        # Take all priority splits, then fill from others
-        split_points = priority_splits[:needed_splits]
-        remaining = needed_splits - len(split_points)
-        if remaining > 0:
-            split_points.extend(other_splits[:remaining])
-        split_points = sorted(split_points)
-
-    # If we don't have enough splits, fall back to even distribution
+    # If we need more splits, add evenly distributed ones in high-drama quarters
     if len(split_points) < needed_splits:
-        interval = n / (needed_splits + 1)
-        for i in range(1, needed_splits + 1):
-            split = int(i * interval)
-            if split not in split_points and 0 < split < n:
-                split_points.append(split)
+        # Find highest-weight quarter with room for more splits
+        for q_key in sorted(
+            sorted_quarters, key=lambda q: -quarter_weights.get(q, 1.0)
+        ):
             if len(split_points) >= needed_splits:
                 break
-        split_points = sorted(set(split_points))[:needed_splits]
 
+            moment_indices = quarter_moments[q_key]
+            if len(moment_indices) < 3:
+                continue
+
+            # Try to add a split in the middle of this quarter
+            mid_idx = moment_indices[len(moment_indices) // 2]
+            if mid_idx not in split_points and 0 < mid_idx < n:
+                too_close = any(abs(mid_idx - s) < 2 for s in split_points)
+                if not too_close:
+                    split_points.append(mid_idx)
+                    split_points = sorted(split_points)
+
+    split_points = sorted(set(split_points))[:needed_splits]
+    logger.info(f"Drama-weighted split points: {split_points}")
     return split_points
 
 
