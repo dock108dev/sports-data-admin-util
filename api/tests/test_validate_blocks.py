@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 
 from app.services.pipeline.stages.validate_blocks import (
     _validate_block_count,
@@ -351,3 +352,348 @@ class TestValidationIntegration:
         warnings.extend(w)
 
         assert len(errors) == 0, f"Errors: {errors}"
+
+
+class TestExecuteValidateBlocks:
+    """Tests for execute_validate_blocks async function."""
+
+    @pytest.mark.asyncio
+    async def test_missing_previous_output_raises(self) -> None:
+        """Missing previous output raises ValueError."""
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
+        from app.services.pipeline.models import StageInput
+        import pytest
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output=None,
+            game_context={"home_team": "Lakers", "away_team": "Celtics"},
+        )
+
+        with pytest.raises(ValueError, match="requires previous stage output"):
+            await execute_validate_blocks(stage_input)
+
+    @pytest.mark.asyncio
+    async def test_not_rendered_raises(self) -> None:
+        """Previous output without blocks_rendered=True raises ValueError."""
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
+        from app.services.pipeline.models import StageInput
+        import pytest
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output={"blocks_rendered": False, "blocks": []},
+            game_context={"home_team": "Lakers", "away_team": "Celtics"},
+        )
+
+        with pytest.raises(ValueError, match="RENDER_BLOCKS to complete"):
+            await execute_validate_blocks(stage_input)
+
+    @pytest.mark.asyncio
+    async def test_no_blocks_raises(self) -> None:
+        """Empty blocks list raises ValueError."""
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
+        from app.services.pipeline.models import StageInput
+        import pytest
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output={"blocks_rendered": True, "blocks": []},
+            game_context={"home_team": "Lakers", "away_team": "Celtics"},
+        )
+
+        with pytest.raises(ValueError, match="No blocks"):
+            await execute_validate_blocks(stage_input)
+
+    @pytest.mark.asyncio
+    async def test_all_validations_passing(self) -> None:
+        """All validations pass with valid blocks."""
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
+        from app.services.pipeline.models import StageInput
+
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "moment_indices": [0, 1],
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "play_ids": [1, 2, 3],
+                "key_play_ids": [2],
+                "narrative": "The Lakers started strong with a quick 10-8 lead in the opening minutes.",
+            },
+            {
+                "block_index": 1,
+                "role": SemanticRole.MOMENTUM_SHIFT.value,
+                "moment_indices": [2, 3],
+                "score_before": [10, 8],
+                "score_after": [15, 20],
+                "play_ids": [4, 5, 6],
+                "key_play_ids": [5],
+                "narrative": "The Celtics responded with a scoring run to take the lead midway through.",
+            },
+            {
+                "block_index": 2,
+                "role": SemanticRole.RESPONSE.value,
+                "moment_indices": [4, 5],
+                "score_before": [15, 20],
+                "score_after": [25, 22],
+                "play_ids": [7, 8, 9],
+                "key_play_ids": [8],
+                "narrative": "The Lakers came back with a strong third quarter performance and retook control.",
+            },
+            {
+                "block_index": 3,
+                "role": SemanticRole.RESOLUTION.value,
+                "moment_indices": [6, 7],
+                "score_before": [25, 22],
+                "score_after": [30, 28],
+                "play_ids": [10, 11, 12],
+                "key_play_ids": [11],
+                "narrative": "The game concluded with the Lakers holding on for a close 30-28 victory.",
+            },
+        ]
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output={
+                "blocks_rendered": True,
+                "blocks": blocks,
+                "moments": [{} for _ in range(8)],
+                "pbp_events": [],
+                "validated": True,
+            },
+            game_context={"home_team": "Lakers", "away_team": "Celtics"},
+        )
+
+        result = await execute_validate_blocks(stage_input)
+
+        assert result.data["blocks_validated"] is True
+        assert len(result.data["errors"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_with_validation_errors(self) -> None:
+        """Validation fails with invalid blocks."""
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
+        from app.services.pipeline.models import StageInput
+
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.RESPONSE.value,  # Should be SETUP
+                "moment_indices": [0],
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "play_ids": [1],
+                "key_play_ids": [1],
+                "narrative": "Short narrative here for block zero that tests the word count.",
+            },
+            {
+                "block_index": 1,
+                "role": SemanticRole.RESPONSE.value,  # Should be RESOLUTION
+                "moment_indices": [1],
+                "score_before": [10, 8],
+                "score_after": [20, 15],
+                "play_ids": [2],
+                "key_play_ids": [2],
+                "narrative": "Another short narrative for block one that tests word count.",
+            },
+        ]
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output={
+                "blocks_rendered": True,
+                "blocks": blocks,
+                "moments": [{} for _ in range(2)],
+            },
+            game_context={"home_team": "Lakers", "away_team": "Celtics"},
+        )
+
+        result = await execute_validate_blocks(stage_input)
+
+        # Should fail due to role constraints
+        assert result.data["blocks_validated"] is False
+        assert len(result.data["errors"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_with_warnings_only(self) -> None:
+        """Validation passes with warnings but no errors."""
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
+        from app.services.pipeline.models import StageInput
+
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "moment_indices": [0],
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "play_ids": [1],
+                "key_play_ids": [],  # Missing key plays - warning
+                "narrative": "Short.",  # Too short - warning
+            },
+            {
+                "block_index": 1,
+                "role": SemanticRole.MOMENTUM_SHIFT.value,
+                "moment_indices": [1],
+                "score_before": [10, 8],
+                "score_after": [15, 18],
+                "play_ids": [2],
+                "key_play_ids": [2],
+                "narrative": "The Celtics made a strong comeback push to take the lead.",
+            },
+            {
+                "block_index": 2,
+                "role": SemanticRole.RESPONSE.value,
+                "moment_indices": [2],
+                "score_before": [15, 18],
+                "score_after": [22, 20],
+                "play_ids": [3],
+                "key_play_ids": [3],
+                "narrative": "Lakers fought back with determination and skill throughout.",
+            },
+            {
+                "block_index": 3,
+                "role": SemanticRole.RESOLUTION.value,
+                "moment_indices": [3],
+                "score_before": [22, 20],
+                "score_after": [30, 28],
+                "play_ids": [4],
+                "key_play_ids": [4],
+                "narrative": "The final quarter saw Lakers close out the game successfully.",
+            },
+        ]
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output={
+                "blocks_rendered": True,
+                "blocks": blocks,
+                "moments": [{} for _ in range(4)],
+            },
+            game_context={"home_team": "Lakers", "away_team": "Celtics"},
+        )
+
+        result = await execute_validate_blocks(stage_input)
+
+        # Should pass despite warnings
+        assert result.data["blocks_validated"] is True
+        assert len(result.data["warnings"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_output_structure(self) -> None:
+        """Output contains all expected fields."""
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
+        from app.services.pipeline.models import StageInput
+
+        blocks = [
+            {
+                "block_index": i,
+                "role": [SemanticRole.SETUP.value, SemanticRole.RESPONSE.value,
+                         SemanticRole.RESPONSE.value, SemanticRole.RESOLUTION.value][i],
+                "moment_indices": [i],
+                "score_before": [i * 10, i * 8],
+                "score_after": [(i + 1) * 10, (i + 1) * 8],
+                "play_ids": [i + 1],
+                "key_play_ids": [i + 1],
+                "narrative": f"Block {i} narrative with enough words to pass minimum.",
+            }
+            for i in range(4)
+        ]
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output={
+                "blocks_rendered": True,
+                "blocks": blocks,
+                "moments": [{} for _ in range(4)],
+                "pbp_events": [{"test": "event"}],
+                "validated": True,
+            },
+            game_context={"home_team": "Lakers", "away_team": "Celtics"},
+        )
+
+        result = await execute_validate_blocks(stage_input)
+
+        # Check output structure
+        assert "blocks_validated" in result.data
+        assert "blocks" in result.data
+        assert "block_count" in result.data
+        assert "total_words" in result.data
+        assert "errors" in result.data
+        assert "warnings" in result.data
+        assert "moments" in result.data
+        assert "pbp_events" in result.data
+
+    @pytest.mark.asyncio
+    async def test_score_discontinuity_detected(self) -> None:
+        """Score discontinuity is detected as error."""
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
+        from app.services.pipeline.models import StageInput
+
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "moment_indices": [0],
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "play_ids": [1],
+                "key_play_ids": [1],
+                "narrative": "Opening narrative block with enough words for validation.",
+            },
+            {
+                "block_index": 1,
+                "role": SemanticRole.MOMENTUM_SHIFT.value,
+                "moment_indices": [1],
+                "score_before": [15, 12],  # Discontinuity! Should be [10, 8]
+                "score_after": [25, 22],
+                "play_ids": [2],
+                "key_play_ids": [2],
+                "narrative": "Second narrative block with enough words for validation.",
+            },
+            {
+                "block_index": 2,
+                "role": SemanticRole.RESPONSE.value,
+                "moment_indices": [2],
+                "score_before": [25, 22],
+                "score_after": [35, 30],
+                "play_ids": [3],
+                "key_play_ids": [3],
+                "narrative": "Third narrative block with enough words for validation test.",
+            },
+            {
+                "block_index": 3,
+                "role": SemanticRole.RESOLUTION.value,
+                "moment_indices": [3],
+                "score_before": [35, 30],
+                "score_after": [45, 38],
+                "play_ids": [4],
+                "key_play_ids": [4],
+                "narrative": "Final narrative block with enough words for validation test.",
+            },
+        ]
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output={
+                "blocks_rendered": True,
+                "blocks": blocks,
+                "moments": [{} for _ in range(4)],
+            },
+            game_context={"home_team": "Lakers", "away_team": "Celtics"},
+        )
+
+        result = await execute_validate_blocks(stage_input)
+
+        assert result.data["blocks_validated"] is False
+        assert any("discontinuity" in e.lower() for e in result.data["errors"])

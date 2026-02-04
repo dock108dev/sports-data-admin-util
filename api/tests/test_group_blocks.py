@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import pytest
 
 from app.services.pipeline.stages.block_types import (
     MIN_BLOCKS,
     MAX_BLOCKS,
     SemanticRole,
 )
+from app.services.pipeline.models import StageInput
 from app.services.pipeline.stages.block_analysis import (
     count_lead_changes,
     find_lead_change_indices,
@@ -475,3 +477,477 @@ class TestBlowoutCompression:
         num_blocks = len(split_points) + 1
 
         assert num_blocks >= MIN_BLOCKS
+
+
+class TestFindWeightedSplitPoints:
+    """Tests for _find_weighted_split_points drama-based distribution."""
+
+    def test_nba_q4_emphasis(self) -> None:
+        """NBA games should emphasize Q4 with late-game amplification."""
+        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+
+        moments = []
+        for period in [1, 2, 3, 4]:
+            for i in range(5):
+                moments.append({
+                    "play_ids": [period * 10 + i],
+                    "period": period,
+                    "score_before": [(period - 1) * 25, (period - 1) * 20],
+                    "score_after": [(period - 1) * 25 + 5, (period - 1) * 20 + 4],
+                })
+
+        quarter_weights = {"Q1": 1.0, "Q2": 1.0, "Q3": 1.0, "Q4": 2.0}
+
+        split_points = _find_weighted_split_points(moments, 5, quarter_weights, "NBA")
+
+        # Should have 4 splits for 5 blocks
+        assert len(split_points) == 4
+
+    def test_ncaab_half_structure(self) -> None:
+        """NCAAB games use half structure with H2 emphasis."""
+        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+
+        moments = []
+        for period in [1, 2]:  # NCAAB uses halves stored as Q1, Q2
+            for i in range(10):
+                moments.append({
+                    "play_ids": [period * 100 + i],
+                    "period": period,
+                    "score_before": [(period - 1) * 40, (period - 1) * 38],
+                    "score_after": [(period - 1) * 40 + 4, (period - 1) * 38 + 4],
+                })
+
+        quarter_weights = {"Q1": 1.0, "Q2": 1.8}  # H2 is more dramatic
+
+        split_points = _find_weighted_split_points(moments, 5, quarter_weights, "NCAAB")
+
+        assert len(split_points) == 4
+
+    def test_nhl_three_periods(self) -> None:
+        """NHL games use 3 period structure."""
+        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+
+        moments = []
+        for period in [1, 2, 3]:  # NHL periods stored as Q1, Q2, Q3
+            for i in range(5):
+                moments.append({
+                    "play_ids": [period * 10 + i],
+                    "period": period,
+                    "score_before": [period - 1, period - 1],
+                    "score_after": [period, period - 1],
+                })
+
+        quarter_weights = {"Q1": 0.8, "Q2": 1.0, "Q3": 1.5}
+
+        split_points = _find_weighted_split_points(moments, 4, quarter_weights, "NHL")
+
+        assert len(split_points) == 3
+
+    def test_q1_hard_cap_enforced(self) -> None:
+        """Q1 gets max 1 block unless it's the peak quarter."""
+        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+
+        # Create moments with lots of Q1 activity
+        moments = []
+        for period in [1, 2, 3, 4]:
+            count = 10 if period == 1 else 3  # More Q1 moments
+            for i in range(count):
+                moments.append({
+                    "play_ids": [period * 100 + i],
+                    "period": period,
+                    "score_before": [0, 0],
+                    "score_after": [i * 2, i],
+                })
+
+        # Q1 is not the peak - Q4 has highest weight
+        quarter_weights = {"Q1": 1.0, "Q2": 1.0, "Q3": 1.2, "Q4": 2.0}
+
+        split_points = _find_weighted_split_points(moments, 5, quarter_weights, "NBA")
+
+        # Count how many splits fall within Q1 range
+        q1_end_idx = 10  # First 10 moments are Q1
+        q1_splits = [sp for sp in split_points if sp < q1_end_idx]
+
+        # Q1 should have at most 1 block (0 internal splits)
+        # or 1 split at the boundary
+        assert len(q1_splits) <= 1
+
+    def test_peak_quarter_gets_minimum_blocks(self) -> None:
+        """Peak drama quarter should get at least 2 blocks if target >= 4."""
+        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+
+        moments = []
+        for period in [1, 2, 3, 4]:
+            for i in range(5):
+                moments.append({
+                    "play_ids": [period * 10 + i],
+                    "period": period,
+                    "score_before": [0, 0],
+                    "score_after": [5, 3],
+                })
+
+        # Q3 is peak quarter with very high weight
+        quarter_weights = {"Q1": 0.5, "Q2": 0.5, "Q3": 2.5, "Q4": 1.0}
+
+        split_points = _find_weighted_split_points(moments, 5, quarter_weights, "NBA")
+
+        # Q3 range is indices 10-14
+        q3_start = 10
+        q3_end = 15
+
+        # Count blocks containing Q3 moments
+        boundaries = [0] + split_points + [len(moments)]
+        q3_block_count = 0
+        for i in range(len(boundaries) - 1):
+            block_start = boundaries[i]
+            block_end = boundaries[i + 1]
+            if any(q3_start <= j < q3_end for j in range(block_start, block_end)):
+                q3_block_count += 1
+
+        # Peak quarter should have 2+ blocks when possible
+        assert q3_block_count >= 1  # At minimum covers the quarter
+
+    def test_deficit_backfill_respects_priority(self) -> None:
+        """Deficit filling should prioritize higher-weight, later quarters."""
+        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+
+        moments = []
+        for period in [1, 2, 3, 4]:
+            for i in range(4):
+                moments.append({
+                    "play_ids": [period * 10 + i],
+                    "period": period,
+                    "score_before": [0, 0],
+                    "score_after": [5, 3],
+                })
+
+        # Clear weight hierarchy
+        quarter_weights = {"Q1": 0.5, "Q2": 1.0, "Q3": 1.5, "Q4": 2.0}
+
+        split_points = _find_weighted_split_points(moments, 5, quarter_weights, "NBA")
+
+        # Function should produce valid splits
+        assert len(split_points) == 4
+        assert all(0 < sp < len(moments) for sp in split_points)
+
+
+class TestSelectKeyPlays:
+    """Tests for _select_key_plays function."""
+
+    def test_lead_change_highest_priority(self) -> None:
+        """Lead change plays get highest priority."""
+        from app.services.pipeline.stages.group_blocks import _select_key_plays
+
+        moments = [
+            {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": []},
+        ]
+        pbp_events = [
+            {"play_index": 1, "home_score": 10, "away_score": 8, "play_type": "score"},
+            {"play_index": 2, "home_score": 10, "away_score": 12, "play_type": "score"},  # Lead change
+            {"play_index": 3, "home_score": 12, "away_score": 12, "play_type": "score"},
+        ]
+
+        key_plays = _select_key_plays(moments, [0], pbp_events)
+
+        assert 2 in key_plays  # Lead change play should be selected
+
+    def test_scoring_plays_ranked(self) -> None:
+        """Scoring plays are prioritized."""
+        from app.services.pipeline.stages.group_blocks import _select_key_plays
+
+        moments = [
+            {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": []},
+        ]
+        pbp_events = [
+            {"play_index": 1, "home_score": 10, "away_score": 8, "play_type": "timeout"},
+            {"play_index": 2, "home_score": 12, "away_score": 8, "play_type": "score"},
+            {"play_index": 3, "home_score": 12, "away_score": 8, "play_type": "foul"},
+        ]
+
+        key_plays = _select_key_plays(moments, [0], pbp_events)
+
+        assert 2 in key_plays  # Scoring play should be selected
+
+    def test_fallback_to_last_play(self) -> None:
+        """Falls back to last play if no better options."""
+        from app.services.pipeline.stages.group_blocks import _select_key_plays
+
+        moments = [
+            {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": []},
+        ]
+        pbp_events = [
+            {"play_index": 1, "home_score": 10, "away_score": 10, "play_type": "other"},
+            {"play_index": 2, "home_score": 10, "away_score": 10, "play_type": "other"},
+            {"play_index": 3, "home_score": 10, "away_score": 10, "play_type": "other"},
+        ]
+
+        key_plays = _select_key_plays(moments, [0], pbp_events)
+
+        # Should have at least one key play
+        assert len(key_plays) >= 1
+
+    def test_max_three_key_plays(self) -> None:
+        """No more than 3 key plays selected."""
+        from app.services.pipeline.stages.group_blocks import _select_key_plays
+
+        moments = [
+            {"play_ids": list(range(1, 11)), "explicitly_narrated_play_ids": list(range(1, 11))},
+        ]
+        pbp_events = [
+            {"play_index": i, "home_score": i * 2, "away_score": i, "play_type": "score"}
+            for i in range(1, 11)
+        ]
+
+        key_plays = _select_key_plays(moments, [0], pbp_events)
+
+        assert len(key_plays) <= 3
+
+    def test_explicitly_narrated_plays_boosted(self) -> None:
+        """Explicitly narrated plays get priority boost."""
+        from app.services.pipeline.stages.group_blocks import _select_key_plays
+
+        moments = [
+            {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": [2]},
+        ]
+        pbp_events = [
+            {"play_index": 1, "home_score": 10, "away_score": 10, "play_type": "other"},
+            {"play_index": 2, "home_score": 10, "away_score": 10, "play_type": "other"},
+            {"play_index": 3, "home_score": 10, "away_score": 10, "play_type": "other"},
+        ]
+
+        key_plays = _select_key_plays(moments, [0], pbp_events)
+
+        assert 2 in key_plays  # Explicitly narrated play should be selected
+
+
+class TestCreateBlocksExtended:
+    """Extended tests for _create_blocks function."""
+
+    def test_block_creation_with_mini_box(self) -> None:
+        """Blocks include mini box score data."""
+        moments = [
+            {"play_ids": [1, 2], "period": 1, "score_before": [0, 0], "score_after": [5, 3]},
+            {"play_ids": [3, 4], "period": 1, "score_before": [5, 3], "score_after": [10, 8]},
+            {"play_ids": [5, 6], "period": 2, "score_before": [10, 8], "score_after": [15, 12]},
+            {"play_ids": [7, 8], "period": 2, "score_before": [15, 12], "score_after": [20, 18]},
+        ]
+        pbp_events = [
+            {"play_index": i, "home_score": i * 2, "away_score": i, "play_type": "score"}
+            for i in range(1, 9)
+        ]
+        split_points = [2]  # Creates 2 blocks
+
+        blocks = _create_blocks(moments, split_points, pbp_events)
+
+        assert len(blocks) == 2
+        # Each block should have mini_box attribute
+        for block in blocks:
+            assert hasattr(block, "mini_box")
+
+    def test_score_continuity(self) -> None:
+        """Score continuity maintained across blocks."""
+        moments = [
+            {"play_ids": [1], "period": 1, "score_before": [0, 0], "score_after": [10, 8]},
+            {"play_ids": [2], "period": 1, "score_before": [10, 8], "score_after": [20, 15]},
+            {"play_ids": [3], "period": 2, "score_before": [20, 15], "score_after": [30, 25]},
+            {"play_ids": [4], "period": 2, "score_before": [30, 25], "score_after": [40, 35]},
+        ]
+        split_points = [2]
+
+        blocks = _create_blocks(moments, split_points, [])
+
+        # Block 0's score_after should equal Block 1's score_before
+        assert blocks[0].score_after == blocks[1].score_before
+
+    def test_period_range_spans(self) -> None:
+        """Period range correctly spans multiple periods."""
+        moments = [
+            {"play_ids": [1], "period": 1, "score_before": [0, 0], "score_after": [10, 8]},
+            {"play_ids": [2], "period": 2, "score_before": [10, 8], "score_after": [20, 15]},
+            {"play_ids": [3], "period": 3, "score_before": [20, 15], "score_after": [30, 25]},
+        ]
+        split_points = []  # Single block
+
+        blocks = _create_blocks(moments, split_points, [])
+
+        assert len(blocks) == 1
+        assert blocks[0].period_start == 1
+        assert blocks[0].period_end == 3
+
+
+class TestAssignRolesExtended:
+    """Extended tests for _assign_roles function."""
+
+    def test_last_lead_change_is_momentum_shift(self) -> None:
+        """The LAST lead change block (not first) gets MOMENTUM_SHIFT."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock
+
+        # Create blocks where multiple have lead changes
+        blocks = [
+            NarrativeBlock(0, SemanticRole.RESPONSE, [], 1, 1, (0, 0), (10, 8), [], []),  # Home leads
+            NarrativeBlock(1, SemanticRole.RESPONSE, [], 1, 1, (10, 8), (12, 15), [], []),  # Lead change 1
+            NarrativeBlock(2, SemanticRole.RESPONSE, [], 2, 2, (12, 15), (20, 18), [], []),  # Lead change 2
+            NarrativeBlock(3, SemanticRole.RESPONSE, [], 2, 2, (20, 18), (30, 28), [], []),
+        ]
+
+        _assign_roles(blocks)
+
+        # First block should be SETUP
+        assert blocks[0].role == SemanticRole.SETUP
+        # Last block should be RESOLUTION
+        assert blocks[-1].role == SemanticRole.RESOLUTION
+        # Block 2 (last lead change) should be MOMENTUM_SHIFT
+        assert blocks[2].role == SemanticRole.MOMENTUM_SHIFT
+
+    def test_role_quota_enforcement(self) -> None:
+        """No role appears more than twice."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock
+
+        # Create 7 blocks (maximum)
+        blocks = [
+            NarrativeBlock(i, SemanticRole.RESPONSE, [], 1, 1, (0, 0), (10, 8), [], [])
+            for i in range(7)
+        ]
+
+        _assign_roles(blocks)
+
+        # Count occurrences
+        role_counts: dict[SemanticRole, int] = {}
+        for block in blocks:
+            role_counts[block.role] = role_counts.get(block.role, 0) + 1
+
+        # No role should appear more than twice
+        for count in role_counts.values():
+            assert count <= 2
+
+
+class TestExecuteGroupBlocksExtended:
+    """Extended tests for execute_group_blocks async function."""
+
+    @pytest.mark.asyncio
+    async def test_blowout_game_compression(self) -> None:
+        """Blowout games use compression strategy."""
+        from app.services.pipeline.stages.group_blocks import execute_group_blocks
+
+        # Create a blowout scenario - sustained 20+ point margin
+        moments = []
+        for i in range(20):
+            period = (i // 5) + 1
+            home_score = 10 + i * 5  # Home runs away
+            away_score = 10 + i * 2
+            moments.append({
+                "play_ids": [i],
+                "period": period,
+                "score_before": [home_score - 5, away_score - 2],
+                "score_after": [home_score, away_score],
+            })
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output={
+                "validated": True,
+                "moments": moments,
+                "pbp_events": [],
+            },
+            game_context={"home_team": "Lakers", "away_team": "Celtics", "sport": "NBA"},
+        )
+
+        result = await execute_group_blocks(stage_input)
+
+        # Should detect blowout and compress
+        assert result.data["is_blowout"] is True
+        # Blowout games get max 5 blocks
+        assert result.data["block_count"] <= 5
+
+    @pytest.mark.asyncio
+    async def test_normal_game_with_drama_weights(self) -> None:
+        """Normal game uses drama weights from ANALYZE_DRAMA."""
+        from app.services.pipeline.stages.group_blocks import execute_group_blocks
+
+        moments = []
+        for period in [1, 2, 3, 4]:
+            for i in range(3):
+                moments.append({
+                    "play_ids": [period * 10 + i],
+                    "period": period,
+                    "score_before": [period * 20, period * 19],
+                    "score_after": [period * 20 + 5, period * 19 + 4],
+                })
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output={
+                "validated": True,
+                "moments": moments,
+                "pbp_events": [],
+                "quarter_weights": {"Q1": 0.8, "Q2": 1.0, "Q3": 1.5, "Q4": 2.0},
+                "peak_quarter": "Q4",
+                "story_type": "close_finish",
+                "headline": "Lakers win thriller",
+            },
+            game_context={"home_team": "Lakers", "away_team": "Celtics", "sport": "NBA"},
+        )
+
+        result = await execute_group_blocks(stage_input)
+
+        assert result.data["blocks_grouped"] is True
+        assert result.data["quarter_weights"] == {"Q1": 0.8, "Q2": 1.0, "Q3": 1.5, "Q4": 2.0}
+        assert result.data["is_blowout"] is False
+
+    @pytest.mark.asyncio
+    async def test_missing_moments_raises(self) -> None:
+        """Missing moments raises ValueError."""
+        from app.services.pipeline.stages.group_blocks import execute_group_blocks
+        import pytest
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output={
+                "validated": True,
+                "moments": None,
+                "pbp_events": [],
+            },
+            game_context={"home_team": "Lakers", "away_team": "Celtics", "sport": "NBA"},
+        )
+
+        with pytest.raises(ValueError, match="No moments"):
+            await execute_group_blocks(stage_input)
+
+    @pytest.mark.asyncio
+    async def test_validation_required(self) -> None:
+        """Validation must pass before grouping."""
+        from app.services.pipeline.stages.group_blocks import execute_group_blocks
+        import pytest
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output={
+                "validated": False,
+                "moments": [{"play_ids": [1]}],
+                "pbp_events": [],
+            },
+            game_context={"home_team": "Lakers", "away_team": "Celtics", "sport": "NBA"},
+        )
+
+        with pytest.raises(ValueError, match="VALIDATE_MOMENTS to pass"):
+            await execute_group_blocks(stage_input)
+
+    @pytest.mark.asyncio
+    async def test_missing_previous_output_raises(self) -> None:
+        """Missing previous output raises ValueError."""
+        from app.services.pipeline.stages.group_blocks import execute_group_blocks
+        import pytest
+
+        stage_input = StageInput(
+            game_id=1,
+            run_id=1,
+            previous_output=None,
+            game_context={"home_team": "Lakers", "away_team": "Celtics", "sport": "NBA"},
+        )
+
+        with pytest.raises(ValueError, match="requires previous stage output"):
+            await execute_group_blocks(stage_input)

@@ -1,5 +1,6 @@
 """Tests for normalize_pbp stage helper functions."""
 
+import pytest
 from datetime import datetime, timedelta
 
 
@@ -1445,3 +1446,220 @@ class TestOvertimeTiming:
         nhl_plays = [self._make_play(1, quarter=1, game_clock="10:00", home_score=1, away_score=0)]
         nhl_events, _ = _build_pbp_events(nhl_plays, game_start, league_code="NHL")
         assert nhl_events[0]["intra_phase_order"] == NHL_PERIOD_GAME_SECONDS - 600
+
+
+class TestScoreViolationsBranches:
+    """Tests for score violation detection edge cases."""
+
+    def _make_play(
+        self,
+        play_index,
+        quarter=1,
+        game_clock="12:00",
+        home_score=0,
+        away_score=0,
+    ):
+        """Create a mock play object."""
+        from unittest.mock import MagicMock
+
+        play = MagicMock()
+        play.play_index = play_index
+        play.quarter = quarter
+        play.game_clock = game_clock
+        play.home_score = home_score
+        play.away_score = away_score
+        play.description = ""
+        play.play_type = "other"
+        play.player_name = None
+        play.team = None
+        return play
+
+    def test_home_score_decrease_violation(self):
+        """Home score decrease triggers violation."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=1, home_score=10, away_score=5),
+            self._make_play(2, quarter=1, home_score=8, away_score=5),  # Home decreased
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 1
+        assert violations[0]["type"] == "SCORE_DECREASE"
+        # Score should be carried forward
+        assert events[1]["home_score"] == 10
+
+    def test_away_score_decrease_violation(self):
+        """Away score decrease triggers violation."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=1, home_score=10, away_score=8),
+            self._make_play(2, quarter=1, home_score=10, away_score=5),  # Away decreased
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 1
+        assert violations[0]["type"] == "SCORE_DECREASE"
+        # Score should be carried forward
+        assert events[1]["away_score"] == 8
+
+    def test_home_only_score_decrease(self):
+        """Home-only score with decrease triggers violation."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=1, home_score=20, away_score=None),
+            self._make_play(2, quarter=1, home_score=15, away_score=None),  # Decrease
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 1
+        # Home score should be carried forward
+        assert events[1]["home_score"] == 20
+
+    def test_away_only_score_decrease(self):
+        """Away-only score with decrease triggers violation."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=1, home_score=None, away_score=18),
+            self._make_play(2, quarter=1, home_score=None, away_score=12),  # Decrease
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 1
+        # Away score should be carried forward
+        assert events[1]["away_score"] == 18
+
+    def test_valid_score_increase_no_violation(self):
+        """Valid score increase does not trigger violation."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=1, home_score=0, away_score=0),
+            self._make_play(2, quarter=1, home_score=3, away_score=0),
+            self._make_play(3, quarter=1, home_score=3, away_score=2),
+            self._make_play(4, quarter=1, home_score=6, away_score=4),
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 0
+        assert events[3]["home_score"] == 6
+        assert events[3]["away_score"] == 4
+
+    def test_true_game_start_zero_allowed(self):
+        """Zero scores at true game start (period 1, play 0) are allowed."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(0, quarter=1, home_score=0, away_score=0),  # True game start
+            self._make_play(1, quarter=1, home_score=2, away_score=0),
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 0
+
+
+class TestExecuteNormalizePbp:
+    """Tests for execute_normalize_pbp async function.
+
+    Note: These tests use basic mocking for database interactions.
+    The SQLAlchemy select() calls require actual database models,
+    so we test the error paths that can be triggered with simple mocks.
+    """
+
+    @pytest.mark.asyncio
+    async def test_game_not_found_raises(self):
+        """Missing game raises ValueError."""
+        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
+        from app.services.pipeline.models import StageInput
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        stage_input = StageInput(
+            game_id=999,
+            run_id=1,
+            previous_output=None,
+            game_context={},
+        )
+
+        # Patch out the select() call
+        with patch("app.services.pipeline.stages.normalize_pbp.select"):
+            with pytest.raises(ValueError, match="not found"):
+                await execute_normalize_pbp(mock_session, stage_input)
+
+    @pytest.mark.asyncio
+    async def test_game_not_final_raises(self):
+        """Non-final game raises ValueError."""
+        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
+        from app.services.pipeline.models import StageInput
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_game = MagicMock()
+        mock_game.is_final = False
+        mock_game.status = "in_progress"
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_game
+        mock_session.execute.return_value = mock_result
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output=None,
+            game_context={},
+        )
+
+        with patch("app.services.pipeline.stages.normalize_pbp.select"):
+            with pytest.raises(ValueError, match="not final"):
+                await execute_normalize_pbp(mock_session, stage_input)
+
+    @pytest.mark.asyncio
+    async def test_no_plays_raises(self):
+        """Game with no plays raises ValueError."""
+        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
+        from app.services.pipeline.models import StageInput
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_game = MagicMock()
+        mock_game.id = 123
+        mock_game.is_final = True
+        mock_game.status = "final"
+        mock_game.game_time = datetime(2025, 1, 15, 19, 0, 0)
+        mock_game.league = MagicMock(code="NBA")
+        mock_game.home_team = MagicMock(name="Lakers", abbreviation="LAL")
+        mock_game.away_team = MagicMock(name="Celtics", abbreviation="BOS")
+
+        mock_session = AsyncMock()
+
+        # First call returns game, second returns empty plays
+        game_result = MagicMock()
+        game_result.scalar_one_or_none.return_value = mock_game
+
+        plays_result = MagicMock()
+        plays_result.scalars.return_value.all.return_value = []
+
+        mock_session.execute.side_effect = [game_result, plays_result]
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output=None,
+            game_context={},
+        )
+
+        with patch("app.services.pipeline.stages.normalize_pbp.select"):
+            with pytest.raises(ValueError, match="no play-by-play"):
+                await execute_normalize_pbp(mock_session, stage_input)
