@@ -642,7 +642,7 @@ async def get_game_story(
             endClock=moment.get("end_clock"),
             scoreBefore=moment["score_before"],
             scoreAfter=moment["score_after"],
-            narrative=moment["narrative"],
+            narrative=moment.get("narrative"),
             cumulativeBoxScore=moment.get("cumulative_box_score"),
         )
         for moment in moments_data

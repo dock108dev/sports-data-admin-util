@@ -24,7 +24,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchGameStory } from "@/lib/api/sportsAdmin";
-import type { GameStoryResponse, StoryMoment, StoryPlay, MomentBoxScore, MomentPlayerStat } from "@/lib/api/sportsAdmin/storyTypes";
+import type { GameStoryResponse, StoryMoment, StoryPlay, MomentBoxScore, MomentPlayerStat, NarrativeBlock } from "@/lib/api/sportsAdmin/storyTypes";
 import { CollapsibleSection } from "./CollapsibleSection";
 import styles from "./styles.module.css";
 
@@ -251,20 +251,62 @@ export function StorySection({ gameId, hasStory }: StorySectionProps) {
             </div>
           )}
 
-          <div className={styles.storySummary}>
-            {story.story.moments.length} moments · {story.plays.length} plays
-          </div>
+          {/* PRIMARY: Narrative blocks with AI-generated text */}
+          {story.blocks && story.blocks.length > 0 && (
+            <>
+              <div className={styles.storySummary}>
+                {story.blocks.length} blocks · {story.totalWords ?? 0} words
+              </div>
+              <div className={styles.momentsList}>
+                {story.blocks.map((block) => (
+                  <div key={block.blockIndex} className={styles.momentCard}>
+                    <div className={styles.momentHeader}>
+                      <div className={styles.momentMeta}>
+                        <span className={styles.momentIndex}>#{block.blockIndex + 1}</span>
+                        <span className={styles.momentPeriod} style={{
+                          background: block.role === "SETUP" ? "#e0f2fe" :
+                                     block.role === "MOMENTUM_SHIFT" ? "#fef3c7" :
+                                     block.role === "RESOLUTION" ? "#dcfce7" : "#f3e8ff",
+                          color: block.role === "SETUP" ? "#0369a1" :
+                                 block.role === "MOMENTUM_SHIFT" ? "#b45309" :
+                                 block.role === "RESOLUTION" ? "#166534" : "#7e22ce"
+                        }}>{block.role}</span>
+                        <span className={styles.momentClock}>
+                          Q{block.periodStart}{block.periodEnd !== block.periodStart && `-${block.periodEnd}`}
+                        </span>
+                        <span className={styles.momentScoreChange}>
+                          {block.scoreBefore[0]}-{block.scoreBefore[1]} → {block.scoreAfter[0]}-{block.scoreAfter[1]}
+                        </span>
+                      </div>
+                    </div>
+                    <div className={styles.momentNarrative}>
+                      {block.narrative || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>No narrative</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
-          <div className={styles.momentsList}>
-            {story.story.moments.map((moment, idx) => (
-              <MomentCard
-                key={idx}
-                moment={moment}
-                momentIndex={idx}
-                plays={story.plays}
-              />
-            ))}
-          </div>
+          {/* SECONDARY: Legacy moments view (debugging) */}
+          {(!story.blocks || story.blocks.length === 0) && (
+            <>
+              <div className={styles.storySummary}>
+                {story.story.moments.length} moments · {story.plays.length} plays
+                <span style={{ color: "#94a3b8", marginLeft: "0.5rem" }}>(no blocks)</span>
+              </div>
+              <div className={styles.momentsList}>
+                {story.story.moments.map((moment, idx) => (
+                  <MomentCard
+                    key={idx}
+                    moment={moment}
+                    momentIndex={idx}
+                    plays={story.plays}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
     </CollapsibleSection>

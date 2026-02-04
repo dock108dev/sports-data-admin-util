@@ -145,7 +145,7 @@ export type StoryMoment = {
   endClock: string | null;
   scoreBefore: number[];
   scoreAfter: number[];
-  narrative: string;
+  narrative: string | null;  // Narrative is in blocks, not moments
   cumulativeBoxScore?: MomentBoxScore | null;
 };
 
@@ -186,6 +186,10 @@ export type GameStoryResponse = {
   plays: StoryPlay[];
   validationPassed: boolean;
   validationErrors: string[];
+  /** Phase 1 narrative blocks (4-7 blocks with narratives) */
+  blocks?: NarrativeBlock[];
+  /** Total word count across all block narratives */
+  totalWords?: number;
 };
 
 // =============================================================================

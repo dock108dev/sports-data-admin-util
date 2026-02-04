@@ -270,6 +270,126 @@ def _find_split_points(
     return selected
 
 
+def _find_weighted_split_points(
+    moments: list[dict[str, Any]],
+    target_blocks: int,
+    quarter_weights: dict[str, float],
+) -> list[int]:
+    """Find split points that allocate more blocks to high-drama quarters.
+
+    Uses quarter_weights from ANALYZE_DRAMA to distribute blocks.
+    Higher weight = more blocks allocated to that quarter.
+
+    Args:
+        moments: List of validated moments
+        target_blocks: Target number of blocks
+        quarter_weights: Dict like {"Q1": 1.0, "Q2": 0.8, "Q3": 1.5, "Q4": 2.0}
+
+    Returns:
+        List of split point indices
+    """
+    n = len(moments)
+    if n <= target_blocks:
+        return list(range(1, n))
+
+    # Group moments by quarter
+    quarter_moments: dict[str, list[int]] = {}
+    for i, moment in enumerate(moments):
+        period = moment.get("period", 1)
+        q_key = f"Q{period}" if period <= 4 else f"OT{period - 4}"
+        if q_key not in quarter_moments:
+            quarter_moments[q_key] = []
+        quarter_moments[q_key].append(i)
+
+    # Calculate block allocation per quarter based on weights
+    total_weight = sum(quarter_weights.get(q, 1.0) for q in quarter_moments.keys())
+    if total_weight == 0:
+        total_weight = len(quarter_moments)
+
+    # Allocate blocks proportionally to weights (excluding SETUP and RESOLUTION blocks)
+    # We reserve 1 block for SETUP and 1 for RESOLUTION, distribute the rest
+    distributable_blocks = max(1, target_blocks - 2)
+
+    quarter_block_allocation: dict[str, float] = {}
+    for q_key in quarter_moments.keys():
+        weight = quarter_weights.get(q_key, 1.0)
+        allocation = (weight / total_weight) * distributable_blocks
+        quarter_block_allocation[q_key] = allocation
+
+    logger.info(f"Quarter block allocation: {quarter_block_allocation}")
+
+    # Find split points respecting the allocation
+    # Strategy: More splits in high-weight quarters, fewer in low-weight quarters
+    split_points: list[int] = []
+    period_boundaries = find_period_boundaries(moments)
+
+    # Always include period boundaries as potential splits
+    for boundary in period_boundaries:
+        if 0 < boundary < n:
+            split_points.append(boundary)
+
+    # Add additional splits within high-weight quarters
+    sorted_quarters = sorted(quarter_moments.keys())
+    for q_key in sorted_quarters:
+        moment_indices = quarter_moments[q_key]
+        if not moment_indices:
+            continue
+
+        allocation = quarter_block_allocation.get(q_key, 1.0)
+        quarter_moment_count = len(moment_indices)
+
+        # Calculate how many internal splits this quarter should have
+        # based on its allocation relative to its moment count
+        if allocation >= 1.5 and quarter_moment_count >= 4:
+            # High-drama quarter: add 1-2 internal splits
+            internal_splits = min(2, int(allocation))
+            interval = quarter_moment_count // (internal_splits + 1)
+
+            for i in range(1, internal_splits + 1):
+                split_idx = moment_indices[0] + (i * interval)
+                if split_idx not in split_points and 0 < split_idx < n:
+                    # Only add if not too close to existing splits
+                    too_close = any(abs(split_idx - s) < 2 for s in split_points)
+                    if not too_close:
+                        split_points.append(split_idx)
+
+    # Sort and dedupe
+    split_points = sorted(set(split_points))
+
+    # Trim to target - 1 splits (target_blocks - 1 splits = target_blocks blocks)
+    needed_splits = target_blocks - 1
+    if len(split_points) > needed_splits:
+        # Keep the most important ones: period boundaries + high-drama internal splits
+        # Priority: period boundaries first, then by quarter weight
+        priority_splits = []
+        other_splits = []
+        for sp in split_points:
+            if sp in period_boundaries:
+                priority_splits.append(sp)
+            else:
+                other_splits.append(sp)
+
+        # Take all priority splits, then fill from others
+        split_points = priority_splits[:needed_splits]
+        remaining = needed_splits - len(split_points)
+        if remaining > 0:
+            split_points.extend(other_splits[:remaining])
+        split_points = sorted(split_points)
+
+    # If we don't have enough splits, fall back to even distribution
+    if len(split_points) < needed_splits:
+        interval = n / (needed_splits + 1)
+        for i in range(1, needed_splits + 1):
+            split = int(i * interval)
+            if split not in split_points and 0 < split < n:
+                split_points.append(split)
+            if len(split_points) >= needed_splits:
+                break
+        split_points = sorted(set(split_points))[:needed_splits]
+
+    return split_points
+
+
 def _select_key_plays(
     moments: list[dict[str, Any]],
     moment_indices: list[int],
@@ -563,8 +683,13 @@ async def execute_group_blocks(stage_input: StageInput) -> StageOutput:
         target_blocks = calculate_block_count(moments, lead_changes, total_plays)
         output.add_log(f"Target block count: {target_blocks}")
 
-        # Find optimal split points
-        split_points = _find_split_points(moments, target_blocks)
+        # Find optimal split points - use drama weights if available from ANALYZE_DRAMA
+        quarter_weights = previous_output.get("quarter_weights")
+        if quarter_weights:
+            output.add_log(f"Using drama-weighted block distribution: {quarter_weights}")
+            split_points = _find_weighted_split_points(moments, target_blocks, quarter_weights)
+        else:
+            split_points = _find_split_points(moments, target_blocks)
 
     output.add_log(f"Split points: {split_points}")
 
@@ -609,6 +734,11 @@ async def execute_group_blocks(stage_input: StageInput) -> StageOutput:
         "max_margin": max_margin,
         "decisive_moment_idx": decisive_idx,
         "garbage_time_start_idx": garbage_time_idx,
+        # Drama analysis passthrough from ANALYZE_DRAMA
+        "quarter_weights": previous_output.get("quarter_weights"),
+        "peak_quarter": previous_output.get("peak_quarter"),
+        "story_type": previous_output.get("story_type"),
+        "headline": previous_output.get("headline"),
         # Pass through from previous stages
         "moments": moments,
         "pbp_events": pbp_events,

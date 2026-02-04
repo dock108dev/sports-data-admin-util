@@ -17,6 +17,7 @@ from ..config import settings
 from ..logging import logger
 from ..models import NormalizedPlayByPlay
 from ..utils.cache import APICache
+from ..utils.datetime_utils import date_to_utc_datetime
 from ..utils.parsing import parse_int
 from .nhl_boxscore import NHLBoxscoreFetcher
 from .nhl_constants import NHL_SCHEDULE_URL
@@ -24,7 +25,6 @@ from .nhl_helpers import (
     build_team_identity_from_api,
     map_nhl_game_state,
     one_day,
-    parse_datetime,
 )
 from .nhl_models import NHLBoxscore, NHLLiveGame
 from .nhl_pbp import NHLPbpFetcher
@@ -127,9 +127,10 @@ class NHLLiveFeedClient:
                 status = map_nhl_game_state(game_state)
                 status_text = game.get("gameScheduleState")
 
-                # Parse game date/time
-                start_time_utc = game.get("startTimeUTC")
-                game_date = parse_datetime(start_time_utc)
+                # Use schedule date (not UTC start time) for game_date matching
+                # Late-night West Coast games have UTC times on the next calendar day
+                # but should match against the Eastern Time schedule date
+                game_date = date_to_utc_datetime(target_date)
 
                 # Extract team info
                 home_team_data = game.get("homeTeam", {})

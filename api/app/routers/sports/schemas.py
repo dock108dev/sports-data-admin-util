@@ -524,7 +524,7 @@ class StoryMoment(BaseModel):
     end_clock: str | None = Field(None, alias="endClock")
     score_before: list[int] = Field(..., alias="scoreBefore")
     score_after: list[int] = Field(..., alias="scoreAfter")
-    narrative: str
+    narrative: str | None = None  # Narrative is in blocks_json, not moments_json
     cumulative_box_score: MomentBoxScore | None = Field(None, alias="cumulativeBoxScore")
 
 
