@@ -43,16 +43,47 @@ logger = logging.getLogger(__name__)
 MIN_SENTENCES_PER_BLOCK = 2
 MAX_SENTENCES_PER_BLOCK = 4
 
+# Common abbreviations that contain periods but don't end sentences
+# Used to avoid false sentence breaks in _count_sentences
+COMMON_ABBREVIATIONS = [
+    "Mr.", "Mrs.", "Ms.", "Dr.", "Jr.", "Sr.", "vs.", "etc.", "e.g.", "i.e.",
+    "St.", "Ave.", "Blvd.", "Rd.", "Mt.", "Ft.",  # Addresses
+    "Jan.", "Feb.", "Mar.", "Apr.", "Aug.", "Sept.", "Oct.", "Nov.", "Dec.",
+]
+
 
 def _count_sentences(text: str) -> int:
     """Count the number of sentences in text.
 
-    Uses sentence-ending punctuation (. ! ?) to split.
-    Filters out empty results from the split.
+    Uses sentence-ending punctuation (. ! ?) to split, with handling for
+    common abbreviations to avoid false positives.
+
+    Known limitations:
+    - May not handle all abbreviations (only common ones are protected)
+    - Single-letter initials like "J. Smith" may cause false splits
+    - Decimal numbers like "3.5" are not specially handled
+
+    Since this is used for soft validation warnings (not hard failures),
+    approximate counts are acceptable.
     """
     if not text:
         return 0
-    sentences = re.split(r"[.!?]+", text)
+
+    # Protect common abbreviations by temporarily replacing their periods
+    # Use a marker that won't be split by [.!?]
+    protected = text
+    for abbrev in COMMON_ABBREVIATIONS:
+        # Case-insensitive replacement
+        pattern = re.escape(abbrev)
+        protected = re.sub(pattern, abbrev.replace(".", "\x00"), protected, flags=re.IGNORECASE)
+
+    # Collapse ellipsis to single marker (not a sentence break)
+    protected = re.sub(r"\.{2,}", "\x00", protected)
+
+    # Split on sentence-ending punctuation
+    sentences = re.split(r"[.!?]+", protected)
+
+    # Count non-empty segments
     return len([s for s in sentences if s.strip()])
 
 

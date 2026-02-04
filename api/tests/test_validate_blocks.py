@@ -11,6 +11,7 @@ from app.services.pipeline.stages.validate_blocks import (
     _validate_score_continuity,
     _validate_moment_coverage,
     _validate_key_plays,
+    _count_sentences,
 )
 from app.services.pipeline.stages.block_types import (
     SemanticRole,
@@ -697,3 +698,70 @@ class TestExecuteValidateBlocks:
 
         assert result.data["blocks_validated"] is False
         assert any("discontinuity" in e.lower() for e in result.data["errors"])
+
+
+class TestSentenceCounting:
+    """Tests for sentence counting with abbreviation handling."""
+
+    def test_basic_sentence_counting(self) -> None:
+        """Counts simple sentences correctly."""
+        assert _count_sentences("One sentence. Two sentences.") == 2
+        assert _count_sentences("Just one sentence.") == 1
+        assert _count_sentences("First! Second? Third.") == 3
+
+    def test_empty_text_returns_zero(self) -> None:
+        """Empty or whitespace text returns zero."""
+        assert _count_sentences("") == 0
+        assert _count_sentences("   ") == 0
+
+    def test_abbreviation_dr(self) -> None:
+        """Dr. abbreviation does not break sentence counting."""
+        text = "Dr. James made a shot. Then he scored again."
+        assert _count_sentences(text) == 2
+
+    def test_abbreviation_mr_mrs(self) -> None:
+        """Mr. and Mrs. abbreviations don't break counting."""
+        text = "Mr. Smith scored. Mrs. Jones assisted."
+        assert _count_sentences(text) == 2
+
+    def test_abbreviation_vs(self) -> None:
+        """vs. abbreviation doesn't break counting."""
+        text = "Lakers vs. Celtics was exciting. Great game."
+        assert _count_sentences(text) == 2
+
+    def test_abbreviation_st_ave(self) -> None:
+        """Address abbreviations don't break counting."""
+        text = "Game at St. Louis Arena. The fans were loud."
+        assert _count_sentences(text) == 2
+
+    def test_multiple_abbreviations(self) -> None:
+        """Multiple abbreviations in one sentence work correctly."""
+        text = "Dr. Smith and Mr. Jones watched. They enjoyed it."
+        assert _count_sentences(text) == 2
+
+    def test_ellipsis_not_sentence_break(self) -> None:
+        """Ellipsis (...) is not treated as sentence break."""
+        text = "The play was... interesting. Next play was better."
+        assert _count_sentences(text) == 2
+
+    def test_exclamation_and_question(self) -> None:
+        """Exclamation and question marks count as sentence ends."""
+        text = "What a play! Did you see that? Amazing."
+        assert _count_sentences(text) == 3
+
+    def test_consecutive_punctuation(self) -> None:
+        """Consecutive punctuation counts as single sentence end."""
+        text = "Really?! Yes. Wow..."
+        # "Really?!" = 1, "Yes." = 1, "Wow..." (ellipsis) = 1
+        # But ellipsis should be protected, so just "Wow" after
+        assert _count_sentences(text) == 3
+
+    def test_case_insensitive_abbreviations(self) -> None:
+        """Abbreviations work case-insensitively."""
+        text = "DR. JAMES scored. mr. smith assisted."
+        assert _count_sentences(text) == 2
+
+    def test_month_abbreviations(self) -> None:
+        """Month abbreviations don't break counting."""
+        text = "Game on Jan. 15. Next game Feb. 20."
+        assert _count_sentences(text) == 2
