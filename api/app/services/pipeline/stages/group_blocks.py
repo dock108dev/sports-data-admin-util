@@ -507,8 +507,9 @@ def _assign_roles(blocks: list[NarrativeBlock]) -> None:
     if n > 1:
         assign(blocks[-1], SemanticRole.RESOLUTION)
 
-    # Find blocks with lead changes
-    lead_change_block_idx: int | None = None
+    # Find ALL blocks with lead changes, select the LAST (most significant)
+    # Late-game lead changes (Q3/Q4) are more narratively dramatic than early Q1 swings
+    lead_change_block_indices: list[int] = []
     for i, block in enumerate(blocks):
         if i == 0 or i == n - 1:
             continue  # Skip first/last
@@ -524,10 +525,12 @@ def _assign_roles(blocks: list[NarrativeBlock]) -> None:
         )
 
         if leader_before != 0 and leader_after != 0 and leader_before != leader_after:
-            lead_change_block_idx = i
-            break
+            lead_change_block_indices.append(i)
 
-    # Rule 3: First lead change block -> MOMENTUM_SHIFT
+    # Select LAST lead change (late game = more significant narratively)
+    lead_change_block_idx = lead_change_block_indices[-1] if lead_change_block_indices else None
+
+    # Rule 3: Last lead change block -> MOMENTUM_SHIFT
     if lead_change_block_idx is not None and can_assign(SemanticRole.MOMENTUM_SHIFT):
         assign(blocks[lead_change_block_idx], SemanticRole.MOMENTUM_SHIFT)
 

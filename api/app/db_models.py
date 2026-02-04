@@ -1027,7 +1027,8 @@ class PipelineStage(str, Enum):
     - NORMALIZE_PBP: Build normalized PBP events with phases
     - GENERATE_MOMENTS: Partition game into narrative moments
     - VALIDATE_MOMENTS: Run validation checks
-    - GROUP_BLOCKS: Group moments into 4-7 narrative blocks
+    - ANALYZE_DRAMA: Use AI to identify game's dramatic peak and weight quarters
+    - GROUP_BLOCKS: Group moments into 4-7 narrative blocks (drama-weighted)
     - RENDER_BLOCKS: Generate short narratives for each block
     - VALIDATE_BLOCKS: Validate block constraints
     - FINALIZE_MOMENTS: Persist final story artifact
@@ -1036,10 +1037,25 @@ class PipelineStage(str, Enum):
     NORMALIZE_PBP = "NORMALIZE_PBP"
     GENERATE_MOMENTS = "GENERATE_MOMENTS"
     VALIDATE_MOMENTS = "VALIDATE_MOMENTS"
+    ANALYZE_DRAMA = "ANALYZE_DRAMA"
     GROUP_BLOCKS = "GROUP_BLOCKS"
     RENDER_BLOCKS = "RENDER_BLOCKS"
     VALIDATE_BLOCKS = "VALIDATE_BLOCKS"
     FINALIZE_MOMENTS = "FINALIZE_MOMENTS"
+
+    @classmethod
+    def ordered_stages(cls) -> list["PipelineStage"]:
+        """Return stages in execution order."""
+        return [
+            cls.NORMALIZE_PBP,
+            cls.GENERATE_MOMENTS,
+            cls.VALIDATE_MOMENTS,
+            cls.ANALYZE_DRAMA,
+            cls.GROUP_BLOCKS,
+            cls.RENDER_BLOCKS,
+            cls.VALIDATE_BLOCKS,
+            cls.FINALIZE_MOMENTS,
+        ]
 
 
 class PipelineRunStatus(str, Enum):
