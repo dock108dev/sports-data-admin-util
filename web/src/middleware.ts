@@ -87,7 +87,8 @@ function unauthorizedResponse(): NextResponse {
   });
 }
 
-// Apply to all routes
+// Apply to all routes except static assets and API routes
+// API routes use X-API-Key auth, not basic auth
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
 };
