@@ -14,7 +14,8 @@
 
 | Guide | Description |
 |-------|-------------|
-| [API Integration Guide](API.md#external-app-integration-guide) | **For app developers:** How to consume game data across all sports |
+| [Game Flow Guide](GAME_FLOW_GUIDE.md) | **Start here:** Compact timeline with blocks and mini box scores |
+| [API Integration Guide](API.md#external-app-integration-guide) | Full API reference for consuming game data |
 
 ## Development
 
