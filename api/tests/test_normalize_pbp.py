@@ -1,5 +1,6 @@
 """Tests for normalize_pbp stage helper functions."""
 
+import pytest
 from datetime import datetime, timedelta
 
 
@@ -8,57 +9,57 @@ class TestNbaPhaseForQuarter:
 
     def test_quarter_1(self):
         """Quarter 1 returns q1."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_phase_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
 
-        assert _nba_phase_for_quarter(1) == "q1"
+        assert nba_phase_for_quarter(1) == "q1"
 
     def test_quarter_2(self):
         """Quarter 2 returns q2."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_phase_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
 
-        assert _nba_phase_for_quarter(2) == "q2"
+        assert nba_phase_for_quarter(2) == "q2"
 
     def test_quarter_3(self):
         """Quarter 3 returns q3."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_phase_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
 
-        assert _nba_phase_for_quarter(3) == "q3"
+        assert nba_phase_for_quarter(3) == "q3"
 
     def test_quarter_4(self):
         """Quarter 4 returns q4."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_phase_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
 
-        assert _nba_phase_for_quarter(4) == "q4"
+        assert nba_phase_for_quarter(4) == "q4"
 
     def test_overtime_1(self):
         """Quarter 5 (OT1) returns ot1."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_phase_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
 
-        assert _nba_phase_for_quarter(5) == "ot1"
+        assert nba_phase_for_quarter(5) == "ot1"
 
     def test_overtime_2(self):
         """Quarter 6 (OT2) returns ot2."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_phase_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
 
-        assert _nba_phase_for_quarter(6) == "ot2"
+        assert nba_phase_for_quarter(6) == "ot2"
 
     def test_overtime_3(self):
         """Quarter 7 (OT3) returns ot3."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_phase_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
 
-        assert _nba_phase_for_quarter(7) == "ot3"
+        assert nba_phase_for_quarter(7) == "ot3"
 
     def test_overtime_4(self):
         """Quarter 8 (OT4) returns ot4."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_phase_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
 
-        assert _nba_phase_for_quarter(8) == "ot4"
+        assert nba_phase_for_quarter(8) == "ot4"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_phase_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
 
-        assert _nba_phase_for_quarter(None) == "unknown"
+        assert nba_phase_for_quarter(None) == "unknown"
 
 
 class TestNbaBlockForQuarter:
@@ -66,30 +67,30 @@ class TestNbaBlockForQuarter:
 
     def test_first_half(self):
         """Quarters 1-2 are first_half."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_block_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_block_for_quarter
 
-        assert _nba_block_for_quarter(1) == "first_half"
-        assert _nba_block_for_quarter(2) == "first_half"
+        assert nba_block_for_quarter(1) == "first_half"
+        assert nba_block_for_quarter(2) == "first_half"
 
     def test_second_half(self):
         """Quarters 3-4 are second_half."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_block_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_block_for_quarter
 
-        assert _nba_block_for_quarter(3) == "second_half"
-        assert _nba_block_for_quarter(4) == "second_half"
+        assert nba_block_for_quarter(3) == "second_half"
+        assert nba_block_for_quarter(4) == "second_half"
 
     def test_overtime(self):
         """Quarters 5+ are overtime."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_block_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_block_for_quarter
 
-        assert _nba_block_for_quarter(5) == "overtime"
-        assert _nba_block_for_quarter(6) == "overtime"
+        assert nba_block_for_quarter(5) == "overtime"
+        assert nba_block_for_quarter(6) == "overtime"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_block_for_quarter
+        from app.services.pipeline.stages.pbp_sport_config import nba_block_for_quarter
 
-        assert _nba_block_for_quarter(None) == "unknown"
+        assert nba_block_for_quarter(None) == "unknown"
 
 
 class TestNbaQuarterStart:
@@ -97,34 +98,34 @@ class TestNbaQuarterStart:
 
     def test_quarter_1_starts_at_game_start(self):
         """Quarter 1 starts at game start."""
-        from app.services.pipeline.stages.normalize_pbp import _nba_quarter_start
+        from app.services.pipeline.stages.pbp_sport_config import nba_quarter_start
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
-        result = _nba_quarter_start(game_start, 1)
+        result = nba_quarter_start(game_start, 1)
         assert result == game_start
 
     def test_quarter_2_timing(self):
         """Quarter 2 starts after Q1."""
-        from app.services.pipeline.stages.normalize_pbp import (
-            _nba_quarter_start,
+        from app.services.pipeline.stages.pbp_sport_config import (
+            nba_quarter_start,
             NBA_QUARTER_REAL_SECONDS,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
-        result = _nba_quarter_start(game_start, 2)
+        result = nba_quarter_start(game_start, 2)
         expected = game_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
         assert result == expected
 
     def test_quarter_3_timing(self):
         """Quarter 3 starts after halftime."""
-        from app.services.pipeline.stages.normalize_pbp import (
-            _nba_quarter_start,
+        from app.services.pipeline.stages.pbp_sport_config import (
+            nba_quarter_start,
             NBA_QUARTER_REAL_SECONDS,
             NBA_HALFTIME_REAL_SECONDS,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
-        result = _nba_quarter_start(game_start, 3)
+        result = nba_quarter_start(game_start, 3)
         expected = game_start + timedelta(
             seconds=2 * NBA_QUARTER_REAL_SECONDS + NBA_HALFTIME_REAL_SECONDS
         )
@@ -132,14 +133,14 @@ class TestNbaQuarterStart:
 
     def test_quarter_4_timing(self):
         """Quarter 4 starts after Q3."""
-        from app.services.pipeline.stages.normalize_pbp import (
-            _nba_quarter_start,
+        from app.services.pipeline.stages.pbp_sport_config import (
+            nba_quarter_start,
             NBA_QUARTER_REAL_SECONDS,
             NBA_HALFTIME_REAL_SECONDS,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
-        result = _nba_quarter_start(game_start, 4)
+        result = nba_quarter_start(game_start, 4)
         expected = game_start + timedelta(
             seconds=3 * NBA_QUARTER_REAL_SECONDS + NBA_HALFTIME_REAL_SECONDS
         )
@@ -722,33 +723,33 @@ class TestNcaabPhaseForPeriod:
 
     def test_half_1(self):
         """Period 1 returns h1."""
-        from app.services.pipeline.stages.normalize_pbp import _ncaab_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import ncaab_phase_for_period
 
-        assert _ncaab_phase_for_period(1) == "h1"
+        assert ncaab_phase_for_period(1) == "h1"
 
     def test_half_2(self):
         """Period 2 returns h2."""
-        from app.services.pipeline.stages.normalize_pbp import _ncaab_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import ncaab_phase_for_period
 
-        assert _ncaab_phase_for_period(2) == "h2"
+        assert ncaab_phase_for_period(2) == "h2"
 
     def test_overtime_1(self):
         """Period 3 (OT1) returns ot1."""
-        from app.services.pipeline.stages.normalize_pbp import _ncaab_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import ncaab_phase_for_period
 
-        assert _ncaab_phase_for_period(3) == "ot1"
+        assert ncaab_phase_for_period(3) == "ot1"
 
     def test_overtime_2(self):
         """Period 4 (OT2) returns ot2."""
-        from app.services.pipeline.stages.normalize_pbp import _ncaab_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import ncaab_phase_for_period
 
-        assert _ncaab_phase_for_period(4) == "ot2"
+        assert ncaab_phase_for_period(4) == "ot2"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.normalize_pbp import _ncaab_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import ncaab_phase_for_period
 
-        assert _ncaab_phase_for_period(None) == "unknown"
+        assert ncaab_phase_for_period(None) == "unknown"
 
 
 class TestNcaabBlockForPeriod:
@@ -756,28 +757,28 @@ class TestNcaabBlockForPeriod:
 
     def test_first_half(self):
         """Period 1 is first_half."""
-        from app.services.pipeline.stages.normalize_pbp import _ncaab_block_for_period
+        from app.services.pipeline.stages.pbp_sport_config import ncaab_block_for_period
 
-        assert _ncaab_block_for_period(1) == "first_half"
+        assert ncaab_block_for_period(1) == "first_half"
 
     def test_second_half(self):
         """Period 2 is second_half."""
-        from app.services.pipeline.stages.normalize_pbp import _ncaab_block_for_period
+        from app.services.pipeline.stages.pbp_sport_config import ncaab_block_for_period
 
-        assert _ncaab_block_for_period(2) == "second_half"
+        assert ncaab_block_for_period(2) == "second_half"
 
     def test_overtime(self):
         """Periods 3+ are overtime."""
-        from app.services.pipeline.stages.normalize_pbp import _ncaab_block_for_period
+        from app.services.pipeline.stages.pbp_sport_config import ncaab_block_for_period
 
-        assert _ncaab_block_for_period(3) == "overtime"
-        assert _ncaab_block_for_period(4) == "overtime"
+        assert ncaab_block_for_period(3) == "overtime"
+        assert ncaab_block_for_period(4) == "overtime"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.normalize_pbp import _ncaab_block_for_period
+        from app.services.pipeline.stages.pbp_sport_config import ncaab_block_for_period
 
-        assert _ncaab_block_for_period(None) == "unknown"
+        assert ncaab_block_for_period(None) == "unknown"
 
 
 class TestNcaabPeriodStart:
@@ -785,22 +786,22 @@ class TestNcaabPeriodStart:
 
     def test_half_1_starts_at_game_start(self):
         """First half starts at game start."""
-        from app.services.pipeline.stages.normalize_pbp import _ncaab_period_start
+        from app.services.pipeline.stages.pbp_sport_config import ncaab_period_start
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
-        result = _ncaab_period_start(game_start, 1)
+        result = ncaab_period_start(game_start, 1)
         assert result == game_start
 
     def test_half_2_timing(self):
         """Second half starts after H1 + halftime."""
-        from app.services.pipeline.stages.normalize_pbp import (
-            _ncaab_period_start,
+        from app.services.pipeline.stages.pbp_sport_config import (
+            ncaab_period_start,
             NCAAB_HALF_REAL_SECONDS,
             NCAAB_HALFTIME_REAL_SECONDS,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
-        result = _ncaab_period_start(game_start, 2)
+        result = ncaab_period_start(game_start, 2)
         expected = game_start + timedelta(
             seconds=NCAAB_HALF_REAL_SECONDS + NCAAB_HALFTIME_REAL_SECONDS
         )
@@ -808,13 +809,13 @@ class TestNcaabPeriodStart:
 
     def test_overtime_timing(self):
         """Overtime periods start after regulation."""
-        from app.services.pipeline.stages.normalize_pbp import (
-            _ncaab_period_start,
+        from app.services.pipeline.stages.pbp_sport_config import (
+            ncaab_period_start,
             NCAAB_REGULATION_REAL_SECONDS,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
-        result = _ncaab_period_start(game_start, 3)  # OT1
+        result = ncaab_period_start(game_start, 3)  # OT1
         expected = game_start + timedelta(
             seconds=NCAAB_REGULATION_REAL_SECONDS + 10 * 60
         )
@@ -920,46 +921,46 @@ class TestNhlPhaseForPeriod:
 
     def test_period_1(self):
         """Period 1 returns p1."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
 
-        assert _nhl_phase_for_period(1) == "p1"
+        assert nhl_phase_for_period(1) == "p1"
 
     def test_period_2(self):
         """Period 2 returns p2."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
 
-        assert _nhl_phase_for_period(2) == "p2"
+        assert nhl_phase_for_period(2) == "p2"
 
     def test_period_3(self):
         """Period 3 returns p3."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
 
-        assert _nhl_phase_for_period(3) == "p3"
+        assert nhl_phase_for_period(3) == "p3"
 
     def test_overtime(self):
         """Period 4 (OT) returns ot."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
 
-        assert _nhl_phase_for_period(4) == "ot"
+        assert nhl_phase_for_period(4) == "ot"
 
     def test_shootout(self):
         """Period 5 (shootout) returns shootout."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
 
-        assert _nhl_phase_for_period(5) == "shootout"
+        assert nhl_phase_for_period(5) == "shootout"
 
     def test_extended_overtime(self):
         """Periods 6+ return ot2, ot3, etc. for playoff OT."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
 
-        assert _nhl_phase_for_period(6) == "ot3"
-        assert _nhl_phase_for_period(7) == "ot4"
+        assert nhl_phase_for_period(6) == "ot3"
+        assert nhl_phase_for_period(7) == "ot4"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_phase_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
 
-        assert _nhl_phase_for_period(None) == "unknown"
+        assert nhl_phase_for_period(None) == "unknown"
 
 
 class TestNhlBlockForPeriod:
@@ -967,36 +968,36 @@ class TestNhlBlockForPeriod:
 
     def test_regulation(self):
         """Periods 1-3 are regulation."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_block_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_block_for_period
 
-        assert _nhl_block_for_period(1) == "regulation"
-        assert _nhl_block_for_period(2) == "regulation"
-        assert _nhl_block_for_period(3) == "regulation"
+        assert nhl_block_for_period(1) == "regulation"
+        assert nhl_block_for_period(2) == "regulation"
+        assert nhl_block_for_period(3) == "regulation"
 
     def test_overtime(self):
         """Period 4 is overtime."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_block_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_block_for_period
 
-        assert _nhl_block_for_period(4) == "overtime"
+        assert nhl_block_for_period(4) == "overtime"
 
     def test_shootout(self):
         """Period 5 is shootout."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_block_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_block_for_period
 
-        assert _nhl_block_for_period(5) == "shootout"
+        assert nhl_block_for_period(5) == "shootout"
 
     def test_extended_overtime(self):
         """Periods 6+ are overtime (playoffs)."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_block_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_block_for_period
 
-        assert _nhl_block_for_period(6) == "overtime"
-        assert _nhl_block_for_period(7) == "overtime"
+        assert nhl_block_for_period(6) == "overtime"
+        assert nhl_block_for_period(7) == "overtime"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_block_for_period
+        from app.services.pipeline.stages.pbp_sport_config import nhl_block_for_period
 
-        assert _nhl_block_for_period(None) == "unknown"
+        assert nhl_block_for_period(None) == "unknown"
 
 
 class TestNhlPeriodStart:
@@ -1004,22 +1005,22 @@ class TestNhlPeriodStart:
 
     def test_period_1_starts_at_game_start(self):
         """Period 1 starts at game start."""
-        from app.services.pipeline.stages.normalize_pbp import _nhl_period_start
+        from app.services.pipeline.stages.pbp_sport_config import nhl_period_start
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
-        result = _nhl_period_start(game_start, 1)
+        result = nhl_period_start(game_start, 1)
         assert result == game_start
 
     def test_period_2_timing(self):
         """Period 2 starts after P1 + first intermission."""
-        from app.services.pipeline.stages.normalize_pbp import (
-            _nhl_period_start,
+        from app.services.pipeline.stages.pbp_sport_config import (
+            nhl_period_start,
             NHL_PERIOD_REAL_SECONDS,
             NHL_INTERMISSION_REAL_SECONDS,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
-        result = _nhl_period_start(game_start, 2)
+        result = nhl_period_start(game_start, 2)
         expected = game_start + timedelta(
             seconds=NHL_PERIOD_REAL_SECONDS + NHL_INTERMISSION_REAL_SECONDS
         )
@@ -1027,14 +1028,14 @@ class TestNhlPeriodStart:
 
     def test_period_3_timing(self):
         """Period 3 starts after P2 + second intermission."""
-        from app.services.pipeline.stages.normalize_pbp import (
-            _nhl_period_start,
+        from app.services.pipeline.stages.pbp_sport_config import (
+            nhl_period_start,
             NHL_PERIOD_REAL_SECONDS,
             NHL_INTERMISSION_REAL_SECONDS,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
-        result = _nhl_period_start(game_start, 3)
+        result = nhl_period_start(game_start, 3)
         expected = game_start + timedelta(
             seconds=2 * NHL_PERIOD_REAL_SECONDS + 2 * NHL_INTERMISSION_REAL_SECONDS
         )
@@ -1042,13 +1043,13 @@ class TestNhlPeriodStart:
 
     def test_overtime_timing(self):
         """Overtime starts after regulation."""
-        from app.services.pipeline.stages.normalize_pbp import (
-            _nhl_period_start,
+        from app.services.pipeline.stages.pbp_sport_config import (
+            nhl_period_start,
             NHL_REGULATION_REAL_SECONDS,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
-        result = _nhl_period_start(game_start, 4)  # OT
+        result = nhl_period_start(game_start, 4)  # OT
         expected = game_start + timedelta(
             seconds=NHL_REGULATION_REAL_SECONDS + 10 * 60
         )
@@ -1445,3 +1446,220 @@ class TestOvertimeTiming:
         nhl_plays = [self._make_play(1, quarter=1, game_clock="10:00", home_score=1, away_score=0)]
         nhl_events, _ = _build_pbp_events(nhl_plays, game_start, league_code="NHL")
         assert nhl_events[0]["intra_phase_order"] == NHL_PERIOD_GAME_SECONDS - 600
+
+
+class TestScoreViolationsBranches:
+    """Tests for score violation detection edge cases."""
+
+    def _make_play(
+        self,
+        play_index,
+        quarter=1,
+        game_clock="12:00",
+        home_score=0,
+        away_score=0,
+    ):
+        """Create a mock play object."""
+        from unittest.mock import MagicMock
+
+        play = MagicMock()
+        play.play_index = play_index
+        play.quarter = quarter
+        play.game_clock = game_clock
+        play.home_score = home_score
+        play.away_score = away_score
+        play.description = ""
+        play.play_type = "other"
+        play.player_name = None
+        play.team = None
+        return play
+
+    def test_home_score_decrease_violation(self):
+        """Home score decrease triggers violation."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=1, home_score=10, away_score=5),
+            self._make_play(2, quarter=1, home_score=8, away_score=5),  # Home decreased
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 1
+        assert violations[0]["type"] == "SCORE_DECREASE"
+        # Score should be carried forward
+        assert events[1]["home_score"] == 10
+
+    def test_away_score_decrease_violation(self):
+        """Away score decrease triggers violation."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=1, home_score=10, away_score=8),
+            self._make_play(2, quarter=1, home_score=10, away_score=5),  # Away decreased
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 1
+        assert violations[0]["type"] == "SCORE_DECREASE"
+        # Score should be carried forward
+        assert events[1]["away_score"] == 8
+
+    def test_home_only_score_decrease(self):
+        """Home-only score with decrease triggers violation."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=1, home_score=20, away_score=None),
+            self._make_play(2, quarter=1, home_score=15, away_score=None),  # Decrease
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 1
+        # Home score should be carried forward
+        assert events[1]["home_score"] == 20
+
+    def test_away_only_score_decrease(self):
+        """Away-only score with decrease triggers violation."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=1, home_score=None, away_score=18),
+            self._make_play(2, quarter=1, home_score=None, away_score=12),  # Decrease
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 1
+        # Away score should be carried forward
+        assert events[1]["away_score"] == 18
+
+    def test_valid_score_increase_no_violation(self):
+        """Valid score increase does not trigger violation."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(1, quarter=1, home_score=0, away_score=0),
+            self._make_play(2, quarter=1, home_score=3, away_score=0),
+            self._make_play(3, quarter=1, home_score=3, away_score=2),
+            self._make_play(4, quarter=1, home_score=6, away_score=4),
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 0
+        assert events[3]["home_score"] == 6
+        assert events[3]["away_score"] == 4
+
+    def test_true_game_start_zero_allowed(self):
+        """Zero scores at true game start (period 1, play 0) are allowed."""
+        from app.services.pipeline.stages.normalize_pbp import _build_pbp_events
+
+        game_start = datetime(2025, 1, 15, 19, 0, 0)
+        plays = [
+            self._make_play(0, quarter=1, home_score=0, away_score=0),  # True game start
+            self._make_play(1, quarter=1, home_score=2, away_score=0),
+        ]
+        events, violations = _build_pbp_events(plays, game_start, game_id=123)
+
+        assert len(violations) == 0
+
+
+class TestExecuteNormalizePbp:
+    """Tests for execute_normalize_pbp async function.
+
+    Note: These tests use basic mocking for database interactions.
+    The SQLAlchemy select() calls require actual database models,
+    so we test the error paths that can be triggered with simple mocks.
+    """
+
+    @pytest.mark.asyncio
+    async def test_game_not_found_raises(self):
+        """Missing game raises ValueError."""
+        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
+        from app.services.pipeline.models import StageInput
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        stage_input = StageInput(
+            game_id=999,
+            run_id=1,
+            previous_output=None,
+            game_context={},
+        )
+
+        # Patch out the select() call
+        with patch("app.services.pipeline.stages.normalize_pbp.select"):
+            with pytest.raises(ValueError, match="not found"):
+                await execute_normalize_pbp(mock_session, stage_input)
+
+    @pytest.mark.asyncio
+    async def test_game_not_final_raises(self):
+        """Non-final game raises ValueError."""
+        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
+        from app.services.pipeline.models import StageInput
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_game = MagicMock()
+        mock_game.is_final = False
+        mock_game.status = "in_progress"
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_game
+        mock_session.execute.return_value = mock_result
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output=None,
+            game_context={},
+        )
+
+        with patch("app.services.pipeline.stages.normalize_pbp.select"):
+            with pytest.raises(ValueError, match="not final"):
+                await execute_normalize_pbp(mock_session, stage_input)
+
+    @pytest.mark.asyncio
+    async def test_no_plays_raises(self):
+        """Game with no plays raises ValueError."""
+        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
+        from app.services.pipeline.models import StageInput
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_game = MagicMock()
+        mock_game.id = 123
+        mock_game.is_final = True
+        mock_game.status = "final"
+        mock_game.game_time = datetime(2025, 1, 15, 19, 0, 0)
+        mock_game.league = MagicMock(code="NBA")
+        mock_game.home_team = MagicMock(name="Lakers", abbreviation="LAL")
+        mock_game.away_team = MagicMock(name="Celtics", abbreviation="BOS")
+
+        mock_session = AsyncMock()
+
+        # First call returns game, second returns empty plays
+        game_result = MagicMock()
+        game_result.scalar_one_or_none.return_value = mock_game
+
+        plays_result = MagicMock()
+        plays_result.scalars.return_value.all.return_value = []
+
+        mock_session.execute.side_effect = [game_result, plays_result]
+
+        stage_input = StageInput(
+            game_id=123,
+            run_id=1,
+            previous_output=None,
+            game_context={},
+        )
+
+        with patch("app.services.pipeline.stages.normalize_pbp.select"):
+            with pytest.raises(ValueError, match="no play-by-play"):
+                await execute_normalize_pbp(mock_session, stage_input)

@@ -48,6 +48,7 @@ from .schemas import (
     NHLGoalieStat,
     NHLSkaterStat,
     OddsEntry,
+    StoryBlock,
     StoryContent,
     StoryMoment,
     StoryPlay,
@@ -543,7 +544,11 @@ async def generate_game_timeline(
     game_id: int,
     session: AsyncSession = Depends(get_db),
 ) -> TimelineArtifactResponse:
-    """Generate and store a finalized NBA timeline artifact."""
+    """Generate and store a finalized timeline artifact for any league.
+
+    Social data is optional and gracefully degrades to empty for leagues
+    without social scraping configured (NHL, NCAAB).
+    """
     try:
         artifact = await generate_timeline_artifact(session, game_id)
     except TimelineGenerationError as exc:
@@ -583,9 +588,11 @@ async def get_game_story(
     - plays: Only plays referenced by moments
     - validation_passed: Whether validation passed
     - validation_errors: Any validation errors (empty if passed)
+    - blocks: 4-7 narrative blocks (Phase 1, consumer-facing output)
+    - total_words: Total word count across all block narratives
 
     Returns:
-        GameStoryResponse with moments, plays, and validation status
+        GameStoryResponse with moments, plays, blocks, and validation status
 
     Raises:
         HTTPException 404: If no Story exists for this game
@@ -635,7 +642,7 @@ async def get_game_story(
             endClock=moment.get("end_clock"),
             scoreBefore=moment["score_before"],
             scoreAfter=moment["score_after"],
-            narrative=moment["narrative"],
+            narrative=moment.get("narrative"),
             cumulativeBoxScore=moment.get("cumulative_box_score"),
         )
         for moment in moments_data
@@ -658,6 +665,34 @@ async def get_game_story(
         if (play := play_lookup.get(play_index))
     ]
 
+    # Build response blocks if present (Phase 1)
+    response_blocks: list[StoryBlock] | None = None
+    total_words: int | None = None
+
+    blocks_data = story_record.blocks_json
+    if blocks_data:
+        response_blocks = [
+            StoryBlock(
+                blockIndex=block["block_index"],
+                role=block["role"],
+                momentIndices=block["moment_indices"],
+                periodStart=block["period_start"],
+                periodEnd=block["period_end"],
+                scoreBefore=block["score_before"],
+                scoreAfter=block["score_after"],
+                playIds=block["play_ids"],
+                keyPlayIds=block["key_play_ids"],
+                narrative=block.get("narrative"),
+                miniBox=block.get("mini_box"),
+            )
+            for block in blocks_data
+        ]
+        # Calculate total words from block narratives
+        total_words = sum(
+            len((block.get("narrative") or "").split())
+            for block in blocks_data
+        )
+
     # Validation status from persisted data
     validation_passed = story_record.validated_at is not None
 
@@ -667,4 +702,6 @@ async def get_game_story(
         plays=response_plays,
         validationPassed=validation_passed,
         validationErrors=[],
+        blocks=response_blocks,
+        totalWords=total_words,
     )

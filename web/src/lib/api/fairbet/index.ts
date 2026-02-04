@@ -4,6 +4,21 @@
 
 import { getApiBase } from "../apiBase";
 
+/** Build headers including API key if configured. */
+function buildHeaders(): HeadersInit {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  // Add API key for authentication (server-side only)
+  const apiKey = process.env.SPORTS_API_KEY;
+  if (apiKey) {
+    headers["X-API-Key"] = apiKey;
+  }
+
+  return headers;
+}
+
 export interface BookOdds {
   book: string;
   price: number;
@@ -44,7 +59,9 @@ export async function fetchFairbetOdds(
   if (filters.offset) params.set("offset", filters.offset.toString());
 
   const url = `${getApiBase()}/api/fairbet/odds?${params.toString()}`;
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    headers: buildHeaders(),
+  });
 
   if (!res.ok) {
     throw new Error(`Failed to fetch FairBet odds: ${res.statusText}`);

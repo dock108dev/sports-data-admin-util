@@ -1,10 +1,12 @@
-"""Initial schema baseline."""
+"""Initial schema baseline.
+
+NOTE: This is a no-op migration that serves as the baseline.
+The actual schema is created by subsequent migrations.
+"""
 
 from __future__ import annotations
 
 from alembic import op
-
-from app.db_models import Base
 
 # revision identifiers, used by Alembic.
 revision = "20250920_000001"
@@ -14,12 +16,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """Create initial schema from SQLAlchemy metadata."""
-    bind = op.get_bind()
-    Base.metadata.create_all(bind=bind)
+    """No-op baseline migration.
+
+    The schema is built incrementally by subsequent migrations.
+    """
+    pass
 
 
 def downgrade() -> None:
-    """Drop all tables from SQLAlchemy metadata."""
-    bind = op.get_bind()
-    Base.metadata.drop_all(bind=bind)
+    """No-op downgrade."""
+    pass

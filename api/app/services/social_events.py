@@ -1,9 +1,28 @@
 """
 Social event processing for timeline generation.
 
+SOCIAL DECOUPLING CONTRACT (Phase 2)
+====================================
+Social data is FULLY DECOUPLED from play-by-play and story logic:
+
+1. NO PLAY COUPLING: Tweets are NEVER linked to specific play_ids or moment_ids
+2. TIME-BASED ONLY: Posts are ordered solely by posted_at timestamp within phases
+3. OPTIONAL: All code must handle zero social posts gracefully
+4. NON-AUTHORITATIVE: Tweets do not explain plays or justify moments
+5. STANDALONE: Each tweet is contextual, not evidentiary
+
+The system MUST render identically whether social data:
+- is present
+- is partially present
+- is completely absent
+
+🚫 DO NOT add tweet → play/moment coupling
+🚫 DO NOT use tweets as evidence for narrative decisions
+🚫 DO NOT require tweets for any rendering path
+
 Handles:
 1. Social post role assignment (heuristic-based)
-2. Phase assignment for social posts
+2. Phase assignment for social posts (time-based only)
 3. Building social timeline events
 
 Related modules:
@@ -244,18 +263,25 @@ def assign_social_phase(
     Assign a social post to a narrative phase based on posting time.
 
     Phase determines ordering. Timestamp is secondary.
+
+    NOTE: This function uses pre-computed boundaries. For league-aware
+    time-based classification (Phase 3), use assign_social_phase_time_based().
     """
-    for phase in [
+    # Check all possible phases in order
+    phase_order = [
         "pregame",
-        "q1",
-        "q2",
-        "halftime",
-        "q3",
-        "q4",
-        "ot1",
-        "ot2",
+        # NBA phases
+        "q1", "q2", "halftime", "q3", "q4",
+        # NCAAB phases
+        "first_half", "second_half",
+        # NHL phases
+        "p1", "p2", "p3",
+        # Overtime phases (all leagues)
+        "ot", "ot1", "ot2", "ot3", "ot4", "shootout",
         "postgame",
-    ]:
+    ]
+
+    for phase in phase_order:
         if phase not in boundaries:
             continue
         start, end = boundaries[phase]
@@ -269,6 +295,57 @@ def assign_social_phase(
     return "postgame"
 
 
+def assign_social_phase_time_based(
+    posted_at: datetime,
+    game_start: datetime,
+    league_code: str,
+    has_overtime: bool = False,
+) -> str:
+    """
+    Assign a social post to a phase using ONLY time-based classification.
+
+    Phase 3 (Task 3.1 + 3.2): League-aware, time-based phase classification.
+    NO PBP DATA is used - only time relative to game_start.
+
+    This function:
+    1. Classifies tweet as pregame/in-game/postgame (Task 3.1)
+    2. For in-game tweets, maps to specific segment (Task 3.2)
+
+    Classification is:
+    - Deterministic and repeatable
+    - League-aware (NCAAB/NBA/NHL timing)
+    - Resilient to missing data
+    - Imprecise by design (narrative coherence over forensic accuracy)
+
+    Args:
+        posted_at: When the post was published
+        game_start: Authoritative game start time
+        league_code: League code (NBA, NCAAB, NHL)
+        has_overtime: Whether OT is detected (may be approximate)
+
+    Returns:
+        Phase string for timeline ordering (e.g., "q1", "first_half", "p2", "postgame")
+    """
+    # Import here to avoid circular dependency
+    from .timeline_phases import (
+        classify_tweet_phase,
+        map_tweet_to_segment,
+    )
+
+    # Task 3.1: Classify into pregame/in-game/postgame
+    phase = classify_tweet_phase(posted_at, game_start, league_code, has_overtime)
+
+    if phase == "pregame":
+        return "pregame"
+
+    if phase == "postgame":
+        return "postgame"
+
+    # Task 3.2: Map in-game tweet to specific segment
+    segment = map_tweet_to_segment(posted_at, game_start, league_code, has_overtime)
+    return segment
+
+
 # =============================================================================
 # EVENT BUILDING
 # =============================================================================
@@ -277,11 +354,17 @@ def assign_social_phase(
 def build_social_events(
     posts: Iterable[db_models.GameSocialPost],
     phase_boundaries: dict[str, tuple[datetime, datetime]],
+    game_start: datetime | None = None,
+    league_code: str | None = None,
+    has_overtime: bool = False,
 ) -> list[tuple[datetime, dict[str, Any]]]:
     """
     Build social events with phase and role assignment (heuristic only).
 
     For AI-enhanced role classification, use build_social_events_async.
+
+    Phase 3: If game_start and league_code are provided, uses time-based
+    classification (no PBP dependency). Otherwise falls back to boundaries.
 
     Each event gets:
     - phase: The narrative phase - controls ordering
@@ -291,9 +374,22 @@ def build_social_events(
 
     Events with null or empty text are DROPPED (not included in timeline).
     See docs/SOCIAL_EVENT_ROLES.md for role taxonomy.
+
+    Args:
+        posts: Social posts to process
+        phase_boundaries: Pre-computed phase boundaries (fallback)
+        game_start: Authoritative game start (for time-based classification)
+        league_code: League code for time-based classification
+        has_overtime: Whether OT is detected
+
+    Returns:
+        List of (timestamp, event_payload) tuples
     """
     events: list[tuple[datetime, dict[str, Any]]] = []
     dropped_count = 0
+
+    # Phase 3: Use time-based classification if game_start provided
+    use_time_based = game_start is not None and league_code is not None
 
     for post in posts:
         # Filter: Drop posts with null or empty text
@@ -310,7 +406,14 @@ def build_social_events(
             continue
 
         event_time = post.posted_at
-        phase = assign_social_phase(event_time, phase_boundaries)
+
+        # Phase 3: Time-based classification (no PBP dependency)
+        if use_time_based:
+            phase = assign_social_phase_time_based(
+                event_time, game_start, league_code, has_overtime  # type: ignore
+            )
+        else:
+            phase = assign_social_phase(event_time, phase_boundaries)
 
         # Assign role based on phase and content (heuristic)
         has_media = bool(getattr(post, "media_type", None))
@@ -320,6 +423,9 @@ def build_social_events(
         if phase in phase_boundaries:
             phase_start = phase_boundaries[phase][0]
             intra_phase_order = (event_time - phase_start).total_seconds()
+        elif game_start is not None:
+            # Time-based: seconds since game start
+            intra_phase_order = (event_time - game_start).total_seconds()
         else:
             intra_phase_order = 0
 
@@ -348,14 +454,32 @@ async def build_social_events_async(
     posts: Sequence[db_models.GameSocialPost],
     phase_boundaries: dict[str, tuple[datetime, datetime]],
     sport: str = "NBA",
+    game_start: datetime | None = None,
+    has_overtime: bool = False,
 ) -> list[tuple[datetime, dict[str, Any]]]:
     """
     Build social events with AI-enhanced role classification.
 
     Uses async AI client for role classification with caching.
+
+    Phase 3: If game_start is provided, uses time-based classification
+    (no PBP dependency). Otherwise falls back to boundaries.
+
+    Args:
+        posts: Social posts to process
+        phase_boundaries: Pre-computed phase boundaries (fallback)
+        sport: League code for classification
+        game_start: Authoritative game start (for time-based classification)
+        has_overtime: Whether OT is detected
+
+    Returns:
+        List of (timestamp, event_payload) tuples
     """
     events: list[tuple[datetime, dict[str, Any]]] = []
     dropped_count = 0
+
+    # Phase 3: Use time-based classification if game_start provided
+    use_time_based = game_start is not None
 
     for post in posts:
         # Filter: Drop posts with null or empty text
@@ -372,7 +496,14 @@ async def build_social_events_async(
             continue
 
         event_time = post.posted_at
-        phase = assign_social_phase(event_time, phase_boundaries)
+
+        # Phase 3: Time-based classification (no PBP dependency)
+        if use_time_based:
+            phase = assign_social_phase_time_based(
+                event_time, game_start, sport, has_overtime  # type: ignore
+            )
+        else:
+            phase = assign_social_phase(event_time, phase_boundaries)
 
         # Assign role with AI enhancement
         has_media = bool(getattr(post, "media_type", None))
@@ -382,6 +513,9 @@ async def build_social_events_async(
         if phase in phase_boundaries:
             phase_start = phase_boundaries[phase][0]
             intra_phase_order = (event_time - phase_start).total_seconds()
+        elif game_start is not None:
+            # Time-based: seconds since game start
+            intra_phase_order = (event_time - game_start).total_seconds()
         else:
             intra_phase_order = 0
 

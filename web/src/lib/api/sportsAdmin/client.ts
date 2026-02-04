@@ -8,6 +8,22 @@
 
 import { getApiBase } from "../apiBase";
 
+/** Build headers including API key if configured. */
+function buildHeaders(init?: RequestInit): HeadersInit {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> ?? {}),
+  };
+
+  // Add API key for authentication (server-side only, not exposed to browser)
+  const apiKey = process.env.SPORTS_API_KEY;
+  if (apiKey) {
+    headers["X-API-Key"] = apiKey;
+  }
+
+  return headers;
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const apiBase = getApiBase({
     serverInternalBaseEnv: process.env.SPORTS_API_INTERNAL_URL,
@@ -19,10 +35,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     const res = await fetch(url, {
       ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
+      headers: buildHeaders(init),
       cache: "no-store",
     });
 
@@ -49,10 +62,7 @@ export async function requestBlob(path: string, init?: RequestInit): Promise<Blo
   const url = `${apiBase}${path}`;
   const res = await fetch(url, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers: buildHeaders(init),
     cache: "no-store",
   });
 

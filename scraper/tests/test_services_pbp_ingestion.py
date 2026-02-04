@@ -8,13 +8,298 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from sports_scraper.services.pbp_ingestion import (
+    select_games_for_pbp_nba_api,
     select_games_for_pbp_nhl_api,
     select_games_for_pbp_ncaab_api,
+    ingest_pbp_via_nba_api,
     ingest_pbp_via_sportsref,
     ingest_pbp_via_nhl_api,
     ingest_pbp_via_ncaab_api,
+    _populate_nba_game_ids,
     _populate_nhl_game_ids,
 )
+
+
+class TestSelectGamesForPbpNbaApi:
+    """Tests for select_games_for_pbp_nba_api function."""
+
+    def test_returns_empty_when_no_league(self):
+        """Returns empty list when NBA league not found."""
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+
+        result = select_games_for_pbp_nba_api(
+            mock_session,
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 1, 31),
+            only_missing=True,
+            updated_before=None,
+        )
+
+        assert result == []
+
+    def test_returns_games_with_nba_game_id(self):
+        """Returns games with valid nba_game_id."""
+        mock_session = MagicMock()
+        mock_league = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_league
+
+        # Mock the game query result
+        mock_row = MagicMock()
+        mock_row.__iter__ = lambda self: iter([100, "0022400123", "final"])
+        mock_session.query.return_value.filter.return_value.all.return_value = [mock_row]
+
+        result = select_games_for_pbp_nba_api(
+            mock_session,
+            start_date=date(2024, 10, 1),
+            end_date=date(2024, 10, 31),
+            only_missing=False,
+            updated_before=None,
+        )
+
+        assert len(result) == 1
+        assert result[0] == (100, "0022400123")
+
+    def test_filters_with_only_missing(self):
+        """Applies only_missing filter when enabled."""
+        mock_session = MagicMock()
+        mock_league = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_league
+
+        mock_row = MagicMock()
+        mock_row.__iter__ = lambda self: iter([100, "0022400123", "final"])
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = [mock_row]
+        mock_session.query.return_value.filter.return_value = mock_query
+
+        _result = select_games_for_pbp_nba_api(
+            mock_session,
+            start_date=date(2024, 10, 1),
+            end_date=date(2024, 10, 31),
+            only_missing=True,
+            updated_before=None,
+        )
+
+        # Verify filter was called for only_missing (result not checked, just filter behavior)
+        assert mock_query.filter.called
+
+    def test_filters_with_updated_before(self):
+        """Applies updated_before filter when provided."""
+        mock_session = MagicMock()
+        mock_league = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_league
+
+        mock_row = MagicMock()
+        mock_row.__iter__ = lambda self: iter([100, "0022400123", "final"])
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = [mock_row]
+        mock_session.query.return_value.filter.return_value = mock_query
+
+        result = select_games_for_pbp_nba_api(
+            mock_session,
+            start_date=date(2024, 10, 1),
+            end_date=date(2024, 10, 31),
+            only_missing=False,
+            updated_before=datetime(2024, 10, 15, tzinfo=timezone.utc),
+        )
+
+        # Verify filter was applied
+        assert mock_query.filter.called
+
+
+class TestIngestPbpViaNbaApi:
+    """Tests for ingest_pbp_via_nba_api."""
+
+    @patch("sports_scraper.services.pbp_ingestion._populate_nba_game_ids")
+    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nba_api")
+    def test_returns_zero_when_no_games(self, mock_select, mock_populate):
+        """Returns (0, 0) when no games selected."""
+        mock_session = MagicMock()
+        mock_select.return_value = []
+
+        result = ingest_pbp_via_nba_api(
+            mock_session,
+            run_id=1,
+            start_date=date(2024, 10, 1),
+            end_date=date(2024, 10, 31),
+            only_missing=True,
+            updated_before=None,
+        )
+
+        assert result == (0, 0)
+
+    @patch("sports_scraper.services.pbp_ingestion.upsert_plays")
+    @patch("sports_scraper.live.nba.NBALiveFeedClient")
+    @patch("sports_scraper.services.pbp_ingestion._populate_nba_game_ids")
+    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nba_api")
+    def test_successful_ingestion(self, mock_select, mock_populate, mock_client_class, mock_upsert):
+        """Successfully ingests PBP with player_name populated."""
+        from sports_scraper.models import NormalizedPlay
+
+        mock_session = MagicMock()
+        mock_select.return_value = [(1, "0022400123")]
+
+        mock_client = MagicMock()
+        mock_payload = MagicMock()
+        mock_payload.plays = [
+            NormalizedPlay(
+                play_index=1,
+                quarter=1,
+                game_clock="12:00",
+                play_type="shot",
+                description="Tatum makes 3-pointer",
+                player_name="Jayson Tatum",  # NBA API provides player_name
+            ),
+        ]
+        mock_client.fetch_play_by_play.return_value = mock_payload
+        mock_client_class.return_value = mock_client
+
+        mock_session.query.return_value.get.return_value = None  # No game found
+        mock_upsert.return_value = 1
+
+        result = ingest_pbp_via_nba_api(
+            mock_session,
+            run_id=1,
+            start_date=date(2024, 10, 1),
+            end_date=date(2024, 10, 31),
+            only_missing=True,
+            updated_before=None,
+        )
+
+        assert result == (1, 1)
+        # Verify player_name was in the play
+        assert mock_payload.plays[0].player_name == "Jayson Tatum"
+
+    @patch("sports_scraper.live.nba.NBALiveFeedClient")
+    @patch("sports_scraper.services.pbp_ingestion._populate_nba_game_ids")
+    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nba_api")
+    def test_handles_empty_pbp_response(self, mock_select, mock_populate, mock_client_class):
+        """Handles empty PBP response."""
+        mock_session = MagicMock()
+        mock_select.return_value = [(1, "0022400123")]
+
+        mock_client = MagicMock()
+        mock_payload = MagicMock()
+        mock_payload.plays = []
+        mock_client.fetch_play_by_play.return_value = mock_payload
+        mock_client_class.return_value = mock_client
+
+        result = ingest_pbp_via_nba_api(
+            mock_session,
+            run_id=1,
+            start_date=date(2024, 10, 1),
+            end_date=date(2024, 10, 31),
+            only_missing=True,
+            updated_before=None,
+        )
+
+        assert result == (0, 0)
+
+    @patch("sports_scraper.live.nba.NBALiveFeedClient")
+    @patch("sports_scraper.services.pbp_ingestion._populate_nba_game_ids")
+    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nba_api")
+    def test_handles_fetch_exception(self, mock_select, mock_populate, mock_client_class):
+        """Handles fetch exception gracefully."""
+        mock_session = MagicMock()
+        mock_select.return_value = [(1, "0022400123")]
+
+        mock_client = MagicMock()
+        mock_client.fetch_play_by_play.side_effect = Exception("NBA API error")
+        mock_client_class.return_value = mock_client
+
+        result = ingest_pbp_via_nba_api(
+            mock_session,
+            run_id=1,
+            start_date=date(2024, 10, 1),
+            end_date=date(2024, 10, 31),
+            only_missing=True,
+            updated_before=None,
+        )
+
+        assert result == (0, 0)
+
+    @patch("sports_scraper.services.pbp_ingestion.upsert_plays")
+    @patch("sports_scraper.live.nba.NBALiveFeedClient")
+    @patch("sports_scraper.services.pbp_ingestion._populate_nba_game_ids")
+    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nba_api")
+    def test_warns_on_insufficient_plays_for_final_game(self, mock_select, mock_populate, mock_client_class, mock_upsert):
+        """Warns when final game has too few plays."""
+        from sports_scraper.models import NormalizedPlay
+        from sports_scraper.db import db_models
+
+        mock_session = MagicMock()
+        mock_select.return_value = [(1, "0022400123")]
+
+        mock_client = MagicMock()
+        mock_payload = MagicMock()
+        # Only 5 plays - below minimum expected
+        mock_payload.plays = [
+            NormalizedPlay(play_index=i, quarter=1, game_clock="12:00", play_type="shot", description="test")
+            for i in range(5)
+        ]
+        mock_client.fetch_play_by_play.return_value = mock_payload
+        mock_client_class.return_value = mock_client
+
+        # Mock game as final
+        mock_game = MagicMock()
+        mock_game.status = db_models.GameStatus.final.value
+        mock_session.query.return_value.get.return_value = mock_game
+        mock_upsert.return_value = 5
+
+        result = ingest_pbp_via_nba_api(
+            mock_session,
+            run_id=1,
+            start_date=date(2024, 10, 1),
+            end_date=date(2024, 10, 31),
+            only_missing=True,
+            updated_before=None,
+        )
+
+        # Should still process the game
+        assert result == (1, 5)
+
+
+class TestPopulateNbaGameIds:
+    """Tests for _populate_nba_game_ids."""
+
+    def test_returns_zero_when_no_league(self):
+        """Returns 0 when NBA league not found."""
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+
+        result = _populate_nba_game_ids(
+            mock_session,
+            run_id=1,
+            start_date=date(2024, 10, 1),
+            end_date=date(2024, 10, 31),
+        )
+
+        assert result == 0
+
+    @patch("sports_scraper.live.nba.NBALiveFeedClient")
+    def test_returns_zero_when_no_games_missing(self, mock_client_class):
+        """Returns 0 when no games are missing nba_game_id."""
+        mock_session = MagicMock()
+        mock_league = MagicMock(id=1)
+
+        # Create a mock query object that properly chains
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.first.return_value = mock_league
+        mock_query.all.return_value = []
+
+        mock_session.query.return_value = mock_query
+
+        result = _populate_nba_game_ids(
+            mock_session,
+            run_id=1,
+            start_date=date(2024, 10, 1),
+            end_date=date(2024, 10, 31),
+        )
+
+        assert result == 0
 
 
 class TestSelectGamesForPbpNhlApi:
@@ -795,6 +1080,11 @@ class TestPopulateNhlGameIds:
 class TestModuleImports:
     """Tests for module imports."""
 
+    def test_has_nba_ingestion_function(self):
+        """Module has NBA ingestion function."""
+        from sports_scraper.services import pbp_ingestion
+        assert hasattr(pbp_ingestion, 'ingest_pbp_via_nba_api')
+
     def test_has_nhl_ingestion_function(self):
         """Module has NHL ingestion function."""
         from sports_scraper.services import pbp_ingestion
@@ -805,8 +1095,13 @@ class TestModuleImports:
         from sports_scraper.services import pbp_ingestion
         assert hasattr(pbp_ingestion, 'ingest_pbp_via_ncaab_api')
 
-    def test_has_populate_function(self):
-        """Module has populate function."""
+    def test_has_nba_populate_function(self):
+        """Module has NBA populate function."""
+        from sports_scraper.services import pbp_ingestion
+        assert hasattr(pbp_ingestion, '_populate_nba_game_ids')
+
+    def test_has_nhl_populate_function(self):
+        """Module has NHL populate function."""
         from sports_scraper.services import pbp_ingestion
         assert hasattr(pbp_ingestion, '_populate_nhl_game_ids')
 

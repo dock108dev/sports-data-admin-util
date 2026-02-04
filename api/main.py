@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from starlette.responses import JSONResponse
 
 from app.config import settings
 from app.db import _get_engine
+from app.dependencies.auth import verify_api_key
 from app.logging_config import configure_logging
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.routers import reading_positions, social, sports
+from app.routers import fairbet, reading_positions, social, sports
 from app.routers.admin import pbp, pipeline, resolution, timeline_jobs
-from app.routers import fairbet
 
 configure_logging(
     service="sports-data-admin-api",
@@ -35,14 +35,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(sports.router)
-app.include_router(social.router)
-app.include_router(reading_positions.router)
-app.include_router(timeline_jobs.router, prefix="/api/admin/sports", tags=["admin"])
-app.include_router(pipeline.router, prefix="/api/admin/sports", tags=["admin", "pipeline"])
-app.include_router(pbp.router, prefix="/api/admin/sports", tags=["admin", "pbp"])
-app.include_router(resolution.router, prefix="/api/admin/sports", tags=["admin", "resolution"])
-app.include_router(fairbet.router)
+# All routers require API key authentication
+auth_dependency = [Depends(verify_api_key)]
+
+app.include_router(sports.router, dependencies=auth_dependency)
+app.include_router(social.router, dependencies=auth_dependency)
+app.include_router(reading_positions.router, dependencies=auth_dependency)
+app.include_router(
+    timeline_jobs.router,
+    prefix="/api/admin/sports",
+    tags=["admin"],
+    dependencies=auth_dependency,
+)
+app.include_router(
+    pipeline.router,
+    prefix="/api/admin/sports",
+    tags=["admin", "pipeline"],
+    dependencies=auth_dependency,
+)
+app.include_router(
+    pbp.router,
+    prefix="/api/admin/sports",
+    tags=["admin", "pbp"],
+    dependencies=auth_dependency,
+)
+app.include_router(
+    resolution.router,
+    prefix="/api/admin/sports",
+    tags=["admin", "resolution"],
+    dependencies=auth_dependency,
+)
+app.include_router(fairbet.router, dependencies=auth_dependency)
 
 
 @app.get("/healthz")

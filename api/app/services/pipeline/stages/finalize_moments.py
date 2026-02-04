@@ -17,16 +17,21 @@ SportsGameStory table stores:
 - moment_count: INTEGER for quick access
 - validated_at: TIMESTAMPTZ when validation passed
 - story_version: "v2-moments"
+- blocks_json: JSONB containing 4-7 narrative blocks (Phase 1)
+- block_count: INTEGER for quick access
+- blocks_version: "v1-blocks"
+- blocks_validated_at: TIMESTAMPTZ when block validation passed
 
 WHAT GETS WRITTEN
 =================
-Persist EXACTLY the moments produced by RENDER_NARRATIVES:
+Persist EXACTLY the moments produced by earlier stages, plus blocks:
 - play_ids
 - explicitly_narrated_play_ids
 - period
 - start_clock / end_clock
 - score_before / score_after
-- narrative
+- narrative (from moments)
+- blocks with role, narrative, key_play_ids
 
 Rules:
 - Preserve order
@@ -38,8 +43,8 @@ GUARANTEES
 ==========
 1. Persist story data transactionally
 2. Set has_story indicators (moments_json IS NOT NULL)
-3. Record moment_count
-4. Record validation timestamp
+3. Record moment_count and block_count
+4. Record validation timestamps
 5. On failure: roll back, fail loudly, no partial writes
 """
 
@@ -60,8 +65,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Story version identifier
+# Story version identifiers
 STORY_VERSION = "v2-moments"
+BLOCKS_VERSION = "v1-blocks"
 
 
 async def execute_finalize_moments(
@@ -71,12 +77,12 @@ async def execute_finalize_moments(
 ) -> StageOutput:
     """Execute the FINALIZE_MOMENTS stage.
 
-    Persists validated moments with narratives to SportsGameStory table.
+    Persists validated moments and blocks to SportsGameStory table.
     This is the only stage that writes Story data durably.
 
     Args:
         session: Database session for persistence
-        stage_input: Input containing previous_output with rendered moments
+        stage_input: Input containing previous_output with rendered moments and blocks
         run_uuid: Pipeline run UUID for traceability
 
     Returns:
@@ -103,47 +109,39 @@ async def execute_finalize_moments(
             f"Got validated={validated}"
         )
 
-    # Verify RENDER_NARRATIVES completed
-    rendered = previous_output.get("rendered")
-    if rendered is not True:
-        raise ValueError(
-            "FINALIZE_MOMENTS requires RENDER_NARRATIVES to complete. "
-            f"Got rendered={rendered}"
-        )
+    # Verify VALIDATE_BLOCKS completed
+    blocks_validated = previous_output.get("blocks_validated")
 
-    # Get rendered moments
+    # Get moments
     moments = previous_output.get("moments")
     if not moments:
         raise ValueError("No moments in previous stage output")
 
-    # Verify all moments have narratives
-    missing_narratives = [
-        i for i, m in enumerate(moments) if not m.get("narrative")
-    ]
-    if missing_narratives:
+    # Get blocks (required)
+    blocks = previous_output.get("blocks")
+    if not blocks:
         raise ValueError(
-            f"Moments missing narratives at indices: {missing_narratives}"
+            "FINALIZE_MOMENTS requires blocks from VALIDATE_BLOCKS stage. "
+            f"Got blocks_validated={blocks_validated}"
         )
 
-    output.add_log(f"Persisting {len(moments)} moments with narratives")
-
-    # Task 0.2: Track fallback statistics for monitoring
-    fallback_count = previous_output.get("fallback_count", 0)
-    valid_fallback_count = previous_output.get("valid_fallback_count", 0)
-    invalid_fallback_count = previous_output.get("invalid_fallback_count", 0)
-
-    if fallback_count > 0:
+    if blocks_validated is not True:
         output.add_log(
-            f"Fallback stats: {fallback_count} total "
-            f"({valid_fallback_count} VALID, {invalid_fallback_count} INVALID)"
-        )
-
-    if invalid_fallback_count > 0:
-        output.add_log(
-            f"WARNING: {invalid_fallback_count} INVALID fallbacks will be persisted - "
-            f"these are visible in beta for debugging",
+            f"WARNING: blocks_validated={blocks_validated}, proceeding with blocks anyway",
             level="warning",
         )
+
+    # Verify blocks have narratives
+    missing_block_narratives = [
+        i for i, b in enumerate(blocks) if not b.get("narrative")
+    ]
+    if missing_block_narratives:
+        output.add_log(
+            f"WARNING: Blocks missing narratives at indices: {missing_block_narratives}",
+            level="warning",
+        )
+
+    output.add_log(f"Persisting {len(moments)} moments and {len(blocks)} blocks")
 
     # Get game to determine sport
     game_result = await session.execute(
@@ -169,6 +167,7 @@ async def execute_finalize_moments(
 
     validation_time = now_utc()
     openai_calls = previous_output.get("openai_calls", 0)
+    total_words = previous_output.get("total_words", 0)
 
     if existing_story:
         # Update existing story
@@ -178,6 +177,13 @@ async def execute_finalize_moments(
         existing_story.validated_at = validation_time
         existing_story.generated_at = validation_time
         existing_story.total_ai_calls = openai_calls
+
+        # Update blocks
+        existing_story.blocks_json = blocks
+        existing_story.block_count = len(blocks)
+        existing_story.blocks_version = BLOCKS_VERSION
+        existing_story.blocks_validated_at = validation_time
+
         story_id = existing_story.id
     else:
         # Create new story record
@@ -192,16 +198,27 @@ async def execute_finalize_moments(
             generated_at=validation_time,
             total_ai_calls=openai_calls,
         )
+
+        # Add blocks
+        new_story.blocks_json = blocks
+        new_story.block_count = len(blocks)
+        new_story.blocks_version = BLOCKS_VERSION
+        new_story.blocks_validated_at = validation_time
+
         session.add(new_story)
         await session.flush()
         story_id = new_story.id
 
     output.add_log(f"Story persisted with id={story_id}")
     output.add_log(f"moment_count={len(moments)}")
+    output.add_log(f"block_count={len(blocks)}")
+    output.add_log(f"blocks_version={BLOCKS_VERSION}")
+    output.add_log(f"total_words={total_words}")
+
     output.add_log(f"validated_at={validation_time.isoformat()}")
     output.add_log("FINALIZE_MOMENTS completed successfully")
 
-    # Output shape for reviewability (Task 0.2: includes fallback stats)
+    # Output shape for reviewability
     output.data = {
         "finalized": True,
         "story_id": story_id,
@@ -210,10 +227,10 @@ async def execute_finalize_moments(
         "moment_count": len(moments),
         "validated_at": validation_time.isoformat(),
         "openai_calls": openai_calls,
-        # Task 0.2: Fallback classification for monitoring
-        "fallback_count": fallback_count,
-        "valid_fallback_count": valid_fallback_count,
-        "invalid_fallback_count": invalid_fallback_count,
+        "block_count": len(blocks),
+        "blocks_version": BLOCKS_VERSION,
+        "total_words": total_words,
+        "blocks_validated_at": validation_time.isoformat(),
     }
 
     return output

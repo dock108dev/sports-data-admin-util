@@ -1,5 +1,7 @@
 """Tests for resolution_tracker module."""
 
+import pytest
+
 
 class TestResolutionAttempt:
     """Tests for ResolutionAttempt dataclass."""
@@ -389,3 +391,298 @@ class TestResolutionTracker:
         assert len(tracker.attempts) == 1
         assert tracker.attempts[0].status == "success"
         assert tracker.attempts[0].source_context["occurrence_count"] == 2
+
+
+class TestPersist:
+    """Tests for ResolutionTracker.persist method."""
+
+    @pytest.mark.asyncio
+    async def test_empty_attempts_returns_early(self):
+        """Empty attempts list returns 0 without db interaction."""
+        from app.services.resolution_tracker import ResolutionTracker
+        from unittest.mock import AsyncMock
+
+        tracker = ResolutionTracker(game_id=123)
+        mock_session = AsyncMock()
+
+        count = await tracker.persist(mock_session)
+
+        assert count == 0
+        mock_session.add.assert_not_called()
+        mock_session.flush.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_persist_team_resolutions(self):
+        """Team resolutions are persisted to database."""
+        from app.services.resolution_tracker import ResolutionTracker
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        tracker = ResolutionTracker(game_id=123, pipeline_run_id=456)
+        tracker.track_team("LAL", resolved_id=1, resolved_name="Lakers", method="exact_match")
+        tracker.track_team("BOS", resolved_id=2, resolved_name="Celtics", method="game_context")
+
+        mock_session = AsyncMock()
+
+        with patch("app.services.resolution_tracker.db_models") as mock_db_models:
+            mock_db_models.EntityResolution = MagicMock()
+            count = await tracker.persist(mock_session)
+
+        assert count == 2
+        assert mock_session.add.call_count == 2
+        mock_session.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_persist_player_resolutions(self):
+        """Player resolutions are persisted to database."""
+        from app.services.resolution_tracker import ResolutionTracker
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        tracker = ResolutionTracker(game_id=123)
+        tracker.track_player("LeBron James", resolved_name="LeBron James", method="passthrough")
+        tracker.track_player("A. Davis", resolved_name="Anthony Davis", method="normalized")
+
+        mock_session = AsyncMock()
+
+        with patch("app.services.resolution_tracker.db_models") as mock_db_models:
+            mock_db_models.EntityResolution = MagicMock()
+            count = await tracker.persist(mock_session)
+
+        assert count == 2
+
+    @pytest.mark.asyncio
+    async def test_persist_mixed_resolutions(self):
+        """Both team and player resolutions are persisted."""
+        from app.services.resolution_tracker import ResolutionTracker
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        tracker = ResolutionTracker(game_id=123, pipeline_run_id=789)
+        tracker.track_team("LAL", resolved_id=1)
+        tracker.track_player("LeBron James")
+        tracker.track_team_failure("XYZ", reason="Unknown")
+
+        mock_session = AsyncMock()
+
+        with patch("app.services.resolution_tracker.db_models") as mock_db_models:
+            mock_db_models.EntityResolution = MagicMock()
+            count = await tracker.persist(mock_session)
+
+        assert count == 3
+
+    @pytest.mark.asyncio
+    async def test_persist_includes_occurrence_count(self):
+        """Occurrence count is included in persisted records."""
+        from app.services.resolution_tracker import ResolutionTracker
+        from unittest.mock import AsyncMock, MagicMock, patch, call
+
+        tracker = ResolutionTracker(game_id=123)
+        tracker.track_team("LAL", resolved_id=1, play_index=1)
+        tracker.track_team("LAL", resolved_id=1, play_index=5)  # Duplicate
+        tracker.track_team("LAL", resolved_id=1, play_index=10)  # Another duplicate
+
+        mock_session = AsyncMock()
+        captured_records = []
+
+        with patch("app.services.resolution_tracker.db_models") as mock_db_models:
+            def capture_record(*args, **kwargs):
+                captured_records.append(kwargs)
+                return MagicMock()
+
+            mock_db_models.EntityResolution = capture_record
+            await tracker.persist(mock_session)
+
+        # Should only have 1 record with occurrence_count=3
+        assert len(captured_records) == 1
+        assert captured_records[0]["occurrence_count"] == 3
+
+
+class TestGetResolutionSummaryForGame:
+    """Tests for get_resolution_summary_for_game function."""
+
+    @pytest.mark.asyncio
+    async def test_no_records_found(self):
+        """Returns empty summary when no records exist."""
+        from app.services.resolution_tracker import get_resolution_summary_for_game
+        from unittest.mock import AsyncMock, MagicMock
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        summary = await get_resolution_summary_for_game(mock_session, game_id=123)
+
+        assert summary.game_id == 123
+        assert summary.teams_total == 0
+        assert summary.players_total == 0
+
+    @pytest.mark.asyncio
+    async def test_mixed_resolutions(self):
+        """Summary correctly aggregates mixed team/player resolutions."""
+        from app.services.resolution_tracker import get_resolution_summary_for_game
+        from unittest.mock import AsyncMock, MagicMock
+
+        # Create mock records
+        mock_team_success = MagicMock(
+            entity_type="team",
+            resolution_status="success",
+            source_identifier="LAL",
+            resolved_id=1,
+            resolved_name="Lakers",
+            resolution_method="exact",
+            failure_reason=None,
+            candidates=None,
+            occurrence_count=5,
+        )
+        mock_team_failed = MagicMock(
+            entity_type="team",
+            resolution_status="failed",
+            source_identifier="XYZ",
+            resolved_id=None,
+            resolved_name=None,
+            resolution_method=None,
+            failure_reason="Unknown",
+            candidates=None,
+            occurrence_count=2,
+        )
+        mock_player_success = MagicMock(
+            entity_type="player",
+            resolution_status="success",
+            source_identifier="LeBron",
+            resolved_id=None,
+            resolved_name="LeBron James",
+            resolution_method="normalized",
+            failure_reason=None,
+            candidates=None,
+            occurrence_count=10,
+        )
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [
+            mock_team_success,
+            mock_team_failed,
+            mock_player_success,
+        ]
+        mock_session.execute.return_value = mock_result
+
+        summary = await get_resolution_summary_for_game(mock_session, game_id=123)
+
+        assert summary.teams_total == 2
+        assert summary.teams_resolved == 1
+        assert summary.teams_failed == 1
+        assert summary.players_total == 1
+        assert summary.players_resolved == 1
+        assert len(summary.unresolved_teams) == 1
+
+    @pytest.mark.asyncio
+    async def test_calculates_rates(self):
+        """Resolution rates are calculated correctly."""
+        from app.services.resolution_tracker import get_resolution_summary_for_game
+        from unittest.mock import AsyncMock, MagicMock
+
+        # 3 teams: 2 resolved, 1 failed = 66.7% rate
+        mock_records = [
+            MagicMock(entity_type="team", resolution_status="success", source_identifier="LAL",
+                     resolved_id=1, resolved_name="Lakers", resolution_method="exact",
+                     failure_reason=None, candidates=None, occurrence_count=1),
+            MagicMock(entity_type="team", resolution_status="success", source_identifier="BOS",
+                     resolved_id=2, resolved_name="Celtics", resolution_method="exact",
+                     failure_reason=None, candidates=None, occurrence_count=1),
+            MagicMock(entity_type="team", resolution_status="failed", source_identifier="XYZ",
+                     resolved_id=None, resolved_name=None, resolution_method=None,
+                     failure_reason="Unknown", candidates=None, occurrence_count=1),
+        ]
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = mock_records
+        mock_session.execute.return_value = mock_result
+
+        summary = await get_resolution_summary_for_game(mock_session, game_id=123)
+
+        result_dict = summary.to_dict()
+        assert result_dict["teams"]["resolution_rate"] == 66.7  # 2/3 * 100
+
+
+class TestGetResolutionSummaryForRun:
+    """Tests for get_resolution_summary_for_run function."""
+
+    @pytest.mark.asyncio
+    async def test_run_not_found(self):
+        """Returns None when run doesn't exist."""
+        from app.services.resolution_tracker import get_resolution_summary_for_run
+        from unittest.mock import AsyncMock, MagicMock
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        summary = await get_resolution_summary_for_run(mock_session, run_id=999)
+
+        assert summary is None
+
+    @pytest.mark.asyncio
+    async def test_with_resolutions(self):
+        """Returns summary with resolutions for existing run."""
+        from app.services.resolution_tracker import get_resolution_summary_for_run
+        from unittest.mock import AsyncMock, MagicMock
+
+        # Mock the run lookup
+        mock_run = MagicMock(id=456, game_id=123)
+
+        # Mock resolution records
+        mock_records = [
+            MagicMock(entity_type="team", resolution_status="success", source_identifier="LAL",
+                     resolved_id=1, resolved_name="Lakers", resolution_method="exact",
+                     failure_reason=None, candidates=None, occurrence_count=5),
+        ]
+
+        mock_session = AsyncMock()
+
+        # First call returns run, second returns resolutions
+        run_result = MagicMock()
+        run_result.scalar_one_or_none.return_value = mock_run
+
+        resolution_result = MagicMock()
+        resolution_result.scalars.return_value.all.return_value = mock_records
+
+        mock_session.execute.side_effect = [run_result, resolution_result]
+
+        summary = await get_resolution_summary_for_run(mock_session, run_id=456)
+
+        assert summary is not None
+        assert summary.game_id == 123
+        assert summary.pipeline_run_id == 456
+        assert summary.teams_total == 1
+        assert summary.teams_resolved == 1
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_teams_tracked(self):
+        """Ambiguous team resolutions are tracked separately."""
+        from app.services.resolution_tracker import get_resolution_summary_for_run
+        from unittest.mock import AsyncMock, MagicMock
+
+        mock_run = MagicMock(id=456, game_id=123)
+
+        mock_records = [
+            MagicMock(entity_type="team", resolution_status="ambiguous", source_identifier="LA",
+                     resolved_id=None, resolved_name=None, resolution_method=None,
+                     failure_reason=None, candidates=[{"id": 1, "name": "Lakers"}, {"id": 2, "name": "Clippers"}],
+                     occurrence_count=1),
+        ]
+
+        mock_session = AsyncMock()
+
+        run_result = MagicMock()
+        run_result.scalar_one_or_none.return_value = mock_run
+
+        resolution_result = MagicMock()
+        resolution_result.scalars.return_value.all.return_value = mock_records
+
+        mock_session.execute.side_effect = [run_result, resolution_result]
+
+        summary = await get_resolution_summary_for_run(mock_session, run_id=456)
+
+        assert summary.teams_ambiguous == 1
+        assert len(summary.ambiguous_teams) == 1

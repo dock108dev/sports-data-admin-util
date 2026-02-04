@@ -27,10 +27,13 @@ from ...db import AsyncSession
 from ...utils.datetime_utils import now_utc
 from .models import PipelineStage, StageInput, StageOutput, StageResult
 from .stages import (
+    execute_analyze_drama,
     execute_finalize_moments,
     execute_generate_moments,
+    execute_group_blocks,
     execute_normalize_pbp,
-    execute_render_narratives,
+    execute_render_blocks,
+    execute_validate_blocks,
     execute_validate_moments,
 )
 
@@ -366,8 +369,14 @@ class PipelineExecutor:
                 output = await execute_generate_moments(stage_input)
             elif stage == PipelineStage.VALIDATE_MOMENTS:
                 output = await execute_validate_moments(stage_input)
-            elif stage == PipelineStage.RENDER_NARRATIVES:
-                output = await execute_render_narratives(stage_input)
+            elif stage == PipelineStage.ANALYZE_DRAMA:
+                output = await execute_analyze_drama(stage_input)
+            elif stage == PipelineStage.GROUP_BLOCKS:
+                output = await execute_group_blocks(stage_input)
+            elif stage == PipelineStage.RENDER_BLOCKS:
+                output = await execute_render_blocks(stage_input)
+            elif stage == PipelineStage.VALIDATE_BLOCKS:
+                output = await execute_validate_blocks(stage_input)
             elif stage == PipelineStage.FINALIZE_MOMENTS:
                 output = await execute_finalize_moments(
                     self.session, stage_input, str(run.run_uuid)

@@ -1,16 +1,29 @@
 # Story Pipeline
 
-Multi-stage pipeline for generating condensed moment-based game stories from play-by-play data.
+Multi-stage pipeline for generating block-based game narratives from play-by-play data.
 
 ## Overview
 
-The pipeline transforms raw PBP data into narrative stories through 5 sequential stages. Each stage produces output consumed by the next stage.
+The pipeline transforms raw PBP data into narrative stories through 8 sequential stages. Each stage produces output consumed by the next stage.
 
 ```
-NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES → FINALIZE_MOMENTS
+NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
 ```
 
 **Location:** `api/app/services/pipeline/`
+
+## Output: Blocks vs Moments
+
+The pipeline produces two related outputs:
+
+| Output | Purpose | Count | Content |
+|--------|---------|-------|---------|
+| **Blocks** | Consumer-facing narrative | 4-7 per game | 1-2 sentences (~35 words) |
+| **Moments** | Internal traceability | 15-25 per game | Play references, scores, timing |
+
+**Blocks are the primary output.** They contain short narratives with semantic roles (SETUP, MOMENTUM_SHIFT, etc.).
+
+**Moments remain for traceability.** They link blocks back to specific plays but do not contain narrative text.
 
 ## Stages
 
@@ -37,7 +50,7 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
 
 ### 2. GENERATE_MOMENTS
 
-**Purpose:** Segment PBP into condensed moments with explicit narration targets.
+**Purpose:** Segment PBP into moments with explicit narration targets.
 
 **Input:** Normalized PBP events
 **Output:** Ordered list of moments with play assignments
@@ -51,27 +64,9 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
 - No play appears in multiple moments
 - Each moment has 1-5 explicitly narrated plays
 
-**Output Schema:**
-```python
-{
-    "moments": [
-        {
-            "play_ids": [1, 2, 3],
-            "explicitly_narrated_play_ids": [2],
-            "period": 1,
-            "start_clock": "11:42",
-            "end_clock": "11:00",
-            "score_before": [0, 0],
-            "score_after": [3, 0]
-        },
-        ...
-    ]
-}
-```
-
 ### 3. VALIDATE_MOMENTS
 
-**Purpose:** Validate moment structure against story contract requirements.
+**Purpose:** Validate moment structure against requirements.
 
 **Input:** Generated moments + normalized plays
 **Output:** Validation status and any errors
@@ -85,91 +80,144 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
 4. Canonical ordering by play_index
 5. All play references exist in PBP data
 
+### 4. ANALYZE_DRAMA
+
+**Purpose:** Use AI to identify the game's dramatic peak and assign quarter weights.
+
+**Input:** Validated moments + game context
+**Output:** Quarter weights for drama-weighted block distribution
+
+**Implementation:** `stages/analyze_drama.py`
+
+**How It Works:**
+- OpenAI analyzes key plays and score progressions
+- Identifies which quarter(s) contain the dramatic climax
+- Returns weights like `{Q1: 1.0, Q2: 1.0, Q3: 1.5, Q4: 2.0}` for a late-game comeback
+- Higher weights mean more blocks allocated to that quarter
+
+**Usage:**
+- Weights feed into GROUP_BLOCKS for drama-centered block distribution
+- Ensures dramatic quarters get more narrative coverage
+- Low-drama quarters can be condensed
+
+### 5. GROUP_BLOCKS
+
+**Purpose:** Group validated moments into 4-7 narrative blocks with semantic roles, using drama weights from ANALYZE_DRAMA.
+
+**Input:** Validated moments
+**Output:** Blocks with moment assignments and semantic roles
+
+**Implementation:** `stages/group_blocks.py`
+
+**Block Count Formula:**
+```python
+base = 4
+if lead_changes >= 3: base += 1
+if lead_changes >= 6: base += 1
+if total_plays > 400: base += 1
+return min(base, 7)
+```
+
+**Semantic Roles:**
+- `SETUP` - First block (always)
+- `MOMENTUM_SHIFT` - First significant lead change
+- `RESPONSE` - Counter-run, stabilization
+- `DECISION_POINT` - Sequence that decided outcome
+- `RESOLUTION` - Last block (always)
+
 **Output Schema:**
 ```python
 {
-    "validated": true,
-    "errors": []
-}
-# OR
-{
-    "validated": false,
-    "errors": ["EMPTY_PLAY_IDS: Moment 0 has empty play_ids", ...]
+    "blocks_grouped": true,
+    "blocks": [
+        {
+            "block_index": 0,
+            "role": "SETUP",
+            "moment_indices": [0, 1, 2],
+            "score_before": [0, 0],
+            "score_after": [15, 12],
+            "key_play_ids": [5, 23, 41]
+        },
+        ...
+    ],
+    "block_count": 5,
+    "lead_changes": 4
 }
 ```
 
-**Failure Behavior:** Stage fails if validation errors exist. No auto-correction.
+### 6. RENDER_BLOCKS
 
-### 4. RENDER_NARRATIVES
+**Purpose:** Generate short narrative text for each block using OpenAI.
 
-**Purpose:** Generate narrative text for each moment using OpenAI.
+**Input:** Grouped blocks + play data
+**Output:** Blocks with narrative text
 
-**Input:** Validated moments + play data
-**Output:** Moments with narrative text populated
-
-**Implementation:** `stages/render_narratives.py`
+**Implementation:** `stages/render_blocks.py`
 
 **OpenAI Usage:**
-- Moments batched (up to 5 per call) for longer narratives
-- Input: Play descriptions, scores, clock values, running stats per batch
-- Output: 2-3 paragraph narratives (~6-10 sentences) for each moment
+- All blocks rendered in a single call
+- Input: Block roles, key plays, score progressions
+- Output: 1-2 sentences (~35 words) per block
 
 **Constraints:**
-- OpenAI only writes prose - it does not decide moment boundaries
-- Narratives must reference explicitly narrated plays
-- Forbidden phrases: "momentum", "turning point", "crucial", etc.
-
-**Post-Rendering Validation:**
-- Narrative is non-empty
-- No forbidden phrases detected
-- Length within expected bounds
+- OpenAI only writes prose - it does not decide block structure
+- Each block narrative is role-aware
+- Forbidden phrases: "momentum", "turning point", "crucial", "clutch", etc.
 
 **Output Schema:**
 ```python
 {
-    "rendered": true,
-    "moments": [
+    "blocks_rendered": true,
+    "blocks": [
         {
-            "play_ids": [...],
-            "explicitly_narrated_play_ids": [...],
-            "narrative": "The Hawks opened with a strong defensive stand...",
-            "cumulative_box_score": {
-                "home": {"team": "Hawks", "score": 45, "players": [...]},
-                "away": {"team": "Celtics", "score": 42, "players": [...]}
-            },
+            "block_index": 0,
+            "role": "SETUP",
+            "narrative": "The Warriors jumped out to an early lead...",
             ...
-        }
+        },
+        ...
     ],
-    "openai_calls": 5
+    "total_words": 210,
+    "openai_calls": 1
 }
 ```
 
-Each moment includes a `cumulative_box_score` snapshot showing running stats up to that point in the game.
+### 7. VALIDATE_BLOCKS
 
-### 5. FINALIZE_MOMENTS
+**Purpose:** Validate blocks against guardrail invariants.
+
+**Input:** Rendered blocks
+**Output:** Validation status
+
+**Implementation:** `stages/validate_blocks.py`
+
+**Guardrail Invariants (Non-negotiable):**
+- Block count: 4-7 (hard limits)
+- Embedded tweets: ≤ 5 per game, ≤ 1 per block
+- Total word count: ≤ 350 words (~60 second read)
+- Each block: 10-50 words
+
+**Validation Rules:**
+1. Block count in range [4, 7]
+2. No role appears more than twice
+3. First block role = SETUP
+4. Last block role = RESOLUTION
+5. Score continuity across block boundaries
+
+### 8. FINALIZE_MOMENTS
 
 **Purpose:** Persist completed story to database.
 
-**Input:** Rendered moments
+**Input:** Validated blocks + moments
 **Output:** Persistence confirmation
 
 **Implementation:** `stages/finalize_moments.py`
 
 **Storage:**
 - Table: `sports_game_stories`
-- Column: `moments_json` (JSONB)
-- Version: `story_version = "v2-moments"`
-- Metadata: `moment_count`, `validated_at`
-
-**Output Schema:**
-```python
-{
-    "finalized": true,
-    "story_id": 123,
-    "story_version": "v2-moments",
-    "moment_count": 15
-}
-```
+- Columns: `moments_json`, `blocks_json`
+- Version: `story_version = "v2-moments"`, `blocks_version = "v1-blocks"`
+- Metadata: `moment_count`, `block_count`, `validated_at`
 
 ## Pipeline Execution
 
@@ -199,7 +247,7 @@ Each moment includes a `cumulative_box_score` snapshot showing running stats up 
 
 ## Story Output
 
-The final story is an ordered list of condensed moments matching the [Story Contract](STORY_CONTRACT.md).
+The final story contains both blocks (consumer-facing) and moments (traceability).
 
 ### API Access
 
@@ -207,40 +255,41 @@ The final story is an ordered list of condensed moments matching the [Story Cont
 GET /api/admin/sports/games/{game_id}/story
 ```
 
-Returns the persisted story exactly as stored:
+Returns:
 
 ```json
 {
     "gameId": 123,
     "story": {
-        "moments": [...]
+        "moments": [...],
+        "blocks": [
+            {
+                "blockIndex": 0,
+                "role": "SETUP",
+                "momentIndices": [0, 1, 2],
+                "scoreBefore": [0, 0],
+                "scoreAfter": [15, 12],
+                "narrative": "The Warriors jumped out to an early lead..."
+            }
+        ]
     },
     "plays": [...],
-    "validationPassed": true,
-    "validationErrors": []
+    "validationPassed": true
 }
 ```
 
-Returns 404 if no story exists.
-
-### Discovery
-
-Games with stories are discoverable via the `has_story` flag:
-
-```sql
-has_story = moments_json IS NOT NULL
-```
+**Primary view:** Use `blocks` for consumer-facing game summaries.
+**Traceability:** Use `moments` to link narratives back to specific plays.
 
 ## Key Principles
 
-1. **Moments are mechanical** - Segmentation is deterministic, not AI-driven
-2. **OpenAI is prose-only** - It renders narratives, not structure
-3. **Full traceability** - Every narrative sentence maps to specific plays
-4. **No abstraction** - No headers, sections, or thematic groupings
-5. **Validation is strict** - Pipeline fails on contract violations
+1. **Blocks are consumer-facing** - 4-7 blocks per game, 20-60 second read time
+2. **Moments enable traceability** - Every block maps to underlying plays
+3. **Segmentation is mechanical** - Block grouping is deterministic, not AI-driven
+4. **OpenAI is prose-only** - It renders narratives, not structure
+5. **Guardrails are non-negotiable** - Violations fail the pipeline
 
 ## See Also
 
-- [STORY_CONTRACT.md](STORY_CONTRACT.md) - Authoritative story specification
-- [PBP_STORY_ASSUMPTIONS.md](PBP_STORY_ASSUMPTIONS.md) - PBP data requirements
+- [STORY_CONTRACT.md](STORY_CONTRACT.md) - Full story specification
 - [API.md](API.md) - Complete API reference

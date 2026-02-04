@@ -145,7 +145,7 @@ export type StoryMoment = {
   endClock: string | null;
   scoreBefore: number[];
   scoreAfter: number[];
-  narrative: string;
+  narrative: string | null;  // Narrative is in blocks, not moments
   cumulativeBoxScore?: MomentBoxScore | null;
 };
 
@@ -184,6 +184,143 @@ export type GameStoryResponse = {
   gameId: number;
   story: StoryContent;
   plays: StoryPlay[];
+  validationPassed: boolean;
+  validationErrors: string[];
+  /** Phase 1 narrative blocks (4-7 blocks with narratives) */
+  blocks?: NarrativeBlock[];
+  /** Total word count across all block narratives */
+  totalWords?: number;
+};
+
+// =============================================================================
+// Phase 5: Block-based Narrative Types
+// =============================================================================
+
+/**
+ * Semantic role for a narrative block.
+ * Describes the block's function in the game's narrative arc.
+ */
+export type SemanticRole =
+  | "SETUP"
+  | "MOMENTUM_SHIFT"
+  | "RESPONSE"
+  | "DECISION_POINT"
+  | "RESOLUTION";
+
+/**
+ * Embedded tweet in a narrative block.
+ * Selected high-signal tweet for inline display.
+ */
+export type EmbeddedTweet = {
+  tweetId: string;
+  postedAt: string;
+  text: string;
+  author: string;
+  phase: string;
+  score: number;
+  position: "EARLY" | "MID" | "LATE";
+  hasMedia: boolean;
+  mediaType?: string | null;
+};
+
+/**
+ * Player stat with delta showing segment production.
+ */
+export type BlockPlayerStat = {
+  name: string;
+  // Basketball stats (cumulative)
+  pts?: number;
+  reb?: number;
+  ast?: number;
+  "3pm"?: number;
+  fgm?: number;
+  ftm?: number;
+  // Basketball deltas (this block's production)
+  delta_pts?: number;
+  delta_reb?: number;
+  delta_ast?: number;
+  // Hockey stats (cumulative)
+  goals?: number;
+  assists?: number;
+  sog?: number;
+  plusMinus?: number;
+  // Hockey deltas
+  delta_goals?: number;
+  delta_assists?: number;
+};
+
+/**
+ * Team mini box score for a block.
+ */
+export type BlockTeamMiniBox = {
+  team: string;
+  players: BlockPlayerStat[];
+};
+
+/**
+ * Mini box score for a block with cumulative stats and segment deltas.
+ */
+export type BlockMiniBox = {
+  home: BlockTeamMiniBox;
+  away: BlockTeamMiniBox;
+  /** Top contributors in this segment (last names) */
+  block_stars: string[];
+};
+
+/**
+ * A narrative block in the collapsed game flow.
+ * Replaces moment-level narratives with 1-2 sentences.
+ */
+export type NarrativeBlock = {
+  blockIndex: number;
+  role: SemanticRole;
+  momentIndices: number[];
+  periodStart: number;
+  periodEnd: number;
+  scoreBefore: number[];
+  scoreAfter: number[];
+  playIds: number[];
+  keyPlayIds: number[];
+  narrative: string | null;
+  embeddedTweet?: EmbeddedTweet | null;
+  /** Cumulative box score with segment deltas */
+  miniBox?: BlockMiniBox | null;
+};
+
+/**
+ * Social post for expandable sections.
+ * Categorized by phase for organization.
+ */
+export type CategorizedSocialPost = {
+  id: string | number;
+  text: string;
+  author: string;
+  postedAt: string;
+  phase: string;
+  segment?: string | null;
+  hasMedia: boolean;
+  mediaType?: string | null;
+  postUrl?: string;
+};
+
+/**
+ * Grouped social posts for expandable sections.
+ */
+export type SocialPostsByPhase = {
+  pregame: CategorizedSocialPost[];
+  inGame: Record<string, CategorizedSocialPost[]>; // Keyed by segment (q1, q2, etc.)
+  postgame: CategorizedSocialPost[];
+};
+
+/**
+ * Response for block-based game flow.
+ */
+export type BlockStoryResponse = {
+  gameId: number;
+  leagueCode: string;
+  blocks: NarrativeBlock[];
+  totalWords: number;
+  socialPosts?: SocialPostsByPhase;
   validationPassed: boolean;
   validationErrors: string[];
 };

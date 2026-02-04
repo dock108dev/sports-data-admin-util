@@ -16,6 +16,14 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Check if table already exists (created by initial schema baseline)
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'openai_response_cache')"
+    ))
+    if result.scalar():
+        return  # Table already exists
+
     op.create_table(
         "openai_response_cache",
         sa.Column("id", sa.Integer(), primary_key=True),

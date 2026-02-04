@@ -341,16 +341,13 @@ class TestRunPbpIngestionForLeague:
         assert result["pbp_games"] == 10
         assert result["pbp_events"] == 500
 
-    @patch("sports_scraper.services.pbp_ingestion.ingest_pbp_via_sportsref")
-    @patch("sports_scraper.scrapers.get_scraper")
+    @patch("sports_scraper.services.pbp_ingestion.ingest_pbp_via_nba_api")
     @patch("sports_scraper.services.scheduler.get_session")
-    def test_nba_uses_sportsref(self, mock_get_session, mock_get_scraper, mock_ingest):
-        """NBA uses Sports Reference for PBP."""
+    def test_nba_uses_nba_api(self, mock_get_session, mock_ingest):
+        """NBA uses official NBA API for PBP."""
         mock_session = MagicMock()
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
-        mock_scraper = MagicMock()
-        mock_get_scraper.return_value = mock_scraper
         mock_ingest.return_value = (3, 150)
 
         result = run_pbp_ingestion_for_league("NBA")
@@ -358,6 +355,7 @@ class TestRunPbpIngestionForLeague:
         assert result["league"] == "NBA"
         assert result["pbp_games"] == 3
         assert result["pbp_events"] == 150
+        mock_ingest.assert_called_once()
 
     @patch("sports_scraper.services.scheduler.get_session")
     def test_unsupported_league_returns_zero(self, mock_get_session):

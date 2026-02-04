@@ -86,20 +86,28 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
             "validated": output.get("validated", False),
             "error_count": len(output.get("errors", [])),
         }
-    elif stage == "RENDER_NARRATIVES":
-        # Format: {"rendered": true/false, "moments": [...], "openai_calls": N}
-        moments = output.get("moments", [])
-        narratives_with_text = sum(1 for m in moments if m.get("narrative"))
-        avg_length = 0
-        if narratives_with_text > 0:
-            total_chars = sum(len(m.get("narrative", "")) for m in moments)
-            avg_length = round(total_chars / narratives_with_text)
+    elif stage == "GROUP_BLOCKS":
+        # Format: {"blocks_grouped": true, "blocks": [...], "block_count": N}
         return {
-            "rendered": output.get("rendered", False),
-            "moment_count": len(moments),
-            "narratives_generated": narratives_with_text,
+            "blocks_grouped": output.get("blocks_grouped", False),
+            "block_count": output.get("block_count", 0),
+            "lead_changes": output.get("lead_changes", 0),
+        }
+    elif stage == "RENDER_BLOCKS":
+        # Format: {"blocks_rendered": true, "blocks": [...], "total_words": N}
+        blocks = output.get("blocks", [])
+        return {
+            "blocks_rendered": output.get("blocks_rendered", False),
+            "block_count": len(blocks),
+            "total_words": output.get("total_words", 0),
             "openai_calls": output.get("openai_calls", 0),
-            "avg_narrative_length": avg_length,
+        }
+    elif stage == "VALIDATE_BLOCKS":
+        # Format: {"blocks_validated": true/false, "errors": [...]}
+        return {
+            "blocks_validated": output.get("blocks_validated", False),
+            "error_count": len(output.get("errors", [])),
+            "total_words": output.get("total_words", 0),
         }
     elif stage == "FINALIZE_MOMENTS":
         # New format: {"finalized": true, "story_id": N, "moment_count": N, ...}
@@ -224,7 +232,10 @@ def get_stage_description(stage: PipelineStage) -> str:
         PipelineStage.NORMALIZE_PBP: "Read PBP data from database and normalize with phase assignments",
         PipelineStage.GENERATE_MOMENTS: "Segment plays into condensed moments with explicit narration targets",
         PipelineStage.VALIDATE_MOMENTS: "Validate moment structure, ordering, and coverage",
-        PipelineStage.RENDER_NARRATIVES: "Generate narrative text for each moment using OpenAI",
-        PipelineStage.FINALIZE_MOMENTS: "Persist moments with narratives to story tables",
+        PipelineStage.ANALYZE_DRAMA: "Identify dramatic peak and weight quarters for block distribution",
+        PipelineStage.GROUP_BLOCKS: "Group moments into 4-7 narrative blocks with semantic roles",
+        PipelineStage.RENDER_BLOCKS: "Generate short narratives for each block using OpenAI",
+        PipelineStage.VALIDATE_BLOCKS: "Validate block count, word limits, and constraints",
+        PipelineStage.FINALIZE_MOMENTS: "Persist moments and blocks to story tables",
     }
     return descriptions.get(stage, "Unknown stage")

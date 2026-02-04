@@ -53,19 +53,24 @@
 
 ## Story Generation
 
-**Architecture:** Condensed moment-based narratives via multi-stage pipeline
+**Architecture:** Block-based narratives via 8-stage pipeline
 
-A story is an ordered list of condensed moments. Each moment is a contiguous set of 15-50 PBP plays with 1-5 explicitly narrated plays. Games typically produce 15-25 moments.
+A story consists of 4-7 narrative blocks. Each block contains 1-2 sentences (~35 words) with a semantic role (SETUP, MOMENTUM_SHIFT, RESOLUTION, etc.). Target read time: 20-60 seconds.
 
 **Contract:** See `docs/STORY_CONTRACT.md`
 
 **Key Concepts:**
-- **Condensed Moment:** 15-50 plays with 1-5 explicit narrations and 2-3 paragraph narrative
-- **Cumulative Box Score:** Each moment includes running player stats snapshot
-- **Traceability:** Every narrative sentence maps to backing plays
-- **No abstraction:** No headers, sections, or thematic groupings
-- **Mechanical segmentation:** Moment boundaries are deterministic
+- **Narrative Block:** Consumer-facing output (4-7 per game, 1-2 sentences each)
+- **Moments:** Internal traceability layer linking blocks to plays
+- **Semantic Roles:** SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION
+- **Guardrails:** Hard limits enforced (blocks ≤ 7, tweets ≤ 5, words ≤ 350)
+- **Social Independence:** Story structure identical with/without social data
 - **OpenAI is prose-only:** It renders narratives, not structure
+
+**Pipeline Stages:**
+```
+NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
+```
 
 **Code:** `api/app/services/pipeline/`
 
@@ -86,7 +91,7 @@ Configured in `scraper/sports_scraper/celery_app.py`
 
 | League | Boxscores | Play-by-Play | Game Matching |
 |--------|-----------|--------------|---------------|
-| NBA | Basketball Reference | Basketball Reference | `source_game_key` (e.g., `202601290ATL`) |
+| NBA | Basketball Reference | NBA API | `source_game_key` (e.g., `202601290ATL`) |
 | NHL | NHL API | NHL API | `external_ids.nhl_game_pk` |
 | NCAAB | CBB API | CBB API | `external_ids.cbb_game_id` |
 

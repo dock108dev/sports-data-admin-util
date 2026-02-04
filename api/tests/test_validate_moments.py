@@ -1,5 +1,7 @@
 """Tests for validate_moments stage."""
 
+import pytest
+
 
 class TestValidationError:
     """Tests for ValidationError class."""
@@ -564,9 +566,6 @@ class TestValidateScoreContinuity:
         ]
         errors = _validate_score_continuity(moments)
         assert len(errors) == 2
-
-
-import pytest
 
 
 class TestExecuteValidateMoments:

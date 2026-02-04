@@ -41,7 +41,7 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 **Purpose:** Automated ingestion from external sources
 
 - **Sports:** NBA, NHL, NCAAB
-- **Sources:** Sports Reference (NBA, NCAAB), NHL API (NHL), CBB Stats API (NCAAB boxscores), The Odds API, X/Twitter
+- **Sources:** Sports Reference (NBA boxscores, NCAAB), NBA API (NBA PBP), NHL API (NHL), CBB Stats API (NCAAB boxscores), The Odds API, X/Twitter
 - **Data Types:** Play-by-play, box scores, odds, social media
 - **Scheduling:** Celery task queue with Redis
 - **Output:** Normalized data to PostgreSQL
@@ -75,14 +75,14 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 
 ## Story Generation
 
-The story system converts play-by-play data into condensed moment-based narratives through a multi-stage pipeline.
+The story system converts play-by-play data into block-based narratives through an 8-stage pipeline.
 
 ### Architecture
 
-A story is an ordered list of **condensed moments**. Each moment contains 15-50 PBP plays with 1-5 explicitly narrated plays. A typical game produces 15-25 moments.
+A story consists of **4-7 narrative blocks**, each containing 1-2 sentences (~35 words). Blocks are designed for 20-60 second total read time.
 
 ```
-NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES → FINALIZE_MOMENTS
+NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
 ```
 
 ### Pipeline Stages
@@ -91,26 +91,29 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES �
 |-------|---------|
 | NORMALIZE_PBP | Fetch and normalize PBP with phase assignments |
 | GENERATE_MOMENTS | Segment plays into moment boundaries |
-| VALIDATE_MOMENTS | Validate against story contract |
-| RENDER_NARRATIVES | Generate narrative text via OpenAI |
+| VALIDATE_MOMENTS | Validate moment structure |
+| ANALYZE_DRAMA | Use AI to identify dramatic peak and weight quarters |
+| GROUP_BLOCKS | Group moments into 4-7 narrative blocks (drama-weighted) |
+| RENDER_BLOCKS | Generate block narratives via OpenAI |
+| VALIDATE_BLOCKS | Enforce guardrail invariants |
 | FINALIZE_MOMENTS | Persist to database |
 
-### Core Concept: Condensed Moment
+### Core Concept: Narrative Block
 
-A condensed moment contains:
-- `play_ids`: The backing plays (15-50 plays)
-- `explicitly_narrated_play_ids`: Plays directly described in narrative (1-5 plays)
-- `narrative`: 2-3 paragraph text (~6-10 sentences) describing the plays
-- `cumulative_box_score`: Running player stats snapshot at this point
-- Time and score context
+A narrative block contains:
+- `block_index`: Position (0-6)
+- `role`: Semantic role (SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION)
+- `moment_indices`: Which moments are grouped
+- `narrative`: 1-2 sentences (~35 words)
+- Score and time context
 
 ### Key Properties
 
-- **Traceability:** Every narrative sentence maps to specific plays
-- **No abstraction:** No headers, sections, or thematic groupings
-- **Ordered:** Moments follow game chronology
-- **Mechanical segmentation:** Moment boundaries are deterministic, not AI-driven
-- **OpenAI is prose-only:** It renders narratives, not structure
+- **Consumer-focused:** 4-7 blocks, 20-60 second read time
+- **Traceability:** Blocks → Moments → Plays
+- **Semantic roles:** Each block has a narrative purpose
+- **Guardrails enforced:** Hard limits on block count, tweet count, word count
+- **Social-independent:** Story structure identical with/without social data
 
 See [STORY_CONTRACT.md](STORY_CONTRACT.md) for the authoritative specification.
 

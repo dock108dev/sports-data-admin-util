@@ -1173,7 +1173,7 @@ class TestScrapeRunManagerPbp:
         result = manager.run(1, config)
         assert result["pbp_games"] == 0
 
-    @patch("sports_scraper.services.run_manager.ingest_pbp_via_sportsref")
+    @patch("sports_scraper.services.run_manager.ingest_pbp_via_nba_api")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
     @patch("sports_scraper.services.run_manager.complete_job_run")
@@ -1183,12 +1183,12 @@ class TestScrapeRunManagerPbp:
     @patch("sports_scraper.services.run_manager.XPostCollector")
     @patch("sports_scraper.services.run_manager.OddsSynchronizer")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
-    def test_sportsref_pbp_used_for_nba(
+    def test_nba_api_pbp_used_for_nba(
         self, mock_scrapers, mock_odds, mock_social, mock_live,
         mock_conflicts, mock_missing, mock_complete, mock_start,
         mock_get_session, mock_ingest
     ):
-        """Sports Reference PBP used for NBA."""
+        """Official NBA API used for NBA PBP."""
         mock_scraper = MagicMock()
         mock_scrapers.return_value = {"NBA": mock_scraper}
         mock_session = MagicMock()

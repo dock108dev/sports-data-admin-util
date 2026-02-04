@@ -28,9 +28,9 @@
 
 | Guide | Description |
 |-------|-------------|
-| [Story Contract](STORY_CONTRACT.md) | **Authoritative:** Condensed moment model and guarantees |
-| [Story Pipeline](STORY_PIPELINE.md) | Pipeline stages and implementation details |
-| [PBP Story Assumptions](PBP_STORY_ASSUMPTIONS.md) | Technical assumptions for story generation |
+| [Story Contract](STORY_CONTRACT.md) | **Authoritative:** Block-based narrative model (4-7 blocks per game) |
+| [Story Pipeline](STORY_PIPELINE.md) | 8-stage pipeline from PBP to narratives |
+| [PBP Story Assumptions](PBP_STORY_ASSUMPTIONS.md) | Technical assumptions about PBP data |
 
 ## Timeline System
 
@@ -55,8 +55,8 @@
 
 | Guide | Description |
 |-------|-------------|
-| [NBA PBP Review](pbp-nba-review.md) | NBA PBP implementation |
-| [NCAAB PBP](pbp-ncaab-sports-reference.md) | NCAAB PBP via Sports Reference |
+| [NBA PBP Review](PBP_NBA_REVIEW.md) | NBA PBP implementation |
+| [NCAAB PBP](PBP_NCAAB_SPORTS_REFERENCE.md) | NCAAB PBP via Sports Reference |
 
 > **Note:** NHL PBP uses the official NHL API (`api-web.nhle.com`). See [Data Sources](DATA_SOURCES.md).
 
@@ -64,15 +64,15 @@
 
 | Guide | Description |
 |-------|-------------|
-| [NBA/NCAAB Odds](odds-nba-ncaab-review.md) | NBA/NCAAB odds implementation |
-| [NHL Odds Validation](odds-nhl-validation.md) | NHL odds validation checklist |
+| [NBA/NCAAB Odds](ODDS_NBA_NCAAB_REVIEW.md) | NBA/NCAAB odds implementation |
+| [NHL Odds Validation](ODDS_NHL_VALIDATION.md) | NHL odds validation checklist |
 
 ### Social
 
 | Guide | Description |
 |-------|-------------|
-| [NBA Social](social-nba-review.md) | NBA social implementation |
-| [NHL Social](social-nhl.md) | NHL team X handles and validation |
+| [NBA Social](SOCIAL_NBA_REVIEW.md) | NBA social implementation |
+| [NHL Social](SOCIAL_NHL.md) | NHL team X handles and validation |
 
 ## Operations
 

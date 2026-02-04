@@ -25,7 +25,7 @@ The Docker Compose setup starts:
 | redis | 6379 | Redis for Celery queue |
 | api | 8000 | FastAPI backend |
 | scraper | — | Celery worker for data ingestion |
-| scraper-beat | — | Celery scheduler (daily at 9:00 UTC) |
+| scraper-beat | — | Celery scheduler (daily at 13:00 UTC / 8:00 AM EST) |
 | web | 3000 | Next.js admin UI |
 
 ## Verify Everything Works
@@ -149,6 +149,7 @@ Key variables in `infra/.env`:
 | POSTGRES_USER | Yes | Database user |
 | POSTGRES_PASSWORD | Yes | Database password |
 | ENVIRONMENT | Yes | `development`, `staging`, or `production` |
+| API_KEY | Prod/Staging | API authentication key (min 32 chars). Generate: `openssl rand -hex 32` |
 | OPENAI_API_KEY | No | For AI enrichment (moment summaries) |
 | ODDS_API_KEY | No | The Odds API key for live odds |
 | X_AUTH_TOKEN | No | X auth cookie for social scraping |

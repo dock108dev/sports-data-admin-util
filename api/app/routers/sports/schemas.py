@@ -524,7 +524,7 @@ class StoryMoment(BaseModel):
     end_clock: str | None = Field(None, alias="endClock")
     score_before: list[int] = Field(..., alias="scoreBefore")
     score_after: list[int] = Field(..., alias="scoreAfter")
-    narrative: str
+    narrative: str | None = None  # Narrative is in blocks_json, not moments_json
     cumulative_box_score: MomentBoxScore | None = Field(None, alias="cumulativeBoxScore")
 
 
@@ -554,11 +554,47 @@ class StoryContent(BaseModel):
     moments: list[StoryMoment]
 
 
+class BlockMiniBox(BaseModel):
+    """Mini box score for a narrative block with cumulative stats and segment deltas."""
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    home: dict[str, Any]  # {team, players: [{name, pts, delta_pts, ...}]}
+    away: dict[str, Any]
+    block_stars: list[str] = Field(default_factory=list)
+
+
+class StoryBlock(BaseModel):
+    """A narrative block grouping multiple moments.
+
+    Blocks are the consumer-facing narrative output (Phase 1).
+    Each block represents a stretch of play described in 1-2 sentences.
+    """
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    block_index: int = Field(..., alias="blockIndex")
+    role: str  # SemanticRole value: SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION
+    moment_indices: list[int] = Field(..., alias="momentIndices")
+    period_start: int = Field(..., alias="periodStart")
+    period_end: int = Field(..., alias="periodEnd")
+    score_before: list[int] = Field(..., alias="scoreBefore")
+    score_after: list[int] = Field(..., alias="scoreAfter")
+    play_ids: list[int] = Field(..., alias="playIds")
+    key_play_ids: list[int] = Field(..., alias="keyPlayIds")
+    narrative: str | None = None
+    mini_box: BlockMiniBox | None = Field(None, alias="miniBox")
+
+
 class GameStoryResponse(BaseModel):
     """Response for GET /games/{game_id}/story.
 
     Returns the persisted Story exactly as stored.
     No transformation, no aggregation, no additional prose.
+
+    Phase 1 additions:
+    - blocks: 4-7 narrative blocks (consumer-facing output)
+    - total_words: Total word count across all block narratives
     """
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -568,6 +604,9 @@ class GameStoryResponse(BaseModel):
     plays: list[StoryPlay]
     validation_passed: bool = Field(..., alias="validationPassed")
     validation_errors: list[str] = Field(default_factory=list, alias="validationErrors")
+    # Phase 1: Block-based narratives
+    blocks: list[StoryBlock] | None = None
+    total_words: int | None = Field(None, alias="totalWords")
 
 
 class TimelineArtifactResponse(BaseModel):

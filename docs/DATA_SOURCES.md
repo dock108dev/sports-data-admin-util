@@ -51,45 +51,54 @@ NCAAB boxscore ingestion requires `cbb_team_id` in `sports_teams.external_codes`
 
 ## Play-by-Play
 
-### Historical (Sports Reference) - NBA/NCAAB
+### NBA (Official NBA API)
 
-**Source:**
-- **NBA**: `basketball-reference.com/boxscores/pbp/{game_id}.html`
-- **NCAAB**: `sports-reference.com/cbb/boxscores/{game_id}.html`
+**Source:** `cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json`
 
-**Format:** HTML tables with quarter headers and play rows
+NBA uses the official NBA API for PBP ingestion. The scraper matches games using `source_game_key` and fetches PBP from the CDN.
 
 **Parsing:**
-- Quarter detection from header rows (`q1`, `q2`, etc.)
+- Each JSON action becomes a `NormalizedPlay`
+- `play_index`: `period * 10000 + actionNumber` for stable ordering
+- Clock parsed from ISO-8601 format (e.g., `PT11M22.00S` → `11:22`)
+- `play_type`, `team_abbreviation`, `player_id`, `player_name` from action payload
+
+**Storage:** `sports_game_plays`
+
+**Implementation:** `scraper/sports_scraper/services/pbp_ingestion.py` → `ingest_pbp_via_nba_api`
+
+### NCAAB (Sports Reference)
+
+**Source:** `sports-reference.com/cbb/boxscores/{game_id}.html`
+
+**Format:** HTML tables with half/OT headers and play rows
+
+**Parsing:**
+- Half/OT detection from header rows
 - Sequential `play_index` from HTML row order
 - Clock preserved as-is from table
-- Scores extracted when available
 - Description concatenated from away/home columns
 
 **Storage:** `sports_game_plays`
 
-**Implementation:**
-- `scraper/sports_scraper/scrapers/nba_sportsref.py`
-- `scraper/sports_scraper/scrapers/ncaab_sportsref.py`
+**Implementation:** `scraper/sports_scraper/scrapers/ncaab_sportsref.py`
 
-See also:
-- [pbp-nba-review.md](pbp-nba-review.md) - NBA PBP implementation details
-- [pbp-ncaab-sports-reference.md](pbp-ncaab-sports-reference.md) - NCAAB PBP details
+See [PBP_NCAAB_SPORTS_REFERENCE.md](PBP_NCAAB_SPORTS_REFERENCE.md) for details.
 
-### Live Feeds / NHL API
+### NHL (Official NHL API)
 
-**NBA:**
-- Source: `cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json`
-- Polling: Every 15 seconds during live games
-- Implementation: `scraper/sports_scraper/live/nba.py`
+**Source:** `api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play`
 
-**NHL (All PBP + Boxscores):**
-- PBP Source: `api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play`
-- Boxscore Source: `api-web.nhle.com/v1/gamecenter/{game_id}/boxscore`
-- Polling: Every 15 seconds during live games
-- Implementation: `scraper/sports_scraper/live/nhl.py`
+NHL uses the official NHL API for ALL data (schedule, PBP, boxscores).
 
-NHL uses the official NHL API for ALL data (schedule, PBP, boxscores) rather than web scraping.
+**Parsing:**
+- Period and time from play data
+- Event types mapped to normalized play types
+- Player attribution when available
+
+**Storage:** `sports_game_plays`
+
+**Implementation:** `scraper/sports_scraper/live/nhl.py`
 
 **Play Index Calculation:**
 - Live feeds use `period * 10000 + actionNumber` for stable ordering
@@ -150,8 +159,8 @@ This table enables efficient cross-book comparison without the game-centric stru
 - Persistence: `scraper/sports_scraper/persistence/odds.py`
 
 See also:
-- [odds-nba-ncaab-review.md](odds-nba-ncaab-review.md) - NBA/NCAAB odds details
-- [odds-nhl-validation.md](odds-nhl-validation.md) - NHL odds validation
+- [ODDS_NBA_NCAAB_REVIEW.md](ODDS_NBA_NCAAB_REVIEW.md) - NBA/NCAAB odds details
+- [ODDS_NHL_VALIDATION.md](ODDS_NHL_VALIDATION.md) - NHL odds validation
 
 ## Social Media (X/Twitter)
 
@@ -209,16 +218,19 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 
 See also:
 - [X_INTEGRATION.md](X_INTEGRATION.md) - X/Twitter integration architecture
-- [social-nba-review.md](social-nba-review.md) - NBA social implementation
-- [social-nhl.md](social-nhl.md) - NHL social accounts
+- [SOCIAL_NBA_REVIEW.md](SOCIAL_NBA_REVIEW.md) - NBA social implementation
+- [SOCIAL_NHL.md](SOCIAL_NHL.md) - NHL social accounts
 
 ## Scraper Execution
 
 ### Automatic (Scheduled)
 - **Scheduler**: Celery Beat
-- **Ingestion**: Daily at 10:30 UTC (5:30 AM EST) - boxscores, odds, PBP, social
-- **Timeline Generation**: Daily at 12:00 UTC (7:00 AM EST) - 90 min after ingestion
-- **Story Generation**: Daily at 12:15 UTC (7:15 AM EST) - 15 min after timeline gen
+- **Ingestion**: Daily at 13:00 UTC (8:00 AM EST) - boxscores, odds, PBP, social
+- **Flow Generation**: Runs 90 minutes after ingestion, staggered by league:
+  - 14:30 UTC (9:30 AM EST) - NBA flow generation
+  - 14:45 UTC (9:45 AM EST) - NHL flow generation
+  - 15:00 UTC (10:00 AM EST) - NCAAB flow generation (capped at 10 games)
+- **Odds Sync**: Every 30 minutes (all leagues)
 - **Window**: Yesterday through today (catches overnight game completions)
 
 Configuration: `scraper/sports_scraper/celery_app.py`

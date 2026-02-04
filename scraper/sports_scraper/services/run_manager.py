@@ -23,6 +23,7 @@ from .game_selection import (
     select_games_for_social,
 )
 from .pbp_ingestion import (
+    ingest_pbp_via_nba_api,
     ingest_pbp_via_ncaab_api,
     ingest_pbp_via_nhl_api,
     ingest_pbp_via_sportsref,
@@ -421,8 +422,31 @@ class ScrapeRunManager:
                                 error=str(exc),
                             )
                             complete_job_run(pbp_run_id, "error", str(exc))
+                    elif config.league_code == "NBA":
+                        # NBA: Use official NBA API for PBP
+                        try:
+                            with get_session() as session:
+                                pbp_games, pbp_events = ingest_pbp_via_nba_api(
+                                    session,
+                                    run_id=run_id,
+                                    start_date=start,
+                                    end_date=pbp_end,
+                                    only_missing=config.only_missing,
+                                    updated_before=updated_before_dt,
+                                )
+                                session.commit()
+                            summary["pbp_games"] += pbp_games
+                            complete_job_run(pbp_run_id, "success")
+                        except Exception as exc:
+                            logger.exception(
+                                "pbp_nba_api_failed",
+                                run_id=run_id,
+                                league=config.league_code,
+                                error=str(exc),
+                            )
+                            complete_job_run(pbp_run_id, "error", str(exc))
                     else:
-                        # NBA/other leagues: Use Sports Reference for PBP
+                        # Other leagues: Use Sports Reference for PBP
                         try:
                             with get_session() as session:
                                 pbp_games, pbp_events = ingest_pbp_via_sportsref(

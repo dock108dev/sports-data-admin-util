@@ -205,20 +205,6 @@ class TestNBABuildTeamBoxscore:
         assert boxscore.turnovers == 12
 
 
-class TestNBAPbpUrl:
-    """Tests for pbp_url method."""
-
-    @patch("sports_scraper.scrapers.base.HTMLCache")
-    @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_pbp_url_format(self, mock_client, mock_cache):
-        """PBP URL has correct format."""
-        from sports_scraper.scrapers.nba_sportsref import NBASportsReferenceScraper
-        scraper = NBASportsReferenceScraper()
-        url = scraper.pbp_url("202410220BOS")
-        assert "pbp" in url
-        assert "202410220BOS" in url
-
-
 class TestNBAFetchSingleBoxscore:
     """Tests for fetch_single_boxscore method."""
 
@@ -273,119 +259,6 @@ class TestNBASportsrefAbbrMap:
         assert _to_sportsref_abbr("LAL") == "LAL"
 
 
-class TestNBAParseScoreboxAbbreviations:
-    """Tests for _parse_scorebox_abbreviations method."""
-
-    @patch("sports_scraper.scrapers.base.HTMLCache")
-    @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_returns_none_tuple_when_no_scorebox(self, mock_client, mock_cache):
-        """Returns (None, None) when scorebox not found."""
-        from bs4 import BeautifulSoup
-        from sports_scraper.scrapers.nba_sportsref import NBASportsReferenceScraper
-        scraper = NBASportsReferenceScraper()
-        soup = BeautifulSoup("<html></html>", "lxml")
-        away, home = scraper._parse_scorebox_abbreviations(soup)
-        assert away is None
-        assert home is None
-
-    @patch("sports_scraper.scrapers.base.HTMLCache")
-    @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_returns_none_tuple_when_fewer_than_two_divs(self, mock_client, mock_cache):
-        """Returns (None, None) when fewer than 2 team divs."""
-        from bs4 import BeautifulSoup
-        from sports_scraper.scrapers.nba_sportsref import NBASportsReferenceScraper
-        scraper = NBASportsReferenceScraper()
-        html = '<div class="scorebox"><div>One Team</div></div>'
-        soup = BeautifulSoup(html, "lxml")
-        away, home = scraper._parse_scorebox_abbreviations(soup)
-        assert away is None
-        assert home is None
-
-
-class TestNBAParsePbpRow:
-    """Tests for _parse_pbp_row method."""
-
-    @patch("sports_scraper.scrapers.base.HTMLCache")
-    @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_returns_none_for_thead_row(self, mock_client, mock_cache):
-        """Returns None for thead row."""
-        from bs4 import BeautifulSoup
-        from sports_scraper.scrapers.nba_sportsref import NBASportsReferenceScraper
-        scraper = NBASportsReferenceScraper()
-        html = '<tr class="thead"><th>Header</th></tr>'
-        soup = BeautifulSoup(html, "lxml")
-        row = soup.find("tr")
-        result = scraper._parse_pbp_row(row, quarter=1, away_abbr="BOS", home_abbr="LAL", play_index=0)
-        assert result is None
-
-    @patch("sports_scraper.scrapers.base.HTMLCache")
-    @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_returns_none_for_empty_row(self, mock_client, mock_cache):
-        """Returns None for row with no cells."""
-        from bs4 import BeautifulSoup
-        from sports_scraper.scrapers.nba_sportsref import NBASportsReferenceScraper
-        scraper = NBASportsReferenceScraper()
-        html = '<tr></tr>'
-        soup = BeautifulSoup(html, "lxml")
-        row = soup.find("tr")
-        result = scraper._parse_pbp_row(row, quarter=1, away_abbr="BOS", home_abbr="LAL", play_index=0)
-        assert result is None
-
-    @patch("sports_scraper.scrapers.base.HTMLCache")
-    @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_parses_colspan_row(self, mock_client, mock_cache):
-        """Parses colspan row (neutral play like jump ball)."""
-        from bs4 import BeautifulSoup
-        from sports_scraper.scrapers.nba_sportsref import NBASportsReferenceScraper
-        scraper = NBASportsReferenceScraper()
-        html = '<tr><td>12:00</td><td colspan="5">Jump ball: Player vs Player</td></tr>'
-        soup = BeautifulSoup(html, "lxml")
-        row = soup.find("tr")
-        result = scraper._parse_pbp_row(row, quarter=1, away_abbr="BOS", home_abbr="LAL", play_index=0)
-        assert result is not None
-        assert result.quarter == 1
-        assert "Jump ball" in result.description
-
-    @patch("sports_scraper.scrapers.base.HTMLCache")
-    @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_parses_standard_6_column_row(self, mock_client, mock_cache):
-        """Parses standard 6-column row format."""
-        from bs4 import BeautifulSoup
-        from sports_scraper.scrapers.nba_sportsref import NBASportsReferenceScraper
-        scraper = NBASportsReferenceScraper()
-        html = '''
-        <tr>
-            <td>10:30</td>
-            <td>BOS makes 3-pointer</td>
-            <td></td>
-            <td>3-0</td>
-            <td></td>
-            <td></td>
-        </tr>
-        '''
-        soup = BeautifulSoup(html, "lxml")
-        row = soup.find("tr")
-        result = scraper._parse_pbp_row(row, quarter=1, away_abbr="BOS", home_abbr="LAL", play_index=0)
-        assert result is not None
-        assert result.game_clock == "10:30"
-        assert result.away_score == 3
-        assert result.home_score == 0
-        assert result.team_abbreviation == "BOS"
-
-    @patch("sports_scraper.scrapers.base.HTMLCache")
-    @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_returns_none_for_insufficient_columns(self, mock_client, mock_cache):
-        """Returns None for row with fewer than 6 columns but more than 2."""
-        from bs4 import BeautifulSoup
-        from sports_scraper.scrapers.nba_sportsref import NBASportsReferenceScraper
-        scraper = NBASportsReferenceScraper()
-        html = '<tr><td>10:30</td><td>Action1</td><td>Action2</td></tr>'
-        soup = BeautifulSoup(html, "lxml")
-        row = soup.find("tr")
-        result = scraper._parse_pbp_row(row, quarter=1, away_abbr="BOS", home_abbr="LAL", play_index=0)
-        assert result is None
-
-
 class TestNBAFetchGamesForDate:
     """Tests for fetch_games_for_date method."""
 
@@ -421,48 +294,6 @@ class TestNBAFetchGamesForDate:
 
         result = scraper.fetch_games_for_date(date(2024, 10, 22))
         assert result == []
-
-
-class TestNBAFetchPlayByPlay:
-    """Tests for fetch_play_by_play method."""
-
-    @patch("sports_scraper.scrapers.base.HTMLCache")
-    @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_returns_empty_plays_when_no_pbp_table(self, mock_client, mock_cache):
-        """Returns NormalizedPlayByPlay with empty plays when no pbp table found."""
-        from bs4 import BeautifulSoup
-        from sports_scraper.scrapers.nba_sportsref import NBASportsReferenceScraper
-        scraper = NBASportsReferenceScraper()
-        scraper.fetch_html = MagicMock(return_value=BeautifulSoup("<html></html>", "lxml"))
-
-        result = scraper.fetch_play_by_play("202410220BOS", date(2024, 10, 22))
-        assert result.source_game_key == "202410220BOS"
-        assert result.plays == []
-
-    @patch("sports_scraper.scrapers.base.HTMLCache")
-    @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_parses_pbp_with_quarter_markers(self, mock_client, mock_cache):
-        """Parses PBP table with quarter markers."""
-        from bs4 import BeautifulSoup
-        from sports_scraper.scrapers.nba_sportsref import NBASportsReferenceScraper
-        scraper = NBASportsReferenceScraper()
-        html = '''
-        <html>
-        <div class="scorebox">
-            <div><a itemprop="name">Boston Celtics</a></div>
-            <div><a itemprop="name">Los Angeles Lakers</a></div>
-        </div>
-        <table id="pbp">
-            <tr id="q1" class="thead"><th>1st Quarter</th></tr>
-            <tr><td>12:00</td><td colspan="5">Jump ball: Player A vs Player B</td></tr>
-        </table>
-        </html>
-        '''
-        scraper.fetch_html = MagicMock(return_value=BeautifulSoup(html, "lxml"))
-
-        result = scraper.fetch_play_by_play("202410220BOS", date(2024, 10, 22))
-        assert len(result.plays) == 1
-        assert result.plays[0].quarter == 1
 
 
 class TestNBAFetchSingleBoxscoreSuccess:

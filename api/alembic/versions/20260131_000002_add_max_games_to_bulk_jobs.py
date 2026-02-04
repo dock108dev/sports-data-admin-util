@@ -20,6 +20,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Add max_games column to bulk_story_generation_jobs."""
+    # Check if column already exists (created by initial schema baseline)
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing_cols = {col["name"] for col in inspector.get_columns("bulk_story_generation_jobs")}
+    if "max_games" in existing_cols:
+        return  # Column already exists
+
     op.add_column(
         "bulk_story_generation_jobs",
         sa.Column("max_games", sa.Integer(), nullable=True),
