@@ -414,14 +414,17 @@ class TestBuildMomentPrompt:
         assert "PREVIOUS RESPONSE FAILED" in result
 
     def test_score_display(self):
-        """Scores are displayed correctly."""
+        """Scores are displayed correctly.
+
+        Score format is [home, away]. Display format is "Away away-home Home".
+        """
         from app.services.pipeline.stages.prompt_builders import build_moment_prompt
 
         moment = {
             "period": 4,
             "start_clock": "2:00",
-            "score_before": [100, 98],
-            "score_after": [100, 101],
+            "score_before": [98, 100],  # home=98, away=100
+            "score_after": [101, 100],  # home=101, away=100
             "explicitly_narrated_play_ids": [1],
         }
         plays = [{"play_index": 1, "description": "Game winner"}]
@@ -429,7 +432,7 @@ class TestBuildMomentPrompt:
 
         result = build_moment_prompt(moment, plays, game_context, moment_index=0)
 
-        # Format is: Away Score-Score Home (e.g., "Celtics 100-98 Lakers")
+        # Format is: Away away_score-home_score Home (e.g., "Celtics 100-98 Lakers")
         assert "Celtics 100-98 Lakers" in result
         assert "Celtics 100-101 Lakers" in result
 

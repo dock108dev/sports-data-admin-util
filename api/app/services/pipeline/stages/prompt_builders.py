@@ -274,7 +274,7 @@ def build_moment_prompt(
     prompt = f"""Write a broadcast-style recap (2-3 paragraphs, 6-10 sentences total). {away_team} vs {home_team}.
 {retry_note}
 {period_str} at {clock}
-Score: {away_team} {score_before[0]}-{score_before[1]} {home_team} → {away_team} {score_after[0]}-{score_after[1]} {home_team}
+Score: {away_team} {score_before[1]}-{score_before[0]} {home_team} → {away_team} {score_after[1]}-{score_after[0]} {home_team}
 Scoring: {away_team} +{away_pts}, {home_team} +{home_pts}. {margin_ctx}.
 
 Plays:

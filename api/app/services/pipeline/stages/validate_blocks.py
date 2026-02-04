@@ -6,12 +6,13 @@ VALIDATION RULES
 ================
 1. Block count in range [4, 7]
 2. No role appears more than twice
-3. Each narrative >= 10 words (meaningful content)
-4. Each narrative <= 50 words (buffer over 35 target)
+3. Each narrative >= 30 words (meaningful content, 2+ sentences)
+4. Each narrative <= 100 words (up to 4 sentences)
 5. First block role = SETUP
 6. Last block role = RESOLUTION
 7. Score continuity across block boundaries
-8. Total word count <= 350 (60-second read target)
+8. Total word count <= 500 (~90-second read target)
+9. Each narrative has 2-4 sentences
 
 GUARANTEES
 ==========
@@ -23,6 +24,7 @@ GUARANTEES
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from ..models import StageInput, StageOutput
@@ -36,6 +38,53 @@ from .block_types import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Sentence count constraints
+MIN_SENTENCES_PER_BLOCK = 2
+MAX_SENTENCES_PER_BLOCK = 4
+
+# Common abbreviations that contain periods but don't end sentences
+# Used to avoid false sentence breaks in _count_sentences
+COMMON_ABBREVIATIONS = [
+    "Mr.", "Mrs.", "Ms.", "Dr.", "Jr.", "Sr.", "vs.", "etc.", "e.g.", "i.e.",
+    "St.", "Ave.", "Blvd.", "Rd.", "Mt.", "Ft.",  # Addresses
+    "Jan.", "Feb.", "Mar.", "Apr.", "Aug.", "Sept.", "Oct.", "Nov.", "Dec.",
+]
+
+
+def _count_sentences(text: str) -> int:
+    """Count the number of sentences in text.
+
+    Uses sentence-ending punctuation (. ! ?) to split, with handling for
+    common abbreviations to avoid false positives.
+
+    Known limitations:
+    - May not handle all abbreviations (only common ones are protected)
+    - Single-letter initials like "J. Smith" may cause false splits
+    - Decimal numbers like "3.5" are not specially handled
+
+    Since this is used for soft validation warnings (not hard failures),
+    approximate counts are acceptable.
+    """
+    if not text:
+        return 0
+
+    # Protect common abbreviations by temporarily replacing their periods
+    # Use a marker that won't be split by [.!?]
+    protected = text
+    for abbrev in COMMON_ABBREVIATIONS:
+        # Case-insensitive replacement
+        pattern = re.escape(abbrev)
+        protected = re.sub(pattern, abbrev.replace(".", "\x00"), protected, flags=re.IGNORECASE)
+
+    # Collapse ellipsis to single marker (not a sentence break)
+    protected = re.sub(r"\.{2,}", "\x00", protected)
+
+    # Split on sentence-ending punctuation
+    sentences = re.split(r"[.!?]+", protected)
+
+    # Count non-empty segments
+    return len([s for s in sentences if s.strip()])
 
 
 def _validate_block_count(blocks: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
@@ -91,7 +140,7 @@ def _validate_role_constraints(blocks: list[dict[str, Any]]) -> tuple[list[str],
 
 
 def _validate_word_counts(blocks: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
-    """Validate word counts for each block and total."""
+    """Validate word counts and sentence counts for each block and total."""
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -116,6 +165,18 @@ def _validate_word_counts(blocks: list[dict[str, Any]]) -> tuple[list[str], list
         if word_count > MAX_WORDS_PER_BLOCK:
             warnings.append(
                 f"Block {block_idx}: Too long ({word_count} words, max: {MAX_WORDS_PER_BLOCK})"
+            )
+
+        # Validate sentence count
+        sentence_count = _count_sentences(narrative)
+        if sentence_count < MIN_SENTENCES_PER_BLOCK:
+            warnings.append(
+                f"Block {block_idx}: Too few sentences ({sentence_count}, min: {MIN_SENTENCES_PER_BLOCK})"
+            )
+
+        if sentence_count > MAX_SENTENCES_PER_BLOCK:
+            warnings.append(
+                f"Block {block_idx}: Too many sentences ({sentence_count}, max: {MAX_SENTENCES_PER_BLOCK})"
             )
 
     if total_words > MAX_TOTAL_WORDS:

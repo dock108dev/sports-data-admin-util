@@ -13,6 +13,19 @@ import re
 from typing import Any
 
 
+def _extract_assister_from_description(desc: str) -> str | None:
+    """Extract assister name from a scoring play description.
+
+    Descriptions like "L. Markkanen 26' 3PT (3 PTS) (A. Bailey 1 AST)"
+    should return "A. Bailey".
+    """
+    # Match patterns like "(A. Bailey 1 AST)" or "(J. Smith AST)"
+    match = re.search(r"\(([A-Z]\.\s*[A-Za-z\-\']+(?:\s+[A-Za-z\-\']+)*)\s+\d*\s*AST\)", desc, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
 def compute_running_player_stats(
     pbp_events: list[dict[str, Any]],
     up_to_play_index: int,
@@ -47,16 +60,25 @@ def compute_running_player_stats(
 
         play_type = (event.get("play_type") or "").lower()
         desc = (event.get("description") or "").lower()
+        original_desc = event.get("description") or ""
 
         # Detect made shots from play_type
-        if play_type in ("made_shot", "field_goal_made", "2pt_made", "3pt_made"):
+        # Handle various formats: "2pt", "3pt", "made_shot", "2pt_made", etc.
+        if play_type in ("made_shot", "field_goal_made", "2pt_made", "3pt_made", "2pt", "3pt"):
             stats[player]["fgm"] += 1
             if _is_three_pointer(play_type, desc):
                 stats[player]["3pm"] += 1
                 stats[player]["pts"] += 3
             else:
                 stats[player]["pts"] += 2
-        elif play_type in ("free_throw_made", "ft_made"):
+
+            # Extract and credit assists from scoring play descriptions
+            assister = _extract_assister_from_description(original_desc)
+            if assister:
+                if assister not in stats:
+                    stats[assister] = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0, "reb": 0, "ast": 0}
+                stats[assister]["ast"] += 1
+        elif play_type in ("free_throw_made", "ft_made", "freethrow"):
             stats[player]["ftm"] += 1
             stats[player]["pts"] += 1
         elif play_type == "rebound":
@@ -128,8 +150,9 @@ def compute_lead_context(
     if not score_after or len(score_after) < 2:
         score_after = [0, 0]
 
-    away_before, home_before = score_before[0], score_before[1]
-    away_after, home_after = score_after[0], score_after[1]
+    # Format is [home, away] per score_detection.py
+    home_before, away_before = score_before[0], score_before[1]
+    home_after, away_after = score_after[0], score_after[1]
 
     lead_before = home_before - away_before
     lead_after = home_after - away_after
@@ -398,11 +421,27 @@ def compute_cumulative_box_score(
 
         play_type = (event.get("play_type") or "").lower()
         desc = (event.get("description") or "").lower()
+        original_desc = event.get("description") or ""
 
         if league_code == "NHL":
             _accumulate_nhl_stats(player_stats[player], play_type, desc)
         else:
             _accumulate_basketball_stats(player_stats[player], play_type, desc)
+
+            # Extract and credit assists from scoring plays (basketball only)
+            # Assists are embedded in descriptions like "(A. Bailey 1 AST)"
+            if play_type in ("2pt", "3pt", "made_shot", "2pt_made", "3pt_made"):
+                assister = _extract_assister_from_description(original_desc)
+                if assister:
+                    # Initialize assister stats if needed
+                    if assister not in player_stats:
+                        player_stats[assister] = {
+                            "pts": 0, "reb": 0, "ast": 0, "3pm": 0, "fgm": 0, "ftm": 0
+                        }
+                    player_stats[assister]["ast"] += 1
+                    # Track assister's team (same as scorer's team)
+                    if assister not in player_teams and team_abbrev:
+                        player_teams[assister] = team_abbrev
 
     # Determine which players belong to which team
     # Match by abbreviation (preferred) or fall back to name matching
@@ -498,14 +537,15 @@ def _accumulate_basketball_stats(
 ) -> None:
     """Accumulate basketball stats for a player from a play event."""
     # Detect made shots from play_type
-    if play_type in ("made_shot", "field_goal_made", "2pt_made", "3pt_made"):
+    # Handle various formats: "2pt", "3pt", "made_shot", "2pt_made", etc.
+    if play_type in ("made_shot", "field_goal_made", "2pt_made", "3pt_made", "2pt", "3pt"):
         stats["fgm"] += 1
         if _is_three_pointer(play_type, desc):
             stats["3pm"] += 1
             stats["pts"] += 3
         else:
             stats["pts"] += 2
-    elif play_type in ("free_throw_made", "ft_made"):
+    elif play_type in ("free_throw_made", "ft_made", "freethrow"):
         stats["ftm"] += 1
         stats["pts"] += 1
     elif play_type == "rebound":

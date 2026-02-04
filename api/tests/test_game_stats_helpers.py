@@ -118,8 +118,11 @@ class TestComputeLeadContext:
         assert result["margin_description"] is None
 
     def test_home_takes_lead(self):
-        """Home team taking lead generates correct context."""
-        result = compute_lead_context([10, 10], [10, 15], "Lakers", "Celtics")
+        """Home team taking lead generates correct context.
+
+        Score format is [home, away]. Home goes from tied to leading 15-10.
+        """
+        result = compute_lead_context([10, 10], [15, 10], "Lakers", "Celtics")
         assert result["lead_before"] == 0
         assert result["lead_after"] == 5
         assert result["leading_team_after"] == "Lakers"
@@ -127,42 +130,59 @@ class TestComputeLeadContext:
         assert "take a 5 point lead" in result["margin_description"]
 
     def test_away_takes_lead(self):
-        """Away team taking lead generates correct context."""
-        result = compute_lead_context([10, 10], [15, 10], "Lakers", "Celtics")
+        """Away team taking lead generates correct context.
+
+        Score format is [home, away]. Away goes from tied to leading 10-15.
+        """
+        result = compute_lead_context([10, 10], [10, 15], "Lakers", "Celtics")
         assert result["lead_after"] == -5  # Negative = away leads
         assert result["leading_team_after"] == "Celtics"
         assert "take a 5 point lead" in result["margin_description"]
 
     def test_extend_lead(self):
-        """Extending existing lead generates correct context."""
-        # Lead from 5 to 8 (not double digits)
-        result = compute_lead_context([10, 15], [10, 18], "Lakers", "Celtics")
+        """Extending existing lead generates correct context.
+
+        Score format is [home, away]. Home extends lead from 5 to 8.
+        """
+        result = compute_lead_context([15, 10], [18, 10], "Lakers", "Celtics")
         assert result["lead_before"] == 5
         assert result["lead_after"] == 8
         assert "extend the lead to 8" in result["margin_description"]
 
     def test_cut_deficit(self):
-        """Cutting deficit generates correct context."""
-        result = compute_lead_context([20, 10], [20, 15], "Lakers", "Celtics")
+        """Cutting deficit generates correct context.
+
+        Score format is [home, away]. Away leads 10-20, home cuts to 15-20.
+        """
+        result = compute_lead_context([10, 20], [15, 20], "Lakers", "Celtics")
         assert result["lead_before"] == -10  # Away leads by 10
         assert result["lead_after"] == -5  # Away leads by 5
         assert "cut the deficit to 5" in result["margin_description"]
 
     def test_lead_change(self):
-        """Lead change detected correctly."""
-        result = compute_lead_context([10, 12], [15, 12], "Lakers", "Celtics")
+        """Lead change detected correctly.
+
+        Score format is [home, away]. Home leads 12-10, then away takes lead 12-15.
+        """
+        result = compute_lead_context([12, 10], [12, 15], "Lakers", "Celtics")
         assert result["is_lead_change"] is True
         assert result["leading_team_before"] == "Lakers"
         assert result["leading_team_after"] == "Celtics"
 
     def test_double_digits(self):
-        """Double-digit lead generates special description."""
-        result = compute_lead_context([10, 18], [10, 22], "Lakers", "Celtics")
+        """Double-digit lead generates special description.
+
+        Score format is [home, away]. Home extends lead to 12 points.
+        """
+        result = compute_lead_context([18, 10], [22, 10], "Lakers", "Celtics")
         assert result["lead_after"] == 12
         assert "double digits" in result["margin_description"]
 
     def test_tie_the_game(self):
-        """Tying the game generates correct description."""
+        """Tying the game generates correct description.
+
+        Score format is [home, away]. Home down 10-15, ties it 15-15.
+        """
         result = compute_lead_context([10, 15], [15, 15], "Lakers", "Celtics")
         assert result["is_tie_after"] is True
         assert result["margin_description"] == "tie the game"
