@@ -494,7 +494,7 @@ Get pipeline run status.
   "current_stage": "GENERATE_MOMENTS",
   "stages": [...],
   "stages_completed": 2,
-  "stages_total": 6,
+  "stages_total": 8,
   "progress_percent": 33
 }
 ```

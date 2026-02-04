@@ -29,7 +29,7 @@
 | Guide | Description |
 |-------|-------------|
 | [Story Contract](STORY_CONTRACT.md) | **Authoritative:** Block-based narrative model (4-7 blocks per game) |
-| [Story Pipeline](STORY_PIPELINE.md) | 7-stage pipeline from PBP to narratives |
+| [Story Pipeline](STORY_PIPELINE.md) | 8-stage pipeline from PBP to narratives |
 | [PBP Story Assumptions](PBP_STORY_ASSUMPTIONS.md) | Technical assumptions about PBP data |
 
 ## Timeline System

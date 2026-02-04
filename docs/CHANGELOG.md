@@ -2,7 +2,23 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-01] - Current
+## [2026-02-03] - Current
+
+### Pipeline Enhancements
+
+- **8-stage pipeline**: Added ANALYZE_DRAMA stage between VALIDATE_MOMENTS and GROUP_BLOCKS
+- **Drama-weighted block distribution**: AI identifies dramatic peak quarters and weights block allocation accordingly
+- **Mini box scores per block**: Each narrative block now includes cumulative stats with segment deltas
+- **Fail-fast error handling**: Removed fallback narratives; pipeline fails on errors instead of degrading silently
+
+### NBA PBP Migration
+
+- **NBA API for PBP**: NBA play-by-play now uses the official NBA API instead of Sports Reference
+- **Schedule integration**: Games matched via NBA schedule API to obtain game IDs
+
+---
+
+## [2026-02-01]
 
 ### Story Compression Overhaul
 

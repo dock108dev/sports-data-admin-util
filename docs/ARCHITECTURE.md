@@ -41,7 +41,7 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 **Purpose:** Automated ingestion from external sources
 
 - **Sports:** NBA, NHL, NCAAB
-- **Sources:** Sports Reference (NBA, NCAAB), NHL API (NHL), CBB Stats API (NCAAB boxscores), The Odds API, X/Twitter
+- **Sources:** Sports Reference (NBA boxscores, NCAAB), NBA API (NBA PBP), NHL API (NHL), CBB Stats API (NCAAB boxscores), The Odds API, X/Twitter
 - **Data Types:** Play-by-play, box scores, odds, social media
 - **Scheduling:** Celery task queue with Redis
 - **Output:** Normalized data to PostgreSQL
@@ -75,14 +75,14 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 
 ## Story Generation
 
-The story system converts play-by-play data into block-based narratives through a 7-stage pipeline.
+The story system converts play-by-play data into block-based narratives through an 8-stage pipeline.
 
 ### Architecture
 
 A story consists of **4-7 narrative blocks**, each containing 1-2 sentences (~35 words). Blocks are designed for 20-60 second total read time.
 
 ```
-NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
+NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
 ```
 
 ### Pipeline Stages
@@ -92,7 +92,8 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → GROUP_BLOCKS → REN
 | NORMALIZE_PBP | Fetch and normalize PBP with phase assignments |
 | GENERATE_MOMENTS | Segment plays into moment boundaries |
 | VALIDATE_MOMENTS | Validate moment structure |
-| GROUP_BLOCKS | Group moments into 4-7 narrative blocks |
+| ANALYZE_DRAMA | Use AI to identify dramatic peak and weight quarters |
+| GROUP_BLOCKS | Group moments into 4-7 narrative blocks (drama-weighted) |
 | RENDER_BLOCKS | Generate block narratives via OpenAI |
 | VALIDATE_BLOCKS | Enforce guardrail invariants |
 | FINALIZE_MOMENTS | Persist to database |

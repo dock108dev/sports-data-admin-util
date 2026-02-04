@@ -53,7 +53,7 @@
 
 ## Story Generation
 
-**Architecture:** Block-based narratives via 7-stage pipeline
+**Architecture:** Block-based narratives via 8-stage pipeline
 
 A story consists of 4-7 narrative blocks. Each block contains 1-2 sentences (~35 words) with a semantic role (SETUP, MOMENTUM_SHIFT, RESOLUTION, etc.). Target read time: 20-60 seconds.
 
@@ -69,7 +69,7 @@ A story consists of 4-7 narrative blocks. Each block contains 1-2 sentences (~35
 
 **Pipeline Stages:**
 ```
-NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
+NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
 ```
 
 **Code:** `api/app/services/pipeline/`
@@ -91,7 +91,7 @@ Configured in `scraper/sports_scraper/celery_app.py`
 
 | League | Boxscores | Play-by-Play | Game Matching |
 |--------|-----------|--------------|---------------|
-| NBA | Basketball Reference | Basketball Reference | `source_game_key` (e.g., `202601290ATL`) |
+| NBA | Basketball Reference | NBA API | `source_game_key` (e.g., `202601290ATL`) |
 | NHL | NHL API | NHL API | `external_ids.nhl_game_pk` |
 | NCAAB | CBB API | CBB API | `external_ids.cbb_game_id` |
 

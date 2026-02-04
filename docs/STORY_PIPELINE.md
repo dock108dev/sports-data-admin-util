@@ -4,10 +4,10 @@ Multi-stage pipeline for generating block-based game narratives from play-by-pla
 
 ## Overview
 
-The pipeline transforms raw PBP data into narrative stories through 7 sequential stages. Each stage produces output consumed by the next stage.
+The pipeline transforms raw PBP data into narrative stories through 8 sequential stages. Each stage produces output consumed by the next stage.
 
 ```
-NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
+NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
 ```
 
 **Location:** `api/app/services/pipeline/`
@@ -80,9 +80,29 @@ The pipeline produces two related outputs:
 4. Canonical ordering by play_index
 5. All play references exist in PBP data
 
-### 4. GROUP_BLOCKS
+### 4. ANALYZE_DRAMA
 
-**Purpose:** Group validated moments into 4-7 narrative blocks with semantic roles.
+**Purpose:** Use AI to identify the game's dramatic peak and assign quarter weights.
+
+**Input:** Validated moments + game context
+**Output:** Quarter weights for drama-weighted block distribution
+
+**Implementation:** `stages/analyze_drama.py`
+
+**How It Works:**
+- OpenAI analyzes key plays and score progressions
+- Identifies which quarter(s) contain the dramatic climax
+- Returns weights like `{Q1: 1.0, Q2: 1.0, Q3: 1.5, Q4: 2.0}` for a late-game comeback
+- Higher weights mean more blocks allocated to that quarter
+
+**Usage:**
+- Weights feed into GROUP_BLOCKS for drama-centered block distribution
+- Ensures dramatic quarters get more narrative coverage
+- Low-drama quarters can be condensed
+
+### 5. GROUP_BLOCKS
+
+**Purpose:** Group validated moments into 4-7 narrative blocks with semantic roles, using drama weights from ANALYZE_DRAMA.
 
 **Input:** Validated moments
 **Output:** Blocks with moment assignments and semantic roles
@@ -125,7 +145,7 @@ return min(base, 7)
 }
 ```
 
-### 5. RENDER_BLOCKS
+### 6. RENDER_BLOCKS
 
 **Purpose:** Generate short narrative text for each block using OpenAI.
 
@@ -162,7 +182,7 @@ return min(base, 7)
 }
 ```
 
-### 6. VALIDATE_BLOCKS
+### 7. VALIDATE_BLOCKS
 
 **Purpose:** Validate blocks against guardrail invariants.
 
@@ -184,7 +204,7 @@ return min(base, 7)
 4. Last block role = RESOLUTION
 5. Score continuity across block boundaries
 
-### 7. FINALIZE_MOMENTS
+### 8. FINALIZE_MOMENTS
 
 **Purpose:** Persist completed story to database.
 

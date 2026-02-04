@@ -33,7 +33,7 @@ docs/                     Documentation
 
 ## Data Sources
 
-- **NBA**: Basketball Reference (boxscores, PBP) — matched via `source_game_key`
+- **NBA**: Basketball Reference (boxscores), NBA API (PBP) — matched via `source_game_key`
 - **NHL**: NHL API — matched via `external_ids.nhl_game_pk`
 - **NCAAB**: CBB API — matched via `external_ids.cbb_game_id` (requires `CBB_STATS_API_KEY`)
 
