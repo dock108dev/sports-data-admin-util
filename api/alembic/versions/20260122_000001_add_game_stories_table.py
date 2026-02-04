@@ -18,6 +18,15 @@ depends_on = None
 
 def upgrade() -> None:
     """Add sports_game_stories table for caching AI-generated stories."""
+    # Check if table already exists (created by initial schema baseline)
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'sports_game_stories')"
+    ))
+    table_exists = result.scalar()
+    if table_exists:
+        return  # Table already created by Base.metadata.create_all() in initial migration
+
     op.create_table(
         'sports_game_stories',
         sa.Column('id', sa.Integer(), nullable=False),

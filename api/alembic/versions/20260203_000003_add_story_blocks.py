@@ -21,6 +21,16 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Check if columns already exist (created by initial schema baseline)
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = 'sports_game_stories' AND column_name = 'blocks_json')"
+    ))
+    column_exists = result.scalar()
+    if column_exists:
+        return  # Columns already created by Base.metadata.create_all() in initial migration
+
     # Add blocks columns to sports_game_stories
     op.add_column(
         "sports_game_stories",
