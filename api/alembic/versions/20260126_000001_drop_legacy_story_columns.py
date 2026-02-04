@@ -21,7 +21,16 @@ depends_on = None
 
 def upgrade() -> None:
     """Drop legacy story columns."""
-    # Drop legacy chapter-based columns
+    # Check if columns exist before dropping (they may not exist if initial schema
+    # was created from current models which don't have these columns)
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing_cols = {col["name"] for col in inspector.get_columns("sports_game_stories")}
+
+    # Drop legacy chapter-based columns only if they exist
+    if "chapters_json" not in existing_cols:
+        return  # Columns don't exist, nothing to drop
+
     op.drop_column("sports_game_stories", "chapters_json")
     op.drop_column("sports_game_stories", "chapter_count")
     op.drop_column("sports_game_stories", "chapters_fingerprint")

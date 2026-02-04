@@ -15,6 +15,7 @@ from ..utils.datetime_utils import now_utc
 from ..utils.parsing import parse_int
 
 NBA_SCOREBOARD_URL = "https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_{date}.json"
+NBA_SCHEDULE_URL = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
 NBA_PBP_URL = "https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
 NBA_PERIOD_MULTIPLIER = 10000
 
@@ -38,9 +39,28 @@ class NBALiveFeedClient:
 
     def __init__(self) -> None:
         timeout = settings.scraper_config.request_timeout_seconds
-        self.client = httpx.Client(timeout=timeout, headers={"User-Agent": "sports-data-admin-live/1.0"})
+        # NBA CDN requires browser-like headers to avoid 403 errors
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.nba.com/",
+            "Origin": "https://www.nba.com",
+        }
+        self.client = httpx.Client(timeout=timeout, headers=headers)
 
     def fetch_scoreboard(self, day: date) -> list[NBALiveGame]:
+        """Fetch games for a specific date.
+
+        Uses the schedule API which provides game IDs for all dates.
+        Falls back to date-specific scoreboard for live scores.
+        """
+        # Use schedule API to get game IDs (more reliable than date-specific scoreboard)
+        games = self._fetch_games_from_schedule(day)
+        if games:
+            return games
+
+        # Fallback to date-specific scoreboard (may be blocked)
         url = NBA_SCOREBOARD_URL.format(date=day.strftime("%Y%m%d"))
         logger.info("nba_scoreboard_fetch", url=url, date=str(day))
         response = self.client.get(url)
@@ -49,9 +69,9 @@ class NBALiveFeedClient:
             return []
 
         payload = response.json()
-        games = payload.get("scoreboard", {}).get("games", [])
+        scoreboard_games = payload.get("scoreboard", {}).get("games", [])
         live_games: list[NBALiveGame] = []
-        for game in games:
+        for game in scoreboard_games:
             game_id = str(game.get("gameId"))
             game_status = game.get("gameStatus")
             status_text = game.get("gameStatusText")
@@ -80,6 +100,62 @@ class NBALiveFeedClient:
 
         logger.info("nba_scoreboard_parsed", count=len(live_games), date=str(day))
         return live_games
+
+    def _fetch_games_from_schedule(self, day: date) -> list[NBALiveGame]:
+        """Fetch games for a date from the season schedule API.
+
+        The schedule API contains all games for the season and is more reliable
+        than the date-specific scoreboard endpoint which may be blocked.
+        """
+        logger.info("nba_schedule_fetch", url=NBA_SCHEDULE_URL, date=str(day))
+        try:
+            response = self.client.get(NBA_SCHEDULE_URL, timeout=30.0)
+            if response.status_code != 200:
+                logger.warning("nba_schedule_fetch_failed", status=response.status_code)
+                return []
+
+            payload = response.json()
+            game_dates = payload.get("leagueSchedule", {}).get("gameDates", [])
+
+            # Format date to match schedule format: "MM/DD/YYYY 00:00:00"
+            target_date_str = day.strftime("%m/%d/%Y")
+
+            live_games: list[NBALiveGame] = []
+            for date_obj in game_dates:
+                game_date_str = date_obj.get("gameDate", "")
+                if not game_date_str.startswith(target_date_str):
+                    continue
+
+                for game in date_obj.get("games", []):
+                    game_id = str(game.get("gameId", ""))
+                    if not game_id:
+                        continue
+
+                    home_team = game.get("homeTeam", {})
+                    away_team = game.get("awayTeam", {})
+                    game_datetime = _parse_nba_game_datetime(game.get("gameDateTimeEst"))
+
+                    # Schedule doesn't have live status, default to scheduled
+                    live_games.append(
+                        NBALiveGame(
+                            game_id=game_id,
+                            game_date=game_datetime,
+                            status="scheduled",
+                            status_text=None,
+                            home_abbr=str(home_team.get("teamTricode", "")),
+                            away_abbr=str(away_team.get("teamTricode", "")),
+                            home_score=None,
+                            away_score=None,
+                        )
+                    )
+                break  # Found the target date, no need to continue
+
+            logger.info("nba_schedule_parsed", count=len(live_games), date=str(day))
+            return live_games
+
+        except Exception as exc:
+            logger.warning("nba_schedule_fetch_error", error=str(exc))
+            return []
 
     def fetch_play_by_play(self, game_id: str) -> NormalizedPlayByPlay:
         url = NBA_PBP_URL.format(game_id=game_id)

@@ -18,8 +18,17 @@ depends_on = None
 
 def upgrade() -> None:
     """Create sports_players table and add FK to plays."""
-    # Create master players table
-    op.create_table(
+    conn = op.get_bind()
+
+    # Check if table already exists (created by initial schema baseline)
+    result = conn.execute(sa.text(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'sports_players')"
+    ))
+    table_exists = result.scalar()
+
+    if not table_exists:
+        # Create master players table
+        op.create_table(
         "sports_players",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("league_id", sa.Integer(), nullable=False),
@@ -35,8 +44,16 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["team_id"], ["sports_teams.id"]),
         sa.UniqueConstraint("league_id", "external_id", name="uq_player_identity"),
     )
-    op.create_index("idx_players_external_id", "sports_players", ["external_id"])
-    op.create_index("idx_players_name", "sports_players", ["name"])
+        op.create_index("idx_players_external_id", "sports_players", ["external_id"])
+        op.create_index("idx_players_name", "sports_players", ["name"])
+
+    # Check if column already exists
+    result = conn.execute(sa.text(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = 'sports_game_plays' AND column_name = 'player_ref_id')"
+    ))
+    if result.scalar():
+        return  # Column already exists
 
     # Add FK column to plays (nullable for now, will backfill)
     op.add_column(
