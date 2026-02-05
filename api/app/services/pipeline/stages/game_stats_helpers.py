@@ -497,7 +497,7 @@ def compute_cumulative_box_score(
         elif away_abbrev_upper and team_upper == away_abbrev_upper:
             away_players.append(player_entry)
         else:
-            # Fallback: try name-based matching (for backwards compatibility)
+            # Fallback: try name-based matching when abbreviation lookup fails
             home_upper = home_team.upper()
             away_upper = away_team.upper()
 

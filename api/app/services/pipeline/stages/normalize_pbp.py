@@ -487,7 +487,7 @@ def _build_pbp_events(
             "phase": phase,
             "intra_phase_order": intra_phase_order,
             "play_index": play.play_index,
-            "quarter": period,  # Keep "quarter" key for compatibility but use period value
+            "quarter": period,  # Unified key name across sports (stores period number for NHL)
             "block": block,
             "game_clock": play.game_clock,
             "description": play.description,

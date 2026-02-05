@@ -54,8 +54,6 @@ class Settings(BaseSettings):
         default="gpt-4o-mini", alias="OPENAI_MODEL_CLASSIFICATION"
     )
     openai_model_summary: str = Field(default="gpt-4o", alias="OPENAI_MODEL_SUMMARY")
-    # Feature flag for AI social role classification
-    enable_ai_social_roles: bool = Field(default=True, alias="ENABLE_AI_SOCIAL_ROLES")
 
     # Pipeline validation settings
     # When True: Score discontinuities FAIL validation and block persistence

@@ -10,7 +10,6 @@ from .nba_sportsref import NBASportsReferenceScraper
 from .ncaab_sportsref import NCAABSportsReferenceScraper
 from .ncaaf_sportsref import NCAAFSportsReferenceScraper
 from .nfl_sportsref import NFLSportsReferenceScraper
-from .nhl_sportsref import NHLSportsReferenceScraper
 
 if TYPE_CHECKING:
     from typing import Dict, Type
@@ -23,23 +22,19 @@ __all__ = [
     "NFLSportsReferenceScraper",
     "NCAAFSportsReferenceScraper",
     "MLBSportsReferenceScraper",
-    "NHLSportsReferenceScraper",
     "get_scraper",
     "get_all_scrapers",
 ]
 
 
 # Scraper registry - maps league codes to scraper classes
-# NHL uses the official NHL API for boxscores and PBP (see live/nhl.py),
-# so it's not registered here. The NHLSportsReferenceScraper is kept for
-# reference but not actively used.
+# NHL uses the official NHL API for boxscores and PBP (see live/nhl.py)
 _SCRAPER_REGISTRY: Dict[str, Type[BaseSportsReferenceScraper]] = {
     "NBA": NBASportsReferenceScraper,
     "NCAAB": NCAABSportsReferenceScraper,
     "NFL": NFLSportsReferenceScraper,
     "NCAAF": NCAAFSportsReferenceScraper,
     "MLB": MLBSportsReferenceScraper,
-    # "NHL": NHLSportsReferenceScraper,  # Now uses NHL API (live/nhl.py)
 }
 
 
