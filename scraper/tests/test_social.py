@@ -539,12 +539,12 @@ class TestSocialRequestCache:
         now = datetime.now(timezone.utc)
 
         # Create mock recent poll record within interval
-        # Even with a successful poll that would normally block, backfill bypasses
+        # Note: We don't set status/posts_found here because the mock is reused
+        # for both recent_poll and cached_window queries. This test specifically
+        # verifies that is_backfill=True skips the poll_interval check.
         mock_poll = MagicMock()
         mock_poll.created_at = now - timedelta(seconds=30)
         mock_poll.rate_limited_until = None
-        mock_poll.status = "success"
-        mock_poll.posts_found = 5
 
         mock_session = MagicMock()
         mock_query = MagicMock()
