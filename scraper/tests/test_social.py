@@ -507,9 +507,12 @@ class TestSocialRequestCache:
         now = datetime.now(timezone.utc)
 
         # Create mock recent poll record within interval (no rate limit)
+        # Poll interval is only enforced for successful polls with posts found
         mock_poll = MagicMock()
         mock_poll.created_at = now - timedelta(seconds=30)  # 30 seconds ago
         mock_poll.rate_limited_until = None
+        mock_poll.status = "success"
+        mock_poll.posts_found = 5
 
         mock_session = MagicMock()
         mock_query = MagicMock()
