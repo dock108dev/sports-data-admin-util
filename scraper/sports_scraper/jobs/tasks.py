@@ -6,6 +6,7 @@ New code should import directly from the specific task modules:
 - pipeline_tasks: Pipeline triggering
 - timeline_tasks: Timeline generation
 - story_tasks: Story generation
+- social_tasks: Team-centric social collection
 - utility_tasks: Cache clearing and utilities
 """
 
@@ -31,6 +32,11 @@ from .story_tasks import (
     run_scheduled_nba_flow_generation,
     run_scheduled_story_generation,
 )
+from .social_tasks import (
+    collect_team_social,
+    map_social_to_games,
+    get_social_mapping_stats,
+)
 from .utility_tasks import (
     clear_scraper_cache_task,
 )
@@ -51,6 +57,10 @@ __all__ = [
     # Story/Flow tasks
     "run_scheduled_nba_flow_generation",
     "run_scheduled_story_generation",
+    # Social collection tasks (team-centric)
+    "collect_team_social",
+    "map_social_to_games",
+    "get_social_mapping_stats",
     # Utility tasks
     "clear_scraper_cache_task",
 ]

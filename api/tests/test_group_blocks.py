@@ -800,7 +800,7 @@ class TestAssignRolesExtended:
         assert blocks[-1].role == SemanticRole.RESOLUTION
         # Middle blocks should NOT be MOMENTUM_SHIFT (swings too small)
         # They should be DECISION_POINT or RESPONSE
-        assert blocks[1].role != SemanticRole.MOMENTUM_SHIFT or blocks[2].role != SemanticRole.MOMENTUM_SHIFT
+        assert blocks[1].role != SemanticRole.MOMENTUM_SHIFT and blocks[2].role != SemanticRole.MOMENTUM_SHIFT
 
     def test_significant_swing_is_momentum_shift(self) -> None:
         """Block with significant net swing (8+) qualifies as MOMENTUM_SHIFT."""

@@ -1,0 +1,310 @@
+"""Team-centric tweet collection for the two-phase social architecture.
+
+Phase 1 (COLLECT): This module scrapes all tweets for teams in a date range,
+saving them to team_social_posts with mapping_status='unmapped'.
+
+Phase 2 (MAP): See tweet_mapper.py for mapping unmapped tweets to games.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta, timezone
+from typing import TYPE_CHECKING
+
+from ..logging import logger
+from ..utils.datetime_utils import now_utc, date_to_utc_datetime
+from .collector_base import XCollectorStrategy
+from .models import CollectedPost
+from .playwright_collector import PlaywrightXCollector, playwright_available
+from .rate_limit import PlatformRateLimiter
+from .registry import fetch_team_accounts
+from .strategies import MockXCollector
+from .utils import extract_x_post_id
+from ..config import settings
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+
+class TeamTweetCollector:
+    """
+    Collect tweets for teams and save to team_social_posts table.
+
+    This collector is team-centric rather than game-centric. It scrapes
+    a team's timeline for a date range, then saves all tweets for later
+    mapping to games.
+    """
+
+    def __init__(
+        self,
+        strategy: XCollectorStrategy | None = None,
+    ):
+        if strategy:
+            self.strategy = strategy
+        else:
+            self.strategy = (
+                PlaywrightXCollector() if playwright_available() else MockXCollector()
+            )
+        self.platform = "x"
+        social_config = settings.social_config
+        self.rate_limiter = PlatformRateLimiter(
+            max_requests=social_config.platform_rate_limit_max_requests,
+            window_seconds=social_config.platform_rate_limit_window_seconds,
+        )
+
+    def _normalize_posted_at(self, posted_at: datetime) -> datetime:
+        if posted_at.tzinfo is None:
+            return posted_at.replace(tzinfo=timezone.utc)
+        return posted_at.astimezone(timezone.utc)
+
+    def collect_team_tweets(
+        self,
+        session: "Session",
+        team_id: int,
+        start_date: date,
+        end_date: date,
+    ) -> int:
+        """
+        Scrape all tweets for a team in date range.
+
+        Args:
+            session: Database session
+            team_id: ID of the team in sports_teams
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+
+        Returns:
+            Count of new tweets saved
+        """
+        from ..db import db_models
+
+        team = session.query(db_models.SportsTeam).get(team_id)
+        if not team:
+            logger.warning("team_collector_team_not_found", team_id=team_id)
+            return 0
+
+        # Get X handle from team_social_accounts or fall back to x_handle on team
+        account_map = fetch_team_accounts(
+            session, team_ids=[team_id], platform=self.platform
+        )
+        account = account_map.get(team_id)
+        x_handle = account.handle if account else team.x_handle
+
+        if not x_handle:
+            logger.debug(
+                "team_collector_no_handle",
+                team_id=team_id,
+                team_abbr=team.abbreviation,
+            )
+            return 0
+
+        # Convert dates to datetimes for the window
+        window_start = date_to_utc_datetime(start_date)
+        window_end = date_to_utc_datetime(end_date) + timedelta(days=1) - timedelta(seconds=1)
+
+        logger.info(
+            "team_collector_start",
+            team_id=team_id,
+            team_abbr=team.abbreviation,
+            handle=x_handle,
+            start_date=str(start_date),
+            end_date=str(end_date),
+        )
+
+        # Collect tweets using the configured strategy
+        try:
+            posts = self.strategy.collect_posts(
+                x_handle=x_handle,
+                window_start=window_start,
+                window_end=window_end,
+            )
+        except Exception as exc:
+            logger.exception(
+                "team_collector_scrape_failed",
+                team_id=team_id,
+                handle=x_handle,
+                error=str(exc),
+            )
+            return 0
+
+        self.rate_limiter.record()
+
+        # Save tweets to team_social_posts
+        new_count = 0
+        for post in posts:
+            normalized_posted_at = self._normalize_posted_at(post.posted_at)
+            external_id = post.external_post_id or extract_x_post_id(post.post_url)
+
+            # Check if this post already exists (by external_post_id)
+            existing = None
+            if external_id:
+                existing = (
+                    session.query(db_models.TeamSocialPost)
+                    .filter(db_models.TeamSocialPost.external_post_id == external_id)
+                    .first()
+                )
+
+            if existing:
+                # Update existing record
+                existing.posted_at = normalized_posted_at
+                existing.tweet_text = post.text
+                existing.has_video = post.has_video
+                existing.video_url = post.video_url
+                existing.image_url = post.image_url
+                existing.media_type = post.media_type or "none"
+                existing.source_handle = post.author_handle
+                existing.updated_at = now_utc()
+                logger.debug(
+                    "team_collector_updated_existing",
+                    external_id=external_id,
+                    team_id=team_id,
+                )
+            else:
+                # Insert new record with mapping_status='unmapped'
+                new_post = db_models.TeamSocialPost(
+                    team_id=team_id,
+                    platform=self.platform,
+                    external_post_id=external_id,
+                    post_url=post.post_url,
+                    posted_at=normalized_posted_at,
+                    tweet_text=post.text,
+                    has_video=post.has_video,
+                    video_url=post.video_url,
+                    image_url=post.image_url,
+                    media_type=post.media_type or "none",
+                    source_handle=post.author_handle,
+                    mapping_status="unmapped",
+                )
+                session.add(new_post)
+                new_count += 1
+
+        if new_count > 0:
+            session.commit()
+
+        logger.info(
+            "team_collector_complete",
+            team_id=team_id,
+            team_abbr=team.abbreviation,
+            posts_found=len(posts),
+            new_saved=new_count,
+        )
+
+        return new_count
+
+    def collect_for_date_range(
+        self,
+        session: "Session",
+        league_code: str,
+        start_date: date,
+        end_date: date,
+    ) -> dict:
+        """
+        Collect tweets for all teams that played in date range.
+
+        Args:
+            session: Database session
+            league_code: League code (NBA, NHL, NCAAB)
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+
+        Returns:
+            Summary stats dict with teams_processed, total_new_tweets, errors
+        """
+        from ..db import db_models
+        from sqlalchemy import or_
+
+        # Get league
+        league = (
+            session.query(db_models.SportsLeague)
+            .filter(db_models.SportsLeague.code == league_code)
+            .first()
+        )
+        if not league:
+            logger.error("team_collector_league_not_found", league_code=league_code)
+            return {"error": f"League not found: {league_code}"}
+
+        # Convert dates to datetimes for game query
+        start_dt = date_to_utc_datetime(start_date)
+        end_dt = date_to_utc_datetime(end_date) + timedelta(days=1)
+
+        # Find all games in the date range for this league
+        games = (
+            session.query(db_models.SportsGame)
+            .filter(
+                db_models.SportsGame.league_id == league.id,
+                db_models.SportsGame.game_date >= start_dt,
+                db_models.SportsGame.game_date < end_dt,
+            )
+            .all()
+        )
+
+        # Get unique team IDs from games
+        team_ids = set()
+        for game in games:
+            team_ids.add(game.home_team_id)
+            team_ids.add(game.away_team_id)
+
+        if not team_ids:
+            logger.info(
+                "team_collector_no_games",
+                league_code=league_code,
+                start_date=str(start_date),
+                end_date=str(end_date),
+            )
+            return {
+                "league": league_code,
+                "teams_processed": 0,
+                "total_new_tweets": 0,
+                "games_in_range": 0,
+            }
+
+        logger.info(
+            "team_collector_range_start",
+            league_code=league_code,
+            start_date=str(start_date),
+            end_date=str(end_date),
+            games_found=len(games),
+            unique_teams=len(team_ids),
+        )
+
+        # Collect tweets for each team
+        teams_processed = 0
+        total_new_tweets = 0
+        errors: list[str] = []
+
+        for team_id in team_ids:
+            try:
+                new_tweets = self.collect_team_tweets(
+                    session=session,
+                    team_id=team_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                teams_processed += 1
+                total_new_tweets += new_tweets
+            except Exception as exc:
+                error_msg = f"Team {team_id}: {str(exc)}"
+                errors.append(error_msg)
+                logger.exception(
+                    "team_collector_team_failed",
+                    team_id=team_id,
+                    error=str(exc),
+                )
+
+        logger.info(
+            "team_collector_range_complete",
+            league_code=league_code,
+            teams_processed=teams_processed,
+            total_new_tweets=total_new_tweets,
+            errors_count=len(errors),
+        )
+
+        return {
+            "league": league_code,
+            "start_date": str(start_date),
+            "end_date": str(end_date),
+            "games_in_range": len(games),
+            "teams_processed": teams_processed,
+            "total_new_tweets": total_new_tweets,
+            "errors": errors if errors else None,
+        }

@@ -132,7 +132,11 @@ def _detect_overtime_info(
     has_overtime = period_end > regulation_end
     enters_overtime = period_start <= regulation_end and period_end > regulation_end
 
-    # NHL-specific: period 5 is shootout
+    # NHL period structure:
+    # - Regular season: Period 4 = OT (5 min), Period 5 = Shootout
+    # - Playoffs: Period 4 = OT1, Period 5 = OT2, Period 6 = OT3, etc. (no shootout)
+    # We don't have season_type here, so we assume regular season structure.
+    # For playoffs, period 5+ would incorrectly show as shootout/OT labels.
     is_shootout = league_code == "NHL" and period_end == 5
 
     # Generate OT label
@@ -141,12 +145,9 @@ def _detect_overtime_info(
         if is_shootout:
             ot_label = "shootout"
         elif league_code == "NHL":
-            # NHL OT is period 4, extended OT is 6+
-            if period_end == 4:
-                ot_label = "overtime"
-            else:
-                ot_num = period_end - 4  # OT2 = period 6, OT3 = period 7
-                ot_label = f"OT{ot_num}" if ot_num > 1 else "overtime"
+            # NHL regular season: Period 4 is the only OT period
+            # (Period 5 is shootout, handled above)
+            ot_label = "overtime"
         else:
             # NBA/NCAAB: OT1 = period 5 (NBA) or period 3 (NCAAB)
             ot_num = period_end - regulation_end

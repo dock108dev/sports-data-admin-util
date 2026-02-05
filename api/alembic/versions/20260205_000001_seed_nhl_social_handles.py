@@ -56,29 +56,24 @@ NHL_SOCIAL_HANDLES = {
 def upgrade() -> None:
     """Insert NHL team social handles.
 
-    Uses raw SQL to handle the case-when mapping from team abbreviation to handle.
+    Inserts each team's handle individually using parameterized queries.
     Only inserts for teams that exist and don't already have a handle.
     """
     conn = op.get_bind()
 
-    # Build CASE statement for handle mapping
-    case_parts = [f"WHEN t.abbreviation = '{abbr}' THEN '{handle}'"
-                  for abbr, handle in NHL_SOCIAL_HANDLES.items()]
-    case_stmt = " ".join(case_parts)
+    # Insert each team's handle using parameterized query
+    insert_sql = text("""
+        INSERT INTO team_social_accounts (team_id, league_id, platform, handle, is_active)
+        SELECT t.id, t.league_id, 'x', :handle, true
+        FROM sports_teams t
+        JOIN sports_leagues l ON t.league_id = l.id
+        WHERE l.code = 'NHL'
+          AND t.abbreviation = :abbreviation
+        ON CONFLICT (team_id, platform) DO NOTHING
+    """)
 
-    sql = f"""
-    INSERT INTO team_social_accounts (team_id, league_id, platform, handle, is_active)
-    SELECT t.id, t.league_id, 'x',
-        CASE {case_stmt} END,
-        true
-    FROM sports_teams t
-    JOIN sports_leagues l ON t.league_id = l.id
-    WHERE l.code = 'NHL'
-      AND t.abbreviation IN ({", ".join(f"'{a}'" for a in NHL_SOCIAL_HANDLES.keys())})
-    ON CONFLICT (team_id, platform) DO NOTHING
-    """
-
-    conn.execute(text(sql))
+    for abbreviation, handle in NHL_SOCIAL_HANDLES.items():
+        conn.execute(insert_sql, {"abbreviation": abbreviation, "handle": handle})
 
 
 def downgrade() -> None:

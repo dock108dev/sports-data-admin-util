@@ -831,6 +831,96 @@ class GameSocialPost(Base):
     )
 
 
+class MappingStatus(str, Enum):
+    """Status of a team social post's mapping to a game."""
+
+    unmapped = "unmapped"  # New tweet, needs processing
+    mapped = "mapped"  # Assigned to a game (game_id set)
+    no_game = "no_game"  # Checked, doesn't fall in any game window
+
+
+class TeamSocialPost(Base):
+    """Team-centric social posts for the two-phase collection architecture.
+
+    COLLECTION ARCHITECTURE
+    =======================
+    Phase 1 (COLLECT): Scrape all tweets for teams in a date range.
+        - Tweets are saved with mapping_status='unmapped'
+        - game_id is NULL until mapped
+
+    Phase 2 (MAP): Assign unmapped tweets to games based on posted_at.
+        - Find games where team played
+        - Check if posted_at falls within game window (pregame to postgame)
+        - Set game_id and mapping_status='mapped', or 'no_game' if no match
+
+    This table is separate from game_social_posts to support the team-centric
+    collection approach where tweets are collected per-team, not per-game.
+    """
+
+    __tablename__ = "team_social_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sports_teams.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    platform: Mapped[str] = mapped_column(
+        String(20), server_default="x", nullable=False
+    )
+    external_post_id: Mapped[str | None] = mapped_column(
+        String(100), unique=True, nullable=True
+    )
+    post_url: Mapped[str] = mapped_column(Text, nullable=False)
+    posted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    tweet_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    likes_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retweets_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    replies_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    has_video: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), nullable=False
+    )
+    media_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    video_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_handle: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Mapping fields - game_id is NULL until mapped to a game
+    game_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sports_games.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    mapping_status: Mapped[str] = mapped_column(
+        String(20), server_default="unmapped", nullable=False, index=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    team: Mapped[SportsTeam] = relationship("SportsTeam")
+    game: Mapped[SportsGame | None] = relationship("SportsGame")
+
+    __table_args__ = (
+        Index("idx_team_social_posts_team", "team_id"),
+        Index("idx_team_social_posts_posted_at", "posted_at"),
+        Index("idx_team_social_posts_mapping_status", "mapping_status"),
+        Index("idx_team_social_posts_game", "game_id"),
+        Index("idx_team_social_posts_team_status", "team_id", "mapping_status"),
+    )
+
+
 class SportsGameTimelineArtifact(Base):
     """Finalized timeline artifacts for games."""
 
