@@ -376,7 +376,7 @@ class PipelineExecutor:
             elif stage == PipelineStage.RENDER_BLOCKS:
                 output = await execute_render_blocks(stage_input)
             elif stage == PipelineStage.VALIDATE_BLOCKS:
-                output = await execute_validate_blocks(stage_input)
+                output = await execute_validate_blocks(self.session, stage_input)
             elif stage == PipelineStage.FINALIZE_MOMENTS:
                 output = await execute_finalize_moments(
                     self.session, stage_input, str(run.run_uuid)

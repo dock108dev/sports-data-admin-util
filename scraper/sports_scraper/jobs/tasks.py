@@ -16,6 +16,8 @@ from .scrape_tasks import (
     run_scrape_job,
     run_scheduled_ingestion,
     run_scheduled_odds_sync,
+    run_scheduled_nba_social,
+    run_scheduled_nhl_social,
 )
 from .pipeline_tasks import (
     trigger_game_pipelines_task,
@@ -38,6 +40,8 @@ __all__ = [
     "run_scrape_job",
     "run_scheduled_ingestion",
     "run_scheduled_odds_sync",
+    "run_scheduled_nba_social",
+    "run_scheduled_nhl_social",
     # Pipeline tasks
     "trigger_game_pipelines_task",
     # Timeline tasks
