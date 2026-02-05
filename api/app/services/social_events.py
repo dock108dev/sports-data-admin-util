@@ -292,11 +292,9 @@ def build_social_events(
     has_overtime: bool = False,
 ) -> list[tuple[datetime, dict[str, Any]]]:
     """
-    Build social events with phase and role assignment (heuristic only).
+    Build social events with phase and role assignment.
 
-    For AI-enhanced role classification, use build_social_events_async.
-
-    Phase 3: If game_start and league_code are provided, uses time-based
+    If game_start and league_code are provided, uses time-based
     classification (no PBP dependency). Otherwise falls back to boundaries.
 
     Each event gets:
