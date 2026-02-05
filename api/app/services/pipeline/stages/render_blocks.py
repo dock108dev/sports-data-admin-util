@@ -100,6 +100,67 @@ PROHIBITED_PATTERNS = [
 MAX_REGENERATION_ATTEMPTS = 2
 
 
+def _detect_overtime_info(
+    block: dict[str, Any],
+    league_code: str = "NBA",
+) -> dict[str, Any]:
+    """Detect if a block involves overtime or shootout periods.
+
+    Args:
+        block: Block dict with period_start and period_end
+        league_code: Sport code (NBA, NHL, NCAAB)
+
+    Returns:
+        Dict with overtime info:
+        - has_overtime: bool - block includes OT periods
+        - enters_overtime: bool - block transitions FROM regulation TO OT
+        - is_shootout: bool - NHL shootout period
+        - ot_label: str - Label like "OT", "OT1", "OT2", "SO"
+        - regulation_end_period: int - Last regulation period for this sport
+    """
+    period_start = block.get("period_start", 1)
+    period_end = block.get("period_end", period_start)
+
+    # Determine regulation end period by sport
+    if league_code == "NHL":
+        regulation_end = 3  # NHL has 3 periods
+    elif league_code == "NCAAB":
+        regulation_end = 2  # NCAAB has 2 halves
+    else:
+        regulation_end = 4  # NBA has 4 quarters
+
+    has_overtime = period_end > regulation_end
+    enters_overtime = period_start <= regulation_end and period_end > regulation_end
+
+    # NHL-specific: period 5 is shootout
+    is_shootout = league_code == "NHL" and period_end == 5
+
+    # Generate OT label
+    ot_label = ""
+    if has_overtime:
+        if is_shootout:
+            ot_label = "shootout"
+        elif league_code == "NHL":
+            # NHL OT is period 4, extended OT is 6+
+            if period_end == 4:
+                ot_label = "overtime"
+            else:
+                ot_num = period_end - 4  # OT2 = period 6, OT3 = period 7
+                ot_label = f"OT{ot_num}" if ot_num > 1 else "overtime"
+        else:
+            # NBA/NCAAB: OT1 = period 5 (NBA) or period 3 (NCAAB)
+            ot_num = period_end - regulation_end
+            ot_label = f"OT{ot_num}" if ot_num > 1 else "overtime"
+
+    return {
+        "has_overtime": has_overtime,
+        "enters_overtime": enters_overtime,
+        "is_shootout": is_shootout,
+        "ot_label": ot_label,
+        "regulation_end_period": regulation_end,
+    }
+
+
 def _check_play_coverage(
     narrative: str,
     key_play_ids: list[int],
@@ -366,6 +427,8 @@ Rules:
 - Each block should be 2-4 sentences in one paragraph
 - Improve flow, reduce repetition, and acknowledge the passage of time across blocks
 - No hype, no speculation, no raw play-by-play
+- CRITICAL: If the game goes to overtime/OT/shootout, the narrative MUST mention this transition
+  (e.g., "the game headed to overtime", "forcing an extra period", "sending it to OT")
 
 If a block already flows well, make minimal changes.
 
@@ -390,6 +453,7 @@ def _build_game_flow_pass_prompt(
     """
     home_team = game_context.get("home_team_name", "Home")
     away_team = game_context.get("away_team_name", "Away")
+    league_code = game_context.get("sport", "NBA")
 
     prompt_parts = [
         GAME_FLOW_PASS_PROMPT,
@@ -408,17 +472,38 @@ def _build_game_flow_pass_prompt(
         score_after = block.get("score_after", [0, 0])
         narrative = block.get("narrative", "")
 
-        # Period label
-        if period_start == period_end:
-            period_label = f"Q{period_start}" if period_start <= 4 else f"OT{period_start - 4}"
-        else:
-            period_label = f"Q{period_start}-Q{period_end}"
+        # Detect overtime info
+        ot_info = _detect_overtime_info(block, league_code)
+
+        # Period label (sport-aware)
+        if league_code == "NHL":
+            if period_start == period_end:
+                period_label = f"P{period_start}" if period_start <= 3 else (
+                    "OT" if period_start == 4 else "SO" if period_start == 5 else f"OT{period_start - 4}"
+                )
+            else:
+                period_label = f"P{period_start}-P{period_end}"
+        elif league_code == "NCAAB":
+            if period_start == period_end:
+                period_label = f"H{period_start}" if period_start <= 2 else f"OT{period_start - 2}"
+            else:
+                period_label = f"H{period_start}-H{period_end}"
+        else:  # NBA
+            if period_start == period_end:
+                period_label = f"Q{period_start}" if period_start <= 4 else f"OT{period_start - 4}"
+            else:
+                period_label = f"Q{period_start}-Q{period_end}"
 
         prompt_parts.append(f"\nBlock {block_idx} ({role}, {period_label}):")
         prompt_parts.append(
             f"Score: {away_team} {score_before[1]}-{score_before[0]} {home_team} "
             f"-> {away_team} {score_after[1]}-{score_after[0]} {home_team}"
         )
+
+        # Add OT flag if this block enters overtime
+        if ot_info["enters_overtime"]:
+            prompt_parts.append(f"*** MUST MENTION: Game goes to {ot_info['ot_label']} ***")
+
         prompt_parts.append(f"Current narrative: {narrative}")
 
     return "\n".join(prompt_parts)
@@ -524,6 +609,13 @@ def _build_block_prompt(
     """
     home_team = game_context.get("home_team_name", "Home")
     away_team = game_context.get("away_team_name", "Away")
+    league_code = game_context.get("sport", "NBA")
+
+    # Check if any block involves overtime
+    has_any_overtime = any(
+        _detect_overtime_info(block, league_code)["has_overtime"]
+        for block in blocks
+    )
 
     # Build play lookup
     play_lookup: dict[int, dict[str, Any]] = {
@@ -577,10 +669,25 @@ def _build_block_prompt(
         "FORBIDDEN WORDS (do not use):",
         ", ".join(FORBIDDEN_WORDS),
         "",
+    ]
+
+    # Add overtime-specific guidance if game went to OT
+    if has_any_overtime:
+        prompt_parts.extend([
+            "OVERTIME/EXTRA PERIOD REQUIREMENTS (CRITICAL):",
+            "- When a block TRANSITIONS into overtime, you MUST explicitly mention it",
+            "- Use phrases like 'the game headed to overtime', 'forcing an extra period',",
+            "  'sending the game to OT', 'requiring overtime to decide'",
+            "- For NHL shootouts, mention 'heading to a shootout' or 'the shootout'",
+            "- This is MANDATORY - do NOT skip mentioning overtime when it occurs",
+            "",
+        ])
+
+    prompt_parts.extend([
         "Return JSON: {\"blocks\": [{\"i\": block_index, \"n\": \"narrative\"}]}",
         "",
         "BLOCKS:",
-    ]
+    ])
 
     for block in blocks:
         block_idx = block["block_index"]
@@ -588,6 +695,30 @@ def _build_block_prompt(
         score_before = block["score_before"]
         score_after = block["score_after"]
         key_play_ids = block["key_play_ids"]
+        period_start = block.get("period_start", 1)
+        period_end = block.get("period_end", period_start)
+
+        # Detect overtime info for this block
+        ot_info = _detect_overtime_info(block, league_code)
+
+        # Build period label
+        if league_code == "NHL":
+            if period_start == period_end:
+                period_label = f"P{period_start}" if period_start <= 3 else (
+                    "OT" if period_start == 4 else "SO" if period_start == 5 else f"OT{period_start - 4}"
+                )
+            else:
+                period_label = f"P{period_start}-P{period_end}"
+        elif league_code == "NCAAB":
+            if period_start == period_end:
+                period_label = f"H{period_start}" if period_start <= 2 else f"OT{period_start - 2}"
+            else:
+                period_label = f"H{period_start}-H{period_end}"
+        else:  # NBA
+            if period_start == period_end:
+                period_label = f"Q{period_start}" if period_start <= 4 else f"OT{period_start - 4}"
+            else:
+                period_label = f"Q{period_start}-Q{period_end}"
 
         # Get key play descriptions
         key_plays_desc = []
@@ -597,16 +728,101 @@ def _build_block_prompt(
             if desc:
                 key_plays_desc.append(f"- {desc}")
 
-        prompt_parts.append(f"\nBlock {block_idx} ({role}):")
+        prompt_parts.append(f"\nBlock {block_idx} ({role}, {period_label}):")
         prompt_parts.append(
             f"Score: {away_team} {score_before[1]}-{score_before[0]} {home_team} "
             f"-> {away_team} {score_after[1]}-{score_after[0]} {home_team}"
         )
+
+        # Add explicit overtime flag when block enters/contains OT
+        if ot_info["enters_overtime"]:
+            prompt_parts.append(f"*** ENTERS {ot_info['ot_label'].upper()} - MUST mention going to {ot_info['ot_label']} ***")
+        elif ot_info["has_overtime"] and not ot_info["enters_overtime"]:
+            prompt_parts.append(f"(In {ot_info['ot_label']})")
+
         if key_plays_desc:
             prompt_parts.append("Key plays:")
             prompt_parts.extend(key_plays_desc[:3])
 
     return "\n".join(prompt_parts)
+
+
+def _check_overtime_mention(
+    narrative: str,
+    ot_info: dict[str, Any],
+) -> bool:
+    """Check if narrative properly mentions overtime/shootout.
+
+    Args:
+        narrative: The narrative text
+        ot_info: Overtime info dict from _detect_overtime_info
+
+    Returns:
+        True if OT is mentioned or not required, False if missing required mention
+    """
+    if not ot_info.get("enters_overtime"):
+        return True  # No OT transition = no mention required
+
+    narrative_lower = narrative.lower()
+
+    # Check for various OT mention patterns
+    ot_patterns = [
+        "overtime",
+        "extra period",
+        " ot ",
+        " ot.",
+        " ot,",
+        "goes to ot",
+        "headed to ot",
+        "forcing ot",
+        "required ot",
+        "sending it to",
+        "took overtime",
+        "into overtime",
+    ]
+
+    # NHL-specific patterns
+    if ot_info.get("is_shootout"):
+        ot_patterns.extend(["shootout", "shoot out", "shoot-out"])
+
+    for pattern in ot_patterns:
+        if pattern in narrative_lower:
+            return True
+
+    return False
+
+
+def _inject_overtime_mention(
+    narrative: str,
+    ot_info: dict[str, Any],
+) -> str:
+    """Inject overtime mention into narrative if missing.
+
+    Args:
+        narrative: The narrative text
+        ot_info: Overtime info from _detect_overtime_info
+
+    Returns:
+        Narrative with OT mention injected if it was missing
+    """
+    if not ot_info.get("enters_overtime"):
+        return narrative
+
+    if _check_overtime_mention(narrative, ot_info):
+        return narrative  # Already has mention
+
+    # Inject OT mention at the end
+    narrative = narrative.rstrip()
+    if not narrative.endswith("."):
+        narrative += "."
+
+    if ot_info.get("is_shootout"):
+        injection = " The game headed to a shootout to determine the winner."
+    else:
+        ot_label = ot_info.get("ot_label", "overtime")
+        injection = f" The game headed to {ot_label}."
+
+    return narrative + injection
 
 
 def _validate_block_narrative(
@@ -803,6 +1019,18 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
                     f"Block {block_idx}: Injected {len(missing_events)} play references"
                 )
 
+        # Check and inject overtime mention if needed
+        league_code = game_context.get("sport", "NBA")
+        ot_info = _detect_overtime_info(block, league_code)
+        if ot_info["enters_overtime"]:
+            if not _check_overtime_mention(narrative, ot_info):
+                narrative = _inject_overtime_mention(narrative, ot_info)
+                output.add_log(
+                    f"Block {block_idx}: Injected {ot_info['ot_label']} mention",
+                    level="warning",
+                )
+                all_warnings.append(f"Block {block_idx}: Injected overtime mention")
+
         block["narrative"] = narrative
         total_words += len(narrative.split())
 
@@ -820,6 +1048,24 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
     blocks = await _apply_game_level_flow_pass(
         blocks, game_context, openai_client, output
     )
+
+    # Post-flow-pass: Ensure OT mentions weren't lost during flow pass
+    league_code = game_context.get("sport", "NBA")
+    ot_injections = 0
+    for block in blocks:
+        ot_info = _detect_overtime_info(block, league_code)
+        if ot_info["enters_overtime"]:
+            narrative = block.get("narrative", "")
+            if not _check_overtime_mention(narrative, ot_info):
+                block["narrative"] = _inject_overtime_mention(narrative, ot_info)
+                ot_injections += 1
+                output.add_log(
+                    f"Block {block['block_index']}: Re-injected {ot_info['ot_label']} mention after flow pass",
+                    level="warning",
+                )
+
+    if ot_injections > 0:
+        output.add_log(f"OT mentions re-injected after flow pass: {ot_injections}")
 
     # Recalculate total words after flow pass
     total_words = sum(len(b.get("narrative", "").split()) for b in blocks)

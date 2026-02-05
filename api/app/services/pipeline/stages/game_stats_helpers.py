@@ -62,42 +62,65 @@ def compute_running_player_stats(
         desc = (event.get("description") or "").lower()
         original_desc = event.get("description") or ""
 
-        # Detect made shots from play_type
-        # Handle various formats: "2pt", "3pt", "made_shot", "2pt_made", etc.
-        if play_type in ("made_shot", "field_goal_made", "2pt_made", "3pt_made", "2pt", "3pt"):
+        # Track if this was a scoring play (for assist extraction)
+        scored = False
+
+        # Explicit made shot types (confirmed makes)
+        if play_type in ("made_shot", "field_goal_made", "2pt_made", "3pt_made"):
             stats[player]["fgm"] += 1
             if _is_three_pointer(play_type, desc):
                 stats[player]["3pm"] += 1
                 stats[player]["pts"] += 3
             else:
                 stats[player]["pts"] += 2
-
-            # Extract and credit assists from scoring play descriptions
-            assister = _extract_assister_from_description(original_desc)
-            if assister:
-                if assister not in stats:
-                    stats[assister] = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0, "reb": 0, "ast": 0}
-                stats[assister]["ast"] += 1
-        elif play_type in ("free_throw_made", "ft_made", "freethrow"):
+            scored = True
+        # Shot attempts ("2pt", "3pt") - must verify from description
+        elif play_type in ("2pt", "3pt"):
+            if _is_made_shot(desc):
+                stats[player]["fgm"] += 1
+                if _is_three_pointer(play_type, desc):
+                    stats[player]["3pm"] += 1
+                    stats[player]["pts"] += 3
+                else:
+                    stats[player]["pts"] += 2
+                scored = True
+        elif play_type in ("free_throw_made", "ft_made"):
             stats[player]["ftm"] += 1
             stats[player]["pts"] += 1
+            scored = True
+        elif play_type == "freethrow":
+            if _is_made_shot(desc):
+                stats[player]["ftm"] += 1
+                stats[player]["pts"] += 1
+                scored = True
         elif play_type == "rebound":
             stats[player]["reb"] += 1
         elif play_type == "assist":
             stats[player]["ast"] += 1
         else:
-            # Fallback: parse description for shot types
-            if "makes" in desc or "made" in desc:
+            # Fallback: parse description for shot types (only if made)
+            if _is_made_shot(desc):
                 if "3-pt" in desc or "three" in desc or "3pt" in desc:
                     stats[player]["3pm"] += 1
                     stats[player]["fgm"] += 1
                     stats[player]["pts"] += 3
-                elif "free throw" in desc or "ft" in desc:
+                    scored = True
+                elif "free throw" in desc or " ft " in desc:
                     stats[player]["ftm"] += 1
                     stats[player]["pts"] += 1
+                    scored = True
                 elif "dunk" in desc or "layup" in desc or "jumper" in desc or "shot" in desc:
                     stats[player]["fgm"] += 1
                     stats[player]["pts"] += 2
+                    scored = True
+
+        # Extract and credit assists from scoring plays
+        if scored:
+            assister = _extract_assister_from_description(original_desc)
+            if assister:
+                if assister not in stats:
+                    stats[assister] = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0, "reb": 0, "ast": 0}
+                stats[assister]["ast"] += 1
 
     return stats
 
@@ -430,7 +453,12 @@ def compute_cumulative_box_score(
 
             # Extract and credit assists from scoring plays (basketball only)
             # Assists are embedded in descriptions like "(A. Bailey 1 AST)"
-            if play_type in ("2pt", "3pt", "made_shot", "2pt_made", "3pt_made"):
+            # Only credit assists for MADE shots (not misses)
+            is_scoring_play = (
+                play_type in ("made_shot", "2pt_made", "3pt_made") or
+                (play_type in ("2pt", "3pt") and _is_made_shot(desc))
+            )
+            if is_scoring_play:
                 assister = _extract_assister_from_description(original_desc)
                 if assister:
                     # Initialize assister stats if needed
@@ -530,39 +558,72 @@ def compute_cumulative_box_score(
     return result
 
 
+def _is_made_shot(desc: str) -> bool:
+    """Check if the description indicates a made shot (not a miss)."""
+    desc_lower = desc.lower()
+    # Check for explicit make indicators
+    if "makes" in desc_lower or "made" in desc_lower:
+        return True
+    # Check for miss indicators (should NOT count)
+    if "miss" in desc_lower or "missed" in desc_lower:
+        return False
+    # Default: if no explicit indicator, assume not made (conservative)
+    return False
+
+
 def _accumulate_basketball_stats(
     stats: dict[str, int],
     play_type: str,
     desc: str,
 ) -> None:
-    """Accumulate basketball stats for a player from a play event."""
-    # Detect made shots from play_type
-    # Handle various formats: "2pt", "3pt", "made_shot", "2pt_made", etc.
-    if play_type in ("made_shot", "field_goal_made", "2pt_made", "3pt_made", "2pt", "3pt"):
+    """Accumulate basketball stats for a player from a play event.
+
+    IMPORTANT: play_type "2pt" and "3pt" represent ATTEMPTS, not makes.
+    We must check the description for "makes"/"made" to confirm it was scored.
+    """
+    desc_lower = desc.lower()
+
+    # Explicit made shot types (these are confirmed makes)
+    if play_type in ("made_shot", "field_goal_made", "2pt_made", "3pt_made"):
         stats["fgm"] += 1
         if _is_three_pointer(play_type, desc):
             stats["3pm"] += 1
             stats["pts"] += 3
         else:
             stats["pts"] += 2
-    elif play_type in ("free_throw_made", "ft_made", "freethrow"):
+    # Shot attempts ("2pt", "3pt") - must verify from description
+    elif play_type in ("2pt", "3pt"):
+        if _is_made_shot(desc):
+            stats["fgm"] += 1
+            if _is_three_pointer(play_type, desc):
+                stats["3pm"] += 1
+                stats["pts"] += 3
+            else:
+                stats["pts"] += 2
+        # If not made, don't count points (it's a miss)
+    elif play_type in ("free_throw_made", "ft_made"):
         stats["ftm"] += 1
         stats["pts"] += 1
+    elif play_type == "freethrow":
+        # Generic free throw - check if made
+        if _is_made_shot(desc):
+            stats["ftm"] += 1
+            stats["pts"] += 1
     elif play_type == "rebound":
         stats["reb"] += 1
     elif play_type == "assist":
         stats["ast"] += 1
     else:
-        # Fallback: parse description for shot types
-        if "makes" in desc or "made" in desc:
-            if "3-pt" in desc or "three" in desc or "3pt" in desc:
+        # Fallback: parse description for shot types (only if made)
+        if _is_made_shot(desc):
+            if "3-pt" in desc_lower or "three" in desc_lower or "3pt" in desc_lower:
                 stats["3pm"] += 1
                 stats["fgm"] += 1
                 stats["pts"] += 3
-            elif "free throw" in desc or "ft" in desc:
+            elif "free throw" in desc_lower or " ft " in desc_lower:
                 stats["ftm"] += 1
                 stats["pts"] += 1
-            elif "dunk" in desc or "layup" in desc or "jumper" in desc or "shot" in desc:
+            elif "dunk" in desc_lower or "layup" in desc_lower or "jumper" in desc_lower or "shot" in desc_lower:
                 stats["fgm"] += 1
                 stats["pts"] += 2
 

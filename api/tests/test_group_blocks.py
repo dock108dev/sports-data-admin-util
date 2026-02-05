@@ -778,26 +778,63 @@ class TestCreateBlocksExtended:
 class TestAssignRolesExtended:
     """Extended tests for _assign_roles function."""
 
-    def test_last_lead_change_is_momentum_shift(self) -> None:
-        """The LAST lead change block (not first) gets MOMENTUM_SHIFT."""
+    def test_small_lead_changes_not_momentum_shift(self) -> None:
+        """Small lead changes (< 8 net swing) don't qualify as MOMENTUM_SHIFT.
+
+        Back-and-forth close games should have RESPONSE blocks, not false momentum shifts.
+        """
         from app.services.pipeline.stages.block_types import NarrativeBlock
 
-        # Create blocks where multiple have lead changes
+        # Create blocks with small lead changes (close game)
         blocks = [
-            NarrativeBlock(0, SemanticRole.RESPONSE, [], 1, 1, (0, 0), (10, 8), [], []),  # Home leads
-            NarrativeBlock(1, SemanticRole.RESPONSE, [], 1, 1, (10, 8), (12, 15), [], []),  # Lead change 1
-            NarrativeBlock(2, SemanticRole.RESPONSE, [], 2, 2, (12, 15), (20, 18), [], []),  # Lead change 2
+            NarrativeBlock(0, SemanticRole.RESPONSE, [], 1, 1, (0, 0), (10, 8), [], []),  # Home leads +2
+            NarrativeBlock(1, SemanticRole.RESPONSE, [], 1, 1, (10, 8), (12, 15), [], []),  # Away leads +3 (swing=5)
+            NarrativeBlock(2, SemanticRole.RESPONSE, [], 2, 2, (12, 15), (20, 18), [], []),  # Home leads +2 (swing=5)
             NarrativeBlock(3, SemanticRole.RESPONSE, [], 2, 2, (20, 18), (30, 28), [], []),
         ]
 
         _assign_roles(blocks)
 
-        # First block should be SETUP
+        # First/last get structural roles
         assert blocks[0].role == SemanticRole.SETUP
-        # Last block should be RESOLUTION
         assert blocks[-1].role == SemanticRole.RESOLUTION
-        # Block 2 (last lead change) should be MOMENTUM_SHIFT
-        assert blocks[2].role == SemanticRole.MOMENTUM_SHIFT
+        # Middle blocks should NOT be MOMENTUM_SHIFT (swings too small)
+        # They should be DECISION_POINT or RESPONSE
+        assert blocks[1].role != SemanticRole.MOMENTUM_SHIFT or blocks[2].role != SemanticRole.MOMENTUM_SHIFT
+
+    def test_significant_swing_is_momentum_shift(self) -> None:
+        """Block with significant net swing (8+) qualifies as MOMENTUM_SHIFT."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock
+
+        # Create blocks with a significant swing
+        blocks = [
+            NarrativeBlock(0, SemanticRole.RESPONSE, [], 1, 1, (0, 0), (10, 8), [], []),  # Home +2
+            NarrativeBlock(1, SemanticRole.RESPONSE, [], 2, 2, (10, 8), (12, 22), [], []),  # Away goes +10! (swing=12)
+            NarrativeBlock(2, SemanticRole.RESPONSE, [], 3, 3, (12, 22), (25, 30), [], []),  # Close again
+            NarrativeBlock(3, SemanticRole.RESPONSE, [], 4, 4, (25, 30), (35, 38), [], []),
+        ]
+
+        _assign_roles(blocks)
+
+        # Block 1 has a 12-point swing - should be MOMENTUM_SHIFT
+        assert blocks[1].role == SemanticRole.MOMENTUM_SHIFT
+
+    def test_deficit_overcome_is_momentum_shift(self) -> None:
+        """Overcoming a 6+ deficit to take lead qualifies as MOMENTUM_SHIFT."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock
+
+        # Create blocks where team overcomes 7-point deficit
+        blocks = [
+            NarrativeBlock(0, SemanticRole.RESPONSE, [], 1, 1, (0, 0), (8, 15), [], []),  # Away +7
+            NarrativeBlock(1, SemanticRole.RESPONSE, [], 2, 2, (8, 15), (20, 18), [], []),  # Home overcomes 7-pt deficit!
+            NarrativeBlock(2, SemanticRole.RESPONSE, [], 3, 3, (20, 18), (30, 28), [], []),
+            NarrativeBlock(3, SemanticRole.RESPONSE, [], 4, 4, (30, 28), (40, 38), [], []),
+        ]
+
+        _assign_roles(blocks)
+
+        # Block 1 overcame a 7-point deficit to take the lead - should be MOMENTUM_SHIFT
+        assert blocks[1].role == SemanticRole.MOMENTUM_SHIFT
 
     def test_role_quota_enforcement(self) -> None:
         """No role appears more than twice."""

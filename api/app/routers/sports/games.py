@@ -640,8 +640,9 @@ async def get_game_story(
             period=moment["period"],
             startClock=moment.get("start_clock"),
             endClock=moment.get("end_clock"),
-            scoreBefore=moment["score_before"],
-            scoreAfter=moment["score_after"],
+            # Internal format is [home, away], API contract is [away, home]
+            scoreBefore=[moment["score_before"][1], moment["score_before"][0]],
+            scoreAfter=[moment["score_after"][1], moment["score_after"][0]],
             narrative=moment.get("narrative"),
             cumulativeBoxScore=moment.get("cumulative_box_score"),
         )
@@ -678,8 +679,9 @@ async def get_game_story(
                 momentIndices=block["moment_indices"],
                 periodStart=block["period_start"],
                 periodEnd=block["period_end"],
-                scoreBefore=block["score_before"],
-                scoreAfter=block["score_after"],
+                # Internal format is [home, away], API contract is [away, home]
+                scoreBefore=[block["score_before"][1], block["score_before"][0]],
+                scoreAfter=[block["score_after"][1], block["score_after"][0]],
                 playIds=block["play_ids"],
                 keyPlayIds=block["key_play_ids"],
                 narrative=block.get("narrative"),
