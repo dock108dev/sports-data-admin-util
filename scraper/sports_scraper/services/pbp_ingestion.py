@@ -29,7 +29,11 @@ def ingest_pbp_via_sportsref(
     only_missing: bool,
     updated_before: datetime | None,
 ) -> tuple[int, int]:
-    """Ingest PBP using Sports Reference scraper implementations (non-live mode)."""
+    """Ingest PBP using Sports Reference scraper implementations.
+
+    NOTE: This function is only used for NCAAB. NBA and NHL use their
+    respective live APIs for PBP (ingest_pbp_via_nba_api, ingest_pbp_via_nhl_api).
+    """
     if not scraper:
         logger.info(
             "pbp_sportsref_not_supported",

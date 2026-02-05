@@ -55,17 +55,17 @@ from .timeline_types import (
     TimelineArtifactPayload,
     TimelineGenerationError,
 )
-from .timeline_phases import compute_phase_boundaries, nba_game_end
+from .timeline_phases import compute_phase_boundaries
 from .timeline_events import build_pbp_events, merge_timeline_events
 from .timeline_validation import validate_and_log, TimelineValidationError
-from .social_events import build_social_events, build_social_events_async
+from .social_events import build_social_events_async
+from .timeline_phases import nba_game_end
 
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# STUB FUNCTIONS (Not Yet Implemented)
-# These are placeholders for future AI-powered analysis features
+# HELPER FUNCTIONS
 # =============================================================================
 
 
@@ -97,11 +97,9 @@ async def build_game_analysis_async(
 ) -> dict[str, Any]:
     """Build game analysis from timeline data.
 
-    NOT YET IMPLEMENTED - placeholder for future AI analysis.
-    Returns minimal structure with empty chapters.
+    Returns minimal structure for analysis metadata.
     """
     return {
-        "chapters": [],
         "key_moments": [],
         "game_flow": {},
     }
@@ -114,57 +112,15 @@ async def build_summary_from_timeline_async(
     timeline_version: str | None = None,
     sport: str | None = None,
 ) -> dict[str, Any]:
-    """Generate AI summary from timeline and analysis.
+    """Generate summary from timeline and analysis.
 
-    NOT YET IMPLEMENTED - placeholder for future AI summary generation.
-    Returns empty summary structure.
+    Returns minimal summary structure.
     """
     return {
         "ai_generated": False,
         "summary_text": "",
         "highlights": [],
     }
-
-
-# =============================================================================
-# TIMELINE ASSEMBLY
-# =============================================================================
-
-
-def build_nba_timeline(
-    game: db_models.SportsGame,
-    plays: Sequence[db_models.SportsGamePlay],
-    social_posts: Sequence[db_models.GameSocialPost],
-) -> tuple[list[dict[str, Any]], dict[str, Any], Any]:
-    """
-    Build a complete timeline for an NBA game.
-
-    This is the main entry point for timeline construction. It:
-    1. Builds PBP events with phases
-    2. Builds social events with phases and roles
-    3. Merges them using phase-first ordering
-    4. Returns timeline, summary metadata, and computed game end time
-    """
-    game_start = game.start_time
-    game_end = nba_game_end(game_start, plays)
-    has_overtime = any((play.quarter or 0) > 4 for play in plays)
-
-    # Compute phase boundaries for social event assignment
-    phase_boundaries = compute_phase_boundaries(game_start, has_overtime)
-    league_code = game.league.code if game.league else "NBA"
-
-    pbp_events = build_pbp_events(plays, game_start)
-    # Phase 3: Pass game_start and has_overtime for time-based classification
-    social_events = build_social_events(
-        social_posts,
-        phase_boundaries,
-        game_start=game_start,
-        league_code=league_code,
-        has_overtime=has_overtime,
-    )
-    timeline = merge_timeline_events(pbp_events, social_events)
-    summary = build_game_summary(game)
-    return timeline, summary, game_end
 
 
 # =============================================================================
@@ -340,13 +296,11 @@ async def generate_timeline_artifact(
             timeline_version=timeline_version,
             game_context=game_context,
         )
-        chapter_count = len(game_analysis.get("chapters", []))
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
                 "game_id": game_id,
                 "phase": "game_analysis",
-                "chapter_count": chapter_count,
             },
         )
 
