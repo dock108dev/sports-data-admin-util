@@ -49,8 +49,8 @@ export const DEFAULT_SCRAPE_RUN_FORM: ScrapeRunForm = {
   endDate: "",
   boxscores: true,
   odds: true,
-  social: false,  // Opt-in: expensive X/Twitter API calls
-  pbp: true,      // Default on: needed for flow generation
+  social: true,
+  pbp: true,
   onlyMissing: false,
   updatedBefore: "",
   requestedBy: "admin@dock108.ai",

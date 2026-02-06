@@ -39,39 +39,39 @@ app.conf.update(**celery_config)
 app.conf.task_routes = {
     "run_scrape_job": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
 }
-# Daily sports ingestion at 8:00 AM US Eastern (13:00 UTC during EST, 12:00 UTC during EDT)
-# Using 13:00 UTC to align with 8:00 AM during Eastern Standard Time (November-March).
-# During Eastern Daylight Time (March-November), this will run at 9:00 AM EDT.
+# Daily sports ingestion at 5:00 AM US Eastern (10:00 UTC during EST, 09:00 UTC during EDT)
+# Using 10:00 UTC to align with 5:00 AM during Eastern Standard Time (November-March).
+# During Eastern Daylight Time (March-November), this will run at 6:00 AM EDT.
 #
 # Ingestion runs leagues sequentially: NBA -> NHL -> NCAAB
 #
 # Flow generation runs 90 minutes after ingestion to allow scraping to complete.
 # Each league runs in sequence, 15 minutes apart:
-#   9:30 AM EST - NBA flow generation
-#   9:45 AM EST - NHL flow generation
-#   10:00 AM EST - NCAAB flow generation (capped at 10 games per run)
+#   6:30 AM EST - NBA flow generation
+#   6:45 AM EST - NHL flow generation
+#   7:00 AM EST - NCAAB flow generation (capped at 10 games per run)
 # Each generates AI flows for games in the last 72 hours. Skips existing flows.
 #
 # Odds sync runs every 30 minutes to keep FairBet data fresh for all 3 leagues.
 app.conf.beat_schedule = {
-    "daily-sports-ingestion-8am-eastern": {
+    "daily-sports-ingestion-5am-eastern": {
         "task": "run_scheduled_ingestion",
-        "schedule": crontab(minute=0, hour=13),  # 8:00 AM EST = 13:00 UTC
+        "schedule": crontab(minute=0, hour=10),  # 5:00 AM EST = 10:00 UTC
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    "daily-nba-flow-generation-930am-eastern": {
+    "daily-nba-flow-generation-630am-eastern": {
         "task": "run_scheduled_nba_flow_generation",
-        "schedule": crontab(minute=30, hour=14),  # 9:30 AM EST = 14:30 UTC (90 min after ingestion)
+        "schedule": crontab(minute=30, hour=11),  # 6:30 AM EST = 11:30 UTC (90 min after ingestion)
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    "daily-nhl-flow-generation-945am-eastern": {
+    "daily-nhl-flow-generation-645am-eastern": {
         "task": "run_scheduled_nhl_flow_generation",
-        "schedule": crontab(minute=45, hour=14),  # 9:45 AM EST = 14:45 UTC (15 min after NBA flow)
+        "schedule": crontab(minute=45, hour=11),  # 6:45 AM EST = 11:45 UTC (15 min after NBA flow)
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    "daily-ncaab-flow-generation-10am-eastern": {
+    "daily-ncaab-flow-generation-7am-eastern": {
         "task": "run_scheduled_ncaab_flow_generation",
-        "schedule": crontab(minute=0, hour=15),  # 10:00 AM EST = 15:00 UTC (15 min after NHL flow)
+        "schedule": crontab(minute=0, hour=12),  # 7:00 AM EST = 12:00 UTC (15 min after NHL flow)
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
     "odds-sync-every-30-minutes": {
@@ -79,18 +79,8 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="*/30"),  # Every 30 minutes
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    # Social collection runs 30 min after PBP ingestion, staggered by league
-    # to reduce rate limit pressure (shared 300 req / 900 sec limit)
-    "daily-nba-social-collection-830am-eastern": {
-        "task": "run_scheduled_nba_social",
-        "schedule": crontab(minute=30, hour=13),  # 8:30 AM EST = 13:30 UTC
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
-    },
-    "daily-nhl-social-collection-9am-eastern": {
-        "task": "run_scheduled_nhl_social",
-        "schedule": crontab(minute=0, hour=14),  # 9:00 AM EST = 14:00 UTC
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
-    },
+    # NOTE: Social collection is now part of run_scheduled_ingestion
+    # (runs after each league's PBP: NBA → social, NHL → social)
 }
 
 

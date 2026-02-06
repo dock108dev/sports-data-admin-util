@@ -33,51 +33,59 @@ def run_scrape_job(run_id: int, config_payload: dict) -> dict:
 def run_scheduled_ingestion() -> dict:
     """Trigger the scheduled ingestion pipeline.
 
-    Runs leagues sequentially with PBP after each:
-    1. NBA stats ingestion
-    2. NBA PBP ingestion
-    3. NHL stats ingestion
-    4. NHL PBP ingestion
-    5. NCAAB stats ingestion
-    6. NCAAB PBP ingestion
+    Runs leagues sequentially with PBP and social after each:
+    1. NBA stats → PBP → social
+    2. NHL stats → PBP → social
+    3. NCAAB stats → PBP (no social for NCAAB)
 
-    This ensures PBP is fetched for newly scraped games.
+    This ensures data is complete before social collection runs.
     """
-    from ..services.scheduler import schedule_single_league_and_wait, run_pbp_ingestion_for_league
+    from ..services.scheduler import (
+        schedule_single_league_and_wait,
+        run_pbp_ingestion_for_league,
+        run_social_ingestion_for_league,
+    )
 
     results = {}
 
-    # Run NBA stats first and wait for completion
+    # === NBA ===
     logger.info("scheduled_ingestion_nba_start")
     nba_result = schedule_single_league_and_wait("NBA")
     results["NBA"] = nba_result
     logger.info("scheduled_ingestion_nba_complete", **nba_result)
 
-    # Run NBA PBP after stats complete
     logger.info("scheduled_ingestion_nba_pbp_start")
     nba_pbp_result = run_pbp_ingestion_for_league("NBA")
     results["NBA_PBP"] = nba_pbp_result
     logger.info("scheduled_ingestion_nba_pbp_complete", **nba_pbp_result)
 
-    # Run NHL stats after NBA PBP
+    logger.info("scheduled_ingestion_nba_social_start")
+    nba_social_result = run_social_ingestion_for_league("NBA")
+    results["NBA_SOCIAL"] = nba_social_result
+    logger.info("scheduled_ingestion_nba_social_complete", **nba_social_result)
+
+    # === NHL ===
     logger.info("scheduled_ingestion_nhl_start")
     nhl_result = schedule_single_league_and_wait("NHL")
     results["NHL"] = nhl_result
     logger.info("scheduled_ingestion_nhl_complete", **nhl_result)
 
-    # Run NHL PBP after stats complete
     logger.info("scheduled_ingestion_nhl_pbp_start")
     nhl_pbp_result = run_pbp_ingestion_for_league("NHL")
     results["NHL_PBP"] = nhl_pbp_result
     logger.info("scheduled_ingestion_nhl_pbp_complete", **nhl_pbp_result)
 
-    # Run NCAAB stats after NHL PBP
+    logger.info("scheduled_ingestion_nhl_social_start")
+    nhl_social_result = run_social_ingestion_for_league("NHL")
+    results["NHL_SOCIAL"] = nhl_social_result
+    logger.info("scheduled_ingestion_nhl_social_complete", **nhl_social_result)
+
+    # === NCAAB ===
     logger.info("scheduled_ingestion_ncaab_start")
     ncaab_result = schedule_single_league_and_wait("NCAAB")
     results["NCAAB"] = ncaab_result
     logger.info("scheduled_ingestion_ncaab_complete", **ncaab_result)
 
-    # Run NCAAB PBP after stats complete
     logger.info("scheduled_ingestion_ncaab_pbp_start")
     ncaab_pbp_result = run_pbp_ingestion_for_league("NCAAB")
     results["NCAAB_PBP"] = ncaab_pbp_result
