@@ -46,6 +46,13 @@ app.conf.task_routes = {
     "collect_social_for_league": {"queue": "social-scraper", "routing_key": "social-scraper"},
     "collect_team_social": {"queue": "social-scraper", "routing_key": "social-scraper"},
     "map_social_to_games": {"queue": "social-scraper", "routing_key": "social-scraper"},
+    # Game-state-machine polling tasks
+    "update_game_states": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    "poll_live_pbp": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    "poll_active_odds": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    "poll_active_social": {"queue": "social-scraper", "routing_key": "social-scraper"},
+    "trigger_flow_for_game": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    "run_daily_sweep": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
 }
 # Daily sports ingestion at 5:00 AM US Eastern (10:00 UTC during EST, 09:00 UTC during EDT)
 # Using 10:00 UTC to align with 5:00 AM during Eastern Standard Time (November-March).
@@ -89,6 +96,38 @@ app.conf.beat_schedule = {
     },
     # NOTE: Social collection is now part of run_scheduled_ingestion
     # (runs after each league's PBP: NBA → social, NHL → social)
+
+    # === Game-state-machine polling tasks (Phase 2) ===
+    # These run alongside the old batch system during rollout.
+    "game-state-updater-every-3-min": {
+        "task": "update_game_states",
+        "schedule": crontab(minute="*/3"),
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    },
+    "live-pbp-poll-every-5-min": {
+        "task": "poll_live_pbp",
+        "schedule": crontab(minute="*/5"),
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    },
+    "active-odds-poll-every-30-min": {
+        "task": "poll_active_odds",
+        "schedule": crontab(minute="*/30"),
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    },
+    "active-social-poll-hourly": {
+        "task": "poll_active_social",
+        "schedule": crontab(minute=15),  # :15 past each hour
+        "options": {"queue": "social-scraper", "routing_key": "social-scraper"},
+    },
+    # === Phase 4: Daily sweep (truth repair fallback) ===
+    # Runs at 5 AM EST alongside old batch ingestion during rollout.
+    # After cutover, remove "daily-sports-ingestion-5am-eastern" and
+    # the per-league flow generation entries above.
+    "daily-sweep-5am-eastern": {
+        "task": "run_daily_sweep",
+        "schedule": crontab(minute=0, hour=10),  # 5:00 AM EST = 10:00 UTC
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    },
 }
 
 

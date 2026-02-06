@@ -7,6 +7,9 @@ New code should import directly from the specific task modules:
 - timeline_tasks: Timeline generation
 - story_tasks: Story generation
 - social_tasks: Team-centric social collection
+- polling_tasks: Game-state-machine polling (Phase 2)
+- flow_trigger_tasks: Edge-triggered flow generation (Phase 3)
+- sweep_tasks: Daily sweep / truth repair (Phase 4)
 - utility_tasks: Cache clearing and utilities
 """
 
@@ -38,6 +41,18 @@ from .social_tasks import (
     map_social_to_games,
     get_social_mapping_stats,
 )
+from .polling_tasks import (
+    update_game_states_task,
+    poll_live_pbp_task,
+    poll_active_odds_task,
+    poll_active_social_task,
+)
+from .flow_trigger_tasks import (
+    trigger_flow_for_game,
+)
+from .sweep_tasks import (
+    run_daily_sweep,
+)
 from .utility_tasks import (
     clear_scraper_cache_task,
 )
@@ -63,6 +78,15 @@ __all__ = [
     "collect_team_social",
     "map_social_to_games",
     "get_social_mapping_stats",
+    # Game-state-machine polling tasks (Phase 2)
+    "update_game_states_task",
+    "poll_live_pbp_task",
+    "poll_active_odds_task",
+    "poll_active_social_task",
+    # Edge-triggered flow generation (Phase 3)
+    "trigger_flow_for_game",
+    # Daily sweep (Phase 4)
+    "run_daily_sweep",
     # Utility tasks
     "clear_scraper_cache_task",
 ]

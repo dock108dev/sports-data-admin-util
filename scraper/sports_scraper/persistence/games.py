@@ -29,22 +29,58 @@ def _normalize_status(status: str | None) -> str:
         return db_models.GameStatus.final.value
     if status_normalized == db_models.GameStatus.live.value:
         return db_models.GameStatus.live.value
+    if status_normalized == db_models.GameStatus.pregame.value:
+        return db_models.GameStatus.pregame.value
+    if status_normalized == db_models.GameStatus.archived.value:
+        return db_models.GameStatus.archived.value
     if status_normalized == db_models.GameStatus.scheduled.value:
         return db_models.GameStatus.scheduled.value
     return db_models.GameStatus.scheduled.value
 
 
+# One-way progression order for the happy path.
+# Higher index = further along in lifecycle. Transitions may only move forward.
+_STATUS_ORDER: dict[str, int] = {
+    db_models.GameStatus.scheduled.value: 0,
+    db_models.GameStatus.pregame.value: 1,
+    db_models.GameStatus.live.value: 2,
+    db_models.GameStatus.final.value: 3,
+    db_models.GameStatus.archived.value: 4,
+}
+
+
 def resolve_status_transition(current_status: str | None, incoming_status: str | None) -> str:
-    """Resolve a safe status transition without regressing final games."""
+    """Resolve a safe status transition without regressing games.
+
+    Rules:
+    - archived is terminal (never regresses from archived)
+    - final never regresses (except to archived)
+    - Generally, status only moves forward in the lifecycle
+    - Non-lifecycle statuses (postponed, canceled) are accepted as-is
+    """
     current = _normalize_status(current_status)
     incoming = _normalize_status(incoming_status)
 
+    # Terminal states: archived never regresses
+    if current == db_models.GameStatus.archived.value:
+        return current
+
+    # Final never regresses except to archived
     if current == db_models.GameStatus.final.value:
+        if incoming == db_models.GameStatus.archived.value:
+            return incoming
         return current
-    if incoming == db_models.GameStatus.final.value:
+
+    # For lifecycle states, only allow forward progression
+    current_order = _STATUS_ORDER.get(current)
+    incoming_order = _STATUS_ORDER.get(incoming)
+
+    if current_order is not None and incoming_order is not None:
+        if incoming_order < current_order:
+            return current  # Don't regress
         return incoming
-    if current == db_models.GameStatus.live.value and incoming == db_models.GameStatus.scheduled.value:
-        return current
+
+    # Non-lifecycle statuses (postponed, canceled) pass through
     return incoming
 
 

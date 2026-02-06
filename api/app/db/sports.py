@@ -31,11 +31,16 @@ if TYPE_CHECKING:
 
 
 class GameStatus(str, Enum):
-    """Canonical game status lifecycle."""
+    """Canonical game status lifecycle.
+
+    Happy path: scheduled → pregame → live → final → archived
+    """
 
     scheduled = "scheduled"
+    pregame = "pregame"      # Within pregame_window_hours of tip_time
     live = "live"
     final = "final"
+    archived = "archived"    # Data complete, flows generated, >7 days old
     postponed = "postponed"
     canceled = "canceled"
 
@@ -285,6 +290,21 @@ class SportsGame(Base):
     def is_final(self) -> bool:
         """Check if game is in a final state."""
         return self.status == GameStatus.final.value
+
+    @property
+    def is_archived(self) -> bool:
+        """Check if game has been archived (terminal state)."""
+        return self.status == GameStatus.archived.value
+
+    @property
+    def is_active(self) -> bool:
+        """Check if game is in an active lifecycle state (not terminal)."""
+        return self.status in (
+            GameStatus.scheduled.value,
+            GameStatus.pregame.value,
+            GameStatus.live.value,
+            GameStatus.final.value,
+        )
 
     @property
     def start_time(self) -> datetime:
