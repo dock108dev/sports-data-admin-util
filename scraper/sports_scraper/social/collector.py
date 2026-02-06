@@ -2,8 +2,7 @@
 X (Twitter) post collector for game timelines.
 
 This module provides infrastructure to collect posts from team X accounts
-through pluggable strategies. The orchestrator handles persistence and
-reveal filtering.
+through pluggable strategies. The orchestrator handles persistence.
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ from .models import PostCollectionJob, PostCollectionResult
 from .playwright_collector import PlaywrightXCollector, playwright_available
 from .rate_limit import PlatformRateLimiter
 from .registry import fetch_team_accounts
-from .reveal_filter import classify_reveal_risk
 from .strategies import MockXCollector
 from .utils import extract_x_post_id
 
@@ -71,20 +69,18 @@ class XPostCollector:
     """
     Main X post collector that orchestrates collection and storage.
 
-    Supports running collection jobs for specific games, persisting
-    results to the database, and filtering reveal-sensitive content.
+    Supports running collection jobs for specific games and persisting
+    results to the database.
     """
 
     def __init__(
         self,
         strategy: XCollectorStrategy | None = None,
-        filter_reveals: bool = True,
     ):
         if strategy:
             self.strategy = strategy
         else:
             self.strategy = PlaywrightXCollector() if playwright_available() else MockXCollector()
-        self.filter_reveals = filter_reveals
         self.platform = "x"
         social_config = settings.social_config
         self.rate_limiter = PlatformRateLimiter(
@@ -188,13 +184,6 @@ class XPostCollector:
             posts_updated = 0
             for post in posts:
                 normalized_posted_at = self._normalize_posted_at(post.posted_at)
-                # NOTE: No window filtering here - X search already constrains to date range.
-                # All posts from the search are saved to DB.
-
-                reveal_result = classify_reveal_risk(post.text)
-                # Reveal logic: post-game content stays attached but is always flagged.
-                if job.game_end and normalized_posted_at > job.game_end:
-                    reveal_result = reveal_result._replace(reveal_risk=True, reason="postgame")
 
                 external_id = post.external_post_id or extract_x_post_id(post.post_url)
                 existing = None
@@ -210,9 +199,6 @@ class XPostCollector:
                         db_models.GameSocialPost.post_url == post.post_url
                     ).first()
 
-                if reveal_result.reveal_risk:
-                    result.posts_flagged_reveal += 1
-
                 if existing:
                     existing.posted_at = normalized_posted_at
                     existing.has_video = post.has_video
@@ -223,8 +209,6 @@ class XPostCollector:
                     existing.media_type = post.media_type or "none"
                     existing.platform = self.platform
                     existing.external_post_id = external_id
-                    existing.reveal_risk = reveal_result.reveal_risk
-                    existing.reveal_reason = reveal_result.reason
                     existing.updated_at = now_utc()
                     posts_updated += 1
                 else:
@@ -241,8 +225,6 @@ class XPostCollector:
                         video_url=post.video_url,
                         image_url=post.image_url,
                         media_type=post.media_type or "none",
-                        reveal_risk=reveal_result.reveal_risk,
-                        reveal_reason=reveal_result.reason,
                         updated_at=now_utc(),
                     )
                     session.add(db_post)
@@ -286,7 +268,6 @@ class XPostCollector:
                 team=job.team_abbreviation,
                 found=result.posts_found,
                 saved=result.posts_saved,
-                reveals=result.posts_flagged_reveal,
             )
 
         except SocialRateLimitError as e:
@@ -453,12 +434,10 @@ class XPostCollector:
             results.append(result)
 
         if results:
-            reveal_total = sum(r.posts_flagged_reveal for r in results)
             saved_total = sum(r.posts_saved for r in results)
             logger.info(
-                "x_reveal_summary",
+                "x_collection_summary",
                 game_id=game_id,
-                reveals=reveal_total,
                 saved=saved_total,
             )
 

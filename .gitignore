@@ -49,6 +49,9 @@ build/
 # Scraper cache (optional - can be large)
 scraper/game_data/
 
+# Social scraper browser profile (contains X auth cookies)
+infra/social-scraper-profile/
+
 # Database dumps and exports
 *.sql.gz
 *.dump

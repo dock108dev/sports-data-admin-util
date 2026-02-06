@@ -1,9 +1,19 @@
 #!/bin/bash
 # One-time X/Twitter login for social scraper
 #
-# This script opens a browser window for manual X login. The browser profile
-# (cookies, local storage) is saved to a Docker volume so the social-scraper
-# container can reuse the session without manual token extraction.
+# This script opens a VISIBLE browser window inside the Docker container
+# for manual X login. The browser profile (cookies, local storage) is saved
+# to the bind-mounted volume so the social-scraper worker can reuse it.
+#
+# Requirements:
+#   - Linux server with a display (e.g., Hetzner with desktop or VNC)
+#   - Docker Compose services defined
+#
+# For Mac (local dev), you don't need this script:
+#   1. Log in to x.com in any browser
+#   2. Copy auth_token and ct0 from DevTools > Cookies
+#   3. Set X_AUTH_TOKEN and X_CT0 in infra/.env
+#   4. Restart social-scraper — tokens are seeded automatically on boot
 #
 # Usage:
 #   ./infra/scripts/x-login.sh
@@ -11,53 +21,63 @@
 # After running:
 #   1. Log in to X in the browser that opens
 #   2. Close the browser window
-#   3. Press Enter in the terminal
-#   4. The profile is saved - start containers normally
+#   3. The profile is saved — start containers normally
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_DIR="$(dirname "$SCRIPT_DIR")"
 
-echo "=== X/Twitter Login Setup ==="
+echo "=== X/Twitter Login Setup (Docker) ==="
 echo ""
-echo "This will open a browser window for you to log in to X."
-echo "After logging in, close the browser and press Enter."
+echo "This runs a visible browser INSIDE the social-scraper container."
+echo "Make sure you have a display available (X11, VNC, etc)."
 echo ""
-echo "Starting browser..."
 
-# Run a one-off container with the social-scraper profile volume mounted
-docker compose -f "$INFRA_DIR/docker-compose.yml" --profile dev run --rm \
-  -e PLAYWRIGHT_PROFILE_DIR=/app/.playwright-profile \
+cd "$INFRA_DIR"
+
+docker compose run --rm \
+  -e DISPLAY="${DISPLAY}" \
   social-scraper \
   python -c "
 from playwright.sync_api import sync_playwright
 import os
 
-profile_dir = os.environ.get('PLAYWRIGHT_PROFILE_DIR', '/app/.playwright-profile')
+profile_dir = os.environ.get('PLAYWRIGHT_PROFILE_DIR', '/app/browser-profile')
+os.makedirs(profile_dir, exist_ok=True)
 print(f'Browser profile will be saved to: {profile_dir}')
-print()
-print('Instructions:')
-print('  1. Log in to X/Twitter in the browser window')
-print('  2. Close the browser window when done')
-print('  3. Press Enter in this terminal')
 print()
 
 with sync_playwright() as p:
     context = p.chromium.launch_persistent_context(
         profile_dir,
-        headless=False,  # Show browser for manual login
+        headless=False,
         viewport={'width': 1280, 'height': 800},
     )
     page = context.pages[0] if context.pages else context.new_page()
     page.goto('https://x.com/login')
-    input('Press Enter after logging in and closing the browser...')
+
+    print('Waiting for browser to close...')
+    print('(Log in to X, then close the browser window)')
+    print()
+
+    # Wait for all pages to close (user closes browser)
+    try:
+        while context.pages:
+            context.pages[0].wait_for_event('close', timeout=0)
+    except Exception:
+        pass
+
     context.close()
 
 print()
-print('Profile saved! The social-scraper container will now use this session.')
-print('Start containers with: docker compose --profile dev up -d')
+print('Profile saved!')
 "
 
 echo ""
-echo "Done! Start your containers normally - social scraper will use the saved session."
+echo "Done! Profile saved inside the container volume."
+echo "Start containers: docker compose --profile dev up -d"
+echo ""
+echo "The social-scraper container will use the saved browser session."
+echo "Tokens auto-refresh on each use — no need to log in again unless"
+echo "the profile directory is deleted."

@@ -31,17 +31,43 @@ def collect_social_for_league(league: str) -> dict:
     run_scheduled_ingestion in scrape_tasks.py. It runs asynchronously
     (fire-and-forget) so sports ingestion doesn't wait for social.
 
+    Collects tweets for all teams that played in the last 3 days, then
+    maps unmapped tweets to games.
+
     Args:
         league: League code (NBA, NHL)
 
     Returns:
         Summary stats dict with social_posts and games_processed
     """
-    from ..services.scheduler import run_social_ingestion_for_league
+    from datetime import timedelta
+
+    from ..db import get_session
+    from ..social.team_collector import TeamTweetCollector
+    from ..social.tweet_mapper import map_unmapped_tweets
+    from ..utils.datetime_utils import today_utc
 
     logger.info("social_task_started", league=league)
-    result = run_social_ingestion_for_league(league)
-    logger.info("social_task_complete", league=league, **result)
+
+    end_date = today_utc()
+    start_date = end_date - timedelta(days=3)
+
+    with get_session() as session:
+        collector = TeamTweetCollector()
+        result = collector.collect_for_date_range(
+            session=session,
+            league_code=league,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        # Map newly collected tweets to games
+        map_result = map_unmapped_tweets(session=session, batch_size=1000)
+        result["mapping"] = map_result
+
+    logger.info("social_task_complete", league=league, **{
+        k: v for k, v in result.items() if k != "mapping"
+    })
     return result
 
 

@@ -280,13 +280,11 @@ class TestXPostCollectorCollectForGame:
 class TestXPostCollectorRunJobSuccess:
     """Tests for run_job method with successful collection."""
 
-    @patch("sports_scraper.social.collector.classify_reveal_risk")
     @patch("sports_scraper.social.collector.playwright_available")
     @patch("sports_scraper.social.collector.MockXCollector")
-    def test_collects_and_saves_posts(self, mock_mock_collector, mock_available, mock_classify):
+    def test_collects_and_saves_posts(self, mock_mock_collector, mock_available):
         """Successfully collects and saves posts."""
         mock_available.return_value = False
-        mock_classify.return_value = MagicMock(reveal_risk=False, reason=None)
 
         collector = XPostCollector()
 

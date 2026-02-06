@@ -479,9 +479,12 @@ def poll_active_odds_task() -> dict:
 def poll_active_social_task() -> dict:
     """Poll social data for teams with games in active windows (hourly).
 
-    1. Get unique team_ids from games in any active window
-    2. Skip teams collected within last 55 min
-    3. Dispatch collect_team_social per team to social-scraper worker
+    Groups active games by league, determines date ranges, and dispatches
+    collect_team_social per league with (league_code, start_date, end_date).
+    All dispatches go to the social-scraper queue which runs concurrency=1,
+    ensuring sequential X requests and stable IP.
+
+    After collection, dispatches map_social_to_games to assign new tweets.
     """
     from ..services.active_games import ActiveGamesResolver
     from ..db import db_models
@@ -494,62 +497,126 @@ def poll_active_social_task() -> dict:
         pairs = resolver.get_games_needing_social(session)
 
         if not pairs:
-            logger.debug("poll_active_social_no_teams")
-            return {"teams_dispatched": 0}
+            logger.debug("poll_active_social_no_games")
+            return {"leagues_dispatched": 0}
 
-        # Deduplicate to unique team_ids
-        team_ids = list({team_id for _, team_id in pairs})
+        # Collect game_ids and look up their leagues + dates
+        game_ids = list({game_id for game_id, _ in pairs})
 
-        # Filter out teams collected within last 55 minutes
+        # Group games by league_code with date ranges
+        league_ranges: dict[str, dict] = {}
+        for game_id in game_ids:
+            game = session.query(db_models.SportsGame).get(game_id)
+            if not game or not game.game_date:
+                continue
+            league = session.query(db_models.SportsLeague).get(game.league_id)
+            if not league:
+                continue
+
+            game_day = game.game_date.date() if hasattr(game.game_date, 'date') else game.game_date
+            code = league.code
+
+            if code not in league_ranges:
+                league_ranges[code] = {"min_date": game_day, "max_date": game_day}
+            else:
+                if game_day < league_ranges[code]["min_date"]:
+                    league_ranges[code]["min_date"] = game_day
+                if game_day > league_ranges[code]["max_date"]:
+                    league_ranges[code]["max_date"] = game_day
+
+        if not league_ranges:
+            logger.debug("poll_active_social_no_leagues")
+            return {"leagues_dispatched": 0}
+
+        # Check freshness: skip leagues where ALL games have recent social data
         stale_cutoff = now_utc() - timedelta(minutes=55)
-        fresh_teams = set()
+        stale_leagues: dict[str, dict] = {}
 
-        # Check last_social_at on games for these teams (proxy for team freshness)
-        for team_id in team_ids:
-            # Check if any game for this team has recent social data
-            recent = (
+        for code, date_range in league_ranges.items():
+            league = (
+                session.query(db_models.SportsLeague)
+                .filter(db_models.SportsLeague.code == code)
+                .first()
+            )
+            if not league:
+                continue
+
+            # Check if any game in this league's range still needs social
+            games_needing = (
                 session.query(db_models.SportsGame.id)
                 .filter(
-                    (db_models.SportsGame.home_team_id == team_id)
-                    | (db_models.SportsGame.away_team_id == team_id),
-                    db_models.SportsGame.last_social_at.isnot(None),
-                    db_models.SportsGame.last_social_at > stale_cutoff,
+                    db_models.SportsGame.league_id == league.id,
+                    db_models.SportsGame.game_date >= date_range["min_date"],
+                    db_models.SportsGame.status.in_([
+                        db_models.GameStatus.pregame.value,
+                        db_models.GameStatus.live.value,
+                        db_models.GameStatus.final.value,
+                    ]),
+                )
+                .filter(
+                    (db_models.SportsGame.last_social_at.is_(None))
+                    | (db_models.SportsGame.last_social_at < stale_cutoff)
                 )
                 .first()
             )
-            if recent:
-                fresh_teams.add(team_id)
+            if games_needing:
+                stale_leagues[code] = date_range
 
-        stale_team_ids = [tid for tid in team_ids if tid not in fresh_teams]
+        if not stale_leagues:
+            logger.debug(
+                "poll_active_social_all_fresh",
+                total_leagues=len(league_ranges),
+            )
+            return {"leagues_dispatched": 0, "leagues_fresh": len(league_ranges)}
 
-        if not stale_team_ids:
-            logger.debug("poll_active_social_all_fresh", total_teams=len(team_ids))
-            return {"teams_dispatched": 0, "teams_fresh": len(fresh_teams)}
-
-    # Dispatch to social-scraper worker
-    from .social_tasks import collect_team_social
+    # Dispatch collect_team_social per league to social-scraper queue.
+    # concurrency=1 on social-scraper ensures sequential execution = stable IP.
+    from .social_tasks import collect_team_social, map_social_to_games
 
     dispatched = 0
-    for team_id in stale_team_ids:
+    for code, date_range in stale_leagues.items():
         try:
-            collect_team_social.delay(team_id=team_id)
+            collect_team_social.apply_async(
+                args=[
+                    code,
+                    date_range["min_date"].isoformat(),
+                    date_range["max_date"].isoformat(),
+                ],
+                queue="social-scraper",
+            )
             dispatched += 1
+            logger.info(
+                "poll_active_social_league_dispatched",
+                league=code,
+                start_date=str(date_range["min_date"]),
+                end_date=str(date_range["max_date"]),
+            )
         except Exception as exc:
             logger.warning(
                 "poll_active_social_dispatch_error",
-                team_id=team_id,
+                league=code,
                 error=str(exc),
             )
 
+    # Dispatch mapping after collection (with countdown so collection finishes first)
+    if dispatched > 0:
+        try:
+            map_social_to_games.apply_async(
+                queue="social-scraper",
+                countdown=120,  # 2 min delay to let collection finish
+            )
+        except Exception as exc:
+            logger.warning("poll_active_social_map_dispatch_error", error=str(exc))
+
     logger.info(
         "poll_active_social_dispatched",
-        teams_dispatched=dispatched,
-        teams_fresh=len(fresh_teams),
-        teams_total=len(team_ids),
+        leagues_dispatched=dispatched,
+        leagues_fresh=len(league_ranges) - len(stale_leagues),
+        leagues_total=len(league_ranges),
     )
 
     return {
-        "teams_dispatched": dispatched,
-        "teams_fresh": len(fresh_teams),
-        "teams_total": len(team_ids),
+        "leagues_dispatched": dispatched,
+        "leagues_fresh": len(league_ranges) - len(stale_leagues),
+        "leagues_total": len(league_ranges),
     }

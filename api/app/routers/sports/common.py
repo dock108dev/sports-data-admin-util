@@ -17,7 +17,6 @@ from ...db.sports import (
 )
 from ...db.social import GameSocialPost
 from ...db.scraper import SportsScrapeRun
-from ...utils.reveal_utils import contains_explicit_score
 from .schemas import (
     NHLGoalieStat,
     NHLSkaterStat,
@@ -51,11 +50,6 @@ def serialize_play_entry(play: SportsGamePlay) -> PlayEntry:
 
 
 _URL_PATTERN = re.compile(r"https?://\S+")
-
-
-def post_contains_score(text: str | None) -> bool:
-    """Detect explicit score references in a social post."""
-    return contains_explicit_score(text)
 
 
 def normalize_post_text(text: str | None) -> str | None:
