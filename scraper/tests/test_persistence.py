@@ -52,7 +52,10 @@ class TestNormalizeStatus:
 
     def test_unknown_status(self):
         assert _normalize_status("unknown") == "scheduled"
-        assert _normalize_status("pregame") == "scheduled"
+
+    def test_pregame_status(self):
+        assert _normalize_status("pregame") == "pregame"
+        assert _normalize_status("PREGAME") == "pregame"
 
 
 class TestResolveStatusTransition:

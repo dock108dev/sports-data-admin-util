@@ -120,13 +120,11 @@ class TestPostCollectionResult:
             job=job,
             posts_found=10,
             posts_saved=8,
-            posts_flagged_reveal=2,
             errors=[],
             completed_at=now,
         )
         assert result.posts_found == 10
         assert result.posts_saved == 8
-        assert result.posts_flagged_reveal == 2
         assert result.completed_at is not None
 
     def test_create_result_with_errors(self):
