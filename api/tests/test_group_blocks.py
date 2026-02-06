@@ -19,12 +19,17 @@ from app.services.pipeline.stages.block_analysis import (
     find_garbage_time_start,
     BLOWOUT_MARGIN_THRESHOLD,
 )
-from app.services.pipeline.stages.group_blocks import (
+from app.services.pipeline.stages.group_blocks import execute_group_blocks
+from app.services.pipeline.stages.group_helpers import (
     calculate_block_count,
-    _find_split_points,
-    _assign_roles,
-    _create_blocks,
-    _compress_blowout_blocks,
+    create_blocks,
+    select_key_plays,
+)
+from app.services.pipeline.stages.group_roles import assign_roles
+from app.services.pipeline.stages.group_split_points import (
+    find_split_points,
+    find_weighted_split_points,
+    compress_blowout_blocks,
 )
 
 
@@ -220,7 +225,7 @@ class TestAssignRoles:
             NarrativeBlock(2, SemanticRole.RESPONSE, [], 1, 1, (20, 18), (30, 28), [], []),
             NarrativeBlock(3, SemanticRole.RESPONSE, [], 1, 1, (30, 28), (40, 38), [], []),
         ]
-        _assign_roles(blocks)
+        assign_roles(blocks)
         assert blocks[0].role == SemanticRole.SETUP
 
     def test_last_block_is_resolution(self) -> None:
@@ -233,7 +238,7 @@ class TestAssignRoles:
             NarrativeBlock(2, SemanticRole.RESPONSE, [], 1, 1, (20, 18), (30, 28), [], []),
             NarrativeBlock(3, SemanticRole.RESPONSE, [], 1, 1, (30, 28), (40, 38), [], []),
         ]
-        _assign_roles(blocks)
+        assign_roles(blocks)
         assert blocks[-1].role == SemanticRole.RESOLUTION
 
     def test_no_role_more_than_twice(self) -> None:
@@ -244,7 +249,7 @@ class TestAssignRoles:
             NarrativeBlock(i, SemanticRole.RESPONSE, [], 1, 1, (0, 0), (10, 8), [], [])
             for i in range(7)
         ]
-        _assign_roles(blocks)
+        assign_roles(blocks)
 
         role_counts: dict[SemanticRole, int] = {}
         for block in blocks:
@@ -268,7 +273,7 @@ class TestBlockCreation:
         ]
         split_points = [2]  # Creates 2 blocks: [0,1] and [2,3,4]
 
-        blocks = _create_blocks(moments, split_points, [])
+        blocks = create_blocks(moments, split_points, [])
         assert len(blocks) == 2
 
     def test_blocks_cover_all_moments(self) -> None:
@@ -279,7 +284,7 @@ class TestBlockCreation:
         ]
         split_points = [3, 7]  # Creates 3 blocks
 
-        blocks = _create_blocks(moments, split_points, [])
+        blocks = create_blocks(moments, split_points, [])
 
         covered_moments: set[int] = set()
         for block in blocks:
@@ -297,7 +302,7 @@ class TestBlockCreation:
         ]
         split_points = [2]  # Block 0: moments 0,1; Block 1: moments 2,3
 
-        blocks = _create_blocks(moments, split_points, [])
+        blocks = create_blocks(moments, split_points, [])
 
         # Block 0
         assert blocks[0].score_before == (0, 0)
@@ -341,10 +346,10 @@ class TestBlockConstraints:
 
         # With only 4 moments and 0 lead changes, should still get 4 blocks
         target_blocks = calculate_block_count(moments, 0, 20)
-        split_points = _find_split_points(moments, target_blocks)
+        split_points = find_split_points(moments, target_blocks)
 
         # Number of blocks = number of split points + 1
-        blocks = _create_blocks(moments, split_points, [])
+        blocks = create_blocks(moments, split_points, [])
         assert len(blocks) >= MIN_BLOCKS or len(blocks) == len(moments)
 
     def test_blowout_game_handled(self) -> None:
@@ -359,8 +364,8 @@ class TestBlockConstraints:
         total_plays = 100
 
         target_blocks = calculate_block_count(moments, lead_changes, total_plays)
-        split_points = _find_split_points(moments, target_blocks)
-        blocks = _create_blocks(moments, split_points, [])
+        split_points = find_split_points(moments, target_blocks)
+        blocks = create_blocks(moments, split_points, [])
 
         assert MIN_BLOCKS <= len(blocks) <= MAX_BLOCKS
 
@@ -458,7 +463,7 @@ class TestBlowoutCompression:
         decisive_idx = 5  # Blowout became decisive at moment 5
         garbage_idx = 15  # Garbage time at moment 15
 
-        split_points = _compress_blowout_blocks(moments, decisive_idx, garbage_idx)
+        split_points = compress_blowout_blocks(moments, decisive_idx, garbage_idx)
         num_blocks = len(split_points) + 1
 
         # Should be compressed to fewer blocks
@@ -473,18 +478,18 @@ class TestBlowoutCompression:
         decisive_idx = 3
         garbage_idx = None  # No garbage time
 
-        split_points = _compress_blowout_blocks(moments, decisive_idx, garbage_idx)
+        split_points = compress_blowout_blocks(moments, decisive_idx, garbage_idx)
         num_blocks = len(split_points) + 1
 
         assert num_blocks >= MIN_BLOCKS
 
 
 class TestFindWeightedSplitPoints:
-    """Tests for _find_weighted_split_points drama-based distribution."""
+    """Tests for find_weighted_split_points drama-based distribution."""
 
     def test_nba_q4_emphasis(self) -> None:
         """NBA games should emphasize Q4 with late-game amplification."""
-        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         moments = []
         for period in [1, 2, 3, 4]:
@@ -498,14 +503,14 @@ class TestFindWeightedSplitPoints:
 
         quarter_weights = {"Q1": 1.0, "Q2": 1.0, "Q3": 1.0, "Q4": 2.0}
 
-        split_points = _find_weighted_split_points(moments, 5, quarter_weights, "NBA")
+        split_points = find_weighted_split_points(moments, 5, quarter_weights, "NBA")
 
         # Should have 4 splits for 5 blocks
         assert len(split_points) == 4
 
     def test_ncaab_half_structure(self) -> None:
         """NCAAB games use half structure with H2 emphasis."""
-        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         moments = []
         for period in [1, 2]:  # NCAAB uses halves stored as Q1, Q2
@@ -519,13 +524,13 @@ class TestFindWeightedSplitPoints:
 
         quarter_weights = {"Q1": 1.0, "Q2": 1.8}  # H2 is more dramatic
 
-        split_points = _find_weighted_split_points(moments, 5, quarter_weights, "NCAAB")
+        split_points = find_weighted_split_points(moments, 5, quarter_weights, "NCAAB")
 
         assert len(split_points) == 4
 
     def test_nhl_three_periods(self) -> None:
         """NHL games use 3 period structure."""
-        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         moments = []
         for period in [1, 2, 3]:  # NHL periods stored as Q1, Q2, Q3
@@ -539,13 +544,13 @@ class TestFindWeightedSplitPoints:
 
         quarter_weights = {"Q1": 0.8, "Q2": 1.0, "Q3": 1.5}
 
-        split_points = _find_weighted_split_points(moments, 4, quarter_weights, "NHL")
+        split_points = find_weighted_split_points(moments, 4, quarter_weights, "NHL")
 
         assert len(split_points) == 3
 
     def test_q1_hard_cap_enforced(self) -> None:
         """Q1 gets max 1 block unless it's the peak quarter."""
-        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         # Create moments with lots of Q1 activity
         moments = []
@@ -562,7 +567,7 @@ class TestFindWeightedSplitPoints:
         # Q1 is not the peak - Q4 has highest weight
         quarter_weights = {"Q1": 1.0, "Q2": 1.0, "Q3": 1.2, "Q4": 2.0}
 
-        split_points = _find_weighted_split_points(moments, 5, quarter_weights, "NBA")
+        split_points = find_weighted_split_points(moments, 5, quarter_weights, "NBA")
 
         # Count how many splits fall within Q1 range
         q1_end_idx = 10  # First 10 moments are Q1
@@ -574,7 +579,7 @@ class TestFindWeightedSplitPoints:
 
     def test_peak_quarter_gets_minimum_blocks(self) -> None:
         """Peak drama quarter should get at least 2 blocks if target >= 4."""
-        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         moments = []
         for period in [1, 2, 3, 4]:
@@ -589,7 +594,7 @@ class TestFindWeightedSplitPoints:
         # Q3 is peak quarter with very high weight
         quarter_weights = {"Q1": 0.5, "Q2": 0.5, "Q3": 2.5, "Q4": 1.0}
 
-        split_points = _find_weighted_split_points(moments, 5, quarter_weights, "NBA")
+        split_points = find_weighted_split_points(moments, 5, quarter_weights, "NBA")
 
         # Q3 range is indices 10-14
         q3_start = 10
@@ -609,7 +614,7 @@ class TestFindWeightedSplitPoints:
 
     def test_deficit_backfill_respects_priority(self) -> None:
         """Deficit filling should prioritize higher-weight, later quarters."""
-        from app.services.pipeline.stages.group_blocks import _find_weighted_split_points
+        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         moments = []
         for period in [1, 2, 3, 4]:
@@ -624,7 +629,7 @@ class TestFindWeightedSplitPoints:
         # Clear weight hierarchy
         quarter_weights = {"Q1": 0.5, "Q2": 1.0, "Q3": 1.5, "Q4": 2.0}
 
-        split_points = _find_weighted_split_points(moments, 5, quarter_weights, "NBA")
+        split_points = find_weighted_split_points(moments, 5, quarter_weights, "NBA")
 
         # Function should produce valid splits
         assert len(split_points) == 4
@@ -632,11 +637,11 @@ class TestFindWeightedSplitPoints:
 
 
 class TestSelectKeyPlays:
-    """Tests for _select_key_plays function."""
+    """Tests for select_key_plays function."""
 
     def test_lead_change_highest_priority(self) -> None:
         """Lead change plays get highest priority."""
-        from app.services.pipeline.stages.group_blocks import _select_key_plays
+        from app.services.pipeline.stages.group_helpers import select_key_plays
 
         moments = [
             {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": []},
@@ -647,13 +652,13 @@ class TestSelectKeyPlays:
             {"play_index": 3, "home_score": 12, "away_score": 12, "play_type": "score"},
         ]
 
-        key_plays = _select_key_plays(moments, [0], pbp_events)
+        key_plays = select_key_plays(moments, [0], pbp_events)
 
         assert 2 in key_plays  # Lead change play should be selected
 
     def test_scoring_plays_ranked(self) -> None:
         """Scoring plays are prioritized."""
-        from app.services.pipeline.stages.group_blocks import _select_key_plays
+        from app.services.pipeline.stages.group_helpers import select_key_plays
 
         moments = [
             {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": []},
@@ -664,13 +669,13 @@ class TestSelectKeyPlays:
             {"play_index": 3, "home_score": 12, "away_score": 8, "play_type": "foul"},
         ]
 
-        key_plays = _select_key_plays(moments, [0], pbp_events)
+        key_plays = select_key_plays(moments, [0], pbp_events)
 
         assert 2 in key_plays  # Scoring play should be selected
 
     def test_fallback_to_last_play(self) -> None:
         """Falls back to last play if no better options."""
-        from app.services.pipeline.stages.group_blocks import _select_key_plays
+        from app.services.pipeline.stages.group_helpers import select_key_plays
 
         moments = [
             {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": []},
@@ -681,14 +686,14 @@ class TestSelectKeyPlays:
             {"play_index": 3, "home_score": 10, "away_score": 10, "play_type": "other"},
         ]
 
-        key_plays = _select_key_plays(moments, [0], pbp_events)
+        key_plays = select_key_plays(moments, [0], pbp_events)
 
         # Should have at least one key play
         assert len(key_plays) >= 1
 
     def test_max_three_key_plays(self) -> None:
         """No more than 3 key plays selected."""
-        from app.services.pipeline.stages.group_blocks import _select_key_plays
+        from app.services.pipeline.stages.group_helpers import select_key_plays
 
         moments = [
             {"play_ids": list(range(1, 11)), "explicitly_narrated_play_ids": list(range(1, 11))},
@@ -698,13 +703,13 @@ class TestSelectKeyPlays:
             for i in range(1, 11)
         ]
 
-        key_plays = _select_key_plays(moments, [0], pbp_events)
+        key_plays = select_key_plays(moments, [0], pbp_events)
 
         assert len(key_plays) <= 3
 
     def test_explicitly_narrated_plays_boosted(self) -> None:
         """Explicitly narrated plays get priority boost."""
-        from app.services.pipeline.stages.group_blocks import _select_key_plays
+        from app.services.pipeline.stages.group_helpers import select_key_plays
 
         moments = [
             {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": [2]},
@@ -715,13 +720,13 @@ class TestSelectKeyPlays:
             {"play_index": 3, "home_score": 10, "away_score": 10, "play_type": "other"},
         ]
 
-        key_plays = _select_key_plays(moments, [0], pbp_events)
+        key_plays = select_key_plays(moments, [0], pbp_events)
 
         assert 2 in key_plays  # Explicitly narrated play should be selected
 
 
 class TestCreateBlocksExtended:
-    """Extended tests for _create_blocks function."""
+    """Extended tests for create_blocks function."""
 
     def test_block_creation_with_mini_box(self) -> None:
         """Blocks include mini box score data."""
@@ -737,7 +742,7 @@ class TestCreateBlocksExtended:
         ]
         split_points = [2]  # Creates 2 blocks
 
-        blocks = _create_blocks(moments, split_points, pbp_events)
+        blocks = create_blocks(moments, split_points, pbp_events)
 
         assert len(blocks) == 2
         # Each block should have mini_box attribute
@@ -754,7 +759,7 @@ class TestCreateBlocksExtended:
         ]
         split_points = [2]
 
-        blocks = _create_blocks(moments, split_points, [])
+        blocks = create_blocks(moments, split_points, [])
 
         # Block 0's score_after should equal Block 1's score_before
         assert blocks[0].score_after == blocks[1].score_before
@@ -768,7 +773,7 @@ class TestCreateBlocksExtended:
         ]
         split_points = []  # Single block
 
-        blocks = _create_blocks(moments, split_points, [])
+        blocks = create_blocks(moments, split_points, [])
 
         assert len(blocks) == 1
         assert blocks[0].period_start == 1
@@ -776,7 +781,7 @@ class TestCreateBlocksExtended:
 
 
 class TestAssignRolesExtended:
-    """Extended tests for _assign_roles function."""
+    """Extended tests for assign_roles function."""
 
     def test_small_lead_changes_not_momentum_shift(self) -> None:
         """Small lead changes (< 8 net swing) don't qualify as MOMENTUM_SHIFT.
@@ -793,7 +798,7 @@ class TestAssignRolesExtended:
             NarrativeBlock(3, SemanticRole.RESPONSE, [], 2, 2, (20, 18), (30, 28), [], []),
         ]
 
-        _assign_roles(blocks)
+        assign_roles(blocks)
 
         # First/last get structural roles
         assert blocks[0].role == SemanticRole.SETUP
@@ -814,7 +819,7 @@ class TestAssignRolesExtended:
             NarrativeBlock(3, SemanticRole.RESPONSE, [], 4, 4, (25, 30), (35, 38), [], []),
         ]
 
-        _assign_roles(blocks)
+        assign_roles(blocks)
 
         # Block 1 has a 12-point swing - should be MOMENTUM_SHIFT
         assert blocks[1].role == SemanticRole.MOMENTUM_SHIFT
@@ -831,7 +836,7 @@ class TestAssignRolesExtended:
             NarrativeBlock(3, SemanticRole.RESPONSE, [], 4, 4, (30, 28), (40, 38), [], []),
         ]
 
-        _assign_roles(blocks)
+        assign_roles(blocks)
 
         # Block 1 overcame a 7-point deficit to take the lead - should be MOMENTUM_SHIFT
         assert blocks[1].role == SemanticRole.MOMENTUM_SHIFT
@@ -846,7 +851,7 @@ class TestAssignRolesExtended:
             for i in range(7)
         ]
 
-        _assign_roles(blocks)
+        assign_roles(blocks)
 
         # Count occurrences
         role_counts: dict[SemanticRole, int] = {}
