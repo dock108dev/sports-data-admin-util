@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Iterator
 
 from sqlalchemy import create_engine
@@ -21,15 +22,120 @@ from .logging import logger
 
 # Ensure the sports-data-admin API package is importable so we can reuse ORM models
 # This avoids duplicating model definitions and ensures schema consistency
+# Insert at the beginning to ensure our app package takes precedence
 SPORTS_API_PATH = Path(__file__).resolve().parents[2] / "api"
 if str(SPORTS_API_PATH) not in sys.path:
-    sys.path.append(str(SPORTS_API_PATH))
+    sys.path.insert(0, str(SPORTS_API_PATH))
 
 try:
-    from app import db_models  # type: ignore
+    # Import all models from the new modular structure
+    from app.db.sports import (  # type: ignore
+        GameStatus,
+        SportsGame,
+        SportsGamePlay,
+        SportsLeague,
+        SportsPlayer,
+        SportsPlayerBoxscore,
+        SportsTeam,
+        SportsTeamBoxscore,
+    )
+    from app.db.pipeline import (  # type: ignore
+        BulkStoryGenerationJob,
+        BulkStoryJobStatus,
+        GamePipelineRun,
+        GamePipelineStage,
+        PipelineRunStatus,
+        PipelineStage,
+        PipelineStageStatus,
+        PipelineTrigger,
+    )
+    from app.db.social import (  # type: ignore
+        GameSocialPost,
+        MappingStatus,
+        SocialAccountPoll,
+        TeamSocialAccount,
+        TeamSocialPost,
+    )
+    from app.db.story import (  # type: ignore
+        FrontendPayloadVersion,
+        SportsGameStory,
+        SportsGameTimelineArtifact,
+    )
+    from app.db.scraper import (  # type: ignore
+        SportsGameConflict,
+        SportsJobRun,
+        SportsMissingPbp,
+        SportsScrapeRun,
+    )
+    from app.db.resolution import (  # type: ignore
+        EntityResolution,
+        PBPSnapshot,
+        PBPSnapshotType,
+        ResolutionStatus,
+    )
+    from app.db.odds import (  # type: ignore
+        FairbetGameOddsWork,
+        SportsGameOdds,
+    )
+    from app.db.config import (  # type: ignore
+        CompactModeThreshold,
+        GameReadingPosition,
+    )
+    from app.db.cache import OpenAIResponseCache  # type: ignore
+
+    # Create a namespace that mirrors the old db_models module
+    db_models = SimpleNamespace(
+        # Enums
+        GameStatus=GameStatus,
+        MappingStatus=MappingStatus,
+        PBPSnapshotType=PBPSnapshotType,
+        ResolutionStatus=ResolutionStatus,
+        PipelineStage=PipelineStage,
+        PipelineRunStatus=PipelineRunStatus,
+        PipelineStageStatus=PipelineStageStatus,
+        PipelineTrigger=PipelineTrigger,
+        BulkStoryJobStatus=BulkStoryJobStatus,
+        FrontendPayloadVersion=FrontendPayloadVersion,
+        # Sports models
+        SportsLeague=SportsLeague,
+        SportsTeam=SportsTeam,
+        SportsPlayer=SportsPlayer,
+        SportsGame=SportsGame,
+        SportsTeamBoxscore=SportsTeamBoxscore,
+        SportsPlayerBoxscore=SportsPlayerBoxscore,
+        SportsGamePlay=SportsGamePlay,
+        # Pipeline models
+        GamePipelineRun=GamePipelineRun,
+        GamePipelineStage=GamePipelineStage,
+        BulkStoryGenerationJob=BulkStoryGenerationJob,
+        # Social models
+        GameSocialPost=GameSocialPost,
+        TeamSocialPost=TeamSocialPost,
+        TeamSocialAccount=TeamSocialAccount,
+        SocialAccountPoll=SocialAccountPoll,
+        # Story models
+        SportsGameTimelineArtifact=SportsGameTimelineArtifact,
+        SportsGameStory=SportsGameStory,
+        # Scraper models
+        SportsScrapeRun=SportsScrapeRun,
+        SportsJobRun=SportsJobRun,
+        SportsGameConflict=SportsGameConflict,
+        SportsMissingPbp=SportsMissingPbp,
+        # Resolution models
+        PBPSnapshot=PBPSnapshot,
+        EntityResolution=EntityResolution,
+        # Odds models
+        SportsGameOdds=SportsGameOdds,
+        FairbetGameOddsWork=FairbetGameOddsWork,
+        # Config models
+        CompactModeThreshold=CompactModeThreshold,
+        GameReadingPosition=GameReadingPosition,
+        # Cache models
+        OpenAIResponseCache=OpenAIResponseCache,
+    )
 except ImportError as exc:
     raise RuntimeError(
-        "Unable to import sports-data-admin api app.db_models. "
+        "Unable to import sports-data-admin api models. "
         "Did you install the API service dependencies?"
     ) from exc
 
@@ -51,10 +157,10 @@ SessionLocal = sessionmaker(
 def get_session() -> Iterator[Session]:
     """
     Provide a transactional database session context manager.
-    
+
     Use this in Celery tasks and other synchronous code paths.
     Automatically handles commit/rollback and session cleanup.
-    
+
     Usage:
         with get_session() as session:
             # Use session here
@@ -74,4 +180,3 @@ def get_session() -> Iterator[Session]:
 
 
 __all__ = ["get_session", "db_models", "engine"]
-

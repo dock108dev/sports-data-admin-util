@@ -415,7 +415,7 @@ class TestPersist:
     async def test_persist_team_resolutions(self):
         """Team resolutions are persisted to database."""
         from app.services.resolution_tracker import ResolutionTracker
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, patch
 
         tracker = ResolutionTracker(game_id=123, pipeline_run_id=456)
         tracker.track_team("LAL", resolved_id=1, resolved_name="Lakers", method="exact_match")
@@ -423,8 +423,7 @@ class TestPersist:
 
         mock_session = AsyncMock()
 
-        with patch("app.services.resolution_tracker.db_models") as mock_db_models:
-            mock_db_models.EntityResolution = MagicMock()
+        with patch("app.services.resolution_tracker.EntityResolution"):
             count = await tracker.persist(mock_session)
 
         assert count == 2
@@ -435,7 +434,7 @@ class TestPersist:
     async def test_persist_player_resolutions(self):
         """Player resolutions are persisted to database."""
         from app.services.resolution_tracker import ResolutionTracker
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, patch
 
         tracker = ResolutionTracker(game_id=123)
         tracker.track_player("LeBron James", resolved_name="LeBron James", method="passthrough")
@@ -443,8 +442,7 @@ class TestPersist:
 
         mock_session = AsyncMock()
 
-        with patch("app.services.resolution_tracker.db_models") as mock_db_models:
-            mock_db_models.EntityResolution = MagicMock()
+        with patch("app.services.resolution_tracker.EntityResolution"):
             count = await tracker.persist(mock_session)
 
         assert count == 2
@@ -453,7 +451,7 @@ class TestPersist:
     async def test_persist_mixed_resolutions(self):
         """Both team and player resolutions are persisted."""
         from app.services.resolution_tracker import ResolutionTracker
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, patch
 
         tracker = ResolutionTracker(game_id=123, pipeline_run_id=789)
         tracker.track_team("LAL", resolved_id=1)
@@ -462,8 +460,7 @@ class TestPersist:
 
         mock_session = AsyncMock()
 
-        with patch("app.services.resolution_tracker.db_models") as mock_db_models:
-            mock_db_models.EntityResolution = MagicMock()
+        with patch("app.services.resolution_tracker.EntityResolution"):
             count = await tracker.persist(mock_session)
 
         assert count == 3
@@ -472,7 +469,7 @@ class TestPersist:
     async def test_persist_includes_occurrence_count(self):
         """Occurrence count is included in persisted records."""
         from app.services.resolution_tracker import ResolutionTracker
-        from unittest.mock import AsyncMock, MagicMock, patch, call
+        from unittest.mock import AsyncMock, MagicMock, patch
 
         tracker = ResolutionTracker(game_id=123)
         tracker.track_team("LAL", resolved_id=1, play_index=1)
@@ -482,12 +479,11 @@ class TestPersist:
         mock_session = AsyncMock()
         captured_records = []
 
-        with patch("app.services.resolution_tracker.db_models") as mock_db_models:
-            def capture_record(*args, **kwargs):
-                captured_records.append(kwargs)
-                return MagicMock()
+        def capture_record(*args, **kwargs):
+            captured_records.append(kwargs)
+            return MagicMock()
 
-            mock_db_models.EntityResolution = capture_record
+        with patch("app.services.resolution_tracker.EntityResolution", side_effect=capture_record):
             await tracker.persist(mock_session)
 
         # Should only have 1 record with occurrence_count=3
