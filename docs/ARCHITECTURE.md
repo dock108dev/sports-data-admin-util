@@ -79,7 +79,7 @@ The story system converts play-by-play data into block-based narratives through 
 
 ### Architecture
 
-A story consists of **4-7 narrative blocks**, each containing 1-2 sentences (~35 words). Blocks are designed for 20-60 second total read time.
+A story consists of **4-7 narrative blocks**, each containing 2-4 sentences (~65 words). Blocks are designed for 60-90 second total read time.
 
 ```
 NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
@@ -104,12 +104,12 @@ A narrative block contains:
 - `block_index`: Position (0-6)
 - `role`: Semantic role (SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION)
 - `moment_indices`: Which moments are grouped
-- `narrative`: 1-2 sentences (~35 words)
+- `narrative`: 2-4 sentences (~65 words)
 - Score and time context
 
 ### Key Properties
 
-- **Consumer-focused:** 4-7 blocks, 20-60 second read time
+- **Consumer-focused:** 4-7 blocks, 60-90 second read time
 - **Traceability:** Blocks → Moments → Plays
 - **Semantic roles:** Each block has a narrative purpose
 - **Guardrails enforced:** Hard limits on block count, tweet count, word count

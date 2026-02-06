@@ -107,7 +107,7 @@ Combines CollapsedGameFlow and ExpandableSocialSections with clear visual hierar
 ## Testing Checklist
 
 - [ ] Collapsed view is readable without any interaction
-- [ ] Total read time is 20-60 seconds
+- [ ] Total read time is 60-90 seconds
 - [ ] Removing all tweets produces identical narrative layout
 - [ ] Social sections are collapsed by default
 - [ ] No UI element suggests tweets explain plays

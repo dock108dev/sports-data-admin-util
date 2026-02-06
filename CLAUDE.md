@@ -55,12 +55,12 @@
 
 **Architecture:** Block-based narratives via 8-stage pipeline
 
-A story consists of 4-7 narrative blocks. Each block contains 1-2 sentences (~35 words) with a semantic role (SETUP, MOMENTUM_SHIFT, RESOLUTION, etc.). Target read time: 20-60 seconds.
+A story consists of 4-7 narrative blocks. Each block contains 2-4 sentences (~65 words) with a semantic role (SETUP, MOMENTUM_SHIFT, RESOLUTION, etc.). Target read time: 60-90 seconds.
 
 **Contract:** See `docs/STORY_CONTRACT.md`
 
 **Key Concepts:**
-- **Narrative Block:** Consumer-facing output (4-7 per game, 1-2 sentences each)
+- **Narrative Block:** Consumer-facing output (4-7 per game, 2-4 sentences each)
 - **Moments:** Internal traceability layer linking blocks to plays
 - **Semantic Roles:** SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION
 - **Guardrails:** Hard limits enforced (blocks ≤ 7, tweets ≤ 5, words ≤ 350)

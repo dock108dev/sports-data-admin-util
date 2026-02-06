@@ -2,7 +2,24 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-03] - Current
+## [2026-02-05] - Current
+
+### Social Collection Architecture
+
+- **Team-centric collection**: Social scraping now collects all tweets for a team in a date range, then maps to games
+- **Two-phase architecture**: Phase 1 (COLLECT) → `team_social_posts`, Phase 2 (MAP) → `game_social_posts`
+- **Separate scheduled tasks**: NBA social at 8:30 AM EST, NHL social at 9:00 AM EST
+- **New tables**: `team_social_posts` for raw collected tweets
+
+### Legacy Code Cleanup
+
+- **Removed NHL SportsRef scraper**: NHL uses official NHL API exclusively for all data
+- **Simplified timeline generator**: Removed unused `build_nba_timeline()` function
+- **Simplified social events**: Removed AI classification stubs (heuristics only)
+
+---
+
+## [2026-02-03]
 
 ### Pipeline Enhancements
 

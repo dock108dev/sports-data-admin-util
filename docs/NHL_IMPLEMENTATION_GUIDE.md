@@ -93,7 +93,7 @@ NHL_PLAYOFF_OT_GAME_SECONDS = 20 * 60    # 20-minute playoff OT
 - [x] Add `_nhl_phase_for_period()` function ✅ (in `normalize_pbp.py`)
 - [x] Add `_nhl_block_for_period()` function ✅ (in `normalize_pbp.py`)
 - [x] Add `_nhl_period_start()` function ✅ (in `normalize_pbp.py`)
-- [ ] Add `build_nhl_timeline()` function (parallel to `build_nba_timeline()`)
+- [x] Timeline generation is league-agnostic ✅
 - [x] Handle shootout as distinct phase ✅ (period 5 = shootout)
 
 ---
@@ -118,17 +118,14 @@ async def generate_timeline_artifact(...):
 |----------|---------|----------------------|
 | `_nba_phase_for_quarter()` | Map quarter → phase | `_nhl_phase_for_period()` |
 | `_nba_block_for_quarter()` | Map quarter → block | `_nhl_block_for_period()` |
-| `_nba_quarter_start()` | Compute quarter start time | `_nhl_period_start()` |
-| `_nba_regulation_end()` | Compute end of regulation | `_nhl_regulation_end()` |
-| `_nba_game_end()` | Compute game end time | `_nhl_game_end()` |
-| `build_nba_timeline()` | Main timeline builder | `build_nhl_timeline()` |
-| `build_nba_summary()` | Summary generation | `build_nhl_summary()` |
+| `_nba_quarter_start()` | Compute quarter start time | `_nhl_period_start()` ✅ |
+| `_nba_regulation_end()` | Compute end of regulation | `_nhl_regulation_end()` ✅ |
+| `_nba_game_end()` | Compute game end time | `_nhl_game_end()` ✅ |
 
-### Action Required
-- [ ] Create `build_nhl_timeline()` function (not yet needed for story pipeline)
-- [x] Add NHL phase/period mapping functions ✅ (in `normalize_pbp.py`)
-- [x] Handle OT + shootout phases ✅ (shootout = period 5)
-- [ ] Update `generate_timeline_artifact()` to dispatch by league
+### Status
+- [x] NHL phase/period mapping functions ✅ (in `normalize_pbp.py`)
+- [x] OT + shootout phases handled ✅ (shootout = period 5)
+- [x] Timeline generation is league-agnostic (same code path for NBA/NHL/NCAAB)
 
 ---
 
@@ -186,10 +183,10 @@ NHL_HIGH_IMPACT_PLAY_TYPES = frozenset({
 
 ### Current State
 
-**NBA PBP Scraper:** `scraper/sports_scraper/scrapers/nba_sportsref.py`
-**NHL PBP Scraper:** `scraper/sports_scraper/scrapers/nhl_sportsref.py`
+**NBA PBP:** Official NBA API (`cdn.nba.com`)
+**NHL PBP:** Official NHL API (`api-web.nhle.com`)
 
-NHL PBP scraping is already implemented.
+Both NBA and NHL use their official league APIs for play-by-play data. Sports Reference is used only for boxscores (NBA) and NCAAB data.
 
 ### Event Type Mapping
 
@@ -308,19 +305,27 @@ SPORT_KEYS = {
 ## 7. Social Integration
 
 ### Current State
-**File:** `scraper/sports_scraper/social/collector.py`
-**File:** `docs/SOCIAL_NHL.md`
+**Files:** `scraper/sports_scraper/social/team_collector.py`, `scraper/sports_scraper/social/tweet_mapper.py`
+**Docs:** [SOCIAL_NHL.md](SOCIAL_NHL.md)
 
-NHL social integration is **already documented** with parity to NBA:
+NHL social integration uses the **team-centric two-phase architecture**:
+1. **Phase 1 (COLLECT):** Scrape all tweets for teams in a date range → `team_social_posts`
+2. **Phase 2 (MAP):** Map unmapped tweets to games → `game_social_posts`
+
+**Parity with NBA:**
 - Same scraping mechanism (Playwright)
 - Same rate limiting
 - Same reveal filtering
-- Team handles seeded in `sql/006_seed_nhl_x_handles.sql`
+- Team handles seeded via Alembic migration
 
-### Action Required
+### Schedule
+NHL social collection runs daily at 9:00 AM EST (30 min after NBA).
+See `scraper/sports_scraper/celery_app.py` for schedule configuration.
+
+### Status
 - [x] NHL team X handles seeded ✅
 - [x] Social scraping works for NHL ✅
-- [ ] Verify `social_enabled=True` in config (currently True)
+- [x] Separate scheduled tasks for NBA/NHL ✅
 
 ---
 
