@@ -72,29 +72,7 @@ export function SocialPostsSection({ posts }: { posts: AdminGameDetail["socialPo
                   {post.mediaType === "image" && <span className={styles.imageBadge}>🖼️ Image</span>}
                 </div>
 
-                {post.mediaType === "video" ? (
-                  <TwitterEmbed tweetUrl={post.postUrl} />
-                ) : (
-                  <>
-                    {post.tweetText && <div className={styles.tweetText}>{post.tweetText}</div>}
-                    {post.imageUrl && (
-                      <img
-                        src={post.imageUrl}
-                        alt="Post media"
-                        className={styles.socialPostImage}
-                        loading="lazy"
-                      />
-                    )}
-                    <a
-                      href={post.postUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={styles.socialPostLink}
-                    >
-                      View on X →
-                    </a>
-                  </>
-                )}
+                <TwitterEmbed tweetUrl={post.postUrl} />
 
                 <div className={styles.socialPostMeta}>{new Date(post.postedAt).toLocaleString()}</div>
               </div>

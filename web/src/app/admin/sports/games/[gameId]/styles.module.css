@@ -206,24 +206,6 @@
   font-size: 0.85rem;
 }
 
-.socialPostLink {
-  color: #2563eb;
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 0.9rem;
-  margin-top: auto;
-}
-
-.socialPostLink:hover {
-  text-decoration: underline;
-}
-
-.socialPostImage {
-  width: 100%;
-  border-radius: 8px;
-  max-height: 300px;
-  object-fit: cover;
-}
 
 .handleBadge {
   color: #64748b;
@@ -240,14 +222,6 @@
   font-size: 0.75rem;
 }
 
-.tweetText {
-  font-size: 0.9rem;
-  color: #1e293b;
-  line-height: 1.4;
-  margin: 0.5rem 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
 
 /* Collapsible sections */
 .collapsibleHeader {

@@ -43,6 +43,6 @@ RUN useradd --system --uid 10001 --create-home appuser \
 
 USER appuser
 
-ENV PYTHONPATH="/app/api:/app/scraper:${PYTHONPATH}"
+ENV PYTHONPATH="/app/api:/app/scraper"
 
 CMD ["celery", "-A", "sports_scraper.celery_app.app", "worker", "--loglevel=info", "--queues=sports-scraper"]
