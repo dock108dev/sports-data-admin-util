@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -414,11 +414,11 @@ async def bulk_create_social_posts(
     )
 
 
-@router.delete("/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/posts/{post_id}")
 async def delete_social_post(
     post_id: int,
     session: AsyncSession = Depends(get_db),
-) -> None:
+) -> Response:
     """Delete a social post."""
     post = await session.get(GameSocialPost, post_id)
     if not post:
@@ -428,3 +428,4 @@ async def delete_social_post(
         )
 
     await session.delete(post)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
