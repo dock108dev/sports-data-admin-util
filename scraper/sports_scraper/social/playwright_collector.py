@@ -402,28 +402,34 @@ class PlaywrightXCollector(XCollectorStrategy):
                         text_content = text_el.inner_text()
 
                     # Detect media (video/image)
-                    has_video = article.query_selector("video") is not None
+                    # X/Twitter lazy-loads <video> elements, so check for video containers
+                    # using data-testid attributes instead
                     video_url = None
                     image_url = None
                     media_type = "none"
 
+                    # Check for video using multiple selectors (X changes these)
+                    video_container = (
+                        article.query_selector('[data-testid="videoPlayer"]')
+                        or article.query_selector('[data-testid="videoComponent"]')
+                        or article.query_selector('[data-testid="previewInterstitial"]')  # Video preview
+                        or article.query_selector('video')  # Fallback if already loaded
+                    )
+                    has_video = video_container is not None
+
                     if has_video:
                         media_type = "video"
+                        # Try to extract video URL if the element is loaded
                         video_el = article.query_selector("video")
                         if video_el:
                             video_url = video_el.get_attribute("src")
 
-                    if not image_url:
+                    # Check for images (only if no video detected)
+                    if not has_video:
                         img_el = article.query_selector('[data-testid="tweetPhoto"] img')
                         if img_el:
                             image_url = img_el.get_attribute("src")
-                            if not media_type or media_type == "none":
-                                media_type = "image"
-
-                    # If we detected video presence but couldn't extract media URLs,
-                    # still mark the post as video so downstream UI can handle it.
-                    if has_video and media_type == "none":
-                        media_type = "video"
+                            media_type = "image"
 
                     posts.append(
                         CollectedPost(
