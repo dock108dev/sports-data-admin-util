@@ -9,8 +9,6 @@ high-frequency polling tasks missed. Responsibilities:
 4. Missing flows: find final games with PBP but no timeline artifacts, trigger
 5. Archive: move final games >7 days with complete artifacts to archived
 6. Odds cleanup: final closing-line fetch for recently-finalized games
-
-The old batch system (run_scheduled_ingestion) is kept intact for rollback.
 """
 
 from __future__ import annotations
@@ -30,12 +28,7 @@ from ..logging import logger
     retry_kwargs={"max_retries": 2},
 )
 def run_daily_sweep() -> dict:
-    """Run all daily sweep operations.
-
-    This task replaces the monolithic run_scheduled_ingestion for the
-    new game-state-machine architecture. The old task is kept for
-    manual use and rollback.
-    """
+    """Run all daily sweep operations."""
     results: dict = {}
 
     logger.info("daily_sweep_start")

@@ -9,7 +9,6 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 
 from ..config import settings
 from ..logging import logger
-from .collector_base import XCollectorStrategy
 from .exceptions import XCircuitBreakerError
 from .models import CollectedPost
 from .utils import extract_x_post_id
@@ -31,7 +30,7 @@ _BACKOFF_SECONDS = 90  # Fixed 90 second backoff on retryable error
 _MAX_ATTEMPTS = 3  # Try up to 3 times, then fail the job
 
 
-class PlaywrightXCollector(XCollectorStrategy):
+class PlaywrightXCollector:
     """
     Headless collector that visits public X profiles and extracts recent posts.
 
@@ -70,7 +69,6 @@ class PlaywrightXCollector(XCollectorStrategy):
         ct0: str | None = None,
         min_delay_seconds: float = 10.0,
         max_delay_seconds: float = 15.0,
-        profile_dir: str | None = None,  # kept for signature compat, ignored
     ):
         import os
 

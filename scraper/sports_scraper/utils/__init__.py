@@ -2,7 +2,7 @@
 
 from .cache import HTMLCache
 from .date_utils import season_from_date
-from .datetime_utils import date_to_datetime_range, date_to_utc_datetime, date_window_for_matching, now_utc
+from .datetime_utils import date_to_utc_datetime, date_window_for_matching, now_utc
 from .db_queries import (
     count_team_games,
     find_games_in_date_range,
@@ -18,7 +18,7 @@ from .html_parsing import (
     get_stat_from_row,
     get_table_ids_on_page,
 )
-from .parsing import parse_float, parse_int, parse_time_to_minutes
+from .parsing import parse_float, parse_int
 
 __all__ = [
     # Cache
@@ -28,13 +28,11 @@ __all__ = [
     # Datetime utilities
     "now_utc",
     "date_to_utc_datetime",
-    "date_to_datetime_range",
     "date_window_for_matching",
     # Parsing utilities
     "get_stat_from_row",
     "parse_int",
     "parse_float",
-    "parse_time_to_minutes",
     # HTML parsing
     "find_table_by_id",
     "find_player_table",

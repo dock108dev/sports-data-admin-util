@@ -314,29 +314,6 @@ class TestExtractXPostId:
 
 
 # ============================================================================
-# Tests for social/strategies.py
-# ============================================================================
-
-from sports_scraper.social.strategies import MockXCollector
-
-
-class TestMockXCollector:
-    """Tests for MockXCollector class."""
-
-    def test_collect_posts_returns_empty(self):
-        """MockXCollector returns empty list."""
-        collector = MockXCollector()
-        now = datetime.now(timezone.utc)
-        posts = collector.collect_posts(
-            x_handle="warriors",
-            window_start=now - timedelta(hours=3),
-            window_end=now,
-        )
-        assert posts == []
-        assert isinstance(posts, list)
-
-
-# ============================================================================
 # Tests for social/registry.py
 # ============================================================================
 
@@ -654,41 +631,3 @@ class TestSocialRequestCache:
         mock_session.flush.assert_called_once()
 
 
-# ============================================================================
-# Tests for social/collector_base.py
-# ============================================================================
-
-from sports_scraper.social.collector_base import XCollectorStrategy
-
-
-class TestXCollectorStrategy:
-    """Tests for XCollectorStrategy abstract class."""
-
-    def test_is_abstract(self):
-        """XCollectorStrategy is abstract."""
-        # Should have abstract method
-        assert hasattr(XCollectorStrategy, "collect_posts")
-
-    def test_cannot_instantiate_directly(self):
-        """Cannot instantiate abstract class directly."""
-        with pytest.raises(TypeError):
-            XCollectorStrategy()
-
-    def test_subclass_must_implement(self):
-        """Subclass must implement collect_posts."""
-
-        class IncompleteCollector(XCollectorStrategy):
-            pass
-
-        with pytest.raises(TypeError):
-            IncompleteCollector()
-
-    def test_complete_subclass_works(self):
-        """Complete subclass can be instantiated."""
-
-        class CompleteCollector(XCollectorStrategy):
-            def collect_posts(self, x_handle, window_start, window_end):
-                return []
-
-        collector = CompleteCollector()
-        assert collector is not None

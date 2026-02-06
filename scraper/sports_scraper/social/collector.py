@@ -14,13 +14,11 @@ from ..logging import logger
 from ..config import settings
 from ..utils.datetime_utils import now_utc
 from .cache import SocialRequestCache
-from .collector_base import XCollectorStrategy
 from .exceptions import SocialRateLimitError
 from .models import PostCollectionJob, PostCollectionResult
 from .playwright_collector import PlaywrightXCollector, playwright_available
 from .rate_limit import PlatformRateLimiter
 from .registry import fetch_team_accounts
-from .strategies import MockXCollector
 from .utils import extract_x_post_id
 
 if TYPE_CHECKING:
@@ -75,12 +73,14 @@ class XPostCollector:
 
     def __init__(
         self,
-        strategy: XCollectorStrategy | None = None,
+        strategy: PlaywrightXCollector | None = None,
     ):
         if strategy:
             self.strategy = strategy
+        elif playwright_available():
+            self.strategy = PlaywrightXCollector()
         else:
-            self.strategy = PlaywrightXCollector() if playwright_available() else MockXCollector()
+            raise RuntimeError("Playwright is required for social collection but not installed")
         self.platform = "x"
         social_config = settings.social_config
         self.rate_limiter = PlatformRateLimiter(

@@ -55,16 +55,12 @@ class TestXPostCollectorInit:
     """Tests for XPostCollector initialization."""
 
     @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_uses_mock_when_playwright_unavailable(self, mock_mock_collector, mock_available):
-        """Uses MockXCollector when playwright not available."""
+    def test_raises_when_playwright_unavailable(self, mock_available):
+        """Raises RuntimeError when playwright not available."""
         mock_available.return_value = False
 
-        collector = XPostCollector()
-
-        mock_mock_collector.assert_called()
-        assert collector.filter_reveals is True
-        assert collector.platform == "x"
+        with pytest.raises(RuntimeError, match="Playwright is required"):
+            XPostCollector()
 
     def test_accepts_custom_strategy(self):
         """Accepts custom strategy."""
@@ -73,51 +69,26 @@ class TestXPostCollectorInit:
         collector = XPostCollector(strategy=mock_strategy)
 
         assert collector.strategy is mock_strategy
-
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_creates_rate_limiter(self, mock_mock_collector, mock_available):
-        """Creates rate limiter."""
-        mock_available.return_value = False
-
-        collector = XPostCollector()
-
+        assert collector.platform == "x"
         assert collector.rate_limiter is not None
-
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_creates_request_cache(self, mock_mock_collector, mock_available):
-        """Creates request cache."""
-        mock_available.return_value = False
-
-        collector = XPostCollector()
-
         assert collector.request_cache is not None
 
 
 class TestXPostCollectorNormalizePostedAt:
     """Tests for _normalize_posted_at method."""
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_adds_utc_when_naive(self, mock_mock_collector, mock_available):
+    def test_adds_utc_when_naive(self):
         """Adds UTC timezone when datetime is naive."""
-        mock_available.return_value = False
-
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
         naive_dt = datetime(2024, 1, 15, 12, 0, 0)
 
         result = collector._normalize_posted_at(naive_dt)
 
         assert result.tzinfo == timezone.utc
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_converts_to_utc(self, mock_mock_collector, mock_available):
+    def test_converts_to_utc(self):
         """Converts aware datetime to UTC."""
-        mock_available.return_value = False
-
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
         # Eastern time (UTC-5)
         eastern = timezone(timedelta(hours=-5))
         aware_dt = datetime(2024, 1, 15, 12, 0, 0, tzinfo=eastern)
@@ -132,13 +103,9 @@ class TestXPostCollectorNormalizePostedAt:
 class TestXPostCollectorRunJob:
     """Tests for run_job method."""
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_skips_when_poll_not_allowed(self, mock_mock_collector, mock_available):
+    def test_skips_when_poll_not_allowed(self):
         """Skips collection when poll cache says not allowed."""
-        mock_available.return_value = False
-
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
 
         # Mock request cache to disallow polling
         mock_cache = MagicMock()
@@ -161,13 +128,9 @@ class TestXPostCollectorRunJob:
         assert result.posts_found == 0
         assert result.posts_saved == 0
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_skips_when_rate_limited(self, mock_mock_collector, mock_available):
+    def test_skips_when_rate_limited(self):
         """Skips collection when rate limited."""
-        mock_available.return_value = False
-
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
 
         # Mock request cache to allow polling
         mock_cache = MagicMock()
@@ -198,24 +161,18 @@ class TestXPostCollectorRunJob:
 class TestXPostCollectorCollectForGame:
     """Tests for collect_for_game method."""
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_returns_empty_when_game_not_found(self, mock_mock_collector, mock_available):
+    def test_returns_empty_when_game_not_found(self):
         """Returns empty list when game not found."""
-        mock_available.return_value = False
         mock_session = MagicMock()
         mock_session.query.return_value.filter.return_value.first.return_value = None
 
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
         result = collector.collect_for_game(mock_session, game_id=999)
 
         assert result == []
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_returns_empty_when_teams_not_found(self, mock_mock_collector, mock_available):
+    def test_returns_empty_when_teams_not_found(self):
         """Returns empty list when teams not found."""
-        mock_available.return_value = False
         mock_session = MagicMock()
 
         mock_game = MagicMock()
@@ -224,16 +181,13 @@ class TestXPostCollectorCollectForGame:
         mock_session.query.return_value.filter.return_value.first.return_value = mock_game
         mock_session.query.return_value.get.return_value = None  # Teams not found
 
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
         result = collector.collect_for_game(mock_session, game_id=1)
 
         assert result == []
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_returns_empty_when_no_game_date(self, mock_mock_collector, mock_available):
+    def test_returns_empty_when_no_game_date(self):
         """Returns empty list when game has no date."""
-        mock_available.return_value = False
         mock_session = MagicMock()
 
         mock_game = MagicMock()
@@ -245,17 +199,14 @@ class TestXPostCollectorCollectForGame:
         mock_session.query.return_value.filter.return_value.first.return_value = mock_game
         mock_session.query.return_value.get.return_value = mock_team
 
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
         result = collector.collect_for_game(mock_session, game_id=1)
 
         assert result == []
 
     @patch("sports_scraper.social.collector.fetch_team_accounts")
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_returns_empty_when_no_pbp(self, mock_mock_collector, mock_available, mock_fetch_accounts):
+    def test_returns_empty_when_no_pbp(self, mock_fetch_accounts):
         """Returns empty list when game has no PBP."""
-        mock_available.return_value = False
         mock_session = MagicMock()
 
         mock_game = MagicMock()
@@ -271,7 +222,7 @@ class TestXPostCollectorCollectForGame:
         mock_session.query.return_value.get.return_value = mock_team
         mock_session.query.return_value.filter.return_value.scalar.return_value = 0  # No plays
 
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
         result = collector.collect_for_game(mock_session, game_id=1)
 
         assert result == []
@@ -280,13 +231,9 @@ class TestXPostCollectorCollectForGame:
 class TestXPostCollectorRunJobSuccess:
     """Tests for run_job method with successful collection."""
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_collects_and_saves_posts(self, mock_mock_collector, mock_available):
+    def test_collects_and_saves_posts(self):
         """Successfully collects and saves posts."""
-        mock_available.return_value = False
-
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
 
         # Mock cache to allow polling
         mock_cache = MagicMock()
@@ -332,13 +279,9 @@ class TestXPostCollectorRunJobSuccess:
 
         assert result.posts_found == 1
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_skips_post_outside_window(self, mock_mock_collector, mock_available):
+    def test_skips_post_outside_window(self):
         """Skips posts outside collection window."""
-        mock_available.return_value = False
-
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
 
         mock_cache = MagicMock()
         mock_cache.should_poll.return_value = MagicMock(allowed=True)
@@ -377,13 +320,9 @@ class TestXPostCollectorRunJobSuccess:
         assert result.posts_found == 1
         assert result.posts_saved == 0  # Skipped
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_handles_team_not_found(self, mock_mock_collector, mock_available):
+    def test_handles_team_not_found(self):
         """Handles team not found error."""
-        mock_available.return_value = False
-
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
 
         mock_cache = MagicMock()
         mock_cache.should_poll.return_value = MagicMock(allowed=True)
@@ -422,15 +361,11 @@ class TestXPostCollectorRunJobSuccess:
 class TestXPostCollectorErrorHandling:
     """Tests for run_job error handling."""
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_handles_rate_limit_error(self, mock_mock_collector, mock_available):
+    def test_handles_rate_limit_error(self):
         """Handles SocialRateLimitError during collection."""
         from sports_scraper.social.exceptions import SocialRateLimitError
 
-        mock_available.return_value = False
-
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
 
         mock_cache = MagicMock()
         mock_cache.should_poll.return_value = MagicMock(allowed=True)
@@ -461,13 +396,9 @@ class TestXPostCollectorErrorHandling:
         assert len(result.errors) > 0
         mock_limiter.backoff.assert_called_once()
 
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_handles_generic_exception(self, mock_mock_collector, mock_available):
+    def test_handles_generic_exception(self):
         """Handles generic exception during collection."""
-        mock_available.return_value = False
-
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
 
         mock_cache = MagicMock()
         mock_cache.should_poll.return_value = MagicMock(allowed=True)
@@ -503,13 +434,9 @@ class TestXPostCollectorCollectForGameSuccess:
     """Tests for collect_for_game with successful execution."""
 
     @patch("sports_scraper.social.collector.fetch_team_accounts")
-    @patch("sports_scraper.social.collector.playwright_available")
-    @patch("sports_scraper.social.collector.MockXCollector")
-    def test_collects_for_both_teams(self, mock_mock_collector, mock_available, mock_fetch_accounts):
+    def test_collects_for_both_teams(self, mock_fetch_accounts):
         """Collects posts for both teams."""
-        mock_available.return_value = False
-
-        collector = XPostCollector()
+        collector = XPostCollector(strategy=MagicMock())
 
         # Mock cache and limiter
         mock_cache = MagicMock()
