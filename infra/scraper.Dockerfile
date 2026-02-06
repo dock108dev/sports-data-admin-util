@@ -15,7 +15,7 @@ RUN apt-get update \
         zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir uv==0.6.5
+RUN pip install --no-cache-dir --upgrade pip uv==0.6.5
 
 COPY scraper/pyproject.toml /app/scraper/pyproject.toml
 COPY scraper/uv.lock /app/scraper/uv.lock

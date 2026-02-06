@@ -186,20 +186,10 @@ class XPostCollector:
                 return result
 
             posts_updated = 0
-            posts_skipped = 0
             for post in posts:
                 normalized_posted_at = self._normalize_posted_at(post.posted_at)
-                # Timestamp attachment rule: only link posts that fall inside the game window.
-                if normalized_posted_at < job.window_start or normalized_posted_at > job.window_end:
-                    posts_skipped += 1
-                    logger.debug(
-                        "x_post_outside_window",
-                        post_url=post.post_url,
-                        posted_at=str(normalized_posted_at),
-                        window_start=str(job.window_start),
-                        window_end=str(job.window_end),
-                    )
-                    continue
+                # NOTE: No window filtering here - X search already constrains to date range.
+                # All posts from the search are saved to DB.
 
                 reveal_result = classify_reveal_risk(post.text)
                 # Reveal logic: post-game content stays attached but is always flagged.
