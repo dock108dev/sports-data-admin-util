@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from ..logging import logger
 from ..utils.datetime_utils import now_utc, date_to_utc_datetime
 from .collector_base import XCollectorStrategy
+from .exceptions import XCircuitBreakerError
 from .playwright_collector import PlaywrightXCollector, playwright_available
 from .rate_limit import PlatformRateLimiter
 from .registry import fetch_team_accounts
@@ -117,6 +118,9 @@ class TeamTweetCollector:
                 window_start=window_start,
                 window_end=window_end,
             )
+        except XCircuitBreakerError:
+            # Circuit breaker tripped - propagate to stop the entire scrape
+            raise
         except Exception as exc:
             logger.exception(
                 "team_collector_scrape_failed",
@@ -280,6 +284,15 @@ class TeamTweetCollector:
                 )
                 teams_processed += 1
                 total_new_tweets += new_tweets
+            except XCircuitBreakerError as exc:
+                # Circuit breaker tripped - stop the entire scrape immediately
+                logger.error(
+                    "team_collector_circuit_breaker_stop",
+                    team_id=team_id,
+                    teams_processed=teams_processed,
+                    error=str(exc),
+                )
+                raise
             except Exception as exc:
                 error_msg = f"Team {team_id}: {str(exc)}"
                 errors.append(error_msg)

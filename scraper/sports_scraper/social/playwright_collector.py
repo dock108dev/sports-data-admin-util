@@ -28,9 +28,8 @@ def playwright_available() -> bool:  # pragma: no cover
 
 
 # Circuit breaker constants
-_INITIAL_BACKOFF_MINUTES = 5
-_MAX_BACKOFF_HOURS = 6
-_MAX_CONSECUTIVE_ERRORS = 3
+_BACKOFF_SECONDS = 90  # Fixed 90 second backoff on rate limit
+_MAX_RETRIES = 3  # Fail loudly after 3 retries
 _HOURLY_WINDOW_SECONDS = 3600
 
 
@@ -59,23 +58,21 @@ class PlaywrightXCollector(XCollectorStrategy):
         - Global hourly request cap (default: 100/hour)
 
     Circuit Breaker:
-        - After 3 consecutive "something went wrong" errors, backs off exponentially
-        - After N consecutive 0-result responses (soft block detection), backs off
-        - Starts at 5 minutes, doubles each time, maxes at 6 hours
-        - After hitting 6 hour max, raises XCircuitBreakerError to fail the scrape
+        - On error: wait 90 seconds, then retry
+        - After 3 consecutive errors: fail the scrape loudly with actual error
+        - No exponential backoff - simple and predictable
     """
 
     # Class-level circuit breaker state (shared across instances in same worker)
     _consecutive_errors: int = 0
-    _consecutive_empty_results: int = 0
-    _current_backoff_minutes: float = _INITIAL_BACKOFF_MINUTES
     _circuit_open_until: float = 0.0
+    _last_error_message: str = ""  # Store actual error for loud failure
     # Hourly request tracking (sliding window)
     _hourly_requests: deque = deque()
 
     def __init__(  # pragma: no cover - browser config
         self,
-        max_scrolls: int = 3,
+        max_scrolls: int = 8,  # Increased to capture more posts in longer windows
         wait_ms: int = 2000,  # X's JS needs time to render
         timeout_ms: int = 30000,
         auth_token: str | None = None,
@@ -142,103 +139,57 @@ class PlaywrightXCollector(XCollectorStrategy):
         """Record a request for hourly cap tracking."""
         PlaywrightXCollector._hourly_requests.append(time.time())
 
-    def _record_error(self) -> None:  # pragma: no cover - class-level state
-        """Record an error and potentially trigger circuit breaker."""
+    def _record_error(self, error_message: str) -> None:  # pragma: no cover - class-level state
+        """Record an error and trigger circuit breaker.
+
+        Simple behavior:
+        - On first error: log it, set 90s backoff
+        - On 2nd error: log it, set 90s backoff
+        - On 3rd error: FAIL LOUDLY with the actual error message
+        """
         PlaywrightXCollector._consecutive_errors += 1
-        logger.warning(
-            "x_consecutive_error",
-            count=PlaywrightXCollector._consecutive_errors,
-            max=_MAX_CONSECUTIVE_ERRORS,
+        PlaywrightXCollector._last_error_message = error_message
+
+        logger.error(
+            "x_scrape_error",
+            error=error_message,
+            attempt=PlaywrightXCollector._consecutive_errors,
+            max_retries=_MAX_RETRIES,
         )
 
-        if PlaywrightXCollector._consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
-            # Check if we've hit max backoff - if so, fail the scrape
-            max_backoff_minutes = _MAX_BACKOFF_HOURS * 60
-            if PlaywrightXCollector._current_backoff_minutes >= max_backoff_minutes:
-                logger.error(
-                    "x_circuit_breaker_max_reached",
-                    max_backoff_hours=_MAX_BACKOFF_HOURS,
-                )
-                raise XCircuitBreakerError(
-                    f"Circuit breaker hit max backoff ({_MAX_BACKOFF_HOURS}h), failing scrape",
-                    retry_after_seconds=int(max_backoff_minutes * 60),
-                )
-
-            # Open circuit with exponential backoff
-            backoff_seconds = PlaywrightXCollector._current_backoff_minutes * 60
-            PlaywrightXCollector._circuit_open_until = time.time() + backoff_seconds
+        if PlaywrightXCollector._consecutive_errors >= _MAX_RETRIES:
+            # 3 strikes - fail loudly with the actual error
             logger.error(
-                "x_circuit_breaker_triggered",
-                backoff_minutes=PlaywrightXCollector._current_backoff_minutes,
-                retry_at=datetime.fromtimestamp(PlaywrightXCollector._circuit_open_until).isoformat(),
+                "x_scrape_failed_permanently",
+                error=error_message,
+                attempts=PlaywrightXCollector._consecutive_errors,
+                message="Failing social scrape after max retries",
             )
-
-            # Double backoff for next time (exponential)
-            PlaywrightXCollector._current_backoff_minutes = min(
-                PlaywrightXCollector._current_backoff_minutes * 2,
-                max_backoff_minutes,
-            )
-
             raise XCircuitBreakerError(
-                f"Too many errors, backing off {backoff_seconds/60:.0f} minutes",
-                retry_after_seconds=int(backoff_seconds),
+                f"X scrape failed after {_MAX_RETRIES} attempts: {error_message}",
+                retry_after_seconds=0,  # Don't retry
             )
 
-    def _record_success(self, posts_found: int) -> None:  # pragma: no cover - class-level state
-        """Record a successful request and reset circuit breaker state."""
-        if PlaywrightXCollector._consecutive_errors > 0:
-            logger.info(
-                "x_circuit_breaker_reset",
-                previous_errors=PlaywrightXCollector._consecutive_errors,
-            )
-        PlaywrightXCollector._consecutive_errors = 0
-        PlaywrightXCollector._current_backoff_minutes = _INITIAL_BACKOFF_MINUTES
-        
-        # Track consecutive empty results for soft block detection
-        if posts_found == 0:
-            PlaywrightXCollector._consecutive_empty_results += 1
-            max_empty = settings.social_config.max_consecutive_empty_results
-            logger.debug(
-                "x_empty_result",
-                consecutive_empty=PlaywrightXCollector._consecutive_empty_results,
-                max_empty=max_empty,
-            )
-            if PlaywrightXCollector._consecutive_empty_results >= max_empty:
-                logger.warning(
-                    "x_soft_block_detected",
-                    consecutive_empty=PlaywrightXCollector._consecutive_empty_results,
-                    message="Too many consecutive 0-result responses, possible silent block",
-                )
-                # Trigger a soft backoff (use same circuit breaker mechanism)
-                self._trigger_soft_block_backoff()
-        else:
-            # Reset empty counter on any successful fetch with results
-            if PlaywrightXCollector._consecutive_empty_results > 0:
-                logger.debug(
-                    "x_empty_streak_reset",
-                    previous_empty=PlaywrightXCollector._consecutive_empty_results,
-                    posts_found=posts_found,
-                )
-            PlaywrightXCollector._consecutive_empty_results = 0
-
-    def _trigger_soft_block_backoff(self) -> None:  # pragma: no cover - class-level state
-        """Trigger circuit breaker due to suspected soft block (consecutive empty results)."""
-        # Use a shorter initial backoff for soft blocks (2 minutes instead of 5)
-        soft_block_backoff_minutes = 2
-        backoff_seconds = soft_block_backoff_minutes * 60
-        PlaywrightXCollector._circuit_open_until = time.time() + backoff_seconds
-        PlaywrightXCollector._consecutive_empty_results = 0  # Reset counter
-        
+        # Not at max yet - set 90 second backoff
+        PlaywrightXCollector._circuit_open_until = time.time() + _BACKOFF_SECONDS
         logger.warning(
-            "x_soft_block_backoff",
-            backoff_minutes=soft_block_backoff_minutes,
+            "x_backoff_started",
+            error=error_message,
+            attempt=PlaywrightXCollector._consecutive_errors,
+            backoff_seconds=_BACKOFF_SECONDS,
             retry_at=datetime.fromtimestamp(PlaywrightXCollector._circuit_open_until).isoformat(),
         )
-        
-        raise XCircuitBreakerError(
-            f"Soft block detected (consecutive empty results), backing off {soft_block_backoff_minutes} minutes",
-            retry_after_seconds=int(backoff_seconds),
-        )
+
+    def _record_success(self, posts_found: int) -> None:  # pragma: no cover - class-level state
+        """Record a successful request and reset error counter."""
+        if PlaywrightXCollector._consecutive_errors > 0:
+            logger.info(
+                "x_errors_reset",
+                previous_errors=PlaywrightXCollector._consecutive_errors,
+                posts_found=posts_found,
+            )
+        PlaywrightXCollector._consecutive_errors = 0
+        PlaywrightXCollector._last_error_message = ""
 
     def _polite_delay(self) -> None:  # pragma: no cover - timing-dependent
         """Wait between requests to be a good citizen (5-9 seconds like sports reference)."""
@@ -301,7 +252,7 @@ class PlaywrightXCollector(XCollectorStrategy):
         self._check_hourly_cap()
 
         posts: list[CollectedPost] = []
-        page_had_error = False
+        page_error_message: str | None = None
         logger.info(
             "x_playwright_collect_start",
             handle=x_handle,
@@ -341,109 +292,133 @@ class PlaywrightXCollector(XCollectorStrategy):
                     # No tweets found - check for error conditions
                     content = page.content()
                     if "Something went wrong" in content:
-                        logger.warning("x_page_error", handle=x_handle, error="something_went_wrong")
-                        page_had_error = True
+                        page_error_message = "X returned 'Something went wrong' - possible rate limit or auth issue"
+                        logger.error("x_page_error", handle=x_handle, error=page_error_message)
                     elif "Log in" in content or "Sign in" in content:
-                        logger.warning("x_page_error", handle=x_handle, error="login_wall")
-                        page_had_error = True
+                        page_error_message = "X returned login wall - auth tokens may be expired"
+                        logger.error("x_page_error", handle=x_handle, error=page_error_message)
                     elif "No results" in content:
                         logger.debug("x_page_no_results", handle=x_handle)
                     # Continue anyway - might be legitimately no tweets
 
                 page.wait_for_timeout(self.wait_ms)
 
-                # Scroll to load more posts
-                for _ in range(self.max_scrolls):
+                def extract_posts_from_page() -> set[str]:
+                    """Extract all posts currently visible and return set of post IDs."""
+                    extracted_ids: set[str] = set()
+                    articles = page.query_selector_all('article[data-testid="tweet"]')
+
+                    for article in articles:
+                        # Skip retweets
+                        social_context = article.query_selector('[data-testid="socialContext"]')
+                        if social_context:
+                            context_text = social_context.inner_text()
+                            if context_text and "Retweeted" in context_text:
+                                continue
+
+                        # Extract post URL
+                        anchor = article.query_selector('a[href*="/status/"]')
+                        post_url = None
+                        if anchor:
+                            href = anchor.get_attribute("href")
+                            if href:
+                                post_url = f"https://x.com{href}" if href.startswith("/") else href
+
+                        if not post_url:
+                            continue
+
+                        post_id = extract_x_post_id(post_url)
+                        if not post_id or post_id in seen_post_ids:
+                            continue
+
+                        extracted_ids.add(post_id)
+                        seen_post_ids.add(post_id)
+
+                        # Extract timestamp
+                        time_el = article.query_selector("time")
+                        posted_at = None
+                        if time_el:
+                            datetime_str = time_el.get_attribute("datetime")
+                            if datetime_str:
+                                posted_at = self._parse_post_time(datetime_str)
+
+                        if not posted_at:
+                            continue
+
+                        # Extract text content
+                        text_content = None
+                        text_el = article.query_selector('[data-testid="tweetText"]')
+                        if text_el:
+                            text_content = text_el.inner_text()
+
+                        # Detect media
+                        video_url = None
+                        image_url = None
+                        media_type = "none"
+
+                        video_container = (
+                            article.query_selector('[data-testid="videoPlayer"]')
+                            or article.query_selector('[data-testid="videoComponent"]')
+                            or article.query_selector('[data-testid="previewInterstitial"]')
+                            or article.query_selector('video')
+                        )
+                        has_video = video_container is not None
+
+                        if has_video:
+                            media_type = "video"
+                            video_el = article.query_selector("video")
+                            if video_el:
+                                video_url = video_el.get_attribute("src")
+                        else:
+                            img_el = article.query_selector('[data-testid="tweetPhoto"] img')
+                            if img_el:
+                                image_url = img_el.get_attribute("src")
+                                media_type = "image"
+
+                        posts.append(
+                            CollectedPost(
+                                post_url=post_url,
+                                external_post_id=post_id,
+                                posted_at=posted_at,
+                                has_video=has_video,
+                                text=text_content,
+                                author_handle=x_handle.lstrip("@"),
+                                video_url=video_url,
+                                image_url=image_url,
+                                media_type=media_type,
+                            )
+                        )
+
+                    return extracted_ids
+
+                # Track seen posts to dedupe across scrolls
+                seen_post_ids: set[str] = set()
+
+                # Initial extraction
+                new_ids = extract_posts_from_page()
+                logger.debug("x_initial_extract", handle=x_handle, new_posts=len(new_ids), total=len(posts))
+
+                # Scroll and extract until no new posts appear
+                for scroll_num in range(self.max_scrolls):
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     page.wait_for_timeout(self.wait_ms)
 
+                    new_ids = extract_posts_from_page()
+                    logger.debug(
+                        "x_scroll_extract",
+                        handle=x_handle,
+                        scroll=scroll_num + 1,
+                        new_posts=len(new_ids),
+                        total=len(posts),
+                    )
+
+                    # Stop early if no new posts found (reached end of results)
+                    if len(new_ids) == 0:
+                        logger.debug("x_scroll_complete_early", handle=x_handle, reason="no_new_posts")
+                        break
+
                 self._mark_request_done()
-
-                # Find tweets in timeline
-                articles = page.query_selector_all('article[data-testid="tweet"]')
-
-                for article in articles:
-                    social_context = article.query_selector('[data-testid="socialContext"]')
-                    if social_context:
-                        context_text = social_context.inner_text()
-                        if context_text and "Retweeted" in context_text:
-                            continue
-
-                    # Extract post URL
-                    anchor = article.query_selector('a[href*="/status/"]')
-                    post_url = None
-                    if anchor:
-                        href = anchor.get_attribute("href")
-                        if href:
-                            post_url = f"https://x.com{href}" if href.startswith("/") else href
-
-                    if not post_url:
-                        continue
-
-                    # Extract timestamp
-                    time_el = article.query_selector("time")
-                    posted_at = None
-                    if time_el:
-                        datetime_str = time_el.get_attribute("datetime")
-                        if datetime_str:
-                            posted_at = self._parse_post_time(datetime_str)
-
-                    if not posted_at:
-                        continue
-
-                    # Filter by window
-                    if posted_at < window_start or posted_at > window_end:
-                        continue
-
-                    # Extract text content
-                    text_content = None
-                    text_el = article.query_selector('[data-testid="tweetText"]')
-                    if text_el:
-                        text_content = text_el.inner_text()
-
-                    # Detect media (video/image)
-                    # X/Twitter lazy-loads <video> elements, so check for video containers
-                    # using data-testid attributes instead
-                    video_url = None
-                    image_url = None
-                    media_type = "none"
-
-                    # Check for video using multiple selectors (X changes these)
-                    video_container = (
-                        article.query_selector('[data-testid="videoPlayer"]')
-                        or article.query_selector('[data-testid="videoComponent"]')
-                        or article.query_selector('[data-testid="previewInterstitial"]')  # Video preview
-                        or article.query_selector('video')  # Fallback if already loaded
-                    )
-                    has_video = video_container is not None
-
-                    if has_video:
-                        media_type = "video"
-                        # Try to extract video URL if the element is loaded
-                        video_el = article.query_selector("video")
-                        if video_el:
-                            video_url = video_el.get_attribute("src")
-
-                    # Check for images (only if no video detected)
-                    if not has_video:
-                        img_el = article.query_selector('[data-testid="tweetPhoto"] img')
-                        if img_el:
-                            image_url = img_el.get_attribute("src")
-                            media_type = "image"
-
-                    posts.append(
-                        CollectedPost(
-                            post_url=post_url,
-                            external_post_id=extract_x_post_id(post_url),
-                            posted_at=posted_at,
-                            has_video=has_video,
-                            text=text_content,
-                            author_handle=x_handle.lstrip("@"),
-                            video_url=video_url,
-                            image_url=image_url,
-                            media_type=media_type,
-                        )
-                    )
+                logger.info("x_total_posts_collected", handle=x_handle, total=len(posts))
 
             finally:
                 browser.close()
@@ -452,8 +427,8 @@ class PlaywrightXCollector(XCollectorStrategy):
         self._record_hourly_request()
 
         # Update circuit breaker state based on result
-        if page_had_error:
-            self._record_error()
+        if page_error_message:
+            self._record_error(page_error_message)
         else:
             self._record_success(posts_found=len(posts))
 
