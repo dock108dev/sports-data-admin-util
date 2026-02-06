@@ -287,7 +287,6 @@ class XPostCollector:
                 found=result.posts_found,
                 saved=result.posts_saved,
                 reveals=result.posts_flagged_reveal,
-                skipped=posts_skipped,
             )
 
         except SocialRateLimitError as e:
