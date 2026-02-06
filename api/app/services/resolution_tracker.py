@@ -49,8 +49,9 @@ from typing import Any
 
 from sqlalchemy import select
 
-from .. import db_models
 from ..db import AsyncSession
+from ..db.resolution import EntityResolution
+from ..db.pipeline import GamePipelineRun
 
 logger = logging.getLogger(__name__)
 
@@ -402,7 +403,7 @@ class ResolutionTracker:
         count = 0
         for attempt in self.attempts:
             ctx = attempt.source_context or {}
-            record = db_models.EntityResolution(
+            record = EntityResolution(
                 game_id=self.game_id,
                 pipeline_run_id=self.pipeline_run_id,
                 entity_type=attempt.entity_type,
@@ -447,9 +448,9 @@ async def get_resolution_summary_for_game(
 ) -> ResolutionSummary:
     """Get resolution summary for a game from persisted records."""
     result = await session.execute(
-        select(db_models.EntityResolution)
-        .where(db_models.EntityResolution.game_id == game_id)
-        .order_by(db_models.EntityResolution.created_at.desc())
+        select(EntityResolution)
+        .where(EntityResolution.game_id == game_id)
+        .order_by(EntityResolution.created_at.desc())
     )
     records = result.scalars().all()
 
@@ -523,7 +524,7 @@ async def get_resolution_summary_for_run(
     """Get resolution summary for a specific pipeline run."""
     # Get the run to find game_id
     run_result = await session.execute(
-        select(db_models.GamePipelineRun).where(db_models.GamePipelineRun.id == run_id)
+        select(GamePipelineRun).where(GamePipelineRun.id == run_id)
     )
     run = run_result.scalar_one_or_none()
 
@@ -531,8 +532,8 @@ async def get_resolution_summary_for_run(
         return None
 
     result = await session.execute(
-        select(db_models.EntityResolution).where(
-            db_models.EntityResolution.pipeline_run_id == run_id
+        select(EntityResolution).where(
+            EntityResolution.pipeline_run_id == run_id
         )
     )
     records = result.scalars().all()

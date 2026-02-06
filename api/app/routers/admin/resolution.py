@@ -62,7 +62,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from typing import Any
 
-from ... import db_models
+from ...db.sports import SportsGame, SportsGamePlay
+from ...db.resolution import EntityResolution
 from ...db import AsyncSession, get_db
 from ...services.resolution_tracker import (
     get_resolution_summary_for_game,
@@ -171,13 +172,13 @@ async def get_game_resolution_summary(
     """
     # Fetch game info
     game_result = await session.execute(
-        select(db_models.SportsGame)
+        select(SportsGame)
         .options(
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
-            selectinload(db_models.SportsGame.league),
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
+            selectinload(SportsGame.league),
         )
-        .where(db_models.SportsGame.id == game_id)
+        .where(SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
 
@@ -251,12 +252,12 @@ async def get_live_resolution_analysis(
     """
     # Fetch game with team info
     game_result = await session.execute(
-        select(db_models.SportsGame)
+        select(SportsGame)
         .options(
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
         )
-        .where(db_models.SportsGame.id == game_id)
+        .where(SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
 
@@ -268,10 +269,10 @@ async def get_live_resolution_analysis(
 
     # Fetch plays
     plays_result = await session.execute(
-        select(db_models.SportsGamePlay)
-        .options(selectinload(db_models.SportsGamePlay.team))
-        .where(db_models.SportsGamePlay.game_id == game_id)
-        .order_by(db_models.SportsGamePlay.play_index)
+        select(SportsGamePlay)
+        .options(selectinload(SportsGamePlay.team))
+        .where(SportsGamePlay.game_id == game_id)
+        .order_by(SportsGamePlay.play_index)
     )
     plays = list(plays_result.scalars().all())
 
@@ -409,12 +410,12 @@ async def get_run_resolution_summary(
 
     # Fetch game info
     game_result = await session.execute(
-        select(db_models.SportsGame)
+        select(SportsGame)
         .options(
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
         )
-        .where(db_models.SportsGame.id == summary.game_id)
+        .where(SportsGame.id == summary.game_id)
     )
     game = game_result.scalar_one_or_none()
 
@@ -488,13 +489,13 @@ async def get_entity_resolution_detail(
         )
 
     result = await session.execute(
-        select(db_models.EntityResolution)
+        select(EntityResolution)
         .where(
-            db_models.EntityResolution.game_id == game_id,
-            db_models.EntityResolution.entity_type == entity_type,
-            db_models.EntityResolution.source_identifier == source_identifier,
+            EntityResolution.game_id == game_id,
+            EntityResolution.entity_type == entity_type,
+            EntityResolution.source_identifier == source_identifier,
         )
-        .order_by(db_models.EntityResolution.created_at.desc())
+        .order_by(EntityResolution.created_at.desc())
         .limit(1)
     )
     record = result.scalar_one_or_none()
@@ -549,23 +550,23 @@ async def list_games_with_resolution_issues(
     Useful for finding games that need attention or data fixes.
     """
     query = select(
-        db_models.EntityResolution.game_id,
-        func.count(db_models.EntityResolution.id).label("issue_count"),
-    ).group_by(db_models.EntityResolution.game_id)
+        EntityResolution.game_id,
+        func.count(EntityResolution.id).label("issue_count"),
+    ).group_by(EntityResolution.game_id)
 
     if entity_type:
-        query = query.where(db_models.EntityResolution.entity_type == entity_type)
+        query = query.where(EntityResolution.entity_type == entity_type)
 
     if status_filter == "failed":
-        query = query.where(db_models.EntityResolution.resolution_status == "failed")
+        query = query.where(EntityResolution.resolution_status == "failed")
     elif status_filter == "ambiguous":
-        query = query.where(db_models.EntityResolution.resolution_status == "ambiguous")
+        query = query.where(EntityResolution.resolution_status == "ambiguous")
     elif status_filter != "all":
         query = query.where(
-            db_models.EntityResolution.resolution_status.in_(["failed", "ambiguous"])
+            EntityResolution.resolution_status.in_(["failed", "ambiguous"])
         )
 
-    query = query.order_by(func.count(db_models.EntityResolution.id).desc()).limit(
+    query = query.order_by(func.count(EntityResolution.id).desc()).limit(
         limit
     )
 
@@ -576,12 +577,12 @@ async def list_games_with_resolution_issues(
     game_issues = []
     for game_id, issue_count in rows:
         game_result = await session.execute(
-            select(db_models.SportsGame)
+            select(SportsGame)
             .options(
-                selectinload(db_models.SportsGame.home_team),
-                selectinload(db_models.SportsGame.away_team),
+                selectinload(SportsGame.home_team),
+                selectinload(SportsGame.away_team),
             )
-            .where(db_models.SportsGame.id == game_id)
+            .where(SportsGame.id == game_id)
         )
         game = game_result.scalar_one_or_none()
 

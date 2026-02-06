@@ -5,7 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, select
 
-from ... import db_models
+from ...db.sports import SportsLeague
+from ...db.scraper import SportsMissingPbp, SportsGameConflict
 from ...db import AsyncSession, get_db
 from .schemas import GameConflictEntry, MissingPbpEntry
 
@@ -19,16 +20,16 @@ async def list_missing_pbp(
     league: str | None = Query(None),
 ) -> list[MissingPbpEntry]:
     stmt = (
-        select(db_models.SportsMissingPbp, db_models.SportsLeague.code)
+        select(SportsMissingPbp, SportsLeague.code)
         .join(
-            db_models.SportsLeague,
-            db_models.SportsMissingPbp.league_id == db_models.SportsLeague.id,
+            SportsLeague,
+            SportsMissingPbp.league_id == SportsLeague.id,
         )
-        .order_by(desc(db_models.SportsMissingPbp.updated_at))
+        .order_by(desc(SportsMissingPbp.updated_at))
         .limit(limit)
     )
     if league:
-        stmt = stmt.where(db_models.SportsLeague.code == league.upper())
+        stmt = stmt.where(SportsLeague.code == league.upper())
     results = await session.execute(stmt)
     rows = results.all()
     return [
@@ -51,16 +52,16 @@ async def list_game_conflicts(
     league: str | None = Query(None),
 ) -> list[GameConflictEntry]:
     stmt = (
-        select(db_models.SportsGameConflict, db_models.SportsLeague.code)
+        select(SportsGameConflict, SportsLeague.code)
         .join(
-            db_models.SportsLeague,
-            db_models.SportsGameConflict.league_id == db_models.SportsLeague.id,
+            SportsLeague,
+            SportsGameConflict.league_id == SportsLeague.id,
         )
-        .order_by(desc(db_models.SportsGameConflict.created_at))
+        .order_by(desc(SportsGameConflict.created_at))
         .limit(limit)
     )
     if league:
-        stmt = stmt.where(db_models.SportsLeague.code == league.upper())
+        stmt = stmt.where(SportsLeague.code == league.upper())
     results = await session.execute(stmt)
     rows = results.all()
     return [

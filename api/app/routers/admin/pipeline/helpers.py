@@ -11,8 +11,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from .... import db_models
 from ....db import AsyncSession
+from ....db.pipeline import GamePipelineRun, GamePipelineStage
 from ....services.pipeline.models import PipelineStage
 
 from .models import (
@@ -23,7 +23,7 @@ from .models import (
 
 
 def build_stage_status(
-    stage_record: db_models.GamePipelineStage,
+    stage_record: GamePipelineStage,
     stage_order: int,
     can_execute: bool,
 ) -> StageStatusResponse:
@@ -123,12 +123,12 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
 async def get_run_with_stages(
     session: AsyncSession,
     run_id: int,
-) -> db_models.GamePipelineRun:
+) -> GamePipelineRun:
     """Fetch a run with its stages loaded."""
     result = await session.execute(
-        select(db_models.GamePipelineRun)
-        .options(selectinload(db_models.GamePipelineRun.stages))
-        .where(db_models.GamePipelineRun.id == run_id)
+        select(GamePipelineRun)
+        .options(selectinload(GamePipelineRun.stages))
+        .where(GamePipelineRun.id == run_id)
     )
     run = result.scalar_one_or_none()
     if not run:
@@ -139,7 +139,7 @@ async def get_run_with_stages(
     return run
 
 
-def build_run_response(run: db_models.GamePipelineRun) -> PipelineRunResponse:
+def build_run_response(run: GamePipelineRun) -> PipelineRunResponse:
     """Build a full PipelineRunResponse from a run."""
     ordered_stages = PipelineStage.ordered_stages()
     stage_map = {s.stage: s for s in run.stages}
@@ -204,7 +204,7 @@ def build_run_response(run: db_models.GamePipelineRun) -> PipelineRunResponse:
     )
 
 
-def build_run_summary(run: db_models.GamePipelineRun) -> PipelineRunSummary:
+def build_run_summary(run: GamePipelineRun) -> PipelineRunSummary:
     """Build a PipelineRunSummary from a run."""
     completed = sum(1 for s in run.stages if s.status == "success")
     total = len(run.stages)

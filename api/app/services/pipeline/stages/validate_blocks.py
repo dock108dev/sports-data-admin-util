@@ -25,8 +25,14 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import timezone
 from typing import Any
 
+from sqlalchemy import select
+
+from ....db import AsyncSession
+from ....db.sports import SportsGame
+from ....db.social import GameSocialPost
 from ..models import StageInput, StageOutput
 from .block_types import (
     SemanticRole,
@@ -36,6 +42,7 @@ from .block_types import (
     MAX_WORDS_PER_BLOCK,
     MAX_TOTAL_WORDS,
 )
+from .embedded_tweets import select_and_assign_embedded_tweets
 
 logger = logging.getLogger(__name__)
 
@@ -270,16 +277,112 @@ def _validate_key_plays(blocks: list[dict[str, Any]]) -> tuple[list[str], list[s
     return errors, warnings
 
 
-async def execute_validate_blocks(stage_input: StageInput) -> StageOutput:
-    """Execute the VALIDATE_BLOCKS stage.
+async def _attach_embedded_tweets(
+    session: AsyncSession,
+    game_id: int,
+    blocks: list[dict[str, Any]],
+    output: StageOutput,
+) -> tuple[list[dict[str, Any]], Any]:
+    """Load social posts and attach embedded tweets to blocks.
 
-    Validates all block constraints before finalization.
+    This is called after validation passes to enhance blocks with social content.
+    Embedded tweets are optional and do not affect story structure.
 
     Args:
+        session: Database session
+        game_id: Game ID to load social posts for
+        blocks: Validated blocks to attach tweets to
+        output: StageOutput to add logs to
+
+    Returns:
+        Tuple of (updated blocks, EmbeddedTweetSelection or None)
+    """
+    # Load game to get tip_time for position classification
+    game_result = await session.execute(
+        select(SportsGame).where(SportsGame.id == game_id)
+    )
+    game = game_result.scalar_one_or_none()
+
+    if not game:
+        output.add_log(f"Game {game_id} not found, skipping embedded tweets")
+        return blocks, None
+
+    # Get game start time (tip_time or game_date as fallback)
+    game_start = game.tip_time or game.game_date
+    if game_start and game_start.tzinfo is None:
+        game_start = game_start.replace(tzinfo=timezone.utc)
+
+    # Load social posts for this game
+    social_result = await session.execute(
+        select(GameSocialPost)
+        .where(GameSocialPost.game_id == game_id)
+        .order_by(GameSocialPost.posted_at)
+    )
+    social_posts = social_result.scalars().all()
+
+    if not social_posts:
+        output.add_log("No social posts found for game, skipping embedded tweets")
+        return blocks, None
+
+    output.add_log(f"Found {len(social_posts)} social posts for embedded tweet selection")
+
+    # Convert to dict format expected by embedded_tweets module
+    tweets: list[dict[str, Any]] = []
+    for post in social_posts:
+        if not post.tweet_text:
+            continue
+
+        tweets.append({
+            "id": post.id,
+            "posted_at": post.posted_at,
+            "text": post.tweet_text,
+            "author": post.source_handle or "",
+            "phase": "inGame",  # Position will be computed from posted_at
+            "has_media": post.has_video or bool(post.image_url),
+            "media_type": post.media_type,
+            "post_url": post.post_url,
+            # Team account detection based on having a source handle
+            "is_team_account": bool(post.source_handle),
+        })
+
+    if not tweets:
+        output.add_log("No tweets with text found, skipping embedded tweets")
+        return blocks, None
+
+    output.add_log(f"Processing {len(tweets)} tweet candidates for embedding")
+
+    # Select and assign embedded tweets to blocks
+    updated_blocks, selection = select_and_assign_embedded_tweets(
+        tweets=tweets,
+        blocks=blocks,
+        game_start=game_start,
+    )
+
+    # Log selection results
+    assigned_count = sum(1 for b in updated_blocks if b.get("embedded_tweet"))
+    output.add_log(
+        f"Embedded tweets: selected {len(selection.tweets)} from {selection.total_candidates} "
+        f"candidates, assigned to {assigned_count} blocks"
+    )
+
+    return updated_blocks, selection
+
+
+async def execute_validate_blocks(
+    session: AsyncSession,
+    stage_input: StageInput,
+) -> StageOutput:
+    """Execute the VALIDATE_BLOCKS stage.
+
+    Validates all block constraints before finalization. After validation passes,
+    loads social posts and attaches embedded tweets to blocks.
+
+    Args:
+        session: Async database session for loading social posts
         stage_input: Input containing previous_output with rendered blocks
 
     Returns:
-        StageOutput with validation results
+        StageOutput with validation results and embedded tweets
 
     Raises:
         ValueError: If prerequisites not met
@@ -394,6 +497,13 @@ async def execute_validate_blocks(stage_input: StageInput) -> StageOutput:
 
     output.add_log(f"Total word count: {total_words}")
 
+    # After validation passes, attach embedded tweets (social enhancement)
+    embedded_tweet_selection = None
+    if passed:
+        blocks, embedded_tweet_selection = await _attach_embedded_tweets(
+            session, game_id, blocks, output
+        )
+
     output.data = {
         "blocks_validated": passed,
         "blocks": blocks,
@@ -401,6 +511,10 @@ async def execute_validate_blocks(stage_input: StageInput) -> StageOutput:
         "total_words": total_words,
         "errors": all_errors,
         "warnings": all_warnings,
+        # Embedded tweet metadata
+        "embedded_tweet_selection": (
+            embedded_tweet_selection.to_dict() if embedded_tweet_selection else None
+        ),
         # Pass through
         "moments": previous_output.get("moments", []),
         "pbp_events": previous_output.get("pbp_events", []),

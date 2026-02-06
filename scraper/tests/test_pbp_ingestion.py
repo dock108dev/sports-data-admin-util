@@ -40,4 +40,4 @@ class TestPbpIngestionConstants:
     def test_has_populate_functions(self):
         """Module has populate functions."""
         from sports_scraper.services import pbp_ingestion
-        assert hasattr(pbp_ingestion, '_populate_nhl_game_ids')
+        assert hasattr(pbp_ingestion, 'populate_nhl_game_ids')

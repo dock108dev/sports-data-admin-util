@@ -2,15 +2,54 @@
 
 Social posts from official team X accounts, displayed as game highlights.
 
-## How It Works
+## Architecture: Team-Centric Two-Phase Collection
 
-1. **Game day window**: 5:00 AM ET to 4:59 AM ET next day (24 hours)
-2. **Playwright scraper** visits X search with date filters
-3. **Content extraction**: Tweet text, images, video detection
-4. **Spoiler filter** removes posts with scores/results
-5. **Posts saved** with game_id, team_id, URL, media content
+Social collection uses a **team-centric** approach rather than game-centric:
+
+### Phase 1: COLLECT
+1. For each team with games in the date range, scrape all tweets
+2. **Window**: 5:00 AM ET game day to 4:59 AM ET next day (24 hours)
+3. **Playwright scraper** visits X search with date filters
+4. **Content extraction**: Tweet text, images, video detection
+5. **Posts saved** to `team_social_posts` with `mapping_status='unmapped'`
+
+### Phase 2: MAP
+1. Query unmapped tweets from `team_social_posts`
+2. Match tweets to games based on team and posting time
+3. Apply spoiler filtering
+4. Copy mapped tweets to `game_social_posts`
+
+### Why Team-Centric?
+- Collect once, map to multiple games if needed
+- More efficient rate limit usage
+- Supports doubleheader scenarios
+- Cleaner separation of concerns
 
 ## Database Schema
+
+### Phase 1: Raw Collected Tweets
+
+```sql
+CREATE TABLE team_social_posts (
+    id SERIAL PRIMARY KEY,
+    team_id INTEGER NOT NULL REFERENCES sports_teams(id) ON DELETE CASCADE,
+    platform VARCHAR(20) NOT NULL DEFAULT 'x',
+    external_post_id VARCHAR(100),
+    post_url TEXT NOT NULL,
+    posted_at TIMESTAMPTZ NOT NULL,
+    tweet_text TEXT,
+    has_video BOOLEAN DEFAULT FALSE,
+    video_url TEXT,
+    image_url TEXT,
+    source_handle VARCHAR(100),
+    media_type VARCHAR(20),
+    mapping_status VARCHAR(20) DEFAULT 'unmapped',  -- 'unmapped', 'mapped', 'no_game'
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(team_id, platform, external_post_id)
+);
+```
+
+### Phase 2: Mapped Game Posts
 
 ```sql
 CREATE TABLE game_social_posts (
@@ -25,10 +64,16 @@ CREATE TABLE game_social_posts (
     image_url TEXT,
     source_handle VARCHAR(100),
     media_type VARCHAR(20),  -- 'video', 'image', or 'none'
+    reveal_risk BOOLEAN DEFAULT FALSE,
+    reveal_reason TEXT,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL
 );
+```
 
+### Team Handles
+
+```sql
 -- Team X handles
 ALTER TABLE sports_teams ADD COLUMN x_handle VARCHAR(50);
 ```

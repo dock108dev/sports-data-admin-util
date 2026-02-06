@@ -167,6 +167,28 @@ See also:
 ### Source
 X/Twitter via Playwright browser automation
 
+### Architecture: Team-Centric Two-Phase Collection
+
+Social collection uses a **team-centric** approach:
+
+**Phase 1 (COLLECT):** Scrape all tweets for teams in a date range
+- Tweets saved to `team_social_posts` with `mapping_status='unmapped'`
+- Team-centric, not game-centric
+
+**Phase 2 (MAP):** Map unmapped tweets to games
+- Maps tweets to games based on team and posting time
+- Mapped tweets copied to `game_social_posts`
+
+This architecture allows collecting tweets once and mapping to multiple games if needed.
+
+### Schedule
+
+Social collection runs daily, staggered by league:
+- **8:30 AM EST** — NBA social collection
+- **9:00 AM EST** — NHL social collection
+
+See `scraper/sports_scraper/celery_app.py` for schedule configuration.
+
 ### Collection Window
 - **Start**: 5:00 AM ET on game day
 - **End**: 4:59 AM ET next day (24-hour window)
@@ -207,11 +229,13 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 - DB-backed cache: `social_account_polls` prevents repeated polling
 
 ### Storage
-- `game_social_posts` table
+- `team_social_posts` table - Raw collected tweets (phase 1)
+- `game_social_posts` table - Tweets mapped to games (phase 2)
 - Fields: `post_url`, `posted_at`, `tweet_text`, `has_video`, `video_url`, `image_url`, `media_type`, `reveal_risk`, `reveal_reason`
 
 ### Implementation
-- Collector: `scraper/sports_scraper/social/collector.py`
+- Team Collector: `scraper/sports_scraper/social/team_collector.py`
+- Tweet Mapper: `scraper/sports_scraper/social/tweet_mapper.py`
 - Playwright: `scraper/sports_scraper/social/playwright_collector.py`
 - Registry: `scraper/sports_scraper/social/registry.py`
 - Reveal utils: `api/app/utils/reveal_utils.py` (shared with API)

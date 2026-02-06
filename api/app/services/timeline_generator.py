@@ -40,13 +40,15 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from typing import Any, Sequence
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from .. import db_models
 from ..db import AsyncSession
+from ..db.sports import SportsGame, SportsGamePlay
+from ..db.social import GameSocialPost
+from ..db.story import SportsGameTimelineArtifact
 from ..utils.datetime_utils import now_utc
 from .timeline_types import (
     DEFAULT_TIMELINE_VERSION,
@@ -55,21 +57,21 @@ from .timeline_types import (
     TimelineArtifactPayload,
     TimelineGenerationError,
 )
-from .timeline_phases import compute_phase_boundaries, nba_game_end
+from .timeline_phases import compute_phase_boundaries
 from .timeline_events import build_pbp_events, merge_timeline_events
 from .timeline_validation import validate_and_log, TimelineValidationError
-from .social_events import build_social_events, build_social_events_async
+from .social_events import build_social_events_async
+from .timeline_phases import nba_game_end
 
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# STUB FUNCTIONS (Not Yet Implemented)
-# These are placeholders for future AI-powered analysis features
+# HELPER FUNCTIONS
 # =============================================================================
 
 
-def build_game_summary(game: db_models.SportsGame) -> dict[str, Any]:
+def build_game_summary(game: SportsGame) -> dict[str, Any]:
     """Build basic summary dict from game data.
 
     Returns minimal game metadata for timeline context.
@@ -97,11 +99,9 @@ async def build_game_analysis_async(
 ) -> dict[str, Any]:
     """Build game analysis from timeline data.
 
-    NOT YET IMPLEMENTED - placeholder for future AI analysis.
-    Returns minimal structure with empty chapters.
+    Returns minimal structure for analysis metadata.
     """
     return {
-        "chapters": [],
         "key_moments": [],
         "game_flow": {},
     }
@@ -114,57 +114,15 @@ async def build_summary_from_timeline_async(
     timeline_version: str | None = None,
     sport: str | None = None,
 ) -> dict[str, Any]:
-    """Generate AI summary from timeline and analysis.
+    """Generate summary from timeline and analysis.
 
-    NOT YET IMPLEMENTED - placeholder for future AI summary generation.
-    Returns empty summary structure.
+    Returns minimal summary structure.
     """
     return {
         "ai_generated": False,
         "summary_text": "",
         "highlights": [],
     }
-
-
-# =============================================================================
-# TIMELINE ASSEMBLY
-# =============================================================================
-
-
-def build_nba_timeline(
-    game: db_models.SportsGame,
-    plays: Sequence[db_models.SportsGamePlay],
-    social_posts: Sequence[db_models.GameSocialPost],
-) -> tuple[list[dict[str, Any]], dict[str, Any], Any]:
-    """
-    Build a complete timeline for an NBA game.
-
-    This is the main entry point for timeline construction. It:
-    1. Builds PBP events with phases
-    2. Builds social events with phases and roles
-    3. Merges them using phase-first ordering
-    4. Returns timeline, summary metadata, and computed game end time
-    """
-    game_start = game.start_time
-    game_end = nba_game_end(game_start, plays)
-    has_overtime = any((play.quarter or 0) > 4 for play in plays)
-
-    # Compute phase boundaries for social event assignment
-    phase_boundaries = compute_phase_boundaries(game_start, has_overtime)
-    league_code = game.league.code if game.league else "NBA"
-
-    pbp_events = build_pbp_events(plays, game_start)
-    # Phase 3: Pass game_start and has_overtime for time-based classification
-    social_events = build_social_events(
-        social_posts,
-        phase_boundaries,
-        game_start=game_start,
-        league_code=league_code,
-        has_overtime=has_overtime,
-    )
-    timeline = merge_timeline_events(pbp_events, social_events)
-    summary = build_game_summary(game)
-    return timeline, summary, game_end
 
 
 # =============================================================================
@@ -196,13 +154,13 @@ async def generate_timeline_artifact(
     try:
         # Fetch game with relations
         result = await session.execute(
-            select(db_models.SportsGame)
+            select(SportsGame)
             .options(
-                selectinload(db_models.SportsGame.league),
-                selectinload(db_models.SportsGame.home_team),
-                selectinload(db_models.SportsGame.away_team),
+                selectinload(SportsGame.league),
+                selectinload(SportsGame.home_team),
+                selectinload(SportsGame.away_team),
             )
-            .where(db_models.SportsGame.id == game_id)
+            .where(SportsGame.id == game_id)
         )
         game = result.scalar_one_or_none()
         if not game:
@@ -217,10 +175,10 @@ async def generate_timeline_artifact(
 
         # Fetch plays with team relationship for team_abbreviation
         plays_result = await session.execute(
-            select(db_models.SportsGamePlay)
-            .options(selectinload(db_models.SportsGamePlay.team))
-            .where(db_models.SportsGamePlay.game_id == game_id)
-            .order_by(db_models.SportsGamePlay.play_index)
+            select(SportsGamePlay)
+            .options(selectinload(SportsGamePlay.team))
+            .where(SportsGamePlay.game_id == game_id)
+            .order_by(SportsGamePlay.play_index)
         )
         plays = plays_result.scalars().all()
         if not plays:
@@ -234,7 +192,7 @@ async def generate_timeline_artifact(
         phase_boundaries = compute_phase_boundaries(game_start, has_overtime)
 
         # Only include social posts if we have a reliable tip_time
-        posts: list[db_models.GameSocialPost] = []
+        posts: list[GameSocialPost] = []
         if game.has_reliable_start_time:
             social_window_start = game_start - timedelta(
                 seconds=SOCIAL_PREGAME_WINDOW_SECONDS
@@ -244,13 +202,13 @@ async def generate_timeline_artifact(
             )
 
             posts_result = await session.execute(
-                select(db_models.GameSocialPost)
+                select(GameSocialPost)
                 .where(
-                    db_models.GameSocialPost.game_id == game_id,
-                    db_models.GameSocialPost.posted_at >= social_window_start,
-                    db_models.GameSocialPost.posted_at <= social_window_end,
+                    GameSocialPost.game_id == game_id,
+                    GameSocialPost.posted_at >= social_window_start,
+                    GameSocialPost.posted_at <= social_window_end,
                 )
-                .order_by(db_models.GameSocialPost.posted_at)
+                .order_by(GameSocialPost.posted_at)
             )
             posts = list(posts_result.scalars().all())
 
@@ -340,13 +298,11 @@ async def generate_timeline_artifact(
             timeline_version=timeline_version,
             game_context=game_context,
         )
-        chapter_count = len(game_analysis.get("chapters", []))
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
                 "game_id": game_id,
                 "phase": "game_analysis",
-                "chapter_count": chapter_count,
             },
         )
 
@@ -410,17 +366,17 @@ async def generate_timeline_artifact(
         )
         generated_at = now_utc()
         artifact_result = await session.execute(
-            select(db_models.SportsGameTimelineArtifact).where(
-                db_models.SportsGameTimelineArtifact.game_id == game_id,
-                db_models.SportsGameTimelineArtifact.sport == league_code,
-                db_models.SportsGameTimelineArtifact.timeline_version
+            select(SportsGameTimelineArtifact).where(
+                SportsGameTimelineArtifact.game_id == game_id,
+                SportsGameTimelineArtifact.sport == league_code,
+                SportsGameTimelineArtifact.timeline_version
                 == timeline_version,
             )
         )
         artifact = artifact_result.scalar_one_or_none()
 
         if artifact is None:
-            artifact = db_models.SportsGameTimelineArtifact(
+            artifact = SportsGameTimelineArtifact(
                 game_id=game_id,
                 sport=league_code,
                 timeline_version=timeline_version,

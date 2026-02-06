@@ -59,8 +59,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from typing import Any
 
-from ... import db_models
 from ...db import AsyncSession, get_db
+from ...db.sports import SportsGame, SportsGamePlay
+from ...db.resolution import PBPSnapshot
+from ...db.pipeline import GamePipelineRun
 from .pbp_models import (
     GamePBPResponse,
     GamePBPDetailResponse,
@@ -104,12 +106,12 @@ async def get_game_pbp(
     """
     # Fetch game
     game_result = await session.execute(
-        select(db_models.SportsGame)
+        select(SportsGame)
         .options(
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
         )
-        .where(db_models.SportsGame.id == game_id)
+        .where(SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
 
@@ -121,18 +123,18 @@ async def get_game_pbp(
 
     # Get total count
     count_result = await session.execute(
-        select(func.count(db_models.SportsGamePlay.id)).where(
-            db_models.SportsGamePlay.game_id == game_id
+        select(func.count(SportsGamePlay.id)).where(
+            SportsGamePlay.game_id == game_id
         )
     )
     total_plays = count_result.scalar() or 0
 
     # Fetch plays
     plays_result = await session.execute(
-        select(db_models.SportsGamePlay)
-        .options(selectinload(db_models.SportsGamePlay.team))
-        .where(db_models.SportsGamePlay.game_id == game_id)
-        .order_by(db_models.SportsGamePlay.play_index)
+        select(SportsGamePlay)
+        .options(selectinload(SportsGamePlay.team))
+        .where(SportsGamePlay.game_id == game_id)
+        .order_by(SportsGamePlay.play_index)
         .offset(offset)
         .limit(limit)
     )
@@ -168,12 +170,12 @@ async def get_game_pbp_detail(
     """Get detailed PBP data including raw_data for each play."""
     # Fetch game
     game_result = await session.execute(
-        select(db_models.SportsGame)
+        select(SportsGame)
         .options(
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
         )
-        .where(db_models.SportsGame.id == game_id)
+        .where(SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
 
@@ -185,26 +187,26 @@ async def get_game_pbp_detail(
 
     # Build query
     query = (
-        select(db_models.SportsGamePlay)
-        .options(selectinload(db_models.SportsGamePlay.team))
-        .where(db_models.SportsGamePlay.game_id == game_id)
+        select(SportsGamePlay)
+        .options(selectinload(SportsGamePlay.team))
+        .where(SportsGamePlay.game_id == game_id)
     )
 
     if quarter is not None:
-        query = query.where(db_models.SportsGamePlay.quarter == quarter)
+        query = query.where(SportsGamePlay.quarter == quarter)
 
     # Get total count
-    count_query = select(func.count(db_models.SportsGamePlay.id)).where(
-        db_models.SportsGamePlay.game_id == game_id
+    count_query = select(func.count(SportsGamePlay.id)).where(
+        SportsGamePlay.game_id == game_id
     )
     if quarter is not None:
-        count_query = count_query.where(db_models.SportsGamePlay.quarter == quarter)
+        count_query = count_query.where(SportsGamePlay.quarter == quarter)
     count_result = await session.execute(count_query)
     total_plays = count_result.scalar() or 0
 
     # Fetch plays
     plays_result = await session.execute(
-        query.order_by(db_models.SportsGamePlay.play_index).offset(offset).limit(limit)
+        query.order_by(SportsGamePlay.play_index).offset(offset).limit(limit)
     )
     plays = plays_result.scalars().all()
 
@@ -247,11 +249,11 @@ async def get_single_play(
 ) -> PlayDetail:
     """Get a single play by index."""
     result = await session.execute(
-        select(db_models.SportsGamePlay)
-        .options(selectinload(db_models.SportsGamePlay.team))
+        select(SportsGamePlay)
+        .options(selectinload(SportsGamePlay.team))
         .where(
-            db_models.SportsGamePlay.game_id == game_id,
-            db_models.SportsGamePlay.play_index == play_index,
+            SportsGamePlay.game_id == game_id,
+            SportsGamePlay.play_index == play_index,
         )
     )
     play = result.scalar_one_or_none()
@@ -283,12 +285,12 @@ async def get_game_pbp_snapshots(
     """List all PBP snapshots for a game."""
     # Fetch game
     game_result = await session.execute(
-        select(db_models.SportsGame)
+        select(SportsGame)
         .options(
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
         )
-        .where(db_models.SportsGame.id == game_id)
+        .where(SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
 
@@ -300,9 +302,9 @@ async def get_game_pbp_snapshots(
 
     # Fetch snapshots
     snapshots_result = await session.execute(
-        select(db_models.PBPSnapshot)
-        .where(db_models.PBPSnapshot.game_id == game_id)
-        .order_by(db_models.PBPSnapshot.created_at.desc())
+        select(PBPSnapshot)
+        .where(PBPSnapshot.game_id == game_id)
+        .order_by(PBPSnapshot.created_at.desc())
     )
     snapshots = snapshots_result.scalars().all()
 
@@ -347,9 +349,9 @@ async def get_pbp_snapshot(
 ) -> PBPSnapshotDetail:
     """Get full details of a PBP snapshot."""
     result = await session.execute(
-        select(db_models.PBPSnapshot)
-        .options(selectinload(db_models.PBPSnapshot.pipeline_run))
-        .where(db_models.PBPSnapshot.id == snapshot_id)
+        select(PBPSnapshot)
+        .options(selectinload(PBPSnapshot.pipeline_run))
+        .where(PBPSnapshot.id == snapshot_id)
     )
     snapshot = result.scalar_one_or_none()
 
@@ -399,17 +401,17 @@ async def get_pipeline_run_pbp(
     """
     # Fetch run with stages
     run_result = await session.execute(
-        select(db_models.GamePipelineRun)
+        select(GamePipelineRun)
         .options(
-            selectinload(db_models.GamePipelineRun.stages),
-            selectinload(db_models.GamePipelineRun.game).selectinload(
-                db_models.SportsGame.home_team
+            selectinload(GamePipelineRun.stages),
+            selectinload(GamePipelineRun.game).selectinload(
+                SportsGame.home_team
             ),
-            selectinload(db_models.GamePipelineRun.game).selectinload(
-                db_models.SportsGame.away_team
+            selectinload(GamePipelineRun.game).selectinload(
+                SportsGame.away_team
             ),
         )
-        .where(db_models.GamePipelineRun.id == run_id)
+        .where(GamePipelineRun.id == run_id)
     )
     run = run_result.scalar_one_or_none()
 
@@ -436,9 +438,9 @@ async def get_pipeline_run_pbp(
 
     # Check for associated snapshot
     snapshot_result = await session.execute(
-        select(db_models.PBPSnapshot)
-        .where(db_models.PBPSnapshot.pipeline_run_id == run_id)
-        .order_by(db_models.PBPSnapshot.created_at.desc())
+        select(PBPSnapshot)
+        .where(PBPSnapshot.pipeline_run_id == run_id)
+        .order_by(PBPSnapshot.created_at.desc())
         .limit(1)
     )
     snapshot = snapshot_result.scalar_one_or_none()
@@ -492,15 +494,15 @@ async def compare_pbp(
     """
     # Get current play count
     current_count_result = await session.execute(
-        select(func.count(db_models.SportsGamePlay.id)).where(
-            db_models.SportsGamePlay.game_id == game_id
+        select(func.count(SportsGamePlay.id)).where(
+            SportsGamePlay.game_id == game_id
         )
     )
     current_count = current_count_result.scalar() or 0
 
     # Get snapshot
     snapshot_result = await session.execute(
-        select(db_models.PBPSnapshot).where(db_models.PBPSnapshot.id == snapshot_id)
+        select(PBPSnapshot).where(PBPSnapshot.id == snapshot_id)
     )
     snapshot = snapshot_result.scalar_one_or_none()
 
@@ -563,10 +565,10 @@ async def get_resolution_issues(
     """
     # Fetch all plays
     plays_result = await session.execute(
-        select(db_models.SportsGamePlay)
-        .options(selectinload(db_models.SportsGamePlay.team))
-        .where(db_models.SportsGamePlay.game_id == game_id)
-        .order_by(db_models.SportsGamePlay.play_index)
+        select(SportsGamePlay)
+        .options(selectinload(SportsGamePlay.team))
+        .where(SportsGamePlay.game_id == game_id)
+        .order_by(SportsGamePlay.play_index)
     )
     plays = plays_result.scalars().all()
 

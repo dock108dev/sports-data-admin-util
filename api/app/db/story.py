@@ -1,0 +1,203 @@
+"""Story and timeline artifact models."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import text
+
+from .base import Base
+from .sports import SportsGame
+from .pipeline import GamePipelineRun
+
+
+class SportsGameTimelineArtifact(Base):
+    """Finalized timeline artifacts for games."""
+
+    __tablename__ = "sports_game_timeline_artifacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sports_games.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sport: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    timeline_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    timeline_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        server_default=text("'[]'::jsonb"),
+        nullable=False,
+    )
+    game_analysis_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
+    summary_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    generated_by: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    generation_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    game: Mapped[SportsGame] = relationship(
+        "SportsGame", back_populates="timeline_artifacts"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "game_id",
+            "sport",
+            "timeline_version",
+            name="uq_game_timeline_artifact_version",
+        ),
+        Index("idx_game_timeline_artifacts_game", "game_id"),
+    )
+
+
+class SportsGameStory(Base):
+    """AI-generated game stories as condensed moments."""
+
+    __tablename__ = "sports_game_stories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sports_games.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sport: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    story_version: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    moments_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    moment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    validated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    blocks_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    block_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    blocks_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    blocks_validated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    ai_model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    total_ai_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    game: Mapped[SportsGame] = relationship("SportsGame")
+
+    __table_args__ = (
+        UniqueConstraint("game_id", "story_version", name="uq_game_story_version"),
+        Index("idx_game_stories_game_id", "game_id"),
+        Index("idx_game_stories_sport", "sport"),
+        Index("idx_game_stories_generated_at", "generated_at"),
+    )
+
+
+class FrontendPayloadVersion(Base):
+    """Immutable versioned frontend payloads."""
+
+    __tablename__ = "sports_frontend_payload_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sports_games.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    pipeline_run_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sports_game_pipeline_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), index=True
+    )
+
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    timeline_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    moments_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    summary_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
+    event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    moment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    generation_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    generation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    diff_from_previous: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    game: Mapped[SportsGame] = relationship("SportsGame")
+    pipeline_run: Mapped[GamePipelineRun | None] = relationship("GamePipelineRun")
+
+    __table_args__ = (
+        Index("idx_frontend_payload_version", "game_id", "version_number"),
+    )
+
+    @property
+    def is_latest(self) -> bool:
+        """Check if this is the active version."""
+        return self.is_active

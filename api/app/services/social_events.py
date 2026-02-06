@@ -38,34 +38,9 @@ import re
 from datetime import datetime
 from typing import Any, Iterable, Sequence
 
-from .. import db_models
+from ..db.social import GameSocialPost
 
 logger = logging.getLogger(__name__)
-
-
-def is_ai_available() -> bool:
-    """Check if AI classification is available.
-
-    Currently always returns False (AI classification not implemented).
-    When AI role classification is ready, update this to check for API key/connectivity.
-    """
-    return False
-
-
-async def classify_social_role(
-    text: str,
-    phase: str,
-    sport: str,
-    heuristic_role: str,
-    heuristic_confidence: float,
-) -> str:
-    """AI-based social role classification.
-
-    NOT YET IMPLEMENTED - placeholder for future AI classification.
-    Falls back to heuristic role.
-    """
-    # Currently just returns heuristic role since AI is not implemented
-    return heuristic_role
 
 
 # =============================================================================
@@ -197,55 +172,13 @@ def assign_social_role_heuristic(
         if len(text) > 50:
             return ("commentary", 0.6)
 
-        # Default reaction (lower confidence - good candidate for AI)
+        # Default reaction
         return ("reaction", 0.5)
-
-
-async def assign_social_role_with_ai(
-    text: str | None,
-    phase: str,
-    has_media: bool = False,
-    sport: str = "NBA",
-) -> str:
-    """
-    Assign a narrative role to a social post, with AI fallback.
-
-    Flow:
-    1. Fast heuristic pass - if confidence >= 0.8, return immediately
-    2. Otherwise, call AI for classification (cached)
-
-    AI is used ONLY for interpretation, not ordering or filtering.
-    """
-    # Fast heuristic pass
-    role, confidence = assign_social_role_heuristic(text, phase, has_media)
-
-    # If high confidence or AI unavailable, use heuristic
-    if confidence >= 0.8 or not is_ai_available():
-        return role
-
-    # AI classification (with caching)
-    try:
-        ai_role = await classify_social_role(
-            text=text or "",
-            phase=phase,
-            sport=sport,
-            heuristic_role=role,
-            heuristic_confidence=confidence,
-        )
-        return ai_role
-    except Exception as e:
-        logger.warning(
-            "social_role_ai_fallback",
-            extra={"error": str(e), "heuristic_role": role},
-        )
-        return role
 
 
 def assign_social_role(text: str | None, phase: str, has_media: bool = False) -> str:
     """
-    Synchronous role assignment (heuristic only).
-
-    Use assign_social_role_with_ai for AI-enhanced classification.
+    Assign a narrative role to a social post using heuristics.
     """
     role, _ = assign_social_role_heuristic(text, phase, has_media)
     return role
@@ -352,18 +285,16 @@ def assign_social_phase_time_based(
 
 
 def build_social_events(
-    posts: Iterable[db_models.GameSocialPost],
+    posts: Iterable[GameSocialPost],
     phase_boundaries: dict[str, tuple[datetime, datetime]],
     game_start: datetime | None = None,
     league_code: str | None = None,
     has_overtime: bool = False,
 ) -> list[tuple[datetime, dict[str, Any]]]:
     """
-    Build social events with phase and role assignment (heuristic only).
+    Build social events with phase and role assignment.
 
-    For AI-enhanced role classification, use build_social_events_async.
-
-    Phase 3: If game_start and league_code are provided, uses time-based
+    If game_start and league_code are provided, uses time-based
     classification (no PBP dependency). Otherwise falls back to boundaries.
 
     Each event gets:
@@ -451,16 +382,14 @@ def build_social_events(
 
 
 async def build_social_events_async(
-    posts: Sequence[db_models.GameSocialPost],
+    posts: Sequence[GameSocialPost],
     phase_boundaries: dict[str, tuple[datetime, datetime]],
     sport: str = "NBA",
     game_start: datetime | None = None,
     has_overtime: bool = False,
 ) -> list[tuple[datetime, dict[str, Any]]]:
     """
-    Build social events with AI-enhanced role classification.
-
-    Uses async AI client for role classification with caching.
+    Build social events with role classification (async wrapper).
 
     Phase 3: If game_start is provided, uses time-based classification
     (no PBP dependency). Otherwise falls back to boundaries.
@@ -475,66 +404,11 @@ async def build_social_events_async(
     Returns:
         List of (timestamp, event_payload) tuples
     """
-    events: list[tuple[datetime, dict[str, Any]]] = []
-    dropped_count = 0
-
-    # Phase 3: Use time-based classification if game_start provided
-    use_time_based = game_start is not None
-
-    for post in posts:
-        # Filter: Drop posts with null or empty text
-        text = post.tweet_text
-        if text is None or text.strip() == "":
-            dropped_count += 1
-            logger.debug(
-                "social_post_dropped_empty_text",
-                extra={
-                    "post_id": getattr(post, "id", None),
-                    "author": post.source_handle,
-                },
-            )
-            continue
-
-        event_time = post.posted_at
-
-        # Phase 3: Time-based classification (no PBP dependency)
-        if use_time_based:
-            phase = assign_social_phase_time_based(
-                event_time, game_start, sport, has_overtime  # type: ignore
-            )
-        else:
-            phase = assign_social_phase(event_time, phase_boundaries)
-
-        # Assign role with AI enhancement
-        has_media = bool(getattr(post, "media_type", None))
-        role = await assign_social_role_with_ai(text, phase, has_media, sport)
-
-        # Compute intra-phase order as seconds since phase start
-        if phase in phase_boundaries:
-            phase_start = phase_boundaries[phase][0]
-            intra_phase_order = (event_time - phase_start).total_seconds()
-        elif game_start is not None:
-            # Time-based: seconds since game start
-            intra_phase_order = (event_time - game_start).total_seconds()
-        else:
-            intra_phase_order = 0
-
-        event_payload = {
-            "event_type": "tweet",
-            "phase": phase,
-            "role": role,
-            "intra_phase_order": intra_phase_order,
-            "author": post.source_handle,
-            "handle": post.source_handle,
-            "text": text,
-            "synthetic_timestamp": event_time.isoformat(),
-        }
-        events.append((event_time, event_payload))
-
-    if dropped_count > 0:
-        logger.info(
-            "social_posts_filtered",
-            extra={"dropped_empty_text": dropped_count, "included": len(events)},
-        )
-
-    return events
+    # Delegate to sync implementation - no async operations needed
+    return build_social_events(
+        posts,
+        phase_boundaries,
+        game_start=game_start,
+        league_code=sport,
+        has_overtime=has_overtime,
+    )

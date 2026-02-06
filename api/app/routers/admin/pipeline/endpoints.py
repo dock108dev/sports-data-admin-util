@@ -13,8 +13,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from typing import Any
 
-from .... import db_models
 from ....db import AsyncSession, get_db
+from ....db.sports import SportsGame, SportsGamePlay
+from ....db.pipeline import GamePipelineRun, BulkStoryGenerationJob
+from ....db.story import SportsGameTimelineArtifact
 from ....services.pipeline import PipelineExecutor
 from ....services.pipeline.models import PipelineStage
 from ....services.pipeline.executor import PipelineExecutionError
@@ -115,8 +117,8 @@ async def rerun_pipeline(
     executor = PipelineExecutor(session)
 
     count_result = await session.execute(
-        select(func.count(db_models.GamePipelineRun.id)).where(
-            db_models.GamePipelineRun.game_id == game_id
+        select(func.count(GamePipelineRun.id)).where(
+            GamePipelineRun.game_id == game_id
         )
     )
     previous_runs = count_result.scalar() or 0
@@ -394,10 +396,10 @@ async def get_game_pipeline_runs(
 ) -> GamePipelineRunsResponse:
     """List all pipeline runs for a game."""
     result = await session.execute(
-        select(db_models.GamePipelineRun)
-        .options(selectinload(db_models.GamePipelineRun.stages))
-        .where(db_models.GamePipelineRun.game_id == game_id)
-        .order_by(db_models.GamePipelineRun.created_at.desc())
+        select(GamePipelineRun)
+        .options(selectinload(GamePipelineRun.stages))
+        .where(GamePipelineRun.game_id == game_id)
+        .order_by(GamePipelineRun.created_at.desc())
         .limit(limit)
     )
     runs = result.scalars().all()
@@ -407,12 +409,12 @@ async def get_game_pipeline_runs(
 
     if include_game_info:
         game_result = await session.execute(
-            select(db_models.SportsGame)
+            select(SportsGame)
             .options(
-                selectinload(db_models.SportsGame.home_team),
-                selectinload(db_models.SportsGame.away_team),
+                selectinload(SportsGame.home_team),
+                selectinload(SportsGame.away_team),
             )
-            .where(db_models.SportsGame.id == game_id)
+            .where(SportsGame.id == game_id)
         )
         game = game_result.scalar_one_or_none()
 
@@ -426,9 +428,9 @@ async def get_game_pipeline_runs(
             }
 
             artifact_result = await session.execute(
-                select(db_models.SportsGameTimelineArtifact)
-                .where(db_models.SportsGameTimelineArtifact.game_id == game_id)
-                .order_by(db_models.SportsGameTimelineArtifact.generated_at.desc())
+                select(SportsGameTimelineArtifact)
+                .where(SportsGameTimelineArtifact.game_id == game_id)
+                .order_by(SportsGameTimelineArtifact.generated_at.desc())
                 .limit(1)
             )
             artifact = artifact_result.scalar_one_or_none()
@@ -459,12 +461,12 @@ async def get_game_pipeline_summary(
 ) -> GamePipelineSummary:
     """Get a quick summary of pipeline state for a game."""
     game_result = await session.execute(
-        select(db_models.SportsGame)
+        select(SportsGame)
         .options(
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
         )
-        .where(db_models.SportsGame.id == game_id)
+        .where(SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
 
@@ -475,25 +477,25 @@ async def get_game_pipeline_summary(
         )
 
     pbp_result = await session.execute(
-        select(func.count(db_models.SportsGamePlay.id)).where(
-            db_models.SportsGamePlay.game_id == game_id
+        select(func.count(SportsGamePlay.id)).where(
+            SportsGamePlay.game_id == game_id
         )
     )
     has_pbp = (pbp_result.scalar() or 0) > 0
 
     artifact_result = await session.execute(
-        select(db_models.SportsGameTimelineArtifact)
-        .where(db_models.SportsGameTimelineArtifact.game_id == game_id)
-        .order_by(db_models.SportsGameTimelineArtifact.generated_at.desc())
+        select(SportsGameTimelineArtifact)
+        .where(SportsGameTimelineArtifact.game_id == game_id)
+        .order_by(SportsGameTimelineArtifact.generated_at.desc())
         .limit(1)
     )
     artifact = artifact_result.scalar_one_or_none()
 
     runs_result = await session.execute(
-        select(db_models.GamePipelineRun)
-        .options(selectinload(db_models.GamePipelineRun.stages))
-        .where(db_models.GamePipelineRun.game_id == game_id)
-        .order_by(db_models.GamePipelineRun.created_at.desc())
+        select(GamePipelineRun)
+        .options(selectinload(GamePipelineRun.stages))
+        .where(GamePipelineRun.game_id == game_id)
+        .order_by(GamePipelineRun.created_at.desc())
     )
     runs = runs_result.scalars().all()
 
@@ -745,7 +747,7 @@ async def bulk_generate_async(
     )
 
     # Create job record in database
-    job = db_models.BulkStoryGenerationJob(
+    job = BulkStoryGenerationJob(
         status="pending",
         start_date=start_dt,
         end_date=end_dt,
@@ -790,8 +792,8 @@ async def get_bulk_generate_status(
         )
 
     result = await session.execute(
-        select(db_models.BulkStoryGenerationJob).where(
-            db_models.BulkStoryGenerationJob.job_uuid == job_uuid
+        select(BulkStoryGenerationJob).where(
+            BulkStoryGenerationJob.job_uuid == job_uuid
         )
     )
     job = result.scalar_one_or_none()

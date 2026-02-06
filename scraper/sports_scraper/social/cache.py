@@ -50,8 +50,14 @@ class SocialRequestCache:
             # Always respect rate limits (X API throttling)
             if recent_poll.rate_limited_until and recent_poll.rate_limited_until > current:
                 return CacheDecision(False, reason="rate_limited", retry_at=recent_poll.rate_limited_until)
-            # Skip poll interval check for backfills (historical data collection)
-            if not is_backfill and current - recent_poll.created_at < self.poll_interval:
+            # Only enforce poll interval for SUCCESSFUL polls with posts found.
+            # Failed or empty polls should allow immediate retry.
+            if (
+                not is_backfill
+                and recent_poll.status == "success"
+                and recent_poll.posts_found > 0
+                and current - recent_poll.created_at < self.poll_interval
+            ):
                 retry_at = recent_poll.created_at + self.poll_interval
                 return CacheDecision(False, reason="poll_interval", retry_at=retry_at)
 

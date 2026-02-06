@@ -18,7 +18,7 @@ The pipeline produces two related outputs:
 
 | Output | Purpose | Count | Content |
 |--------|---------|-------|---------|
-| **Blocks** | Consumer-facing narrative | 4-7 per game | 1-2 sentences (~35 words) |
+| **Blocks** | Consumer-facing narrative | 4-7 per game | 2-4 sentences (~65 words) |
 | **Moments** | Internal traceability | 15-25 per game | Play references, scores, timing |
 
 **Blocks are the primary output.** They contain short narratives with semantic roles (SETUP, MOMENTUM_SHIFT, etc.).
@@ -157,7 +157,7 @@ return min(base, 7)
 **OpenAI Usage:**
 - All blocks rendered in a single call
 - Input: Block roles, key plays, score progressions
-- Output: 1-2 sentences (~35 words) per block
+- Output: 2-4 sentences (~65 words) per block
 
 **Constraints:**
 - OpenAI only writes prose - it does not decide block structure
@@ -194,8 +194,8 @@ return min(base, 7)
 **Guardrail Invariants (Non-negotiable):**
 - Block count: 4-7 (hard limits)
 - Embedded tweets: ≤ 5 per game, ≤ 1 per block
-- Total word count: ≤ 350 words (~60 second read)
-- Each block: 10-50 words
+- Total word count: ≤ 500 words (~60-90 second read)
+- Each block: 30-100 words (2-4 sentences)
 
 **Validation Rules:**
 1. Block count in range [4, 7]
@@ -283,7 +283,7 @@ Returns:
 
 ## Key Principles
 
-1. **Blocks are consumer-facing** - 4-7 blocks per game, 20-60 second read time
+1. **Blocks are consumer-facing** - 4-7 blocks per game, 60-90 second read time
 2. **Moments enable traceability** - Every block maps to underlying plays
 3. **Segmentation is mechanical** - Block grouping is deterministic, not AI-driven
 4. **OpenAI is prose-only** - It renders narratives, not structure

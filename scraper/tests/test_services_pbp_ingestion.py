@@ -15,8 +15,8 @@ from sports_scraper.services.pbp_ingestion import (
     ingest_pbp_via_sportsref,
     ingest_pbp_via_nhl_api,
     ingest_pbp_via_ncaab_api,
-    _populate_nba_game_ids,
-    _populate_nhl_game_ids,
+    populate_nba_game_ids,
+    populate_nhl_game_ids,
 )
 
 
@@ -112,8 +112,8 @@ class TestSelectGamesForPbpNbaApi:
 class TestIngestPbpViaNbaApi:
     """Tests for ingest_pbp_via_nba_api."""
 
-    @patch("sports_scraper.services.pbp_ingestion._populate_nba_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nba_api")
+    @patch("sports_scraper.services.pbp_nba.populate_nba_game_ids")
+    @patch("sports_scraper.services.pbp_nba.select_games_for_pbp_nba_api")
     def test_returns_zero_when_no_games(self, mock_select, mock_populate):
         """Returns (0, 0) when no games selected."""
         mock_session = MagicMock()
@@ -130,10 +130,10 @@ class TestIngestPbpViaNbaApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_ingestion.upsert_plays")
+    @patch("sports_scraper.services.pbp_nba.upsert_plays")
     @patch("sports_scraper.live.nba.NBALiveFeedClient")
-    @patch("sports_scraper.services.pbp_ingestion._populate_nba_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nba_api")
+    @patch("sports_scraper.services.pbp_nba.populate_nba_game_ids")
+    @patch("sports_scraper.services.pbp_nba.select_games_for_pbp_nba_api")
     def test_successful_ingestion(self, mock_select, mock_populate, mock_client_class, mock_upsert):
         """Successfully ingests PBP with player_name populated."""
         from sports_scraper.models import NormalizedPlay
@@ -173,8 +173,8 @@ class TestIngestPbpViaNbaApi:
         assert mock_payload.plays[0].player_name == "Jayson Tatum"
 
     @patch("sports_scraper.live.nba.NBALiveFeedClient")
-    @patch("sports_scraper.services.pbp_ingestion._populate_nba_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nba_api")
+    @patch("sports_scraper.services.pbp_nba.populate_nba_game_ids")
+    @patch("sports_scraper.services.pbp_nba.select_games_for_pbp_nba_api")
     def test_handles_empty_pbp_response(self, mock_select, mock_populate, mock_client_class):
         """Handles empty PBP response."""
         mock_session = MagicMock()
@@ -198,8 +198,8 @@ class TestIngestPbpViaNbaApi:
         assert result == (0, 0)
 
     @patch("sports_scraper.live.nba.NBALiveFeedClient")
-    @patch("sports_scraper.services.pbp_ingestion._populate_nba_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nba_api")
+    @patch("sports_scraper.services.pbp_nba.populate_nba_game_ids")
+    @patch("sports_scraper.services.pbp_nba.select_games_for_pbp_nba_api")
     def test_handles_fetch_exception(self, mock_select, mock_populate, mock_client_class):
         """Handles fetch exception gracefully."""
         mock_session = MagicMock()
@@ -220,10 +220,10 @@ class TestIngestPbpViaNbaApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_ingestion.upsert_plays")
+    @patch("sports_scraper.services.pbp_nba.upsert_plays")
     @patch("sports_scraper.live.nba.NBALiveFeedClient")
-    @patch("sports_scraper.services.pbp_ingestion._populate_nba_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nba_api")
+    @patch("sports_scraper.services.pbp_nba.populate_nba_game_ids")
+    @patch("sports_scraper.services.pbp_nba.select_games_for_pbp_nba_api")
     def test_warns_on_insufficient_plays_for_final_game(self, mock_select, mock_populate, mock_client_class, mock_upsert):
         """Warns when final game has too few plays."""
         from sports_scraper.models import NormalizedPlay
@@ -262,14 +262,14 @@ class TestIngestPbpViaNbaApi:
 
 
 class TestPopulateNbaGameIds:
-    """Tests for _populate_nba_game_ids."""
+    """Tests for populate_nba_game_ids."""
 
     def test_returns_zero_when_no_league(self):
         """Returns 0 when NBA league not found."""
         mock_session = MagicMock()
         mock_session.query.return_value.filter.return_value.first.return_value = None
 
-        result = _populate_nba_game_ids(
+        result = populate_nba_game_ids(
             mock_session,
             run_id=1,
             start_date=date(2024, 10, 1),
@@ -292,7 +292,7 @@ class TestPopulateNbaGameIds:
 
         mock_session.query.return_value = mock_query
 
-        result = _populate_nba_game_ids(
+        result = populate_nba_game_ids(
             mock_session,
             run_id=1,
             start_date=date(2024, 10, 1),
@@ -644,8 +644,8 @@ class TestIngestPbpViaSportsref:
 class TestIngestPbpViaNhlApi:
     """Tests for ingest_pbp_via_nhl_api."""
 
-    @patch("sports_scraper.services.pbp_ingestion._populate_nhl_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nhl_api")
+    @patch("sports_scraper.services.pbp_nhl.populate_nhl_game_ids")
+    @patch("sports_scraper.services.pbp_nhl.select_games_for_pbp_nhl_api")
     def test_returns_zero_when_no_games(self, mock_select, mock_populate):
         """Returns (0, 0) when no games selected."""
         mock_session = MagicMock()
@@ -662,10 +662,10 @@ class TestIngestPbpViaNhlApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_ingestion.upsert_plays")
+    @patch("sports_scraper.services.pbp_nhl.upsert_plays")
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
-    @patch("sports_scraper.services.pbp_ingestion._populate_nhl_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nhl_api")
+    @patch("sports_scraper.services.pbp_nhl.populate_nhl_game_ids")
+    @patch("sports_scraper.services.pbp_nhl.select_games_for_pbp_nhl_api")
     def test_successful_ingestion(self, mock_select, mock_populate, mock_client_class, mock_upsert):
         """Successfully ingests PBP."""
         from sports_scraper.models import NormalizedPlay
@@ -696,8 +696,8 @@ class TestIngestPbpViaNhlApi:
         assert result == (1, 1)
 
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
-    @patch("sports_scraper.services.pbp_ingestion._populate_nhl_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nhl_api")
+    @patch("sports_scraper.services.pbp_nhl.populate_nhl_game_ids")
+    @patch("sports_scraper.services.pbp_nhl.select_games_for_pbp_nhl_api")
     def test_handles_empty_pbp_response(self, mock_select, mock_populate, mock_client_class):
         """Handles empty PBP response."""
         mock_session = MagicMock()
@@ -721,8 +721,8 @@ class TestIngestPbpViaNhlApi:
         assert result == (0, 0)
 
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
-    @patch("sports_scraper.services.pbp_ingestion._populate_nhl_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nhl_api")
+    @patch("sports_scraper.services.pbp_nhl.populate_nhl_game_ids")
+    @patch("sports_scraper.services.pbp_nhl.select_games_for_pbp_nhl_api")
     def test_handles_fetch_exception(self, mock_select, mock_populate, mock_client_class):
         """Handles fetch exception."""
         mock_session = MagicMock()
@@ -743,10 +743,10 @@ class TestIngestPbpViaNhlApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_ingestion.upsert_plays")
+    @patch("sports_scraper.services.pbp_nhl.upsert_plays")
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
-    @patch("sports_scraper.services.pbp_ingestion._populate_nhl_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_nhl_api")
+    @patch("sports_scraper.services.pbp_nhl.populate_nhl_game_ids")
+    @patch("sports_scraper.services.pbp_nhl.select_games_for_pbp_nhl_api")
     def test_warns_on_insufficient_plays_for_final_game(self, mock_select, mock_populate, mock_client_class, mock_upsert):
         """Warns when final game has too few plays."""
         from sports_scraper.models import NormalizedPlay
@@ -788,7 +788,7 @@ class TestIngestPbpViaNcaabApi:
     """Tests for ingest_pbp_via_ncaab_api."""
 
     @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_ncaab_api")
+    @patch("sports_scraper.services.pbp_ncaab.select_games_for_pbp_ncaab_api")
     def test_returns_zero_when_no_games(self, mock_select, mock_populate):
         """Returns (0, 0) when no games selected."""
         mock_session = MagicMock()
@@ -805,10 +805,10 @@ class TestIngestPbpViaNcaabApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_ingestion.upsert_plays")
+    @patch("sports_scraper.services.pbp_ncaab.upsert_plays")
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
     @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_ncaab_api")
+    @patch("sports_scraper.services.pbp_ncaab.select_games_for_pbp_ncaab_api")
     def test_successful_ingestion(self, mock_select, mock_populate, mock_client_class, mock_upsert):
         """Successfully ingests PBP."""
         from sports_scraper.models import NormalizedPlay
@@ -840,7 +840,7 @@ class TestIngestPbpViaNcaabApi:
 
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
     @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_ncaab_api")
+    @patch("sports_scraper.services.pbp_ncaab.select_games_for_pbp_ncaab_api")
     def test_handles_empty_pbp_response(self, mock_select, mock_populate, mock_client_class):
         """Handles empty PBP response."""
         mock_session = MagicMock()
@@ -865,7 +865,7 @@ class TestIngestPbpViaNcaabApi:
 
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
     @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_ncaab_api")
+    @patch("sports_scraper.services.pbp_ncaab.select_games_for_pbp_ncaab_api")
     def test_handles_fetch_exception(self, mock_select, mock_populate, mock_client_class):
         """Handles fetch exception gracefully."""
         mock_session = MagicMock()
@@ -886,10 +886,10 @@ class TestIngestPbpViaNcaabApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_ingestion.upsert_plays")
+    @patch("sports_scraper.services.pbp_ncaab.upsert_plays")
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
     @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
-    @patch("sports_scraper.services.pbp_ingestion.select_games_for_pbp_ncaab_api")
+    @patch("sports_scraper.services.pbp_ncaab.select_games_for_pbp_ncaab_api")
     def test_warns_on_insufficient_plays_for_final_game(self, mock_select, mock_populate, mock_client_class, mock_upsert):
         """Warns when final game has too few plays."""
         from sports_scraper.models import NormalizedPlay
@@ -928,14 +928,14 @@ class TestIngestPbpViaNcaabApi:
 
 
 class TestPopulateNhlGameIds:
-    """Tests for _populate_nhl_game_ids."""
+    """Tests for populate_nhl_game_ids."""
 
     def test_returns_zero_when_no_league(self):
         """Returns 0 when NHL league not found."""
         mock_session = MagicMock()
         mock_session.query.return_value.filter.return_value.first.return_value = None
 
-        result = _populate_nhl_game_ids(
+        result = populate_nhl_game_ids(
             mock_session,
             run_id=1,
             start_date=date(2024, 10, 1),
@@ -958,7 +958,7 @@ class TestPopulateNhlGameIds:
 
         mock_session.query.return_value = mock_query
 
-        result = _populate_nhl_game_ids(
+        result = populate_nhl_game_ids(
             mock_session,
             run_id=1,
             start_date=date(2024, 10, 1),
@@ -1016,7 +1016,7 @@ class TestPopulateNhlGameIds:
         mock_client.fetch_schedule.return_value = [mock_nhl_game]
         mock_client_class.return_value = mock_client
 
-        result = _populate_nhl_game_ids(
+        result = populate_nhl_game_ids(
             mock_session,
             run_id=1,
             start_date=date(2024, 10, 1),
@@ -1066,7 +1066,7 @@ class TestPopulateNhlGameIds:
         mock_client.fetch_schedule.return_value = [mock_nhl_game]
         mock_client_class.return_value = mock_client
 
-        result = _populate_nhl_game_ids(
+        result = populate_nhl_game_ids(
             mock_session,
             run_id=1,
             start_date=date(2024, 10, 1),
@@ -1098,12 +1098,12 @@ class TestModuleImports:
     def test_has_nba_populate_function(self):
         """Module has NBA populate function."""
         from sports_scraper.services import pbp_ingestion
-        assert hasattr(pbp_ingestion, '_populate_nba_game_ids')
+        assert hasattr(pbp_ingestion, 'populate_nba_game_ids')
 
     def test_has_nhl_populate_function(self):
         """Module has NHL populate function."""
         from sports_scraper.services import pbp_ingestion
-        assert hasattr(pbp_ingestion, '_populate_nhl_game_ids')
+        assert hasattr(pbp_ingestion, 'populate_nhl_game_ids')
 
     def test_has_sportsref_function(self):
         """Module has sportsref function."""

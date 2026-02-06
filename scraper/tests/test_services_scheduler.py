@@ -14,6 +14,7 @@ from sports_scraper.services.scheduler import (
     create_scrape_run,
     schedule_ingestion_runs,
     run_pbp_ingestion_for_league,
+    run_social_ingestion_for_league,
     schedule_single_league_and_wait,
 )
 
@@ -421,3 +422,81 @@ class TestModuleImports:
         """Module has schedule_single_league_and_wait function."""
         from sports_scraper.services import scheduler
         assert hasattr(scheduler, 'schedule_single_league_and_wait')
+
+    def test_has_run_social_ingestion_for_league(self):
+        """Module has run_social_ingestion_for_league function."""
+        from sports_scraper.services import scheduler
+        assert hasattr(scheduler, 'run_social_ingestion_for_league')
+
+
+class TestRunSocialIngestionForLeague:
+    """Tests for run_social_ingestion_for_league function."""
+
+    @patch("sports_scraper.config_sports.is_social_enabled")
+    def test_returns_disabled_when_social_disabled(self, mock_is_social_enabled):
+        """Returns disabled status when social is disabled for league."""
+        mock_is_social_enabled.return_value = False
+
+        result = run_social_ingestion_for_league("NCAAB")
+
+        assert result["league"] == "NCAAB"
+        assert result["social_posts"] == 0
+        assert result["status"] == "disabled"
+
+    @patch("sports_scraper.services.scheduler.get_session")
+    @patch("sports_scraper.config_sports.is_social_enabled")
+    @patch("sports_scraper.services.game_selection.select_games_for_social")
+    @patch("sports_scraper.social.XPostCollector")
+    def test_collects_posts_for_games(
+        self, mock_collector_cls, mock_select_games, mock_is_social_enabled, mock_get_session
+    ):
+        """Collects posts for selected games."""
+        mock_is_social_enabled.return_value = True
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_select_games.return_value = [1, 2]
+
+        mock_result = MagicMock()
+        mock_result.posts_saved = 5
+        mock_collector = MagicMock()
+        mock_collector.collect_for_game.return_value = [mock_result]
+        mock_collector_cls.return_value = mock_collector
+
+        result = run_social_ingestion_for_league("NBA")
+
+        assert result["league"] == "NBA"
+        assert result["social_posts"] == 10  # 5 posts × 2 games
+        assert result["games_processed"] == 2
+        assert mock_collector.collect_for_game.call_count == 2
+
+    @patch("sports_scraper.services.scheduler.get_session")
+    @patch("sports_scraper.config_sports.is_social_enabled")
+    @patch("sports_scraper.services.game_selection.select_games_for_social")
+    @patch("sports_scraper.social.XPostCollector")
+    def test_handles_collection_failure(
+        self, mock_collector_cls, mock_select_games, mock_is_social_enabled, mock_get_session
+    ):
+        """Continues processing after individual game collection failure."""
+        mock_is_social_enabled.return_value = True
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_select_games.return_value = [1, 2, 3]
+
+        mock_result = MagicMock()
+        mock_result.posts_saved = 3
+        mock_collector = MagicMock()
+        # First game fails, second and third succeed
+        mock_collector.collect_for_game.side_effect = [
+            Exception("Collection failed"),
+            [mock_result],
+            [mock_result],
+        ]
+        mock_collector_cls.return_value = mock_collector
+
+        result = run_social_ingestion_for_league("NHL")
+
+        assert result["league"] == "NHL"
+        assert result["social_posts"] == 6  # 3 posts × 2 successful games
+        assert result["games_processed"] == 2  # Only 2 succeeded

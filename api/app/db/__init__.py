@@ -1,4 +1,12 @@
-"""Async database session management."""
+"""Database models and session management.
+
+Import models from their respective modules:
+    from app.db.sports import SportsGame, SportsTeam
+    from app.db.pipeline import GamePipelineRun, PipelineStage
+
+Session management:
+    from app.db import AsyncSession, get_db
+"""
 
 from __future__ import annotations
 
@@ -7,10 +15,12 @@ from typing import TYPE_CHECKING, AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from .base import Base
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
 
-from .config import settings
+from ..config import settings
 
 # Lazy-loaded engine and session factory to avoid initialization at import time.
 # This allows tests to import modules without triggering database connection.
@@ -75,3 +85,6 @@ async def close_db() -> None:
     if _engine is not None:
         await _engine.dispose()
         _engine = None
+
+
+__all__ = ["Base", "AsyncSession", "get_db", "get_async_session", "close_db"]

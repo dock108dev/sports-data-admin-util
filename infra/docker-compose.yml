@@ -229,8 +229,7 @@ services:
     ports:
       - "3000:3000"
     healthcheck:
-      # Healthcheck: verify main application is responsive
-      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

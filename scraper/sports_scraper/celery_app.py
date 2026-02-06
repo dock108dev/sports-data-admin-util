@@ -79,6 +79,18 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="*/30"),  # Every 30 minutes
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
+    # Social collection runs 30 min after PBP ingestion, staggered by league
+    # to reduce rate limit pressure (shared 300 req / 900 sec limit)
+    "daily-nba-social-collection-830am-eastern": {
+        "task": "run_scheduled_nba_social",
+        "schedule": crontab(minute=30, hour=13),  # 8:30 AM EST = 13:30 UTC
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    },
+    "daily-nhl-social-collection-9am-eastern": {
+        "task": "run_scheduled_nhl_social",
+        "schedule": crontab(minute=0, hour=14),  # 9:00 AM EST = 14:00 UTC
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    },
 }
 
 

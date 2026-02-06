@@ -313,7 +313,7 @@ Get the AI-generated story for a game.
 ```
 
 **Key Notes:**
-- **Blocks are the primary output** — Use `blocks` for consumer-facing game summaries (4-7 blocks, 20-60 second read time)
+- **Blocks are the primary output** — Use `blocks` for consumer-facing game summaries (4-7 blocks, 60-90 second read time)
 - **Moments are for traceability** — Use `moments` to link narratives back to specific plays
 - Each block has a semantic `role`: SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, or RESOLUTION
 - `scoreBefore`/`scoreAfter` arrays are `[awayScore, homeScore]`
@@ -323,12 +323,12 @@ Get the AI-generated story for a game.
 
 ### Story Structure
 
-Stories are AI-generated narrative summaries built from play-by-play data. Each story contains 4-7 **blocks** — short narratives (1-2 sentences each) designed for 20-60 second total read time.
+Stories are AI-generated narrative summaries built from play-by-play data. Each story contains 4-7 **blocks** — short narratives (2-4 sentences each, ~65 words) designed for 60-90 second total read time.
 
 **Blocks** are the consumer-facing output:
 - Each block has a semantic role (SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION)
 - First block is always SETUP, last block is always RESOLUTION
-- Total word count ≤ 350 words
+- Total word count ≤ 500 words
 
 **Moments** remain for internal traceability:
 - Link blocks back to specific plays
@@ -779,14 +779,14 @@ interface StoryContent {
   moments: StoryMoment[];     // Internal traceability (15-25 per game)
 }
 
-// Consumer-facing narrative block (1-2 sentences, ~35 words)
+// Consumer-facing narrative block (2-4 sentences, ~65 words)
 interface StoryBlock {
   blockIndex: number;         // Position (0-6)
   role: SemanticRole;         // SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION
   momentIndices: number[];    // Which moments are grouped in this block
   scoreBefore: number[];      // [away, home]
   scoreAfter: number[];       // [away, home]
-  narrative: string;          // 1-2 sentences (~35 words)
+  narrative: string;          // 2-4 sentences (~65 words)
   embeddedTweet?: EmbeddedTweet | null;  // Optional (max 1 per block, 5 per game)
 }
 

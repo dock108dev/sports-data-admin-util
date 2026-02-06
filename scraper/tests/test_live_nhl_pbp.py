@@ -59,7 +59,7 @@ class TestFetchPlayByPlay:
         mock_client.get.assert_not_called()
 
     def test_fetches_from_api_on_cache_miss(self):
-        """Fetches from API when cache misses."""
+        """Fetches from API when cache misses, does not cache empty responses."""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -79,6 +79,40 @@ class TestFetchPlayByPlay:
 
         assert result.source_game_key == "2025020001"
         mock_client.get.assert_called_once()
+        # Empty responses should NOT be cached to allow retry
+        mock_cache.put.assert_not_called()
+
+    def test_caches_response_with_plays(self):
+        """Caches API responses that have actual play data."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "plays": [
+                {
+                    "eventId": 1,
+                    "sortOrder": 1,
+                    "periodDescriptor": {"number": 1, "periodType": "REG"},
+                    "typeDescKey": "faceoff",
+                    "details": {},
+                }
+            ],
+            "homeTeam": {"id": 1, "abbrev": "TBL"},
+            "awayTeam": {"id": 2, "abbrev": "BOS"},
+            "rosterSpots": [],
+        }
+        mock_client.get.return_value = mock_response
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        fetcher = NHLPbpFetcher(mock_client, mock_cache)
+        result = fetcher.fetch_play_by_play(2025020001)
+
+        assert result.source_game_key == "2025020001"
+        assert len(result.plays) == 1
+        mock_client.get.assert_called_once()
+        # Responses with plays SHOULD be cached
         mock_cache.put.assert_called_once()
 
     def test_returns_empty_on_404(self):

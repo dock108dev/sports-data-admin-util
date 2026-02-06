@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from .. import db_models
+from ..db.sports import SportsGame
+from ..db.odds import SportsGameOdds
 
 
 def _select_closing_lines(
-    odds: Sequence[db_models.SportsGameOdds], market: str
-) -> list[db_models.SportsGameOdds]:
+    odds: Sequence[SportsGameOdds], market: str
+) -> list[SportsGameOdds]:
     candidates = [odd for odd in odds if odd.market_type == market]
     closing = [odd for odd in candidates if odd.is_closing_line]
     return closing or candidates
@@ -24,7 +25,7 @@ def _implied_probability(price: float | None) -> float | None:
 
 
 def compute_derived_metrics(
-    game: db_models.SportsGame, odds: Sequence[db_models.SportsGameOdds]
+    game: SportsGame, odds: Sequence[SportsGameOdds]
 ) -> dict[str, Any]:
     metrics: dict[str, Any] = {}
     if game.home_score is not None and game.away_score is not None:

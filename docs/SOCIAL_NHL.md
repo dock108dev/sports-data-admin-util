@@ -16,7 +16,7 @@ This integration mirrors NBA social ingestion 1:1, using the same scraper archit
 
 ## NHL Team Account Map
 
-The authoritative handles are stored in `sql/006_seed_nhl_x_handles.sql` and can be mirrored into the `team_social_accounts` registry via `sql/008_seed_team_social_accounts.sql`.
+The authoritative handles are seeded via Alembic migration `20260205_000001_seed_nhl_social_handles.py` into `sports_teams.x_handle` and `team_social_accounts`.
 
 | Team | Abbrev | X Handle |
 |------|--------|----------|
@@ -55,11 +55,15 @@ The authoritative handles are stored in `sql/006_seed_nhl_x_handles.sql` and can
 
 ## Parity Notes (NBA ↔ NHL)
 
-NHL social ingestion reuses NBA assumptions without modification:
-- Playwright search (`from:<handle> since:... until:...`) for historical posts.
-- Retweet exclusion, conservative reveal filtering, and timestamp window checks.
-- Deduplication by `platform + external_post_id`, with a `post_url` fallback.
-- The same rate limiting + polling cache protections.
+NHL social ingestion uses the same **team-centric two-phase architecture** as NBA:
+- **Phase 1:** Collect all tweets for teams → `team_social_posts`
+- **Phase 2:** Map tweets to games → `game_social_posts`
+- Playwright search (`from:<handle> since:... until:...`) for historical posts
+- Retweet exclusion, conservative reveal filtering, and timestamp window checks
+- Deduplication by `platform + external_post_id`, with a `post_url` fallback
+- The same rate limiting + polling cache protections
+
+NHL social collection runs daily at 9:00 AM EST (30 minutes after NBA at 8:30 AM EST).
 
 ## Validation Checklist
 

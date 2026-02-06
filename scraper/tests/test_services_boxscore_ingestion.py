@@ -198,7 +198,7 @@ class TestConvertNcaabBoxscoreToNormalizedGame:
 class TestIngestBoxscoresViaNhlApi:
     """Tests for ingest_boxscores_via_nhl_api."""
 
-    @patch("sports_scraper.services.nhl_boxscore_ingestion._populate_nhl_game_ids")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.populate_nhl_game_ids")
     @patch("sports_scraper.services.nhl_boxscore_ingestion.select_games_for_boxscores_nhl_api")
     def test_returns_zero_when_no_games(self, mock_select, mock_populate):
         """Returns (0, 0, 0) when no games selected."""
@@ -218,7 +218,7 @@ class TestIngestBoxscoresViaNhlApi:
 
     @patch("sports_scraper.services.nhl_boxscore_ingestion.persist_game_payload")
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
-    @patch("sports_scraper.services.nhl_boxscore_ingestion._populate_nhl_game_ids")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.populate_nhl_game_ids")
     @patch("sports_scraper.services.nhl_boxscore_ingestion.select_games_for_boxscores_nhl_api")
     def test_processes_games_successfully(self, mock_select, mock_populate, mock_client_class, mock_persist):
         """Processes games and returns counts."""
@@ -260,7 +260,7 @@ class TestIngestBoxscoresViaNhlApi:
         assert result[1] == 1  # games enriched
 
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
-    @patch("sports_scraper.services.nhl_boxscore_ingestion._populate_nhl_game_ids")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.populate_nhl_game_ids")
     @patch("sports_scraper.services.nhl_boxscore_ingestion.select_games_for_boxscores_nhl_api")
     def test_handles_empty_boxscore_response(self, mock_select, mock_populate, mock_client_class):
         """Handles empty boxscore response gracefully."""
@@ -283,7 +283,7 @@ class TestIngestBoxscoresViaNhlApi:
         assert result == (0, 0, 0)
 
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
-    @patch("sports_scraper.services.nhl_boxscore_ingestion._populate_nhl_game_ids")
+    @patch("sports_scraper.services.nhl_boxscore_ingestion.populate_nhl_game_ids")
     @patch("sports_scraper.services.nhl_boxscore_ingestion.select_games_for_boxscores_nhl_api")
     def test_handles_fetch_exception(self, mock_select, mock_populate, mock_client_class):
         """Handles fetch exceptions gracefully."""

@@ -9,8 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import selectinload
 
-from ... import db_models
 from ...celery_client import get_celery_app
+from ...db.sports import SportsLeague
+from ...db.scraper import SportsScrapeRun
 from ...db import AsyncSession, get_db
 from ...utils.datetime_utils import now_utc, date_to_utc_datetime
 from .common import get_league, serialize_run
@@ -43,7 +44,7 @@ async def create_scrape_run(
 ) -> ScrapeRunResponse:
     league = await get_league(session, payload.config.league_code)
 
-    run = db_models.SportsScrapeRun(
+    run = SportsScrapeRun(
         scraper_type="scrape",
         league_id=league.id,
         season=payload.config.season,
@@ -92,16 +93,16 @@ async def list_scrape_runs(
     limit: int = Query(50, le=200),
     session: AsyncSession = Depends(get_db),
 ) -> list[ScrapeRunResponse]:
-    stmt: Select[tuple[db_models.SportsScrapeRun]] = (
-        select(db_models.SportsScrapeRun)
-        .order_by(desc(db_models.SportsScrapeRun.created_at))
+    stmt: Select[tuple[SportsScrapeRun]] = (
+        select(SportsScrapeRun)
+        .order_by(desc(SportsScrapeRun.created_at))
         .limit(limit)
     )
     if league:
         league_obj = await get_league(session, league)
-        stmt = stmt.where(db_models.SportsScrapeRun.league_id == league_obj.id)
+        stmt = stmt.where(SportsScrapeRun.league_id == league_obj.id)
     if status_filter:
-        stmt = stmt.where(db_models.SportsScrapeRun.status == status_filter)
+        stmt = stmt.where(SportsScrapeRun.status == status_filter)
 
     results = await session.execute(stmt)
     runs = results.scalars().all()
@@ -109,8 +110,8 @@ async def list_scrape_runs(
     league_map: dict[int, str] = {}
     if runs:
         stmt_leagues = select(
-            db_models.SportsLeague.id, db_models.SportsLeague.code
-        ).where(db_models.SportsLeague.id.in_({run.league_id for run in runs}))
+            SportsLeague.id, SportsLeague.code
+        ).where(SportsLeague.id.in_({run.league_id for run in runs}))
         league_rows = await session.execute(stmt_leagues)
         league_map = {row.id: row.code for row in league_rows}
 
@@ -124,9 +125,9 @@ async def fetch_run(
     run_id: int, session: AsyncSession = Depends(get_db)
 ) -> ScrapeRunResponse:
     result = await session.execute(
-        select(db_models.SportsScrapeRun)
-        .options(selectinload(db_models.SportsScrapeRun.league))
-        .where(db_models.SportsScrapeRun.id == run_id)
+        select(SportsScrapeRun)
+        .options(selectinload(SportsScrapeRun.league))
+        .where(SportsScrapeRun.id == run_id)
     )
     run = result.scalar_one_or_none()
     if not run:
@@ -187,9 +188,9 @@ async def cancel_scrape_run(
     run_id: int, session: AsyncSession = Depends(get_db)
 ) -> ScrapeRunResponse:
     result = await session.execute(
-        select(db_models.SportsScrapeRun)
-        .options(selectinload(db_models.SportsScrapeRun.league))
-        .where(db_models.SportsScrapeRun.id == run_id)
+        select(SportsScrapeRun)
+        .options(selectinload(SportsScrapeRun.league))
+        .where(SportsScrapeRun.id == run_id)
     )
     run = result.scalar_one_or_none()
     if not run:

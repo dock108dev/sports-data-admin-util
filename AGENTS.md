@@ -10,7 +10,7 @@
 **Purpose:**
 - Multi-sport data ingestion (NBA, NHL, NCAAB)
 - Normalized API for all Dock108 products
-- Story generation (4-7 narrative blocks per game, 20-60 second read time)
+- Story generation (4-7 narrative blocks per game, 60-90 second read time)
 
 **Tech:** Python/FastAPI (API), Python/Celery (Scraper), React/Next.js (Web)
 

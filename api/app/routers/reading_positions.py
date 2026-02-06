@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from .. import db_models
+from ..db.config import GameReadingPosition
 from ..db import AsyncSession, get_db
 
 router = APIRouter(prefix="/api", tags=["reading-position"])
@@ -42,15 +42,15 @@ async def upsert_reading_position(
     session: AsyncSession = Depends(get_db),
 ) -> ReadingPositionResponse:
     """Create or update a user's last-read position for a game."""
-    stmt = select(db_models.GameReadingPosition).where(
-        db_models.GameReadingPosition.user_id == user_id,
-        db_models.GameReadingPosition.game_id == game_id,
+    stmt = select(GameReadingPosition).where(
+        GameReadingPosition.user_id == user_id,
+        GameReadingPosition.game_id == game_id,
     )
     result = await session.execute(stmt)
     record = result.scalar_one_or_none()
 
     if record is None:
-        record = db_models.GameReadingPosition(
+        record = GameReadingPosition(
             user_id=user_id,
             game_id=game_id,
             moment=payload.moment,
@@ -84,9 +84,9 @@ async def get_reading_position(
     session: AsyncSession = Depends(get_db),
 ) -> ReadingPositionResponse:
     """Return the last-read position for a user/game pair."""
-    stmt = select(db_models.GameReadingPosition).where(
-        db_models.GameReadingPosition.user_id == user_id,
-        db_models.GameReadingPosition.game_id == game_id,
+    stmt = select(GameReadingPosition).where(
+        GameReadingPosition.user_id == user_id,
+        GameReadingPosition.game_id == game_id,
     )
     result = await session.execute(stmt)
     record = result.scalar_one_or_none()

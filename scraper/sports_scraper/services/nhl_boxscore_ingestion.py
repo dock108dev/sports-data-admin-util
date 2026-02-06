@@ -24,7 +24,7 @@ from ..models import (
 )
 from ..persistence import persist_game_payload
 from ..utils.datetime_utils import date_to_utc_datetime
-from .pbp_ingestion import _populate_nhl_game_ids
+from .pbp_ingestion import populate_nhl_game_ids
 
 
 def select_games_for_boxscores_nhl_api(
@@ -147,7 +147,7 @@ def ingest_boxscores_via_nhl_api(
     from ..live.nhl import NHLLiveFeedClient
 
     # Step 1: Populate missing NHL game IDs
-    _populate_nhl_game_ids(
+    populate_nhl_game_ids(
         session,
         run_id=run_id,
         start_date=start_date,
