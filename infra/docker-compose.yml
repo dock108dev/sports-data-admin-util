@@ -199,13 +199,9 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: "2"
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      # Persistent browser profile for X auth (auto-refreshes tokens)
-      PLAYWRIGHT_PROFILE_DIR: /app/.playwright-profile
-      # Seed tokens: injected into empty profile on first boot, then auto-refresh
+      # X auth cookies — injected directly into each browser context
       X_AUTH_TOKEN: ${X_AUTH_TOKEN:-}
       X_CT0: ${X_CT0:-}
-    volumes:
-      - ./social-scraper-profile:/app/.playwright-profile
     depends_on:
       postgres:
         condition: service_healthy
@@ -320,7 +316,6 @@ services:
 volumes:
   postgres-data:
   scraper-cache:
-  # social-scraper-profile is a bind mount (./social-scraper-profile), not a named volume
 
 networks:
   internal:

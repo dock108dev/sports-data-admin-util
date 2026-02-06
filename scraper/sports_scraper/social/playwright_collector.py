@@ -42,7 +42,7 @@ class PlaywrightXCollector(XCollectorStrategy):
 
     Authentication:
         Set X_AUTH_TOKEN and X_CT0 environment variables from your browser cookies.
-        These are required for search functionality.
+        Cookies are injected directly into each fresh browser context.
 
         To get these values:
         1. Log into x.com in your browser
@@ -61,9 +61,6 @@ class PlaywrightXCollector(XCollectorStrategy):
         - No class-level state — each collect_posts() call is self-contained
     """
 
-    # Track whether we've already seeded the profile this worker lifetime
-    _profile_seeded: bool = False
-
     def __init__(  # pragma: no cover - browser config
         self,
         max_scrolls: int = 8,
@@ -73,7 +70,7 @@ class PlaywrightXCollector(XCollectorStrategy):
         ct0: str | None = None,
         min_delay_seconds: float = 10.0,
         max_delay_seconds: float = 15.0,
-        profile_dir: str | None = None,
+        profile_dir: str | None = None,  # kept for signature compat, ignored
     ):
         import os
 
@@ -84,78 +81,14 @@ class PlaywrightXCollector(XCollectorStrategy):
         self.max_delay_seconds = max_delay_seconds
         self._last_request_time = 0.0
 
-        # Persistent browser profile (preferred - auto-refreshes tokens)
-        self.profile_dir = profile_dir or os.environ.get("PLAYWRIGHT_PROFILE_DIR")
-
-        # Seed tokens: used to bootstrap profile on first boot
+        # Auth tokens — injected directly into each fresh browser context
         self.auth_token = auth_token or os.environ.get("X_AUTH_TOKEN")
         self.ct0 = ct0 or os.environ.get("X_CT0")
 
-        if self.profile_dir:
-            logger.info("x_using_persistent_profile", profile_dir=self.profile_dir)
-            # Seed the profile from tokens on first boot of this worker
-            if not PlaywrightXCollector._profile_seeded:
-                self._maybe_seed_profile()
-        elif not self.auth_token:
-            logger.warning("x_auth_missing", message="Neither PLAYWRIGHT_PROFILE_DIR nor X_AUTH_TOKEN set - search may not work")
-
-    def _maybe_seed_profile(self) -> None:  # pragma: no cover
-        """Seed the persistent profile from X_AUTH_TOKEN/X_CT0.
-
-        Always wipes existing profile contents and reseeds from tokens.
-        This fixes cross-platform incompatibility (macOS profile on Linux)
-        and stale profile issues. The _profile_seeded class flag prevents
-        re-seeding during the same worker lifetime.
-        """
-        import os
-        import shutil
-
-        if not self.profile_dir or not self.auth_token or not self.ct0:
-            return
-
-        if not sync_playwright:
-            return
-
-        logger.info("x_profile_seeding_start", profile_dir=self.profile_dir)
-
-        # Wipe existing profile contents (may be stale or cross-platform incompatible)
-        try:
-            if os.path.exists(self.profile_dir):
-                for item in os.listdir(self.profile_dir):
-                    item_path = os.path.join(self.profile_dir, item)
-                    if os.path.isdir(item_path):
-                        shutil.rmtree(item_path)
-                    else:
-                        os.remove(item_path)
-                logger.debug("x_profile_wiped", profile_dir=self.profile_dir)
-        except Exception as exc:
-            logger.warning("x_profile_wipe_failed", error=str(exc))
-
-        os.makedirs(self.profile_dir, exist_ok=True)
-
-        try:
-            with sync_playwright() as p:
-                context = p.chromium.launch_persistent_context(
-                    self.profile_dir,
-                    headless=True,
-                    viewport={"width": 1280, "height": 800},
-                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                )
-                # Inject auth cookies
-                context.add_cookies([
-                    {"name": "auth_token", "value": self.auth_token, "domain": ".x.com", "path": "/"},
-                    {"name": "ct0", "value": self.ct0, "domain": ".x.com", "path": "/"},
-                ])
-                # Navigate to x.com so the cookies get persisted to the profile
-                page = context.pages[0] if context.pages else context.new_page()
-                page.goto("https://x.com", timeout=30000, wait_until="domcontentloaded")
-                page.wait_for_timeout(3000)
-                context.close()
-
-            PlaywrightXCollector._profile_seeded = True
-            logger.info("x_profile_seeded_successfully", profile_dir=self.profile_dir)
-        except Exception as exc:
-            logger.warning("x_profile_seed_failed", error=str(exc))
+        if self.auth_token and self.ct0:
+            logger.info("x_auth_configured", token_len=len(self.auth_token), ct0_len=len(self.ct0))
+        else:
+            logger.warning("x_auth_missing", message="X_AUTH_TOKEN and/or X_CT0 not set - search will not work")
 
     def _polite_delay(self) -> None:  # pragma: no cover - timing-dependent
         """Wait between requests to be a good citizen (10-15 seconds)."""
@@ -217,30 +150,21 @@ class PlaywrightXCollector(XCollectorStrategy):
         page_error_message: str | None = None
 
         with sync_playwright() as p:
-            browser = None
-            context = None
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            )
 
-            if self.profile_dir:
-                context = p.chromium.launch_persistent_context(
-                    self.profile_dir,
-                    headless=True,
-                    viewport={"width": 1280, "height": 800},
-                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            if self.auth_token and self.ct0:
+                context.add_cookies(
+                    [
+                        {"name": "auth_token", "value": self.auth_token, "domain": ".x.com", "path": "/"},
+                        {"name": "ct0", "value": self.ct0, "domain": ".x.com", "path": "/"},
+                    ]
                 )
-                page = context.pages[0] if context.pages else context.new_page()
-            else:
-                browser = p.chromium.launch(headless=True)
-                context = browser.new_context()
 
-                if self.auth_token and self.ct0:
-                    context.add_cookies(
-                        [
-                            {"name": "auth_token", "value": self.auth_token, "domain": ".x.com", "path": "/"},
-                            {"name": "ct0", "value": self.ct0, "domain": ".x.com", "path": "/"},
-                        ]
-                    )
-
-                page = context.new_page()
+            page = context.new_page()
 
             try:
                 search_url = self._build_search_url(x_handle, window_start, window_end)
@@ -387,10 +311,7 @@ class PlaywrightXCollector(XCollectorStrategy):
                 self._mark_request_done()
 
             finally:
-                if browser:
-                    browser.close()
-                elif context:
-                    context.close()
+                browser.close()
 
         return posts, page_error_message
 
