@@ -79,6 +79,7 @@ class PlaywrightXCollector(XCollectorStrategy):
         ct0: str | None = None,
         min_delay_seconds: float = 10.0,  # Increased from 5.0
         max_delay_seconds: float = 15.0,  # Increased from 9.0
+        profile_dir: str | None = None,
     ):
         import os
 
@@ -88,12 +89,18 @@ class PlaywrightXCollector(XCollectorStrategy):
         self.min_delay_seconds = min_delay_seconds
         self.max_delay_seconds = max_delay_seconds
         self._last_request_time = 0.0
-        # Load auth from params or environment
+
+        # Persistent browser profile (preferred - auto-refreshes tokens)
+        self.profile_dir = profile_dir or os.environ.get("PLAYWRIGHT_PROFILE_DIR")
+
+        # Fallback: load auth from params or environment
         self.auth_token = auth_token or os.environ.get("X_AUTH_TOKEN")
         self.ct0 = ct0 or os.environ.get("X_CT0")
 
-        if not self.auth_token:
-            logger.warning("x_auth_missing", message="X_AUTH_TOKEN not set - search may not work")
+        if self.profile_dir:
+            logger.info("x_using_persistent_profile", profile_dir=self.profile_dir)
+        elif not self.auth_token:
+            logger.warning("x_auth_missing", message="Neither PLAYWRIGHT_PROFILE_DIR nor X_AUTH_TOKEN set - search may not work")
 
     def _check_circuit_breaker(self) -> None:  # pragma: no cover - class-level state
         """Check if circuit breaker is open and raise if so."""
@@ -263,18 +270,34 @@ class PlaywrightXCollector(XCollectorStrategy):
         self._polite_delay()
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
+            browser = None
+            context = None
 
-            if self.auth_token and self.ct0:
-                context.add_cookies(
-                    [
-                        {"name": "auth_token", "value": self.auth_token, "domain": ".x.com", "path": "/"},
-                        {"name": "ct0", "value": self.ct0, "domain": ".x.com", "path": "/"},
-                    ]
+            if self.profile_dir:
+                # Persistent context - reuses saved browser state (cookies, local storage)
+                # This is preferred as it auto-refreshes tokens during usage
+                context = p.chromium.launch_persistent_context(
+                    self.profile_dir,
+                    headless=True,
+                    viewport={"width": 1280, "height": 800},
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 )
+                page = context.pages[0] if context.pages else context.new_page()
+            else:
+                # Fallback: launch browser and inject cookies manually
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context()
 
-            page = context.new_page()
+                if self.auth_token and self.ct0:
+                    context.add_cookies(
+                        [
+                            {"name": "auth_token", "value": self.auth_token, "domain": ".x.com", "path": "/"},
+                            {"name": "ct0", "value": self.ct0, "domain": ".x.com", "path": "/"},
+                        ]
+                    )
+
+                page = context.new_page()
+
             try:
                 search_url = self._build_search_url(x_handle, window_start, window_end)
                 logger.debug("x_playwright_search_url", url=search_url)
@@ -421,7 +444,11 @@ class PlaywrightXCollector(XCollectorStrategy):
                 logger.info("x_total_posts_collected", handle=x_handle, total=len(posts))
 
             finally:
-                browser.close()
+                # Close browser/context appropriately
+                if browser:
+                    browser.close()
+                elif context:
+                    context.close()
 
         # Record this request for hourly cap tracking
         self._record_hourly_request()

@@ -26,6 +26,10 @@ celery_config = {
     "task_default_queue": "sports-scraper",
     "task_routes": {
         "run_scrape_job": {"queue": "sports-scraper"},
+        # Social tasks route to dedicated social-scraper worker
+        "collect_social_for_league": {"queue": "social-scraper"},
+        "collect_team_social": {"queue": "social-scraper"},
+        "map_social_to_games": {"queue": "social-scraper"},
     },
 }
 
@@ -38,6 +42,10 @@ app = Celery(
 app.conf.update(**celery_config)
 app.conf.task_routes = {
     "run_scrape_job": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    # Social tasks route to dedicated social-scraper worker for consistent IP/session
+    "collect_social_for_league": {"queue": "social-scraper", "routing_key": "social-scraper"},
+    "collect_team_social": {"queue": "social-scraper", "routing_key": "social-scraper"},
+    "map_social_to_games": {"queue": "social-scraper", "routing_key": "social-scraper"},
 }
 # Daily sports ingestion at 5:00 AM US Eastern (10:00 UTC during EST, 09:00 UTC during EDT)
 # Using 10:00 UTC to align with 5:00 AM during Eastern Standard Time (November-March).

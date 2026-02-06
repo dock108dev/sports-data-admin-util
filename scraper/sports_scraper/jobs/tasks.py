@@ -33,6 +33,7 @@ from .story_tasks import (
     run_scheduled_story_generation,
 )
 from .social_tasks import (
+    collect_social_for_league,
     collect_team_social,
     map_social_to_games,
     get_social_mapping_stats,
@@ -57,7 +58,8 @@ __all__ = [
     # Story/Flow tasks
     "run_scheduled_nba_flow_generation",
     "run_scheduled_story_generation",
-    # Social collection tasks (team-centric)
+    # Social collection tasks (run on dedicated social-scraper worker)
+    "collect_social_for_league",
     "collect_team_social",
     "map_social_to_games",
     "get_social_mapping_stats",

@@ -33,18 +33,20 @@ def run_scrape_job(run_id: int, config_payload: dict) -> dict:
 def run_scheduled_ingestion() -> dict:
     """Trigger the scheduled ingestion pipeline.
 
-    Runs leagues sequentially with PBP and social after each:
-    1. NBA stats → PBP → social
-    2. NHL stats → PBP → social
-    3. NCAAB stats → PBP (no social for NCAAB)
+    Runs leagues sequentially with PBP after each:
+    1. NBA stats → PBP
+    2. NHL stats → PBP
+    3. NCAAB stats → PBP
 
-    This ensures data is complete before social collection runs.
+    Social collection is dispatched asynchronously to the dedicated
+    social-scraper worker after each league's PBP completes.
+    This is fire-and-forget - we don't wait for social to complete.
     """
     from ..services.scheduler import (
         schedule_single_league_and_wait,
         run_pbp_ingestion_for_league,
-        run_social_ingestion_for_league,
     )
+    from .social_tasks import collect_social_for_league
 
     results = {}
 
@@ -59,10 +61,10 @@ def run_scheduled_ingestion() -> dict:
     results["NBA_PBP"] = nba_pbp_result
     logger.info("scheduled_ingestion_nba_pbp_complete", **nba_pbp_result)
 
-    logger.info("scheduled_ingestion_nba_social_start")
-    nba_social_result = run_social_ingestion_for_league("NBA")
-    results["NBA_SOCIAL"] = nba_social_result
-    logger.info("scheduled_ingestion_nba_social_complete", **nba_social_result)
+    # Dispatch social collection to dedicated worker (fire-and-forget)
+    logger.info("scheduled_ingestion_nba_social_dispatch")
+    collect_social_for_league.delay(league="NBA")
+    results["NBA_SOCIAL"] = {"status": "dispatched"}
 
     # === NHL ===
     logger.info("scheduled_ingestion_nhl_start")
@@ -75,10 +77,10 @@ def run_scheduled_ingestion() -> dict:
     results["NHL_PBP"] = nhl_pbp_result
     logger.info("scheduled_ingestion_nhl_pbp_complete", **nhl_pbp_result)
 
-    logger.info("scheduled_ingestion_nhl_social_start")
-    nhl_social_result = run_social_ingestion_for_league("NHL")
-    results["NHL_SOCIAL"] = nhl_social_result
-    logger.info("scheduled_ingestion_nhl_social_complete", **nhl_social_result)
+    # Dispatch social collection to dedicated worker (fire-and-forget)
+    logger.info("scheduled_ingestion_nhl_social_dispatch")
+    collect_social_for_league.delay(league="NHL")
+    results["NHL_SOCIAL"] = {"status": "dispatched"}
 
     # === NCAAB ===
     logger.info("scheduled_ingestion_ncaab_start")
