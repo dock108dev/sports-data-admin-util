@@ -9,8 +9,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, exists, func, not_, or_, select
 from sqlalchemy.orm import selectinload
 
-from ... import db_models
 from ...db import AsyncSession, get_db
+from ...db.sports import (
+    SportsGame,
+    SportsTeamBoxscore,
+    SportsPlayerBoxscore,
+    SportsGamePlay,
+)
+from ...db.odds import SportsGameOdds
+from ...db.social import GameSocialPost
+from ...db.scraper import SportsGameConflict
+from ...db.story import SportsGameStory
 from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
@@ -84,16 +93,16 @@ async def list_games(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> GameListResponse:
-    base_stmt = select(db_models.SportsGame).options(
-        selectinload(db_models.SportsGame.league),
-        selectinload(db_models.SportsGame.home_team),
-        selectinload(db_models.SportsGame.away_team),
-        selectinload(db_models.SportsGame.team_boxscores),
-        selectinload(db_models.SportsGame.player_boxscores),
-        selectinload(db_models.SportsGame.odds),
-        selectinload(db_models.SportsGame.social_posts),
-        selectinload(db_models.SportsGame.plays),
-        selectinload(db_models.SportsGame.timeline_artifacts),
+    base_stmt = select(SportsGame).options(
+        selectinload(SportsGame.league),
+        selectinload(SportsGame.home_team),
+        selectinload(SportsGame.away_team),
+        selectinload(SportsGame.team_boxscores),
+        selectinload(SportsGame.player_boxscores),
+        selectinload(SportsGame.odds),
+        selectinload(SportsGame.social_posts),
+        selectinload(SportsGame.plays),
+        selectinload(SportsGame.timeline_artifacts),
     )
 
     base_stmt = apply_game_filters(
@@ -114,7 +123,7 @@ async def list_games(
     if hasPbp:
         pbp_exists = exists(
             select(1).where(
-                db_models.SportsGamePlay.game_id == db_models.SportsGame.id
+                SportsGamePlay.game_id == SportsGame.id
             )
         )
         base_stmt = base_stmt.where(pbp_exists)
@@ -124,31 +133,31 @@ async def list_games(
         # Exclude games with unresolved conflicts
         conflict_exists = exists(
             select(1)
-            .where(db_models.SportsGameConflict.resolved_at.is_(None))
+            .where(SportsGameConflict.resolved_at.is_(None))
             .where(
                 or_(
-                    db_models.SportsGameConflict.game_id == db_models.SportsGame.id,
-                    db_models.SportsGameConflict.conflict_game_id
-                    == db_models.SportsGame.id,
+                    SportsGameConflict.game_id == SportsGame.id,
+                    SportsGameConflict.conflict_game_id
+                    == SportsGame.id,
                 )
             )
         )
         base_stmt = base_stmt.where(not_(conflict_exists))
         # Exclude games with missing team mappings
         base_stmt = base_stmt.where(
-            db_models.SportsGame.home_team_id.isnot(None),
-            db_models.SportsGame.away_team_id.isnot(None),
+            SportsGame.home_team_id.isnot(None),
+            SportsGame.away_team_id.isnot(None),
         )
 
     stmt = (
-        base_stmt.order_by(desc(db_models.SportsGame.game_date))
+        base_stmt.order_by(desc(SportsGame.game_date))
         .offset(offset)
         .limit(limit)
     )
     results = await session.execute(stmt)
     games = results.scalars().unique().all()
 
-    count_stmt = select(func.count(db_models.SportsGame.id))
+    count_stmt = select(func.count(SportsGame.id))
     count_stmt = apply_game_filters(
         count_stmt,
         leagues=league,
@@ -167,7 +176,7 @@ async def list_games(
     if hasPbp:
         pbp_exists_count = exists(
             select(1).where(
-                db_models.SportsGamePlay.game_id == db_models.SportsGame.id
+                SportsGamePlay.game_id == SportsGame.id
             )
         )
         count_stmt = count_stmt.where(pbp_exists_count)
@@ -176,19 +185,19 @@ async def list_games(
     if safe:
         conflict_exists_count = exists(
             select(1)
-            .where(db_models.SportsGameConflict.resolved_at.is_(None))
+            .where(SportsGameConflict.resolved_at.is_(None))
             .where(
                 or_(
-                    db_models.SportsGameConflict.game_id == db_models.SportsGame.id,
-                    db_models.SportsGameConflict.conflict_game_id
-                    == db_models.SportsGame.id,
+                    SportsGameConflict.game_id == SportsGame.id,
+                    SportsGameConflict.conflict_game_id
+                    == SportsGame.id,
                 )
             )
         )
         count_stmt = count_stmt.where(not_(conflict_exists_count))
         count_stmt = count_stmt.where(
-            db_models.SportsGame.home_team_id.isnot(None),
-            db_models.SportsGame.away_team_id.isnot(None),
+            SportsGame.home_team_id.isnot(None),
+            SportsGame.away_team_id.isnot(None),
         )
 
     total = (await session.execute(count_stmt)).scalar_one()
@@ -196,37 +205,37 @@ async def list_games(
     with_boxscore_count_stmt = count_stmt.where(
         exists(
             select(1).where(
-                db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id
+                SportsTeamBoxscore.game_id == SportsGame.id
             )
         )
     )
     with_player_stats_count_stmt = count_stmt.where(
         exists(
             select(1).where(
-                db_models.SportsPlayerBoxscore.game_id == db_models.SportsGame.id
+                SportsPlayerBoxscore.game_id == SportsGame.id
             )
         )
     )
     with_odds_count_stmt = count_stmt.where(
         exists(
-            select(1).where(db_models.SportsGameOdds.game_id == db_models.SportsGame.id)
+            select(1).where(SportsGameOdds.game_id == SportsGame.id)
         )
     )
     with_social_count_stmt = count_stmt.where(
         exists(
-            select(1).where(db_models.GameSocialPost.game_id == db_models.SportsGame.id)
+            select(1).where(GameSocialPost.game_id == SportsGame.id)
         )
     )
     with_pbp_count_stmt = count_stmt.where(
         exists(
-            select(1).where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
+            select(1).where(SportsGamePlay.game_id == SportsGame.id)
         )
     )
     with_story_count_stmt = count_stmt.where(
         exists(
             select(1).where(
-                db_models.SportsGameStory.game_id == db_models.SportsGame.id,
-                db_models.SportsGameStory.moments_json.isnot(None),
+                SportsGameStory.game_id == SportsGame.id,
+                SportsGameStory.moments_json.isnot(None),
             )
         )
     )
@@ -243,9 +252,9 @@ async def list_games(
     # Query which games have stories in SportsGameStory table
     game_ids = [game.id for game in games]
     if game_ids:
-        story_check_stmt = select(db_models.SportsGameStory.game_id).where(
-            db_models.SportsGameStory.game_id.in_(game_ids),
-            db_models.SportsGameStory.moments_json.isnot(None),
+        story_check_stmt = select(SportsGameStory.game_id).where(
+            SportsGameStory.game_id.in_(game_ids),
+            SportsGameStory.moments_json.isnot(None),
         )
         story_result = await session.execute(story_check_stmt)
         games_with_stories = set(story_result.scalars().all())
@@ -277,13 +286,13 @@ async def get_game_preview_score(
     session: AsyncSession = Depends(get_db),
 ) -> GamePreviewScoreResponse:
     result = await session.execute(
-        select(db_models.SportsGame)
+        select(SportsGame)
         .options(
-            selectinload(db_models.SportsGame.league),
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
+            selectinload(SportsGame.league),
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
         )
-        .where(db_models.SportsGame.id == game_id)
+        .where(SportsGame.id == game_id)
     )
     game = result.scalar_one_or_none()
     if not game:
@@ -336,27 +345,27 @@ async def get_game(
     game_id: int, session: AsyncSession = Depends(get_db)
 ) -> GameDetailResponse:
     result = await session.execute(
-        select(db_models.SportsGame)
+        select(SportsGame)
         .options(
-            selectinload(db_models.SportsGame.league),
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
-            selectinload(db_models.SportsGame.team_boxscores).selectinload(
-                db_models.SportsTeamBoxscore.team
+            selectinload(SportsGame.league),
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
+            selectinload(SportsGame.team_boxscores).selectinload(
+                SportsTeamBoxscore.team
             ),
-            selectinload(db_models.SportsGame.player_boxscores).selectinload(
-                db_models.SportsPlayerBoxscore.team
+            selectinload(SportsGame.player_boxscores).selectinload(
+                SportsPlayerBoxscore.team
             ),
-            selectinload(db_models.SportsGame.odds),
-            selectinload(db_models.SportsGame.social_posts).selectinload(
-                db_models.GameSocialPost.team
+            selectinload(SportsGame.odds),
+            selectinload(SportsGame.social_posts).selectinload(
+                GameSocialPost.team
             ),
-            selectinload(db_models.SportsGame.plays).selectinload(
-                db_models.SportsGamePlay.team
+            selectinload(SportsGame.plays).selectinload(
+                SportsGamePlay.team
             ),
-            selectinload(db_models.SportsGame.timeline_artifacts),
+            selectinload(SportsGame.timeline_artifacts),
         )
-        .where(db_models.SportsGame.id == game_id)
+        .where(SportsGame.id == game_id)
     )
     game = result.scalar_one_or_none()
     if not game:
@@ -415,9 +424,9 @@ async def get_game(
 
     # Check if game has a story in SportsGameStory table
     story_check = await session.execute(
-        select(db_models.SportsGameStory.id).where(
-            db_models.SportsGameStory.game_id == game_id,
-            db_models.SportsGameStory.moments_json.isnot(None),
+        select(SportsGameStory.id).where(
+            SportsGameStory.game_id == game_id,
+            SportsGameStory.moments_json.isnot(None),
         ).limit(1)
     )
     has_story = story_check.scalar() is not None
@@ -505,7 +514,7 @@ async def get_game(
 async def rescrape_game(
     game_id: int, session: AsyncSession = Depends(get_db)
 ) -> JobResponse:
-    game = await session.get(db_models.SportsGame, game_id)
+    game = await session.get(SportsGame, game_id)
     if not game:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
@@ -523,7 +532,7 @@ async def rescrape_game(
 async def resync_game_odds(
     game_id: int, session: AsyncSession = Depends(get_db)
 ) -> JobResponse:
-    game = await session.get(db_models.SportsGame, game_id)
+    game = await session.get(SportsGame, game_id)
     if not game:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
@@ -598,10 +607,10 @@ async def get_game_story(
         HTTPException 404: If no Story exists for this game
     """
     story_result = await session.execute(
-        select(db_models.SportsGameStory).where(
-            db_models.SportsGameStory.game_id == game_id,
-            db_models.SportsGameStory.story_version == STORY_VERSION,
-            db_models.SportsGameStory.moments_json.isnot(None),
+        select(SportsGameStory).where(
+            SportsGameStory.game_id == game_id,
+            SportsGameStory.story_version == STORY_VERSION,
+            SportsGameStory.moments_json.isnot(None),
         )
     )
     story_record = story_result.scalar_one_or_none()
@@ -622,9 +631,9 @@ async def get_game_story(
 
     # Load plays by play_ids
     plays_result = await session.execute(
-        select(db_models.SportsGamePlay).where(
-            db_models.SportsGamePlay.game_id == game_id,
-            db_models.SportsGamePlay.play_index.in_(all_play_ids),
+        select(SportsGamePlay).where(
+            SportsGamePlay.game_id == game_id,
+            SportsGamePlay.play_index.in_(all_play_ids),
         )
     )
     plays_records = plays_result.scalars().all()

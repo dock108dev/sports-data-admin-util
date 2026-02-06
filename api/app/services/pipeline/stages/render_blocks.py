@@ -53,7 +53,6 @@ from typing import Any
 from ..models import StageInput, StageOutput
 from ...openai_client import get_openai_client
 from .block_types import (
-    SemanticRole,
     MIN_WORDS_PER_BLOCK,
     MAX_WORDS_PER_BLOCK,
 )
@@ -924,7 +923,6 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
 
     # Task 1.5: Get blowout metrics from previous stage
     is_blowout = previous_output.get("is_blowout", False)
-    garbage_time_start_idx = previous_output.get("garbage_time_start_idx")
 
     if is_blowout:
         output.add_log("Processing blowout game with compressed narratives")

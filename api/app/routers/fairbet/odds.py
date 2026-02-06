@@ -13,8 +13,9 @@ from pydantic import BaseModel
 from sqlalchemy import and_, distinct, func, select
 from sqlalchemy.orm import selectinload
 
-from ... import db_models
 from ...db import AsyncSession, get_db
+from ...db.sports import SportsGame
+from ...db.odds import FairbetGameOddsWork
 
 router = APIRouter()
 
@@ -61,17 +62,17 @@ def _build_base_filters(
 
     # Use COALESCE to get actual start time (tip_time preferred, else game_date)
     game_start = func.coalesce(
-        db_models.SportsGame.tip_time,
-        db_models.SportsGame.game_date,
+        SportsGame.tip_time,
+        SportsGame.game_date,
     )
 
     conditions = [
-        db_models.SportsGame.status.notin_(["final", "completed"]),
+        SportsGame.status.notin_(["final", "completed"]),
         game_start > live_cutoff,
     ]
 
     if league:
-        conditions.append(db_models.SportsGame.league.has(code=league.upper()))
+        conditions.append(SportsGame.league.has(code=league.upper()))
 
     return game_start, conditions
 
@@ -97,13 +98,13 @@ async def get_fairbet_odds(
     # Step 1: Count total distinct bet definitions (for pagination metadata)
     count_subq = (
         select(
-            db_models.FairbetGameOddsWork.game_id,
-            db_models.FairbetGameOddsWork.market_key,
-            db_models.FairbetGameOddsWork.selection_key,
-            db_models.FairbetGameOddsWork.line_value,
+            FairbetGameOddsWork.game_id,
+            FairbetGameOddsWork.market_key,
+            FairbetGameOddsWork.selection_key,
+            FairbetGameOddsWork.line_value,
         )
         .distinct()
-        .join(db_models.SportsGame)
+        .join(SportsGame)
         .where(*conditions)
         .subquery()
     )
@@ -117,19 +118,19 @@ async def get_fairbet_odds(
     # This applies LIMIT/OFFSET at the database level
     paginated_bets_cte = (
         select(
-            db_models.FairbetGameOddsWork.game_id,
-            db_models.FairbetGameOddsWork.market_key,
-            db_models.FairbetGameOddsWork.selection_key,
-            db_models.FairbetGameOddsWork.line_value,
+            FairbetGameOddsWork.game_id,
+            FairbetGameOddsWork.market_key,
+            FairbetGameOddsWork.selection_key,
+            FairbetGameOddsWork.line_value,
         )
         .distinct()
-        .join(db_models.SportsGame)
+        .join(SportsGame)
         .where(*conditions)
         .order_by(
-            db_models.FairbetGameOddsWork.game_id,
-            db_models.FairbetGameOddsWork.market_key,
-            db_models.FairbetGameOddsWork.selection_key,
-            db_models.FairbetGameOddsWork.line_value,
+            FairbetGameOddsWork.game_id,
+            FairbetGameOddsWork.market_key,
+            FairbetGameOddsWork.selection_key,
+            FairbetGameOddsWork.line_value,
         )
         .limit(limit)
         .offset(offset)
@@ -137,33 +138,33 @@ async def get_fairbet_odds(
 
     # Step 3: Join CTE back to get all books for paginated bet definitions only
     stmt = (
-        select(db_models.FairbetGameOddsWork)
+        select(FairbetGameOddsWork)
         .join(
             paginated_bets_cte,
             and_(
-                db_models.FairbetGameOddsWork.game_id == paginated_bets_cte.c.game_id,
-                db_models.FairbetGameOddsWork.market_key == paginated_bets_cte.c.market_key,
-                db_models.FairbetGameOddsWork.selection_key == paginated_bets_cte.c.selection_key,
-                db_models.FairbetGameOddsWork.line_value == paginated_bets_cte.c.line_value,
+                FairbetGameOddsWork.game_id == paginated_bets_cte.c.game_id,
+                FairbetGameOddsWork.market_key == paginated_bets_cte.c.market_key,
+                FairbetGameOddsWork.selection_key == paginated_bets_cte.c.selection_key,
+                FairbetGameOddsWork.line_value == paginated_bets_cte.c.line_value,
             ),
         )
-        .join(db_models.SportsGame)
+        .join(SportsGame)
         .options(
-            selectinload(db_models.FairbetGameOddsWork.game).selectinload(
-                db_models.SportsGame.league
+            selectinload(FairbetGameOddsWork.game).selectinload(
+                SportsGame.league
             ),
-            selectinload(db_models.FairbetGameOddsWork.game).selectinload(
-                db_models.SportsGame.home_team
+            selectinload(FairbetGameOddsWork.game).selectinload(
+                SportsGame.home_team
             ),
-            selectinload(db_models.FairbetGameOddsWork.game).selectinload(
-                db_models.SportsGame.away_team
+            selectinload(FairbetGameOddsWork.game).selectinload(
+                SportsGame.away_team
             ),
         )
         .order_by(
-            db_models.FairbetGameOddsWork.game_id,
-            db_models.FairbetGameOddsWork.market_key,
-            db_models.FairbetGameOddsWork.selection_key,
-            db_models.FairbetGameOddsWork.line_value,
+            FairbetGameOddsWork.game_id,
+            FairbetGameOddsWork.market_key,
+            FairbetGameOddsWork.selection_key,
+            FairbetGameOddsWork.line_value,
         )
     )
 
@@ -172,8 +173,8 @@ async def get_fairbet_odds(
 
     # Step 4: Get available books (all books across filtered games, not just paginated)
     books_stmt = (
-        select(distinct(db_models.FairbetGameOddsWork.book))
-        .join(db_models.SportsGame)
+        select(distinct(FairbetGameOddsWork.book))
+        .join(SportsGame)
         .where(*conditions)
     )
     books_result = await session.execute(books_stmt)

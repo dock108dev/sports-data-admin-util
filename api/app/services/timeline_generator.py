@@ -40,13 +40,15 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from typing import Any, Sequence
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from .. import db_models
 from ..db import AsyncSession
+from ..db.sports import SportsGame, SportsGamePlay
+from ..db.social import GameSocialPost
+from ..db.story import SportsGameTimelineArtifact
 from ..utils.datetime_utils import now_utc
 from .timeline_types import (
     DEFAULT_TIMELINE_VERSION,
@@ -69,7 +71,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
-def build_game_summary(game: db_models.SportsGame) -> dict[str, Any]:
+def build_game_summary(game: SportsGame) -> dict[str, Any]:
     """Build basic summary dict from game data.
 
     Returns minimal game metadata for timeline context.
@@ -152,13 +154,13 @@ async def generate_timeline_artifact(
     try:
         # Fetch game with relations
         result = await session.execute(
-            select(db_models.SportsGame)
+            select(SportsGame)
             .options(
-                selectinload(db_models.SportsGame.league),
-                selectinload(db_models.SportsGame.home_team),
-                selectinload(db_models.SportsGame.away_team),
+                selectinload(SportsGame.league),
+                selectinload(SportsGame.home_team),
+                selectinload(SportsGame.away_team),
             )
-            .where(db_models.SportsGame.id == game_id)
+            .where(SportsGame.id == game_id)
         )
         game = result.scalar_one_or_none()
         if not game:
@@ -173,10 +175,10 @@ async def generate_timeline_artifact(
 
         # Fetch plays with team relationship for team_abbreviation
         plays_result = await session.execute(
-            select(db_models.SportsGamePlay)
-            .options(selectinload(db_models.SportsGamePlay.team))
-            .where(db_models.SportsGamePlay.game_id == game_id)
-            .order_by(db_models.SportsGamePlay.play_index)
+            select(SportsGamePlay)
+            .options(selectinload(SportsGamePlay.team))
+            .where(SportsGamePlay.game_id == game_id)
+            .order_by(SportsGamePlay.play_index)
         )
         plays = plays_result.scalars().all()
         if not plays:
@@ -190,7 +192,7 @@ async def generate_timeline_artifact(
         phase_boundaries = compute_phase_boundaries(game_start, has_overtime)
 
         # Only include social posts if we have a reliable tip_time
-        posts: list[db_models.GameSocialPost] = []
+        posts: list[GameSocialPost] = []
         if game.has_reliable_start_time:
             social_window_start = game_start - timedelta(
                 seconds=SOCIAL_PREGAME_WINDOW_SECONDS
@@ -200,13 +202,13 @@ async def generate_timeline_artifact(
             )
 
             posts_result = await session.execute(
-                select(db_models.GameSocialPost)
+                select(GameSocialPost)
                 .where(
-                    db_models.GameSocialPost.game_id == game_id,
-                    db_models.GameSocialPost.posted_at >= social_window_start,
-                    db_models.GameSocialPost.posted_at <= social_window_end,
+                    GameSocialPost.game_id == game_id,
+                    GameSocialPost.posted_at >= social_window_start,
+                    GameSocialPost.posted_at <= social_window_end,
                 )
-                .order_by(db_models.GameSocialPost.posted_at)
+                .order_by(GameSocialPost.posted_at)
             )
             posts = list(posts_result.scalars().all())
 
@@ -364,17 +366,17 @@ async def generate_timeline_artifact(
         )
         generated_at = now_utc()
         artifact_result = await session.execute(
-            select(db_models.SportsGameTimelineArtifact).where(
-                db_models.SportsGameTimelineArtifact.game_id == game_id,
-                db_models.SportsGameTimelineArtifact.sport == league_code,
-                db_models.SportsGameTimelineArtifact.timeline_version
+            select(SportsGameTimelineArtifact).where(
+                SportsGameTimelineArtifact.game_id == game_id,
+                SportsGameTimelineArtifact.sport == league_code,
+                SportsGameTimelineArtifact.timeline_version
                 == timeline_version,
             )
         )
         artifact = artifact_result.scalar_one_or_none()
 
         if artifact is None:
-            artifact = db_models.SportsGameTimelineArtifact(
+            artifact = SportsGameTimelineArtifact(
                 game_id=game_id,
                 sport=league_code,
                 timeline_version=timeline_version,

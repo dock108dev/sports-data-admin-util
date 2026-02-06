@@ -8,8 +8,15 @@ from typing import Any, Sequence
 from fastapi import HTTPException, status
 from sqlalchemy import select
 
-from ... import db_models
 from ...db import AsyncSession
+from ...db.sports import (
+    SportsLeague,
+    SportsTeamBoxscore,
+    SportsPlayerBoxscore,
+    SportsGamePlay,
+)
+from ...db.social import GameSocialPost
+from ...db.scraper import SportsScrapeRun
 from ...utils.reveal_utils import contains_explicit_score
 from .schemas import (
     NHLGoalieStat,
@@ -21,7 +28,7 @@ from .schemas import (
 )
 
 
-def serialize_play_entry(play: db_models.SportsGamePlay) -> PlayEntry:
+def serialize_play_entry(play: SportsGamePlay) -> PlayEntry:
     """Serialize a play record to API response format."""
     # Get team abbreviation from the relationship (preferred) or raw_data (fallback)
     team_abbr = None
@@ -62,11 +69,11 @@ def normalize_post_text(text: str | None) -> str | None:
 
 
 def dedupe_social_posts(
-    posts: Sequence[db_models.GameSocialPost],
-) -> list[db_models.GameSocialPost]:
+    posts: Sequence[GameSocialPost],
+) -> list[GameSocialPost]:
     """Deduplicate social posts by normalized text and team id."""
     seen: set[tuple[str, int]] = set()
-    deduped: list[db_models.GameSocialPost] = []
+    deduped: list[GameSocialPost] = []
     for post in posts:
         normalized = normalize_post_text(post.tweet_text) or post.post_url
         key = (normalized, post.team_id)
@@ -77,10 +84,10 @@ def dedupe_social_posts(
     return deduped
 
 
-async def get_league(session: AsyncSession, code: str) -> db_models.SportsLeague:
+async def get_league(session: AsyncSession, code: str) -> SportsLeague:
     """Fetch league by code or raise 404."""
-    stmt = select(db_models.SportsLeague).where(
-        db_models.SportsLeague.code == code.upper()
+    stmt = select(SportsLeague).where(
+        SportsLeague.code == code.upper()
     )
     result = await session.execute(stmt)
     league = result.scalar_one_or_none()
@@ -92,7 +99,7 @@ async def get_league(session: AsyncSession, code: str) -> db_models.SportsLeague
 
 
 def serialize_run(
-    run: db_models.SportsScrapeRun, league_code: str
+    run: SportsScrapeRun, league_code: str
 ) -> ScrapeRunResponse:
     """Serialize scrape run to API response."""
     return ScrapeRunResponse(
@@ -114,7 +121,7 @@ def serialize_run(
     )
 
 
-def serialize_team_stat(box: db_models.SportsTeamBoxscore) -> TeamStat:
+def serialize_team_stat(box: SportsTeamBoxscore) -> TeamStat:
     """Serialize team boxscore from JSONB stats column."""
     return TeamStat(
         team=box.team.name if box.team else "Unknown",
@@ -177,7 +184,7 @@ def _get_nested_int(stats: dict[str, Any], key: str) -> int | None:
         return None
 
 
-def serialize_player_stat(player: db_models.SportsPlayerBoxscore) -> PlayerStat:
+def serialize_player_stat(player: SportsPlayerBoxscore) -> PlayerStat:
     """Serialize player boxscore, flattening stats for frontend display."""
     stats = player.stats or {}
     minutes_val = _extract_minutes(stats)
@@ -231,7 +238,7 @@ def _extract_toi(stats: dict[str, Any]) -> str | None:
     return None
 
 
-def serialize_nhl_skater(player: db_models.SportsPlayerBoxscore) -> NHLSkaterStat:
+def serialize_nhl_skater(player: SportsPlayerBoxscore) -> NHLSkaterStat:
     """Serialize NHL skater boxscore with hockey-specific fields."""
     stats = player.stats or {}
     return NHLSkaterStat(
@@ -265,7 +272,7 @@ def _get_float_stat(
         return None
 
 
-def serialize_nhl_goalie(player: db_models.SportsPlayerBoxscore) -> NHLGoalieStat:
+def serialize_nhl_goalie(player: SportsPlayerBoxscore) -> NHLGoalieStat:
     """Serialize NHL goalie boxscore with goaltender-specific fields."""
     stats = player.stats or {}
     return NHLGoalieStat(

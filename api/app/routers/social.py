@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from .. import db_models
+from ..db.social import GameSocialPost, TeamSocialAccount
+from ..db.sports import SportsTeam, SportsGame, SportsLeague
 from ..db import AsyncSession, get_db
 
 router = APIRouter(prefix="/api/social", tags=["social"])
@@ -98,7 +99,7 @@ class SocialAccountUpsertRequest(BaseModel):
 # ────────────────────────────────────────────────────────────────────────────────
 
 
-def _serialize_post(post: db_models.GameSocialPost) -> SocialPostResponse:
+def _serialize_post(post: GameSocialPost) -> SocialPostResponse:
     """Serialize a social post to API response."""
     return SocialPostResponse(
         id=post.id,
@@ -115,7 +116,7 @@ def _serialize_post(post: db_models.GameSocialPost) -> SocialPostResponse:
     )
 
 
-def _serialize_account(account: db_models.TeamSocialAccount) -> SocialAccountResponse:
+def _serialize_account(account: TeamSocialAccount) -> SocialAccountResponse:
     """Serialize a social account registry entry to API response."""
     league_code = account.league.code if account.league else "UNK"
     return SocialAccountResponse(
@@ -145,26 +146,26 @@ async def list_social_posts(
     - team_id: Filter by team abbreviation (e.g., "GSW", "LAL")
     - start_date/end_date: Filter by posted_at timestamp
     """
-    stmt = select(db_models.GameSocialPost).options(
-        selectinload(db_models.GameSocialPost.team)
+    stmt = select(GameSocialPost).options(
+        selectinload(GameSocialPost.team)
     )
 
     if game_id is not None:
-        stmt = stmt.where(db_models.GameSocialPost.game_id == game_id)
+        stmt = stmt.where(GameSocialPost.game_id == game_id)
 
     if team_id is not None:
         # Join to team and filter by abbreviation
         stmt = stmt.where(
-            db_models.GameSocialPost.team.has(
-                db_models.SportsTeam.abbreviation.ilike(team_id)
+            GameSocialPost.team.has(
+                SportsTeam.abbreviation.ilike(team_id)
             )
         )
 
     if start_date is not None:
-        stmt = stmt.where(db_models.GameSocialPost.posted_at >= start_date)
+        stmt = stmt.where(GameSocialPost.posted_at >= start_date)
 
     if end_date is not None:
-        stmt = stmt.where(db_models.GameSocialPost.posted_at <= end_date)
+        stmt = stmt.where(GameSocialPost.posted_at <= end_date)
 
     # Count total before pagination
     from sqlalchemy import func
@@ -174,7 +175,7 @@ async def list_social_posts(
 
     # Apply ordering and pagination
     stmt = (
-        stmt.order_by(db_models.GameSocialPost.posted_at.asc())
+        stmt.order_by(GameSocialPost.posted_at.asc())
         .offset(offset)
         .limit(limit)
     )
@@ -198,27 +199,27 @@ async def list_social_accounts(
     session: AsyncSession = Depends(get_db),
 ) -> SocialAccountListResponse:
     """List social account registry entries with optional filters."""
-    stmt = select(db_models.TeamSocialAccount).options(
-        selectinload(db_models.TeamSocialAccount.league)
+    stmt = select(TeamSocialAccount).options(
+        selectinload(TeamSocialAccount.league)
     )
 
     if league:
-        stmt = stmt.join(db_models.SportsLeague).where(
-            db_models.SportsLeague.code.ilike(league)
+        stmt = stmt.join(SportsLeague).where(
+            SportsLeague.code.ilike(league)
         )
 
     if team_id is not None:
-        stmt = stmt.where(db_models.TeamSocialAccount.team_id == team_id)
+        stmt = stmt.where(TeamSocialAccount.team_id == team_id)
 
     if platform:
-        stmt = stmt.where(db_models.TeamSocialAccount.platform == platform)
+        stmt = stmt.where(TeamSocialAccount.platform == platform)
 
     from sqlalchemy import func
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await session.execute(count_stmt)).scalar() or 0
 
-    stmt = stmt.order_by(db_models.TeamSocialAccount.id).offset(offset).limit(limit)
+    stmt = stmt.order_by(TeamSocialAccount.id).offset(offset).limit(limit)
     result = await session.execute(stmt)
     accounts = result.scalars().all()
 
@@ -238,15 +239,15 @@ async def upsert_social_account(
     session: AsyncSession = Depends(get_db),
 ) -> SocialAccountResponse:
     """Create or update a social account registry entry."""
-    team = await session.get(db_models.SportsTeam, payload.team_id)
+    team = await session.get(SportsTeam, payload.team_id)
     if not team:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
         )
 
-    existing_stmt = select(db_models.TeamSocialAccount).where(
-        db_models.TeamSocialAccount.team_id == payload.team_id,
-        db_models.TeamSocialAccount.platform == payload.platform,
+    existing_stmt = select(TeamSocialAccount).where(
+        TeamSocialAccount.team_id == payload.team_id,
+        TeamSocialAccount.platform == payload.platform,
     )
     existing = (await session.execute(existing_stmt)).scalar_one_or_none()
 
@@ -257,7 +258,7 @@ async def upsert_social_account(
         await session.refresh(existing, attribute_names=["league"])
         return _serialize_account(existing)
 
-    account = db_models.TeamSocialAccount(
+    account = TeamSocialAccount(
         team_id=payload.team_id,
         league_id=team.league_id,
         platform=payload.platform,
@@ -277,10 +278,10 @@ async def get_posts_for_game(
 ) -> SocialPostListResponse:
     """Get all social posts for a specific game, sorted by posted_at."""
     stmt = (
-        select(db_models.GameSocialPost)
-        .options(selectinload(db_models.GameSocialPost.team))
-        .where(db_models.GameSocialPost.game_id == game_id)
-        .order_by(db_models.GameSocialPost.posted_at.asc())
+        select(GameSocialPost)
+        .options(selectinload(GameSocialPost.team))
+        .where(GameSocialPost.game_id == game_id)
+        .order_by(GameSocialPost.posted_at.asc())
     )
 
     result = await session.execute(stmt)
@@ -301,7 +302,7 @@ async def create_social_post(
 ) -> SocialPostResponse:
     """Create a new social post linked to a game."""
     # Verify game exists
-    game = await session.get(db_models.SportsGame, payload.game_id)
+    game = await session.get(SportsGame, payload.game_id)
     if not game:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -309,8 +310,8 @@ async def create_social_post(
         )
 
     # Find team by abbreviation
-    team_stmt = select(db_models.SportsTeam).where(
-        db_models.SportsTeam.abbreviation.ilike(payload.team_abbreviation)
+    team_stmt = select(SportsTeam).where(
+        SportsTeam.abbreviation.ilike(payload.team_abbreviation)
     )
     result = await session.execute(team_stmt)
     team = result.scalar_one_or_none()
@@ -322,8 +323,8 @@ async def create_social_post(
         )
 
     # Check for duplicate URL
-    existing_stmt = select(db_models.GameSocialPost).where(
-        db_models.GameSocialPost.post_url == payload.post_url
+    existing_stmt = select(GameSocialPost).where(
+        GameSocialPost.post_url == payload.post_url
     )
     existing = (await session.execute(existing_stmt)).scalar_one_or_none()
     if existing:
@@ -332,7 +333,7 @@ async def create_social_post(
             detail="Post URL already exists",
         )
 
-    post = db_models.GameSocialPost(
+    post = GameSocialPost(
         game_id=payload.game_id,
         team_id=team.id,
         post_url=payload.post_url,
@@ -361,20 +362,20 @@ async def bulk_create_social_posts(
     session: AsyncSession = Depends(get_db),
 ) -> SocialPostListResponse:
     """Bulk create social posts. Skips duplicates by tweet_url."""
-    created_posts: list[db_models.GameSocialPost] = []
+    created_posts: list[GameSocialPost] = []
 
     # Pre-fetch all teams by abbreviation
     abbrevs = list({p.team_abbreviation.upper() for p in payload.posts})
-    team_stmt = select(db_models.SportsTeam).where(
-        db_models.SportsTeam.abbreviation.in_(abbrevs)
+    team_stmt = select(SportsTeam).where(
+        SportsTeam.abbreviation.in_(abbrevs)
     )
     team_result = await session.execute(team_stmt)
     teams_by_abbrev = {t.abbreviation.upper(): t for t in team_result.scalars()}
 
     # Pre-fetch existing URLs to skip
     urls = [p.post_url for p in payload.posts]
-    existing_stmt = select(db_models.GameSocialPost.post_url).where(
-        db_models.GameSocialPost.post_url.in_(urls)
+    existing_stmt = select(GameSocialPost.post_url).where(
+        GameSocialPost.post_url.in_(urls)
     )
     existing_urls = set((await session.execute(existing_stmt)).scalars())
 
@@ -386,7 +387,7 @@ async def bulk_create_social_posts(
         if not team:
             continue  # Skip unknown team
 
-        post = db_models.GameSocialPost(
+        post = GameSocialPost(
             game_id=post_data.game_id,
             team_id=team.id,
             post_url=post_data.post_url,
@@ -419,7 +420,7 @@ async def delete_social_post(
     session: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete a social post."""
-    post = await session.get(db_models.GameSocialPost, post_id)
+    post = await session.get(GameSocialPost, post_id)
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

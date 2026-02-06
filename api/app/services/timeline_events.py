@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Sequence
 
-from .. import db_models
+from ..db.sports import SportsGamePlay
 from ..utils.datetime_utils import parse_clock_to_seconds
 from .timeline_types import (
     NBA_QUARTER_GAME_SECONDS,
@@ -44,7 +44,7 @@ def progress_from_index(index: int, total: int) -> float:
 
 
 def build_pbp_events(
-    plays: Sequence[db_models.SportsGamePlay],
+    plays: Sequence[SportsGamePlay],
     game_start: datetime,
 ) -> list[tuple[datetime, dict[str, Any]]]:
     """

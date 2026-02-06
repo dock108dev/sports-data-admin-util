@@ -7,7 +7,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import or_
 
-from ... import db_models
+from ...db.sports import SportsTeam, SportsLeague, SportsGame
 from ...db import AsyncSession, get_db
 from .schemas import (
     TeamDetail,
@@ -31,43 +31,43 @@ async def list_teams(
     """List teams with optional league filter and search."""
     games_as_home = (
         select(func.count())
-        .where(db_models.SportsGame.home_team_id == db_models.SportsTeam.id)
-        .correlate(db_models.SportsTeam)
+        .where(SportsGame.home_team_id == SportsTeam.id)
+        .correlate(SportsTeam)
         .scalar_subquery()
     )
     games_as_away = (
         select(func.count())
-        .where(db_models.SportsGame.away_team_id == db_models.SportsTeam.id)
-        .correlate(db_models.SportsTeam)
+        .where(SportsGame.away_team_id == SportsTeam.id)
+        .correlate(SportsTeam)
         .scalar_subquery()
     )
 
     stmt = select(
-        db_models.SportsTeam,
-        db_models.SportsLeague.code.label("league_code"),
+        SportsTeam,
+        SportsLeague.code.label("league_code"),
         (games_as_home + games_as_away).label("games_count"),
     ).join(
-        db_models.SportsLeague,
-        db_models.SportsTeam.league_id == db_models.SportsLeague.id,
+        SportsLeague,
+        SportsTeam.league_id == SportsLeague.id,
     )
 
     if league:
-        stmt = stmt.where(func.upper(db_models.SportsLeague.code) == league.upper())
+        stmt = stmt.where(func.upper(SportsLeague.code) == league.upper())
 
     if search:
         search_pattern = f"%{search}%"
         stmt = stmt.where(
             or_(
-                db_models.SportsTeam.name.ilike(search_pattern),
-                db_models.SportsTeam.short_name.ilike(search_pattern),
-                db_models.SportsTeam.abbreviation.ilike(search_pattern),
+                SportsTeam.name.ilike(search_pattern),
+                SportsTeam.short_name.ilike(search_pattern),
+                SportsTeam.abbreviation.ilike(search_pattern),
             )
         )
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await session.execute(count_stmt)).scalar() or 0
 
-    stmt = stmt.order_by(db_models.SportsTeam.name).offset(offset).limit(limit)
+    stmt = stmt.order_by(SportsTeam.name).offset(offset).limit(limit)
 
     result = await session.execute(stmt)
     rows = result.all()
@@ -90,30 +90,30 @@ async def list_teams(
 @router.get("/teams/{team_id}", response_model=TeamDetail)
 async def get_team(team_id: int, session: AsyncSession = Depends(get_db)) -> TeamDetail:
     """Get team detail with recent games."""
-    team = await session.get(db_models.SportsTeam, team_id)
+    team = await session.get(SportsTeam, team_id)
     if not team:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
         )
 
-    league = await session.get(db_models.SportsLeague, team.league_id)
+    league = await session.get(SportsLeague, team.league_id)
 
     home_games = (
-        select(db_models.SportsGame)
-        .where(db_models.SportsGame.home_team_id == team_id)
-        .options(selectinload(db_models.SportsGame.away_team))
+        select(SportsGame)
+        .where(SportsGame.home_team_id == team_id)
+        .options(selectinload(SportsGame.away_team))
     )
     away_games = (
-        select(db_models.SportsGame)
-        .where(db_models.SportsGame.away_team_id == team_id)
-        .options(selectinload(db_models.SportsGame.home_team))
+        select(SportsGame)
+        .where(SportsGame.away_team_id == team_id)
+        .options(selectinload(SportsGame.home_team))
     )
 
     home_result = await session.execute(
-        home_games.order_by(desc(db_models.SportsGame.game_date)).limit(10)
+        home_games.order_by(desc(SportsGame.game_date)).limit(10)
     )
     away_result = await session.execute(
-        away_games.order_by(desc(db_models.SportsGame.game_date)).limit(10)
+        away_games.order_by(desc(SportsGame.game_date)).limit(10)
     )
 
     recent_games: list[TeamGameSummary] = []
@@ -182,7 +182,7 @@ async def get_team_social_info(
     team_id: int, session: AsyncSession = Depends(get_db)
 ) -> TeamSocialInfo:
     """Get team's social media info including X handle."""
-    team = await session.get(db_models.SportsTeam, team_id)
+    team = await session.get(SportsTeam, team_id)
     if not team:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"

@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, select
 
-from ... import db_models
+from ...db.scraper import SportsJobRun
 from ...db import AsyncSession, get_db
 from .schemas import JobRunResponse
 
@@ -18,10 +18,10 @@ async def list_job_runs(
     limit: int = Query(50, ge=1, le=200),
     phase: str | None = Query(None),
 ) -> list[JobRunResponse]:
-    stmt = select(db_models.SportsJobRun)
+    stmt = select(SportsJobRun)
     if phase:
-        stmt = stmt.where(db_models.SportsJobRun.phase == phase)
-    stmt = stmt.order_by(desc(db_models.SportsJobRun.started_at)).limit(limit)
+        stmt = stmt.where(SportsJobRun.phase == phase)
+    stmt = stmt.order_by(desc(SportsJobRun.started_at)).limit(limit)
     results = await session.execute(stmt)
     runs = results.scalars().all()
     return [

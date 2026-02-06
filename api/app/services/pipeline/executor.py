@@ -22,8 +22,9 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from ... import db_models
 from ...db import AsyncSession
+from ...db.sports import SportsGame, SportsPlayerBoxscore
+from ...db.pipeline import GamePipelineRun, GamePipelineStage
 from ...utils.datetime_utils import now_utc
 from .models import PipelineStage, StageInput, StageOutput, StageResult
 from .stages import (
@@ -72,7 +73,7 @@ class PipelineExecutor:
         game_id: int,
         triggered_by: str,
         auto_chain: bool | None = None,
-    ) -> db_models.GamePipelineRun:
+    ) -> GamePipelineRun:
         """Start a new pipeline run for a game.
 
         Args:
@@ -103,13 +104,13 @@ class PipelineExecutor:
 
         # Verify game exists
         game_result = await self.session.execute(
-            select(db_models.SportsGame)
+            select(SportsGame)
             .options(
-                selectinload(db_models.SportsGame.league),
-                selectinload(db_models.SportsGame.home_team),
-                selectinload(db_models.SportsGame.away_team),
+                selectinload(SportsGame.league),
+                selectinload(SportsGame.home_team),
+                selectinload(SportsGame.away_team),
             )
-            .where(db_models.SportsGame.id == game_id)
+            .where(SportsGame.id == game_id)
         )
         game = game_result.scalar_one_or_none()
 
@@ -122,7 +123,7 @@ class PipelineExecutor:
             )
 
         # Create pipeline run
-        run = db_models.GamePipelineRun(
+        run = GamePipelineRun(
             game_id=game_id,
             triggered_by=triggered_by,
             auto_chain=auto_chain,
@@ -133,7 +134,7 @@ class PipelineExecutor:
 
         # Create stage records
         for stage in PipelineStage.ordered_stages():
-            stage_record = db_models.GamePipelineStage(
+            stage_record = GamePipelineStage(
                 run_id=run.id,
                 stage=stage.value,
                 status="pending",
@@ -153,12 +154,12 @@ class PipelineExecutor:
 
         return run
 
-    async def _get_run(self, run_id: int) -> db_models.GamePipelineRun:
+    async def _get_run(self, run_id: int) -> GamePipelineRun:
         """Fetch pipeline run with stages."""
         result = await self.session.execute(
-            select(db_models.GamePipelineRun)
-            .options(selectinload(db_models.GamePipelineRun.stages))
-            .where(db_models.GamePipelineRun.id == run_id)
+            select(GamePipelineRun)
+            .options(selectinload(GamePipelineRun.stages))
+            .where(GamePipelineRun.id == run_id)
         )
         run = result.scalar_one_or_none()
 
@@ -171,12 +172,12 @@ class PipelineExecutor:
         self,
         run_id: int,
         stage: PipelineStage,
-    ) -> db_models.GamePipelineStage:
+    ) -> GamePipelineStage:
         """Fetch a specific stage record."""
         result = await self.session.execute(
-            select(db_models.GamePipelineStage).where(
-                db_models.GamePipelineStage.run_id == run_id,
-                db_models.GamePipelineStage.stage == stage.value,
+            select(GamePipelineStage).where(
+                GamePipelineStage.run_id == run_id,
+                GamePipelineStage.stage == stage.value,
             )
         )
         stage_record = result.scalar_one_or_none()
@@ -191,13 +192,13 @@ class PipelineExecutor:
     async def _get_game_context(self, game_id: int) -> dict[str, Any]:
         """Build game context for team name resolution and player name mapping."""
         result = await self.session.execute(
-            select(db_models.SportsGame)
+            select(SportsGame)
             .options(
-                selectinload(db_models.SportsGame.league),
-                selectinload(db_models.SportsGame.home_team),
-                selectinload(db_models.SportsGame.away_team),
+                selectinload(SportsGame.league),
+                selectinload(SportsGame.home_team),
+                selectinload(SportsGame.away_team),
             )
-            .where(db_models.SportsGame.id == game_id)
+            .where(SportsGame.id == game_id)
         )
         game = result.scalar_one_or_none()
 
@@ -228,9 +229,9 @@ class PipelineExecutor:
         using player boxscore data.
         """
         result = await self.session.execute(
-            select(db_models.SportsPlayerBoxscore.player_name)
-            .where(db_models.SportsPlayerBoxscore.game_id == game_id)
-            .where(db_models.SportsPlayerBoxscore.player_name.isnot(None))
+            select(SportsPlayerBoxscore.player_name)
+            .where(SportsPlayerBoxscore.game_id == game_id)
+            .where(SportsPlayerBoxscore.player_name.isnot(None))
         )
         full_names = [row[0] for row in result.fetchall()]
 
@@ -268,7 +269,7 @@ class PipelineExecutor:
 
     async def _accumulate_outputs(
         self,
-        run: db_models.GamePipelineRun,
+        run: GamePipelineRun,
         up_to_stage: PipelineStage,
     ) -> dict[str, Any]:
         """Accumulate outputs from all completed stages up to the given stage.
@@ -481,7 +482,7 @@ class PipelineExecutor:
         self,
         game_id: int,
         triggered_by: str = "prod_auto",
-    ) -> db_models.GamePipelineRun:
+    ) -> GamePipelineRun:
         """Run the complete pipeline for a game.
 
         This is a convenience method that creates a run and executes

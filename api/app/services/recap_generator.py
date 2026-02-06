@@ -13,7 +13,8 @@ from dataclasses import dataclass
 from typing import Iterable
 import re
 
-from .. import db_models
+from ..db.sports import SportsGame, SportsGamePlay
+from ..db.social import GameSocialPost
 from ..utils.reveal_utils import classify_reveal_risk, redact_scores
 from .reveal_levels import RevealLevel
 
@@ -39,7 +40,7 @@ def _sanitize_pre_reveal(text: str) -> str:
     return cleaned
 
 
-def _momentum_sentence(plays: Iterable[db_models.SportsGamePlay]) -> str:
+def _momentum_sentence(plays: Iterable[SportsGamePlay]) -> str:
     play_types = {play.play_type or "" for play in plays}
     if any(
         term in play_type
@@ -63,10 +64,10 @@ def _momentum_sentence(plays: Iterable[db_models.SportsGamePlay]) -> str:
 
 
 def _period_sentences(
-    plays: list[db_models.SportsGamePlay],
+    plays: list[SportsGamePlay],
     reveal_level: RevealLevel,
 ) -> list[str]:
-    periods: dict[int | None, list[db_models.SportsGamePlay]] = {}
+    periods: dict[int | None, list[SportsGamePlay]] = {}
     for play in plays:
         periods.setdefault(play.quarter, []).append(play)
 
@@ -94,7 +95,7 @@ def _period_sentences(
 
 
 def _social_sentence(
-    posts: list[db_models.GameSocialPost],
+    posts: list[GameSocialPost],
     reveal_level: RevealLevel,
 ) -> str | None:
     if not posts:
@@ -113,7 +114,7 @@ def _social_sentence(
     return f"Social spotlight: {content}"
 
 
-def _post_reveal_risk(post: db_models.GameSocialPost) -> bool:
+def _post_reveal_risk(post: GameSocialPost) -> bool:
     if post.reveal_risk:
         return True
     classification = classify_reveal_risk(post.tweet_text)
@@ -121,9 +122,9 @@ def _post_reveal_risk(post: db_models.GameSocialPost) -> bool:
 
 
 def build_recap(
-    game: db_models.SportsGame,
-    plays: list[db_models.SportsGamePlay],
-    social_posts: list[db_models.GameSocialPost],
+    game: SportsGame,
+    plays: list[SportsGamePlay],
+    social_posts: list[GameSocialPost],
     reveal_level: RevealLevel,
 ) -> RecapResult:
     if not plays:

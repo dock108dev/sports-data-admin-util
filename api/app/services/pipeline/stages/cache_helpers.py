@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
-from .... import db_models
+from ....db.cache import OpenAIResponseCache
 
 if TYPE_CHECKING:
     from ....db import AsyncSession
@@ -49,9 +49,9 @@ async def get_cached_response(
         Cached response data or None if not found
     """
     result = await session.execute(
-        select(db_models.OpenAIResponseCache).where(
-            db_models.OpenAIResponseCache.game_id == game_id,
-            db_models.OpenAIResponseCache.batch_key == batch_key,
+        select(OpenAIResponseCache).where(
+            OpenAIResponseCache.game_id == game_id,
+            OpenAIResponseCache.batch_key == batch_key,
         )
     )
     cached = result.scalar_one_or_none()
@@ -79,7 +79,7 @@ async def store_cached_response(
         response_data: The parsed response from OpenAI
         model: Model name used
     """
-    cache_entry = db_models.OpenAIResponseCache(
+    cache_entry = OpenAIResponseCache(
         game_id=game_id,
         batch_key=batch_key,
         prompt_preview=prompt_preview[:2000] if prompt_preview else None,

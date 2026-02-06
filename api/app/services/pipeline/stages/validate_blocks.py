@@ -30,8 +30,9 @@ from typing import Any
 
 from sqlalchemy import select
 
-from .... import db_models
 from ....db import AsyncSession
+from ....db.sports import SportsGame
+from ....db.social import GameSocialPost
 from ..models import StageInput, StageOutput
 from .block_types import (
     SemanticRole,
@@ -296,11 +297,9 @@ async def _attach_embedded_tweets(
     Returns:
         Tuple of (updated blocks, EmbeddedTweetSelection or None)
     """
-    from .embedded_tweets import EmbeddedTweetSelection
-
     # Load game to get tip_time for position classification
     game_result = await session.execute(
-        select(db_models.SportsGame).where(db_models.SportsGame.id == game_id)
+        select(SportsGame).where(SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
 
@@ -315,9 +314,9 @@ async def _attach_embedded_tweets(
 
     # Load social posts for this game
     social_result = await session.execute(
-        select(db_models.GameSocialPost)
-        .where(db_models.GameSocialPost.game_id == game_id)
-        .order_by(db_models.GameSocialPost.posted_at)
+        select(GameSocialPost)
+        .where(GameSocialPost.game_id == game_id)
+        .order_by(GameSocialPost.posted_at)
     )
     social_posts = social_result.scalars().all()
 

@@ -23,7 +23,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Sequence
 
-from .. import db_models
+from ..db.sports import SportsGamePlay
 from .timeline_types import (
     NBA_HALFTIME_REAL_SECONDS,
     NBA_OVERTIME_REAL_SECONDS,
@@ -102,7 +102,7 @@ def nba_regulation_end(game_start: datetime) -> datetime:
 
 
 def nba_game_end(
-    game_start: datetime, plays: Sequence[db_models.SportsGamePlay]
+    game_start: datetime, plays: Sequence[SportsGamePlay]
 ) -> datetime:
     """Calculate actual game end time based on plays."""
     max_quarter = 4

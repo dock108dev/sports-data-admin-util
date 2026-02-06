@@ -16,8 +16,9 @@ from typing import Any, Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from .... import db_models
 from ....db import AsyncSession
+from ....db.sports import SportsGame, SportsGamePlay
+from ....db.resolution import PBPSnapshot
 from ....utils.datetime_utils import parse_clock_to_seconds
 from ....services.resolution_tracker import ResolutionTracker
 from ..models import NormalizedPBPOutput, StageInput, StageOutput
@@ -63,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 
 def _nba_game_end(
-    game_start: datetime, plays: Sequence[db_models.SportsGamePlay]
+    game_start: datetime, plays: Sequence[SportsGamePlay]
 ) -> datetime:
     """Calculate actual game end time based on plays."""
     max_quarter = 4
@@ -81,7 +82,7 @@ def _nba_game_end(
 
 
 def _ncaab_game_end(
-    game_start: datetime, plays: Sequence[db_models.SportsGamePlay]
+    game_start: datetime, plays: Sequence[SportsGamePlay]
 ) -> datetime:
     """Calculate NCAAB game end time based on plays."""
     max_period = 2
@@ -99,7 +100,7 @@ def _ncaab_game_end(
 
 
 def _nhl_game_end(
-    game_start: datetime, plays: Sequence[db_models.SportsGamePlay]
+    game_start: datetime, plays: Sequence[SportsGamePlay]
 ) -> datetime:
     """Calculate NHL game end time based on plays."""
     max_period = 3
@@ -273,7 +274,7 @@ def _progress_from_index(index: int, total: int) -> float:
 
 
 def _build_pbp_events(
-    plays: Sequence[db_models.SportsGamePlay],
+    plays: Sequence[SportsGamePlay],
     game_start: datetime,
     game_id: int | None = None,
     league_code: str = "NBA",
@@ -581,13 +582,13 @@ async def execute_normalize_pbp(
 
     # Fetch game with relations
     result = await session.execute(
-        select(db_models.SportsGame)
+        select(SportsGame)
         .options(
-            selectinload(db_models.SportsGame.league),
-            selectinload(db_models.SportsGame.home_team),
-            selectinload(db_models.SportsGame.away_team),
+            selectinload(SportsGame.league),
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
         )
-        .where(db_models.SportsGame.id == game_id)
+        .where(SportsGame.id == game_id)
     )
     game = result.scalar_one_or_none()
 
@@ -603,10 +604,10 @@ async def execute_normalize_pbp(
 
     # Fetch plays with team relationship
     plays_result = await session.execute(
-        select(db_models.SportsGamePlay)
-        .options(selectinload(db_models.SportsGamePlay.team))
-        .where(db_models.SportsGamePlay.game_id == game_id)
-        .order_by(db_models.SportsGamePlay.play_index)
+        select(SportsGamePlay)
+        .options(selectinload(SportsGamePlay.team))
+        .where(SportsGamePlay.game_id == game_id)
+        .order_by(SportsGamePlay.play_index)
     )
     plays = list(plays_result.scalars().all())
 
@@ -749,7 +750,7 @@ async def execute_normalize_pbp(
 
     # Create PBP snapshot for auditability
     try:
-        snapshot = db_models.PBPSnapshot(
+        snapshot = PBPSnapshot(
             game_id=game_id,
             pipeline_run_id=run_id,
             snapshot_type="normalized",

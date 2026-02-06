@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 from ..logging import logger
 from ..utils.datetime_utils import now_utc, date_to_utc_datetime
 from .collector_base import XCollectorStrategy
-from .models import CollectedPost
 from .playwright_collector import PlaywrightXCollector, playwright_available
 from .rate_limit import PlatformRateLimiter
 from .registry import fetch_team_accounts
@@ -211,7 +210,6 @@ class TeamTweetCollector:
             Summary stats dict with teams_processed, total_new_tweets, errors
         """
         from ..db import db_models
-        from sqlalchemy import or_
 
         # Get league
         league = (

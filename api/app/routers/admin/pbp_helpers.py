@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from ... import db_models
+from ...db.sports import SportsGamePlay
 from .pbp_models import PlaySummary, PlayDetail
 
 
-def build_resolution_summary(plays: list[db_models.SportsGamePlay]) -> dict[str, Any]:
+def build_resolution_summary(plays: list[SportsGamePlay]) -> dict[str, Any]:
     """Build resolution summary from plays."""
     total = len(plays)
     if total == 0:
@@ -44,7 +44,7 @@ def build_resolution_summary(plays: list[db_models.SportsGamePlay]) -> dict[str,
     }
 
 
-def play_to_summary(play: db_models.SportsGamePlay) -> PlaySummary:
+def play_to_summary(play: SportsGamePlay) -> PlaySummary:
     """Convert a play to summary format."""
     return PlaySummary(
         play_index=play.play_index,
@@ -63,7 +63,7 @@ def play_to_summary(play: db_models.SportsGamePlay) -> PlaySummary:
     )
 
 
-def play_to_detail(play: db_models.SportsGamePlay) -> PlayDetail:
+def play_to_detail(play: SportsGamePlay) -> PlayDetail:
     """Convert a play to detail format."""
     return PlayDetail(
         play_index=play.play_index,

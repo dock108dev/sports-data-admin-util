@@ -56,7 +56,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from .... import db_models
+from ....db.sports import SportsGame
+from ....db.story import SportsGameStory
 from ....utils.datetime_utils import now_utc
 from ..models import StageInput, StageOutput
 
@@ -145,9 +146,9 @@ async def execute_finalize_moments(
 
     # Get game to determine sport
     game_result = await session.execute(
-        select(db_models.SportsGame)
-        .options(selectinload(db_models.SportsGame.league))
-        .where(db_models.SportsGame.id == game_id)
+        select(SportsGame)
+        .options(selectinload(SportsGame.league))
+        .where(SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
 
@@ -158,9 +159,9 @@ async def execute_finalize_moments(
 
     # Check for existing v2-moments story for this game
     existing_result = await session.execute(
-        select(db_models.SportsGameStory).where(
-            db_models.SportsGameStory.game_id == game_id,
-            db_models.SportsGameStory.story_version == STORY_VERSION,
+        select(SportsGameStory).where(
+            SportsGameStory.game_id == game_id,
+            SportsGameStory.story_version == STORY_VERSION,
         )
     )
     existing_story = existing_result.scalar_one_or_none()
@@ -188,7 +189,7 @@ async def execute_finalize_moments(
     else:
         # Create new story record
         output.add_log("Creating new story record")
-        new_story = db_models.SportsGameStory(
+        new_story = SportsGameStory(
             game_id=game_id,
             sport=sport,
             story_version=STORY_VERSION,

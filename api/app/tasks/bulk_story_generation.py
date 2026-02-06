@@ -17,8 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import selectinload
 
 from ..celery_app import celery_app
-from .. import db_models
 from ..config import settings
+from ..db.sports import SportsGame, SportsLeague, SportsGamePlay
+from ..db.pipeline import BulkStoryGenerationJob
+from ..db.story import SportsGameStory
 from ..services.pipeline import PipelineExecutor
 
 logger = logging.getLogger(__name__)
@@ -48,8 +50,8 @@ async def _run_bulk_generation_async(job_id: int) -> None:
         async with session_factory() as session:
             # Load the job record
             job_result = await session.execute(
-                select(db_models.BulkStoryGenerationJob).where(
-                    db_models.BulkStoryGenerationJob.id == job_id
+                select(BulkStoryGenerationJob).where(
+                    BulkStoryGenerationJob.id == job_id
                 )
             )
             job = job_result.scalar_one_or_none()
@@ -67,25 +69,25 @@ async def _run_bulk_generation_async(job_id: int) -> None:
             try:
                 # Query games in the date range for specified leagues
                 query = (
-                    select(db_models.SportsGame)
-                    .join(db_models.SportsLeague)
+                    select(SportsGame)
+                    .join(SportsLeague)
                     .options(
-                        selectinload(db_models.SportsGame.home_team),
-                        selectinload(db_models.SportsGame.away_team),
+                        selectinload(SportsGame.home_team),
+                        selectinload(SportsGame.away_team),
                     )
                     .where(
                         and_(
-                            db_models.SportsGame.game_date >= job.start_date,
-                            db_models.SportsGame.game_date <= job.end_date,
-                            db_models.SportsGame.status == "final",
+                            SportsGame.game_date >= job.start_date,
+                            SportsGame.game_date <= job.end_date,
+                            SportsGame.status == "final",
                         )
                     )
-                    .order_by(db_models.SportsGame.game_date)
+                    .order_by(SportsGame.game_date)
                 )
 
                 # Filter by leagues if specified
                 if job.leagues:
-                    query = query.where(db_models.SportsLeague.code.in_(job.leagues))
+                    query = query.where(SportsLeague.code.in_(job.leagues))
 
                 result = await session.execute(query)
                 games = result.scalars().all()
@@ -94,8 +96,8 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                 games_with_pbp = []
                 for game in games:
                     pbp_count = await session.execute(
-                        select(func.count(db_models.SportsGamePlay.id)).where(
-                            db_models.SportsGamePlay.game_id == game.id
+                        select(func.count(SportsGamePlay.id)).where(
+                            SportsGamePlay.game_id == game.id
                         )
                     )
                     if (pbp_count.scalar() or 0) > 0:
@@ -122,9 +124,9 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                     # Check if game already has a story
                     if not job.force_regenerate:
                         story_result = await session.execute(
-                            select(db_models.SportsGameStory).where(
-                                db_models.SportsGameStory.game_id == game.id,
-                                db_models.SportsGameStory.moments_json.isnot(None),
+                            select(SportsGameStory).where(
+                                SportsGameStory.game_id == game.id,
+                                SportsGameStory.moments_json.isnot(None),
                             )
                         )
                         existing_story = story_result.scalar_one_or_none()
@@ -153,8 +155,8 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                         await session.rollback()
                         # Re-fetch job after rollback
                         job_result = await session.execute(
-                            select(db_models.BulkStoryGenerationJob).where(
-                                db_models.BulkStoryGenerationJob.id == job_id
+                            select(BulkStoryGenerationJob).where(
+                                BulkStoryGenerationJob.id == job_id
                             )
                         )
                         job = job_result.scalar_one()
@@ -183,8 +185,8 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                 logger.exception(f"Job {job_id} failed with unexpected error: {e}")
                 await session.rollback()
                 job_result = await session.execute(
-                    select(db_models.BulkStoryGenerationJob).where(
-                        db_models.BulkStoryGenerationJob.id == job_id
+                    select(BulkStoryGenerationJob).where(
+                        BulkStoryGenerationJob.id == job_id
                     )
                 )
                 job = job_result.scalar_one_or_none()

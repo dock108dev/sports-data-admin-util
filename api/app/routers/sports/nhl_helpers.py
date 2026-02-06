@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ... import db_models
+    from ...db.sports import SportsGame
 
 from .schemas import NHLDataHealth
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def compute_nhl_data_health(
-    game: "db_models.SportsGame",
+    game: "SportsGame",
     player_boxscores: list,
 ) -> NHLDataHealth | None:
     """Compute NHL-specific data health indicators.

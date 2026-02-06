@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import exists, select
 
-from ... import db_models
+from ...db.sports import SportsGame, SportsGamePlay, SportsTeam, SportsLeague, GameStatus
+from ...db.story import SportsGameTimelineArtifact
 from ...db import AsyncSession, get_db
 from ...services.timeline_generator import (
     TimelineGenerationError,
@@ -83,14 +84,14 @@ async def generate_timeline_for_game(
     - Have play-by-play data available
     """
     # Check if game exists
-    game = await session.get(db_models.SportsGame, game_id)
+    game = await session.get(SportsGame, game_id)
     if not game:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Game {game_id} not found"
         )
 
     # Check if game is completed
-    if game.status != db_models.GameStatus.final.value:
+    if game.status != GameStatus.final.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Game {game_id} is not completed (status: {game.status})",
@@ -98,7 +99,7 @@ async def generate_timeline_for_game(
 
     # Check if PBP data exists
     pbp_exists = await session.scalar(
-        select(exists().where(db_models.SportsGamePlay.game_id == game_id))
+        select(exists().where(SportsGamePlay.game_id == game_id))
     )
     if not pbp_exists:
         raise HTTPException(
@@ -146,7 +147,7 @@ async def list_missing_timelines(
 
     # Get league
     league_result = await session.execute(
-        select(db_models.SportsLeague).where(db_models.SportsLeague.code == league_code)
+        select(SportsLeague).where(SportsLeague.code == league_code)
     )
     league = league_result.scalar_one_or_none()
     if not league:
@@ -158,47 +159,47 @@ async def list_missing_timelines(
     cutoff_date = now_utc() - timedelta(days=days_back)
 
     # Create aliases for home and away teams
-    HomeTeam = aliased(db_models.SportsTeam)
-    AwayTeam = aliased(db_models.SportsTeam)
+    HomeTeam = aliased(SportsTeam)
+    AwayTeam = aliased(SportsTeam)
 
     # Find games missing timelines
     query = (
         select(
-            db_models.SportsGame.id,
-            db_models.SportsGame.game_date,
-            db_models.SportsGame.status,
-            db_models.SportsLeague.code.label("league_code"),
+            SportsGame.id,
+            SportsGame.game_date,
+            SportsGame.status,
+            SportsLeague.code.label("league_code"),
             HomeTeam.name.label("home_team"),
             AwayTeam.name.label("away_team"),
         )
         .join(
-            db_models.SportsLeague,
-            db_models.SportsGame.league_id == db_models.SportsLeague.id,
+            SportsLeague,
+            SportsGame.league_id == SportsLeague.id,
         )
         .join(
             HomeTeam,
-            db_models.SportsGame.home_team_id == HomeTeam.id,
+            SportsGame.home_team_id == HomeTeam.id,
         )
         .join(
             AwayTeam,
-            db_models.SportsGame.away_team_id == AwayTeam.id,
+            SportsGame.away_team_id == AwayTeam.id,
         )
         .where(
-            db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.status == db_models.GameStatus.final.value,
-            db_models.SportsGame.game_date >= cutoff_date,
+            SportsGame.league_id == league.id,
+            SportsGame.status == GameStatus.final.value,
+            SportsGame.game_date >= cutoff_date,
         )
         .where(
             # Has PBP data
-            exists().where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
+            exists().where(SportsGamePlay.game_id == SportsGame.id)
         )
         .where(
             # Missing timeline artifact
             ~exists().where(
-                db_models.SportsGameTimelineArtifact.game_id == db_models.SportsGame.id
+                SportsGameTimelineArtifact.game_id == SportsGame.id
             )
         )
-        .order_by(db_models.SportsGame.game_date.desc())
+        .order_by(SportsGame.game_date.desc())
     )
 
     result = await session.execute(query)
@@ -280,8 +281,8 @@ async def generate_timelines_batch(
 
     # Verify league exists
     league_result = await session.execute(
-        select(db_models.SportsLeague).where(
-            db_models.SportsLeague.code == request.league_code
+        select(SportsLeague).where(
+            SportsLeague.code == request.league_code
         )
     )
     league = league_result.scalar_one_or_none()
@@ -295,21 +296,21 @@ async def generate_timelines_batch(
 
     # Find games needing timelines
     query = (
-        select(db_models.SportsGame.id)
+        select(SportsGame.id)
         .where(
-            db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.status == db_models.GameStatus.final.value,
-            db_models.SportsGame.game_date >= cutoff_date,
+            SportsGame.league_id == league.id,
+            SportsGame.status == GameStatus.final.value,
+            SportsGame.game_date >= cutoff_date,
         )
         .where(
-            exists().where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
+            exists().where(SportsGamePlay.game_id == SportsGame.id)
         )
         .where(
             ~exists().where(
-                db_models.SportsGameTimelineArtifact.game_id == db_models.SportsGame.id
+                SportsGameTimelineArtifact.game_id == SportsGame.id
             )
         )
-        .order_by(db_models.SportsGame.game_date.desc())
+        .order_by(SportsGame.game_date.desc())
     )
 
     if request.max_games:
@@ -376,7 +377,7 @@ async def list_existing_timelines(
 
     # Get league
     league_result = await session.execute(
-        select(db_models.SportsLeague).where(db_models.SportsLeague.code == league_code)
+        select(SportsLeague).where(SportsLeague.code == league_code)
     )
     league = league_result.scalar_one_or_none()
     if not league:
@@ -388,37 +389,37 @@ async def list_existing_timelines(
     cutoff_date = now_utc() - timedelta(days=days_back)
 
     # Create aliases for home and away teams
-    HomeTeam = aliased(db_models.SportsTeam)
-    AwayTeam = aliased(db_models.SportsTeam)
+    HomeTeam = aliased(SportsTeam)
+    AwayTeam = aliased(SportsTeam)
 
     # Find games with existing timelines
     query = (
         select(
-            db_models.SportsGame.id,
-            db_models.SportsGame.game_date,
-            db_models.SportsGame.status,
-            db_models.SportsLeague.code.label("league_code"),
+            SportsGame.id,
+            SportsGame.game_date,
+            SportsGame.status,
+            SportsLeague.code.label("league_code"),
             HomeTeam.name.label("home_team"),
             AwayTeam.name.label("away_team"),
-            db_models.SportsGameTimelineArtifact.generated_at.label(
+            SportsGameTimelineArtifact.generated_at.label(
                 "timeline_generated_at"
             ),
         )
         .join(
-            db_models.SportsLeague,
-            db_models.SportsGame.league_id == db_models.SportsLeague.id,
+            SportsLeague,
+            SportsGame.league_id == SportsLeague.id,
         )
-        .join(HomeTeam, db_models.SportsGame.home_team_id == HomeTeam.id)
-        .join(AwayTeam, db_models.SportsGame.away_team_id == AwayTeam.id)
+        .join(HomeTeam, SportsGame.home_team_id == HomeTeam.id)
+        .join(AwayTeam, SportsGame.away_team_id == AwayTeam.id)
         .join(
-            db_models.SportsGameTimelineArtifact,
-            db_models.SportsGameTimelineArtifact.game_id == db_models.SportsGame.id,
+            SportsGameTimelineArtifact,
+            SportsGameTimelineArtifact.game_id == SportsGame.id,
         )
         .where(
-            db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.game_date >= cutoff_date,
+            SportsGame.league_id == league.id,
+            SportsGame.game_date >= cutoff_date,
         )
-        .order_by(db_models.SportsGame.game_date.desc())
+        .order_by(SportsGame.game_date.desc())
     )
 
     result = await session.execute(query)
@@ -465,8 +466,8 @@ async def regenerate_timelines_batch(
 
     # Verify league exists
     league_result = await session.execute(
-        select(db_models.SportsLeague).where(
-            db_models.SportsLeague.code == request.league_code
+        select(SportsLeague).where(
+            SportsLeague.code == request.league_code
         )
     )
     league = league_result.scalar_one_or_none()
@@ -484,14 +485,14 @@ async def regenerate_timelines_batch(
         cutoff_date = now_utc() - timedelta(days=request.days_back)
 
         query = (
-            select(db_models.SportsGame.id)
+            select(SportsGame.id)
             .join(
-                db_models.SportsGameTimelineArtifact,
-                db_models.SportsGameTimelineArtifact.game_id == db_models.SportsGame.id,
+                SportsGameTimelineArtifact,
+                SportsGameTimelineArtifact.game_id == SportsGame.id,
             )
             .where(
-                db_models.SportsGame.league_id == league.id,
-                db_models.SportsGame.game_date >= cutoff_date,
+                SportsGame.league_id == league.id,
+                SportsGame.game_date >= cutoff_date,
             )
         )
 

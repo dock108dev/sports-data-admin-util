@@ -10,8 +10,10 @@ from fastapi import HTTPException
 from sqlalchemy import Select
 from sqlalchemy.sql import or_
 
-from ... import db_models
 from ...celery_client import get_celery_app
+from ...db.sports import SportsGame, SportsTeam, SportsLeague
+from ...db.social import GameSocialPost
+from ...db.scraper import SportsScrapeRun
 from ...db import AsyncSession
 from ...game_metadata.models import GameContext, StandingsEntry, TeamRatings
 from .schemas import GameSummary, JobResponse, ScrapeRunConfig, SocialPostEntry
@@ -32,7 +34,7 @@ PREVIEW_TOTAL_MAX = 180.0
 
 
 def apply_game_filters(
-    stmt: Select[tuple[db_models.SportsGame]],
+    stmt: Select[tuple[SportsGame]],
     leagues: Sequence[str] | None,
     season: int | None,
     team: str | None,
@@ -43,66 +45,66 @@ def apply_game_filters(
     missing_odds: bool,
     missing_social: bool,
     missing_any: bool,
-) -> Select[tuple[db_models.SportsGame]]:
+) -> Select[tuple[SportsGame]]:
     """Apply filtering options for list endpoints."""
     if leagues:
         league_codes = [code.upper() for code in leagues]
         stmt = stmt.where(
-            db_models.SportsGame.league.has(
-                db_models.SportsLeague.code.in_(league_codes)
+            SportsGame.league.has(
+                SportsLeague.code.in_(league_codes)
             )
         )
 
     if season is not None:
-        stmt = stmt.where(db_models.SportsGame.season == season)
+        stmt = stmt.where(SportsGame.season == season)
 
     if team:
         pattern = f"%{team}%"
         stmt = stmt.where(
             or_(
-                db_models.SportsGame.home_team.has(
-                    db_models.SportsTeam.name.ilike(pattern)
+                SportsGame.home_team.has(
+                    SportsTeam.name.ilike(pattern)
                 ),
-                db_models.SportsGame.away_team.has(
-                    db_models.SportsTeam.name.ilike(pattern)
+                SportsGame.away_team.has(
+                    SportsTeam.name.ilike(pattern)
                 ),
-                db_models.SportsGame.home_team.has(
-                    db_models.SportsTeam.short_name.ilike(pattern)
+                SportsGame.home_team.has(
+                    SportsTeam.short_name.ilike(pattern)
                 ),
-                db_models.SportsGame.away_team.has(
-                    db_models.SportsTeam.short_name.ilike(pattern)
+                SportsGame.away_team.has(
+                    SportsTeam.short_name.ilike(pattern)
                 ),
-                db_models.SportsGame.home_team.has(
-                    db_models.SportsTeam.abbreviation.ilike(pattern)
+                SportsGame.home_team.has(
+                    SportsTeam.abbreviation.ilike(pattern)
                 ),
-                db_models.SportsGame.away_team.has(
-                    db_models.SportsTeam.abbreviation.ilike(pattern)
+                SportsGame.away_team.has(
+                    SportsTeam.abbreviation.ilike(pattern)
                 ),
             )
         )
 
     if start_date:
         start_dt = datetime.combine(start_date, datetime.min.time())
-        stmt = stmt.where(db_models.SportsGame.game_date >= start_dt)
+        stmt = stmt.where(SportsGame.game_date >= start_dt)
 
     if end_date:
         end_dt = datetime.combine(end_date, datetime.max.time())
-        stmt = stmt.where(db_models.SportsGame.game_date <= end_dt)
+        stmt = stmt.where(SportsGame.game_date <= end_dt)
 
     if missing_boxscore:
-        stmt = stmt.where(~db_models.SportsGame.team_boxscores.any())
+        stmt = stmt.where(~SportsGame.team_boxscores.any())
     if missing_player_stats:
-        stmt = stmt.where(~db_models.SportsGame.player_boxscores.any())
+        stmt = stmt.where(~SportsGame.player_boxscores.any())
     if missing_odds:
-        stmt = stmt.where(~db_models.SportsGame.odds.any())
+        stmt = stmt.where(~SportsGame.odds.any())
     if missing_social:
-        stmt = stmt.where(~db_models.SportsGame.social_posts.any())
+        stmt = stmt.where(~SportsGame.social_posts.any())
     if missing_any:
         stmt = stmt.where(
             or_(
-                ~db_models.SportsGame.team_boxscores.any(),
-                ~db_models.SportsGame.player_boxscores.any(),
-                ~db_models.SportsGame.odds.any(),
+                ~SportsGame.team_boxscores.any(),
+                ~SportsGame.player_boxscores.any(),
+                ~SportsGame.odds.any(),
             )
         )
     return stmt
@@ -118,7 +120,7 @@ def normalize_score(value: float) -> int:
     return int(round(clamp_score(value)))
 
 
-def resolve_team_key(team: db_models.SportsTeam) -> str:
+def resolve_team_key(team: SportsTeam) -> str:
     """Resolve the identifier used by ratings/standings feeds."""
     if team.external_ref:
         return team.external_ref
@@ -184,7 +186,7 @@ def preview_tags(
 
 
 def build_preview_context(
-    game: db_models.SportsGame,
+    game: SportsGame,
     home_rating: TeamRatings,
     away_rating: TeamRatings,
 ) -> GameContext:
@@ -226,7 +228,7 @@ def build_preview_context(
 
 
 def summarize_game(
-    game: db_models.SportsGame,
+    game: SportsGame,
     has_story: bool | None = None,
 ) -> GameSummary:
     """Summarize game fields for list responses. Fails fast if core data missing.
@@ -280,7 +282,7 @@ def summarize_game(
 
 
 def resolve_team_abbreviation(
-    game: db_models.SportsGame, post: db_models.GameSocialPost
+    game: SportsGame, post: GameSocialPost
 ) -> str:
     """Resolve a team's abbreviation for a social post entry. Fails fast if not resolvable."""
     if hasattr(post, "team") and post.team and post.team.abbreviation:
@@ -296,8 +298,8 @@ def resolve_team_abbreviation(
 
 
 def serialize_social_posts(
-    game: db_models.SportsGame,
-    posts: Sequence[db_models.GameSocialPost],
+    game: SportsGame,
+    posts: Sequence[GameSocialPost],
 ) -> list[SocialPostEntry]:
     """Serialize social posts for API responses."""
     entries: list[SocialPostEntry] = []
@@ -321,7 +323,7 @@ def serialize_social_posts(
 
 async def enqueue_single_game_run(
     session: "AsyncSession",
-    game: db_models.SportsGame,
+    game: SportsGame,
     *,
     include_boxscores: bool,
     include_odds: bool,
@@ -348,7 +350,7 @@ async def enqueue_single_game_run(
         include_books=None,
     )
 
-    run = db_models.SportsScrapeRun(
+    run = SportsScrapeRun(
         scraper_type=scraper_type,
         league_id=game.league_id,
         season=game.season,
