@@ -131,6 +131,7 @@ services:
       ODDS_API_KEY: ${ODDS_API_KEY:-}
       CBB_STATS_API_KEY: ${CBB_STATS_API_KEY:-}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      API_KEY: ${API_KEY:-}
       X_AUTH_TOKEN: ${X_AUTH_TOKEN:-}
       X_CT0: ${X_CT0:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -169,6 +170,7 @@ services:
       ODDS_API_KEY: ${ODDS_API_KEY:-}
       CBB_STATS_API_KEY: ${CBB_STATS_API_KEY:-}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      API_KEY: ${API_KEY:-}
       X_AUTH_TOKEN: ${X_AUTH_TOKEN:-}
       X_CT0: ${X_CT0:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -194,6 +196,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      API_KEY: ${API_KEY:-}
       CBB_STATS_API_KEY: ${CBB_STATS_API_KEY:-}
     depends_on:
       postgres:
@@ -222,6 +225,7 @@ services:
       # Basic auth for production (uses same password as postgres)
       ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      API_KEY: ${API_KEY:-}
     depends_on:
       - api
     networks:
