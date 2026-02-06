@@ -483,7 +483,8 @@ class ScrapeRunManager:
                     )
                     complete_job_run(social_run_id, "success", "x_social_not_implemented")
                 else:
-                    from ..jobs.social_tasks import collect_team_social
+                    from celery import chain
+                    from ..jobs.social_tasks import collect_team_social, map_social_to_games
 
                     logger.info(
                         "social_dispatched_to_worker",
@@ -492,10 +493,12 @@ class ScrapeRunManager:
                         start_date=str(start),
                         end_date=str(end),
                     )
-                    collect_team_social.apply_async(
-                        args=[config.league_code, str(start), str(end)],
-                        queue="social-scraper",
+                    # Chain: collect tweets → map to games (both on social-scraper queue)
+                    workflow = chain(
+                        collect_team_social.si(config.league_code, str(start), str(end)).set(queue="social-scraper"),
+                        map_social_to_games.si().set(queue="social-scraper"),
                     )
+                    workflow.apply_async()
                     complete_job_run(social_run_id, "success", "dispatched_to_social_worker")
 
             with get_session() as session:

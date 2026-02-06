@@ -170,25 +170,44 @@ class PlaywrightXCollector:
 
                 page.goto(search_url, timeout=self.timeout_ms, wait_until="domcontentloaded")
 
-                # Wait for tweets to appear (up to 10 seconds)
+                # Wait for tweets to appear. X's JS rendering can be slow
+                # under sequential load, so try twice with increasing timeouts.
+                tweet_selector = 'article[data-testid="tweet"]'
+                tweets_found = False
                 try:
-                    page.wait_for_selector(
-                        'article[data-testid="tweet"]',
-                        timeout=10000,
-                        state="attached"
-                    )
+                    page.wait_for_selector(tweet_selector, timeout=15000, state="attached")
+                    tweets_found = True
                 except Exception:
-                    # No tweets found - check for error conditions
+                    pass
+
+                if not tweets_found:
+                    # Check for explicit error pages before giving up
                     content = page.content()
                     if "Something went wrong" in content:
                         page_error_message = "X returned 'Something went wrong' - possible rate limit or auth issue"
                         logger.error("x_page_error", handle=x_handle, error=page_error_message)
-                    elif "Log in" in content or "Sign in" in content:
+                    elif page.url and "/login" in page.url:
                         page_error_message = "X returned login wall - auth tokens may be expired"
                         logger.error("x_page_error", handle=x_handle, error=page_error_message)
                     elif "No results" in content:
                         logger.debug("x_page_no_results", handle=x_handle)
                         page_error_message = "no_results"
+                    else:
+                        # No error detected but no tweets yet — wait longer and try once more
+                        logger.debug("x_slow_render_retry", handle=x_handle)
+                        page.wait_for_timeout(5000)
+                        try:
+                            page.wait_for_selector(tweet_selector, timeout=10000, state="attached")
+                            tweets_found = True
+                        except Exception:
+                            # Still nothing — check for login wall in final content
+                            final_content = page.content()
+                            if "Log in to X" in final_content or "Sign in to X" in final_content:
+                                page_error_message = "X returned login wall - auth tokens may be expired"
+                                logger.error("x_page_error", handle=x_handle, error=page_error_message)
+                            else:
+                                page_error_message = "no_results"
+                                logger.debug("x_page_no_results_after_retry", handle=x_handle)
 
                 page.wait_for_timeout(self.wait_ms)
 
