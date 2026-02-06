@@ -196,6 +196,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      ALLOWED_CORS_ORIGINS: ${ALLOWED_CORS_ORIGINS:-}
       API_KEY: ${API_KEY:-}
       CBB_STATS_API_KEY: ${CBB_STATS_API_KEY:-}
     depends_on:
