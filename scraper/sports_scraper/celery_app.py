@@ -114,11 +114,12 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="*/30"),
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    "active-social-poll-hourly": {
-        "task": "poll_active_social",
-        "schedule": crontab(minute=15),  # :15 past each hour
-        "options": {"queue": "social-scraper", "routing_key": "social-scraper"},
-    },
+    # DISABLED: social scrapes paused for testing
+    # "active-social-poll-hourly": {
+    #     "task": "poll_active_social",
+    #     "schedule": crontab(minute=15),  # :15 past each hour
+    #     "options": {"queue": "social-scraper", "routing_key": "social-scraper"},
+    # },
     # === Phase 4: Daily sweep (truth repair fallback) ===
     # Runs at 5 AM EST alongside old batch ingestion during rollout.
     # After cutover, remove "daily-sports-ingestion-5am-eastern" and

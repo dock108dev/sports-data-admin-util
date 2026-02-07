@@ -61,10 +61,10 @@ def run_scheduled_ingestion() -> dict:
     results["NBA_PBP"] = nba_pbp_result
     logger.info("scheduled_ingestion_nba_pbp_complete", **nba_pbp_result)
 
-    # Dispatch social collection to dedicated worker (fire-and-forget)
-    logger.info("scheduled_ingestion_nba_social_dispatch")
-    collect_social_for_league.delay(league="NBA")
-    results["NBA_SOCIAL"] = {"status": "dispatched"}
+    # DISABLED: social scrapes paused for testing
+    # logger.info("scheduled_ingestion_nba_social_dispatch")
+    # collect_social_for_league.delay(league="NBA")
+    results["NBA_SOCIAL"] = {"status": "disabled"}
 
     # === NHL ===
     logger.info("scheduled_ingestion_nhl_start")
@@ -77,10 +77,10 @@ def run_scheduled_ingestion() -> dict:
     results["NHL_PBP"] = nhl_pbp_result
     logger.info("scheduled_ingestion_nhl_pbp_complete", **nhl_pbp_result)
 
-    # Dispatch social collection to dedicated worker (fire-and-forget)
-    logger.info("scheduled_ingestion_nhl_social_dispatch")
-    collect_social_for_league.delay(league="NHL")
-    results["NHL_SOCIAL"] = {"status": "dispatched"}
+    # DISABLED: social scrapes paused for testing
+    # logger.info("scheduled_ingestion_nhl_social_dispatch")
+    # collect_social_for_league.delay(league="NHL")
+    results["NHL_SOCIAL"] = {"status": "disabled"}
 
     # === NCAAB ===
     logger.info("scheduled_ingestion_ncaab_start")
