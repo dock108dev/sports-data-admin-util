@@ -50,9 +50,10 @@ app.conf.task_routes = {
     "update_game_states": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     "poll_live_pbp": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     "poll_active_odds": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
-    "poll_active_social": {"queue": "social-scraper", "routing_key": "social-scraper"},
     "trigger_flow_for_game": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     "run_daily_sweep": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    # Final-whistle social scrape runs on social-scraper queue (concurrency=1)
+    "run_final_whistle_social": {"queue": "social-scraper", "routing_key": "social-scraper"},
 }
 # Daily sports ingestion at 5:00 AM US Eastern (10:00 UTC during EST, 09:00 UTC during EDT)
 # Using 10:00 UTC to align with 5:00 AM during Eastern Standard Time (November-March).
@@ -114,12 +115,9 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="*/30"),
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    # DISABLED: social scrapes paused for testing
-    # "active-social-poll-hourly": {
-    #     "task": "poll_active_social",
-    #     "schedule": crontab(minute=15),  # :15 past each hour
-    #     "options": {"queue": "social-scraper", "routing_key": "social-scraper"},
-    # },
+    # Social collection is now handled by the two-scrape-per-game model:
+    # - Scrape #1: run_final_whistle_social (dispatched on live→final transition)
+    # - Scrape #2: _run_social_scrape_2 (runs as part of daily sweep)
     # === Phase 4: Daily sweep (truth repair fallback) ===
     # Runs at 5 AM EST alongside old batch ingestion during rollout.
     # After cutover, remove "daily-sports-ingestion-5am-eastern" and

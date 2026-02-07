@@ -124,12 +124,14 @@ def _promote_final_to_archived(session: Session) -> int:
             db_models.SportsGame.end_time.isnot(None),
             db_models.SportsGame.end_time < archive_cutoff,
             has_artifacts,
+            db_models.SportsGame.social_scrape_2_at.isnot(None),
         )
         .all()
     )
 
     for game in games:
         game.status = db_models.GameStatus.archived.value
+        game.closed_at = now
         game.updated_at = now
         promoted += 1
         logger.info(

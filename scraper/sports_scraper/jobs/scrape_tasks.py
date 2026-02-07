@@ -46,7 +46,6 @@ def run_scheduled_ingestion() -> dict:
         schedule_single_league_and_wait,
         run_pbp_ingestion_for_league,
     )
-    from .social_tasks import collect_social_for_league
 
     results = {}
 
@@ -61,10 +60,8 @@ def run_scheduled_ingestion() -> dict:
     results["NBA_PBP"] = nba_pbp_result
     logger.info("scheduled_ingestion_nba_pbp_complete", **nba_pbp_result)
 
-    # DISABLED: social scrapes paused for testing
-    # logger.info("scheduled_ingestion_nba_social_dispatch")
-    # collect_social_for_league.delay(league="NBA")
-    results["NBA_SOCIAL"] = {"status": "disabled"}
+    # Social collection is now handled by the two-scrape-per-game model
+    # (run_final_whistle_social on FINAL + daily sweep Scrape #2)
 
     # === NHL ===
     logger.info("scheduled_ingestion_nhl_start")
@@ -76,11 +73,6 @@ def run_scheduled_ingestion() -> dict:
     nhl_pbp_result = run_pbp_ingestion_for_league("NHL")
     results["NHL_PBP"] = nhl_pbp_result
     logger.info("scheduled_ingestion_nhl_pbp_complete", **nhl_pbp_result)
-
-    # DISABLED: social scrapes paused for testing
-    # logger.info("scheduled_ingestion_nhl_social_dispatch")
-    # collect_social_for_league.delay(league="NHL")
-    results["NHL_SOCIAL"] = {"status": "disabled"}
 
     # === NCAAB ===
     logger.info("scheduled_ingestion_ncaab_start")

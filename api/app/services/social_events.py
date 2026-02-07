@@ -38,7 +38,7 @@ import re
 from datetime import datetime
 from typing import Any, Iterable, Sequence
 
-from ..db.social import GameSocialPost
+from ..db.social import GameSocialPost, TeamSocialPost
 
 logger = logging.getLogger(__name__)
 
@@ -285,7 +285,7 @@ def assign_social_phase_time_based(
 
 
 def build_social_events(
-    posts: Iterable[GameSocialPost],
+    posts: Iterable[GameSocialPost | TeamSocialPost],
     phase_boundaries: dict[str, tuple[datetime, datetime]],
     game_start: datetime | None = None,
     league_code: str | None = None,
@@ -382,7 +382,7 @@ def build_social_events(
 
 
 async def build_social_events_async(
-    posts: Sequence[GameSocialPost],
+    posts: Sequence[GameSocialPost | TeamSocialPost],
     phase_boundaries: dict[str, tuple[datetime, datetime]],
     sport: str = "NBA",
     game_start: datetime | None = None,

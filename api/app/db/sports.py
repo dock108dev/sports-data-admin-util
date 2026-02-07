@@ -24,7 +24,7 @@ from sqlalchemy.sql import text
 from .base import Base
 
 if TYPE_CHECKING:
-    from .social import GameSocialPost, TeamSocialAccount
+    from .social import GameSocialPost, TeamSocialAccount, TeamSocialPost
     from .odds import SportsGameOdds
     from .scraper import SportsScrapeRun
     from .story import SportsGameTimelineArtifact
@@ -234,6 +234,15 @@ class SportsGame(Base):
     external_ids: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
     )
+    social_scrape_1_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    social_scrape_2_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -260,8 +269,14 @@ class SportsGame(Base):
     odds: Mapped[list["SportsGameOdds"]] = relationship(
         "SportsGameOdds", back_populates="game", cascade="all, delete-orphan"
     )
-    social_posts: Mapped[list["GameSocialPost"]] = relationship(
+    _legacy_social_posts: Mapped[list["GameSocialPost"]] = relationship(
         "GameSocialPost", back_populates="game", cascade="all, delete-orphan"
+    )
+    social_posts: Mapped[list["TeamSocialPost"]] = relationship(
+        "TeamSocialPost",
+        primaryjoin="and_(SportsGame.id == foreign(TeamSocialPost.game_id), TeamSocialPost.mapping_status == 'mapped')",
+        viewonly=True,
+        lazy="select",
     )
     plays: Mapped[list["SportsGamePlay"]] = relationship(
         "SportsGamePlay", back_populates="game", cascade="all, delete-orphan"

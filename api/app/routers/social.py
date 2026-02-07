@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from ..db.social import GameSocialPost, TeamSocialAccount
+from ..db.social import GameSocialPost, TeamSocialAccount, TeamSocialPost
 from ..db.sports import SportsTeam, SportsGame, SportsLeague
 from ..db import AsyncSession, get_db
 
@@ -99,7 +99,7 @@ class SocialAccountUpsertRequest(BaseModel):
 # ────────────────────────────────────────────────────────────────────────────────
 
 
-def _serialize_post(post: GameSocialPost) -> SocialPostResponse:
+def _serialize_post(post: GameSocialPost | TeamSocialPost) -> SocialPostResponse:
     """Serialize a social post to API response."""
     return SocialPostResponse(
         id=post.id,
@@ -146,26 +146,28 @@ async def list_social_posts(
     - team_id: Filter by team abbreviation (e.g., "GSW", "LAL")
     - start_date/end_date: Filter by posted_at timestamp
     """
-    stmt = select(GameSocialPost).options(
-        selectinload(GameSocialPost.team)
+    stmt = (
+        select(TeamSocialPost)
+        .options(selectinload(TeamSocialPost.team))
+        .where(TeamSocialPost.mapping_status == "mapped")
     )
 
     if game_id is not None:
-        stmt = stmt.where(GameSocialPost.game_id == game_id)
+        stmt = stmt.where(TeamSocialPost.game_id == game_id)
 
     if team_id is not None:
         # Join to team and filter by abbreviation
         stmt = stmt.where(
-            GameSocialPost.team.has(
+            TeamSocialPost.team.has(
                 SportsTeam.abbreviation.ilike(team_id)
             )
         )
 
     if start_date is not None:
-        stmt = stmt.where(GameSocialPost.posted_at >= start_date)
+        stmt = stmt.where(TeamSocialPost.posted_at >= start_date)
 
     if end_date is not None:
-        stmt = stmt.where(GameSocialPost.posted_at <= end_date)
+        stmt = stmt.where(TeamSocialPost.posted_at <= end_date)
 
     # Count total before pagination
     from sqlalchemy import func
@@ -175,7 +177,7 @@ async def list_social_posts(
 
     # Apply ordering and pagination
     stmt = (
-        stmt.order_by(GameSocialPost.posted_at.asc())
+        stmt.order_by(TeamSocialPost.posted_at.asc())
         .offset(offset)
         .limit(limit)
     )
@@ -278,10 +280,13 @@ async def get_posts_for_game(
 ) -> SocialPostListResponse:
     """Get all social posts for a specific game, sorted by posted_at."""
     stmt = (
-        select(GameSocialPost)
-        .options(selectinload(GameSocialPost.team))
-        .where(GameSocialPost.game_id == game_id)
-        .order_by(GameSocialPost.posted_at.asc())
+        select(TeamSocialPost)
+        .options(selectinload(TeamSocialPost.team))
+        .where(
+            TeamSocialPost.game_id == game_id,
+            TeamSocialPost.mapping_status == "mapped",
+        )
+        .order_by(TeamSocialPost.posted_at.asc())
     )
 
     result = await session.execute(stmt)

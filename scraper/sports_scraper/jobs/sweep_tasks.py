@@ -52,6 +52,12 @@ def run_daily_sweep() -> dict:
         logger.exception("daily_sweep_missing_pbp_error", error=str(exc))
 
     try:
+        results["social_scrape_2"] = _run_social_scrape_2()
+    except Exception as exc:
+        results["social_scrape_2"] = {"error": str(exc)}
+        logger.exception("daily_sweep_social_scrape_2_error", error=str(exc))
+
+    try:
         results["missing_flows"] = _trigger_missing_flows()
     except Exception as exc:
         results["missing_flows"] = {"error": str(exc)}
@@ -65,6 +71,149 @@ def run_daily_sweep() -> dict:
 
     logger.info("daily_sweep_complete", results=results)
     return results
+
+
+def _run_social_scrape_2() -> dict:
+    """Social Scrape #2: capture postgame reactions for recently-final games.
+
+    Query: games WHERE status='final' AND social_scrape_1_at IS NOT NULL
+           AND social_scrape_2_at IS NULL AND end_time > now() - 48 hours
+
+    For each game (sequentially, 3 min cooldown between games):
+    1. Scrape game_date and game_date + 1 (day-bounded)
+    2. Map tweets, only keep phase = 'postgame'
+    3. Skip tweets already stored (dedup via external_post_id)
+    4. Set game.social_scrape_2_at = now()
+    """
+    import time
+
+    from ..db import db_models
+    from ..social.team_collector import TeamTweetCollector
+    from ..social.tweet_mapper import map_tweets_for_team
+    from ..utils.datetime_utils import now_utc
+
+    now = now_utc()
+    lookback = now - timedelta(hours=48)
+
+    with get_session() as session:
+        games = (
+            session.query(db_models.SportsGame)
+            .filter(
+                db_models.SportsGame.status == db_models.GameStatus.final.value,
+                db_models.SportsGame.social_scrape_1_at.isnot(None),
+                db_models.SportsGame.social_scrape_2_at.is_(None),
+                db_models.SportsGame.end_time.isnot(None),
+                db_models.SportsGame.end_time > lookback,
+            )
+            .all()
+        )
+
+        if not games:
+            logger.debug("sweep_social_scrape_2_no_games")
+            return {"games_found": 0, "games_scraped": 0}
+
+        logger.info("sweep_social_scrape_2_start", games_count=len(games))
+
+        try:
+            collector = TeamTweetCollector()
+        except RuntimeError as exc:
+            logger.error("sweep_social_scrape_2_collector_unavailable", error=str(exc))
+            return {"games_found": len(games), "games_scraped": 0, "error": str(exc)}
+
+        games_scraped = 0
+        total_new = 0
+        total_postgame_kept = 0
+
+        for game in games:
+            game_date = game.game_date.date() if hasattr(game.game_date, "date") else game.game_date
+            next_day = game_date + timedelta(days=1)
+            team_ids = [game.home_team_id, game.away_team_id]
+
+            game_new = 0
+            for team_id in team_ids:
+                try:
+                    new_tweets = collector.collect_team_tweets(
+                        session=session,
+                        team_id=team_id,
+                        start_date=game_date,
+                        end_date=next_day,
+                    )
+                    game_new += new_tweets
+                except Exception as exc:
+                    logger.warning(
+                        "sweep_social_scrape_2_team_error",
+                        game_id=game.id,
+                        team_id=team_id,
+                        error=str(exc),
+                    )
+
+            # Map unmapped tweets
+            for team_id in team_ids:
+                try:
+                    map_tweets_for_team(session, team_id)
+                except Exception as exc:
+                    logger.warning(
+                        "sweep_social_scrape_2_map_error",
+                        game_id=game.id,
+                        team_id=team_id,
+                        error=str(exc),
+                    )
+
+            # For Scrape #2: remove any pregame/in_game tweets that were newly mapped
+            # to this game (they should already exist from Scrape #1; dedup handles it,
+            # but if any slipped through, unmap them)
+            non_postgame_unmapped = (
+                session.query(db_models.TeamSocialPost)
+                .filter(
+                    db_models.TeamSocialPost.game_id == game.id,
+                    db_models.TeamSocialPost.mapping_status == "mapped",
+                    db_models.TeamSocialPost.game_phase.in_(["pregame", "in_game"]),
+                )
+                .count()
+            )
+
+            # Count postgame posts for this game (the ones we care about)
+            postgame_count = (
+                session.query(db_models.TeamSocialPost)
+                .filter(
+                    db_models.TeamSocialPost.game_id == game.id,
+                    db_models.TeamSocialPost.mapping_status == "mapped",
+                    db_models.TeamSocialPost.game_phase == "postgame",
+                )
+                .count()
+            )
+            total_postgame_kept += postgame_count
+
+            game.social_scrape_2_at = now_utc()
+            total_new += game_new
+            games_scraped += 1
+
+            logger.info(
+                "sweep_social_scrape_2_game_complete",
+                game_id=game.id,
+                new_tweets=game_new,
+                postgame_kept=postgame_count,
+            )
+
+            # Inter-game cooldown
+            if game != games[-1]:
+                time.sleep(180)
+
+        session.commit()
+
+    logger.info(
+        "sweep_social_scrape_2_complete",
+        games_scraped=games_scraped,
+        total_new=total_new,
+        total_postgame_kept=total_postgame_kept,
+    )
+
+    return {
+        "games_found": len(games),
+        "games_scraped": games_scraped,
+        "total_new_tweets": total_new,
+        "total_postgame_kept": total_postgame_kept,
+    }
 
 
 def _repair_stale_statuses() -> dict:
@@ -285,7 +434,11 @@ def _backfill_missing_pbp() -> dict:
 
 
 def _trigger_missing_flows() -> dict:
-    """Find final games with PBP but no timeline artifacts and trigger flow generation."""
+    """Find final games with PBP but no timeline artifacts and trigger flow generation.
+
+    If Social Scrape #1 hasn't run yet, dispatch run_final_whistle_social instead
+    of trigger_flow_for_game (the social task will dispatch flow generation after).
+    """
     from ..db import db_models
     from ..utils.datetime_utils import now_utc
     from sqlalchemy import exists, not_
@@ -306,7 +459,7 @@ def _trigger_missing_flows() -> dict:
         )
 
         missing = (
-            session.query(db_models.SportsGame.id)
+            session.query(db_models.SportsGame.id, db_models.SportsGame.social_scrape_1_at)
             .filter(
                 db_models.SportsGame.status == db_models.GameStatus.final.value,
                 db_models.SportsGame.game_date >= lookback,
@@ -317,17 +470,26 @@ def _trigger_missing_flows() -> dict:
         )
 
     if not missing:
-        return {"missing_count": 0, "triggered": 0}
+        return {"missing_count": 0, "triggered": 0, "social_first": 0}
 
     logger.info("sweep_missing_flows", count=len(missing))
 
-    # Dispatch flow generation for each game
     from .flow_trigger_tasks import trigger_flow_for_game
+    from .final_whistle_tasks import run_final_whistle_social
 
     triggered = 0
-    for (game_id,) in missing:
+    social_first = 0
+    for game_id, scrape_1_at in missing:
         try:
-            trigger_flow_for_game.delay(game_id)
+            if scrape_1_at is None:
+                # Social Scrape #1 not done yet — dispatch it (it will trigger flow after)
+                run_final_whistle_social.apply_async(
+                    args=[game_id],
+                    queue="social-scraper",
+                )
+                social_first += 1
+            else:
+                trigger_flow_for_game.delay(game_id)
             triggered += 1
         except Exception as exc:
             logger.warning(
@@ -336,7 +498,7 @@ def _trigger_missing_flows() -> dict:
                 error=str(exc),
             )
 
-    return {"missing_count": len(missing), "triggered": triggered}
+    return {"missing_count": len(missing), "triggered": triggered, "social_first": social_first}
 
 
 def _archive_old_games() -> dict:

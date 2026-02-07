@@ -23,6 +23,10 @@ class TimelineGenerationRequest(BaseModel):
     timeline_version: str = Field(
         default="v1", description="Timeline version identifier"
     )
+    force: bool = Field(
+        default=False,
+        description="Force regeneration even if a timeline already exists (admin override)",
+    )
 
 
 class TimelineGenerationResponse(BaseModel):
@@ -106,6 +110,17 @@ async def generate_timeline_for_game(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Game {game_id} has no play-by-play data",
         )
+
+    # Immutability guard: reject if flow already exists unless force=True
+    if not request.force:
+        existing_artifact = await session.scalar(
+            select(exists().where(SportsGameTimelineArtifact.game_id == game_id))
+        )
+        if existing_artifact:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Game flow is immutable. Use force=true to regenerate.",
+            )
 
     # Generate timeline
     try:

@@ -137,22 +137,23 @@ def poll_live_pbp_task() -> dict:
 
                     if result.get("transition"):
                         transitions.append(result["transition"])
-                        # Edge-trigger: dispatch flow generation on live→final
+                        # Edge-trigger: dispatch social scrape #1 → flow on live→final
                         tr = result["transition"]
                         if tr["to"] == "final":
                             try:
-                                from .flow_trigger_tasks import trigger_flow_for_game
-                                trigger_flow_for_game.apply_async(
+                                from .final_whistle_tasks import run_final_whistle_social
+                                run_final_whistle_social.apply_async(
                                     args=[tr["game_id"]],
-                                    countdown=60,  # Wait 60s for PBP to settle
+                                    countdown=300,  # 5 min buffer for PBP to settle
+                                    queue="social-scraper",
                                 )
                                 logger.info(
-                                    "flow_trigger_dispatched",
+                                    "final_whistle_social_dispatched",
                                     game_id=tr["game_id"],
                                 )
                             except Exception as flow_exc:
                                 logger.warning(
-                                    "flow_trigger_dispatch_error",
+                                    "final_whistle_social_dispatch_error",
                                     game_id=tr["game_id"],
                                     error=str(flow_exc),
                                 )
@@ -475,148 +476,7 @@ def poll_active_odds_task() -> dict:
         _release_redis_lock("lock:poll_active_odds")
 
 
-@shared_task(name="poll_active_social")
-def poll_active_social_task() -> dict:
-    """Poll social data for teams with games in active windows (hourly).
 
-    Groups active games by league, determines date ranges, and dispatches
-    collect_team_social per league with (league_code, start_date, end_date).
-    All dispatches go to the social-scraper queue which runs concurrency=1,
-    ensuring sequential X requests and stable IP.
-
-    After collection, dispatches map_social_to_games to assign new tweets.
-    """
-    from ..services.active_games import ActiveGamesResolver
-    from ..db import db_models
-    from ..utils.datetime_utils import now_utc
-    from datetime import timedelta
-
-    resolver = ActiveGamesResolver()
-
-    with get_session() as session:
-        pairs = resolver.get_games_needing_social(session)
-
-        if not pairs:
-            logger.debug("poll_active_social_no_games")
-            return {"leagues_dispatched": 0}
-
-        # Collect game_ids and look up their leagues + dates
-        game_ids = list({game_id for game_id, _ in pairs})
-
-        # Group games by league_code with date ranges
-        league_ranges: dict[str, dict] = {}
-        for game_id in game_ids:
-            game = session.query(db_models.SportsGame).get(game_id)
-            if not game or not game.game_date:
-                continue
-            league = session.query(db_models.SportsLeague).get(game.league_id)
-            if not league:
-                continue
-
-            game_day = game.game_date.date() if hasattr(game.game_date, 'date') else game.game_date
-            code = league.code
-
-            if code not in league_ranges:
-                league_ranges[code] = {"min_date": game_day, "max_date": game_day}
-            else:
-                if game_day < league_ranges[code]["min_date"]:
-                    league_ranges[code]["min_date"] = game_day
-                if game_day > league_ranges[code]["max_date"]:
-                    league_ranges[code]["max_date"] = game_day
-
-        if not league_ranges:
-            logger.debug("poll_active_social_no_leagues")
-            return {"leagues_dispatched": 0}
-
-        # Check freshness: skip leagues where ALL games have recent social data
-        stale_cutoff = now_utc() - timedelta(minutes=55)
-        stale_leagues: dict[str, dict] = {}
-
-        for code, date_range in league_ranges.items():
-            league = (
-                session.query(db_models.SportsLeague)
-                .filter(db_models.SportsLeague.code == code)
-                .first()
-            )
-            if not league:
-                continue
-
-            # Check if any game in this league's range still needs social
-            games_needing = (
-                session.query(db_models.SportsGame.id)
-                .filter(
-                    db_models.SportsGame.league_id == league.id,
-                    db_models.SportsGame.game_date >= date_range["min_date"],
-                    db_models.SportsGame.status.in_([
-                        db_models.GameStatus.pregame.value,
-                        db_models.GameStatus.live.value,
-                        db_models.GameStatus.final.value,
-                    ]),
-                )
-                .filter(
-                    (db_models.SportsGame.last_social_at.is_(None))
-                    | (db_models.SportsGame.last_social_at < stale_cutoff)
-                )
-                .first()
-            )
-            if games_needing:
-                stale_leagues[code] = date_range
-
-        if not stale_leagues:
-            logger.debug(
-                "poll_active_social_all_fresh",
-                total_leagues=len(league_ranges),
-            )
-            return {"leagues_dispatched": 0, "leagues_fresh": len(league_ranges)}
-
-    # Dispatch collect_team_social per league to social-scraper queue.
-    # concurrency=1 on social-scraper ensures sequential execution = stable IP.
-    from .social_tasks import collect_team_social, map_social_to_games
-
-    dispatched = 0
-    for code, date_range in stale_leagues.items():
-        try:
-            collect_team_social.apply_async(
-                args=[
-                    code,
-                    date_range["min_date"].isoformat(),
-                    date_range["max_date"].isoformat(),
-                ],
-                queue="social-scraper",
-            )
-            dispatched += 1
-            logger.info(
-                "poll_active_social_league_dispatched",
-                league=code,
-                start_date=str(date_range["min_date"]),
-                end_date=str(date_range["max_date"]),
-            )
-        except Exception as exc:
-            logger.warning(
-                "poll_active_social_dispatch_error",
-                league=code,
-                error=str(exc),
-            )
-
-    # Dispatch mapping after collection (with countdown so collection finishes first)
-    if dispatched > 0:
-        try:
-            map_social_to_games.apply_async(
-                queue="social-scraper",
-                countdown=120,  # 2 min delay to let collection finish
-            )
-        except Exception as exc:
-            logger.warning("poll_active_social_map_dispatch_error", error=str(exc))
-
-    logger.info(
-        "poll_active_social_dispatched",
-        leagues_dispatched=dispatched,
-        leagues_fresh=len(league_ranges) - len(stale_leagues),
-        leagues_total=len(league_ranges),
-    )
-
-    return {
-        "leagues_dispatched": dispatched,
-        "leagues_fresh": len(league_ranges) - len(stale_leagues),
-        "leagues_total": len(league_ranges),
-    }
+# poll_active_social removed — social collection is now handled by the
+# two-scrape-per-game model: run_final_whistle_social (Scrape #1 on FINAL)
+# and _run_social_scrape_2 (Scrape #2 in daily sweep).

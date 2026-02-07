@@ -76,10 +76,10 @@ def trigger_flow_for_game(game_id: int) -> dict:
 
         if has_artifacts:
             logger.info(
-                "flow_trigger_skip_exists",
+                "flow_trigger_skip_immutable",
                 game_id=game_id,
             )
-            return {"game_id": game_id, "status": "skipped", "reason": "already_exists"}
+            return {"game_id": game_id, "status": "skipped", "reason": "immutable"}
 
         # Get league code for the API call
         league = session.query(db_models.SportsLeague).get(game.league_id)

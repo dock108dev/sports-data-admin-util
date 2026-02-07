@@ -17,7 +17,7 @@ from ...db.sports import (
     SportsGamePlay,
 )
 from ...db.odds import SportsGameOdds
-from ...db.social import GameSocialPost
+from ...db.social import GameSocialPost, TeamSocialPost
 from ...db.scraper import SportsGameConflict
 from ...db.story import SportsGameStory
 from ...game_metadata.nuggets import generate_nugget
@@ -223,7 +223,10 @@ async def list_games(
     )
     with_social_count_stmt = count_stmt.where(
         exists(
-            select(1).where(GameSocialPost.game_id == SportsGame.id)
+            select(1).where(
+                TeamSocialPost.game_id == SportsGame.id,
+                TeamSocialPost.mapping_status == "mapped",
+            )
         )
     )
     with_pbp_count_stmt = count_stmt.where(
@@ -358,7 +361,7 @@ async def get_game(
             ),
             selectinload(SportsGame.odds),
             selectinload(SportsGame.social_posts).selectinload(
-                GameSocialPost.team
+                TeamSocialPost.team
             ),
             selectinload(SportsGame.plays).selectinload(
                 SportsGamePlay.team
