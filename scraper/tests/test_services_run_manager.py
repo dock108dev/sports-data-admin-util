@@ -1264,6 +1264,9 @@ class TestScrapeRunManagerSocial:
 
         assert result["social_posts"] == 0
 
+    @patch("sports_scraper.jobs.social_tasks.map_social_to_games")
+    @patch("sports_scraper.jobs.social_tasks.collect_team_social")
+    @patch("celery.chain")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.start_job_run")
     @patch("sports_scraper.services.run_manager.complete_job_run")
@@ -1275,7 +1278,7 @@ class TestScrapeRunManagerSocial:
     def test_social_collects_posts(
         self, mock_scrapers, mock_odds, mock_live,
         mock_conflicts, mock_missing, mock_complete, mock_start,
-        mock_get_session
+        mock_get_session, mock_chain, mock_collect, mock_map
     ):
         """Social dispatches tasks for supported leagues."""
         mock_scrapers.return_value = {}
