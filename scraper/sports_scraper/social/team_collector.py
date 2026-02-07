@@ -238,13 +238,7 @@ class TeamTweetCollector:
             .all()
         )
 
-        # Get unique team IDs from games
-        team_ids = set()
-        for game in games:
-            team_ids.add(game.home_team_id)
-            team_ids.add(game.away_team_id)
-
-        if not team_ids:
+        if not games:
             logger.info(
                 "team_collector_no_games",
                 league_code=league_code,
@@ -264,59 +258,78 @@ class TeamTweetCollector:
             start_date=str(start_date),
             end_date=str(end_date),
             games_found=len(games),
-            unique_teams=len(team_ids),
         )
 
-        # Collect tweets for each team.
-        # If X rate-limits a team ("Something went wrong"), skip it with an
-        # extra backoff and continue to the next team. Only stop the batch
-        # if multiple consecutive teams hit the circuit breaker.
+        # Iterate game-by-game: scrape both teams per game, then wait 150s
+        # before the next game to avoid X rate limits.
         import time
+
+        _INTER_GAME_DELAY_SECONDS = 150
+        _MAX_CONSECUTIVE_BREAKER_HITS = 3
 
         teams_processed = 0
         total_new_tweets = 0
         errors: list[str] = []
         consecutive_breaker_hits = 0
-        _MAX_CONSECUTIVE_BREAKER_HITS = 3
+        scraped_team_ids: set[int] = set()
 
-        for team_id in team_ids:
-            try:
-                new_tweets = self.collect_team_tweets(
-                    session=session,
-                    team_id=team_id,
-                    start_date=start_date,
-                    end_date=end_date,
+        for i, game in enumerate(games):
+            # Wait between games (skip before the first one)
+            if i > 0:
+                logger.info(
+                    "team_collector_inter_game_delay",
+                    delay_seconds=_INTER_GAME_DELAY_SECONDS,
+                    games_remaining=len(games) - i,
                 )
-                teams_processed += 1
-                total_new_tweets += new_tweets
-                consecutive_breaker_hits = 0  # Reset on success
-            except XCircuitBreakerError as exc:
-                consecutive_breaker_hits += 1
-                errors.append(f"Team {team_id}: rate limited ({str(exc)})")
-                logger.warning(
-                    "team_collector_rate_limited",
-                    team_id=team_id,
-                    consecutive_hits=consecutive_breaker_hits,
-                    error=str(exc),
-                )
-                if consecutive_breaker_hits >= _MAX_CONSECUTIVE_BREAKER_HITS:
-                    logger.error(
-                        "team_collector_batch_abort",
-                        teams_processed=teams_processed,
-                        consecutive_hits=consecutive_breaker_hits,
+                time.sleep(_INTER_GAME_DELAY_SECONDS)
+
+            for team_id in (game.home_team_id, game.away_team_id):
+                if team_id in scraped_team_ids:
+                    continue
+                scraped_team_ids.add(team_id)
+
+                try:
+                    new_tweets = self.collect_team_tweets(
+                        session=session,
+                        team_id=team_id,
+                        start_date=start_date,
+                        end_date=end_date,
                     )
-                    break
-                # Back off before trying the next team
-                logger.info("team_collector_rate_limit_backoff", backoff_seconds=120)
-                time.sleep(120)
-            except Exception as exc:
-                error_msg = f"Team {team_id}: {str(exc)}"
-                errors.append(error_msg)
-                logger.exception(
-                    "team_collector_team_failed",
-                    team_id=team_id,
-                    error=str(exc),
-                )
+                    teams_processed += 1
+                    total_new_tweets += new_tweets
+                    consecutive_breaker_hits = 0  # Reset on success
+                except XCircuitBreakerError as exc:
+                    consecutive_breaker_hits += 1
+                    errors.append(f"Team {team_id}: rate limited ({str(exc)})")
+                    logger.warning(
+                        "team_collector_rate_limited",
+                        team_id=team_id,
+                        consecutive_hits=consecutive_breaker_hits,
+                        error=str(exc),
+                    )
+                    if consecutive_breaker_hits >= _MAX_CONSECUTIVE_BREAKER_HITS:
+                        logger.error(
+                            "team_collector_batch_abort",
+                            teams_processed=teams_processed,
+                            consecutive_hits=consecutive_breaker_hits,
+                        )
+                        break
+                    # Back off before trying the next team
+                    logger.info("team_collector_rate_limit_backoff", backoff_seconds=120)
+                    time.sleep(120)
+                except Exception as exc:
+                    error_msg = f"Team {team_id}: {str(exc)}"
+                    errors.append(error_msg)
+                    logger.exception(
+                        "team_collector_team_failed",
+                        team_id=team_id,
+                        error=str(exc),
+                    )
+            else:
+                # Only reached if inner loop didn't break
+                continue
+            # Inner loop broke (batch abort) — stop outer loop too
+            break
 
         logger.info(
             "team_collector_range_complete",
