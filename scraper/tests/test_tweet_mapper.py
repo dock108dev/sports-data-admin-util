@@ -44,27 +44,38 @@ def _make_tweet(**kwargs) -> MagicMock:
 # get_game_window
 # ---------------------------------------------------------------------------
 class TestGetGameWindow:
-    def test_tip_time_available(self):
-        game = _make_game(tip_time=_utc(2025, 6, 15, 19, 0))
+    def test_window_starts_at_5am_et(self):
+        """Pregame window starts at 5 AM ET on game_date, not relative to tip."""
+        # game_date=Jun 15 midnight UTC (EDT offset = -4), 5 AM EDT = 09:00 UTC
+        game = _make_game(
+            tip_time=_utc(2025, 6, 15, 23, 0),  # 7 PM EDT
+            game_date=_utc(2025, 6, 15, 0, 0),
+        )
         start, end = get_game_window(game)
-        assert start == _utc(2025, 6, 15, 16, 0)  # 3h before
-        assert end == _utc(2025, 6, 16, 1, 0)      # 3h after estimated end (19+3+3)
+        assert start == _utc(2025, 6, 15, 9, 0)  # 5 AM EDT = 09:00 UTC
 
-    def test_falls_back_to_game_date(self):
-        game = _make_game(tip_time=None, game_date=_utc(2025, 6, 15, 15, 0))
+    def test_window_starts_at_5am_et_winter(self):
+        """During EST (UTC-5), 5 AM ET = 10:00 UTC."""
+        # Feb 5 game_date, EST offset = -5
+        game = _make_game(
+            tip_time=_utc(2026, 2, 6, 1, 10),  # 8:10 PM EST
+            game_date=_utc(2026, 2, 5, 0, 0),
+        )
         start, end = get_game_window(game)
-        assert start == _utc(2025, 6, 15, 12, 0)  # 3h before 15:00
+        assert start == _utc(2026, 2, 5, 10, 0)  # 5 AM EST = 10:00 UTC
 
-    def test_midnight_estimates_7pm_et(self):
+    def test_falls_back_to_game_date_for_start(self):
+        """Without tip_time, game_date still drives the 5 AM ET window."""
         game = _make_game(tip_time=None, game_date=_utc(2025, 6, 15, 0, 0))
         start, end = get_game_window(game)
-        # 7 PM ET = 23:00 UTC (in summer EDT)
-        assert start.hour < 23  # pregame window before 7pm ET
+        # 5 AM EDT on Jun 15 = 09:00 UTC
+        assert start == _utc(2025, 6, 15, 9, 0)
 
     def test_uses_actual_end_time(self):
         game = _make_game(
             tip_time=_utc(2025, 6, 15, 19, 0),
             end_time=_utc(2025, 6, 15, 22, 30),
+            game_date=_utc(2025, 6, 15, 0, 0),
         )
         start, end = get_game_window(game)
         assert end == _utc(2025, 6, 16, 1, 30)  # 3h after actual end
@@ -73,6 +84,7 @@ class TestGetGameWindow:
         game = _make_game(
             tip_time=_utc(2025, 6, 15, 19, 0),
             end_time=_utc(2025, 6, 15, 18, 0),  # before tip
+            game_date=_utc(2025, 6, 15, 0, 0),
         )
         start, end = get_game_window(game)
         # Falls back to estimated end (tip + 3h duration)
@@ -80,16 +92,35 @@ class TestGetGameWindow:
 
     def test_naive_datetime_gets_utc(self):
         naive_tip = datetime(2025, 6, 15, 19, 0)  # no tzinfo
-        game = _make_game(tip_time=naive_tip)
+        game = _make_game(tip_time=naive_tip, game_date=_utc(2025, 6, 15, 0, 0))
         start, end = get_game_window(game)
         assert start.tzinfo is not None
         assert end.tzinfo is not None
 
-    def test_custom_window_params(self):
-        game = _make_game(tip_time=_utc(2025, 6, 15, 19, 0))
-        start, end = get_game_window(game, pregame_hours=1, postgame_hours=1, game_duration_hours=2)
-        assert start == _utc(2025, 6, 15, 18, 0)
-        assert end == _utc(2025, 6, 15, 22, 0)  # 19+2+1
+    def test_postgame_hours_param(self):
+        game = _make_game(
+            tip_time=_utc(2025, 6, 15, 19, 0),
+            game_date=_utc(2025, 6, 15, 0, 0),
+        )
+        start, end = get_game_window(game, postgame_hours=1, game_duration_hours=2)
+        assert start == _utc(2025, 6, 15, 9, 0)   # 5 AM EDT
+        assert end == _utc(2025, 6, 15, 22, 0)     # 19+2+1
+
+    def test_real_world_pacers_example(self):
+        """Pacers game Feb 6 tips 8:10 PM ET (01:10 UTC Feb 7).
+
+        game_date = Feb 6 midnight UTC. Pregame should start at 5 AM EST = 10:00 UTC.
+        A tweet at 2:50 PM ET (19:50 UTC) should be inside the window.
+        """
+        game = _make_game(
+            tip_time=_utc(2026, 2, 7, 1, 10),   # 8:10 PM EST
+            game_date=_utc(2026, 2, 6, 0, 0),
+        )
+        start, end = get_game_window(game)
+        assert start == _utc(2026, 2, 6, 10, 0)  # 5 AM EST
+
+        tweet_at = _utc(2026, 2, 6, 19, 50)  # 2:50 PM EST
+        assert start <= tweet_at <= end
 
 
 # ---------------------------------------------------------------------------

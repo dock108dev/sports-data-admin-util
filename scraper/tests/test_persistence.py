@@ -436,23 +436,28 @@ class TestClassifyGamePhase:
     """Tests for classify_game_phase function."""
 
     def test_tweet_before_tip_time_is_pregame(self):
-        """A tweet posted before tip_time is pregame."""
+        """A tweet posted before tip_time (but after 5 AM ET) is pregame."""
         game = _make_game(
-            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),  # midnight UTC
+            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),  # 7 PM EST
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
         )
-        posted_at = datetime(2026, 2, 5, 22, 0, tzinfo=timezone.utc)  # 2 hours before
+        posted_at = datetime(2026, 2, 5, 22, 0, tzinfo=timezone.utc)  # 2 hours before tip
         assert classify_game_phase(posted_at, game) == "pregame"
 
     def test_tweet_at_tip_time_is_in_game(self):
         """A tweet posted exactly at tip_time is in_game."""
         tip = datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc)
-        game = _make_game(tip_time=tip)
+        game = _make_game(
+            tip_time=tip,
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
+        )
         assert classify_game_phase(tip, game) == "in_game"
 
     def test_tweet_during_game_is_in_game(self):
         """A tweet posted during the game (between start and end) is in_game."""
         game = _make_game(
             tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
             end_time=datetime(2026, 2, 6, 2, 30, tzinfo=timezone.utc),
         )
         posted_at = datetime(2026, 2, 6, 1, 0, tzinfo=timezone.utc)
@@ -462,6 +467,7 @@ class TestClassifyGamePhase:
         """A tweet posted after end_time is postgame."""
         game = _make_game(
             tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
             end_time=datetime(2026, 2, 6, 2, 30, tzinfo=timezone.utc),
         )
         posted_at = datetime(2026, 2, 6, 3, 0, tzinfo=timezone.utc)
@@ -469,11 +475,10 @@ class TestClassifyGamePhase:
 
     def test_no_tip_time_uses_7pm_et_fallback(self):
         """When tip_time is None and game_date is midnight, falls back to 7 PM ET."""
-        # game_date midnight UTC for Feb 6 → 7 PM ET on Feb 6 = midnight UTC Feb 7
         game = _make_game(
             game_date=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
         )
-        # 11 PM UTC on Feb 6 is before midnight UTC Feb 7 (7 PM ET) → pregame
+        # 11 PM UTC on Feb 6 is before midnight UTC Feb 7 (7 PM EST) → pregame
         posted_at = datetime(2026, 2, 6, 23, 0, tzinfo=timezone.utc)
         assert classify_game_phase(posted_at, game) == "pregame"
 
@@ -481,7 +486,7 @@ class TestClassifyGamePhase:
         """When end_time is None, game_end = game_start + duration."""
         game = _make_game(
             tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
-            # end_time is None → estimated end = 0:00 + 3h = 3:00 UTC
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
         )
         # 2 hours in → in_game
         posted_at = datetime(2026, 2, 6, 2, 0, tzinfo=timezone.utc)
@@ -496,9 +501,35 @@ class TestClassifyGamePhase:
         end = datetime(2026, 2, 6, 2, 30, tzinfo=timezone.utc)
         game = _make_game(
             tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
             end_time=end,
         )
         assert classify_game_phase(end, game) == "in_game"
+
+    def test_morning_tweet_on_gameday_is_pregame(self):
+        """A tweet at 10 AM ET on game day should be pregame."""
+        # Game tips at 7 PM EST (midnight UTC next day), game_date = Feb 5
+        game = _make_game(
+            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
+        )
+        # 10 AM EST = 15:00 UTC on Feb 5
+        posted_at = datetime(2026, 2, 5, 15, 0, tzinfo=timezone.utc)
+        assert classify_game_phase(posted_at, game) == "pregame"
+
+    def test_tweet_before_5am_et_is_still_pregame_by_phase(self):
+        """classify_game_phase returns 'pregame' for any tweet before tip.
+
+        The 5 AM ET boundary is enforced by get_game_window (window matching),
+        not by classify_game_phase (which only classifies already-matched tweets).
+        """
+        game = _make_game(
+            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
+        )
+        # 4 AM EST = 09:00 UTC on Feb 5 (before 5 AM ET boundary)
+        posted_at = datetime(2026, 2, 5, 9, 0, tzinfo=timezone.utc)
+        assert classify_game_phase(posted_at, game) == "pregame"
 
 
 from sports_scraper.persistence.odds_matching import (

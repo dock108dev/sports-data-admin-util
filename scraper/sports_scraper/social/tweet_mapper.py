@@ -20,36 +20,14 @@ if TYPE_CHECKING:
 
 
 # Default game window configuration
-# These values define when a tweet is considered part of a game
-DEFAULT_PREGAME_HOURS = 3  # Hours before tip_time to include
 DEFAULT_POSTGAME_HOURS = 3  # Hours after estimated game end to include
 DEFAULT_GAME_DURATION_HOURS = 3  # Estimated game duration
+EASTERN = ZoneInfo("America/New_York")
+PREGAME_START_HOUR_ET = 5  # Pregame window opens at 5 AM ET on game day
 
 
-def get_game_window(
-    game,
-    pregame_hours: int = DEFAULT_PREGAME_HOURS,
-    postgame_hours: int = DEFAULT_POSTGAME_HOURS,
-    game_duration_hours: int = DEFAULT_GAME_DURATION_HOURS,
-) -> tuple[datetime, datetime]:
-    """
-    Calculate the tweet window for a game.
-
-    The window includes:
-    - pregame_hours before tip_time
-    - The game itself (estimated game_duration_hours)
-    - postgame_hours after game end
-
-    Args:
-        game: SportsGame object
-        pregame_hours: Hours before game to include
-        postgame_hours: Hours after game end to include
-        game_duration_hours: Estimated game duration
-
-    Returns:
-        Tuple of (window_start, window_end) as timezone-aware datetimes
-    """
-    # Prefer tip_time if available, otherwise fall back to game_date
+def _get_game_start(game) -> datetime:
+    """Resolve game start time from tip_time or game_date, always UTC-aware."""
     if game.tip_time:
         game_start = game.tip_time
     else:
@@ -58,25 +36,63 @@ def get_game_window(
         # game_date is stored as midnight UTC for the ET calendar date (by odds API),
         # so we use the UTC date directly and construct 7 PM ET on that date.
         if game_start.hour == 0 and game_start.minute == 0:
-            eastern = ZoneInfo("America/New_York")
             game_day = game_start.date()  # The correct ET calendar date
-            estimated_et = datetime.combine(game_day, datetime.min.time(), tzinfo=eastern).replace(hour=19)
+            estimated_et = datetime.combine(
+                game_day, datetime.min.time(), tzinfo=EASTERN
+            ).replace(hour=19)
             game_start = estimated_et.astimezone(timezone.utc)
 
-    # Ensure timezone awareness
     if game_start.tzinfo is None:
         game_start = game_start.replace(tzinfo=timezone.utc)
+    return game_start
 
-    # Use actual end_time if available and reasonable, otherwise estimate
+
+def _get_game_end(game, game_start: datetime, game_duration_hours: int) -> datetime:
+    """Resolve game end time from end_time or estimated duration, always UTC-aware."""
     if game.end_time and game.end_time > game_start:
         game_end = game.end_time
         if game_end.tzinfo is None:
             game_end = game_end.replace(tzinfo=timezone.utc)
     else:
         game_end = game_start + timedelta(hours=game_duration_hours)
+    return game_end
 
-    # Calculate window
-    window_start = game_start - timedelta(hours=pregame_hours)
+
+def _pregame_start_utc(game) -> datetime:
+    """Return 5 AM ET on the game's calendar date, as a UTC datetime.
+
+    game.game_date is stored as midnight UTC representing the ET calendar date.
+    """
+    game_day = game.game_date.date()
+    pregame_et = datetime.combine(
+        game_day, datetime.min.time(), tzinfo=EASTERN
+    ).replace(hour=PREGAME_START_HOUR_ET)
+    return pregame_et.astimezone(timezone.utc)
+
+
+def get_game_window(
+    game,
+    postgame_hours: int = DEFAULT_POSTGAME_HOURS,
+    game_duration_hours: int = DEFAULT_GAME_DURATION_HOURS,
+) -> tuple[datetime, datetime]:
+    """
+    Calculate the tweet window for a game.
+
+    The window spans from 5 AM ET on the game's calendar date through
+    postgame_hours after game end.
+
+    Args:
+        game: SportsGame object (must have game_date, tip_time, end_time)
+        postgame_hours: Hours after game end to include
+        game_duration_hours: Estimated game duration when end_time is unavailable
+
+    Returns:
+        Tuple of (window_start, window_end) as timezone-aware UTC datetimes
+    """
+    game_start = _get_game_start(game)
+    game_end = _get_game_end(game, game_start, game_duration_hours)
+
+    window_start = _pregame_start_utc(game)
     window_end = game_end + timedelta(hours=postgame_hours)
 
     return window_start, window_end
@@ -89,32 +105,16 @@ def classify_game_phase(
 ) -> str:
     """Classify a tweet as pregame/in_game/postgame relative to a game.
 
+    Boundaries:
+    - pregame:  5 AM ET on game day <= posted_at < tip_time
+    - in_game:  tip_time <= posted_at <= end_time
+    - postgame: end_time < posted_at
+
     Lightweight inline logic (scraper can't import from api).
     Mirrors api/app/services/timeline_phases.py::classify_tweet_phase.
     """
-    # Compute game_start (same logic as get_game_window)
-    if game.tip_time:
-        game_start = game.tip_time
-    else:
-        game_start = game.game_date
-        if game_start.hour == 0 and game_start.minute == 0:
-            eastern = ZoneInfo("America/New_York")
-            game_day = game_start.date()
-            estimated_et = datetime.combine(
-                game_day, datetime.min.time(), tzinfo=eastern
-            ).replace(hour=19)
-            game_start = estimated_et.astimezone(timezone.utc)
-
-    if game_start.tzinfo is None:
-        game_start = game_start.replace(tzinfo=timezone.utc)
-
-    # Compute game_end (same logic as get_game_window)
-    if game.end_time and game.end_time > game_start:
-        game_end = game.end_time
-        if game_end.tzinfo is None:
-            game_end = game_end.replace(tzinfo=timezone.utc)
-    else:
-        game_end = game_start + timedelta(hours=game_duration_hours)
+    game_start = _get_game_start(game)
+    game_end = _get_game_end(game, game_start, game_duration_hours)
 
     if posted_at < game_start:
         return "pregame"
