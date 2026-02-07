@@ -20,10 +20,9 @@ from .base import Base
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
 
-from ..config import settings
-
 # Lazy-loaded engine and session factory to avoid initialization at import time.
-# This allows tests to import modules without triggering database connection.
+# This allows tests to import modules without triggering database connection,
+# and lets the scraper import ORM models without pulling in the API config.
 _engine: "AsyncEngine | None" = None
 _AsyncSessionLocal: async_sessionmaker[AsyncSession] | None = None
 
@@ -32,6 +31,8 @@ def _get_engine() -> "AsyncEngine":
     """Get or create the database engine (lazy initialization)."""
     global _engine
     if _engine is None:
+        from ..config import settings
+
         _engine = create_async_engine(
             settings.database_url, echo=settings.sql_echo, future=True
         )
