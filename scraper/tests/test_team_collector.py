@@ -227,6 +227,91 @@ class TestCollectTeamTweets:
     @patch("sports_scraper.social.team_collector.fetch_team_accounts")
     @patch("sports_scraper.social.team_collector.extract_x_post_id", return_value="123")
     @patch("sports_scraper.social.team_collector.now_utc", return_value=_utc(2025, 6, 15, 23, 0))
+    def test_window_is_et_based(self, mock_now, mock_extract, mock_fetch, mock_pw):
+        """Verify collect window runs from 5 AM ET on start_date to 8 AM ET on end_date+1."""
+        from sports_scraper.social.team_collector import TeamTweetCollector
+        from zoneinfo import ZoneInfo
+
+        team = MagicMock()
+        team.x_handle = "celtics"
+        team.abbreviation = "BOS"
+
+        strategy = MagicMock()
+        strategy.collect_posts.return_value = []
+
+        collector = TeamTweetCollector(strategy=strategy)
+        session = MagicMock()
+        session.query.return_value.get.return_value = team
+        mock_fetch.return_value = {}
+
+        collector.collect_team_tweets(
+            session, team_id=1, start_date=date(2026, 2, 5), end_date=date(2026, 2, 5),
+        )
+
+        # Verify the window passed to strategy
+        strategy.collect_posts.assert_called_once()
+        call_kwargs = strategy.collect_posts.call_args[1]
+        ws = call_kwargs["window_start"]
+        we = call_kwargs["window_end"]
+
+        eastern = ZoneInfo("America/New_York")
+        # window_start should be 5 AM ET on Feb 5
+        ws_et = ws.astimezone(eastern)
+        assert ws_et.hour == 5
+        assert ws_et.date() == date(2026, 2, 5)
+
+        # window_end should be 8 AM ET on Feb 6 (end_date + 1)
+        we_et = we.astimezone(eastern)
+        assert we_et.hour == 8
+        assert we_et.date() == date(2026, 2, 6)
+
+    @patch("sports_scraper.social.team_collector.settings", _mock_settings())
+    @patch("sports_scraper.social.team_collector.playwright_available", return_value=True)
+    @patch("sports_scraper.social.team_collector.fetch_team_accounts")
+    @patch("sports_scraper.social.team_collector.extract_x_post_id", return_value="123")
+    @patch("sports_scraper.social.team_collector.now_utc", return_value=_utc(2025, 6, 15, 23, 0))
+    def test_window_multi_day_range(self, mock_now, mock_extract, mock_fetch, mock_pw):
+        """Verify multi-day range: 5 AM ET on start through 8 AM ET on end+1."""
+        from sports_scraper.social.team_collector import TeamTweetCollector
+        from zoneinfo import ZoneInfo
+
+        team = MagicMock()
+        team.x_handle = "celtics"
+        team.abbreviation = "BOS"
+
+        strategy = MagicMock()
+        strategy.collect_posts.return_value = []
+
+        collector = TeamTweetCollector(strategy=strategy)
+        session = MagicMock()
+        session.query.return_value.get.return_value = team
+        mock_fetch.return_value = {}
+
+        collector.collect_team_tweets(
+            session, team_id=1, start_date=date(2026, 2, 5), end_date=date(2026, 2, 7),
+        )
+
+        call_kwargs = strategy.collect_posts.call_args[1]
+        ws = call_kwargs["window_start"]
+        we = call_kwargs["window_end"]
+
+        eastern = ZoneInfo("America/New_York")
+        ws_et = ws.astimezone(eastern)
+        we_et = we.astimezone(eastern)
+
+        # 5 AM ET on Feb 5
+        assert ws_et.hour == 5
+        assert ws_et.date() == date(2026, 2, 5)
+
+        # 8 AM ET on Feb 8 (end_date Feb 7 + 1 day)
+        assert we_et.hour == 8
+        assert we_et.date() == date(2026, 2, 8)
+
+    @patch("sports_scraper.social.team_collector.settings", _mock_settings())
+    @patch("sports_scraper.social.team_collector.playwright_available", return_value=True)
+    @patch("sports_scraper.social.team_collector.fetch_team_accounts")
+    @patch("sports_scraper.social.team_collector.extract_x_post_id", return_value="123")
+    @patch("sports_scraper.social.team_collector.now_utc", return_value=_utc(2025, 6, 15, 23, 0))
     def test_generic_error_returns_0(self, mock_now, mock_extract, mock_fetch, mock_pw):
         from sports_scraper.social.team_collector import TeamTweetCollector
 

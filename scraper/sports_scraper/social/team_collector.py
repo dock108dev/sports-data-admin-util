@@ -12,6 +12,8 @@ from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from ..logging import logger
+from zoneinfo import ZoneInfo
+
 from ..utils.datetime_utils import now_utc, date_to_utc_datetime
 from .exceptions import XCircuitBreakerError
 from .playwright_collector import PlaywrightXCollector, playwright_available
@@ -96,13 +98,13 @@ class TeamTweetCollector:
             )
             return 0
 
-        # Convert dates to datetimes for the scrape window.
-        # Dates are ET game dates. Games tip in the evening and cross midnight
-        # ET, so we extend the window through the next day to capture in-game
-        # and postgame tweets. The +1 day here covers the ET→UTC offset;
-        # _build_search_url adds another +1 for X's exclusive "until" param.
-        window_start = date_to_utc_datetime(start_date)
-        window_end = date_to_utc_datetime(end_date) + timedelta(days=1) - timedelta(seconds=1)
+        # Convert ET game dates to a scrape window in ET.
+        # Games tip in the evening and cross midnight ET, so the window
+        # runs from 5 AM ET on the game date through 8 AM ET the next day
+        # (covers latest postgame ~3 AM ET + buffer).
+        eastern = ZoneInfo("America/New_York")
+        window_start = datetime.combine(start_date, datetime.min.time(), tzinfo=eastern).replace(hour=5)
+        window_end = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=eastern).replace(hour=8)
 
         logger.info(
             "team_collector_start",
