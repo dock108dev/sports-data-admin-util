@@ -7,11 +7,12 @@ The NBA social integration is a scraper-driven X (Twitter) workflow that attache
 ## Core Components
 
 ### Collection Orchestrator
-- **`scraper/sports_scraper/social/collector.py`**
-  - `XPostCollector.collect_for_game()` loads both teams for a game and runs a per-team `PostCollectionJob`.
-  - The collection window is derived from `game.game_date`, `game.end_time`, and `SocialConfig` pre/post-game window minutes.
-  - Requires PBP to exist before social scraping (guarded by the PBP check before collecting posts).
-  - Posts are saved to `game_social_posts` and the game’s `last_social_at` is updated.
+- **`scraper/sports_scraper/social/team_collector.py`**
+  - `TeamTweetCollector` collects tweets for teams with games in a date range.
+  - Uses a **two-scrape-per-game** model:
+    - **Scrape #1 (final-whistle):** Triggered when a game transitions to FINAL via the game-state-machine. Collects tweets for both teams immediately after the game ends.
+    - **Scrape #2 (daily sweep):** Runs as part of the daily sweep at 5:00 AM EST. Catches any tweets missed by Scrape #1 (late posts, delayed publishing).
+  - Posts are saved to `team_social_posts` with `mapping_status='unmapped'`, then mapped to games (setting `mapping_status='mapped'` with `game_id` populated).
 
 ### Collector Strategy (Playwright)
 - **`scraper/sports_scraper/social/playwright_collector.py`**
@@ -46,7 +47,7 @@ The NBA social integration is a scraper-driven X (Twitter) workflow that attache
 
 The NBA social pipeline writes into shared tables (used by all leagues):
 
-- `game_social_posts`
+- `team_social_posts` (raw collected tweets + mapped game associations)
 - `team_social_accounts`
 - `social_account_polls`
 
@@ -59,7 +60,6 @@ These are defined in `sql/000_sports_schema.sql` + related migrations and mapped
 - **Retweets excluded, replies not explicitly filtered.**
 - **Spoiler filtering is conservative** and uses the shared reveal filter.
 - **No cross-sport data mixing** because posts are attached to game/team IDs, not a league field on the social posts.
-- **Polling only if PBP exists**, to ensure game timelines are real and recent.
 - **No PBP ↔ social matching.** Social posts are stored independently and are not aligned to specific play-by-play events.
 
 ## Required Parity for NHL
@@ -69,4 +69,4 @@ When mirroring NBA behavior, NHL integration must:
 - Use team-only X handles sourced from the team registry or `x_handle`.
 - Apply identical reveal filtering and dedupe semantics.
 - Reuse the same rate limiter + polling cache policies.
-- Persist to the same `game_social_posts` structure.
+- Persist to the same `team_social_posts` structure.

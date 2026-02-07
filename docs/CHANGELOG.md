@@ -2,13 +2,30 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-05] - Current
+## [2026-02-06] - Current
+
+### Game-State-Machine & Two-Scrape Social Model
+
+- **Game-state-machine**: Games tracked through state transitions (PREGAME → LIVE → FINAL) with polling tasks every 3-5 min
+- **Two-scrape social model**: Scrape #1 on final-whistle (immediate), Scrape #2 in daily sweep (catch-up)
+- **`game_social_posts` eliminated**: All social data lives in `team_social_posts` with `mapping_status` column
+- **`XPostCollector` → `TeamTweetCollector`**: Simplified team-centric collection
+- **Daily sweep at 5:00 AM EST**: Ingestion + truth repair + social scrape #2
+- **Flow generation at 6:30/6:45/7:00 AM EST**: NBA, NHL, NCAAB respectively
+
+### Legacy Code Cleanup
+
+- **Removed `game_social_posts` table**: Mapping now tracked via `team_social_posts.mapping_status`
+- **Removed `XPostCollector`**: Replaced by `TeamTweetCollector`
+- **Removed `poll_active_social_task`**: Social collection handled by two-scrape model
+
+---
+
+## [2026-02-05]
 
 ### Social Collection Architecture
 
 - **Team-centric collection**: Social scraping now collects all tweets for a team in a date range, then maps to games
-- **Two-phase architecture**: Phase 1 (COLLECT) → `team_social_posts`, Phase 2 (MAP) → `game_social_posts`
-- **Separate scheduled tasks**: NBA social at 8:30 AM EST, NHL social at 9:00 AM EST
 - **New tables**: `team_social_posts` for raw collected tweets
 
 ### Legacy Code Cleanup

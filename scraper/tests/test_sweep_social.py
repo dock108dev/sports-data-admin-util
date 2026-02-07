@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, call
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 
 def _make_game(
@@ -79,7 +77,7 @@ class TestSocialScrape2:
                 with patch(
                     "sports_scraper.utils.datetime_utils.now_utc", return_value=now
                 ):
-                    result = _run_social_scrape_2()
+                    _run_social_scrape_2()
 
                     # Verify collect_team_tweets was called with game_date and next_day
                     calls = collector_instance.collect_team_tweets.call_args_list

@@ -198,7 +198,6 @@ class PlaywrightXCollector:
                         page.wait_for_timeout(5000)
                         try:
                             page.wait_for_selector(tweet_selector, timeout=10000, state="attached")
-                            tweets_found = True
                         except Exception:
                             # Still nothing — check for login wall in final content
                             final_content = page.content()

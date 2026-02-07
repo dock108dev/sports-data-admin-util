@@ -13,7 +13,7 @@ high-frequency polling tasks missed. Responsibilities:
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from celery import shared_task
 

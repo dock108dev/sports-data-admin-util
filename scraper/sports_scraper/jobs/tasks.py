@@ -42,7 +42,6 @@ from .polling_tasks import (
     update_game_states_task,
     poll_live_pbp_task,
     poll_active_odds_task,
-    poll_active_social_task,
 )
 from .flow_trigger_tasks import (
     trigger_flow_for_game,
@@ -71,7 +70,6 @@ __all__ = [
     "update_game_states_task",
     "poll_live_pbp_task",
     "poll_active_odds_task",
-    "poll_active_social_task",
     "trigger_flow_for_game",
     "run_daily_sweep",
     "clear_scraper_cache_task",

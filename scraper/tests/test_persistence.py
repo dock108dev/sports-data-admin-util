@@ -358,7 +358,7 @@ class TestBuildPlayerStats:
 # ============================================================================
 
 from unittest.mock import patch
-from datetime import date, timedelta
+from datetime import date
 from sports_scraper.utils.datetime_utils import today_et
 
 
@@ -374,7 +374,7 @@ class TestTodayEt:
             mock_dt.now.return_value = mock_now.astimezone(
                 __import__("zoneinfo", fromlist=["ZoneInfo"]).ZoneInfo("America/New_York")
             )
-            mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            mock_dt.side_effect = datetime
             result = today_et()
         assert result == date(2026, 2, 6)
 
@@ -387,7 +387,7 @@ class TestTodayEt:
             mock_dt.now.return_value = mock_now.astimezone(
                 __import__("zoneinfo", fromlist=["ZoneInfo"]).ZoneInfo("America/New_York")
             )
-            mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            mock_dt.side_effect = datetime
             result = today_et()
         assert result == date(2026, 2, 5)
 
@@ -400,7 +400,7 @@ class TestTodayEt:
             mock_dt.now.return_value = mock_now.astimezone(
                 __import__("zoneinfo", fromlist=["ZoneInfo"]).ZoneInfo("America/New_York")
             )
-            mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            mock_dt.side_effect = datetime
             result = today_et()
         assert result == date(2026, 2, 5)
 

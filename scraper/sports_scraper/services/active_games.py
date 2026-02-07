@@ -16,7 +16,7 @@ from typing import Literal
 from sqlalchemy import case, literal_column, or_
 from sqlalchemy.orm import Session
 
-from ..config_sports import get_league_config, LEAGUE_CONFIG
+from ..config_sports import LEAGUE_CONFIG
 from ..db import db_models
 from ..logging import logger
 from ..utils.datetime_utils import now_utc
@@ -81,6 +81,38 @@ class ActiveGamesResolver:
             else_=literal_column("'NONE'"),
         )
 
+    @staticmethod
+    def _active_window_filter(
+        pregame_hours: int = _DEFAULT_PREGAME_HOURS,
+        postgame_hours: int = _DEFAULT_POSTGAME_HOURS,
+    ):
+        """Build a SQL OR filter that matches only games in an active window.
+
+        Mirrors the CASE branches in _window_state_expression so the DB can
+        use indexes on status/tip_time/end_time and avoid loading historical
+        final games that fall outside the postgame window.
+        """
+        now = now_utc()
+        return or_(
+            # POST: final game with end_time within postgame window
+            (
+                (db_models.SportsGame.status == db_models.GameStatus.final.value)
+                & (db_models.SportsGame.end_time.isnot(None))
+                & (db_models.SportsGame.end_time > now - timedelta(hours=postgame_hours))
+            ),
+            # IN: currently live
+            db_models.SportsGame.status == db_models.GameStatus.live.value,
+            # PRE: scheduled/pregame within pregame window
+            (
+                db_models.SportsGame.status.in_([
+                    db_models.GameStatus.scheduled.value,
+                    db_models.GameStatus.pregame.value,
+                ])
+                & (db_models.SportsGame.tip_time.isnot(None))
+                & (db_models.SportsGame.tip_time < now + timedelta(hours=pregame_hours))
+            ),
+        )
+
     def get_active_games(
         self,
         session: Session,
@@ -98,14 +130,7 @@ class ActiveGamesResolver:
         ws = self._window_state_expression(self.pregame_hours, self.postgame_hours)
         query = (
             session.query(db_models.SportsGame, ws.label("window_state"))
-            .filter(
-                db_models.SportsGame.status.in_([
-                    db_models.GameStatus.scheduled.value,
-                    db_models.GameStatus.pregame.value,
-                    db_models.GameStatus.live.value,
-                    db_models.GameStatus.final.value,
-                ])
-            )
+            .filter(self._active_window_filter(self.pregame_hours, self.postgame_hours))
         )
 
         if league_code:
@@ -117,9 +142,7 @@ class ActiveGamesResolver:
             if league_id:
                 query = query.filter(db_models.SportsGame.league_id == league_id)
 
-        # Filter out NONE window states — we only want active games
-        results = query.all()
-        return [(game, ws_val) for game, ws_val in results if ws_val != "NONE"]
+        return query.all()
 
     def get_games_needing_pbp(
         self,

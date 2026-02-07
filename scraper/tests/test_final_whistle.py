@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 def _make_game(
     game_id: int = 1,

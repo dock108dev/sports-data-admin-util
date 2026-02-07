@@ -475,8 +475,3 @@ def poll_active_odds_task() -> dict:
     finally:
         _release_redis_lock("lock:poll_active_odds")
 
-
-
-# poll_active_social removed — social collection is now handled by the
-# two-scrape-per-game model: run_final_whistle_social (Scrape #1 on FINAL)
-# and _run_social_scrape_2 (Scrape #2 in daily sweep).

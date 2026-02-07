@@ -271,7 +271,8 @@ class SportsGame(Base):
     )
     social_posts: Mapped[list["TeamSocialPost"]] = relationship(
         "TeamSocialPost",
-        primaryjoin="and_(SportsGame.id == foreign(TeamSocialPost.game_id), TeamSocialPost.mapping_status == 'mapped')",
+        primaryjoin="and_(SportsGame.id == TeamSocialPost.game_id, TeamSocialPost.mapping_status == 'mapped')",
+        foreign_keys="[TeamSocialPost.game_id]",
         viewonly=True,
         lazy="select",
     )

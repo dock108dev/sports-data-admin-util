@@ -177,15 +177,15 @@ Social collection uses a **team-centric** approach:
 
 **Phase 2 (MAP):** Map unmapped tweets to games
 - Maps tweets to games based on team and posting time
-- Mapped tweets copied to `game_social_posts`
+- Updates `mapping_status='mapped'` and sets `game_id` on matched tweets in `team_social_posts`
 
 This architecture allows collecting tweets once and mapping to multiple games if needed.
 
 ### Schedule
 
-Social collection runs daily, staggered by league:
-- **8:30 AM EST** — NBA social collection
-- **9:00 AM EST** — NHL social collection
+Social collection uses a two-scrape-per-game model:
+- **Scrape #1 (final-whistle):** Triggered automatically when games transition to FINAL
+- **Scrape #2 (daily sweep):** Runs at **5:00 AM EST** as part of the daily sweep
 
 See `scraper/sports_scraper/celery_app.py` for schedule configuration.
 
@@ -229,9 +229,8 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 - DB-backed cache: `social_account_polls` prevents repeated polling
 
 ### Storage
-- `team_social_posts` table - Raw collected tweets (phase 1)
-- `game_social_posts` table - Tweets mapped to games (phase 2)
-- Fields: `post_url`, `posted_at`, `tweet_text`, `has_video`, `video_url`, `image_url`, `media_type`, `reveal_risk`, `reveal_reason`
+- `team_social_posts` table - Collected tweets, mapped to games via `mapping_status='mapped'` and `game_id`
+- Fields: `post_url`, `posted_at`, `tweet_text`, `has_video`, `video_url`, `image_url`, `media_type`, `reveal_risk`, `reveal_reason`, `mapping_status`, `game_id`
 
 ### Implementation
 - Team Collector: `scraper/sports_scraper/social/team_collector.py`
@@ -249,12 +248,15 @@ See also:
 
 ### Automatic (Scheduled)
 - **Scheduler**: Celery Beat
-- **Ingestion**: Daily at 13:00 UTC (8:00 AM EST) - boxscores, odds, PBP, social
+- **Ingestion**: Daily at 10:00 UTC (5:00 AM EST) - boxscores, odds, PBP
+- **Daily Sweep**: Runs at 10:00 UTC (5:00 AM EST) - truth repair + social scrape #2
 - **Flow Generation**: Runs 90 minutes after ingestion, staggered by league:
-  - 14:30 UTC (9:30 AM EST) - NBA flow generation
-  - 14:45 UTC (9:45 AM EST) - NHL flow generation
-  - 15:00 UTC (10:00 AM EST) - NCAAB flow generation (capped at 10 games)
-- **Odds Sync**: Every 30 minutes (all leagues)
+  - 11:30 UTC (6:30 AM EST) - NBA flow generation
+  - 11:45 UTC (6:45 AM EST) - NHL flow generation
+  - 12:00 UTC (7:00 AM EST) - NCAAB flow generation (capped at 10 games)
+- **Game State Updates**: Every 3 minutes
+- **Live PBP Polling**: Every 5 minutes
+- **Odds Sync + Active Odds Polling**: Every 30 minutes (all leagues)
 - **Window**: Yesterday through today (catches overnight game completions)
 
 Configuration: `scraper/sports_scraper/celery_app.py`

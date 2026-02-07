@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import and_, exists, select
+from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
 from ..config_sports import LEAGUE_CONFIG

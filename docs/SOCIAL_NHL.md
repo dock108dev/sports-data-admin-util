@@ -55,15 +55,13 @@ The authoritative handles are seeded via Alembic migration `20260205_000001_seed
 
 ## Parity Notes (NBA ↔ NHL)
 
-NHL social ingestion uses the same **team-centric two-phase architecture** as NBA:
-- **Phase 1:** Collect all tweets for teams → `team_social_posts`
-- **Phase 2:** Map tweets to games → `game_social_posts`
+NHL social ingestion uses the same **team-centric two-scrape model** as NBA:
+- **Scrape #1 (final-whistle):** Triggered when a game transitions to FINAL → tweets collected to `team_social_posts`
+- **Scrape #2 (daily sweep):** Runs at 5:00 AM EST → catches late tweets, maps via `mapping_status='mapped'` in `team_social_posts`
 - Playwright search (`from:<handle> since:... until:...`) for historical posts
 - Retweet exclusion, conservative reveal filtering, and timestamp window checks
 - Deduplication by `platform + external_post_id`, with a `post_url` fallback
 - The same rate limiting + polling cache protections
-
-NHL social collection runs daily at 9:00 AM EST (30 minutes after NBA at 8:30 AM EST).
 
 ## Validation Checklist
 
@@ -71,7 +69,7 @@ Use this checklist when validating NHL social runs against NBA parity:
 
 - [ ] **Run eligibility:** NHL social run starts when `social: true` and `league_code: NHL` are selected.
 - [ ] **Account resolution:** NHL teams resolve to `team_social_accounts` or `sports_teams.x_handle` without fallback errors.
-- [ ] **Schema parity:** Posts saved to `game_social_posts` with identical fields (`post_url`, `posted_at`, `tweet_text`, `media_type`, `external_post_id`, `reveal_risk`).
+- [ ] **Schema parity:** Posts saved to `team_social_posts` with identical fields (`post_url`, `posted_at`, `tweet_text`, `media_type`, `external_post_id`, `reveal_risk`), mapped via `mapping_status='mapped'`.
 - [ ] **Filtering parity:** Retweets excluded; reveal-risk posts flagged instead of removed.
 - [ ] **No cross-sport contamination:** Only NHL game IDs receive NHL team posts.
 - [ ] **Rate limit stability:** No new rate-limit regressions vs NBA runs.
