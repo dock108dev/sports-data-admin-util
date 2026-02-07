@@ -1,7 +1,7 @@
 """Add game_phase column to team_social_posts.
 
 Revision ID: 20260206_000002
-Revises: 20260220_000001
+Revises: 20260205_000002
 Create Date: 2026-02-06
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20260206_000002"
-down_revision = "20260220_000001"
+down_revision = "20260205_000002"
 branch_labels = None
 depends_on = None
 

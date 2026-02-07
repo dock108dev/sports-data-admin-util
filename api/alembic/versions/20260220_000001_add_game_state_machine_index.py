@@ -1,7 +1,7 @@
 """Merge heads + add index for game-state-machine resolver and backfill archived.
 
 Revision ID: 20260220_000001
-Revises: 20260205_000002, 20260218_000005
+Revises: 20260206_000003, 20260218_000005
 Create Date: 2026-02-20
 """
 
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20260220_000001"
-down_revision = ("20260205_000002", "20260218_000005")
+down_revision = ("20260206_000003", "20260218_000005")
 branch_labels = None
 depends_on = None
 
