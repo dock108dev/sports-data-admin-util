@@ -66,9 +66,20 @@ def _validate_social_credentials() -> None:
     )
 
 
+ALLOWED_SCRAPER_ROLES = {"worker", "beat", "social"}
+
+
 @lru_cache(maxsize=1)
 def validate_env() -> None:
-    """Validate required environment variables before the worker starts."""
+    """Validate required environment variables before the worker starts.
+
+    Uses SCRAPER_ROLE to determine which credentials are required so each
+    container only demands the secrets it actually needs.
+
+    Roles:
+        worker / beat — scraping worker or scheduler: needs ODDS_API_KEY.
+        social        — social-only worker: needs X credentials.
+    """
     environment = require_env("ENVIRONMENT")
     validate_environment_value(environment)
 
@@ -80,5 +91,13 @@ def validate_env() -> None:
         validate_database_credentials(database_url)
         validate_non_local_url("REDIS_URL", redis_url)
 
-        require_env("ODDS_API_KEY")
-        _validate_social_credentials()
+        role = os.getenv("SCRAPER_ROLE", "worker")
+        if role not in ALLOWED_SCRAPER_ROLES:
+            allowed = ", ".join(sorted(ALLOWED_SCRAPER_ROLES))
+            raise RuntimeError(f"SCRAPER_ROLE must be one of: {allowed}.")
+
+        if role in ("worker", "beat"):
+            require_env("ODDS_API_KEY")
+
+        if role == "social":
+            _validate_social_credentials()
