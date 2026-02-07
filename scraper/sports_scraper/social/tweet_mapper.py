@@ -3,6 +3,10 @@
 Phase 2 (MAP): This module assigns unmapped tweets to games based on
 posted_at timestamps falling within game windows.
 
+All comparisons are done in US/Eastern time. Games naturally cross midnight
+ET (e.g. a 10 PM ET tip ends around 12:30 AM ET the next day), so the
+postgame window extends into the following calendar day.
+
 Phase 1 (COLLECT): See team_collector.py for collecting team tweets.
 """
 
@@ -19,11 +23,41 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 
-# Default game window configuration
-DEFAULT_POSTGAME_HOURS = 3  # Hours after estimated game end to include
-DEFAULT_GAME_DURATION_HOURS = 3  # Estimated game duration
 EASTERN = ZoneInfo("America/New_York")
 PREGAME_START_HOUR_ET = 5  # Pregame window opens at 5 AM ET on game day
+DEFAULT_POSTGAME_HOURS = 3  # Hours after game end to include
+
+# Sport-specific estimated game durations (hours) when end_time is unavailable
+GAME_DURATION_BY_LEAGUE: dict[str, float] = {
+    "NBA": 2.5,
+    "NHL": 2.5,
+    "NCAAB": 2.0,
+}
+DEFAULT_GAME_DURATION_HOURS = 3  # Fallback for unknown leagues
+
+
+def _to_et(dt: datetime) -> datetime:
+    """Convert a datetime to US/Eastern."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(EASTERN)
+
+
+def _get_league_code(game) -> str | None:
+    """Get the league code from a game object, if available."""
+    if hasattr(game, "league") and game.league and hasattr(game.league, "code"):
+        return game.league.code
+    if hasattr(game, "league_code"):
+        return game.league_code
+    return None
+
+
+def _game_duration_hours(game) -> float:
+    """Return the estimated game duration based on the sport."""
+    league_code = _get_league_code(game)
+    if league_code and league_code in GAME_DURATION_BY_LEAGUE:
+        return GAME_DURATION_BY_LEAGUE[league_code]
+    return DEFAULT_GAME_DURATION_HOURS
 
 
 def _get_game_start(game) -> datetime:
@@ -33,7 +67,7 @@ def _get_game_start(game) -> datetime:
     else:
         game_start = game.game_date
         # If game_date is at midnight, estimate 7 PM ET on that calendar date.
-        # game_date is stored as midnight UTC for the ET calendar date (by odds API),
+        # game_date is stored as midnight UTC for the ET calendar date,
         # so we use the UTC date directly and construct 7 PM ET on that date.
         if game_start.hour == 0 and game_start.minute == 0:
             game_day = game_start.date()  # The correct ET calendar date
@@ -47,14 +81,14 @@ def _get_game_start(game) -> datetime:
     return game_start
 
 
-def _get_game_end(game, game_start: datetime, game_duration_hours: int) -> datetime:
-    """Resolve game end time from end_time or estimated duration, always UTC-aware."""
+def _get_game_end(game, game_start: datetime) -> datetime:
+    """Resolve game end time from end_time or sport-specific duration."""
     if game.end_time and game.end_time > game_start:
         game_end = game.end_time
         if game_end.tzinfo is None:
             game_end = game_end.replace(tzinfo=timezone.utc)
     else:
-        game_end = game_start + timedelta(hours=game_duration_hours)
+        game_end = game_start + timedelta(hours=_game_duration_hours(game))
     return game_end
 
 
@@ -73,24 +107,25 @@ def _pregame_start_utc(game) -> datetime:
 def get_game_window(
     game,
     postgame_hours: int = DEFAULT_POSTGAME_HOURS,
-    game_duration_hours: int = DEFAULT_GAME_DURATION_HOURS,
 ) -> tuple[datetime, datetime]:
     """
     Calculate the tweet window for a game.
 
     The window spans from 5 AM ET on the game's calendar date through
-    postgame_hours after game end.
+    postgame_hours after game end. Game end is determined by end_time if
+    available, otherwise estimated using sport-specific duration.
+
+    The window will cross midnight ET for evening games — this is expected.
 
     Args:
         game: SportsGame object (must have game_date, tip_time, end_time)
         postgame_hours: Hours after game end to include
-        game_duration_hours: Estimated game duration when end_time is unavailable
 
     Returns:
         Tuple of (window_start, window_end) as timezone-aware UTC datetimes
     """
     game_start = _get_game_start(game)
-    game_end = _get_game_end(game, game_start, game_duration_hours)
+    game_end = _get_game_end(game, game_start)
 
     window_start = _pregame_start_utc(game)
     window_end = game_end + timedelta(hours=postgame_hours)
@@ -101,26 +136,48 @@ def get_game_window(
 def classify_game_phase(
     posted_at: datetime,
     game,
-    game_duration_hours: int = DEFAULT_GAME_DURATION_HOURS,
 ) -> str:
     """Classify a tweet as pregame/in_game/postgame relative to a game.
 
-    Boundaries:
-    - pregame:  5 AM ET on game day <= posted_at < tip_time
+    All comparisons in ET. Boundaries:
+    - pregame:  posted_at < tip_time
     - in_game:  tip_time <= posted_at <= end_time
     - postgame: end_time < posted_at
 
-    Lightweight inline logic (scraper can't import from api).
-    Mirrors api/app/services/timeline_phases.py::classify_tweet_phase.
+    Uses sport-specific game duration when end_time is unavailable.
     """
     game_start = _get_game_start(game)
-    game_end = _get_game_end(game, game_start, game_duration_hours)
+    game_end = _get_game_end(game, game_start)
 
     if posted_at < game_start:
         return "pregame"
     if posted_at <= game_end:
         return "in_game"
     return "postgame"
+
+
+def _search_dates_for_tweet(posted_at: datetime) -> tuple[datetime, datetime]:
+    """Return the game_date search range for a tweet.
+
+    Convert tweet to ET, then search for games on that ET date and the
+    previous day. This handles games that cross midnight ET — a postgame
+    tweet at 1 AM ET on Feb 7 needs to find the Feb 6 game.
+    """
+    tweet_et = _to_et(posted_at)
+    tweet_et_date = tweet_et.date()
+
+    # Search the tweet's ET date and the day before (for games that cross midnight)
+    search_start = datetime.combine(
+        tweet_et_date - timedelta(days=1),
+        datetime.min.time(),
+        tzinfo=timezone.utc,
+    )
+    search_end = datetime.combine(
+        tweet_et_date,
+        datetime.min.time(),
+        tzinfo=timezone.utc,
+    )
+    return search_start, search_end
 
 
 def map_unmapped_tweets(
@@ -131,9 +188,10 @@ def map_unmapped_tweets(
     Assign unmapped tweets to games.
 
     For each unmapped tweet:
-    1. Find games where the tweet's team played
-    2. Check if posted_at falls within a game's window
-    3. Set game_id and mapping_status='mapped', or 'no_game' if no match
+    1. Convert posted_at to ET to determine the calendar date
+    2. Search for games on that ET date and the previous day
+    3. Check if posted_at falls within a game's window (5 AM ET → end + 3h)
+    4. Set game_id and mapping_status='mapped', or 'no_game' if no match
 
     Args:
         session: Database session
@@ -177,10 +235,8 @@ def map_unmapped_tweets(
                 if posted_at.tzinfo is None:
                     posted_at = posted_at.replace(tzinfo=timezone.utc)
 
-                # Find games where this team played around the tweet time
-                # Look for games in a wider window first (7 days before and after)
-                search_start = posted_at - timedelta(days=1)
-                search_end = posted_at + timedelta(days=1)
+                # Search for games on the tweet's ET date and previous day
+                search_start, search_end = _search_dates_for_tweet(posted_at)
 
                 potential_games = (
                     session.query(db_models.SportsGame)
@@ -303,9 +359,8 @@ def map_tweets_for_team(
         if posted_at.tzinfo is None:
             posted_at = posted_at.replace(tzinfo=timezone.utc)
 
-        # Find games
-        search_start = posted_at - timedelta(days=1)
-        search_end = posted_at + timedelta(days=1)
+        # Search for games on the tweet's ET date and previous day
+        search_start, search_end = _search_dates_for_tweet(posted_at)
 
         potential_games = (
             session.query(db_models.SportsGame)
