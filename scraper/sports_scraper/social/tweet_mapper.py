@@ -82,6 +82,47 @@ def get_game_window(
     return window_start, window_end
 
 
+def classify_game_phase(
+    posted_at: datetime,
+    game,
+    game_duration_hours: int = DEFAULT_GAME_DURATION_HOURS,
+) -> str:
+    """Classify a tweet as pregame/in_game/postgame relative to a game.
+
+    Lightweight inline logic (scraper can't import from api).
+    Mirrors api/app/services/timeline_phases.py::classify_tweet_phase.
+    """
+    # Compute game_start (same logic as get_game_window)
+    if game.tip_time:
+        game_start = game.tip_time
+    else:
+        game_start = game.game_date
+        if game_start.hour == 0 and game_start.minute == 0:
+            eastern = ZoneInfo("America/New_York")
+            game_day = game_start.date()
+            estimated_et = datetime.combine(
+                game_day, datetime.min.time(), tzinfo=eastern
+            ).replace(hour=19)
+            game_start = estimated_et.astimezone(timezone.utc)
+
+    if game_start.tzinfo is None:
+        game_start = game_start.replace(tzinfo=timezone.utc)
+
+    # Compute game_end (same logic as get_game_window)
+    if game.end_time and game.end_time > game_start:
+        game_end = game.end_time
+        if game_end.tzinfo is None:
+            game_end = game_end.replace(tzinfo=timezone.utc)
+    else:
+        game_end = game_start + timedelta(hours=game_duration_hours)
+
+    if posted_at < game_start:
+        return "pregame"
+    if posted_at <= game_end:
+        return "in_game"
+    return "postgame"
+
+
 def map_unmapped_tweets(
     session: "Session",
     batch_size: int = 1000,
@@ -165,6 +206,7 @@ def map_unmapped_tweets(
                 if matched_game:
                     tweet.game_id = matched_game.id
                     tweet.mapping_status = "mapped"
+                    tweet.game_phase = classify_game_phase(posted_at, matched_game)
                     tweet.updated_at = now_utc()
                     mapped_count += 1
                     logger.debug(
@@ -172,6 +214,7 @@ def map_unmapped_tweets(
                         tweet_id=tweet.id,
                         game_id=matched_game.id,
                         posted_at=str(posted_at),
+                        game_phase=tweet.game_phase,
                     )
                 else:
                     tweet.mapping_status = "no_game"
@@ -291,6 +334,7 @@ def map_tweets_for_team(
         if matched_game:
             tweet.game_id = matched_game.id
             tweet.mapping_status = "mapped"
+            tweet.game_phase = classify_game_phase(posted_at, matched_game)
             tweet.updated_at = now_utc()
             mapped_count += 1
         else:

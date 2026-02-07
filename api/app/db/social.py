@@ -144,6 +144,9 @@ class TeamSocialPost(Base):
     mapping_status: Mapped[str] = mapped_column(
         String(20), server_default="unmapped", nullable=False, index=True
     )
+    game_phase: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, default=None, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

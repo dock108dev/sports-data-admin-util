@@ -179,6 +179,38 @@ class TestMergeExternalIds:
         assert "empty_key" not in result
 
 
+class TestNormalizeStatusPostponedCanceled:
+    """Tests for postponed/canceled handling in _normalize_status."""
+
+    def test_normalizes_postponed(self):
+        """Normalizes 'postponed' → 'postponed'."""
+        assert _normalize_status("postponed") == "postponed"
+
+    def test_normalizes_canceled(self):
+        """Normalizes 'canceled' → 'canceled'."""
+        assert _normalize_status("canceled") == "canceled"
+
+    def test_normalizes_uppercase_postponed(self):
+        """Case insensitive: 'POSTPONED' → 'postponed'."""
+        assert _normalize_status("POSTPONED") == "postponed"
+
+    def test_normalizes_uppercase_canceled(self):
+        """Case insensitive: 'CANCELED' → 'canceled'."""
+        assert _normalize_status("CANCELED") == "canceled"
+
+
+class TestResolveStatusTransitionPostponedCanceled:
+    """Tests for postponed/canceled pass-through in resolve_status_transition."""
+
+    def test_postponed_passes_through(self):
+        """Scheduled → postponed is accepted."""
+        assert resolve_status_transition("scheduled", "postponed") == "postponed"
+
+    def test_canceled_passes_through(self):
+        """Scheduled → canceled is accepted."""
+        assert resolve_status_transition("scheduled", "canceled") == "canceled"
+
+
 class TestNormalizeStatusCaseInsensitive:
     """Tests for case insensitivity of _normalize_status."""
 

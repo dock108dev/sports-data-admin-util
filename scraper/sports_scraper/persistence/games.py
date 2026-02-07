@@ -35,6 +35,10 @@ def _normalize_status(status: str | None) -> str:
         return db_models.GameStatus.archived.value
     if status_normalized == db_models.GameStatus.scheduled.value:
         return db_models.GameStatus.scheduled.value
+    if status_normalized == db_models.GameStatus.postponed.value:
+        return db_models.GameStatus.postponed.value
+    if status_normalized == db_models.GameStatus.canceled.value:
+        return db_models.GameStatus.canceled.value
     return db_models.GameStatus.scheduled.value
 
 
