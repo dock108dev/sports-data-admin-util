@@ -207,8 +207,6 @@ def _poll_single_game_pbp(session, game) -> dict:
 
     Returns dict with api_calls count, transition info, and pbp_events.
     """
-    import httpx
-
     from ..db import db_models
     from ..persistence.games import resolve_status_transition
     from ..persistence.plays import upsert_plays
@@ -400,7 +398,6 @@ def poll_active_odds_task() -> dict:
     from ..services.active_games import ActiveGamesResolver
     from ..odds.synchronizer import OddsSynchronizer
     from ..models import IngestionConfig
-    from ..utils.datetime_utils import today_utc
 
     if not _acquire_redis_lock("lock:poll_active_odds", timeout=600):
         logger.debug("poll_active_odds_skipped_locked")
