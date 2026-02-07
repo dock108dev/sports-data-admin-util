@@ -8,7 +8,7 @@ from celery import shared_task
 
 from ..logging import logger
 from ..services.ingestion import run_ingestion
-from ..utils.datetime_utils import today_utc
+from ..utils.datetime_utils import today_et
 
 
 @shared_task(name="run_scrape_job")
@@ -33,17 +33,18 @@ def run_scrape_job(run_id: int, config_payload: dict) -> dict:
 def run_scheduled_ingestion() -> dict:
     """Trigger the scheduled ingestion pipeline.
 
-    Runs leagues sequentially with PBP and social after each:
-    1. NBA stats → PBP → social
-    2. NHL stats → PBP → social
-    3. NCAAB stats → PBP (no social for NCAAB)
+    Runs leagues sequentially with PBP after each:
+    1. NBA stats → PBP
+    2. NHL stats → PBP
+    3. NCAAB stats → PBP
 
-    This ensures data is complete before social collection runs.
+    Social collection is dispatched asynchronously to the dedicated
+    social-scraper worker after each league's PBP completes.
+    This is fire-and-forget - we don't wait for social to complete.
     """
     from ..services.scheduler import (
         schedule_single_league_and_wait,
         run_pbp_ingestion_for_league,
-        run_social_ingestion_for_league,
     )
 
     results = {}
@@ -59,10 +60,8 @@ def run_scheduled_ingestion() -> dict:
     results["NBA_PBP"] = nba_pbp_result
     logger.info("scheduled_ingestion_nba_pbp_complete", **nba_pbp_result)
 
-    logger.info("scheduled_ingestion_nba_social_start")
-    nba_social_result = run_social_ingestion_for_league("NBA")
-    results["NBA_SOCIAL"] = nba_social_result
-    logger.info("scheduled_ingestion_nba_social_complete", **nba_social_result)
+    # Social collection is now handled by the two-scrape-per-game model
+    # (run_final_whistle_social on FINAL + daily sweep Scrape #2)
 
     # === NHL ===
     logger.info("scheduled_ingestion_nhl_start")
@@ -74,11 +73,6 @@ def run_scheduled_ingestion() -> dict:
     nhl_pbp_result = run_pbp_ingestion_for_league("NHL")
     results["NHL_PBP"] = nhl_pbp_result
     logger.info("scheduled_ingestion_nhl_pbp_complete", **nhl_pbp_result)
-
-    logger.info("scheduled_ingestion_nhl_social_start")
-    nhl_social_result = run_social_ingestion_for_league("NHL")
-    results["NHL_SOCIAL"] = nhl_social_result
-    logger.info("scheduled_ingestion_nhl_social_complete", **nhl_social_result)
 
     # === NCAAB ===
     logger.info("scheduled_ingestion_ncaab_start")
@@ -119,7 +113,7 @@ def run_scheduled_odds_sync() -> dict:
     total_odds = 0
 
     # Sync today + 1 day ahead for upcoming games
-    today = today_utc()
+    today = today_et()
     end = today + timedelta(days=1)
 
     logger.info(
@@ -168,40 +162,3 @@ def run_scheduled_odds_sync() -> dict:
     }
 
 
-@shared_task(
-    name="run_scheduled_nba_social",
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_kwargs={"max_retries": 2},
-)
-def run_scheduled_nba_social() -> dict:
-    """Scheduled task to collect X posts for NBA games.
-
-    Runs 30 minutes after PBP ingestion to collect social content
-    for games in the scheduled window.
-    """
-    from ..services.scheduler import run_social_ingestion_for_league
-
-    logger.info("scheduled_nba_social_start")
-    result = run_social_ingestion_for_league("NBA")
-    logger.info("scheduled_nba_social_complete", **result)
-    return result
-
-
-@shared_task(
-    name="run_scheduled_nhl_social",
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_kwargs={"max_retries": 2},
-)
-def run_scheduled_nhl_social() -> dict:
-    """Scheduled task to collect X posts for NHL games.
-
-    Runs 30 minutes after NBA social to stagger rate limit pressure.
-    """
-    from ..services.scheduler import run_social_ingestion_for_league
-
-    logger.info("scheduled_nhl_social_start")
-    result = run_social_ingestion_for_league("NHL")
-    logger.info("scheduled_nhl_social_complete", **result)
-    return result

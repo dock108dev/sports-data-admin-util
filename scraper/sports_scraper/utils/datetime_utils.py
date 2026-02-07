@@ -23,23 +23,19 @@ def today_utc() -> date:
     return now_utc().date()
 
 
+def today_et() -> date:
+    """Return the current date in US Eastern Time (sports calendar day).
+
+    US sports schedule on Eastern Time. A 10 PM ET game on Feb 5 is a
+    "Feb 5 game" even though it's Feb 6 in UTC. Use this instead of
+    today_utc() when determining sports calendar dates.
+    """
+    return datetime.now(ZoneInfo("America/New_York")).date()
+
+
 def date_to_utc_datetime(day: date) -> datetime:
     """Convert a date to a timezone-aware UTC datetime at midnight."""
     return datetime.combine(day, datetime.min.time()).replace(tzinfo=timezone.utc)
-
-
-def date_to_datetime_range(day: date) -> tuple[datetime, datetime]:
-    """Convert a date to a datetime range (start and end of day in UTC).
-    
-    Args:
-        day: Date object
-        
-    Returns:
-        Tuple of (start_datetime, end_datetime) in UTC
-    """
-    start = datetime.combine(day, datetime.min.time()).replace(tzinfo=timezone.utc)
-    end = datetime.combine(day, datetime.max.time()).replace(tzinfo=timezone.utc)
-    return start, end
 
 
 def date_window_for_matching(day: date, days_before: int = 1, days_after: int = 1) -> tuple[datetime, datetime]:

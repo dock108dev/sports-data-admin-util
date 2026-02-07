@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Sequence
 
 from sqlalchemy import exists, func, not_, or_, select
@@ -107,8 +107,8 @@ def find_games_in_date_range(
         db_models.SportsGame.game_date,
     ).filter(
         db_models.SportsGame.league_id == league_id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time()),
-        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time()),
+        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
+        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
     )
     
     if require_source_key:

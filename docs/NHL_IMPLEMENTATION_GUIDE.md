@@ -308,9 +308,9 @@ SPORT_KEYS = {
 **Files:** `scraper/sports_scraper/social/team_collector.py`, `scraper/sports_scraper/social/tweet_mapper.py`
 **Docs:** [SOCIAL_NHL.md](SOCIAL_NHL.md)
 
-NHL social integration uses the **team-centric two-phase architecture**:
-1. **Phase 1 (COLLECT):** Scrape all tweets for teams in a date range → `team_social_posts`
-2. **Phase 2 (MAP):** Map unmapped tweets to games → `game_social_posts`
+NHL social integration uses the **team-centric two-scrape model**:
+1. **Scrape #1 (final-whistle):** Triggered on game FINAL → tweets collected to `team_social_posts`
+2. **Scrape #2 (daily sweep):** Catches late tweets → mapped via `mapping_status='mapped'` in `team_social_posts`
 
 **Parity with NBA:**
 - Same scraping mechanism (Playwright)

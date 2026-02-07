@@ -31,6 +31,12 @@ class LeagueConfig:
     # Scheduling
     scheduled_ingestion: bool = True  # Include in daily scheduled runs
 
+    # Game-state-machine window config
+    pregame_window_hours: int = 6       # Hours before tip_time to enter pregame
+    postgame_window_hours: int = 3      # Hours after final to keep in active window
+    live_pbp_poll_minutes: int = 5      # Minutes between PBP polls for live games
+    live_pbp_enabled: bool = True       # Whether to poll live PBP for this league
+
 
 # Master configuration for all leagues
 LEAGUE_CONFIG: dict[str, LeagueConfig] = {
@@ -63,6 +69,7 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         pbp_enabled=True,
         timeline_enabled=True,
         scheduled_ingestion=True,  # Uses api.collegebasketballdata.com
+        live_pbp_enabled=False,  # Too many games for live polling
     ),
 }
 

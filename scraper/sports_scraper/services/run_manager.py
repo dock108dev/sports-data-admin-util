@@ -13,14 +13,12 @@ from ..live import LiveFeedManager
 from ..odds.synchronizer import OddsSynchronizer
 from ..persistence import persist_game_payload
 from ..scrapers import get_all_scrapers
-from ..social import XPostCollector, XCircuitBreakerError
-from ..utils.datetime_utils import now_utc, today_utc
+from ..utils.datetime_utils import now_utc, today_et
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
 from .job_runs import complete_job_run, start_job_run
 from .game_selection import (
     select_games_for_boxscores,
     select_games_for_odds,
-    select_games_for_social,
 )
 from .pbp_ingestion import (
     ingest_pbp_via_nba_api,
@@ -34,7 +32,6 @@ class ScrapeRunManager:
     def __init__(self) -> None:
         self.scrapers = get_all_scrapers()
         self.odds_sync = OddsSynchronizer()
-        self.social_collector = XPostCollector()
         self.live_feed_manager = LiveFeedManager()
 
         # Feature support varies by league. When a toggle is enabled for an unsupported
@@ -73,7 +70,7 @@ class ScrapeRunManager:
             "social_posts": 0,
             "pbp_games": 0,
         }
-        start = config.start_date or today_utc()
+        start = config.start_date or today_et()
         end = config.end_date or start
         scraper = self.scrapers.get(config.league_code)
 
@@ -144,7 +141,7 @@ class ScrapeRunManager:
             # Boxscores enrich existing games created by Odds API
             # IMPORTANT: Only scrape boxscores for completed games (yesterday and earlier)
             if config.boxscores:
-                yesterday = today_utc() - timedelta(days=1)
+                yesterday = today_et() - timedelta(days=1)
                 boxscore_end = min(end, yesterday)
                 games_skipped = 0
 
@@ -364,7 +361,7 @@ class ScrapeRunManager:
                 else:
                     # Non-live PBP scraping
                     # Only scrape PBP for completed games (yesterday and earlier)
-                    pbp_yesterday = today_utc() - timedelta(days=1)
+                    pbp_yesterday = today_et() - timedelta(days=1)
                     pbp_end = min(end, pbp_yesterday)
                     pbp_events = 0
 
@@ -473,7 +470,8 @@ class ScrapeRunManager:
 
                 logger.info("pbp_complete", count=summary["pbp_games"], run_id=run_id)
 
-            # Social scraping (runs after PBP ingestion to ensure timestamps are available)
+            # Social scraping — dispatched to the dedicated social-scraper worker.
+            # The social-scraper has X auth tokens and concurrency=1 for rate limiting.
             if config.social:
                 social_run_id = start_job_run("social", [config.league_code])
                 if config.league_code not in self._supported_social_leagues:
@@ -485,77 +483,24 @@ class ScrapeRunManager:
                     )
                     complete_job_run(social_run_id, "success", "x_social_not_implemented")
                 else:
+                    from celery import chain
+                    from ..jobs.social_tasks import collect_team_social, map_social_to_games
+
                     logger.info(
-                        "social_scraping_start",
+                        "social_dispatched_to_worker",
                         run_id=run_id,
                         league=config.league_code,
                         start_date=str(start),
                         end_date=str(end),
-                        only_missing=config.only_missing,
-                        updated_before=str(updated_before_dt) if updated_before_dt else None,
                     )
-
-                    # Detect if this is a backfill operation.
-                    # Backfill = broad date range OR historical end date.
-                    # In backfill mode, we skip the recency filter and process all final games.
-                    now = now_utc()
-                    recent_window = timedelta(hours=settings.social_config.recent_game_window_hours)
-                    end_dt = datetime.combine(end, datetime.max.time()).replace(tzinfo=timezone.utc)
-                    
-                    # Check conditions for backfill mode:
-                    # 1. Date range spans more than 7 days (broad catch-all run)
-                    # 2. End date is in the past beyond recent_window
-                    date_range_days = (end - start).days
-                    is_broad_range = date_range_days > 7
-                    is_historical_end = (now - end_dt) > recent_window
-                    is_backfill = is_broad_range or is_historical_end
-                    
-                    if is_backfill:
-                        reason = "broad date range" if is_broad_range else "historical end date"
-                        logger.info(
-                            "social_backfill_mode",
-                            run_id=run_id,
-                            league=config.league_code,
-                            reason=reason,
-                            date_range_days=date_range_days,
-                        )
-                    
-                    with get_session() as session:
-                        game_ids = select_games_for_social(
-                            session, config.league_code, start, end,
-                            only_missing=config.only_missing,
-                            updated_before=updated_before_dt,
-                            is_backfill=is_backfill,
-                        )
-                    logger.info("found_games_for_social", count=len(game_ids), run_id=run_id)
-
-                    circuit_breaker_triggered = False
-                    for game_id in game_ids:
-                        try:
-                            with get_session() as session:
-                                results = self.social_collector.collect_for_game(
-                                    session, game_id, is_backfill=is_backfill
-                                )
-                                for result in results:
-                                    summary["social_posts"] += result.posts_saved
-                        except XCircuitBreakerError as e:
-                            logger.error(
-                                "social_circuit_breaker_stop",
-                                game_id=game_id,
-                                error=str(e),
-                                retry_after_seconds=e.retry_after_seconds,
-                            )
-                            circuit_breaker_triggered = True
-                            break  # Stop processing more games
-                        except Exception as e:
-                            logger.warning("social_collection_failed", game_id=game_id, error=str(e))
-
-                    if circuit_breaker_triggered:
-                        logger.error("social_run_aborted_circuit_breaker", run_id=run_id)
-                        complete_job_run(social_run_id, "error")
-                    else:
-                        logger.info("social_complete", count=summary["social_posts"], run_id=run_id)
-                        complete_job_run(social_run_id, "success")
+                    # Chain: collect tweets → map to games (both on social-scraper queue)
+                    workflow = chain(
+                        collect_team_social.si(config.league_code, str(start), str(end)).set(queue="social-scraper"),
+                        map_social_to_games.si().set(queue="social-scraper"),
+                    )
+                    workflow.apply_async()
+                    summary["social_posts"] = "dispatched"
+                    complete_job_run(social_run_id, "success", "dispatched_to_social_worker")
 
             with get_session() as session:
                 detect_missing_pbp(session, league_code=config.league_code)
@@ -570,7 +515,11 @@ class ScrapeRunManager:
             if summary["odds"]:
                 summary_parts.append(f'Odds: {summary["odds"]}')
             if summary["social_posts"]:
-                summary_parts.append(f'Social: {summary["social_posts"]}')
+                social_val = summary["social_posts"]
+                if social_val == "dispatched":
+                    summary_parts.append("Social: dispatched to worker")
+                else:
+                    summary_parts.append(f'Social: {social_val}')
             if summary["pbp_games"]:
                 summary_parts.append(f'PBP: {summary["pbp_games"]}')
 

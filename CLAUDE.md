@@ -77,13 +77,15 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GR
 ## Scheduled Scraping
 
 **Daily Schedule (US Eastern Time):**
-- **8:00 AM** — Sports ingestion (NBA → NHL → NCAAB sequentially)
-- **9:30 AM** — NBA flow generation (90 min after ingestion)
-- **9:45 AM** — NHL flow generation (15 min after NBA)
-- **10:00 AM** — NCAAB flow generation (15 min after NHL, max 10 games)
+- **5:00 AM** — Sports ingestion + daily sweep (NBA → NHL → NCAAB sequentially)
+- **6:30 AM** — NBA flow generation (90 min after ingestion)
+- **6:45 AM** — NHL flow generation (15 min after NBA)
+- **7:00 AM** — NCAAB flow generation (15 min after NHL, max 10 games)
 
 **Recurring Tasks:**
-- **Every 30 min** — Odds sync (all leagues, keeps FairBet data fresh)
+- **Every 3 min** — Game state updates (game-state-machine)
+- **Every 5 min** — Live PBP polling
+- **Every 30 min** — Odds sync + active odds polling (all leagues, keeps FairBet data fresh)
 
 Configured in `scraper/sports_scraper/celery_app.py`
 

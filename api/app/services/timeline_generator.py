@@ -47,7 +47,7 @@ from sqlalchemy.orm import selectinload
 
 from ..db import AsyncSession
 from ..db.sports import SportsGame, SportsGamePlay
-from ..db.social import GameSocialPost
+from ..db.social import TeamSocialPost
 from ..db.story import SportsGameTimelineArtifact
 from ..utils.datetime_utils import now_utc
 from .timeline_types import (
@@ -192,7 +192,8 @@ async def generate_timeline_artifact(
         phase_boundaries = compute_phase_boundaries(game_start, has_overtime)
 
         # Only include social posts if we have a reliable tip_time
-        posts: list[GameSocialPost] = []
+        # Use TeamSocialPost (mapped, pregame/in_game only) — postgame never affects flows
+        posts: list[TeamSocialPost] = []
         if game.has_reliable_start_time:
             social_window_start = game_start - timedelta(
                 seconds=SOCIAL_PREGAME_WINDOW_SECONDS
@@ -202,13 +203,15 @@ async def generate_timeline_artifact(
             )
 
             posts_result = await session.execute(
-                select(GameSocialPost)
+                select(TeamSocialPost)
                 .where(
-                    GameSocialPost.game_id == game_id,
-                    GameSocialPost.posted_at >= social_window_start,
-                    GameSocialPost.posted_at <= social_window_end,
+                    TeamSocialPost.game_id == game_id,
+                    TeamSocialPost.mapping_status == "mapped",
+                    TeamSocialPost.game_phase.in_(["pregame", "in_game"]),
+                    TeamSocialPost.posted_at >= social_window_start,
+                    TeamSocialPost.posted_at <= social_window_end,
                 )
-                .order_by(GameSocialPost.posted_at)
+                .order_by(TeamSocialPost.posted_at)
             )
             posts = list(posts_result.scalars().all())
 

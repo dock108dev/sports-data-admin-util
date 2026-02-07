@@ -32,7 +32,7 @@ from sqlalchemy import select
 
 from ....db import AsyncSession
 from ....db.sports import SportsGame
-from ....db.social import GameSocialPost
+from ....db.social import TeamSocialPost
 from ..models import StageInput, StageOutput
 from .block_types import (
     SemanticRole,
@@ -314,9 +314,12 @@ async def _attach_embedded_tweets(
 
     # Load social posts for this game
     social_result = await session.execute(
-        select(GameSocialPost)
-        .where(GameSocialPost.game_id == game_id)
-        .order_by(GameSocialPost.posted_at)
+        select(TeamSocialPost)
+        .where(
+            TeamSocialPost.game_id == game_id,
+            TeamSocialPost.mapping_status == "mapped",
+        )
+        .order_by(TeamSocialPost.posted_at)
     )
     social_posts = social_result.scalars().all()
 

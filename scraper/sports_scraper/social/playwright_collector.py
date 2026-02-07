@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import time
-from collections import deque
 from datetime import datetime, timedelta
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 from ..config import settings
 from ..logging import logger
-from .collector_base import XCollectorStrategy
 from .exceptions import XCircuitBreakerError
 from .models import CollectedPost
 from .utils import extract_x_post_id
@@ -27,13 +25,12 @@ def playwright_available() -> bool:  # pragma: no cover
     return sync_playwright is not None
 
 
-# Circuit breaker constants
-_BACKOFF_SECONDS = 90  # Fixed 90 second backoff on rate limit
-_MAX_RETRIES = 3  # Fail loudly after 3 retries
-_HOURLY_WINDOW_SECONDS = 3600
+# Retry constants
+_BACKOFF_SECONDS = 60  # Backoff on retryable error (login wall / "Something went wrong")
+_MAX_ATTEMPTS = 2  # Try twice, then fail fast — team_collector handles batch-level retry
 
 
-class PlaywrightXCollector(XCollectorStrategy):
+class PlaywrightXCollector:
     """
     Headless collector that visits public X profiles and extracts recent posts.
 
@@ -41,11 +38,10 @@ class PlaywrightXCollector(XCollectorStrategy):
     - post URL
     - timestamp
     - has_video flag
-    Caption text is read only to allow reveal filtering but is not stored.
 
     Authentication:
         Set X_AUTH_TOKEN and X_CT0 environment variables from your browser cookies.
-        These are required for search functionality.
+        Cookies are injected directly into each fresh browser context.
 
         To get these values:
         1. Log into x.com in your browser
@@ -55,30 +51,24 @@ class PlaywrightXCollector(XCollectorStrategy):
     Rate Limiting:
         - Polite delay of 10-15 seconds between requests
         - Random jitter to appear more human-like
-        - Global hourly request cap (default: 100/hour)
+        - Concurrency=1 in Celery naturally caps throughput
 
-    Circuit Breaker:
-        - On error: wait 90 seconds, then retry
-        - After 3 consecutive errors: fail the scrape loudly with actual error
-        - No exponential backoff - simple and predictable
+    Retry Logic:
+        - On "login wall" or "Something went wrong": sleep 90s, retry up to 3 times
+        - On "No results": return empty list (not an error)
+        - After 3 failures: raise XCircuitBreakerError to fail the job
+        - No class-level state — each collect_posts() call is self-contained
     """
-
-    # Class-level circuit breaker state (shared across instances in same worker)
-    _consecutive_errors: int = 0
-    _circuit_open_until: float = 0.0
-    _last_error_message: str = ""  # Store actual error for loud failure
-    # Hourly request tracking (sliding window)
-    _hourly_requests: deque = deque()
 
     def __init__(  # pragma: no cover - browser config
         self,
-        max_scrolls: int = 8,  # Increased to capture more posts in longer windows
+        max_scrolls: int = 8,
         wait_ms: int = 2000,  # X's JS needs time to render
         timeout_ms: int = 30000,
         auth_token: str | None = None,
         ct0: str | None = None,
-        min_delay_seconds: float = 10.0,  # Increased from 5.0
-        max_delay_seconds: float = 15.0,  # Increased from 9.0
+        min_delay_seconds: float = 10.0,
+        max_delay_seconds: float = 15.0,
     ):
         import os
 
@@ -88,111 +78,18 @@ class PlaywrightXCollector(XCollectorStrategy):
         self.min_delay_seconds = min_delay_seconds
         self.max_delay_seconds = max_delay_seconds
         self._last_request_time = 0.0
-        # Load auth from params or environment
+
+        # Auth tokens — injected directly into each fresh browser context
         self.auth_token = auth_token or os.environ.get("X_AUTH_TOKEN")
         self.ct0 = ct0 or os.environ.get("X_CT0")
 
-        if not self.auth_token:
-            logger.warning("x_auth_missing", message="X_AUTH_TOKEN not set - search may not work")
-
-    def _check_circuit_breaker(self) -> None:  # pragma: no cover - class-level state
-        """Check if circuit breaker is open and raise if so."""
-        if time.time() < PlaywrightXCollector._circuit_open_until:
-            remaining = int(PlaywrightXCollector._circuit_open_until - time.time())
-            logger.warning(
-                "x_circuit_open",
-                remaining_seconds=remaining,
-                retry_at=datetime.fromtimestamp(PlaywrightXCollector._circuit_open_until).isoformat(),
-            )
-            raise XCircuitBreakerError(
-                f"Circuit breaker open, retry in {remaining}s",
-                retry_after_seconds=remaining,
-            )
-
-    def _check_hourly_cap(self) -> None:  # pragma: no cover - class-level state
-        """Check if hourly request cap is exceeded and raise if so."""
-        now = time.time()
-        hourly_cap = settings.social_config.hourly_request_cap
-        
-        # Prune requests older than 1 hour
-        cutoff = now - _HOURLY_WINDOW_SECONDS
-        while PlaywrightXCollector._hourly_requests and PlaywrightXCollector._hourly_requests[0] < cutoff:
-            PlaywrightXCollector._hourly_requests.popleft()
-        
-        current_count = len(PlaywrightXCollector._hourly_requests)
-        if current_count >= hourly_cap:
-            # Calculate when oldest request will expire
-            oldest = PlaywrightXCollector._hourly_requests[0]
-            retry_after = int(oldest + _HOURLY_WINDOW_SECONDS - now) + 1
-            logger.warning(
-                "x_hourly_cap_exceeded",
-                current_count=current_count,
-                hourly_cap=hourly_cap,
-                retry_after_seconds=retry_after,
-            )
-            raise XCircuitBreakerError(
-                f"Hourly request cap ({hourly_cap}) exceeded, retry in {retry_after}s",
-                retry_after_seconds=retry_after,
-            )
-
-    def _record_hourly_request(self) -> None:  # pragma: no cover - class-level state
-        """Record a request for hourly cap tracking."""
-        PlaywrightXCollector._hourly_requests.append(time.time())
-
-    def _record_error(self, error_message: str) -> None:  # pragma: no cover - class-level state
-        """Record an error and trigger circuit breaker.
-
-        Simple behavior:
-        - On first error: log it, set 90s backoff
-        - On 2nd error: log it, set 90s backoff
-        - On 3rd error: FAIL LOUDLY with the actual error message
-        """
-        PlaywrightXCollector._consecutive_errors += 1
-        PlaywrightXCollector._last_error_message = error_message
-
-        logger.error(
-            "x_scrape_error",
-            error=error_message,
-            attempt=PlaywrightXCollector._consecutive_errors,
-            max_retries=_MAX_RETRIES,
-        )
-
-        if PlaywrightXCollector._consecutive_errors >= _MAX_RETRIES:
-            # 3 strikes - fail loudly with the actual error
-            logger.error(
-                "x_scrape_failed_permanently",
-                error=error_message,
-                attempts=PlaywrightXCollector._consecutive_errors,
-                message="Failing social scrape after max retries",
-            )
-            raise XCircuitBreakerError(
-                f"X scrape failed after {_MAX_RETRIES} attempts: {error_message}",
-                retry_after_seconds=0,  # Don't retry
-            )
-
-        # Not at max yet - set 90 second backoff
-        PlaywrightXCollector._circuit_open_until = time.time() + _BACKOFF_SECONDS
-        logger.warning(
-            "x_backoff_started",
-            error=error_message,
-            attempt=PlaywrightXCollector._consecutive_errors,
-            backoff_seconds=_BACKOFF_SECONDS,
-            retry_at=datetime.fromtimestamp(PlaywrightXCollector._circuit_open_until).isoformat(),
-        )
-
-    def _record_success(self, posts_found: int) -> None:  # pragma: no cover - class-level state
-        """Record a successful request and reset error counter."""
-        if PlaywrightXCollector._consecutive_errors > 0:
-            logger.info(
-                "x_errors_reset",
-                previous_errors=PlaywrightXCollector._consecutive_errors,
-                posts_found=posts_found,
-            )
-        PlaywrightXCollector._consecutive_errors = 0
-        PlaywrightXCollector._last_error_message = ""
+        if self.auth_token and self.ct0:
+            logger.info("x_auth_configured", token_len=len(self.auth_token), ct0_len=len(self.ct0))
+        else:
+            logger.warning("x_auth_missing", message="X_AUTH_TOKEN and/or X_CT0 not set - search will not work")
 
     def _polite_delay(self) -> None:  # pragma: no cover - timing-dependent
-        """Wait between requests to be a good citizen (5-9 seconds like sports reference)."""
+        """Wait between requests to be a good citizen (10-15 seconds)."""
         import random
         import time
 
@@ -219,8 +116,6 @@ class PlaywrightXCollector(XCollectorStrategy):
 
         Uses X's advanced search syntax:
             from:handle since:YYYY-MM-DD until:YYYY-MM-DD
-
-        This allows finding tweets from any date, not just recent ones.
         """
         handle_clean = x_handle.lstrip("@")
         start_date = window_start.strftime("%Y-%m-%d")
@@ -237,34 +132,27 @@ class PlaywrightXCollector(XCollectorStrategy):
         except Exception:
             return None
 
-    def collect_posts(  # pragma: no cover - requires browser
+    def _scrape_once(  # pragma: no cover - requires browser
         self,
         x_handle: str,
         window_start: datetime,
         window_end: datetime,
-    ) -> list[CollectedPost]:
-        if not sync_playwright:
-            logger.warning("x_playwright_missing", handle=x_handle)
-            return []
+    ) -> tuple[list[CollectedPost], str | None]:
+        """Execute a single scrape attempt.
 
-        # Check circuit breaker and hourly cap before making request
-        self._check_circuit_breaker()
-        self._check_hourly_cap()
-
+        Returns:
+            Tuple of (posts, error_message). error_message is None on success
+            or "no_results" for empty-but-valid responses.
+        """
         posts: list[CollectedPost] = []
         page_error_message: str | None = None
-        logger.info(
-            "x_playwright_collect_start",
-            handle=x_handle,
-            window_start=str(window_start),
-            window_end=str(window_end),
-        )
-
-        self._polite_delay()
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
+            context = browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            )
 
             if self.auth_token and self.ct0:
                 context.add_cookies(
@@ -275,31 +163,50 @@ class PlaywrightXCollector(XCollectorStrategy):
                 )
 
             page = context.new_page()
+
             try:
                 search_url = self._build_search_url(x_handle, window_start, window_end)
                 logger.debug("x_playwright_search_url", url=search_url)
 
                 page.goto(search_url, timeout=self.timeout_ms, wait_until="domcontentloaded")
 
-                # Wait for tweets to appear (up to 10 seconds)
+                # Wait for tweets to appear. X's JS rendering can be slow
+                # under sequential load, so try twice with increasing timeouts.
+                tweet_selector = 'article[data-testid="tweet"]'
+                tweets_found = False
                 try:
-                    page.wait_for_selector(
-                        'article[data-testid="tweet"]',
-                        timeout=10000,
-                        state="attached"
-                    )
+                    page.wait_for_selector(tweet_selector, timeout=15000, state="attached")
+                    tweets_found = True
                 except Exception:
-                    # No tweets found - check for error conditions
+                    pass
+
+                if not tweets_found:
+                    # Check for explicit error pages before giving up
                     content = page.content()
                     if "Something went wrong" in content:
                         page_error_message = "X returned 'Something went wrong' - possible rate limit or auth issue"
                         logger.error("x_page_error", handle=x_handle, error=page_error_message)
-                    elif "Log in" in content or "Sign in" in content:
+                    elif page.url and "/login" in page.url:
                         page_error_message = "X returned login wall - auth tokens may be expired"
                         logger.error("x_page_error", handle=x_handle, error=page_error_message)
                     elif "No results" in content:
                         logger.debug("x_page_no_results", handle=x_handle)
-                    # Continue anyway - might be legitimately no tweets
+                        page_error_message = "no_results"
+                    else:
+                        # No error detected but no tweets yet — wait longer and try once more
+                        logger.debug("x_slow_render_retry", handle=x_handle)
+                        page.wait_for_timeout(5000)
+                        try:
+                            page.wait_for_selector(tweet_selector, timeout=10000, state="attached")
+                        except Exception:
+                            # Still nothing — check for login wall in final content
+                            final_content = page.content()
+                            if "Log in to X" in final_content or "Sign in to X" in final_content:
+                                page_error_message = "X returned login wall - auth tokens may be expired"
+                                logger.error("x_page_error", handle=x_handle, error=page_error_message)
+                            else:
+                                page_error_message = "no_results"
+                                logger.debug("x_page_no_results_after_retry", handle=x_handle)
 
                 page.wait_for_timeout(self.wait_ms)
 
@@ -418,19 +325,67 @@ class PlaywrightXCollector(XCollectorStrategy):
                         break
 
                 self._mark_request_done()
-                logger.info("x_total_posts_collected", handle=x_handle, total=len(posts))
 
             finally:
                 browser.close()
 
-        # Record this request for hourly cap tracking
-        self._record_hourly_request()
+        return posts, page_error_message
 
-        # Update circuit breaker state based on result
-        if page_error_message:
-            self._record_error(page_error_message)
-        else:
-            self._record_success(posts_found=len(posts))
+    def collect_posts(  # pragma: no cover - requires browser
+        self,
+        x_handle: str,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> list[CollectedPost]:
+        if not sync_playwright:
+            logger.warning("x_playwright_missing", handle=x_handle)
+            return []
 
-        logger.info("x_playwright_collect_done", handle=x_handle, count=len(posts))
-        return posts
+        logger.info(
+            "x_playwright_collect_start",
+            handle=x_handle,
+            window_start=str(window_start),
+            window_end=str(window_end),
+        )
+
+        self._polite_delay()
+
+        last_error: str = ""
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            posts, error_message = self._scrape_once(x_handle, window_start, window_end)
+
+            # "no_results" is not an error — just no tweets in that window
+            if error_message == "no_results":
+                logger.info("x_playwright_collect_done", handle=x_handle, count=0)
+                return []
+
+            # Success — got posts (or no error and no posts)
+            if error_message is None:
+                logger.info("x_playwright_collect_done", handle=x_handle, count=len(posts))
+                return posts
+
+            # Retryable error (login wall, "Something went wrong")
+            last_error = error_message
+            logger.warning(
+                "x_scrape_retry",
+                handle=x_handle,
+                attempt=attempt,
+                max_attempts=_MAX_ATTEMPTS,
+                error=error_message,
+                backoff_seconds=_BACKOFF_SECONDS,
+            )
+
+            if attempt < _MAX_ATTEMPTS:
+                time.sleep(_BACKOFF_SECONDS)
+
+        # All attempts exhausted — fail the job loudly
+        logger.error(
+            "x_scrape_failed_permanently",
+            handle=x_handle,
+            attempts=_MAX_ATTEMPTS,
+            error=last_error,
+        )
+        raise XCircuitBreakerError(
+            f"X scrape failed after {_MAX_ATTEMPTS} attempts: {last_error}",
+            retry_after_seconds=0,
+        )

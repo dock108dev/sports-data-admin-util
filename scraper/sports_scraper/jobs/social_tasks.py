@@ -1,8 +1,11 @@
-"""Celery tasks for team-centric social collection.
+"""Celery tasks for social collection.
 
-These tasks implement the two-phase social collection architecture:
-1. collect_team_social: Scrape tweets for teams in a date range
-2. map_social_to_games: Assign unmapped tweets to games
+These tasks run on the dedicated social-scraper worker for consistent IP/session.
+
+Tasks:
+- collect_social_for_league: Main entry point called from scheduled ingestion
+- collect_team_social: Scrape tweets for teams in a date range
+- map_social_to_games: Assign unmapped tweets to games
 """
 
 from __future__ import annotations
@@ -12,6 +15,60 @@ from datetime import date
 from celery import shared_task
 
 from ..logging import logger
+
+
+@shared_task(
+    name="collect_social_for_league",
+    queue="social-scraper",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def collect_social_for_league(league: str) -> dict:
+    """Collect social posts for a league. Runs on dedicated social-scraper worker.
+
+    This is the main entry point for social collection, dispatched from
+    run_scheduled_ingestion in scrape_tasks.py. It runs asynchronously
+    (fire-and-forget) so sports ingestion doesn't wait for social.
+
+    Collects tweets for all teams that played in the last 3 days, then
+    maps unmapped tweets to games.
+
+    Args:
+        league: League code (NBA, NHL)
+
+    Returns:
+        Summary stats dict with social_posts and games_processed
+    """
+    from datetime import timedelta
+
+    from ..db import get_session
+    from ..social.team_collector import TeamTweetCollector
+    from ..social.tweet_mapper import map_unmapped_tweets
+    from ..utils.datetime_utils import today_et
+
+    logger.info("social_task_started", league=league)
+
+    end_date = today_et()
+    start_date = end_date - timedelta(days=3)
+
+    with get_session() as session:
+        collector = TeamTweetCollector()
+        result = collector.collect_for_date_range(
+            session=session,
+            league_code=league,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        # Map newly collected tweets to games
+        map_result = map_unmapped_tweets(session=session, batch_size=1000)
+        result["mapping"] = map_result
+
+    logger.info("social_task_complete", league=league, **{
+        k: v for k, v in result.items() if k != "mapping"
+    })
+    return result
 
 
 @shared_task(

@@ -36,18 +36,3 @@ def parse_float(value: str | None) -> float | None:
         return None
 
 
-def parse_time_to_minutes(value: str | None) -> float | None:
-    """Parse time string (MM:SS or HH:MM:SS) to decimal minutes."""
-    if value in (None, "", "-"):
-        return None
-    try:
-        parts = str(value).split(":")
-        if len(parts) == 2:
-            # MM:SS format
-            return float(parts[0]) + float(parts[1]) / 60
-        elif len(parts) == 3:
-            # HH:MM:SS format
-            return float(parts[0]) * 60 + float(parts[1]) + float(parts[2]) / 60
-        return float(value)
-    except (ValueError, TypeError):
-        return None

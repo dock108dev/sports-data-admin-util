@@ -148,7 +148,7 @@ See [TIMELINE_ASSEMBLY.md](TIMELINE_ASSEMBLY.md) for details.
 - `sports_player_boxscores` - Player stats
 - `sports_game_odds` - Betting lines (game-centric)
 - `fairbet_game_odds_work` - Bet-centric odds for cross-book comparison
-- `game_social_posts` - Social media content
+- `team_social_posts` - Social media content (mapped to games via `mapping_status`)
 
 See `sql/` for complete schema.
 

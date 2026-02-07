@@ -4,7 +4,7 @@ Handles PBP fetching and persistence for different sources:
 - NBA API (NBA)
 - NHL API (NHL)
 - College Basketball Data API (NCAAB)
-- Sports Reference (legacy fallback for NCAAB)
+- Sports Reference (NCAAB)
 
 This module re-exports sport-specific functions from their dedicated modules.
 """
@@ -64,8 +64,7 @@ def ingest_pbp_via_sportsref(
 ) -> tuple[int, int]:
     """Ingest PBP using Sports Reference scraper implementations.
 
-    NOTE: This function is only used for NCAAB as a legacy fallback.
-    NBA and NHL use their respective live APIs for PBP
+    Used for NCAAB. NBA and NHL use their respective live APIs
     (ingest_pbp_via_nba_api, ingest_pbp_via_nhl_api).
     """
     if not scraper:

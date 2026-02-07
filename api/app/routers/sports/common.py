@@ -15,9 +15,7 @@ from ...db.sports import (
     SportsPlayerBoxscore,
     SportsGamePlay,
 )
-from ...db.social import GameSocialPost
 from ...db.scraper import SportsScrapeRun
-from ...utils.reveal_utils import contains_explicit_score
 from .schemas import (
     NHLGoalieStat,
     NHLSkaterStat,
@@ -53,11 +51,6 @@ def serialize_play_entry(play: SportsGamePlay) -> PlayEntry:
 _URL_PATTERN = re.compile(r"https?://\S+")
 
 
-def post_contains_score(text: str | None) -> bool:
-    """Detect explicit score references in a social post."""
-    return contains_explicit_score(text)
-
-
 def normalize_post_text(text: str | None) -> str | None:
     """Normalize post text for deduplication."""
     if not text:
@@ -66,22 +59,6 @@ def normalize_post_text(text: str | None) -> str | None:
     cleaned = re.sub(r"[^a-z0-9\s]", " ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned or None
-
-
-def dedupe_social_posts(
-    posts: Sequence[GameSocialPost],
-) -> list[GameSocialPost]:
-    """Deduplicate social posts by normalized text and team id."""
-    seen: set[tuple[str, int]] = set()
-    deduped: list[GameSocialPost] = []
-    for post in posts:
-        normalized = normalize_post_text(post.tweet_text) or post.post_url
-        key = (normalized, post.team_id)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(post)
-    return deduped
 
 
 async def get_league(session: AsyncSession, code: str) -> SportsLeague:

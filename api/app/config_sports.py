@@ -88,11 +88,6 @@ def get_league_config(league_code: str) -> LeagueConfig:
     return LEAGUE_CONFIG[league_code]
 
 
-def get_valid_league_codes() -> list[str]:
-    """Get list of all configured league codes."""
-    return list(LEAGUE_CONFIG.keys())
-
-
 def get_scheduled_leagues() -> list[str]:
     """Get leagues enabled for scheduled daily ingestion."""
     return [code for code, cfg in LEAGUE_CONFIG.items() if cfg.scheduled_ingestion]
@@ -121,11 +116,6 @@ def validate_league_code(league_code: str) -> str:
             f"Invalid league_code '{league_code}'. Must be one of: {valid}"
         )
     return league_code
-
-
-def is_valid_league(league_code: str) -> bool:
-    """Check if league code is valid."""
-    return league_code in LEAGUE_CONFIG
 
 
 def is_social_enabled(league_code: str) -> bool:

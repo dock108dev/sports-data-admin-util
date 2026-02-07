@@ -24,7 +24,7 @@ DATABASE_URL = "postgresql+psycopg://user:pass@host:5432/sports"
 | sports_game_odds | Spreads, totals, moneylines (game-centric) |
 | fairbet_game_odds_work | Cross-book odds (bet-centric) |
 | sports_game_plays | Play-by-play events |
-| game_social_posts | X/Twitter posts per game |
+| team_social_posts | X/Twitter posts per team (mapped to games via `mapping_status`) |
 | game_reading_positions | User reading position tracking |
 | compact_mode_thresholds | Per-sport moment thresholds |
 | sports_scrape_runs | Scrape job audit log |
@@ -144,7 +144,7 @@ FROM sports_games g
 JOIN sports_leagues l ON g.league_id = l.id
 LEFT JOIN sports_team_boxscores tb ON tb.game_id = g.id
 LEFT JOIN sports_game_odds o ON o.game_id = g.id
-LEFT JOIN game_social_posts sp ON sp.game_id = g.id
+LEFT JOIN team_social_posts sp ON sp.game_id = g.id AND sp.mapping_status = 'mapped'
 GROUP BY l.code, g.season
 ORDER BY l.code, g.season DESC;
 ```

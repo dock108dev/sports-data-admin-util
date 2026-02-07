@@ -28,7 +28,6 @@ os.environ.setdefault("ENVIRONMENT", "development")
 from sports_scraper.services.game_selection import (
     select_games_for_boxscores,
     select_games_for_odds,
-    select_games_for_social,
     select_games_for_pbp_sportsref,
 )
 
@@ -165,79 +164,6 @@ class TestSelectGamesForOdds:
 
         assert len(result) == 1
         assert date(2024, 1, 15) in result
-
-
-class TestSelectGamesForSocial:
-    """Tests for select_games_for_social function."""
-
-    def test_no_league_returns_empty(self):
-        """Returns empty list when league not found."""
-        mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.first.return_value = None
-
-        result = select_games_for_social(
-            mock_session, "INVALID", date(2024, 1, 15), date(2024, 1, 15)
-        )
-
-        assert result == []
-
-    @patch("sports_scraper.services.game_selection.settings")
-    def test_returns_game_ids(self, mock_settings):
-        """Returns list of game IDs."""
-        mock_settings.social_config.recent_game_window_hours = 48
-        mock_session = MagicMock()
-
-        mock_league = MagicMock()
-        mock_league.id = 1
-        mock_session.query.return_value.filter.return_value.first.return_value = mock_league
-        mock_session.query.return_value.filter.return_value.filter.return_value.all.return_value = [
-            (100,), (101,), (102,)
-        ]
-
-        result = select_games_for_social(
-            mock_session, "NBA", date(2024, 1, 15), date(2024, 1, 15)
-        )
-
-        assert len(result) == 3
-        assert 100 in result
-        assert 101 in result
-
-    @patch("sports_scraper.services.game_selection.settings")
-    def test_backfill_mode(self, mock_settings):
-        """Tests backfill mode includes all statuses."""
-        mock_settings.social_config.recent_game_window_hours = 48
-        mock_session = MagicMock()
-
-        mock_league = MagicMock()
-        mock_league.id = 1
-        mock_session.query.return_value.filter.return_value.first.return_value = mock_league
-        mock_session.query.return_value.filter.return_value.filter.return_value.all.return_value = []
-
-        result = select_games_for_social(
-            mock_session, "NBA", date(2024, 1, 15), date(2024, 1, 15),
-            is_backfill=True
-        )
-
-        assert result == []
-
-    @patch("sports_scraper.services.game_selection.settings")
-    def test_exclude_pregame(self, mock_settings):
-        """Tests include_pregame=False excludes scheduled games."""
-        mock_settings.social_config.recent_game_window_hours = 48
-        mock_session = MagicMock()
-
-        mock_league = MagicMock()
-        mock_league.id = 1
-        mock_session.query.return_value.filter.return_value.first.return_value = mock_league
-        mock_session.query.return_value.filter.return_value.filter.return_value.all.return_value = []
-
-        result = select_games_for_social(
-            mock_session, "NBA", date(2024, 1, 15), date(2024, 1, 15),
-            is_backfill=True,
-            include_pregame=False
-        )
-
-        assert result == []
 
 
 class TestSelectGamesForPbpSportsref:

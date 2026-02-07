@@ -25,11 +25,7 @@ os.environ.setdefault("ENVIRONMENT", "development")
 # Tests for social/models.py
 # ============================================================================
 
-from sports_scraper.social.models import (
-    CollectedPost,
-    PostCollectionJob,
-    PostCollectionResult,
-)
+from sports_scraper.social.models import CollectedPost
 
 
 class TestCollectedPost:
@@ -65,89 +61,6 @@ class TestCollectedPost:
         assert post.video_url is not None
         assert post.media_type == "video"
 
-
-class TestPostCollectionJob:
-    """Tests for PostCollectionJob model."""
-
-    def test_create_job(self):
-        """Create collection job with required fields."""
-        now = datetime.now(timezone.utc)
-        job = PostCollectionJob(
-            game_id=123,
-            team_abbreviation="GSW",
-            x_handle="warriors",
-            window_start=now - timedelta(hours=3),
-            window_end=now,
-            game_start=now - timedelta(hours=2),
-        )
-        assert job.game_id == 123
-        assert job.team_abbreviation == "GSW"
-        assert job.x_handle == "warriors"
-        assert job.is_backfill is False
-
-    def test_create_backfill_job(self):
-        """Create backfill job."""
-        now = datetime.now(timezone.utc)
-        job = PostCollectionJob(
-            game_id=123,
-            team_abbreviation="GSW",
-            x_handle="warriors",
-            window_start=now - timedelta(days=7),
-            window_end=now - timedelta(days=6),
-            game_start=now - timedelta(days=7),
-            game_end=now - timedelta(days=7) + timedelta(hours=3),
-            is_backfill=True,
-        )
-        assert job.is_backfill is True
-        assert job.game_end is not None
-
-
-class TestPostCollectionResult:
-    """Tests for PostCollectionResult model."""
-
-    def test_create_result(self):
-        """Create collection result."""
-        now = datetime.now(timezone.utc)
-        job = PostCollectionJob(
-            game_id=123,
-            team_abbreviation="GSW",
-            x_handle="warriors",
-            window_start=now - timedelta(hours=3),
-            window_end=now,
-            game_start=now - timedelta(hours=2),
-        )
-        result = PostCollectionResult(
-            job=job,
-            posts_found=10,
-            posts_saved=8,
-            posts_flagged_reveal=2,
-            errors=[],
-            completed_at=now,
-        )
-        assert result.posts_found == 10
-        assert result.posts_saved == 8
-        assert result.posts_flagged_reveal == 2
-        assert result.completed_at is not None
-
-    def test_create_result_with_errors(self):
-        """Create collection result with errors."""
-        now = datetime.now(timezone.utc)
-        job = PostCollectionJob(
-            game_id=123,
-            team_abbreviation="GSW",
-            x_handle="warriors",
-            window_start=now,
-            window_end=now,
-            game_start=now,
-        )
-        result = PostCollectionResult(
-            job=job,
-            posts_found=0,
-            posts_saved=0,
-            errors=["Rate limited", "Connection timeout"],
-        )
-        assert len(result.errors) == 2
-        assert "Rate limited" in result.errors
 
 
 # ============================================================================
@@ -311,29 +224,6 @@ class TestExtractXPostId:
         url = "https://x.com/warriors/status/1234567890?s=20"
         post_id = extract_x_post_id(url)
         assert post_id == "1234567890"
-
-
-# ============================================================================
-# Tests for social/strategies.py
-# ============================================================================
-
-from sports_scraper.social.strategies import MockXCollector
-
-
-class TestMockXCollector:
-    """Tests for MockXCollector class."""
-
-    def test_collect_posts_returns_empty(self):
-        """MockXCollector returns empty list."""
-        collector = MockXCollector()
-        now = datetime.now(timezone.utc)
-        posts = collector.collect_posts(
-            x_handle="warriors",
-            window_start=now - timedelta(hours=3),
-            window_end=now,
-        )
-        assert posts == []
-        assert isinstance(posts, list)
 
 
 # ============================================================================
@@ -654,41 +544,3 @@ class TestSocialRequestCache:
         mock_session.flush.assert_called_once()
 
 
-# ============================================================================
-# Tests for social/collector_base.py
-# ============================================================================
-
-from sports_scraper.social.collector_base import XCollectorStrategy
-
-
-class TestXCollectorStrategy:
-    """Tests for XCollectorStrategy abstract class."""
-
-    def test_is_abstract(self):
-        """XCollectorStrategy is abstract."""
-        # Should have abstract method
-        assert hasattr(XCollectorStrategy, "collect_posts")
-
-    def test_cannot_instantiate_directly(self):
-        """Cannot instantiate abstract class directly."""
-        with pytest.raises(TypeError):
-            XCollectorStrategy()
-
-    def test_subclass_must_implement(self):
-        """Subclass must implement collect_posts."""
-
-        class IncompleteCollector(XCollectorStrategy):
-            pass
-
-        with pytest.raises(TypeError):
-            IncompleteCollector()
-
-    def test_complete_subclass_works(self):
-        """Complete subclass can be instantiated."""
-
-        class CompleteCollector(XCollectorStrategy):
-            def collect_posts(self, x_handle, window_start, window_end):
-                return []
-
-        collector = CompleteCollector()
-        assert collector is not None

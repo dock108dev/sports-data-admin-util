@@ -28,7 +28,3 @@ export const FEATURE_CUSTOM_CONTEXT =
 // Post-game diagnostic features
 export const FEATURE_DIAGNOSTICS =
   process.env.NEXT_PUBLIC_FF_DIAGNOSTICS === "true";
-
-// Inline X video playback for social posts
-export const ENABLE_INLINE_X_VIDEO =
-  process.env.NEXT_PUBLIC_ENABLE_INLINE_X_VIDEO === "true";

@@ -17,7 +17,7 @@ Social collection uses a **team-centric** approach rather than game-centric:
 1. Query unmapped tweets from `team_social_posts`
 2. Match tweets to games based on team and posting time
 3. Apply spoiler filtering
-4. Copy mapped tweets to `game_social_posts`
+4. Update `mapping_status='mapped'` and set `game_id` on matched tweets in `team_social_posts`
 
 ### Why Team-Centric?
 - Collect once, map to multiple games if needed
@@ -49,27 +49,9 @@ CREATE TABLE team_social_posts (
 );
 ```
 
-### Phase 2: Mapped Game Posts
+### Mapping
 
-```sql
-CREATE TABLE game_social_posts (
-    id SERIAL PRIMARY KEY,
-    game_id INTEGER NOT NULL REFERENCES sports_games(id) ON DELETE CASCADE,
-    team_id INTEGER NOT NULL REFERENCES sports_teams(id) ON DELETE CASCADE,
-    tweet_url TEXT NOT NULL UNIQUE,
-    posted_at TIMESTAMPTZ NOT NULL,
-    has_video BOOLEAN DEFAULT FALSE,
-    tweet_text TEXT,
-    video_url TEXT,
-    image_url TEXT,
-    source_handle VARCHAR(100),
-    media_type VARCHAR(20),  -- 'video', 'image', or 'none'
-    reveal_risk BOOLEAN DEFAULT FALSE,
-    reveal_reason TEXT,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL
-);
-```
+When tweets are mapped to games, `team_social_posts.mapping_status` is updated to `'mapped'` and `game_id` is set. There is no separate `game_social_posts` table; mapped tweets are queried from `team_social_posts` where `mapping_status='mapped'`.
 
 ### Team Handles
 

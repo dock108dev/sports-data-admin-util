@@ -24,18 +24,23 @@ from sqlalchemy.sql import text
 from .base import Base
 
 if TYPE_CHECKING:
-    from .social import GameSocialPost, TeamSocialAccount
+    from .social import TeamSocialAccount, TeamSocialPost
     from .odds import SportsGameOdds
     from .scraper import SportsScrapeRun
     from .story import SportsGameTimelineArtifact
 
 
 class GameStatus(str, Enum):
-    """Canonical game status lifecycle."""
+    """Canonical game status lifecycle.
+
+    Happy path: scheduled → pregame → live → final → archived
+    """
 
     scheduled = "scheduled"
+    pregame = "pregame"      # Within pregame_window_hours of tip_time
     live = "live"
     final = "final"
+    archived = "archived"    # Data complete, flows generated, >7 days old
     postponed = "postponed"
     canceled = "canceled"
 
@@ -229,6 +234,15 @@ class SportsGame(Base):
     external_ids: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
     )
+    social_scrape_1_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    social_scrape_2_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -255,8 +269,12 @@ class SportsGame(Base):
     odds: Mapped[list["SportsGameOdds"]] = relationship(
         "SportsGameOdds", back_populates="game", cascade="all, delete-orphan"
     )
-    social_posts: Mapped[list["GameSocialPost"]] = relationship(
-        "GameSocialPost", back_populates="game", cascade="all, delete-orphan"
+    social_posts: Mapped[list["TeamSocialPost"]] = relationship(
+        "TeamSocialPost",
+        primaryjoin="and_(SportsGame.id == TeamSocialPost.game_id, TeamSocialPost.mapping_status == 'mapped')",
+        foreign_keys="[TeamSocialPost.game_id]",
+        viewonly=True,
+        lazy="select",
     )
     plays: Mapped[list["SportsGamePlay"]] = relationship(
         "SportsGamePlay", back_populates="game", cascade="all, delete-orphan"
@@ -285,6 +303,21 @@ class SportsGame(Base):
     def is_final(self) -> bool:
         """Check if game is in a final state."""
         return self.status == GameStatus.final.value
+
+    @property
+    def is_archived(self) -> bool:
+        """Check if game has been archived (terminal state)."""
+        return self.status == GameStatus.archived.value
+
+    @property
+    def is_active(self) -> bool:
+        """Check if game is in an active lifecycle state (not terminal)."""
+        return self.status in (
+            GameStatus.scheduled.value,
+            GameStatus.pregame.value,
+            GameStatus.live.value,
+            GameStatus.final.value,
+        )
 
     @property
     def start_time(self) -> datetime:

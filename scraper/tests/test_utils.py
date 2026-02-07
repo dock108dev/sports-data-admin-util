@@ -25,7 +25,7 @@ os.environ.setdefault("ENVIRONMENT", "development")
 # Tests for utils/parsing.py
 # ============================================================================
 
-from sports_scraper.utils.parsing import parse_int, parse_float, parse_time_to_minutes
+from sports_scraper.utils.parsing import parse_int, parse_float
 
 
 class TestParseInt:
@@ -96,35 +96,6 @@ class TestParseFloat:
     def test_parse_float_handles_simple_time(self):
         result = parse_float("10:30")
         assert result == pytest.approx(10.5, rel=0.01)
-
-
-class TestParseTimeToMinutes:
-    """Tests for parse_time_to_minutes function."""
-
-    def test_parse_time_mmss_format(self):
-        result = parse_time_to_minutes("32:45")
-        assert result == pytest.approx(32.75, rel=0.01)
-
-    def test_parse_time_hhmmss_format(self):
-        # 1:30:45 = 60 + 30 + 45/60 = 90.75 minutes
-        result = parse_time_to_minutes("1:30:45")
-        assert result == pytest.approx(90.75, rel=0.01)
-
-    def test_parse_time_returns_none_for_none(self):
-        assert parse_time_to_minutes(None) is None
-
-    def test_parse_time_returns_none_for_empty_string(self):
-        assert parse_time_to_minutes("") is None
-
-    def test_parse_time_returns_none_for_dash(self):
-        assert parse_time_to_minutes("-") is None
-
-    def test_parse_time_returns_none_for_invalid(self):
-        assert parse_time_to_minutes("abc") is None
-
-    def test_parse_time_simple_number(self):
-        result = parse_time_to_minutes("30")
-        assert result == 30.0
 
 
 # ============================================================================
@@ -207,7 +178,6 @@ from sports_scraper.utils.datetime_utils import (
     now_utc,
     today_utc,
     date_to_utc_datetime,
-    date_to_datetime_range,
     date_window_for_matching,
 )
 
@@ -260,32 +230,6 @@ class TestDateToUtcDatetime:
     def test_date_to_utc_datetime_is_timezone_aware(self):
         result = date_to_utc_datetime(date(2024, 1, 15))
         assert result.tzinfo == timezone.utc
-
-
-class TestDateToDatetimeRange:
-    """Tests for date_to_datetime_range function."""
-
-    def test_date_to_datetime_range_returns_tuple(self):
-        result = date_to_datetime_range(date(2024, 1, 15))
-        assert isinstance(result, tuple)
-        assert len(result) == 2
-
-    def test_date_to_datetime_range_start_is_midnight(self):
-        start, _ = date_to_datetime_range(date(2024, 1, 15))
-        assert start.hour == 0
-        assert start.minute == 0
-        assert start.second == 0
-
-    def test_date_to_datetime_range_end_is_end_of_day(self):
-        _, end = date_to_datetime_range(date(2024, 1, 15))
-        assert end.hour == 23
-        assert end.minute == 59
-        assert end.second == 59
-
-    def test_date_to_datetime_range_same_date(self):
-        start, end = date_to_datetime_range(date(2024, 1, 15))
-        assert start.date() == date(2024, 1, 15)
-        assert end.date() == date(2024, 1, 15)
 
 
 class TestDateWindowForMatching:

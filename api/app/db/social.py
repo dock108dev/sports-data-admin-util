@@ -31,72 +31,6 @@ class MappingStatus(str, Enum):
     no_game = "no_game"
 
 
-class GameSocialPost(Base):
-    """Social media posts linked to games for timeline display.
-
-    Posts are linked to games ONLY - never to specific plays or moments.
-    They provide contextual flavor but never explain or justify narrative content.
-    """
-
-    __tablename__ = "game_social_posts"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    game_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("sports_games.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    team_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("sports_teams.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    post_url: Mapped[str] = mapped_column(
-        "tweet_url", Text, nullable=False, unique=True
-    )
-    platform: Mapped[str] = mapped_column(
-        String(20), server_default="x", nullable=False
-    )
-    external_post_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    posted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, index=True
-    )
-    has_video: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    tweet_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    video_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_handle: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    media_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    reveal_risk: Mapped[bool] = mapped_column(
-        "spoiler_risk", Boolean, default=False, nullable=False
-    )
-    reveal_reason: Mapped[str | None] = mapped_column(
-        "spoiler_reason", String(200), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-
-    game: Mapped[SportsGame] = relationship("SportsGame", back_populates="social_posts")
-    team: Mapped[SportsTeam] = relationship("SportsTeam")
-
-    __table_args__ = (
-        Index("idx_social_posts_game", "game_id"),
-        Index("idx_social_posts_team", "team_id"),
-        Index("idx_social_posts_posted_at", "posted_at"),
-        Index("idx_social_posts_media_type", "media_type"),
-        Index("idx_social_posts_external_id", "external_post_id"),
-        UniqueConstraint(
-            "platform", "external_post_id", name="uq_social_posts_platform_external_id"
-        ),
-    )
-
-
 class TeamSocialPost(Base):
     """Team-centric social posts for the two-phase collection architecture.
 
@@ -143,6 +77,9 @@ class TeamSocialPost(Base):
     )
     mapping_status: Mapped[str] = mapped_column(
         String(20), server_default="unmapped", nullable=False, index=True
+    )
+    game_phase: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, default=None, index=True
     )
 
     created_at: Mapped[datetime] = mapped_column(

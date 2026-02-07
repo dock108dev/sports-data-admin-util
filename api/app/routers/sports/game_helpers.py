@@ -12,7 +12,7 @@ from sqlalchemy.sql import or_
 
 from ...celery_client import get_celery_app
 from ...db.sports import SportsGame, SportsTeam, SportsLeague
-from ...db.social import GameSocialPost
+from ...db.social import TeamSocialPost
 from ...db.scraper import SportsScrapeRun
 from ...db import AsyncSession
 from ...game_metadata.models import GameContext, StandingsEntry, TeamRatings
@@ -282,7 +282,7 @@ def summarize_game(
 
 
 def resolve_team_abbreviation(
-    game: SportsGame, post: GameSocialPost
+    game: SportsGame, post: TeamSocialPost
 ) -> str:
     """Resolve a team's abbreviation for a social post entry. Fails fast if not resolvable."""
     if hasattr(post, "team") and post.team and post.team.abbreviation:
@@ -299,7 +299,7 @@ def resolve_team_abbreviation(
 
 def serialize_social_posts(
     game: SportsGame,
-    posts: Sequence[GameSocialPost],
+    posts: Sequence[TeamSocialPost],
 ) -> list[SocialPostEntry]:
     """Serialize social posts for API responses."""
     entries: list[SocialPostEntry] = []
