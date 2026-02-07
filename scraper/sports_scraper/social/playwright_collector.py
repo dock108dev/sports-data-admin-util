@@ -26,8 +26,8 @@ def playwright_available() -> bool:  # pragma: no cover
 
 
 # Retry constants
-_BACKOFF_SECONDS = 90  # Fixed 90 second backoff on retryable error
-_MAX_ATTEMPTS = 3  # Try up to 3 times, then fail the job
+_BACKOFF_SECONDS = 60  # Backoff on retryable error (login wall / "Something went wrong")
+_MAX_ATTEMPTS = 2  # Try twice, then fail fast — team_collector handles batch-level retry
 
 
 class PlaywrightXCollector:

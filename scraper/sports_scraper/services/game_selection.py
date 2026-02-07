@@ -37,8 +37,8 @@ def select_games_for_boxscores(
         db_models.SportsGame.game_date,
     ).filter(
         db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time()),
-        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time()),
+        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
+        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
         db_models.SportsGame.source_game_key.isnot(None),
     )
 
@@ -74,8 +74,8 @@ def select_games_for_odds(
         func.date(db_models.SportsGame.game_date).label("game_day")
     ).filter(
         db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time()),
-        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time()),
+        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
+        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
     ).distinct()
 
     if only_missing:

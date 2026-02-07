@@ -353,6 +353,64 @@ class TestBuildPlayerStats:
 # Tests for persistence/odds_matching.py
 # ============================================================================
 
+# ============================================================================
+# Tests for utils/datetime_utils.py
+# ============================================================================
+
+from unittest.mock import patch
+from datetime import date, timedelta
+from sports_scraper.utils.datetime_utils import today_et
+
+
+class TestTodayEt:
+    """Tests for today_et() function."""
+
+    def test_late_utc_returns_et_date(self):
+        """At 11 PM UTC (6 PM ET during EST), today_et() should return
+        the ET date (same calendar day), not the UTC date."""
+        # 2026-02-06 23:00 UTC = 2026-02-06 18:00 EST
+        mock_now = datetime(2026, 2, 6, 23, 0, 0, tzinfo=timezone.utc)
+        with patch("sports_scraper.utils.datetime_utils.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_now.astimezone(
+                __import__("zoneinfo", fromlist=["ZoneInfo"]).ZoneInfo("America/New_York")
+            )
+            mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            result = today_et()
+        assert result == date(2026, 2, 6)
+
+    def test_early_utc_returns_previous_et_date(self):
+        """At 3 AM UTC (10 PM ET previous day during EST), today_et()
+        should return the previous day's date in ET."""
+        # 2026-02-06 03:00 UTC = 2026-02-05 22:00 EST
+        mock_now = datetime(2026, 2, 6, 3, 0, 0, tzinfo=timezone.utc)
+        with patch("sports_scraper.utils.datetime_utils.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_now.astimezone(
+                __import__("zoneinfo", fromlist=["ZoneInfo"]).ZoneInfo("America/New_York")
+            )
+            mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            result = today_et()
+        assert result == date(2026, 2, 5)
+
+    def test_midnight_utc_returns_previous_et_date(self):
+        """At midnight UTC (7 PM ET previous day during EST), today_et()
+        should return the previous day's ET date."""
+        # 2026-02-06 00:00 UTC = 2026-02-05 19:00 EST
+        mock_now = datetime(2026, 2, 6, 0, 0, 0, tzinfo=timezone.utc)
+        with patch("sports_scraper.utils.datetime_utils.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_now.astimezone(
+                __import__("zoneinfo", fromlist=["ZoneInfo"]).ZoneInfo("America/New_York")
+            )
+            mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            result = today_et()
+        assert result == date(2026, 2, 5)
+
+    def test_returns_date_type(self):
+        """today_et() should return a date object, not a datetime."""
+        result = today_et()
+        assert isinstance(result, date)
+        assert not isinstance(result, datetime)
+
+
 from sports_scraper.persistence.odds_matching import (
     canonicalize_team_names,
 )

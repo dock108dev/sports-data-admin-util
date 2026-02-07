@@ -13,7 +13,7 @@ from ..live import LiveFeedManager
 from ..odds.synchronizer import OddsSynchronizer
 from ..persistence import persist_game_payload
 from ..scrapers import get_all_scrapers
-from ..utils.datetime_utils import now_utc, today_utc
+from ..utils.datetime_utils import now_utc, today_et
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
 from .job_runs import complete_job_run, start_job_run
 from .game_selection import (
@@ -70,7 +70,7 @@ class ScrapeRunManager:
             "social_posts": 0,
             "pbp_games": 0,
         }
-        start = config.start_date or today_utc()
+        start = config.start_date or today_et()
         end = config.end_date or start
         scraper = self.scrapers.get(config.league_code)
 
@@ -141,7 +141,7 @@ class ScrapeRunManager:
             # Boxscores enrich existing games created by Odds API
             # IMPORTANT: Only scrape boxscores for completed games (yesterday and earlier)
             if config.boxscores:
-                yesterday = today_utc() - timedelta(days=1)
+                yesterday = today_et() - timedelta(days=1)
                 boxscore_end = min(end, yesterday)
                 games_skipped = 0
 
@@ -361,7 +361,7 @@ class ScrapeRunManager:
                 else:
                     # Non-live PBP scraping
                     # Only scrape PBP for completed games (yesterday and earlier)
-                    pbp_yesterday = today_utc() - timedelta(days=1)
+                    pbp_yesterday = today_et() - timedelta(days=1)
                     pbp_end = min(end, pbp_yesterday)
                     pbp_events = 0
 
@@ -499,6 +499,7 @@ class ScrapeRunManager:
                         map_social_to_games.si().set(queue="social-scraper"),
                     )
                     workflow.apply_async()
+                    summary["social_posts"] = "dispatched"
                     complete_job_run(social_run_id, "success", "dispatched_to_social_worker")
 
             with get_session() as session:
@@ -514,7 +515,11 @@ class ScrapeRunManager:
             if summary["odds"]:
                 summary_parts.append(f'Odds: {summary["odds"]}')
             if summary["social_posts"]:
-                summary_parts.append(f'Social: {summary["social_posts"]}')
+                social_val = summary["social_posts"]
+                if social_val == "dispatched":
+                    summary_parts.append("Social: dispatched to worker")
+                else:
+                    summary_parts.append(f'Social: {social_val}')
             if summary["pbp_games"]:
                 summary_parts.append(f'PBP: {summary["pbp_games"]}')
 

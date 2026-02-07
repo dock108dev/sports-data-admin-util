@@ -45,11 +45,11 @@ def collect_social_for_league(league: str) -> dict:
     from ..db import get_session
     from ..social.team_collector import TeamTweetCollector
     from ..social.tweet_mapper import map_unmapped_tweets
-    from ..utils.datetime_utils import today_utc
+    from ..utils.datetime_utils import today_et
 
     logger.info("social_task_started", league=league)
 
-    end_date = today_utc()
+    end_date = today_et()
     start_date = end_date - timedelta(days=3)
 
     with get_session() as session:

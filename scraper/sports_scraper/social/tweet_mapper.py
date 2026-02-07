@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from ..logging import logger
 from ..utils.datetime_utils import now_utc
@@ -53,9 +54,14 @@ def get_game_window(
         game_start = game.tip_time
     else:
         game_start = game.game_date
-        # If game_date is at midnight, estimate 7 PM ET (00:00 UTC + 19h)
+        # If game_date is at midnight, estimate 7 PM ET on that calendar date.
+        # game_date is stored as midnight UTC for the ET calendar date (by odds API),
+        # so we use the UTC date directly and construct 7 PM ET on that date.
         if game_start.hour == 0 and game_start.minute == 0:
-            game_start = game_start + timedelta(hours=19)
+            eastern = ZoneInfo("America/New_York")
+            game_day = game_start.date()  # The correct ET calendar date
+            estimated_et = datetime.combine(game_day, datetime.min.time(), tzinfo=eastern).replace(hour=19)
+            game_start = estimated_et.astimezone(timezone.utc)
 
     # Ensure timezone awareness
     if game_start.tzinfo is None:

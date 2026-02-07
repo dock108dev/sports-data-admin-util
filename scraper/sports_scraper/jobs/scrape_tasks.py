@@ -8,7 +8,7 @@ from celery import shared_task
 
 from ..logging import logger
 from ..services.ingestion import run_ingestion
-from ..utils.datetime_utils import today_utc
+from ..utils.datetime_utils import today_et
 
 
 @shared_task(name="run_scrape_job")
@@ -121,7 +121,7 @@ def run_scheduled_odds_sync() -> dict:
     total_odds = 0
 
     # Sync today + 1 day ahead for upcoming games
-    today = today_utc()
+    today = today_et()
     end = today + timedelta(days=1)
 
     logger.info(

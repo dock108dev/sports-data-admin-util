@@ -267,10 +267,17 @@ class TeamTweetCollector:
             unique_teams=len(team_ids),
         )
 
-        # Collect tweets for each team
+        # Collect tweets for each team.
+        # If X rate-limits a team ("Something went wrong"), skip it with an
+        # extra backoff and continue to the next team. Only stop the batch
+        # if multiple consecutive teams hit the circuit breaker.
+        import time
+
         teams_processed = 0
         total_new_tweets = 0
         errors: list[str] = []
+        consecutive_breaker_hits = 0
+        _MAX_CONSECUTIVE_BREAKER_HITS = 3
 
         for team_id in team_ids:
             try:
@@ -282,15 +289,26 @@ class TeamTweetCollector:
                 )
                 teams_processed += 1
                 total_new_tweets += new_tweets
+                consecutive_breaker_hits = 0  # Reset on success
             except XCircuitBreakerError as exc:
-                # Circuit breaker tripped - stop the entire scrape immediately
-                logger.error(
-                    "team_collector_circuit_breaker_stop",
+                consecutive_breaker_hits += 1
+                errors.append(f"Team {team_id}: rate limited ({str(exc)})")
+                logger.warning(
+                    "team_collector_rate_limited",
                     team_id=team_id,
-                    teams_processed=teams_processed,
+                    consecutive_hits=consecutive_breaker_hits,
                     error=str(exc),
                 )
-                raise
+                if consecutive_breaker_hits >= _MAX_CONSECUTIVE_BREAKER_HITS:
+                    logger.error(
+                        "team_collector_batch_abort",
+                        teams_processed=teams_processed,
+                        consecutive_hits=consecutive_breaker_hits,
+                    )
+                    break
+                # Back off before trying the next team
+                logger.info("team_collector_rate_limit_backoff", backoff_seconds=120)
+                time.sleep(120)
             except Exception as exc:
                 error_msg = f"Team {team_id}: {str(exc)}"
                 errors.append(error_msg)
