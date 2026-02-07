@@ -285,6 +285,21 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
         today = date.today()
         is_historical = game_date_only < today
 
+        # Guard: reject game stubs more than 48 hours in the future.
+        # The Odds API sometimes returns events outside the requested
+        # commenceTimeTo window.
+        max_future = today + timedelta(days=2)
+        if game_date_only > max_future:
+            logger.debug(
+                "odds_skip_far_future_game",
+                league=snapshot.league_code,
+                game_date=str(game_date_only),
+                home_team=snapshot.home_team.name,
+                away_team=snapshot.away_team.name,
+            )
+            cache_set(cache_key, None)
+            return False
+
         # Use tip_time from snapshot (actual start time in UTC)
         tip_time = snapshot.tip_time
 
