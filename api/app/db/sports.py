@@ -24,7 +24,7 @@ from sqlalchemy.sql import text
 from .base import Base
 
 if TYPE_CHECKING:
-    from .social import GameSocialPost, TeamSocialAccount, TeamSocialPost
+    from .social import TeamSocialAccount, TeamSocialPost
     from .odds import SportsGameOdds
     from .scraper import SportsScrapeRun
     from .story import SportsGameTimelineArtifact
@@ -268,9 +268,6 @@ class SportsGame(Base):
     )
     odds: Mapped[list["SportsGameOdds"]] = relationship(
         "SportsGameOdds", back_populates="game", cascade="all, delete-orphan"
-    )
-    _legacy_social_posts: Mapped[list["GameSocialPost"]] = relationship(
-        "GameSocialPost", back_populates="game", cascade="all, delete-orphan"
     )
     social_posts: Mapped[list["TeamSocialPost"]] = relationship(
         "TeamSocialPost",

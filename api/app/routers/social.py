@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from ..db.social import GameSocialPost, TeamSocialAccount, TeamSocialPost
+from ..db.social import TeamSocialAccount, TeamSocialPost
 from ..db.sports import SportsTeam, SportsGame, SportsLeague
 from ..db import AsyncSession, get_db
 
@@ -99,7 +99,7 @@ class SocialAccountUpsertRequest(BaseModel):
 # ────────────────────────────────────────────────────────────────────────────────
 
 
-def _serialize_post(post: GameSocialPost | TeamSocialPost) -> SocialPostResponse:
+def _serialize_post(post: TeamSocialPost) -> SocialPostResponse:
     """Serialize a social post to API response."""
     return SocialPostResponse(
         id=post.id,
@@ -306,7 +306,6 @@ async def create_social_post(
     session: AsyncSession = Depends(get_db),
 ) -> SocialPostResponse:
     """Create a new social post linked to a game."""
-    # Verify game exists
     game = await session.get(SportsGame, payload.game_id)
     if not game:
         raise HTTPException(
@@ -314,7 +313,6 @@ async def create_social_post(
             detail=f"Game {payload.game_id} not found",
         )
 
-    # Find team by abbreviation
     team_stmt = select(SportsTeam).where(
         SportsTeam.abbreviation.ilike(payload.team_abbreviation)
     )
@@ -328,8 +326,8 @@ async def create_social_post(
         )
 
     # Check for duplicate URL
-    existing_stmt = select(GameSocialPost).where(
-        GameSocialPost.post_url == payload.post_url
+    existing_stmt = select(TeamSocialPost).where(
+        TeamSocialPost.post_url == payload.post_url
     )
     existing = (await session.execute(existing_stmt)).scalar_one_or_none()
     if existing:
@@ -338,7 +336,7 @@ async def create_social_post(
             detail="Post URL already exists",
         )
 
-    post = GameSocialPost(
+    post = TeamSocialPost(
         game_id=payload.game_id,
         team_id=team.id,
         post_url=payload.post_url,
@@ -349,6 +347,7 @@ async def create_social_post(
         tweet_text=payload.tweet_text,
         source_handle=payload.source_handle,
         media_type=payload.media_type,
+        mapping_status="mapped",
     )
     session.add(post)
     await session.flush()
@@ -366,8 +365,8 @@ async def bulk_create_social_posts(
     payload: SocialPostBulkCreateRequest,
     session: AsyncSession = Depends(get_db),
 ) -> SocialPostListResponse:
-    """Bulk create social posts. Skips duplicates by tweet_url."""
-    created_posts: list[GameSocialPost] = []
+    """Bulk create social posts. Skips duplicates by post_url."""
+    created_posts: list[TeamSocialPost] = []
 
     # Pre-fetch all teams by abbreviation
     abbrevs = list({p.team_abbreviation.upper() for p in payload.posts})
@@ -379,8 +378,8 @@ async def bulk_create_social_posts(
 
     # Pre-fetch existing URLs to skip
     urls = [p.post_url for p in payload.posts]
-    existing_stmt = select(GameSocialPost.post_url).where(
-        GameSocialPost.post_url.in_(urls)
+    existing_stmt = select(TeamSocialPost.post_url).where(
+        TeamSocialPost.post_url.in_(urls)
     )
     existing_urls = set((await session.execute(existing_stmt)).scalars())
 
@@ -392,7 +391,7 @@ async def bulk_create_social_posts(
         if not team:
             continue  # Skip unknown team
 
-        post = GameSocialPost(
+        post = TeamSocialPost(
             game_id=post_data.game_id,
             team_id=team.id,
             post_url=post_data.post_url,
@@ -403,6 +402,7 @@ async def bulk_create_social_posts(
             tweet_text=post_data.tweet_text,
             source_handle=post_data.source_handle,
             media_type=post_data.media_type,
+            mapping_status="mapped",
         )
         session.add(post)
         created_posts.append(post)
@@ -425,7 +425,7 @@ async def delete_social_post(
     session: AsyncSession = Depends(get_db),
 ) -> Response:
     """Delete a social post."""
-    post = await session.get(GameSocialPost, post_id)
+    post = await session.get(TeamSocialPost, post_id)
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

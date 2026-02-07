@@ -6,9 +6,8 @@ Two-phase collection architecture:
 - tweet_mapper: Assign unmapped tweets to games (map)
 """
 
-from .collector import XPostCollector
 from .exceptions import SocialRateLimitError, XCircuitBreakerError
-from .models import CollectedPost, PostCollectionJob, PostCollectionResult
+from .models import CollectedPost
 from .playwright_collector import PlaywrightXCollector
 from .rate_limit import PlatformRateLimiter
 from .cache import SocialRequestCache
@@ -17,9 +16,6 @@ from .tweet_mapper import map_unmapped_tweets, get_game_window, get_mapping_stat
 
 __all__ = [
     "CollectedPost",
-    "PostCollectionJob",
-    "PostCollectionResult",
-    "XPostCollector",
     "PlaywrightXCollector",
     "SocialRateLimitError",
     "XCircuitBreakerError",

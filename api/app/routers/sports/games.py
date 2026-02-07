@@ -17,7 +17,7 @@ from ...db.sports import (
     SportsGamePlay,
 )
 from ...db.odds import SportsGameOdds
-from ...db.social import GameSocialPost, TeamSocialPost
+from ...db.social import TeamSocialPost
 from ...db.scraper import SportsGameConflict
 from ...db.story import SportsGameStory
 from ...game_metadata.nuggets import generate_nugget

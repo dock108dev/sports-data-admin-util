@@ -18,26 +18,3 @@ class CollectedPost(BaseModel):
     video_url: str | None = Field(default=None, description="Direct video URL if available")
     image_url: str | None = Field(default=None, description="Thumbnail or image URL")
     media_type: str | None = Field(default=None, description="video, image, or none")
-
-
-class PostCollectionJob(BaseModel):
-    """Parameters for a post collection job."""
-
-    game_id: int = Field(..., description="Database ID of the game")
-    team_abbreviation: str = Field(..., description="Team abbreviation (e.g., 'GSW')")
-    x_handle: str = Field(..., description="X handle to collect from")
-    window_start: datetime = Field(..., description="Start of collection window")
-    window_end: datetime = Field(..., description="End of collection window")
-    game_start: datetime = Field(..., description="Game start time for attachment rules")
-    game_end: datetime | None = Field(default=None, description="Game end time for attachment rules")
-    is_backfill: bool = Field(default=False, description="Skip poll interval for historical data")
-
-
-class PostCollectionResult(BaseModel):
-    """Result of a post collection job."""
-
-    job: PostCollectionJob
-    posts_found: int = Field(default=0)
-    posts_saved: int = Field(default=0)
-    errors: list[str] = Field(default_factory=list)
-    completed_at: datetime | None = None

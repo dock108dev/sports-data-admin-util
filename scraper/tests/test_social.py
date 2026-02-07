@@ -25,11 +25,7 @@ os.environ.setdefault("ENVIRONMENT", "development")
 # Tests for social/models.py
 # ============================================================================
 
-from sports_scraper.social.models import (
-    CollectedPost,
-    PostCollectionJob,
-    PostCollectionResult,
-)
+from sports_scraper.social.models import CollectedPost
 
 
 class TestCollectedPost:

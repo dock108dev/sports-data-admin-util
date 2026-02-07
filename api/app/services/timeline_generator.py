@@ -47,7 +47,7 @@ from sqlalchemy.orm import selectinload
 
 from ..db import AsyncSession
 from ..db.sports import SportsGame, SportsGamePlay
-from ..db.social import GameSocialPost, TeamSocialPost
+from ..db.social import TeamSocialPost
 from ..db.story import SportsGameTimelineArtifact
 from ..utils.datetime_utils import now_utc
 from .timeline_types import (

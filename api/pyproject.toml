@@ -43,7 +43,6 @@ omit = [
   # Timeline services (complex DB/external dependencies)
   "**/services/timeline_*.py",
   "**/services/social_events.py",
-  "**/services/recap_generator.py",
   # Reveal utilities (small, external dependency)
   "**/services/reveal_levels.py",
   "**/utils/reveal_utils.py",

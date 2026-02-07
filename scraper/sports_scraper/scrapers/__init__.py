@@ -1,15 +1,12 @@
-"""Sports Reference scrapers for multiple leagues."""
+"""Sports Reference scrapers for supported leagues."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from .base import BaseSportsReferenceScraper, ScraperError
-from .mlb_sportsref import MLBSportsReferenceScraper
 from .nba_sportsref import NBASportsReferenceScraper
 from .ncaab_sportsref import NCAABSportsReferenceScraper
-from .ncaaf_sportsref import NCAAFSportsReferenceScraper
-from .nfl_sportsref import NFLSportsReferenceScraper
 
 if TYPE_CHECKING:
     from typing import Dict, Type
@@ -19,9 +16,6 @@ __all__ = [
     "ScraperError",
     "NBASportsReferenceScraper",
     "NCAABSportsReferenceScraper",
-    "NFLSportsReferenceScraper",
-    "NCAAFSportsReferenceScraper",
-    "MLBSportsReferenceScraper",
     "get_scraper",
     "get_all_scrapers",
 ]
@@ -32,18 +26,15 @@ __all__ = [
 _SCRAPER_REGISTRY: Dict[str, Type[BaseSportsReferenceScraper]] = {
     "NBA": NBASportsReferenceScraper,
     "NCAAB": NCAABSportsReferenceScraper,
-    "NFL": NFLSportsReferenceScraper,
-    "NCAAF": NCAAFSportsReferenceScraper,
-    "MLB": MLBSportsReferenceScraper,
 }
 
 
 def get_scraper(league_code: str) -> BaseSportsReferenceScraper | None:
     """Get a scraper instance for a league code.
-    
+
     Args:
-        league_code: League code (NBA, NFL, etc.)
-        
+        league_code: League code (NBA, NCAAB, etc.)
+
     Returns:
         Scraper instance or None if not found
     """
@@ -55,7 +46,7 @@ def get_scraper(league_code: str) -> BaseSportsReferenceScraper | None:
 
 def get_all_scrapers() -> Dict[str, BaseSportsReferenceScraper]:
     """Get all registered scrapers as a dictionary.
-    
+
     Returns:
         Dictionary mapping league codes to scraper instances
     """

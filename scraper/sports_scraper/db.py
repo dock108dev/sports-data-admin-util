@@ -50,7 +50,6 @@ try:
         PipelineTrigger,
     )
     from app.db.social import (  # type: ignore
-        GameSocialPost,
         MappingStatus,
         SocialAccountPoll,
         TeamSocialAccount,
@@ -109,7 +108,6 @@ try:
         GamePipelineStage=GamePipelineStage,
         BulkStoryGenerationJob=BulkStoryGenerationJob,
         # Social models
-        GameSocialPost=GameSocialPost,
         TeamSocialPost=TeamSocialPost,
         TeamSocialAccount=TeamSocialAccount,
         SocialAccountPoll=SocialAccountPoll,
