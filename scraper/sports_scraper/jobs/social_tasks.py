@@ -98,6 +98,7 @@ def collect_team_social(
     """
     from ..db import get_session
     from ..social.team_collector import TeamTweetCollector
+    from ..social.tweet_mapper import map_unmapped_tweets
 
     logger.info(
         "collect_team_social_start",
@@ -117,6 +118,10 @@ def collect_team_social(
             start_date=start,
             end_date=end,
         )
+
+        # Always map tweets to games after collection
+        map_result = map_unmapped_tweets(session=session, batch_size=1000)
+        result["mapping"] = map_result
 
     logger.info(
         "collect_team_social_complete",
