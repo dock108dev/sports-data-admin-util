@@ -82,7 +82,7 @@ class GameSocialPost(Base):
         DateTime(timezone=True), nullable=False
     )
 
-    game: Mapped[SportsGame] = relationship("SportsGame", back_populates="social_posts")
+    game: Mapped[SportsGame] = relationship("SportsGame", back_populates="_legacy_social_posts")
     team: Mapped[SportsTeam] = relationship("SportsTeam")
 
     __table_args__ = (
