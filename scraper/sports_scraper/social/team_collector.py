@@ -96,7 +96,11 @@ class TeamTweetCollector:
             )
             return 0
 
-        # Convert dates to datetimes for the window
+        # Convert dates to datetimes for the scrape window.
+        # Dates are ET game dates. Games tip in the evening and cross midnight
+        # ET, so we extend the window through the next day to capture in-game
+        # and postgame tweets. The +1 day here covers the ET→UTC offset;
+        # _build_search_url adds another +1 for X's exclusive "until" param.
         window_start = date_to_utc_datetime(start_date)
         window_end = date_to_utc_datetime(end_date) + timedelta(days=1) - timedelta(seconds=1)
 

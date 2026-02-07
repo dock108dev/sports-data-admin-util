@@ -292,9 +292,10 @@ class TestCollectForDateRange:
         assert result["teams_processed"] == 0
         assert result["total_new_tweets"] == 0
 
+    @patch("time.sleep")
     @patch("sports_scraper.social.team_collector.settings", _mock_settings())
     @patch("sports_scraper.social.team_collector.playwright_available", return_value=True)
-    def test_collects_for_all_unique_teams(self, mock_pw):
+    def test_collects_for_all_unique_teams(self, mock_pw, mock_sleep):
         from sports_scraper.social.team_collector import TeamTweetCollector
 
         league = MagicMock()
