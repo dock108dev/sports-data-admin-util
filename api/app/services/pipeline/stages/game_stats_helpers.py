@@ -694,12 +694,12 @@ def compute_block_mini_box(
             "home": {
                 "team": "Hawks",
                 "players": [
-                    {"name": "Trae Young", "pts": 18, "delta_pts": 6, "reb": 2, "ast": 7},
+                    {"name": "Trae Young", "pts": 18, "deltaPts": 6, "reb": 2, "ast": 7},
                     ...
                 ]
             },
             "away": {...},
-            "block_stars": ["Young", "Mitchell"]  # Top contributors this segment
+            "blockStars": ["Young", "Mitchell"]  # Top contributors this segment
         }
     """
     # Get cumulative box at end of this block

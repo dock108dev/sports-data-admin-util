@@ -25,13 +25,13 @@
 | [NHL Implementation Guide](NHL_IMPLEMENTATION_GUIDE.md) | NHL parity reference |
 | [Database Integration](DATABASE_INTEGRATION.md) | Querying the sports database |
 
-## Story Generation
+## Game Flow Generation
 
 | Guide | Description |
 |-------|-------------|
-| [Story Contract](STORY_CONTRACT.md) | **Authoritative:** Block-based narrative model (4-7 blocks per game) |
-| [Story Pipeline](STORY_PIPELINE.md) | 8-stage pipeline from PBP to narratives |
-| [PBP Story Assumptions](PBP_STORY_ASSUMPTIONS.md) | Technical assumptions about PBP data |
+| [Game Flow Contract](GAMEFLOW_CONTRACT.md) | **Authoritative:** Block-based narrative model (4-7 blocks per game) |
+| [Game Flow Pipeline](GAMEFLOW_PIPELINE.md) | 8-stage pipeline from PBP to narratives |
+| [PBP Game Flow Assumptions](PBP_GAMEFLOW_ASSUMPTIONS.md) | Technical assumptions about PBP data |
 
 ## Timeline System
 

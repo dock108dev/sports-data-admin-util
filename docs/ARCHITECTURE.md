@@ -73,13 +73,13 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 
 ---
 
-## Story Generation
+## Game Flow Generation
 
-The story system converts play-by-play data into block-based narratives through an 8-stage pipeline.
+The game flow system converts play-by-play data into block-based narratives through an 8-stage pipeline.
 
 ### Architecture
 
-A story consists of **4-7 narrative blocks**, each containing 2-4 sentences (~65 words). Blocks are designed for 60-90 second total read time.
+A game flow consists of **4-7 narrative blocks**, each containing 2-4 sentences (~65 words). Blocks are designed for 60-90 second total read time.
 
 ```
 NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
@@ -112,12 +112,12 @@ A narrative block contains:
 - **Consumer-focused:** 4-7 blocks, 60-90 second read time
 - **Traceability:** Blocks → Moments → Plays
 - **Semantic roles:** Each block has a narrative purpose
-- **Guardrails enforced:** Hard limits on block count, tweet count, word count
-- **Social-independent:** Story structure identical with/without social data
+- **Guardrails enforced:** Hard limits on block count, social post count, word count
+- **Social-independent:** Game flow structure identical with/without social data
 
-See [STORY_CONTRACT.md](STORY_CONTRACT.md) for the authoritative specification.
+See [GAMEFLOW_CONTRACT.md](GAMEFLOW_CONTRACT.md) for the authoritative specification.
 
-See [STORY_PIPELINE.md](STORY_PIPELINE.md) for implementation details.
+See [GAMEFLOW_PIPELINE.md](GAMEFLOW_PIPELINE.md) for implementation details.
 
 **Code:** `api/app/services/pipeline/`
 
@@ -160,7 +160,7 @@ See `sql/` for complete schema.
 - `GET /api/games` - List games by date range
 - `GET /api/games/{id}` - Single game details
 - `GET /api/games/{id}/pbp` - Play-by-play by period
-- `GET /api/games/{id}/story` - AI-generated story
+- `GET /api/games/{id}/flow` - AI-generated game flow
 
 ### Admin Endpoints
 - `GET /api/admin/sports/games` - List games with filtering

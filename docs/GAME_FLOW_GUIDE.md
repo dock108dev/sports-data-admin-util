@@ -15,7 +15,7 @@ curl -H "X-API-Key: YOUR_KEY" \
 
 # Get the game flow for a specific game
 curl -H "X-API-Key: YOUR_KEY" \
-  "https://sports-data-admin.dock108.ai/api/admin/sports/games/123/story"
+  "https://sports-data-admin.dock108.ai/api/admin/sports/games/123/flow"
 ```
 
 ---
@@ -69,22 +69,22 @@ GET /api/admin/sports/games?league=NBA&startDate=2026-01-22&endDate=2026-01-22
       "awayTeam": "Warriors",
       "homeScore": 112,
       "awayScore": 108,
-      "hasStory": true
+      "hasFlow": true
     }
   ],
   "total": 12,
-  "withStoryCount": 10
+  "withFlowCount": 10
 }
 ```
 
-Games with `hasStory: true` have game flow available.
+Games with `"hasFlow": true` have game flow available.
 
 ---
 
 ### 2. Get Game Flow
 
 ```http
-GET /api/admin/sports/games/{gameId}/story
+GET /api/admin/sports/games/{gameId}/flow
 X-API-Key: YOUR_KEY
 ```
 
@@ -92,7 +92,7 @@ X-API-Key: YOUR_KEY
 ```json
 {
   "gameId": 123,
-  "story": {
+  "flow": {
     "blocks": [...],
     "moments": [...]
   },
@@ -124,19 +124,19 @@ Blocks are the consumer-facing output. Each block is a narrative segment:
     "home": {
       "team": "Lakers",
       "players": [
-        {"name": "James", "pts": 8, "reb": 2, "ast": 3, "delta_pts": 8, "delta_reb": 2, "delta_ast": 3},
-        {"name": "Davis", "pts": 7, "reb": 3, "ast": 0, "delta_pts": 7, "delta_reb": 3, "delta_ast": 0}
+        {"name": "James", "pts": 8, "reb": 2, "ast": 3, "deltaPts": 8, "deltaReb": 2, "deltaAst": 3},
+        {"name": "Davis", "pts": 7, "reb": 3, "ast": 0, "deltaPts": 7, "deltaReb": 3, "deltaAst": 0}
       ]
     },
     "away": {
       "team": "Warriors",
       "players": [
-        {"name": "Curry", "pts": 6, "reb": 0, "ast": 2, "delta_pts": 6, "delta_reb": 0, "delta_ast": 2}
+        {"name": "Curry", "pts": 6, "reb": 0, "ast": 2, "deltaPts": 6, "deltaReb": 0, "deltaAst": 2}
       ]
     },
     "blockStars": ["James", "Davis"]
   },
-  "embeddedTweet": null
+  "embeddedSocialPostId": null
 }
 ```
 
@@ -150,7 +150,7 @@ Blocks are the consumer-facing output. Each block is a narrative segment:
 | `scoreAfter` | `[away, home]` | Score at block end |
 | `narrative` | `string` | 2-4 sentences (~65 words) |
 | `miniBox` | `object` | Player stats for this segment |
-| `embeddedTweet` | `object?` | Optional social context (max 1 per block) |
+| `embeddedSocialPostId` | `number?` | Optional social post ID (max 1 per block) |
 
 ### Semantic Roles
 
@@ -181,9 +181,9 @@ The `miniBox` shows player stats **for that specific segment** of the game.
         "reb": 4,
         "ast": 6,
         "3pm": 2,
-        "delta_pts": 7,     // Scored during THIS block
-        "delta_reb": 2,
-        "delta_ast": 3
+        "deltaPts": 7,      // Scored during THIS block
+        "deltaReb": 2,
+        "deltaAst": 3
       }
     ]
   },
@@ -205,8 +205,8 @@ The `miniBox` shows player stats **for that specific segment** of the game.
         "assists": 1,
         "sog": 3,
         "plusMinus": 1,
-        "delta_goals": 1,
-        "delta_assists": 0
+        "deltaGoals": 1,
+        "deltaAssists": 0
       }
     ]
   },
@@ -220,37 +220,29 @@ The `miniBox` shows player stats **for that specific segment** of the game.
 | Field | Basketball | Hockey |
 |-------|------------|--------|
 | Cumulative | `pts`, `reb`, `ast`, `3pm` | `goals`, `assists`, `sog`, `plusMinus` |
-| Delta (this block) | `delta_pts`, `delta_reb`, `delta_ast` | `delta_goals`, `delta_assists` |
+| Delta (this block) | `deltaPts`, `deltaReb`, `deltaAst` | `deltaGoals`, `deltaAssists` |
 
-**Display tip:** Use `delta_*` fields to highlight who contributed most in each block. The `blockStars` array identifies top performers.
+**Display tip:** Use `delta*` fields to highlight who contributed most in each block. The `blockStars` array identifies top performers.
 
 ---
 
-## Embedded Tweets
+## Embedded Social Posts
 
-Blocks may include an optional embedded tweet for social context. Only **in-game** tweets are embedded in blocks (pregame/postgame tweets are excluded).
+Blocks may include an optional embedded social post ID for social context. Only **in-game** posts are embedded in blocks (pregame/postgame posts are excluded).
 
 ```json
 {
-  "embeddedTweet": {
-    "tweet_id": "1234567890",
-    "posted_at": "2026-01-23T03:15:00Z",
-    "text": "AD with the SLAM!",
-    "author": "Lakers",
-    "phase": "in_game",
-    "score": 0.85,
-    "position": "EARLY",
-    "has_media": true,
-    "media_type": "video"
-  }
+  "embeddedSocialPostId": 456
 }
 ```
 
+The `embeddedSocialPostId` references a social post from the `socialPosts` array in `GET /games/{gameId}`. Use the ID to look up the full post details.
+
 **Constraints:**
-- Max 5 tweets per game
-- Max 1 tweet per block
-- Only in-game tweets are eligible for embedding
-- Tweets are additive context, not structural
+- Max 5 embedded social posts per game
+- Max 1 embedded social post per block
+- Only in-game posts are eligible for embedding
+- Social posts are additive context, not structural
 
 ---
 
@@ -310,7 +302,7 @@ The `GET /games/{gameId}` response includes a `socialPosts` array with all tweet
 ```typescript
 interface GameFlowResponse {
   gameId: number;
-  story: {
+  flow: {
     blocks: GameFlowBlock[];
     moments: GameFlowMoment[];
   };
@@ -331,7 +323,7 @@ interface GameFlowBlock {
   keyPlayIds: number[];
   narrative: string;
   miniBox: BlockMiniBox | null;
-  embeddedTweet: EmbeddedTweet | null;
+  embeddedSocialPostId?: number | null;
 }
 
 interface BlockMiniBox {
@@ -352,29 +344,19 @@ interface BlockPlayerStat {
   reb?: number;
   ast?: number;
   "3pm"?: number;
-  delta_pts?: number;
-  delta_reb?: number;
-  delta_ast?: number;
+  deltaPts?: number;
+  deltaReb?: number;
+  deltaAst?: number;
   // Hockey
   goals?: number;
   assists?: number;
   sog?: number;
   plusMinus?: number;
-  delta_goals?: number;
-  delta_assists?: number;
+  deltaGoals?: number;
+  deltaAssists?: number;
 }
 
-interface EmbeddedTweet {
-  tweet_id: string | number;
-  posted_at: string;        // ISO 8601
-  text: string;
-  author: string;
-  phase: string;            // Always "in_game" for block-embedded tweets
-  score: number;            // Selection score
-  position: string;         // "EARLY" | "MID" | "LATE"
-  has_media: boolean;
-  media_type: string | null;
-}
+type GamePhase = "pregame" | "in_game" | "postgame";
 
 interface SocialPostEntry {
   id: number;
@@ -387,7 +369,7 @@ interface SocialPostEntry {
   imageUrl: string | null;
   sourceHandle: string | null;
   mediaType: string | null;
-  gamePhase: string | null;   // "pregame" | "in_game" | "postgame"
+  gamePhase: GamePhase | null;
   likesCount: number | null;
   retweetsCount: number | null;
   repliesCount: number | null;
@@ -406,7 +388,7 @@ struct GameFlowBlock: Codable {
     let scoreAfter: [Int]
     let narrative: String
     let miniBox: BlockMiniBox?
-    let embeddedTweet: EmbeddedTweet?
+    let embeddedSocialPostId: Int?
 }
 
 struct BlockMiniBox: Codable {
@@ -428,18 +410,11 @@ struct BlockPlayerStat: Codable {
     let deltaPts: Int?
     let deltaReb: Int?
     let deltaAst: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case name, pts, reb, ast
-        case deltaPts = "delta_pts"
-        case deltaReb = "delta_reb"
-        case deltaAst = "delta_ast"
-    }
 }
 
 // Fetch game flow
 func fetchGameFlow(gameId: Int) async throws -> GameFlowResponse {
-    var request = URLRequest(url: URL(string: "https://sports-data-admin.dock108.ai/api/admin/sports/games/\(gameId)/story")!)
+    var request = URLRequest(url: URL(string: "https://sports-data-admin.dock108.ai/api/admin/sports/games/\(gameId)/flow")!)
     request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
     let (data, _) = try await URLSession.shared.data(for: request)
     return try JSONDecoder().decode(GameFlowResponse.self, from: data)
@@ -497,7 +472,7 @@ func fetchGameFlow(gameId: Int) async throws -> GameFlowResponse {
 **No game flow response:**
 ```json
 {
-  "detail": "No Story found for game 123"
+  "detail": "No Game Flow found for game 123"
 }
 ```
 

@@ -1,10 +1,10 @@
-# Story Pipeline
+# Game Flow Pipeline
 
 Multi-stage pipeline for generating block-based game narratives from play-by-play data.
 
 ## Overview
 
-The pipeline transforms raw PBP data into narrative stories through 8 sequential stages. Each stage produces output consumed by the next stage.
+The pipeline transforms raw PBP data into narrative game flows through 8 sequential stages. Each stage produces output consumed by the next stage.
 
 ```
 NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
@@ -193,7 +193,7 @@ return min(base, 7)
 
 **Guardrail Invariants (Non-negotiable):**
 - Block count: 4-7 (hard limits)
-- Embedded tweets: ≤ 5 per game, ≤ 1 per block
+- Embedded social posts: ≤ 5 per game, ≤ 1 per block
 - Total word count: ≤ 500 words (~60-90 second read)
 - Each block: 30-100 words (2-4 sentences)
 
@@ -206,7 +206,7 @@ return min(base, 7)
 
 ### 8. FINALIZE_MOMENTS
 
-**Purpose:** Persist completed story to database.
+**Purpose:** Persist completed game flow to database.
 
 **Input:** Validated blocks + moments
 **Output:** Persistence confirmation
@@ -238,21 +238,21 @@ return min(base, 7)
 |-------|---------|
 | `sports_game_pipeline_runs` | Pipeline execution records |
 | `sports_game_pipeline_stages` | Per-stage output and logs |
-| `sports_game_stories` | Persisted story artifacts |
+| `sports_game_stories` | Persisted game flow artifacts |
 
 ### Execution Modes
 
 **Auto-chain:** All stages run sequentially without pause.
 **Manual:** Each stage requires explicit advancement (for debugging).
 
-## Story Output
+## Game Flow Output
 
-The final story contains both blocks (consumer-facing) and moments (traceability).
+The final game flow contains both blocks (consumer-facing) and moments (traceability).
 
 ### API Access
 
 ```
-GET /api/admin/sports/games/{game_id}/story
+GET /api/admin/sports/games/{game_id}/flow
 ```
 
 Returns:
@@ -260,7 +260,7 @@ Returns:
 ```json
 {
     "gameId": 123,
-    "story": {
+    "flow": {
         "moments": [...],
         "blocks": [
             {
@@ -291,5 +291,5 @@ Returns:
 
 ## See Also
 
-- [STORY_CONTRACT.md](STORY_CONTRACT.md) - Full story specification
+- [GAMEFLOW_CONTRACT.md](GAMEFLOW_CONTRACT.md) - Full game flow specification
 - [API.md](API.md) - Complete API reference
