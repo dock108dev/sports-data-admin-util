@@ -17,6 +17,102 @@ from celery import shared_task
 from ..logging import logger
 
 
+def _report_social_completion(
+    scrape_run_id: int | None,
+    social_job_run_id: int | None,
+    result: dict | None,
+    error: str | None,
+) -> None:
+    """Report social task completion back to SportsScrapeRun and SportsJobRun.
+
+    Updates the SportsJobRun status and replaces the placeholder text in
+    SportsScrapeRun.summary with actual stats.
+
+    Both IDs are optional (None = no-op) for backward compatibility.
+    All DB work is wrapped in try/except so reporting failures never crash the task.
+    """
+    try:
+        from ..db import db_models, get_session
+        from ..services.job_runs import complete_job_run
+
+        # Build the replacement summary string
+        if error:
+            social_summary = f"Social: error ({error[:80]})"
+            job_status = "error"
+            error_summary = error[:200]
+        elif result:
+            tweets = result.get("total_new_tweets", 0)
+            mapped = result.get("mapping", {}).get("mapped", 0)
+            social_summary = f"Social: {tweets} tweets ({mapped} mapped)"
+            job_status = "success"
+            error_summary = None
+        else:
+            social_summary = "Social: 0 tweets (0 mapped)"
+            job_status = "success"
+            error_summary = None
+
+        # Finalize the SportsJobRun
+        if social_job_run_id is not None:
+            complete_job_run(social_job_run_id, job_status, error_summary)
+
+        # Update the SportsScrapeRun summary (replace placeholder)
+        if scrape_run_id is not None:
+            with get_session() as session:
+                run = (
+                    session.query(db_models.SportsScrapeRun)
+                    .filter(db_models.SportsScrapeRun.id == scrape_run_id)
+                    .first()
+                )
+                if run and run.summary and "Social: dispatched to worker" in run.summary:
+                    run.summary = run.summary.replace(
+                        "Social: dispatched to worker", social_summary
+                    )
+                    session.flush()
+                    session.commit()
+                    logger.info(
+                        "social_completion_reported",
+                        scrape_run_id=scrape_run_id,
+                        social_summary=social_summary,
+                    )
+    except Exception as exc:
+        logger.warning(
+            "social_completion_report_failed",
+            scrape_run_id=scrape_run_id,
+            social_job_run_id=social_job_run_id,
+            error=str(exc),
+        )
+
+
+@shared_task(name="handle_social_task_failure")
+def handle_social_task_failure(
+    task_id: str,
+    scrape_run_id: int | None = None,
+    social_job_run_id: int | None = None,
+) -> None:
+    """Celery link_error callback for collect_team_social failures.
+
+    Called automatically when collect_team_social fails after all retries.
+    Celery passes the failed task's ID as the first positional argument,
+    followed by the args bound via `.s()`.
+
+    Reports the error back to SportsScrapeRun and SportsJobRun records.
+    """
+    from celery.result import AsyncResult
+
+    # Retrieve the exception from the failed task's result backend
+    result = AsyncResult(task_id)
+    error_msg = str(result.result) if result.result else "unknown error"
+
+    logger.error(
+        "social_task_failed_callback",
+        task_id=task_id,
+        scrape_run_id=scrape_run_id,
+        social_job_run_id=social_job_run_id,
+        error=error_msg,
+    )
+    _report_social_completion(scrape_run_id, social_job_run_id, result=None, error=error_msg)
+
+
 @shared_task(
     name="collect_social_for_league",
     queue="social-scraper",
@@ -81,6 +177,8 @@ def collect_team_social(
     league_code: str,
     start_date: str,
     end_date: str,
+    scrape_run_id: int | None = None,
+    social_job_run_id: int | None = None,
 ) -> dict:
     """
     Collect tweets for all teams in a league that played in the date range.
@@ -128,6 +226,8 @@ def collect_team_social(
         league_code=league_code,
         result=result,
     )
+
+    _report_social_completion(scrape_run_id, social_job_run_id, result, error=None)
 
     return result
 

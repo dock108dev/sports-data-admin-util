@@ -44,13 +44,6 @@ async def create_scrape_run(
 ) -> ScrapeRunResponse:
     league = await get_league(session, payload.config.league_code)
 
-    # Social scraping is edge-triggered only (final whistle + daily sweep)
-    if payload.config.social:
-        raise HTTPException(
-            status_code=400,
-            detail="Social scraping is edge-triggered (final whistle). Cannot be requested via UI.",
-        )
-
     # Boxscore end_date is auto-capped to yesterday by the Pydantic model
     # (ScrapeRunConfig.cap_end_date_for_boxscores) — no hard error needed.
 

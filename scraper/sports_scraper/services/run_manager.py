@@ -483,7 +483,7 @@ class ScrapeRunManager:
                     )
                     complete_job_run(social_run_id, "success", "x_social_not_implemented")
                 else:
-                    from ..jobs.social_tasks import collect_team_social
+                    from ..jobs.social_tasks import collect_team_social, handle_social_task_failure
 
                     logger.info(
                         "social_dispatched_to_worker",
@@ -492,13 +492,16 @@ class ScrapeRunManager:
                         start_date=str(start),
                         end_date=str(end),
                     )
-                    # collect_team_social maps tweets to games internally after collection
+                    # collect_team_social maps tweets to games internally after collection.
+                    # The social task will finalize the SportsJobRun and update the
+                    # SportsScrapeRun summary on completion (or via link_error on failure).
                     collect_team_social.apply_async(
                         args=[config.league_code, str(start), str(end)],
+                        kwargs={"scrape_run_id": run_id, "social_job_run_id": social_run_id},
                         queue="social-scraper",
+                        link_error=handle_social_task_failure.s(run_id, social_run_id),
                     )
                     summary["social_posts"] = "dispatched"
-                    complete_job_run(social_run_id, "success", "dispatched_to_social_worker")
 
             with get_session() as session:
                 detect_missing_pbp(session, league_code=config.league_code)
