@@ -1,8 +1,15 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: sports-postgres
     profiles: ["dev", "prod"]
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-sports}
       POSTGRES_USER: ${POSTGRES_USER:-sports}
@@ -26,6 +33,7 @@ services:
     image: redis:7-alpine
     container_name: sports-redis
     profiles: ["dev", "prod"]
+    logging: *default-logging
     command: >
       sh -c "redis-server --appendonly yes ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}"
     environment:
@@ -45,6 +53,7 @@ services:
       dockerfile: infra/api.Dockerfile
     container_name: sports-api
     profiles: ["dev", "prod"]
+    logging: *default-logging
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
       REDIS_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/0
@@ -85,6 +94,7 @@ services:
       dockerfile: infra/api.Dockerfile
     container_name: sports-api-worker
     profiles: ["dev", "prod"]
+    logging: *default-logging
     command: ["celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
@@ -122,6 +132,7 @@ services:
       dockerfile: infra/scraper.Dockerfile
     container_name: sports-scraper
     profiles: ["dev", "prod"]
+    logging: *default-logging
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
       REDIS_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/2
@@ -159,6 +170,7 @@ services:
       dockerfile: infra/scraper.Dockerfile
     container_name: sports-scraper-beat
     profiles: ["dev", "prod"]
+    logging: *default-logging
     command: ["celery", "-A", "sports_scraper.celery_app.app", "beat", "--loglevel=info"]
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
@@ -190,6 +202,7 @@ services:
       dockerfile: infra/scraper.Dockerfile
     container_name: sports-social-scraper
     profiles: ["dev", "prod"]
+    logging: *default-logging
     # Single worker (concurrency=1) ensures consistent IP and sequential X requests
     command: ["celery", "-A", "sports_scraper.celery_app.app", "worker", "--loglevel=info", "--queues=social-scraper", "--concurrency=1"]
     environment:
@@ -220,6 +233,7 @@ services:
       dockerfile: infra/api.Dockerfile
     container_name: sports-migrate
     profiles: ["dev", "prod"]
+    logging: *default-logging
     command: ["alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
@@ -244,6 +258,7 @@ services:
         SPORTS_API_INTERNAL_URL: ${SPORTS_API_INTERNAL_URL:-http://api:8000}
     container_name: sports-web
     profiles: ["dev", "prod"]
+    logging: *default-logging
     environment:
       # Browser requests should hit the host-mapped API port.
       NEXT_PUBLIC_SPORTS_API_URL: ${NEXT_PUBLIC_SPORTS_API_URL:-http://localhost:8000}
@@ -271,6 +286,7 @@ services:
     image: postgres:16-alpine
     container_name: sports-backup
     profiles: ["dev", "prod"]
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -319,6 +335,7 @@ services:
       context: ./log-relay
     container_name: sports-log-relay
     profiles: ["dev", "prod"]
+    logging: *default-logging
     group_add:
       - root
     volumes:
