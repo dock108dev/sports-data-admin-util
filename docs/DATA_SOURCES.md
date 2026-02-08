@@ -159,7 +159,6 @@ This table enables efficient cross-book comparison without the game-centric stru
 - Persistence: `scraper/sports_scraper/persistence/odds.py`
 
 See also:
-- [ODDS_NBA_NCAAB_REVIEW.md](ODDS_NBA_NCAAB_REVIEW.md) - NBA/NCAAB odds details
 - [ODDS_NHL_VALIDATION.md](ODDS_NHL_VALIDATION.md) - NHL odds validation
 
 ## Social Media (X/Twitter)
@@ -230,7 +229,7 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 
 ### Storage
 - `team_social_posts` table - Collected tweets, mapped to games via `mapping_status='mapped'` and `game_id`
-- Fields: `post_url`, `posted_at`, `tweet_text`, `has_video`, `video_url`, `image_url`, `media_type`, `reveal_risk`, `reveal_reason`, `mapping_status`, `game_id`
+- Fields: `post_url`, `posted_at`, `tweet_text`, `has_video`, `video_url`, `image_url`, `media_type`, `reveal_risk`, `reveal_reason`, `mapping_status`, `game_id`, `game_phase`, `likes_count`, `retweets_count`, `replies_count`
 
 ### Implementation
 - Team Collector: `scraper/sports_scraper/social/team_collector.py`
@@ -241,7 +240,6 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 
 See also:
 - [X_INTEGRATION.md](X_INTEGRATION.md) - X/Twitter integration architecture
-- [SOCIAL_NBA_REVIEW.md](SOCIAL_NBA_REVIEW.md) - NBA social implementation
 - [SOCIAL_NHL.md](SOCIAL_NHL.md) - NHL social accounts
 
 ## Scraper Execution

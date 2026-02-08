@@ -452,6 +452,14 @@ Get run details.
 
 Cancel pending job.
 
+### `GET /scraper/logs/{container}`
+
+Stream recent logs from a Docker container.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `lines` | `int` | 100 | Number of recent log lines to return |
+
 ---
 
 ## Story Pipeline
@@ -784,19 +792,29 @@ interface StoryBlock {
   blockIndex: number;         // Position (0-6)
   role: SemanticRole;         // SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION
   momentIndices: number[];    // Which moments are grouped in this block
+  periodStart: number;        // First period covered by this block
+  periodEnd: number;          // Last period covered by this block
   scoreBefore: number[];      // [away, home]
   scoreAfter: number[];       // [away, home]
+  playIds: number[];          // All play indices in this block
+  keyPlayIds: number[];       // Highlighted plays
   narrative: string;          // 2-4 sentences (~65 words)
+  miniBox: BlockMiniBox | null;  // Player stats for this segment
   embeddedTweet?: EmbeddedTweet | null;  // Optional (max 1 per block, 5 per game)
 }
 
 type SemanticRole = "SETUP" | "MOMENTUM_SHIFT" | "RESPONSE" | "DECISION_POINT" | "RESOLUTION";
 
 interface EmbeddedTweet {
-  tweetId: string;
-  authorHandle: string;
+  tweet_id: string | number;
+  posted_at: string;        // ISO 8601
   text: string;
-  mediaUrl?: string;
+  author: string;
+  phase: string;            // Always "in_game" for block-embedded tweets
+  score: number;            // Selection score
+  position: string;         // "EARLY" | "MID" | "LATE"
+  has_media: boolean;
+  media_type: string | null;
 }
 
 // Internal traceability: links blocks to specific plays
@@ -819,6 +837,29 @@ interface StoryPlay {
   description: string | null;
   homeScore: number | null;
   awayScore: number | null;
+}
+```
+
+### SocialPostEntry
+
+Social posts returned in the `socialPosts` array of `GET /games/{gameId}`. Sorted by total interactions (likes + retweets + replies) descending.
+
+```typescript
+interface SocialPostEntry {
+  id: number;
+  postUrl: string;
+  postedAt: string;           // ISO 8601
+  hasVideo: boolean;
+  teamAbbreviation: string;
+  tweetText: string | null;
+  videoUrl: string | null;
+  imageUrl: string | null;
+  sourceHandle: string | null;
+  mediaType: string | null;
+  gamePhase: string | null;   // "pregame" | "in_game" | "postgame"
+  likesCount: number | null;
+  retweetsCount: number | null;
+  repliesCount: number | null;
 }
 ```
 

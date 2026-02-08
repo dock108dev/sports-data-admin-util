@@ -70,8 +70,8 @@ Moments do not have consumer-facing narratives. They exist for auditability.
 | `block_index` | int | Position (0-6) |
 | `role` | string | Semantic role |
 | `moment_indices` | list[int] | Which moments are grouped |
-| `score_before` | [home, away] | Score at block start |
-| `score_after` | [home, away] | Score at block end |
+| `score_before` | [away, home] | Score at block start |
+| `score_after` | [away, home] | Score at block end |
 | `narrative` | string | 2-4 sentences (~65 words) |
 | `embedded_tweet` | object | null | Optional tweet (max 1 per block) |
 
@@ -84,8 +84,8 @@ Moments do not have consumer-facing narratives. They exist for auditability.
 | `period` | int | Game period |
 | `start_clock` | string | Clock at first play |
 | `end_clock` | string | Clock at last play |
-| `score_before` | [home, away] | Score at moment start |
-| `score_after` | [home, away] | Score at moment end |
+| `score_before` | [away, home] | Score at moment start |
+| `score_after` | [away, home] | Score at moment end |
 
 ---
 

@@ -56,7 +56,6 @@
 
 | Guide | Description |
 |-------|-------------|
-| [NBA PBP Review](PBP_NBA_REVIEW.md) | NBA PBP implementation |
 | [NCAAB PBP](PBP_NCAAB_SPORTS_REFERENCE.md) | NCAAB PBP via Sports Reference |
 
 > **Note:** NHL PBP uses the official NHL API (`api-web.nhle.com`). See [Data Sources](DATA_SOURCES.md).
@@ -65,14 +64,12 @@
 
 | Guide | Description |
 |-------|-------------|
-| [NBA/NCAAB Odds](ODDS_NBA_NCAAB_REVIEW.md) | NBA/NCAAB odds implementation |
 | [NHL Odds Validation](ODDS_NHL_VALIDATION.md) | NHL odds validation checklist |
 
 ### Social
 
 | Guide | Description |
 |-------|-------------|
-| [NBA Social](SOCIAL_NBA_REVIEW.md) | NBA social implementation |
 | [NHL Social](SOCIAL_NHL.md) | NHL team X handles and validation |
 
 ## Operations

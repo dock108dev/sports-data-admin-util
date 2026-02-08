@@ -33,6 +33,10 @@ docker compose --profile prod up -d --build
 | web | 3000 | Next.js admin UI |
 | backup | — | Daily backup service |
 
+### Docker Socket Mount
+
+The API container mounts the Docker socket read-only (`/var/run/docker.sock:/var/run/docker.sock:ro`) to enable container log viewing from the admin UI. The container uses `group_add: root` for socket access permissions. This powers the `GET /scraper/logs/{container}` endpoint.
+
 ## URLs
 
 | Service | URL |

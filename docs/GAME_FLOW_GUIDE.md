@@ -146,8 +146,8 @@ Blocks are the consumer-facing output. Each block is a narrative segment:
 |-------|------|-------------|
 | `blockIndex` | `int` | Position (0 to N-1) |
 | `role` | `string` | Semantic role (see below) |
-| `scoreBefore` | `[home, away]` | Score at block start |
-| `scoreAfter` | `[home, away]` | Score at block end |
+| `scoreBefore` | `[away, home]` | Score at block start |
+| `scoreAfter` | `[away, home]` | Score at block end |
 | `narrative` | `string` | 2-4 sentences (~65 words) |
 | `miniBox` | `object` | Player stats for this segment |
 | `embeddedTweet` | `object?` | Optional social context (max 1 per block) |
@@ -228,15 +228,20 @@ The `miniBox` shows player stats **for that specific segment** of the game.
 
 ## Embedded Tweets
 
-Blocks may include an optional embedded tweet for social context:
+Blocks may include an optional embedded tweet for social context. Only **in-game** tweets are embedded in blocks (pregame/postgame tweets are excluded).
 
 ```json
 {
   "embeddedTweet": {
-    "tweetId": "1234567890",
-    "authorHandle": "@Lakers",
+    "tweet_id": "1234567890",
+    "posted_at": "2026-01-23T03:15:00Z",
     "text": "AD with the SLAM!",
-    "mediaUrl": "https://..."
+    "author": "Lakers",
+    "phase": "in_game",
+    "score": 0.85,
+    "position": "EARLY",
+    "has_media": true,
+    "media_type": "video"
   }
 }
 ```
@@ -244,7 +249,59 @@ Blocks may include an optional embedded tweet for social context:
 **Constraints:**
 - Max 5 tweets per game
 - Max 1 tweet per block
+- Only in-game tweets are eligible for embedding
 - Tweets are additive context, not structural
+
+---
+
+## Social Posts
+
+The `GET /games/{gameId}` response includes a `socialPosts` array with all tweets mapped to the game, sorted by total interactions (likes + retweets + replies) descending.
+
+```json
+{
+  "socialPosts": [
+    {
+      "id": 456,
+      "postUrl": "https://x.com/Lakers/status/...",
+      "postedAt": "2026-01-23T03:00:00Z",
+      "hasVideo": true,
+      "teamAbbreviation": "LAL",
+      "tweetText": "Let's go Lakers!",
+      "videoUrl": "https://...",
+      "imageUrl": null,
+      "sourceHandle": "Lakers",
+      "mediaType": "video",
+      "gamePhase": "pregame",
+      "likesCount": 1200,
+      "retweetsCount": 340,
+      "repliesCount": 89
+    }
+  ]
+}
+```
+
+**Fields:**
+- `gamePhase`: `"pregame"`, `"in_game"`, or `"postgame"` — consuming apps should group by phase for section display
+- `likesCount`, `retweetsCount`, `repliesCount`: Interaction metrics (may be null if not yet collected)
+- Sorted by total interactions descending
+
+**Display layout:**
+```
+┌─ Pregame ──────────────────────┐
+│ @Lakers: Let's go Lakers! 💜💛 │
+│ @warriors: Game day!           │
+└────────────────────────────────┘
+
+┌─ In-Game ──────────────────────┐
+│ @Lakers: AD with the SLAM! 🔨 │  ← also embedded in blocks
+│ @warriors: Steph from deep!    │
+└────────────────────────────────┘
+
+┌─ Postgame ─────────────────────┐
+│ @Lakers: W! 💜💛               │
+└────────────────────────────────┘
+```
 
 ---
 
@@ -268,8 +325,8 @@ interface GameFlowBlock {
   momentIndices: number[];
   periodStart: number;
   periodEnd: number;
-  scoreBefore: [number, number];  // [home, away]
-  scoreAfter: [number, number];
+  scoreBefore: [number, number];  // [away, home]
+  scoreAfter: [number, number];   // [away, home]
   playIds: number[];
   keyPlayIds: number[];
   narrative: string;
@@ -308,10 +365,32 @@ interface BlockPlayerStat {
 }
 
 interface EmbeddedTweet {
-  tweetId: string;
-  authorHandle: string;
+  tweet_id: string | number;
+  posted_at: string;        // ISO 8601
   text: string;
-  mediaUrl?: string;
+  author: string;
+  phase: string;            // Always "in_game" for block-embedded tweets
+  score: number;            // Selection score
+  position: string;         // "EARLY" | "MID" | "LATE"
+  has_media: boolean;
+  media_type: string | null;
+}
+
+interface SocialPostEntry {
+  id: number;
+  postUrl: string;
+  postedAt: string;           // ISO 8601
+  hasVideo: boolean;
+  teamAbbreviation: string;
+  tweetText: string | null;
+  videoUrl: string | null;
+  imageUrl: string | null;
+  sourceHandle: string | null;
+  mediaType: string | null;
+  gamePhase: string | null;   // "pregame" | "in_game" | "postgame"
+  likesCount: number | null;
+  retweetsCount: number | null;
+  repliesCount: number | null;
 }
 ```
 

@@ -39,7 +39,8 @@ docs/                     Documentation
 
 ## Scheduled Tasks
 
-Daily at 8:00 AM ET: sports ingestion → 9:30 AM: flow generation
+Daily at 5:00 AM ET: sports ingestion (NBA → NHL → NCAAB)
+Flow generation: 6:30 AM (NBA), 6:45 AM (NHL), 7:00 AM (NCAAB)
 Config: `scraper/sports_scraper/celery_app.py`
 
 ## Do NOT
