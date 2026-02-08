@@ -18,10 +18,32 @@ def run_scrape_job(run_id: int, config_payload: dict) -> dict:
     Timeline generation is decoupled - call trigger_game_pipelines_task
     after this completes, or use Pipeline API endpoints for manual control.
     """
-    logger.info("scrape_job_started", run_id=run_id)
-    result = run_ingestion(run_id, config_payload)
-    logger.info("scrape_job_completed", run_id=run_id, result=result)
-    return result
+    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock
+    from ..utils.datetime_utils import now_utc
+
+    league_code = config_payload.get("league_code", "UNKNOWN")
+    lock_name = f"lock:ingest:{league_code}"
+
+    if not acquire_redis_lock(lock_name, timeout=3600):
+        logger.warning("scrape_job_skipped_locked", run_id=run_id, league=league_code)
+        # Update the run record so UI can surface the skip reason
+        from ..services.run_manager import ScrapeRunManager
+        mgr = ScrapeRunManager()
+        mgr._update_run(
+            run_id,
+            status="skipped",
+            summary="Skipped: ingestion already in progress for this league",
+            finished_at=now_utc(),
+        )
+        return {"status": "skipped", "reason": "ingestion_in_progress", "run_id": run_id}
+
+    try:
+        logger.info("scrape_job_started", run_id=run_id)
+        result = run_ingestion(run_id, config_payload)
+        logger.info("scrape_job_completed", run_id=run_id, result=result)
+        return result
+    finally:
+        release_redis_lock(lock_name)
 
 
 @shared_task(
@@ -107,7 +129,9 @@ def run_scheduled_odds_sync() -> dict:
     from ..odds.synchronizer import OddsSynchronizer
     from ..models import IngestionConfig
 
-    leagues = ["NBA", "NHL", "NCAAB"]
+    from ..config_sports import get_odds_enabled_leagues
+
+    leagues = get_odds_enabled_leagues()
     sync = OddsSynchronizer()
     results = {}
     total_odds = 0

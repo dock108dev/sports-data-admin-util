@@ -40,6 +40,7 @@ def trigger_flow_for_game(game_id: int) -> dict:
     """
     from ..db import db_models
     from sqlalchemy import exists
+    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock
 
     with get_session() as session:
         game = session.query(db_models.SportsGame).get(game_id)
@@ -69,24 +70,35 @@ def trigger_flow_for_game(game_id: int) -> dict:
             # Retry will kick in via Celery's autoretry
             raise Exception(f"Game {game_id} has no PBP data yet — will retry")
 
-        # Check if flows already exist (skip if so)
-        has_artifacts = session.query(
-            exists().where(db_models.SportsGameTimelineArtifact.game_id == game_id)
-        ).scalar()
+        # Acquire per-game lock to prevent races between edge-trigger,
+        # daily sweep, and scheduled batch flow gen
+        lock_name = f"lock:flow_gen:{game_id}"
+        if not acquire_redis_lock(lock_name, timeout=300):
+            logger.info("flow_trigger_skipped_locked", game_id=game_id)
+            return {"game_id": game_id, "status": "skipped", "reason": "locked"}
 
-        if has_artifacts:
-            logger.info(
-                "flow_trigger_skip_immutable",
-                game_id=game_id,
-            )
-            return {"game_id": game_id, "status": "skipped", "reason": "immutable"}
+    try:
+        with get_session() as session:
+            # Check if flows already exist (skip if so)
+            has_artifacts = session.query(
+                exists().where(db_models.SportsGameTimelineArtifact.game_id == game_id)
+            ).scalar()
 
-        # Get league code for the API call
-        league = session.query(db_models.SportsLeague).get(game.league_id)
-        league_code = league.code if league else "UNKNOWN"
+            if has_artifacts:
+                logger.info(
+                    "flow_trigger_skip_immutable",
+                    game_id=game_id,
+                )
+                return {"game_id": game_id, "status": "skipped", "reason": "immutable"}
 
-    # Call the API pipeline endpoint
-    return _call_pipeline_api(game_id, league_code)
+            # Get league code for the API call
+            league = session.query(db_models.SportsLeague).get(game.league_id)
+            league_code = league.code if league else "UNKNOWN"
+
+        # Call the API pipeline endpoint (outside session)
+        return _call_pipeline_api(game_id, league_code)
+    finally:
+        release_redis_lock(lock_name)
 
 
 def _call_pipeline_api(game_id: int, league_code: str) -> dict:

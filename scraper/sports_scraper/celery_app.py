@@ -69,7 +69,17 @@ app.conf.task_routes = {
 # Each generates AI flows for games in the last 72 hours. Skips existing flows.
 #
 # Odds sync runs every 30 minutes to keep FairBet data fresh for all 3 leagues.
-app.conf.beat_schedule = {
+# Always-on tasks (safe in all environments — pure DB, no external APIs)
+_always_on_schedule = {
+    "game-state-updater-every-3-min": {
+        "task": "update_game_states",
+        "schedule": crontab(minute="*/3"),
+        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    },
+}
+
+# Production-only tasks (external APIs, cost, rate limits)
+_prod_only_schedule = {
     "daily-sports-ingestion-5am-eastern": {
         "task": "run_scheduled_ingestion",
         "schedule": crontab(minute=0, hour=10),  # 5:00 AM EST = 10:00 UTC
@@ -95,12 +105,6 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="*/30"),  # Every 30 minutes
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
-    # === Game-state-machine polling tasks ===
-    "game-state-updater-every-3-min": {
-        "task": "update_game_states",
-        "schedule": crontab(minute="*/3"),
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
-    },
     "live-pbp-poll-every-5-min": {
         "task": "poll_live_pbp",
         "schedule": crontab(minute="*/5"),
@@ -118,6 +122,20 @@ app.conf.beat_schedule = {
         "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
     },
 }
+
+if settings.environment == "production":
+    app.conf.beat_schedule = {**_always_on_schedule, **_prod_only_schedule}
+    logger.info(
+        "beat_schedule_production",
+        task_count=len(_always_on_schedule) + len(_prod_only_schedule),
+    )
+else:
+    app.conf.beat_schedule = _always_on_schedule
+    logger.info(
+        "beat_schedule_non_production",
+        environment=settings.environment,
+        task_count=len(_always_on_schedule),
+    )
 
 
 def mark_stale_runs_interrupted():
