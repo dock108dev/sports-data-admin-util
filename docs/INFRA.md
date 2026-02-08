@@ -32,10 +32,11 @@ docker compose --profile prod up -d --build
 | scraper | — | Celery worker |
 | web | 3000 | Next.js admin UI |
 | backup | — | Daily backup service |
+| log-relay | — | Docker log relay sidecar |
 
-### Docker Socket Mount
+### Log Relay Sidecar
 
-The API container mounts the Docker socket read-only (`/var/run/docker.sock:/var/run/docker.sock:ro`) to enable container log viewing from the admin UI. The container uses `group_add: root` for socket access permissions. This powers the `GET /scraper/logs/{container}` endpoint.
+Container log viewing is provided by a dedicated `log-relay` sidecar instead of mounting the Docker socket into the API container. The sidecar is the **only** container with Docker socket access and has no database credentials, API keys, or external network access (internal network only). It exposes a single `GET /logs?container=X&lines=N` endpoint on port 9999 with a hardcoded container allowlist. The API calls this sidecar over HTTP to serve the `GET /scraper/logs` endpoint.
 
 ## URLs
 
