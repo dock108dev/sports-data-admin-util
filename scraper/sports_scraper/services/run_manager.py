@@ -13,6 +13,7 @@ from ..live import LiveFeedManager
 from ..odds.synchronizer import OddsSynchronizer
 from ..persistence import persist_game_payload
 from ..scrapers import get_all_scrapers
+from ..celery_app import SOCIAL_QUEUE
 from ..utils.datetime_utils import now_utc, today_et
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
 from .job_runs import complete_job_run, start_job_run
@@ -498,7 +499,7 @@ class ScrapeRunManager:
                     collect_team_social.apply_async(
                         args=[config.league_code, str(start), str(end)],
                         kwargs={"scrape_run_id": run_id, "social_job_run_id": social_run_id},
-                        queue="social-scraper",
+                        queue=SOCIAL_QUEUE,
                         link_error=handle_social_task_failure.s(run_id, social_run_id),
                     )
                     summary["social_posts"] = "dispatched"

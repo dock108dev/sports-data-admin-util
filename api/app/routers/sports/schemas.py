@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ScrapeRunConfig(BaseModel):
@@ -45,21 +45,10 @@ class ScrapeRunConfig(BaseModel):
     social: bool = Field(False, alias="social")
     pbp: bool = Field(False, alias="pbp")
 
-    @model_validator(mode="after")
-    def cap_end_date_for_boxscores(self) -> "ScrapeRunConfig":
-        """Auto-cap end_date to yesterday when boxscores are enabled.
-
-        Boxscores aren't available until the next day, so requesting today
-        or later would fail. Instead of rejecting, silently cap to yesterday.
-        """
-        from datetime import timedelta
-
-        if self.boxscores and self.end_date:
-            yesterday = date.today() - timedelta(days=1)
-            if self.end_date > yesterday:
-                self.end_date = yesterday
-
-        return self
+    # NOTE: Boxscore date capping is handled by the scraper worker
+    # (ScrapeRunManager.run) which computes boxscore_end = min(end, yesterday)
+    # independently of the shared end_date. Capping here would silently
+    # prevent requesting future odds/pbp windows when boxscores are on.
 
     # Shared filters
     only_missing: bool = Field(False, alias="onlyMissing")

@@ -67,8 +67,6 @@ def _report_social_completion(
                     run.summary = run.summary.replace(
                         "Social: dispatched to worker", social_summary
                     )
-                    session.flush()
-                    session.commit()
                     logger.info(
                         "social_completion_reported",
                         scrape_run_id=scrape_run_id,
