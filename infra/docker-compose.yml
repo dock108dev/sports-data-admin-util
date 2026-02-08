@@ -70,6 +70,8 @@ services:
     networks:
       - internal
       - app
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "8000:8000"
     healthcheck:

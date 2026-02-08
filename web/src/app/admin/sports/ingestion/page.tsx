@@ -6,6 +6,7 @@ import { cancelScrapeRun, createScrapeRun, type ScrapeRunResponse } from "@/lib/
 import { useScrapeRuns } from "@/lib/hooks/useScrapeRuns";
 import { ScrapeRunForm, type ScrapeRunFormData } from "@/components/admin/ScrapeRunForm";
 import { ScrapeRunsTable } from "@/components/admin/ScrapeRunsTable";
+import { LogsDrawer } from "@/components/admin/LogsDrawer";
 
 /**
  * Sports data ingestion admin page.
@@ -24,6 +25,7 @@ export default function IngestionAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [cancellingRunId, setCancellingRunId] = useState<number | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
 
   const displayError = error || runsError;
 
@@ -84,7 +86,12 @@ export default function IngestionAdminPage() {
 
   return (
     <div className={styles.container}>
-      <h1>Sports Data Ingestion</h1>
+      <div className={styles.titleRow}>
+        <h1>Sports Data Ingestion</h1>
+        <button className={styles.logsButton} onClick={() => setLogsOpen(true)}>
+          View Logs
+        </button>
+      </div>
       <p className={styles.subtitle}>Configure and monitor boxscore, odds, and social post scrapes.</p>
 
       <ScrapeRunForm
@@ -101,6 +108,8 @@ export default function IngestionAdminPage() {
         onCancel={handleCancelRun}
         cancellingRunId={cancellingRunId}
       />
+
+      <LogsDrawer open={logsOpen} onClose={() => setLogsOpen(false)} />
     </div>
   );
 }
