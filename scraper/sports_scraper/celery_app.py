@@ -13,6 +13,10 @@ from .config import settings
 from .db import db_models, get_session
 from .logging import logger
 
+# Canonical queue names — import these instead of using string literals
+DEFAULT_QUEUE = "sports-scraper"
+SOCIAL_QUEUE = "social-scraper"
+
 celery_config = {
     "task_serializer": "json",
     "accept_content": ["json"],
@@ -23,13 +27,13 @@ celery_config = {
     "worker_prefetch_multiplier": 1,
     "task_time_limit": 43200,       # 12 hours hard limit
     "task_soft_time_limit": 42600,  # 11h 50m soft limit
-    "task_default_queue": "sports-scraper",
+    "task_default_queue": DEFAULT_QUEUE,
     "task_routes": {
-        "run_scrape_job": {"queue": "sports-scraper"},
+        "run_scrape_job": {"queue": DEFAULT_QUEUE},
         # Social tasks route to dedicated social-scraper worker
-        "collect_social_for_league": {"queue": "social-scraper"},
-        "collect_team_social": {"queue": "social-scraper"},
-        "map_social_to_games": {"queue": "social-scraper"},
+        "collect_social_for_league": {"queue": SOCIAL_QUEUE},
+        "collect_team_social": {"queue": SOCIAL_QUEUE},
+        "map_social_to_games": {"queue": SOCIAL_QUEUE},
     },
 }
 
@@ -41,19 +45,19 @@ app = Celery(
 )
 app.conf.update(**celery_config)
 app.conf.task_routes = {
-    "run_scrape_job": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    "run_scrape_job": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     # Social tasks route to dedicated social-scraper worker for consistent IP/session
-    "collect_social_for_league": {"queue": "social-scraper", "routing_key": "social-scraper"},
-    "collect_team_social": {"queue": "social-scraper", "routing_key": "social-scraper"},
-    "map_social_to_games": {"queue": "social-scraper", "routing_key": "social-scraper"},
+    "collect_social_for_league": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
+    "collect_team_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
+    "map_social_to_games": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
     # Game-state-machine polling tasks
-    "update_game_states": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
-    "poll_live_pbp": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
-    "poll_active_odds": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
-    "trigger_flow_for_game": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
-    "run_daily_sweep": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+    "update_game_states": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    "poll_live_pbp": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    "poll_active_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    "trigger_flow_for_game": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    "run_daily_sweep": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     # Final-whistle social scrape runs on social-scraper queue (concurrency=1)
-    "run_final_whistle_social": {"queue": "social-scraper", "routing_key": "social-scraper"},
+    "run_final_whistle_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
 }
 # Daily sports ingestion at 5:00 AM US Eastern (10:00 UTC during EST, 09:00 UTC during EDT)
 # Using 10:00 UTC to align with 5:00 AM during Eastern Standard Time (November-March).
@@ -74,7 +78,7 @@ _always_on_schedule = {
     "game-state-updater-every-3-min": {
         "task": "update_game_states",
         "schedule": crontab(minute="*/3"),
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
 }
 
@@ -83,43 +87,43 @@ _prod_only_schedule = {
     "daily-sports-ingestion-5am-eastern": {
         "task": "run_scheduled_ingestion",
         "schedule": crontab(minute=0, hour=10),  # 5:00 AM EST = 10:00 UTC
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     "daily-nba-flow-generation-630am-eastern": {
         "task": "run_scheduled_nba_flow_generation",
         "schedule": crontab(minute=30, hour=11),  # 6:30 AM EST = 11:30 UTC (90 min after ingestion)
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     "daily-nhl-flow-generation-645am-eastern": {
         "task": "run_scheduled_nhl_flow_generation",
         "schedule": crontab(minute=45, hour=11),  # 6:45 AM EST = 11:45 UTC (15 min after NBA flow)
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     "daily-ncaab-flow-generation-7am-eastern": {
         "task": "run_scheduled_ncaab_flow_generation",
         "schedule": crontab(minute=0, hour=12),  # 7:00 AM EST = 12:00 UTC (15 min after NHL flow)
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     "odds-sync-every-30-minutes": {
         "task": "run_scheduled_odds_sync",
         "schedule": crontab(minute="*/30"),  # Every 30 minutes
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     "live-pbp-poll-every-5-min": {
         "task": "poll_live_pbp",
         "schedule": crontab(minute="*/5"),
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     "active-odds-poll-every-30-min": {
         "task": "poll_active_odds",
         "schedule": crontab(minute="*/30"),
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     # === Daily sweep (truth repair + social scrape #2) ===
     "daily-sweep-5am-eastern": {
         "task": "run_daily_sweep",
         "schedule": crontab(minute=0, hour=10),  # 5:00 AM EST = 10:00 UTC
-        "options": {"queue": "sports-scraper", "routing_key": "sports-scraper"},
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
 }
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { CategorizedSocialPost, SocialPostsByPhase } from "@/lib/api/sportsAdmin/storyTypes";
+import { LEAGUE_SEGMENTS, SEGMENT_LABELS } from "@/lib/constants/segments";
 import styles from "./ExpandableSocialSections.module.css";
 
 /**
@@ -36,28 +37,11 @@ interface ExpandableSocialSectionsProps {
 /**
  * Get display label for a segment.
  */
-function getSegmentLabel(segment: string, leagueCode: string): string {
-  // NBA quarters
-  if (segment === "q1") return "Q1";
-  if (segment === "q2") return "Q2";
-  if (segment === "q3") return "Q3";
-  if (segment === "q4") return "Q4";
+function getSegmentLabel(segment: string): string {
+  if (SEGMENT_LABELS[segment]) return SEGMENT_LABELS[segment];
 
-  // NCAAB halves
-  if (segment === "first_half") return "1st Half";
-  if (segment === "second_half") return "2nd Half";
-
-  // NHL periods
-  if (segment === "p1") return "1st Period";
-  if (segment === "p2") return "2nd Period";
-  if (segment === "p3") return "3rd Period";
-
-  // Overtime
-  if (segment === "ot" || segment === "ot1") return "Overtime";
+  // Overtime variants (ot2, ot3, ot4, ...)
   if (segment.startsWith("ot")) return `OT${segment.slice(2)}`;
-
-  // Halftime/intermission
-  if (segment === "halftime") return "Halftime";
 
   return segment;
 }
@@ -66,14 +50,11 @@ function getSegmentLabel(segment: string, leagueCode: string): string {
  * Get ordered segments based on league.
  */
 function getSegmentOrder(leagueCode: string): string[] {
-  if (leagueCode === "NCAAB") {
-    return ["first_half", "halftime", "second_half", "ot"];
-  }
-  if (leagueCode === "NHL") {
-    return ["p1", "p2", "p3", "ot"];
-  }
-  // Default: NBA
-  return ["q1", "q2", "halftime", "q3", "q4", "ot1", "ot2", "ot3", "ot4"];
+  const base = LEAGUE_SEGMENTS[leagueCode] ?? LEAGUE_SEGMENTS["NBA"];
+  // Append overtime variants for expandable sections
+  if (leagueCode === "NCAAB") return [...base, "ot"];
+  if (leagueCode === "NHL") return [...base, "ot"];
+  return [...base, "ot1", "ot2", "ot3", "ot4"];
 }
 
 /**
@@ -198,7 +179,7 @@ function InGameSections({
       {allSegments.map((segment) => (
         <CollapsibleCard
           key={segment}
-          title={getSegmentLabel(segment, leagueCode)}
+          title={getSegmentLabel(segment)}
           count={postsBySegment[segment].length}
         >
           <div className={styles.postsGrid}>

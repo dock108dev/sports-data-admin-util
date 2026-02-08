@@ -13,6 +13,10 @@ from sports_scraper.services.game_state_updater import (
     update_game_states,
 )
 
+_MOD = "sports_scraper.services.game_state_updater"
+_MOCK_LEAGUE_ID = 10
+_PREGAME_WINDOW_HOURS = 6
+
 
 def _utc_now() -> datetime:
     return datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
@@ -26,7 +30,7 @@ def _make_game(**kwargs) -> MagicMock:
     game.end_time = kwargs.get("end_time")
     game.updated_at = kwargs.get("updated_at")
     game.closed_at = kwargs.get("closed_at")
-    game.league_id = kwargs.get("league_id", 10)
+    game.league_id = kwargs.get("league_id", _MOCK_LEAGUE_ID)
     game.social_scrape_2_at = kwargs.get("social_scrape_2_at")
     return game
 
@@ -35,18 +39,18 @@ def _make_game(**kwargs) -> MagicMock:
 # update_game_states
 # ---------------------------------------------------------------------------
 class TestUpdateGameStates:
-    @patch("sports_scraper.services.game_state_updater._promote_final_to_archived", return_value=0)
-    @patch("sports_scraper.services.game_state_updater._promote_stale_to_final", return_value=0)
-    @patch("sports_scraper.services.game_state_updater._promote_scheduled_to_pregame", return_value=0)
+    @patch(f"{_MOD}._promote_final_to_archived", return_value=0)
+    @patch(f"{_MOD}._promote_stale_to_final", return_value=0)
+    @patch(f"{_MOD}._promote_scheduled_to_pregame", return_value=0)
     def test_returns_counts_dict(self, mock_sched, mock_stale, mock_final):
         session = MagicMock()
         result = update_game_states(session)
         assert result == {"scheduled_to_pregame": 0, "stale_to_final": 0, "final_to_archived": 0}
 
-    @patch("sports_scraper.services.game_state_updater.logger")
-    @patch("sports_scraper.services.game_state_updater._promote_final_to_archived", return_value=1)
-    @patch("sports_scraper.services.game_state_updater._promote_stale_to_final", return_value=0)
-    @patch("sports_scraper.services.game_state_updater._promote_scheduled_to_pregame", return_value=2)
+    @patch(f"{_MOD}.logger")
+    @patch(f"{_MOD}._promote_final_to_archived", return_value=1)
+    @patch(f"{_MOD}._promote_stale_to_final", return_value=0)
+    @patch(f"{_MOD}._promote_scheduled_to_pregame", return_value=2)
     def test_logs_info_when_transitions(self, mock_sched, mock_stale, mock_final, mock_logger):
         session = MagicMock()
         result = update_game_states(session)
@@ -54,10 +58,10 @@ class TestUpdateGameStates:
         assert result["final_to_archived"] == 1
         mock_logger.info.assert_called_once()
 
-    @patch("sports_scraper.services.game_state_updater.logger")
-    @patch("sports_scraper.services.game_state_updater._promote_final_to_archived", return_value=0)
-    @patch("sports_scraper.services.game_state_updater._promote_stale_to_final", return_value=0)
-    @patch("sports_scraper.services.game_state_updater._promote_scheduled_to_pregame", return_value=0)
+    @patch(f"{_MOD}.logger")
+    @patch(f"{_MOD}._promote_final_to_archived", return_value=0)
+    @patch(f"{_MOD}._promote_stale_to_final", return_value=0)
+    @patch(f"{_MOD}._promote_scheduled_to_pregame", return_value=0)
     def test_logs_debug_when_no_transitions(self, mock_sched, mock_stale, mock_final, mock_logger):
         session = MagicMock()
         update_game_states(session)
@@ -73,7 +77,7 @@ class TestPromoteScheduledToPregame:
     def test_promotes_game_within_window(self, mock_now, mock_config):
         now = _utc_now()
         config = MagicMock()
-        config.pregame_window_hours = 6
+        config.pregame_window_hours = _PREGAME_WINDOW_HOURS
         mock_config.items.return_value = [("NBA", config)]
 
         game = _make_game(
@@ -94,7 +98,7 @@ class TestPromoteScheduledToPregame:
     @patch("sports_scraper.services.game_state_updater.now_utc", return_value=_utc_now())
     def test_skips_league_not_in_db(self, mock_now, mock_config):
         config = MagicMock()
-        config.pregame_window_hours = 6
+        config.pregame_window_hours = _PREGAME_WINDOW_HOURS
         mock_config.items.return_value = [("FAKE", config)]
 
         session = MagicMock()
@@ -108,7 +112,7 @@ class TestPromoteScheduledToPregame:
     def test_multiple_games(self, mock_now, mock_config):
         now = _utc_now()
         config = MagicMock()
-        config.pregame_window_hours = 6
+        config.pregame_window_hours = _PREGAME_WINDOW_HOURS
         mock_config.items.return_value = [("NBA", config)]
 
         games = [
@@ -127,7 +131,7 @@ class TestPromoteScheduledToPregame:
     @patch("sports_scraper.services.game_state_updater.now_utc", return_value=_utc_now())
     def test_no_eligible_games(self, mock_now, mock_config):
         config = MagicMock()
-        config.pregame_window_hours = 6
+        config.pregame_window_hours = _PREGAME_WINDOW_HOURS
         mock_config.items.return_value = [("NBA", config)]
 
         session = MagicMock()

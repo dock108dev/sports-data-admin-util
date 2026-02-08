@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { fetchGame, rescrapeGame, resyncOdds, type AdminGameDetail } from "@/lib/api/sportsAdmin";
+import { ROUTES } from "@/lib/constants/routes";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { PbpSection } from "./PbpSection";
 import { SocialPostsSection } from "./SocialPostsSection";
@@ -286,7 +287,7 @@ export default function GameDetailClient() {
 
   return (
     <div className={styles.container}>
-      <Link href="/admin/sports/browser" className={styles.backLink}>
+      <Link href={ROUTES.SPORTS_BROWSER} className={styles.backLink}>
         ← Back to Data Browser
       </Link>
 

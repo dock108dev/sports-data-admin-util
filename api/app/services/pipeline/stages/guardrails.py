@@ -27,20 +27,15 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from .block_types import MAX_BLOCKS, MIN_BLOCKS
+from .embedded_tweets import MAX_EMBEDDED_TWEETS, MAX_TWEETS_PER_BLOCK
+
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
 # INVARIANT CONSTANTS
 # =============================================================================
-
-# Block limits (Task 1)
-MAX_BLOCKS = 7
-MIN_BLOCKS = 4
-
-# Embedded tweet limits (Task 4)
-MAX_EMBEDDED_TWEETS = 5
-MAX_TWEETS_PER_BLOCK = 1
 
 # Read time targets (seconds)
 MIN_READ_TIME_SECONDS = 20

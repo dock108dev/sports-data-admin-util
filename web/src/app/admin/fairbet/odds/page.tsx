@@ -13,8 +13,10 @@ import {
 } from "@/lib/api/fairbet";
 import { createScrapeRun, listScrapeRuns } from "@/lib/api/sportsAdmin";
 import type { ScrapeRunResponse } from "@/lib/api/sportsAdmin/types";
+import { FAIRBET_LEAGUES } from "@/lib/constants/sports";
+import { formatDateInput } from "@/lib/utils/dateFormat";
 
-const LEAGUES = ["NBA", "NHL", "NCAAB"];
+const LEAGUES = FAIRBET_LEAGUES;
 
 export default function FairbetOddsPage() {
   const [bets, setBets] = useState<BetDefinition[]>([]);
@@ -88,7 +90,7 @@ export default function FairbetOddsPage() {
 
     try {
       // Get today's date for the sync
-      const today = new Date().toISOString().split("T")[0];
+      const today = formatDateInput(new Date());
 
       // If a league is selected, sync just that one; otherwise sync all
       const leaguesToSync = selectedLeague ? [selectedLeague] : LEAGUES;

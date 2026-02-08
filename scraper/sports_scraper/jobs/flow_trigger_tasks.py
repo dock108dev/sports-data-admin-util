@@ -40,7 +40,7 @@ def trigger_flow_for_game(game_id: int) -> dict:
     """
     from ..db import db_models
     from sqlalchemy import exists
-    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock
+    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock, LOCK_TIMEOUT_5MIN
 
     with get_session() as session:
         game = session.query(db_models.SportsGame).get(game_id)
@@ -73,7 +73,7 @@ def trigger_flow_for_game(game_id: int) -> dict:
         # Acquire per-game lock to prevent races between edge-trigger,
         # daily sweep, and scheduled batch flow gen
         lock_name = f"lock:flow_gen:{game_id}"
-        if not acquire_redis_lock(lock_name, timeout=300):
+        if not acquire_redis_lock(lock_name, timeout=LOCK_TIMEOUT_5MIN):
             logger.info("flow_trigger_skipped_locked", game_id=game_id)
             return {"game_id": game_id, "status": "skipped", "reason": "locked"}
 

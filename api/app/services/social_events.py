@@ -39,6 +39,7 @@ from datetime import datetime
 from typing import Any, Iterable, Sequence
 
 from ..db.social import TeamSocialPost
+from .timeline_types import PHASE_ORDER
 
 logger = logging.getLogger(__name__)
 
@@ -200,21 +201,8 @@ def assign_social_phase(
     NOTE: This function uses pre-computed boundaries. For league-aware
     time-based classification (Phase 3), use assign_social_phase_time_based().
     """
-    # Check all possible phases in order
-    phase_order = [
-        "pregame",
-        # NBA phases
-        "q1", "q2", "halftime", "q3", "q4",
-        # NCAAB phases
-        "first_half", "second_half",
-        # NHL phases
-        "p1", "p2", "p3",
-        # Overtime phases (all leagues)
-        "ot", "ot1", "ot2", "ot3", "ot4", "shootout",
-        "postgame",
-    ]
-
-    for phase in phase_order:
+    # Use canonical phase ordering from timeline_types (SSOT)
+    for phase in sorted(boundaries.keys(), key=lambda p: PHASE_ORDER.get(p, 999)):
         if phase not in boundaries:
             continue
         start, end = boundaries[phase]

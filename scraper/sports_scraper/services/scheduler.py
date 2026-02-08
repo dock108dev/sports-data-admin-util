@@ -14,6 +14,7 @@ from ..logging import logger
 from ..models import IngestionConfig
 from ..utils.datetime_utils import now_utc
 from ..config_sports import get_scheduled_leagues, get_league_config
+from ..celery_app import DEFAULT_QUEUE
 
 
 @dataclass(frozen=True)
@@ -160,8 +161,8 @@ def schedule_ingestion_runs(
                 async_result = celery_app.send_task(
                     "run_scrape_job",
                     args=[run.id, config.model_dump(mode="json")],
-                    queue="sports-scraper",
-                    routing_key="sports-scraper",
+                    queue=DEFAULT_QUEUE,
+                    routing_key=DEFAULT_QUEUE,
                 )
                 run.job_id = async_result.id
                 logger.info(
@@ -333,8 +334,8 @@ def schedule_single_league_and_wait(
         async_result = celery_app.send_task(
             "run_scrape_job",
             args=[run.id, config.model_dump(mode="json")],
-            queue="sports-scraper",
-            routing_key="sports-scraper",
+            queue=DEFAULT_QUEUE,
+            routing_key=DEFAULT_QUEUE,
         )
         run.job_id = async_result.id
         session.commit()

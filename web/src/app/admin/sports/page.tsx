@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ROUTES } from "@/lib/constants/routes";
 import styles from "./page.module.css";
 import { listScrapeRuns, listGames, type ScrapeRunResponse, type GameFilters } from "@/lib/api/sportsAdmin";
 import { getStatusClass } from "@/lib/utils/status";
@@ -98,13 +99,13 @@ export default function AdminDashboardPage() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Quick Actions</h2>
         <div className={styles.quickLinks}>
-          <Link href="/admin/sports/browser" className={styles.quickLink}>
+          <Link href={ROUTES.SPORTS_BROWSER} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>Data browser</div>
               <div className={styles.quickLinkDesc}>Filter games, odds, and completeness</div>
             </div>
           </Link>
-          <Link href="/admin/sports/ingestion" className={styles.quickLink}>
+          <Link href={ROUTES.SPORTS_INGESTION} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>New scrape run</div>
               <div className={styles.quickLinkDesc}>Start a new data ingestion job</div>

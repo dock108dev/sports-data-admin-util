@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ROUTES } from "@/lib/constants/routes";
 import styles from "./AdminNav.module.css";
 
 interface NavItem {
@@ -13,15 +14,15 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Sports",
     items: [
-      { href: "/admin/sports/browser", label: "Data Browser" },
-      { href: "/admin/sports/ingestion", label: "Scraper Runs" },
-      { href: "/admin/sports/story-generator", label: "Flow Generator" },
+      { href: ROUTES.SPORTS_BROWSER, label: "Data Browser" },
+      { href: ROUTES.SPORTS_INGESTION, label: "Scraper Runs" },
+      { href: ROUTES.SPORTS_STORY_GENERATOR, label: "Flow Generator" },
     ],
   },
   {
     title: "FairBet",
     items: [
-      { href: "/admin/fairbet/odds", label: "Odds Comparison" },
+      { href: ROUTES.FAIRBET_ODDS, label: "Odds Comparison" },
     ],
   },
 ];

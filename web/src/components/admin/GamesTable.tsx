@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { type GameSummary } from "@/lib/api/sportsAdmin";
+import { ROUTES } from "@/lib/constants/routes";
 import styles from "./GamesTable.module.css";
 
 interface GamesTableProps {
