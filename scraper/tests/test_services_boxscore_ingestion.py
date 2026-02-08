@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+from sports_scraper.utils.date_utils import season_ending_year as _season_from_date
 from sports_scraper.services.nhl_boxscore_ingestion import (
-    season_from_date as _season_from_date,
     convert_nhl_boxscore_to_normalized_game as _convert_boxscore_to_normalized_game,
     select_games_for_boxscores_nhl_api,
     ingest_boxscores_via_nhl_api,
