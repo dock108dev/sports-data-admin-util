@@ -620,9 +620,9 @@ def apply_embedded_tweets_to_blocks(
 
         tweet = tweet_map.get(block_index)
         if tweet:
-            block_copy["embedded_tweet"] = tweet.to_dict()
+            block_copy["embedded_social_post_id"] = tweet.tweet_id
         else:
-            block_copy["embedded_tweet"] = None
+            block_copy["embedded_social_post_id"] = None
 
         updated_blocks.append(block_copy)
 

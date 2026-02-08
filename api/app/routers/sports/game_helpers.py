@@ -229,13 +229,13 @@ def build_preview_context(
 
 def summarize_game(
     game: SportsGame,
-    has_story: bool | None = None,
+    has_flow: bool | None = None,
 ) -> GameSummary:
     """Summarize game fields for list responses. Fails fast if core data missing.
 
     Args:
         game: The game to summarize
-        has_story: Whether the game has a story in SportsGameStory table.
+        has_flow: Whether the game has a flow in SportsGameFlow table.
             If None, defaults to False.
     """
     if not game.league:
@@ -252,9 +252,9 @@ def summarize_game(
     plays = getattr(game, "plays", [])
     has_pbp = bool(plays)
     play_count = len(plays)
-    # has_story is now passed in from caller (checked against SportsGameStory table)
-    if has_story is None:
-        has_story = False
+    # has_flow is now passed in from caller (checked against SportsGameFlow table)
+    if has_flow is None:
+        has_flow = False
 
     return GameSummary(
         id=game.id,
@@ -269,7 +269,7 @@ def summarize_game(
         has_odds=has_odds,
         has_social=has_social,
         has_pbp=has_pbp,
-        has_story=has_story,
+        has_flow=has_flow,
         play_count=play_count,
         social_post_count=social_post_count,
         has_required_data=has_boxscore and has_odds,

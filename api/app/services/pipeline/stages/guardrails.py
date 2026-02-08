@@ -134,7 +134,7 @@ def validate_blocks_post_generation(
     # Count metrics
     block_count = len(blocks)
     embedded_tweet_count = sum(
-        1 for b in blocks if b.get("embedded_tweet") is not None
+        1 for b in blocks if b.get("embedded_social_post_id") is not None
     )
     total_words = sum(
         len((b.get("narrative") or "").split()) for b in blocks
@@ -178,7 +178,7 @@ def validate_blocks_post_generation(
 
     # Check max 1 tweet per block
     for i, block in enumerate(blocks):
-        tweet = block.get("embedded_tweet")
+        tweet = block.get("embedded_social_post_id")
         if tweet is not None:
             # Check if there are somehow multiple tweets (shouldn't happen)
             if isinstance(tweet, list) and len(tweet) > 1:
@@ -292,7 +292,7 @@ def validate_social_independence(
     # Count metrics
     block_count = len(blocks_with_social)
     embedded_tweet_count = sum(
-        1 for b in blocks_with_social if b.get("embedded_tweet") is not None
+        1 for b in blocks_with_social if b.get("embedded_social_post_id") is not None
     )
 
     passed = not any(v.severity == "error" for v in violations)

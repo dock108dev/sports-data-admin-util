@@ -323,14 +323,14 @@ class StageComparisonResponse(BaseModel):
 
 
 class BulkGenerateRequest(BaseModel):
-    """Request to start bulk story generation across multiple games."""
+    """Request to start bulk game flow generation across multiple games."""
 
     start_date: str = Field(description="Start date (YYYY-MM-DD)")
     end_date: str = Field(description="End date (YYYY-MM-DD)")
     leagues: list[str] = Field(description="Leagues to include (NBA, NHL, NCAAB)")
     force: bool = Field(
         default=False,
-        description="If True, regenerate stories even if they already exist",
+        description="If True, regenerate game flows even if they already exist",
     )
     max_games: int | None = Field(
         default=None,
@@ -367,7 +367,7 @@ class BulkGenerateStatusResponse(BaseModel):
     total: int = Field(description="Total games to process")
     successful: int = Field(description="Number of games successfully processed")
     failed: int = Field(description="Number of games that failed")
-    skipped: int = Field(description="Number of games skipped (already have story)")
+    skipped: int = Field(description="Number of games skipped (already have flow)")
     result: dict[str, Any] | None = Field(
         default=None,
         description="Final result when job completes",

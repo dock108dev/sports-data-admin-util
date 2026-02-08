@@ -113,7 +113,7 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
         # New format: {"finalized": true, "story_id": N, "moment_count": N, ...}
         return {
             "finalized": output.get("finalized", False),
-            "story_id": output.get("story_id"),
+            "flow_id": output.get("flow_id"),
             "story_version": output.get("story_version"),
             "moment_count": output.get("moment_count", 0),
         }

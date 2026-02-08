@@ -1,6 +1,6 @@
-"""Celery task for bulk story generation.
+"""Celery task for bulk game flow generation.
 
-This task runs in the api-worker container and processes bulk story
+This task runs in the api-worker container and processes bulk game flow
 generation requests asynchronously. Job state is persisted in the
 database for consistency and survives worker restarts.
 """
@@ -23,7 +23,7 @@ from ..db.odds import SportsGameOdds  # noqa: F401 — register model for relati
 from ..db.social import TeamSocialPost  # noqa: F401 — register model for relationship resolution
 from ..db.scraper import SportsScrapeRun  # noqa: F401 — register model for relationship resolution
 from ..db.pipeline import BulkStoryGenerationJob
-from ..db.story import SportsGameStory
+from ..db.story import SportsGameFlow
 from ..services.pipeline import PipelineExecutor
 
 logger = logging.getLogger(__name__)
