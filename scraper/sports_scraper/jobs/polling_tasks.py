@@ -385,22 +385,41 @@ def poll_active_odds_task() -> dict:
     try:
         resolver = ActiveGamesResolver()
 
+        from ..db import db_models as _db_models
+
+        # Extract needed fields inside the session to avoid DetachedInstanceError
+        league_date_ranges: dict[int, tuple[str, list]] = {}
+        game_count = 0
+
         with get_session() as session:
             games = resolver.get_games_needing_odds(session)
 
-        if not games:
-            logger.debug("poll_active_odds_no_games")
-            return {"games": 0, "odds_count": 0}
+            if not games:
+                logger.debug("poll_active_odds_no_games")
+                return {"games": 0, "odds_count": 0}
 
-        # Group games by league for efficient API calls
-        league_games: dict[int, list] = {}
-        for game in games:
-            league_games.setdefault(game.league_id, []).append(game)
+            game_count = len(games)
+
+            # Group games by league and collect date ranges while session is open
+            league_games: dict[int, list] = {}
+            for game in games:
+                league_games.setdefault(game.league_id, []).append(game)
+
+            for league_id, lg_games in league_games.items():
+                league = session.query(_db_models.SportsLeague).get(league_id)
+                if not league:
+                    continue
+
+                dates = [g.game_date.date() for g in lg_games if g.game_date]
+                if not dates:
+                    continue
+
+                league_date_ranges[league_id] = (league.code, dates)
 
         logger.info(
             "poll_active_odds_start",
-            total_games=len(games),
-            leagues=len(league_games),
+            total_games=game_count,
+            leagues=len(league_date_ranges),
         )
 
         # Use existing OddsSynchronizer per league
@@ -408,45 +427,33 @@ def poll_active_odds_task() -> dict:
         total_odds = 0
         results: dict[str, dict] = {}
 
-        from ..db import db_models as _db_models
+        for league_id, (league_code, dates) in league_date_ranges.items():
+            start = min(dates)
+            end = max(dates)
 
-        with get_session() as session:
-            for league_id, lg_games in league_games.items():
-                league = session.query(_db_models.SportsLeague).get(league_id)
-                if not league:
-                    continue
-
-                # Determine date range from the games in this league
-                dates = [g.game_date.date() for g in lg_games if g.game_date]
-                if not dates:
-                    continue
-
-                start = min(dates)
-                end = max(dates)
-
-                try:
-                    config = IngestionConfig(
-                        league_code=league.code,
-                        start_date=start,
-                        end_date=end,
-                        odds=True,
-                        boxscores=False,
-                        social=False,
-                        pbp=False,
-                    )
-                    count = sync.sync(config)
-                    results[league.code] = {"odds_count": count, "status": "success"}
-                    total_odds += count
-                except Exception as exc:
-                    results[league.code] = {"odds_count": 0, "status": "error", "error": str(exc)}
-                    logger.warning(
-                        "poll_active_odds_league_error",
-                        league=league.code,
-                        error=str(exc),
-                    )
+            try:
+                config = IngestionConfig(
+                    league_code=league_code,
+                    start_date=start,
+                    end_date=end,
+                    odds=True,
+                    boxscores=False,
+                    social=False,
+                    pbp=False,
+                )
+                count = sync.sync(config)
+                results[league_code] = {"odds_count": count, "status": "success"}
+                total_odds += count
+            except Exception as exc:
+                results[league_code] = {"odds_count": 0, "status": "error", "error": str(exc)}
+                logger.warning(
+                    "poll_active_odds_league_error",
+                    league=league_code,
+                    error=str(exc),
+                )
 
         logger.info("poll_active_odds_complete", total_odds=total_odds, results=results)
-        return {"games": len(games), "odds_count": total_odds, "results": results}
+        return {"games": game_count, "odds_count": total_odds, "results": results}
 
     finally:
         _release_redis_lock("lock:poll_active_odds")
