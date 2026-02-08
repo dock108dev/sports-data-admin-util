@@ -9,6 +9,7 @@ from sports_scraper.services.game_state_updater import (
     _ARCHIVE_AFTER_DAYS,
     _promote_final_to_archived,
     _promote_scheduled_to_pregame,
+    _promote_stale_to_final,
     update_game_states,
 )
 
@@ -35,16 +36,18 @@ def _make_game(**kwargs) -> MagicMock:
 # ---------------------------------------------------------------------------
 class TestUpdateGameStates:
     @patch("sports_scraper.services.game_state_updater._promote_final_to_archived", return_value=0)
+    @patch("sports_scraper.services.game_state_updater._promote_stale_to_final", return_value=0)
     @patch("sports_scraper.services.game_state_updater._promote_scheduled_to_pregame", return_value=0)
-    def test_returns_counts_dict(self, mock_sched, mock_final):
+    def test_returns_counts_dict(self, mock_sched, mock_stale, mock_final):
         session = MagicMock()
         result = update_game_states(session)
-        assert result == {"scheduled_to_pregame": 0, "final_to_archived": 0}
+        assert result == {"scheduled_to_pregame": 0, "stale_to_final": 0, "final_to_archived": 0}
 
     @patch("sports_scraper.services.game_state_updater.logger")
     @patch("sports_scraper.services.game_state_updater._promote_final_to_archived", return_value=1)
+    @patch("sports_scraper.services.game_state_updater._promote_stale_to_final", return_value=0)
     @patch("sports_scraper.services.game_state_updater._promote_scheduled_to_pregame", return_value=2)
-    def test_logs_info_when_transitions(self, mock_sched, mock_final, mock_logger):
+    def test_logs_info_when_transitions(self, mock_sched, mock_stale, mock_final, mock_logger):
         session = MagicMock()
         result = update_game_states(session)
         assert result["scheduled_to_pregame"] == 2
@@ -53,8 +56,9 @@ class TestUpdateGameStates:
 
     @patch("sports_scraper.services.game_state_updater.logger")
     @patch("sports_scraper.services.game_state_updater._promote_final_to_archived", return_value=0)
+    @patch("sports_scraper.services.game_state_updater._promote_stale_to_final", return_value=0)
     @patch("sports_scraper.services.game_state_updater._promote_scheduled_to_pregame", return_value=0)
-    def test_logs_debug_when_no_transitions(self, mock_sched, mock_final, mock_logger):
+    def test_logs_debug_when_no_transitions(self, mock_sched, mock_stale, mock_final, mock_logger):
         session = MagicMock()
         update_game_states(session)
         mock_logger.debug.assert_called_once_with("game_state_updater_no_transitions")
