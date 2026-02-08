@@ -38,7 +38,7 @@ def sample_tweets(game_start: datetime) -> list[dict]:
     """Sample tweets for testing."""
     return [
         {
-            "id": "tweet_1",
+            "id": 1,
             "text": "Game time! Let's go Lakers!",
             "author": "lakers",
             "posted_at": game_start + timedelta(minutes=5),
@@ -48,7 +48,7 @@ def sample_tweets(game_start: datetime) -> list[dict]:
             "engagement": 500,
         },
         {
-            "id": "tweet_2",
+            "id": 2,
             "text": "Huge three pointer by LeBron! This is getting exciting!",
             "author": "espn",
             "posted_at": game_start + timedelta(minutes=45),
@@ -58,7 +58,7 @@ def sample_tweets(game_start: datetime) -> list[dict]:
             "engagement": 1200,
         },
         {
-            "id": "tweet_3",
+            "id": 3,
             "text": "Halftime: Lakers lead by 8.",
             "author": "lakers",
             "posted_at": game_start + timedelta(minutes=75),
@@ -67,7 +67,7 @@ def sample_tweets(game_start: datetime) -> list[dict]:
             "engagement": 300,
         },
         {
-            "id": "tweet_4",
+            "id": 4,
             "text": "Big run in the third quarter!",
             "author": "nbareporter",
             "posted_at": game_start + timedelta(minutes=100),
@@ -75,7 +75,7 @@ def sample_tweets(game_start: datetime) -> list[dict]:
             "engagement": 200,
         },
         {
-            "id": "tweet_5",
+            "id": 5,
             "text": "Down to the wire! Celtics within 2.",
             "author": "celtics",
             "posted_at": game_start + timedelta(minutes=140),
@@ -85,7 +85,7 @@ def sample_tweets(game_start: datetime) -> list[dict]:
             "engagement": 800,
         },
         {
-            "id": "tweet_6",
+            "id": 6,
             "text": "Final: Lakers 112, Celtics 108. What a game!",
             "author": "nba",
             "posted_at": game_start + timedelta(minutes=155),
@@ -218,7 +218,7 @@ class TestSelectEmbeddedTweets:
         """If fewer than preferred minimum, selects all."""
         single_tweet = [
             {
-                "id": "1",
+                "id": 1,
                 "text": "Test tweet",
                 "author": "test",
                 "posted_at": game_start + timedelta(minutes=10),
@@ -251,13 +251,13 @@ class TestSelectEmbeddedTweets:
         """Skips tweets with empty text."""
         tweets = [
             {
-                "id": "1",
+                "id": 1,
                 "text": "",
                 "author": "test",
                 "posted_at": game_start + timedelta(minutes=10),
             },
             {
-                "id": "2",
+                "id": 2,
                 "text": "Valid tweet",
                 "author": "test",
                 "posted_at": game_start + timedelta(minutes=20),
@@ -265,7 +265,7 @@ class TestSelectEmbeddedTweets:
         ]
         result = select_embedded_tweets(tweets, game_start)
         assert len(result.tweets) == 1
-        assert result.tweets[0].tweet_id == "2"
+        assert result.tweets[0].tweet_id == 2
 
     def test_custom_scorer(self, game_start, sample_tweets):
         """Custom scorer is used when provided."""
@@ -298,7 +298,7 @@ class TestEnforceEmbeddedCaps:
         # Create many tweets
         many_tweets = [
             ScoredTweet(
-                tweet_id=f"t{i}",
+                tweet_id=i,
                 posted_at=game_start + timedelta(minutes=i * 10),
                 text=f"Tweet {i}",
                 author="test",
@@ -320,7 +320,7 @@ class TestEnforceEmbeddedCaps:
         """With fewer blocks than tweets, limits to block count."""
         tweets = [
             ScoredTweet(
-                tweet_id=f"t{i}",
+                tweet_id=i,
                 posted_at=game_start + timedelta(minutes=i * 10),
                 text=f"Tweet {i}",
                 author="test",
@@ -348,7 +348,7 @@ class TestEnforceEmbeddedCaps:
         """Zero blocks returns empty list."""
         tweets = [
             ScoredTweet(
-                tweet_id="1",
+                tweet_id=1,
                 posted_at=game_start,
                 text="Test",
                 author="test",
@@ -364,7 +364,7 @@ class TestEnforceEmbeddedCaps:
         """Tweets are assigned to blocks matching their position."""
         tweets = [
             ScoredTweet(
-                tweet_id="early",
+                tweet_id=1,
                 posted_at=game_start + timedelta(minutes=10),
                 text="Early tweet",
                 author="test",
@@ -373,7 +373,7 @@ class TestEnforceEmbeddedCaps:
                 position=TweetPosition.EARLY,
             ),
             ScoredTweet(
-                tweet_id="late",
+                tweet_id=2,
                 posted_at=game_start + timedelta(minutes=140),
                 text="Late tweet",
                 author="test",
@@ -388,11 +388,11 @@ class TestEnforceEmbeddedCaps:
 
         # Find where tweets were assigned
         early_block = next(
-            (a.block_index for a in assignments if a.tweet and a.tweet.tweet_id == "early"),
+            (a.block_index for a in assignments if a.tweet and a.tweet.tweet_id == 1),
             None,
         )
         late_block = next(
-            (a.block_index for a in assignments if a.tweet and a.tweet.tweet_id == "late"),
+            (a.block_index for a in assignments if a.tweet and a.tweet.tweet_id == 2),
             None,
         )
 
@@ -407,7 +407,7 @@ class TestApplyEmbeddedTweetsToBlocks:
     def test_adds_embedded_tweet_field(self, sample_blocks, game_start):
         """Adds embedded_tweet field to blocks."""
         tweet = ScoredTweet(
-            tweet_id="1",
+            tweet_id=1,
             posted_at=game_start,
             text="Test",
             author="test",
@@ -426,13 +426,13 @@ class TestApplyEmbeddedTweetsToBlocks:
         result = apply_embedded_tweets_to_blocks(sample_blocks, assignments)
 
         assert result[0]["embedded_social_post_id"] is not None
-        assert result[0]["embedded_social_post_id"] == "1"
+        assert result[0]["embedded_social_post_id"] == 1
         assert result[1]["embedded_social_post_id"] is None
 
     def test_does_not_modify_block_structure(self, sample_blocks, game_start):
         """Does not add/remove/split blocks."""
         tweet = ScoredTweet(
-            tweet_id="1",
+            tweet_id=1,
             posted_at=game_start,
             text="Test",
             author="test",
@@ -526,7 +526,7 @@ class TestStoryInvariant:
         # Few tweets
         few_tweets = [
             {
-                "id": "1",
+                "id": 1,
                 "text": "Test tweet",
                 "author": "test",
                 "posted_at": game_start + timedelta(minutes=10),
@@ -536,7 +536,7 @@ class TestStoryInvariant:
         # Many tweets
         many_tweets = [
             {
-                "id": str(i),
+                "id": i,
                 "text": f"Tweet {i}",
                 "author": "test",
                 "posted_at": game_start + timedelta(minutes=i * 5),

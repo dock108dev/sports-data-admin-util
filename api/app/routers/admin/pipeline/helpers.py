@@ -110,7 +110,7 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
             "total_words": output.get("total_words", 0),
         }
     elif stage == "FINALIZE_MOMENTS":
-        # New format: {"finalized": true, "story_id": N, "moment_count": N, ...}
+        # New format: {"finalized": true, "flow_id": N, "moment_count": N, ...}
         return {
             "finalized": output.get("finalized", False),
             "flow_id": output.get("flow_id"),

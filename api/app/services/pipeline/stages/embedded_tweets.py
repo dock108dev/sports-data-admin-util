@@ -68,7 +68,7 @@ class ScoredTweet:
     The score determines priority when enforcing caps.
     """
 
-    tweet_id: str | int
+    tweet_id: int
     posted_at: datetime
     text: str
     author: str
@@ -337,13 +337,21 @@ def select_embedded_tweets(
         elif not isinstance(posted_at, datetime):
             continue
 
+        raw_id = tweet.get("id") or tweet.get("tweet_id")
+        if raw_id is None:
+            continue
+        try:
+            tweet_id = int(raw_id)
+        except (ValueError, TypeError):
+            continue
+
         score = scorer.score(tweet)
         position = classify_tweet_position(
             posted_at, game_start, estimated_duration_minutes
         )
 
         scored_tweet = ScoredTweet(
-            tweet_id=tweet.get("id") or tweet.get("tweet_id", ""),
+            tweet_id=tweet_id,
             posted_at=posted_at,
             text=text,
             author=tweet.get("author") or tweet.get("source_handle", ""),
@@ -418,7 +426,7 @@ def _select_with_distribution(
         by_position[position].sort(key=lambda t: t.score, reverse=True)
 
     selected: list[ScoredTweet] = []
-    used_ids: set[str | int] = set()
+    used_ids: set[int] = set()
 
     # Phase 1: Pick best from each position (distribution preference)
     for position in [TweetPosition.EARLY, TweetPosition.MID, TweetPosition.LATE]:
@@ -507,7 +515,7 @@ def enforce_embedded_caps(
     # Assign tweets to blocks based on position affinity
     # EARLY -> first blocks, MID -> middle blocks, LATE -> last blocks
     assigned_blocks: set[int] = set()
-    assigned_tweets: set[str | int] = set()
+    assigned_tweets: set[int] = set()
 
     for tweet in tweets_to_assign:
         if len(assigned_blocks) >= block_count:
