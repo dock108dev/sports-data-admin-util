@@ -26,7 +26,6 @@ DATABASE_URL = "postgresql+psycopg://user:pass@host:5432/sports"
 | sports_game_plays | Play-by-play events |
 | team_social_posts | X/Twitter posts per team (mapped to games via `mapping_status`) |
 | game_reading_positions | User reading position tracking |
-| compact_mode_thresholds | Per-sport moment thresholds |
 | sports_scrape_runs | Scrape job audit log |
 
 ## Python Examples

@@ -111,12 +111,6 @@ export default function AdminDashboardPage() {
               <div className={styles.quickLinkDesc}>Browse games, teams, and scrape runs</div>
             </div>
           </Link>
-          <Link href="/admin/sports/runs" className={styles.quickLink}>
-            <div className={styles.quickLinkContent}>
-              <div className={styles.quickLinkTitle}>Theory runs</div>
-              <div className={styles.quickLinkDesc}>View and trace user theory evaluations</div>
-            </div>
-          </Link>
           <Link href={ROUTES.SPORTS_STORY_GENERATOR} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>Flow Generator</div>

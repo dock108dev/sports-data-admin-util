@@ -23,6 +23,7 @@ from ..models import (
     NormalizedGame,
 )
 from ..persistence import persist_game_payload
+from ..utils.date_utils import season_ending_year
 from ..utils.datetime_utils import date_to_utc_datetime
 from .pbp_ingestion import populate_nhl_game_ids
 
@@ -100,18 +101,6 @@ def select_games_for_boxscores_nhl_api(
     return results
 
 
-def season_from_date(game_date: date) -> int:
-    """Calculate NHL season year from a game date.
-
-    NHL season runs from October to June. Games in January-June belong to
-    the previous calendar year's season (e.g., January 2025 = 2024-25 season = 2025).
-    """
-    if game_date.month >= 10:
-        return game_date.year + 1
-    else:
-        return game_date.year
-
-
 def ingest_boxscores_via_nhl_api(
     session: Session,
     *,
@@ -122,9 +111,6 @@ def ingest_boxscores_via_nhl_api(
     updated_before: datetime | None,
 ) -> tuple[int, int, int]:
     """Ingest NHL boxscores using the official NHL API.
-
-    This replaces Hockey Reference scraping for NHL boxscores. The NHL API
-    provides all the same data through a faster and more reliable REST API.
 
     Flow:
     1. Populate nhl_game_pk for games missing it (via NHL schedule API)
@@ -253,7 +239,7 @@ def convert_nhl_boxscore_to_normalized_game(
     """
     identity = GameIdentification(
         league_code="NHL",
-        season=season_from_date(game_date),
+        season=season_ending_year(game_date),
         season_type="regular",
         game_date=date_to_utc_datetime(game_date),
         home_team=boxscore.home_team,

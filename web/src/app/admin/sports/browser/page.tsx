@@ -16,8 +16,7 @@ type ViewMode = "games" | "teams" | "runs";
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 /**
- * Unified data browser - replaces Dashboard, Games, and Teams pages.
- * Allows switching between Games, Teams, and Scrape Runs with consistent filtering.
+ * Unified data browser for Games, Teams, and Scrape Runs with consistent filtering.
  */
 export default function UnifiedBrowserPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("games");

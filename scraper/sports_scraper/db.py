@@ -77,7 +77,6 @@ try:
         SportsGameOdds,
     )
     from app.db.config import (  # type: ignore
-        CompactModeThreshold,
         GameReadingPosition,
     )
     from app.db.cache import OpenAIResponseCache  # type: ignore
@@ -126,7 +125,6 @@ try:
         SportsGameOdds=SportsGameOdds,
         FairbetGameOddsWork=FairbetGameOddsWork,
         # Config models
-        CompactModeThreshold=CompactModeThreshold,
         GameReadingPosition=GameReadingPosition,
         # Cache models
         OpenAIResponseCache=OpenAIResponseCache,

@@ -28,7 +28,7 @@ def _report_social_completion(
     Updates the SportsJobRun status and replaces the placeholder text in
     SportsScrapeRun.summary with actual stats.
 
-    Both IDs are optional (None = no-op) for backward compatibility.
+    Both IDs are optional to support callers that don't track run state.
     All DB work is wrapped in try/except so reporting failures never crash the task.
     """
     try:

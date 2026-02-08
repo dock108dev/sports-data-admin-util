@@ -24,9 +24,8 @@
 
 ### Current Implementation
 **File:** `api/app/services/lead_ladder.py` (sport-agnostic)
-**File:** `api/app/services/compact_mode_thresholds.py` (DB access)
 
-The Lead Ladder is already sport-agnostic. Thresholds are stored in the database (`compact_mode_thresholds` table) and passed to all functions.
+The Lead Ladder is sport-agnostic. Thresholds are configured per league and passed to all functions.
 
 ### NBA Configuration
 ```python
@@ -48,7 +47,6 @@ The Lead Ladder is already sport-agnostic. Thresholds are stored in the database
 ```
 
 ### Action Required
-- [ ] Seed `compact_mode_thresholds` table with NHL thresholds `[1, 2, 3]`
 - [ ] Verify `get_thresholds_for_league("NHL")` returns correct values
 
 ---
@@ -462,7 +460,6 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 ## 12. Implementation Checklist
 
 ### Phase 1: Foundation
-- [ ] Seed NHL Lead Ladder thresholds in database
 - [ ] Verify NHL PBP scraping produces usable data
 - [ ] Verify NHL odds ingestion works
 - [ ] Verify NHL social scraping works
@@ -505,7 +502,6 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 | `api/app/services/game_analysis.py` | Add NHL thresholds reference | Pending |
 | `api/app/config_sports.py` | Already has NHL config | ✅ Done |
 | `scraper/sports_scraper/config_sports.py` | Already has NHL config | ✅ Done |
-| Database | Seed NHL thresholds | Pending |
 
 ---
 

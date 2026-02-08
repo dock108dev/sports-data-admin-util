@@ -292,18 +292,6 @@ CREATE TABLE IF NOT EXISTS social_account_polls (
 CREATE INDEX IF NOT EXISTS idx_social_account_polls_handle_window ON social_account_polls(handle, window_start, window_end);
 CREATE INDEX IF NOT EXISTS idx_social_account_polls_platform ON social_account_polls(platform);
 
--- Compact mode thresholds
-CREATE TABLE IF NOT EXISTS compact_mode_thresholds (
-    id SERIAL PRIMARY KEY,
-    sport_id INTEGER NOT NULL REFERENCES sports_leagues(id) ON DELETE CASCADE,
-    thresholds JSONB NOT NULL,
-    description TEXT,
-    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
-    updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
-    UNIQUE (sport_id)
-);
-CREATE INDEX IF NOT EXISTS idx_compact_mode_thresholds_sport_id ON compact_mode_thresholds(sport_id);
-
 -- Seed leagues
 INSERT INTO sports_leagues (code, name, level) VALUES
     ('NBA', 'National Basketball Association', 'pro'),
@@ -313,35 +301,3 @@ INSERT INTO sports_leagues (code, name, level) VALUES
     ('MLB', 'Major League Baseball', 'pro'),
     ('NHL', 'National Hockey League', 'pro')
 ON CONFLICT (code) DO NOTHING;
-
--- Seed compact mode thresholds
-INSERT INTO compact_mode_thresholds (sport_id, thresholds, description)
-SELECT id, '[1, 2, 3, 5]'::jsonb, 'Score-lead thresholds for compact mode moments.'
-FROM sports_leagues
-WHERE code = 'NFL'
-ON CONFLICT (sport_id) DO NOTHING;
-INSERT INTO compact_mode_thresholds (sport_id, thresholds, description)
-SELECT id, '[1, 2, 3, 5]'::jsonb, 'Score-lead thresholds for compact mode moments.'
-FROM sports_leagues
-WHERE code = 'NCAAF'
-ON CONFLICT (sport_id) DO NOTHING;
-INSERT INTO compact_mode_thresholds (sport_id, thresholds, description)
-SELECT id, '[3, 6, 10, 16]'::jsonb, 'Point-lead thresholds for compact mode moments.'
-FROM sports_leagues
-WHERE code = 'NBA'
-ON CONFLICT (sport_id) DO NOTHING;
-INSERT INTO compact_mode_thresholds (sport_id, thresholds, description)
-SELECT id, '[3, 6, 10, 16]'::jsonb, 'Point-lead thresholds for compact mode moments.'
-FROM sports_leagues
-WHERE code = 'NCAAB'
-ON CONFLICT (sport_id) DO NOTHING;
-INSERT INTO compact_mode_thresholds (sport_id, thresholds, description)
-SELECT id, '[1, 2, 3, 5]'::jsonb, 'Run-lead thresholds for compact mode moments.'
-FROM sports_leagues
-WHERE code = 'MLB'
-ON CONFLICT (sport_id) DO NOTHING;
-INSERT INTO compact_mode_thresholds (sport_id, thresholds, description)
-SELECT id, '[1, 2, 3]'::jsonb, 'Goal-lead thresholds for compact mode moments.'
-FROM sports_leagues
-WHERE code = 'NHL'
-ON CONFLICT (sport_id) DO NOTHING;

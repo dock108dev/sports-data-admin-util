@@ -18,7 +18,7 @@ from ..config import settings
 from ..logging import logger
 from ..models import NormalizedPlayByPlay
 from ..utils.cache import APICache
-from ..utils.date_utils import ncaab_season_for_cbb_api
+from ..utils.date_utils import season_ending_year
 from ..utils.datetime_utils import eastern_date_range_to_utc_iso
 from ..utils.parsing import parse_int
 from .ncaab_boxscore import NCAABBoxscoreFetcher
@@ -66,7 +66,7 @@ class NCAABLiveFeedClient:
         NCAAB season spans two calendar years. Season 2025 runs from
         roughly November 2024 through April 2025. We use the ending year.
         """
-        return ncaab_season_for_cbb_api(game_date)
+        return season_ending_year(game_date)
 
     def _ensure_team_names(self, season: int) -> None:
         """Ensure team names are loaded for the given season."""
