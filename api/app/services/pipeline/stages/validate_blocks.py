@@ -340,13 +340,17 @@ async def _attach_embedded_tweets(
             "posted_at": post.posted_at,
             "text": post.tweet_text,
             "author": post.source_handle or "",
-            "phase": "inGame",  # Position will be computed from posted_at
+            "phase": post.game_phase or "in_game",
             "has_media": post.has_video or bool(post.image_url),
             "media_type": post.media_type,
             "post_url": post.post_url,
             # Team account detection based on having a source handle
             "is_team_account": bool(post.source_handle),
         })
+
+    # Only in-game tweets belong in narrative blocks;
+    # pregame/postgame are surfaced separately by consuming apps
+    tweets = [t for t in tweets if t["phase"] == "in_game"]
 
     if not tweets:
         output.add_log("No tweets with text found, skipping embedded tweets")

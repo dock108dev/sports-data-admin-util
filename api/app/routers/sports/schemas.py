@@ -288,6 +288,10 @@ class SocialPostEntry(BaseModel):
     image_url: str | None = Field(None, alias="imageUrl")
     source_handle: str | None = Field(None, alias="sourceHandle")
     media_type: str | None = Field(None, alias="mediaType")
+    game_phase: str | None = Field(None, alias="gamePhase")
+    likes_count: int | None = Field(None, alias="likesCount")
+    retweets_count: int | None = Field(None, alias="retweetsCount")
+    replies_count: int | None = Field(None, alias="repliesCount")
 
 
 class PlayEntry(BaseModel):
