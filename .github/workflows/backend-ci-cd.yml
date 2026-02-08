@@ -197,5 +197,9 @@ jobs:
             echo "Starting services..."
             docker compose --profile prod up -d
 
+            echo "Cleaning up old Docker images..."
+            docker image prune -af
+            docker builder prune -af
+
             echo "Deployment status:"
             docker compose --profile prod ps
