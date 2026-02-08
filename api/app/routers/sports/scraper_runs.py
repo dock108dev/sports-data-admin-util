@@ -44,6 +44,24 @@ async def create_scrape_run(
 ) -> ScrapeRunResponse:
     league = await get_league(session, payload.config.league_code)
 
+    # Social scraping is edge-triggered only (final whistle + daily sweep)
+    if payload.config.social:
+        raise HTTPException(
+            status_code=400,
+            detail="Social scraping is edge-triggered (final whistle). Cannot be requested via UI.",
+        )
+
+    # Boxscore end_date must be yesterday or earlier (not available until next day)
+    if payload.config.boxscores and payload.config.end_date:
+        from datetime import timedelta
+
+        yesterday = date.today() - timedelta(days=1)
+        if payload.config.end_date > yesterday:
+            raise HTTPException(
+                status_code=400,
+                detail="Boxscore end_date must be yesterday or earlier (boxscores aren't available until the next day).",
+            )
+
     run = SportsScrapeRun(
         scraper_type="scrape",
         league_id=league.id,

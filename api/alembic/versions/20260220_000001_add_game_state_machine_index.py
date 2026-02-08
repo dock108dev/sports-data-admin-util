@@ -23,6 +23,7 @@ def upgrade() -> None:
         "idx_games_status_tip_time",
         "sports_games",
         ["status", "tip_time"],
+        if_not_exists=True,
     )
 
     # Backfill: mark old final games as archived.
