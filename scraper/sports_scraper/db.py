@@ -57,7 +57,7 @@ try:
     )
     from app.db.story import (  # type: ignore
         FrontendPayloadVersion,
-        SportsGameStory,
+        SportsGameFlow,
         SportsGameTimelineArtifact,
     )
     from app.db.scraper import (  # type: ignore
@@ -77,7 +77,6 @@ try:
         SportsGameOdds,
     )
     from app.db.config import (  # type: ignore
-        CompactModeThreshold,
         GameReadingPosition,
     )
     from app.db.cache import OpenAIResponseCache  # type: ignore
@@ -113,7 +112,7 @@ try:
         SocialAccountPoll=SocialAccountPoll,
         # Story models
         SportsGameTimelineArtifact=SportsGameTimelineArtifact,
-        SportsGameStory=SportsGameStory,
+        SportsGameFlow=SportsGameFlow,
         # Scraper models
         SportsScrapeRun=SportsScrapeRun,
         SportsJobRun=SportsJobRun,
@@ -126,7 +125,6 @@ try:
         SportsGameOdds=SportsGameOdds,
         FairbetGameOddsWork=FairbetGameOddsWork,
         # Config models
-        CompactModeThreshold=CompactModeThreshold,
         GameReadingPosition=GameReadingPosition,
         # Cache models
         OpenAIResponseCache=OpenAIResponseCache,

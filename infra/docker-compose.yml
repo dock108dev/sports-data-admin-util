@@ -70,8 +70,6 @@ services:
     networks:
       - internal
       - app
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "8000:8000"
     healthcheck:
@@ -315,6 +313,23 @@ services:
           sleep "$$SLEEP_SECS"
           /scripts/backup.sh
         done
+
+  log-relay:
+    build:
+      context: ./log-relay
+    container_name: sports-log-relay
+    profiles: ["dev", "prod"]
+    group_add:
+      - root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9999/logs?container=sports-api&lines=1')\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres-data:

@@ -30,7 +30,7 @@
 
 ## Directory Structure
 - `api/` — FastAPI backend (REST API, data serving)
-- `api/app/services/pipeline/` — Story generation pipeline (condensed moments)
+- `api/app/services/pipeline/` — Game flow generation pipeline (condensed moments)
 - `scraper/` — Multi-sport data scraper (automated ingestion)
 - `web/` — Admin UI (data browser, scraper management)
 - `sql/` — Database schema and migrations
@@ -51,20 +51,20 @@
 
 **Consumers:** All Dock108 sports products
 
-## Story Generation
+## Game Flow Generation
 
 **Architecture:** Block-based narratives via 8-stage pipeline
 
-A story consists of 4-7 narrative blocks. Each block contains 2-4 sentences (~65 words) with a semantic role (SETUP, MOMENTUM_SHIFT, RESOLUTION, etc.). Target read time: 60-90 seconds.
+A game flow consists of 4-7 narrative blocks. Each block contains 2-4 sentences (~65 words) with a semantic role (SETUP, MOMENTUM_SHIFT, RESOLUTION, etc.). Target read time: 60-90 seconds.
 
-**Contract:** See `docs/STORY_CONTRACT.md`
+**Contract:** See `docs/GAMEFLOW_CONTRACT.md`
 
 **Key Concepts:**
 - **Narrative Block:** Consumer-facing output (4-7 per game, 2-4 sentences each)
 - **Moments:** Internal traceability layer linking blocks to plays
 - **Semantic Roles:** SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION
 - **Guardrails:** Hard limits enforced (blocks ≤ 7, tweets ≤ 5, words ≤ 350)
-- **Social Independence:** Story structure identical with/without social data
+- **Social Independence:** Game flow structure identical with/without social data
 - **OpenAI is prose-only:** It renders narratives, not structure
 
 **Pipeline Stages:**

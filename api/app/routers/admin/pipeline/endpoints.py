@@ -726,14 +726,14 @@ async def list_pipeline_stages() -> dict[str, Any]:
 @router.post(
     "/pipeline/bulk-generate-async",
     response_model=BulkGenerateAsyncResponse,
-    summary="Start bulk story generation",
-    description="Start an async job to generate stories for multiple games.",
+    summary="Start bulk game flow generation",
+    description="Start an async job to generate game flows for multiple games.",
 )
 async def bulk_generate_async(
     request: BulkGenerateRequest,
     session: AsyncSession = Depends(get_db),
 ) -> BulkGenerateAsyncResponse:
-    """Start bulk story generation as a Celery background job.
+    """Start bulk game flow generation as a Celery background job.
 
     Job state is persisted in the database for consistency across workers.
     The job runs in the api-worker container and survives restarts.
@@ -767,7 +767,7 @@ async def bulk_generate_async(
 
     return BulkGenerateAsyncResponse(
         job_id=job_uuid,
-        message="Bulk generation job started",
+        message="Bulk game flow generation job started",
         status_url=f"/api/admin/sports/pipeline/bulk-generate-status/{job_uuid}",
     )
 

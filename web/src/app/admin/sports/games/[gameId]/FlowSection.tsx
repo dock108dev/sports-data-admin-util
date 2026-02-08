@@ -11,7 +11,7 @@
  * - CollapsedGameFlow (narrative blocks only)
  * - GameFlowView (blocks + optional social sections)
  *
- * These components are in: @/components/story/
+ * These components are in: @/components/gameflow/
  *
  * Critical rules:
  * - Social content is SEPARATE from story content
@@ -23,20 +23,20 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { fetchGameStory } from "@/lib/api/sportsAdmin";
-import type { GameStoryResponse, StoryMoment, StoryPlay, MomentBoxScore, MomentPlayerStat, NarrativeBlock } from "@/lib/api/sportsAdmin/storyTypes";
+import { fetchGameFlow } from "@/lib/api/sportsAdmin";
+import type { GameFlowResponse, GameFlowMoment, GameFlowPlay, MomentBoxScore, MomentPlayerStat, NarrativeBlock } from "@/lib/api/sportsAdmin/gameFlowTypes";
 import { CollapsibleSection } from "./CollapsibleSection";
 import styles from "./styles.module.css";
 
-type StorySectionProps = {
+type FlowSectionProps = {
   gameId: number;
-  hasStory: boolean;
+  hasFlow: boolean;
 };
 
 type MomentCardProps = {
-  moment: StoryMoment;
+  moment: GameFlowMoment;
   momentIndex: number;
-  plays: StoryPlay[];
+  plays: GameFlowPlay[];
 };
 
 function formatPlayerStats(player: MomentPlayerStat): string {
@@ -199,16 +199,16 @@ function MomentCard({ moment, momentIndex, plays }: MomentCardProps) {
   );
 }
 
-export function StorySection({ gameId, hasStory }: StorySectionProps) {
-  const [story, setStory] = useState<GameStoryResponse | null>(null);
+export function FlowSection({ gameId, hasFlow }: FlowSectionProps) {
+  const [story, setStory] = useState<GameFlowResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadStory = useCallback(async () => {
+  const loadFlow = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchGameStory(gameId);
+      const data = await fetchGameFlow(gameId);
       setStory(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load game flow");
@@ -218,13 +218,13 @@ export function StorySection({ gameId, hasStory }: StorySectionProps) {
   }, [gameId]);
 
   useEffect(() => {
-    if (hasStory) {
-      loadStory();
+    if (hasFlow) {
+      loadFlow();
     }
-  }, [hasStory, loadStory]);
+  }, [hasFlow, loadFlow]);
 
-  // Don't render section if no story
-  if (!hasStory) {
+  // Don't render section if no flow
+  if (!hasFlow) {
     return null;
   }
 
@@ -292,11 +292,11 @@ export function StorySection({ gameId, hasStory }: StorySectionProps) {
           {(!story.blocks || story.blocks.length === 0) && (
             <>
               <div className={styles.storySummary}>
-                {story.story.moments.length} moments · {story.plays.length} plays
+                {story.flow.moments.length} moments · {story.plays.length} plays
                 <span style={{ color: "#94a3b8", marginLeft: "0.5rem" }}>(no blocks)</span>
               </div>
               <div className={styles.momentsList}>
-                {story.story.moments.map((moment, idx) => (
+                {story.flow.moments.map((moment, idx) => (
                   <MomentCard
                     key={idx}
                     moment={moment}

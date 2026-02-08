@@ -14,39 +14,10 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
-from .sports import SportsGame, SportsLeague
-
-
-class CompactModeThreshold(Base):
-    """Compact mode threshold configuration per sport."""
-
-    __tablename__ = "compact_mode_thresholds"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    sport_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("sports_leagues.id", ondelete="CASCADE"),
-        nullable=False,
-        unique=True,
-        index=True,
-    )
-    thresholds: Mapped[list[int]] = mapped_column(JSONB, nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
-
-    league: Mapped[SportsLeague] = relationship("SportsLeague")
+from .sports import SportsGame
 
 
 class GameReadingPosition(Base):

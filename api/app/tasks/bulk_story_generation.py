@@ -1,6 +1,6 @@
-"""Celery task for bulk story generation.
+"""Celery task for bulk game flow generation.
 
-This task runs in the api-worker container and processes bulk story
+This task runs in the api-worker container and processes bulk game flow
 generation requests asynchronously. Job state is persisted in the
 database for consistency and survives worker restarts.
 """
@@ -23,7 +23,7 @@ from ..db.odds import SportsGameOdds  # noqa: F401 — register model for relati
 from ..db.social import TeamSocialPost  # noqa: F401 — register model for relationship resolution
 from ..db.scraper import SportsScrapeRun  # noqa: F401 — register model for relationship resolution
 from ..db.pipeline import BulkStoryGenerationJob
-from ..db.story import SportsGameStory
+from ..db.story import SportsGameFlow
 from ..services.pipeline import PipelineExecutor
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ async def _run_bulk_generation_async(job_id: int) -> None:
             job.started_at = datetime.utcnow()
             await session.commit()
 
-            logger.info(f"Starting bulk story generation job {job_id}")
+            logger.info(f"Starting bulk game flow generation job {job_id}")
 
             try:
                 # Query games in the date range for specified leagues
@@ -124,20 +124,20 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                     job.current_game = i + 1
                     await session.commit()
 
-                    # Check if game already has a story
+                    # Check if game already has a flow
                     if not job.force_regenerate:
                         story_result = await session.execute(
-                            select(SportsGameStory).where(
-                                SportsGameStory.game_id == game.id,
-                                SportsGameStory.moments_json.isnot(None),
+                            select(SportsGameFlow).where(
+                                SportsGameFlow.game_id == game.id,
+                                SportsGameFlow.moments_json.isnot(None),
                             )
                         )
-                        existing_story = story_result.scalar_one_or_none()
-                        if existing_story:
+                        existing_flow = story_result.scalar_one_or_none()
+                        if existing_flow:
                             job.skipped += 1
                             await session.commit()
                             logger.debug(
-                                f"Job {job_id}: Skipped game {game.id} (has story)"
+                                f"Job {job_id}: Skipped game {game.id} (has flow)"
                             )
                             continue
 
@@ -152,7 +152,7 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                         job.successful += 1
                         await session.commit()
                         logger.info(
-                            f"Job {job_id}: Generated story for game {game.id}"
+                            f"Job {job_id}: Generated game flow for game {game.id}"
                         )
                     except Exception as e:
                         await session.rollback()
@@ -205,7 +205,7 @@ async def _run_bulk_generation_async(job_id: int) -> None:
 
 @celery_app.task(name="run_bulk_story_generation", bind=True)
 def run_bulk_story_generation(self, job_id: int) -> dict[str, Any]:
-    """Celery task to run bulk story generation.
+    """Celery task to run bulk game flow generation.
 
     This is a synchronous Celery task that wraps the async implementation.
     Job progress is tracked in the database, not Celery result backend.

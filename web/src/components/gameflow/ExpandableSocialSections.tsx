@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { CategorizedSocialPost, SocialPostsByPhase } from "@/lib/api/sportsAdmin/storyTypes";
+import type { CategorizedSocialPost, SocialPostsByPhase } from "@/lib/api/sportsAdmin/gameFlowTypes";
 import { LEAGUE_SEGMENTS, SEGMENT_LABELS } from "@/lib/constants/segments";
 import styles from "./ExpandableSocialSections.module.css";
 

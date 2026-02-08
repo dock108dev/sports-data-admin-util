@@ -90,7 +90,7 @@ class TestValidateBlocksPostGeneration:
                 "block_index": i,
                 "role": "SETUP",
                 "narrative": f"Block {i}.",
-                "embedded_tweet": {"tweet_id": f"t{i}", "text": "Tweet"},
+                "embedded_social_post_id": i,
             }
             for i in range(7)  # 7 tweets exceeds MAX_EMBEDDED_TWEETS (5)
         ]
@@ -107,7 +107,7 @@ class TestValidateBlocksPostGeneration:
                 "block_index": i,
                 "role": "SETUP",
                 "narrative": f"Block {i}.",
-                "embedded_tweet": {"tweet_id": f"t{i}", "text": "Tweet"} if i < 5 else None,
+                "embedded_social_post_id": i if i < 5 else None,
             }
             for i in range(7)  # Exactly 5 tweets
         ]
@@ -185,7 +185,7 @@ class TestValidateSocialIndependence:
                 "block_index": i,
                 "role": "SETUP",
                 "narrative": f"Block {i}.",
-                "embedded_tweet": {"text": "tweet"} if i == 0 else None,
+                "embedded_social_post_id": 1 if i == 0 else None,
             }
             for i in range(5)
         ]

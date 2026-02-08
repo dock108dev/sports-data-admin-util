@@ -110,10 +110,10 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
             "total_words": output.get("total_words", 0),
         }
     elif stage == "FINALIZE_MOMENTS":
-        # New format: {"finalized": true, "story_id": N, "moment_count": N, ...}
+        # New format: {"finalized": true, "flow_id": N, "moment_count": N, ...}
         return {
             "finalized": output.get("finalized", False),
-            "story_id": output.get("story_id"),
+            "flow_id": output.get("flow_id"),
             "story_version": output.get("story_version"),
             "moment_count": output.get("moment_count", 0),
         }
@@ -236,6 +236,6 @@ def get_stage_description(stage: PipelineStage) -> str:
         PipelineStage.GROUP_BLOCKS: "Group moments into 4-7 narrative blocks with semantic roles",
         PipelineStage.RENDER_BLOCKS: "Generate short narratives for each block using OpenAI",
         PipelineStage.VALIDATE_BLOCKS: "Validate block count, word limits, and constraints",
-        PipelineStage.FINALIZE_MOMENTS: "Persist moments and blocks to story tables",
+        PipelineStage.FINALIZE_MOMENTS: "Persist moments and blocks to game flow tables",
     }
     return descriptions.get(stage, "Unknown stage")

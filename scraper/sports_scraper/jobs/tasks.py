@@ -4,7 +4,7 @@ Import directly from specific task modules:
 - scrape_tasks: Ingestion, odds sync
 - pipeline_tasks: Pipeline triggering
 - timeline_tasks: Timeline generation
-- story_tasks: Story/flow generation
+- story_tasks: Game flow generation
 - social_tasks: Team-centric social collection
 - polling_tasks: Game-state-machine polling
 - flow_trigger_tasks: Edge-triggered flow generation

@@ -1,4 +1,4 @@
-"""Celery tasks for story/flow generation."""
+"""Celery tasks for game flow generation."""
 
 from __future__ import annotations
 

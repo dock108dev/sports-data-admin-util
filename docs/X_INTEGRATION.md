@@ -44,6 +44,10 @@ CREATE TABLE team_social_posts (
     source_handle VARCHAR(100),
     media_type VARCHAR(20),
     mapping_status VARCHAR(20) DEFAULT 'unmapped',  -- 'unmapped', 'mapped', 'no_game'
+    game_phase VARCHAR(20),                         -- 'pregame', 'in_game', 'postgame'
+    likes_count INTEGER,
+    retweets_count INTEGER,
+    replies_count INTEGER,
     created_at TIMESTAMPTZ DEFAULT now(),
     UNIQUE(team_id, platform, external_post_id)
 );
@@ -148,16 +152,19 @@ Posts matching these patterns are excluded:
 ```json
 {
   "id": 123,
-  "game_id": 456,
-  "team_abbreviation": "LAL",
-  "post_url": "https://x.com/Lakers/status/...",
-  "posted_at": "2024-03-01T19:30:00Z",
-  "tweet_text": "Let's go Lakers! 💜💛",
-  "image_url": "https://pbs.twimg.com/...",
-  "video_url": null,
-  "media_type": "image",
-  "source_handle": "Lakers",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "postUrl": "https://x.com/Lakers/status/...",
+  "postedAt": "2024-03-01T19:30:00Z",
+  "hasVideo": false,
+  "teamAbbreviation": "LAL",
+  "tweetText": "Let's go Lakers! 💜💛",
+  "imageUrl": "https://pbs.twimg.com/...",
+  "videoUrl": null,
+  "mediaType": "image",
+  "sourceHandle": "Lakers",
+  "gamePhase": "pregame",
+  "likesCount": 1200,
+  "retweetsCount": 340,
+  "repliesCount": 89
 }
 ```
 

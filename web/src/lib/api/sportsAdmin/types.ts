@@ -29,7 +29,7 @@ export type GameSummary = {
   hasOdds: boolean;
   hasSocial: boolean;
   hasPbp: boolean;
-  hasStory: boolean;
+  hasFlow: boolean;
   playCount: number;
   socialPostCount: number;
   hasRequiredData: boolean;
@@ -49,7 +49,7 @@ export type GameListResponse = {
   withOddsCount?: number;
   withSocialCount?: number;
   withPbpCount?: number;
-  withStoryCount?: number;
+  withFlowCount?: number;
 };
 
 export type TeamStat = {
@@ -155,7 +155,7 @@ export type AdminGameDetail = {
     hasOdds: boolean;
     hasSocial: boolean;
     hasPbp: boolean;
-    hasStory: boolean;
+    hasFlow: boolean;
     playCount: number;
     socialPostCount: number;
   };

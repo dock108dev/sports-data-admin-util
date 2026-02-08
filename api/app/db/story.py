@@ -1,4 +1,4 @@
-"""Story and timeline artifact models."""
+"""Game flow and timeline artifact models."""
 
 from __future__ import annotations
 
@@ -84,8 +84,8 @@ class SportsGameTimelineArtifact(Base):
     )
 
 
-class SportsGameStory(Base):
-    """AI-generated game stories as condensed moments."""
+class SportsGameFlow(Base):
+    """AI-generated game flows as condensed moments."""
 
     __tablename__ = "sports_game_stories"
 

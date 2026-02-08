@@ -1,4 +1,4 @@
-# Story Components - Phase 5 UI Rendering Rules
+# Game Flow Components - Phase 5 UI Rendering Rules
 
 This directory contains components for rendering the game flow UI according to the Phase 5 contract.
 

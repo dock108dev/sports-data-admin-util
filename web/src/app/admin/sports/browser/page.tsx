@@ -16,8 +16,7 @@ type ViewMode = "games" | "teams" | "runs";
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 /**
- * Unified data browser - replaces Dashboard, Games, and Teams pages.
- * Allows switching between Games, Teams, and Scrape Runs with consistent filtering.
+ * Unified data browser for Games, Teams, and Scrape Runs with consistent filtering.
  */
 export default function UnifiedBrowserPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("games");
@@ -120,7 +119,7 @@ export default function UnifiedBrowserPage() {
         oddsPercent: Math.round((aggregates.withOdds / total) * 100),
         socialPercent: Math.round((aggregates.withSocial / total) * 100),
         pbpPercent: Math.round((aggregates.withPbp / total) * 100),
-        storyPercent: Math.round((aggregates.withStory / total) * 100),
+        flowPercent: Math.round((aggregates.withFlow / total) * 100),
       };
     }
     return null;
@@ -199,7 +198,7 @@ export default function UnifiedBrowserPage() {
                   <span className={styles.statLabel}>Play-by-Play</span>
                 </div>
                 <div className={styles.stat}>
-                  <span className={styles.statValue}>{aggregateStats.storyPercent}%</span>
+                  <span className={styles.statValue}>{aggregateStats.flowPercent}%</span>
                   <span className={styles.statLabel}>Flow</span>
                 </div>
               </>

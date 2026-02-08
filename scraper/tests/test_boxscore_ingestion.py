@@ -21,9 +21,7 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
-from sports_scraper.services.nhl_boxscore_ingestion import (
-    season_from_date as _season_from_date,
-)
+from sports_scraper.utils.date_utils import season_ending_year as _season_from_date
 
 
 class TestSeasonFromDate:

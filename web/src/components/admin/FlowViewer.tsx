@@ -5,8 +5,8 @@ import type {
   StoryOutput,
   CondensedMoment,
   PlayData,
-} from "@/lib/api/sportsAdmin/storyTypes";
-import styles from "./story.module.css";
+} from "@/lib/api/sportsAdmin/gameFlowTypes";
+import styles from "./flowViewer.module.css";
 
 /**
  * Story Viewer
@@ -27,7 +27,7 @@ import styles from "./story.module.css";
  * - Recover from validation failures
  */
 
-interface StoryViewerProps {
+interface FlowViewerProps {
   /** The Story output to display */
   story: StoryOutput;
   /** All plays for expansion view */
@@ -38,12 +38,12 @@ interface StoryViewerProps {
   validationErrors: string[];
 }
 
-export function StoryViewer({
+export function FlowViewer({
   story,
   plays,
   validationPassed,
   validationErrors,
-}: StoryViewerProps) {
+}: FlowViewerProps) {
   const [expandedMoments, setExpandedMoments] = useState<Set<number>>(
     new Set()
   );
@@ -265,4 +265,4 @@ function MomentCard({
   );
 }
 
-export default StoryViewer;
+export default FlowViewer;

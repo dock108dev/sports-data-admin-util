@@ -22,6 +22,9 @@ from ..utils.datetime_utils import now_utc
 # Default window for scheduled timeline generation (matches scheduler.py)
 SCHEDULED_DAYS_BACK = 4  # 96 hours back
 
+# Must match api/app/services/timeline_types.py DEFAULT_TIMELINE_VERSION
+TIMELINE_VERSION = "v1"
+
 
 def find_games_missing_timelines(
     session: Session,
@@ -267,7 +270,7 @@ def find_all_games_needing_timelines(
 
 def generate_timeline_for_game(
     game_id: int,
-    timeline_version: str = "v1",
+    timeline_version: str = TIMELINE_VERSION,
     api_base_url: str | None = None,
     reason: str = "scheduled",
 ) -> bool:
@@ -326,7 +329,7 @@ def generate_missing_timelines(
     league_code: str,
     days_back: int | None = None,
     max_games: int | None = None,
-    timeline_version: str = "v1",
+    timeline_version: str = TIMELINE_VERSION,
 ) -> dict[str, int]:
     """
     Find and generate timelines for games missing artifacts.
@@ -397,7 +400,7 @@ def generate_all_needed_timelines(
     league_code: str,
     days_back: int | None = None,
     max_games: int | None = None,
-    timeline_version: str = "v1",
+    timeline_version: str = TIMELINE_VERSION,
 ) -> dict[str, int]:
     """
     Find and generate/regenerate timelines for all games that need them.

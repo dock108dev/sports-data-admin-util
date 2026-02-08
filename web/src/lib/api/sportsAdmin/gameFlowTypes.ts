@@ -1,9 +1,9 @@
 /**
- * Story Types
+ * Game Flow Types
  *
  * TypeScript definitions matching story/schema.py and sports/schemas.py
  *
- * These types are READ-ONLY views of Story data.
+ * These types are READ-ONLY views of Game Flow data.
  * The UI must not modify, augment, or interpret these structures.
  */
 
@@ -16,7 +16,7 @@ export type ScoreTuple = {
 };
 
 /**
- * A condensed moment: the atomic unit of Story.
+ * A condensed moment: the atomic unit of Game Flow.
  *
  * Contract guarantees:
  * - play_ids: Non-empty list of unique play identifiers
@@ -85,7 +85,7 @@ export type StoryErrorResponse = {
 };
 
 // =============================================================================
-// Game Flow API Types (GET /games/{game_id}/story)
+// Game Flow API Types (GET /games/{game_id}/flow)
 // =============================================================================
 
 /**
@@ -137,7 +137,7 @@ export type MomentBoxScore = {
  * A moment in the game flow.
  * Uses camelCase to match API JSON response.
  */
-export type StoryMoment = {
+export type GameFlowMoment = {
   playIds: number[];
   explicitlyNarratedPlayIds: number[];
   period: number;
@@ -150,13 +150,13 @@ export type StoryMoment = {
 };
 
 /**
- * A play referenced by a story moment.
+ * A play referenced by a game flow moment.
  * Uses camelCase to match API JSON response.
  *
  * IMPORTANT: playId equals playIndex (not a database ID).
  * To join moments to plays: plays.filter(p => moment.playIds.includes(p.playId))
  */
-export type StoryPlay = {
+export type GameFlowPlay = {
   /** Play identifier - equals playIndex for joining with moment.playIds */
   playId: number;
   /** Sequential play number in the game */
@@ -170,20 +170,20 @@ export type StoryPlay = {
 };
 
 /**
- * Story content containing ordered moments.
+ * Game flow content containing ordered moments.
  */
-export type StoryContent = {
-  moments: StoryMoment[];
+export type GameFlowContent = {
+  moments: GameFlowMoment[];
 };
 
 /**
- * Response from GET /games/{game_id}/story endpoint.
+ * Response from GET /games/{game_id}/flow endpoint.
  * Returns the persisted game flow data.
  */
-export type GameStoryResponse = {
+export type GameFlowResponse = {
   gameId: number;
-  story: StoryContent;
-  plays: StoryPlay[];
+  flow: GameFlowContent;
+  plays: GameFlowPlay[];
   validationPassed: boolean;
   validationErrors: string[];
   /** Phase 1 narrative blocks (4-7 blocks with narratives) */
@@ -208,22 +208,6 @@ export type SemanticRole =
   | "RESOLUTION";
 
 /**
- * Embedded tweet in a narrative block.
- * Selected high-signal tweet for inline display.
- */
-export type EmbeddedTweet = {
-  tweetId: string;
-  postedAt: string;
-  text: string;
-  author: string;
-  phase: string;
-  score: number;
-  position: "EARLY" | "MID" | "LATE";
-  hasMedia: boolean;
-  mediaType?: string | null;
-};
-
-/**
  * Player stat with delta showing segment production.
  */
 export type BlockPlayerStat = {
@@ -236,17 +220,17 @@ export type BlockPlayerStat = {
   fgm?: number;
   ftm?: number;
   // Basketball deltas (this block's production)
-  delta_pts?: number;
-  delta_reb?: number;
-  delta_ast?: number;
+  deltaPts?: number;
+  deltaReb?: number;
+  deltaAst?: number;
   // Hockey stats (cumulative)
   goals?: number;
   assists?: number;
   sog?: number;
   plusMinus?: number;
   // Hockey deltas
-  delta_goals?: number;
-  delta_assists?: number;
+  deltaGoals?: number;
+  deltaAssists?: number;
 };
 
 /**
@@ -264,7 +248,7 @@ export type BlockMiniBox = {
   home: BlockTeamMiniBox;
   away: BlockTeamMiniBox;
   /** Top contributors in this segment (last names) */
-  block_stars: string[];
+  blockStars: string[];
 };
 
 /**
@@ -282,7 +266,7 @@ export type NarrativeBlock = {
   playIds: number[];
   keyPlayIds: number[];
   narrative: string | null;
-  embeddedTweet?: EmbeddedTweet | null;
+  embeddedSocialPostId?: number | null;
   /** Cumulative box score with segment deltas */
   miniBox?: BlockMiniBox | null;
 };
@@ -315,7 +299,7 @@ export type SocialPostsByPhase = {
 /**
  * Response for block-based game flow.
  */
-export type BlockStoryResponse = {
+export type BlockGameFlowResponse = {
   gameId: number;
   leagueCode: string;
   blocks: NarrativeBlock[];

@@ -41,7 +41,7 @@ export interface RunFullPipelineResponse {
   status: string;
   stages: PipelineStageStatus[];
   message: string;
-  story_saved: boolean;
+  flow_saved: boolean;
   word_count: number | null;
   moment_count: number | null;
 }
@@ -54,7 +54,7 @@ export interface GamePipelineSummary {
   away_team: string;
   status: string;
   has_pbp: boolean;
-  has_story: boolean;
+  has_flow: boolean;
   latest_run: PipelineRunSummary | null;
   total_runs: number;
 }

@@ -1,9 +1,9 @@
 """FINALIZE_MOMENTS Stage Implementation.
 
-This stage persists validated Story data to the database.
+This stage persists validated Game Flow data to the database.
 
-STORY CONTRACT ALIGNMENT
-========================
+GAME FLOW CONTRACT ALIGNMENT
+=============================
 This stage is a write-only persistence layer:
 - No transformation occurs
 - No prose is generated
@@ -12,7 +12,7 @@ This stage is a write-only persistence layer:
 
 PERSISTENCE
 ===========
-SportsGameStory table stores:
+SportsGameFlow table stores:
 - moments_json: JSONB containing ordered list of condensed moments
 - moment_count: INTEGER for quick access
 - validated_at: TIMESTAMPTZ when validation passed
@@ -41,8 +41,8 @@ Rules:
 
 GUARANTEES
 ==========
-1. Persist story data transactionally
-2. Set has_story indicators (moments_json IS NOT NULL)
+1. Persist game flow data transactionally
+2. Set has_flow indicators (moments_json IS NOT NULL)
 3. Record moment_count and block_count
 4. Record validation timestamps
 5. On failure: roll back, fail loudly, no partial writes
@@ -57,7 +57,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from ....db.sports import SportsGame
-from ....db.story import SportsGameStory
+from ....db.story import SportsGameFlow
 from ....utils.datetime_utils import now_utc
 from ..models import StageInput, StageOutput
 
@@ -78,8 +78,8 @@ async def execute_finalize_moments(
 ) -> StageOutput:
     """Execute the FINALIZE_MOMENTS stage.
 
-    Persists validated moments and blocks to SportsGameStory table.
-    This is the only stage that writes Story data durably.
+    Persists validated moments and blocks to SportsGameFlow table.
+    This is the only stage that writes Game Flow data durably.
 
     Args:
         session: Database session for persistence
@@ -159,37 +159,37 @@ async def execute_finalize_moments(
 
     # Check for existing v2-moments story for this game
     existing_result = await session.execute(
-        select(SportsGameStory).where(
-            SportsGameStory.game_id == game_id,
-            SportsGameStory.story_version == STORY_VERSION,
+        select(SportsGameFlow).where(
+            SportsGameFlow.game_id == game_id,
+            SportsGameFlow.story_version == STORY_VERSION,
         )
     )
-    existing_story = existing_result.scalar_one_or_none()
+    existing_flow = existing_result.scalar_one_or_none()
 
     validation_time = now_utc()
     openai_calls = previous_output.get("openai_calls", 0)
     total_words = previous_output.get("total_words", 0)
 
-    if existing_story:
+    if existing_flow:
         # Update existing story
-        output.add_log(f"Updating existing story (id={existing_story.id})")
-        existing_story.moments_json = moments
-        existing_story.moment_count = len(moments)
-        existing_story.validated_at = validation_time
-        existing_story.generated_at = validation_time
-        existing_story.total_ai_calls = openai_calls
+        output.add_log(f"Updating existing flow (id={existing_flow.id})")
+        existing_flow.moments_json = moments
+        existing_flow.moment_count = len(moments)
+        existing_flow.validated_at = validation_time
+        existing_flow.generated_at = validation_time
+        existing_flow.total_ai_calls = openai_calls
 
         # Update blocks
-        existing_story.blocks_json = blocks
-        existing_story.block_count = len(blocks)
-        existing_story.blocks_version = BLOCKS_VERSION
-        existing_story.blocks_validated_at = validation_time
+        existing_flow.blocks_json = blocks
+        existing_flow.block_count = len(blocks)
+        existing_flow.blocks_version = BLOCKS_VERSION
+        existing_flow.blocks_validated_at = validation_time
 
-        story_id = existing_story.id
+        story_id = existing_flow.id
     else:
         # Create new story record
-        output.add_log("Creating new story record")
-        new_story = SportsGameStory(
+        output.add_log("Creating new flow record")
+        new_flow = SportsGameFlow(
             game_id=game_id,
             sport=sport,
             story_version=STORY_VERSION,
@@ -201,16 +201,16 @@ async def execute_finalize_moments(
         )
 
         # Add blocks
-        new_story.blocks_json = blocks
-        new_story.block_count = len(blocks)
-        new_story.blocks_version = BLOCKS_VERSION
-        new_story.blocks_validated_at = validation_time
+        new_flow.blocks_json = blocks
+        new_flow.block_count = len(blocks)
+        new_flow.blocks_version = BLOCKS_VERSION
+        new_flow.blocks_validated_at = validation_time
 
-        session.add(new_story)
+        session.add(new_flow)
         await session.flush()
-        story_id = new_story.id
+        story_id = new_flow.id
 
-    output.add_log(f"Story persisted with id={story_id}")
+    output.add_log(f"Flow persisted with id={story_id}")
     output.add_log(f"moment_count={len(moments)}")
     output.add_log(f"block_count={len(blocks)}")
     output.add_log(f"blocks_version={BLOCKS_VERSION}")
@@ -222,7 +222,7 @@ async def execute_finalize_moments(
     # Output shape for reviewability
     output.data = {
         "finalized": True,
-        "story_id": story_id,
+        "flow_id": story_id,
         "game_id": game_id,
         "story_version": STORY_VERSION,
         "moment_count": len(moments),

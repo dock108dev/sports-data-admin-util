@@ -1,20 +1,20 @@
-# PBP Assumptions for Story
+# PBP Assumptions for Game Flow
 
-This document defines the explicit guarantees that Story assumes about Play-by-Play (PBP) data. It is derived from a comprehensive audit of existing schemas, ingestion paths, and data samples.
+This document defines the explicit guarantees that Game Flow assumes about Play-by-Play (PBP) data. It is derived from a comprehensive audit of existing schemas, ingestion paths, and data samples.
 
-**Authoritative Reference:** `docs/STORY_CONTRACT.md`
+**Authoritative Reference:** `docs/GAMEFLOW_CONTRACT.md`
 
 ---
 
 ## 1. Overview
 
-Story requires PBP data that supports:
+Game Flow requires PBP data that supports:
 - Unique, stable play identification
 - Total ordering within a game
 - Score state at any point in the game
 - Period/quarter context for clock interpretation
 
-This audit examines whether current PBP infrastructure meets these requirements and documents the conditions under which Story can operate correctly.
+This audit examines whether current PBP infrastructure meets these requirements and documents the conditions under which Game Flow can operate correctly.
 
 ---
 
@@ -65,9 +65,9 @@ Stores PBP at different processing stages (raw, normalized, resolved) for audita
 
 ---
 
-## 3. Field Coverage vs Story Requirements
+## 3. Field Coverage vs Game Flow Requirements
 
-| Story Field | PBP Source Field | Exists | Always Present | Derivation Required |
+| Game Flow Field | PBP Source Field | Exists | Always Present | Derivation Required |
 |----------------|------------------|--------|----------------|---------------------|
 | `play_ids` | `play_index` | Yes | Yes | No |
 | `start_clock` | `game_clock` | Yes | No | No |
@@ -104,7 +104,7 @@ Stores PBP at different processing stages (raw, normalized, resolved) for audita
 - Many rows lack score data
 - Score column shows cumulative score at that point
 
-**Implication for Story:**
+**Implication for Game Flow:**
 - `score_before` must be derived from the previous play's score
 - `score_after` is the current play's stored score
 - First play of game requires assumption (0-0 baseline)
@@ -167,9 +167,9 @@ All sources use **countdown** (time remaining in period):
 
 **Ordering authority:** `play_index` is the canonical ordering key, not clock.
 
-**Simultaneous plays:** Multiple plays sharing identical clock values is expected and valid. Each play has a unique `play_index`, so ordering remains unambiguous. Story must not attempt to disambiguate via clock.
+**Simultaneous plays:** Multiple plays sharing identical clock values is expected and valid. Each play has a unique `play_index`, so ordering remains unambiguous. Game Flow must not attempt to disambiguate via clock.
 
-**Clock optionality:** Story does not require clock values to exist for every play. When present, clocks are metadata only and do not participate in ordering or structural decisions.
+**Clock optionality:** Game Flow does not require clock values to exist for every play. When present, clocks are metadata only and do not participate in ordering or structural decisions.
 
 ---
 
@@ -208,7 +208,7 @@ play_index = sequential_counter  # 0, 1, 2, ...
 | Within a game | Yes (database constraint) |
 | Across games | No (play_index resets per game) |
 
-**Unique identifier for Story:** `(game_id, play_index)` tuple
+**Unique identifier for Game Flow:** `(game_id, play_index)` tuple
 
 ### 5.3 Stability Across Re-ingestion
 
@@ -222,7 +222,7 @@ play_index = sequential_counter  # 0, 1, 2, ...
 
 ### 5.4 Assessment
 
-Play IDs (`play_index`) can be used as durable references **within a single ingestion cycle**. Story should treat play indices as stable for the lifetime of a game's PBP data, but must not assume cross-ingestion stability without raw_data reconciliation.
+Play IDs (`play_index`) can be used as durable references **within a single ingestion cycle**. Game Flow should treat play indices as stable for the lifetime of a game's PBP data, but must not assume cross-ingestion stability without raw_data reconciliation.
 
 ---
 
@@ -290,7 +290,7 @@ Requires forward-fill of last known score through non-scoring plays.
 - Period-start/period-end events without clock
 - Shootout plays (some sources)
 
-**Impact:** Story cannot provide `start_clock`/`end_clock` for affected moments
+**Impact:** Game Flow cannot provide `start_clock`/`end_clock` for affected moments
 
 **Classification:** Requires normalization (fallback to NULL with documented absence)
 
@@ -352,9 +352,9 @@ Requires forward-fill of last known score through non-scoring plays.
 
 ---
 
-## 8. PBP Guarantees Required by Story
+## 8. PBP Guarantees Required by Game Flow
 
-Story assumes the following conditions are true. Violations of these guarantees will cause incorrect or undefined behavior.
+Game Flow assumes the following conditions are true. Violations of these guarantees will cause incorrect or undefined behavior.
 
 ### 8.1 Structural Guarantees
 
@@ -363,7 +363,7 @@ Story assumes the following conditions are true. Violations of these guarantees 
 | **G1** | Every play has a unique identifier within a game | MET via `(game_id, play_index)` constraint |
 | **G2** | Plays can be totally ordered within a game by `play_index` | MET via ingestion logic |
 | **G3** | `play_index` values are non-negative integers | MET via schema validation |
-| **G4** | `play_index` values are consecutive (no gaps) | NOT GUARANTEED - gaps may exist. Story does not rely on continuity, only uniqueness and ordering. |
+| **G4** | `play_index` values are consecutive (no gaps) | NOT GUARANTEED - gaps may exist. Game Flow does not rely on continuity, only uniqueness and ordering. |
 | **G5** | Every play has `raw_data` containing source event | MET via NOT NULL constraint |
 
 ### 8.2 Temporal Guarantees
@@ -386,13 +386,13 @@ Story assumes the following conditions are true. Violations of these guarantees 
 
 | Issue | Description | Blocking? |
 |-------|-------------|-----------|
-| Play index gaps | `play_index` may have gaps (e.g., 0, 1, 3 with no 2) | NO - Story uses indices as identifiers, not as array positions |
-| NULL clock values | Some plays lack `game_clock` | NO - Story treats clock as optional metadata |
+| Play index gaps | `play_index` may have gaps (e.g., 0, 1, 3 with no 2) | NO - Game Flow uses indices as identifiers, not as array positions |
+| NULL clock values | Some plays lack `game_clock` | NO - Game Flow treats clock as optional metadata |
 | NULL scores | Some plays lack score data | NO - Forward-fill algorithm handles this |
 
 ### 8.5 Normalization Requirements (Upstream)
 
-Story assumes the following normalizations have already been applied upstream. **Story does not perform these normalizations itself.** These transformations belong in ingestion or pipeline preparation stages.
+Game Flow assumes the following normalizations have already been applied upstream. **Game Flow does not perform these normalizations itself.** These transformations belong in ingestion or pipeline preparation stages.
 
 1. **Score Forward-Fill:** Propagate last known score to plays with NULL scores
 2. **Score Before Derivation:** Compute `score_before` as previous play's `score_after`
@@ -402,7 +402,7 @@ Story assumes the following normalizations have already been applied upstream. *
 
 ## 9. Summary
 
-PBP data is **sufficient** to support Story under documented assumptions.
+PBP data is **sufficient** to support Game Flow under documented assumptions.
 
 **No blocking issues** prevent implementation.
 
@@ -416,7 +416,7 @@ PBP data is **sufficient** to support Story under documented assumptions.
 - Games start at (0, 0)
 - Clock is optional metadata, not required for ordering
 
-Story engineers may rely on this document without additional investigation. Reviewers should challenge specific guarantees if evidence contradicts them.
+Game Flow engineers may rely on this document without additional investigation. Reviewers should challenge specific guarantees if evidence contradicts them.
 
 ---
 

@@ -111,12 +111,6 @@ export default function AdminDashboardPage() {
               <div className={styles.quickLinkDesc}>Start a new data ingestion job</div>
             </div>
           </Link>
-          <Link href="/admin/sports/eda" className={styles.quickLink}>
-            <div className={styles.quickLinkContent}>
-              <div className={styles.quickLinkTitle}>EDA</div>
-              <div className={styles.quickLinkDesc}>Explore features and targets</div>
-            </div>
-          </Link>
         </div>
       </section>
 

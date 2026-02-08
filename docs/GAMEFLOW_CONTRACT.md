@@ -1,8 +1,8 @@
-# Story Contract
+# Game Flow Contract
 
 ## Foundational Axiom
 
-**A story consists of 4-7 narrative blocks. Each block is grounded in one or more moments. Each moment is backed by specific plays.**
+**A game flow consists of 4-7 narrative blocks. Each block is grounded in one or more moments. Each moment is backed by specific plays.**
 
 This creates a two-level structure:
 - **Blocks** — Consumer-facing narratives (4-7 per game, 2-4 sentences each, ~65 words)
@@ -12,7 +12,7 @@ This creates a two-level structure:
 
 ## 1. Purpose and Scope
 
-Story produces a readable, condensed replay of a game designed for 60-90 second consumption.
+Game Flow produces a readable, condensed replay of a game designed for 60-90 second consumption.
 
 - The output is a sequence of narrative blocks
 - Each block has a semantic role (SETUP, MOMENTUM_SHIFT, RESOLUTION, etc.)
@@ -70,10 +70,10 @@ Moments do not have consumer-facing narratives. They exist for auditability.
 | `block_index` | int | Position (0-6) |
 | `role` | string | Semantic role |
 | `moment_indices` | list[int] | Which moments are grouped |
-| `score_before` | [home, away] | Score at block start |
-| `score_after` | [home, away] | Score at block end |
+| `score_before` | [away, home] | Score at block start |
+| `score_after` | [away, home] | Score at block end |
 | `narrative` | string | 2-4 sentences (~65 words) |
-| `embedded_tweet` | object | null | Optional tweet (max 1 per block) |
+| `embedded_social_post_id` | int | null | Optional social post ID (max 1 per block) |
 
 ### Moment Fields (Traceability)
 
@@ -84,8 +84,8 @@ Moments do not have consumer-facing narratives. They exist for auditability.
 | `period` | int | Game period |
 | `start_clock` | string | Clock at first play |
 | `end_clock` | string | Clock at last play |
-| `score_before` | [home, away] | Score at moment start |
-| `score_after` | [home, away] | Score at moment end |
+| `score_before` | [away, home] | Score at moment start |
+| `score_after` | [away, home] | Score at moment end |
 
 ---
 
@@ -118,18 +118,18 @@ Every narrative claim is traceable:
 
 ---
 
-## 5. Embedded Tweets (Phase 4)
+## 5. Embedded Social Posts
 
-Blocks may contain embedded tweets that add social context.
+Blocks may contain an embedded social post ID that adds social context.
 
 **Constraints:**
-- Maximum 5 embedded tweets per game
-- Maximum 1 embedded tweet per block
-- Tweets are optional — removing all tweets produces the same story structure
-- Tweets do not influence narrative content
+- Maximum 5 embedded social posts per game
+- Maximum 1 embedded social post per block
+- Social posts are optional -- removing all social posts produces the same game flow structure
+- Social posts do not influence narrative content
 
 **Selection Criteria:**
-- In-game tweets preferred over pregame/postgame
+- In-game posts preferred over pregame/postgame
 - High engagement and media content preferred
 - Distributed across blocks (early, mid, late)
 
@@ -140,8 +140,8 @@ Blocks may contain embedded tweets that add social context.
 | Invariant | Limit | Enforcement |
 |-----------|-------|-------------|
 | Block count | 4-7 | Pipeline fails on violation |
-| Embedded tweets | ≤ 5 per game | Hard cap enforced |
-| Tweet per block | ≤ 1 | Hard cap enforced |
+| Embedded social posts | ≤ 5 per game | Hard cap enforced |
+| Social post per block | ≤ 1 | Hard cap enforced |
 | Total words | ≤ 500 | Warning, not failure |
 | Words per block | 30-100 | Warning, not failure |
 | Sentences per block | 2-4 | Warning, not failure |
@@ -153,24 +153,24 @@ Violations are logged at ERROR level with full context.
 
 ## 7. Social Independence
 
-**Zero required social dependencies.** The story structure must be identical with or without social data.
+**Zero required social dependencies.** The game flow structure must be identical with or without social data.
 
 Validation checks:
 - Block count is identical with/without social
 - Block narratives are identical with/without social
 - Semantic roles are identical with/without social
 
-Social content (embedded tweets) is additive, never structural.
+Social content (embedded social posts) is additive, never structural.
 
 ---
 
 ## 8. Success Criteria
 
-A Story output is correct if and only if:
+A Game Flow output is correct if and only if:
 
 ### Structural Tests
 
-- [ ] The story contains 4-7 blocks
+- [ ] The game flow contains 4-7 blocks
 - [ ] Each block has a semantic role
 - [ ] First block is SETUP, last block is RESOLUTION
 - [ ] No role appears more than twice
@@ -193,7 +193,7 @@ A Story output is correct if and only if:
 
 ### Social Independence Tests
 
-- [ ] Removing embedded tweets changes nothing but tweet fields
+- [ ] Removing embedded social posts changes nothing but social post fields
 - [ ] Block count, roles, and narratives are social-independent
 
 ---

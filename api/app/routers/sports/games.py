@@ -19,7 +19,7 @@ from ...db.sports import (
 from ...db.odds import SportsGameOdds
 from ...db.social import TeamSocialPost
 from ...db.scraper import SportsGameConflict
-from ...db.story import SportsGameStory
+from ...db.story import SportsGameFlow
 from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
@@ -49,18 +49,18 @@ from .game_helpers import (
 from .nhl_helpers import compute_nhl_data_health
 from .schemas import (
     GameDetailResponse,
+    GameFlowBlock,
+    GameFlowContent,
+    GameFlowMoment,
+    GameFlowPlay,
+    GameFlowResponse,
     GameListResponse,
     GameMeta,
     GamePreviewScoreResponse,
-    GameStoryResponse,
     JobResponse,
     NHLGoalieStat,
     NHLSkaterStat,
     OddsEntry,
-    StoryBlock,
-    StoryContent,
-    StoryMoment,
-    StoryPlay,
     TimelineArtifactResponse,
 )
 
@@ -234,11 +234,11 @@ async def list_games(
             select(1).where(SportsGamePlay.game_id == SportsGame.id)
         )
     )
-    with_story_count_stmt = count_stmt.where(
+    with_flow_count_stmt = count_stmt.where(
         exists(
             select(1).where(
-                SportsGameStory.game_id == SportsGame.id,
-                SportsGameStory.moments_json.isnot(None),
+                SportsGameFlow.game_id == SportsGame.id,
+                SportsGameFlow.moments_json.isnot(None),
             )
         )
     )
@@ -250,23 +250,23 @@ async def list_games(
     with_odds_count = (await session.execute(with_odds_count_stmt)).scalar_one()
     with_social_count = (await session.execute(with_social_count_stmt)).scalar_one()
     with_pbp_count = (await session.execute(with_pbp_count_stmt)).scalar_one()
-    with_story_count = (await session.execute(with_story_count_stmt)).scalar_one()
+    with_flow_count = (await session.execute(with_flow_count_stmt)).scalar_one()
 
-    # Query which games have stories in SportsGameStory table
+    # Query which games have flows in SportsGameFlow table
     game_ids = [game.id for game in games]
     if game_ids:
-        story_check_stmt = select(SportsGameStory.game_id).where(
-            SportsGameStory.game_id.in_(game_ids),
-            SportsGameStory.moments_json.isnot(None),
+        flow_check_stmt = select(SportsGameFlow.game_id).where(
+            SportsGameFlow.game_id.in_(game_ids),
+            SportsGameFlow.moments_json.isnot(None),
         )
-        story_result = await session.execute(story_check_stmt)
-        games_with_stories = set(story_result.scalars().all())
+        flow_result = await session.execute(flow_check_stmt)
+        games_with_flow = set(flow_result.scalars().all())
     else:
-        games_with_stories = set()
+        games_with_flow = set()
 
     next_offset = offset + limit if offset + limit < total else None
     summaries = [
-        summarize_game(game, has_story=game.id in games_with_stories)
+        summarize_game(game, has_flow=game.id in games_with_flow)
         for game in games
     ]
 
@@ -279,7 +279,7 @@ async def list_games(
         with_odds_count=with_odds_count,
         with_social_count=with_social_count,
         with_pbp_count=with_pbp_count,
-        with_story_count=with_story_count,
+        with_flow_count=with_flow_count,
     )
 
 
@@ -425,14 +425,14 @@ async def get_game(
         for play in sorted(game.plays, key=lambda p: p.play_index)
     ]
 
-    # Check if game has a story in SportsGameStory table
-    story_check = await session.execute(
-        select(SportsGameStory.id).where(
-            SportsGameStory.game_id == game_id,
-            SportsGameStory.moments_json.isnot(None),
+    # Check if game has a flow in SportsGameFlow table
+    flow_check = await session.execute(
+        select(SportsGameFlow.id).where(
+            SportsGameFlow.game_id == game_id,
+            SportsGameFlow.moments_json.isnot(None),
         ).limit(1)
     )
-    has_story = story_check.scalar() is not None
+    has_flow = flow_check.scalar() is not None
 
     meta = GameMeta(
         id=game.id,
@@ -455,7 +455,7 @@ async def get_game(
         has_odds=bool(game.odds),
         has_social=bool(game.social_posts),
         has_pbp=bool(game.plays),
-        has_story=has_story,
+        has_flow=has_flow,
         play_count=len(game.plays) if game.plays else 0,
         social_post_count=len(game.social_posts) if game.social_posts else 0,
         home_team_x_handle=game.home_team.x_handle if game.home_team else None,
@@ -579,23 +579,23 @@ async def generate_game_timeline(
 
 
 # =============================================================================
-# Story API (Task 6)
+# Game Flow API
 # =============================================================================
 
-# Story version identifier
+# Story version identifier (DB filter value — "v2-moments")
 STORY_VERSION = "v2-moments"
 
 
-@router.get("/games/{game_id}/story", response_model=GameStoryResponse)
-async def get_game_story(
+@router.get("/games/{game_id}/flow", response_model=GameFlowResponse)
+async def get_game_flow(
     game_id: int,
     session: AsyncSession = Depends(get_db),
-) -> GameStoryResponse:
-    """Get the persisted Story for a game.
+) -> GameFlowResponse:
+    """Get the persisted Game Flow for a game.
 
-    Returns the Story exactly as persisted - no transformation, no aggregation.
+    Returns the Game Flow exactly as persisted - no transformation, no aggregation.
 
-    Story Contract:
+    Game Flow Contract:
     - moments: Ordered list of condensed moments with narratives
     - plays: Only plays referenced by moments
     - validation_passed: Whether validation passed
@@ -604,28 +604,28 @@ async def get_game_story(
     - total_words: Total word count across all block narratives
 
     Returns:
-        GameStoryResponse with moments, plays, blocks, and validation status
+        GameFlowResponse with moments, plays, blocks, and validation status
 
     Raises:
-        HTTPException 404: If no Story exists for this game
+        HTTPException 404: If no Game Flow exists for this game
     """
-    story_result = await session.execute(
-        select(SportsGameStory).where(
-            SportsGameStory.game_id == game_id,
-            SportsGameStory.story_version == STORY_VERSION,
-            SportsGameStory.moments_json.isnot(None),
+    flow_result = await session.execute(
+        select(SportsGameFlow).where(
+            SportsGameFlow.game_id == game_id,
+            SportsGameFlow.story_version == STORY_VERSION,
+            SportsGameFlow.moments_json.isnot(None),
         )
     )
-    story_record = story_result.scalar_one_or_none()
+    flow_record = flow_result.scalar_one_or_none()
 
-    if not story_record:
+    if not flow_record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No Story found for game {game_id}",
+            detail=f"No Game Flow found for game {game_id}",
         )
 
     # Get moments from persisted data (no transformation)
-    moments_data = story_record.moments_json or []
+    moments_data = flow_record.moments_json or []
 
     # Collect all play_ids referenced by moments
     all_play_ids: set[int] = set()
@@ -646,7 +646,7 @@ async def get_game_story(
 
     # Build response moments (exact data, no transformation)
     response_moments = [
-        StoryMoment(
+        GameFlowMoment(
             playIds=moment["play_ids"],
             explicitlyNarratedPlayIds=moment["explicitly_narrated_play_ids"],
             period=moment["period"],
@@ -664,7 +664,7 @@ async def get_game_story(
     # Build response plays (only those referenced by moments, ordered by play_index)
     # NOTE: playId uses play_index (not DB id) to match moment.playIds contract
     response_plays = [
-        StoryPlay(
+        GameFlowPlay(
             playId=play.play_index,
             playIndex=play.play_index,
             period=play.quarter or 1,
@@ -679,13 +679,13 @@ async def get_game_story(
     ]
 
     # Build response blocks if present (Phase 1)
-    response_blocks: list[StoryBlock] | None = None
+    response_blocks: list[GameFlowBlock] | None = None
     total_words: int | None = None
 
-    blocks_data = story_record.blocks_json
+    blocks_data = flow_record.blocks_json
     if blocks_data:
         response_blocks = [
-            StoryBlock(
+            GameFlowBlock(
                 blockIndex=block["block_index"],
                 role=block["role"],
                 momentIndices=block["moment_indices"],
@@ -698,6 +698,7 @@ async def get_game_story(
                 keyPlayIds=block["key_play_ids"],
                 narrative=block.get("narrative"),
                 miniBox=block.get("mini_box"),
+                embeddedSocialPostId=block.get("embedded_social_post_id"),
             )
             for block in blocks_data
         ]
@@ -708,11 +709,11 @@ async def get_game_story(
         )
 
     # Validation status from persisted data
-    validation_passed = story_record.validated_at is not None
+    validation_passed = flow_record.validated_at is not None
 
-    return GameStoryResponse(
+    return GameFlowResponse(
         gameId=game_id,
-        story=StoryContent(moments=response_moments),
+        flow=GameFlowContent(moments=response_moments),
         plays=response_plays,
         validationPassed=validation_passed,
         validationErrors=[],

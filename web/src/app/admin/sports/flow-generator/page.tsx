@@ -14,6 +14,12 @@ import {
 } from "@/lib/api/sportsAdmin";
 import { SUPPORTED_LEAGUES } from "@/lib/constants/sports";
 import { ROUTES } from "@/lib/constants/routes";
+import { LogsDrawer, type LogsTab } from "@/components/admin";
+
+const PIPELINE_LOG_TABS: LogsTab[] = [
+  { label: "API", container: "sports-api" },
+  { label: "API Worker", container: "sports-api-worker" },
+];
 import { formatDateInput, getDateDaysAgo } from "@/lib/utils/dateFormat";
 
 type GenerationStatus = "idle" | "generating" | "success" | "error";
@@ -60,6 +66,7 @@ export default function StoryGeneratorPage() {
 
   // Force regenerate option
   const [forceRegenerate, setForceRegenerate] = useState(false);
+  const [logsOpen, setLogsOpen] = useState(false);
 
   // Games list state (for preview/individual generation)
   const [games, setGames] = useState<GameSummary[]>([]);
@@ -217,7 +224,7 @@ export default function StoryGeneratorPage() {
   }, [bulkJob.jobId, bulkJob.state, loadGames]);
 
   // Individual game generation
-  const generateStory = useCallback(async (gameId: number) => {
+  const generateFlow = useCallback(async (gameId: number) => {
     setGenerationResults((prev) => {
       const next = new Map(prev);
       next.set(gameId, { gameId, status: "generating" });
@@ -253,14 +260,19 @@ export default function StoryGeneratorPage() {
     return generationResults.get(gameId);
   };
 
-  const gamesWithStory = games.filter((g) => g.hasStory);
-  const gamesWithoutStory = games.filter((g) => !g.hasStory);
+  const gamesWithFlow = games.filter((g) => g.hasFlow);
+  const gamesWithoutFlow = games.filter((g) => !g.hasFlow);
   const isBulkRunning = bulkJob.state === "PENDING" || bulkJob.state === "PROGRESS";
 
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Flow Generator</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Flow Generator</h1>
+          <button className={styles.logsButton} onClick={() => setLogsOpen(true)}>
+            View Logs
+          </button>
+        </div>
         <p className={styles.subtitle}>
           Generate game flow from play-by-play data
         </p>
@@ -403,22 +415,22 @@ export default function StoryGeneratorPage() {
               <span className={styles.statLabel}>Games Loaded</span>
             </div>
             <div className={styles.stat}>
-              <span className={styles.statValue}>{gamesWithStory.length}</span>
+              <span className={styles.statValue}>{gamesWithFlow.length}</span>
               <span className={styles.statLabel}>Has Flow</span>
             </div>
             <div className={styles.stat}>
-              <span className={styles.statValue}>{gamesWithoutStory.length}</span>
+              <span className={styles.statValue}>{gamesWithoutFlow.length}</span>
               <span className={styles.statLabel}>No Flow</span>
             </div>
           </div>
 
           <div className={styles.gamesSection}>
             <h2 className={styles.sectionTitle}>Games Without Flow</h2>
-            {gamesWithoutStory.length === 0 ? (
+            {gamesWithoutFlow.length === 0 ? (
               <p className={styles.emptyMessage}>All games have flow data!</p>
             ) : (
               <div className={styles.gamesList}>
-                {gamesWithoutStory.map((game) => {
+                {gamesWithoutFlow.map((game) => {
                   const result = getResultStatus(game.id);
                   return (
                     <div key={game.id} className={styles.gameCard}>
@@ -447,7 +459,7 @@ export default function StoryGeneratorPage() {
                         {(!result || result.status === "error") && (
                           <button
                             className={styles.generateButton}
-                            onClick={() => generateStory(game.id)}
+                            onClick={() => generateFlow(game.id)}
                             disabled={
                               result?.status === "generating" || isBulkRunning
                             }
@@ -469,11 +481,11 @@ export default function StoryGeneratorPage() {
             )}
           </div>
 
-          {gamesWithStory.length > 0 && (
+          {gamesWithFlow.length > 0 && (
             <div className={styles.gamesSection}>
               <h2 className={styles.sectionTitle}>Games With Flow</h2>
               <div className={styles.gamesList}>
-                {gamesWithStory.map((game) => (
+                {gamesWithFlow.map((game) => (
                   <div key={game.id} className={styles.gameCard}>
                     <div className={styles.gameInfo}>
                       <div className={styles.gameMatchup}>
@@ -487,7 +499,7 @@ export default function StoryGeneratorPage() {
                       <span className={styles.statusComplete}>Has Flow</span>
                       <button
                         className={styles.regenerateButton}
-                        onClick={() => generateStory(game.id)}
+                        onClick={() => generateFlow(game.id)}
                         disabled={
                           getResultStatus(game.id)?.status === "generating" ||
                           isBulkRunning
@@ -534,6 +546,8 @@ export default function StoryGeneratorPage() {
           </p>
         </div>
       )}
+
+      <LogsDrawer open={logsOpen} onClose={() => setLogsOpen(false)} tabs={PIPELINE_LOG_TABS} />
     </div>
   );
 }

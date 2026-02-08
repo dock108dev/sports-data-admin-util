@@ -24,9 +24,8 @@
 
 ### Current Implementation
 **File:** `api/app/services/lead_ladder.py` (sport-agnostic)
-**File:** `api/app/services/compact_mode_thresholds.py` (DB access)
 
-The Lead Ladder is already sport-agnostic. Thresholds are stored in the database (`compact_mode_thresholds` table) and passed to all functions.
+The Lead Ladder is sport-agnostic. Thresholds are configured per league and passed to all functions.
 
 ### NBA Configuration
 ```python
@@ -48,7 +47,6 @@ The Lead Ladder is already sport-agnostic. Thresholds are stored in the database
 ```
 
 ### Action Required
-- [ ] Seed `compact_mode_thresholds` table with NHL thresholds `[1, 2, 3]`
 - [ ] Verify `get_thresholds_for_league("NHL")` returns correct values
 
 ---
@@ -100,27 +98,21 @@ NHL_PLAYOFF_OT_GAME_SECONDS = 20 * 60    # 20-minute playoff OT
 
 ## 3. Timeline Generation
 
-### Current State
+### Current State (IMPLEMENTED)
 **File:** `api/app/services/timeline_generator.py`
 
-Timeline generation is currently **NBA-only**:
-```python
-async def generate_timeline_artifact(...):
-    if league_code != "NBA":
-        raise HTTPException(
-            "Timeline generation only supported for NBA", status_code=422
-        )
-```
+Timeline generation is **league-agnostic** — the same code path handles NBA, NHL, and NCAAB. The previous NBA-only guard has been removed.
 
-### NBA-Specific Functions
+### Functions
 
-| Function | Purpose | NHL Equivalent Needed |
-|----------|---------|----------------------|
-| `_nba_phase_for_quarter()` | Map quarter → phase | `_nhl_phase_for_period()` |
-| `_nba_block_for_quarter()` | Map quarter → block | `_nhl_block_for_period()` |
-| `_nba_quarter_start()` | Compute quarter start time | `_nhl_period_start()` ✅ |
-| `_nba_regulation_end()` | Compute end of regulation | `_nhl_regulation_end()` ✅ |
-| `_nba_game_end()` | Compute game end time | `_nhl_game_end()` ✅ |
+| Function | Purpose | Status |
+|----------|---------|--------|
+| `_nba_phase_for_quarter()` | Map quarter → phase | ✅ |
+| `_nba_block_for_quarter()` | Map quarter → block | ✅ |
+| `_nba_quarter_start()` | Compute quarter start time | ✅ |
+| `_nhl_phase_for_period()` | Map period → phase | ✅ |
+| `_nhl_block_for_period()` | Map period → block | ✅ |
+| `_nhl_period_start()` | Compute period start time | ✅ |
 
 ### Status
 - [x] NHL phase/period mapping functions ✅ (in `normalize_pbp.py`)
@@ -319,7 +311,7 @@ NHL social integration uses the **team-centric two-scrape model**:
 - Team handles seeded via Alembic migration
 
 ### Schedule
-NHL social collection runs daily at 9:00 AM EST (30 min after NBA).
+NHL social collection runs as part of the daily 5:00 AM EST ingestion sweep (NBA → NHL → NCAAB sequential).
 See `scraper/sports_scraper/celery_app.py` for schedule configuration.
 
 ### Status
@@ -468,7 +460,6 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 ## 12. Implementation Checklist
 
 ### Phase 1: Foundation
-- [ ] Seed NHL Lead Ladder thresholds in database
 - [ ] Verify NHL PBP scraping produces usable data
 - [ ] Verify NHL odds ingestion works
 - [ ] Verify NHL social scraping works
@@ -505,13 +496,12 @@ progress = NHL_PERIOD_GAME_SECONDS - clock_seconds
 |------|---------|--------|
 | `api/app/services/pipeline/stages/normalize_pbp.py` | NHL phase/timing/constants | ✅ Done |
 | `api/app/services/pipeline/stages/prompt_builders.py` | NHL period formatting | ✅ Done |
-| `api/app/services/timeline_generator.py` | Add NHL functions, update dispatch | Pending |
+| `api/app/services/timeline_generator.py` | Add NHL functions, update dispatch | ✅ Done |
 | `api/app/services/moments/` | Add NHL high-impact types to config | Pending |
 | `api/app/services/summary_builder.py` | Add `build_nhl_summary()` | Pending |
 | `api/app/services/game_analysis.py` | Add NHL thresholds reference | Pending |
 | `api/app/config_sports.py` | Already has NHL config | ✅ Done |
 | `scraper/sports_scraper/config_sports.py` | Already has NHL config | ✅ Done |
-| Database | Seed NHL thresholds | Pending |
 
 ---
 

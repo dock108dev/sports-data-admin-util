@@ -4,12 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./LogsDrawer.module.css";
 import { fetchDockerLogs } from "@/lib/api/sportsAdmin";
 
-type Tab = {
+export type LogsTab = {
   label: string;
   container: string;
 };
 
-const TABS: Tab[] = [
+const DEFAULT_TABS: LogsTab[] = [
   { label: "API", container: "sports-api" },
   { label: "Scraper", container: "sports-scraper" },
   { label: "Social Scraper", container: "sports-social-scraper" },
@@ -18,9 +18,10 @@ const TABS: Tab[] = [
 type LogsDrawerProps = {
   open: boolean;
   onClose: () => void;
+  tabs?: LogsTab[];
 };
 
-export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
+export function LogsDrawer({ open, onClose, tabs = DEFAULT_TABS }: LogsDrawerProps) {
   const [activeTab, setActiveTab] = useState(0);
   const [logs, setLogs] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,7 +29,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
   const logAreaRef = useRef<HTMLDivElement>(null);
 
   const loadLogs = useCallback(async (tabIndex: number) => {
-    const tab = TABS[tabIndex];
+    const tab = tabs[tabIndex];
     setLoading(true);
     setError(null);
     try {
@@ -41,7 +42,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tabs]);
 
   useEffect(() => {
     if (open) {
@@ -88,7 +89,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
         </div>
 
         <div className={styles.tabs}>
-          {TABS.map((tab, i) => (
+          {tabs.map((tab, i) => (
             <button
               key={tab.container}
               className={`${styles.tab} ${i === activeTab ? styles.tabActive : ""}`}
@@ -110,7 +111,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
         )}
 
         <div className={styles.footer}>
-          Showing last 1000 lines from <strong>{TABS[activeTab].container}</strong>
+          Showing last 1000 lines from <strong>{tabs[activeTab].container}</strong>
         </div>
       </div>
     </>

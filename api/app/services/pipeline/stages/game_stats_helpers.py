@@ -694,12 +694,12 @@ def compute_block_mini_box(
             "home": {
                 "team": "Hawks",
                 "players": [
-                    {"name": "Trae Young", "pts": 18, "delta_pts": 6, "reb": 2, "ast": 7},
+                    {"name": "Trae Young", "pts": 18, "deltaPts": 6, "reb": 2, "ast": 7},
                     ...
                 ]
             },
             "away": {...},
-            "block_stars": ["Young", "Mitchell"]  # Top contributors this segment
+            "blockStars": ["Young", "Mitchell"]  # Top contributors this segment
         }
     """
     # Get cumulative box at end of this block
@@ -742,10 +742,10 @@ def compute_block_mini_box(
     # Key stat for sorting (points for basketball, goals+assists for hockey)
     if league_code == "NHL":
         key_stat = "goals"
-        delta_key = "delta_goals"
+        delta_key = "deltaGoals"
     else:
         key_stat = "pts"
-        delta_key = "delta_pts"
+        delta_key = "deltaPts"
 
     block_stars: list[str] = []
 
@@ -757,14 +757,14 @@ def compute_block_mini_box(
 
             # Calculate deltas for key stats
             if league_code == "NHL":
-                player["delta_goals"] = player.get("goals", 0) - prev.get("goals", 0)
-                player["delta_assists"] = player.get("assists", 0) - prev.get("assists", 0)
-                delta_contribution = player["delta_goals"] + player["delta_assists"]
+                player["deltaGoals"] = player.get("goals", 0) - prev.get("goals", 0)
+                player["deltaAssists"] = player.get("assists", 0) - prev.get("assists", 0)
+                delta_contribution = player.get("deltaGoals", 0) + player.get("deltaAssists", 0)
             else:
-                player["delta_pts"] = player.get("pts", 0) - prev.get("pts", 0)
-                player["delta_reb"] = player.get("reb", 0) - prev.get("reb", 0)
-                player["delta_ast"] = player.get("ast", 0) - prev.get("ast", 0)
-                delta_contribution = player["delta_pts"]
+                player["deltaPts"] = player.get("pts", 0) - prev.get("pts", 0)
+                player["deltaReb"] = player.get("reb", 0) - prev.get("reb", 0)
+                player["deltaAst"] = player.get("ast", 0) - prev.get("ast", 0)
+                delta_contribution = player.get("deltaPts", 0)
 
             # Track block stars (players who contributed significantly this segment)
             if delta_contribution >= 5 or (league_code == "NHL" and delta_contribution >= 1):
@@ -786,6 +786,6 @@ def compute_block_mini_box(
     cumulative["away"].pop("score", None)
 
     # Add block stars (top 2)
-    cumulative["block_stars"] = block_stars[:2]
+    cumulative["blockStars"] = block_stars[:2]
 
     return cumulative

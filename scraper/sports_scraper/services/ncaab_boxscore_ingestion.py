@@ -24,7 +24,7 @@ from ..models import (
     NormalizedGame,
 )
 from ..persistence import persist_game_payload
-from ..utils.date_utils import ncaab_season_for_cbb_api
+from ..utils.date_utils import season_ending_year
 
 
 def normalize_team_name(name: str) -> str:
@@ -166,7 +166,7 @@ def populate_ncaab_game_ids(
 
     # Fetch CBB schedule
     client = NCAABLiveFeedClient()
-    season = ncaab_season_for_cbb_api(start_date)
+    season = season_ending_year(start_date)
     cbb_games = client.fetch_games(start_date, end_date, season=season)
 
     if not cbb_games:
@@ -474,7 +474,7 @@ def ingest_boxscores_via_ncaab_api(
 
     # Step 3: Batch fetch boxscores
     client = NCAABLiveFeedClient()
-    season = ncaab_season_for_cbb_api(start_date)
+    season = season_ending_year(start_date)
 
     cbb_game_ids = [cbb_game_id for _, cbb_game_id, _, _, _ in games]
     team_names_by_game = {

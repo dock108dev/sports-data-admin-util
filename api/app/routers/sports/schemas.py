@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -116,7 +117,7 @@ class GameSummary(BaseModel):
     has_odds: bool = Field(..., alias="hasOdds")
     has_social: bool = Field(..., alias="hasSocial")
     has_pbp: bool = Field(..., alias="hasPbp")
-    has_story: bool = Field(..., alias="hasStory")
+    has_flow: bool = Field(..., alias="hasFlow")
     play_count: int = Field(..., alias="playCount")
     social_post_count: int = Field(..., alias="socialPostCount")
     has_required_data: bool = Field(..., alias="hasRequiredData")
@@ -140,7 +141,7 @@ class GameListResponse(BaseModel):
     with_odds_count: int | None = Field(0, alias="withOddsCount")
     with_social_count: int | None = Field(0, alias="withSocialCount")
     with_pbp_count: int | None = Field(0, alias="withPbpCount")
-    with_story_count: int | None = Field(0, alias="withStoryCount")
+    with_flow_count: int | None = Field(0, alias="withFlowCount")
 
 
 class TeamStat(BaseModel):
@@ -254,7 +255,7 @@ class GameMeta(BaseModel):
     has_odds: bool = Field(..., alias="hasOdds")
     has_social: bool = Field(..., alias="hasSocial")
     has_pbp: bool = Field(..., alias="hasPbp")
-    has_story: bool = Field(..., alias="hasStory")
+    has_flow: bool = Field(..., alias="hasFlow")
     play_count: int = Field(..., alias="playCount")
     social_post_count: int = Field(..., alias="socialPostCount")
     home_team_x_handle: str | None = Field(None, alias="homeTeamXHandle")
@@ -273,6 +274,12 @@ class GamePreviewScoreResponse(BaseModel):
     nugget: str
 
 
+class GamePhase(str, Enum):
+    pregame = "pregame"
+    in_game = "in_game"
+    postgame = "postgame"
+
+
 class SocialPostEntry(BaseModel):
     """Social post entry with camelCase output."""
 
@@ -288,6 +295,10 @@ class SocialPostEntry(BaseModel):
     image_url: str | None = Field(None, alias="imageUrl")
     source_handle: str | None = Field(None, alias="sourceHandle")
     media_type: str | None = Field(None, alias="mediaType")
+    game_phase: GamePhase | None = Field(None, alias="gamePhase")
+    likes_count: int | None = Field(None, alias="likesCount")
+    retweets_count: int | None = Field(None, alias="retweetsCount")
+    replies_count: int | None = Field(None, alias="repliesCount")
 
 
 class PlayEntry(BaseModel):
@@ -456,7 +467,7 @@ class TeamSocialInfo(BaseModel):
 
 
 # =============================================================================
-# Story API Response Models (Task 6)
+# Game Flow API Response Models
 # =============================================================================
 
 
@@ -509,10 +520,10 @@ class MomentBoxScore(BaseModel):
     away: MomentTeamBoxScore
 
 
-class StoryMoment(BaseModel):
-    """A single condensed moment in the Story.
+class GameFlowMoment(BaseModel):
+    """A single condensed moment in the Game Flow.
 
-    This matches the Story contract exactly:
+    This matches the Game Flow contract exactly:
     - play_ids: All plays in this moment
     - explicitly_narrated_play_ids: Plays that must be narrated
     - period/clock/score: Context metadata
@@ -533,8 +544,8 @@ class StoryMoment(BaseModel):
     cumulative_box_score: MomentBoxScore | None = Field(None, alias="cumulativeBoxScore")
 
 
-class StoryPlay(BaseModel):
-    """A play referenced by a Story moment.
+class GameFlowPlay(BaseModel):
+    """A play referenced by a Game Flow moment.
 
     Only plays referenced in moments are included.
     """
@@ -551,12 +562,12 @@ class StoryPlay(BaseModel):
     away_score: int | None = Field(None, alias="awayScore")
 
 
-class StoryContent(BaseModel):
-    """The Story content containing ordered moments."""
+class GameFlowContent(BaseModel):
+    """The Game Flow content containing ordered moments."""
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    moments: list[StoryMoment]
+    moments: list[GameFlowMoment]
 
 
 class BlockMiniBox(BaseModel):
@@ -564,12 +575,12 @@ class BlockMiniBox(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    home: dict[str, Any]  # {team, players: [{name, pts, delta_pts, ...}]}
+    home: dict[str, Any]  # {team, players: [{name, pts, deltaPts, ...}]}
     away: dict[str, Any]
-    block_stars: list[str] = Field(default_factory=list)
+    block_stars: list[str] = Field(default_factory=list, alias="blockStars")
 
 
-class StoryBlock(BaseModel):
+class GameFlowBlock(BaseModel):
     """A narrative block grouping multiple moments.
 
     Blocks are the consumer-facing narrative output (Phase 1).
@@ -589,12 +600,13 @@ class StoryBlock(BaseModel):
     key_play_ids: list[int] = Field(..., alias="keyPlayIds")
     narrative: str | None = None
     mini_box: BlockMiniBox | None = Field(None, alias="miniBox")
+    embedded_social_post_id: int | None = Field(None, alias="embeddedSocialPostId")
 
 
-class GameStoryResponse(BaseModel):
-    """Response for GET /games/{game_id}/story.
+class GameFlowResponse(BaseModel):
+    """Response for GET /games/{game_id}/flow.
 
-    Returns the persisted Story exactly as stored.
+    Returns the persisted Game Flow exactly as stored.
     No transformation, no aggregation, no additional prose.
 
     Phase 1 additions:
@@ -605,12 +617,12 @@ class GameStoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     game_id: int = Field(..., alias="gameId")
-    story: StoryContent
-    plays: list[StoryPlay]
+    flow: GameFlowContent
+    plays: list[GameFlowPlay]
     validation_passed: bool = Field(..., alias="validationPassed")
     validation_errors: list[str] = Field(default_factory=list, alias="validationErrors")
     # Phase 1: Block-based narratives
-    blocks: list[StoryBlock] | None = None
+    blocks: list[GameFlowBlock] | None = None
     total_words: int | None = Field(None, alias="totalWords")
 
 

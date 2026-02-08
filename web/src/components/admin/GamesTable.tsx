@@ -88,7 +88,7 @@ export function GamesTable({ games, detailLink = ROUTES.SPORTS_GAME, showComplet
                       )}
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.hasStory ? styles.dotOk : styles.dotMissing}`} />
+                      <span className={`${styles.statusDot} ${game.hasFlow ? styles.dotOk : styles.dotMissing}`} />
                     </td>
                   </>
                 )}
