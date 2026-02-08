@@ -1,5 +1,5 @@
 /**
- * Story Components
+ * Game Flow Components
  *
  * Phase 5 UI components for game flow rendering.
  */

@@ -1,6 +1,6 @@
 import { request } from "./client";
 import type { AdminGameDetail, GameFilters, GameListResponse, JobResponse } from "./types";
-import type { GameStoryResponse } from "./storyTypes";
+import type { GameFlowResponse } from "./gameFlowTypes";
 
 export async function listGames(filters: GameFilters): Promise<GameListResponse> {
   const query = new URLSearchParams();
@@ -44,11 +44,11 @@ export async function resyncOdds(gameId: number): Promise<JobResponse> {
  * Fetch the game flow for a game.
  * Returns null if no flow exists (404).
  */
-export async function fetchGameStory(gameId: number): Promise<GameStoryResponse | null> {
+export async function fetchGameFlow(gameId: number): Promise<GameFlowResponse | null> {
   try {
-    return await request(`/api/admin/sports/games/${gameId}/story`);
+    return await request(`/api/admin/sports/games/${gameId}/flow`);
   } catch (err) {
-    // Return null for 404 (no story exists)
+    // Return null for 404 (no flow exists)
     // Error format is: "Request failed (404): {...}"
     if (err instanceof Error && err.message.startsWith("Request failed (404)")) {
       return null;

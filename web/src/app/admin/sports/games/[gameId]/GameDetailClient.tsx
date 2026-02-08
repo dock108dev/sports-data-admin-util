@@ -8,7 +8,7 @@ import { ROUTES } from "@/lib/constants/routes";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { PbpSection } from "./PbpSection";
 import { SocialPostsSection } from "./SocialPostsSection";
-import { StorySection } from "./StorySection";
+import { FlowSection } from "./FlowSection";
 import styles from "./styles.module.css";
 
 /**
@@ -192,7 +192,7 @@ export default function GameDetailClient() {
       { label: "Odds", ok: game.game.hasOdds },
       { label: `Social (${game.game.socialPostCount || 0})`, ok: game.game.hasSocial },
       { label: `PBP (${game.game.playCount || 0})`, ok: game.game.hasPbp },
-      { label: "Flow", ok: game.game.hasStory },
+      { label: "Flow", ok: game.game.hasFlow },
     ];
   }, [game]);
 
@@ -702,7 +702,7 @@ export default function GameDetailClient() {
 
       <PbpSection plays={game.plays || []} leagueCode={g.leagueCode} />
 
-      <StorySection gameId={g.id} hasStory={g.hasStory} />
+      <FlowSection gameId={g.id} hasFlow={g.hasFlow} />
 
       <CollapsibleSection title="Derived Metrics" defaultOpen={false}>
         {Object.keys(game.derivedMetrics || {}).length === 0 ? (

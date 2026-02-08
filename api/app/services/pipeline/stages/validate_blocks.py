@@ -366,7 +366,7 @@ async def _attach_embedded_tweets(
     )
 
     # Log selection results
-    assigned_count = sum(1 for b in updated_blocks if b.get("embedded_tweet"))
+    assigned_count = sum(1 for b in updated_blocks if b.get("embedded_social_post_id"))
     output.add_log(
         f"Embedded tweets: selected {len(selection.tweets)} from {selection.total_candidates} "
         f"candidates, assigned to {assigned_count} blocks"

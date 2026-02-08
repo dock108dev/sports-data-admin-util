@@ -236,6 +236,6 @@ def get_stage_description(stage: PipelineStage) -> str:
         PipelineStage.GROUP_BLOCKS: "Group moments into 4-7 narrative blocks with semantic roles",
         PipelineStage.RENDER_BLOCKS: "Generate short narratives for each block using OpenAI",
         PipelineStage.VALIDATE_BLOCKS: "Validate block count, word limits, and constraints",
-        PipelineStage.FINALIZE_MOMENTS: "Persist moments and blocks to story tables",
+        PipelineStage.FINALIZE_MOMENTS: "Persist moments and blocks to game flow tables",
     }
     return descriptions.get(stage, "Unknown stage")

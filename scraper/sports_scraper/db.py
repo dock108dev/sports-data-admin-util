@@ -57,7 +57,7 @@ try:
     )
     from app.db.story import (  # type: ignore
         FrontendPayloadVersion,
-        SportsGameStory,
+        SportsGameFlow,
         SportsGameTimelineArtifact,
     )
     from app.db.scraper import (  # type: ignore
@@ -112,7 +112,7 @@ try:
         SocialAccountPoll=SocialAccountPoll,
         # Story models
         SportsGameTimelineArtifact=SportsGameTimelineArtifact,
-        SportsGameStory=SportsGameStory,
+        SportsGameFlow=SportsGameFlow,
         # Scraper models
         SportsScrapeRun=SportsScrapeRun,
         SportsJobRun=SportsJobRun,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { NarrativeBlock, SocialPostsByPhase } from "@/lib/api/sportsAdmin/storyTypes";
+import type { NarrativeBlock, SocialPostsByPhase } from "@/lib/api/sportsAdmin/gameFlowTypes";
 import { CollapsedGameFlow } from "./CollapsedGameFlow";
 import { ExpandableSocialSections } from "./ExpandableSocialSections";
 import styles from "./GameFlowView.module.css";

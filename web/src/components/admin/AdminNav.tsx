@@ -16,7 +16,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
     items: [
       { href: ROUTES.SPORTS_BROWSER, label: "Data Browser" },
       { href: ROUTES.SPORTS_INGESTION, label: "Scraper Runs" },
-      { href: ROUTES.SPORTS_STORY_GENERATOR, label: "Flow Generator" },
+      { href: ROUTES.SPORTS_FLOW_GENERATOR, label: "Flow Generator" },
     ],
   },
   {

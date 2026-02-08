@@ -111,7 +111,7 @@ export default function AdminDashboardPage() {
               <div className={styles.quickLinkDesc}>Browse games, teams, and scrape runs</div>
             </div>
           </Link>
-          <Link href={ROUTES.SPORTS_STORY_GENERATOR} className={styles.quickLink}>
+          <Link href={ROUTES.SPORTS_FLOW_GENERATOR} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>Flow Generator</div>
               <div className={styles.quickLinkDesc}>Generate and inspect game flow data</div>

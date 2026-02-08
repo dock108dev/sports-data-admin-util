@@ -425,9 +425,9 @@ class TestApplyEmbeddedTweetsToBlocks:
 
         result = apply_embedded_tweets_to_blocks(sample_blocks, assignments)
 
-        assert result[0]["embedded_tweet"] is not None
-        assert result[0]["embedded_tweet"]["tweet_id"] == "1"
-        assert result[1]["embedded_tweet"] is None
+        assert result[0]["embedded_social_post_id"] is not None
+        assert result[0]["embedded_social_post_id"] == "1"
+        assert result[1]["embedded_social_post_id"] is None
 
     def test_does_not_modify_block_structure(self, sample_blocks, game_start):
         """Does not add/remove/split blocks."""
@@ -469,7 +469,7 @@ class TestSelectAndAssignEmbeddedTweets:
 
         # Some blocks have embedded tweets
         embedded_count = sum(
-            1 for b in updated_blocks if b.get("embedded_tweet") is not None
+            1 for b in updated_blocks if b.get("embedded_social_post_id") is not None
         )
         assert embedded_count > 0
         assert embedded_count <= MAX_EMBEDDED_TWEETS
@@ -485,7 +485,7 @@ class TestSelectAndAssignEmbeddedTweets:
         )
 
         assert len(updated_blocks) == len(sample_blocks)
-        assert all(b.get("embedded_tweet") is None for b in updated_blocks)
+        assert all(b.get("embedded_social_post_id") is None for b in updated_blocks)
         assert selection.total_candidates == 0
 
     def test_zero_blocks_handles_gracefully(self, game_start, sample_tweets):

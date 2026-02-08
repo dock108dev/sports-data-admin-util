@@ -13,11 +13,11 @@
 3. [Quick Start](#quick-start)
 4. [Health Check](#health-check)
 5. [Games](#games)
-6. [Stories](#stories)
+6. [Game Flow](#game-flow)
 7. [Timeline Generation](#timeline-generation)
 8. [Teams](#teams)
 9. [Scraper Runs](#scraper-runs)
-10. [Story Pipeline](#story-pipeline)
+10. [Game Flow Pipeline](#game-flow-pipeline)
 11. [Diagnostics](#diagnostics)
 12. [Jobs](#jobs)
 13. [PBP Inspection](#pbp-inspection)
@@ -105,16 +105,16 @@ GET /api/admin/sports/games?startDate=2026-01-22&endDate=2026-01-22&league=NBA
 GET /api/admin/sports/games/123
 ```
 
-**Get game story:**
+**Get game flow:**
 ```http
-GET /api/admin/sports/games/123/story
+GET /api/admin/sports/games/123/flow
 ```
 
 ### Supported Leagues
 
 | League | Code | Data Available |
 |--------|------|----------------|
-| NBA | `NBA` | Boxscores, PBP, Social, Odds, Stories, Timelines |
+| NBA | `NBA` | Boxscores, PBP, Social, Odds, Game Flow, Timelines |
 | NHL | `NHL` | Boxscores, PBP, Social, Odds, Timelines |
 | NCAAB | `NCAAB` | Boxscores, PBP, Social, Odds, Timelines |
 
@@ -171,7 +171,7 @@ List games with filtering and pagination.
       "hasOdds": true,
       "hasSocial": true,
       "hasPbp": true,
-      "hasStory": true,
+      "hasFlow": true,
       "playCount": 450,
       "socialPostCount": 12,
       "hasRequiredData": true,
@@ -189,7 +189,7 @@ List games with filtering and pagination.
   "withOddsCount": 245,
   "withSocialCount": 200,
   "withPbpCount": 230,
-  "withStoryCount": 180
+  "withFlowCount": 180
 }
 ```
 
@@ -216,7 +216,7 @@ Full game detail including stats, odds, social posts, and plays.
     "hasOdds": true,
     "hasSocial": true,
     "hasPbp": true,
-    "hasStory": true,
+    "hasFlow": true,
     "playCount": 450,
     "socialPostCount": 12,
     "homeTeamXHandle": "@Lakers",
@@ -254,17 +254,17 @@ Resync odds for a game.
 
 ---
 
-## Stories
+## Game Flow
 
-### `GET /games/{gameId}/story`
+### `GET /games/{gameId}/flow`
 
-Get the AI-generated story for a game.
+Get the AI-generated game flow for a game.
 
 **Response:**
 ```json
 {
   "gameId": 123,
-  "story": {
+  "flow": {
     "blocks": [
       {
         "blockIndex": 0,
@@ -319,11 +319,11 @@ Get the AI-generated story for a game.
 - `scoreBefore`/`scoreAfter` arrays are `[awayScore, homeScore]`
 - `playId` equals `playIndex` (sequential play number)
 
-**Response (404):** No story exists for this game.
+**Response (404):** No game flow exists for this game.
 
-### Story Structure
+### Game Flow Structure
 
-Stories are AI-generated narrative summaries built from play-by-play data. Each story contains 4-7 **blocks** — short narratives (2-4 sentences each, ~65 words) designed for 60-90 second total read time.
+Game flows are AI-generated narrative summaries built from play-by-play data. Each game flow contains 4-7 **blocks** — short narratives (2-4 sentences each, ~65 words) designed for 60-90 second total read time.
 
 **Blocks** are the consumer-facing output:
 - Each block has a semantic role (SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION)
@@ -462,7 +462,7 @@ Stream recent logs from a Docker container.
 
 ---
 
-## Story Pipeline
+## Game Flow Pipeline
 
 **Base path:** `/api/admin/sports/pipeline`
 
@@ -521,7 +521,7 @@ Get pipeline stage definitions.
 
 ### `POST /bulk-generate-async`
 
-Start bulk story generation.
+Start bulk game flow generation.
 
 **Request:**
 ```json
@@ -562,7 +562,7 @@ List job runs.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `limit` | `int` | Max results (1-200, default 50) |
-| `phase` | `string` | Filter: `timeline_generation`, `story_generation` |
+| `phase` | `string` | Filter: `timeline_generation`, `flow_generation` |
 
 ---
 
@@ -743,7 +743,7 @@ interface GameSummary {
   hasOdds: boolean;
   hasSocial: boolean;
   hasPbp: boolean;
-  hasStory: boolean;
+  hasFlow: boolean;
   playCount: number;
   socialPostCount: number;
   hasRequiredData: boolean;
@@ -767,28 +767,28 @@ interface GameListResponse {
   withOddsCount: number;
   withSocialCount: number;
   withPbpCount: number;
-  withStoryCount: number;
+  withFlowCount: number;
 }
 ```
 
-### GameStoryResponse
+### GameFlowResponse
 
 ```typescript
-interface GameStoryResponse {
+interface GameFlowResponse {
   gameId: number;
-  story: StoryContent;
-  plays: StoryPlay[];
+  flow: GameFlowContent;
+  plays: GameFlowPlay[];
   validationPassed: boolean;
   validationErrors: string[];
 }
 
-interface StoryContent {
-  blocks: StoryBlock[];       // Consumer-facing narratives (4-7 per game)
-  moments: StoryMoment[];     // Internal traceability (15-25 per game)
+interface GameFlowContent {
+  blocks: GameFlowBlock[];       // Consumer-facing narratives (4-7 per game)
+  moments: GameFlowMoment[];     // Internal traceability (15-25 per game)
 }
 
 // Consumer-facing narrative block (2-4 sentences, ~65 words)
-interface StoryBlock {
+interface GameFlowBlock {
   blockIndex: number;         // Position (0-6)
   role: SemanticRole;         // SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION
   momentIndices: number[];    // Which moments are grouped in this block
@@ -800,25 +800,15 @@ interface StoryBlock {
   keyPlayIds: number[];       // Highlighted plays
   narrative: string;          // 2-4 sentences (~65 words)
   miniBox: BlockMiniBox | null;  // Player stats for this segment
-  embeddedTweet?: EmbeddedTweet | null;  // Optional (max 1 per block, 5 per game)
+  embeddedSocialPostId?: number | null;  // Optional social post ID (max 1 per block, 5 per game)
 }
 
 type SemanticRole = "SETUP" | "MOMENTUM_SHIFT" | "RESPONSE" | "DECISION_POINT" | "RESOLUTION";
 
-interface EmbeddedTweet {
-  tweet_id: string | number;
-  posted_at: string;        // ISO 8601
-  text: string;
-  author: string;
-  phase: string;            // Always "in_game" for block-embedded tweets
-  score: number;            // Selection score
-  position: string;         // "EARLY" | "MID" | "LATE"
-  has_media: boolean;
-  media_type: string | null;
-}
+type GamePhase = "pregame" | "in_game" | "postgame";
 
 // Internal traceability: links blocks to specific plays
-interface StoryMoment {
+interface GameFlowMoment {
   playIds: number[];
   explicitlyNarratedPlayIds: number[];
   period: number;
@@ -828,7 +818,7 @@ interface StoryMoment {
   scoreAfter: number[];       // [away, home]
 }
 
-interface StoryPlay {
+interface GameFlowPlay {
   playId: number;
   playIndex: number;
   period: number;

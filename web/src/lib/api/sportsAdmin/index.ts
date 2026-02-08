@@ -1,5 +1,5 @@
 export * from "./types";
-export * from "./storyTypes";
+export * from "./gameFlowTypes";
 export * from "./games";
 export * from "./scrapeRuns";
 export * from "./teams";

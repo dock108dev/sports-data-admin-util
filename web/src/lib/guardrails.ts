@@ -21,7 +21,7 @@
  * These guardrails define the product.
  */
 
-import type { NarrativeBlock } from "./api/sportsAdmin/storyTypes";
+import type { NarrativeBlock } from "./api/sportsAdmin/gameFlowTypes";
 
 // =============================================================================
 // INVARIANT CONSTANTS
@@ -100,7 +100,7 @@ export function validateBlocksPreRender(
 
   // Count metrics
   const blockCount = blocks.length;
-  const embeddedTweetCount = blocks.filter((b) => b.embeddedTweet).length;
+  const embeddedTweetCount = blocks.filter((b) => b.embeddedSocialPostId).length;
   const totalWords = blocks.reduce((sum, b) => {
     const words = (b.narrative || "").split(/\s+/).filter(Boolean).length;
     return sum + words;
@@ -248,9 +248,9 @@ export function validateSocialIndependence(
     violations,
     metrics: {
       blockCount: blocksWithSocial.length,
-      embeddedTweetCount: blocksWithSocial.filter((b) => b.embeddedTweet).length,
+      embeddedTweetCount: blocksWithSocial.filter((b) => b.embeddedSocialPostId).length,
       totalWords: 0,
-      hasSocialData: blocksWithSocial.some((b) => b.embeddedTweet),
+      hasSocialData: blocksWithSocial.some((b) => b.embeddedSocialPostId),
       socialRequired,
     },
   };

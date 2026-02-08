@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { NarrativeBlock, EmbeddedTweet, BlockMiniBox, BlockPlayerStat } from "@/lib/api/sportsAdmin/storyTypes";
+import type { NarrativeBlock, BlockMiniBox, BlockPlayerStat } from "@/lib/api/sportsAdmin/gameFlowTypes";
 import { validateBlocksPreRender, type GuardrailResult } from "@/lib/guardrails";
 import styles from "./CollapsedGameFlow.module.css";
 
@@ -99,8 +99,8 @@ function MiniBoxDisplay({ miniBox }: { miniBox: BlockMiniBox }) {
     if (isHockey) {
       const goals = player.goals || 0;
       const assists = player.assists || 0;
-      const deltaG = player.delta_goals || 0;
-      const deltaA = player.delta_assists || 0;
+      const deltaG = player.deltaGoals || 0;
+      const deltaA = player.deltaAssists || 0;
 
       if (goals === 0 && assists === 0) return null;
 
@@ -115,7 +115,7 @@ function MiniBoxDisplay({ miniBox }: { miniBox: BlockMiniBox }) {
       return { name: lastName, stats: parts.join(", ") };
     } else {
       const pts = player.pts || 0;
-      const deltaPts = player.delta_pts || 0;
+      const deltaPts = player.deltaPts || 0;
 
       if (pts === 0) return null;
 
@@ -164,32 +164,14 @@ function MiniBoxDisplay({ miniBox }: { miniBox: BlockMiniBox }) {
           ))}
         </div>
       </div>
-      {miniBox.block_stars && miniBox.block_stars.length > 0 && (
+      {miniBox.blockStars && miniBox.blockStars.length > 0 && (
         <div className={styles.blockStars}>
           <span className={styles.blockStarsLabel}>Stars:</span>
-          {miniBox.block_stars.map((star, i) => (
+          {miniBox.blockStars.map((star, i) => (
             <span key={i} className={styles.blockStar}>{star}</span>
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * Embedded Tweet Display
- *
- * Renders a single embedded tweet inline with the narrative.
- * Styled to be visually secondary to the narrative text.
- */
-function EmbeddedTweetCard({ tweet }: { tweet: EmbeddedTweet }) {
-  return (
-    <div className={styles.embeddedTweet}>
-      <div className={styles.tweetMeta}>
-        <span className={styles.tweetAuthor}>@{tweet.author}</span>
-        {tweet.hasMedia && <span className={styles.mediaBadge}>📷</span>}
-      </div>
-      <p className={styles.tweetText}>{tweet.text}</p>
     </div>
   );
 }
@@ -249,9 +231,11 @@ function BlockCard({
       {/* Mini box score - cumulative stats with deltas */}
       {block.miniBox && <MiniBoxDisplay miniBox={block.miniBox} />}
 
-      {/* Embedded tweet - optional, visually secondary */}
-      {block.embeddedTweet && (
-        <EmbeddedTweetCard tweet={block.embeddedTweet} />
+      {/* Embedded social post indicator - optional, visually secondary */}
+      {block.embeddedSocialPostId && (
+        <div className={styles.embeddedTweet}>
+          <span className={styles.tweetMeta}>Social post #{block.embeddedSocialPostId}</span>
+        </div>
       )}
 
       {/* Debug info - only when enabled */}
@@ -297,7 +281,7 @@ export function CollapsedGameFlow({
   }
 
   // Count embedded tweets for summary
-  const embeddedTweetCount = blocks.filter((b) => b.embeddedTweet).length;
+  const embeddedTweetCount = blocks.filter((b) => b.embeddedSocialPostId).length;
 
   // Calculate total word count
   const totalWords = blocks.reduce((sum, b) => {
