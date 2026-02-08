@@ -67,7 +67,7 @@ async def _run_bulk_generation_async(job_id: int) -> None:
             job.started_at = datetime.utcnow()
             await session.commit()
 
-            logger.info(f"Starting bulk story generation job {job_id}")
+            logger.info(f"Starting bulk game flow generation job {job_id}")
 
             try:
                 # Query games in the date range for specified leagues
@@ -127,9 +127,9 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                     # Check if game already has a story
                     if not job.force_regenerate:
                         story_result = await session.execute(
-                            select(SportsGameStory).where(
-                                SportsGameStory.game_id == game.id,
-                                SportsGameStory.moments_json.isnot(None),
+                            select(SportsGameFlow).where(
+                                SportsGameFlow.game_id == game.id,
+                                SportsGameFlow.moments_json.isnot(None),
                             )
                         )
                         existing_story = story_result.scalar_one_or_none()
