@@ -51,16 +51,8 @@ async def create_scrape_run(
             detail="Social scraping is edge-triggered (final whistle). Cannot be requested via UI.",
         )
 
-    # Boxscore end_date must be yesterday or earlier (not available until next day)
-    if payload.config.boxscores and payload.config.end_date:
-        from datetime import timedelta
-
-        yesterday = date.today() - timedelta(days=1)
-        if payload.config.end_date > yesterday:
-            raise HTTPException(
-                status_code=400,
-                detail="Boxscore end_date must be yesterday or earlier (boxscores aren't available until the next day).",
-            )
+    # Boxscore end_date is auto-capped to yesterday by the Pydantic model
+    # (ScrapeRunConfig.cap_end_date_for_boxscores) — no hard error needed.
 
     run = SportsScrapeRun(
         scraper_type="scrape",
