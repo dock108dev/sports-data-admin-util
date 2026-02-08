@@ -19,6 +19,9 @@ from sqlalchemy.orm import selectinload
 from ..celery_app import celery_app
 from ..config import settings
 from ..db.sports import SportsGame, SportsLeague, SportsGamePlay
+from ..db.odds import SportsGameOdds  # noqa: F401 — register model for relationship resolution
+from ..db.social import TeamSocialPost  # noqa: F401 — register model for relationship resolution
+from ..db.scraper import SportsScrapeRun  # noqa: F401 — register model for relationship resolution
 from ..db.pipeline import BulkStoryGenerationJob
 from ..db.story import SportsGameStory
 from ..services.pipeline import PipelineExecutor
