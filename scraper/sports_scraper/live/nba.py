@@ -52,20 +52,29 @@ class NBALiveFeedClient:
     def fetch_scoreboard(self, day: date) -> list[NBALiveGame]:
         """Fetch games for a specific date.
 
-        Uses the schedule API which provides game IDs for all dates.
-        Falls back to date-specific scoreboard for live scores.
+        Tries the live scoreboard first (has real status + scores),
+        falls back to the static schedule API (game IDs only, no live status).
         """
-        # Use schedule API to get game IDs (more reliable than date-specific scoreboard)
-        games = self._fetch_games_from_schedule(day)
-        if games:
-            return games
+        # Try live scoreboard first — it has actual game status and scores
+        live_games = self._fetch_live_scoreboard(day)
+        if live_games:
+            return live_games
 
-        # Fallback to date-specific scoreboard (may be blocked)
+        # Fallback to schedule API (no live status — all games report "scheduled")
+        return self._fetch_games_from_schedule(day)
+
+    def _fetch_live_scoreboard(self, day: date) -> list[NBALiveGame]:
+        """Fetch the date-specific live scoreboard with real status + scores."""
         url = NBA_SCOREBOARD_URL.format(date=day.strftime("%Y%m%d"))
         logger.info("nba_scoreboard_fetch", url=url, date=str(day))
-        response = self.client.get(url)
+        try:
+            response = self.client.get(url)
+        except Exception as exc:
+            logger.warning("nba_scoreboard_fetch_error", date=str(day), error=str(exc))
+            return []
+
         if response.status_code != 200:
-            logger.warning("nba_scoreboard_fetch_failed", status=response.status_code, body=response.text[:200])
+            logger.warning("nba_scoreboard_fetch_failed", status=response.status_code, date=str(day))
             return []
 
         payload = response.json()

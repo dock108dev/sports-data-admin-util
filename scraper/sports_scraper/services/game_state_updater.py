@@ -4,6 +4,8 @@ Pure DB operations — no external API calls. Designed to run every 3 minutes
 via Celery beat. State transitions:
 
 - scheduled → pregame: when now() >= tip_time - pregame_window_hours
+- scheduled/pregame → final: when tip_time + estimated_game_duration_hours
+  + postgame_window_hours < now() (stale timeout safety net)
 - final → archived: when game has timeline artifacts AND end_time < now() - 7 days
 
 The live → final transition is NOT handled here — it comes from API responses
@@ -34,10 +36,12 @@ def update_game_states(session: Session) -> dict[str, int]:
     """
     counts: dict[str, int] = {
         "scheduled_to_pregame": 0,
+        "stale_to_final": 0,
         "final_to_archived": 0,
     }
 
     counts["scheduled_to_pregame"] = _promote_scheduled_to_pregame(session)
+    counts["stale_to_final"] = _promote_stale_to_final(session)
     counts["final_to_archived"] = _promote_final_to_archived(session)
 
     total = sum(counts.values())
@@ -92,6 +96,63 @@ def _promote_scheduled_to_pregame(session: Session) -> int:
                 from_status="scheduled",
                 to_status="pregame",
                 tip_time=str(game.tip_time),
+            )
+
+    return promoted
+
+
+def _promote_stale_to_final(session: Session) -> int:
+    """Force overdue pregame/scheduled games to final.
+
+    Safety net for when APIs fail to report correct status.
+    Uses per-league estimated_game_duration_hours + postgame_window_hours
+    as the maximum time a game can remain in pregame before we infer it's over.
+    """
+    now = now_utc()
+    promoted = 0
+
+    for league_code, config in LEAGUE_CONFIG.items():
+        max_hours = config.estimated_game_duration_hours + config.postgame_window_hours
+        stale_cutoff = now - timedelta(hours=max_hours)
+
+        league_id = (
+            session.query(db_models.SportsLeague.id)
+            .filter(db_models.SportsLeague.code == league_code)
+            .scalar()
+        )
+        if league_id is None:
+            continue
+
+        games = (
+            session.query(db_models.SportsGame)
+            .filter(
+                db_models.SportsGame.league_id == league_id,
+                db_models.SportsGame.status.in_([
+                    db_models.GameStatus.scheduled.value,
+                    db_models.GameStatus.pregame.value,
+                ]),
+                db_models.SportsGame.tip_time.isnot(None),
+                db_models.SportsGame.tip_time < stale_cutoff,
+            )
+            .all()
+        )
+
+        for game in games:
+            old_status = game.status
+            game.status = db_models.GameStatus.final.value
+            game.end_time = game.tip_time + timedelta(
+                hours=config.estimated_game_duration_hours
+            )
+            game.updated_at = now
+            promoted += 1
+            logger.info(
+                "game_state_transition",
+                game_id=game.id,
+                league=league_code,
+                from_status=old_status,
+                to_status="final",
+                tip_time=str(game.tip_time),
+                reason="stale_timeout",
             )
 
     return promoted
