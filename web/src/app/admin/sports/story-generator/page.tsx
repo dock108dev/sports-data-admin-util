@@ -14,6 +14,12 @@ import {
 } from "@/lib/api/sportsAdmin";
 import { SUPPORTED_LEAGUES } from "@/lib/constants/sports";
 import { ROUTES } from "@/lib/constants/routes";
+import { LogsDrawer, type LogsTab } from "@/components/admin";
+
+const PIPELINE_LOG_TABS: LogsTab[] = [
+  { label: "API", container: "sports-api" },
+  { label: "API Worker", container: "sports-api-worker" },
+];
 import { formatDateInput, getDateDaysAgo } from "@/lib/utils/dateFormat";
 
 type GenerationStatus = "idle" | "generating" | "success" | "error";
@@ -60,6 +66,7 @@ export default function StoryGeneratorPage() {
 
   // Force regenerate option
   const [forceRegenerate, setForceRegenerate] = useState(false);
+  const [logsOpen, setLogsOpen] = useState(false);
 
   // Games list state (for preview/individual generation)
   const [games, setGames] = useState<GameSummary[]>([]);
@@ -260,7 +267,12 @@ export default function StoryGeneratorPage() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Flow Generator</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Flow Generator</h1>
+          <button className={styles.logsButton} onClick={() => setLogsOpen(true)}>
+            View Logs
+          </button>
+        </div>
         <p className={styles.subtitle}>
           Generate game flow from play-by-play data
         </p>
@@ -534,6 +546,8 @@ export default function StoryGeneratorPage() {
           </p>
         </div>
       )}
+
+      <LogsDrawer open={logsOpen} onClose={() => setLogsOpen(false)} tabs={PIPELINE_LOG_TABS} />
     </div>
   );
 }

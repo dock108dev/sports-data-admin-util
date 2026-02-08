@@ -15,6 +15,7 @@ router = APIRouter()
 
 ALLOWED_CONTAINERS: set[str] = {
     "sports-api",
+    "sports-api-worker",
     "sports-scraper",
     "sports-social-scraper",
 }

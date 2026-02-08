@@ -14,5 +14,6 @@ export { ScrapeRunsTable } from "./ScrapeRunsTable";
 export { GameFiltersForm } from "./GameFiltersForm";
 export { GamesTable } from "./GamesTable";
 export { LogsDrawer } from "./LogsDrawer";
+export type { LogsTab } from "./LogsDrawer";
 export type { ScrapeRunFormData } from "./ScrapeRunForm";
 
