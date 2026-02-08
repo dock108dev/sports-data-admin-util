@@ -34,6 +34,7 @@ _RATE_LIMIT_BACKOFF_SECONDS = 60
 
 from ..utils.redis_lock import acquire_redis_lock as _acquire_redis_lock
 from ..utils.redis_lock import release_redis_lock as _release_redis_lock
+from ..utils.redis_lock import LOCK_TIMEOUT_5MIN, LOCK_TIMEOUT_10MIN
 
 
 @shared_task(name="update_game_states")
@@ -75,7 +76,7 @@ def poll_live_pbp_task() -> dict:
     from ..db import db_models
     from ..utils.datetime_utils import now_utc
 
-    if not _acquire_redis_lock("lock:poll_live_pbp", timeout=300):
+    if not _acquire_redis_lock("lock:poll_live_pbp", timeout=LOCK_TIMEOUT_5MIN):
         logger.debug("poll_live_pbp_skipped_locked")
         return {"skipped": True, "reason": "locked"}
 
@@ -378,7 +379,7 @@ def poll_active_odds_task() -> dict:
     from ..odds.synchronizer import OddsSynchronizer
     from ..models import IngestionConfig
 
-    if not _acquire_redis_lock("lock:poll_active_odds", timeout=600):
+    if not _acquire_redis_lock("lock:poll_active_odds", timeout=LOCK_TIMEOUT_10MIN):
         logger.debug("poll_active_odds_skipped_locked")
         return {"skipped": True, "reason": "locked"}
 

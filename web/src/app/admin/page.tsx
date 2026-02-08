@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 import { AdminCard, AdminStatCard } from "@/components/admin";
+import { ROUTES } from "@/lib/constants/routes";
 import { listScrapeRuns, listGames, type ScrapeRunResponse, type GameFilters } from "@/lib/api/sportsAdmin";
 import { getStatusClass } from "@/lib/utils/status";
 
@@ -98,13 +99,13 @@ export default function AdminDashboardPage() {
 
       <AdminCard title="Quick actions" subtitle="Jump to common admin workflows">
         <div className={styles.quickLinks}>
-          <Link href="/admin/sports/ingestion" className={styles.quickLink}>
+          <Link href={ROUTES.SPORTS_INGESTION} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>New scrape run</div>
               <div className={styles.quickLinkDesc}>Start a new data ingestion job</div>
             </div>
           </Link>
-          <Link href="/admin/sports/browser" className={styles.quickLink}>
+          <Link href={ROUTES.SPORTS_BROWSER} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>Data browser</div>
               <div className={styles.quickLinkDesc}>Browse games, teams, and scrape runs</div>
@@ -116,13 +117,13 @@ export default function AdminDashboardPage() {
               <div className={styles.quickLinkDesc}>View and trace user theory evaluations</div>
             </div>
           </Link>
-          <Link href="/admin/sports/story-generator" className={styles.quickLink}>
+          <Link href={ROUTES.SPORTS_STORY_GENERATOR} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>Flow Generator</div>
               <div className={styles.quickLinkDesc}>Generate and inspect game flow data</div>
             </div>
           </Link>
-          <Link href="/admin/fairbet/odds" className={styles.quickLink}>
+          <Link href={ROUTES.FAIRBET_ODDS} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>FairBet Odds</div>
               <div className={styles.quickLinkDesc}>Compare odds across books</div>

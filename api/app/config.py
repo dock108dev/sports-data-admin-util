@@ -47,13 +47,22 @@ class Settings(BaseSettings):
     # Required in production - all endpoints except /healthz require this key
     api_key: str | None = Field(default=None, alias="API_KEY")
 
-    # OpenAI Configuration
+    # OpenAI Configuration (SSOT for model defaults — docker-compose defers to these)
     # AI is used for interpretation/narration only, never for ordering/filtering
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     openai_model_classification: str = Field(
         default="gpt-4o-mini", alias="OPENAI_MODEL_CLASSIFICATION"
     )
     openai_model_summary: str = Field(default="gpt-4o", alias="OPENAI_MODEL_SUMMARY")
+
+    @model_validator(mode="after")
+    def _default_empty_openai_models(self) -> "Settings":
+        """Treat empty-string model names as unset so the Field defaults apply."""
+        if not self.openai_model_classification:
+            self.openai_model_classification = "gpt-4o-mini"
+        if not self.openai_model_summary:
+            self.openai_model_summary = "gpt-4o"
+        return self
 
     # Pipeline validation settings
     # When True: Score discontinuities FAIL validation and block persistence

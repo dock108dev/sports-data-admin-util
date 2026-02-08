@@ -13,6 +13,8 @@ import {
   type BulkGenerateStatusResponse,
 } from "@/lib/api/sportsAdmin";
 import { SUPPORTED_LEAGUES } from "@/lib/constants/sports";
+import { ROUTES } from "@/lib/constants/routes";
+import { formatDateInput, getDateDaysAgo } from "@/lib/utils/dateFormat";
 
 type GenerationStatus = "idle" | "generating" | "success" | "error";
 
@@ -45,12 +47,10 @@ interface BulkJobState {
 export default function StoryGeneratorPage() {
   // Date range state
   const [startDate, setStartDate] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 7);
-    return d.toISOString().split("T")[0];
+    return formatDateInput(getDateDaysAgo(7));
   });
   const [endDate, setEndDate] = useState<string>(() => {
-    return new Date().toISOString().split("T")[0];
+    return formatDateInput(new Date());
   });
 
   // League selection state
@@ -456,7 +456,7 @@ export default function StoryGeneratorPage() {
                           </button>
                         )}
                         <Link
-                          href={`/admin/sports/games/${game.id}`}
+                          href={ROUTES.SPORTS_GAME(game.id)}
                           className={styles.viewLink}
                         >
                           View
@@ -496,7 +496,7 @@ export default function StoryGeneratorPage() {
                         Regenerate
                       </button>
                       <Link
-                        href={`/admin/sports/games/${game.id}`}
+                        href={ROUTES.SPORTS_GAME(game.id)}
                         className={styles.viewLink}
                       >
                         View

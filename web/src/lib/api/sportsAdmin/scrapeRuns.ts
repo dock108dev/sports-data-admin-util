@@ -59,3 +59,13 @@ export async function clearScraperCache(league: string, days: number = 7): Promi
     method: "POST",
   });
 }
+
+export type DockerLogsResponse = {
+  container: string;
+  lines: number;
+  logs: string;
+};
+
+export async function fetchDockerLogs(container: string, lines = 1000): Promise<DockerLogsResponse> {
+  return request(`/api/admin/sports/scraper/logs?container=${container}&lines=${lines}`);
+}

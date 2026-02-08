@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { type GameSummary } from "@/lib/api/sportsAdmin";
+import { ROUTES } from "@/lib/constants/routes";
 import styles from "./GamesTable.module.css";
 
 interface GamesTableProps {
   games: GameSummary[];
-  detailLinkPrefix?: string;
+  detailLink?: (id: number | string) => string;
   showCompleteness?: boolean;
 }
 
@@ -14,7 +15,7 @@ interface GamesTableProps {
  * Table component for displaying game summaries.
  * Shows game metadata and data completeness indicators.
  */
-export function GamesTable({ games, detailLinkPrefix = "/admin/sports/games", showCompleteness = true }: GamesTableProps) {
+export function GamesTable({ games, detailLink = ROUTES.SPORTS_GAME, showCompleteness = true }: GamesTableProps) {
   return (
     <>
       <table className={styles.table}>
@@ -48,7 +49,7 @@ export function GamesTable({ games, detailLinkPrefix = "/admin/sports/games", sh
               const gameId = game.id;
               const hasValidId = gameId !== undefined && gameId !== null;
               const idContent = hasValidId ? (
-                <Link href={`${detailLinkPrefix}/${gameId}`} className={styles.link}>
+                <Link href={detailLink(gameId)} className={styles.link}>
                   {gameId}
                   </Link>
               ) : (

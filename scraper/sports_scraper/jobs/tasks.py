@@ -35,6 +35,7 @@ from .story_tasks import (
 from .social_tasks import (
     collect_social_for_league,
     collect_team_social,
+    handle_social_task_failure,
     map_social_to_games,
     get_social_mapping_stats,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "run_scheduled_story_generation",
     "collect_social_for_league",
     "collect_team_social",
+    "handle_social_task_failure",
     "map_social_to_games",
     "get_social_mapping_stats",
     "update_game_states_task",

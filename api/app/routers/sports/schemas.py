@@ -45,6 +45,11 @@ class ScrapeRunConfig(BaseModel):
     social: bool = Field(False, alias="social")
     pbp: bool = Field(False, alias="pbp")
 
+    # NOTE: Boxscore date capping is handled by the scraper worker
+    # (ScrapeRunManager.run) which computes boxscore_end = min(end, yesterday)
+    # independently of the shared end_date. Capping here would silently
+    # prevent requesting future odds/pbp windows when boxscores are on.
+
     # Shared filters
     only_missing: bool = Field(False, alias="onlyMissing")
     updated_before: date | None = Field(None, alias="updatedBefore")

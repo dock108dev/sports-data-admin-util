@@ -269,7 +269,7 @@ export default function UnifiedBrowserPage() {
 
           {gamesError && <div className={styles.error}>{gamesError}</div>}
           {gamesLoading && games.length === 0 && <div className={styles.loading}>Loading...</div>}
-          {games.length > 0 && <GamesTable games={games} detailLinkPrefix="/admin/sports/games" showCompleteness />}
+          {games.length > 0 && <GamesTable games={games} showCompleteness />}
           {!gamesLoading && games.length === 0 && !gamesError && (
             <div className={styles.empty}>No games found. Try adjusting your filters.</div>
           )}

@@ -3,8 +3,13 @@ from __future__ import annotations
 
 from ..logging import logger
 
+# Named lock timeout constants — use these instead of bare integers
+LOCK_TIMEOUT_5MIN = 300
+LOCK_TIMEOUT_10MIN = 600
+LOCK_TIMEOUT_1HOUR = 3600
 
-def acquire_redis_lock(lock_name: str, timeout: int = 300) -> bool:
+
+def acquire_redis_lock(lock_name: str, timeout: int = LOCK_TIMEOUT_5MIN) -> bool:
     """Try to acquire a Redis lock. Returns True if acquired."""
     try:
         from ..config import settings

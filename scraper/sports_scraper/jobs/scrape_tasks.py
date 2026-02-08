@@ -18,13 +18,13 @@ def run_scrape_job(run_id: int, config_payload: dict) -> dict:
     Timeline generation is decoupled - call trigger_game_pipelines_task
     after this completes, or use Pipeline API endpoints for manual control.
     """
-    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock
+    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock, LOCK_TIMEOUT_1HOUR
     from ..utils.datetime_utils import now_utc
 
     league_code = config_payload.get("league_code", "UNKNOWN")
     lock_name = f"lock:ingest:{league_code}"
 
-    if not acquire_redis_lock(lock_name, timeout=3600):
+    if not acquire_redis_lock(lock_name, timeout=LOCK_TIMEOUT_1HOUR):
         logger.warning("scrape_job_skipped_locked", run_id=run_id, league=league_code)
         # Update the run record so UI can surface the skip reason
         from ..services.run_manager import ScrapeRunManager
