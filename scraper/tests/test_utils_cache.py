@@ -245,7 +245,6 @@ class TestHTMLCacheRecentBoxscoreStaleness:
         cache_path = cache._get_cache_path(url)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text("<html>boxscore content</html>")
-        # Set mtime to `age_hours` ago
         target_mtime = time.time() - (age_hours * 3600)
         os.utime(cache_path, (target_mtime, target_mtime))
         return cache_path
@@ -253,7 +252,7 @@ class TestHTMLCacheRecentBoxscoreStaleness:
     @patch("sports_scraper.utils.cache.today_et")
     def test_bypasses_cache_when_recent_and_young(self, mock_today):
         """Returns None for a boxscore cached <12h ago for a game within 3 days."""
-        mock_today.return_value = date(2024, 1, 16)  # 1 day after game
+        mock_today.return_value = date(2024, 1, 16)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = HTMLCache(tmpdir, "NBA")
@@ -277,7 +276,7 @@ class TestHTMLCacheRecentBoxscoreStaleness:
     @patch("sports_scraper.utils.cache.today_et")
     def test_returns_content_when_game_older_than_3_days(self, mock_today):
         """Returns content when game is >3 days old regardless of cache age."""
-        mock_today.return_value = date(2024, 1, 20)  # 5 days after game
+        mock_today.return_value = date(2024, 1, 20)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = HTMLCache(tmpdir, "NBA")
@@ -295,13 +294,13 @@ class TestHTMLCacheRecentBoxscoreStaleness:
             cache = HTMLCache(tmpdir, "NBA")
             self._create_cached_file(cache, self.BOXSCORE_URL, age_hours=1)
 
-            result = cache.get(self.BOXSCORE_URL)  # No game_date
+            result = cache.get(self.BOXSCORE_URL)
             assert result == "<html>boxscore content</html>"
 
     @patch("sports_scraper.utils.cache.today_et")
     def test_bypasses_at_boundary_3_days(self, mock_today):
         """Bypasses cache for a game exactly 3 days old with young cache."""
-        mock_today.return_value = date(2024, 1, 18)  # exactly 3 days later
+        mock_today.return_value = date(2024, 1, 18)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = HTMLCache(tmpdir, "NBA")
@@ -313,7 +312,7 @@ class TestHTMLCacheRecentBoxscoreStaleness:
     @patch("sports_scraper.utils.cache.today_et")
     def test_returns_content_at_boundary_4_days(self, mock_today):
         """Returns content for a game exactly 4 days old (outside window)."""
-        mock_today.return_value = date(2024, 1, 19)  # 4 days later
+        mock_today.return_value = date(2024, 1, 19)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = HTMLCache(tmpdir, "NBA")
@@ -356,11 +355,8 @@ class TestHTMLCacheRecentBoxscoreStaleness:
             cache = HTMLCache(tmpdir, "NBA")
             cache_path = cache._get_cache_path(scoreboard_url)
             cache_path.parent.mkdir(parents=True, exist_ok=True)
-            # Write large enough content to pass the scoreboard size check,
-            # with game_summary div to pass the content check
             content = '<div class="game_summary">' + "x" * MIN_SCOREBOARD_SIZE_BYTES
             cache_path.write_text(content)
-            # Set mtime to 1 hour ago
             target_mtime = time.time() - 3600
             os.utime(cache_path, (target_mtime, target_mtime))
 
@@ -378,7 +374,7 @@ class TestHTMLCacheRecentBoxscoreStaleness:
             cache_path = cache._get_cache_path(pbp_url)
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_text("<html>pbp content</html>")
-            target_mtime = time.time() - 3600  # 1 hour ago
+            target_mtime = time.time() - 3600
             os.utime(cache_path, (target_mtime, target_mtime))
 
             result = cache.get(pbp_url, game_date=date(2024, 1, 15))
@@ -387,7 +383,7 @@ class TestHTMLCacheRecentBoxscoreStaleness:
     @patch("sports_scraper.utils.cache.today_et")
     def test_bypasses_same_day_game(self, mock_today):
         """Bypasses cache for game_date == today (0 days ago) with young cache."""
-        mock_today.return_value = date(2024, 1, 15)  # same day as game
+        mock_today.return_value = date(2024, 1, 15)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = HTMLCache(tmpdir, "NBA")

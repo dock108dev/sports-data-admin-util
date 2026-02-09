@@ -76,11 +76,12 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GR
 
 ## Scheduled Scraping
 
-**Daily Schedule (US Eastern Time):**
-- **5:00 AM** — Sports ingestion + daily sweep (NBA → NHL → NCAAB sequentially)
-- **6:30 AM** — NBA flow generation (90 min after ingestion)
-- **6:45 AM** — NHL flow generation (15 min after NBA)
-- **7:00 AM** — NCAAB flow generation (15 min after NHL, max 10 games)
+**Daily Schedule (US Eastern Time, 30 min between each job):**
+- **3:30 AM** — Sports ingestion (NBA → NHL → NCAAB sequentially)
+- **4:00 AM** — Daily sweep (truth repair, backfill missing data)
+- **4:30 AM** — NBA flow generation
+- **5:00 AM** — NHL flow generation
+- **5:30 AM** — NCAAB flow generation (max 10 games)
 
 **Recurring Tasks:**
 - **Every 3 min** — Game state updates (game-state-machine)

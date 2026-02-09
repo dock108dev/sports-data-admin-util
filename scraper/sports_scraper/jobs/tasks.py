@@ -4,7 +4,7 @@ Import directly from specific task modules:
 - scrape_tasks: Ingestion, odds sync
 - pipeline_tasks: Pipeline triggering
 - timeline_tasks: Timeline generation
-- story_tasks: Game flow generation
+- flow_tasks: Game flow generation
 - social_tasks: Team-centric social collection
 - polling_tasks: Game-state-machine polling
 - flow_trigger_tasks: Edge-triggered flow generation
@@ -28,9 +28,11 @@ from .timeline_tasks import (
     regenerate_timeline_task,
     run_scheduled_timeline_generation,
 )
-from .story_tasks import (
+from .flow_tasks import (
     run_scheduled_nba_flow_generation,
-    run_scheduled_story_generation,
+    run_scheduled_nhl_flow_generation,
+    run_scheduled_ncaab_flow_generation,
+    run_scheduled_flow_generation,
 )
 from .social_tasks import (
     collect_social_for_league,
@@ -63,7 +65,9 @@ __all__ = [
     "regenerate_timeline_task",
     "run_scheduled_timeline_generation",
     "run_scheduled_nba_flow_generation",
-    "run_scheduled_story_generation",
+    "run_scheduled_nhl_flow_generation",
+    "run_scheduled_ncaab_flow_generation",
+    "run_scheduled_flow_generation",
     "collect_social_for_league",
     "collect_team_social",
     "handle_social_task_failure",

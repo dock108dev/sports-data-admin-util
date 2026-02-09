@@ -55,7 +55,7 @@ class TestOddsSynchronizerSync:
 
         assert result == 0
 
-    @patch("sports_scraper.odds.synchronizer.today_utc")
+    @patch("sports_scraper.odds.synchronizer.today_et")
     @patch("sports_scraper.odds.synchronizer.OddsAPIClient")
     def test_uses_historical_for_past_dates(self, mock_client_cls, mock_today):
         """Uses historical API for past dates."""
@@ -81,7 +81,7 @@ class TestOddsSynchronizerSync:
         mock_client.fetch_historical_odds.assert_called()
         mock_client.fetch_mainlines.assert_not_called()
 
-    @patch("sports_scraper.odds.synchronizer.today_utc")
+    @patch("sports_scraper.odds.synchronizer.today_et")
     @patch("sports_scraper.odds.synchronizer.OddsAPIClient")
     def test_uses_live_for_future_dates(self, mock_client_cls, mock_today):
         """Uses live API for future dates."""
@@ -107,7 +107,7 @@ class TestOddsSynchronizerSync:
         mock_client.fetch_mainlines.assert_called()
         mock_client.fetch_historical_odds.assert_not_called()
 
-    @patch("sports_scraper.odds.synchronizer.today_utc")
+    @patch("sports_scraper.odds.synchronizer.today_et")
     @patch("sports_scraper.odds.synchronizer.OddsAPIClient")
     def test_uses_both_for_mixed_dates(self, mock_client_cls, mock_today):
         """Uses both APIs for mixed date range."""
@@ -201,7 +201,7 @@ class TestOddsSynchronizerSyncHistorical:
 class TestOddsSynchronizerSyncSingleDate:
     """Tests for sync_single_date method."""
 
-    @patch("sports_scraper.odds.synchronizer.today_utc")
+    @patch("sports_scraper.odds.synchronizer.today_et")
     @patch("sports_scraper.odds.synchronizer.OddsAPIClient")
     def test_uses_historical_for_past_date(self, mock_client_cls, mock_today):
         """Uses historical API for past date."""
@@ -217,7 +217,7 @@ class TestOddsSynchronizerSyncSingleDate:
         mock_client.fetch_historical_odds.assert_called()
         mock_client.fetch_mainlines.assert_not_called()
 
-    @patch("sports_scraper.odds.synchronizer.today_utc")
+    @patch("sports_scraper.odds.synchronizer.today_et")
     @patch("sports_scraper.odds.synchronizer.OddsAPIClient")
     def test_uses_live_for_today(self, mock_client_cls, mock_today):
         """Uses live API for today."""

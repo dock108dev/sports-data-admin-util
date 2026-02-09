@@ -71,6 +71,20 @@ def run_scheduled_ingestion() -> dict:
 
     results = {}
 
+    # Clear recent scoreboard cache before ingestion to avoid stale game discovery.
+    # Basketball Reference scoreboards are cached with no TTL; if a previous run cached
+    # a page before all games had boxscore links, the 5AM run would reuse stale data.
+    from ..utils.cache import HTMLCache
+    from ..config import settings
+
+    for league_code in ["NBA"]:
+        try:
+            cache = HTMLCache(settings.scraper_config.html_cache_dir, league_code)
+            cleared = cache.clear_recent_scoreboards(days=3)
+            logger.info("pre_ingestion_cache_cleared", league=league_code, **cleared)
+        except Exception as exc:
+            logger.warning("pre_ingestion_cache_clear_failed", league=league_code, error=str(exc))
+
     # === NBA ===
     logger.info("scheduled_ingestion_nba_start")
     nba_result = schedule_single_league_and_wait("NBA")

@@ -378,24 +378,68 @@ def _backfill_missing_boxscores() -> dict:
 
     logger.info("sweep_missing_boxscores", count=len(missing))
 
-    # Trigger ingestion for these games via the existing batch system
-    # Group by league for efficiency
+    # Dispatch real ingestion for each league with missing boxscores
+    from ..services.scheduler import create_scrape_run
+    from ..models import IngestionConfig
+    from ..utils.datetime_utils import today_et
+    from .scrape_tasks import run_scrape_job
+
     triggered = 0
     league_ids = {lid for _, lid in missing}
 
-    with get_session() as session:
-        for league_id in league_ids:
-            league = session.query(db_models.SportsLeague).get(league_id)
-            if not league:
-                continue
+    for league_id in league_ids:
+        today = today_et()
 
-            game_ids = [gid for gid, lid in missing if lid == league_id]
+        # Create and commit the run in its own session so the row is visible
+        # to the Celery worker before we enqueue the task.
+        try:
+            with get_session() as session:
+                league = session.query(db_models.SportsLeague).get(league_id)
+                if not league:
+                    continue
+
+                game_count = len([gid for gid, lid in missing if lid == league_id])
+                logger.info(
+                    "sweep_triggering_boxscores",
+                    league=league.code,
+                    game_count=game_count,
+                )
+
+                config = IngestionConfig(
+                    league_code=league.code,
+                    start_date=today - timedelta(days=3),
+                    end_date=today,
+                    boxscores=True,
+                    odds=False,
+                    social=False,
+                    pbp=False,
+                    only_missing=True,
+                )
+
+                run = create_scrape_run(
+                    session, league, config,
+                    requested_by="sweep_backfill_boxscores",
+                    scraper_type="sweep_backfill",
+                )
+                session.commit()
+                run_id = run.id
+                league_code = league.code
+
+            # Enqueue after commit — the run row is now visible to workers
+            run_scrape_job.delay(run_id, config.model_dump(mode="json"))
+            triggered += game_count
             logger.info(
-                "sweep_triggering_boxscores",
-                league=league.code,
-                game_count=len(game_ids),
+                "sweep_boxscore_backfill_dispatched",
+                league=league_code,
+                run_id=run_id,
+                game_count=game_count,
             )
-            triggered += len(game_ids)
+        except Exception as exc:
+            logger.exception(
+                "sweep_boxscore_backfill_dispatch_failed",
+                league_id=league_id,
+                error=str(exc),
+            )
 
     return {"missing_count": len(missing), "triggered": triggered}
 
@@ -427,10 +471,71 @@ def _backfill_missing_pbp() -> dict:
         )
 
     if not missing:
-        return {"missing_count": 0}
+        return {"missing_count": 0, "triggered": 0}
 
     logger.info("sweep_missing_pbp", count=len(missing))
-    return {"missing_count": len(missing)}
+
+    # Dispatch real PBP ingestion for each league with missing play-by-play
+    from ..services.scheduler import create_scrape_run
+    from ..models import IngestionConfig
+    from ..utils.datetime_utils import today_et
+    from .scrape_tasks import run_scrape_job
+
+    triggered = 0
+    league_ids = {lid for _, lid in missing}
+
+    for league_id in league_ids:
+        today = today_et()
+
+        try:
+            with get_session() as session:
+                league = session.query(db_models.SportsLeague).get(league_id)
+                if not league:
+                    continue
+
+                game_count = len([gid for gid, lid in missing if lid == league_id])
+                logger.info(
+                    "sweep_triggering_pbp",
+                    league=league.code,
+                    game_count=game_count,
+                )
+
+                config = IngestionConfig(
+                    league_code=league.code,
+                    start_date=today - timedelta(days=3),
+                    end_date=today,
+                    boxscores=False,
+                    odds=False,
+                    social=False,
+                    pbp=True,
+                    only_missing=True,
+                )
+
+                run = create_scrape_run(
+                    session, league, config,
+                    requested_by="sweep_backfill_pbp",
+                    scraper_type="sweep_backfill",
+                )
+                session.commit()
+                run_id = run.id
+                league_code = league.code
+
+            run_scrape_job.delay(run_id, config.model_dump(mode="json"))
+            triggered += game_count
+            logger.info(
+                "sweep_pbp_backfill_dispatched",
+                league=league_code,
+                run_id=run_id,
+                game_count=game_count,
+            )
+        except Exception as exc:
+            logger.exception(
+                "sweep_pbp_backfill_dispatch_failed",
+                league_id=league_id,
+                error=str(exc),
+            )
+
+    return {"missing_count": len(missing), "triggered": triggered}
 
 
 def _trigger_missing_flows() -> dict:
