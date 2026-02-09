@@ -318,6 +318,8 @@ class ScrapeRunManager:
                 try:
                     yesterday = today_et() - timedelta(days=1)
                     bs_end = min(end, yesterday)
+                    window_start = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
+                    window_end = datetime.combine(bs_end, datetime.max.time(), tzinfo=timezone.utc)
                     with get_session() as session:
                         total_final_games = (
                             session.query(db_models.SportsGame)
@@ -325,8 +327,8 @@ class ScrapeRunManager:
                             .filter(
                                 db_models.SportsLeague.code == config.league_code,
                                 db_models.SportsGame.status == db_models.GameStatus.final.value,
-                                db_models.SportsGame.game_date >= start,
-                                db_models.SportsGame.game_date <= bs_end,
+                                db_models.SportsGame.game_date >= window_start,
+                                db_models.SportsGame.game_date <= window_end,
                             )
                             .count()
                         )

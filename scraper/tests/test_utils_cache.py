@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-from datetime import date
+import time
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -199,6 +200,197 @@ class TestMinScoreboardSizeBytes:
         """Constant is a reasonable size (between 1KB and 100KB)."""
         assert MIN_SCOREBOARD_SIZE_BYTES >= 1000
         assert MIN_SCOREBOARD_SIZE_BYTES <= 100000
+
+
+class TestHTMLCacheIsBoxscoreUrl:
+    """Tests for _is_boxscore_url method."""
+
+    def test_boxscore_url_detected(self):
+        """Detects individual boxscore URLs."""
+        cache = HTMLCache("/tmp/cache", "NBA")
+        url = "https://www.basketball-reference.com/boxscores/202401150BOS.html"
+        assert cache._is_boxscore_url(url) is True
+
+    def test_scoreboard_url_not_detected(self):
+        """Scoreboard URLs are not boxscores."""
+        cache = HTMLCache("/tmp/cache", "NBA")
+        url = "https://www.basketball-reference.com/boxscores/?month=1&day=15&year=2024"
+        assert cache._is_boxscore_url(url) is False
+
+    def test_pbp_url_not_detected(self):
+        """PBP URLs are not boxscores."""
+        cache = HTMLCache("/tmp/cache", "NBA")
+        url = "https://www.basketball-reference.com/boxscores/pbp/202401150BOS.html"
+        assert cache._is_boxscore_url(url) is False
+
+    def test_non_boxscore_url_not_detected(self):
+        """Non-boxscore URLs are not detected."""
+        cache = HTMLCache("/tmp/cache", "NBA")
+        url = "https://www.basketball-reference.com/teams/BOS/2024.html"
+        assert cache._is_boxscore_url(url) is False
+
+
+class TestHTMLCacheRecentBoxscoreStaleness:
+    """Tests for boxscore cache staleness bypass.
+
+    Recent boxscores (game within last 3 days) with cache age < 12 hours
+    should be bypassed to avoid serving incomplete data cached too soon
+    after game end.
+    """
+
+    BOXSCORE_URL = "https://www.basketball-reference.com/boxscores/202401150BOS.html"
+
+    def _create_cached_file(self, cache: HTMLCache, url: str, age_hours: float) -> Path:
+        """Helper: create a cached file and backdate its mtime."""
+        cache_path = cache._get_cache_path(url)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text("<html>boxscore content</html>")
+        target_mtime = time.time() - (age_hours * 3600)
+        os.utime(cache_path, (target_mtime, target_mtime))
+        return cache_path
+
+    @patch("sports_scraper.utils.cache.today_et")
+    def test_bypasses_cache_when_recent_and_young(self, mock_today):
+        """Returns None for a boxscore cached <12h ago for a game within 3 days."""
+        mock_today.return_value = date(2024, 1, 16)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HTMLCache(tmpdir, "NBA")
+            self._create_cached_file(cache, self.BOXSCORE_URL, age_hours=6)
+
+            result = cache.get(self.BOXSCORE_URL, game_date=date(2024, 1, 15))
+            assert result is None
+
+    @patch("sports_scraper.utils.cache.today_et")
+    def test_returns_content_when_recent_and_old_enough(self, mock_today):
+        """Returns content for a boxscore cached >=12h ago (data is stable)."""
+        mock_today.return_value = date(2024, 1, 16)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HTMLCache(tmpdir, "NBA")
+            self._create_cached_file(cache, self.BOXSCORE_URL, age_hours=13)
+
+            result = cache.get(self.BOXSCORE_URL, game_date=date(2024, 1, 15))
+            assert result == "<html>boxscore content</html>"
+
+    @patch("sports_scraper.utils.cache.today_et")
+    def test_returns_content_when_game_older_than_3_days(self, mock_today):
+        """Returns content when game is >3 days old regardless of cache age."""
+        mock_today.return_value = date(2024, 1, 20)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HTMLCache(tmpdir, "NBA")
+            self._create_cached_file(cache, self.BOXSCORE_URL, age_hours=2)
+
+            result = cache.get(self.BOXSCORE_URL, game_date=date(2024, 1, 15))
+            assert result == "<html>boxscore content</html>"
+
+    @patch("sports_scraper.utils.cache.today_et")
+    def test_returns_content_when_no_game_date(self, mock_today):
+        """Returns content when game_date is not provided (no staleness check)."""
+        mock_today.return_value = date(2024, 1, 16)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HTMLCache(tmpdir, "NBA")
+            self._create_cached_file(cache, self.BOXSCORE_URL, age_hours=1)
+
+            result = cache.get(self.BOXSCORE_URL)
+            assert result == "<html>boxscore content</html>"
+
+    @patch("sports_scraper.utils.cache.today_et")
+    def test_bypasses_at_boundary_3_days(self, mock_today):
+        """Bypasses cache for a game exactly 3 days old with young cache."""
+        mock_today.return_value = date(2024, 1, 18)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HTMLCache(tmpdir, "NBA")
+            self._create_cached_file(cache, self.BOXSCORE_URL, age_hours=4)
+
+            result = cache.get(self.BOXSCORE_URL, game_date=date(2024, 1, 15))
+            assert result is None
+
+    @patch("sports_scraper.utils.cache.today_et")
+    def test_returns_content_at_boundary_4_days(self, mock_today):
+        """Returns content for a game exactly 4 days old (outside window)."""
+        mock_today.return_value = date(2024, 1, 19)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HTMLCache(tmpdir, "NBA")
+            self._create_cached_file(cache, self.BOXSCORE_URL, age_hours=4)
+
+            result = cache.get(self.BOXSCORE_URL, game_date=date(2024, 1, 15))
+            assert result == "<html>boxscore content</html>"
+
+    @patch("sports_scraper.utils.cache.today_et")
+    def test_bypasses_at_boundary_12_hours(self, mock_today):
+        """Bypasses cache at just under 12 hours old."""
+        mock_today.return_value = date(2024, 1, 16)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HTMLCache(tmpdir, "NBA")
+            self._create_cached_file(cache, self.BOXSCORE_URL, age_hours=11.9)
+
+            result = cache.get(self.BOXSCORE_URL, game_date=date(2024, 1, 15))
+            assert result is None
+
+    @patch("sports_scraper.utils.cache.today_et")
+    def test_returns_content_at_exactly_12_hours(self, mock_today):
+        """Returns content when cache is exactly 12 hours old."""
+        mock_today.return_value = date(2024, 1, 16)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HTMLCache(tmpdir, "NBA")
+            self._create_cached_file(cache, self.BOXSCORE_URL, age_hours=12.1)
+
+            result = cache.get(self.BOXSCORE_URL, game_date=date(2024, 1, 15))
+            assert result == "<html>boxscore content</html>"
+
+    @patch("sports_scraper.utils.cache.today_et")
+    def test_does_not_apply_to_scoreboard_urls(self, mock_today):
+        """Staleness check does not apply to scoreboard URLs."""
+        mock_today.return_value = date(2024, 1, 16)
+        scoreboard_url = "https://www.basketball-reference.com/boxscores/?month=1&day=15&year=2024"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HTMLCache(tmpdir, "NBA")
+            cache_path = cache._get_cache_path(scoreboard_url)
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            content = '<div class="game_summary">' + "x" * MIN_SCOREBOARD_SIZE_BYTES
+            cache_path.write_text(content)
+            target_mtime = time.time() - 3600
+            os.utime(cache_path, (target_mtime, target_mtime))
+
+            result = cache.get(scoreboard_url, game_date=date(2024, 1, 15))
+            assert result is not None
+
+    @patch("sports_scraper.utils.cache.today_et")
+    def test_does_not_apply_to_pbp_urls(self, mock_today):
+        """Staleness check does not apply to PBP URLs."""
+        mock_today.return_value = date(2024, 1, 16)
+        pbp_url = "https://www.basketball-reference.com/boxscores/pbp/202401150BOS.html"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HTMLCache(tmpdir, "NBA")
+            cache_path = cache._get_cache_path(pbp_url)
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text("<html>pbp content</html>")
+            target_mtime = time.time() - 3600
+            os.utime(cache_path, (target_mtime, target_mtime))
+
+            result = cache.get(pbp_url, game_date=date(2024, 1, 15))
+            assert result == "<html>pbp content</html>"
+
+    @patch("sports_scraper.utils.cache.today_et")
+    def test_bypasses_same_day_game(self, mock_today):
+        """Bypasses cache for game_date == today (0 days ago) with young cache."""
+        mock_today.return_value = date(2024, 1, 15)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HTMLCache(tmpdir, "NBA")
+            self._create_cached_file(cache, self.BOXSCORE_URL, age_hours=2)
+
+            result = cache.get(self.BOXSCORE_URL, game_date=date(2024, 1, 15))
+            assert result is None
 
 
 class TestModuleImports:
