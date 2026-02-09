@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 from ..logging import logger
+from ..utils.datetime_utils import today_et
 
 # Minimum file size (bytes) for a valid scoreboard cache entry
 # Empty scoreboards are typically < 5KB, valid ones with games are > 20KB
@@ -63,12 +65,21 @@ class HTMLCache:
         """Check if the URL is a scoreboard page (vs boxscore or PBP)."""
         return "boxscores" in url and "?" in url and "month=" in url
 
+    def _is_boxscore_url(self, url: str) -> bool:
+        """Check if the URL is an individual boxscore page (not scoreboard or PBP)."""
+        return (
+            "boxscores" in url
+            and not self._is_scoreboard_url(url)
+            and "/pbp/" not in url
+        )
+
     def get(self, url: str, game_date: date | None = None) -> str | None:
         """Load HTML from cache if it exists.
 
         Cache is bypassed (returns None) in these cases:
         1. force_refresh is True
         2. Cached scoreboard file is too small (likely empty/no games)
+        3. Boxscore for a recent game (last 3 days) cached less than 12 hours ago
         """
         cache_path = self._get_cache_path(url, game_date)
 
@@ -95,12 +106,31 @@ class HTMLCache:
                 )
                 return None
 
+            # For recent boxscores (last 3 days), bypass cache if file is < 12 hours old.
+            # Boxscores are immutable once BR fully populates them, but may be incomplete
+            # if cached too soon after game end.
+            if self._is_boxscore_url(url) and game_date:
+                today = today_et()
+                days_ago = (today - game_date).days
+                if 0 <= days_ago <= 3:
+                    cache_age_hours = (time.time() - file_stat.st_mtime) / 3600
+                    if cache_age_hours < 12:
+                        logger.info(
+                            "cache_skip_recent_boxscore",
+                            url=url,
+                            path=str(cache_path),
+                            game_date=str(game_date),
+                            cache_age_hours=round(cache_age_hours, 1),
+                            league=self.league_code,
+                        )
+                        return None
+
             # Read the cached content
             cached_content = cache_path.read_text(encoding="utf-8")
 
             # For past-date scoreboards, verify the cache has actual game content
             # This catches cases where we cached a page before games were completed
-            if self._is_scoreboard_url(url) and game_date and game_date < date.today():
+            if self._is_scoreboard_url(url) and game_date and game_date < today_et():
                 if '<div class="game_summary' not in cached_content:
                     logger.info(
                         "cache_skip_no_game_content",
@@ -155,7 +185,7 @@ class HTMLCache:
         Returns:
             Dict with count of deleted files and list of deleted paths
         """
-        today = date.today()
+        today = today_et()
         deleted_files = []
 
         league_cache_dir = self.cache_dir / self.league_code
