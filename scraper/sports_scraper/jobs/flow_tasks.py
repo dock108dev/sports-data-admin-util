@@ -209,20 +209,20 @@ def run_scheduled_ncaab_flow_generation() -> dict:
 
 
 @shared_task(
-    name="run_scheduled_story_generation",
+    name="run_scheduled_flow_generation",
     autoretry_for=(Exception,),
     retry_backoff=True,
     retry_kwargs={"max_retries": 2},
 )
-def run_scheduled_story_generation() -> dict:
+def run_scheduled_flow_generation() -> dict:
     """
-    Scheduled task to generate stories for games in the last 3 days.
+    Scheduled task to generate game flows for all leagues in the last 3 days.
 
-    This runs after timeline generation completes and generates stories for all
-    games with PBP data that haven't had stories generated yet.
+    This runs after timeline generation completes and generates flows for all
+    games with PBP data that haven't had flows generated yet.
 
     Uses a 3-day window: today, yesterday, and 2 days ago.
-    For example, if run on 1/23, generates stories for 1/21, 1/22, and 1/23.
+    For example, if run on 1/23, generates flows for 1/21, 1/22, and 1/23.
     """
     import httpx
     import time
@@ -239,7 +239,7 @@ def run_scheduled_story_generation() -> dict:
     leagues = list(get_scheduled_leagues())
 
     logger.info(
-        "scheduled_story_gen_start",
+        "scheduled_flow_gen_start",
         start_date=str(start_date),
         end_date=str(end_date),
         leagues=leagues,
@@ -256,14 +256,14 @@ def run_scheduled_story_generation() -> dict:
                     "start_date": start_date.isoformat(),
                     "end_date": end_date.isoformat(),
                     "leagues": leagues,
-                    "force": False,  # Don't regenerate existing stories
+                    "force": False,  # Don't regenerate existing flows
                 },
             )
             response.raise_for_status()
             job_data = response.json()
 
         job_id = job_data["job_id"]
-        logger.info("scheduled_story_gen_job_started", job_id=job_id)
+        logger.info("scheduled_flow_gen_job_started", job_id=job_id)
 
         # Poll for completion (max 30 minutes, check every 30 seconds)
         max_polls = 60
@@ -283,7 +283,7 @@ def run_scheduled_story_generation() -> dict:
 
             if state == "PROGRESS":
                 logger.info(
-                    "scheduled_story_gen_progress",
+                    "scheduled_flow_gen_progress",
                     job_id=job_id,
                     current=status.get("current"),
                     total=status.get("total"),
@@ -294,7 +294,7 @@ def run_scheduled_story_generation() -> dict:
             elif state == "SUCCESS":
                 result = status.get("result", {})
                 logger.info(
-                    "scheduled_story_gen_complete",
+                    "scheduled_flow_gen_complete",
                     job_id=job_id,
                     total_games=result.get("total_games", 0),
                     successful=result.get("successful", 0),
@@ -312,7 +312,7 @@ def run_scheduled_story_generation() -> dict:
                 }
             elif state == "FAILURE":
                 logger.error(
-                    "scheduled_story_gen_failed",
+                    "scheduled_flow_gen_failed",
                     job_id=job_id,
                     status=status.get("status"),
                 )
@@ -327,7 +327,7 @@ def run_scheduled_story_generation() -> dict:
 
         # Timed out waiting for completion
         logger.warning(
-            "scheduled_story_gen_timeout",
+            "scheduled_flow_gen_timeout",
             job_id=job_id,
             max_wait_minutes=max_polls * poll_interval / 60,
         )
@@ -342,7 +342,7 @@ def run_scheduled_story_generation() -> dict:
 
     except httpx.HTTPStatusError as exc:
         logger.error(
-            "scheduled_story_gen_http_error",
+            "scheduled_flow_gen_http_error",
             status_code=exc.response.status_code,
             error=exc.response.text,
         )
@@ -355,7 +355,7 @@ def run_scheduled_story_generation() -> dict:
         }
     except Exception as exc:
         logger.exception(
-            "scheduled_story_gen_error",
+            "scheduled_flow_gen_error",
             error=str(exc),
         )
         raise  # Let Celery retry
