@@ -23,7 +23,7 @@ def _run_flow_generation(
     """
     import httpx
     import time
-    from datetime import date, timedelta
+    from datetime import timedelta
     from ..config import settings
     from ..utils.datetime_utils import today_et
 
@@ -226,7 +226,7 @@ def run_scheduled_story_generation() -> dict:
     """
     import httpx
     import time
-    from datetime import date, timedelta
+    from datetime import timedelta
     from ..config import settings
     from ..config_sports import get_scheduled_leagues
     from ..utils.datetime_utils import today_et
