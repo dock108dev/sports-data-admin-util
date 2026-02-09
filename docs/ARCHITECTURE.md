@@ -186,7 +186,7 @@ See [API.md](API.md) for complete reference.
 - **Task Queue:** Celery + Redis
 
 ### Frontend
-- **Framework:** Next.js 14+
+- **Framework:** Next.js 16+
 - **Language:** TypeScript
 - **Styling:** CSS Modules
 - **API Client:** Fetch API

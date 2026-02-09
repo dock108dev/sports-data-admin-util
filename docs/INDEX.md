@@ -5,8 +5,7 @@
 | Guide | Description |
 |-------|-------------|
 | [Local Development](LOCAL_DEVELOPMENT.md) | **Start here:** Run locally with Docker or manual setup |
-| [Coding Standards](../CLAUDE.md) | Development principles and coding standards |
-| [AI Agent Context](../CLAUDE.md) | Coding standards and AI agent context |
+| [Project Rules](../CLAUDE.md) | Development principles, coding standards, and AI agent context |
 | [Architecture](ARCHITECTURE.md) | System components, data flow, database schema |
 | [API Reference](API.md) | FastAPI endpoints and usage |
 
@@ -51,14 +50,6 @@
 | [X Integration](X_INTEGRATION.md) | X/Twitter social scraping |
 
 ## Sport-Specific Implementation
-
-### Play-by-Play
-
-| Guide | Description |
-|-------|-------------|
-| [NCAAB PBP](PBP_NCAAB_SPORTS_REFERENCE.md) | NCAAB PBP via Sports Reference |
-
-> **Note:** NHL PBP uses the official NHL API (`api-web.nhle.com`). See [Data Sources](DATA_SOURCES.md).
 
 ### Odds
 

@@ -26,8 +26,8 @@ All notable changes to Sports Data Admin.
 - **Two-scrape social model**: Scrape #1 on final-whistle (immediate), Scrape #2 in daily sweep (catch-up)
 - **`game_social_posts` eliminated**: All social data lives in `team_social_posts` with `mapping_status` column
 - **`XPostCollector` → `TeamTweetCollector`**: Simplified team-centric collection
-- **Daily sweep at 5:00 AM EST**: Ingestion + truth repair + social scrape #2
-- **Flow generation at 6:30/6:45/7:00 AM EST**: NBA, NHL, NCAAB respectively
+- **Daily sweep at 4:00 AM EST**: Ingestion + truth repair + social scrape #2
+- **Flow generation at 4:30/5:00/5:30 AM EST**: NBA, NHL, NCAAB respectively
 
 ### Legacy Code Cleanup
 
@@ -98,16 +98,16 @@ All notable changes to Sports Data Admin.
 
 ### Architecture
 
-- **Condensed Moment Story Model**: Stories are ordered lists of condensed moments backed by specific plays
-- **Multi-Stage Pipeline**: NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES → FINALIZE_MOMENTS
+- **Block-based Game Flow Model**: Game flows are ordered lists of narrative blocks backed by moments and specific plays
+- **Multi-Stage Pipeline**: NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
 - **Deterministic Segmentation**: Moment boundaries are mechanical, AI is prose-only
 - **Full Traceability**: Every narrative sentence maps to specific plays
 
 ### Features
 
-- FastAPI admin API with story generation endpoints
+- FastAPI admin API with game flow generation endpoints
 - Celery scraper workers for NBA, NHL, NCAAB data
-- Next.js admin UI for data browsing and story generation
+- Next.js admin UI for data browsing and game flow generation
 - Sports Reference boxscore and PBP scraping
 - NHL official API integration (schedule, PBP, boxscores)
 - NCAAB College Basketball Data API integration
@@ -117,6 +117,6 @@ All notable changes to Sports Data Admin.
 
 ### Documentation
 
-- [STORY_CONTRACT.md](STORY_CONTRACT.md) - Authoritative story specification
-- [STORY_PIPELINE.md](STORY_PIPELINE.md) - Pipeline stages and implementation
+- [GAMEFLOW_CONTRACT.md](GAMEFLOW_CONTRACT.md) - Authoritative game flow specification
+- [GAMEFLOW_PIPELINE.md](GAMEFLOW_PIPELINE.md) - Pipeline stages and implementation
 - [NARRATIVE_TIME_MODEL.md](NARRATIVE_TIME_MODEL.md) - Timeline ordering model

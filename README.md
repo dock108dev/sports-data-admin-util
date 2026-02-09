@@ -31,8 +31,8 @@ For manual setup, see [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md).
                         │                           │                           │
                         ▼                           ▼                           ▼
                  ┌─────────────┐           ┌───────────────┐           ┌─────────────┐
-                 │  REST API   │           │   Timeline    │           │  Admin UI   │
-                 │  (FastAPI)  │           │  Generator    │           │  (Next.js)  │
+                 │  REST API   │           │  Game Flow    │           │  Admin UI   │
+                 │  (FastAPI)  │           │  Pipeline     │           │  (Next.js)  │
                  └──────┬──────┘           └───────────────┘           └─────────────┘
                         │
                         ▼
@@ -74,7 +74,3 @@ docs/         Documentation
 ## Contributing
 
 See [CLAUDE.md](CLAUDE.md) for coding standards and development principles.
-
-## AI Agents
-
-See [CLAUDE.md](CLAUDE.md) for coding standards and context for AI assistants.
