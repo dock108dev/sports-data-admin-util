@@ -1,7 +1,6 @@
 # Timeline Assembly
 
-> **Status:** Canonical  
-> **Parent Contract:** [NARRATIVE_TIME_MODEL.md](./NARRATIVE_TIME_MODEL.md)  
+> **Status:** Canonical
 > **Last Updated:** 2026-01-14
 
 ---
@@ -245,7 +244,7 @@ def to_timeline_event(event_type, event, phase):
         return {
             "event_type": "tweet",
             "phase": phase,
-            "role": assign_role(event),  # See SOCIAL_EVENT_ROLES.md
+            "role": assign_role(event),
             "author": event.source_handle,
             "handle": event.source_handle,
             "text": event.text,

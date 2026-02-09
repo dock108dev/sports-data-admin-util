@@ -8,7 +8,7 @@ Social collection uses a **team-centric** approach rather than game-centric:
 
 ### Phase 1: COLLECT
 1. For each team with games in the date range, scrape all tweets
-2. **Window**: 5:00 AM ET game day to 4:59 AM ET next day (24 hours)
+2. **Window**: 5:00 AM ET game day to 8:00 AM ET next day
 3. **Playwright scraper** visits X search with date filters
 4. **Content extraction**: Tweet text, images, video detection
 5. **Posts saved** to `team_social_posts` with `mapping_status='unmapped'`

@@ -9,10 +9,10 @@ This document describes where data comes from and how it's ingested.
 | Boxscores | Sports Reference | NBA | Post-game |
 | Boxscores | CBB Stats API | NCAAB | Post-game |
 | Boxscores | NHL API | NHL | Post-game |
-| Play-by-Play | NBA API / CBB API | NBA, NCAAB | Post-game |
-| Play-by-Play (Live) | League APIs | NBA, NHL | During game (15s polling) |
+| Play-by-Play | NBA API / NHL API / CBB API | NBA, NHL, NCAAB | Post-game |
+| Play-by-Play (Live) | League APIs | NBA, NHL | During game (5 min polling) |
 | Odds | The Odds API | NBA, NHL, NCAAB | Pre-game + live |
-| Social | X/Twitter | NBA, NHL | 24-hour game window |
+| Social | X/Twitter | NBA, NHL, NCAAB | 24-hour game window |
 
 ## Boxscores & Player Stats
 
@@ -148,16 +148,14 @@ A separate bet-centric table for cross-book odds comparison:
 This table enables efficient cross-book comparison without the game-centric structure of `sports_game_odds`.
 
 ### Rate Limiting
-- Historical endpoint: 5-day delay between requests (API rate limits)
+- Historical endpoint: 1-second pause every 5 days of iteration (to avoid rate limits)
+- Live games excluded from active odds polling to preserve pre-game closing lines
 - Caching: Per-league, per-date JSON files under scraper cache
 
 ### Implementation
 - Client: `scraper/sports_scraper/odds/client.py`
 - Sync: `scraper/sports_scraper/odds/synchronizer.py`
 - Persistence: `scraper/sports_scraper/persistence/odds.py`
-
-See also:
-- [ODDS_NHL_VALIDATION.md](ODDS_NHL_VALIDATION.md) - NHL odds validation
 
 ## Social Media (X/Twitter)
 
@@ -188,7 +186,7 @@ See `scraper/sports_scraper/celery_app.py` for schedule configuration.
 
 ### Collection Window
 - **Start**: 5:00 AM ET on game day
-- **End**: 4:59 AM ET next day (24-hour window)
+- **End**: 8:00 AM ET next day
 
 ### Accounts
 - Official team accounts only (no players, no media)
@@ -238,21 +236,20 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 
 See also:
 - [X_INTEGRATION.md](X_INTEGRATION.md) - X/Twitter integration architecture
-- [SOCIAL_NHL.md](SOCIAL_NHL.md) - NHL social accounts
 
 ## Scraper Execution
 
 ### Automatic (Scheduled)
 - **Scheduler**: Celery Beat
 - **Ingestion**: Daily at 08:30 UTC (3:30 AM EST) - boxscores, odds, PBP
-- **Daily Sweep**: Runs at 09:00 UTC (4:00 AM EST) - truth repair + social scrape #2
+- **Daily Sweep**: Runs at 09:00 UTC (4:00 AM EST) - truth repair, social scrape #2, backfill embedded tweets (7-day lookback)
 - **Flow Generation**: Runs after sweep, staggered by league (30 min apart):
   - 09:30 UTC (4:30 AM EST) - NBA flow generation
   - 10:00 UTC (5:00 AM EST) - NHL flow generation
   - 10:30 UTC (5:30 AM EST) - NCAAB flow generation (capped at 10 games)
 - **Game State Updates**: Every 3 minutes
-- **Live PBP Polling**: Every 5 minutes
-- **Odds Sync + Active Odds Polling**: Every 30 minutes (all leagues)
+- **Live PBP Polling**: Every 5 minutes (NBA, NHL only; NCAAB excluded — too many concurrent games)
+- **Odds Sync + Active Odds Polling**: Every 30 minutes (pregame games only; live games skipped to preserve closing lines)
 - **Window**: Yesterday through today (catches overnight game completions)
 
 Configuration: `scraper/sports_scraper/celery_app.py`

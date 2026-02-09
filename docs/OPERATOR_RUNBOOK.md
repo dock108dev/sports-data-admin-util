@@ -11,7 +11,7 @@ flowchart LR
   end
 
   subgraph Edge
-    Nginx[Nginx\nadmin.scrolldownsports.*]
+    Caddy[Caddy\nsports-data-admin.dock108.ai]
   end
 
   subgraph App
@@ -26,7 +26,7 @@ flowchart LR
     Storage[(S3/Storage Box)]
   end
 
-  Admin -->|HTTPS| Nginx --> Web
+  Admin -->|HTTPS| Caddy --> Web
   Web --> API
   API --> Postgres
   API --> Redis

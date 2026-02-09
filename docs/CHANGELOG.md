@@ -2,7 +2,35 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-08] - Current
+## [2026-02-09] - Current
+
+### NCAAB Social Scraping Enabled
+
+- **NCAAB social enabled**: Social/X scraping now active for all three leagues (NBA, NHL, NCAAB)
+- **Config flag**: `config_sports.py` NCAAB `social_enabled` flipped to `True`
+- **Run manager**: NCAAB added to `_supported_social_leagues` so social runs execute instead of being silently skipped
+- **Prerequisite**: NCAAB teams need active `TeamSocialAccount` rows with X handles before collection produces results
+
+### Embedded Tweet Backfill
+
+- **Post-generation backfill**: New pipeline endpoint `POST /pipeline/backfill-embedded-tweets` attaches social post references to flows that were generated before social scraping completed
+- **Final-whistle integration**: After social Scrape #1, backfill runs automatically for the completed game
+- **Daily sweep integration**: Sweep scans flows from the last 7 days for missing embedded tweets
+- **Sole permitted mutation**: Backfill only sets `embedded_social_post_id` on blocks — block structure, roles, and narratives are never altered
+
+### Game Stats Delta Validation
+
+- **Scoring logic refactor**: `game_stats_helpers.py` delta computation rewritten with explicit validation
+- **Expanded test coverage**: Comprehensive tests for delta calculation edge cases
+
+### Odds Upsert Result Enum
+
+- **`OddsUpsertResult` enum**: `upsert_odds` now returns `PERSISTED`, `SKIPPED_NO_MATCH`, or `SKIPPED_LIVE` instead of a boolean
+- **Live game protection**: Live games explicitly skipped during odds sync to preserve pre-game closing lines
+
+---
+
+## [2026-02-08]
 
 ### Story to Game Flow Rename
 
@@ -119,4 +147,3 @@ All notable changes to Sports Data Admin.
 
 - [GAMEFLOW_CONTRACT.md](GAMEFLOW_CONTRACT.md) - Authoritative game flow specification
 - [GAMEFLOW_PIPELINE.md](GAMEFLOW_PIPELINE.md) - Pipeline stages and implementation
-- [NARRATIVE_TIME_MODEL.md](NARRATIVE_TIME_MODEL.md) - Timeline ordering model
