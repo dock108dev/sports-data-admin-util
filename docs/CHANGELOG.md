@@ -2,7 +2,35 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-08] - Current
+## [2026-02-09] - Current
+
+### NCAAB Social Scraping Enabled
+
+- **NCAAB social enabled**: Social/X scraping now active for all three leagues (NBA, NHL, NCAAB)
+- **Config flag**: `config_sports.py` NCAAB `social_enabled` flipped to `True`
+- **Run manager**: NCAAB added to `_supported_social_leagues` so social runs execute instead of being silently skipped
+- **Prerequisite**: NCAAB teams need active `TeamSocialAccount` rows with X handles before collection produces results
+
+### Embedded Tweet Backfill
+
+- **Post-generation backfill**: New pipeline endpoint `POST /pipeline/backfill-embedded-tweets` attaches social post references to flows that were generated before social scraping completed
+- **Final-whistle integration**: After social Scrape #1, backfill runs automatically for the completed game
+- **Daily sweep integration**: Sweep scans flows from the last 7 days for missing embedded tweets
+- **Sole permitted mutation**: Backfill only sets `embedded_social_post_id` on blocks — block structure, roles, and narratives are never altered
+
+### Game Stats Delta Validation
+
+- **Scoring logic refactor**: `game_stats_helpers.py` delta computation rewritten with explicit validation
+- **Expanded test coverage**: Comprehensive tests for delta calculation edge cases
+
+### Odds Upsert Result Enum
+
+- **`OddsUpsertResult` enum**: `upsert_odds` now returns `PERSISTED`, `SKIPPED_NO_MATCH`, or `SKIPPED_LIVE` instead of a boolean
+- **Live game protection**: Live games explicitly skipped during odds sync to preserve pre-game closing lines
+
+---
+
+## [2026-02-08]
 
 ### Story to Game Flow Rename
 
@@ -26,8 +54,8 @@ All notable changes to Sports Data Admin.
 - **Two-scrape social model**: Scrape #1 on final-whistle (immediate), Scrape #2 in daily sweep (catch-up)
 - **`game_social_posts` eliminated**: All social data lives in `team_social_posts` with `mapping_status` column
 - **`XPostCollector` → `TeamTweetCollector`**: Simplified team-centric collection
-- **Daily sweep at 5:00 AM EST**: Ingestion + truth repair + social scrape #2
-- **Flow generation at 6:30/6:45/7:00 AM EST**: NBA, NHL, NCAAB respectively
+- **Daily sweep at 4:00 AM EST**: Ingestion + truth repair + social scrape #2
+- **Flow generation at 4:30/5:00/5:30 AM EST**: NBA, NHL, NCAAB respectively
 
 ### Legacy Code Cleanup
 
@@ -98,16 +126,16 @@ All notable changes to Sports Data Admin.
 
 ### Architecture
 
-- **Condensed Moment Story Model**: Stories are ordered lists of condensed moments backed by specific plays
-- **Multi-Stage Pipeline**: NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → RENDER_NARRATIVES → FINALIZE_MOMENTS
+- **Block-based Game Flow Model**: Game flows are ordered lists of narrative blocks backed by moments and specific plays
+- **Multi-Stage Pipeline**: NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
 - **Deterministic Segmentation**: Moment boundaries are mechanical, AI is prose-only
 - **Full Traceability**: Every narrative sentence maps to specific plays
 
 ### Features
 
-- FastAPI admin API with story generation endpoints
+- FastAPI admin API with game flow generation endpoints
 - Celery scraper workers for NBA, NHL, NCAAB data
-- Next.js admin UI for data browsing and story generation
+- Next.js admin UI for data browsing and game flow generation
 - Sports Reference boxscore and PBP scraping
 - NHL official API integration (schedule, PBP, boxscores)
 - NCAAB College Basketball Data API integration
@@ -117,6 +145,5 @@ All notable changes to Sports Data Admin.
 
 ### Documentation
 
-- [STORY_CONTRACT.md](STORY_CONTRACT.md) - Authoritative story specification
-- [STORY_PIPELINE.md](STORY_PIPELINE.md) - Pipeline stages and implementation
-- [NARRATIVE_TIME_MODEL.md](NARRATIVE_TIME_MODEL.md) - Timeline ordering model
+- [GAMEFLOW_CONTRACT.md](GAMEFLOW_CONTRACT.md) - Authoritative game flow specification
+- [GAMEFLOW_PIPELINE.md](GAMEFLOW_PIPELINE.md) - Pipeline stages and implementation

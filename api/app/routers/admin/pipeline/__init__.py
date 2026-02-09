@@ -28,6 +28,7 @@ from fastapi import APIRouter
 
 from .endpoints import router as endpoints_router
 from .models import (
+    BackfillEmbeddedTweetsResponse,
     BulkGenerateAsyncResponse,
     BulkGenerateRequest,
     BulkGenerateStatusResponse,
@@ -83,4 +84,5 @@ __all__ = [
     "StageComparisonResponse",
     "BulkGenerateAsyncResponse",
     "BulkGenerateStatusResponse",
+    "BackfillEmbeddedTweetsResponse",
 ]

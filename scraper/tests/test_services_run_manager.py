@@ -1253,7 +1253,7 @@ class TestScrapeRunManagerSocial:
 
         manager = ScrapeRunManager()
         config = IngestionConfig(
-            league_code="NCAAB",  # Not supported for social
+            league_code="MLB",  # Not supported for social
             boxscores=False,
             odds=False,
             social=True,

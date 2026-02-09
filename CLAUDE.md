@@ -1,4 +1,4 @@
-# Cursor Rules for Sports Data Admin
+# Sports Data Admin — Project Rules
 
 **Centralized sports data hub for all Dock108 apps.**
 
@@ -86,7 +86,7 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GR
 **Recurring Tasks:**
 - **Every 3 min** — Game state updates (game-state-machine)
 - **Every 5 min** — Live PBP polling
-- **Every 30 min** — Odds sync + active odds polling (all leagues, keeps FairBet data fresh)
+- **Every 30 min** — Odds sync + active odds polling (pregame games only; live games are skipped to preserve closing lines)
 
 Configured in `scraper/sports_scraper/celery_app.py`
 

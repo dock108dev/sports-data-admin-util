@@ -180,7 +180,6 @@ The `miniBox` shows player stats **for that specific segment** of the game.
         "pts": 15,          // Cumulative through this block
         "reb": 4,
         "ast": 6,
-        "3pm": 2,
         "deltaPts": 7,      // Scored during THIS block
         "deltaReb": 2,
         "deltaAst": 3
@@ -203,8 +202,6 @@ The `miniBox` shows player stats **for that specific segment** of the game.
         "name": "Kopitar",
         "goals": 1,
         "assists": 1,
-        "sog": 3,
-        "plusMinus": 1,
         "deltaGoals": 1,
         "deltaAssists": 0
       }
@@ -217,9 +214,11 @@ The `miniBox` shows player stats **for that specific segment** of the game.
 
 ### Stat Fields
 
+Mini box scores are stripped to PRA-only stats (points, rebounds, assists for basketball; goals, assists for hockey).
+
 | Field | Basketball | Hockey |
 |-------|------------|--------|
-| Cumulative | `pts`, `reb`, `ast`, `3pm` | `goals`, `assists`, `sog`, `plusMinus` |
+| Cumulative | `pts`, `reb`, `ast` | `goals`, `assists` |
 | Delta (this block) | `deltaPts`, `deltaReb`, `deltaAst` | `deltaGoals`, `deltaAssists` |
 
 **Display tip:** Use `delta*` fields to highlight who contributed most in each block. The `blockStars` array identifies top performers.
@@ -339,19 +338,16 @@ interface BlockTeamMiniBox {
 
 interface BlockPlayerStat {
   name: string;
-  // Basketball
+  // Basketball (PRA only)
   pts?: number;
   reb?: number;
   ast?: number;
-  "3pm"?: number;
   deltaPts?: number;
   deltaReb?: number;
   deltaAst?: number;
   // Hockey
   goals?: number;
   assists?: number;
-  sog?: number;
-  plusMinus?: number;
   deltaGoals?: number;
   deltaAssists?: number;
 }
@@ -480,7 +476,8 @@ func fetchGameFlow(gameId: Int) async throws -> GameFlowResponse {
 
 ## Caching
 
-- Game flows are immutable once generated — cache aggressively
+- Game flow structure and narratives do not change after generation — cache aggressively
+- The only post-generation mutation is `embeddedSocialPostId` backfill (attaching tweet references to blocks that were initially NULL)
 - Recommended: Cache responses for 24 hours
 - Games list can be cached for 5-15 minutes
 

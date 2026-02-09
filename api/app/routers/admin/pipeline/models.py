@@ -372,3 +372,17 @@ class BulkGenerateStatusResponse(BaseModel):
         default=None,
         description="Final result when job completes",
     )
+
+
+# =============================================================================
+# BACKFILL EMBEDDED TWEETS MODELS
+# =============================================================================
+
+
+class BackfillEmbeddedTweetsResponse(BaseModel):
+    """Response from backfilling embedded tweets into game flows."""
+
+    total_checked: int = Field(description="Number of flows checked")
+    total_backfilled: int = Field(description="Number of flows that were backfilled")
+    results: list[dict[str, Any]] = Field(description="Per-game result details")
+    message: str = Field(description="Summary message")

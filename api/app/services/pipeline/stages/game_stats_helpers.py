@@ -13,6 +13,34 @@ import re
 from typing import Any
 
 
+# Maximum points from a single basketball play (3-pointer).
+# A score_delta exceeding this indicates dropped PBP events.
+_MAX_SINGLE_PLAY_SCORE = 3
+
+
+def _apply_basketball_scoring(
+    stats: dict[str, int],
+    score_delta: int,
+) -> bool:
+    """Credit a basketball scoring play to a player's stats.
+
+    Returns True if the play was a valid scoring event, False if skipped
+    (score_delta exceeds single-play maximum, indicating dropped PBP events).
+    """
+    if score_delta <= 0:
+        return False
+    if score_delta > _MAX_SINGLE_PLAY_SCORE:
+        return False
+    stats["pts"] += score_delta
+    if score_delta >= 2:
+        stats["fgm"] += 1
+    if score_delta == 3:
+        stats["3pm"] += 1
+    if score_delta == 1:
+        stats["ftm"] += 1
+    return True
+
+
 def _extract_assister_from_description(desc: str) -> str | None:
     """Extract assister name from a scoring play description.
 
@@ -32,6 +60,9 @@ def compute_running_player_stats(
 ) -> dict[str, dict[str, int]]:
     """Compute running player statistics up to (and including) a given play index.
 
+    Scoring is detected via score deltas (home_score/away_score changes between
+    adjacent events), which works reliably across all data sources.
+
     Returns a dict mapping player_name to their cumulative stats:
     {
         "Donovan Mitchell": {
@@ -47,72 +78,38 @@ def compute_running_player_stats(
     """
     stats: dict[str, dict[str, int]] = {}
 
+    prev_home = 0
+    prev_away = 0
+
     for event in pbp_events:
         if event.get("play_index", 0) > up_to_play_index:
             break
 
         player = event.get("player_name")
+        play_type = (event.get("play_type") or "").lower()
+        original_desc = event.get("description") or ""
+
+        # Track scores for delta detection
+        curr_home = event.get("home_score") or prev_home
+        curr_away = event.get("away_score") or prev_away
+        score_delta = (curr_home + curr_away) - (prev_home + prev_away)
+
         if not player:
+            prev_home = curr_home
+            prev_away = curr_away
             continue
 
         if player not in stats:
             stats[player] = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0, "reb": 0, "ast": 0}
 
-        play_type = (event.get("play_type") or "").lower()
-        desc = (event.get("description") or "").lower()
-        original_desc = event.get("description") or ""
+        # Scoring detection: use score delta (works for all data sources)
+        scored = _apply_basketball_scoring(stats[player], score_delta)
 
-        # Track if this was a scoring play (for assist extraction)
-        scored = False
-
-        # Explicit made shot types (confirmed makes)
-        if play_type in ("made_shot", "field_goal_made", "2pt_made", "3pt_made"):
-            stats[player]["fgm"] += 1
-            if _is_three_pointer(play_type, desc):
-                stats[player]["3pm"] += 1
-                stats[player]["pts"] += 3
-            else:
-                stats[player]["pts"] += 2
-            scored = True
-        # Shot attempts ("2pt", "3pt") - must verify from description
-        elif play_type in ("2pt", "3pt"):
-            if _is_made_shot(desc):
-                stats[player]["fgm"] += 1
-                if _is_three_pointer(play_type, desc):
-                    stats[player]["3pm"] += 1
-                    stats[player]["pts"] += 3
-                else:
-                    stats[player]["pts"] += 2
-                scored = True
-        elif play_type in ("free_throw_made", "ft_made"):
-            stats[player]["ftm"] += 1
-            stats[player]["pts"] += 1
-            scored = True
-        elif play_type == "freethrow":
-            if _is_made_shot(desc):
-                stats[player]["ftm"] += 1
-                stats[player]["pts"] += 1
-                scored = True
-        elif play_type == "rebound":
+        # Non-scoring stats: play_type matching for reb/ast
+        if play_type in ("rebound", "offensive_rebound", "defensive_rebound"):
             stats[player]["reb"] += 1
         elif play_type == "assist":
             stats[player]["ast"] += 1
-        else:
-            # Fallback: parse description for shot types (only if made)
-            if _is_made_shot(desc):
-                if "3-pt" in desc or "three" in desc or "3pt" in desc:
-                    stats[player]["3pm"] += 1
-                    stats[player]["fgm"] += 1
-                    stats[player]["pts"] += 3
-                    scored = True
-                elif "free throw" in desc or " ft " in desc:
-                    stats[player]["ftm"] += 1
-                    stats[player]["pts"] += 1
-                    scored = True
-                elif "dunk" in desc or "layup" in desc or "jumper" in desc or "shot" in desc:
-                    stats[player]["fgm"] += 1
-                    stats[player]["pts"] += 2
-                    scored = True
 
         # Extract and credit assists from scoring plays
         if scored:
@@ -122,22 +119,10 @@ def compute_running_player_stats(
                     stats[assister] = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0, "reb": 0, "ast": 0}
                 stats[assister]["ast"] += 1
 
+        prev_home = curr_home
+        prev_away = curr_away
+
     return stats
-
-
-def _is_three_pointer(play_type: str, description: str) -> bool:
-    """Determine if a made shot is a three-pointer."""
-    if "3pt" in play_type or "3-pt" in play_type or "three" in play_type:
-        return True
-    if "3-pt" in description or "three" in description or "3pt" in description:
-        return True
-    # Look for distance indicators (e.g., "26 ft" or "27'")
-    distance_match = re.search(r"(\d+)\s*(?:ft|\'|foot|feet)", description)
-    if distance_match:
-        distance = int(distance_match.group(1))
-        if distance >= 22:  # NBA 3-point line is ~22-24 feet
-            return True
-    return False
 
 
 def compute_lead_context(
@@ -401,19 +386,26 @@ def compute_cumulative_box_score(
     # Get final scores up to this point
     home_score = 0
     away_score = 0
+    prev_home = 0
+    prev_away = 0
 
     for event in pbp_events:
         if event.get("play_index", 0) > up_to_play_index:
             break
 
         # Track scores
-        home_score = event.get("home_score") or home_score
-        away_score = event.get("away_score") or away_score
+        curr_home = event.get("home_score") or prev_home
+        curr_away = event.get("away_score") or prev_away
+        home_score = curr_home
+        away_score = curr_away
+        score_delta = (curr_home + curr_away) - (prev_home + prev_away)
 
         player = event.get("player_name")
         team_abbrev = event.get("team_abbreviation", "")
 
         if not player:
+            prev_home = curr_home
+            prev_away = curr_away
             continue
 
         # Track which team this player is on
@@ -449,19 +441,19 @@ def compute_cumulative_box_score(
         if league_code == "NHL":
             _accumulate_nhl_stats(player_stats[player], play_type, desc)
         else:
-            _accumulate_basketball_stats(player_stats[player], play_type, desc)
+            # Scoring detection: use score delta (works for all data sources)
+            scored = _apply_basketball_scoring(player_stats[player], score_delta)
+
+            # Non-scoring stats: play_type matching for reb/ast
+            if play_type in ("rebound", "offensive_rebound", "defensive_rebound"):
+                player_stats[player]["reb"] += 1
+            elif play_type == "assist":
+                player_stats[player]["ast"] += 1
 
             # Extract and credit assists from scoring plays (basketball only)
-            # Assists are embedded in descriptions like "(A. Bailey 1 AST)"
-            # Only credit assists for MADE shots (not misses)
-            is_scoring_play = (
-                play_type in ("made_shot", "2pt_made", "3pt_made") or
-                (play_type in ("2pt", "3pt") and _is_made_shot(desc))
-            )
-            if is_scoring_play:
+            if scored:
                 assister = _extract_assister_from_description(original_desc)
                 if assister:
-                    # Initialize assister stats if needed
                     if assister not in player_stats:
                         player_stats[assister] = {
                             "pts": 0, "reb": 0, "ast": 0, "3pm": 0, "fgm": 0, "ftm": 0
@@ -470,6 +462,9 @@ def compute_cumulative_box_score(
                     # Track assister's team (same as scorer's team)
                     if assister not in player_teams and team_abbrev:
                         player_teams[assister] = team_abbrev
+
+        prev_home = curr_home
+        prev_away = curr_away
 
     # Determine which players belong to which team
     # Match by abbreviation (preferred) or fall back to name matching
@@ -556,76 +551,6 @@ def compute_cumulative_box_score(
                 }
 
     return result
-
-
-def _is_made_shot(desc: str) -> bool:
-    """Check if the description indicates a made shot (not a miss)."""
-    desc_lower = desc.lower()
-    # Check for explicit make indicators
-    if "makes" in desc_lower or "made" in desc_lower:
-        return True
-    # Check for miss indicators (should NOT count)
-    if "miss" in desc_lower or "missed" in desc_lower:
-        return False
-    # Default: if no explicit indicator, assume not made (conservative)
-    return False
-
-
-def _accumulate_basketball_stats(
-    stats: dict[str, int],
-    play_type: str,
-    desc: str,
-) -> None:
-    """Accumulate basketball stats for a player from a play event.
-
-    IMPORTANT: play_type "2pt" and "3pt" represent ATTEMPTS, not makes.
-    We must check the description for "makes"/"made" to confirm it was scored.
-    """
-    desc_lower = desc.lower()
-
-    # Explicit made shot types (these are confirmed makes)
-    if play_type in ("made_shot", "field_goal_made", "2pt_made", "3pt_made"):
-        stats["fgm"] += 1
-        if _is_three_pointer(play_type, desc):
-            stats["3pm"] += 1
-            stats["pts"] += 3
-        else:
-            stats["pts"] += 2
-    # Shot attempts ("2pt", "3pt") - must verify from description
-    elif play_type in ("2pt", "3pt"):
-        if _is_made_shot(desc):
-            stats["fgm"] += 1
-            if _is_three_pointer(play_type, desc):
-                stats["3pm"] += 1
-                stats["pts"] += 3
-            else:
-                stats["pts"] += 2
-        # If not made, don't count points (it's a miss)
-    elif play_type in ("free_throw_made", "ft_made"):
-        stats["ftm"] += 1
-        stats["pts"] += 1
-    elif play_type == "freethrow":
-        # Generic free throw - check if made
-        if _is_made_shot(desc):
-            stats["ftm"] += 1
-            stats["pts"] += 1
-    elif play_type == "rebound":
-        stats["reb"] += 1
-    elif play_type == "assist":
-        stats["ast"] += 1
-    else:
-        # Fallback: parse description for shot types (only if made)
-        if _is_made_shot(desc):
-            if "3-pt" in desc_lower or "three" in desc_lower or "3pt" in desc_lower:
-                stats["3pm"] += 1
-                stats["fgm"] += 1
-                stats["pts"] += 3
-            elif "free throw" in desc_lower or " ft " in desc_lower:
-                stats["ftm"] += 1
-                stats["pts"] += 1
-            elif "dunk" in desc_lower or "layup" in desc_lower or "jumper" in desc_lower or "shot" in desc_lower:
-                stats["fgm"] += 1
-                stats["pts"] += 2
 
 
 def _accumulate_nhl_stats(
@@ -780,6 +705,17 @@ def compute_block_mini_box(
             reverse=True,
         )
         cumulative[side]["players"] = players[:3]
+
+    # Strip mini box to PRA only (basketball) or goals/assists (NHL)
+    if league_code == "NHL":
+        pra_keys = {"name", "goals", "assists", "deltaGoals", "deltaAssists"}
+    else:
+        pra_keys = {"name", "pts", "reb", "ast", "deltaPts", "deltaReb", "deltaAst"}
+    for side in ["home", "away"]:
+        cumulative[side]["players"] = [
+            {k: v for k, v in p.items() if k in pra_keys}
+            for p in cumulative[side]["players"]
+        ]
 
     # Remove scores from mini_box (already in block score_before/after)
     cumulative["home"].pop("score", None)

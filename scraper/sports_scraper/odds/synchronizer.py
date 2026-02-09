@@ -13,6 +13,7 @@ from ..db import get_session
 from ..logging import logger
 from ..models import IngestionConfig
 from ..persistence import upsert_odds
+from ..persistence.odds import OddsUpsertResult
 from ..utils.datetime_utils import today_et
 from .client import OddsAPIClient
 
@@ -224,12 +225,16 @@ class OddsSynchronizer:
         """Persist odds snapshots to database."""
         inserted = 0
         skipped = 0
+        skipped_live = 0
 
         with get_session() as session:
             for snapshot in snapshots:
                 try:
-                    if upsert_odds(session, snapshot):
+                    result = upsert_odds(session, snapshot)
+                    if result is OddsUpsertResult.PERSISTED:
                         inserted += 1
+                    elif result is OddsUpsertResult.SKIPPED_LIVE:
+                        skipped_live += 1
                     else:
                         skipped += 1
                 except Exception as exc:
@@ -252,6 +257,7 @@ class OddsSynchronizer:
             total_snapshots=len(snapshots),
             odds_inserted=inserted,
             odds_skipped=skipped,
+            odds_skipped_live=skipped_live,
             success_rate=f"{inserted}/{len(snapshots)}" if snapshots else "N/A",
         )
 

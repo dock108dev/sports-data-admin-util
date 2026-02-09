@@ -227,10 +227,14 @@ return min(base, 7)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/runs` | POST | Start a new pipeline run |
-| `/runs/{run_id}` | GET | Get run status and stage details |
-| `/runs/{run_id}/advance` | POST | Advance to next stage |
-| `/batch` | POST | Run pipeline for multiple games |
+| `/{game_id}/start` | POST | Create a new pipeline run |
+| `/{game_id}/rerun` | POST | Create new run + optionally execute stages |
+| `/{game_id}/run-full` | POST | Full pipeline in one request |
+| `/run/{run_id}` | GET | Get run status with all stages |
+| `/run/{run_id}/execute/{stage}` | POST | Execute a specific stage |
+| `/game/{game_id}` | GET | List runs for a game |
+| `/bulk-generate-async` | POST | Start async bulk generation (Celery) |
+| `/backfill-embedded-tweets` | POST | Backfill social post references into existing flows |
 
 ### Database Tables
 

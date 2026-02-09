@@ -41,7 +41,7 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 **Purpose:** Automated ingestion from external sources
 
 - **Sports:** NBA, NHL, NCAAB
-- **Sources:** Sports Reference (NBA boxscores, NCAAB), NBA API (NBA PBP), NHL API (NHL), CBB Stats API (NCAAB boxscores), The Odds API, X/Twitter
+- **Sources:** Sports Reference (NBA boxscores), NBA API (NBA PBP), NHL API (NHL boxscores + PBP), CBB Stats API (NCAAB boxscores + PBP), The Odds API, X/Twitter
 - **Data Types:** Play-by-play, box scores, odds, social media
 - **Scheduling:** Celery task queue with Redis
 - **Output:** Normalized data to PostgreSQL
@@ -129,11 +129,11 @@ The timeline system combines PBP events with social media posts into a unified g
 
 ### Components
 
-- `timeline_generator.py` - Main assembly logic
-- `timeline_phases.py` - Game phase detection
-- `timeline_validation.py` - Validation rules
-- `timeline_events.py` - Event normalization
-- `social_events.py` - Social post processing
+- `scraper/sports_scraper/services/timeline_generator.py` - Main assembly logic (scraper-side)
+- `api/app/services/timeline_phases.py` - Game phase detection
+- `api/app/services/timeline_validation.py` - Validation rules
+- `api/app/services/timeline_events.py` - Event normalization
+- `api/app/services/social_events.py` - Social post processing
 
 See [TIMELINE_ASSEMBLY.md](TIMELINE_ASSEMBLY.md) for details.
 
@@ -186,7 +186,7 @@ See [API.md](API.md) for complete reference.
 - **Task Queue:** Celery + Redis
 
 ### Frontend
-- **Framework:** Next.js 14+
+- **Framework:** Next.js 16+
 - **Language:** TypeScript
 - **Styling:** CSS Modules
 - **API Client:** Fetch API

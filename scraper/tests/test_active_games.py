@@ -179,7 +179,7 @@ class TestGetGamesNeedingSocial:
 # ---------------------------------------------------------------------------
 class TestGetGamesNeedingOdds:
     @patch("sports_scraper.services.active_games.now_utc", return_value=_utc_now())
-    def test_pregame_live_games(self, mock_now):
+    def test_pregame_games(self, mock_now):
         resolver = ActiveGamesResolver()
         game = _make_game(status="pregame")
 

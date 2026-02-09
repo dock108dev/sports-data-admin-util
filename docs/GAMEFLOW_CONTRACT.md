@@ -128,6 +128,8 @@ Blocks may contain an embedded social post ID that adds social context.
 - Social posts are optional -- removing all social posts produces the same game flow structure
 - Social posts do not influence narrative content
 
+**Backfill:** When the pipeline runs before social scraping completes, all blocks may have `embedded_social_post_id = NULL`. A post-generation backfill attaches tweet references once social data becomes available. This is the sole permitted mutation to a finalized game flow — block structure, roles, and narratives are never altered.
+
 **Selection Criteria:**
 - In-game posts preferred over pregame/postgame
 - High engagement and media content preferred

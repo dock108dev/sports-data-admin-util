@@ -1,11 +1,12 @@
 """Tests for game_stats_helpers module."""
 
 from app.services.pipeline.stages.game_stats_helpers import (
+    _apply_basketball_scoring,
     compute_running_player_stats,
     compute_lead_context,
     compute_cumulative_box_score,
+    compute_block_mini_box,
     format_player_stat_hint,
-    _is_three_pointer,
 )
 
 
@@ -18,9 +19,16 @@ class TestComputeRunningPlayerStats:
         assert result == {}
 
     def test_single_made_shot(self):
-        """Single made two-pointer tracked correctly."""
+        """Single made two-pointer tracked correctly via score delta."""
         events = [
-            {"play_index": 1, "player_name": "LeBron James", "play_type": "made_shot", "description": "layup"}
+            {
+                "play_index": 1,
+                "player_name": "LeBron James",
+                "play_type": "made_shot",
+                "description": "layup",
+                "home_score": 2,
+                "away_score": 0,
+            }
         ]
         result = compute_running_player_stats(events, 1)
         assert result["LeBron James"]["pts"] == 2
@@ -28,9 +36,16 @@ class TestComputeRunningPlayerStats:
         assert result["LeBron James"]["3pm"] == 0
 
     def test_three_pointer_detection(self):
-        """Three-pointers tracked correctly."""
+        """Three-pointers tracked correctly via score delta of 3."""
         events = [
-            {"play_index": 1, "player_name": "Curry", "play_type": "3pt_made", "description": "3-pt shot"}
+            {
+                "play_index": 1,
+                "player_name": "Curry",
+                "play_type": "3pt_made",
+                "description": "3-pt shot",
+                "home_score": 3,
+                "away_score": 0,
+            }
         ]
         result = compute_running_player_stats(events, 1)
         assert result["Curry"]["pts"] == 3
@@ -38,9 +53,16 @@ class TestComputeRunningPlayerStats:
         assert result["Curry"]["3pm"] == 1
 
     def test_free_throw(self):
-        """Free throws tracked correctly."""
+        """Free throws tracked correctly via score delta of 1."""
         events = [
-            {"play_index": 1, "player_name": "Harden", "play_type": "free_throw_made", "description": ""}
+            {
+                "play_index": 1,
+                "player_name": "Harden",
+                "play_type": "free_throw_made",
+                "description": "",
+                "home_score": 1,
+                "away_score": 0,
+            }
         ]
         result = compute_running_player_stats(events, 1)
         assert result["Harden"]["pts"] == 1
@@ -50,9 +72,30 @@ class TestComputeRunningPlayerStats:
     def test_multiple_players(self):
         """Stats tracked separately per player."""
         events = [
-            {"play_index": 1, "player_name": "Player A", "play_type": "made_shot", "description": ""},
-            {"play_index": 2, "player_name": "Player B", "play_type": "3pt_made", "description": ""},
-            {"play_index": 3, "player_name": "Player A", "play_type": "free_throw_made", "description": ""},
+            {
+                "play_index": 1,
+                "player_name": "Player A",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 2,
+                "away_score": 0,
+            },
+            {
+                "play_index": 2,
+                "player_name": "Player B",
+                "play_type": "3pt_made",
+                "description": "",
+                "home_score": 5,
+                "away_score": 0,
+            },
+            {
+                "play_index": 3,
+                "player_name": "Player A",
+                "play_type": "free_throw_made",
+                "description": "",
+                "home_score": 6,
+                "away_score": 0,
+            },
         ]
         result = compute_running_player_stats(events, 3)
         assert result["Player A"]["pts"] == 3  # 2 + 1
@@ -63,47 +106,143 @@ class TestComputeRunningPlayerStats:
     def test_up_to_play_index(self):
         """Only includes events up to specified index."""
         events = [
-            {"play_index": 1, "player_name": "Player", "play_type": "made_shot", "description": ""},
-            {"play_index": 2, "player_name": "Player", "play_type": "made_shot", "description": ""},
-            {"play_index": 3, "player_name": "Player", "play_type": "made_shot", "description": ""},
+            {
+                "play_index": 1,
+                "player_name": "Player",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 2,
+                "away_score": 0,
+            },
+            {
+                "play_index": 2,
+                "player_name": "Player",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 4,
+                "away_score": 0,
+            },
+            {
+                "play_index": 3,
+                "player_name": "Player",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 6,
+                "away_score": 0,
+            },
         ]
         # Only first two
         result = compute_running_player_stats(events, 2)
         assert result["Player"]["pts"] == 4
         assert result["Player"]["fgm"] == 2
 
-    def test_description_fallback(self):
-        """Falls back to parsing description when play_type unclear."""
+    def test_nba_api_format_score_based_detection(self):
+        """NBA API format detected via score delta."""
         events = [
-            {"play_index": 1, "player_name": "Player", "play_type": "other", "description": "Player makes 3-pt shot"}
+            {
+                "play_index": 1,
+                "player_name": "J. Tatum",
+                "play_type": "2pt",
+                "description": "J. Tatum Layup",
+                "home_score": 0,
+                "away_score": 2,
+            }
         ]
         result = compute_running_player_stats(events, 1)
-        assert result["Player"]["pts"] == 3
-        assert result["Player"]["3pm"] == 1
+        assert result["J. Tatum"]["pts"] == 2
+        assert result["J. Tatum"]["fgm"] == 1
 
+    def test_miss_no_score_change(self):
+        """Miss has no score change — 0 pts."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "J. Tatum",
+                "play_type": "2pt",
+                "description": "J. Tatum Layup MISS",
+                "home_score": 0,
+                "away_score": 0,
+            }
+        ]
+        result = compute_running_player_stats(events, 1)
+        assert result["J. Tatum"]["pts"] == 0
+        assert result["J. Tatum"]["fgm"] == 0
 
-class TestIsThreePointer:
-    """Tests for three-pointer detection."""
+    def test_three_pointer_via_score_delta(self):
+        """Score delta of 3 correctly classifies as 3-pointer."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Curry",
+                "play_type": "3pt",
+                "description": "S. Curry 3PT",
+                "home_score": 3,
+                "away_score": 0,
+            }
+        ]
+        result = compute_running_player_stats(events, 1)
+        assert result["Curry"]["pts"] == 3
+        assert result["Curry"]["3pm"] == 1
+        assert result["Curry"]["fgm"] == 1
 
-    def test_explicit_3pt_type(self):
-        """Detects 3pt from play type."""
-        assert _is_three_pointer("3pt_made", "") is True
-        assert _is_three_pointer("3-pt", "") is True
+    def test_free_throw_via_score_delta(self):
+        """Score delta of 1 correctly classifies as free throw."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Harden",
+                "play_type": "freethrow",
+                "description": "J. Harden Free Throw",
+                "home_score": 1,
+                "away_score": 0,
+            }
+        ]
+        result = compute_running_player_stats(events, 1)
+        assert result["Harden"]["pts"] == 1
+        assert result["Harden"]["ftm"] == 1
+        assert result["Harden"]["fgm"] == 0
 
-    def test_description_contains_three(self):
-        """Detects from description keywords."""
-        assert _is_three_pointer("", "makes 3-pt shot") is True
-        assert _is_three_pointer("", "three pointer") is True
+    def test_ncaab_offensive_rebound(self):
+        """NCAAB offensive_rebound play_type counted as rebound."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Edey",
+                "play_type": "offensive_rebound",
+                "description": "",
+            }
+        ]
+        result = compute_running_player_stats(events, 1)
+        assert result["Edey"]["reb"] == 1
 
-    def test_distance_indicator(self):
-        """Detects from distance in description."""
-        assert _is_three_pointer("", "26 ft jumper") is True
-        assert _is_three_pointer("", "from 24'") is True
+    def test_ncaab_defensive_rebound(self):
+        """NCAAB defensive_rebound play_type counted as rebound."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Edey",
+                "play_type": "defensive_rebound",
+                "description": "",
+            }
+        ]
+        result = compute_running_player_stats(events, 1)
+        assert result["Edey"]["reb"] == 1
 
-    def test_not_three_pointer(self):
-        """Normal shots not detected as threes."""
-        assert _is_three_pointer("made_shot", "layup") is False
-        assert _is_three_pointer("", "15 ft jumper") is False
+    def test_assist_from_description_on_scoring_play(self):
+        """Assists extracted from description on scoring plays."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "L. Markkanen",
+                "play_type": "2pt",
+                "description": "L. Markkanen 26' 3PT (3 PTS) (A. Bailey 1 AST)",
+                "home_score": 3,
+                "away_score": 0,
+            }
+        ]
+        result = compute_running_player_stats(events, 1)
+        assert result["L. Markkanen"]["pts"] == 3
+        assert result["A. Bailey"]["ast"] == 1
 
 
 class TestComputeLeadContext:
@@ -316,6 +455,8 @@ class TestComputeCumulativeBoxScore:
                 "team_abbreviation": "ATL",
                 "play_type": "made_shot",
                 "description": "",
+                "home_score": 2,
+                "away_score": 0,
             },
         ]
         # No abbreviations provided - should fall back to name matching
@@ -339,6 +480,8 @@ class TestComputeCumulativeBoxScore:
                 "team_abbreviation": "gsw",  # lowercase
                 "play_type": "made_shot",
                 "description": "",
+                "home_score": 2,
+                "away_score": 0,
             },
         ]
         result = compute_cumulative_box_score(
@@ -362,6 +505,7 @@ class TestComputeCumulativeBoxScore:
                 "play_type": "3pt_made",
                 "description": "",
                 "home_score": 3,
+                "away_score": 0,
             },
             {
                 "play_index": 2,
@@ -370,6 +514,7 @@ class TestComputeCumulativeBoxScore:
                 "play_type": "3pt_made",
                 "description": "",
                 "home_score": 6,
+                "away_score": 0,
             },
             {
                 "play_index": 3,
@@ -401,6 +546,8 @@ class TestComputeCumulativeBoxScore:
                 "team_abbreviation": "ATL",
                 "play_type": "made_shot",
                 "description": "",
+                "home_score": 2,
+                "away_score": 0,
             },
             {
                 "play_index": 2,
@@ -408,6 +555,8 @@ class TestComputeCumulativeBoxScore:
                 "team_abbreviation": "ATL",
                 "play_type": "3pt_made",
                 "description": "",
+                "home_score": 5,
+                "away_score": 0,
             },
             {
                 "play_index": 3,
@@ -415,6 +564,8 @@ class TestComputeCumulativeBoxScore:
                 "team_abbreviation": "ATL",
                 "play_type": "3pt_made",
                 "description": "",
+                "home_score": 8,
+                "away_score": 0,
             },
         ]
         result = compute_cumulative_box_score(
@@ -441,6 +592,8 @@ class TestComputeCumulativeBoxScore:
                 "team_abbreviation": "",  # No team
                 "play_type": "made_shot",
                 "description": "",
+                "home_score": 2,
+                "away_score": 0,
             },
             {
                 "play_index": 2,
@@ -448,6 +601,8 @@ class TestComputeCumulativeBoxScore:
                 "team_abbreviation": "ATL",
                 "play_type": "made_shot",
                 "description": "",
+                "home_score": 4,
+                "away_score": 0,
             },
         ]
         result = compute_cumulative_box_score(
@@ -781,7 +936,7 @@ class TestComputeCumulativeBoxScore:
         assert paul["pts"] == 0
 
     def test_basketball_free_throws(self):
-        """Basketball free throws are tracked correctly."""
+        """Basketball free throws are tracked correctly via score delta."""
         events = [
             {
                 "play_index": 1,
@@ -789,6 +944,8 @@ class TestComputeCumulativeBoxScore:
                 "team_abbreviation": "LAC",
                 "play_type": "free_throw_made",
                 "description": "",
+                "home_score": 1,
+                "away_score": 0,
             },
             {
                 "play_index": 2,
@@ -796,6 +953,8 @@ class TestComputeCumulativeBoxScore:
                 "team_abbreviation": "LAC",
                 "play_type": "ft_made",
                 "description": "",
+                "home_score": 2,
+                "away_score": 0,
             },
         ]
         result = compute_cumulative_box_score(
@@ -813,65 +972,132 @@ class TestComputeCumulativeBoxScore:
         assert harden["pts"] == 2
         assert harden["fgm"] == 0
 
-    def test_basketball_description_fallback(self):
-        """Basketball stats can be parsed from description when play_type is unclear."""
+    def test_score_based_detection(self):
+        """Scoring detected via score delta regardless of description content."""
         events = [
             {
                 "play_index": 1,
-                "player_name": "Player A",
-                "team_abbreviation": "ATL",
-                "play_type": "other",
-                "description": "Player A makes 3-pt shot",
-            },
-            {
-                "play_index": 2,
-                "player_name": "Player B",
-                "team_abbreviation": "ATL",
-                "play_type": "unknown",
-                "description": "Player B makes free throw",
-            },
-            {
-                "play_index": 3,
-                "player_name": "Player C",
-                "team_abbreviation": "ATL",
-                "play_type": "",
-                "description": "Player C made dunk",
+                "player_name": "J. Tatum",
+                "team_abbreviation": "BOS",
+                "play_type": "2pt",
+                "description": "J. Tatum Layup",
+                "home_score": 0,
+                "away_score": 2,
             },
         ]
         result = compute_cumulative_box_score(
             events,
-            3,
+            1,
             "Atlanta Hawks",
             "Boston Celtics",
             "NBA",
             home_team_abbrev="ATL",
             away_team_abbrev="BOS",
         )
-        player_a = next(p for p in result["home"]["players"] if p["name"] == "Player A")
-        assert player_a["pts"] == 3
-        assert player_a["3pm"] == 1
+        tatum = result["away"]["players"][0]
+        assert tatum["pts"] == 2
+        assert tatum["fgm"] == 1
 
-        player_b = next(p for p in result["home"]["players"] if p["name"] == "Player B")
-        assert player_b["pts"] == 1
-        assert player_b["ftm"] == 1
+    def test_miss_no_points(self):
+        """Miss (no score change) yields 0 points."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "J. Tatum",
+                "team_abbreviation": "BOS",
+                "play_type": "2pt",
+                "description": "J. Tatum Layup MISS",
+                "home_score": 0,
+                "away_score": 0,
+            },
+        ]
+        result = compute_cumulative_box_score(
+            events,
+            1,
+            "Atlanta Hawks",
+            "Boston Celtics",
+            "NBA",
+            home_team_abbrev="ATL",
+            away_team_abbrev="BOS",
+        )
+        tatum = result["away"]["players"][0]
+        assert tatum["pts"] == 0
+        assert tatum["fgm"] == 0
 
-        player_c = next(p for p in result["home"]["players"] if p["name"] == "Player C")
-        assert player_c["pts"] == 2
-        assert player_c["fgm"] == 1
+    def test_three_pointer_via_cumulative_score_delta(self):
+        """Score delta of 3 in cumulative box correctly classifies as 3PM."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Curry",
+                "team_abbreviation": "GSW",
+                "play_type": "3pt",
+                "description": "S. Curry 3PT",
+                "home_score": 3,
+                "away_score": 0,
+            },
+        ]
+        result = compute_cumulative_box_score(
+            events,
+            1,
+            "Golden State Warriors",
+            "Boston Celtics",
+            "NBA",
+            home_team_abbrev="GSW",
+            away_team_abbrev="BOS",
+        )
+        curry = result["home"]["players"][0]
+        assert curry["pts"] == 3
+        assert curry["3pm"] == 1
+        assert curry["fgm"] == 1
+
+    def test_ncaab_offensive_defensive_rebounds(self):
+        """NCAAB offensive_rebound and defensive_rebound counted as rebounds."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Edey",
+                "team_abbreviation": "PUR",
+                "play_type": "offensive_rebound",
+                "description": "",
+            },
+            {
+                "play_index": 2,
+                "player_name": "Edey",
+                "team_abbreviation": "PUR",
+                "play_type": "defensive_rebound",
+                "description": "",
+            },
+        ]
+        result = compute_cumulative_box_score(
+            events,
+            2,
+            "Purdue Boilermakers",
+            "UConn Huskies",
+            "NCAAB",
+            home_team_abbrev="PUR",
+            away_team_abbrev="CONN",
+        )
+        edey = result["home"]["players"][0]
+        assert edey["reb"] == 2
 
     def test_top_5_players_limit(self):
         """Only top 5 contributors per team are returned."""
         # Create 7 players with varying point totals
         events = []
+        running_score = 0
         for i, pts in enumerate([10, 8, 6, 4, 2, 1, 0]):
             player_name = f"Player{i}"
             for _ in range(pts // 2):  # Each made shot = 2 pts
+                running_score += 2
                 events.append({
                     "play_index": len(events) + 1,
                     "player_name": player_name,
                     "team_abbreviation": "ATL",
                     "play_type": "made_shot",
                     "description": "",
+                    "home_score": running_score,
+                    "away_score": 0,
                 })
 
         result = compute_cumulative_box_score(
@@ -927,3 +1153,181 @@ class TestComputeCumulativeBoxScore:
         # Should have basketball keys, not NHL keys
         assert "goals" not in edey
         assert "assists" not in edey
+
+
+class TestComputeBlockMiniBox:
+    """Tests for mini box score PRA stripping."""
+
+    def test_mini_box_contains_only_pra_keys(self):
+        """Mini box strips to PRA-only keys for basketball."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Trae Young",
+                "team_abbreviation": "ATL",
+                "play_type": "3pt",
+                "description": "",
+                "home_score": 3,
+                "away_score": 0,
+            },
+            {
+                "play_index": 2,
+                "player_name": "Trae Young",
+                "team_abbreviation": "ATL",
+                "play_type": "rebound",
+                "description": "",
+            },
+            {
+                "play_index": 3,
+                "player_name": "Trae Young",
+                "team_abbreviation": "ATL",
+                "play_type": "assist",
+                "description": "",
+            },
+        ]
+        result = compute_block_mini_box(
+            events,
+            block_start_play_idx=1,
+            block_end_play_idx=3,
+            prev_block_end_play_idx=None,
+            home_team="Atlanta Hawks",
+            away_team="Boston Celtics",
+            league_code="NBA",
+            home_team_abbrev="ATL",
+            away_team_abbrev="BOS",
+        )
+        pra_keys = {"name", "pts", "reb", "ast", "deltaPts", "deltaReb", "deltaAst"}
+        for side in ["home", "away"]:
+            for player in result[side]["players"]:
+                assert set(player.keys()).issubset(pra_keys), (
+                    f"Unexpected keys in mini box: {set(player.keys()) - pra_keys}"
+                )
+
+
+class TestScoreGapGuard:
+    """Tests for score-gap guard that skips attribution when delta > 3."""
+
+    def test_apply_basketball_scoring_skips_large_delta(self):
+        """_apply_basketball_scoring returns False and leaves stats unchanged for delta > 3."""
+        stats = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0}
+        result = _apply_basketball_scoring(stats, 7)
+        assert result is False
+        assert stats == {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0}
+
+    def test_apply_basketball_scoring_allows_normal_deltas(self):
+        """_apply_basketball_scoring works correctly for delta 1, 2, 3."""
+        # Free throw (delta 1)
+        stats_ft = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0}
+        assert _apply_basketball_scoring(stats_ft, 1) is True
+        assert stats_ft == {"pts": 1, "fgm": 0, "3pm": 0, "ftm": 1}
+
+        # Two-pointer (delta 2)
+        stats_2pt = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0}
+        assert _apply_basketball_scoring(stats_2pt, 2) is True
+        assert stats_2pt == {"pts": 2, "fgm": 1, "3pm": 0, "ftm": 0}
+
+        # Three-pointer (delta 3)
+        stats_3pt = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0}
+        assert _apply_basketball_scoring(stats_3pt, 3) is True
+        assert stats_3pt == {"pts": 3, "fgm": 1, "3pm": 1, "ftm": 0}
+
+    def test_score_gap_skips_attribution_running_stats(self):
+        """compute_running_player_stats skips attribution when score gap > 3."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Player A",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 50,
+                "away_score": 40,
+            },
+            {
+                "play_index": 2,
+                "player_name": "Player B",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 58,  # +8 gap — dropped plays
+                "away_score": 40,
+            },
+        ]
+        result = compute_running_player_stats(events, 2)
+        # Player B should get 0 pts because delta of 8 exceeds max
+        assert result["Player B"]["pts"] == 0
+        assert result["Player B"]["fgm"] == 0
+        assert result["Player B"]["3pm"] == 0
+        assert result["Player B"]["ftm"] == 0
+
+    def test_score_gap_skips_attribution_cumulative_box(self):
+        """compute_cumulative_box_score skips attribution when score gap > 3."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Player A",
+                "team_abbreviation": "ATL",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 50,
+                "away_score": 40,
+            },
+            {
+                "play_index": 2,
+                "player_name": "Player B",
+                "team_abbreviation": "ATL",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 57,  # +7 gap — dropped plays
+                "away_score": 40,
+            },
+        ]
+        result = compute_cumulative_box_score(
+            events,
+            2,
+            "Atlanta Hawks",
+            "Boston Celtics",
+            "NBA",
+            home_team_abbrev="ATL",
+            away_team_abbrev="BOS",
+        )
+        player_b = next(
+            p for p in result["home"]["players"] if p["name"] == "Player B"
+        )
+        assert player_b["pts"] == 0
+        assert player_b["fgm"] == 0
+        assert player_b["3pm"] == 0
+        assert player_b["ftm"] == 0
+
+    def test_normal_scoring_after_gap(self):
+        """After a gap event, normal scoring is attributed correctly."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Player A",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 50,
+                "away_score": 40,
+            },
+            {
+                "play_index": 2,
+                "player_name": "Player B",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 58,  # +8 gap — skipped
+                "away_score": 40,
+            },
+            {
+                "play_index": 3,
+                "player_name": "Player C",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 60,  # +2 from 58 — normal play
+                "away_score": 40,
+            },
+        ]
+        result = compute_running_player_stats(events, 3)
+        # Player C should get normal 2-pt attribution
+        assert result["Player C"]["pts"] == 2
+        assert result["Player C"]["fgm"] == 1
+        # Player B should still have 0
+        assert result["Player B"]["pts"] == 0

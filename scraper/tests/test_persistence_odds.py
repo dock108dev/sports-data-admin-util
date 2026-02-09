@@ -21,6 +21,7 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
+from sports_scraper.persistence.odds import OddsUpsertResult
 from sports_scraper.persistence.odds_matching import (
     canonicalize_team_names,
     should_log,
@@ -461,7 +462,7 @@ class TestUpsertOddsFunction:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         # Two execute calls: SportsGameOdds + FairbetGameOddsWork
         assert mock_session.execute.call_count == 2
 
@@ -499,7 +500,7 @@ class TestUpsertOddsFunction:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is False
+        assert result is OddsUpsertResult.SKIPPED_NO_MATCH
 
     @patch("sports_scraper.persistence.odds.cache_set")
     @patch("sports_scraper.persistence.odds.cache_get")
@@ -540,7 +541,7 @@ class TestUpsertOddsFunction:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         assert mock_upsert_team.call_count == 2
 
     @patch("sports_scraper.persistence.odds.cache_set")
@@ -583,7 +584,7 @@ class TestUpsertOddsFunction:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         assert mock_game.tip_time == tip_time
 
 
@@ -641,7 +642,7 @@ class TestUpsertOddsCacheMiss:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         mock_match_by_ids.assert_called_once()
         mock_cache_set.assert_called()
 
@@ -697,7 +698,7 @@ class TestUpsertOddsCacheMiss:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         mock_match_by_names.assert_called_once()
 
     @patch("sports_scraper.persistence.odds.upsert_game_stub")
@@ -751,7 +752,7 @@ class TestUpsertOddsCacheMiss:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         mock_match_by_names.assert_called_once()
 
     @patch("sports_scraper.persistence.odds.upsert_game_stub")
@@ -809,7 +810,7 @@ class TestUpsertOddsCacheMiss:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         mock_upsert_stub.assert_called_once()
         # Verify external_ids contains source_key
         call_kwargs = mock_upsert_stub.call_args[1]
@@ -863,7 +864,7 @@ class TestUpsertOddsCacheMiss:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is False
+        assert result is OddsUpsertResult.SKIPPED_NO_MATCH
         mock_cache_set.assert_called()  # Should cache None
 
 
@@ -923,7 +924,7 @@ class TestUpsertOddsDiagnostics:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         # Should execute diagnostic queries
         assert mock_session.execute.call_count >= 1
 
@@ -971,7 +972,7 @@ class TestUpsertOddsWithSideValue:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         # Two execute calls: SportsGameOdds + FairbetGameOddsWork
         assert mock_session.execute.call_count == 2
 
@@ -1014,7 +1015,7 @@ class TestUpsertOddsWithSideValue:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
 
 
 class TestUpsertOddsTeamCreation:
@@ -1059,7 +1060,7 @@ class TestUpsertOddsTeamCreation:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         mock_upsert_team.assert_called_once()
 
     @patch("sports_scraper.persistence.odds.cache_set")
@@ -1101,7 +1102,7 @@ class TestUpsertOddsTeamCreation:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         mock_upsert_team.assert_called_once()
 
 
@@ -1159,5 +1160,5 @@ class TestUpsertOddsUpdateTipTime:
 
         result = upsert_odds(mock_session, snapshot)
 
-        assert result is True
+        assert result is OddsUpsertResult.PERSISTED
         assert mock_game.tip_time == tip_time

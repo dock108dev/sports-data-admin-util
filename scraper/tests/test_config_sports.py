@@ -88,9 +88,9 @@ class TestLeagueConfigConstants:
         assert "NCAAB" in LEAGUE_CONFIG
         assert LEAGUE_CONFIG["NCAAB"].code == "NCAAB"
 
-    def test_ncaab_social_disabled(self):
-        """NCAAB has social integration disabled."""
-        assert LEAGUE_CONFIG["NCAAB"].social_enabled is False
+    def test_ncaab_social_enabled(self):
+        """NCAAB has social integration enabled."""
+        assert LEAGUE_CONFIG["NCAAB"].social_enabled is True
 
     def test_all_leagues_have_boxscores(self):
         """All leagues have boxscores enabled."""
@@ -179,10 +179,10 @@ class TestGetSocialEnabledLeagues:
         assert "NBA" in result
         assert "NHL" in result
 
-    def test_excludes_ncaab(self):
-        """Excludes NCAAB (which has social disabled)."""
+    def test_includes_ncaab(self):
+        """Includes NCAAB (which has social enabled)."""
         result = get_social_enabled_leagues()
-        assert "NCAAB" not in result
+        assert "NCAAB" in result
 
 
 class TestGetTimelineEnabledLeagues:
@@ -229,9 +229,9 @@ class TestIsSocialEnabled:
         """NHL has social enabled."""
         assert is_social_enabled("NHL") is True
 
-    def test_ncaab_disabled(self):
-        """NCAAB has social disabled."""
-        assert is_social_enabled("NCAAB") is False
+    def test_ncaab_enabled(self):
+        """NCAAB has social enabled."""
+        assert is_social_enabled("NCAAB") is True
 
     def test_unknown_league_uses_default(self):
         """Unknown league uses default config (social_enabled=True)."""

@@ -21,8 +21,6 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         code="MLB",
         display_name="MLB Baseball",
         boxscores_enabled=True,
-        player_stats_enabled=True,
-        team_stats_enabled=True,
         odds_enabled=True,
         social_enabled=False,       # Enable when X handles are seeded
         pbp_enabled=False,          # MLB PBP not yet supported
@@ -62,14 +60,14 @@ When ready for production daily runs:
 |-------|-------------|
 | `code` | Unique identifier (NBA, NHL, etc.) |
 | `display_name` | Human-readable name |
-| `boxscores_enabled` | Scrape team/game stats |
-| `player_stats_enabled` | Scrape individual player stats |
-| `team_stats_enabled` | Scrape team aggregate stats |
-| `odds_enabled` | Fetch odds from odds API |
+| `boxscores_enabled` | Scrape team/game stats and player stats |
+| `odds_enabled` | Fetch odds from The Odds API |
 | `social_enabled` | Fetch X/Twitter posts |
 | `pbp_enabled` | Scrape play-by-play data |
-| `timeline_enabled` | Generate timeline artifacts |
+| `timeline_enabled` | Generate game flow / timeline artifacts |
 | `scheduled_ingestion` | Include in daily cron jobs |
+| `live_pbp_enabled` | Poll live PBP during games (default True) |
+| `estimated_game_duration_hours` | Typical game length for time-based fallback (default 3.0) |
 
 ## Running Locally
 
@@ -102,7 +100,8 @@ The system validates league codes at every entry point:
 | `scraper/sports_scraper/config_sports.py` | **SSOT for scraper** |
 | `api/app/config_sports.py` | **SSOT for API** |
 | `scraper/sports_scraper/services/scheduler.py` | Daily job scheduling |
-| `scraper/sports_scraper/jobs/tasks.py` | Post-scrape triggers |
+| `scraper/sports_scraper/jobs/scrape_tasks.py` | Scrape triggers |
+| `scraper/sports_scraper/jobs/flow_tasks.py` | Flow generation triggers |
 | `web/src/lib/constants/sports.ts` | Frontend league list |
 
 ## Common Mistakes to Avoid
