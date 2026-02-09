@@ -22,6 +22,7 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 
 from sports_scraper.odds.synchronizer import OddsSynchronizer
+from sports_scraper.persistence.odds import OddsUpsertResult
 
 
 class TestOddsSynchronizerInit:
@@ -162,7 +163,7 @@ class TestOddsSynchronizerSyncLive:
 
         mock_session = MagicMock()
         mock_get_session.return_value.__enter__.return_value = mock_session
-        mock_upsert.return_value = True
+        mock_upsert.return_value = OddsUpsertResult.PERSISTED
 
         sync = OddsSynchronizer()
         result = sync._sync_live("NBA", date(2024, 1, 15), date(2024, 1, 15), None)
@@ -186,7 +187,7 @@ class TestOddsSynchronizerSyncHistorical:
 
         mock_session = MagicMock()
         mock_get_session.return_value.__enter__.return_value = mock_session
-        mock_upsert.return_value = True
+        mock_upsert.return_value = OddsUpsertResult.PERSISTED
 
         sync = OddsSynchronizer()
         result = sync._sync_historical(
@@ -244,7 +245,7 @@ class TestOddsSynchronizerPersistSnapshots:
         """Counts successfully inserted odds."""
         mock_session = MagicMock()
         mock_get_session.return_value.__enter__.return_value = mock_session
-        mock_upsert.return_value = True
+        mock_upsert.return_value = OddsUpsertResult.PERSISTED
 
         mock_snapshot = MagicMock()
         snapshots = [mock_snapshot, mock_snapshot, mock_snapshot]
@@ -261,7 +262,7 @@ class TestOddsSynchronizerPersistSnapshots:
         """Counts skipped odds."""
         mock_session = MagicMock()
         mock_get_session.return_value.__enter__.return_value = mock_session
-        mock_upsert.return_value = False  # All skipped
+        mock_upsert.return_value = OddsUpsertResult.SKIPPED_NO_MATCH  # All skipped
 
         mock_snapshot = MagicMock()
         snapshots = [mock_snapshot, mock_snapshot]
