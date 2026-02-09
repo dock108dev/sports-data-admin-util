@@ -61,18 +61,16 @@ app.conf.task_routes = {
     # Final-whistle social scrape runs on social-scraper queue (concurrency=1)
     "run_final_whistle_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
 }
-# Daily sports ingestion at 5:00 AM US Eastern (10:00 UTC during EST, 09:00 UTC during EDT)
-# Using 10:00 UTC to align with 5:00 AM during Eastern Standard Time (November-March).
-# During Eastern Daylight Time (March-November), this will run at 6:00 AM EDT.
+# Daily pipeline schedule (all times US Eastern / UTC during EST):
 #
-# Ingestion runs leagues sequentially: NBA -> NHL -> NCAAB
+#   3:30 AM EST (08:30 UTC) — Sports ingestion (NBA → NHL → NCAAB sequentially)
+#   4:00 AM EST (09:00 UTC) — Daily sweep (truth repair, backfill missing data)
+#   4:30 AM EST (09:30 UTC) — NBA flow generation
+#   5:00 AM EST (10:00 UTC) — NHL flow generation
+#   5:30 AM EST (10:30 UTC) — NCAAB flow generation (capped at 10 games)
 #
-# Flow generation runs 90 minutes after ingestion to allow scraping to complete.
-# Each league runs in sequence, 15 minutes apart:
-#   6:30 AM EST - NBA flow generation
-#   6:45 AM EST - NHL flow generation
-#   7:00 AM EST - NCAAB flow generation (capped at 10 games per run)
-# Each generates AI flows for games in the last 72 hours. Skips existing flows.
+# Each job is spaced 30 minutes apart. During EDT (March-November) all times
+# shift 1 hour later (e.g., ingestion at 4:30 AM EDT).
 #
 # Odds sync runs every 30 minutes to keep FairBet data fresh for all 3 leagues.
 # Always-on tasks (safe in all environments — pure DB, no external APIs)
@@ -86,24 +84,24 @@ _always_on_schedule = {
 
 # Production-only tasks (external APIs, cost, rate limits)
 _prod_only_schedule = {
-    "daily-sports-ingestion-5am-eastern": {
+    "daily-sports-ingestion-330am-eastern": {
         "task": "run_scheduled_ingestion",
-        "schedule": crontab(minute=0, hour=10),  # 5:00 AM EST = 10:00 UTC
+        "schedule": crontab(minute=30, hour=8),  # 3:30 AM EST = 08:30 UTC
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
-    "daily-nba-flow-generation-630am-eastern": {
+    "daily-nba-flow-generation-430am-eastern": {
         "task": "run_scheduled_nba_flow_generation",
-        "schedule": crontab(minute=30, hour=11),  # 6:30 AM EST = 11:30 UTC (90 min after ingestion)
+        "schedule": crontab(minute=30, hour=9),  # 4:30 AM EST = 09:30 UTC (+30 min after sweep)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
-    "daily-nhl-flow-generation-645am-eastern": {
+    "daily-nhl-flow-generation-5am-eastern": {
         "task": "run_scheduled_nhl_flow_generation",
-        "schedule": crontab(minute=45, hour=11),  # 6:45 AM EST = 11:45 UTC (15 min after NBA flow)
+        "schedule": crontab(minute=0, hour=10),  # 5:00 AM EST = 10:00 UTC (+30 min after NBA flow)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
-    "daily-ncaab-flow-generation-7am-eastern": {
+    "daily-ncaab-flow-generation-530am-eastern": {
         "task": "run_scheduled_ncaab_flow_generation",
-        "schedule": crontab(minute=0, hour=12),  # 7:00 AM EST = 12:00 UTC (15 min after NHL flow)
+        "schedule": crontab(minute=30, hour=10),  # 5:30 AM EST = 10:30 UTC (+30 min after NHL flow)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     "odds-sync-every-30-minutes": {
@@ -122,10 +120,10 @@ _prod_only_schedule = {
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     # === Daily sweep (truth repair + social scrape #2) ===
-    # Runs 1 hour after ingestion to catch any gaps left by the 5AM run
-    "daily-sweep-6am-eastern": {
+    # Runs 30 min after ingestion to catch any gaps
+    "daily-sweep-4am-eastern": {
         "task": "run_daily_sweep",
-        "schedule": crontab(minute=0, hour=11),  # 6:00 AM EST = 11:00 UTC
+        "schedule": crontab(minute=0, hour=9),  # 4:00 AM EST = 09:00 UTC (+30 min after ingestion)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
 }
