@@ -6,7 +6,6 @@ from app.services.pipeline.stages.game_stats_helpers import (
     compute_cumulative_box_score,
     compute_block_mini_box,
     format_player_stat_hint,
-    _is_three_pointer,
 )
 
 
@@ -137,11 +136,7 @@ class TestComputeRunningPlayerStats:
         assert result["Player"]["fgm"] == 2
 
     def test_nba_api_format_score_based_detection(self):
-        """NBA API format (no 'makes'/'made' in description) detected via score delta.
-
-        This is the core bug fix: NBA API descriptions like "J. Tatum Layup"
-        don't contain "makes"/"made", but score data is always present.
-        """
+        """NBA API format detected via score delta."""
         events = [
             {
                 "play_index": 1,
@@ -156,8 +151,8 @@ class TestComputeRunningPlayerStats:
         assert result["J. Tatum"]["pts"] == 2
         assert result["J. Tatum"]["fgm"] == 1
 
-    def test_nba_api_miss_no_score_change(self):
-        """NBA API miss has no score change — 0 pts."""
+    def test_miss_no_score_change(self):
+        """Miss has no score change — 0 pts."""
         events = [
             {
                 "play_index": 1,
@@ -247,30 +242,6 @@ class TestComputeRunningPlayerStats:
         result = compute_running_player_stats(events, 1)
         assert result["L. Markkanen"]["pts"] == 3
         assert result["A. Bailey"]["ast"] == 1
-
-
-class TestIsThreePointer:
-    """Tests for three-pointer detection."""
-
-    def test_explicit_3pt_type(self):
-        """Detects 3pt from play type."""
-        assert _is_three_pointer("3pt_made", "") is True
-        assert _is_three_pointer("3-pt", "") is True
-
-    def test_description_contains_three(self):
-        """Detects from description keywords."""
-        assert _is_three_pointer("", "makes 3-pt shot") is True
-        assert _is_three_pointer("", "three pointer") is True
-
-    def test_distance_indicator(self):
-        """Detects from distance in description."""
-        assert _is_three_pointer("", "26 ft jumper") is True
-        assert _is_three_pointer("", "from 24'") is True
-
-    def test_not_three_pointer(self):
-        """Normal shots not detected as threes."""
-        assert _is_three_pointer("made_shot", "layup") is False
-        assert _is_three_pointer("", "15 ft jumper") is False
 
 
 class TestComputeLeadContext:
@@ -1000,8 +971,8 @@ class TestComputeCumulativeBoxScore:
         assert harden["pts"] == 2
         assert harden["fgm"] == 0
 
-    def test_nba_api_score_based_detection(self):
-        """NBA API format detected via score delta (no 'makes'/'made' in desc)."""
+    def test_score_based_detection(self):
+        """Scoring detected via score delta regardless of description content."""
         events = [
             {
                 "play_index": 1,
@@ -1026,8 +997,8 @@ class TestComputeCumulativeBoxScore:
         assert tatum["pts"] == 2
         assert tatum["fgm"] == 1
 
-    def test_nba_api_miss_no_points(self):
-        """NBA API miss (no score change) yields 0 points."""
+    def test_miss_no_points(self):
+        """Miss (no score change) yields 0 points."""
         events = [
             {
                 "play_index": 1,

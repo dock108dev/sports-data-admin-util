@@ -34,6 +34,8 @@ STORY_VERSION = "v2-moments"
 async def backfill_embedded_tweets_for_game(
     session: AsyncSession,
     game_id: int,
+    *,
+    flow: SportsGameFlow | None = None,
 ) -> dict[str, Any]:
     """Backfill embedded tweets for a single game's flow.
 
@@ -43,26 +45,29 @@ async def backfill_embedded_tweets_for_game(
     Args:
         session: Async database session.
         game_id: ID of the game to backfill.
+        flow: Pre-loaded flow object. When called from the bulk path the
+            caller already has the row, so passing it avoids a redundant query.
 
     Returns:
         Dict with status and details of the backfill operation.
     """
-    # Load the flow
-    flow_result = await session.execute(
-        select(SportsGameFlow).where(
-            SportsGameFlow.game_id == game_id,
-            SportsGameFlow.story_version == STORY_VERSION,
+    if flow is None:
+        # Load the flow (single-game entry point)
+        flow_result = await session.execute(
+            select(SportsGameFlow).where(
+                SportsGameFlow.game_id == game_id,
+                SportsGameFlow.story_version == STORY_VERSION,
+            )
         )
-    )
-    flow = flow_result.scalar_one_or_none()
+        flow = flow_result.scalar_one_or_none()
 
     if not flow:
-        logger.debug("backfill_embedded_tweets_no_flow", game_id=game_id)
+        logger.debug("backfill_embedded_tweets_no_flow", extra={"game_id": game_id})
         return {"game_id": game_id, "status": "no_flow"}
 
     blocks = flow.blocks_json
     if not blocks:
-        logger.debug("backfill_embedded_tweets_no_blocks", game_id=game_id)
+        logger.debug("backfill_embedded_tweets_no_blocks", extra={"game_id": game_id})
         return {"game_id": game_id, "status": "no_blocks"}
 
     # Check eligibility: ALL blocks must have embedded_social_post_id is None
@@ -71,7 +76,8 @@ async def backfill_embedded_tweets_for_game(
     )
     if has_any_tweet:
         logger.debug(
-            "backfill_embedded_tweets_already_has_tweets", game_id=game_id
+            "backfill_embedded_tweets_already_has_tweets",
+            extra={"game_id": game_id},
         )
         return {"game_id": game_id, "status": "already_has_tweets"}
 
@@ -99,7 +105,7 @@ async def backfill_embedded_tweets_for_game(
     social_posts = social_result.scalars().all()
 
     if not social_posts:
-        logger.debug("backfill_embedded_tweets_no_social", game_id=game_id)
+        logger.debug("backfill_embedded_tweets_no_social", extra={"game_id": game_id})
         return {"game_id": game_id, "status": "no_social_posts"}
 
     # Convert to dict format (same as validate_blocks._attach_embedded_tweets)
@@ -124,7 +130,8 @@ async def backfill_embedded_tweets_for_game(
 
     if not tweets:
         logger.debug(
-            "backfill_embedded_tweets_no_in_game", game_id=game_id
+            "backfill_embedded_tweets_no_in_game",
+            extra={"game_id": game_id},
         )
         return {"game_id": game_id, "status": "no_in_game_tweets"}
 
@@ -142,8 +149,7 @@ async def backfill_embedded_tweets_for_game(
     if assigned_count == 0:
         logger.info(
             "backfill_embedded_tweets_none_assigned",
-            game_id=game_id,
-            candidates=len(tweets),
+            extra={"game_id": game_id, "candidates": len(tweets)},
         )
         return {
             "game_id": game_id,
@@ -157,10 +163,12 @@ async def backfill_embedded_tweets_for_game(
 
     logger.info(
         "backfill_embedded_tweets_success",
-        game_id=game_id,
-        flow_id=flow.id,
-        assigned=assigned_count,
-        candidates=selection.total_candidates,
+        extra={
+            "game_id": game_id,
+            "flow_id": flow.id,
+            "assigned": assigned_count,
+            "candidates": selection.total_candidates,
+        },
     )
 
     return {
@@ -202,16 +210,18 @@ async def find_and_backfill_all(
     total_backfilled = 0
 
     for flow in flows:
-        result = await backfill_embedded_tweets_for_game(session, flow.game_id)
+        result = await backfill_embedded_tweets_for_game(session, flow.game_id, flow=flow)
         results.append(result)
         if result.get("status") == "backfilled":
             total_backfilled += 1
 
     logger.info(
         "backfill_embedded_tweets_bulk_complete",
-        checked=len(flows),
-        backfilled=total_backfilled,
-        lookback_days=lookback_days,
+        extra={
+            "checked": len(flows),
+            "backfilled": total_backfilled,
+            "lookback_days": lookback_days,
+        },
     )
 
     return {

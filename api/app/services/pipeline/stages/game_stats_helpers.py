@@ -33,9 +33,7 @@ def compute_running_player_stats(
     """Compute running player statistics up to (and including) a given play index.
 
     Scoring is detected via score deltas (home_score/away_score changes between
-    adjacent events) rather than description parsing, which is unreliable for
-    NBA API data where descriptions like "J. Tatum Layup" contain no
-    "makes"/"made" keywords.
+    adjacent events), which works reliably across all data sources.
 
     Returns a dict mapping player_name to their cumulative stats:
     {
@@ -61,7 +59,6 @@ def compute_running_player_stats(
 
         player = event.get("player_name")
         play_type = (event.get("play_type") or "").lower()
-        desc = (event.get("description") or "").lower()
         original_desc = event.get("description") or ""
 
         # Track scores for delta detection
@@ -109,21 +106,6 @@ def compute_running_player_stats(
         prev_away = curr_away
 
     return stats
-
-
-def _is_three_pointer(play_type: str, description: str) -> bool:
-    """Determine if a made shot is a three-pointer."""
-    if "3pt" in play_type or "3-pt" in play_type or "three" in play_type:
-        return True
-    if "3-pt" in description or "three" in description or "3pt" in description:
-        return True
-    # Look for distance indicators (e.g., "26 ft" or "27'")
-    distance_match = re.search(r"(\d+)\s*(?:ft|\'|foot|feet)", description)
-    if distance_match:
-        distance = int(distance_match.group(1))
-        if distance >= 22:  # NBA 3-point line is ~22-24 feet
-            return True
-    return False
 
 
 def compute_lead_context(

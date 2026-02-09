@@ -8,7 +8,10 @@ Non-negotiable rules:
 - Exactly two social scrapes per game (this is #1)
 - No social scraping while a game is live
 - No social post is ever stored twice (dedup via external_post_id)
-- Game Flow is generated once and never mutates
+- Game Flow structure is generated once and never mutates — the sole
+  exception is embedded_social_post_id backfill, which attaches tweet
+  references to blocks whose embedded_social_post_id was NULL at
+  generation time (see backfill_embedded_tweets module)
 - Postgame socials never alter the Game Flow
 """
 
