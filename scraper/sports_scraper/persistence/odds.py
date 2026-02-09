@@ -6,6 +6,7 @@ Handles odds matching to games and persistence, including NCAAB-specific name ma
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from enum import Enum
 
 from sqlalchemy import alias, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -16,6 +17,14 @@ from ..logging import logger
 from ..models import NormalizedOddsSnapshot
 from ..utils.db_queries import get_league_id
 from ..utils.datetime_utils import now_utc
+class OddsUpsertResult(Enum):
+    """Result of an odds upsert attempt."""
+
+    PERSISTED = "persisted"
+    SKIPPED_NO_MATCH = "skipped_no_match"
+    SKIPPED_LIVE = "skipped_live"
+
+
 from .odds_matching import (
     cache_get,
     cache_set,
@@ -30,14 +39,17 @@ from .teams import _find_team_by_name, _upsert_team
 from ..odds.fairbet import upsert_fairbet_odds
 
 
-def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
+def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpsertResult:
     """Upsert odds snapshot, matching to existing game.
 
     Tries multiple matching strategies:
     1. Match by team IDs (exact and swapped)
     2. Match by team names (NCAAB uses normalized matching, others use exact)
 
-    Returns False if no matching game is found, True if odds were persisted.
+    Returns:
+        PERSISTED — odds were written to the database.
+        SKIPPED_NO_MATCH — no matching game found (or far-future / stub failure).
+        SKIPPED_LIVE — game is live; write skipped to preserve closing lines.
     """
     league_id = get_league_id(session, snapshot.league_code)
 
@@ -88,15 +100,15 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
     if cached is not False:
         game_id = cached  # type: ignore[assignment]
         if game_id is None:
-            return False
-        
+            return OddsUpsertResult.SKIPPED_NO_MATCH
+
         # Update tip_time even on cache hit if not yet set
         game = session.get(db_models.SportsGame, game_id)
 
         # Skip live games to preserve pre-game closing lines
         if game and game.status == db_models.GameStatus.live.value:
             logger.debug("odds_skip_live_game", game_id=game_id, book=snapshot.book)
-            return False
+            return OddsUpsertResult.SKIPPED_LIVE
 
         if game and game.tip_time is None and snapshot.tip_time:
             game.tip_time = snapshot.tip_time
@@ -139,7 +151,7 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
         if game is not None:
             upsert_fairbet_odds(session, game_id, game.status, snapshot)
 
-        return True
+        return OddsUpsertResult.PERSISTED
     day_start = datetime.combine(game_day - timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
     day_end = datetime.combine(game_day + timedelta(days=1), datetime.max.time(), tzinfo=timezone.utc)
 
@@ -304,7 +316,7 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
                 away_team=snapshot.away_team.name,
             )
             cache_set(cache_key, None)
-            return False
+            return OddsUpsertResult.SKIPPED_NO_MATCH
 
         # Use tip_time from snapshot (actual start time in UTC)
         tip_time = snapshot.tip_time
@@ -338,7 +350,7 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
                 exc_info=True,
             )
             cache_set(cache_key, None)
-            return False
+            return OddsUpsertResult.SKIPPED_NO_MATCH
 
         logger.info(
             "odds_created_game_stub",
@@ -362,7 +374,7 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
     if game and game.status == db_models.GameStatus.live.value:
         logger.debug("odds_skip_live_game", game_id=game_id, book=snapshot.book)
         cache_set(cache_key, game_id)
-        return False
+        return OddsUpsertResult.SKIPPED_LIVE
 
     if game and game.tip_time is None and snapshot.tip_time:
         game.tip_time = snapshot.tip_time
@@ -408,4 +420,4 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
         upsert_fairbet_odds(session, game_id, game.status, snapshot)
 
     cache_set(cache_key, game_id)
-    return True
+    return OddsUpsertResult.PERSISTED

@@ -17,7 +17,7 @@ from .boxscores import (
     upsert_team_boxscores,
 )
 from .games import upsert_game
-from .odds import upsert_odds
+from .odds import OddsUpsertResult, upsert_odds
 from .plays import upsert_plays
 from .teams import _find_team_by_name, _upsert_team
 
@@ -33,6 +33,7 @@ __all__ = [
     "upsert_game",
     "upsert_team_boxscores",
     "upsert_player_boxscores",
+    "OddsUpsertResult",
     "upsert_odds",
     "upsert_plays",
     "_upsert_team",
