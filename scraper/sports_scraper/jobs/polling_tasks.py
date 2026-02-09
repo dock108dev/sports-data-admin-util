@@ -372,7 +372,7 @@ def poll_active_odds_task() -> dict:
     """Sync odds for active games only (replaces broad 30-min sweep).
 
     Only fetches for:
-    - pregame/live games (live odds)
+    - pregame games (live games excluded to preserve closing lines)
     - recently-final games within 2h (closing line capture)
     """
     from ..services.active_games import ActiveGamesResolver

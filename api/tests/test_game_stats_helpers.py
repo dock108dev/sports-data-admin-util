@@ -1,6 +1,7 @@
 """Tests for game_stats_helpers module."""
 
 from app.services.pipeline.stages.game_stats_helpers import (
+    _apply_basketball_scoring,
     compute_running_player_stats,
     compute_lead_context,
     compute_cumulative_box_score,
@@ -1201,3 +1202,132 @@ class TestComputeBlockMiniBox:
                 assert set(player.keys()).issubset(pra_keys), (
                     f"Unexpected keys in mini box: {set(player.keys()) - pra_keys}"
                 )
+
+
+class TestScoreGapGuard:
+    """Tests for score-gap guard that skips attribution when delta > 3."""
+
+    def test_apply_basketball_scoring_skips_large_delta(self):
+        """_apply_basketball_scoring returns False and leaves stats unchanged for delta > 3."""
+        stats = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0}
+        result = _apply_basketball_scoring(stats, 7)
+        assert result is False
+        assert stats == {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0}
+
+    def test_apply_basketball_scoring_allows_normal_deltas(self):
+        """_apply_basketball_scoring works correctly for delta 1, 2, 3."""
+        # Free throw (delta 1)
+        stats_ft = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0}
+        assert _apply_basketball_scoring(stats_ft, 1) is True
+        assert stats_ft == {"pts": 1, "fgm": 0, "3pm": 0, "ftm": 1}
+
+        # Two-pointer (delta 2)
+        stats_2pt = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0}
+        assert _apply_basketball_scoring(stats_2pt, 2) is True
+        assert stats_2pt == {"pts": 2, "fgm": 1, "3pm": 0, "ftm": 0}
+
+        # Three-pointer (delta 3)
+        stats_3pt = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0}
+        assert _apply_basketball_scoring(stats_3pt, 3) is True
+        assert stats_3pt == {"pts": 3, "fgm": 1, "3pm": 1, "ftm": 0}
+
+    def test_score_gap_skips_attribution_running_stats(self):
+        """compute_running_player_stats skips attribution when score gap > 3."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Player A",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 50,
+                "away_score": 40,
+            },
+            {
+                "play_index": 2,
+                "player_name": "Player B",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 58,  # +8 gap — dropped plays
+                "away_score": 40,
+            },
+        ]
+        result = compute_running_player_stats(events, 2)
+        # Player B should get 0 pts because delta of 8 exceeds max
+        assert result["Player B"]["pts"] == 0
+        assert result["Player B"]["fgm"] == 0
+        assert result["Player B"]["3pm"] == 0
+        assert result["Player B"]["ftm"] == 0
+
+    def test_score_gap_skips_attribution_cumulative_box(self):
+        """compute_cumulative_box_score skips attribution when score gap > 3."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Player A",
+                "team_abbreviation": "ATL",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 50,
+                "away_score": 40,
+            },
+            {
+                "play_index": 2,
+                "player_name": "Player B",
+                "team_abbreviation": "ATL",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 57,  # +7 gap — dropped plays
+                "away_score": 40,
+            },
+        ]
+        result = compute_cumulative_box_score(
+            events,
+            2,
+            "Atlanta Hawks",
+            "Boston Celtics",
+            "NBA",
+            home_team_abbrev="ATL",
+            away_team_abbrev="BOS",
+        )
+        player_b = next(
+            p for p in result["home"]["players"] if p["name"] == "Player B"
+        )
+        assert player_b["pts"] == 0
+        assert player_b["fgm"] == 0
+        assert player_b["3pm"] == 0
+        assert player_b["ftm"] == 0
+
+    def test_normal_scoring_after_gap(self):
+        """After a gap event, normal scoring is attributed correctly."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Player A",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 50,
+                "away_score": 40,
+            },
+            {
+                "play_index": 2,
+                "player_name": "Player B",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 58,  # +8 gap — skipped
+                "away_score": 40,
+            },
+            {
+                "play_index": 3,
+                "player_name": "Player C",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 60,  # +2 from 58 — normal play
+                "away_score": 40,
+            },
+        ]
+        result = compute_running_player_stats(events, 3)
+        # Player C should get normal 2-pt attribution
+        assert result["Player C"]["pts"] == 2
+        assert result["Player C"]["fgm"] == 1
+        # Player B should still have 0
+        assert result["Player B"]["pts"] == 0

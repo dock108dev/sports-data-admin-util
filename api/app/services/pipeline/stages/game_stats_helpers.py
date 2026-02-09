@@ -13,6 +13,34 @@ import re
 from typing import Any
 
 
+# Maximum points from a single basketball play (3-pointer).
+# A score_delta exceeding this indicates dropped PBP events.
+_MAX_SINGLE_PLAY_SCORE = 3
+
+
+def _apply_basketball_scoring(
+    stats: dict[str, int],
+    score_delta: int,
+) -> bool:
+    """Credit a basketball scoring play to a player's stats.
+
+    Returns True if the play was a valid scoring event, False if skipped
+    (score_delta exceeds single-play maximum, indicating dropped PBP events).
+    """
+    if score_delta <= 0:
+        return False
+    if score_delta > _MAX_SINGLE_PLAY_SCORE:
+        return False
+    stats["pts"] += score_delta
+    if score_delta >= 2:
+        stats["fgm"] += 1
+    if score_delta == 3:
+        stats["3pm"] += 1
+    if score_delta == 1:
+        stats["ftm"] += 1
+    return True
+
+
 def _extract_assister_from_description(desc: str) -> str | None:
     """Extract assister name from a scoring play description.
 
@@ -74,19 +102,8 @@ def compute_running_player_stats(
         if player not in stats:
             stats[player] = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0, "reb": 0, "ast": 0}
 
-        # Track if this was a scoring play (for assist extraction)
-        scored = False
-
         # Scoring detection: use score delta (works for all data sources)
-        if score_delta > 0:
-            stats[player]["pts"] += score_delta
-            if score_delta >= 2:
-                stats[player]["fgm"] += 1
-            if score_delta == 3:
-                stats[player]["3pm"] += 1
-            if score_delta == 1:
-                stats[player]["ftm"] += 1
-            scored = True
+        scored = _apply_basketball_scoring(stats[player], score_delta)
 
         # Non-scoring stats: play_type matching for reb/ast
         if play_type in ("rebound", "offensive_rebound", "defensive_rebound"):
@@ -425,16 +442,7 @@ def compute_cumulative_box_score(
             _accumulate_nhl_stats(player_stats[player], play_type, desc)
         else:
             # Scoring detection: use score delta (works for all data sources)
-            scored = False
-            if score_delta > 0:
-                player_stats[player]["pts"] += score_delta
-                if score_delta >= 2:
-                    player_stats[player]["fgm"] += 1
-                if score_delta == 3:
-                    player_stats[player]["3pm"] += 1
-                if score_delta == 1:
-                    player_stats[player]["ftm"] += 1
-                scored = True
+            scored = _apply_basketball_scoring(player_stats[player], score_delta)
 
             # Non-scoring stats: play_type matching for reb/ast
             if play_type in ("rebound", "offensive_rebound", "defensive_rebound"):
