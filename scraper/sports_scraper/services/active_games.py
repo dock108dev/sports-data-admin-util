@@ -221,8 +221,10 @@ class ActiveGamesResolver:
         """Return games that need odds updates.
 
         Includes:
-        - pregame/live games (active odds)
+        - pregame games (active odds)
         - recently-final games within 2 hours (closing line capture)
+
+        Live games are excluded to preserve pre-game closing lines.
         """
         now = now_utc()
         closing_line_cutoff = now - timedelta(hours=2)
@@ -231,10 +233,9 @@ class ActiveGamesResolver:
             session.query(db_models.SportsGame)
             .filter(
                 or_(
-                    # Active games need live odds
+                    # Pregame games need odds updates
                     db_models.SportsGame.status.in_([
                         db_models.GameStatus.pregame.value,
-                        db_models.GameStatus.live.value,
                     ]),
                     # Recently-final games need closing line
                     (

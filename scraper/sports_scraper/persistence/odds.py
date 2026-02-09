@@ -92,6 +92,12 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
         
         # Update tip_time even on cache hit if not yet set
         game = session.get(db_models.SportsGame, game_id)
+
+        # Skip live games to preserve pre-game closing lines
+        if game and game.status == db_models.GameStatus.live.value:
+            logger.debug("odds_skip_live_game", game_id=game_id, book=snapshot.book)
+            return False
+
         if game and game.tip_time is None and snapshot.tip_time:
             game.tip_time = snapshot.tip_time
             logger.debug(
@@ -351,6 +357,13 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> bool:
 
     # Update game's tip_time if null and we have tip_time from Odds API
     game = session.get(db_models.SportsGame, game_id)
+
+    # Skip live games to preserve pre-game closing lines
+    if game and game.status == db_models.GameStatus.live.value:
+        logger.debug("odds_skip_live_game", game_id=game_id, book=snapshot.book)
+        cache_set(cache_key, game_id)
+        return False
+
     if game and game.tip_time is None and snapshot.tip_time:
         game.tip_time = snapshot.tip_time
         logger.debug(
