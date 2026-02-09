@@ -314,6 +314,37 @@ class ScrapeRunManager:
                     run_id=run_id,
                 )
 
+                # Gap detection: compare DB games for the date range vs enriched count
+                try:
+                    yesterday = today_et() - timedelta(days=1)
+                    bs_end = min(end, yesterday)
+                    with get_session() as session:
+                        total_final_games = (
+                            session.query(db_models.SportsGame)
+                            .join(db_models.SportsLeague, db_models.SportsGame.league_id == db_models.SportsLeague.id)
+                            .filter(
+                                db_models.SportsLeague.code == config.league_code,
+                                db_models.SportsGame.status == db_models.GameStatus.final.value,
+                                db_models.SportsGame.game_date >= start,
+                                db_models.SportsGame.game_date <= bs_end,
+                            )
+                            .count()
+                        )
+                        if total_final_games > summary["games_enriched"]:
+                            gap = total_final_games - summary["games_enriched"]
+                            logger.warning(
+                                "boxscore_gap_detected",
+                                run_id=run_id,
+                                league=config.league_code,
+                                total_final_games=total_final_games,
+                                games_enriched=summary["games_enriched"],
+                                gap=gap,
+                                start_date=str(start),
+                                end_date=str(bs_end),
+                            )
+                except Exception as exc:
+                    logger.warning("boxscore_gap_check_failed", run_id=run_id, error=str(exc))
+
             if ingest_run_id is not None:
                 complete_job_run(ingest_run_id, "success")
                 ingest_run_completed = True

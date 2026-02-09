@@ -122,9 +122,10 @@ _prod_only_schedule = {
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     # === Daily sweep (truth repair + social scrape #2) ===
-    "daily-sweep-5am-eastern": {
+    # Runs 1 hour after ingestion to catch any gaps left by the 5AM run
+    "daily-sweep-6am-eastern": {
         "task": "run_daily_sweep",
-        "schedule": crontab(minute=0, hour=10),  # 5:00 AM EST = 10:00 UTC
+        "schedule": crontab(minute=0, hour=11),  # 6:00 AM EST = 11:00 UTC
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
 }

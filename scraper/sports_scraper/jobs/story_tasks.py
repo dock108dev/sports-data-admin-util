@@ -25,9 +25,10 @@ def _run_flow_generation(
     import time
     from datetime import date, timedelta
     from ..config import settings
+    from ..utils.datetime_utils import today_et
 
-    # Calculate 72-hour window: 2 days ago through today
-    today = date.today()
+    # Calculate 72-hour window: 2 days ago through today (ET sports calendar)
+    today = today_et()
     start_date = today - timedelta(days=2)
     end_date = today
 
@@ -228,9 +229,10 @@ def run_scheduled_story_generation() -> dict:
     from datetime import date, timedelta
     from ..config import settings
     from ..config_sports import get_scheduled_leagues
+    from ..utils.datetime_utils import today_et
 
-    # Calculate 3-day window: 2 days ago through today
-    today = date.today()
+    # Calculate 3-day window: 2 days ago through today (ET sports calendar)
+    today = today_et()
     start_date = today - timedelta(days=2)
     end_date = today
 
