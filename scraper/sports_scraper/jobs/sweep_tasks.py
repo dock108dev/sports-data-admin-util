@@ -64,6 +64,12 @@ def run_daily_sweep() -> dict:
         logger.exception("daily_sweep_missing_flows_error", error=str(exc))
 
     try:
+        results["embedded_tweets_backfill"] = _backfill_embedded_tweets()
+    except Exception as exc:
+        results["embedded_tweets_backfill"] = {"error": str(exc)}
+        logger.exception("daily_sweep_embedded_tweets_backfill_error", error=str(exc))
+
+    try:
         results["archive"] = _archive_old_games()
     except Exception as exc:
         results["archive"] = {"error": str(exc)}
@@ -604,6 +610,36 @@ def _trigger_missing_flows() -> dict:
             )
 
     return {"missing_count": len(missing), "triggered": triggered, "social_first": social_first}
+
+
+def _backfill_embedded_tweets() -> dict:
+    """Call the API to backfill embedded tweets for recent flows.
+
+    Flows generated before social scraping completed may have all-NULL
+    embedded_social_post_id. This calls the API endpoint to retroactively
+    attach tweets.
+    """
+    import httpx
+
+    from ..config import settings
+
+    api_base = settings.api_internal_url
+    url = f"{api_base}/api/admin/sports/pipeline/backfill-embedded-tweets"
+
+    logger.info("sweep_backfill_embedded_tweets_start")
+
+    with httpx.Client(timeout=30.0) as client:
+        response = client.post(url, params={"lookback_days": 7})
+        response.raise_for_status()
+        result = response.json()
+
+    logger.info(
+        "sweep_backfill_embedded_tweets_complete",
+        total_checked=result.get("total_checked", 0),
+        total_backfilled=result.get("total_backfilled", 0),
+    )
+
+    return result
 
 
 def _archive_old_games() -> dict:

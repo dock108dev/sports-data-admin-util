@@ -174,6 +174,16 @@ def run_final_whistle_social(game_id: int) -> dict:
             error=str(exc),
         )
 
+    # Backfill embedded tweets if a flow already exists for this game
+    try:
+        _backfill_tweets_for_game(game_id)
+    except Exception as exc:
+        logger.warning(
+            "final_whistle_backfill_tweets_error",
+            game_id=game_id,
+            error=str(exc),
+        )
+
     # Inter-game cooldown: sleep so the next game's task doesn't hit X too fast
     logger.info(
         "final_whistle_cooldown",
@@ -199,3 +209,32 @@ def run_final_whistle_social(game_id: int) -> dict:
         "mapped": mapped_total,
         "postgame_discarded": postgame_discarded,
     }
+
+
+def _backfill_tweets_for_game(game_id: int) -> dict:
+    """Call the API to backfill embedded tweets for a single game.
+
+    Safe to call regardless of flow state:
+    - No flow exists -> returns "no_flow", harmless no-op
+    - Flow already has tweets -> returns "already_has_tweets", no-op
+    - Flow has all-NULL tweets and in_game tweets exist -> backfills them
+    """
+    import httpx
+
+    from ..config import settings
+
+    api_base = settings.api_internal_url
+    url = f"{api_base}/api/admin/sports/pipeline/backfill-embedded-tweets"
+
+    with httpx.Client(timeout=30.0) as client:
+        response = client.post(url, params={"game_id": game_id})
+        response.raise_for_status()
+        result = response.json()
+
+    logger.info(
+        "final_whistle_backfill_tweets_result",
+        game_id=game_id,
+        total_backfilled=result.get("total_backfilled", 0),
+    )
+
+    return result
