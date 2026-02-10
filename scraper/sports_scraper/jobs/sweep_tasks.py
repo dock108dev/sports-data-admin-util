@@ -1,14 +1,14 @@
 """Daily sweep task: truth repair and catch-all for the game-state-machine.
 
-Runs once daily (5 AM EST) as a safety net to catch anything the
+Runs once daily (4 AM EST) as a safety net to catch anything the
 high-frequency polling tasks missed. Responsibilities:
 
 1. Status repair: find scheduled games past tip_time, check API for actual status
-2. Missing boxscores: find final games without team_boxscores, trigger ingestion
-3. Missing PBP: find final games without plays, trigger ingestion
-4. Missing flows: find final games with PBP but no timeline artifacts, trigger
+2. Full pipeline: re-run ingestion per league with only_missing=False to catch
+   games missed by the 3:30 AM run (e.g. BR hadn't published yet)
+3. Flow generation: trigger bulk flow gen per league for the lookback window
+4. Social: second-pass social scrape for postgame reactions
 5. Archive: move final games >7 days with complete artifacts to archived
-6. Odds cleanup: final closing-line fetch for recently-finalized games
 """
 
 from __future__ import annotations
@@ -33,35 +33,60 @@ def run_daily_sweep() -> dict:
 
     logger.info("daily_sweep_start")
 
+    # --- Phase 1: Pre-ingestion housekeeping ---
     try:
         results["status_repair"] = _repair_stale_statuses()
     except Exception as exc:
         results["status_repair"] = {"error": str(exc)}
         logger.exception("daily_sweep_status_repair_error", error=str(exc))
 
-    try:
-        results["missing_boxscores"] = _backfill_missing_boxscores()
-    except Exception as exc:
-        results["missing_boxscores"] = {"error": str(exc)}
-        logger.exception("daily_sweep_missing_boxscores_error", error=str(exc))
+    # Clear NBA scoreboard cache so full pipeline gets fresh data from BR
+    from ..utils.cache import HTMLCache
+    from ..config import settings
 
-    try:
-        results["missing_pbp"] = _backfill_missing_pbp()
-    except Exception as exc:
-        results["missing_pbp"] = {"error": str(exc)}
-        logger.exception("daily_sweep_missing_pbp_error", error=str(exc))
+    for league_code in ["NBA"]:
+        try:
+            cache = HTMLCache(settings.scraper_config.html_cache_dir, league_code)
+            cleared = cache.clear_recent_scoreboards(days=3)
+            logger.info("daily_sweep_cache_cleared", league=league_code, **cleared)
+        except Exception as exc:
+            logger.warning("daily_sweep_cache_clear_failed", league=league_code, error=str(exc))
 
+    # --- Phase 2: Full pipeline per league (NBA → NHL → NCAAB) ---
+    for league_code in ["NBA", "NHL", "NCAAB"]:
+        try:
+            results[f"pipeline_{league_code}"] = _run_full_pipeline_for_league(league_code)
+        except Exception as exc:
+            results[f"pipeline_{league_code}"] = {"error": str(exc)}
+            logger.exception(
+                "daily_sweep_pipeline_error",
+                league=league_code,
+                error=str(exc),
+            )
+
+    # --- Phase 3: Flow generation per league (NBA → NHL → NCAAB) ---
+    from .flow_tasks import _run_flow_generation
+
+    for league_code in ["NBA", "NHL", "NCAAB"]:
+        try:
+            max_games = 10 if league_code == "NCAAB" else None
+            results[f"flows_{league_code}"] = _run_flow_generation(
+                league_code, max_games=max_games
+            )
+        except Exception as exc:
+            results[f"flows_{league_code}"] = {"error": str(exc)}
+            logger.exception(
+                "daily_sweep_flow_gen_error",
+                league=league_code,
+                error=str(exc),
+            )
+
+    # --- Phase 4: Post-ingestion housekeeping ---
     try:
         results["social_scrape_2"] = _run_social_scrape_2()
     except Exception as exc:
         results["social_scrape_2"] = {"error": str(exc)}
         logger.exception("daily_sweep_social_scrape_2_error", error=str(exc))
-
-    try:
-        results["missing_flows"] = _trigger_missing_flows()
-    except Exception as exc:
-        results["missing_flows"] = {"error": str(exc)}
-        logger.exception("daily_sweep_missing_flows_error", error=str(exc))
 
     try:
         results["embedded_tweets_backfill"] = _backfill_embedded_tweets()
@@ -77,6 +102,79 @@ def run_daily_sweep() -> dict:
 
     logger.info("daily_sweep_complete", results=results)
     return results
+
+
+def _run_full_pipeline_for_league(league_code: str) -> dict:
+    """Run the full ingestion pipeline for a league (same as UI runs).
+
+    Creates an IngestionConfig with all flags enabled and only_missing=False,
+    acquires a Redis lock, and calls run_ingestion() synchronously.
+    """
+    from ..db import db_models
+    from ..models import IngestionConfig
+    from ..services.scheduler import create_scrape_run
+    from ..services.ingestion import run_ingestion
+    from ..utils.datetime_utils import today_et, now_utc
+    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock, LOCK_TIMEOUT_1HOUR
+
+    today = today_et()
+    config = IngestionConfig(
+        league_code=league_code,
+        start_date=today - timedelta(days=3),
+        end_date=today,
+        boxscores=True,
+        odds=True,
+        pbp=True,
+        social=True,
+        only_missing=False,
+    )
+
+    lock_name = f"lock:ingest:{league_code}"
+    if not acquire_redis_lock(lock_name, timeout=LOCK_TIMEOUT_1HOUR):
+        logger.warning("daily_sweep_pipeline_skipped_locked", league=league_code)
+        return {"status": "skipped", "reason": "ingestion_in_progress"}
+
+    try:
+        with get_session() as session:
+            league = (
+                session.query(db_models.SportsLeague)
+                .filter(db_models.SportsLeague.code == league_code)
+                .first()
+            )
+            if not league:
+                logger.error("daily_sweep_league_not_found", league=league_code)
+                return {"status": "error", "reason": "league_not_found"}
+
+            run = create_scrape_run(
+                session,
+                league,
+                config,
+                requested_by="daily_sweep",
+                scraper_type="daily_sweep",
+            )
+            session.commit()
+            run_id = run.id
+
+        logger.info(
+            "daily_sweep_pipeline_start",
+            league=league_code,
+            run_id=run_id,
+            start_date=str(config.start_date),
+            end_date=str(config.end_date),
+        )
+
+        result = run_ingestion(run_id, config.model_dump(mode="json"))
+
+        logger.info(
+            "daily_sweep_pipeline_complete",
+            league=league_code,
+            run_id=run_id,
+            result=result,
+        )
+
+        return {"status": "success", "run_id": run_id, **result}
+    finally:
+        release_redis_lock(lock_name)
 
 
 def _run_social_scrape_2() -> dict:
@@ -350,266 +448,6 @@ def _repair_stale_statuses() -> dict:
                 logger.warning("sweep_nhl_status_check_error", error=str(exc))
 
     return {"stale_found": len(stale_games), "repaired": repaired}
-
-
-def _backfill_missing_boxscores() -> dict:
-    """Find final games from last 3 days without boxscores and trigger ingestion."""
-    from ..db import db_models
-    from ..utils.datetime_utils import now_utc
-    from sqlalchemy import exists, not_
-    from datetime import datetime, timezone
-
-    now = now_utc()
-    lookback = now - timedelta(days=3)
-
-    with get_session() as session:
-        has_boxscores = (
-            exists().where(
-                db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id
-            )
-        )
-
-        missing = (
-            session.query(db_models.SportsGame.id, db_models.SportsGame.league_id)
-            .filter(
-                db_models.SportsGame.status == db_models.GameStatus.final.value,
-                db_models.SportsGame.game_date >= lookback,
-                not_(has_boxscores),
-            )
-            .all()
-        )
-
-    if not missing:
-        return {"missing_count": 0, "triggered": 0}
-
-    logger.info("sweep_missing_boxscores", count=len(missing))
-
-    # Dispatch real ingestion for each league with missing boxscores
-    from ..services.scheduler import create_scrape_run
-    from ..models import IngestionConfig
-    from ..utils.datetime_utils import today_et
-    from .scrape_tasks import run_scrape_job
-
-    triggered = 0
-    league_ids = {lid for _, lid in missing}
-
-    for league_id in league_ids:
-        today = today_et()
-
-        # Create and commit the run in its own session so the row is visible
-        # to the Celery worker before we enqueue the task.
-        try:
-            with get_session() as session:
-                league = session.query(db_models.SportsLeague).get(league_id)
-                if not league:
-                    continue
-
-                game_count = len([gid for gid, lid in missing if lid == league_id])
-                logger.info(
-                    "sweep_triggering_boxscores",
-                    league=league.code,
-                    game_count=game_count,
-                )
-
-                config = IngestionConfig(
-                    league_code=league.code,
-                    start_date=today - timedelta(days=3),
-                    end_date=today,
-                    boxscores=True,
-                    odds=False,
-                    social=False,
-                    pbp=False,
-                    only_missing=True,
-                )
-
-                run = create_scrape_run(
-                    session, league, config,
-                    requested_by="sweep_backfill_boxscores",
-                    scraper_type="sweep_backfill",
-                )
-                session.commit()
-                run_id = run.id
-                league_code = league.code
-
-            # Enqueue after commit — the run row is now visible to workers
-            run_scrape_job.delay(run_id, config.model_dump(mode="json"))
-            triggered += game_count
-            logger.info(
-                "sweep_boxscore_backfill_dispatched",
-                league=league_code,
-                run_id=run_id,
-                game_count=game_count,
-            )
-        except Exception as exc:
-            logger.exception(
-                "sweep_boxscore_backfill_dispatch_failed",
-                league_id=league_id,
-                error=str(exc),
-            )
-
-    return {"missing_count": len(missing), "triggered": triggered}
-
-
-def _backfill_missing_pbp() -> dict:
-    """Find final games without PBP and trigger PBP ingestion."""
-    from ..db import db_models
-    from ..utils.datetime_utils import now_utc
-    from sqlalchemy import exists, not_
-
-    now = now_utc()
-    lookback = now - timedelta(days=3)
-
-    with get_session() as session:
-        has_plays = (
-            exists().where(
-                db_models.SportsGamePlay.game_id == db_models.SportsGame.id
-            )
-        )
-
-        missing = (
-            session.query(db_models.SportsGame.id, db_models.SportsGame.league_id)
-            .filter(
-                db_models.SportsGame.status == db_models.GameStatus.final.value,
-                db_models.SportsGame.game_date >= lookback,
-                not_(has_plays),
-            )
-            .all()
-        )
-
-    if not missing:
-        return {"missing_count": 0, "triggered": 0}
-
-    logger.info("sweep_missing_pbp", count=len(missing))
-
-    # Dispatch real PBP ingestion for each league with missing play-by-play
-    from ..services.scheduler import create_scrape_run
-    from ..models import IngestionConfig
-    from ..utils.datetime_utils import today_et
-    from .scrape_tasks import run_scrape_job
-
-    triggered = 0
-    league_ids = {lid for _, lid in missing}
-
-    for league_id in league_ids:
-        today = today_et()
-
-        try:
-            with get_session() as session:
-                league = session.query(db_models.SportsLeague).get(league_id)
-                if not league:
-                    continue
-
-                game_count = len([gid for gid, lid in missing if lid == league_id])
-                logger.info(
-                    "sweep_triggering_pbp",
-                    league=league.code,
-                    game_count=game_count,
-                )
-
-                config = IngestionConfig(
-                    league_code=league.code,
-                    start_date=today - timedelta(days=3),
-                    end_date=today,
-                    boxscores=False,
-                    odds=False,
-                    social=False,
-                    pbp=True,
-                    only_missing=True,
-                )
-
-                run = create_scrape_run(
-                    session, league, config,
-                    requested_by="sweep_backfill_pbp",
-                    scraper_type="sweep_backfill",
-                )
-                session.commit()
-                run_id = run.id
-                league_code = league.code
-
-            run_scrape_job.delay(run_id, config.model_dump(mode="json"))
-            triggered += game_count
-            logger.info(
-                "sweep_pbp_backfill_dispatched",
-                league=league_code,
-                run_id=run_id,
-                game_count=game_count,
-            )
-        except Exception as exc:
-            logger.exception(
-                "sweep_pbp_backfill_dispatch_failed",
-                league_id=league_id,
-                error=str(exc),
-            )
-
-    return {"missing_count": len(missing), "triggered": triggered}
-
-
-def _trigger_missing_flows() -> dict:
-    """Find final games with PBP but no timeline artifacts and trigger flow generation.
-
-    If Social Scrape #1 hasn't run yet, dispatch run_final_whistle_social instead
-    of trigger_flow_for_game (the social task will dispatch flow generation after).
-    """
-    from ..db import db_models
-    from ..utils.datetime_utils import now_utc
-    from sqlalchemy import exists, not_
-
-    now = now_utc()
-    lookback = now - timedelta(days=3)
-
-    with get_session() as session:
-        has_plays = (
-            exists().where(
-                db_models.SportsGamePlay.game_id == db_models.SportsGame.id
-            )
-        )
-        has_artifacts = (
-            exists().where(
-                db_models.SportsGameTimelineArtifact.game_id == db_models.SportsGame.id
-            )
-        )
-
-        missing = (
-            session.query(db_models.SportsGame.id, db_models.SportsGame.social_scrape_1_at)
-            .filter(
-                db_models.SportsGame.status == db_models.GameStatus.final.value,
-                db_models.SportsGame.game_date >= lookback,
-                has_plays,
-                not_(has_artifacts),
-            )
-            .all()
-        )
-
-    if not missing:
-        return {"missing_count": 0, "triggered": 0, "social_first": 0}
-
-    logger.info("sweep_missing_flows", count=len(missing))
-
-    from .flow_trigger_tasks import trigger_flow_for_game
-    from .final_whistle_tasks import run_final_whistle_social
-
-    triggered = 0
-    social_first = 0
-    for game_id, scrape_1_at in missing:
-        try:
-            if scrape_1_at is None:
-                # Social Scrape #1 not done yet — dispatch it (it will trigger flow after)
-                run_final_whistle_social.apply_async(
-                    args=[game_id],
-                    queue="social-scraper",
-                )
-                social_first += 1
-            else:
-                trigger_flow_for_game.delay(game_id)
-            triggered += 1
-        except Exception as exc:
-            logger.warning(
-                "sweep_flow_dispatch_error",
-                game_id=game_id,
-                error=str(exc),
-            )
-
-    return {"missing_count": len(missing), "triggered": triggered, "social_first": social_first}
 
 
 def _backfill_embedded_tweets() -> dict:

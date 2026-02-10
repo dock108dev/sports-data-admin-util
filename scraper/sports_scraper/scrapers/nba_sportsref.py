@@ -35,6 +35,7 @@ from .base import BaseSportsReferenceScraper, ScraperError
 SPORTSREF_ABBR_MAP: dict[str, str] = {
     "CHA": "CHO",  # Charlotte Hornets
     "BKN": "BRK",  # Brooklyn Nets
+    "PHX": "PHO",  # Phoenix Suns
 }
 
 
