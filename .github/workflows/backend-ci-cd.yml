@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      full_deploy:
+        description: "Run full deploy (build + push + deploy to server)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -101,7 +107,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: [test-scraper, test-api, lint-web]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.full_deploy == true)
     permissions:
       contents: read
       packages: write
@@ -136,7 +144,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.full_deploy == true)
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.5
@@ -145,17 +155,18 @@ jobs:
           GH_ACTOR: ${{ github.actor }}
           GH_REPO: ${{ github.repository }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GH_REF: ${{ github.ref_name }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: GHCR_TOKEN,GH_ACTOR,GH_REPO,DEPLOY_PATH
+          envs: GHCR_TOKEN,GH_ACTOR,GH_REPO,DEPLOY_PATH,GH_REF
           script: |
             set -euo pipefail
 
             BASE_DIR="$DEPLOY_PATH"
             REPO_URL="https://x-access-token:${GHCR_TOKEN}@github.com/${GH_REPO}.git"
-            BRANCH="main"
+            BRANCH="${GH_REF}"
 
             echo "Ensuring base directory exists..."
             mkdir -p "$BASE_DIR"
