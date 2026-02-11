@@ -1,4 +1,10 @@
-"""Live NBA feed helpers (scoreboard + play-by-play)."""
+"""Live NBA feed helpers (scoreboard + play-by-play + boxscores).
+
+Uses the NBA CDN API (cdn.nba.com) for all NBA data.
+
+This module provides the main NBALiveFeedClient which composes:
+- NBABoxscoreFetcher: Team and player boxscore data
+"""
 
 from __future__ import annotations
 
@@ -11,8 +17,11 @@ import httpx
 from ..config import settings
 from ..logging import logger
 from ..models import NormalizedPlay, NormalizedPlayByPlay
+from ..utils.cache import APICache
 from ..utils.datetime_utils import now_utc
 from ..utils.parsing import parse_int
+from .nba_boxscore import NBABoxscoreFetcher
+from .nba_models import NBABoxscore
 
 NBA_SCOREBOARD_URL = "https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_{date}.json"
 NBA_SCHEDULE_URL = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
@@ -35,7 +44,10 @@ class NBALiveGame:
 
 
 class NBALiveFeedClient:
-    """Client for NBA live scoreboard + play-by-play endpoints."""
+    """Client for NBA live scoreboard + play-by-play + boxscore endpoints.
+
+    Composes NBABoxscoreFetcher for boxscore data.
+    """
 
     def __init__(self) -> None:
         timeout = settings.scraper_config.request_timeout_seconds
@@ -48,6 +60,9 @@ class NBALiveFeedClient:
             "Origin": "https://www.nba.com",
         }
         self.client = httpx.Client(timeout=timeout, headers=headers)
+        cache_dir = settings.scraper_config.html_cache_dir
+        self._cache = APICache(cache_dir=cache_dir, api_name="nba")
+        self._boxscore_fetcher = NBABoxscoreFetcher(self.client, self._cache)
 
     def fetch_scoreboard(self, day: date) -> list[NBALiveGame]:
         """Fetch games for a specific date.
@@ -71,6 +86,10 @@ class NBALiveFeedClient:
             response = self.client.get(url)
         except Exception as exc:
             logger.warning("nba_scoreboard_fetch_error", date=str(day), error=str(exc))
+            return []
+
+        if response.status_code == 403:
+            logger.debug("nba_scoreboard_blocked", status=403, date=str(day))
             return []
 
         if response.status_code != 200:
@@ -170,6 +189,10 @@ class NBALiveFeedClient:
         url = NBA_PBP_URL.format(game_id=game_id)
         logger.info("nba_pbp_fetch", url=url, game_id=game_id)
         response = self.client.get(url)
+        if response.status_code == 403:
+            logger.debug("nba_pbp_blocked", game_id=game_id, status=403)
+            return NormalizedPlayByPlay(source_game_key=game_id, plays=[])
+
         if response.status_code != 200:
             logger.warning("nba_pbp_fetch_failed", game_id=game_id, status=response.status_code)
             return NormalizedPlayByPlay(source_game_key=game_id, plays=[])
@@ -209,6 +232,11 @@ class NBALiveFeedClient:
 
         logger.info("nba_pbp_parsed", game_id=game_id, count=len(plays))
         return NormalizedPlayByPlay(source_game_key=game_id, plays=plays)
+
+    # Delegate boxscore methods to boxscore fetcher
+    def fetch_boxscore(self, game_id: str) -> NBABoxscore | None:
+        """Fetch boxscore from NBA CDN API."""
+        return self._boxscore_fetcher.fetch_boxscore(game_id)
 
 
 def _parse_nba_game_datetime(value: str | None) -> datetime:

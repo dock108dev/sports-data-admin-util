@@ -11,6 +11,20 @@ from ..services.ingestion import run_ingestion
 from ..utils.datetime_utils import today_et
 
 
+def _append_pbp_to_run_summary(run_id: int | None, pbp_games: int) -> None:
+    """Append PBP counts to an existing run's summary string."""
+    if not run_id or not pbp_games:
+        return
+    from ..db import db_models, get_session
+    try:
+        with get_session() as session:
+            run = session.query(db_models.SportsScrapeRun).filter_by(id=run_id).first()
+            if run and run.summary:
+                run.summary = f"{run.summary}, PBP: {pbp_games}"
+    except Exception as exc:
+        logger.warning("pbp_summary_append_failed", run_id=run_id, error=str(exc))
+
+
 @shared_task(name="run_scrape_job")
 def run_scrape_job(run_id: int, config_payload: dict) -> dict:
     """Run a scrape job (data ingestion only).
@@ -71,20 +85,6 @@ def run_scheduled_ingestion() -> dict:
 
     results = {}
 
-    # Clear recent scoreboard cache before ingestion to avoid stale game discovery.
-    # Basketball Reference scoreboards are cached with no TTL; if a previous run cached
-    # a page before all games had boxscore links, the 5AM run would reuse stale data.
-    from ..utils.cache import HTMLCache
-    from ..config import settings
-
-    for league_code in ["NBA"]:
-        try:
-            cache = HTMLCache(settings.scraper_config.html_cache_dir, league_code)
-            cleared = cache.clear_recent_scoreboards(days=3)
-            logger.info("pre_ingestion_cache_cleared", league=league_code, **cleared)
-        except Exception as exc:
-            logger.warning("pre_ingestion_cache_clear_failed", league=league_code, error=str(exc))
-
     # === NBA ===
     logger.info("scheduled_ingestion_nba_start")
     nba_result = schedule_single_league_and_wait("NBA")
@@ -94,6 +94,7 @@ def run_scheduled_ingestion() -> dict:
     logger.info("scheduled_ingestion_nba_pbp_start")
     nba_pbp_result = run_pbp_ingestion_for_league("NBA")
     results["NBA_PBP"] = nba_pbp_result
+    _append_pbp_to_run_summary(nba_result.get("run_id"), nba_pbp_result.get("pbp_games", 0))
     logger.info("scheduled_ingestion_nba_pbp_complete", **nba_pbp_result)
 
     # Social collection is now handled by the two-scrape-per-game model
@@ -108,6 +109,7 @@ def run_scheduled_ingestion() -> dict:
     logger.info("scheduled_ingestion_nhl_pbp_start")
     nhl_pbp_result = run_pbp_ingestion_for_league("NHL")
     results["NHL_PBP"] = nhl_pbp_result
+    _append_pbp_to_run_summary(nhl_result.get("run_id"), nhl_pbp_result.get("pbp_games", 0))
     logger.info("scheduled_ingestion_nhl_pbp_complete", **nhl_pbp_result)
 
     # === NCAAB ===
@@ -119,6 +121,7 @@ def run_scheduled_ingestion() -> dict:
     logger.info("scheduled_ingestion_ncaab_pbp_start")
     ncaab_pbp_result = run_pbp_ingestion_for_league("NCAAB")
     results["NCAAB_PBP"] = ncaab_pbp_result
+    _append_pbp_to_run_summary(ncaab_result.get("run_id"), ncaab_pbp_result.get("pbp_games", 0))
     logger.info("scheduled_ingestion_ncaab_pbp_complete", **ncaab_pbp_result)
 
     return {

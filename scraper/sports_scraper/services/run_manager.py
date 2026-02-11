@@ -96,8 +96,8 @@ class ScrapeRunManager:
             end_date=str(end),
         )
 
-        # NHL and NCAAB use official APIs for boxscores, so scraper is not required
-        if not scraper and config.boxscores and config.league_code not in ("NHL", "NCAAB"):
+        # NHL, NBA, and NCAAB use official APIs for boxscores, so scraper is not required
+        if not scraper and config.boxscores and config.league_code not in ("NHL", "NBA", "NCAAB"):
             raise RuntimeError(f"No scraper implemented for {config.league_code}")
 
         self._update_run(run_id, status="running", started_at=now_utc())
@@ -225,6 +225,43 @@ class ScrapeRunManager:
                     except Exception as exc:
                         logger.exception(
                             "ncaab_boxscore_ingestion_failed",
+                            run_id=run_id,
+                            league=config.league_code,
+                            error=str(exc),
+                        )
+                elif config.league_code == "NBA":
+                    # NBA: Use NBA CDN API for boxscores (faster and more reliable than BR scraping)
+                    from .nba_boxscore_ingestion import ingest_boxscores_via_nba_api
+
+                    logger.info(
+                        "boxscore_scraping_start",
+                        run_id=run_id,
+                        league=config.league_code,
+                        start_date=str(start),
+                        end_date=str(boxscore_end),
+                        original_end_date=str(end) if end != boxscore_end else None,
+                        only_missing=config.only_missing,
+                        stage="2_boxscore_enrichment",
+                        source="nba_api",
+                    )
+
+                    try:
+                        with get_session() as session:
+                            games, enriched, with_stats = ingest_boxscores_via_nba_api(
+                                session,
+                                run_id=run_id,
+                                start_date=start,
+                                end_date=boxscore_end,
+                                only_missing=config.only_missing,
+                                updated_before=updated_before_dt,
+                            )
+                            session.commit()
+                        summary["games"] = games
+                        summary["games_enriched"] = enriched
+                        summary["games_with_stats"] = with_stats
+                    except Exception as exc:
+                        logger.exception(
+                            "nba_boxscore_ingestion_failed",
                             run_id=run_id,
                             league=config.league_code,
                             error=str(exc),
