@@ -119,8 +119,8 @@ _prod_only_schedule = {
         "schedule": crontab(minute="*/30"),
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
-    # === Daily sweep (truth repair + social scrape #2) ===
-    # Runs 30 min after ingestion to catch any gaps
+    # === Daily sweep (status repair, social scrape #2, embedded tweets, archive) ===
+    # Lightweight housekeeping — no full pipeline re-runs or flow generation
     "daily-sweep-4am-eastern": {
         "task": "run_daily_sweep",
         "schedule": crontab(minute=0, hour=9),  # 4:00 AM EST = 09:00 UTC (+30 min after ingestion)

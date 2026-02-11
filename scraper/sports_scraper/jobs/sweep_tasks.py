@@ -1,14 +1,16 @@
-"""Daily sweep task: truth repair and catch-all for the game-state-machine.
+"""Daily sweep task: truth repair and housekeeping.
 
 Runs once daily (4 AM EST) as a safety net to catch anything the
 high-frequency polling tasks missed. Responsibilities:
 
 1. Status repair: find scheduled games past tip_time, check API for actual status
-2. Full pipeline: re-run ingestion per league with only_missing=False to catch
-   games missed by the 3:30 AM run (e.g. BR hadn't published yet)
-3. Flow generation: trigger bulk flow gen per league for the lookback window
-4. Social: second-pass social scrape for postgame reactions
-5. Archive: move final games >7 days with complete artifacts to archived
+2. Social: second-pass social scrape for postgame reactions
+3. Embedded tweet backfill: attach tweets to flows generated before social completed
+4. Archive: move final games >7 days with complete artifacts to archived
+
+Note: Full pipeline re-runs and flow generation were removed — the 3:30 AM
+ingestion (now using NBA CDN API for boxscores) and dedicated flow tasks
+at 4:30/5:00/5:30 AM handle those responsibilities.
 """
 
 from __future__ import annotations
@@ -40,48 +42,7 @@ def run_daily_sweep() -> dict:
         results["status_repair"] = {"error": str(exc)}
         logger.exception("daily_sweep_status_repair_error", error=str(exc))
 
-    # Clear NBA scoreboard cache so full pipeline gets fresh data from BR
-    from ..utils.cache import HTMLCache
-    from ..config import settings
-
-    for league_code in ["NBA"]:
-        try:
-            cache = HTMLCache(settings.scraper_config.html_cache_dir, league_code)
-            cleared = cache.clear_recent_scoreboards(days=3)
-            logger.info("daily_sweep_cache_cleared", league=league_code, **cleared)
-        except Exception as exc:
-            logger.warning("daily_sweep_cache_clear_failed", league=league_code, error=str(exc))
-
-    # --- Phase 2: Full pipeline per league (NBA → NHL → NCAAB) ---
-    for league_code in ["NBA", "NHL", "NCAAB"]:
-        try:
-            results[f"pipeline_{league_code}"] = _run_full_pipeline_for_league(league_code)
-        except Exception as exc:
-            results[f"pipeline_{league_code}"] = {"error": str(exc)}
-            logger.exception(
-                "daily_sweep_pipeline_error",
-                league=league_code,
-                error=str(exc),
-            )
-
-    # --- Phase 3: Flow generation per league (NBA → NHL → NCAAB) ---
-    from .flow_tasks import _run_flow_generation
-
-    for league_code in ["NBA", "NHL", "NCAAB"]:
-        try:
-            max_games = 10 if league_code == "NCAAB" else None
-            results[f"flows_{league_code}"] = _run_flow_generation(
-                league_code, max_games=max_games
-            )
-        except Exception as exc:
-            results[f"flows_{league_code}"] = {"error": str(exc)}
-            logger.exception(
-                "daily_sweep_flow_gen_error",
-                league=league_code,
-                error=str(exc),
-            )
-
-    # --- Phase 4: Post-ingestion housekeeping ---
+    # --- Phase 2: Post-ingestion housekeeping ---
     try:
         results["social_scrape_2"] = _run_social_scrape_2()
     except Exception as exc:
@@ -102,79 +63,6 @@ def run_daily_sweep() -> dict:
 
     logger.info("daily_sweep_complete", results=results)
     return results
-
-
-def _run_full_pipeline_for_league(league_code: str) -> dict:
-    """Run the full ingestion pipeline for a league (same as UI runs).
-
-    Creates an IngestionConfig with all flags enabled and only_missing=False,
-    acquires a Redis lock, and calls run_ingestion() synchronously.
-    """
-    from ..db import db_models
-    from ..models import IngestionConfig
-    from ..services.scheduler import create_scrape_run
-    from ..services.ingestion import run_ingestion
-    from ..utils.datetime_utils import today_et, now_utc
-    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock, LOCK_TIMEOUT_1HOUR
-
-    today = today_et()
-    config = IngestionConfig(
-        league_code=league_code,
-        start_date=today - timedelta(days=3),
-        end_date=today,
-        boxscores=True,
-        odds=True,
-        pbp=True,
-        social=True,
-        only_missing=False,
-    )
-
-    lock_name = f"lock:ingest:{league_code}"
-    if not acquire_redis_lock(lock_name, timeout=LOCK_TIMEOUT_1HOUR):
-        logger.warning("daily_sweep_pipeline_skipped_locked", league=league_code)
-        return {"status": "skipped", "reason": "ingestion_in_progress"}
-
-    try:
-        with get_session() as session:
-            league = (
-                session.query(db_models.SportsLeague)
-                .filter(db_models.SportsLeague.code == league_code)
-                .first()
-            )
-            if not league:
-                logger.error("daily_sweep_league_not_found", league=league_code)
-                return {"status": "error", "reason": "league_not_found"}
-
-            run = create_scrape_run(
-                session,
-                league,
-                config,
-                requested_by="daily_sweep",
-                scraper_type="daily_sweep",
-            )
-            session.commit()
-            run_id = run.id
-
-        logger.info(
-            "daily_sweep_pipeline_start",
-            league=league_code,
-            run_id=run_id,
-            start_date=str(config.start_date),
-            end_date=str(config.end_date),
-        )
-
-        result = run_ingestion(run_id, config.model_dump(mode="json"))
-
-        logger.info(
-            "daily_sweep_pipeline_complete",
-            league=league_code,
-            run_id=run_id,
-            result=result,
-        )
-
-        return {"status": "success", "run_id": run_id, **result}
-    finally:
-        release_redis_lock(lock_name)
 
 
 def _run_social_scrape_2() -> dict:
