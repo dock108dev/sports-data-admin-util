@@ -158,8 +158,9 @@ class TestScrapeRunManagerRun:
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         manager = ScrapeRunManager()
+        # Use a non-API league (NBA, NHL, NCAAB all use API paths now)
         config = IngestionConfig(
-            league_code="NBA",
+            league_code="MLB",
             boxscores=True,
         )
 
@@ -548,7 +549,8 @@ class TestScrapeRunManagerBoxscores:
         mock_scraper = MagicMock()
         mock_payload = MagicMock()
         mock_scraper.fetch_single_boxscore.return_value = mock_payload
-        mock_scrapers.return_value = {"NBA": mock_scraper}
+        # Use a non-API league so the SR scraper path is taken
+        mock_scrapers.return_value = {"MLB": mock_scraper}
 
         mock_session = MagicMock()
         mock_run = MagicMock()
@@ -569,7 +571,7 @@ class TestScrapeRunManagerBoxscores:
         manager = ScrapeRunManager()
         past_date = date.today() - timedelta(days=5)
         config = IngestionConfig(
-            league_code="NBA",
+            league_code="MLB",
             start_date=past_date,
             end_date=past_date,
             boxscores=True,
@@ -696,7 +698,8 @@ class TestScrapeRunManagerBoxscores:
         mock_payload.identity.source_game_key = "BOS202401150"
         mock_payload.identity.game_date = date(2024, 1, 15)
         mock_scraper.fetch_date_range.return_value = [mock_payload]
-        mock_scrapers.return_value = {"NBA": mock_scraper}
+        # Use a non-API league so the SR scraper path is taken
+        mock_scrapers.return_value = {"MLB": mock_scraper}
 
         mock_session = MagicMock()
         mock_run = MagicMock()
@@ -713,7 +716,7 @@ class TestScrapeRunManagerBoxscores:
         manager = ScrapeRunManager()
         past_date = date.today() - timedelta(days=5)
         config = IngestionConfig(
-            league_code="NBA",
+            league_code="MLB",
             start_date=past_date,
             end_date=past_date,
             boxscores=True,
