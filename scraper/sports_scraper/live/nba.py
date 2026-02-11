@@ -88,6 +88,10 @@ class NBALiveFeedClient:
             logger.warning("nba_scoreboard_fetch_error", date=str(day), error=str(exc))
             return []
 
+        if response.status_code == 403:
+            logger.debug("nba_scoreboard_blocked", status=403, date=str(day))
+            return []
+
         if response.status_code != 200:
             logger.warning("nba_scoreboard_fetch_failed", status=response.status_code, date=str(day))
             return []
@@ -185,6 +189,10 @@ class NBALiveFeedClient:
         url = NBA_PBP_URL.format(game_id=game_id)
         logger.info("nba_pbp_fetch", url=url, game_id=game_id)
         response = self.client.get(url)
+        if response.status_code == 403:
+            logger.debug("nba_pbp_blocked", game_id=game_id, status=403)
+            return NormalizedPlayByPlay(source_game_key=game_id, plays=[])
+
         if response.status_code != 200:
             logger.warning("nba_pbp_fetch_failed", game_id=game_id, status=response.status_code)
             return NormalizedPlayByPlay(source_game_key=game_id, plays=[])

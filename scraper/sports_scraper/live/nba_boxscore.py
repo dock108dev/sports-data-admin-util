@@ -82,6 +82,10 @@ class NBABoxscoreFetcher:
             logger.error("nba_boxscore_fetch_error", game_id=game_id, error=str(exc))
             return None
 
+        if response.status_code == 403:
+            logger.debug("nba_boxscore_blocked", game_id=game_id, status=403)
+            return None
+
         if response.status_code == 404:
             logger.warning("nba_boxscore_not_found", game_id=game_id, status=404)
             return None
@@ -122,14 +126,19 @@ class NBABoxscoreFetcher:
         home_tricode = str(home_team_data.get("teamTricode", ""))
         away_tricode = str(away_team_data.get("teamTricode", ""))
 
+        # Use full team names (e.g., "Charlotte Hornets") to match DB records.
+        # Tricode-only names ("CHA") cause _upsert_team to create duplicate team records.
+        home_name = f"{home_team_data.get('teamCity', '')} {home_team_data.get('teamName', '')}".strip() or home_tricode
+        away_name = f"{away_team_data.get('teamCity', '')} {away_team_data.get('teamName', '')}".strip() or away_tricode
+
         home_team = TeamIdentity(
             league_code="NBA",
-            name=home_tricode,
+            name=home_name,
             abbreviation=home_tricode,
         )
         away_team = TeamIdentity(
             league_code="NBA",
-            name=away_tricode,
+            name=away_name,
             abbreviation=away_tricode,
         )
 

@@ -322,7 +322,7 @@ def schedule_single_league_and_wait(
             end_date=end_date,
             boxscores=league_cfg.boxscores_enabled,
             odds=league_cfg.odds_enabled,
-            social=False,  # Social runs separately
+            social=league_cfg.social_enabled,
             pbp=False,  # PBP runs separately
             only_missing=False,
         )
@@ -358,7 +358,7 @@ def schedule_single_league_and_wait(
 
         with get_session() as session:
             run = session.query(db_models.SportsScrapeRun).get(run_id)
-            if run.status in ("completed", "failed", "error", "interrupted"):
+            if run.status in ("success", "completed", "failed", "error", "interrupted"):
                 logger.info(
                     "schedule_single_league_finished",
                     league=league_code,

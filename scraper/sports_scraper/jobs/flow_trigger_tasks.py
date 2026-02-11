@@ -117,8 +117,8 @@ def _call_pipeline_api(game_id: int, league_code: str) -> dict:
     try:
         with httpx.Client(timeout=120.0) as client:
             response = client.post(
-                f"{api_base}/api/admin/sports/pipeline/generate/{game_id}",
-                json={"force": False},
+                f"{api_base}/api/admin/sports/pipeline/{game_id}/run-full",
+                json={"triggered_by": "edge_trigger"},
             )
             response.raise_for_status()
             result = response.json()
