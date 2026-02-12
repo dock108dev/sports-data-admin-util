@@ -1,4 +1,4 @@
-"""Guardrails & Invariant Enforcement.
+"""Phase 6: Guardrails & Invariant Enforcement.
 
 This module enforces hard invariants that define the product experience.
 Violations are CORRECTNESS BUGS, not stylistic issues.

@@ -8,11 +8,13 @@ import styles from "./CollapsedGameFlow.module.css";
 /**
  * Collapsed Game Flow
  *
+ * PHASE 5 CONTRACT (Task 5.1)
+ * ==========================
  * The collapsed view is the PRIMARY product - complete and self-sufficient.
  *
  * May contain ONLY:
- * - Narrative blocks
- * - Embedded tweets
+ * - Narrative blocks (from Phase 1)
+ * - Embedded tweets (from Phase 4)
  *
  * Must NOT contain:
  * - Pregame tweets
@@ -262,7 +264,7 @@ export function CollapsedGameFlow({
   awayTeam,
   showDebug = false,
 }: CollapsedGameFlowProps) {
-  // Run guardrail validation on every render
+  // Phase 6: Run guardrail validation on every render
   // This ensures violations are immediately visible during development
   const guardrailResult = useMemo(
     () => validateBlocksPreRender(blocks, gameId ?? null),

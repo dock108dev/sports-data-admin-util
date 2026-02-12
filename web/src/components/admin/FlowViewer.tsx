@@ -6,7 +6,7 @@ import type {
   CondensedMoment,
   PlayData,
 } from "@/lib/api/sportsAdmin/gameFlowTypes";
-import styles from "./FlowViewer.module.css";
+import styles from "./flowViewer.module.css";
 
 /**
  * Story Viewer

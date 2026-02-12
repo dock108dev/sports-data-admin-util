@@ -83,14 +83,6 @@
   margin-bottom: 0.5rem;
 }
 
-.colorSwatch {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 1px solid #e2e8f0;
-  flex-shrink: 0;
-}
-
 .teamAbbr {
   background: #f1f5f9;
   color: #475569;

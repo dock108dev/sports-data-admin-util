@@ -191,7 +191,7 @@ class TestForbiddenWords:
 
 
 class TestPlayCoverage:
-    """Tests for explicit play coverage invariant."""
+    """Tests for Task 1.3: Explicit play coverage invariant."""
 
     def test_play_referenced_by_player_name(self) -> None:
         """Play is detected when player name appears in narrative."""
@@ -228,7 +228,7 @@ class TestPlayCoverage:
 
 
 class TestPlayInjection:
-    """Tests for play injection recovery with natural language."""
+    """Tests for Task 1.3: Play injection recovery with natural language."""
 
     def test_generates_sentence_with_player_and_layup(self) -> None:
         """Generates natural language sentence for layup plays."""
@@ -283,7 +283,7 @@ class TestPlayInjection:
 
 
 class TestStyleConstraints:
-    """Tests for sentence style constraints."""
+    """Tests for Task 1.4: Sentence style constraints."""
 
     def test_detects_stat_feed_pattern(self) -> None:
         """Detects 'X had Y points' patterns."""

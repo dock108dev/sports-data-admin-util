@@ -1,13 +1,13 @@
-"""Tweet-to-game mapping.
+"""Tweet-to-game mapping for the two-phase social architecture.
 
-Assigns unmapped tweets to games based on posted_at timestamps
-falling within game windows.
+Phase 2 (MAP): This module assigns unmapped tweets to games based on
+posted_at timestamps falling within game windows.
 
 All comparisons are done in US/Eastern time. Games naturally cross midnight
 ET (e.g. a 10 PM ET tip ends around 12:30 AM ET the next day), so the
 postgame window extends into the following calendar day.
 
-See team_collector.py for collecting team tweets.
+Phase 1 (COLLECT): See team_collector.py for collecting team tweets.
 """
 
 from __future__ import annotations

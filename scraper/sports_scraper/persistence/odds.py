@@ -39,59 +39,6 @@ from .teams import _find_team_by_name, _upsert_team
 from ..odds.fairbet import upsert_fairbet_odds
 
 
-def _execute_odds_upsert(
-    session: Session,
-    game_id: int,
-    snapshot: NormalizedOddsSnapshot,
-    side_value: str | None,
-) -> None:
-    """Insert opening line (first-seen, never overwritten) then upsert closing line.
-
-    Two rows per bet are maintained via the ``is_closing_line`` flag:
-    * ``is_closing_line=False`` — opening line, written once via ``DO NOTHING``.
-    * ``is_closing_line=True``  — closing line, continuously updated via ``DO UPDATE``.
-    """
-    common_values: dict = dict(
-        game_id=game_id,
-        book=snapshot.book,
-        market_type=snapshot.market_type,
-        side=side_value,
-        line=snapshot.line,
-        price=snapshot.price,
-        observed_at=snapshot.observed_at,
-        source_key=snapshot.source_key,
-        raw_payload=snapshot.raw_payload,
-    )
-
-    # --- Opening line: first-seen value, never overwritten ---
-    opening_stmt = (
-        insert(db_models.SportsGameOdds)
-        .values(**common_values, is_closing_line=False)
-        .on_conflict_do_nothing(
-            index_elements=["game_id", "book", "market_type", "side", "is_closing_line"],
-        )
-    )
-    session.execute(opening_stmt)
-
-    # --- Closing line: continuously updated (existing behaviour) ---
-    closing_stmt = (
-        insert(db_models.SportsGameOdds)
-        .values(**common_values, is_closing_line=True)
-        .on_conflict_do_update(
-            index_elements=["game_id", "book", "market_type", "side", "is_closing_line"],
-            set_={
-                "line": snapshot.line,
-                "price": snapshot.price,
-                "observed_at": snapshot.observed_at,
-                "source_key": snapshot.source_key,
-                "raw_payload": snapshot.raw_payload,
-                "updated_at": now_utc(),
-            },
-        )
-    )
-    session.execute(closing_stmt)
-
-
 def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpsertResult:
     """Upsert odds snapshot, matching to existing game.
 
@@ -172,7 +119,33 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
             )
 
         side_value = snapshot.side if snapshot.side else None
-        _execute_odds_upsert(session, game_id, snapshot, side_value)
+        stmt = (
+            insert(db_models.SportsGameOdds)
+            .values(
+                game_id=game_id,
+                book=snapshot.book,
+                market_type=snapshot.market_type,
+                side=side_value,
+                line=snapshot.line,
+                price=snapshot.price,
+                is_closing_line=snapshot.is_closing_line,
+                observed_at=snapshot.observed_at,
+                source_key=snapshot.source_key,
+                raw_payload=snapshot.raw_payload,
+            )
+            .on_conflict_do_update(
+                index_elements=["game_id", "book", "market_type", "side", "is_closing_line"],
+                set_={
+                    "line": snapshot.line,
+                    "price": snapshot.price,
+                    "observed_at": snapshot.observed_at,
+                    "source_key": snapshot.source_key,
+                    "raw_payload": snapshot.raw_payload,
+                    "updated_at": now_utc(),
+                },
+            )
+        )
+        session.execute(stmt)
 
         # FairBet work table: append odds for non-completed games (cached path)
         if game is not None:
@@ -412,7 +385,34 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
         )
 
     side_value = snapshot.side if snapshot.side else None
-    _execute_odds_upsert(session, game_id, snapshot, side_value)
+
+    stmt = (
+        insert(db_models.SportsGameOdds)
+        .values(
+            game_id=game_id,
+            book=snapshot.book,
+            market_type=snapshot.market_type,
+            side=side_value,
+            line=snapshot.line,
+            price=snapshot.price,
+            is_closing_line=snapshot.is_closing_line,
+            observed_at=snapshot.observed_at,
+            source_key=snapshot.source_key,
+            raw_payload=snapshot.raw_payload,
+        )
+        .on_conflict_do_update(
+            index_elements=["game_id", "book", "market_type", "side", "is_closing_line"],
+            set_={
+                "line": snapshot.line,
+                "price": snapshot.price,
+                "observed_at": snapshot.observed_at,
+                "source_key": snapshot.source_key,
+                "raw_payload": snapshot.raw_payload,
+                "updated_at": now_utc(),
+            },
+        )
+    )
+    session.execute(stmt)
 
     # FairBet work table: append odds for non-completed games
     # This enables cross-book comparison in FairBet

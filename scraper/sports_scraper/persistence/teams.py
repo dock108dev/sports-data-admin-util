@@ -31,15 +31,11 @@ def _should_log(event_key: str, sample: int = _LOG_SAMPLE) -> bool:
 _ABBR_STOPWORDS = {"of", "the", "and", "at"}
 
 
-def _derive_abbreviation(team_name: str, strip_mascots: bool = True) -> str:
+def _derive_abbreviation(team_name: str) -> str:
     """Derive a deterministic, non-empty team abbreviation from a team name.
 
     This is a fallback for feeds that omit abbreviations. It is NOT intended to
     be perfect; it is intended to be stable and satisfy DB constraints.
-
-    When strip_mascots is True (default), mascot words from _NCAAB_STOPWORDS
-    are removed before deriving the abbreviation. This prevents garbage codes
-    like "ACT" for "Alabama Crimson Tide" (should use school name only).
     """
     cleaned = re.sub(r"[^A-Za-z0-9]+", " ", (team_name or "")).strip()
     if not cleaned:
@@ -49,23 +45,13 @@ def _derive_abbreviation(team_name: str, strip_mascots: bool = True) -> str:
     if not tokens:
         tokens = cleaned.split()
 
-    # Strip mascot words so abbreviations are school-based
-    if strip_mascots:
-        school_tokens = [t for t in tokens if t.lower() not in _NCAAB_STOPWORDS]
-        if school_tokens:
-            tokens = school_tokens
-
     # Common patterns like "UC-Irvine" -> "UCI"
     first = tokens[0].upper()
     if first in {"UC", "UNC"} and len(tokens) > 1:
         second = tokens[1].upper()
         return (first + second[:2])[:6]
 
-    # Single-word school names: use first 4 chars (e.g., "Duke" -> "DUKE")
-    if len(tokens) == 1:
-        return tokens[0].upper()[:4] or "UNK"
-
-    # Multi-word school names: take initials (e.g., "San Diego State" -> "SDS")
+    # Prefer initials for multi-token names.
     abbr = "".join(t[0].upper() for t in tokens[:6])
 
     # Ensure minimum length of 3 when possible by extending with more letters.
@@ -92,33 +78,19 @@ _NCAAB_OVERRIDES = {
 # Common NCAAB mascot/color tokens that should not drive matching.
 _NCAAB_STOPWORDS = {
     # Mascots
-    "aggies", "anteaters", "bearcats", "beacons", "bears", "bearkats",
-    "beavers", "bison", "blazers", "blue", "bobcats", "boilermakers",
-    "bonnies", "braves", "broncos", "bruins", "buccaneers", "buckeyes",
-    "bulldogs", "bulls", "camels", "cardinals", "catamounts", "cavaliers",
-    "chanticleers", "chargers", "colonels", "commodores", "cornhuskers",
-    "cougars", "cowboys", "crimson", "crusaders", "cyclones", "deacons",
-    "demons", "devils", "dolphins", "dons", "dragons", "ducks", "dukes",
-    "eagles", "explorers", "falcons", "fighting", "flames", "flashes",
-    "flyers", "friars", "gaels", "gamecocks", "gators", "golden", "gophers",
-    "governors", "grizzlies", "hawks", "hilltoppers", "hokies", "hornets",
-    "hoyas", "hurricanes", "huskies", "illini", "islanders", "jackrabbits",
-    "jaguars", "jayhawks", "keydets", "knights", "lancers", "leopards",
-    "lions", "lobos", "longhorns", "lumberjacks", "mean", "miners",
-    "minutemen", "mocs", "monarchs", "mountaineers", "musketeers", "mustangs",
-    "nittany", "norse", "orange", "owls", "paladins", "panthers", "patriots",
-    "peacocks", "penguins", "phoenix", "pilots", "pioneers", "pirates",
-    "pride", "privateers", "purple", "quakers", "racers", "ragin",
-    "raiders", "ramblers", "rams", "rattlers", "razorbacks", "rebels",
-    "red", "redbirds", "redhawks", "retrievers", "revolutionaries",
-    "roadrunners", "rockets", "royals", "salukis", "scarlet", "seahawks",
-    "seminoles", "shockers", "skyhawks", "sooners", "spartans",
-    "spiders", "stags", "storm", "terrapins", "terriers", "texans",
-    "thundering", "tide", "tigers", "tommies", "toreros", "trailblazers",
-    "trojans", "volunteers", "warriors", "wave", "waves", "wildcats",
-    "wolf", "wolfpack", "wolverines", "wolves", "yellow", "zips",
+    "aggies", "bearcats", "bears", "beavers", "bison", "blazers", "blue",
+    "bobcats", "broncos", "bulldogs", "cardinals", "catamounts", "cavaliers",
+    "cougars", "cowboys", "crimson", "dolphins", "eagles", "flames", "flashes",
+    "gaels", "gators", "gophers", "hawks", "hornets", "huskies", "jackrabbits",
+    "jaguars", "knights", "lions", "lumberjacks", "mountaineers", "mustangs",
+    "owls", "panthers", "patriots", "phoenix", "pioneers", "pirates",
+    "raiders", "ramblers", "rams", "rebels", "red", "redbirds", "redhawks",
+    "roadrunners", "scarlet", "seminoles", "shockers", "skyhawks", "spartans",
+    "stags", "storm", "terrapins", "terriers", "thundering", "tigers",
+    "tommies", "trailblazers", "trojans", "warriors", "wildcats", "wolverines",
+    "yellow", "zips",
     # Color/descriptor tokens frequently paired with mascots
-    "gold", "green", "white", "bluejays", "maroon",
+    "gold", "golden", "green", "purple", "white", "bluejays", "maroon",
 }
 
 # Abbreviation/short-name expansions frequently used by books.
@@ -373,7 +345,7 @@ def _find_team_by_name(
             single_word_matches = [row[0] for row in session.execute(single_word_stmt).all()]
             candidate_ids.extend(single_word_matches)
 
-    if team_abbr:
+    if team_abbr and league_code != "NCAAB":
         stmt = (
             select(db_models.SportsTeam.id)
             .where(db_models.SportsTeam.league_id == league_id)

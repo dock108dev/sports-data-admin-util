@@ -179,6 +179,7 @@ class GeneratedMomentsOutput:
     within_budget: bool
     # Generation trace for explainability
     generation_trace: dict[str, Any] | None = None
+    # Phase 0: Moment distribution metrics for pacing analysis
     moment_distribution: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -278,8 +279,11 @@ class FinalizedOutput:
     timeline_events: int
     moment_count: int
     generated_at: str  # ISO format datetime
+    # Phase 0: Quality status for visibility
     quality_status: str = "PASSED"
+    # Phase 0: Moment distribution summary
     moment_distribution: dict[str, Any] | None = None
+    # Phase 1: Block system
     block_count: int | None = None
     blocks_version: str | None = None
 

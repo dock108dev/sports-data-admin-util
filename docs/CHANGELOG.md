@@ -2,42 +2,7 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-11] - Current
-
-### Team Color Management
-
-- **`PATCH /teams/{id}/colors`**: New endpoint to update team light/dark hex colors
-- **`colorLightHex`/`colorDarkHex`** on `TeamSummary` and `TeamDetail` responses
-- **`get_matchup_colors()`**: Server-side color selection with perceptual distance fallback (`team_colors.py`)
-
-### Server-Side Computation (Phases 1-5)
-
-- **Derived metrics**: 40+ metrics computed server-side (`derived_metrics.py`), returned on `GameSummary.derivedMetrics` and `GameDetailResponse.derivedMetrics`
-- **Period labels**: `periodLabel` and `timeLabel` on `PlayEntry` — league-aware ("Q1", "1st Half", "P2") via `period_labels.py`
-- **Play tiers**: `tier` on `PlayEntry` (1=key, 2=notable, 3=routine) and `groupedPlays` for Tier-3 collapse via `play_tiers.py`
-- **Play serialization**: `teamAbbreviation` and `playerName` now included on `PlayEntry`
-
-### Timeline Odds Integration (Phase 6)
-
-- **`odds_events.py`** (NEW): Odds event processing — book selection, movement detection, event building
-- **Odds in timeline**: Up to 3 pregame odds events (opening_line, closing_line, line_movement) merged into unified timeline
-- **Book priority**: fanduel > draftkings > betmgm > caesars
-- **Movement thresholds**: spread >= 1.0 pt, total >= 1.0 pt, moneyline >= 20 cents
-- **`GET /games/{id}/timeline`**: New endpoint to retrieve persisted timeline artifacts (404 if not generated)
-- **Validation updated**: C3 dedup handles odds events; W4 warning for odds missing phase
-
-### Documentation Consolidation
-
-- **TIMELINE_ASSEMBLY.md**: Rewritten — added odds as third source, multi-league PHASE_ORDER, updated merge pseudocode
-- **TIMELINE_VALIDATION.md**: Rewritten — aligned check numbering with code (C1-C6, W1-W4), removed aspirational checks
-- **API.md**: Added GET timeline endpoint, PATCH colors, PlayEntry/TimelineArtifactResponse models
-- **SERVER_SIDE_MIGRATION.md** (NEW): Comprehensive 6-phase migration guide
-- **INDEX.md**: Added Server-Side Migration section
-- **ARCHITECTURE.md**: Updated timeline section with all modules
-
----
-
-## [2026-02-09]
+## [2026-02-09] - Current
 
 ### NCAAB Social Scraping Enabled
 

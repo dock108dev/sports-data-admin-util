@@ -52,3 +52,23 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw err;
   }
 }
+
+export async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
+  const apiBase = getApiBase({
+    serverInternalBaseEnv: process.env.SPORTS_API_INTERNAL_URL,
+    serverPublicBaseEnv: process.env.NEXT_PUBLIC_SPORTS_API_URL,
+    localhostPort: 8000,
+  });
+  const url = `${apiBase}${path}`;
+  const res = await fetch(url, {
+    ...init,
+    headers: buildHeaders(init),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Request failed (${res.status}): ${body}`);
+  }
+  return await res.blob();
+}

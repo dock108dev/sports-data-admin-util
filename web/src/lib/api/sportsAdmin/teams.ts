@@ -19,14 +19,3 @@ export async function listTeams(params?: {
 export async function fetchTeam(teamId: number): Promise<TeamDetail> {
   return request(`/api/admin/sports/teams/${teamId}`);
 }
-
-export async function updateTeamColors(
-  teamId: number,
-  colors: { colorLightHex?: string | null; colorDarkHex?: string | null }
-): Promise<TeamDetail> {
-  return request(`/api/admin/sports/teams/${teamId}/colors`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(colors),
-  });
-}

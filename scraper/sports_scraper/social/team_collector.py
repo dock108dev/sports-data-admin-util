@@ -1,9 +1,9 @@
-"""Team-centric tweet collection.
+"""Team-centric tweet collection for the two-phase social architecture.
 
-Scrapes all tweets for teams in a date range,
+Phase 1 (COLLECT): This module scrapes all tweets for teams in a date range,
 saving them to team_social_posts with mapping_status='unmapped'.
 
-See tweet_mapper.py for mapping unmapped tweets to games.
+Phase 2 (MAP): See tweet_mapper.py for mapping unmapped tweets to games.
 """
 
 from __future__ import annotations

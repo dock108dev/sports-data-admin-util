@@ -32,7 +32,7 @@ def compress_blowout_blocks(
 ) -> list[int]:
     """Generate split points for blowout games.
 
-    Blowout compression strategy:
+    Task 1.5: Blowout compression strategy:
     - 1-2 blocks before decisive moment (the interesting part)
     - 1 block for the decisive stretch
     - 1 block for everything after (compressed)

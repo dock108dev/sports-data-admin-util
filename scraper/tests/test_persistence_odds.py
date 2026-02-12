@@ -463,8 +463,8 @@ class TestUpsertOddsFunction:
         result = upsert_odds(mock_session, snapshot)
 
         assert result is OddsUpsertResult.PERSISTED
-        # Three execute calls: SportsGameOdds opening + closing + FairbetGameOddsWork
-        assert mock_session.execute.call_count == 3
+        # Two execute calls: SportsGameOdds + FairbetGameOddsWork
+        assert mock_session.execute.call_count == 2
 
     @patch("sports_scraper.persistence.odds.cache_set")
     @patch("sports_scraper.persistence.odds.cache_get")
@@ -973,8 +973,8 @@ class TestUpsertOddsWithSideValue:
         result = upsert_odds(mock_session, snapshot)
 
         assert result is OddsUpsertResult.PERSISTED
-        # Three execute calls: SportsGameOdds opening + closing + FairbetGameOddsWork
-        assert mock_session.execute.call_count == 3
+        # Two execute calls: SportsGameOdds + FairbetGameOddsWork
+        assert mock_session.execute.call_count == 2
 
     @patch("sports_scraper.persistence.odds.cache_set")
     @patch("sports_scraper.persistence.odds.cache_get")

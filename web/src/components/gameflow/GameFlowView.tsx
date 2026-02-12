@@ -9,7 +9,9 @@ import styles from "./GameFlowView.module.css";
 /**
  * Game Flow View
  *
- * Combines collapsed game flow with expandable social sections.
+ * PHASE 5 COMPLETE UI CONTRACT
+ * ============================
+ * Combines collapsed game flow (Task 5.1) with expandable social sections (Task 5.2).
  *
  * Architecture:
  * 1. COLLAPSED VIEW (primary): Narrative blocks + embedded tweets

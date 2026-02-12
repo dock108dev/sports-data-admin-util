@@ -371,7 +371,7 @@ class TestBlockConstraints:
 
 
 class TestBlowoutDetection:
-    """Tests for blowout detection and handling."""
+    """Tests for Task 1.5: Blowout detection and handling."""
 
     def testdetect_blowout_with_sustained_margin(self) -> None:
         """Detects blowout when margin is sustained across periods."""
@@ -419,7 +419,7 @@ class TestBlowoutDetection:
 
 
 class TestGarbageTimeStart:
-    """Tests for garbage time detection."""
+    """Tests for Task 1.5: Garbage time detection."""
 
     def test_finds_garbage_time_start(self) -> None:
         """Finds garbage time when margin and period conditions met."""
@@ -452,7 +452,7 @@ class TestGarbageTimeStart:
 
 
 class TestBlowoutCompression:
-    """Tests for blowout block compression."""
+    """Tests for Task 1.5: Blowout block compression."""
 
     def test_compression_produces_fewer_blocks(self) -> None:
         """Blowout compression produces fewer blocks than normal."""

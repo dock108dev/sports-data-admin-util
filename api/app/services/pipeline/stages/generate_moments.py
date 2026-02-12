@@ -13,8 +13,8 @@ This implementation adheres to the Story contract:
 - Ordering is by play_index (canonical)
 - Output contains NO narrative text
 
-SEGMENTATION RULES
-==================
+SEGMENTATION RULES (Task 1.1: Soft-Capped Moment Compression)
+=============================================================
 The system uses SOFT caps that prefer but don't force closure:
 
 SOFT CAP: SOFT_CAP_PLAYS = 8 plays
@@ -148,7 +148,7 @@ def _segment_plays_into_moments(
 ) -> tuple[list[dict[str, Any]], CompressionMetrics]:
     """Segment PBP events into condensed moments using soft-capped compression.
 
-    ALGORITHM:
+    ALGORITHM (Task 1.1: Soft-Capped Moment Compression):
     1. Iterate through events in play_index order (already sorted)
     2. Accumulate plays into current moment
     3. Check HARD boundary conditions (must close)
@@ -323,7 +323,7 @@ def _segment_plays_into_moments(
                 f"Moment {idx} has narrated play_ids not in play_ids: {invalid}"
             )
 
-        # VERIFICATION: Max narration constraint
+        # VERIFICATION: Max narration constraint (Task 1.1)
         if len(narrated_set) > MAX_EXPLICIT_PLAYS_PER_MOMENT:
             raise ValueError(
                 f"Moment {idx} has {len(narrated_set)} narrated plays, "
@@ -356,7 +356,7 @@ async def execute_generate_moments(stage_input: StageInput) -> StageOutput:
     NO NARRATIVE TEXT IS GENERATED.
     NO LLM/OPENAI CALLS ARE MADE.
 
-    Soft-capped moment compression targets:
+    Task 1.1: Soft-Capped Moment Compression
     - Target: ~80% of moments <= 8 plays
     - Target: ~80% of moments with <= 1 explicit play
     - Target: ~25-40% reduction in moment count
@@ -406,7 +406,7 @@ async def execute_generate_moments(stage_input: StageInput) -> StageOutput:
 
     output.add_log(f"Segmented into {len(moments)} moments")
 
-    # Log compression metrics
+    # Log compression metrics (Task 1.1 instrumentation)
     output.add_log(
         f"Compression metrics: "
         f"{metrics.pct_moments_under_soft_cap:.1f}% <= {SOFT_CAP_PLAYS} plays, "
@@ -447,7 +447,7 @@ async def execute_generate_moments(stage_input: StageInput) -> StageOutput:
             f"avg={sum(narrated_counts)/len(narrated_counts):.1f}"
         )
 
-    # Log boundary reason distribution
+    # Log boundary reason distribution (Task 1.1 instrumentation)
     if metrics.boundary_reasons:
         reason_summary = ", ".join(
             f"{k}={v}" for k, v in sorted(metrics.boundary_reasons.items())
@@ -471,7 +471,7 @@ async def execute_generate_moments(stage_input: StageInput) -> StageOutput:
     # Output includes moments and compression metrics for monitoring
     output.data = {
         "moments": moments,
-        # Compression metrics for monitoring and validation
+        # Task 1.1: Compression metrics for monitoring and validation
         "compression_metrics": metrics.to_dict(),
     }
 

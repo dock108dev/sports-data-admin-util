@@ -125,20 +125,17 @@ See [GAMEFLOW_PIPELINE.md](GAMEFLOW_PIPELINE.md) for implementation details.
 
 ## Timeline System
 
-The timeline system merges PBP events, social media posts, and odds data into a unified game timeline. Social and odds data are optional — the pipeline works with PBP alone.
+The timeline system combines PBP events with social media posts into a unified game timeline.
 
 ### Components
 
-- `api/app/services/timeline_generator.py` - Main orchestration (fetch, build, validate, persist)
-- `api/app/services/timeline_events.py` - PBP event building and `merge_timeline_events()`
-- `api/app/services/social_events.py` - Social post processing and role assignment
-- `api/app/services/odds_events.py` - Odds event processing and movement detection
-- `api/app/services/timeline_phases.py` - Phase boundaries and timing calculations
-- `api/app/services/timeline_types.py` - Constants (`PHASE_ORDER`), data classes
-- `api/app/services/timeline_validation.py` - Validation rules (6 critical, 4 warning)
+- `scraper/sports_scraper/services/timeline_generator.py` - Main assembly logic (scraper-side)
+- `api/app/services/timeline_phases.py` - Game phase detection
+- `api/app/services/timeline_validation.py` - Validation rules
+- `api/app/services/timeline_events.py` - Event normalization
+- `api/app/services/social_events.py` - Social post processing
 
-See [TIMELINE_ASSEMBLY.md](TIMELINE_ASSEMBLY.md) for the assembly recipe.
-See [TIMELINE_VALIDATION.md](TIMELINE_VALIDATION.md) for validation rules.
+See [TIMELINE_ASSEMBLY.md](TIMELINE_ASSEMBLY.md) for details.
 
 ---
 

@@ -14,7 +14,7 @@
 4. [Health Check](#health-check)
 5. [Games](#games)
 6. [Game Flow](#game-flow)
-7. [Timeline](#timeline)
+7. [Timeline Generation](#timeline-generation)
 8. [Teams](#teams)
 9. [Scraper Runs](#scraper-runs)
 10. [Game Flow Pipeline](#game-flow-pipeline)
@@ -229,7 +229,6 @@ Full game detail including stats, odds, social posts, and plays.
   "odds": [...],
   "socialPosts": [...],
   "plays": [...],
-  "groupedPlays": [...],
   "derivedMetrics": {...},
   "rawPayloads": {...},
   "dataHealth": null
@@ -338,33 +337,24 @@ Game flows are AI-generated narrative summaries built from play-by-play data. Ea
 
 ---
 
-## Timeline
-
-### `GET /games/{gameId}/timeline`
-
-Retrieve a persisted timeline artifact for a game.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `timeline_version` | `string` | `v1` | Timeline version to retrieve |
-
-**Response (200):** `TimelineArtifactResponse` (see [Response Models](#response-models))
-
-**Response (404):** No timeline artifact exists for this game.
-
-### `POST /games/{gameId}/timeline/generate`
-
-Generate and persist a timeline artifact for a finalized game. Merges PBP, social, and odds events into a unified chronological timeline.
-
-**Response (200):** `TimelineArtifactResponse`
-
-**Response (409):** Game is not final.
-
-**Response (422):** Missing PBP data or validation failed.
+## Timeline Generation
 
 ### `POST /timelines/generate/{gameId}`
 
-Legacy alias for `POST /games/{gameId}/timeline/generate`.
+Generate timeline artifact for a game.
+
+**Response:**
+```json
+{
+  "gameId": 123,
+  "sport": "NBA",
+  "timelineVersion": "v1",
+  "generatedAt": "2026-01-23T05:00:00Z",
+  "timeline": [...],
+  "summary": {...},
+  "gameAnalysis": {...}
+}
+```
 
 ### `GET /timelines/missing`
 
@@ -412,9 +402,7 @@ List teams with game counts.
       "shortName": "Lakers",
       "abbreviation": "LAL",
       "leagueCode": "NBA",
-      "gamesCount": 45,
-      "colorLightHex": "#FDB927",
-      "colorDarkHex": "#552583"
+      "gamesCount": 45
     }
   ],
   "total": 30
@@ -424,20 +412,6 @@ List teams with game counts.
 ### `GET /teams/{teamId}`
 
 Team detail with recent games.
-
-### `PATCH /teams/{teamId}/colors`
-
-Update team colors (light and dark hex values).
-
-**Request:**
-```json
-{
-  "colorLightHex": "#FDB927",
-  "colorDarkHex": "#552583"
-}
-```
-
-**Response:** `TeamDetail` with updated color fields.
 
 ### `GET /teams/{teamId}/social`
 
@@ -778,7 +752,6 @@ interface GameSummary {
   lastIngestedAt: string | null;
   lastPbpAt: string | null;
   lastSocialAt: string | null;
-  derivedMetrics: Record<string, any> | null;  // Server-computed metrics (40+)
 }
 ```
 
@@ -907,100 +880,6 @@ interface NHLGoalieStat {
   goalsAgainst: number | null;
   savePercentage: number | null;
   rawStats: object;
-}
-```
-
-### PlayEntry
-
-Plays returned in the `plays` array of `GET /games/{gameId}`.
-
-```typescript
-interface PlayEntry {
-  playIndex: number;
-  quarter: number | null;
-  gameClock: string | null;
-  periodLabel: string | null;   // Server-computed: "Q1", "1st Half", "P2", etc.
-  timeLabel: string | null;     // Server-computed: "Q1 8:45", "2H 12:30", etc.
-  playType: string | null;
-  teamAbbreviation: string | null;
-  playerName: string | null;
-  description: string | null;
-  homeScore: number | null;
-  awayScore: number | null;
-  tier: number | null;          // Server-computed: 1 (key), 2 (notable), 3 (routine)
-}
-```
-
-### TieredPlayGroup
-
-Consecutive Tier-3 plays collapsed into a summary. Returned in the `groupedPlays` array of `GET /games/{gameId}`.
-
-```typescript
-interface TieredPlayGroup {
-  startIndex: number;
-  endIndex: number;
-  playIndices: number[];
-  summaryLabel: string;    // e.g. "12 routine plays"
-}
-```
-
-### TeamSummary
-
-```typescript
-interface TeamSummary {
-  id: number;
-  name: string;
-  shortName: string;
-  abbreviation: string;
-  leagueCode: string;
-  gamesCount: number;
-  colorLightHex: string | null;   // Hex color for light backgrounds
-  colorDarkHex: string | null;    // Hex color for dark backgrounds
-}
-```
-
-### TimelineArtifactResponse
-
-Returned by `GET /games/{gameId}/timeline` and `POST /games/{gameId}/timeline/generate`.
-
-```typescript
-interface TimelineArtifactResponse {
-  gameId: number;
-  sport: string;              // "NBA", "NHL", "NCAAB"
-  timelineVersion: string;    // "v1"
-  generatedAt: string;        // ISO 8601 UTC
-  timeline: TimelineEvent[];  // Merged PBP + social + odds events
-  summary: Record<string, any>;
-  gameAnalysis: Record<string, any>;
-}
-
-// Timeline events have event_type-specific fields
-interface TimelineEvent {
-  event_type: "pbp" | "tweet" | "odds";
-  phase: string;                    // "pregame", "q1", "q2", etc.
-  intra_phase_order: number;        // Sort key within phase
-  synthetic_timestamp: string;      // ISO 8601
-
-  // PBP-specific fields
-  play_index?: number;
-  quarter?: number;
-  game_clock?: string;
-  description?: string;
-  play_type?: string;
-  team_abbreviation?: string;
-  home_score?: number;
-  away_score?: number;
-
-  // Social-specific fields
-  author?: string;
-  text?: string;
-  role?: string;                    // "hype", "reaction", "momentum", etc.
-
-  // Odds-specific fields
-  odds_type?: string;               // "opening_line", "closing_line", "line_movement"
-  book?: string;                    // "fanduel", "draftkings", etc.
-  markets?: Record<string, any>;
-  movements?: Array<Record<string, any>>;  // Only on line_movement events
 }
 ```
 

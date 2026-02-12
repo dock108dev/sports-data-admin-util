@@ -1,5 +1,5 @@
 /**
- * Guardrails & Invariant Enforcement (Frontend)
+ * Phase 6: Guardrails & Invariant Enforcement (Frontend)
  *
  * This module enforces hard invariants at render time.
  * Violations are CORRECTNESS BUGS, not stylistic issues.

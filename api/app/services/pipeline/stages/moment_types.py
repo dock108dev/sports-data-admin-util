@@ -12,7 +12,7 @@ from typing import Any
 
 
 # =============================================================================
-# MOMENT COMPRESSION CONFIGURATION
+# MOMENT COMPRESSION CONFIGURATION (Task 1.1)
 # =============================================================================
 # These values are tunable without code changes.
 
@@ -75,7 +75,7 @@ class BoundaryReason(str, Enum):
 
 @dataclass
 class CompressionMetrics:
-    """Instrumentation metrics for moment compression.
+    """Instrumentation metrics for moment compression (Task 1.1).
 
     These metrics track distribution characteristics for validation.
     """

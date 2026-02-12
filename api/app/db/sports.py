@@ -94,8 +94,6 @@ class SportsTeam(Base):
     short_name: Mapped[str] = mapped_column(String(100), nullable=False)
     abbreviation: Mapped[str | None] = mapped_column(String(20), nullable=True)
     location: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    color_light_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
-    color_dark_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     x_handle: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     external_codes: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False

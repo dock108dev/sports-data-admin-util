@@ -100,7 +100,7 @@ def check_play_coverage(
 ) -> tuple[list[int], list[dict[str, Any]]]:
     """Check if key plays are referenced in the narrative.
 
-    Explicit play coverage invariant.
+    Task 1.3: Explicit play coverage invariant.
 
     Args:
         narrative: The generated narrative text
@@ -195,7 +195,7 @@ def generate_play_injection_sentence(
 ) -> str:
     """Generate a natural language sentence for a missing play.
 
-    Recovery strategy when a key play is not referenced.
+    Task 1.3: Recovery strategy when a key play is not referenced.
     Produces SportsCenter-style prose instead of raw PBP artifacts.
 
     Args:

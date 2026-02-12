@@ -9,11 +9,150 @@ import { CollapsibleSection } from "./CollapsibleSection";
 import { PbpSection } from "./PbpSection";
 import { SocialPostsSection } from "./SocialPostsSection";
 import { FlowSection } from "./FlowSection";
-import { OddsSection } from "./OddsSection";
-import { PlayerStatsSection } from "./PlayerStatsSection";
-import { ComputedFieldsSection } from "./ComputedFieldsSection";
-import { flattenStats, FieldLabel } from "./gameDetailUtils";
 import styles from "./styles.module.css";
+
+/**
+ * Format a stat value for display, handling nested objects.
+ * Handles common CBB/NCAAB API patterns:
+ * - {total: 89, byPeriod: [...]} -> "89"
+ * - {made: 24, attempted: 50} -> "24/50"
+ * - {offensive: 10, defensive: 32, total: 42} -> "42 (10 off, 32 def)"
+ */
+function formatStatValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+
+  if (typeof value !== "object") {
+    // Primitive value - format numbers nicely
+    if (typeof value === "number") {
+      return Number.isInteger(value) ? String(value) : value.toFixed(1);
+    }
+    return String(value);
+  }
+
+  // Handle arrays - show count for large arrays, values for small ones
+  if (Array.isArray(value)) {
+    if (value.length > 4) {
+      return `[${value.length} items]`;
+    }
+    return value.map(formatStatValue).join(", ");
+  }
+
+  // Handle objects
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj);
+
+  // Pattern: {total: X, byPeriod: [...]} - common for points/rebounds/turnovers in CBB API
+  // Just show the total since byPeriod is detail we don't need inline
+  if (keys.includes("total") && typeof obj.total === "number") {
+    const total = obj.total as number;
+    // Check for offensive/defensive breakdown (rebounds)
+    if (keys.includes("offensive") && keys.includes("defensive")) {
+      const off = obj.offensive as number;
+      const def = obj.defensive as number;
+      return `${total} (${off} off, ${def} def)`;
+    }
+    // Check for forced turnovers
+    if (keys.includes("forced") && typeof obj.forced === "number") {
+      return `${total} (${obj.forced} forced)`;
+    }
+    // Just return total for other cases
+    return String(total);
+  }
+
+  // Pattern: {made: X, attempted: Y} - shooting stats
+  if (
+    (keys.includes("made") && keys.includes("attempted")) ||
+    (keys.includes("makes") && keys.includes("attempts"))
+  ) {
+    const made = (obj.made ?? obj.makes ?? 0) as number;
+    const attempted = (obj.attempted ?? obj.attempts ?? 0) as number;
+    const pct = obj.percentage ?? obj.pct;
+    if (pct !== undefined && typeof pct === "number") {
+      return `${made}/${attempted} (${pct.toFixed(1)}%)`;
+    }
+    // Calculate percentage if we have attempts
+    if (attempted > 0) {
+      const calcPct = ((made / attempted) * 100).toFixed(1);
+      return `${made}/${attempted} (${calcPct}%)`;
+    }
+    return `${made}/${attempted}`;
+  }
+
+  // Pattern: {personal: X, technical: Y} - fouls
+  if (keys.includes("personal") && keys.includes("technical")) {
+    const personal = obj.personal as number;
+    const technical = obj.technical ?? 0;
+    return technical ? `${personal} (${technical} tech)` : String(personal);
+  }
+
+  // Pattern: Four factors stats - just show key metrics
+  if (keys.includes("effectiveFieldGoalPercentage") || keys.includes("turnoverPercentage")) {
+    const efg = obj.effectiveFieldGoalPercentage;
+    const to = obj.turnoverPercentage;
+    const orb = obj.offensiveReboundPercentage;
+    const ft = obj.freeThrowRate;
+    const parts: string[] = [];
+    if (typeof efg === "number") parts.push(`eFG%: ${efg.toFixed(1)}`);
+    if (typeof to === "number") parts.push(`TO%: ${to.toFixed(1)}`);
+    if (typeof orb === "number") parts.push(`ORB%: ${orb.toFixed(1)}`);
+    if (typeof ft === "number") parts.push(`FTR: ${ft.toFixed(2)}`);
+    return parts.length > 0 ? parts.join(", ") : "—";
+  }
+
+  // For other objects, format as "key: value" pairs (skip arrays/byPeriod)
+  return keys
+    .filter((k) => {
+      const v = obj[k];
+      return v !== null && v !== undefined && k !== "byPeriod" && !Array.isArray(v);
+    })
+    .map((k) => `${k}: ${formatStatValue(obj[k])}`)
+    .join(", ");
+}
+
+/**
+ * Flatten nested stats object for better display.
+ * Converts nested objects into flattened key-value pairs with descriptive keys.
+ */
+function flattenStats(
+  stats: Record<string, unknown>,
+): Array<{ key: string; label: string; value: string }> {
+  const result: Array<{ key: string; label: string; value: string }> = [];
+
+  // Stats to display in order, with display labels
+  const displayStats: Array<{ key: string; label: string }> = [
+    { key: "points", label: "Points" },
+    { key: "rebounds", label: "Rebounds" },
+    { key: "assists", label: "Assists" },
+    { key: "steals", label: "Steals" },
+    { key: "blocks", label: "Blocks" },
+    { key: "turnovers", label: "Turnovers" },
+    { key: "fouls", label: "Fouls" },
+    { key: "fieldGoals", label: "FG" },
+    { key: "twoPointFieldGoals", label: "2PT" },
+    { key: "threePointFieldGoals", label: "3PT" },
+    { key: "freeThrows", label: "FT" },
+    { key: "possessions", label: "Possessions" },
+    { key: "trueShooting", label: "TS%" },
+  ];
+
+  for (const { key, label } of displayStats) {
+    const value = stats[key];
+
+    if (value === null || value === undefined) {
+      continue;
+    }
+
+    result.push({
+      key,
+      label,
+      value: formatStatValue(value),
+    });
+  }
+
+  return result;
+}
 
 export default function GameDetailClient() {
   const params = useParams<{ gameId?: string }>();
@@ -24,6 +163,7 @@ export default function GameDetailClient() {
   const [error, setError] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<"rescrape" | "odds" | null>(null);
+  const [selectedBook, setSelectedBook] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,6 +195,61 @@ export default function GameDetailClient() {
       { label: "Flow", ok: game.game.hasFlow },
     ];
   }, [game]);
+
+  const bookOptions = useMemo(() => {
+    if (!game) return [];
+    return Array.from(new Set(game.odds.map((o) => o.book)));
+  }, [game]);
+
+  useEffect(() => {
+    if (!game) return;
+    const preferred = bookOptions.find((b) => b === "FanDuel") ?? bookOptions[0] ?? null;
+    setSelectedBook(preferred ?? null);
+  }, [bookOptions, game]);
+
+  const filteredOdds = useMemo(() => {
+    if (!game || !selectedBook) return [];
+    return game.odds.filter((o) => o.book === selectedBook);
+  }, [game, selectedBook]);
+
+  const oddsByMarket = useMemo(() => {
+    const spread = filteredOdds.filter((o) => o.marketType === "spread");
+    const total = filteredOdds.filter((o) => o.marketType === "total");
+    const moneyline = filteredOdds.filter((o) => o.marketType === "moneyline");
+    return { spread, total, moneyline };
+  }, [filteredOdds]);
+
+  const playerStatsByTeam = useMemo(() => {
+    if (!game) return {};
+    return game.playerStats.reduce<Record<string, typeof game.playerStats>>((acc, p) => {
+      acc[p.team] = acc[p.team] || [];
+      acc[p.team].push(p);
+      return acc;
+    }, {});
+  }, [game]);
+
+  // NHL-specific: Group skaters by team
+  const nhlSkatersByTeam = useMemo(() => {
+    if (!game || !game.nhlSkaters) return {};
+    return game.nhlSkaters.reduce<Record<string, NonNullable<typeof game.nhlSkaters>>>((acc, p) => {
+      acc[p.team] = acc[p.team] || [];
+      acc[p.team].push(p);
+      return acc;
+    }, {});
+  }, [game]);
+
+  // NHL-specific: Group goalies by team
+  const nhlGoaliesByTeam = useMemo(() => {
+    if (!game || !game.nhlGoalies) return {};
+    return game.nhlGoalies.reduce<Record<string, NonNullable<typeof game.nhlGoalies>>>((acc, p) => {
+      acc[p.team] = acc[p.team] || [];
+      acc[p.team].push(p);
+      return acc;
+    }, {});
+  }, [game]);
+
+  // Determine if this is an NHL game
+  const isNHL = game?.game.leagueCode === "NHL";
 
   const handleRescrape = async () => {
     setActionStatus(null);
@@ -101,25 +296,24 @@ export default function GameDetailClient() {
           Game {g.id} — {g.leagueCode}
         </h1>
         <div className={styles.meta}>
-          <FieldLabel label={gameDate} field="gameDate" /> · {g.seasonType ?? "season"} · Last scraped: {g.lastScrapedAt ?? "—"}
+          {gameDate} · {g.seasonType ?? "season"} · Last scraped: {g.lastScrapedAt ?? "—"}
         </div>
         <div className={styles.scoreLine}>
           <div>
-            <strong><FieldLabel label={g.awayTeam} field="awayTeam" /></strong>
+            <strong>{g.awayTeam}</strong>
             <span>Away</span>
-            <span><FieldLabel label={String(g.awayScore ?? "—")} field="awayScore" /></span>
+            <span>{g.awayScore ?? "—"}</span>
           </div>
           <div>
-            <strong><FieldLabel label={g.homeTeam} field="homeTeam" /></strong>
+            <strong>{g.homeTeam}</strong>
             <span>Home</span>
-            <span><FieldLabel label={String(g.homeScore ?? "—")} field="homeScore" /></span>
+            <span>{g.homeScore ?? "—"}</span>
           </div>
         </div>
         <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           {flags.map((f) => (
             <span
               key={f.label}
-              title={`API field: ${f.label.toLowerCase().includes("boxscore") ? "hasBoxscore" : f.label.toLowerCase().includes("player") ? "hasPlayerStats" : f.label.toLowerCase().includes("odds") ? "hasOdds" : f.label.toLowerCase().includes("social") ? "hasSocial" : f.label.toLowerCase().includes("pbp") ? "hasPbp" : f.label.toLowerCase().includes("flow") ? "hasFlow" : f.label}`}
               style={{
                 padding: "0.35rem 0.75rem",
                 borderRadius: "999px",
@@ -127,8 +321,6 @@ export default function GameDetailClient() {
                 color: f.ok ? "#166534" : "#b91c1c",
                 fontWeight: 700,
                 fontSize: "0.85rem",
-                cursor: "help",
-                borderBottom: "1px dotted #94a3b8",
               }}
             >
               {f.label}: {f.ok ? "Yes" : "No"}
@@ -170,7 +362,7 @@ export default function GameDetailClient() {
         ) : (
           <div className={styles.teamStatsGrid}>
             {game.teamStats.map((t) => {
-              const flattened = flattenStats(t.stats || {});
+              const flattenedStats = flattenStats(t.stats || {});
               return (
                 <div key={t.team} className={styles.teamStatsCard}>
                   <div className={styles.teamStatsHeader}>
@@ -179,7 +371,7 @@ export default function GameDetailClient() {
                   </div>
                   <table className={styles.table}>
                     <tbody>
-                      {flattened.map(({ key, label, value }) => (
+                      {flattenedStats.map(({ key, label, value }) => (
                         <tr key={key}>
                           <td>{label}</td>
                           <td>{value}</td>
@@ -194,22 +386,346 @@ export default function GameDetailClient() {
         )}
       </CollapsibleSection>
 
-      <PlayerStatsSection
-        playerStats={game.playerStats}
-        nhlSkaters={game.nhlSkaters}
-        nhlGoalies={game.nhlGoalies}
-        isNHL={g.leagueCode === "NHL"}
-      />
+      <CollapsibleSection title="Player Stats" defaultOpen={false}>
+        {isNHL ? (
+          // NHL-specific player stats display - one card per team with skaters + goalies
+          Object.keys(nhlSkatersByTeam).length === 0 && Object.keys(nhlGoaliesByTeam).length === 0 ? (
+            <div style={{ color: "#475569" }}>No player stats found.</div>
+          ) : (
+            <div className={styles.playerStatsGrid}>
+              {/* Get unique teams from both skaters and goalies */}
+              {Array.from(new Set([...Object.keys(nhlSkatersByTeam), ...Object.keys(nhlGoaliesByTeam)])).map((team) => (
+                <div key={team} className={styles.teamStatsCard}>
+                  <div className={styles.teamStatsHeader}>
+                    <h3>{team}</h3>
+                  </div>
 
-      <OddsSection odds={game.odds} />
+                  {/* Skaters section */}
+                  {nhlSkatersByTeam[team] && nhlSkatersByTeam[team].length > 0 && (
+                    <>
+                      <h4 style={{ margin: "0.75rem 0 0.25rem", fontSize: "0.9rem", color: "#475569" }}>Skaters</h4>
+                      <div style={{ overflowX: "auto" }}>
+                        <table className={styles.table} style={{ fontSize: "0.85rem" }}>
+                          <thead>
+                            <tr>
+                              <th>Player</th>
+                              <th>TOI</th>
+                              <th>G</th>
+                              <th>A</th>
+                              <th>Pts</th>
+                              <th>+/-</th>
+                              <th>SOG</th>
+                              <th>Hits</th>
+                              <th>BLK</th>
+                              <th>PIM</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {nhlSkatersByTeam[team].map((p, idx) => (
+                              <tr key={`${team}-skater-${idx}-${p.playerName}`}>
+                                <td>{p.playerName}</td>
+                                <td>{p.toi ?? "—"}</td>
+                                <td>{p.goals ?? "—"}</td>
+                                <td>{p.assists ?? "—"}</td>
+                                <td>{p.points ?? "—"}</td>
+                                <td>{p.plusMinus ?? "—"}</td>
+                                <td>{p.shotsOnGoal ?? "—"}</td>
+                                <td>{p.hits ?? "—"}</td>
+                                <td>{p.blockedShots ?? "—"}</td>
+                                <td>{p.penaltyMinutes ?? "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Goalies section */}
+                  {nhlGoaliesByTeam[team] && nhlGoaliesByTeam[team].length > 0 && (
+                    <>
+                      <h4 style={{ margin: "0.75rem 0 0.25rem", fontSize: "0.9rem", color: "#475569" }}>Goalies</h4>
+                      <table className={styles.table} style={{ fontSize: "0.85rem" }}>
+                        <thead>
+                          <tr>
+                            <th>Player</th>
+                            <th>TOI</th>
+                            <th>SA</th>
+                            <th>SV</th>
+                            <th>GA</th>
+                            <th>SV%</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {nhlGoaliesByTeam[team].map((p, idx) => (
+                            <tr key={`${team}-goalie-${idx}-${p.playerName}`}>
+                              <td>{p.playerName}</td>
+                              <td>{p.toi ?? "—"}</td>
+                              <td>{p.shotsAgainst ?? "—"}</td>
+                              <td>{p.saves ?? "—"}</td>
+                              <td>{p.goalsAgainst ?? "—"}</td>
+                              <td>{p.savePercentage != null ? `${(p.savePercentage * 100).toFixed(1)}%` : "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          // Generic player stats (NBA, NCAAB, etc.)
+          Object.keys(playerStatsByTeam).length === 0 ? (
+            <div style={{ color: "#475569" }}>No player stats found.</div>
+          ) : (
+            <div className={styles.playerStatsGrid}>
+              {Object.entries(playerStatsByTeam).map(([team, rows]) => {
+                // Helper to coerce value to number (handles numeric strings)
+                const toNumber = (v: unknown): number | null => {
+                  if (typeof v === "number") return v;
+                  if (typeof v === "string") {
+                    const parsed = Number(v);
+                    return isNaN(parsed) ? null : parsed;
+                  }
+                  return null;
+                };
+
+                // Helper to get stat from raw_stats - handles both flat and nested formats
+                const getStat = (p: typeof rows[0], ...keys: string[]): number | null => {
+                  for (const key of keys) {
+                    const val = p.rawStats?.[key];
+                    if (val !== null && val !== undefined) {
+                      // Direct number or numeric string
+                      const num = toNumber(val);
+                      if (num !== null) return num;
+                      // Nested object formats (CBB API)
+                      if (typeof val === "object" && !Array.isArray(val)) {
+                        const obj = val as Record<string, unknown>;
+                        // Try "total" key first (points, rebounds, etc.)
+                        const total = toNumber(obj.total);
+                        if (total !== null) return total;
+                        // Try "personal" key for fouls
+                        const personal = toNumber(obj.personal);
+                        if (personal !== null) return personal;
+                      }
+                    }
+                  }
+                  return null;
+                };
+                // Format shooting stat as "made/att" - handles multiple formats
+                const formatShootingStat = (
+                  p: typeof rows[0],
+                  flatMadeKey: string,
+                  flatAttKey: string,
+                  nestedKey: string,
+                ): string => {
+                  // First try flat keys (from updated scraper)
+                  let made = getStat(p, flatMadeKey);
+                  let att = getStat(p, flatAttKey);
+
+                  // Fallback: try nested CBB API format (e.g., fieldGoals: {made: X, attempted: Y})
+                  if (made === null && att === null) {
+                    const nested = p.rawStats?.[nestedKey];
+                    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+                      const obj = nested as Record<string, unknown>;
+                      made = toNumber(obj.made);
+                      att = toNumber(obj.attempted);
+                    }
+                  }
+
+                  // Return "—" if we don't have complete data (both made and att)
+                  // Partial data like "5/null" would be misleading
+                  if (made === null || att === null) return "—";
+                  return `${made}/${att}`;
+                };
+                return (
+                  <div key={team} className={styles.teamStatsCard}>
+                    <div className={styles.teamStatsHeader}>
+                      <h3>{team}</h3>
+                    </div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table className={styles.table} style={{ fontSize: "0.85rem" }}>
+                        <thead>
+                          <tr>
+                            <th>Player</th>
+                            <th>Min</th>
+                            <th>Pts</th>
+                            <th>Reb</th>
+                            <th>Ast</th>
+                            <th>Stl</th>
+                            <th>Blk</th>
+                            <th>TO</th>
+                            <th>FG</th>
+                            <th>3PT</th>
+                            <th>FT</th>
+                            <th>PF</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((p, idx) => (
+                            <tr key={`${team}-${idx}-${p.playerName}`}>
+                              <td>{p.playerName}</td>
+                              <td>{p.minutes != null ? Math.round(p.minutes) : "—"}</td>
+                              <td>{p.points ?? "—"}</td>
+                              <td>{p.rebounds ?? getStat(p, "rebounds", "totalRebounds") ?? "—"}</td>
+                              <td>{p.assists ?? "—"}</td>
+                              <td>{getStat(p, "steals") ?? "—"}</td>
+                              <td>{getStat(p, "blocks", "blocked_shots") ?? "—"}</td>
+                              <td>{getStat(p, "turnovers") ?? "—"}</td>
+                              <td>{formatShootingStat(p, "fgMade", "fgAttempted", "fieldGoals")}</td>
+                              <td>{formatShootingStat(p, "fg3Made", "fg3Attempted", "threePointFieldGoals")}</td>
+                              <td>{formatShootingStat(p, "ftMade", "ftAttempted", "freeThrows")}</td>
+                              <td>{getStat(p, "fouls", "personalFouls") ?? "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Odds" defaultOpen={false}>
+        {game.odds.length === 0 ? (
+          <div style={{ color: "#475569" }}>No odds found.</div>
+        ) : (
+          <>
+            <div className={styles.oddsHeader}>
+              <label>
+                Book:
+                <select
+                  className={styles.oddsBookSelect}
+                  value={selectedBook ?? ""}
+                  onChange={(e) => setSelectedBook(e.target.value)}
+                >
+                  {bookOptions.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className={styles.oddsGroup}>
+              <h3>Spread</h3>
+              {oddsByMarket.spread.length === 0 ? (
+                <div className={styles.subtle}>No spread odds for {selectedBook}</div>
+              ) : (
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Side</th>
+                      <th>Line</th>
+                      <th>Price</th>
+                      <th>Observed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {oddsByMarket.spread.map((o, idx) => (
+                      <tr key={`${o.side}-${idx}`}>
+                        <td>{o.side ?? "—"}</td>
+                        <td>{o.line ?? "—"}</td>
+                        <td>{o.price ?? "—"}</td>
+                        <td>{o.observedAt ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className={styles.oddsGroup}>
+              <h3>Total</h3>
+              {oddsByMarket.total.length === 0 ? (
+                <div className={styles.subtle}>No total odds for {selectedBook}</div>
+              ) : (
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Side</th>
+                      <th>Line</th>
+                      <th>Price</th>
+                      <th>Observed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {oddsByMarket.total.map((o, idx) => (
+                      <tr key={`${o.side}-${idx}`}>
+                        <td>{o.side ?? "—"}</td>
+                        <td>{o.line ?? "—"}</td>
+                        <td>{o.price ?? "—"}</td>
+                        <td>{o.observedAt ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className={styles.oddsGroup}>
+              <h3>Moneyline</h3>
+              {oddsByMarket.moneyline.length === 0 ? (
+                <div className={styles.subtle}>No moneyline odds for {selectedBook}</div>
+              ) : (
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Side</th>
+                      <th>Price</th>
+                      <th>Observed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {oddsByMarket.moneyline.map((o, idx) => (
+                      <tr key={`${o.side}-${idx}`}>
+                        <td>{o.side ?? "—"}</td>
+                        <td>{o.price ?? "—"}</td>
+                        <td>{o.observedAt ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </>
+        )}
+      </CollapsibleSection>
 
       <SocialPostsSection posts={game.socialPosts || []} />
 
-      <PbpSection plays={game.plays || []} groupedPlays={game.groupedPlays} leagueCode={g.leagueCode} />
+      <PbpSection plays={game.plays || []} leagueCode={g.leagueCode} />
 
       <FlowSection gameId={g.id} hasFlow={g.hasFlow} />
 
-      <ComputedFieldsSection derivedMetrics={game.derivedMetrics || {}} />
+      <CollapsibleSection title="Derived Metrics" defaultOpen={false}>
+        {Object.keys(game.derivedMetrics || {}).length === 0 ? (
+          <div style={{ color: "#475569" }}>No derived metrics.</div>
+        ) : (
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(game.derivedMetrics).map(([k, v]) => (
+                <tr key={k}>
+                  <td>{k}</td>
+                  <td>{String(v)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CollapsibleSection>
     </div>
   );
 }
