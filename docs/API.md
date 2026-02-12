@@ -179,7 +179,13 @@ List games with filtering and pagination.
       "lastScrapedAt": "2026-01-23T05:00:00Z",
       "lastIngestedAt": "2026-01-23T05:00:00Z",
       "lastPbpAt": "2026-01-23T05:00:00Z",
-      "lastSocialAt": "2026-01-23T04:00:00Z"
+      "lastSocialAt": "2026-01-23T04:00:00Z",
+      "homeTeamAbbr": "LAL",
+      "awayTeamAbbr": "GSW",
+      "homeTeamColorLight": "#FDB927",
+      "homeTeamColorDark": "#552583",
+      "awayTeamColorLight": "#006BB6",
+      "awayTeamColorDark": "#FDB927"
     }
   ],
   "total": 245,
@@ -220,7 +226,13 @@ Full game detail including stats, odds, social posts, and plays.
     "playCount": 450,
     "socialPostCount": 12,
     "homeTeamXHandle": "@Lakers",
-    "awayTeamXHandle": "@warriors"
+    "awayTeamXHandle": "@warriors",
+    "homeTeamAbbr": "LAL",
+    "awayTeamAbbr": "GSW",
+    "homeTeamColorLight": "#FDB927",
+    "homeTeamColorDark": "#552583",
+    "awayTeamColorLight": "#006BB6",
+    "awayTeamColorDark": "#FDB927"
   },
   "teamStats": [...],
   "playerStats": [...],
@@ -265,6 +277,15 @@ Get the AI-generated game flow for a game.
 ```json
 {
   "gameId": 123,
+  "homeTeam": "Lakers",
+  "awayTeam": "Suns",
+  "homeTeamAbbr": "LAL",
+  "awayTeamAbbr": "PHX",
+  "homeTeamColorLight": "#FDB927",
+  "homeTeamColorDark": "#552583",
+  "awayTeamColorLight": "#E56020",
+  "awayTeamColorDark": "#1D1160",
+  "leagueCode": "NBA",
   "flow": {
     "blocks": [
       {
@@ -779,6 +800,12 @@ interface GameSummary {
   lastPbpAt: string | null;
   lastSocialAt: string | null;
   derivedMetrics: Record<string, any> | null;  // Server-computed metrics (40+)
+  homeTeamAbbr: string | null;       // Clash-resolved team abbreviation
+  awayTeamAbbr: string | null;
+  homeTeamColorLight: string | null;  // Clash-resolved hex color (light mode)
+  homeTeamColorDark: string | null;   // Clash-resolved hex color (dark mode)
+  awayTeamColorLight: string | null;
+  awayTeamColorDark: string | null;
 }
 ```
 
@@ -807,6 +834,15 @@ interface GameFlowResponse {
   plays: GameFlowPlay[];
   validationPassed: boolean;
   validationErrors: string[];
+  homeTeam: string | null;            // Team name
+  awayTeam: string | null;
+  homeTeamAbbr: string | null;        // Clash-resolved team abbreviation
+  awayTeamAbbr: string | null;
+  homeTeamColorLight: string | null;   // Clash-resolved hex color (light mode)
+  homeTeamColorDark: string | null;    // Clash-resolved hex color (dark mode)
+  awayTeamColorLight: string | null;
+  awayTeamColorDark: string | null;
+  leagueCode: string | null;
 }
 
 interface GameFlowContent {

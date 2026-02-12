@@ -25,6 +25,7 @@ from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
 from ...services.derived_metrics import compute_derived_metrics
 from ...services.play_tiers import classify_all_tiers, group_tier3_plays
+from ...services.team_colors import get_matchup_colors
 from .common import (
     serialize_nhl_goalie,
     serialize_nhl_skater,
@@ -434,6 +435,13 @@ async def get_game(
     )
     has_flow = flow_check.scalar() is not None
 
+    matchup_colors = get_matchup_colors(
+        game.home_team.color_light_hex if game.home_team else None,
+        game.home_team.color_dark_hex if game.home_team else None,
+        game.away_team.color_light_hex if game.away_team else None,
+        game.away_team.color_dark_hex if game.away_team else None,
+    )
+
     meta = GameMeta(
         id=game.id,
         league_code=game.league.code if game.league else "UNKNOWN",
@@ -460,6 +468,12 @@ async def get_game(
         social_post_count=len(game.social_posts) if game.social_posts else 0,
         home_team_x_handle=game.home_team.x_handle if game.home_team else None,
         away_team_x_handle=game.away_team.x_handle if game.away_team else None,
+        homeTeamAbbr=game.home_team.abbreviation if game.home_team else None,
+        awayTeamAbbr=game.away_team.abbreviation if game.away_team else None,
+        homeTeamColorLight=matchup_colors["homeLightHex"],
+        homeTeamColorDark=matchup_colors["homeDarkHex"],
+        awayTeamColorLight=matchup_colors["awayLightHex"],
+        awayTeamColorDark=matchup_colors["awayDarkHex"],
     )
 
     social_posts_entries = serialize_social_posts(game, game.social_posts or [])

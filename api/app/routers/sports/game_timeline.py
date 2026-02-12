@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from ...db import AsyncSession, get_db
-from ...db.sports import SportsGamePlay
+from ...db.sports import SportsGame, SportsGamePlay
 from ...db.story import SportsGameFlow, SportsGameTimelineArtifact
+from ...services.team_colors import get_matchup_colors
 from ...services.timeline_generator import (
     TimelineGenerationError,
     generate_timeline_artifact,
@@ -130,6 +132,23 @@ async def get_game_flow(
             detail=f"No Game Flow found for game {game_id}",
         )
 
+    # Load game with teams and league for color/metadata fields
+    game_result = await session.execute(
+        select(SportsGame).options(
+            selectinload(SportsGame.home_team),
+            selectinload(SportsGame.away_team),
+            selectinload(SportsGame.league),
+        ).where(SportsGame.id == game_id)
+    )
+    game = game_result.scalar_one_or_none()
+
+    matchup_colors = get_matchup_colors(
+        game.home_team.color_light_hex if game and game.home_team else None,
+        game.home_team.color_dark_hex if game and game.home_team else None,
+        game.away_team.color_light_hex if game and game.away_team else None,
+        game.away_team.color_dark_hex if game and game.away_team else None,
+    )
+
     # Get moments from persisted data (no transformation)
     moments_data = flow_record.moments_json or []
 
@@ -225,4 +244,13 @@ async def get_game_flow(
         validationErrors=[],
         blocks=response_blocks,
         totalWords=total_words,
+        homeTeam=game.home_team.name if game and game.home_team else None,
+        awayTeam=game.away_team.name if game and game.away_team else None,
+        homeTeamAbbr=game.home_team.abbreviation if game and game.home_team else None,
+        awayTeamAbbr=game.away_team.abbreviation if game and game.away_team else None,
+        homeTeamColorLight=matchup_colors["homeLightHex"],
+        homeTeamColorDark=matchup_colors["homeDarkHex"],
+        awayTeamColorLight=matchup_colors["awayLightHex"],
+        awayTeamColorDark=matchup_colors["awayDarkHex"],
+        leagueCode=game.league.code if game and game.league else None,
     )

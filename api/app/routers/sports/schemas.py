@@ -128,6 +128,12 @@ class GameSummary(BaseModel):
     last_pbp_at: datetime | None = Field(None, alias="lastPbpAt")
     last_social_at: datetime | None = Field(None, alias="lastSocialAt")
     derived_metrics: dict[str, Any] | None = Field(None, alias="derivedMetrics")
+    home_team_abbr: str | None = Field(None, alias="homeTeamAbbr")
+    away_team_abbr: str | None = Field(None, alias="awayTeamAbbr")
+    home_team_color_light: str | None = Field(None, alias="homeTeamColorLight")
+    home_team_color_dark: str | None = Field(None, alias="homeTeamColorDark")
+    away_team_color_light: str | None = Field(None, alias="awayTeamColorLight")
+    away_team_color_dark: str | None = Field(None, alias="awayTeamColorDark")
 
 
 class GameListResponse(BaseModel):
@@ -262,6 +268,12 @@ class GameMeta(BaseModel):
     social_post_count: int = Field(..., alias="socialPostCount")
     home_team_x_handle: str | None = Field(None, alias="homeTeamXHandle")
     away_team_x_handle: str | None = Field(None, alias="awayTeamXHandle")
+    home_team_abbr: str | None = Field(None, alias="homeTeamAbbr")
+    away_team_abbr: str | None = Field(None, alias="awayTeamAbbr")
+    home_team_color_light: str | None = Field(None, alias="homeTeamColorLight")
+    home_team_color_dark: str | None = Field(None, alias="homeTeamColorDark")
+    away_team_color_light: str | None = Field(None, alias="awayTeamColorLight")
+    away_team_color_dark: str | None = Field(None, alias="awayTeamColorDark")
 
 
 class GamePreviewScoreResponse(BaseModel):
@@ -670,6 +682,15 @@ class GameFlowResponse(BaseModel):
     validation_errors: list[str] = Field(default_factory=list, alias="validationErrors")
     blocks: list[GameFlowBlock] | None = None
     total_words: int | None = Field(None, alias="totalWords")
+    home_team: str | None = Field(None, alias="homeTeam")
+    away_team: str | None = Field(None, alias="awayTeam")
+    home_team_abbr: str | None = Field(None, alias="homeTeamAbbr")
+    away_team_abbr: str | None = Field(None, alias="awayTeamAbbr")
+    home_team_color_light: str | None = Field(None, alias="homeTeamColorLight")
+    home_team_color_dark: str | None = Field(None, alias="homeTeamColorDark")
+    away_team_color_light: str | None = Field(None, alias="awayTeamColorLight")
+    away_team_color_dark: str | None = Field(None, alias="awayTeamColorDark")
+    league_code: str | None = Field(None, alias="leagueCode")
 
 
 class TimelineArtifactResponse(BaseModel):

@@ -258,9 +258,17 @@ def summarize_game(
 
     # Compute derived metrics (odds already loaded via selectinload)
     from ...services.derived_metrics import compute_derived_metrics
+    from ...services.team_colors import get_matchup_colors
 
     odds = getattr(game, "odds", None) or []
     derived = compute_derived_metrics(game, odds) if odds else {}
+
+    matchup_colors = get_matchup_colors(
+        game.home_team.color_light_hex,
+        game.home_team.color_dark_hex,
+        game.away_team.color_light_hex,
+        game.away_team.color_dark_hex,
+    )
 
     return GameSummary(
         id=game.id,
@@ -285,6 +293,12 @@ def summarize_game(
         last_pbp_at=game.last_pbp_at,
         last_social_at=game.last_social_at,
         derived_metrics=derived,
+        home_team_abbr=game.home_team.abbreviation,
+        away_team_abbr=game.away_team.abbreviation,
+        home_team_color_light=matchup_colors["homeLightHex"],
+        home_team_color_dark=matchup_colors["homeDarkHex"],
+        away_team_color_light=matchup_colors["awayLightHex"],
+        away_team_color_dark=matchup_colors["awayDarkHex"],
     )
 
 
