@@ -25,10 +25,12 @@ from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
 from ...services.derived_metrics import compute_derived_metrics
 from ...services.play_tiers import classify_all_tiers, group_tier3_plays
+from ...db.story import SportsGameTimelineArtifact
 from ...services.timeline_generator import (
     TimelineGenerationError,
     generate_timeline_artifact,
 )
+from ...services.timeline_types import DEFAULT_TIMELINE_VERSION
 from .common import (
     serialize_nhl_goalie,
     serialize_nhl_skater,
@@ -557,6 +559,41 @@ async def resync_game_odds(
         include_boxscores=False,
         include_odds=True,
         scraper_type="odds_resync",
+    )
+
+
+@router.get("/games/{game_id}/timeline", response_model=TimelineArtifactResponse)
+async def get_game_timeline(
+    game_id: int,
+    timeline_version: str = Query(DEFAULT_TIMELINE_VERSION),
+    session: AsyncSession = Depends(get_db),
+) -> TimelineArtifactResponse:
+    """Retrieve a persisted timeline artifact for a game.
+
+    Returns the timeline exactly as persisted. Use the POST generate
+    endpoint to create or regenerate a timeline.
+    """
+    result = await session.execute(
+        select(SportsGameTimelineArtifact).where(
+            SportsGameTimelineArtifact.game_id == game_id,
+            SportsGameTimelineArtifact.timeline_version == timeline_version,
+        )
+    )
+    artifact = result.scalar_one_or_none()
+    if not artifact:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No timeline artifact found for game {game_id} (version={timeline_version})",
+        )
+
+    return TimelineArtifactResponse(
+        game_id=artifact.game_id,
+        sport=artifact.sport,
+        timeline_version=artifact.timeline_version,
+        generated_at=artifact.generated_at,
+        timeline=artifact.timeline_json,
+        summary=artifact.summary_json,
+        game_analysis=artifact.game_analysis_json,
     )
 
 

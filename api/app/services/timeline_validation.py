@@ -11,22 +11,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Sequence
 
-logger = logging.getLogger(__name__)
+from .timeline_types import PHASE_ORDER
 
-# Canonical phase order (must match timeline_generator.py)
-PHASE_ORDER: dict[str, int] = {
-    "pregame": 0,
-    "q1": 1,
-    "q2": 2,
-    "halftime": 3,
-    "q3": 4,
-    "q4": 5,
-    "ot1": 6,
-    "ot2": 7,
-    "ot3": 8,
-    "ot4": 9,
-    "postgame": 99,
-}
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -196,6 +183,12 @@ def check_no_duplicates(timeline: Sequence[dict[str, Any]]) -> ValidationResult:
                 "tweet",
                 event.get("synthetic_timestamp", ""),
                 event.get("author", ""),
+            )
+        elif event_type == "odds":
+            key = (
+                "odds",
+                event.get("odds_type", ""),
+                event.get("book", ""),
             )
         else:
             key = ("other", str(i))
@@ -384,6 +377,35 @@ def check_phase_coverage(timeline: Sequence[dict[str, Any]]) -> ValidationResult
     )
 
 
+def check_odds_has_phase(timeline: Sequence[dict[str, Any]]) -> ValidationResult:
+    """W4: All odds events must have a phase assigned."""
+    missing_phase: list[str] = []
+
+    for i, event in enumerate(timeline):
+        if event.get("event_type") != "odds":
+            continue
+
+        phase = event.get("phase")
+        if phase is None or phase == "":
+            missing_phase.append(
+                f"Event {i}: odds {event.get('odds_type', 'unknown')} from {event.get('book', '?')}"
+            )
+
+    if missing_phase:
+        return ValidationResult(
+            name="W4_odds_has_phase",
+            passed=False,
+            message=f"{len(missing_phase)} odds events missing phase",
+            details=missing_phase[:10],
+        )
+
+    return ValidationResult(
+        name="W4_odds_has_phase",
+        passed=True,
+        message="All odds events have phase",
+    )
+
+
 def check_summary_phases_valid(
     timeline: Sequence[dict[str, Any]],
     summary: dict[str, Any],
@@ -442,6 +464,7 @@ def validate_timeline(
     # Warning checks
     report.warning_checks.append(check_social_has_role(timeline))
     report.warning_checks.append(check_phase_coverage(timeline))
+    report.warning_checks.append(check_odds_has_phase(timeline))
 
     if summary:
         report.warning_checks.append(check_summary_phases_valid(timeline, summary))

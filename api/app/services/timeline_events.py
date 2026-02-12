@@ -121,21 +121,24 @@ def build_pbp_events(
 def merge_timeline_events(
     pbp_events: Sequence[tuple[datetime, dict[str, Any]]],
     social_events: Sequence[tuple[datetime, dict[str, Any]]],
+    odds_events: Sequence[tuple[datetime, dict[str, Any]]] = (),
 ) -> list[dict[str, Any]]:
     """
-    Merge PBP and social events using PHASE-FIRST ordering.
+    Merge PBP, social, and odds events using PHASE-FIRST ordering.
 
     Ordering is determined by:
     1. phase_order (from PHASE_ORDER constant) - PRIMARY
     2. intra_phase_order (clock progress for PBP, seconds for social) - SECONDARY
-    3. event_type tiebreaker (pbp before tweet at same position) - TERTIARY
+    3. event_type tiebreaker (pbp=0, odds=1, tweet=2) - TERTIARY
 
     synthetic_timestamp is NOT used for ordering. It is retained for
     display/debugging purposes only.
 
     See docs/TIMELINE_ASSEMBLY.md for the canonical assembly recipe.
     """
-    merged = list(pbp_events) + list(social_events)
+    merged = list(pbp_events) + list(social_events) + list(odds_events)
+
+    _EVENT_TYPE_ORDER = {"pbp": 0, "odds": 1, "tweet": 2}
 
     def sort_key(item: tuple[datetime, dict[str, Any]]) -> tuple[int, float, int, int]:
         _, payload = item
@@ -147,8 +150,8 @@ def merge_timeline_events(
         # Secondary: intra-phase order
         intra_order = payload.get("intra_phase_order", 0)
 
-        # Tertiary: event type (pbp=0, tweet=1) so PBP comes first at ties
-        event_type_order = 0 if payload.get("event_type") == "pbp" else 1
+        # Tertiary: event type (pbp=0, odds=1, tweet=2)
+        event_type_order = _EVENT_TYPE_ORDER.get(payload.get("event_type", ""), 2)
 
         # Quaternary: play_index for PBP stability
         play_index = payload.get("play_index", 0)

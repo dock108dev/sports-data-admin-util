@@ -20,17 +20,19 @@ Current social scraping status:
 
 This is acceptable and requires NO special handling.
 
-Builds PBP and social events for game timelines:
+Builds PBP, social, and odds events for game timelines:
 1. PBP events from game plays (with phase assignment)
 2. Social events from posts (with phase and role assignment) - OPTIONAL
-3. Merge events using phase-first ordering
-4. Validate timeline structure
+3. Odds events from opening/closing lines and movements - OPTIONAL
+4. Merge events using phase-first ordering
+5. Validate timeline structure
 
 Related modules:
 - timeline_types.py: Constants, data classes, exceptions
 - timeline_phases.py: Phase utilities and timing calculations
 - timeline_events.py: PBP event building and timeline merging
 - social_events.py: Social post processing and role assignment
+- odds_events.py: Odds event processing and movement detection
 - timeline_validation.py: Validation and sanity checks
 
 See docs/TIMELINE_ASSEMBLY.md for the assembly contract.
@@ -46,6 +48,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from ..db import AsyncSession
+from ..db.odds import SportsGameOdds
 from ..db.sports import SportsGame, SportsGamePlay
 from ..db.social import TeamSocialPost
 from ..db.story import SportsGameTimelineArtifact
@@ -60,6 +63,7 @@ from .timeline_types import (
 from .timeline_phases import compute_phase_boundaries
 from .timeline_events import build_pbp_events, merge_timeline_events
 from .timeline_validation import validate_and_log, TimelineValidationError
+from .odds_events import build_odds_events
 from .social_events import build_social_events_async
 from .timeline_phases import nba_game_end
 
@@ -263,14 +267,38 @@ async def generate_timeline_artifact(
             game_start=game_start,
             has_overtime=has_overtime,
         )
-        timeline = merge_timeline_events(pbp_events, social_events)
         logger.info(
             "timeline_artifact_phase_completed",
             extra={
                 "game_id": game_id,
                 "phase": "build_social_events",
-                "timeline_events": len(timeline),
+                "social_events": len(social_events),
                 "social_posts": len(posts),
+            },
+        )
+
+        # Build odds events
+        logger.info(
+            "timeline_artifact_phase_started",
+            extra={"game_id": game_id, "phase": "build_odds_events"},
+        )
+        odds_result = await session.execute(
+            select(SportsGameOdds)
+            .where(SportsGameOdds.game_id == game_id)
+            .order_by(SportsGameOdds.observed_at)
+        )
+        odds_rows = list(odds_result.scalars().all())
+        odds_events = build_odds_events(odds_rows, game_start, phase_boundaries)
+
+        timeline = merge_timeline_events(pbp_events, social_events, odds_events)
+        logger.info(
+            "timeline_artifact_phase_completed",
+            extra={
+                "game_id": game_id,
+                "phase": "build_odds_events",
+                "timeline_events": len(timeline),
+                "odds_rows": len(odds_rows),
+                "odds_events": len(odds_events),
             },
         )
 
@@ -412,6 +440,7 @@ async def generate_timeline_artifact(
                 "timeline_version": timeline_version,
                 "timeline_events": len(timeline),
                 "social_posts": len(posts),
+                "odds_events": len(odds_events),
                 "plays": len(plays),
             },
         )
