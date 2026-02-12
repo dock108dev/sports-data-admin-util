@@ -1,4 +1,4 @@
-"""Tests for tweet-to-game mapping (two-phase social architecture)."""
+"""Tests for tweet-to-game mapping."""
 
 from __future__ import annotations
 

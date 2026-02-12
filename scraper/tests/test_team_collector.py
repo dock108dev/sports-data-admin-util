@@ -1,4 +1,4 @@
-"""Tests for TeamTweetCollector (two-phase social architecture, phase 1)."""
+"""Tests for TeamTweetCollector."""
 
 from __future__ import annotations
 

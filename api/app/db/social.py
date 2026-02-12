@@ -32,10 +32,9 @@ class MappingStatus(str, Enum):
 
 
 class TeamSocialPost(Base):
-    """Team-centric social posts for the two-phase collection architecture.
+    """Team-centric social posts.
 
-    Phase 1 (COLLECT): Scrape all tweets for teams in a date range.
-    Phase 2 (MAP): Assign unmapped tweets to games based on posted_at.
+    Posts are collected per-team, then mapped to games based on posted_at.
     """
 
     __tablename__ = "team_social_posts"

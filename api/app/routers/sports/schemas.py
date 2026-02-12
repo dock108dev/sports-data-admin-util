@@ -650,7 +650,6 @@ class GameFlowResponse(BaseModel):
     plays: list[GameFlowPlay]
     validation_passed: bool = Field(..., alias="validationPassed")
     validation_errors: list[str] = Field(default_factory=list, alias="validationErrors")
-    # Phase 1: Block-based narratives
     blocks: list[GameFlowBlock] | None = None
     total_words: int | None = Field(None, alias="totalWords")
 

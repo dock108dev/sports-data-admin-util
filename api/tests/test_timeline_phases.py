@@ -1,7 +1,7 @@
-"""Tests for Phase 3: Time-based tweet classification functions.
+"""Tests for time-based tweet classification functions.
 
 Tests the league-aware, time-based phase classification and segment mapping
-implemented in timeline_phases.py for Tasks 3.1 and 3.2.
+implemented in timeline_phases.py.
 """
 
 from datetime import datetime, timedelta, timezone

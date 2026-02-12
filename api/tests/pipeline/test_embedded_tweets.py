@@ -1,8 +1,4 @@
-"""Tests for Phase 4: Embedded tweet selection and cap enforcement.
-
-Tests the embedded tweet selection (Task 4.1) and hard cap enforcement (Task 4.2)
-implemented in embedded_tweets.py.
-"""
+"""Tests for embedded tweet selection and cap enforcement."""
 
 from datetime import datetime, timedelta, timezone
 

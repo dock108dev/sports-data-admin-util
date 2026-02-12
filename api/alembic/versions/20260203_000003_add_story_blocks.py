@@ -1,7 +1,5 @@
 """Add blocks columns to sports_game_stories.
 
-Phase 1: Story Generation - Narrative Block System
-
 Adds support for 4-7 narrative blocks per game story:
 - blocks_json: JSONB containing the narrative blocks
 - block_count: Number of blocks

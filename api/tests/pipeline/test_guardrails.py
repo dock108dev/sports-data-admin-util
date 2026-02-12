@@ -1,4 +1,4 @@
-"""Tests for Phase 6: Guardrails & Invariant Enforcement.
+"""Tests for Guardrails & Invariant Enforcement.
 
 Tests ensure that guardrails enforce hard limits correctly:
 - Block count ≤ 7

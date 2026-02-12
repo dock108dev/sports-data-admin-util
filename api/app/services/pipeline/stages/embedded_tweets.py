@@ -72,7 +72,7 @@ class ScoredTweet:
     posted_at: datetime
     text: str
     author: str
-    phase: str  # From Phase 3 classification
+    phase: str
     score: float  # Computed by scorer
     position: TweetPosition  # Computed from game position
     has_media: bool = False

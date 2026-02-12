@@ -259,21 +259,3 @@ def build_odds_events(
     return events
 
 
-async def build_odds_events_async(
-    odds: Sequence[SportsGameOdds],
-    game_start: datetime,
-    phase_boundaries: dict[str, tuple[datetime, datetime]],
-) -> list[tuple[datetime, dict[str, Any]]]:
-    """Build odds events (async wrapper).
-
-    Delegates to sync implementation - no async operations needed.
-
-    Args:
-        odds: SportsGameOdds rows for this game
-        game_start: Authoritative game start time
-        phase_boundaries: Pre-computed phase boundaries
-
-    Returns:
-        List of (timestamp, event_payload) tuples
-    """
-    return build_odds_events(odds, game_start, phase_boundaries)

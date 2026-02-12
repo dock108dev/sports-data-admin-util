@@ -1,31 +1,14 @@
 """
 Timeline artifact generation for finalized games.
 
-SOCIAL DECOUPLING CONTRACT (Phase 2)
-====================================
-Timeline generation treats social data as OPTIONAL:
-- Works identically with or without social posts
-- No league-specific branching for social data availability
-- Social posts gracefully degrade to empty list for all leagues
-
-The timeline MUST render completely when:
-- Social posts are present
-- Social posts are partially present
-- Social posts are completely absent
-
-Current social scraping status:
-- NBA: Social scraping configured (posts may exist)
-- NHL: No social scraping (posts will be empty)
-- NCAAB: No social scraping (posts will be empty)
-
-This is acceptable and requires NO special handling.
-
 Builds PBP, social, and odds events for game timelines:
 1. PBP events from game plays (with phase assignment)
-2. Social events from posts (with phase and role assignment) - OPTIONAL
-3. Odds events from opening/closing lines and movements - OPTIONAL
+2. Social events from posts (with phase and role assignment)
+3. Odds events from opening/closing lines and movements
 4. Merge events using phase-first ordering
 5. Validate timeline structure
+
+Social and odds data are optional — the pipeline works with PBP alone.
 
 Related modules:
 - timeline_types.py: Constants, data classes, exceptions
@@ -64,23 +47,14 @@ from .timeline_phases import compute_phase_boundaries
 from .timeline_events import build_pbp_events, merge_timeline_events
 from .timeline_validation import validate_and_log, TimelineValidationError
 from .odds_events import build_odds_events
-from .social_events import build_social_events_async
+from .social_events import build_social_events
 from .timeline_phases import nba_game_end
 
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
-
-
 def build_game_summary(game: SportsGame) -> dict[str, Any]:
-    """Build basic summary dict from game data.
-
-    Returns minimal game metadata for timeline context.
-    League-agnostic - works for NBA, NHL, NCAAB.
-    """
+    """Build basic summary dict from game data."""
     league_code = game.league.code if game.league else "UNK"
     return {
         "game_id": game.id,
@@ -91,47 +65,6 @@ def build_game_summary(game: SportsGame) -> dict[str, Any]:
         "away_score": game.away_score,
         "status": game.status,
     }
-
-
-async def build_game_analysis_async(
-    timeline: list[dict[str, Any]],
-    summary: dict[str, Any],
-    game_id: int,
-    sport: str,
-    timeline_version: str,
-    game_context: dict[str, Any],
-) -> dict[str, Any]:
-    """Build game analysis from timeline data.
-
-    Returns minimal structure for analysis metadata.
-    """
-    return {
-        "key_moments": [],
-        "game_flow": {},
-    }
-
-
-async def build_summary_from_timeline_async(
-    timeline: list[dict[str, Any]],
-    game_analysis: dict[str, Any],
-    game_id: int | None = None,
-    timeline_version: str | None = None,
-    sport: str | None = None,
-) -> dict[str, Any]:
-    """Generate summary from timeline and analysis.
-
-    Returns minimal summary structure.
-    """
-    return {
-        "ai_generated": False,
-        "summary_text": "",
-        "highlights": [],
-    }
-
-
-# =============================================================================
-# ARTIFACT GENERATION
-# =============================================================================
 
 
 async def generate_timeline_artifact(
@@ -173,8 +106,6 @@ async def generate_timeline_artifact(
         if not game.is_final:
             raise TimelineGenerationError("Game is not final", status_code=409)
 
-        # Phase 2: Timeline generation is league-agnostic
-        # Social data is optional and gracefully degrades to empty for all leagues
         league_code = game.league.code if game.league else "UNK"
 
         # Fetch plays with team relationship for team_abbreviation
@@ -254,17 +185,16 @@ async def generate_timeline_artifact(
             },
         )
 
-        # Build social events with AI-enhanced roles
-        # Phase 3: Pass game_start and has_overtime for time-based classification
+        # Build social events with heuristic role classification
         logger.info(
             "timeline_artifact_phase_started",
             extra={"game_id": game_id, "phase": "build_social_events"},
         )
-        social_events = await build_social_events_async(
+        social_events = build_social_events(
             posts,
             phase_boundaries,
-            sport=league_code,
             game_start=game_start,
+            league_code=league_code,
             has_overtime=has_overtime,
         )
         logger.info(
@@ -302,62 +232,14 @@ async def generate_timeline_artifact(
             },
         )
 
-        # Game analysis
-        logger.info(
-            "timeline_artifact_phase_started",
-            extra={"game_id": game_id, "phase": "game_analysis"},
-        )
+        # Build summary and analysis metadata
         base_summary = build_game_summary(game)
-
-        # Build game context for team name resolution
-        game_context = {
-            "home_team_name": game.home_team.name if game.home_team else "Home",
-            "away_team_name": game.away_team.name if game.away_team else "Away",
-            "home_team_abbrev": game.home_team.abbreviation
-            if game.home_team
-            else "HOME",
-            "away_team_abbrev": game.away_team.abbreviation
-            if game.away_team
-            else "AWAY",
+        game_analysis: dict[str, Any] = {"key_moments": [], "game_flow": {}}
+        summary_json: dict[str, Any] = {
+            "ai_generated": False,
+            "summary_text": "",
+            "highlights": [],
         }
-
-        game_analysis = await build_game_analysis_async(
-            timeline=timeline,
-            summary=base_summary,
-            game_id=game_id,
-            sport=league_code,
-            timeline_version=timeline_version,
-            game_context=game_context,
-        )
-        logger.info(
-            "timeline_artifact_phase_completed",
-            extra={
-                "game_id": game_id,
-                "phase": "game_analysis",
-            },
-        )
-
-        # Summary generation
-        logger.info(
-            "timeline_artifact_phase_started",
-            extra={"game_id": game_id, "phase": "summary_generation"},
-        )
-        game_analysis_with_summary = {**game_analysis, "summary": base_summary}
-        summary_json = await build_summary_from_timeline_async(
-            timeline=timeline,
-            game_analysis=game_analysis_with_summary,
-            game_id=game_id,
-            timeline_version=timeline_version,
-            sport=league_code,
-        )
-        logger.info(
-            "timeline_artifact_phase_completed",
-            extra={
-                "game_id": game_id,
-                "phase": "summary_generation",
-                "ai_generated": summary_json.get("ai_generated", False),
-            },
-        )
 
         # Validation
         logger.info(

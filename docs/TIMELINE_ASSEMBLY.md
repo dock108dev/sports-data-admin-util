@@ -110,7 +110,7 @@ Social posts are assigned phases based on `posted_at` relative to phase boundari
 
 ```python
 # api/app/services/social_events.py
-async def build_social_events_async(posts, phase_boundaries, ...):
+def build_social_events(posts, phase_boundaries, ...):
     for post in posts:
         phase = assign_phase_from_time(post.posted_at, phase_boundaries)
         role = classify_role(post.text)  # hype, reaction, momentum, etc.

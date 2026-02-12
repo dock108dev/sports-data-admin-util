@@ -1,21 +1,7 @@
 """Phase utilities for timeline generation.
 
 Handles quarter-to-phase mapping, timing calculations, and phase boundaries.
-
-PHASE 3: TIME-BASED TWEET CLASSIFICATION
-========================================
-This module provides league-aware, time-based phase classification for tweets.
-NO PBP DATA is used for classification - only time relative to game_start.
-
-Key principles:
-- game_start is authoritative
-- estimated_game_end is heuristic (imprecision is expected)
-- OT detection may be approximate (false positives acceptable)
-- Classification is deterministic and repeatable
-
-🚫 Do not use PBP data for phase classification
-🚫 Do not infer game state from tweet content
-🚫 Do not attempt clock alignment
+Provides league-aware, time-based phase classification for tweets.
 """
 
 from __future__ import annotations
@@ -31,7 +17,6 @@ from .timeline_types import (
     NBA_REGULATION_REAL_SECONDS,
     SOCIAL_POSTGAME_WINDOW_SECONDS,
     SOCIAL_PREGAME_WINDOW_SECONDS,
-    # Phase 3 constants
     NCAAB_REGULATION_REAL_MINUTES,
     NCAAB_OT_BUFFER_MINUTES,
     NBA_REGULATION_REAL_MINUTES,
@@ -181,7 +166,7 @@ def compute_phase_boundaries(
 
 
 # =============================================================================
-# PHASE 3: TIME-BASED TWEET CLASSIFICATION (Tasks 3.1 & 3.2)
+# LEAGUE-AWARE TIMING
 # =============================================================================
 
 
@@ -241,8 +226,6 @@ def classify_tweet_phase(
 ) -> str:
     """Classify a tweet into pregame, in-game, or postgame.
 
-    Task 3.1: Time-based phase classification.
-
     Classification rules:
     - Pregame: tweet_time < game_start
     - In-game: game_start <= tweet_time <= estimated_game_end + OT_buffer
@@ -279,8 +262,6 @@ def map_tweet_to_segment(
     has_overtime: bool = False,
 ) -> str:
     """Map an in-game tweet to a specific game segment.
-
-    Task 3.2: Segment mapping using elapsed ratio.
 
     Computes elapsed_ratio = (tweet_time - game_start) / estimated_game_duration
     Maps ratio to league-appropriate segment (quarter/half/period).
@@ -381,8 +362,6 @@ def assign_tweet_phase_and_segment(
 ) -> tuple[str, str | None]:
     """Classify tweet and assign segment in one call.
 
-    Combines Task 3.1 (phase classification) and Task 3.2 (segment mapping).
-
     Args:
         tweet_time: When the tweet was posted
         game_start: Authoritative game start time
@@ -412,8 +391,7 @@ def compute_league_phase_boundaries(
 ) -> dict[str, tuple[datetime, datetime]]:
     """Compute phase boundaries for any league (time-based only).
 
-    Phase 3: League-aware phase boundaries using heuristic timing.
-    No PBP data is used.
+    League-aware phase boundaries using heuristic timing.
 
     Args:
         game_start: Authoritative game start time

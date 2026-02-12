@@ -264,7 +264,7 @@ export function CollapsedGameFlow({
   awayTeam,
   showDebug = false,
 }: CollapsedGameFlowProps) {
-  // Phase 6: Run guardrail validation on every render
+  // Run guardrail validation on every render
   // This ensures violations are immediately visible during development
   const guardrailResult = useMemo(
     () => validateBlocksPreRender(blocks, gameId ?? null),
