@@ -159,6 +159,26 @@ class TestDetectSignificantMovements:
         assert len(movements) == 1
         assert movements[0]["side"] == "home"
 
+    def test_moneyline_none_price_skipped(self):
+        odds = [
+            _odds_row(
+                market_type="moneyline", line=None, price=None,
+                is_closing_line=False, side="home",
+            ),
+            _odds_row(
+                market_type="moneyline", line=None, price=-180.0,
+                is_closing_line=True, side="home",
+            ),
+        ]
+        assert detect_significant_movements(odds) == []
+
+    def test_unknown_market_type_skipped(self):
+        odds = [
+            _odds_row(market_type="prop", line=1.5, is_closing_line=False, side="over"),
+            _odds_row(market_type="prop", line=3.0, is_closing_line=True, side="over"),
+        ]
+        assert detect_significant_movements(odds) == []
+
 
 # ---------------------------------------------------------------------------
 # build_odds_events

@@ -110,6 +110,39 @@ class TestClassifyAllTiers:
         tiers = classify_all_tiers(plays, "NBA")
         assert tiers == [3, 2, 1]
 
+    def test_lead_change_away_to_home(self):
+        # Away was leading, home takes lead (exercises prev_lead="AWAY" branch)
+        plays = [
+            _play(1, quarter=1, home_score=5, away_score=10),
+            _play(2, quarter=1, home_score=12, away_score=10),
+        ]
+        tiers = classify_all_tiers(plays, "NBA")
+        assert tiers[1] == 1
+
+    def test_score_goes_to_tie_from_away_lead(self):
+        plays = [
+            _play(1, quarter=1, home_score=5, away_score=10),
+            _play(2, quarter=1, home_score=10, away_score=10),
+        ]
+        tiers = classify_all_tiers(plays, "NBA")
+        assert tiers[1] == 1
+
+    def test_malformed_clock_treated_as_non_clutch(self):
+        # Bad clock format should not crash, just not be treated as clutch
+        plays = [
+            _play(1, quarter=4, game_clock="bad", home_score=0, away_score=2),
+        ]
+        tiers = classify_all_tiers(plays, "NBA")
+        # Still tier 1 because it's scoring in the final period
+        assert tiers == [1]
+
+    def test_empty_clock_parsed_as_none(self):
+        plays = [
+            _play(1, quarter=4, game_clock="", home_score=0, away_score=2),
+        ]
+        tiers = classify_all_tiers(plays, "NBA")
+        assert tiers == [1]
+
 
 # ---------------------------------------------------------------------------
 # group_tier3_plays
@@ -135,11 +168,12 @@ class TestGroupTier3Plays:
         assert groups[0].end_index == 20
         assert groups[0].play_indices == [10, 20]
 
-    def test_single_tier3_not_grouped(self):
+    def test_single_tier3_still_grouped(self):
         plays = [_play(5, play_type="rebound")]
         tiers = [3]
         groups = group_tier3_plays(plays, tiers)
-        assert groups == []
+        assert len(groups) == 1
+        assert groups[0].play_indices == [5]
 
     def test_uses_play_index_not_list_position(self):
         plays = [
