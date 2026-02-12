@@ -42,7 +42,7 @@
 
 | Guide | Description |
 |-------|-------------|
-| [Server-Side Migration](SERVER_SIDE_MIGRATION.md) | 6-phase roadmap: moving client computation to admin backend |
+| [Server-Side Migration](SERVER_SIDE_MIGRATION.md) | Completed architecture reference: 6 phases of server-side computation |
 
 ## Data Ingestion
 

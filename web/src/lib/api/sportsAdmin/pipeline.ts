@@ -23,17 +23,6 @@ export interface PipelineRunSummary {
   next_stage: string | null;
 }
 
-export interface StartPipelineResponse {
-  run_id: number;
-  run_uuid: string;
-  game_id: number;
-  status: string;
-  auto_chain: boolean;
-  stages: PipelineStageStatus[];
-  next_stage: string;
-  message: string;
-}
-
 export interface RunFullPipelineResponse {
   run_id: number;
   run_uuid: string;
@@ -63,20 +52,6 @@ export interface GamePipelineRunsResponse {
   game_id: number;
   total_runs: number;
   runs: PipelineRunSummary[];
-}
-
-export async function startPipeline(
-  gameId: number,
-  triggeredBy: string = "admin_ui",
-  autoChain: boolean = false
-): Promise<StartPipelineResponse> {
-  return request(`/api/admin/sports/pipeline/${gameId}/start`, {
-    method: "POST",
-    body: JSON.stringify({
-      triggered_by: triggeredBy,
-      auto_chain: autoChain,
-    }),
-  });
 }
 
 export async function runFullPipeline(

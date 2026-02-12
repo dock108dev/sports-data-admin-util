@@ -1,5 +1,9 @@
 """Datetime helpers for the API layer.
 
+NOTE: Some utilities (now_utc, today_utc, date_to_utc_datetime) are intentionally
+duplicated in scraper/sports_scraper/utils/datetime_utils.py because api/ and
+scraper/ deploy as independent packages.
+
 DATE CONVENTION:
 All date parameters in the API use Eastern Time (America/New_York).
 This represents "game day" as fans understand it - a 10pm ET game

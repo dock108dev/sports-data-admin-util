@@ -1,6 +1,10 @@
 """
 Low-level timezone and timestamp utilities.
 
+NOTE: Some utilities (now_utc, today_utc, date_to_utc_datetime) are intentionally
+duplicated in api/app/utils/datetime_utils.py because api/ and scraper/ deploy as
+independent packages.
+
 This module provides helpers for timezone-aware UTC datetime operations,
 conversion, and window generation. It is domain-agnostic and should NOT
 contain sports-specific logic (e.g., season boundaries), which belongs in
