@@ -7,11 +7,10 @@ import { useGameFilters } from "@/lib/hooks/useGameFilters";
 import { GameFiltersForm } from "@/components/admin/GameFiltersForm";
 import { GamesTable } from "@/components/admin/GamesTable";
 import { getQuickDateRange } from "@/lib/utils/dateFormat";
-import { listTeams, listScrapeRuns, type TeamSummary, type ScrapeRunResponse } from "@/lib/api/sportsAdmin";
+import { listTeams, type TeamSummary } from "@/lib/api/sportsAdmin";
 import { SUPPORTED_LEAGUES } from "@/lib/constants/sports";
-import { getStatusClass } from "@/lib/utils/status";
 
-type ViewMode = "games" | "teams" | "runs";
+type ViewMode = "games" | "teams";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -21,11 +20,8 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 export default function UnifiedBrowserPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("games");
   const [teams, setTeams] = useState<TeamSummary[]>([]);
-  const [runs, setRuns] = useState<ScrapeRunResponse[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
-  const [runsLoading, setRunsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState<string | null>(null);
-  const [runsError, setRunsError] = useState<string | null>(null);
   const [teamLeague, setTeamLeague] = useState<string>("");
   const [teamSearch, setTeamSearch] = useState("");
   const [teamOffset, setTeamOffset] = useState(0);
@@ -69,27 +65,12 @@ export default function UnifiedBrowserPage() {
     }
   }, [teamLeague, teamSearch, teamLimit, teamOffset]);
 
-  const loadRuns = useCallback(async () => {
-    setRunsLoading(true);
-    setRunsError(null);
-    try {
-      const response = await listScrapeRuns();
-      setRuns(response);
-    } catch (err) {
-      setRunsError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setRunsLoading(false);
-    }
-  }, []);
-
-  // Load teams/runs when view mode changes
+  // Load teams when view mode changes
   useEffect(() => {
     if (viewMode === "teams") {
       loadTeams();
-    } else if (viewMode === "runs") {
-      loadRuns();
     }
-  }, [viewMode, loadTeams, loadRuns]);
+  }, [viewMode, loadTeams]);
 
   const handlePageChange = (newPage: number) => {
     const limit = appliedFilters.limit || 25;
@@ -129,7 +110,7 @@ export default function UnifiedBrowserPage() {
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>Data Browser</h1>
-        <p className={styles.subtitle}>Browse games, teams, and scrape runs</p>
+        <p className={styles.subtitle}>Browse games and teams</p>
       </header>
 
       <div className={styles.viewModeTabs}>
@@ -147,15 +128,6 @@ export default function UnifiedBrowserPage() {
           }}
         >
           Teams
-        </button>
-        <button
-          className={`${styles.tab} ${viewMode === "runs" ? styles.tabActive : ""}`}
-          onClick={() => {
-            setViewMode("runs");
-            loadRuns();
-          }}
-        >
-          Scrape Runs
         </button>
       </div>
 
@@ -320,14 +292,14 @@ export default function UnifiedBrowserPage() {
             <>
               <div className={styles.teamsGrid}>
                 {teams.map((team) => (
-                  <Link key={team.id} href={`/admin/teams/${team.id}`} className={styles.teamCard}>
+                  <Link key={team.id} href={`/admin/sports/teams/${team.id}`} className={styles.teamCard}>
                     <div className={styles.teamHeader}>
                       <span className={styles.teamAbbr}>{team.abbreviation}</span>
                       <span className={styles.teamName}>{team.name}</span>
                     </div>
                     <div className={styles.teamMeta}>
-                      <span className={styles.metaItem}>🏆 {team.leagueCode}</span>
-                      <span className={styles.metaItem}>🎮 {team.gamesCount} games</span>
+                      <span className={styles.metaItem}>{team.leagueCode}</span>
+                      <span className={styles.metaItem}>{team.gamesCount} games</span>
                     </div>
                   </Link>
                 ))}
@@ -359,32 +331,6 @@ export default function UnifiedBrowserPage() {
         </>
       )}
 
-      {viewMode === "runs" && (
-        <>
-          {runsLoading && <div className={styles.loading}>Loading scrape runs...</div>}
-          {runsError && <div className={styles.error}>Error: {runsError}</div>}
-          {!runsLoading && !runsError && runs.length === 0 && <div className={styles.empty}>No scrape runs found</div>}
-          {!runsLoading && !runsError && runs.length > 0 && (
-            <div className={styles.runsList}>
-              {runs.map((run) => (
-                <Link key={run.id} href={`/admin/sports/ingestion/${run.id}`} className={styles.runCard}>
-                  <div className={styles.runHeader}>
-                    <span className={`${styles.runStatus} ${styles[getStatusClass(run.status)]}`} />
-                    <div className={styles.runInfo}>
-                      <div className={styles.runTitle}>
-                        {run.league_code} {run.season || ""} — {run.status}
-                      </div>
-                      <div className={styles.runMeta}>
-                        {run.start_date} to {run.end_date}
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </>
-      )}
     </div>
   );
 }

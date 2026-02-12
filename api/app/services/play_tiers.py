@@ -1,7 +1,9 @@
 """Server-side play tier classification.
 
-Classifies every PBP play into Tier 1 (key scoring), Tier 2 (notable non-scoring),
+Classifies every PBP play into Tier 1 (scoring), Tier 2 (notable non-scoring),
 or Tier 3 (routine) so consumers don't duplicate this logic on-device.
+
+All plays that change the score are Tier 1 regardless of game context.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from __future__ import annotations
 
 _TIER_2_TYPES: dict[str, frozenset[str]] = {
     "NBA": frozenset(
-        ["foul", "turnover", "steal", "block", "offensive foul"]
+        ["foul", "turnover", "steal", "block", "offensive foul", "offensive_rebound"]
     ),
     "NCAAB": frozenset(
         [
@@ -25,58 +27,13 @@ _TIER_2_TYPES: dict[str, frozenset[str]] = {
             "turnover",
             "steal",
             "block",
+            "offensive_rebound",
         ]
     ),
     "NHL": frozenset(
         ["penalty", "delayed_penalty", "takeaway", "giveaway", "hit"]
     ),
 }
-
-_FINAL_PERIOD_THRESHOLD: dict[str, int] = {"NBA": 4, "NCAAB": 2, "NHL": 3}
-_CLUTCH_MINUTES = 2.0
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _is_lead_change(
-    prev_home: int, prev_away: int, curr_home: int, curr_away: int
-) -> bool:
-    """Detect if the leading team switched between two score states.
-
-    Mirrors ``score_detection.is_lead_change`` but inlined here to avoid the
-    heavy pipeline import chain.
-    """
-    if prev_home > prev_away:
-        prev_lead = "HOME"
-    elif prev_away > prev_home:
-        prev_lead = "AWAY"
-    else:
-        return False  # was tied — no lead to change
-
-    if curr_home > curr_away:
-        curr_lead = "HOME"
-    elif curr_away > curr_home:
-        curr_lead = "AWAY"
-    else:
-        return False  # now tied — not a lead *change*
-
-    return prev_lead != curr_lead
-
-
-def _parse_clock_minutes(game_clock: str | None) -> float | None:
-    """Parse ``"MM:SS"`` into fractional minutes. Returns *None* if unparseable."""
-    if not game_clock:
-        return None
-    parts = game_clock.split(":")
-    if len(parts) != 2:
-        return None
-    try:
-        return int(parts[0]) + int(parts[1]) / 60.0
-    except (ValueError, TypeError):
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -95,12 +52,15 @@ def classify_all_tiers(
     """Classify each play in *plays* as Tier 1, 2, or 3.
 
     Returns a list of ints (1/2/3) parallel to *plays*.
+
+    Tier 1: Any play that changes the score (made shot, goal, free throw, etc.)
+    Tier 2: Notable non-scoring plays (fouls, turnovers, blocks, etc.)
+    Tier 3: Everything else (routine plays)
     """
     if not plays:
         return []
 
     tier_2_types = _TIER_2_TYPES.get(league_code.upper(), frozenset())
-    threshold = _FINAL_PERIOD_THRESHOLD.get(league_code.upper(), 4)
 
     # --- backfill scores (carry forward last known) ---
     score_pairs: list[tuple[tuple[int, int], tuple[int, int]]] = []
@@ -113,11 +73,6 @@ def classify_all_tiers(
         score_pairs.append((before, after))
         last_home, last_away = h, a
 
-    # --- find final period ---
-    final_period = max(
-        (p.quarter for p in plays if p.quarter is not None), default=1
-    )
-
     # --- classify ---
     tiers: list[int] = []
     for i, p in enumerate(plays):
@@ -127,24 +82,7 @@ def classify_all_tiers(
 
         is_scoring = (home_after != home_before) or (away_after != away_before)
 
-        quarter = p.quarter or 0
-        is_final_period = quarter >= threshold
-        lead_changed = _is_lead_change(
-            home_before, away_before, home_after, away_after
-        )
-        is_new_tie = is_scoring and (home_after == away_after)
-
-        minutes_left = _parse_clock_minutes(p.game_clock)
-        is_clutch = (
-            quarter == final_period
-            and is_final_period
-            and minutes_left is not None
-            and minutes_left < _CLUTCH_MINUTES
-        )
-
-        if is_scoring and (
-            lead_changed or is_new_tie or is_clutch or is_final_period
-        ):
+        if is_scoring:
             tiers.append(1)
         elif p.play_type and p.play_type.lower() in tier_2_types:
             tiers.append(2)

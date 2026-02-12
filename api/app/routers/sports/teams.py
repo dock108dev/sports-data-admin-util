@@ -162,8 +162,8 @@ async def get_team(team_id: int, session: AsyncSession = Depends(get_db)) -> Tea
         )
 
     recent_games.sort(
-        key=lambda g: g.gameDate, reverse=True
-    )  # Use serialized field name
+        key=lambda g: g.game_date, reverse=True
+    )
     recent_games = recent_games[:20]
 
     return TeamDetail(
@@ -285,7 +285,7 @@ async def update_team_colors(
             )
         )
 
-    recent_games.sort(key=lambda g: g.gameDate, reverse=True)
+    recent_games.sort(key=lambda g: g.game_date, reverse=True)
     recent_games = recent_games[:20]
 
     return TeamDetail(

@@ -26,11 +26,13 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchGameFlow } from "@/lib/api/sportsAdmin";
 import type { GameFlowResponse, GameFlowMoment, GameFlowPlay, MomentBoxScore, MomentPlayerStat, NarrativeBlock } from "@/lib/api/sportsAdmin/gameFlowTypes";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { formatPeriodRange } from "@/lib/utils/periodLabels";
 import styles from "./styles.module.css";
 
 type FlowSectionProps = {
   gameId: number;
   hasFlow: boolean;
+  leagueCode: string;
 };
 
 type MomentCardProps = {
@@ -199,7 +201,7 @@ function MomentCard({ moment, momentIndex, plays }: MomentCardProps) {
   );
 }
 
-export function FlowSection({ gameId, hasFlow }: FlowSectionProps) {
+export function FlowSection({ gameId, hasFlow, leagueCode }: FlowSectionProps) {
   const [story, setStory] = useState<GameFlowResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -272,7 +274,7 @@ export function FlowSection({ gameId, hasFlow }: FlowSectionProps) {
                                  block.role === "RESOLUTION" ? "#166534" : "#7e22ce"
                         }}>{block.role}</span>
                         <span className={styles.momentClock}>
-                          Q{block.periodStart}{block.periodEnd !== block.periodStart && `-${block.periodEnd}`}
+                          {formatPeriodRange(block.periodStart, block.periodEnd, leagueCode)}
                         </span>
                         <span className={styles.momentScoreChange}>
                           {block.scoreBefore[0]}-{block.scoreBefore[1]} → {block.scoreAfter[0]}-{block.scoreAfter[1]}

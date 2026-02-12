@@ -207,7 +207,7 @@ export default function GameDetailClient() {
 
       <PbpSection plays={game.plays || []} groupedPlays={game.groupedPlays} leagueCode={g.leagueCode} />
 
-      <FlowSection gameId={g.id} hasFlow={g.hasFlow} />
+      <FlowSection gameId={g.id} hasFlow={g.hasFlow} leagueCode={g.leagueCode} />
 
       <ComputedFieldsSection derivedMetrics={game.derivedMetrics || {}} />
     </div>

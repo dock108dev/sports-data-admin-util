@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import type { NarrativeBlock, BlockMiniBox, BlockPlayerStat } from "@/lib/api/sportsAdmin/gameFlowTypes";
 import { validateBlocksPreRender, type GuardrailResult } from "@/lib/guardrails";
+import { formatPeriodRange } from "@/lib/utils/periodLabels";
 import styles from "./CollapsedGameFlow.module.css";
 
 /**
@@ -32,6 +33,8 @@ import styles from "./CollapsedGameFlow.module.css";
 interface CollapsedGameFlowProps {
   /** Narrative blocks to display */
   blocks: NarrativeBlock[];
+  /** League code for period labels (NBA, NCAAB, NHL) */
+  leagueCode?: string;
   /** Game ID for guardrail logging */
   gameId?: number;
   /** Home team name for score display */
@@ -182,11 +185,13 @@ function MiniBoxDisplay({ miniBox }: { miniBox: BlockMiniBox }) {
  */
 function BlockCard({
   block,
+  leagueCode,
   homeTeam,
   awayTeam,
   showDebug,
 }: {
   block: NarrativeBlock;
+  leagueCode: string;
   homeTeam?: string;
   awayTeam?: string;
   showDebug?: boolean;
@@ -216,10 +221,10 @@ function BlockCard({
         )}
         {block.periodStart !== block.periodEnd ? (
           <span className={styles.periodRange}>
-            Q{block.periodStart}–Q{block.periodEnd}
+            {formatPeriodRange(block.periodStart, block.periodEnd, leagueCode)}
           </span>
         ) : (
-          <span className={styles.periodBadge}>Q{block.periodStart}</span>
+          <span className={styles.periodBadge}>{formatPeriodRange(block.periodStart, block.periodEnd, leagueCode)}</span>
         )}
       </div>
 
@@ -257,6 +262,7 @@ function BlockCard({
  */
 export function CollapsedGameFlow({
   blocks,
+  leagueCode = "NBA",
   gameId,
   homeTeam,
   awayTeam,
@@ -316,6 +322,7 @@ export function CollapsedGameFlow({
           <BlockCard
             key={block.blockIndex}
             block={block}
+            leagueCode={leagueCode}
             homeTeam={homeTeam}
             awayTeam={awayTeam}
             showDebug={showDebug}

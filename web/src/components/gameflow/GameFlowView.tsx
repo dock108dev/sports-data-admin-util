@@ -77,6 +77,7 @@ export function GameFlowView({
       <div className={styles.primarySection}>
         <CollapsedGameFlow
           blocks={blocks}
+          leagueCode={leagueCode}
           homeTeam={homeTeam}
           awayTeam={awayTeam}
           showDebug={showDebug}
