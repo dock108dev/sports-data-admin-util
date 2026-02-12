@@ -37,18 +37,21 @@ class TestBuildTeamIdentity:
     def test_build_team_identity_basic(self):
         result = build_team_identity("Duke", 1234)
         assert result.league_code == "NCAAB"
-        assert result.name == "Duke"
-        assert result.short_name == "Duke"
+        assert result.name == "Duke Blue Devils"
+        assert result.short_name == "Duke Blue Devils"
+        assert result.abbreviation == "DUKE"
         assert result.external_ref == "1234"
 
     def test_build_team_identity_long_name(self):
         result = build_team_identity("North Carolina Tar Heels", 5678)
         assert result.name == "North Carolina Tar Heels"
+        assert result.abbreviation == "UNC"
         assert result.external_ref == "5678"
 
-    def test_build_team_identity_abbreviation_is_none(self):
+    def test_build_team_identity_normalizes_short_name(self):
         result = build_team_identity("Kentucky", 9999)
-        assert result.abbreviation is None
+        assert result.name == "Kentucky Wildcats"
+        assert result.abbreviation == "UK"
 
 
 class TestExtractPoints:

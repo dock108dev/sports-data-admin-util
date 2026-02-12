@@ -366,8 +366,10 @@ class TestHTMLCache:
         league_dir = tmp_path / "nba"
         league_dir.mkdir()
 
-        # Create a scoreboard file for today
-        today = date.today()
+        # Use today_et() to match the source function's timezone logic
+        from sports_scraper.utils.datetime_utils import today_et
+
+        today = today_et()
         filename = f"scoreboard_month{today.month}_day{today.day}_year{today.year}.html"
         (league_dir / filename).write_text("test")
 
