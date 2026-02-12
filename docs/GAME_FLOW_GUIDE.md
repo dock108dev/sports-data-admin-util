@@ -34,6 +34,20 @@ Each game flow contains **4-7 narrative blocks** designed for a **60-90 second r
 
 ---
 
+## Team Colors (Clash-Resolved)
+
+All game responses include **clash-resolved team colors** — ready-to-use hex values for light and dark mode. No client-side color lookup or clash detection needed.
+
+| Field | Description |
+|-------|-------------|
+| `homeTeamAbbr` / `awayTeamAbbr` | Team abbreviation (e.g. `"LAL"`, `"GSW"`) |
+| `homeTeamColorLight` / `awayTeamColorLight` | Hex color for light backgrounds |
+| `homeTeamColorDark` / `awayTeamColorDark` | Hex color for dark backgrounds |
+
+**Clash detection:** When two teams' light-mode colors are too visually similar (Euclidean RGB distance < 0.12), the **home** team's colors are replaced with neutral black (`#000000`) / white (`#FFFFFF`). This matches the iOS app's existing behavior — the server does it once instead of every client independently.
+
+---
+
 ## API Endpoints
 
 ### 1. List Games
@@ -69,7 +83,13 @@ GET /api/admin/sports/games?league=NBA&startDate=2026-01-22&endDate=2026-01-22
       "awayTeam": "Warriors",
       "homeScore": 112,
       "awayScore": 108,
-      "hasFlow": true
+      "hasFlow": true,
+      "homeTeamAbbr": "LAL",
+      "awayTeamAbbr": "GSW",
+      "homeTeamColorLight": "#FDB927",
+      "homeTeamColorDark": "#552583",
+      "awayTeamColorLight": "#006BB6",
+      "awayTeamColorDark": "#FDB927"
     }
   ],
   "total": 12,
@@ -92,6 +112,15 @@ X-API-Key: YOUR_KEY
 ```json
 {
   "gameId": 123,
+  "homeTeam": "Lakers",
+  "awayTeam": "Warriors",
+  "homeTeamAbbr": "LAL",
+  "awayTeamAbbr": "GSW",
+  "homeTeamColorLight": "#FDB927",
+  "homeTeamColorDark": "#552583",
+  "awayTeamColorLight": "#006BB6",
+  "awayTeamColorDark": "#FDB927",
+  "leagueCode": "NBA",
   "flow": {
     "blocks": [...],
     "moments": [...]
@@ -301,6 +330,15 @@ The `GET /games/{gameId}` response includes a `socialPosts` array with all tweet
 ```typescript
 interface GameFlowResponse {
   gameId: number;
+  homeTeam: string | null;
+  awayTeam: string | null;
+  homeTeamAbbr: string | null;
+  awayTeamAbbr: string | null;
+  homeTeamColorLight: string | null;   // Clash-resolved hex color
+  homeTeamColorDark: string | null;
+  awayTeamColorLight: string | null;
+  awayTeamColorDark: string | null;
+  leagueCode: string | null;
   flow: {
     blocks: GameFlowBlock[];
     moments: GameFlowMoment[];
@@ -377,6 +415,24 @@ interface SocialPostEntry {
 ## Swift Integration Example
 
 ```swift
+struct GameFlowResponse: Codable {
+    let gameId: Int
+    let homeTeam: String?
+    let awayTeam: String?
+    let homeTeamAbbr: String?
+    let awayTeamAbbr: String?
+    let homeTeamColorLight: String?   // Clash-resolved hex color
+    let homeTeamColorDark: String?
+    let awayTeamColorLight: String?
+    let awayTeamColorDark: String?
+    let leagueCode: String?
+    let flow: GameFlowContent
+    let plays: [GameFlowPlay]
+    let blocks: [GameFlowBlock]?
+    let validationPassed: Bool
+    let validationErrors: [String]
+}
+
 struct GameFlowBlock: Codable {
     let blockIndex: Int
     let role: String
