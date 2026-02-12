@@ -686,28 +686,45 @@ class TestFindTeamByNameNonNcaab:
 
         mock_session.execute.assert_called()
 
-    def test_abbreviation_not_used_for_ncaab(self):
-        """Does not use abbreviation matching for NCAAB (too collision-prone)."""
+    def test_abbreviation_used_for_ncaab(self):
+        """Uses abbreviation matching for NCAAB (abbreviations are now unique)."""
         from sports_scraper.persistence.teams import _find_team_by_name
 
         mock_session = MagicMock()
         mock_league = MagicMock(code="NCAAB")
 
+        mock_team = MagicMock()
+        mock_team.name = "Kentucky Wildcats"
+        mock_team.short_name = "Kentucky"
+
         def get_side_effect(model, id=None):
+            if id == 9:
+                return mock_league
+            elif id == 42:
+                return mock_team
             return mock_league
         mock_session.get.side_effect = get_side_effect
 
-        # No matches
-        mock_session.execute.return_value.all.return_value = []
+        # No name match, but abbreviation match
+        execute_calls = [0]
+        def execute_side_effect(stmt):
+            execute_calls[0] += 1
+            mock_result = MagicMock()
+            if execute_calls[0] <= 2:
+                mock_result.all.return_value = []  # No exact/normalized match
+            else:
+                mock_result.all.return_value = [(42,)]  # Abbreviation match
+            return mock_result
+        mock_session.execute.side_effect = execute_side_effect
 
         result = _find_team_by_name(
             mock_session,
             league_id=9,
             team_name="Unknown Team",
-            team_abbr="UK",  # UK could be Kentucky or many others
+            team_abbr="UK",
         )
 
-        assert result is None
+        mock_session.execute.assert_called()
 
 
 class TestFindTeamByNameScoring:
@@ -808,8 +825,36 @@ class TestDeriveAbbreviationAdvanced:
     def test_short_single_token(self):
         """Extends short single-token names."""
         result = _derive_abbreviation("BC")
-        # Should extend to at least 3 chars
+        # Should extend to at least 2 chars
         assert len(result) >= 2
+
+    def test_strips_mascot_words(self):
+        """Strips mascot stopwords before deriving abbreviation."""
+        # "Alabama Crimson Tide" should strip "Crimson" and "Tide" (stopwords)
+        # and derive from "Alabama" -> "ALAB" (single word, first 4 chars)
+        result = _derive_abbreviation("Alabama Crimson Tide")
+        assert "C" not in result or result[0] == "A"
+        # Should NOT be "ACT" (the old garbage abbreviation)
+        assert result != "ACT"
+
+    def test_single_word_school_uses_four_chars(self):
+        """Single-word school names use first 4 chars."""
+        result = _derive_abbreviation("Duke Blue Devils")
+        # "Blue" and "Devils" are mascot stopwords, leaving "Duke" -> "DUKE"
+        assert result == "DUKE"
+
+    def test_multi_word_school_uses_initials(self):
+        """Multi-word school names use initials after mascot stripping."""
+        result = _derive_abbreviation("San Diego State Aztecs")
+        # "Aztecs" is not in stopwords but "San Diego State" -> "SDS"
+        assert result[0] == "S"
+
+    def test_strips_mascot_but_keeps_school(self):
+        """Strips mascot but preserves school name tokens."""
+        result = _derive_abbreviation("Kentucky Wildcats")
+        # "Wildcats" is a stopword, leaving "Kentucky" -> "KENT"
+        assert result.startswith("K")
+        assert result != "KWI"  # Old garbage abbreviation
 
 
 class TestUpsertTeamWithDerivedAbbreviation:

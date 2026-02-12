@@ -160,6 +160,26 @@
   font-size: 0.95rem;
 }
 
+.openingBadge {
+  background: #f1f5f9;
+  color: #64748b;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.closingBadge {
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
 /* Social Posts */
 .socialPostsGrid {
   display: grid;

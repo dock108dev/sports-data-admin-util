@@ -126,6 +126,7 @@ class GameSummary(BaseModel):
     last_ingested_at: datetime | None = Field(None, alias="lastIngestedAt")
     last_pbp_at: datetime | None = Field(None, alias="lastPbpAt")
     last_social_at: datetime | None = Field(None, alias="lastSocialAt")
+    derived_metrics: dict[str, Any] | None = Field(None, alias="derivedMetrics")
 
 
 class GameListResponse(BaseModel):
@@ -309,12 +310,26 @@ class PlayEntry(BaseModel):
     play_index: int = Field(..., alias="playIndex")
     quarter: int | None = None
     game_clock: str | None = Field(None, alias="gameClock")
+    period_label: str | None = Field(None, alias="periodLabel")
+    time_label: str | None = Field(None, alias="timeLabel")
     play_type: str | None = Field(None, alias="playType")
     team_abbreviation: str | None = Field(None, alias="teamAbbreviation")
     player_name: str | None = Field(None, alias="playerName")
     description: str | None = None
     home_score: int | None = Field(None, alias="homeScore")
     away_score: int | None = Field(None, alias="awayScore")
+    tier: int | None = None
+
+
+class TieredPlayGroup(BaseModel):
+    """Group of consecutive Tier-3 plays collapsed into a summary."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    start_index: int = Field(..., alias="startIndex")
+    end_index: int = Field(..., alias="endIndex")
+    play_indices: list[int] = Field(..., alias="playIndices")
+    summary_label: str = Field(..., alias="summaryLabel")
 
 
 class NHLDataHealth(BaseModel):
@@ -347,6 +362,7 @@ class GameDetailResponse(BaseModel):
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry] = Field(..., alias="socialPosts")
     plays: list[PlayEntry]
+    grouped_plays: list[TieredPlayGroup] | None = Field(None, alias="groupedPlays")
     derived_metrics: dict[str, Any] = Field(..., alias="derivedMetrics")
     raw_payloads: dict[str, Any] = Field(..., alias="rawPayloads")
     # NHL-specific data health (only populated for NHL games)
@@ -418,6 +434,8 @@ class TeamSummary(BaseModel):
     abbreviation: str
     league_code: str = Field(alias="leagueCode")
     games_count: int = Field(alias="gamesCount")
+    color_light_hex: str | None = Field(None, alias="colorLightHex")
+    color_dark_hex: str | None = Field(None, alias="colorDarkHex")
 
 
 class TeamListResponse(BaseModel):
@@ -454,6 +472,8 @@ class TeamDetail(BaseModel):
     external_ref: str | None = Field(alias="externalRef")
     x_handle: str | None = Field(None, alias="xHandle")
     x_profile_url: str | None = Field(None, alias="xProfileUrl")
+    color_light_hex: str | None = Field(None, alias="colorLightHex")
+    color_dark_hex: str | None = Field(None, alias="colorDarkHex")
     recent_games: list[TeamGameSummary] = Field(alias="recentGames")
 
 
@@ -464,6 +484,15 @@ class TeamSocialInfo(BaseModel):
     abbreviation: str
     x_handle: str | None = Field(None, alias="xHandle")
     x_profile_url: str | None = Field(None, alias="xProfileUrl")
+
+
+class TeamColorUpdate(BaseModel):
+    """Request body for updating team colors."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    color_light_hex: str | None = Field(None, alias="colorLightHex")
+    color_dark_hex: str | None = Field(None, alias="colorDarkHex")
 
 
 # =============================================================================

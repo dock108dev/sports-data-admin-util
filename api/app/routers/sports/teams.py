@@ -10,6 +10,7 @@ from sqlalchemy.sql import or_
 from ...db.sports import SportsTeam, SportsLeague, SportsGame
 from ...db import AsyncSession, get_db
 from .schemas import (
+    TeamColorUpdate,
     TeamDetail,
     TeamGameSummary,
     TeamListResponse,
@@ -80,6 +81,8 @@ async def list_teams(
             abbreviation=row.SportsTeam.abbreviation,
             leagueCode=row.league_code,
             gamesCount=row.games_count or 0,
+            colorLightHex=row.SportsTeam.color_light_hex,
+            colorDarkHex=row.SportsTeam.color_dark_hex,
         )
         for row in rows
     ]
@@ -173,6 +176,8 @@ async def get_team(team_id: int, session: AsyncSession = Depends(get_db)) -> Tea
         externalRef=team.external_ref,
         xHandle=team.x_handle,
         xProfileUrl=f"https://x.com/{team.x_handle}" if team.x_handle else None,
+        colorLightHex=team.color_light_hex,
+        colorDarkHex=team.color_dark_hex,
         recentGames=recent_games,
     )
 
@@ -193,4 +198,107 @@ async def get_team_social_info(
         abbreviation=team.abbreviation or "",
         xHandle=team.x_handle,
         xProfileUrl=f"https://x.com/{team.x_handle}" if team.x_handle else None,
+    )
+
+
+@router.patch("/teams/{team_id}/colors", response_model=TeamDetail)
+async def update_team_colors(
+    team_id: int,
+    body: TeamColorUpdate,
+    session: AsyncSession = Depends(get_db),
+) -> TeamDetail:
+    """Update team colors (light and dark hex values)."""
+    team = await session.get(SportsTeam, team_id)
+    if not team:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
+        )
+
+    if body.color_light_hex is not None:
+        team.color_light_hex = body.color_light_hex
+    if body.color_dark_hex is not None:
+        team.color_dark_hex = body.color_dark_hex
+
+    await session.commit()
+    await session.refresh(team)
+
+    league = await session.get(SportsLeague, team.league_id)
+
+    # Build recent games for the response
+    home_games = (
+        select(SportsGame)
+        .where(SportsGame.home_team_id == team_id)
+        .options(selectinload(SportsGame.away_team))
+    )
+    away_games = (
+        select(SportsGame)
+        .where(SportsGame.away_team_id == team_id)
+        .options(selectinload(SportsGame.home_team))
+    )
+
+    home_result = await session.execute(
+        home_games.order_by(desc(SportsGame.game_date)).limit(10)
+    )
+    away_result = await session.execute(
+        away_games.order_by(desc(SportsGame.game_date)).limit(10)
+    )
+
+    recent_games: list[TeamGameSummary] = []
+
+    for game in home_result.scalars():
+        score = f"{game.home_score or 0}-{game.away_score or 0}"
+        result = (
+            "W"
+            if (game.home_score or 0) > (game.away_score or 0)
+            else "L"
+            if (game.home_score or 0) < (game.away_score or 0)
+            else "-"
+        )
+        recent_games.append(
+            TeamGameSummary(
+                id=game.id,
+                gameDate=game.start_time.isoformat() if game.start_time else "",
+                opponent=game.away_team.name if game.away_team else "Unknown",
+                isHome=True,
+                score=score,
+                result=result,
+            )
+        )
+
+    for game in away_result.scalars():
+        score = f"{game.away_score or 0}-{game.home_score or 0}"
+        result = (
+            "W"
+            if (game.away_score or 0) > (game.home_score or 0)
+            else "L"
+            if (game.away_score or 0) < (game.home_score or 0)
+            else "-"
+        )
+        recent_games.append(
+            TeamGameSummary(
+                id=game.id,
+                gameDate=game.start_time.isoformat() if game.start_time else "",
+                opponent=game.home_team.name if game.home_team else "Unknown",
+                isHome=False,
+                score=score,
+                result=result,
+            )
+        )
+
+    recent_games.sort(key=lambda g: g.gameDate, reverse=True)
+    recent_games = recent_games[:20]
+
+    return TeamDetail(
+        id=team.id,
+        name=team.name,
+        shortName=team.short_name,
+        abbreviation=team.abbreviation,
+        leagueCode=league.code if league else "UNK",
+        location=team.location,
+        externalRef=team.external_ref,
+        xHandle=team.x_handle,
+        xProfileUrl=f"https://x.com/{team.x_handle}" if team.x_handle else None,
+        colorLightHex=team.color_light_hex,
+        colorDarkHex=team.color_dark_hex,
+        recentGames=recent_games,
     )

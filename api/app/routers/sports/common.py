@@ -26,8 +26,12 @@ from .schemas import (
 )
 
 
-def serialize_play_entry(play: SportsGamePlay) -> PlayEntry:
+def serialize_play_entry(
+    play: SportsGamePlay, league_code: str | None = None
+) -> PlayEntry:
     """Serialize a play record to API response format."""
+    from ...services.period_labels import period_label, time_label
+
     # Get team abbreviation from the relationship (preferred) or raw_data (fallback)
     team_abbr = None
     if play.team:
@@ -35,10 +39,19 @@ def serialize_play_entry(play: SportsGamePlay) -> PlayEntry:
     elif isinstance(play.raw_data, dict):
         team_abbr = play.raw_data.get("team_abbreviation")
 
+    # Compute display-ready period/time labels when league + period are available
+    p_label: str | None = None
+    t_label: str | None = None
+    if play.quarter is not None and league_code:
+        p_label = period_label(play.quarter, league_code)
+        t_label = time_label(play.quarter, play.game_clock, league_code)
+
     return PlayEntry(
         play_index=play.play_index,
         quarter=play.quarter,
         game_clock=play.game_clock,
+        period_label=p_label,
+        time_label=t_label,
         play_type=play.play_type,
         team_abbreviation=team_abbr,
         player_name=play.player_name,

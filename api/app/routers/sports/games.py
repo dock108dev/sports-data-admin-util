@@ -24,6 +24,7 @@ from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
 from ...services.derived_metrics import compute_derived_metrics
+from ...services.play_tiers import classify_all_tiers, group_tier3_plays
 from ...services.timeline_generator import (
     TimelineGenerationError,
     generate_timeline_artifact,
@@ -421,9 +422,18 @@ async def get_game(
     ]
 
     plays_entries = [
-        serialize_play_entry(play)
+        serialize_play_entry(play, league_code)
         for play in sorted(game.plays, key=lambda p: p.play_index)
     ]
+
+    # Classify play tiers and build grouped plays
+    if plays_entries and league_code:
+        tiers = classify_all_tiers(plays_entries, league_code)
+        for entry, t in zip(plays_entries, tiers):
+            entry.tier = t
+        grouped_plays = group_tier3_plays(plays_entries, tiers)
+    else:
+        grouped_plays = None
 
     # Check if game has a flow in SportsGameFlow table
     flow_check = await session.execute(
@@ -507,6 +517,7 @@ async def get_game(
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,
+        grouped_plays=grouped_plays,
         derived_metrics=derived,
         raw_payloads=raw_payloads,
         data_health=data_health,

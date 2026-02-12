@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import styles from "./page.module.css";
-import { fetchTeam, type TeamDetail } from "@/lib/api/sportsAdmin";
+import { fetchTeam, updateTeamColors, type TeamDetail } from "@/lib/api/sportsAdmin";
 
 export default function TeamDetailPage() {
   const params = useParams();
@@ -13,6 +13,9 @@ export default function TeamDetailPage() {
   const [team, setTeam] = useState<TeamDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lightColor, setLightColor] = useState("#6366f1");
+  const [darkColor, setDarkColor] = useState("#6366f1");
+  const [colorSaving, setColorSaving] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -20,6 +23,8 @@ export default function TeamDetailPage() {
         setLoading(true);
         const data = await fetchTeam(teamId);
         setTeam(data);
+        setLightColor(data.colorLightHex || "#6366f1");
+        setDarkColor(data.colorDarkHex || "#6366f1");
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -43,6 +48,21 @@ export default function TeamDetailPage() {
 
   if (!team) {
     return <div className={styles.error}>Team not found</div>;
+  }
+
+  async function handleSaveColors() {
+    setColorSaving(true);
+    try {
+      const updated = await updateTeamColors(teamId, {
+        colorLightHex: lightColor,
+        colorDarkHex: darkColor,
+      });
+      setTeam(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setColorSaving(false);
+    }
   }
 
   const getResultClass = (result: string) => {
@@ -74,6 +94,53 @@ export default function TeamDetailPage() {
           </span>
         </div>
       </header>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Team Colors</h2>
+        <div className={styles.colorEditor}>
+          <div className={styles.colorField}>
+            <label className={styles.colorLabel}>Light Mode</label>
+            <input
+              type="color"
+              className={styles.colorInput}
+              value={lightColor}
+              onChange={(e) => setLightColor(e.target.value)}
+            />
+            <span className={styles.hexLabel}>{team.colorLightHex || "Not set"}</span>
+          </div>
+          <div className={styles.colorField}>
+            <label className={styles.colorLabel}>Dark Mode</label>
+            <input
+              type="color"
+              className={styles.colorInput}
+              value={darkColor}
+              onChange={(e) => setDarkColor(e.target.value)}
+            />
+            <span className={styles.hexLabel}>{team.colorDarkHex || "Not set"}</span>
+          </div>
+          <button
+            className={styles.saveButton}
+            onClick={handleSaveColors}
+            disabled={colorSaving}
+          >
+            {colorSaving ? "Saving..." : "Save Colors"}
+          </button>
+        </div>
+        <div className={styles.colorPreview}>
+          <span
+            className={styles.previewBadge}
+            style={{ background: lightColor, color: "#fff" }}
+          >
+            {team.abbreviation} (Light)
+          </span>
+          <span
+            className={styles.previewBadge}
+            style={{ background: darkColor, color: "#fff" }}
+          >
+            {team.abbreviation} (Dark)
+          </span>
+        </div>
+      </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Recent Games</h2>

@@ -213,9 +213,14 @@ export default function GameDetailClient() {
   }, [game, selectedBook]);
 
   const oddsByMarket = useMemo(() => {
-    const spread = filteredOdds.filter((o) => o.marketType === "spread");
-    const total = filteredOdds.filter((o) => o.marketType === "total");
-    const moneyline = filteredOdds.filter((o) => o.marketType === "moneyline");
+    const sortByType = (a: (typeof filteredOdds)[0], b: (typeof filteredOdds)[0]) => {
+      // Opening lines first, then closing
+      if (a.isClosingLine === b.isClosingLine) return 0;
+      return a.isClosingLine ? 1 : -1;
+    };
+    const spread = filteredOdds.filter((o) => o.marketType === "spread").sort(sortByType);
+    const total = filteredOdds.filter((o) => o.marketType === "total").sort(sortByType);
+    const moneyline = filteredOdds.filter((o) => o.marketType === "moneyline").sort(sortByType);
     return { spread, total, moneyline };
   }, [filteredOdds]);
 
@@ -621,6 +626,7 @@ export default function GameDetailClient() {
                 <table className={styles.table}>
                   <thead>
                     <tr>
+                      <th>Type</th>
                       <th>Side</th>
                       <th>Line</th>
                       <th>Price</th>
@@ -629,7 +635,12 @@ export default function GameDetailClient() {
                   </thead>
                   <tbody>
                     {oddsByMarket.spread.map((o, idx) => (
-                      <tr key={`${o.side}-${idx}`}>
+                      <tr key={`${o.side}-${o.isClosingLine}-${idx}`}>
+                        <td>
+                          <span className={o.isClosingLine ? styles.closingBadge : styles.openingBadge}>
+                            {o.isClosingLine ? "Closing" : "Opening"}
+                          </span>
+                        </td>
                         <td>{o.side ?? "—"}</td>
                         <td>{o.line ?? "—"}</td>
                         <td>{o.price ?? "—"}</td>
@@ -649,6 +660,7 @@ export default function GameDetailClient() {
                 <table className={styles.table}>
                   <thead>
                     <tr>
+                      <th>Type</th>
                       <th>Side</th>
                       <th>Line</th>
                       <th>Price</th>
@@ -657,7 +669,12 @@ export default function GameDetailClient() {
                   </thead>
                   <tbody>
                     {oddsByMarket.total.map((o, idx) => (
-                      <tr key={`${o.side}-${idx}`}>
+                      <tr key={`${o.side}-${o.isClosingLine}-${idx}`}>
+                        <td>
+                          <span className={o.isClosingLine ? styles.closingBadge : styles.openingBadge}>
+                            {o.isClosingLine ? "Closing" : "Opening"}
+                          </span>
+                        </td>
                         <td>{o.side ?? "—"}</td>
                         <td>{o.line ?? "—"}</td>
                         <td>{o.price ?? "—"}</td>
@@ -677,6 +694,7 @@ export default function GameDetailClient() {
                 <table className={styles.table}>
                   <thead>
                     <tr>
+                      <th>Type</th>
                       <th>Side</th>
                       <th>Price</th>
                       <th>Observed</th>
@@ -684,7 +702,12 @@ export default function GameDetailClient() {
                   </thead>
                   <tbody>
                     {oddsByMarket.moneyline.map((o, idx) => (
-                      <tr key={`${o.side}-${idx}`}>
+                      <tr key={`${o.side}-${o.isClosingLine}-${idx}`}>
+                        <td>
+                          <span className={o.isClosingLine ? styles.closingBadge : styles.openingBadge}>
+                            {o.isClosingLine ? "Closing" : "Opening"}
+                          </span>
+                        </td>
                         <td>{o.side ?? "—"}</td>
                         <td>{o.price ?? "—"}</td>
                         <td>{o.observedAt ?? "—"}</td>

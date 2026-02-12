@@ -38,6 +38,7 @@ export type GameSummary = {
   lastIngestedAt: string | null;
   lastPbpAt: string | null;
   lastSocialAt: string | null;
+  derivedMetrics: Record<string, unknown> | null;
 };
 
 export type GameListResponse = {
@@ -125,12 +126,22 @@ export type PlayEntry = {
   playIndex: number;
   quarter: number | null;
   gameClock: string | null;
+  periodLabel: string | null;
+  timeLabel: string | null;
   playType: string | null;
   teamAbbreviation: string | null;
   playerName: string | null;
   description: string | null;
   homeScore: number | null;
   awayScore: number | null;
+  tier: number | null;
+};
+
+export type TieredPlayGroup = {
+  startIndex: number;
+  endIndex: number;
+  playIndices: number[];
+  summaryLabel: string;
 };
 
 export type AdminGameDetail = {
@@ -167,6 +178,7 @@ export type AdminGameDetail = {
   odds: OddsEntry[];
   socialPosts: SocialPost[];
   plays: PlayEntry[];
+  groupedPlays: TieredPlayGroup[] | null;
   derivedMetrics: Record<string, unknown>;
   rawPayloads: Record<string, unknown>;
 };
@@ -194,6 +206,8 @@ export type TeamSummary = {
   abbreviation: string;
   leagueCode: string;
   gamesCount: number;
+  colorLightHex: string | null;
+  colorDarkHex: string | null;
 };
 
 export type TeamListResponse = {
@@ -218,6 +232,8 @@ export type TeamDetail = {
   leagueCode: string;
   location: string | null;
   externalRef: string | null;
+  colorLightHex: string | null;
+  colorDarkHex: string | null;
   recentGames: TeamGameSummary[];
 };
 
