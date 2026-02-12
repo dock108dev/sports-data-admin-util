@@ -53,20 +53,6 @@ from .timeline_phases import nba_game_end
 logger = logging.getLogger(__name__)
 
 
-def build_game_summary(game: SportsGame) -> dict[str, Any]:
-    """Build basic summary dict from game data."""
-    league_code = game.league.code if game.league else "UNK"
-    return {
-        "game_id": game.id,
-        "league": league_code,
-        "home_team": game.home_team.name if game.home_team else None,
-        "away_team": game.away_team.name if game.away_team else None,
-        "home_score": game.home_score,
-        "away_score": game.away_score,
-        "status": game.status,
-    }
-
-
 async def generate_timeline_artifact(
     session: AsyncSession,
     game_id: int,
@@ -233,7 +219,6 @@ async def generate_timeline_artifact(
         )
 
         # Build summary and analysis metadata
-        base_summary = build_game_summary(game)
         game_analysis: dict[str, Any] = {"key_moments": [], "game_flow": {}}
         summary_json: dict[str, Any] = {
             "ai_generated": False,

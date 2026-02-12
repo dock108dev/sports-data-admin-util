@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from enum import Enum
 from typing import Any
@@ -486,6 +487,18 @@ class TeamSocialInfo(BaseModel):
     x_profile_url: str | None = Field(None, alias="xProfileUrl")
 
 
+_HEX_COLOR_RE = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+def _validate_hex_color(v: str | None) -> str | None:
+    """Validate and normalize a hex color to uppercase #RRGGBB."""
+    if v is None:
+        return None
+    if not isinstance(v, str) or not _HEX_COLOR_RE.fullmatch(v):
+        raise ValueError("must be a #RRGGBB hex color (e.g. '#1A2B3C')")
+    return v.upper()
+
+
 class TeamColorUpdate(BaseModel):
     """Request body for updating team colors."""
 
@@ -493,6 +506,11 @@ class TeamColorUpdate(BaseModel):
 
     color_light_hex: str | None = Field(None, alias="colorLightHex")
     color_dark_hex: str | None = Field(None, alias="colorDarkHex")
+
+    @field_validator("color_light_hex", "color_dark_hex", mode="before")
+    @classmethod
+    def validate_hex(cls, v: str | None) -> str | None:
+        return _validate_hex_color(v)
 
 
 # =============================================================================
