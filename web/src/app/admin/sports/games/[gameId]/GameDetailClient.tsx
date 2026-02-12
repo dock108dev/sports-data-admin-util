@@ -154,6 +154,58 @@ function flattenStats(
   return result;
 }
 
+/* ---- Computed Fields: metric grouping config ---- */
+const METRIC_GROUPS: { label: string; keys: string[] }[] = [
+  { label: "Score", keys: ["home_score", "away_score", "margin_of_victory", "combined_score", "winner"] },
+  { label: "Spread", keys: [
+    "pregame_spread_label", "opening_spread_home", "opening_spread_away",
+    "closing_spread_home", "closing_spread_away",
+    "line_movement_spread", "did_home_cover", "did_away_cover", "spread_outcome_label",
+  ]},
+  { label: "Total", keys: [
+    "pregame_total_label", "opening_total", "closing_total",
+    "line_movement_total", "total_result", "total_outcome_label",
+  ]},
+  { label: "Moneyline", keys: [
+    "pregame_ml_home_label", "pregame_ml_away_label",
+    "closing_ml_home", "closing_ml_away",
+    "closing_ml_home_implied", "closing_ml_away_implied",
+    "opening_ml_home", "opening_ml_away",
+    "moneyline_upset", "ml_outcome_label",
+  ]},
+];
+
+const OUTCOME_KEYS = new Set(["spread_outcome_label", "total_outcome_label", "ml_outcome_label"]);
+const GREEN_OUTCOMES = new Set(["home_cover", "over", "favorite_won", "home_win", "away_win"]);
+const RED_OUTCOMES = new Set(["away_cover", "under", "underdog_won", "upset"]);
+
+function formatMetricValue(key: string, value: unknown): string {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") {
+    if (key.includes("implied")) return `${(value * 100).toFixed(1)}%`;
+    if (Number.isInteger(value)) return String(value);
+    return value.toFixed(1);
+  }
+  return String(value ?? "—");
+}
+
+function getOutcomeBadgeClass(value: unknown): string {
+  const v = String(value ?? "").toLowerCase().replace(/\s+/g, "_");
+  if (GREEN_OUTCOMES.has(v) || v.includes("cover") && !v.includes("away")) return styles.outcomeBadgeGreen;
+  if (RED_OUTCOMES.has(v) || v.includes("under") || v.includes("upset")) return styles.outcomeBadgeRed;
+  if (v === "push" || v === "pick") return styles.outcomeBadgeGray;
+  return styles.outcomeBadgeGray;
+}
+
+/* ---- FieldLabel: tooltip showing API field name ---- */
+function FieldLabel({ label, field }: { label: string; field: string }) {
+  return (
+    <span className={styles.fieldLabel} title={`API field: ${field}`}>
+      {label}
+    </span>
+  );
+}
+
 export default function GameDetailClient() {
   const params = useParams<{ gameId?: string }>();
   const gameIdParam = params?.gameId ?? "";
@@ -301,24 +353,25 @@ export default function GameDetailClient() {
           Game {g.id} — {g.leagueCode}
         </h1>
         <div className={styles.meta}>
-          {gameDate} · {g.seasonType ?? "season"} · Last scraped: {g.lastScrapedAt ?? "—"}
+          <FieldLabel label={gameDate} field="gameDate" /> · {g.seasonType ?? "season"} · Last scraped: {g.lastScrapedAt ?? "—"}
         </div>
         <div className={styles.scoreLine}>
           <div>
-            <strong>{g.awayTeam}</strong>
+            <strong><FieldLabel label={g.awayTeam} field="awayTeam" /></strong>
             <span>Away</span>
-            <span>{g.awayScore ?? "—"}</span>
+            <span><FieldLabel label={String(g.awayScore ?? "—")} field="awayScore" /></span>
           </div>
           <div>
-            <strong>{g.homeTeam}</strong>
+            <strong><FieldLabel label={g.homeTeam} field="homeTeam" /></strong>
             <span>Home</span>
-            <span>{g.homeScore ?? "—"}</span>
+            <span><FieldLabel label={String(g.homeScore ?? "—")} field="homeScore" /></span>
           </div>
         </div>
         <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           {flags.map((f) => (
             <span
               key={f.label}
+              title={`API field: ${f.label.toLowerCase().includes("boxscore") ? "hasBoxscore" : f.label.toLowerCase().includes("player") ? "hasPlayerStats" : f.label.toLowerCase().includes("odds") ? "hasOdds" : f.label.toLowerCase().includes("social") ? "hasSocial" : f.label.toLowerCase().includes("pbp") ? "hasPbp" : f.label.toLowerCase().includes("flow") ? "hasFlow" : f.label}`}
               style={{
                 padding: "0.35rem 0.75rem",
                 borderRadius: "999px",
@@ -326,6 +379,8 @@ export default function GameDetailClient() {
                 color: f.ok ? "#166534" : "#b91c1c",
                 fontWeight: 700,
                 fontSize: "0.85rem",
+                cursor: "help",
+                borderBottom: "1px dotted #94a3b8",
               }}
             >
               {f.label}: {f.ok ? "Yes" : "No"}
@@ -723,30 +778,60 @@ export default function GameDetailClient() {
 
       <SocialPostsSection posts={game.socialPosts || []} />
 
-      <PbpSection plays={game.plays || []} leagueCode={g.leagueCode} />
+      <PbpSection plays={game.plays || []} groupedPlays={game.groupedPlays} leagueCode={g.leagueCode} />
 
       <FlowSection gameId={g.id} hasFlow={g.hasFlow} />
 
-      <CollapsibleSection title="Derived Metrics" defaultOpen={false}>
+      <CollapsibleSection title="Computed Fields" defaultOpen={false}>
         {Object.keys(game.derivedMetrics || {}).length === 0 ? (
-          <div style={{ color: "#475569" }}>No derived metrics.</div>
+          <div style={{ color: "#475569" }}>No computed fields.</div>
         ) : (
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Metric</th>
-                <th>Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(game.derivedMetrics).map(([k, v]) => (
-                <tr key={k}>
-                  <td>{k}</td>
-                  <td>{String(v)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          (() => {
+            const metrics = game.derivedMetrics;
+            const allGroupedKeys = new Set(METRIC_GROUPS.flatMap((g) => g.keys));
+            const ungroupedKeys = Object.keys(metrics).filter((k) => !allGroupedKeys.has(k));
+
+            return (
+              <div className={styles.computedFieldsGrid}>
+                {METRIC_GROUPS.map((group) => {
+                  const present = group.keys.filter((k) => k in metrics);
+                  if (present.length === 0) return null;
+                  return (
+                    <div key={group.label} className={styles.metricGroup}>
+                      <div className={styles.metricGroupLabel}>{group.label}</div>
+                      {present.map((k) => {
+                        const isOutcome = OUTCOME_KEYS.has(k);
+                        const formatted = formatMetricValue(k, metrics[k]);
+                        return (
+                          <div key={k} className={styles.metricRow}>
+                            <span className={styles.metricKey}>{k}</span>
+                            {isOutcome ? (
+                              <span className={`${styles.outcomeBadge} ${getOutcomeBadgeClass(metrics[k])}`}>
+                                {formatted}
+                              </span>
+                            ) : (
+                              <span className={styles.metricValue}>{formatted}</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+                {ungroupedKeys.length > 0 && (
+                  <div className={styles.metricGroup}>
+                    <div className={styles.metricGroupLabel}>Other</div>
+                    {ungroupedKeys.map((k) => (
+                      <div key={k} className={styles.metricRow}>
+                        <span className={styles.metricKey}>{k}</span>
+                        <span className={styles.metricValue}>{formatMetricValue(k, metrics[k])}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()
         )}
       </CollapsibleSection>
     </div>
