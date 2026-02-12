@@ -78,9 +78,10 @@ def detect_significant_movements(
     """Compare opening vs closing for each (market_type, side).
 
     Significant movement thresholds:
-    - Spread: >= 1.0 pt
-    - Total: >= 1.0 pt
-    - Moneyline: >= 20 cents (American odds)
+    - Spread: >= 1.0 pt (compares line values)
+    - Total: >= 1.0 pt (compares line values)
+    - Moneyline: >= 20 cents American odds (compares price values,
+      since moneyline rows store odds in price with line=None)
 
     Returns list of movement dicts with market_type, side,
     opening_line, closing_line, movement.
@@ -98,31 +99,44 @@ def detect_significant_movements(
         closing = pair.get("closing")
         if not opening or not closing:
             continue
-        if opening.line is None or closing.line is None:
-            continue
 
-        delta = abs(closing.line - opening.line)
-
-        threshold: float
-        if market_type == "spread":
-            threshold = SPREAD_MOVEMENT_THRESHOLD
-        elif market_type == "total":
-            threshold = TOTAL_MOVEMENT_THRESHOLD
-        elif market_type == "moneyline":
+        if market_type == "moneyline":
+            # Moneyline stores American odds in price, not line
+            if opening.price is None or closing.price is None:
+                continue
+            delta = abs(closing.price - opening.price)
             threshold = MONEYLINE_MOVEMENT_THRESHOLD
+            if delta >= threshold:
+                movements.append(
+                    {
+                        "market_type": market_type,
+                        "side": side,
+                        "opening_line": opening.price,
+                        "closing_line": closing.price,
+                        "movement": round(closing.price - opening.price, 2),
+                    }
+                )
         else:
-            continue
-
-        if delta >= threshold:
-            movements.append(
-                {
-                    "market_type": market_type,
-                    "side": side,
-                    "opening_line": opening.line,
-                    "closing_line": closing.line,
-                    "movement": round(closing.line - opening.line, 2),
-                }
-            )
+            # Spread and total use line values
+            if opening.line is None or closing.line is None:
+                continue
+            delta = abs(closing.line - opening.line)
+            if market_type == "spread":
+                threshold = SPREAD_MOVEMENT_THRESHOLD
+            elif market_type == "total":
+                threshold = TOTAL_MOVEMENT_THRESHOLD
+            else:
+                continue
+            if delta >= threshold:
+                movements.append(
+                    {
+                        "market_type": market_type,
+                        "side": side,
+                        "opening_line": opening.line,
+                        "closing_line": closing.line,
+                        "movement": round(closing.line - opening.line, 2),
+                    }
+                )
 
     return movements
 
@@ -134,12 +148,17 @@ def detect_significant_movements(
 
 def _build_markets_dict(
     rows: Sequence[SportsGameOdds],
-) -> dict[str, dict[str, Any]]:
-    """Build a markets dict from odds rows grouped by market_type."""
-    markets: dict[str, dict[str, Any]] = {}
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Build a markets dict from odds rows: {market_type: {side: {line, price}}}.
+
+    Each market_type (spread, total, moneyline) can have multiple sides
+    (e.g., spread has home+away, total has over+under). Keying by side
+    preserves all rows instead of overwriting.
+    """
+    markets: dict[str, dict[str, dict[str, Any]]] = {}
     for row in rows:
-        markets[row.market_type] = {
-            "side": row.side,
+        side_key = row.side or "_"
+        markets.setdefault(row.market_type, {})[side_key] = {
             "line": row.line,
             "price": row.price,
         }

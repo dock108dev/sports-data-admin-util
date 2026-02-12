@@ -227,7 +227,7 @@ export default function TeamDetailPage() {
               <>
                 <div className={styles.matchupRow}>
                   <span className={styles.matchupLabel}>Light</span>
-                  <span className={styles.matchupTeam} style={{ background: team.colorLightHex || "#6366f1" }}>
+                  <span className={styles.matchupTeam} style={{ background: lightColor }}>
                     {team.abbreviation}
                   </span>
                   <span className={styles.matchupVs}>vs</span>
@@ -237,7 +237,7 @@ export default function TeamDetailPage() {
                 </div>
                 <div className={styles.matchupRow}>
                   <span className={styles.matchupLabel}>Dark</span>
-                  <span className={styles.matchupTeam} style={{ background: team.colorDarkHex || "#6366f1" }}>
+                  <span className={styles.matchupTeam} style={{ background: darkColor }}>
                     {team.abbreviation}
                   </span>
                   <span className={styles.matchupVs}>vs</span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import type { AdminGameDetail } from "@/lib/api/sportsAdmin";
 import { CollapsibleSection } from "./CollapsibleSection";
 import styles from "./styles.module.css";
@@ -14,12 +14,12 @@ export function OddsSection({ odds }: OddsSectionProps) {
     return Array.from(new Set(odds.map((o) => o.book)));
   }, [odds]);
 
-  const [selectedBook, setSelectedBook] = useState<string | null>(null);
+  const [userSelectedBook, setUserSelectedBook] = useState<string | null>(null);
 
-  useEffect(() => {
-    const preferred = bookOptions.find((b) => b === "FanDuel") ?? bookOptions[0] ?? null;
-    setSelectedBook(preferred ?? null);
-  }, [bookOptions]);
+  const selectedBook = useMemo(() => {
+    if (userSelectedBook && bookOptions.includes(userSelectedBook)) return userSelectedBook;
+    return bookOptions.find((b) => b === "FanDuel") ?? bookOptions[0] ?? null;
+  }, [bookOptions, userSelectedBook]);
 
   const filteredOdds = useMemo(() => {
     if (!selectedBook) return [];
@@ -50,7 +50,7 @@ export function OddsSection({ odds }: OddsSectionProps) {
               <select
                 className={styles.oddsBookSelect}
                 value={selectedBook ?? ""}
-                onChange={(e) => setSelectedBook(e.target.value)}
+                onChange={(e) => setUserSelectedBook(e.target.value)}
               >
                 {bookOptions.map((b) => (
                   <option key={b} value={b}>

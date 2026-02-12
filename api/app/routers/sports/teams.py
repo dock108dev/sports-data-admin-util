@@ -214,9 +214,9 @@ async def update_team_colors(
             status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
         )
 
-    if body.color_light_hex is not None:
+    if "color_light_hex" in body.model_fields_set:
         team.color_light_hex = body.color_light_hex
-    if body.color_dark_hex is not None:
+    if "color_dark_hex" in body.model_fields_set:
         team.color_dark_hex = body.color_dark_hex
 
     await session.commit()

@@ -158,42 +158,41 @@ def group_tier3_plays(
     plays: list[PlayEntry],
     tiers: list[int],
 ) -> list[TieredPlayGroup]:
-    """Group consecutive Tier-3 plays into collapsed summaries."""
+    """Group consecutive Tier-3 plays into collapsed summaries.
+
+    All index fields (start_index, end_index, play_indices) use the actual
+    play_index identifiers from the PBP feed, not list positions.
+    """
     groups: list[TieredPlayGroup] = []
-    run_start: int | None = None
-    run_indices: list[int] = []
+    run_plays: list[PlayEntry] = []
 
     def _flush() -> None:
-        if run_start is None or not run_indices:
+        if not run_plays:
             return
         types = []
         seen: set[str] = set()
-        for idx in run_indices:
-            pt = (plays[idx].play_type or "unknown").lower()
+        for p in run_plays:
+            pt = (p.play_type or "unknown").lower()
             if pt not in seen:
                 seen.add(pt)
                 types.append(pt)
-        label = f"{len(run_indices)} plays: {', '.join(types)}"
+        play_ids = [p.play_index for p in run_plays]
+        label = f"{len(run_plays)} plays: {', '.join(types)}"
         groups.append(
             TieredPlayGroup(
-                start_index=run_indices[0],
-                end_index=run_indices[-1],
-                play_indices=list(run_indices),
+                start_index=play_ids[0],
+                end_index=play_ids[-1],
+                play_indices=play_ids,
                 summary_label=label,
             )
         )
 
     for i, tier in enumerate(tiers):
         if tier == 3:
-            if run_start is None:
-                run_start = i
-                run_indices = [i]
-            else:
-                run_indices.append(i)
+            run_plays.append(plays[i])
         else:
             _flush()
-            run_start = None
-            run_indices = []
+            run_plays = []
 
     _flush()
     return groups

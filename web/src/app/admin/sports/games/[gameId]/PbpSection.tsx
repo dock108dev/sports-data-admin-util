@@ -213,7 +213,7 @@ export function PbpSection({ plays, groupedPlays, leagueCode }: PbpSectionProps)
                               onClick={() => toggleGroup(idx)}
                               role="button"
                               tabIndex={0}
-                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleGroup(idx); }}
+                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleGroup(idx); } }}
                             >
                               <div className={styles.tier3GroupSummary} style={{ padding: "0.5rem 0.65rem" }}>
                                 {isExpanded ? "▼" : "▶"}{" "}
