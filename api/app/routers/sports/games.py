@@ -16,6 +16,7 @@ from ...db.sports import (
     SportsPlayerBoxscore,
     SportsGamePlay,
 )
+from ...db.story import SportsGameFlow
 from ...db.odds import SportsGameOdds
 from ...db.social import TeamSocialPost
 from ...db.scraper import SportsGameConflict
