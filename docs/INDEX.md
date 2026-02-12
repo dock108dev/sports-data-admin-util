@@ -35,8 +35,14 @@
 
 | Guide | Description |
 |-------|-------------|
-| [Timeline Assembly](TIMELINE_ASSEMBLY.md) | Timeline generation from PBP and social |
-| [Timeline Validation](TIMELINE_VALIDATION.md) | Validation rules and sanity checks |
+| [Timeline Assembly](TIMELINE_ASSEMBLY.md) | Assembly recipe: PBP + social + odds merged by phase |
+| [Timeline Validation](TIMELINE_VALIDATION.md) | Validation rules (C1-C6 critical, W1-W4 warnings) |
+
+## Server-Side Migration
+
+| Guide | Description |
+|-------|-------------|
+| [Server-Side Migration](SERVER_SIDE_MIGRATION.md) | 6-phase roadmap: moving client computation to admin backend |
 
 ## Data Ingestion
 
