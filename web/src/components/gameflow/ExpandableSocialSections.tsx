@@ -8,8 +8,6 @@ import styles from "./ExpandableSocialSections.module.css";
 /**
  * Expandable Social Sections
  *
- * PHASE 5 CONTRACT (Task 5.2)
- * ==========================
  * Provides optional depth through EXPLICIT user action.
  *
  * Structure:

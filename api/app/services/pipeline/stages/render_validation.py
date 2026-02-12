@@ -23,7 +23,7 @@ FORBIDDEN_WORDS = [
     "incredible",
 ]
 
-# Task 1.4: Sentence style constraints - prohibited stat-feed patterns
+# Sentence style constraints - prohibited stat-feed patterns
 PROHIBITED_PATTERNS = [
     # "X had Y points" stat-feed patterns
     r"\bhad\s+\d+\s+points\b",
@@ -70,7 +70,7 @@ def validate_style_constraints(
 ) -> tuple[list[str], list[str]]:
     """Validate narrative against style constraints.
 
-    Task 1.4: Sentence style constraints.
+    Sentence style constraints.
     - No stat-feed prose patterns
     - No subjective adjectives
     - Broadcast tone
@@ -183,7 +183,7 @@ def validate_block_narrative(
         if word.lower() in narrative_lower:
             warnings.append(f"Block {block_idx}: Contains forbidden word '{word}'")
 
-    # Task 1.4: Check style constraints
+    # Check style constraints
     style_errors, style_warnings = validate_style_constraints(narrative, block_idx)
     errors.extend(style_errors)
     warnings.extend(style_warnings)

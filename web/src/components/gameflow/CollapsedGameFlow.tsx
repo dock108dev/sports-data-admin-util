@@ -8,13 +8,11 @@ import styles from "./CollapsedGameFlow.module.css";
 /**
  * Collapsed Game Flow
  *
- * PHASE 5 CONTRACT (Task 5.1)
- * ==========================
  * The collapsed view is the PRIMARY product - complete and self-sufficient.
  *
  * May contain ONLY:
- * - Narrative blocks (from Phase 1)
- * - Embedded tweets (from Phase 4)
+ * - Narrative blocks
+ * - Embedded tweets
  *
  * Must NOT contain:
  * - Pregame tweets

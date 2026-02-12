@@ -87,7 +87,7 @@ class TestEstimateGameEnd:
 
 
 class TestClassifyTweetPhase:
-    """Tests for classify_tweet_phase function (Task 3.1)."""
+    """Tests for classify_tweet_phase function."""
 
     def test_pregame_tweet(self, game_start):
         """Tweet before game start is pregame."""
@@ -132,7 +132,7 @@ class TestClassifyTweetPhase:
 
 
 class TestMapTweetToSegment:
-    """Tests for map_tweet_to_segment function (Task 3.2)."""
+    """Tests for map_tweet_to_segment function."""
 
     def test_nba_q1(self, game_start):
         """Early tweet maps to Q1."""

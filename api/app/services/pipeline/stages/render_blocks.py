@@ -197,7 +197,7 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
 
     output.add_log(f"Rendering narratives for {len(blocks)} blocks")
 
-    # Task 1.5: Get blowout metrics from previous stage
+    # Get blowout metrics from previous stage
     is_blowout = previous_output.get("is_blowout", False)
 
     if is_blowout:
@@ -267,7 +267,7 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         if errors:
             raise ValueError(f"Block {block_idx} validation failed: {errors}")
 
-        # Task 1.3: Check play coverage - ensure key plays are mentioned
+        # Check play coverage - ensure key plays are mentioned
         key_play_ids = block.get("key_play_ids", [])
         if key_play_ids:
             missing_ids, missing_events = check_play_coverage(

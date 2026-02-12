@@ -197,7 +197,7 @@ class TestDefaultTweetScorer:
 
 
 class TestSelectEmbeddedTweets:
-    """Tests for select_embedded_tweets function (Task 4.1)."""
+    """Tests for select_embedded_tweets function."""
 
     def test_empty_input_returns_empty(self, game_start):
         """Empty input returns empty selection."""
@@ -278,7 +278,7 @@ class TestSelectEmbeddedTweets:
 
 
 class TestEnforceEmbeddedCaps:
-    """Tests for enforce_embedded_caps function (Task 4.2)."""
+    """Tests for enforce_embedded_caps function."""
 
     def test_max_one_per_block(self, game_start, sample_tweets):
         """Enforces max 1 tweet per block."""
