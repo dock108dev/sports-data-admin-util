@@ -181,7 +181,6 @@ def collect_team_social(
     """
     Collect tweets for all teams in a league that played in the date range.
 
-    This is Phase 1 of the two-phase social collection architecture.
     Tweets are saved to team_social_posts with mapping_status='unmapped'.
 
     Args:
@@ -240,7 +239,6 @@ def map_social_to_games(batch_size: int = 1000) -> dict:
     """
     Map all unmapped tweets to games.
 
-    This is Phase 2 of the two-phase social collection architecture.
     Tweets are mapped based on posted_at falling within game windows.
 
     Args:

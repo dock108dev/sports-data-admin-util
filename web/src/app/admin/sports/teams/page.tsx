@@ -99,6 +99,20 @@ export default function TeamsAdminPage() {
                 className={styles.teamCard}
               >
                 <div className={styles.teamHeader}>
+                  {team.colorLightHex && (
+                    <span
+                      className={styles.colorSwatch}
+                      style={{ backgroundColor: team.colorLightHex }}
+                      title={`Light: ${team.colorLightHex}`}
+                    />
+                  )}
+                  {team.colorDarkHex && (
+                    <span
+                      className={styles.colorSwatch}
+                      style={{ backgroundColor: team.colorDarkHex }}
+                      title={`Dark: ${team.colorDarkHex}`}
+                    />
+                  )}
                   <span className={styles.teamAbbr}>{team.abbreviation}</span>
                   <span className={styles.teamName}>{team.name}</span>
                 </div>

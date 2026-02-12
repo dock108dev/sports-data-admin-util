@@ -47,9 +47,7 @@ NHL_OT_REAL_SECONDS = 10 * 60
 NHL_PLAYOFF_OT_GAME_SECONDS = 20 * 60
 
 # -----------------------------------------------------------------------------
-# Phase 3: League-Aware Timing Constants (Task 3.1)
-# These are HEURISTIC estimates for time-based classification only.
-# No PBP data is used - imprecision is expected and acceptable.
+# League-Aware Timing Constants (heuristic estimates for classification)
 # -----------------------------------------------------------------------------
 
 # NCAAB: College basketball - two 20-minute halves
@@ -73,7 +71,7 @@ SOCIAL_PREGAME_WINDOW_SECONDS = 2 * 60 * 60  # 2 hours before game start
 SOCIAL_POSTGAME_WINDOW_SECONDS = 2 * 60 * 60  # 2 hours after game end
 
 # -----------------------------------------------------------------------------
-# League-specific segment counts for Task 3.2
+# League-specific segment counts
 # -----------------------------------------------------------------------------
 LEAGUE_SEGMENTS = {
     "NBA": ["q1", "q2", "halftime", "q3", "q4"],

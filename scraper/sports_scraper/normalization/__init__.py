@@ -160,7 +160,7 @@ TEAM_MAPPINGS: dict[SportCode, dict[str, tuple[str, str]]] = {
     "MLB": {},
     "NHL": {},
     "NCAAF": {},  # College teams are too numerous to map exhaustively
-    "NCAAB": {},  # College teams are too numerous to map exhaustively
+    "NCAAB": {},  # Populated below from ncaab_teams.py
 }
 
 # Populate NBA mappings
@@ -203,6 +203,11 @@ for canonical, abbr, variations in NHL_TEAMS.values():
     TEAM_MAPPINGS["NHL"][abbr] = (canonical, abbr)
     TEAM_MAPPINGS["NHL"][abbr.lower()] = (canonical, abbr)
 
+# Populate NCAAB mappings from ncaab_teams.py SSOT
+from .ncaab_teams import NCAAB_VARIATIONS as _NCAAB_VARIATIONS
+
+TEAM_MAPPINGS["NCAAB"] = dict(_NCAAB_VARIATIONS)
+
 
 def _normalize_string(s: str) -> str:
     """Normalize string for fuzzy matching."""
@@ -223,12 +228,17 @@ def _fuzzy_match(league_code: SportCode, raw_name: str) -> tuple[str, str] | Non
         if _normalize_string(key) == normalized_input:
             return (canonical, abbr)
     
-    # Try partial matches (contains)
-    for key, (canonical, abbr) in mappings.items():
-        normalized_key = _normalize_string(key)
-        if normalized_input in normalized_key or normalized_key in normalized_input:
-            return (canonical, abbr)
-    
+    # Try partial matches (contains) — require minimum 4 chars on both sides
+    # to prevent false positives from short abbreviations (e.g., "ME" matching
+    # any input containing "me").
+    if len(normalized_input) >= 4:
+        for key, (canonical, abbr) in mappings.items():
+            normalized_key = _normalize_string(key)
+            if len(normalized_key) < 4:
+                continue
+            if normalized_input in normalized_key or normalized_key in normalized_input:
+                return (canonical, abbr)
+
     # Try word-based matching (check if key words match)
     input_words = set(normalized_input.split())
     for key, (canonical, abbr) in mappings.items():
@@ -252,50 +262,36 @@ def normalize_team_name(league_code: SportCode, raw_name: str) -> tuple[str, str
     Returns:
         Tuple of (canonical_name, abbreviation). If no mapping exists, returns
         the input name and a generated abbreviation (first 3-6 chars).
-        For NCAAB, returns None for abbreviation to avoid collisions.
     """
     if not raw_name:
-        # For NCAAB, return None for abbreviation; otherwise return empty string
-        abbr = None if league_code == "NCAAB" else (raw_name[:6].upper() if raw_name else "")
+        abbr = raw_name[:6].upper() if raw_name else ""
         return (raw_name, abbr)
-    
+
     mappings = TEAM_MAPPINGS.get(league_code, {})
-    
+
     # Try exact match (case-insensitive)
     if raw_name in mappings:
-        canonical, abbr = mappings[raw_name]
-        # For NCAAB, always return None for abbreviation
-        return (canonical, None if league_code == "NCAAB" else abbr)
-    
+        return mappings[raw_name]
+
     # Try lowercase match
     if raw_name.lower() in mappings:
-        canonical, abbr = mappings[raw_name.lower()]
-        # For NCAAB, always return None for abbreviation
-        return (canonical, None if league_code == "NCAAB" else abbr)
-    
+        return mappings[raw_name.lower()]
+
     # Try fuzzy matching
     fuzzy_result = _fuzzy_match(league_code, raw_name)
     if fuzzy_result:
-        canonical, abbr = fuzzy_result
-        # For NCAAB, always return None for abbreviation
-        return (canonical, None if league_code == "NCAAB" else abbr)
-    
-    # For NCAAB, don't generate abbreviations to avoid collisions
-    if league_code == "NCAAB":
-        return (raw_name, None)
-    
-    # Fallback: generate abbreviation from name (only for non-NCAAB leagues)
+        return fuzzy_result
+
+    # Fallback: generate abbreviation from name
     # Remove common words and take first letters
     words = raw_name.split()
     if len(words) >= 2:
-        # Take first letter of first two words
         abbr = (words[0][0] + words[1][0]).upper()
         if len(words) > 2:
             abbr += words[2][0].upper()
         abbr = abbr[:3]
     else:
-        # Single word or empty - take first 3 chars
         abbr = raw_name[:3].upper()
-    
+
     return (raw_name, abbr)
 

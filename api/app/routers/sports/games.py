@@ -19,15 +19,11 @@ from ...db.sports import (
 from ...db.odds import SportsGameOdds
 from ...db.social import TeamSocialPost
 from ...db.scraper import SportsGameConflict
-from ...db.story import SportsGameFlow
 from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
 from ...services.derived_metrics import compute_derived_metrics
-from ...services.timeline_generator import (
-    TimelineGenerationError,
-    generate_timeline_artifact,
-)
+from ...services.play_tiers import classify_all_tiers, group_tier3_plays
 from .common import (
     serialize_nhl_goalie,
     serialize_nhl_skater,
@@ -49,11 +45,6 @@ from .game_helpers import (
 from .nhl_helpers import compute_nhl_data_health
 from .schemas import (
     GameDetailResponse,
-    GameFlowBlock,
-    GameFlowContent,
-    GameFlowMoment,
-    GameFlowPlay,
-    GameFlowResponse,
     GameListResponse,
     GameMeta,
     GamePreviewScoreResponse,
@@ -61,7 +52,6 @@ from .schemas import (
     NHLGoalieStat,
     NHLSkaterStat,
     OddsEntry,
-    TimelineArtifactResponse,
 )
 
 router = APIRouter()
@@ -421,9 +411,18 @@ async def get_game(
     ]
 
     plays_entries = [
-        serialize_play_entry(play)
+        serialize_play_entry(play, league_code)
         for play in sorted(game.plays, key=lambda p: p.play_index)
     ]
+
+    # Classify play tiers and build grouped plays
+    if plays_entries and league_code:
+        tiers = classify_all_tiers(plays_entries, league_code)
+        for entry, t in zip(plays_entries, tiers):
+            entry.tier = t
+        grouped_plays = group_tier3_plays(plays_entries, tiers)
+    else:
+        grouped_plays = None
 
     # Check if game has a flow in SportsGameFlow table
     flow_check = await session.execute(
@@ -507,6 +506,7 @@ async def get_game(
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,
+        grouped_plays=grouped_plays,
         derived_metrics=derived,
         raw_payloads=raw_payloads,
         data_health=data_health,
@@ -546,177 +546,4 @@ async def resync_game_odds(
         include_boxscores=False,
         include_odds=True,
         scraper_type="odds_resync",
-    )
-
-
-@router.post(
-    "/games/{game_id}/timeline/generate", response_model=TimelineArtifactResponse
-)
-async def generate_game_timeline(
-    game_id: int,
-    session: AsyncSession = Depends(get_db),
-) -> TimelineArtifactResponse:
-    """Generate and store a finalized timeline artifact for any league.
-
-    Social data is optional and gracefully degrades to empty for leagues
-    without social scraping configured (NHL, NCAAB).
-    """
-    try:
-        artifact = await generate_timeline_artifact(session, game_id)
-    except TimelineGenerationError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-
-    await session.commit()
-    return TimelineArtifactResponse(
-        game_id=artifact.game_id,
-        sport=artifact.sport,
-        timeline_version=artifact.timeline_version,
-        generated_at=artifact.generated_at,
-        timeline=artifact.timeline,
-        summary=artifact.summary,
-        game_analysis=artifact.game_analysis,
-    )
-
-
-# =============================================================================
-# Game Flow API
-# =============================================================================
-
-# Story version identifier (DB filter value — "v2-moments")
-STORY_VERSION = "v2-moments"
-
-
-@router.get("/games/{game_id}/flow", response_model=GameFlowResponse)
-async def get_game_flow(
-    game_id: int,
-    session: AsyncSession = Depends(get_db),
-) -> GameFlowResponse:
-    """Get the persisted Game Flow for a game.
-
-    Returns the Game Flow exactly as persisted - no transformation, no aggregation.
-
-    Game Flow Contract:
-    - moments: Ordered list of condensed moments with narratives
-    - plays: Only plays referenced by moments
-    - validation_passed: Whether validation passed
-    - validation_errors: Any validation errors (empty if passed)
-    - blocks: 4-7 narrative blocks (Phase 1, consumer-facing output)
-    - total_words: Total word count across all block narratives
-
-    Returns:
-        GameFlowResponse with moments, plays, blocks, and validation status
-
-    Raises:
-        HTTPException 404: If no Game Flow exists for this game
-    """
-    flow_result = await session.execute(
-        select(SportsGameFlow).where(
-            SportsGameFlow.game_id == game_id,
-            SportsGameFlow.story_version == STORY_VERSION,
-            SportsGameFlow.moments_json.isnot(None),
-        )
-    )
-    flow_record = flow_result.scalar_one_or_none()
-
-    if not flow_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No Game Flow found for game {game_id}",
-        )
-
-    # Get moments from persisted data (no transformation)
-    moments_data = flow_record.moments_json or []
-
-    # Collect all play_ids referenced by moments
-    all_play_ids: set[int] = set()
-    for moment in moments_data:
-        all_play_ids.update(moment.get("play_ids", []))
-
-    # Load plays by play_ids
-    plays_result = await session.execute(
-        select(SportsGamePlay).where(
-            SportsGamePlay.game_id == game_id,
-            SportsGamePlay.play_index.in_(all_play_ids),
-        )
-    )
-    plays_records = plays_result.scalars().all()
-
-    # Build play lookup for ordering
-    play_lookup = {p.play_index: p for p in plays_records}
-
-    # Build response moments (exact data, no transformation)
-    response_moments = [
-        GameFlowMoment(
-            playIds=moment["play_ids"],
-            explicitlyNarratedPlayIds=moment["explicitly_narrated_play_ids"],
-            period=moment["period"],
-            startClock=moment.get("start_clock"),
-            endClock=moment.get("end_clock"),
-            # Internal format is [home, away], API contract is [away, home]
-            scoreBefore=[moment["score_before"][1], moment["score_before"][0]],
-            scoreAfter=[moment["score_after"][1], moment["score_after"][0]],
-            narrative=moment.get("narrative"),
-            cumulativeBoxScore=moment.get("cumulative_box_score"),
-        )
-        for moment in moments_data
-    ]
-
-    # Build response plays (only those referenced by moments, ordered by play_index)
-    # NOTE: playId uses play_index (not DB id) to match moment.playIds contract
-    response_plays = [
-        GameFlowPlay(
-            playId=play.play_index,
-            playIndex=play.play_index,
-            period=play.quarter or 1,
-            clock=play.game_clock,
-            playType=play.play_type,
-            description=play.description,
-            homeScore=play.home_score,
-            awayScore=play.away_score,
-        )
-        for play_index in sorted(all_play_ids)
-        if (play := play_lookup.get(play_index))
-    ]
-
-    # Build response blocks if present (Phase 1)
-    response_blocks: list[GameFlowBlock] | None = None
-    total_words: int | None = None
-
-    blocks_data = flow_record.blocks_json
-    if blocks_data:
-        response_blocks = [
-            GameFlowBlock(
-                blockIndex=block["block_index"],
-                role=block["role"],
-                momentIndices=block["moment_indices"],
-                periodStart=block["period_start"],
-                periodEnd=block["period_end"],
-                # Internal format is [home, away], API contract is [away, home]
-                scoreBefore=[block["score_before"][1], block["score_before"][0]],
-                scoreAfter=[block["score_after"][1], block["score_after"][0]],
-                playIds=block["play_ids"],
-                keyPlayIds=block["key_play_ids"],
-                narrative=block.get("narrative"),
-                miniBox=block.get("mini_box"),
-                embeddedSocialPostId=block.get("embedded_social_post_id"),
-            )
-            for block in blocks_data
-        ]
-        # Calculate total words from block narratives
-        total_words = sum(
-            len((block.get("narrative") or "").split())
-            for block in blocks_data
-        )
-
-    # Validation status from persisted data
-    validation_passed = flow_record.validated_at is not None
-
-    return GameFlowResponse(
-        gameId=game_id,
-        flow=GameFlowContent(moments=response_moments),
-        plays=response_plays,
-        validationPassed=validation_passed,
-        validationErrors=[],
-        blocks=response_blocks,
-        totalWords=total_words,
     )

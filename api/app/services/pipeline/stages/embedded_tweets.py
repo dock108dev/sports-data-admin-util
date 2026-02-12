@@ -37,13 +37,13 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # =============================================================================
 
-# Selection limits (Task 4.1)
+# Selection limits
 MIN_EMBEDDED_TWEETS = 0  # Embedded tweets are optional
 MAX_EMBEDDED_TWEETS = 5  # Hard cap per game
 PREFERRED_MIN_EMBEDDED = 2  # Prefer at least 2 if available
 PREFERRED_MAX_EMBEDDED = 5  # Prefer up to 5
 
-# Cap enforcement (Task 4.2)
+# Cap enforcement
 MAX_TWEETS_PER_BLOCK = 1  # Hard cap: 1 tweet per block
 
 
@@ -72,7 +72,7 @@ class ScoredTweet:
     posted_at: datetime
     text: str
     author: str
-    phase: str  # From Phase 3 classification
+    phase: str
     score: float  # Computed by scorer
     position: TweetPosition  # Computed from game position
     has_media: bool = False
@@ -282,7 +282,7 @@ def select_embedded_tweets(
 ) -> EmbeddedTweetSelection:
     """Select high-signal tweets for embedded display.
 
-    Task 4.1: Select 2-5 embedded tweets maximum.
+    Select 2-5 embedded tweets maximum.
 
     Selection algorithm:
     1. Score all tweets using the scorer
@@ -477,7 +477,7 @@ def enforce_embedded_caps(
 ) -> list[BlockTweetAssignment]:
     """Enforce hard caps on embedded tweets.
 
-    Task 4.2 hard rules:
+    Hard rules:
     - Max 1 embedded tweet per block
     - Max 5 embedded tweets per game
     - Tweets never create/split blocks
@@ -652,8 +652,8 @@ def select_and_assign_embedded_tweets(
     """Complete embedded tweet pipeline: select, cap, and assign.
 
     Convenience function that combines:
-    1. select_embedded_tweets (Task 4.1)
-    2. enforce_embedded_caps (Task 4.2)
+    1. select_embedded_tweets
+    2. enforce_embedded_caps
     3. apply_embedded_tweets_to_blocks
 
     Args:
@@ -666,7 +666,7 @@ def select_and_assign_embedded_tweets(
     Returns:
         Tuple of (updated_blocks, selection_result)
     """
-    # Task 4.1: Select embedded tweets
+    # Select embedded tweets
     selection = select_embedded_tweets(
         tweets,
         game_start,
@@ -674,7 +674,7 @@ def select_and_assign_embedded_tweets(
         scorer,
     )
 
-    # Task 4.2: Enforce caps and assign to blocks
+    # Enforce caps and assign to blocks
     assignments = enforce_embedded_caps(
         selection.tweets,
         len(blocks),

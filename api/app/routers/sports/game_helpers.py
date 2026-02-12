@@ -256,6 +256,12 @@ def summarize_game(
     if has_flow is None:
         has_flow = False
 
+    # Compute derived metrics (odds already loaded via selectinload)
+    from ...services.derived_metrics import compute_derived_metrics
+
+    odds = getattr(game, "odds", None) or []
+    derived = compute_derived_metrics(game, odds) if odds else {}
+
     return GameSummary(
         id=game.id,
         league_code=game.league.code,
@@ -278,6 +284,7 @@ def summarize_game(
         last_ingested_at=game.last_ingested_at,
         last_pbp_at=game.last_pbp_at,
         last_social_at=game.last_social_at,
+        derived_metrics=derived,
     )
 
 

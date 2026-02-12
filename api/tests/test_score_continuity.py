@@ -1,7 +1,7 @@
 """Tests for score continuity enforcement.
 
-These tests verify the score continuity validation rules (Rules 6 and 7)
-added to validate_moments.py as part of Phase 0 Task 0.1.
+Verifies the score continuity validation rules (Rules 6 and 7)
+in validate_moments.py.
 """
 
 

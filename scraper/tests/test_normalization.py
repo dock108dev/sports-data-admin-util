@@ -154,16 +154,47 @@ class TestNormalizeTeamNameMLB:
 class TestNormalizeTeamNameNCAA:
     """Tests for normalize_team_name with NCAAB teams."""
 
-    def test_ncaab_no_abbreviation(self):
-        # NCAAB should return None for abbreviation to avoid collisions
+    def test_ncaab_returns_abbreviation(self):
+        # NCAAB now returns real abbreviations from SSOT dictionary
         canonical, abbr = normalize_team_name("NCAAB", "Duke Blue Devils")
-        assert abbr is None
+        assert canonical == "Duke Blue Devils"
+        assert abbr == "DUKE"
 
-    def test_ncaab_returns_input(self):
-        # NCAAB teams are not mapped, so should return input
+    def test_ncaab_power_conference_teams(self):
+        # Verify key power conference abbreviations
+        teams = {
+            "Alabama Crimson Tide": "ALA",
+            "Kentucky Wildcats": "UK",
+            "North Carolina Tar Heels": "UNC",
+            "Kansas Jayhawks": "KU",
+            "Gonzaga Bulldogs": "GONZ",
+            "UCLA Bruins": "UCLA",
+            "Villanova Wildcats": "NOVA",
+            "UConn Huskies": "CONN",
+            "Michigan St Spartans": "MSU",
+            "Purdue Boilermakers": "PUR",
+        }
+        for name, expected_abbr in teams.items():
+            canonical, abbr = normalize_team_name("NCAAB", name)
+            assert abbr == expected_abbr, f"{name}: expected {expected_abbr}, got {abbr}"
+
+    def test_ncaab_variation_lookup(self):
+        # Short names and variations should resolve
+        canonical, abbr = normalize_team_name("NCAAB", "Duke")
+        assert canonical == "Duke Blue Devils"
+        assert abbr == "DUKE"
+
+    def test_ncaab_abbreviation_lookup(self):
+        # Abbreviation itself should resolve
+        canonical, abbr = normalize_team_name("NCAAB", "UK")
+        assert canonical == "Kentucky Wildcats"
+        assert abbr == "UK"
+
+    def test_ncaab_unknown_team_fallback(self):
+        # Unknown teams still get a generated abbreviation
         canonical, abbr = normalize_team_name("NCAAB", "Some Random University")
         assert canonical == "Some Random University"
-        assert abbr is None
+        assert abbr is not None  # Fallback generates an abbreviation
 
 
 class TestNormalizeTeamNameEdgeCases:
