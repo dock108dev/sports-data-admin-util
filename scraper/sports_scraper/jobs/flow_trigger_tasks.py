@@ -104,6 +104,7 @@ def trigger_flow_for_game(game_id: int) -> dict:
 def _call_pipeline_api(game_id: int, league_code: str) -> dict:
     """Call the internal API to generate flows for a single game."""
     import httpx
+    from ..api_client import get_api_headers
     from ..config import settings
 
     api_base = settings.api_internal_url
@@ -115,7 +116,7 @@ def _call_pipeline_api(game_id: int, league_code: str) -> dict:
     )
 
     try:
-        with httpx.Client(timeout=120.0) as client:
+        with httpx.Client(timeout=120.0, headers=get_api_headers()) as client:
             response = client.post(
                 f"{api_base}/api/admin/sports/pipeline/{game_id}/run-full",
                 json={"triggered_by": "edge_trigger"},
