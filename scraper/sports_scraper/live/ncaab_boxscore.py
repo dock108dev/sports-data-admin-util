@@ -663,17 +663,30 @@ class NCAABBoxscoreFetcher:
         is_home: bool,
         score: int,
     ) -> NormalizedTeamBoxscore:
-        """Parse team-level stats from games/teams endpoint."""
-        raw_stats = {k: v for k, v in ts.items() if v is not None}
+        """Parse team-level stats from games/teams endpoint.
+
+        The CBB API can return stats nested under "teamStats" or flat at the
+        top level.  Either way, strip metadata keys so only actual stat fields
+        end up in raw_stats.
+        """
+        # Prefer the nested teamStats sub-object; fall back to top-level dict
+        stats = ts.get("teamStats", {}) or {}
+        if not stats:
+            # Flat format — filter out metadata keys that are not stats
+            _METADATA_KEYS = {
+                "teamId", "gameId", "isHome", "season", "team", "conference",
+                "opponent", "opponentId", "opponentConference",
+            }
+            stats = {k: v for k, v in ts.items() if v is not None and k not in _METADATA_KEYS}
 
         return NormalizedTeamBoxscore(
             team=team_identity,
             is_home=is_home,
             points=score,
-            rebounds=parse_int(ts.get("rebounds")) or parse_int(ts.get("totalRebounds")),
-            assists=parse_int(ts.get("assists")),
-            turnovers=parse_int(ts.get("turnovers")),
-            raw_stats=raw_stats,
+            rebounds=parse_int(stats.get("totalRebounds")) or parse_int(stats.get("rebounds")),
+            assists=parse_int(stats.get("assists")),
+            turnovers=parse_int(stats.get("turnovers")),
+            raw_stats=stats,
         )
 
     def _parse_player_stats(
@@ -747,6 +760,8 @@ class NCAABBoxscoreFetcher:
             raw_stats["ftAttempted"] = ft_att
         if steals is not None:
             raw_stats["steals"] = steals
+        if blocks is not None:
+            raw_stats["blocks"] = blocks
         if turnovers is not None:
             raw_stats["turnovers"] = turnovers
         if fouls is not None:
@@ -763,8 +778,5 @@ class NCAABBoxscoreFetcher:
             points=points,
             rebounds=rebounds,
             assists=assists,
-            goals=fg_made,
-            shots_on_goal=fg_att,
-            blocked_shots=blocks,
             raw_stats=raw_stats,
         )
