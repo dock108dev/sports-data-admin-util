@@ -1,4 +1,4 @@
-"""Tests for embedded tweet selection and cap enforcement."""
+"""Tests for embedded tweet selection and temporal block assignment."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -9,15 +9,12 @@ from app.services.pipeline.stages.embedded_tweets import (
     MAX_EMBEDDED_TWEETS,
     MAX_TWEETS_PER_BLOCK,
     MIN_EMBEDDED_TWEETS,
-    TweetPosition,
     ScoredTweet,
     BlockTweetAssignment,
     # Scorer
     DefaultTweetScorer,
     # Functions
-    classify_tweet_position,
     select_embedded_tweets,
-    enforce_embedded_caps,
     apply_embedded_tweets_to_blocks,
     select_and_assign_embedded_tweets,
 )
@@ -120,44 +117,6 @@ class TestConstants:
         assert MIN_EMBEDDED_TWEETS == 0
 
 
-class TestTweetPosition:
-    """Tests for TweetPosition enum."""
-
-    def test_position_values(self):
-        """Position enum has expected values."""
-        assert TweetPosition.EARLY.value == "EARLY"
-        assert TweetPosition.MID.value == "MID"
-        assert TweetPosition.LATE.value == "LATE"
-
-
-class TestClassifyTweetPosition:
-    """Tests for classify_tweet_position function."""
-
-    def test_early_position(self, game_start):
-        """Tweet in first third is EARLY."""
-        tweet_time = game_start + timedelta(minutes=20)
-        position = classify_tweet_position(tweet_time, game_start, 150)
-        assert position == TweetPosition.EARLY
-
-    def test_mid_position(self, game_start):
-        """Tweet in middle third is MID."""
-        tweet_time = game_start + timedelta(minutes=75)
-        position = classify_tweet_position(tweet_time, game_start, 150)
-        assert position == TweetPosition.MID
-
-    def test_late_position(self, game_start):
-        """Tweet in final third is LATE."""
-        tweet_time = game_start + timedelta(minutes=120)
-        position = classify_tweet_position(tweet_time, game_start, 150)
-        assert position == TweetPosition.LATE
-
-    def test_pregame_is_early(self, game_start):
-        """Pregame tweets count as EARLY."""
-        tweet_time = game_start - timedelta(minutes=30)
-        position = classify_tweet_position(tweet_time, game_start, 150)
-        assert position == TweetPosition.EARLY
-
-
 class TestDefaultTweetScorer:
     """Tests for DefaultTweetScorer."""
 
@@ -227,15 +186,6 @@ class TestSelectEmbeddedTweets:
         assert len(result.tweets) == 1
         assert result.selection_method == "scored"
 
-    def test_distribution_preference(self, game_start, sample_tweets):
-        """Selection prefers distribution across positions."""
-        result = select_embedded_tweets(sample_tweets, game_start)
-
-        # Should have tweets from different positions
-        positions = {t.position for t in result.tweets}
-        # With 6 tweets spanning the game, should get variety
-        assert len(positions) >= 2
-
     def test_deterministic_ordering(self, game_start, sample_tweets):
         """Selection is deterministic (same inputs = same outputs)."""
         result1 = select_embedded_tweets(sample_tweets, game_start)
@@ -279,126 +229,6 @@ class TestSelectEmbeddedTweets:
         assert len(result.tweets) > 0
 
 
-class TestEnforceEmbeddedCaps:
-    """Tests for enforce_embedded_caps function."""
-
-    def test_max_one_per_block(self, game_start, sample_tweets):
-        """Enforces max 1 tweet per block."""
-        selection = select_embedded_tweets(sample_tweets, game_start)
-        assignments = enforce_embedded_caps(selection.tweets, block_count=3)
-
-        # Each block should have at most 1 tweet
-        tweets_per_block = sum(1 for a in assignments if a.tweet is not None)
-        assert tweets_per_block <= 3
-
-    def test_max_five_per_game(self, game_start):
-        """Enforces max 5 tweets per game even with more blocks."""
-        # Create many tweets
-        many_tweets = [
-            ScoredTweet(
-                tweet_id=i,
-                posted_at=game_start + timedelta(minutes=i * 10),
-                text=f"Tweet {i}",
-                author="test",
-                phase="q1",
-                score=float(i),
-                position=TweetPosition.MID,
-            )
-            for i in range(10)
-        ]
-
-        # 10 blocks available
-        assignments = enforce_embedded_caps(many_tweets, block_count=10)
-
-        # Only 5 should be assigned
-        assigned_count = sum(1 for a in assignments if a.tweet is not None)
-        assert assigned_count <= MAX_EMBEDDED_TWEETS
-
-    def test_fewer_blocks_than_tweets(self, game_start):
-        """With fewer blocks than tweets, limits to block count."""
-        tweets = [
-            ScoredTweet(
-                tweet_id=i,
-                posted_at=game_start + timedelta(minutes=i * 10),
-                text=f"Tweet {i}",
-                author="test",
-                phase="q1",
-                score=float(i),
-                position=TweetPosition.MID,
-            )
-            for i in range(5)
-        ]
-
-        # Only 3 blocks
-        assignments = enforce_embedded_caps(tweets, block_count=3)
-
-        assigned_count = sum(1 for a in assignments if a.tweet is not None)
-        assert assigned_count <= 3
-
-    def test_empty_tweets_returns_empty_assignments(self):
-        """Empty tweets returns all-None assignments."""
-        assignments = enforce_embedded_caps([], block_count=5)
-
-        assert len(assignments) == 5
-        assert all(a.tweet is None for a in assignments)
-
-    def test_zero_blocks_returns_empty(self, game_start):
-        """Zero blocks returns empty list."""
-        tweets = [
-            ScoredTweet(
-                tweet_id=1,
-                posted_at=game_start,
-                text="Test",
-                author="test",
-                phase="q1",
-                score=1.0,
-                position=TweetPosition.EARLY,
-            )
-        ]
-        assignments = enforce_embedded_caps(tweets, block_count=0)
-        assert len(assignments) == 0
-
-    def test_position_affinity(self, game_start):
-        """Tweets are assigned to blocks matching their position."""
-        tweets = [
-            ScoredTweet(
-                tweet_id=1,
-                posted_at=game_start + timedelta(minutes=10),
-                text="Early tweet",
-                author="test",
-                phase="q1",
-                score=1.0,
-                position=TweetPosition.EARLY,
-            ),
-            ScoredTweet(
-                tweet_id=2,
-                posted_at=game_start + timedelta(minutes=140),
-                text="Late tweet",
-                author="test",
-                phase="q4",
-                score=1.0,
-                position=TweetPosition.LATE,
-            ),
-        ]
-
-        # 5 blocks
-        assignments = enforce_embedded_caps(tweets, block_count=5)
-
-        # Find where tweets were assigned
-        early_block = next(
-            (a.block_index for a in assignments if a.tweet and a.tweet.tweet_id == 1),
-            None,
-        )
-        late_block = next(
-            (a.block_index for a in assignments if a.tweet and a.tweet.tweet_id == 2),
-            None,
-        )
-
-        # Early tweet should be in first blocks, late in last
-        assert early_block is not None and early_block < 2
-        assert late_block is not None and late_block >= 3
-
-
 class TestApplyEmbeddedTweetsToBlocks:
     """Tests for apply_embedded_tweets_to_blocks function."""
 
@@ -411,7 +241,6 @@ class TestApplyEmbeddedTweetsToBlocks:
             author="test",
             phase="q1",
             score=1.0,
-            position=TweetPosition.EARLY,
         )
         assignments = [
             BlockTweetAssignment(block_index=0, tweet=tweet),
@@ -436,7 +265,6 @@ class TestApplyEmbeddedTweetsToBlocks:
             author="test",
             phase="q1",
             score=1.0,
-            position=TweetPosition.EARLY,
         )
         assignments = [
             BlockTweetAssignment(block_index=i, tweet=tweet if i == 0 else None)

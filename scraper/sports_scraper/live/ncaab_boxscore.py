@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, datetime
-from typing import TYPE_CHECKING
-
 import httpx
 
 from ..logging import logger
@@ -23,10 +21,6 @@ from ..utils.parsing import parse_int
 from .ncaab_constants import CBB_GAMES_PLAYERS_URL, CBB_GAMES_TEAMS_URL
 from .ncaab_helpers import build_team_identity, extract_points, parse_minutes
 from .ncaab_models import NCAABBoxscore, NCAABLiveGame
-
-if TYPE_CHECKING:
-    pass
-
 
 class NCAABBoxscoreFetcher:
     """Fetches and parses boxscore data from the CBB API."""

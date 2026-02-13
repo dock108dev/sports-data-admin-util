@@ -81,7 +81,7 @@ try:
     )
     from app.db.cache import OpenAIResponseCache  # type: ignore
 
-    # Create a namespace that mirrors the old db_models module
+    # Unified namespace exposing all ORM models for scraper imports
     db_models = SimpleNamespace(
         # Enums
         GameStatus=GameStatus,

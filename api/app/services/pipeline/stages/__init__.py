@@ -10,7 +10,6 @@ from .validate_blocks import execute_validate_blocks
 from .finalize_moments import execute_finalize_moments
 from .embedded_tweets import (
     select_embedded_tweets,
-    enforce_embedded_caps,
     apply_embedded_tweets_to_blocks,
     select_and_assign_embedded_tweets,
     DefaultTweetScorer,
@@ -35,13 +34,12 @@ __all__ = [
     "execute_render_blocks",
     "execute_validate_blocks",
     "execute_finalize_moments",
-    # Embedded tweet selection (Phase 4)
+    # Embedded tweet selection
     "select_embedded_tweets",
-    "enforce_embedded_caps",
     "apply_embedded_tweets_to_blocks",
     "select_and_assign_embedded_tweets",
     "DefaultTweetScorer",
-    # Guardrails (Phase 6)
+    # Guardrails
     "validate_blocks_post_generation",
     "validate_blocks_pre_render",
     "validate_social_independence",

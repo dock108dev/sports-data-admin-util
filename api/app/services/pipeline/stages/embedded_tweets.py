@@ -1,7 +1,7 @@
 """Embedded tweet selection for collapsed game flow.
 
-EMBEDDED TWEET CONTRACT (Phase 4)
-=================================
+EMBEDDED TWEET CONTRACT
+=======================
 Embedded tweets are the ONLY social elements allowed in the collapsed game flow.
 They act as reaction beats, not narrative drivers.
 
@@ -27,7 +27,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
 from typing import Any, Protocol, Sequence
 
 from sqlalchemy import select
@@ -50,14 +49,6 @@ PREFERRED_MAX_EMBEDDED = 5  # Prefer up to 5
 MAX_TWEETS_PER_BLOCK = 1  # Hard cap: 1 tweet per block
 
 
-class TweetPosition(str, Enum):
-    """Position category for distribution preference."""
-
-    EARLY = "EARLY"  # Opening context (first third)
-    MID = "MID"  # Momentum/reaction (middle third)
-    LATE = "LATE"  # Resolution/outcome (final third)
-
-
 # =============================================================================
 # DATA STRUCTURES
 # =============================================================================
@@ -77,7 +68,6 @@ class ScoredTweet:
     author: str
     phase: str
     score: float  # Computed by scorer
-    position: TweetPosition  # Computed from game position
     has_media: bool = False
     media_type: str | None = None
 
@@ -95,7 +85,6 @@ class ScoredTweet:
             "author": self.author,
             "phase": self.phase,
             "score": self.score,
-            "position": self.position.value,
             "has_media": self.has_media,
             "media_type": self.media_type,
         }
@@ -111,7 +100,6 @@ class EmbeddedTweetSelection:
     tweets: list[ScoredTweet]
     total_candidates: int
     selection_method: str
-    distribution: dict[str, int]  # Position -> count
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
@@ -119,7 +107,6 @@ class EmbeddedTweetSelection:
             "tweets": [t.to_dict() for t in self.tweets],
             "total_candidates": self.total_candidates,
             "selection_method": self.selection_method,
-            "distribution": self.distribution,
             "selected_count": len(self.tweets),
         }
 
@@ -174,9 +161,6 @@ class TweetScorer(Protocol):
 class DefaultTweetScorer:
     """Default tweet scorer using simple heuristics.
 
-    This is a placeholder implementation that can be replaced
-    with a more sophisticated scoring model.
-
     Scoring factors (all configurable):
     - Media presence: +2.0
     - Team account: +1.5
@@ -230,48 +214,6 @@ class DefaultTweetScorer:
             score += self.length_weight * 0.5
 
         return score
-
-
-# =============================================================================
-# POSITION CLASSIFICATION
-# =============================================================================
-
-
-def classify_tweet_position(
-    posted_at: datetime,
-    game_start: datetime,
-    estimated_duration_minutes: int = 150,
-) -> TweetPosition:
-    """Classify a tweet's position within the game.
-
-    Divides game into thirds for distribution preference:
-    - EARLY: First third of game
-    - MID: Middle third
-    - LATE: Final third
-
-    Args:
-        posted_at: When the tweet was posted
-        game_start: Game start time
-        estimated_duration_minutes: Estimated game length
-
-    Returns:
-        TweetPosition enum value
-    """
-    elapsed = (posted_at - game_start).total_seconds()
-    duration_seconds = estimated_duration_minutes * 60
-
-    if elapsed < 0:
-        # Pregame tweets count as EARLY
-        return TweetPosition.EARLY
-
-    ratio = elapsed / duration_seconds if duration_seconds > 0 else 0
-
-    if ratio < 0.33:
-        return TweetPosition.EARLY
-    elif ratio < 0.67:
-        return TweetPosition.MID
-    else:
-        return TweetPosition.LATE
 
 
 # =============================================================================
@@ -354,7 +296,7 @@ def assign_tweets_to_blocks_by_time(
 
 
 # =============================================================================
-# TASK 4.1: EMBEDDED TWEET SELECTION
+# EMBEDDED TWEET SELECTION
 # =============================================================================
 
 
@@ -385,7 +327,6 @@ def select_embedded_tweets(
             tweets=[],
             total_candidates=0,
             selection_method="none",
-            distribution={},
         )
 
     # Score all tweets
@@ -415,8 +356,6 @@ def select_embedded_tweets(
             continue
 
         score = scorer.score(tweet)
-        # Position classification kept for backward compat on ScoredTweet
-        position = classify_tweet_position(posted_at, game_start)
 
         scored_tweet = ScoredTweet(
             tweet_id=tweet_id,
@@ -425,7 +364,6 @@ def select_embedded_tweets(
             author=tweet.get("author") or tweet.get("source_handle", ""),
             phase=tweet.get("phase", "unknown"),
             score=score,
-            position=position,
             has_media=bool(tweet.get("has_media") or tweet.get("media_type")),
             media_type=tweet.get("media_type"),
             engagement=tweet.get("engagement", 0),
@@ -438,218 +376,12 @@ def select_embedded_tweets(
 
     # Sort by time for deterministic ordering
     scored_tweets.sort(key=lambda t: t.posted_at)
-    distribution = _compute_distribution(scored_tweets)
 
     return EmbeddedTweetSelection(
         tweets=scored_tweets,
         total_candidates=total_candidates,
         selection_method="scored",
-        distribution=distribution,
     )
-
-
-def _select_with_distribution(
-    tweets: list[ScoredTweet],
-    max_count: int,
-) -> list[ScoredTweet]:
-    """Select tweets with distribution preference across positions.
-
-    Tries to include at least one tweet from each position (EARLY, MID, LATE)
-    if available, then fills remaining slots by score.
-
-    Args:
-        tweets: Scored tweets to select from
-        max_count: Maximum number to select
-
-    Returns:
-        List of selected tweets
-    """
-    # Group by position
-    by_position: dict[TweetPosition, list[ScoredTweet]] = {
-        TweetPosition.EARLY: [],
-        TweetPosition.MID: [],
-        TweetPosition.LATE: [],
-    }
-    for tweet in tweets:
-        by_position[tweet.position].append(tweet)
-
-    # Sort each group by score descending
-    for position in by_position:
-        by_position[position].sort(key=lambda t: t.score, reverse=True)
-
-    selected: list[ScoredTweet] = []
-    used_ids: set[int] = set()
-
-    # Phase 1: Pick best from each position (distribution preference)
-    for position in [TweetPosition.EARLY, TweetPosition.MID, TweetPosition.LATE]:
-        if len(selected) >= max_count:
-            break
-        if by_position[position]:
-            top = by_position[position][0]
-            selected.append(top)
-            used_ids.add(top.tweet_id)
-
-    # Phase 2: Fill remaining slots with highest scores
-    if len(selected) < max_count:
-        # Combine remaining tweets from all positions
-        remaining = [
-            t for t in tweets if t.tweet_id not in used_ids
-        ]
-        remaining.sort(key=lambda t: t.score, reverse=True)
-
-        for tweet in remaining:
-            if len(selected) >= max_count:
-                break
-            selected.append(tweet)
-            used_ids.add(tweet.tweet_id)
-
-    return selected
-
-
-def _compute_distribution(tweets: list[ScoredTweet]) -> dict[str, int]:
-    """Compute position distribution of selected tweets."""
-    distribution: dict[str, int] = {
-        TweetPosition.EARLY.value: 0,
-        TweetPosition.MID.value: 0,
-        TweetPosition.LATE.value: 0,
-    }
-    for tweet in tweets:
-        distribution[tweet.position.value] += 1
-    return distribution
-
-
-# =============================================================================
-# TASK 4.2: HARD CAP ENFORCEMENT
-# =============================================================================
-
-
-def enforce_embedded_caps(
-    selected_tweets: list[ScoredTweet],
-    block_count: int,
-) -> list[BlockTweetAssignment]:
-    """Enforce hard caps on embedded tweets.
-
-    Hard rules:
-    - Max 1 embedded tweet per block
-    - Max 5 embedded tweets per game
-    - Tweets never create/split blocks
-
-    Algorithm:
-    1. Limit tweets to min(block_count, MAX_EMBEDDED_TWEETS)
-    2. Assign highest-scored tweets to blocks by position affinity
-    3. Each block gets at most 1 tweet
-
-    Args:
-        selected_tweets: Pre-selected tweets (from select_embedded_tweets)
-        block_count: Number of narrative blocks
-
-    Returns:
-        List of BlockTweetAssignment (one per block)
-    """
-    # Initialize assignments (one per block, all None initially)
-    assignments: list[BlockTweetAssignment] = [
-        BlockTweetAssignment(block_index=i, tweet=None)
-        for i in range(block_count)
-    ]
-
-    if not selected_tweets or block_count == 0:
-        return assignments
-
-    # Enforce hard caps
-    max_assignable = min(block_count, MAX_EMBEDDED_TWEETS, len(selected_tweets))
-
-    # Sort tweets by score descending for priority
-    sorted_tweets = sorted(selected_tweets, key=lambda t: t.score, reverse=True)
-
-    # Take only top max_assignable tweets
-    tweets_to_assign = sorted_tweets[:max_assignable]
-
-    # Assign tweets to blocks based on position affinity
-    # EARLY -> first blocks, MID -> middle blocks, LATE -> last blocks
-    assigned_blocks: set[int] = set()
-    assigned_tweets: set[int] = set()
-
-    for tweet in tweets_to_assign:
-        if len(assigned_blocks) >= block_count:
-            break
-
-        # Find best block for this tweet's position
-        target_block = _find_target_block(
-            tweet.position,
-            block_count,
-            assigned_blocks,
-        )
-
-        if target_block is not None:
-            assignments[target_block] = BlockTweetAssignment(
-                block_index=target_block,
-                tweet=tweet,
-            )
-            assigned_blocks.add(target_block)
-            assigned_tweets.add(tweet.tweet_id)
-
-    logger.info(
-        "embedded_tweets_assigned",
-        extra={
-            "block_count": block_count,
-            "tweets_available": len(selected_tweets),
-            "tweets_assigned": len(assigned_blocks),
-            "max_assignable": max_assignable,
-        },
-    )
-
-    return assignments
-
-
-def _find_target_block(
-    position: TweetPosition,
-    block_count: int,
-    assigned_blocks: set[int],
-) -> int | None:
-    """Find the best block index for a tweet's position.
-
-    Position mapping:
-    - EARLY: Prefer first third of blocks
-    - MID: Prefer middle third of blocks
-    - LATE: Prefer last third of blocks
-
-    Falls back to any available block if preferred range is full.
-
-    Args:
-        position: Tweet position (EARLY/MID/LATE)
-        block_count: Total number of blocks
-        assigned_blocks: Already assigned block indices
-
-    Returns:
-        Best available block index, or None if all assigned
-    """
-    if block_count == 0:
-        return None
-
-    # Calculate preferred ranges
-    third = block_count / 3
-
-    if position == TweetPosition.EARLY:
-        preferred_start = 0
-        preferred_end = max(1, int(third))
-    elif position == TweetPosition.MID:
-        preferred_start = max(1, int(third))
-        preferred_end = min(block_count, int(2 * third) + 1)
-    else:  # LATE
-        preferred_start = max(0, int(2 * third))
-        preferred_end = block_count
-
-    # Try preferred range first
-    for i in range(preferred_start, preferred_end):
-        if i not in assigned_blocks:
-            return i
-
-    # Fall back to any available block
-    for i in range(block_count):
-        if i not in assigned_blocks:
-            return i
-
-    return None
 
 
 def apply_embedded_tweets_to_blocks(

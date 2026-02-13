@@ -447,8 +447,8 @@ class TestComputeCumulativeBoxScore:
         assert len(result["away"]["players"]) == 1
         assert result["away"]["players"][0]["name"] == "LeBron James"
 
-    def test_fallback_name_matching(self):
-        """Falls back to name matching when abbreviations not provided."""
+    def test_no_abbreviations_skips_players(self):
+        """Players are skipped when team abbreviations are not provided."""
         events = [
             {
                 "play_index": 1,
@@ -460,8 +460,7 @@ class TestComputeCumulativeBoxScore:
                 "away_score": 0,
             },
         ]
-        # No abbreviations provided - should fall back to name matching
-        # ATL is in "Atlanta Hawks", so it should match
+        # No abbreviations provided — player can't be assigned to a side
         result = compute_cumulative_box_score(
             events,
             1,
@@ -469,8 +468,8 @@ class TestComputeCumulativeBoxScore:
             "Miami Heat",
             "NBA",
         )
-        assert len(result["home"]["players"]) == 1
-        assert result["home"]["players"][0]["name"] == "Trae Young"
+        assert len(result["home"]["players"]) == 0
+        assert len(result["away"]["players"]) == 0
 
     def test_case_insensitive_matching(self):
         """Abbreviation matching is case-insensitive."""
