@@ -205,13 +205,15 @@ class TestSelectEmbeddedTweets:
         assert len(result.tweets) == 0
         assert result.total_candidates == 0
 
-    def test_selects_up_to_max(self, game_start, sample_tweets):
-        """Selects at most MAX_EMBEDDED_TWEETS."""
+    def test_scores_all_candidates(self, game_start, sample_tweets):
+        """Scores all valid candidates."""
         result = select_embedded_tweets(sample_tweets, game_start)
-        assert len(result.tweets) <= MAX_EMBEDDED_TWEETS
+        # All valid tweets are scored (those with text and posted_at)
+        assert result.total_candidates > 0
+        assert len(result.tweets) == result.total_candidates
 
-    def test_fewer_than_min_selects_all(self, game_start):
-        """If fewer than preferred minimum, selects all."""
+    def test_single_tweet_scored(self, game_start):
+        """Single tweet is scored and returned."""
         single_tweet = [
             {
                 "id": 1,
@@ -223,7 +225,7 @@ class TestSelectEmbeddedTweets:
         ]
         result = select_embedded_tweets(single_tweet, game_start)
         assert len(result.tweets) == 1
-        assert result.selection_method == "all_available"
+        assert result.selection_method == "scored"
 
     def test_distribution_preference(self, game_start, sample_tweets):
         """Selection prefers distribution across positions."""

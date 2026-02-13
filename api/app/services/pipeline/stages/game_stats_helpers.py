@@ -54,6 +54,46 @@ def _extract_assister_from_description(desc: str) -> str | None:
     return None
 
 
+def _compute_single_team_delta(
+    curr_home: int,
+    curr_away: int,
+    prev_home: int,
+    prev_away: int,
+    team_abbreviation: str = "",
+    home_team_abbrev: str = "",
+    away_team_abbrev: str = "",
+) -> int:
+    """Compute score delta for a single team's scoring play.
+
+    Uses per-team deltas instead of combined total to avoid
+    attributing the other team's points to the current player.
+    When both teams' scores change (dropped events), uses team
+    matching to pick the right delta, or returns 0 if ambiguous.
+    """
+    home_delta = curr_home - prev_home
+    away_delta = curr_away - prev_away
+
+    # Only one team scored — unambiguous
+    if home_delta > 0 and away_delta == 0:
+        return home_delta
+    if away_delta > 0 and home_delta == 0:
+        return away_delta
+
+    # Both teams' scores changed — try team matching
+    if home_delta > 0 and away_delta > 0:
+        if team_abbreviation and home_team_abbrev:
+            team_upper = team_abbreviation.upper()
+            if team_upper == home_team_abbrev.upper():
+                return home_delta
+            if team_upper == away_team_abbrev.upper():
+                return away_delta
+        # Can't determine — skip attribution
+        return 0
+
+    # No score change or score decreased
+    return 0
+
+
 def compute_running_player_stats(
     pbp_events: list[dict[str, Any]],
     up_to_play_index: int,
@@ -90,9 +130,15 @@ def compute_running_player_stats(
         original_desc = event.get("description") or ""
 
         # Track scores for delta detection
-        curr_home = event.get("home_score") or prev_home
-        curr_away = event.get("away_score") or prev_away
-        score_delta = (curr_home + curr_away) - (prev_home + prev_away)
+        curr_home = event.get("home_score")
+        if curr_home is None:
+            curr_home = prev_home
+        curr_away = event.get("away_score")
+        if curr_away is None:
+            curr_away = prev_away
+        score_delta = _compute_single_team_delta(
+            curr_home, curr_away, prev_home, prev_away,
+        )
 
         if not player:
             prev_home = curr_home
@@ -383,6 +429,10 @@ def compute_cumulative_box_score(
     player_stats: dict[str, dict[str, Any]] = {}
     player_teams: dict[str, str] = {}  # player_name -> team_abbrev
 
+    # Normalize abbreviations for team matching in score delta
+    home_abbrev_upper = home_team_abbrev.upper() if home_team_abbrev else ""
+    away_abbrev_upper = away_team_abbrev.upper() if away_team_abbrev else ""
+
     # Get final scores up to this point
     home_score = 0
     away_score = 0
@@ -394,14 +444,24 @@ def compute_cumulative_box_score(
             break
 
         # Track scores
-        curr_home = event.get("home_score") or prev_home
-        curr_away = event.get("away_score") or prev_away
+        curr_home = event.get("home_score")
+        if curr_home is None:
+            curr_home = prev_home
+        curr_away = event.get("away_score")
+        if curr_away is None:
+            curr_away = prev_away
         home_score = curr_home
         away_score = curr_away
-        score_delta = (curr_home + curr_away) - (prev_home + prev_away)
+
+        team_abbrev = event.get("team_abbreviation", "")
+        score_delta = _compute_single_team_delta(
+            curr_home, curr_away, prev_home, prev_away,
+            team_abbreviation=team_abbrev,
+            home_team_abbrev=home_abbrev_upper,
+            away_team_abbrev=away_abbrev_upper,
+        )
 
         player = event.get("player_name")
-        team_abbrev = event.get("team_abbreviation", "")
 
         if not player:
             prev_home = curr_home
@@ -470,10 +530,6 @@ def compute_cumulative_box_score(
     # Match by abbreviation (preferred) or fall back to name matching
     home_players: list[dict[str, Any]] = []
     away_players: list[dict[str, Any]] = []
-
-    # Normalize abbreviations for matching
-    home_abbrev_upper = home_team_abbrev.upper() if home_team_abbrev else ""
-    away_abbrev_upper = away_team_abbrev.upper() if away_team_abbrev else ""
 
     for player_name, stats in player_stats.items():
         team_abbrev = player_teams.get(player_name, "")
