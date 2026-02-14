@@ -19,6 +19,8 @@ from app.services.pipeline.stages.render_prompts import (
     build_block_prompt,
     build_game_flow_pass_prompt,
     GAME_FLOW_PASS_PROMPT,
+    _format_lead_line,
+    _format_contributors_line,
 )
 from app.services.pipeline.stages.block_types import (
     SemanticRole,

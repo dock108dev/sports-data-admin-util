@@ -9,6 +9,7 @@ from typing import Any
 
 from .render_validation import FORBIDDEN_WORDS
 from .render_helpers import detect_overtime_info
+from .game_stats_helpers import compute_lead_context
 
 
 # Game-level flow pass prompt - intentionally tight and low-token
@@ -31,6 +32,89 @@ Rules:
 If a block already flows well, make minimal changes.
 
 Return JSON: {"blocks": [{"i": block_index, "n": "revised narrative"}]}"""
+
+
+def _format_lead_line(
+    score_before: list[int],
+    score_after: list[int],
+    home_team: str,
+    away_team: str,
+) -> str | None:
+    """Format a lead/margin context line for a block prompt.
+
+    Returns a string like "Lead: Hawks extend the lead to 8" or None
+    if there was no scoring change in the block.
+    """
+    ctx = compute_lead_context(score_before, score_after, home_team, away_team)
+    desc = ctx.get("margin_description")
+    if not desc:
+        return None
+
+    lead_after = ctx["lead_after"]
+    lead_before = ctx["lead_before"]
+
+    # Determine which team drove the scoring change
+    if lead_after > lead_before:
+        actor = home_team
+    else:
+        actor = away_team
+
+    return f"Lead: {actor} {desc}"
+
+
+def _format_contributors_line(
+    mini_box: dict[str, Any] | None,
+    league_code: str,
+) -> str | None:
+    """Format a contributors line from block mini_box data.
+
+    Reads blockStars and matches to player delta stats.
+    NBA/NCAAB: "Contributors: Young +6 pts, Tatum +5 pts"
+    NHL: "Contributors: Pastrnak +1g/+1a, Marchand +1g"
+
+    Returns None if mini_box is None, empty, or has no block stars.
+    """
+    if not mini_box:
+        return None
+
+    block_stars = mini_box.get("blockStars", [])
+    if not block_stars:
+        return None
+
+    # Build lookup from last name -> player dict
+    all_players: dict[str, dict[str, Any]] = {}
+    for side in ("home", "away"):
+        team_data = mini_box.get(side, {})
+        for player in team_data.get("players", []):
+            name = player.get("name", "")
+            last_name = name.split()[-1] if " " in name else name
+            all_players[last_name] = player
+
+    parts: list[str] = []
+    for star in block_stars:
+        player = all_players.get(star)
+        if not player:
+            continue
+
+        if league_code == "NHL":
+            g = player.get("deltaGoals", 0)
+            a = player.get("deltaAssists", 0)
+            stat_parts = []
+            if g:
+                stat_parts.append(f"+{g}g")
+            if a:
+                stat_parts.append(f"+{a}a")
+            if stat_parts:
+                parts.append(f"{star} {'/'.join(stat_parts)}")
+        else:  # NBA / NCAAB
+            delta_pts = player.get("deltaPts", 0)
+            if delta_pts:
+                parts.append(f"{star} +{delta_pts} pts")
+
+    if not parts:
+        return None
+
+    return f"Contributors: {', '.join(parts)}"
 
 
 def build_game_flow_pass_prompt(
@@ -165,6 +249,13 @@ def build_block_prompt(
         "- Describe ACTIONS, not statistics",
         "- Keep individual sentences concise (under 30 words each)",
         "",
+        "CONTEXTUAL DATA USAGE:",
+        "- [Lead:] lines describe how the lead/deficit changed during this block",
+        "  Weave naturally: 'extending the lead to 8' or 'pulling within 3'",
+        "- [Contributors:] lines show who drove the scoring in this block",
+        "  Integrate naturally: mention these players' actions, not their stat lines",
+        "- Do NOT quote these lines verbatim - use them as narrative fuel",
+        "",
         "FORBIDDEN WORDS (do not use):",
         ", ".join(FORBIDDEN_WORDS),
         "",
@@ -222,6 +313,17 @@ def build_block_prompt(
             prompt_parts.append(f"*** ENTERS {ot_info['ot_label'].upper()} - MUST mention going to {ot_info['ot_label']} ***")
         elif ot_info["has_overtime"] and not ot_info["enters_overtime"]:
             prompt_parts.append(f"(In {ot_info['ot_label']})")
+
+        # Lead/margin context
+        lead_line = _format_lead_line(score_before, score_after, home_team, away_team)
+        if lead_line:
+            prompt_parts.append(lead_line)
+
+        # Block star contributors
+        mini_box = block.get("mini_box")
+        contributors_line = _format_contributors_line(mini_box, league_code)
+        if contributors_line:
+            prompt_parts.append(contributors_line)
 
         if key_plays_desc:
             prompt_parts.append("Key plays:")
