@@ -107,7 +107,7 @@ _PINNACLE_MAINLINE_NBA_NHL = EVStrategyConfig(
     strategy_name="pinnacle_devig",
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
-    max_reference_staleness_seconds=21600,  # 6 hours — odds sync every 30 min
+    max_reference_staleness_seconds=3600,  # 1 hour
     confidence_tier=ConfidenceTier.HIGH,
     allow_longshots=False,
 )
@@ -116,7 +116,7 @@ _PINNACLE_MAINLINE_NCAAB = EVStrategyConfig(
     strategy_name="pinnacle_devig",
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
-    max_reference_staleness_seconds=21600,  # 6 hours — odds sync every 30 min
+    max_reference_staleness_seconds=1800,  # 30 minutes
     confidence_tier=ConfidenceTier.MEDIUM,
     allow_longshots=False,
 )
@@ -125,7 +125,7 @@ _PINNACLE_PLAYER_PROP = EVStrategyConfig(
     strategy_name="pinnacle_devig",
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
-    max_reference_staleness_seconds=21600,  # 6 hours — odds sync every 30 min
+    max_reference_staleness_seconds=1800,  # 30 minutes
     confidence_tier=ConfidenceTier.LOW,
     allow_longshots=False,
 )
@@ -134,7 +134,7 @@ _PINNACLE_TEAM_PROP = EVStrategyConfig(
     strategy_name="pinnacle_devig",
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
-    max_reference_staleness_seconds=21600,  # 6 hours — odds sync every 30 min
+    max_reference_staleness_seconds=1800,  # 30 minutes
     confidence_tier=ConfidenceTier.MEDIUM,
     allow_longshots=False,
 )
@@ -143,7 +143,7 @@ _PINNACLE_ALTERNATE = EVStrategyConfig(
     strategy_name="pinnacle_devig",
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
-    max_reference_staleness_seconds=21600,  # 6 hours — odds sync every 30 min
+    max_reference_staleness_seconds=1800,  # 30 minutes
     confidence_tier=ConfidenceTier.LOW,
     allow_longshots=False,
 )

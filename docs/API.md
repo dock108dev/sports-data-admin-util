@@ -968,7 +968,7 @@ Source: NBA CDN API (`cdn.nba.com`). All values are integers unless noted.
 }
 ```
 
-> **Note:** Games ingested before 2026-02-13 may only contain `points`, `rebounds`, `assists`, `turnovers` (the CDN API parser was updated to capture all available fields).
+> **Note:** NBA team stats include all fields above. Older games may only contain `points`, `rebounds`, `assists`, `turnovers`.
 
 #### NCAAB Team Stats JSONB (`stats` field)
 
@@ -995,7 +995,7 @@ Source: CBB Stats API. Keys use camelCase from the upstream API.
 }
 ```
 
-> **Note:** Exact keys depend on CBB API response per game. All non-null stat fields from the API are stored. Metadata keys (`teamId`, `gameId`, `isHome`, `season`, etc.) are filtered out. Games ingested before 2026-02-13 via the single-game path may contain metadata keys in the stats JSONB.
+> **Note:** Exact keys depend on CBB API response per game. All non-null stat fields from the API are stored. Metadata keys (`teamId`, `gameId`, `isHome`, `season`, etc.) are filtered out.
 
 ---
 
@@ -1046,7 +1046,7 @@ Source: NBA CDN API. All values are integers.
 }
 ```
 
-> **Note:** `offensive_rebounds`, `defensive_rebounds`, and `personal_fouls` were added 2026-02-13. Older player records have only the 10 fields above them.
+> **Note:** `offensive_rebounds`, `defensive_rebounds`, and `personal_fouls` are present on all current player records.
 
 #### NCAAB Player `rawStats` JSONB
 

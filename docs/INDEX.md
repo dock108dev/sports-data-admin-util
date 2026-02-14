@@ -44,6 +44,13 @@
 |-------|-------------|
 | [Server-Side Migration](SERVER_SIDE_MIGRATION.md) | Completed architecture reference: 6 phases of server-side computation |
 
+## FairBet & EV
+
+| Guide | Description |
+|-------|-------------|
+| [EV Lifecycle](EV_LIFECYCLE.md) | End-to-end EV computation: ingestion → grouping → eligibility → devig → annotation |
+| [EV Infrastructure Review](EV_INFRASTRUCTURE_REVIEW.md) | Codebase review: assumptions, gaps, open questions |
+
 ## Data Ingestion
 
 | Guide | Description |

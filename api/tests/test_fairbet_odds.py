@@ -85,6 +85,8 @@ class TestFairbetOddsResponseModel:
             bets=[],
             total=0,
             books_available=[],
+            market_categories_available=[],
+            games_available=[],
         )
         assert response.total == 0
         assert len(response.bets) == 0
@@ -107,6 +109,8 @@ class TestFairbetOddsResponseModel:
             ],
             total=1,
             books_available=["DraftKings", "FanDuel"],
+            market_categories_available=["mainline"],
+            games_available=[],
         )
         assert response.total == 1
         assert len(response.books_available) == 2
@@ -256,8 +260,28 @@ class TestGetFairbetOddsEndpoint:
         row.book = "DraftKings"
         row.price = -110
         row.observed_at = datetime.now(timezone.utc)
+        row.market_category = "mainline"
+        row.player_name = None
         row.game = mock_game
         return row
+
+    def _call_kwargs(self, session, **overrides):
+        """Build kwargs for get_fairbet_odds with all params explicit."""
+        defaults = {
+            "session": session,
+            "league": None,
+            "market_category": None,
+            "game_id": None,
+            "book": None,
+            "player_name": None,
+            "min_ev": None,
+            "has_fair": None,
+            "sort_by": "ev",
+            "limit": 100,
+            "offset": 0,
+        }
+        defaults.update(overrides)
+        return defaults
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_bets(self, mock_session):
@@ -267,12 +291,7 @@ class TestGetFairbetOddsEndpoint:
             {'scalar': 0},  # Count query
         ])
 
-        response = await get_fairbet_odds(
-            session=mock_session,
-            league=None,
-            limit=100,
-            offset=0,
-        )
+        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
         assert response.total == 0
         assert response.bets == []
@@ -290,20 +309,19 @@ class TestGetFairbetOddsEndpoint:
         mock_row2.book = "FanDuel"
         mock_row2.price = -108
         mock_row2.observed_at = datetime.now(timezone.utc)
+        mock_row2.market_category = "mainline"
+        mock_row2.player_name = None
         mock_row2.game = mock_odds_row.game
 
         self._mock_execute_chain(mock_session, [
             {'scalar': 1},  # Count query
             {'scalars_all': [mock_odds_row, mock_row2]},  # Main data query
             {'all': [("DraftKings",), ("FanDuel",)]},  # Books query
+            {'all': [("mainline",)]},  # Categories query
+            {'scalars_all': []},  # Games dropdown query
         ])
 
-        response = await get_fairbet_odds(
-            session=mock_session,
-            league=None,
-            limit=100,
-            offset=0,
-        )
+        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
         assert response.total == 1
         assert len(response.bets) == 1
@@ -315,15 +333,17 @@ class TestGetFairbetOddsEndpoint:
         """Books within a bet are sorted by best odds first."""
         # Create multiple books with different odds
         rows = []
-        for book, price in [("BookA", -115), ("BookB", -105), ("BookC", -110)]:
+        for book_name, price in [("BookA", -115), ("BookB", -105), ("BookC", -110)]:
             row = MagicMock()
             row.game_id = 1
             row.market_key = "spreads"
             row.selection_key = "team:los_angeles_lakers"
             row.line_value = -3.5
-            row.book = book
+            row.book = book_name
             row.price = price
             row.observed_at = datetime.now(timezone.utc)
+            row.market_category = "mainline"
+            row.player_name = None
             row.game = mock_odds_row.game
             rows.append(row)
 
@@ -331,14 +351,11 @@ class TestGetFairbetOddsEndpoint:
             {'scalar': 1},  # Count query
             {'scalars_all': rows},  # Main data query
             {'all': [("BookA",), ("BookB",), ("BookC",)]},  # Books query
+            {'all': [("mainline",)]},  # Categories query
+            {'scalars_all': []},  # Games dropdown query
         ])
 
-        response = await get_fairbet_odds(
-            session=mock_session,
-            league=None,
-            limit=100,
-            offset=0,
-        )
+        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
         # Books should be sorted by best odds first
         books = response.bets[0].books
@@ -353,12 +370,7 @@ class TestGetFairbetOddsEndpoint:
             {'scalar': 0},  # Count query returns 0
         ])
 
-        await get_fairbet_odds(
-            session=mock_session,
-            league=None,
-            limit=50,
-            offset=0,
-        )
+        await get_fairbet_odds(**self._call_kwargs(mock_session, limit=50))
 
         # Verify execute was called (count query)
         # The helper tracks call_count
@@ -371,12 +383,7 @@ class TestGetFairbetOddsEndpoint:
             {'scalar': 0},  # Count query returns 0
         ])
 
-        await get_fairbet_odds(
-            session=mock_session,
-            league="NBA",
-            limit=100,
-            offset=0,
-        )
+        await get_fairbet_odds(**self._call_kwargs(mock_session, league="NBA"))
 
         # Verify execute was called with league filter
         assert hasattr(mock_session.execute, 'call_count')
@@ -388,14 +395,11 @@ class TestGetFairbetOddsEndpoint:
             {'scalar': 1},  # Count query
             {'scalars_all': [mock_odds_row]},  # Main data query
             {'all': [("DraftKings",)]},  # Books query
+            {'all': [("mainline",)]},  # Categories query
+            {'scalars_all': []},  # Games dropdown query
         ])
 
-        response = await get_fairbet_odds(
-            session=mock_session,
-            league=None,
-            limit=100,
-            offset=0,
-        )
+        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
         bet = response.bets[0]
         assert bet.game_id == 1
@@ -469,6 +473,8 @@ class TestResponseStructure:
             ],
             total=1,
             books_available=["DraftKings"],
+            market_categories_available=["mainline"],
+            games_available=[],
         )
 
         # Serialize to dict
