@@ -188,8 +188,14 @@ async def get_fairbet_odds(
             market_categories_available=[], games_available=[],
         )
 
-    # Step 2: Get paginated bet definitions using CTE
-    paginated_bets_cte = (
+    # When post-annotation filters are active (has_fair, min_ev), we must fetch
+    # ALL bet definitions, annotate, filter, then paginate in Python.  Otherwise
+    # DB-level pagination would silently drop matching bets from other pages and
+    # report a total that doesn't reflect the filter.
+    needs_post_filter = has_fair is not None or min_ev is not None
+
+    # Step 2: Get bet definitions using CTE (skip DB pagination when post-filtering)
+    paginated_bets_q = (
         select(
             FairbetGameOddsWork.game_id,
             FairbetGameOddsWork.market_key,
@@ -205,9 +211,11 @@ async def get_fairbet_odds(
             FairbetGameOddsWork.selection_key,
             FairbetGameOddsWork.line_value,
         )
-        .limit(limit)
-        .offset(offset)
-    ).cte("paginated_bets")
+    )
+    if not needs_post_filter:
+        paginated_bets_q = paginated_bets_q.limit(limit).offset(offset)
+
+    paginated_bets_cte = paginated_bets_q.cte("paginated_bets")
 
     # Step 3: Join CTE back to get ALL books for paginated bet definitions
     # (don't filter by book here - we need all books for EV calculation)
@@ -448,20 +456,14 @@ async def get_fairbet_odds(
         bets_list.sort(key=lambda b: b.get("game_date") or datetime.min.replace(tzinfo=timezone.utc))
     elif sort_by == "market":
         bets_list.sort(key=lambda b: (b.get("market_key", ""), b.get("selection_key", "")))
-    else:
-        # Default: sort by price (best odds first)
-        for bet in bets_list:
-            bet["books"].sort(key=lambda b: -b.price)
-
     # Sort books within each bet by price (best odds first)
     for bet in bets_list:
         bet["books"].sort(key=lambda b: -b.price)
 
-    # Step 8: Apply has_fair filter (post-annotation)
+    # Step 8: Apply post-annotation filters and recalculate total/pagination
     if has_fair is not None:
         bets_list = [bet for bet in bets_list if bet.get("has_fair", False) == has_fair]
 
-    # Step 8b: Apply min_ev filter (post-annotation)
     if min_ev is not None:
         bets_list = [
             bet for bet in bets_list
@@ -470,6 +472,10 @@ async def get_fairbet_odds(
                 for b in bet["books"]
             )
         ]
+
+    if needs_post_filter:
+        total = len(bets_list)
+        bets_list = bets_list[offset:offset + limit]
 
     # Step 9: Apply book filter for display (but we needed all books for EV calc)
     if book:
