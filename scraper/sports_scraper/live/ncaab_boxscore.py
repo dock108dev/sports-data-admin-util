@@ -647,7 +647,7 @@ class NCAABBoxscoreFetcher:
             rebounds=parse_int(stats.get("totalRebounds")) or parse_int(stats.get("rebounds")),
             assists=parse_int(stats.get("assists")),
             turnovers=parse_int(stats.get("turnovers")),
-            raw_stats=stats,
+            raw_stats={k: v for k, v in stats.items() if v is not None},
         )
 
     def _parse_team_stats(
@@ -680,7 +680,7 @@ class NCAABBoxscoreFetcher:
             rebounds=parse_int(stats.get("totalRebounds")) or parse_int(stats.get("rebounds")),
             assists=parse_int(stats.get("assists")),
             turnovers=parse_int(stats.get("turnovers")),
-            raw_stats=stats,
+            raw_stats={k: v for k, v in stats.items() if v is not None},
         )
 
     def _parse_player_stats(

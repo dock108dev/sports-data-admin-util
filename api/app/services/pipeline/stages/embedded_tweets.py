@@ -26,11 +26,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Protocol, Sequence
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any, Protocol, Sequence
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+
+if TYPE_CHECKING:
+    from ....db import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -246,30 +248,60 @@ def assign_tweets_to_blocks_by_time(
 ) -> list[BlockTweetAssignment]:
     """Assign tweets to blocks by temporal matching.
 
-    For each block, compute its real-time window start from period_start.
-    Match each tweet to the block whose window contains its posted_at.
+    For each block, compute its real-time window from period_start.
+    When multiple blocks share the same period_start, the period's
+    real-time window is subdivided evenly so tweets distribute across
+    all blocks rather than collapsing to the last one.
+
     Per block: highest-scored tweet becomes the display tweet,
     remaining matches go into additional_tweets.
 
-    No global cap — every block with a temporal match gets a tweet.
+    After assignment, enforces MAX_EMBEDDED_TWEETS global cap:
+    if more than 5 blocks have display tweets, only the top 5 by
+    score are kept; the rest are demoted to additional_tweets.
     """
     if not blocks:
         return []
 
-    # 1. Compute block time window starts (ordered by block_index)
+    # 1. Compute block time window starts (ordered by window_start, block_index)
     block_starts: list[tuple[int, datetime]] = []
     for block in blocks:
         idx = block.get("block_index", len(block_starts))
         period = block.get("period_start", 1)
         window_start = _period_real_start(game_start, period, league_code)
         block_starts.append((idx, window_start))
-    block_starts.sort(key=lambda x: x[1])
+    block_starts.sort(key=lambda x: (x[1], x[0]))
 
-    # 2. Match each tweet to the last block whose start <= posted_at
-    block_tweets: dict[int, list[ScoredTweet]] = {bs[0]: [] for bs in block_starts}
+    # 2. Subdivide when blocks share the same window_start
+    groups: list[list[tuple[int, datetime]]] = []
+    for entry in block_starts:
+        if not groups or entry[1] != groups[-1][0][1]:
+            groups.append([entry])
+        else:
+            groups[-1].append(entry)
+
+    max_period = max(block.get("period_start", 1) for block in blocks)
+    final_end = _period_real_start(game_start, max_period + 1, league_code)
+
+    subdivided: list[tuple[int, datetime]] = []
+    for g_idx, group in enumerate(groups):
+        if len(group) == 1:
+            subdivided.append(group[0])
+            continue
+        group_start = group[0][1]
+        group_end = groups[g_idx + 1][0][1] if g_idx + 1 < len(groups) else final_end
+        span = (group_end - group_start).total_seconds()
+        for k, (block_idx, _) in enumerate(group):
+            sub_start = group_start + timedelta(seconds=k * span / len(group))
+            subdivided.append((block_idx, sub_start))
+
+    subdivided.sort(key=lambda x: (x[1], x[0]))
+
+    # 3. Match each tweet to the last block whose start <= posted_at
+    block_tweets: dict[int, list[ScoredTweet]] = {bs[0]: [] for bs in subdivided}
     for tweet in scored_tweets:
         target: int | None = None
-        for block_idx, window_start in block_starts:
+        for block_idx, window_start in subdivided:
             if tweet.posted_at >= window_start:
                 target = block_idx
             else:
@@ -277,7 +309,7 @@ def assign_tweets_to_blocks_by_time(
         if target is not None:
             block_tweets[target].append(tweet)
 
-    # 3. Per block, pick highest-scored tweet as display, rest as additional
+    # 4. Per block, pick highest-scored tweet as display, rest as additional
     assignments = [
         BlockTweetAssignment(block_index=i, tweet=None)
         for i in range(len(blocks))
@@ -291,6 +323,18 @@ def assign_tweets_to_blocks_by_time(
             tweet=ranked[0],
             additional_tweets=ranked[1:],
         )
+
+    # 5. Enforce global cap: at most MAX_EMBEDDED_TWEETS blocks with display tweets
+    display_blocks = [
+        (a.block_index, a.tweet.score) for a in assignments if a.tweet is not None
+    ]
+    if len(display_blocks) > MAX_EMBEDDED_TWEETS:
+        display_blocks.sort(key=lambda x: x[1], reverse=True)
+        demoted_indices = {bi for bi, _ in display_blocks[MAX_EMBEDDED_TWEETS:]}
+        for a in assignments:
+            if a.block_index in demoted_indices and a.tweet is not None:
+                a.additional_tweets.insert(0, a.tweet)
+                a.tweet = None
 
     return assignments
 
@@ -475,7 +519,7 @@ def select_and_assign_embedded_tweets(
 
 
 async def load_and_attach_embedded_tweets(
-    session: "AsyncSession",
+    session: AsyncSession,
     game_id: int,
     blocks: list[dict[str, Any]],
     league_code: str = "NBA",
