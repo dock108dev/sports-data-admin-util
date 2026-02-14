@@ -132,6 +132,98 @@ def run_scheduled_ingestion() -> dict:
 
 
 @shared_task(
+    name="run_scheduled_props_sync",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def run_scheduled_props_sync() -> dict:
+    """Sync player/team props for all pregame games with event IDs.
+
+    Runs every 30 minutes (offset from mainline odds sync).
+    Queries today's pregame games that have an odds_api_event_id in external_ids,
+    groups by league, and calls sync_props per league.
+    """
+    from ..db import db_models, get_session
+    from ..odds.synchronizer import OddsSynchronizer
+    from ..config_sports import get_odds_enabled_leagues
+
+    from sqlalchemy import select, cast
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    leagues = get_odds_enabled_leagues()
+    sync = OddsSynchronizer()
+    results: dict = {}
+    total_props = 0
+
+    today = today_et()
+
+    logger.info(
+        "scheduled_props_sync_start",
+        leagues=leagues,
+        date=str(today),
+    )
+
+    with get_session() as session:
+        for league_code in leagues:
+            try:
+                # Find pregame games with odds_api_event_id
+                stmt = (
+                    select(db_models.SportsGame)
+                    .join(db_models.SportsLeague)
+                    .where(
+                        db_models.SportsLeague.code == league_code,
+                        db_models.SportsGame.status.in_(["scheduled", "pregame"]),
+                        db_models.SportsGame.external_ids["odds_api_event_id"].astext.isnot(None),
+                    )
+                )
+                games = session.execute(stmt).scalars().all()
+
+                event_ids = [
+                    g.external_ids["odds_api_event_id"]
+                    for g in games
+                    if g.external_ids.get("odds_api_event_id")
+                ]
+
+                if not event_ids:
+                    results[league_code] = {"props_count": 0, "status": "no_events"}
+                    logger.info(
+                        "props_sync_no_events",
+                        league=league_code,
+                    )
+                    continue
+
+                count = sync.sync_props(league_code, event_ids)
+                results[league_code] = {"props_count": count, "status": "success", "events": len(event_ids)}
+                total_props += count
+
+                logger.info(
+                    "scheduled_props_sync_league_complete",
+                    league=league_code,
+                    props_count=count,
+                    events=len(event_ids),
+                )
+            except Exception as exc:
+                results[league_code] = {"props_count": 0, "status": "error", "error": str(exc)}
+                logger.exception(
+                    "scheduled_props_sync_league_failed",
+                    league=league_code,
+                    error=str(exc),
+                )
+
+    logger.info(
+        "scheduled_props_sync_complete",
+        total_props=total_props,
+        results=results,
+    )
+
+    return {
+        "leagues": results,
+        "total_props": total_props,
+    }
+
+
+@shared_task(
     name="run_scheduled_odds_sync",
     autoretry_for=(Exception,),
     retry_backoff=True,

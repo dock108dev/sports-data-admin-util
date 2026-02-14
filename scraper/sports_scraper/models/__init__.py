@@ -10,6 +10,7 @@ from .schemas import (
     NormalizedPlayByPlay,
     NormalizedTeamBoxscore,
     TeamIdentity,
+    classify_market,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "NormalizedPlay",
     "NormalizedPlayByPlay",
     "IngestionConfig",
+    "classify_market",
 ]

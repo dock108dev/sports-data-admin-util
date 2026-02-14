@@ -18,7 +18,7 @@ import httpx
 
 from ..config import settings
 from ..logging import logger
-from ..models import NormalizedOddsSnapshot, TeamIdentity
+from ..models import NormalizedOddsSnapshot, TeamIdentity, classify_market
 from ..normalization import normalize_team_name
 
 # US sports use Eastern Time for game dates
@@ -41,6 +41,35 @@ MARKET_TYPES = {
 }
 
 # NHL uses "spreads" for puck lines; keep the canonical "spread" market type.
+
+# Sharp books used as reference for true probability / EV calculation
+SHARP_BOOKS = {"pinnacle", "betfair_ex_eu", "betfair_ex_uk", "betfair_ex_au", "matchbook", "novig"}
+
+# Exchange books (no vig built in, commission-based)
+EXCHANGE_BOOKS = {"betfair_ex_eu", "betfair_ex_uk", "betfair_ex_au", "matchbook", "smarkets", "novig", "betopenly"}
+
+# Prop market keys by sport
+PROP_MARKETS: dict[str, list[str]] = {
+    "NBA": [
+        "player_points", "player_rebounds", "player_assists", "player_threes",
+        "player_points_rebounds_assists", "player_blocks", "player_steals",
+        "team_totals", "alternate_spreads", "alternate_totals",
+    ],
+    "NCAAB": [
+        "player_points", "player_rebounds", "player_assists", "player_threes",
+        "player_points_rebounds_assists", "player_blocks", "player_steals",
+        "team_totals", "alternate_spreads", "alternate_totals",
+    ],
+    "NHL": [
+        "player_points", "player_goals", "player_assists",
+        "player_shots_on_goal", "player_total_saves",
+        "team_totals", "alternate_spreads", "alternate_totals",
+    ],
+}
+
+# Credit safety thresholds
+CREDIT_WARNING_THRESHOLD = 1000
+CREDIT_ABORT_THRESHOLD = 500
 
 # Default snapshot times for closing lines (in UTC)
 # Evening games typically close around these times
@@ -65,6 +94,8 @@ class OddsAPIClient:
         )
         # Cache directory for odds responses
         self._cache_dir = Path(settings.scraper_config.html_cache_dir) / "odds"
+        # Track remaining credits from API response headers
+        self._credits_remaining: int | None = None
 
     def _truncate_body(self, body: str | None, limit: int = 500) -> str | None:
         if not body:
@@ -155,9 +186,10 @@ class OddsAPIClient:
         start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
         end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
         
+        regions = ",".join(settings.odds_config.regions)
         params = {
             "apiKey": settings.odds_api_key,
-            "regions": "us",
+            "regions": regions,
             "markets": ",".join(MARKET_TYPES.keys()),
             "oddsFormat": "american",
             "commenceTimeFrom": start_datetime.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -230,9 +262,10 @@ class OddsAPIClient:
         snapshot_dt = datetime.combine(game_date, time(closing_hour, 0), tzinfo=timezone.utc)
         date_param = snapshot_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+        regions = ",".join(settings.odds_config.regions)
         params = {
             "apiKey": settings.odds_api_key,
-            "regions": "us",
+            "regions": regions,
             "markets": ",".join(MARKET_TYPES.keys()),
             "oddsFormat": "american",
             "date": date_param,
@@ -303,6 +336,9 @@ class OddsAPIClient:
         snapshots: list[NormalizedOddsSnapshot] = []
         
         for event in events:
+            # Store event ID for downstream prop fetching
+            event_id = event.get("id")
+
             # Parse commence_time as UTC
             commence_utc = datetime.fromisoformat(event["commence_time"].replace("Z", "+00:00"))
             # Convert to Eastern Time for date extraction (US sports use ET dates)
@@ -408,7 +444,196 @@ class OddsAPIClient:
                                 source_key=market.get("key"),
                                 is_closing_line=True,
                                 raw_payload=outcome,
+                                event_id=event_id,
                             )
                         )
         
+        return snapshots
+
+    def _track_credits(self, response: httpx.Response) -> int | None:
+        """Parse and track credit usage from API response headers.
+
+        Returns remaining credits or None if header not present.
+        """
+        remaining_str = response.headers.get("x-requests-remaining")
+        if remaining_str is not None:
+            try:
+                remaining = int(remaining_str)
+                self._credits_remaining = remaining
+
+                if remaining < CREDIT_WARNING_THRESHOLD:
+                    logger.warning(
+                        "odds_credits_low",
+                        remaining=remaining,
+                        used=response.headers.get("x-requests-used"),
+                        last_cost=response.headers.get("x-requests-last"),
+                    )
+                return remaining
+            except ValueError:
+                pass
+        return None
+
+    @property
+    def should_abort_props(self) -> bool:
+        """Check if prop sync should abort to preserve credits for mainlines."""
+        return (
+            self._credits_remaining is not None
+            and self._credits_remaining < CREDIT_ABORT_THRESHOLD
+        )
+
+    def fetch_event_props(
+        self,
+        league_code: str,
+        event_id: str,
+        markets: list[str] | None = None,
+    ) -> list[NormalizedOddsSnapshot]:
+        """Fetch prop odds for a single event.
+
+        Uses the /v4/sports/{sport}/events/{eventId}/odds endpoint.
+
+        Args:
+            league_code: League code (NBA, NHL, etc.)
+            event_id: Odds API event ID
+            markets: Optional list of prop market keys to fetch
+
+        Returns:
+            List of normalized odds snapshots for all prop markets.
+        """
+        if not settings.odds_api_key:
+            return []
+
+        sport_key = self._sport_key(league_code)
+        if not sport_key:
+            return []
+
+        if markets is None:
+            markets = PROP_MARKETS.get(league_code.upper(), [])
+        if not markets:
+            return []
+
+        # Check cache first
+        cache_path = self._cache_dir / league_code / f"props_{event_id}.json"
+        live_cache_ttl = settings.odds_config.live_odds_cache_ttl_seconds
+        cached = self._read_cache(cache_path, max_age_seconds=live_cache_ttl)
+        if cached is not None:
+            logger.debug("props_cache_hit", league=league_code, event_id=event_id)
+            return self._parse_prop_event(league_code, cached)
+
+        regions = ",".join(settings.odds_config.regions)
+        params = {
+            "apiKey": settings.odds_api_key,
+            "regions": regions,
+            "markets": ",".join(markets),
+            "oddsFormat": "american",
+        }
+
+        response = self.client.get(
+            f"/sports/{sport_key}/events/{event_id}/odds",
+            params=params,
+        )
+
+        # Track credits
+        self._track_credits(response)
+
+        if response.status_code != 200:
+            logger.error(
+                "props_api_error",
+                status=response.status_code,
+                event_id=event_id,
+                body=self._truncate_body(response.text),
+            )
+            return []
+
+        payload = response.json()
+        logger.info(
+            "props_api_response",
+            league=league_code,
+            event_id=event_id,
+            bookmaker_count=len(payload.get("bookmakers", [])),
+            remaining=response.headers.get("x-requests-remaining"),
+        )
+
+        # Cache the response
+        self._write_cache(cache_path, payload)
+
+        return self._parse_prop_event(league_code, payload)
+
+    def _parse_prop_event(
+        self,
+        league_code: str,
+        event_data: dict,
+    ) -> list[NormalizedOddsSnapshot]:
+        """Parse a single event's prop odds into normalized snapshots."""
+        snapshots: list[NormalizedOddsSnapshot] = []
+
+        event_id = event_data.get("id")
+        commence_str = event_data.get("commence_time")
+        if not commence_str:
+            return []
+
+        commence_utc = datetime.fromisoformat(commence_str.replace("Z", "+00:00"))
+        commence_et = commence_utc.astimezone(US_EASTERN)
+        game_date_et = datetime.combine(commence_et.date(), datetime.min.time(), tzinfo=US_EASTERN)
+        game_date = game_date_et.astimezone(timezone.utc)
+
+        raw_home_name = event_data.get("home_team", "")
+        raw_away_name = event_data.get("away_team", "")
+        home_canonical, home_abbr = normalize_team_name(league_code, raw_home_name)
+        away_canonical, away_abbr = normalize_team_name(league_code, raw_away_name)
+
+        home_team = TeamIdentity(
+            league_code=league_code,
+            name=home_canonical,
+            short_name=home_canonical,
+            abbreviation=home_abbr,
+        )
+        away_team = TeamIdentity(
+            league_code=league_code,
+            name=away_canonical,
+            short_name=away_canonical,
+            abbreviation=away_abbr,
+        )
+
+        for bookmaker in event_data.get("bookmakers", []):
+            for market in bookmaker.get("markets", []):
+                market_key = market.get("key", "")
+                market_category = classify_market(market_key)
+
+                for outcome in market.get("outcomes", []):
+                    side = outcome.get("name")
+                    price = outcome.get("price")
+                    line = outcome.get("point")
+                    description = outcome.get("description")
+
+                    if not side or price is None:
+                        continue
+
+                    # Extract player name from description field (props use this)
+                    player_name = description if market_category == "player_prop" else None
+
+                    snapshots.append(
+                        NormalizedOddsSnapshot(
+                            league_code=league_code,
+                            book=bookmaker["title"],
+                            market_type=market_key,
+                            side=side,
+                            line=line,
+                            price=price,
+                            observed_at=datetime.fromisoformat(
+                                bookmaker["last_update"].replace("Z", "+00:00")
+                            ),
+                            home_team=home_team,
+                            away_team=away_team,
+                            game_date=game_date,
+                            tip_time=commence_utc,
+                            source_key=market_key,
+                            is_closing_line=True,
+                            raw_payload=outcome,
+                            event_id=event_id,
+                            market_category=market_category,
+                            player_name=player_name,
+                            description=description,
+                        )
+                    )
+
         return snapshots

@@ -59,17 +59,21 @@ def build_selection_key(
     side: str | None,
     home_team_name: str,
     away_team_name: str,
+    player_name: str | None = None,
+    market_category: str = "mainline",
 ) -> str:
     """Build a deterministic, book-agnostic selection key.
 
     Args:
-        market_type: Canonical market type (moneyline, spread, total)
+        market_type: Canonical market type (moneyline, spread, total, or prop key)
         side: The side/outcome (team name, "Over", "Under", etc.)
         home_team_name: Home team name for context
         away_team_name: Away team name for context
+        player_name: Player name for player props
+        market_category: Market category (mainline, player_prop, etc.)
 
     Returns:
-        A selection key like "team:lakers" or "total:over"
+        A selection key like "team:lakers", "total:over", or "player:lebron_james:over"
     """
     if not side:
         return "unknown"
@@ -77,8 +81,18 @@ def build_selection_key(
     side_lower = side.lower()
     side_slug = slugify(side)
 
-    # Total bets: Over/Under
-    if market_type == "total":
+    # Player prop bets: player:{player_slug}:over/under
+    if market_category == "player_prop" and player_name:
+        player_slug = slugify(player_name)
+        if "over" in side_lower:
+            return f"player:{player_slug}:over"
+        elif "under" in side_lower:
+            return f"player:{player_slug}:under"
+        else:
+            return f"player:{player_slug}:{side_slug}"
+
+    # Total bets (mainline or team_prop): Over/Under
+    if market_type == "total" or market_category == "team_prop" or market_type.startswith("team_total"):
         if "over" in side_lower:
             return "total:over"
         elif "under" in side_lower:
@@ -138,6 +152,8 @@ def upsert_fairbet_odds(
         side=snapshot.side,
         home_team_name=snapshot.home_team.name,
         away_team_name=snapshot.away_team.name,
+        player_name=snapshot.player_name,
+        market_category=snapshot.market_category,
     )
 
     # Use source_key as market_key (e.g., "h2h", "spreads", "totals")
@@ -167,6 +183,8 @@ def upsert_fairbet_odds(
             book=snapshot.book,
             price=snapshot.price,
             observed_at=snapshot.observed_at,
+            market_category=snapshot.market_category,
+            player_name=snapshot.player_name,
             updated_at=now_utc(),
         )
         .on_conflict_do_update(
@@ -174,6 +192,8 @@ def upsert_fairbet_odds(
             set_={
                 "price": snapshot.price,
                 "observed_at": snapshot.observed_at,
+                "market_category": snapshot.market_category,
+                "player_name": snapshot.player_name,
                 "updated_at": now_utc(),
             },
         )
