@@ -224,12 +224,13 @@ def _backfill_tweets_for_game(game_id: int) -> dict:
     """
     import httpx
 
+    from ..api_client import get_api_headers
     from ..config import settings
 
     api_base = settings.api_internal_url
     url = f"{api_base}/api/admin/sports/pipeline/backfill-embedded-tweets"
 
-    with httpx.Client(timeout=30.0) as client:
+    with httpx.Client(timeout=30.0, headers=get_api_headers()) as client:
         response = client.post(url, params={"game_id": game_id})
         response.raise_for_status()
         result = response.json()

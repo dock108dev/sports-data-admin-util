@@ -347,6 +347,7 @@ def _backfill_embedded_tweets() -> dict:
     """
     import httpx
 
+    from ..api_client import get_api_headers
     from ..config import settings
 
     api_base = settings.api_internal_url
@@ -354,7 +355,7 @@ def _backfill_embedded_tweets() -> dict:
 
     logger.info("sweep_backfill_embedded_tweets_start")
 
-    with httpx.Client(timeout=30.0) as client:
+    with httpx.Client(timeout=30.0, headers=get_api_headers()) as client:
         response = client.post(url, params={"lookback_days": 7})
         response.raise_for_status()
         result = response.json()

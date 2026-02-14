@@ -19,6 +19,8 @@ from app.services.pipeline.stages.render_prompts import (
     build_block_prompt,
     build_game_flow_pass_prompt,
     GAME_FLOW_PASS_PROMPT,
+    _format_lead_line,
+    _format_contributors_line,
 )
 from app.services.pipeline.stages.block_types import (
     SemanticRole,
@@ -672,3 +674,227 @@ class TestOvertimeInPrompt:
 
         assert "MUST MENTION" in prompt.upper()
         assert "overtime" in prompt.lower()
+
+
+class TestFormatLeadLine:
+    """Tests for _format_lead_line helper."""
+
+    def test_home_takes_lead(self) -> None:
+        """Home team taking the lead produces correct line."""
+        result = _format_lead_line([0, 0], [5, 0], "Hawks", "Celtics")
+        assert result is not None
+        assert "Lead:" in result
+        assert "Hawks" in result
+        assert "5" in result
+
+    def test_away_takes_lead(self) -> None:
+        """Away team taking the lead produces correct line."""
+        result = _format_lead_line([0, 0], [0, 5], "Hawks", "Celtics")
+        assert result is not None
+        assert "Lead:" in result
+        assert "Celtics" in result
+
+    def test_tie_game(self) -> None:
+        """Score going to a tie produces tie description."""
+        result = _format_lead_line([5, 0], [5, 5], "Hawks", "Celtics")
+        assert result is not None
+        assert "Lead:" in result
+        assert "tie" in result.lower()
+
+    def test_no_change_returns_none(self) -> None:
+        """No scoring change returns None."""
+        result = _format_lead_line([10, 8], [10, 8], "Hawks", "Celtics")
+        assert result is None
+
+    def test_extend_lead(self) -> None:
+        """Extending a lead produces extend description."""
+        result = _format_lead_line([5, 2], [8, 2], "Hawks", "Celtics")
+        assert result is not None
+        assert "extend" in result.lower()
+        assert "Hawks" in result
+
+
+class TestFormatContributorsLine:
+    """Tests for _format_contributors_line helper."""
+
+    def test_none_mini_box_returns_none(self) -> None:
+        """None mini_box returns None."""
+        assert _format_contributors_line(None, "NBA") is None
+
+    def test_empty_mini_box_returns_none(self) -> None:
+        """Empty dict returns None."""
+        assert _format_contributors_line({}, "NBA") is None
+
+    def test_empty_stars_returns_none(self) -> None:
+        """Mini box with no blockStars returns None."""
+        mini_box = {
+            "blockStars": [],
+            "home": {"team": "Hawks", "players": []},
+            "away": {"team": "Celtics", "players": []},
+        }
+        assert _format_contributors_line(mini_box, "NBA") is None
+
+    def test_nba_format(self) -> None:
+        """NBA contributors formatted with pts."""
+        mini_box = {
+            "blockStars": ["Young", "Tatum"],
+            "home": {
+                "team": "Hawks",
+                "players": [
+                    {"name": "Trae Young", "deltaPts": 8, "pts": 18},
+                ],
+            },
+            "away": {
+                "team": "Celtics",
+                "players": [
+                    {"name": "Jayson Tatum", "deltaPts": 5, "pts": 12},
+                ],
+            },
+        }
+        result = _format_contributors_line(mini_box, "NBA")
+        assert result is not None
+        assert "Contributors:" in result
+        assert "Young +8 pts" in result
+        assert "Tatum +5 pts" in result
+
+    def test_nhl_format(self) -> None:
+        """NHL contributors formatted with goals and assists."""
+        mini_box = {
+            "blockStars": ["Pastrnak", "Marchand"],
+            "home": {
+                "team": "Bruins",
+                "players": [
+                    {"name": "David Pastrnak", "deltaGoals": 1, "deltaAssists": 1},
+                    {"name": "Brad Marchand", "deltaGoals": 1, "deltaAssists": 0},
+                ],
+            },
+            "away": {"team": "Rangers", "players": []},
+        }
+        result = _format_contributors_line(mini_box, "NHL")
+        assert result is not None
+        assert "Contributors:" in result
+        assert "Pastrnak +1g/+1a" in result
+        assert "Marchand +1g" in result
+
+    def test_star_not_in_players_skipped(self) -> None:
+        """Block star not found in player list is skipped."""
+        mini_box = {
+            "blockStars": ["Unknown"],
+            "home": {"team": "Hawks", "players": []},
+            "away": {"team": "Celtics", "players": []},
+        }
+        assert _format_contributors_line(mini_box, "NBA") is None
+
+
+class TestLeadAndContributorsInPrompt:
+    """Integration tests verifying lead and contributors lines in full prompt."""
+
+    def test_lead_line_appears_in_prompt(self) -> None:
+        """Lead context line appears in block prompt when scores change."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [12, 5],
+                "key_play_ids": [],
+            }
+        ]
+        game_context = {
+            "home_team_name": "Hawks",
+            "away_team_name": "Celtics",
+            "sport": "NBA",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+        assert "Lead:" in prompt
+
+    def test_contributors_line_appears_in_prompt(self) -> None:
+        """Contributors line appears when mini_box has block stars."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [],
+                "mini_box": {
+                    "blockStars": ["Young"],
+                    "home": {
+                        "team": "Hawks",
+                        "players": [
+                            {"name": "Trae Young", "deltaPts": 6, "pts": 6},
+                        ],
+                    },
+                    "away": {"team": "Celtics", "players": []},
+                },
+            }
+        ]
+        game_context = {
+            "home_team_name": "Hawks",
+            "away_team_name": "Celtics",
+            "sport": "NBA",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+        assert "Contributors:" in prompt
+        assert "Young +6 pts" in prompt
+
+    def test_no_lead_line_when_scores_unchanged(self) -> None:
+        """No Lead line when block scores don't change."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [10, 8],
+                "score_after": [10, 8],
+                "key_play_ids": [],
+            }
+        ]
+        game_context = {
+            "home_team_name": "Hawks",
+            "away_team_name": "Celtics",
+            "sport": "NBA",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+        # "Lead:" should only appear in the instruction section, not per-block
+        blocks_section = prompt.split("BLOCKS:")[-1]
+        assert "Lead:" not in blocks_section
+
+    def test_no_contributors_without_mini_box(self) -> None:
+        """No Contributors line when block has no mini_box."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [],
+            }
+        ]
+        game_context = {
+            "home_team_name": "Hawks",
+            "away_team_name": "Celtics",
+            "sport": "NBA",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+        blocks_section = prompt.split("BLOCKS:")[-1]
+        assert "Contributors:" not in blocks_section
+
+    def test_contextual_data_usage_in_system_prompt(self) -> None:
+        """CONTEXTUAL DATA USAGE section present in prompt."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [],
+            }
+        ]
+        game_context = {
+            "home_team_name": "Home",
+            "away_team_name": "Away",
+            "sport": "NBA",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+        assert "CONTEXTUAL DATA USAGE:" in prompt
+        assert "narrative fuel" in prompt

@@ -17,7 +17,7 @@ SportsGameFlow table stores:
 - moment_count: INTEGER for quick access
 - validated_at: TIMESTAMPTZ when validation passed
 - story_version: "v2-moments"
-- blocks_json: JSONB containing 4-7 narrative blocks (Phase 1)
+- blocks_json: JSONB containing 4-7 narrative blocks
 - block_count: INTEGER for quick access
 - blocks_version: "v1-blocks"
 - blocks_validated_at: TIMESTAMPTZ when block validation passed

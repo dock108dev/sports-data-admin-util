@@ -38,9 +38,9 @@ def extract_points(value: int | dict | None) -> int:
     if value is None:
         return 0
     if isinstance(value, dict):
-        # New format: {"total": 89, ...}
+        # Nested format: {"total": 89, ...}
         return parse_int(value.get("total")) or 0
-    # Old format: just an integer
+    # Flat format: just an integer
     return parse_int(value) or 0
 
 

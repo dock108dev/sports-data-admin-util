@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from celery import shared_task
 
+from ..api_client import get_api_headers
 from ..logging import logger
 
 
@@ -81,6 +82,7 @@ def trigger_game_pipelines_task(
             response = httpx.post(
                 f"{api_base}/api/admin/sports/pipeline/{game_id}/run-full",
                 json={"triggered_by": "prod_auto"},
+                headers=get_api_headers(),
                 timeout=600,  # 10 minute timeout per game
             )
             response.raise_for_status()

@@ -2,7 +2,30 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-11] - Current
+## [2026-02-13] - Current
+
+### Mini Box Score Fix
+
+- **Per-team score deltas**: `game_stats_helpers.py` now uses per-team score deltas instead of combined total to prevent cross-team point inflation (e.g., a player getting credited with 20 PTS when actual was 13)
+- **`_compute_single_team_delta()`**: New helper that isolates home vs away scoring, with team-abbreviation matching as a tiebreaker when both scores change simultaneously
+- **Score=0 fix**: Replaced `event.get("home_score") or prev_home` with explicit `None` check so a legitimate score of 0 is not treated as missing
+
+### Legacy Code Cleanup
+
+- **Position-based tweet system removed**: Deleted `TweetPosition` enum, `classify_tweet_position()`, `_select_with_distribution()`, `_compute_distribution()`, `enforce_embedded_caps()`, `_find_target_block()` — all dead code replaced by temporal block matching
+- **Fallback name matching removed**: `game_stats_helpers.py` no longer guesses team abbreviation via player-name substring matching; players without abbreviations are skipped
+- **`TYPE_CHECKING` block removed**: Cleaned empty import guard from `ncaab_boxscore.py`
+- **Legacy vocabulary cleaned**: Removed "Phase N" labels from module docstrings, renamed "Old format"/"New format" to "Flat format"/"Nested format" in `ncaab_helpers.py`
+
+### Documentation Consolidation
+
+- **GAMEFLOW_CONTRACT.md**: Updated embedded tweet selection criteria from "early, mid, late" position distribution to temporal matching
+- **CHANGELOG.md**: Removed "(Phase N)" labels from section headers
+- **API.md**: Updated with enhanced scraper and team/player stats endpoints
+
+---
+
+## [2026-02-11]
 
 ### Team Color Management
 
@@ -10,14 +33,14 @@ All notable changes to Sports Data Admin.
 - **`colorLightHex`/`colorDarkHex`** on `TeamSummary` and `TeamDetail` responses
 - **`get_matchup_colors()`**: Server-side color selection with perceptual distance fallback (`team_colors.py`)
 
-### Server-Side Computation (Phases 1-5)
+### Server-Side Computation
 
 - **Derived metrics**: 40+ metrics computed server-side (`derived_metrics.py`), returned on `GameSummary.derivedMetrics` and `GameDetailResponse.derivedMetrics`
 - **Period labels**: `periodLabel` and `timeLabel` on `PlayEntry` — league-aware ("Q1", "1st Half", "P2") via `period_labels.py`
 - **Play tiers**: `tier` on `PlayEntry` (1=key, 2=notable, 3=routine) and `groupedPlays` for Tier-3 collapse via `play_tiers.py`
 - **Play serialization**: `teamAbbreviation` and `playerName` now included on `PlayEntry`
 
-### Timeline Odds Integration (Phase 6)
+### Timeline Odds Integration
 
 - **`odds_events.py`** (NEW): Odds event processing — book selection, movement detection, event building
 - **Odds in timeline**: Up to 3 pregame odds events (opening_line, closing_line, line_movement) merged into unified timeline
