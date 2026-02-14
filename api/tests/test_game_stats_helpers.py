@@ -5,9 +5,11 @@ from app.services.pipeline.stages.game_stats_helpers import (
     _compute_single_team_delta,
     compute_running_player_stats,
     compute_lead_context,
+    format_player_stat_hint,
+)
+from app.services.pipeline.stages.box_score_helpers import (
     compute_cumulative_box_score,
     compute_block_mini_box,
-    format_player_stat_hint,
 )
 
 

@@ -14,7 +14,7 @@ from .block_types import (
     MAX_BLOCKS,
     MAX_KEY_PLAYS,
 )
-from .game_stats_helpers import compute_block_mini_box
+from .box_score_helpers import compute_block_mini_box
 
 
 def calculate_block_count(
