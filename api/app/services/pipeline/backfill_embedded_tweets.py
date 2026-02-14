@@ -14,17 +14,16 @@ Two entry points:
 from __future__ import annotations
 
 import logging
-from datetime import timedelta, timezone
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import attributes
+from sqlalchemy.orm import attributes, selectinload
 
 from ...db import AsyncSession
-from ...db.social import TeamSocialPost
 from ...db.sports import SportsGame
-from ...db.flow import SportsGameFlow
-from .stages.embedded_tweets import select_and_assign_embedded_tweets
+from ...db.story import SportsGameFlow
+from .stages.embedded_tweets import load_and_attach_embedded_tweets
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +40,9 @@ async def backfill_embedded_tweets_for_game(
 
     Eligibility: flow exists, all blocks have embedded_social_post_id is None,
     and in_game tweets are now available.
+
+    Uses the shared load_and_attach_embedded_tweets SSOT function
+    (same logic as the pipeline path in validate_blocks).
 
     Args:
         session: Async database session.
@@ -81,66 +83,26 @@ async def backfill_embedded_tweets_for_game(
         )
         return {"game_id": game_id, "status": "already_has_tweets"}
 
-    # Load game for tip_time
+    # Resolve league_code from the game's league relationship
     game_result = await session.execute(
-        select(SportsGame).where(SportsGame.id == game_id)
+        select(SportsGame)
+        .options(selectinload(SportsGame.league))
+        .where(SportsGame.id == game_id)
     )
     game = game_result.scalar_one_or_none()
     if not game:
         return {"game_id": game_id, "status": "game_not_found"}
 
-    game_start = game.tip_time or game.game_date
-    if game_start and game_start.tzinfo is None:
-        game_start = game_start.replace(tzinfo=timezone.utc)
+    league_code = game.league.code if game.league else "NBA"
 
-    # Load social posts (same query as _attach_embedded_tweets in validate_blocks)
-    social_result = await session.execute(
-        select(TeamSocialPost)
-        .where(
-            TeamSocialPost.game_id == game_id,
-            TeamSocialPost.mapping_status == "mapped",
-        )
-        .order_by(TeamSocialPost.posted_at)
+    # Delegate to shared SSOT function
+    updated_blocks, selection = await load_and_attach_embedded_tweets(
+        session, game_id, blocks, league_code=league_code
     )
-    social_posts = social_result.scalars().all()
 
-    if not social_posts:
+    if not selection:
         logger.debug("backfill_embedded_tweets_no_social", extra={"game_id": game_id})
         return {"game_id": game_id, "status": "no_social_posts"}
-
-    # Convert to dict format (same as validate_blocks._attach_embedded_tweets)
-    tweets: list[dict[str, Any]] = []
-    for post in social_posts:
-        if not post.tweet_text:
-            continue
-        tweets.append({
-            "id": post.id,
-            "posted_at": post.posted_at,
-            "text": post.tweet_text,
-            "author": post.source_handle or "",
-            "phase": post.game_phase or "in_game",
-            "has_media": post.has_video or bool(post.image_url),
-            "media_type": post.media_type,
-            "post_url": post.post_url,
-            "is_team_account": bool(post.source_handle),
-        })
-
-    # Only in-game tweets belong in narrative blocks
-    tweets = [t for t in tweets if t["phase"] == "in_game"]
-
-    if not tweets:
-        logger.debug(
-            "backfill_embedded_tweets_no_in_game",
-            extra={"game_id": game_id},
-        )
-        return {"game_id": game_id, "status": "no_in_game_tweets"}
-
-    # Run the same selection + assignment logic used during pipeline
-    updated_blocks, selection = select_and_assign_embedded_tweets(
-        tweets=tweets,
-        blocks=blocks,
-        game_start=game_start,
-    )
 
     assigned_count = sum(
         1 for b in updated_blocks if b.get("embedded_social_post_id")
@@ -149,12 +111,12 @@ async def backfill_embedded_tweets_for_game(
     if assigned_count == 0:
         logger.info(
             "backfill_embedded_tweets_none_assigned",
-            extra={"game_id": game_id, "candidates": len(tweets)},
+            extra={"game_id": game_id, "candidates": selection.total_candidates},
         )
         return {
             "game_id": game_id,
             "status": "no_tweets_assigned",
-            "candidates": len(tweets),
+            "candidates": selection.total_candidates,
         }
 
     # Persist updated blocks

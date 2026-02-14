@@ -25,14 +25,9 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import timezone
 from typing import Any
 
-from sqlalchemy import select
-
 from ....db import AsyncSession
-from ....db.sports import SportsGame
-from ....db.social import TeamSocialPost
 from ..models import StageInput, StageOutput
 from .block_types import (
     SemanticRole,
@@ -42,7 +37,7 @@ from .block_types import (
     MAX_WORDS_PER_BLOCK,
     MAX_TOTAL_WORDS,
 )
-from .embedded_tweets import select_and_assign_embedded_tweets
+from .embedded_tweets import load_and_attach_embedded_tweets
 
 logger = logging.getLogger(__name__)
 
@@ -282,95 +277,36 @@ async def _attach_embedded_tweets(
     game_id: int,
     blocks: list[dict[str, Any]],
     output: StageOutput,
+    league_code: str = "NBA",
 ) -> tuple[list[dict[str, Any]], Any]:
     """Load social posts and attach embedded tweets to blocks.
 
     Delegates to the shared load_and_attach_embedded_tweets SSOT function.
     Embedded tweets are optional and do not affect flow structure.
 
+
     Args:
         session: Database session
         game_id: Game ID to load social posts for
         blocks: Validated blocks to attach tweets to
         output: StageOutput to add logs to
+        league_code: League code for period timing
 
     Returns:
         Tuple of (updated blocks, EmbeddedTweetSelection or None)
     """
-    # Load game to get tip_time for position classification
-    game_result = await session.execute(
-        select(SportsGame).where(SportsGame.id == game_id)
+    updated_blocks, selection = await load_and_attach_embedded_tweets(
+        session, game_id, blocks, league_code=league_code
     )
-    game = game_result.scalar_one_or_none()
 
-    if not game:
-        output.add_log(f"Game {game_id} not found, skipping embedded tweets")
-        return blocks, None
-
-    # Get game start time (tip_time or game_date as fallback)
-    game_start = game.tip_time or game.game_date
-    if game_start and game_start.tzinfo is None:
-        game_start = game_start.replace(tzinfo=timezone.utc)
-
-    # Load social posts for this game
-    social_result = await session.execute(
-        select(TeamSocialPost)
-        .where(
-            TeamSocialPost.game_id == game_id,
-            TeamSocialPost.mapping_status == "mapped",
+    if selection:
+        assigned_count = sum(1 for b in updated_blocks if b.get("embedded_social_post_id"))
+        output.add_log(
+            f"Embedded tweets: scored {selection.total_candidates} candidates, "
+            f"assigned to {assigned_count} blocks"
         )
-        .order_by(TeamSocialPost.posted_at)
-    )
-    social_posts = social_result.scalars().all()
-
-    if not social_posts:
-        output.add_log("No social posts found for game, skipping embedded tweets")
-        return blocks, None
-
-    output.add_log(f"Found {len(social_posts)} social posts for embedded tweet selection")
-
-    # Convert to dict format expected by embedded_tweets module
-    tweets: list[dict[str, Any]] = []
-    for post in social_posts:
-        if not post.tweet_text:
-            continue
-
-        tweets.append({
-            "id": post.id,
-            "posted_at": post.posted_at,
-            "text": post.tweet_text,
-            "author": post.source_handle or "",
-            "phase": post.game_phase or "in_game",
-            "has_media": post.has_video or bool(post.image_url),
-            "media_type": post.media_type,
-            "post_url": post.post_url,
-            # Team account detection based on having a source handle
-            "is_team_account": bool(post.source_handle),
-        })
-
-    # Only in-game tweets belong in narrative blocks;
-    # pregame/postgame are surfaced separately by consuming apps
-    tweets = [t for t in tweets if t["phase"] == "in_game"]
-
-    if not tweets:
-        output.add_log("No tweets with text found, skipping embedded tweets")
-        return blocks, None
-
-    output.add_log(f"Processing {len(tweets)} tweet candidates for embedding")
-
-    # Select and assign embedded tweets to blocks
-    updated_blocks, selection = select_and_assign_embedded_tweets(
-        tweets=tweets,
-        blocks=blocks,
-        game_start=game_start,
-    )
-
-    # Log selection results
-    assigned_count = sum(1 for b in updated_blocks if b.get("embedded_social_post_id"))
-    output.add_log(
-        f"Embedded tweets: selected {len(selection.tweets)} from {selection.total_candidates} "
-        f"candidates, assigned to {assigned_count} blocks"
-    )
+    else:
+        output.add_log("No social posts available for embedded tweets")
 
     return updated_blocks, selection
 
@@ -507,8 +443,9 @@ async def execute_validate_blocks(
     # After validation passes, attach embedded tweets (social enhancement)
     embedded_tweet_selection = None
     if passed:
+        league_code = stage_input.game_context.get("sport", "NBA") if stage_input.game_context else "NBA"
         blocks, embedded_tweet_selection = await _attach_embedded_tweets(
-            session, game_id, blocks, output
+            session, game_id, blocks, output, league_code=league_code
         )
 
     output.data = {

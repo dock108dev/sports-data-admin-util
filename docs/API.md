@@ -234,17 +234,17 @@ Full game detail including stats, odds, social posts, and plays.
     "awayTeamColorLight": "#006BB6",
     "awayTeamColorDark": "#FDB927"
   },
-  "teamStats": [...],
-  "playerStats": [...],
-  "nhlSkaters": null,
-  "nhlGoalies": null,
-  "odds": [...],
-  "socialPosts": [...],
-  "plays": [...],
-  "groupedPlays": [...],
+  "teamStats": [TeamStat, ...],
+  "playerStats": [PlayerStat, ...],
+  "nhlSkaters": [NHLSkaterStat, ...] | null,
+  "nhlGoalies": [NHLGoalieStat, ...] | null,
+  "odds": [OddsEntry, ...],
+  "socialPosts": [SocialPostEntry, ...],
+  "plays": [PlayEntry, ...],
+  "groupedPlays": [TieredPlayGroup, ...],
   "derivedMetrics": {...},
   "rawPayloads": {...},
-  "dataHealth": null
+  "dataHealth": NHLDataHealth | null
 }
 ```
 
@@ -917,6 +917,183 @@ interface SocialPostEntry {
 }
 ```
 
+### TeamStat
+
+Team-level boxscore stats. Two entries per game (home + away). The `stats` dict contains the raw JSONB from the data source — keys vary by league.
+
+```typescript
+interface TeamStat {
+  team: string;
+  isHome: boolean;
+  stats: Record<string, any>;   // Raw JSONB — league-specific keys (see below)
+  source: string | null;        // e.g. "nba_cdn", "cbb_api", "nhl_api"
+  updatedAt: string | null;     // ISO 8601
+}
+```
+
+#### NBA Team Stats JSONB (`stats` field)
+
+Source: NBA CDN API (`cdn.nba.com`). All values are integers unless noted.
+
+```json
+{
+  "points": 112,
+  "rebounds": 45,
+  "assists": 25,
+  "turnovers": 14,
+  "fg_made": 42,
+  "fg_attempted": 88,
+  "fg_pct": 0.477,
+  "three_made": 12,
+  "three_attempted": 35,
+  "three_pct": 0.343,
+  "ft_made": 16,
+  "ft_attempted": 20,
+  "ft_pct": 0.800,
+  "offensive_rebounds": 10,
+  "defensive_rebounds": 35,
+  "steals": 8,
+  "blocks": 5,
+  "personal_fouls": 22,
+  "team_fouls": 4,
+  "technical_fouls": 1,
+  "fast_break_points": 18,
+  "points_in_paint": 48,
+  "points_off_turnovers": 22,
+  "second_chance_points": 12,
+  "bench_points": 38,
+  "biggest_lead": 15,
+  "lead_changes": 12,
+  "times_tied": 5
+}
+```
+
+> **Note:** Games ingested before 2026-02-13 may only contain `points`, `rebounds`, `assists`, `turnovers` (the CDN API parser was updated to capture all available fields).
+
+#### NCAAB Team Stats JSONB (`stats` field)
+
+Source: CBB Stats API. Keys use camelCase from the upstream API.
+
+```json
+{
+  "points": 78,
+  "rebounds": 34,
+  "assists": 16,
+  "turnovers": 11,
+  "totalRebounds": 34,
+  "offensiveRebounds": 8,
+  "defensiveRebounds": 26,
+  "fieldGoalsMade": 28,
+  "fieldGoalsAttempted": 62,
+  "threePointFieldGoalsMade": 7,
+  "threePointFieldGoalsAttempted": 22,
+  "freeThrowsMade": 15,
+  "freeThrowsAttempted": 20,
+  "steals": 6,
+  "blocks": 3,
+  "personalFouls": 18
+}
+```
+
+> **Note:** Exact keys depend on CBB API response per game. All non-null stat fields from the API are stored. Metadata keys (`teamId`, `gameId`, `isHome`, `season`, etc.) are filtered out. Games ingested before 2026-02-13 via the single-game path may contain metadata keys in the stats JSONB.
+
+---
+
+### PlayerStat (NBA / NCAAB)
+
+Player-level boxscore stats. Returned in `playerStats` for NBA and NCAAB games. Top-level fields are convenience extractions; `rawStats` contains the full data.
+
+```typescript
+interface PlayerStat {
+  team: string;
+  playerName: string;
+  minutes: number | null;
+  points: number | null;
+  rebounds: number | null;
+  assists: number | null;
+  yards: number | null;         // Football only
+  touchdowns: number | null;    // Football only
+  rawStats: Record<string, any>;  // Full stat dict — league-specific keys (see below)
+  source: string | null;
+  updatedAt: string | null;
+}
+```
+
+#### NBA Player `rawStats` JSONB
+
+Source: NBA CDN API. All values are integers.
+
+```json
+{
+  "position": "F",
+  "minutes": 36.2,
+  "points": 28,
+  "rebounds": 8,
+  "assists": 5,
+  "fg_made": 10,
+  "fg_attempted": 19,
+  "three_made": 3,
+  "three_attempted": 8,
+  "ft_made": 5,
+  "ft_attempted": 6,
+  "offensive_rebounds": 2,
+  "defensive_rebounds": 6,
+  "steals": 2,
+  "blocks": 1,
+  "turnovers": 3,
+  "personal_fouls": 2,
+  "plus_minus": 12
+}
+```
+
+> **Note:** `offensive_rebounds`, `defensive_rebounds`, and `personal_fouls` were added 2026-02-13. Older player records have only the 10 fields above them.
+
+#### NCAAB Player `rawStats` JSONB
+
+Source: CBB Stats API. Keys are a mix of the raw API response and flattened convenience keys.
+
+```json
+{
+  "position": "G",
+  "minutes": 32.0,
+  "points": 22,
+  "rebounds": 5,
+  "assists": 4,
+  "fgMade": 8,
+  "fgAttempted": 15,
+  "fg3Made": 3,
+  "fg3Attempted": 7,
+  "ftMade": 3,
+  "ftAttempted": 4,
+  "steals": 2,
+  "blocks": 0,
+  "turnovers": 2,
+  "fouls": 3
+}
+```
+
+> **Note:** The raw CBB API keys (e.g. `fieldGoalsMade`, `threePointFieldGoals`) are also present alongside the flattened keys. The CBB API may return stats as nested objects (`{"total": 5, "offensive": 2}`) — these are preserved in `rawStats` as-is, with flattened integer versions added for convenience.
+
+---
+
+### OddsEntry
+
+Betting odds for a game. Returned in the `odds` array of `GET /games/{gameId}`.
+
+```typescript
+interface OddsEntry {
+  book: string;               // e.g. "fanduel", "draftkings"
+  marketType: string;         // "h2h", "spreads", "totals"
+  side: string | null;        // "home", "away", "over", "under"
+  line: number | null;        // Spread or total value
+  price: number | null;       // American odds (e.g. -110, +150)
+  isClosingLine: boolean;     // True if this is the final pre-game line
+  observedAt: string | null;  // ISO 8601
+}
+```
+
+---
+
 ### NHL Player Stats
 
 ```typescript
@@ -980,6 +1157,78 @@ interface TieredPlayGroup {
   summaryLabel: string;    // e.g. "12 routine plays"
 }
 ```
+
+### GameDetailResponse
+
+Full response for `GET /games/{gameId}`.
+
+```typescript
+interface GameDetailResponse {
+  game: GameMeta;
+  teamStats: TeamStat[];                // 2 entries (home + away)
+  playerStats: PlayerStat[];            // NBA/NCAAB player stats
+  nhlSkaters: NHLSkaterStat[] | null;   // NHL only
+  nhlGoalies: NHLGoalieStat[] | null;   // NHL only
+  odds: OddsEntry[];
+  socialPosts: SocialPostEntry[];
+  plays: PlayEntry[];
+  groupedPlays: TieredPlayGroup[];
+  derivedMetrics: Record<string, any>;
+  rawPayloads: Record<string, any>;
+  dataHealth: NHLDataHealth | null;     // NHL only
+}
+
+interface GameMeta {
+  id: number;
+  leagueCode: string;
+  season: number;
+  seasonType: string;             // "regular", "postseason"
+  gameDate: string;               // ISO 8601 UTC
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  status: string;                 // "scheduled", "pregame", "live", "final", "archived"
+  scrapeVersion: number | null;
+  hasBoxscore: boolean;
+  hasPlayerStats: boolean;
+  hasOdds: boolean;
+  hasSocial: boolean;
+  hasPbp: boolean;
+  hasFlow: boolean;
+  playCount: number;
+  socialPostCount: number;
+  lastScrapedAt: string | null;
+  lastIngestedAt: string | null;
+  lastPbpAt: string | null;
+  lastSocialAt: string | null;
+  homeTeamXHandle: string | null;
+  awayTeamXHandle: string | null;
+  homeTeamAbbr: string | null;
+  awayTeamAbbr: string | null;
+  homeTeamColorLight: string | null;
+  homeTeamColorDark: string | null;
+  awayTeamColorLight: string | null;
+  awayTeamColorDark: string | null;
+}
+```
+
+---
+
+### NHLDataHealth
+
+Data health check for NHL games. Returned in `dataHealth` field of `GameDetailResponse` (NHL only, null for other leagues).
+
+```typescript
+interface NHLDataHealth {
+  skaterCount: number;
+  goalieCount: number;
+  isHealthy: boolean;
+  issues: string[];     // e.g. ["missing_goalie_stats", "low_skater_count"]
+}
+```
+
+---
 
 ### TeamSummary
 

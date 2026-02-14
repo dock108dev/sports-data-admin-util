@@ -140,7 +140,7 @@ async def execute_normalize_pbp(
         if play.player_name:
             resolution_tracker.track_player(
                 source_name=play.player_name,
-                resolved_name=play.player_name,  # Currently passthrough
+                resolved_name=play.player_name,
                 method="passthrough",
                 play_index=play.play_index,
             )

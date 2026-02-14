@@ -156,12 +156,20 @@ return min(base, 7)
 
 **OpenAI Usage:**
 - All blocks rendered in a single call
-- Input: Block roles, key plays, score progressions
+- Input per block: semantic role, score progression, key play descriptions, lead/margin context, top contributors from mini box
 - Output: 2-4 sentences (~65 words) per block
+
+**Prompt Context:**
+- **Scores:** Score-before → score-after for each block
+- **Lead context:** Human-readable margin change (e.g., "Hawks extend the lead to 8", "tie the game") — derived from `compute_lead_context()`
+- **Contributors:** Block star players with delta stats (e.g., "Young +8 pts" for NBA, "Pastrnak +1g/+1a" for NHL) — derived from mini box data
+- **Key plays:** Up to 3 play descriptions per block
+- Lines are omitted when no scoring change occurs or no block stars exist
 
 **Constraints:**
 - OpenAI only writes prose - it does not decide block structure
 - Each block narrative is role-aware
+- Lead and contributor lines are narrative fuel, not to be quoted verbatim
 - Forbidden phrases: "momentum", "turning point", "crucial", "clutch", etc.
 
 **Output Schema:**

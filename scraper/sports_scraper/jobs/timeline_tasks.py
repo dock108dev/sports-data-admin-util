@@ -79,6 +79,7 @@ def regenerate_timeline_task(
         Result dict with success/failure status
     """
     import httpx
+    from ..api_client import get_api_headers
     from ..config import settings
 
     logger.info(
@@ -93,6 +94,7 @@ def regenerate_timeline_task(
         response = httpx.post(
             api_url,
             json={"timeline_version": "v1"},
+            headers=get_api_headers(),
             timeout=600,  # 10 minute timeout for large games
         )
         response.raise_for_status()

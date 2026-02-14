@@ -13,6 +13,7 @@ from sqlalchemy import exists
 from sqlalchemy.orm import Session, aliased
 from typing import Sequence
 
+from ..api_client import get_api_headers
 from ..config import settings
 from ..db import db_models, get_session
 from ..logging import logger
@@ -292,7 +293,7 @@ def generate_timeline_for_game(
     url = f"{api_base_url}/api/admin/sports/timelines/generate/{game_id}"
     
     try:
-        with httpx.Client(timeout=120.0) as client:
+        with httpx.Client(timeout=120.0, headers=get_api_headers()) as client:
             response = client.post(
                 url,
                 json={"timeline_version": timeline_version},

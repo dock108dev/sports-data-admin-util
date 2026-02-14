@@ -2,11 +2,14 @@
 
 from app.services.pipeline.stages.game_stats_helpers import (
     _apply_basketball_scoring,
+    _compute_single_team_delta,
     compute_running_player_stats,
     compute_lead_context,
+    format_player_stat_hint,
+)
+from app.services.pipeline.stages.box_score_helpers import (
     compute_cumulative_box_score,
     compute_block_mini_box,
-    format_player_stat_hint,
 )
 
 
@@ -446,8 +449,8 @@ class TestComputeCumulativeBoxScore:
         assert len(result["away"]["players"]) == 1
         assert result["away"]["players"][0]["name"] == "LeBron James"
 
-    def test_fallback_name_matching(self):
-        """Falls back to name matching when abbreviations not provided."""
+    def test_no_abbreviations_skips_players(self):
+        """Players are skipped when team abbreviations are not provided."""
         events = [
             {
                 "play_index": 1,
@@ -459,8 +462,7 @@ class TestComputeCumulativeBoxScore:
                 "away_score": 0,
             },
         ]
-        # No abbreviations provided - should fall back to name matching
-        # ATL is in "Atlanta Hawks", so it should match
+        # No abbreviations provided — player can't be assigned to a side
         result = compute_cumulative_box_score(
             events,
             1,
@@ -468,8 +470,8 @@ class TestComputeCumulativeBoxScore:
             "Miami Heat",
             "NBA",
         )
-        assert len(result["home"]["players"]) == 1
-        assert result["home"]["players"][0]["name"] == "Trae Young"
+        assert len(result["home"]["players"]) == 0
+        assert len(result["away"]["players"]) == 0
 
     def test_case_insensitive_matching(self):
         """Abbreviation matching is case-insensitive."""
@@ -1331,3 +1333,245 @@ class TestScoreGapGuard:
         assert result["Player C"]["fgm"] == 1
         # Player B should still have 0
         assert result["Player B"]["pts"] == 0
+
+
+class TestComputeSingleTeamDelta:
+    """Tests for _compute_single_team_delta helper."""
+
+    def test_only_home_scored(self):
+        """When only home score increases, return home delta."""
+        assert _compute_single_team_delta(5, 0, 3, 0) == 2
+
+    def test_only_away_scored(self):
+        """When only away score increases, return away delta."""
+        assert _compute_single_team_delta(0, 5, 0, 3) == 2
+
+    def test_no_score_change(self):
+        """When neither score changes, return 0."""
+        assert _compute_single_team_delta(10, 10, 10, 10) == 0
+
+    def test_both_changed_with_home_team_match(self):
+        """When both changed and team matches home, return home delta."""
+        result = _compute_single_team_delta(
+            12, 8, 10, 5,
+            team_abbreviation="ATL",
+            home_team_abbrev="ATL",
+            away_team_abbrev="BOS",
+        )
+        assert result == 2  # home_delta only
+
+    def test_both_changed_with_away_team_match(self):
+        """When both changed and team matches away, return away delta."""
+        result = _compute_single_team_delta(
+            12, 8, 10, 5,
+            team_abbreviation="BOS",
+            home_team_abbrev="ATL",
+            away_team_abbrev="BOS",
+        )
+        assert result == 3  # away_delta only
+
+    def test_both_changed_no_team_info(self):
+        """When both changed and no team info, return 0 (conservative skip)."""
+        assert _compute_single_team_delta(12, 8, 10, 5) == 0
+
+    def test_both_changed_case_insensitive(self):
+        """Team matching is case-insensitive."""
+        result = _compute_single_team_delta(
+            12, 8, 10, 5,
+            team_abbreviation="atl",
+            home_team_abbrev="ATL",
+            away_team_abbrev="BOS",
+        )
+        assert result == 2
+
+
+class TestCrossTeamScoring:
+    """Tests for correct per-team score attribution (the core bug fix)."""
+
+    def test_alternating_home_away_running_stats(self):
+        """Interleaved home/away scoring should attribute correctly to each player."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Home Player",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 2,
+                "away_score": 0,
+            },
+            {
+                "play_index": 2,
+                "player_name": "Away Player",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 2,
+                "away_score": 3,
+            },
+            {
+                "play_index": 3,
+                "player_name": "Home Player",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 5,
+                "away_score": 3,
+            },
+        ]
+        result = compute_running_player_stats(events, 3)
+        # Home Player: 2 + 3 = 5 pts
+        assert result["Home Player"]["pts"] == 5
+        # Away Player: 3 pts (only away delta)
+        assert result["Away Player"]["pts"] == 3
+
+    def test_both_teams_change_running_stats_conservative_skip(self):
+        """When both scores change simultaneously, running stats skip attribution."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Player A",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 10,
+                "away_score": 10,
+            },
+            {
+                # Both scores changed — ambiguous without team info
+                "play_index": 2,
+                "player_name": "Player B",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 12,
+                "away_score": 13,
+            },
+        ]
+        result = compute_running_player_stats(events, 2)
+        # Player B should get 0 — both teams changed, no team info available
+        assert result["Player B"]["pts"] == 0
+
+    def test_both_teams_change_cumulative_box_with_team_match(self):
+        """When both scores change, cumulative box uses team matching to attribute."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Player A",
+                "team_abbreviation": "ATL",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 10,
+                "away_score": 10,
+            },
+            {
+                # Both scores changed — but we know Player B is on ATL (home)
+                "play_index": 2,
+                "player_name": "Player B",
+                "team_abbreviation": "ATL",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 12,
+                "away_score": 13,
+            },
+        ]
+        result = compute_cumulative_box_score(
+            events,
+            2,
+            "Atlanta Hawks",
+            "Boston Celtics",
+            "NBA",
+            home_team_abbrev="ATL",
+            away_team_abbrev="BOS",
+        )
+        player_b = next(
+            p for p in result["home"]["players"] if p["name"] == "Player B"
+        )
+        # Should get home_delta=2, NOT combined delta of 5
+        assert player_b["pts"] == 2
+
+    def test_alternating_home_away_cumulative_box(self):
+        """Alternating scoring attributes correctly in cumulative box."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Trae Young",
+                "team_abbreviation": "ATL",
+                "play_type": "3pt_made",
+                "description": "",
+                "home_score": 3,
+                "away_score": 0,
+            },
+            {
+                "play_index": 2,
+                "player_name": "Jayson Tatum",
+                "team_abbreviation": "BOS",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 3,
+                "away_score": 2,
+            },
+            {
+                "play_index": 3,
+                "player_name": "Trae Young",
+                "team_abbreviation": "ATL",
+                "play_type": "free_throw_made",
+                "description": "",
+                "home_score": 4,
+                "away_score": 2,
+            },
+        ]
+        result = compute_cumulative_box_score(
+            events,
+            3,
+            "Atlanta Hawks",
+            "Boston Celtics",
+            "NBA",
+            home_team_abbrev="ATL",
+            away_team_abbrev="BOS",
+        )
+        trae = result["home"]["players"][0]
+        assert trae["name"] == "Trae Young"
+        assert trae["pts"] == 4  # 3 + 1, NOT 3+2+1=6
+
+        tatum = result["away"]["players"][0]
+        assert tatum["name"] == "Jayson Tatum"
+        assert tatum["pts"] == 2
+
+    def test_score_zero_not_treated_as_missing(self):
+        """Score of 0 should not be treated as missing (falsy)."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Player A",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 0,  # Explicitly 0, not missing
+                "away_score": 2,
+            },
+        ]
+        result = compute_running_player_stats(events, 1)
+        # Away scored 2 — should be attributed
+        assert result["Player A"]["pts"] == 2
+
+    def test_score_zero_cumulative_not_treated_as_missing(self):
+        """Score of 0 in cumulative box should not be overwritten with prev."""
+        events = [
+            {
+                "play_index": 1,
+                "player_name": "Player A",
+                "team_abbreviation": "BOS",
+                "play_type": "made_shot",
+                "description": "",
+                "home_score": 0,
+                "away_score": 2,
+            },
+        ]
+        result = compute_cumulative_box_score(
+            events,
+            1,
+            "Atlanta Hawks",
+            "Boston Celtics",
+            "NBA",
+            home_team_abbrev="ATL",
+            away_team_abbrev="BOS",
+        )
+        player = result["away"]["players"][0]
+        assert player["pts"] == 2
+        # Home score should be 0, not some prev value
+        assert result["home"]["score"] == 0

@@ -247,9 +247,12 @@ class NBABoxscoreFetcher:
             "three_attempted": "threePointersAttempted",
             "ft_made": "freeThrowsMade",
             "ft_attempted": "freeThrowsAttempted",
+            "offensive_rebounds": "reboundsOffensive",
+            "defensive_rebounds": "reboundsDefensive",
             "steals": "steals",
             "blocks": "blocks",
             "turnovers": "turnovers",
+            "personal_fouls": "foulsPersonal",
             "plus_minus": "plusMinusPoints",
         }
         for raw_key, api_key in stat_mappings.items():
@@ -285,6 +288,39 @@ class NBABoxscoreFetcher:
         assists = parse_int(statistics.get("assists"))
         turnovers = parse_int(statistics.get("turnovers"))
 
+        # Extract all available team stats from CDN API into raw_stats
+        raw_stats: dict = {}
+        stat_mappings = {
+            "fg_made": "fieldGoalsMade",
+            "fg_attempted": "fieldGoalsAttempted",
+            "fg_pct": "fieldGoalsPercentage",
+            "three_made": "threePointersMade",
+            "three_attempted": "threePointersAttempted",
+            "three_pct": "threePointersPercentage",
+            "ft_made": "freeThrowsMade",
+            "ft_attempted": "freeThrowsAttempted",
+            "ft_pct": "freeThrowsPercentage",
+            "offensive_rebounds": "reboundsOffensive",
+            "defensive_rebounds": "reboundsDefensive",
+            "steals": "steals",
+            "blocks": "blocks",
+            "personal_fouls": "foulsPersonal",
+            "team_fouls": "foulsTeam",
+            "technical_fouls": "foulsTechnical",
+            "fast_break_points": "pointsFastBreak",
+            "points_in_paint": "pointsInThePaint",
+            "points_off_turnovers": "pointsFromTurnovers",
+            "second_chance_points": "pointsSecondChance",
+            "bench_points": "benchPoints",
+            "biggest_lead": "biggestLead",
+            "lead_changes": "leadChanges",
+            "times_tied": "timesTied",
+        }
+        for raw_key, api_key in stat_mappings.items():
+            val = statistics.get(api_key)
+            if val is not None:
+                raw_stats[raw_key] = val
+
         return NormalizedTeamBoxscore(
             team=team_identity,
             is_home=is_home,
@@ -292,5 +328,5 @@ class NBABoxscoreFetcher:
             rebounds=rebounds,
             assists=assists,
             turnovers=turnovers,
-            raw_stats={},
+            raw_stats=raw_stats,
         )

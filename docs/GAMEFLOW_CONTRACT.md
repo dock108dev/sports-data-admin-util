@@ -133,7 +133,7 @@ Blocks may contain an embedded social post ID that adds social context.
 **Selection Criteria:**
 - In-game posts preferred over pregame/postgame
 - High engagement and media content preferred
-- Distributed across blocks (early, mid, late)
+- Assigned to blocks by temporal matching (tweet `posted_at` matched to block time windows)
 
 ---
 

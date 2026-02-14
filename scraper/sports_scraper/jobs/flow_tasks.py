@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from celery import shared_task
 
+from ..api_client import get_api_headers
 from ..logging import logger
 
 
@@ -52,7 +53,7 @@ def _run_flow_generation(
         if max_games is not None:
             request_body["max_games"] = max_games
 
-        with httpx.Client(timeout=60.0) as client:
+        with httpx.Client(timeout=60.0, headers=get_api_headers()) as client:
             response = client.post(
                 f"{api_base}/api/admin/sports/pipeline/bulk-generate-async",
                 json=request_body,
@@ -70,7 +71,7 @@ def _run_flow_generation(
         for poll_num in range(max_polls):
             time.sleep(poll_interval)
 
-            with httpx.Client(timeout=30.0) as client:
+            with httpx.Client(timeout=30.0, headers=get_api_headers()) as client:
                 status_response = client.get(
                     f"{api_base}/api/admin/sports/pipeline/bulk-generate-status/{job_id}"
                 )
@@ -248,7 +249,7 @@ def run_scheduled_flow_generation() -> dict:
 
     try:
         # Start the bulk generation job
-        with httpx.Client(timeout=60.0) as client:
+        with httpx.Client(timeout=60.0, headers=get_api_headers()) as client:
             response = client.post(
                 f"{api_base}/api/admin/sports/games/bulk-generate-async",
                 json={
@@ -271,7 +272,7 @@ def run_scheduled_flow_generation() -> dict:
         for poll_num in range(max_polls):
             time.sleep(poll_interval)
 
-            with httpx.Client(timeout=30.0) as client:
+            with httpx.Client(timeout=30.0, headers=get_api_headers()) as client:
                 status_response = client.get(
                     f"{api_base}/api/admin/sports/games/bulk-generate-status/{job_id}"
                 )

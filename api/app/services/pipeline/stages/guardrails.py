@@ -396,7 +396,7 @@ def validate_blocks_pre_render(
 def _log_validation_result(result: GuardrailResult, checkpoint: str) -> None:
     """Log validation result with appropriate level.
 
-    Violations are logged LOUDLY as required by Phase 6 contract.
+    Violations are logged at WARNING level for visibility.
     """
     if result.passed and not result.violations:
         logger.info(
