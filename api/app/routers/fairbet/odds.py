@@ -114,24 +114,6 @@ def _build_base_filters(
     return game_start, conditions
 
 
-def _find_complementary_key(selection_key: str) -> str | None:
-    """Find the complementary selection key for two-way market EV calculation.
-
-    total:over <-> total:under
-    For team bets, we can't easily derive the complement without more context.
-    """
-    if selection_key == "total:over":
-        return "total:under"
-    elif selection_key == "total:under":
-        return "total:over"
-    # For player props: player:{name}:over <-> player:{name}:under
-    if selection_key.startswith("player:") and selection_key.endswith(":over"):
-        return selection_key.replace(":over", ":under")
-    elif selection_key.startswith("player:") and selection_key.endswith(":under"):
-        return selection_key.replace(":under", ":over")
-    return None
-
-
 @router.get("/odds", response_model=FairbetOddsResponse)
 async def get_fairbet_odds(
     session: AsyncSession = Depends(get_db),
