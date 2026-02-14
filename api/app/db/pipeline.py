@@ -201,8 +201,8 @@ class GamePipelineStage(Base):
         )
 
 
-class BulkStoryJobStatus(str, Enum):
-    """Status of a bulk story generation job."""
+class BulkFlowJobStatus(str, Enum):
+    """Status of a bulk flow generation job."""
 
     pending = "pending"
     running = "running"
@@ -210,8 +210,8 @@ class BulkStoryJobStatus(str, Enum):
     failed = "failed"
 
 
-class BulkStoryGenerationJob(Base):
-    """Tracks bulk story generation jobs."""
+class BulkFlowGenerationJob(Base):
+    """Tracks bulk flow generation jobs."""
 
     __tablename__ = "bulk_story_generation_jobs"
 

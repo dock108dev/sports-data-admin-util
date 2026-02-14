@@ -13,7 +13,7 @@ celery_app = Celery(
     "sports_data_admin",
     broker=CELERY_BROKER_URL,
     backend=REDIS_URL,  # Results can stay on main Redis database
-    include=["app.tasks.bulk_story_generation"],
+    include=["app.tasks.bulk_flow_generation"],
 )
 
 # Configuration

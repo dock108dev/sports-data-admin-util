@@ -34,7 +34,7 @@ from ..db import AsyncSession
 from ..db.odds import SportsGameOdds
 from ..db.sports import SportsGame, SportsGamePlay
 from ..db.social import TeamSocialPost
-from ..db.story import SportsGameTimelineArtifact
+from ..db.flow import SportsGameTimelineArtifact
 from ..utils.datetime_utils import now_utc
 from .timeline_types import (
     DEFAULT_TIMELINE_VERSION,

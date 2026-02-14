@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from .social import TeamSocialAccount, TeamSocialPost
     from .odds import SportsGameOdds
     from .scraper import SportsScrapeRun
-    from .story import SportsGameTimelineArtifact
+    from .flow import SportsGameTimelineArtifact
 
 
 class GameStatus(str, Enum):

@@ -22,22 +22,22 @@ from ..db.sports import SportsGame, SportsLeague, SportsGamePlay
 from ..db.odds import SportsGameOdds  # noqa: F401 — register model for relationship resolution
 from ..db.social import TeamSocialPost  # noqa: F401 — register model for relationship resolution
 from ..db.scraper import SportsScrapeRun  # noqa: F401 — register model for relationship resolution
-from ..db.pipeline import BulkStoryGenerationJob
-from ..db.story import SportsGameFlow
+from ..db.pipeline import BulkFlowGenerationJob
+from ..db.flow import SportsGameFlow
 from ..services.pipeline import PipelineExecutor
 
 logger = logging.getLogger(__name__)
 
 
 async def _run_bulk_generation_async(job_id: int) -> None:
-    """Async implementation of bulk story generation.
+    """Async implementation of bulk game flow generation.
 
     Creates a fresh async engine bound to the current event loop to avoid
     the "Future attached to a different loop" error that occurs when reusing
     an engine created in a different context (e.g., module import time).
 
     Args:
-        job_id: Database ID of the BulkStoryGenerationJob record
+        job_id: Database ID of the BulkFlowGenerationJob record
     """
     # Create fresh engine bound to this event loop
     engine = create_async_engine(settings.database_url, echo=False, future=True)
@@ -53,8 +53,8 @@ async def _run_bulk_generation_async(job_id: int) -> None:
         async with session_factory() as session:
             # Load the job record
             job_result = await session.execute(
-                select(BulkStoryGenerationJob).where(
-                    BulkStoryGenerationJob.id == job_id
+                select(BulkFlowGenerationJob).where(
+                    BulkFlowGenerationJob.id == job_id
                 )
             )
             job = job_result.scalar_one_or_none()
@@ -67,7 +67,7 @@ async def _run_bulk_generation_async(job_id: int) -> None:
             job.started_at = datetime.utcnow()
             await session.commit()
 
-            logger.info(f"Starting bulk game flow generation job {job_id}")
+            logger.info(f"Starting bulk flow generation job {job_id}")
 
             try:
                 # Query games in the date range for specified leagues
@@ -91,6 +91,17 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                 # Filter by leagues if specified
                 if job.leagues:
                     query = query.where(SportsLeague.code.in_(job.leagues))
+
+                # Exclude games that already have flows (unless force regenerate)
+                if not job.force_regenerate:
+                    existing_flow_game_ids = (
+                        select(SportsGameFlow.game_id).where(
+                            SportsGameFlow.moments_json.isnot(None)
+                        )
+                    )
+                    query = query.where(
+                        SportsGame.id.notin_(existing_flow_game_ids)
+                    )
 
                 result = await session.execute(query)
                 games = result.scalars().all()
@@ -124,23 +135,6 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                     job.current_game = i + 1
                     await session.commit()
 
-                    # Check if game already has a flow
-                    if not job.force_regenerate:
-                        story_result = await session.execute(
-                            select(SportsGameFlow).where(
-                                SportsGameFlow.game_id == game.id,
-                                SportsGameFlow.moments_json.isnot(None),
-                            )
-                        )
-                        existing_flow = story_result.scalar_one_or_none()
-                        if existing_flow:
-                            job.skipped += 1
-                            await session.commit()
-                            logger.debug(
-                                f"Job {job_id}: Skipped game {game.id} (has flow)"
-                            )
-                            continue
-
                     # Run the full pipeline
                     try:
                         executor = PipelineExecutor(session)
@@ -158,8 +152,8 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                         await session.rollback()
                         # Re-fetch job after rollback
                         job_result = await session.execute(
-                            select(BulkStoryGenerationJob).where(
-                                BulkStoryGenerationJob.id == job_id
+                            select(BulkFlowGenerationJob).where(
+                                BulkFlowGenerationJob.id == job_id
                             )
                         )
                         job = job_result.scalar_one()
@@ -188,8 +182,8 @@ async def _run_bulk_generation_async(job_id: int) -> None:
                 logger.exception(f"Job {job_id} failed with unexpected error: {e}")
                 await session.rollback()
                 job_result = await session.execute(
-                    select(BulkStoryGenerationJob).where(
-                        BulkStoryGenerationJob.id == job_id
+                    select(BulkFlowGenerationJob).where(
+                        BulkFlowGenerationJob.id == job_id
                     )
                 )
                 job = job_result.scalar_one_or_none()
@@ -203,20 +197,20 @@ async def _run_bulk_generation_async(job_id: int) -> None:
         await engine.dispose()
 
 
-@celery_app.task(name="run_bulk_story_generation", bind=True)
-def run_bulk_story_generation(self, job_id: int) -> dict[str, Any]:
+@celery_app.task(name="run_bulk_flow_generation", bind=True)
+def run_bulk_flow_generation(self, job_id: int) -> dict[str, Any]:
     """Celery task to run bulk game flow generation.
 
     This is a synchronous Celery task that wraps the async implementation.
     Job progress is tracked in the database, not Celery result backend.
 
     Args:
-        job_id: Database ID of the BulkStoryGenerationJob record
+        job_id: Database ID of the BulkFlowGenerationJob record
 
     Returns:
         Summary dict with job_id and final status
     """
-    logger.info(f"Celery task started for bulk job {job_id}")
+    logger.info(f"Celery task started for bulk flow job {job_id}")
 
     # Run the async function in a new event loop
     asyncio.run(_run_bulk_generation_async(job_id))

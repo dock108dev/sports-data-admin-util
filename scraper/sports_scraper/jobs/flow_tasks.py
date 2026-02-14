@@ -203,9 +203,8 @@ def run_scheduled_ncaab_flow_generation() -> dict:
 
     Runs 15 minutes after NHL flow generation (7:45 AM EST).
     Only generates flows for games that don't already have them (force=False).
-    Limited to 10 games per run to manage OpenAI costs.
     """
-    return _run_flow_generation("NCAAB", max_games=10)
+    return _run_flow_generation("NCAAB")
 
 
 @shared_task(

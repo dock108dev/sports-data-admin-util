@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import exists, select
 
 from ...db.sports import SportsGame, SportsGamePlay, SportsTeam, SportsLeague, GameStatus
-from ...db.story import SportsGameTimelineArtifact
+from ...db.flow import SportsGameTimelineArtifact
 from ...db import AsyncSession, get_db
 from ...services.timeline_generator import (
     TimelineGenerationError,

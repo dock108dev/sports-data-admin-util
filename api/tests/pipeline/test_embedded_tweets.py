@@ -495,11 +495,11 @@ class TestSelectAndAssignEmbeddedTweets:
         assert selection.total_candidates > 0
 
 
-class TestStoryInvariant:
-    """Tests ensuring story read time is not affected by tweets."""
+class TestFlowInvariant:
+    """Tests ensuring flow read time is not affected by tweets."""
 
-    def test_story_length_unchanged_with_tweets(self, game_start, sample_tweets, sample_blocks):
-        """Story length (blocks) unchanged regardless of tweet count."""
+    def test_flow_length_unchanged_with_tweets(self, game_start, sample_tweets, sample_blocks):
+        """Flow length (blocks) unchanged regardless of tweet count."""
         # With tweets
         with_tweets, _ = select_and_assign_embedded_tweets(
             sample_tweets, sample_blocks, game_start

@@ -13,7 +13,7 @@ from typing import Any
 from ....db import AsyncSession, get_db
 from ....db.sports import SportsGame, SportsGamePlay
 from ....db.pipeline import GamePipelineRun
-from ....db.story import SportsGameTimelineArtifact
+from ....db.flow import SportsGameTimelineArtifact
 from ....services.pipeline import PipelineExecutor
 from ....services.pipeline.models import PipelineStage
 from ....services.pipeline.executor import PipelineExecutionError

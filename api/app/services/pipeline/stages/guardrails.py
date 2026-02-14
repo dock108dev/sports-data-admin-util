@@ -230,7 +230,7 @@ def validate_social_independence(
 ) -> GuardrailResult:
     """Validate that social data is not required.
 
-    Checks that the story structure is identical with or without social data.
+    Checks that the flow structure is identical with or without social data.
     This ensures zero required social dependencies.
 
     Args:

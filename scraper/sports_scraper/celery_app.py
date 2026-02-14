@@ -67,7 +67,7 @@ app.conf.task_routes = {
 #   4:00 AM EST (09:00 UTC) — Daily sweep (truth repair, backfill missing data)
 #   4:30 AM EST (09:30 UTC) — NBA flow generation
 #   5:00 AM EST (10:00 UTC) — NHL flow generation
-#   5:30 AM EST (10:30 UTC) — NCAAB flow generation (capped at 10 games)
+#   5:30 AM EST (10:30 UTC) — NCAAB flow generation
 #
 # Each job is spaced 30 minutes apart. During EDT (March-November) all times
 # shift 1 hour later (e.g., ingestion at 4:30 AM EDT).

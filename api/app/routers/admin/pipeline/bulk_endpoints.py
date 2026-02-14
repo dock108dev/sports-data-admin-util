@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
 from ....db import AsyncSession, get_db
-from ....db.pipeline import BulkStoryGenerationJob
+from ....db.pipeline import BulkFlowGenerationJob
 
 from .models import (
     BulkGenerateAsyncResponse,
@@ -44,7 +44,7 @@ async def bulk_generate_async(
     )
 
     # Create job record in database
-    job = BulkStoryGenerationJob(
+    job = BulkFlowGenerationJob(
         status="pending",
         start_date=start_dt,
         end_date=end_dt,
@@ -60,7 +60,7 @@ async def bulk_generate_async(
     job_uuid = str(job.job_uuid)
 
     # Send task to Celery worker
-    celery_app.send_task("run_bulk_story_generation", args=[job.id])
+    celery_app.send_task("run_bulk_flow_generation", args=[job.id])
 
     return BulkGenerateAsyncResponse(
         job_id=job_uuid,
@@ -89,8 +89,8 @@ async def get_bulk_generate_status(
         )
 
     result = await session.execute(
-        select(BulkStoryGenerationJob).where(
-            BulkStoryGenerationJob.job_uuid == job_uuid
+        select(BulkFlowGenerationJob).where(
+            BulkFlowGenerationJob.job_uuid == job_uuid
         )
     )
     job = result.scalar_one_or_none()

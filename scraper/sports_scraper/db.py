@@ -40,8 +40,8 @@ try:
         SportsTeamBoxscore,
     )
     from app.db.pipeline import (  # type: ignore
-        BulkStoryGenerationJob,
-        BulkStoryJobStatus,
+        BulkFlowGenerationJob,
+        BulkFlowJobStatus,
         GamePipelineRun,
         GamePipelineStage,
         PipelineRunStatus,
@@ -55,7 +55,7 @@ try:
         TeamSocialAccount,
         TeamSocialPost,
     )
-    from app.db.story import (  # type: ignore
+    from app.db.flow import (  # type: ignore
         FrontendPayloadVersion,
         SportsGameFlow,
         SportsGameTimelineArtifact,
@@ -92,7 +92,7 @@ try:
         PipelineRunStatus=PipelineRunStatus,
         PipelineStageStatus=PipelineStageStatus,
         PipelineTrigger=PipelineTrigger,
-        BulkStoryJobStatus=BulkStoryJobStatus,
+        BulkFlowJobStatus=BulkFlowJobStatus,
         FrontendPayloadVersion=FrontendPayloadVersion,
         # Sports models
         SportsLeague=SportsLeague,
@@ -105,12 +105,12 @@ try:
         # Pipeline models
         GamePipelineRun=GamePipelineRun,
         GamePipelineStage=GamePipelineStage,
-        BulkStoryGenerationJob=BulkStoryGenerationJob,
+        BulkFlowGenerationJob=BulkFlowGenerationJob,
         # Social models
         TeamSocialPost=TeamSocialPost,
         TeamSocialAccount=TeamSocialAccount,
         SocialAccountPoll=SocialAccountPoll,
-        # Story models
+        # Flow models
         SportsGameTimelineArtifact=SportsGameTimelineArtifact,
         SportsGameFlow=SportsGameFlow,
         # Scraper models

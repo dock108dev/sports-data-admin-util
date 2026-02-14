@@ -1,5 +1,5 @@
 """
-OpenAI Client for Story Generation.
+OpenAI Client for Game Flow Generation.
 
 Provides a simple wrapper around OpenAI API for narrative generation.
 """
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAIClient:
-    """OpenAI client for story generation.
+    """OpenAI client for game flow generation.
 
     This client provides a simple .generate(prompt) interface
     for narrative rendering.
@@ -124,7 +124,7 @@ class OpenAIClient:
 def get_openai_client() -> OpenAIClient | None:
     """Get OpenAI client if API key is configured.
 
-    Uses openai_model_summary setting (defaults to gpt-4o) for story generation.
+    Uses openai_model_summary setting (defaults to gpt-4o) for flow generation.
 
     Returns:
         OpenAIClient if configured, None otherwise

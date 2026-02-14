@@ -26,7 +26,7 @@ class PipelineStage(str, Enum):
     5. GROUP_BLOCKS - Group moments into 4-7 narrative blocks (drama-weighted)
     6. RENDER_BLOCKS - Generate short narratives for each block
     7. VALIDATE_BLOCKS - Validate block constraints
-    8. FINALIZE_MOMENTS - Persist final story artifact
+    8. FINALIZE_MOMENTS - Persist final game flow artifact
     """
 
     NORMALIZE_PBP = "NORMALIZE_PBP"

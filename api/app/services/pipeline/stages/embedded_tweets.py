@@ -6,13 +6,13 @@ Embedded tweets are the ONLY social elements allowed in the collapsed game flow.
 They act as reaction beats, not narrative drivers.
 
 Key principles:
-1. OPTIONAL: Story must read correctly with zero embedded tweets
+1. OPTIONAL: Flow must read correctly with zero embedded tweets
 2. LIMITED: Max 5 per game, max 1 per block
 3. DETERMINISTIC: Selection is reproducible given same inputs
 4. NON-STRUCTURAL: Tweets never create/split blocks
 
 Embedded tweets may enhance pacing but must NEVER:
-- Add length to the story
+- Add length to the flow
 - Compromise the 20-60 second read invariant
 - Drive narrative decisions
 - Couple to specific plays or moments

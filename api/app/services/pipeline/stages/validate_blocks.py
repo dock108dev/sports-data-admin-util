@@ -285,8 +285,8 @@ async def _attach_embedded_tweets(
 ) -> tuple[list[dict[str, Any]], Any]:
     """Load social posts and attach embedded tweets to blocks.
 
-    This is called after validation passes to enhance blocks with social content.
-    Embedded tweets are optional and do not affect story structure.
+    Delegates to the shared load_and_attach_embedded_tweets SSOT function.
+    Embedded tweets are optional and do not affect flow structure.
 
     Args:
         session: Database session

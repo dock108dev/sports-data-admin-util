@@ -57,7 +57,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from ....db.sports import SportsGame
-from ....db.story import SportsGameFlow
+from ....db.flow import SportsGameFlow
 from ....utils.datetime_utils import now_utc
 from ..models import StageInput, StageOutput
 
@@ -66,8 +66,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Story version identifiers
-STORY_VERSION = "v2-moments"
+# Flow version identifiers
+FLOW_VERSION = "v2-moments"
 BLOCKS_VERSION = "v1-blocks"
 
 
@@ -157,11 +157,11 @@ async def execute_finalize_moments(
 
     sport = game.league.code if game.league else "NBA"
 
-    # Check for existing v2-moments story for this game
+    # Check for existing v2-moments flow for this game
     existing_result = await session.execute(
         select(SportsGameFlow).where(
             SportsGameFlow.game_id == game_id,
-            SportsGameFlow.story_version == STORY_VERSION,
+            SportsGameFlow.story_version == FLOW_VERSION,
         )
     )
     existing_flow = existing_result.scalar_one_or_none()
@@ -171,7 +171,7 @@ async def execute_finalize_moments(
     total_words = previous_output.get("total_words", 0)
 
     if existing_flow:
-        # Update existing story
+        # Update existing flow
         output.add_log(f"Updating existing flow (id={existing_flow.id})")
         existing_flow.moments_json = moments
         existing_flow.moment_count = len(moments)
@@ -185,14 +185,14 @@ async def execute_finalize_moments(
         existing_flow.blocks_version = BLOCKS_VERSION
         existing_flow.blocks_validated_at = validation_time
 
-        story_id = existing_flow.id
+        flow_id = existing_flow.id
     else:
-        # Create new story record
+        # Create new flow record
         output.add_log("Creating new flow record")
         new_flow = SportsGameFlow(
             game_id=game_id,
             sport=sport,
-            story_version=STORY_VERSION,
+            story_version=FLOW_VERSION,
             moments_json=moments,
             moment_count=len(moments),
             validated_at=validation_time,
@@ -208,9 +208,9 @@ async def execute_finalize_moments(
 
         session.add(new_flow)
         await session.flush()
-        story_id = new_flow.id
+        flow_id = new_flow.id
 
-    output.add_log(f"Flow persisted with id={story_id}")
+    output.add_log(f"Flow persisted with id={flow_id}")
     output.add_log(f"moment_count={len(moments)}")
     output.add_log(f"block_count={len(blocks)}")
     output.add_log(f"blocks_version={BLOCKS_VERSION}")
@@ -222,9 +222,9 @@ async def execute_finalize_moments(
     # Output shape for reviewability
     output.data = {
         "finalized": True,
-        "flow_id": story_id,
+        "flow_id": flow_id,
         "game_id": game_id,
-        "story_version": STORY_VERSION,
+        "flow_version": FLOW_VERSION,
         "moment_count": len(moments),
         "validated_at": validation_time.isoformat(),
         "openai_calls": openai_calls,

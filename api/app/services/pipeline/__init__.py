@@ -1,6 +1,6 @@
 """Game Pipeline Service.
 
-Pipeline framework for moment-based story generation.
+Pipeline framework for moment-based game flow generation.
 """
 
 from .executor import PipelineExecutor

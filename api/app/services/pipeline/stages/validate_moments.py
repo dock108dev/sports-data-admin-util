@@ -1,13 +1,13 @@
 """VALIDATE_MOMENTS Stage Implementation.
 
-This stage validates that moment data strictly complies with the Story contract.
+This stage validates that moment data strictly complies with the game flow contract.
 It does NOT generate data. It does NOT repair data. It exists to FAIL when
 the contract is violated.
 
-STORY CONTRACT ENFORCEMENT
-==========================
+FLOW CONTRACT ENFORCEMENT
+=========================
 This stage is the contract lock. After this stage passes:
-- Story data cannot drift
+- Flow data cannot drift
 - Later AI steps cannot lie
 - Debugging becomes mechanical
 
@@ -33,7 +33,7 @@ PROHIBITIONS
 ============
 - No OpenAI calls
 - No narrative text
-- No story persistence
+- No flow persistence
 - No silent corrections
 - No best-effort behavior
 """
@@ -364,7 +364,7 @@ def _validate_score_continuity(moments: list[dict[str, Any]]) -> list[Validation
 async def execute_validate_moments(stage_input: StageInput) -> StageOutput:
     """Execute the VALIDATE_MOMENTS stage.
 
-    Validates that moment data strictly complies with the Story contract.
+    Validates that moment data strictly complies with the game flow contract.
     Returns success with validated=true, or RAISES an exception on failure.
 
     The exception message contains structured JSON error data for reviewability.

@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from ...db import AsyncSession, get_db
 from ...db.sports import SportsGame, SportsGamePlay
-from ...db.story import SportsGameFlow, SportsGameTimelineArtifact
+from ...db.flow import SportsGameFlow, SportsGameTimelineArtifact
 from ...services.team_colors import get_matchup_colors
 from ...services.timeline_generator import (
     TimelineGenerationError,
@@ -26,8 +26,8 @@ from .schemas import (
 
 router = APIRouter()
 
-# Story version identifier (DB filter value — "v2-moments")
-STORY_VERSION = "v2-moments"
+# Flow version identifier (DB filter value — "v2-moments")
+FLOW_VERSION = "v2-moments"
 
 
 @router.get("/games/{game_id}/timeline", response_model=TimelineArtifactResponse)
@@ -120,7 +120,7 @@ async def get_game_flow(
     flow_result = await session.execute(
         select(SportsGameFlow).where(
             SportsGameFlow.game_id == game_id,
-            SportsGameFlow.story_version == STORY_VERSION,
+            SportsGameFlow.story_version == FLOW_VERSION,
             SportsGameFlow.moments_json.isnot(None),
         )
     )

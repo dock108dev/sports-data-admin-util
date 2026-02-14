@@ -68,7 +68,7 @@ class NarrativeBlock:
     be described in 2-4 sentences (~65 words).
 
     Attributes:
-        block_index: 0-indexed position in the story (0-6)
+        block_index: 0-indexed position in the flow (0-6)
         role: Semantic role describing the block's function
         moment_indices: Which moments are grouped into this block
         period_start: First period covered by this block

@@ -23,7 +23,7 @@ from sqlalchemy.orm import attributes
 from ...db import AsyncSession
 from ...db.social import TeamSocialPost
 from ...db.sports import SportsGame
-from ...db.story import SportsGameFlow
+from ...db.flow import SportsGameFlow
 from .stages.embedded_tweets import select_and_assign_embedded_tweets
 
 logger = logging.getLogger(__name__)

@@ -4,9 +4,9 @@ This stage segments normalized PBP data into condensed moments using
 deterministic, rule-based boundary detection, and selects which plays
 must be explicitly narrated.
 
-STORY CONTRACT ALIGNMENT
-========================
-This implementation adheres to the Story contract:
+FLOW CONTRACT ALIGNMENT
+=======================
+This implementation adheres to the game flow contract:
 - Moments are derived DIRECTLY from PBP data
 - No signals, momentum, or narrative abstractions
 - No LLM/OpenAI calls
