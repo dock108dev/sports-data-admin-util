@@ -257,6 +257,7 @@
 }
 
 .bookOdds {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -454,4 +455,82 @@
 }
 .fairOddsHelp:hover .fairOddsPopover {
   display: block;
+}
+
+/* Clickable Fair card */
+.fairOddsClickable {
+  cursor: pointer;
+}
+.fairOddsClickable:hover {
+  filter: brightness(0.96);
+}
+
+/* Derivation popover */
+.derivationPopover {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 240px;
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  z-index: 20;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  text-align: left;
+}
+/* Down-pointing caret */
+.derivationPopover::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #1f2937;
+}
+
+.derivationTitle {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #93c5fd;
+  margin-bottom: 6px;
+}
+
+.derivationDivider {
+  border-top: 1px solid #374151;
+  margin: 6px 0;
+}
+
+.derivationRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.derivationLabel {
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+.derivationValue {
+  color: #f9fafb;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.derivationResult {
+  font-weight: 600;
+}
+.derivationResult .derivationLabel {
+  color: #93c5fd;
+}
+.derivationResult .derivationValue {
+  color: #93c5fd;
 }

@@ -56,6 +56,7 @@ class BetDefinition(BaseModel):
     ev_confidence_tier: str | None = None
     ev_disabled_reason: str | None = None
     ev_method: str | None = None
+    has_fair: bool = False
 
 
 class FairbetOddsResponse(BaseModel):
@@ -141,6 +142,7 @@ async def get_fairbet_odds(
     book: str | None = Query(None, description="Filter to a specific book"),
     player_name: str | None = Query(None, description="Filter by player name"),
     min_ev: float | None = Query(None, description="Minimum EV% threshold"),
+    has_fair: bool | None = Query(None, description="Filter to bets with (true) or without (false) fair odds"),
     sort_by: str = Query("ev", description="Sort order: ev, game_time, market"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -338,7 +340,7 @@ async def get_fairbet_odds(
     market_groups: dict[tuple, list[tuple]] = {}
     for key in bets_map:
         game_id_k, market_key_k, _, line_value_k = key
-        group_key = (game_id_k, market_key_k, line_value_k)
+        group_key = (game_id_k, market_key_k, abs(line_value_k))
         if group_key not in market_groups:
             market_groups[group_key] = []
         market_groups[group_key].append(key)
@@ -404,6 +406,9 @@ async def get_fairbet_odds(
                 bets_map[key_a]["ev_confidence_tier"] = ev_result.confidence_tier
                 bets_map[key_b]["ev_method"] = ev_result.ev_method
                 bets_map[key_b]["ev_confidence_tier"] = ev_result.confidence_tier
+
+                bets_map[key_a]["has_fair"] = True
+                bets_map[key_b]["has_fair"] = True
             else:
                 # Not eligible: attach disabled metadata, convert books to BookOdds
                 for key in (key_a, key_b):
@@ -453,7 +458,11 @@ async def get_fairbet_odds(
     for bet in bets_list:
         bet["books"].sort(key=lambda b: -b.price)
 
-    # Step 8: Apply min_ev filter (post-annotation)
+    # Step 8: Apply has_fair filter (post-annotation)
+    if has_fair is not None:
+        bets_list = [bet for bet in bets_list if bet.get("has_fair", False) == has_fair]
+
+    # Step 8b: Apply min_ev filter (post-annotation)
     if min_ev is not None:
         bets_list = [
             bet for bet in bets_list
