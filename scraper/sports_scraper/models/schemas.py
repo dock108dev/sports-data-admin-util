@@ -102,7 +102,7 @@ class NormalizedGame(BaseModel):
 class NormalizedOddsSnapshot(BaseModel):
     league_code: SportCode
     book: str
-    market_type: MarketType
+    market_type: str  # Widened from MarketType literal to support prop market keys
     side: str | None = None
     line: float | None = None
     price: float | None = None
@@ -114,6 +114,32 @@ class NormalizedOddsSnapshot(BaseModel):
     source_key: str | None = None
     is_closing_line: bool = True
     raw_payload: dict = Field(default_factory=dict)
+    event_id: str | None = None  # Odds API event ID for prop fetching
+    market_category: str = "mainline"  # mainline, player_prop, team_prop, alternate, period, game_prop
+    player_name: str | None = None  # Player name for player props
+    description: str | None = None  # Outcome description from API
+
+
+def classify_market(market_key: str) -> str:
+    """Classify a market key into a category.
+
+    Returns:
+        One of: mainline, player_prop, team_prop, alternate, period, game_prop
+    """
+    key = market_key.lower()
+    if key in ("h2h", "spreads", "totals"):
+        return "mainline"
+    if key.startswith("player_"):
+        return "player_prop"
+    if key.startswith("team_total"):
+        return "team_prop"
+    if key.startswith("alternate_"):
+        return "alternate"
+    # Period markets: h1, q1, etc.
+    for suffix in ("_h1", "_h2", "_q1", "_q2", "_q3", "_q4", "_p1", "_p2", "_p3"):
+        if key.endswith(suffix):
+            return "period"
+    return "game_prop"
 
 
 class NormalizedPlay(BaseModel):

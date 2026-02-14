@@ -58,6 +58,7 @@ app.conf.task_routes = {
     "poll_active_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "trigger_flow_for_game": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "run_daily_sweep": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    "run_scheduled_props_sync": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     # Final-whistle social scrape runs on social-scraper queue (concurrency=1)
     "run_final_whistle_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
 }
@@ -117,6 +118,11 @@ _prod_only_schedule = {
     "active-odds-poll-every-30-min": {
         "task": "poll_active_odds",
         "schedule": crontab(minute="*/30"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+    "props-sync-every-30-min": {
+        "task": "run_scheduled_props_sync",
+        "schedule": crontab(minute="15,45"),  # Offset from mainline at :00/:30
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     # === Daily sweep (status repair, social scrape #2, embedded tweets, archive) ===

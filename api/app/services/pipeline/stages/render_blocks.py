@@ -31,7 +31,7 @@ the entire game flow:
 - Reduces repetition across blocks
 - Preserves all facts, scores, and structure
 - Uses low temperature (0.2) for consistency
-- Safe fallback: if output count != input count, uses originals
+- If output count != input count, uses originals to preserve structure
 
 VALIDATION
 ==========
@@ -219,11 +219,11 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         response_data = json.loads(response_json)
 
     except json.JSONDecodeError as e:
-        # Fail fast - no fallback narratives
+        # Fail fast
         raise ValueError(f"OpenAI returned invalid JSON: {e}") from e
 
     except Exception as e:
-        # Fail fast - no fallback narratives
+        # Fail fast
         raise ValueError(f"OpenAI call failed: {e}") from e
 
     # Extract narratives from response
@@ -252,7 +252,7 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         narrative = narrative_lookup.get(block_idx, "")
 
         if not narrative or not narrative.strip():
-            # Fail fast - no fallback narratives
+            # Fail fast
             raise ValueError(f"Block {block_idx}: No narrative from AI")
 
         # Clean up any raw PBP artifacts from the narrative

@@ -61,6 +61,9 @@ def _execute_odds_upsert(
         observed_at=snapshot.observed_at,
         source_key=snapshot.source_key,
         raw_payload=snapshot.raw_payload,
+        market_category=snapshot.market_category,
+        player_name=snapshot.player_name,
+        description=snapshot.description,
     )
 
     # --- Opening line: first-seen value, never overwritten ---
@@ -85,6 +88,9 @@ def _execute_odds_upsert(
                 "observed_at": snapshot.observed_at,
                 "source_key": snapshot.source_key,
                 "raw_payload": snapshot.raw_payload,
+                "market_category": snapshot.market_category,
+                "player_name": snapshot.player_name,
+                "description": snapshot.description,
                 "updated_at": now_utc(),
             },
         )
@@ -410,6 +416,13 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
             game_id=game_id,
             tip_time=str(snapshot.tip_time),
         )
+
+    # Store odds_api_event_id for downstream prop fetching
+    if game and snapshot.event_id:
+        ext = dict(game.external_ids) if game.external_ids else {}
+        if ext.get("odds_api_event_id") != snapshot.event_id:
+            ext["odds_api_event_id"] = snapshot.event_id
+            game.external_ids = ext
 
     side_value = snapshot.side if snapshot.side else None
     _execute_odds_upsert(session, game_id, snapshot, side_value)

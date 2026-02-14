@@ -2,6 +2,7 @@
 
 Supports both live odds (upcoming games) and historical odds (past games).
 Automatically routes to the appropriate API endpoint based on date range.
+Also supports event-level prop fetching.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from ..models import IngestionConfig
 from ..persistence import upsert_odds
 from ..persistence.odds import OddsUpsertResult
 from ..utils.datetime_utils import today_et
-from .client import OddsAPIClient
+from .client import OddsAPIClient, CREDIT_ABORT_THRESHOLD
 
 
 class OddsSynchronizer:
@@ -272,4 +273,80 @@ class OddsSynchronizer:
 
         return inserted
 
+    def sync_props(
+        self,
+        league_code: str,
+        event_ids: list[str],
+    ) -> int:
+        """Sync prop odds for a list of events.
+
+        Iterates events, fetches props via the event-level API, persists via
+        existing _persist_snapshots. Rate-limits between calls.
+
+        Args:
+            league_code: League code (NBA, NHL, NCAAB)
+            event_ids: List of Odds API event IDs to fetch props for
+
+        Returns:
+            Total number of prop odds persisted.
+        """
+        if not event_ids:
+            return 0
+
+        logger.info(
+            "props_sync_start",
+            league=league_code,
+            event_count=len(event_ids),
+        )
+
+        total_inserted = 0
+        events_processed = 0
+
+        for event_id in event_ids:
+            # Check credit safety before each call
+            if self.client.should_abort_props:
+                logger.warning(
+                    "props_sync_aborted_low_credits",
+                    league=league_code,
+                    events_processed=events_processed,
+                    events_remaining=len(event_ids) - events_processed,
+                    credits_remaining=self.client._credits_remaining,
+                )
+                break
+
+            try:
+                snapshots = self.client.fetch_event_props(league_code, event_id)
+                if snapshots:
+                    inserted = self._persist_snapshots(snapshots, league_code)
+                    total_inserted += inserted
+                    logger.debug(
+                        "props_event_complete",
+                        league=league_code,
+                        event_id=event_id,
+                        snapshots=len(snapshots),
+                        inserted=inserted,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "props_event_failed",
+                    league=league_code,
+                    event_id=event_id,
+                    error=str(exc),
+                    exc_info=True,
+                )
+
+            events_processed += 1
+
+            # Rate limit: 0.5s between event calls
+            if events_processed < len(event_ids):
+                time.sleep(0.5)
+
+        logger.info(
+            "props_sync_complete",
+            league=league_code,
+            events_processed=events_processed,
+            total_inserted=total_inserted,
+        )
+
+        return total_inserted
 

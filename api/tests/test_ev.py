@@ -1,0 +1,342 @@
+"""Tests for EV calculation engine — eligibility gate, compute, and math regression."""
+
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from app.services.ev import (
+    EVComputeResult,
+    _find_sharp_entry,
+    american_to_implied,
+    calculate_ev,
+    compute_ev_for_market,
+    evaluate_ev_eligibility,
+    remove_vig,
+)
+from app.services.ev_config import ConfidenceTier, EVStrategyConfig, get_strategy
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+NOW = datetime(2026, 2, 14, 12, 0, 0, tzinfo=timezone.utc)
+FRESH = NOW - timedelta(minutes=5)
+STALE_1H = NOW - timedelta(hours=2)
+
+
+def _make_books(
+    book_prices: dict[str, float],
+    observed_at: datetime = FRESH,
+) -> list[dict]:
+    """Build a list of book dicts for testing."""
+    return [
+        {"book": book, "price": price, "observed_at": observed_at}
+        for book, price in book_prices.items()
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Math functions — byte-for-byte regression tests
+# ---------------------------------------------------------------------------
+
+class TestAmericanToImplied:
+    """Regression tests for american_to_implied()."""
+
+    def test_negative_110(self) -> None:
+        result = american_to_implied(-110)
+        assert abs(result - 0.52381) < 0.0001
+
+    def test_positive_150(self) -> None:
+        result = american_to_implied(150)
+        assert abs(result - 0.4) < 0.0001
+
+    def test_even_money_positive(self) -> None:
+        result = american_to_implied(100)
+        assert abs(result - 0.5) < 0.0001
+
+    def test_even_money_negative(self) -> None:
+        result = american_to_implied(-100)
+        assert abs(result - 0.5) < 0.0001
+
+    def test_heavy_favorite(self) -> None:
+        result = american_to_implied(-300)
+        assert abs(result - 0.75) < 0.0001
+
+    def test_heavy_underdog(self) -> None:
+        result = american_to_implied(300)
+        assert abs(result - 0.25) < 0.0001
+
+    def test_edge_case_midrange(self) -> None:
+        """Prices between -100 and +100 return 0.5."""
+        assert american_to_implied(50) == 0.5
+        assert american_to_implied(-50) == 0.5
+
+
+class TestRemoveVig:
+    """Regression tests for remove_vig()."""
+
+    def test_standard_vig(self) -> None:
+        """Standard -110/-110 market has ~4.76% vig."""
+        implied_a = american_to_implied(-110)
+        implied_b = american_to_implied(-110)
+        true = remove_vig([implied_a, implied_b])
+        assert abs(true[0] - 0.5) < 0.0001
+        assert abs(true[1] - 0.5) < 0.0001
+        assert abs(sum(true) - 1.0) < 0.0001
+
+    def test_asymmetric_line(self) -> None:
+        """Asymmetric line like -150/+130."""
+        implied_a = american_to_implied(-150)
+        implied_b = american_to_implied(130)
+        true = remove_vig([implied_a, implied_b])
+        assert abs(sum(true) - 1.0) < 0.0001
+        assert true[0] > true[1]  # Favorite has higher true prob
+
+    def test_zero_total(self) -> None:
+        """Zero total returns input unchanged."""
+        result = remove_vig([0.0, 0.0])
+        assert result == [0.0, 0.0]
+
+
+class TestCalculateEV:
+    """Regression tests for calculate_ev()."""
+
+    def test_positive_ev(self) -> None:
+        """Book offers better odds than true prob suggests."""
+        ev = calculate_ev(150, 0.45)
+        # decimal_odds = 2.5, ev = (2.5 * 0.45 - 1) * 100 = 12.5%
+        assert abs(ev - 12.5) < 0.01
+
+    def test_negative_ev(self) -> None:
+        """Standard -110 at 50% true prob is negative EV."""
+        ev = calculate_ev(-110, 0.5)
+        # decimal_odds = 1.9091, ev = (1.9091 * 0.5 - 1) * 100 = -4.55%
+        assert ev < 0
+
+    def test_zero_ev(self) -> None:
+        """Fair line at true probability gives 0 EV."""
+        ev = calculate_ev(100, 0.5)
+        # decimal_odds = 2.0, ev = (2.0 * 0.5 - 1) * 100 = 0%
+        assert abs(ev) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# _find_sharp_entry
+# ---------------------------------------------------------------------------
+
+class TestFindSharpEntry:
+    """Tests for _find_sharp_entry() helper."""
+
+    def test_finds_pinnacle(self) -> None:
+        books = _make_books({"DraftKings": -110, "Pinnacle": -108, "FanDuel": -112})
+        entry = _find_sharp_entry(books, ("Pinnacle",))
+        assert entry is not None
+        assert entry["book"] == "Pinnacle"
+        assert entry["price"] == -108
+
+    def test_returns_none_when_missing(self) -> None:
+        books = _make_books({"DraftKings": -110, "FanDuel": -112})
+        entry = _find_sharp_entry(books, ("Pinnacle",))
+        assert entry is None
+
+    def test_returns_first_match(self) -> None:
+        books = _make_books({"SharpA": -105, "SharpB": -107})
+        entry = _find_sharp_entry(books, ("SharpA", "SharpB"))
+        assert entry is not None
+        assert entry["book"] == "SharpA"
+
+
+# ---------------------------------------------------------------------------
+# evaluate_ev_eligibility — all 4 disabled reasons + eligible
+# ---------------------------------------------------------------------------
+
+class TestEvaluateEVEligibility:
+    """Tests for the eligibility gate."""
+
+    def test_no_strategy_for_period(self) -> None:
+        """period markets have no strategy → disabled_reason='no_strategy'."""
+        result = evaluate_ev_eligibility(
+            "NBA", "period",
+            _make_books({"Pinnacle": -110, "DraftKings": -108, "FanDuel": -112}),
+            _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
+            now=NOW,
+        )
+        assert result.eligible is False
+        assert result.disabled_reason == "no_strategy"
+        assert result.strategy_config is None
+        assert result.ev_method is None
+
+    def test_no_strategy_for_game_prop(self) -> None:
+        result = evaluate_ev_eligibility(
+            "NBA", "game_prop",
+            _make_books({"Pinnacle": -110}),
+            _make_books({"Pinnacle": -110}),
+            now=NOW,
+        )
+        assert result.eligible is False
+        assert result.disabled_reason == "no_strategy"
+
+    def test_reference_missing_no_pinnacle(self) -> None:
+        """No Pinnacle on side A → disabled_reason='reference_missing'."""
+        result = evaluate_ev_eligibility(
+            "NBA", "mainline",
+            _make_books({"DraftKings": -110, "FanDuel": -108, "BetMGM": -112}),
+            _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
+            now=NOW,
+        )
+        assert result.eligible is False
+        assert result.disabled_reason == "reference_missing"
+        assert result.ev_method == "pinnacle_devig"
+        assert result.confidence_tier == "high"
+
+    def test_reference_stale(self) -> None:
+        """Pinnacle observed_at older than staleness limit → 'reference_stale'."""
+        stale_books_a = _make_books({"Pinnacle": -110, "DraftKings": -108, "FanDuel": -112}, observed_at=STALE_1H)
+        fresh_books_b = _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}, observed_at=FRESH)
+        result = evaluate_ev_eligibility(
+            "NBA", "mainline",
+            stale_books_a,
+            fresh_books_b,
+            now=NOW,
+        )
+        assert result.eligible is False
+        assert result.disabled_reason == "reference_stale"
+
+    def test_insufficient_books(self) -> None:
+        """Fewer than 3 qualifying books per side → 'insufficient_books'."""
+        result = evaluate_ev_eligibility(
+            "NBA", "mainline",
+            _make_books({"Pinnacle": -110, "DraftKings": -108}),  # Only 2 books
+            _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
+            now=NOW,
+        )
+        assert result.eligible is False
+        assert result.disabled_reason == "insufficient_books"
+
+    def test_eligible_nba_mainline(self) -> None:
+        """Full eligible NBA mainline market."""
+        result = evaluate_ev_eligibility(
+            "NBA", "mainline",
+            _make_books({"Pinnacle": -110, "DraftKings": -108, "FanDuel": -112}),
+            _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
+            now=NOW,
+        )
+        assert result.eligible is True
+        assert result.disabled_reason is None
+        assert result.ev_method == "pinnacle_devig"
+        assert result.confidence_tier == "high"
+        assert result.strategy_config is not None
+
+    def test_eligible_ncaab_player_prop(self) -> None:
+        """Eligible NCAAB player prop → LOW confidence."""
+        result = evaluate_ev_eligibility(
+            "NCAAB", "player_prop",
+            _make_books({"Pinnacle": -110, "DraftKings": -108, "FanDuel": -112}),
+            _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
+            now=NOW,
+        )
+        assert result.eligible is True
+        assert result.confidence_tier == "low"
+
+    def test_excluded_books_dont_count(self) -> None:
+        """Excluded books should not count toward min_qualifying_books."""
+        result = evaluate_ev_eligibility(
+            "NBA", "mainline",
+            _make_books({"Pinnacle": -110, "DraftKings": -108, "Bovada": -112}),  # Bovada is excluded
+            _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
+            now=NOW,
+        )
+        assert result.eligible is False
+        assert result.disabled_reason == "insufficient_books"
+
+
+# ---------------------------------------------------------------------------
+# compute_ev_for_market — new return type
+# ---------------------------------------------------------------------------
+
+class TestComputeEVForMarket:
+    """Tests for compute_ev_for_market() with EVComputeResult."""
+
+    @pytest.fixture
+    def nba_mainline_config(self) -> EVStrategyConfig:
+        config = get_strategy("NBA", "mainline")
+        assert config is not None
+        return config
+
+    def test_returns_ev_compute_result(self, nba_mainline_config: EVStrategyConfig) -> None:
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -110, "DraftKings": -105}),
+            _make_books({"Pinnacle": -110, "DraftKings": -115}),
+            nba_mainline_config,
+        )
+        assert isinstance(result, EVComputeResult)
+        assert result.ev_method == "pinnacle_devig"
+        assert result.confidence_tier == "high"
+
+    def test_true_probs_sum_to_one(self, nba_mainline_config: EVStrategyConfig) -> None:
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -150, "DraftKings": -145}),
+            _make_books({"Pinnacle": 130, "DraftKings": 125}),
+            nba_mainline_config,
+        )
+        assert result.true_prob_a is not None
+        assert result.true_prob_b is not None
+        assert abs(result.true_prob_a + result.true_prob_b - 1.0) < 0.0001
+
+    def test_reference_prices_captured(self, nba_mainline_config: EVStrategyConfig) -> None:
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -110, "DraftKings": -105}),
+            _make_books({"Pinnacle": -110, "DraftKings": -115}),
+            nba_mainline_config,
+        )
+        assert result.reference_price_a == -110
+        assert result.reference_price_b == -110
+
+    def test_annotated_books_have_ev(self, nba_mainline_config: EVStrategyConfig) -> None:
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -110, "DraftKings": -105}),
+            _make_books({"Pinnacle": -110, "DraftKings": -115}),
+            nba_mainline_config,
+        )
+        # Every book on both sides should have ev_percent
+        for b in result.annotated_a:
+            assert b["ev_percent"] is not None
+            assert b["true_prob"] is not None
+            assert b["implied_prob"] is not None
+        for b in result.annotated_b:
+            assert b["ev_percent"] is not None
+
+    def test_sharp_book_marked(self, nba_mainline_config: EVStrategyConfig) -> None:
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -110, "DraftKings": -105}),
+            _make_books({"Pinnacle": -110, "DraftKings": -115}),
+            nba_mainline_config,
+        )
+        pinnacle_a = next(b for b in result.annotated_a if b["book"] == "Pinnacle")
+        dk_a = next(b for b in result.annotated_a if b["book"] == "DraftKings")
+        assert pinnacle_a["is_sharp"] is True
+        assert dk_a["is_sharp"] is False
+
+    def test_ev_math_regression(self, nba_mainline_config: EVStrategyConfig) -> None:
+        """Regression: verify exact EV numbers for known inputs.
+
+        Pinnacle -110/-110 → true_prob = 0.5/0.5 each side.
+        DraftKings -105 on side A: decimal = 1.9524, ev = (1.9524 * 0.5 - 1) * 100 = -2.38%
+        FanDuel +105 on side A: decimal = 2.05, ev = (2.05 * 0.5 - 1) * 100 = +2.50%
+        """
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -110, "DraftKings": -105, "FanDuel": 105}),
+            _make_books({"Pinnacle": -110, "DraftKings": -115, "FanDuel": -105}),
+            nba_mainline_config,
+        )
+
+        # Side A
+        dk_a = next(b for b in result.annotated_a if b["book"] == "DraftKings")
+        fd_a = next(b for b in result.annotated_a if b["book"] == "FanDuel")
+        assert abs(dk_a["ev_percent"] - (-2.38)) < 0.1
+        assert abs(fd_a["ev_percent"] - 2.50) < 0.1
+
+        # True probs should be ~0.5 each
+        assert abs(result.true_prob_a - 0.5) < 0.001
+        assert abs(result.true_prob_b - 0.5) < 0.001

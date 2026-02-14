@@ -2,7 +2,34 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-13] - Current
+## [2026-02-14] - Current
+
+### FairBet EV Framework
+
+- **EV eligibility gating**: New `evaluate_ev_eligibility()` function with 4-check pipeline: strategy exists, sharp book present, freshness, minimum qualifying books
+- **EV strategy config**: `ev_config.py` maps `(league, market_category)` → strategy with confidence tiers (high/medium/low), staleness limits, and minimum book thresholds
+- **Book exclusion**: 23 offshore/promo/irrelevant books excluded at SQL level via `EXCLUDED_BOOKS`; remaining ~17 included books participate in EV calculation
+- **Confidence tiers**: High (NBA/NHL mainlines), Medium (NCAAB mainlines, team props), Low (player props, alternates); player props can never be High
+- **Pregame-only filter**: FairBet odds endpoint restricted to pregame games (`game_start > now`) — removed stale 4-hour live cutoff
+- **Odds model expansion**: Added `market_category`, `has_fair`, `player_name`, `selection_key` columns to odds tables; new prop market support
+
+### FairBet UI Fixes
+
+- **CSS stacking context fix**: Replaced `filter: brightness(0.96)` hover with `background: linear-gradient()` to prevent derivation popover from being clipped by adjacent cards
+
+### Legacy Code Cleanup
+
+- **Deleted one-shot scripts**: `migrate_sports_data.sh`, `_team_color_data.py`, `extract_team_colors.py`, `map_ncaab_teams.py`, `harvest_cbb_abbreviations.py`
+- **Cleaned legacy comments**: Removed "Phase N" labels from FlowSection.tsx, fixed misleading "Safe fallback" comments in render_blocks.py, cleaned StatusBadge.module.css comment
+
+### Documentation
+
+- **EV_LIFECYCLE.md**: End-to-end EV computation walkthrough from ingestion to annotation
+- **EV_INFRASTRUCTURE_REVIEW.md**: Codebase review documenting assumptions, gaps, and open questions
+
+---
+
+## [2026-02-13]
 
 ### Mini Box Score Fix
 

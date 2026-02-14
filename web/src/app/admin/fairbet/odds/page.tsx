@@ -1,34 +1,69 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./styles.module.css";
 import {
   fetchFairbetOdds,
   formatOdds,
   formatSelectionKey,
   formatMarketKey,
+  formatMarketCategory,
+  formatEv,
+  getEvColor,
   getBestOdds,
+  trueProbToAmerican,
+  formatDisabledReason,
   type BetDefinition,
   type FairbetOddsFilters,
+  type GameOption,
 } from "@/lib/api/fairbet";
 import { createScrapeRun, listScrapeRuns } from "@/lib/api/sportsAdmin";
 import type { ScrapeRunResponse } from "@/lib/api/sportsAdmin/types";
 import { FAIRBET_LEAGUES } from "@/lib/constants/sports";
 import { formatDateInput } from "@/lib/utils/dateFormat";
+import { DerivationContent } from "./DerivationContent";
+import { formatGameDate, formatLastSync, formatLineValue } from "./helpers";
 
 const LEAGUES = FAIRBET_LEAGUES;
+
+const SORT_OPTIONS = [
+  { value: "ev", label: "Best EV" },
+  { value: "game_time", label: "Game Time" },
+  { value: "market", label: "Market" },
+];
 
 export default function FairbetOddsPage() {
   const [bets, setBets] = useState<BetDefinition[]>([]);
   const [booksAvailable, setBooksAvailable] = useState<string[]>([]);
+  const [marketCategoriesAvailable, setMarketCategoriesAvailable] = useState<string[]>([]);
+  const [gamesAvailable, setGamesAvailable] = useState<GameOption[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
   const [selectedLeague, setSelectedLeague] = useState<string>("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [selectedGame, setSelectedGame] = useState<string>("");
+  const [selectedBook, setSelectedBook] = useState<string>("");
+  const [selectedSort, setSelectedSort] = useState<string>("ev");
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
+
+  // Derivation popover state
+  const [openDerivation, setOpenDerivation] = useState<number | null>(null);
+  const derivationRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (openDerivation === null) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (derivationRef.current && !derivationRef.current.contains(e.target as Node)) {
+        setOpenDerivation(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openDerivation]);
 
   // Sync state
   const [syncing, setSyncing] = useState(false);
@@ -43,21 +78,25 @@ export default function FairbetOddsPage() {
       const filters: FairbetOddsFilters = {
         limit,
         offset,
+        sort_by: selectedSort,
       };
-      if (selectedLeague) {
-        filters.league = selectedLeague;
-      }
+      if (selectedLeague) filters.league = selectedLeague;
+      if (selectedCategory) filters.market_category = selectedCategory;
+      if (selectedGame) filters.game_id = parseInt(selectedGame, 10);
+      if (selectedBook) filters.book = selectedBook;
 
       const response = await fetchFairbetOdds(filters);
       setBets(response.bets);
       setBooksAvailable(response.books_available);
+      setMarketCategoriesAvailable(response.market_categories_available);
+      setGamesAvailable(response.games_available);
       setTotal(response.total);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [limit, offset, selectedLeague]);
+  }, [limit, offset, selectedLeague, selectedCategory, selectedGame, selectedBook, selectedSort]);
 
   useEffect(() => {
     loadOdds();
@@ -65,7 +104,6 @@ export default function FairbetOddsPage() {
 
   const loadLastOddsSync = useCallback(async () => {
     try {
-      // Fetch recent scrape runs and find the last completed odds sync
       const runs = await listScrapeRuns({ status: "completed" });
       const oddsRun = runs.find(
         (run: ScrapeRunResponse) => run.config?.odds === true && run.finished_at
@@ -74,7 +112,6 @@ export default function FairbetOddsPage() {
         setLastOddsSync(oddsRun.finished_at);
       }
     } catch (err) {
-      // Silently fail - this is informational only
       console.error("Failed to load last odds sync time:", err);
     }
   }, []);
@@ -89,10 +126,7 @@ export default function FairbetOddsPage() {
     setError(null);
 
     try {
-      // Get today's date for the sync
       const today = formatDateInput(new Date());
-
-      // If a league is selected, sync just that one; otherwise sync all
       const leaguesToSync = selectedLeague ? [selectedLeague] : LEAGUES;
 
       const results = await Promise.all(
@@ -118,7 +152,6 @@ export default function FairbetOddsPage() {
         `Odds sync started for ${leagueNames} (Run #${runIds}). Refresh in a moment to see results.`
       );
 
-      // Reload odds and last sync time after a short delay
       setTimeout(() => {
         loadOdds();
         loadLastOddsSync();
@@ -130,49 +163,13 @@ export default function FairbetOddsPage() {
     }
   }
 
-  function formatGameDate(dateStr: string): string {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  }
-
-  function formatLastSync(dateStr: string): string {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  }
-
-  function formatLineValue(line: number, marketKey: string): string {
-    // 0 is sentinel for no line (moneyline)
-    if (line === 0 && marketKey.toLowerCase().includes("h2h")) {
-      return "";
-    }
-    if (line === 0 && marketKey.toLowerCase().includes("moneyline")) {
-      return "";
-    }
-    if (line > 0) {
-      return `+${line}`;
-    }
-    return line.toString();
+  function resetFilters() {
+    setSelectedLeague("");
+    setSelectedCategory("");
+    setSelectedGame("");
+    setSelectedBook("");
+    setSelectedSort("ev");
+    setOffset(0);
   }
 
   if (error) {
@@ -213,8 +210,84 @@ export default function FairbetOddsPage() {
         </div>
 
         <div className={styles.filterGroup}>
-          <span className={styles.filterLabel}>Books Available</span>
-          <span className={styles.bookCount}>{booksAvailable.length}</span>
+          <label className={styles.filterLabel}>Category</label>
+          <select
+            className={styles.filterSelect}
+            value={selectedCategory}
+            onChange={(e) => {
+              setSelectedCategory(e.target.value);
+              setOffset(0);
+            }}
+          >
+            <option value="">All Markets</option>
+            {marketCategoriesAvailable.map((cat) => (
+              <option key={cat} value={cat}>
+                {formatMarketCategory(cat)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className={styles.filterGroup}>
+          <label className={styles.filterLabel}>Game</label>
+          <select
+            className={styles.filterSelect}
+            value={selectedGame}
+            onChange={(e) => {
+              setSelectedGame(e.target.value);
+              setOffset(0);
+            }}
+          >
+            <option value="">All Games</option>
+            {gamesAvailable.map((g) => (
+              <option key={g.game_id} value={g.game_id.toString()}>
+                {g.matchup}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className={styles.filterGroup}>
+          <label className={styles.filterLabel}>Book</label>
+          <select
+            className={styles.filterSelect}
+            value={selectedBook}
+            onChange={(e) => {
+              setSelectedBook(e.target.value);
+              setOffset(0);
+            }}
+          >
+            <option value="">All Books</option>
+            {booksAvailable.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className={styles.filterGroup}>
+          <label className={styles.filterLabel}>Sort</label>
+          <select
+            className={styles.filterSelect}
+            value={selectedSort}
+            onChange={(e) => {
+              setSelectedSort(e.target.value);
+              setOffset(0);
+            }}
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className={styles.filterGroup}>
+          <button className={styles.resetButton} onClick={resetFilters}>
+            Reset
+          </button>
         </div>
 
         <div className={styles.filterGroup} style={{ marginLeft: "auto", textAlign: "right" }}>
@@ -256,7 +329,14 @@ export default function FairbetOddsPage() {
               return (
                 <div key={idx} className={styles.betCard}>
                   <div className={styles.betHeader}>
-                    <span className={styles.leagueBadge}>{bet.league_code}</span>
+                    <div className={styles.betHeaderLeft}>
+                      <span className={styles.leagueBadge}>{bet.league_code}</span>
+                      {bet.market_category && bet.market_category !== "mainline" && (
+                        <span className={styles.categoryBadge}>
+                          {formatMarketCategory(bet.market_category)}
+                        </span>
+                      )}
+                    </div>
                     <span className={styles.gameDate}>
                       {formatGameDate(bet.game_date)}
                     </span>
@@ -265,6 +345,10 @@ export default function FairbetOddsPage() {
                   <div className={styles.matchup}>
                     {bet.away_team} @ {bet.home_team}
                   </div>
+
+                  {bet.player_name && (
+                    <div className={styles.playerName}>{bet.player_name}</div>
+                  )}
 
                   <div className={styles.betType}>
                     <span className={styles.marketType}>
@@ -282,21 +366,86 @@ export default function FairbetOddsPage() {
                   </div>
 
                   <div className={styles.booksGrid}>
-                    {bet.books.map((book, bookIdx) => (
+                    {bet.true_prob !== null && bet.true_prob !== undefined ? (
                       <div
-                        key={bookIdx}
-                        className={`${styles.bookOdds} ${
-                          bestBook && book.book === bestBook.book
-                            ? styles.bestOdds
-                            : ""
-                        }`}
+                        className={`${styles.bookOdds} ${styles.fairOddsCard} ${styles.fairOddsClickable}`}
+                        onClick={() => setOpenDerivation(openDerivation === idx ? null : idx)}
+                        ref={openDerivation === idx ? derivationRef : undefined}
                       >
-                        <span className={styles.bookName}>{book.book}</span>
+                        <span className={styles.bookName}>Fair</span>
                         <span className={styles.bookPrice}>
-                          {formatOdds(book.price)}
+                          {formatOdds(trueProbToAmerican(bet.true_prob))}
+                        </span>
+                        <span className={styles.fairProb}>
+                          {(bet.true_prob * 100).toFixed(1)}%
+                        </span>
+                        {bet.ev_confidence_tier && (
+                          <span className={`${styles.confidenceBadge} ${
+                            styles[`confidence_${bet.ev_confidence_tier}` as keyof typeof styles] ?? ""
+                          }`}>
+                            {bet.ev_confidence_tier}
+                          </span>
+                        )}
+                        {openDerivation === idx &&
+                          bet.reference_price !== null &&
+                          bet.opposite_reference_price !== null && (
+                            <DerivationContent
+                              referencePrice={bet.reference_price}
+                              oppositeReferencePrice={bet.opposite_reference_price}
+                              trueProb={bet.true_prob}
+                            />
+                          )}
+                      </div>
+                    ) : (
+                      <div className={`${styles.bookOdds} ${styles.fairOddsDisabled}`}>
+                        <span className={styles.bookName}>Fair</span>
+                        <span className={styles.fairOddsHelp}>
+                          ?
+                          <div className={styles.fairOddsPopover}>
+                            <strong>
+                              {formatDisabledReason(bet.ev_disabled_reason).title}
+                            </strong>
+                            <p>{formatDisabledReason(bet.ev_disabled_reason).detail}</p>
+                          </div>
                         </span>
                       </div>
-                    ))}
+                    )}
+                    {bet.books.map((bookOdds, bookIdx) => {
+                      const evColor = getEvColor(bookOdds.ev_percent);
+                      return (
+                        <div
+                          key={bookIdx}
+                          className={`${styles.bookOdds} ${
+                            bestBook && bookOdds.book === bestBook.book
+                              ? styles.bestOdds
+                              : ""
+                          } ${bookOdds.is_sharp ? styles.sharpBook : ""}`}
+                        >
+                          <span className={styles.bookName}>
+                            {bookOdds.book}
+                            {bookOdds.is_sharp && (
+                              <span className={styles.sharpBadge}>S</span>
+                            )}
+                          </span>
+                          <span className={styles.bookPrice}>
+                            {formatOdds(bookOdds.price)}
+                          </span>
+                          {bookOdds.ev_percent !== null && bookOdds.ev_percent !== undefined && (
+                            <span
+                              className={`${styles.evBadge} ${
+                                evColor === "positive"
+                                  ? styles.evPositive
+                                  : evColor === "negative"
+                                  ? styles.evNegative
+                                  : ""
+                              }`}
+                            >
+                              {formatEv(bookOdds.ev_percent)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );

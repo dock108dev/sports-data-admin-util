@@ -24,6 +24,11 @@ class OddsProviderConfig(BaseModel):
     request_timeout_seconds: int = 15
     # TTL for live odds cache (future games) - expires before the 30-min sync interval
     live_odds_cache_ttl_seconds: int = Field(default=1500)  # 25 minutes
+    # Regions to fetch odds from (us, us2, eu, uk, au)
+    # Enables international sharp books (Pinnacle) and exchanges (Betfair)
+    regions: list[str] = Field(
+        default_factory=lambda: ["us", "us2", "eu", "uk", "au"]
+    )
 
 
 class ScraperConfig(BaseModel):
@@ -129,6 +134,7 @@ class Settings(BaseSettings):
     api_key: str | None = Field(None, alias="API_KEY")
     scraper_html_cache_dir_override: str | None = Field(None, alias="SCRAPER_HTML_CACHE_DIR")
     scraper_force_cache_refresh_override: bool | None = Field(None, alias="SCRAPER_FORCE_CACHE_REFRESH")
+    odds_api_regions: str | None = Field(None, alias="ODDS_API_REGIONS")
 
     @model_validator(mode="after")
     def _apply_scraper_overrides(self) -> "Settings":
@@ -140,6 +146,8 @@ class Settings(BaseSettings):
             self.scraper_config.html_cache_dir = self.scraper_html_cache_dir_override
         if self.scraper_force_cache_refresh_override is not None:
             self.scraper_config.force_cache_refresh = bool(self.scraper_force_cache_refresh_override)
+        if self.odds_api_regions:
+            self.odds_config.regions = [r.strip() for r in self.odds_api_regions.split(",")]
         return self
 
 

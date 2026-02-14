@@ -23,12 +23,13 @@
 
 .filters {
   display: flex;
-  gap: 24px;
+  gap: 16px;
   align-items: center;
   margin-bottom: 24px;
   padding: 16px;
   background: #f9fafb;
   border-radius: 8px;
+  flex-wrap: wrap;
 }
 
 .filterGroup {
@@ -50,6 +51,7 @@
   border-radius: 6px;
   background: white;
   cursor: pointer;
+  max-width: 200px;
 }
 
 .filterSelect:focus {
@@ -65,6 +67,23 @@
   background: #e5e7eb;
   padding: 4px 10px;
   border-radius: 12px;
+}
+
+.resetButton {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.resetButton:hover {
+  background: #f3f4f6;
+  color: #374151;
 }
 
 .syncButton {
@@ -144,6 +163,12 @@
   margin-bottom: 12px;
 }
 
+.betHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .leagueBadge {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 11px;
@@ -156,6 +181,17 @@
   border-radius: 4px;
 }
 
+.categoryBadge {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 3px 6px;
+  background: #818cf8;
+  color: #ffffff;
+  border-radius: 4px;
+}
+
 .gameDate {
   font-size: 12px;
   color: #6b7280;
@@ -165,6 +201,13 @@
   font-size: 15px;
   font-weight: 600;
   color: #1a1a2e;
+  margin-bottom: 4px;
+}
+
+.playerName {
+  font-size: 14px;
+  font-weight: 500;
+  color: #6366f1;
   margin-bottom: 8px;
 }
 
@@ -197,6 +240,16 @@
   font-weight: 400;
 }
 
+.trueProb {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
 .booksGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
@@ -204,6 +257,7 @@
 }
 
 .bookOdds {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -219,6 +273,11 @@
   border-color: #10b981;
 }
 
+.bookOdds.sharpBook {
+  border-color: #818cf8;
+  background: #f5f3ff;
+}
+
 .bookName {
   font-size: 11px;
   color: #6b7280;
@@ -228,6 +287,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.sharpBadge {
+  font-size: 9px;
+  font-weight: 700;
+  color: #6366f1;
+  background: #e0e7ff;
+  padding: 1px 3px;
+  border-radius: 3px;
+  line-height: 1;
 }
 
 .bookPrice {
@@ -238,6 +310,26 @@
 
 .bestOdds .bookPrice {
   color: #059669;
+}
+
+.evBadge {
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #6b7280;
+  background: #f3f4f6;
+}
+
+.evPositive {
+  color: #059669;
+  background: #ecfdf5;
+}
+
+.evNegative {
+  color: #dc2626;
+  background: #fef2f2;
 }
 
 .pagination {
@@ -275,4 +367,180 @@
 .pageInfo {
   font-size: 13px;
   color: #6b7280;
+}
+
+/* Fair Odds card (available) */
+.fairOddsCard {
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  border-color: #3b82f6;
+  position: relative;
+}
+.fairOddsCard .bookName {
+  color: #2563eb;
+  font-weight: 600;
+}
+.fairOddsCard .bookPrice {
+  color: #1d4ed8;
+}
+.fairProb {
+  font-size: 11px;
+  color: #3b82f6;
+  margin-top: 2px;
+}
+
+/* Confidence tier badges */
+.confidenceBadge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-top: 4px;
+}
+.confidence_high { color: #059669; background: #ecfdf5; }
+.confidence_medium { color: #d97706; background: #fffbeb; }
+.confidence_low { color: #6b7280; background: #f3f4f6; }
+
+/* Fair Odds card (disabled) */
+.fairOddsDisabled {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  border-style: dashed;
+}
+.fairOddsDisabled .bookName {
+  color: #9ca3af;
+}
+.fairOddsHelp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #6b7280;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: help;
+  position: relative;
+  margin: 4px 0;
+}
+.fairOddsPopover {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  width: 200px;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  text-align: left;
+}
+.fairOddsPopover strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.fairOddsPopover p {
+  margin: 0;
+  line-height: 1.4;
+  color: #d1d5db;
+}
+.fairOddsHelp:hover .fairOddsPopover {
+  display: block;
+}
+
+/* Clickable Fair card */
+.fairOddsClickable {
+  cursor: pointer;
+}
+.fairOddsClickable:hover {
+  background: linear-gradient(135deg, #e3eeff, #cddcf8);
+}
+
+/* Derivation popover */
+.derivationPopover {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 240px;
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  z-index: 20;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  text-align: left;
+}
+/* Down-pointing caret */
+.derivationPopover::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #1f2937;
+}
+
+.derivationTitle {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #93c5fd;
+  margin-bottom: 6px;
+}
+
+.derivationDivider {
+  border-top: 1px solid #374151;
+  margin: 6px 0;
+}
+
+.derivationRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.derivationLabel {
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+.derivationValue {
+  color: #f9fafb;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.derivationFormula {
+  justify-content: center;
+  padding: 2px 0;
+}
+.derivationFormula .derivationValue {
+  color: #9ca3af;
+  font-size: 10px;
+  font-style: italic;
+}
+
+.derivationResult {
+  font-weight: 600;
+}
+.derivationResult .derivationLabel {
+  color: #93c5fd;
+}
+.derivationResult .derivationValue {
+  color: #93c5fd;
 }
