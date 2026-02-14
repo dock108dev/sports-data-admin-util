@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./styles.module.css";
 import {
   fetchFairbetOdds,
@@ -11,6 +11,9 @@ import {
   formatEv,
   getEvColor,
   getBestOdds,
+  trueProbToAmerican,
+  americanToImplied,
+  formatDisabledReason,
   type BetDefinition,
   type FairbetOddsFilters,
   type GameOption,
@@ -27,6 +30,53 @@ const SORT_OPTIONS = [
   { value: "game_time", label: "Game Time" },
   { value: "market", label: "Market" },
 ];
+
+function DerivationContent({
+  referencePrice,
+  oppositeReferencePrice,
+  trueProb,
+}: {
+  referencePrice: number;
+  oppositeReferencePrice: number;
+  trueProb: number;
+}) {
+  const impliedThis = americanToImplied(referencePrice);
+  const impliedOther = americanToImplied(oppositeReferencePrice);
+  const overround = impliedThis + impliedOther;
+  const vigPct = overround - 1;
+
+  return (
+    <div className={styles.derivationPopover} onClick={(e) => e.stopPropagation()}>
+      <div className={styles.derivationTitle}>Pinnacle Devig</div>
+      <div className={styles.derivationDivider} />
+      <div className={styles.derivationRow}>
+        <span className={styles.derivationLabel}>This side</span>
+        <span className={styles.derivationValue}>
+          {formatOdds(referencePrice)} &rarr; {(impliedThis * 100).toFixed(1)}%
+        </span>
+      </div>
+      <div className={styles.derivationRow}>
+        <span className={styles.derivationLabel}>Other side</span>
+        <span className={styles.derivationValue}>
+          {formatOdds(oppositeReferencePrice)} &rarr; {(impliedOther * 100).toFixed(1)}%
+        </span>
+      </div>
+      <div className={styles.derivationRow}>
+        <span className={styles.derivationLabel}>Overround</span>
+        <span className={styles.derivationValue}>
+          {(overround * 100).toFixed(1)}% (+{(vigPct * 100).toFixed(1)}% vig)
+        </span>
+      </div>
+      <div className={styles.derivationDivider} />
+      <div className={`${styles.derivationRow} ${styles.derivationResult}`}>
+        <span className={styles.derivationLabel}>Fair prob</span>
+        <span className={styles.derivationValue}>
+          {(trueProb * 100).toFixed(1)}% &rarr; {formatOdds(trueProbToAmerican(trueProb))}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export default function FairbetOddsPage() {
   const [bets, setBets] = useState<BetDefinition[]>([]);
@@ -45,6 +95,21 @@ export default function FairbetOddsPage() {
   const [selectedSort, setSelectedSort] = useState<string>("ev");
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
+
+  // Derivation popover state
+  const [openDerivation, setOpenDerivation] = useState<number | null>(null);
+  const derivationRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (openDerivation === null) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (derivationRef.current && !derivationRef.current.contains(e.target as Node)) {
+        setOpenDerivation(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openDerivation]);
 
   // Sync state
   const [syncing, setSyncing] = useState(false);
@@ -388,14 +453,53 @@ export default function FairbetOddsPage() {
                         </span>
                       )}
                     </span>
-                    {bet.true_prob !== null && bet.true_prob !== undefined && (
-                      <span className={styles.trueProb}>
-                        {(bet.true_prob * 100).toFixed(1)}%
-                      </span>
-                    )}
                   </div>
 
                   <div className={styles.booksGrid}>
+                    {bet.true_prob !== null && bet.true_prob !== undefined ? (
+                      <div
+                        className={`${styles.bookOdds} ${styles.fairOddsCard} ${styles.fairOddsClickable}`}
+                        onClick={() => setOpenDerivation(openDerivation === idx ? null : idx)}
+                        ref={openDerivation === idx ? derivationRef : undefined}
+                      >
+                        <span className={styles.bookName}>Fair</span>
+                        <span className={styles.bookPrice}>
+                          {formatOdds(trueProbToAmerican(bet.true_prob))}
+                        </span>
+                        <span className={styles.fairProb}>
+                          {(bet.true_prob * 100).toFixed(1)}%
+                        </span>
+                        {bet.ev_confidence_tier && (
+                          <span className={`${styles.confidenceBadge} ${
+                            styles[`confidence_${bet.ev_confidence_tier}` as keyof typeof styles] ?? ""
+                          }`}>
+                            {bet.ev_confidence_tier}
+                          </span>
+                        )}
+                        {openDerivation === idx &&
+                          bet.reference_price !== null &&
+                          bet.opposite_reference_price !== null && (
+                            <DerivationContent
+                              referencePrice={bet.reference_price}
+                              oppositeReferencePrice={bet.opposite_reference_price}
+                              trueProb={bet.true_prob}
+                            />
+                          )}
+                      </div>
+                    ) : (
+                      <div className={`${styles.bookOdds} ${styles.fairOddsDisabled}`}>
+                        <span className={styles.bookName}>Fair</span>
+                        <span className={styles.fairOddsHelp}>
+                          ?
+                          <div className={styles.fairOddsPopover}>
+                            <strong>
+                              {formatDisabledReason(bet.ev_disabled_reason).title}
+                            </strong>
+                            <p>{formatDisabledReason(bet.ev_disabled_reason).detail}</p>
+                          </div>
+                        </span>
+                      </div>
+                    )}
                     {bet.books.map((bookOdds, bookIdx) => {
                       const evColor = getEvColor(bookOdds.ev_percent);
                       return (

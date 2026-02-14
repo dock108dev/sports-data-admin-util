@@ -367,3 +367,91 @@
   font-size: 13px;
   color: #6b7280;
 }
+
+/* Fair Odds card (available) */
+.fairOddsCard {
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  border-color: #3b82f6;
+  position: relative;
+}
+.fairOddsCard .bookName {
+  color: #2563eb;
+  font-weight: 600;
+}
+.fairOddsCard .bookPrice {
+  color: #1d4ed8;
+}
+.fairProb {
+  font-size: 11px;
+  color: #3b82f6;
+  margin-top: 2px;
+}
+
+/* Confidence tier badges */
+.confidenceBadge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-top: 4px;
+}
+.confidence_high { color: #059669; background: #ecfdf5; }
+.confidence_medium { color: #d97706; background: #fffbeb; }
+.confidence_low { color: #6b7280; background: #f3f4f6; }
+
+/* Fair Odds card (disabled) */
+.fairOddsDisabled {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  border-style: dashed;
+}
+.fairOddsDisabled .bookName {
+  color: #9ca3af;
+}
+.fairOddsHelp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #6b7280;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: help;
+  position: relative;
+  margin: 4px 0;
+}
+.fairOddsPopover {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  width: 200px;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  text-align: left;
+}
+.fairOddsPopover strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.fairOddsPopover p {
+  margin: 0;
+  line-height: 1.4;
+  color: #d1d5db;
+}
+.fairOddsHelp:hover .fairOddsPopover {
+  display: block;
+}

@@ -16,7 +16,8 @@ from sqlalchemy.orm import selectinload
 from ...db import AsyncSession, get_db
 from ...db.sports import SportsGame
 from ...db.odds import FairbetGameOddsWork
-from ...services.ev import SHARP_BOOKS, compute_ev_for_market
+from ...services.ev import compute_ev_for_market, evaluate_ev_eligibility
+from ...services.ev_config import EXCLUDED_BOOKS
 
 router = APIRouter()
 
@@ -30,6 +31,8 @@ class BookOdds(BaseModel):
     ev_percent: float | None = None
     implied_prob: float | None = None
     is_sharp: bool = False
+    ev_method: str | None = None
+    ev_confidence_tier: str | None = None
 
 
 class BetDefinition(BaseModel):
@@ -47,7 +50,12 @@ class BetDefinition(BaseModel):
     player_name: str | None = None
     description: str | None = None
     true_prob: float | None = None
+    reference_price: float | None = None
+    opposite_reference_price: float | None = None
     books: list[BookOdds]
+    ev_confidence_tier: str | None = None
+    ev_disabled_reason: str | None = None
+    ev_method: str | None = None
 
 
 class FairbetOddsResponse(BaseModel):
@@ -66,6 +74,7 @@ def _build_base_filters(
     game_id: int | None = None,
     book: str | None = None,
     player_name: str | None = None,
+    excluded_books: frozenset[str] | None = None,
 ) -> tuple:
     """Build common filter conditions for FairBet queries.
 
@@ -98,6 +107,9 @@ def _build_base_filters(
         conditions.append(
             func.lower(FairbetGameOddsWork.player_name).contains(player_name.lower())
         )
+
+    if excluded_books:
+        conditions.append(FairbetGameOddsWork.book.notin_(excluded_books))
 
     return game_start, conditions
 
@@ -139,10 +151,14 @@ async def get_fairbet_odds(
     with all available book prices for each bet, annotated with EV%.
 
     Only includes upcoming games (start_time in future or within last 4 hours for live games).
+    Excludes junk/offshore books from results and EV calculations.
 
     Uses database-level pagination for efficiency.
     """
-    _, conditions = _build_base_filters(league, market_category, game_id, book, player_name)
+    _, conditions = _build_base_filters(
+        league, market_category, game_id, book, player_name,
+        excluded_books=EXCLUDED_BOOKS,
+    )
 
     # Book filter applies at the row level, not the bet definition level
     book_conditions = list(conditions)
@@ -206,6 +222,7 @@ async def get_fairbet_odds(
             ),
         )
         .join(SportsGame)
+        .where(FairbetGameOddsWork.book.notin_(EXCLUDED_BOOKS))
         .options(
             selectinload(FairbetGameOddsWork.game).selectinload(
                 SportsGame.league
@@ -316,7 +333,7 @@ async def get_fairbet_odds(
             }
         )
 
-    # Step 6: EV annotation
+    # Step 6: EV annotation with eligibility gate
     # Group bets by (game_id, market_key, line_value) to find both sides of each market
     market_groups: dict[tuple, list[tuple]] = {}
     for key in bets_map:
@@ -328,51 +345,88 @@ async def get_fairbet_odds(
 
     for group_key, bet_keys in market_groups.items():
         if len(bet_keys) == 2:
-            # Two-way market: compute EV using both sides
+            # Two-way market: evaluate eligibility then compute EV
             key_a, key_b = bet_keys
             books_a = bets_map[key_a]["books"]
             books_b = bets_map[key_b]["books"]
+            league_code = bets_map[key_a].get("league_code", "UNKNOWN")
+            market_cat = bets_map[key_a].get("market_category", "mainline")
 
-            annotated_a, annotated_b = compute_ev_for_market(books_a, books_b)
+            eligibility = evaluate_ev_eligibility(
+                league_code, market_cat, books_a, books_b,
+            )
 
-            # Update with annotated data
-            bets_map[key_a]["books"] = [
-                BookOdds(
-                    book=b["book"],
-                    price=b["price"],
-                    observed_at=b["observed_at"],
-                    ev_percent=b.get("ev_percent"),
-                    implied_prob=round(b.get("implied_prob", 0), 4) if b.get("implied_prob") else None,
-                    is_sharp=b.get("is_sharp", False),
+            if eligibility.eligible and eligibility.strategy_config is not None:
+                ev_result = compute_ev_for_market(
+                    books_a, books_b, eligibility.strategy_config,
                 )
-                for b in annotated_a
-            ]
-            bets_map[key_b]["books"] = [
-                BookOdds(
-                    book=b["book"],
-                    price=b["price"],
-                    observed_at=b["observed_at"],
-                    ev_percent=b.get("ev_percent"),
-                    implied_prob=round(b.get("implied_prob", 0), 4) if b.get("implied_prob") else None,
-                    is_sharp=b.get("is_sharp", False),
-                )
-                for b in annotated_b
-            ]
 
-            # Set true_prob on the bet definition
-            if annotated_a and annotated_a[0].get("true_prob") is not None:
-                bets_map[key_a]["true_prob"] = annotated_a[0]["true_prob"]
-            if annotated_b and annotated_b[0].get("true_prob") is not None:
-                bets_map[key_b]["true_prob"] = annotated_b[0]["true_prob"]
+                # Update with annotated data
+                bets_map[key_a]["books"] = [
+                    BookOdds(
+                        book=b["book"],
+                        price=b["price"],
+                        observed_at=b["observed_at"],
+                        ev_percent=b.get("ev_percent"),
+                        implied_prob=round(b.get("implied_prob", 0), 4) if b.get("implied_prob") else None,
+                        is_sharp=b.get("is_sharp", False),
+                        ev_method=ev_result.ev_method,
+                        ev_confidence_tier=ev_result.confidence_tier,
+                    )
+                    for b in ev_result.annotated_a
+                ]
+                bets_map[key_b]["books"] = [
+                    BookOdds(
+                        book=b["book"],
+                        price=b["price"],
+                        observed_at=b["observed_at"],
+                        ev_percent=b.get("ev_percent"),
+                        implied_prob=round(b.get("implied_prob", 0), 4) if b.get("implied_prob") else None,
+                        is_sharp=b.get("is_sharp", False),
+                        ev_method=ev_result.ev_method,
+                        ev_confidence_tier=ev_result.confidence_tier,
+                    )
+                    for b in ev_result.annotated_b
+                ]
+
+                # Set true_prob and EV metadata on the bet definition
+                if ev_result.annotated_a and ev_result.annotated_a[0].get("true_prob") is not None:
+                    bets_map[key_a]["true_prob"] = ev_result.annotated_a[0]["true_prob"]
+                if ev_result.annotated_b and ev_result.annotated_b[0].get("true_prob") is not None:
+                    bets_map[key_b]["true_prob"] = ev_result.annotated_b[0]["true_prob"]
+
+                bets_map[key_a]["reference_price"] = ev_result.reference_price_a
+                bets_map[key_a]["opposite_reference_price"] = ev_result.reference_price_b
+                bets_map[key_b]["reference_price"] = ev_result.reference_price_b
+                bets_map[key_b]["opposite_reference_price"] = ev_result.reference_price_a
+
+                bets_map[key_a]["ev_method"] = ev_result.ev_method
+                bets_map[key_a]["ev_confidence_tier"] = ev_result.confidence_tier
+                bets_map[key_b]["ev_method"] = ev_result.ev_method
+                bets_map[key_b]["ev_confidence_tier"] = ev_result.confidence_tier
+            else:
+                # Not eligible: attach disabled metadata, convert books to BookOdds
+                for key in (key_a, key_b):
+                    bets_map[key]["ev_disabled_reason"] = eligibility.disabled_reason
+                    bets_map[key]["ev_confidence_tier"] = eligibility.confidence_tier
+                    bets_map[key]["ev_method"] = eligibility.ev_method
+                    bets_map[key]["books"] = [
+                        BookOdds(
+                            book=b["book"],
+                            price=b["price"],
+                            observed_at=b["observed_at"],
+                        )
+                        for b in bets_map[key]["books"]
+                    ]
         else:
-            # Single-sided or 3+ way market: just mark sharp books, no EV
+            # Single-sided or 3+ way market: no EV, mark as no_strategy
             for key in bet_keys:
+                bets_map[key]["ev_disabled_reason"] = "no_strategy"
                 bets_map[key]["books"] = [
                     BookOdds(
                         book=b["book"],
                         price=b["price"],
                         observed_at=b["observed_at"],
-                        is_sharp=b["book"] in SHARP_BOOKS,
                     )
                     for b in bets_map[key]["books"]
                 ]

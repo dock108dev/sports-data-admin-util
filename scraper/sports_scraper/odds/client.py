@@ -42,12 +42,6 @@ MARKET_TYPES = {
 
 # NHL uses "spreads" for puck lines; keep the canonical "spread" market type.
 
-# Sharp books used as reference for true probability / EV calculation
-SHARP_BOOKS = {"pinnacle", "betfair_ex_eu", "betfair_ex_uk", "betfair_ex_au", "matchbook", "novig"}
-
-# Exchange books (no vig built in, commission-based)
-EXCHANGE_BOOKS = {"betfair_ex_eu", "betfair_ex_uk", "betfair_ex_au", "matchbook", "smarkets", "novig", "betopenly"}
-
 # Prop market keys by sport
 PROP_MARKETS: dict[str, list[str]] = {
     "NBA": [

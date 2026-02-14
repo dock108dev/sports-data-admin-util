@@ -26,6 +26,8 @@ export interface BookOdds {
   ev_percent: number | null;
   implied_prob: number | null;
   is_sharp: boolean;
+  ev_method: string | null;
+  ev_confidence_tier: string | null;
 }
 
 export interface BetDefinition {
@@ -41,6 +43,11 @@ export interface BetDefinition {
   player_name: string | null;
   description: string | null;
   true_prob: number | null;
+  reference_price: number | null;
+  opposite_reference_price: number | null;
+  ev_confidence_tier: string | null;
+  ev_disabled_reason: string | null;
+  ev_method: string | null;
   books: BookOdds[];
 }
 
@@ -202,4 +209,43 @@ export function getEvColor(ev: number | null): "positive" | "negative" | "neutra
   if (ev > 0) return "positive";
   if (ev < 0) return "negative";
   return "neutral";
+}
+
+/**
+ * Convert a true probability (0-1) to American odds
+ */
+export function trueProbToAmerican(prob: number): number {
+  if (prob >= 1) return -10000;
+  if (prob <= 0) return 10000;
+  if (prob > 0.5) {
+    return Math.round(-(prob / (1 - prob)) * 100);
+  }
+  return Math.round(((1 - prob) / prob) * 100);
+}
+
+/**
+ * Convert American odds to implied probability (0-1)
+ */
+export function americanToImplied(price: number): number {
+  if (price >= 100) return 100 / (price + 100);
+  if (price <= -100) return Math.abs(price) / (Math.abs(price) + 100);
+  return 0.5;
+}
+
+/**
+ * Map ev_disabled_reason codes to human-readable popover content
+ */
+export function formatDisabledReason(reason: string | null): { title: string; detail: string } {
+  switch (reason) {
+    case "no_strategy":
+      return { title: "Not Supported", detail: "Fair odds aren't calculated for this market type." };
+    case "reference_missing":
+      return { title: "No Sharp Line", detail: "Pinnacle doesn't have odds on both sides of this market." };
+    case "reference_stale":
+      return { title: "Stale Data", detail: "The Pinnacle line is too old to use as a reference." };
+    case "insufficient_books":
+      return { title: "Too Few Books", detail: "Need at least 3 books on each side to calculate fair odds." };
+    default:
+      return { title: "Unavailable", detail: "Fair odds can't be calculated for this bet." };
+  }
 }
