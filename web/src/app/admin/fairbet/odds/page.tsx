@@ -12,7 +12,6 @@ import {
   getEvColor,
   getBestOdds,
   trueProbToAmerican,
-  americanToImplied,
   formatDisabledReason,
   type BetDefinition,
   type FairbetOddsFilters,
@@ -22,6 +21,8 @@ import { createScrapeRun, listScrapeRuns } from "@/lib/api/sportsAdmin";
 import type { ScrapeRunResponse } from "@/lib/api/sportsAdmin/types";
 import { FAIRBET_LEAGUES } from "@/lib/constants/sports";
 import { formatDateInput } from "@/lib/utils/dateFormat";
+import { DerivationContent } from "./DerivationContent";
+import { formatGameDate, formatLastSync, formatLineValue } from "./helpers";
 
 const LEAGUES = FAIRBET_LEAGUES;
 
@@ -30,58 +31,6 @@ const SORT_OPTIONS = [
   { value: "game_time", label: "Game Time" },
   { value: "market", label: "Market" },
 ];
-
-function DerivationContent({
-  referencePrice,
-  oppositeReferencePrice,
-  trueProb,
-}: {
-  referencePrice: number;
-  oppositeReferencePrice: number;
-  trueProb: number;
-}) {
-  const impliedThis = americanToImplied(referencePrice);
-  const impliedOther = americanToImplied(oppositeReferencePrice);
-  const overround = impliedThis + impliedOther;
-  const vigPct = overround - 1;
-
-  return (
-    <div className={styles.derivationPopover} onClick={(e) => e.stopPropagation()}>
-      <div className={styles.derivationTitle}>Pinnacle Devig</div>
-      <div className={styles.derivationDivider} />
-      <div className={styles.derivationRow}>
-        <span className={styles.derivationLabel}>This side</span>
-        <span className={styles.derivationValue}>
-          {formatOdds(referencePrice)} &rarr; {(impliedThis * 100).toFixed(1)}%
-        </span>
-      </div>
-      <div className={styles.derivationRow}>
-        <span className={styles.derivationLabel}>Other side</span>
-        <span className={styles.derivationValue}>
-          {formatOdds(oppositeReferencePrice)} &rarr; {(impliedOther * 100).toFixed(1)}%
-        </span>
-      </div>
-      <div className={styles.derivationRow}>
-        <span className={styles.derivationLabel}>Overround</span>
-        <span className={styles.derivationValue}>
-          {(overround * 100).toFixed(1)}% (+{(vigPct * 100).toFixed(1)}% vig)
-        </span>
-      </div>
-      <div className={styles.derivationDivider} />
-      <div className={`${styles.derivationRow} ${styles.derivationFormula}`}>
-        <span className={styles.derivationValue}>
-          {(impliedThis * 100).toFixed(1)}% &divide; {(overround * 100).toFixed(1)}% = {(trueProb * 100).toFixed(1)}%
-        </span>
-      </div>
-      <div className={`${styles.derivationRow} ${styles.derivationResult}`}>
-        <span className={styles.derivationLabel}>Fair prob</span>
-        <span className={styles.derivationValue}>
-          {(trueProb * 100).toFixed(1)}% &rarr; {formatOdds(trueProbToAmerican(trueProb))}
-        </span>
-      </div>
-    </div>
-  );
-}
 
 export default function FairbetOddsPage() {
   const [bets, setBets] = useState<BetDefinition[]>([]);
@@ -212,50 +161,6 @@ export default function FairbetOddsPage() {
     } finally {
       setSyncing(false);
     }
-  }
-
-  function formatGameDate(dateStr: string): string {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  }
-
-  function formatLastSync(dateStr: string): string {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  }
-
-  function formatLineValue(line: number, marketKey: string): string {
-    if (line === 0 && marketKey.toLowerCase().includes("h2h")) {
-      return "";
-    }
-    if (line === 0 && marketKey.toLowerCase().includes("moneyline")) {
-      return "";
-    }
-    if (line > 0) {
-      return `+${line}`;
-    }
-    return line.toString();
   }
 
   function resetFilters() {
