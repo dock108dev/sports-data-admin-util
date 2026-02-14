@@ -284,7 +284,6 @@ async def _attach_embedded_tweets(
     Delegates to the shared load_and_attach_embedded_tweets SSOT function.
     Embedded tweets are optional and do not affect flow structure.
 
-
     Args:
         session: Database session
         game_id: Game ID to load social posts for
