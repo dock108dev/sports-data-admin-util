@@ -68,6 +68,11 @@ function DerivationContent({
         </span>
       </div>
       <div className={styles.derivationDivider} />
+      <div className={`${styles.derivationRow} ${styles.derivationFormula}`}>
+        <span className={styles.derivationValue}>
+          {(impliedThis * 100).toFixed(1)}% &divide; {(overround * 100).toFixed(1)}% = {(trueProb * 100).toFixed(1)}%
+        </span>
+      </div>
       <div className={`${styles.derivationRow} ${styles.derivationResult}`}>
         <span className={styles.derivationLabel}>Fair prob</span>
         <span className={styles.derivationValue}>

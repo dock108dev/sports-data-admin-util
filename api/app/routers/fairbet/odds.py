@@ -5,7 +5,7 @@ Provides bet-centric odds views for cross-book comparison with EV annotation.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -82,7 +82,6 @@ def _build_base_filters(
     Returns (game_start_expr, filter_conditions) tuple.
     """
     now = datetime.now(timezone.utc)
-    live_cutoff = now - timedelta(hours=4)
 
     # Use COALESCE to get actual start time (tip_time preferred, else game_date)
     game_start = func.coalesce(
@@ -92,7 +91,7 @@ def _build_base_filters(
 
     conditions = [
         SportsGame.status.notin_(["final", "completed"]),
-        game_start > live_cutoff,
+        game_start > now,
     ]
 
     if league:
@@ -152,7 +151,7 @@ async def get_fairbet_odds(
     Returns bets grouped by definition (game + market + selection + line),
     with all available book prices for each bet, annotated with EV%.
 
-    Only includes upcoming games (start_time in future or within last 4 hours for live games).
+    Only includes pregame games (start_time in future).
     Excludes junk/offshore books from results and EV calculations.
 
     Uses database-level pagination for efficiency.
@@ -286,7 +285,7 @@ async def get_fairbet_odds(
         .join(FairbetGameOddsWork, FairbetGameOddsWork.game_id == SportsGame.id)
         .where(
             SportsGame.status.notin_(["final", "completed"]),
-            func.coalesce(SportsGame.tip_time, SportsGame.game_date) > datetime.now(timezone.utc) - timedelta(hours=4),
+            func.coalesce(SportsGame.tip_time, SportsGame.game_date) > datetime.now(timezone.utc),
         )
         .distinct()
         .options(

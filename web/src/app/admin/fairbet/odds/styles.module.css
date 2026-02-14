@@ -525,6 +525,16 @@
   text-align: right;
 }
 
+.derivationFormula {
+  justify-content: center;
+  padding: 2px 0;
+}
+.derivationFormula .derivationValue {
+  color: #9ca3af;
+  font-size: 10px;
+  font-style: italic;
+}
+
 .derivationResult {
   font-weight: 600;
 }
