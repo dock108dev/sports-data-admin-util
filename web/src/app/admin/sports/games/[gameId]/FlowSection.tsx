@@ -1,25 +1,10 @@
 "use client";
 
 /**
- * Story Section (Legacy Moment-based View)
+ * Game Flow Section — Admin debugging view.
  *
- * PHASE 5 CONTRACT NOTE
- * =====================
- * This component displays the moment-based story view for debugging/admin.
- *
- * For the consumer-facing collapsed game flow, use:
- * - CollapsedGameFlow (narrative blocks only)
- * - GameFlowView (blocks + optional social sections)
- *
- * These components are in: @/components/gameflow/
- *
- * Critical rules:
- * - Social content is SEPARATE from story content
- * - No UI elements imply tweets explain plays
- * - The "Show X plays" button is for debugging, not consumer display
- *
- * 🚫 DO NOT add tweet counts or social indicators to moment cards
- * 🚫 DO NOT imply tweets are related to specific plays
+ * Shows narrative blocks (primary) or raw moments (when blocks are absent).
+ * Consumer-facing components live in @/components/gameflow/.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -290,7 +275,7 @@ export function FlowSection({ gameId, hasFlow, leagueCode }: FlowSectionProps) {
             </>
           )}
 
-          {/* SECONDARY: Legacy moments view (debugging) */}
+          {/* Raw moments view (when blocks are absent) */}
           {(!story.blocks || story.blocks.length === 0) && (
             <>
               <div className={styles.storySummary}>

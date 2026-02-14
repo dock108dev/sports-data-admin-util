@@ -8,7 +8,7 @@
   text-transform: capitalize;
 }
 
-/* Status-specific classes (fallback if inline styles not used) */
+/* Status-specific classes */
 .statusSuccess {
   background-color: #22c55e;
 }

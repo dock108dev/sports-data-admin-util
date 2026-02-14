@@ -462,7 +462,7 @@
   cursor: pointer;
 }
 .fairOddsClickable:hover {
-  filter: brightness(0.96);
+  background: linear-gradient(135deg, #e3eeff, #cddcf8);
 }
 
 /* Derivation popover */

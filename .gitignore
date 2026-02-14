@@ -57,3 +57,4 @@ infra/social-scraper-profile/
 *.dump
 data/
 *.coverage
+coverage_html/
