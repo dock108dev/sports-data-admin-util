@@ -33,6 +33,10 @@ class TestBookLists:
     def test_pinnacle_not_in_excluded(self) -> None:
         assert "Pinnacle" not in EXCLUDED_BOOKS
 
+    def test_excluded_and_included_do_not_overlap(self) -> None:
+        overlap = EXCLUDED_BOOKS & INCLUDED_BOOKS
+        assert len(overlap) == 0, f"Books cannot be both excluded and included: {overlap}"
+
 
 class TestConfidenceTier:
     """Tests for ConfidenceTier enum."""

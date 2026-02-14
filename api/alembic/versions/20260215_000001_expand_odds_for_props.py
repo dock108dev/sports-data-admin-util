@@ -6,7 +6,6 @@ Changes to sports_game_odds:
 - Add market_category VARCHAR(30) DEFAULT 'mainline' + index
 - Add player_name VARCHAR(150) nullable
 - Add description TEXT nullable
-- Backfill existing rows: SET market_category = 'mainline'
 
 Changes to fairbet_game_odds_work:
 - Widen market_key from VARCHAR(50) to VARCHAR(80)
@@ -14,7 +13,7 @@ Changes to fairbet_game_odds_work:
 - Add player_name VARCHAR(150) nullable
 
 Revision ID: 20260215_000001
-Revises: 20260220_000001
+Revises: 20260211_000002
 Create Date: 2026-02-15
 """
 
@@ -76,9 +75,6 @@ def upgrade() -> None:
         ["market_category"],
     )
 
-    # Backfill existing rows (all are mainlines)
-    op.execute("UPDATE sports_game_odds SET market_category = 'mainline' WHERE market_category IS NULL")
-
     # --- fairbet_game_odds_work ---
     # Widen market_key for prop market keys
     op.alter_column(
@@ -110,9 +106,6 @@ def upgrade() -> None:
         "fairbet_game_odds_work",
         ["market_category"],
     )
-
-    # Backfill existing rows
-    op.execute("UPDATE fairbet_game_odds_work SET market_category = 'mainline' WHERE market_category IS NULL")
 
 
 def downgrade() -> None:
