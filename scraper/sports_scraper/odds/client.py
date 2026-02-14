@@ -611,6 +611,14 @@ class OddsAPIClient:
                     # Extract player name from description field (props use this)
                     player_name = description if market_category == "player_prop" else None
 
+                    # last_update lives on market in event-level API
+                    last_update_str = market.get("last_update") or bookmaker.get("last_update", "")
+                    observed_at = (
+                        datetime.fromisoformat(last_update_str.replace("Z", "+00:00"))
+                        if last_update_str
+                        else commence_utc
+                    )
+
                     snapshots.append(
                         NormalizedOddsSnapshot(
                             league_code=league_code,
@@ -619,9 +627,7 @@ class OddsAPIClient:
                             side=side,
                             line=line,
                             price=price,
-                            observed_at=datetime.fromisoformat(
-                                bookmaker["last_update"].replace("Z", "+00:00")
-                            ),
+                            observed_at=observed_at,
                             home_team=home_team,
                             away_team=away_team,
                             game_date=game_date,
