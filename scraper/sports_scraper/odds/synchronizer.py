@@ -16,7 +16,7 @@ from ..models import IngestionConfig
 from ..persistence import upsert_odds
 from ..persistence.odds import OddsUpsertResult
 from ..utils.datetime_utils import today_et
-from .client import OddsAPIClient, CREDIT_ABORT_THRESHOLD
+from .client import OddsAPIClient
 
 
 class OddsSynchronizer:

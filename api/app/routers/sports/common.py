@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Sequence
+from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import select

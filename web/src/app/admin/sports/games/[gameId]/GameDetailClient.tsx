@@ -12,7 +12,7 @@ import { FlowSection } from "./FlowSection";
 import { OddsSection } from "./OddsSection";
 import { PlayerStatsSection } from "./PlayerStatsSection";
 import { ComputedFieldsSection } from "./ComputedFieldsSection";
-import { flattenStats, FieldLabel } from "./gameDetailUtils";
+import { flattenStats, FieldLabel } from "./GameDetailUtils";
 import styles from "./styles.module.css";
 
 export default function GameDetailClient() {

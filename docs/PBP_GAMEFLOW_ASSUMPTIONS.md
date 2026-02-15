@@ -22,7 +22,7 @@ This audit examines whether current PBP infrastructure meets these requirements 
 
 ### 2.1 Primary Storage: `sports_game_plays`
 
-**Location:** `sql/004_game_play_by_play.sql`, `api/app/db_models.py`
+**Location:** `sql/004_game_play_by_play.sql`, `api/app/db/sports.py`
 
 | Field | Type | Nullable | Description |
 |-------|------|----------|-------------|

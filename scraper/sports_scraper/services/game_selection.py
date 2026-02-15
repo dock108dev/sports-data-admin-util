@@ -6,7 +6,7 @@ Used by run_manager to determine which games to process.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from sqlalchemy import exists, func, not_
 from sqlalchemy.orm import Session
 

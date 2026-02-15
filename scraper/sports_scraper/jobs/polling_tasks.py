@@ -32,9 +32,9 @@ _JITTER_MAX = 2.0
 _RATE_LIMIT_BACKOFF_SECONDS = 60
 
 
-from ..utils.redis_lock import acquire_redis_lock as _acquire_redis_lock
-from ..utils.redis_lock import release_redis_lock as _release_redis_lock
-from ..utils.redis_lock import LOCK_TIMEOUT_5MIN, LOCK_TIMEOUT_10MIN
+from ..utils.redis_lock import acquire_redis_lock as _acquire_redis_lock  # noqa: E402
+from ..utils.redis_lock import release_redis_lock as _release_redis_lock  # noqa: E402
+from ..utils.redis_lock import LOCK_TIMEOUT_5MIN, LOCK_TIMEOUT_10MIN  # noqa: E402
 
 
 @shared_task(name="update_game_states")
@@ -72,9 +72,6 @@ def poll_live_pbp_task() -> dict:
     NCAAB skipped initially (too many games for live polling).
     """
     from ..services.active_games import ActiveGamesResolver
-    from ..persistence.games import resolve_status_transition
-    from ..db import db_models
-    from ..utils.datetime_utils import now_utc
 
     if not _acquire_redis_lock("lock:poll_live_pbp", timeout=LOCK_TIMEOUT_5MIN):
         logger.debug("poll_live_pbp_skipped_locked")
@@ -188,9 +185,6 @@ def _poll_single_game_pbp(session, game) -> dict:
     Returns dict with api_calls count, transition info, and pbp_events.
     """
     from ..db import db_models
-    from ..persistence.games import resolve_status_transition
-    from ..persistence.plays import upsert_plays
-    from ..utils.datetime_utils import now_utc
 
     league = session.query(db_models.SportsLeague).get(game.league_id)
     if not league:

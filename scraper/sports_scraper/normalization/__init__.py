@@ -204,7 +204,7 @@ for canonical, abbr, variations in NHL_TEAMS.values():
     TEAM_MAPPINGS["NHL"][abbr.lower()] = (canonical, abbr)
 
 # Populate NCAAB mappings from ncaab_teams.py SSOT
-from .ncaab_teams import NCAAB_VARIATIONS as _NCAAB_VARIATIONS
+from .ncaab_teams import NCAAB_VARIATIONS as _NCAAB_VARIATIONS  # noqa: E402
 
 TEAM_MAPPINGS["NCAAB"] = dict(_NCAAB_VARIATIONS)
 
