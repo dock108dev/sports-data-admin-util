@@ -231,7 +231,7 @@ def _period_real_start(game_start: datetime, period: int, league_code: str) -> d
         period: 1-based period number.
         league_code: "NBA", "NHL", or "NCAAB".
     """
-    from .pbp_sport_config import nba_quarter_start, ncaab_period_start, nhl_period_start
+    from ....services.timeline_phases import nba_quarter_start, ncaab_period_start, nhl_period_start
 
     if league_code == "NHL":
         return nhl_period_start(game_start, period)
