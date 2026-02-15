@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 
-from ..config import settings
 from ..logging import logger
 from .exceptions import XCircuitBreakerError
 from .models import CollectedPost

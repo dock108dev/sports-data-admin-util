@@ -17,7 +17,17 @@ sys.path.insert(0, "/app")
 
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
-from app.db_models import Base
+from app.db import Base
+# Import all model modules so their tables register with Base.metadata
+import app.db.sports  # noqa: F401
+import app.db.flow  # noqa: F401
+import app.db.pipeline  # noqa: F401
+import app.db.social  # noqa: F401
+import app.db.scraper  # noqa: F401
+import app.db.odds  # noqa: F401
+import app.db.resolution  # noqa: F401
+import app.db.config  # noqa: F401
+import app.db.cache  # noqa: F401
 
 
 async def bootstrap():

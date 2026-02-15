@@ -54,7 +54,7 @@ def run_final_whistle_social(game_id: int) -> dict:
     """
     from ..db import db_models
     from ..social.team_collector import TeamTweetCollector
-    from ..social.tweet_mapper import classify_game_phase, map_tweets_for_team
+    from ..social.tweet_mapper import map_tweets_for_team
     from ..utils.datetime_utils import now_utc
 
     logger.info("final_whistle_social_start", game_id=game_id)

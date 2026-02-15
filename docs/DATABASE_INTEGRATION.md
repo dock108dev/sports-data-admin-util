@@ -76,7 +76,7 @@ df = pd.read_sql("""
 import sys
 sys.path.insert(0, "/path/to/sports-data-admin/api")
 
-from app.db_models import SportsGame, SportsTeam, SportsLeague
+from app.db.sports import SportsGame, SportsTeam, SportsLeague
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 

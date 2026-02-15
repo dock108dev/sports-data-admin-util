@@ -11,7 +11,7 @@ from typing import Any, Sequence
 
 from ....db.sports import SportsGamePlay
 from ....utils.datetime_utils import parse_clock_to_seconds
-from .pbp_sport_config import (
+from ....services.timeline_types import (
     # NBA Constants
     NBA_REGULATION_REAL_SECONDS,
     NBA_HALFTIME_REAL_SECONDS,
@@ -36,6 +36,8 @@ from .pbp_sport_config import (
     NHL_PLAYOFF_OT_GAME_SECONDS,
     # Social windows
     SOCIAL_PREGAME_WINDOW_SECONDS,
+)
+from ....services.timeline_phases import (
     # Phase mapping
     nba_phase_for_quarter,
     nba_block_for_quarter,

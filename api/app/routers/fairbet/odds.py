@@ -248,21 +248,6 @@ async def get_fairbet_odds(
         .join(SportsGame)
         .where(*base_game_conditions)
     )
-    games_stmt = (
-        select(
-            SportsGame.id,
-            SportsGame.game_date,
-            SportsGame.tip_time,
-        )
-        .join(FairbetGameOddsWork, FairbetGameOddsWork.game_id == SportsGame.id)
-        .where(*base_game_conditions)
-        .distinct()
-        .options(
-            selectinload(SportsGame.home_team),
-            selectinload(SportsGame.away_team),
-        )
-    )
-
     books_result = await session.execute(books_stmt)
     all_books = sorted([row[0] for row in books_result.all()])
 

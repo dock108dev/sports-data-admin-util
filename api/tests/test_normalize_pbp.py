@@ -9,55 +9,55 @@ class TestNbaPhaseForQuarter:
 
     def test_quarter_1(self):
         """Quarter 1 returns q1."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
+        from app.services.timeline_phases import nba_phase_for_quarter
 
         assert nba_phase_for_quarter(1) == "q1"
 
     def test_quarter_2(self):
         """Quarter 2 returns q2."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
+        from app.services.timeline_phases import nba_phase_for_quarter
 
         assert nba_phase_for_quarter(2) == "q2"
 
     def test_quarter_3(self):
         """Quarter 3 returns q3."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
+        from app.services.timeline_phases import nba_phase_for_quarter
 
         assert nba_phase_for_quarter(3) == "q3"
 
     def test_quarter_4(self):
         """Quarter 4 returns q4."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
+        from app.services.timeline_phases import nba_phase_for_quarter
 
         assert nba_phase_for_quarter(4) == "q4"
 
     def test_overtime_1(self):
         """Quarter 5 (OT1) returns ot1."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
+        from app.services.timeline_phases import nba_phase_for_quarter
 
         assert nba_phase_for_quarter(5) == "ot1"
 
     def test_overtime_2(self):
         """Quarter 6 (OT2) returns ot2."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
+        from app.services.timeline_phases import nba_phase_for_quarter
 
         assert nba_phase_for_quarter(6) == "ot2"
 
     def test_overtime_3(self):
         """Quarter 7 (OT3) returns ot3."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
+        from app.services.timeline_phases import nba_phase_for_quarter
 
         assert nba_phase_for_quarter(7) == "ot3"
 
     def test_overtime_4(self):
         """Quarter 8 (OT4) returns ot4."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
+        from app.services.timeline_phases import nba_phase_for_quarter
 
         assert nba_phase_for_quarter(8) == "ot4"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_phase_for_quarter
+        from app.services.timeline_phases import nba_phase_for_quarter
 
         assert nba_phase_for_quarter(None) == "unknown"
 
@@ -67,28 +67,28 @@ class TestNbaBlockForQuarter:
 
     def test_first_half(self):
         """Quarters 1-2 are first_half."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_block_for_quarter
+        from app.services.timeline_phases import nba_block_for_quarter
 
         assert nba_block_for_quarter(1) == "first_half"
         assert nba_block_for_quarter(2) == "first_half"
 
     def test_second_half(self):
         """Quarters 3-4 are second_half."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_block_for_quarter
+        from app.services.timeline_phases import nba_block_for_quarter
 
         assert nba_block_for_quarter(3) == "second_half"
         assert nba_block_for_quarter(4) == "second_half"
 
     def test_overtime(self):
         """Quarters 5+ are overtime."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_block_for_quarter
+        from app.services.timeline_phases import nba_block_for_quarter
 
         assert nba_block_for_quarter(5) == "overtime"
         assert nba_block_for_quarter(6) == "overtime"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_block_for_quarter
+        from app.services.timeline_phases import nba_block_for_quarter
 
         assert nba_block_for_quarter(None) == "unknown"
 
@@ -98,7 +98,7 @@ class TestNbaQuarterStart:
 
     def test_quarter_1_starts_at_game_start(self):
         """Quarter 1 starts at game start."""
-        from app.services.pipeline.stages.pbp_sport_config import nba_quarter_start
+        from app.services.timeline_phases import nba_quarter_start
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         result = nba_quarter_start(game_start, 1)
@@ -106,7 +106,7 @@ class TestNbaQuarterStart:
 
     def test_quarter_2_timing(self):
         """Quarter 2 starts after Q1."""
-        from app.services.pipeline.stages.pbp_sport_config import (
+        from app.services.timeline_phases import (
             nba_quarter_start,
             NBA_QUARTER_REAL_SECONDS,
         )
@@ -118,7 +118,7 @@ class TestNbaQuarterStart:
 
     def test_quarter_3_timing(self):
         """Quarter 3 starts after halftime."""
-        from app.services.pipeline.stages.pbp_sport_config import (
+        from app.services.timeline_phases import (
             nba_quarter_start,
             NBA_QUARTER_REAL_SECONDS,
             NBA_HALFTIME_REAL_SECONDS,
@@ -133,7 +133,7 @@ class TestNbaQuarterStart:
 
     def test_quarter_4_timing(self):
         """Quarter 4 starts after Q3."""
-        from app.services.pipeline.stages.pbp_sport_config import (
+        from app.services.timeline_phases import (
             nba_quarter_start,
             NBA_QUARTER_REAL_SECONDS,
             NBA_HALFTIME_REAL_SECONDS,
@@ -723,31 +723,31 @@ class TestNcaabPhaseForPeriod:
 
     def test_half_1(self):
         """Period 1 returns h1."""
-        from app.services.pipeline.stages.pbp_sport_config import ncaab_phase_for_period
+        from app.services.timeline_phases import ncaab_phase_for_period
 
         assert ncaab_phase_for_period(1) == "h1"
 
     def test_half_2(self):
         """Period 2 returns h2."""
-        from app.services.pipeline.stages.pbp_sport_config import ncaab_phase_for_period
+        from app.services.timeline_phases import ncaab_phase_for_period
 
         assert ncaab_phase_for_period(2) == "h2"
 
     def test_overtime_1(self):
         """Period 3 (OT1) returns ot1."""
-        from app.services.pipeline.stages.pbp_sport_config import ncaab_phase_for_period
+        from app.services.timeline_phases import ncaab_phase_for_period
 
         assert ncaab_phase_for_period(3) == "ot1"
 
     def test_overtime_2(self):
         """Period 4 (OT2) returns ot2."""
-        from app.services.pipeline.stages.pbp_sport_config import ncaab_phase_for_period
+        from app.services.timeline_phases import ncaab_phase_for_period
 
         assert ncaab_phase_for_period(4) == "ot2"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.pbp_sport_config import ncaab_phase_for_period
+        from app.services.timeline_phases import ncaab_phase_for_period
 
         assert ncaab_phase_for_period(None) == "unknown"
 
@@ -757,26 +757,26 @@ class TestNcaabBlockForPeriod:
 
     def test_first_half(self):
         """Period 1 is first_half."""
-        from app.services.pipeline.stages.pbp_sport_config import ncaab_block_for_period
+        from app.services.timeline_phases import ncaab_block_for_period
 
         assert ncaab_block_for_period(1) == "first_half"
 
     def test_second_half(self):
         """Period 2 is second_half."""
-        from app.services.pipeline.stages.pbp_sport_config import ncaab_block_for_period
+        from app.services.timeline_phases import ncaab_block_for_period
 
         assert ncaab_block_for_period(2) == "second_half"
 
     def test_overtime(self):
         """Periods 3+ are overtime."""
-        from app.services.pipeline.stages.pbp_sport_config import ncaab_block_for_period
+        from app.services.timeline_phases import ncaab_block_for_period
 
         assert ncaab_block_for_period(3) == "overtime"
         assert ncaab_block_for_period(4) == "overtime"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.pbp_sport_config import ncaab_block_for_period
+        from app.services.timeline_phases import ncaab_block_for_period
 
         assert ncaab_block_for_period(None) == "unknown"
 
@@ -786,7 +786,7 @@ class TestNcaabPeriodStart:
 
     def test_half_1_starts_at_game_start(self):
         """First half starts at game start."""
-        from app.services.pipeline.stages.pbp_sport_config import ncaab_period_start
+        from app.services.timeline_phases import ncaab_period_start
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         result = ncaab_period_start(game_start, 1)
@@ -794,7 +794,7 @@ class TestNcaabPeriodStart:
 
     def test_half_2_timing(self):
         """Second half starts after H1 + halftime."""
-        from app.services.pipeline.stages.pbp_sport_config import (
+        from app.services.timeline_phases import (
             ncaab_period_start,
             NCAAB_HALF_REAL_SECONDS,
             NCAAB_HALFTIME_REAL_SECONDS,
@@ -809,7 +809,7 @@ class TestNcaabPeriodStart:
 
     def test_overtime_timing(self):
         """Overtime periods start after regulation."""
-        from app.services.pipeline.stages.pbp_sport_config import (
+        from app.services.timeline_phases import (
             ncaab_period_start,
             NCAAB_REGULATION_REAL_SECONDS,
         )
@@ -921,44 +921,44 @@ class TestNhlPhaseForPeriod:
 
     def test_period_1(self):
         """Period 1 returns p1."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
+        from app.services.timeline_phases import nhl_phase_for_period
 
         assert nhl_phase_for_period(1) == "p1"
 
     def test_period_2(self):
         """Period 2 returns p2."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
+        from app.services.timeline_phases import nhl_phase_for_period
 
         assert nhl_phase_for_period(2) == "p2"
 
     def test_period_3(self):
         """Period 3 returns p3."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
+        from app.services.timeline_phases import nhl_phase_for_period
 
         assert nhl_phase_for_period(3) == "p3"
 
     def test_overtime(self):
         """Period 4 (OT) returns ot."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
+        from app.services.timeline_phases import nhl_phase_for_period
 
         assert nhl_phase_for_period(4) == "ot"
 
     def test_shootout(self):
         """Period 5 (shootout) returns shootout."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
+        from app.services.timeline_phases import nhl_phase_for_period
 
         assert nhl_phase_for_period(5) == "shootout"
 
     def test_extended_overtime(self):
         """Periods 6+ return ot2, ot3, etc. for playoff OT."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
+        from app.services.timeline_phases import nhl_phase_for_period
 
         assert nhl_phase_for_period(6) == "ot3"
         assert nhl_phase_for_period(7) == "ot4"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_phase_for_period
+        from app.services.timeline_phases import nhl_phase_for_period
 
         assert nhl_phase_for_period(None) == "unknown"
 
@@ -968,7 +968,7 @@ class TestNhlBlockForPeriod:
 
     def test_regulation(self):
         """Periods 1-3 are regulation."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_block_for_period
+        from app.services.timeline_phases import nhl_block_for_period
 
         assert nhl_block_for_period(1) == "regulation"
         assert nhl_block_for_period(2) == "regulation"
@@ -976,26 +976,26 @@ class TestNhlBlockForPeriod:
 
     def test_overtime(self):
         """Period 4 is overtime."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_block_for_period
+        from app.services.timeline_phases import nhl_block_for_period
 
         assert nhl_block_for_period(4) == "overtime"
 
     def test_shootout(self):
         """Period 5 is shootout."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_block_for_period
+        from app.services.timeline_phases import nhl_block_for_period
 
         assert nhl_block_for_period(5) == "shootout"
 
     def test_extended_overtime(self):
         """Periods 6+ are overtime (playoffs)."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_block_for_period
+        from app.services.timeline_phases import nhl_block_for_period
 
         assert nhl_block_for_period(6) == "overtime"
         assert nhl_block_for_period(7) == "overtime"
 
     def test_none_returns_unknown(self):
         """None returns unknown."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_block_for_period
+        from app.services.timeline_phases import nhl_block_for_period
 
         assert nhl_block_for_period(None) == "unknown"
 
@@ -1005,7 +1005,7 @@ class TestNhlPeriodStart:
 
     def test_period_1_starts_at_game_start(self):
         """Period 1 starts at game start."""
-        from app.services.pipeline.stages.pbp_sport_config import nhl_period_start
+        from app.services.timeline_phases import nhl_period_start
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         result = nhl_period_start(game_start, 1)
@@ -1013,7 +1013,7 @@ class TestNhlPeriodStart:
 
     def test_period_2_timing(self):
         """Period 2 starts after P1 + first intermission."""
-        from app.services.pipeline.stages.pbp_sport_config import (
+        from app.services.timeline_phases import (
             nhl_period_start,
             NHL_PERIOD_REAL_SECONDS,
             NHL_INTERMISSION_REAL_SECONDS,
@@ -1028,7 +1028,7 @@ class TestNhlPeriodStart:
 
     def test_period_3_timing(self):
         """Period 3 starts after P2 + second intermission."""
-        from app.services.pipeline.stages.pbp_sport_config import (
+        from app.services.timeline_phases import (
             nhl_period_start,
             NHL_PERIOD_REAL_SECONDS,
             NHL_INTERMISSION_REAL_SECONDS,
@@ -1043,7 +1043,7 @@ class TestNhlPeriodStart:
 
     def test_overtime_timing(self):
         """Overtime starts after regulation."""
-        from app.services.pipeline.stages.pbp_sport_config import (
+        from app.services.timeline_phases import (
             nhl_period_start,
             NHL_REGULATION_REAL_SECONDS,
         )

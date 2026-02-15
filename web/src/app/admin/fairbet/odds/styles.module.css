@@ -1,54 +1,56 @@
 .container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 24px;
 }
 
 .header {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-page-section);
 }
 
 .title {
-  font-size: 28px;
-  font-weight: 600;
-  color: #1a1a2e;
-  margin: 0 0 8px 0;
+  font-size: var(--font-page-title-size);
+  font-weight: var(--font-page-title-weight);
+  letter-spacing: var(--font-page-title-spacing);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-row) 0;
 }
 
 .subtitle {
-  font-size: 14px;
-  color: #6b7280;
+  font-size: var(--font-body-size);
+  color: var(--text-muted);
   margin: 0;
 }
 
 .filters {
   display: flex;
-  gap: 16px;
+  gap: var(--space-card-inner);
   align-items: center;
-  margin-bottom: 24px;
-  padding: 16px;
-  background: #f9fafb;
-  border-radius: 8px;
+  margin-bottom: var(--space-section-card);
+  padding: var(--space-card-inner) 1.25rem;
+  background: #ffffff;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   flex-wrap: wrap;
 }
 
 .filterGroup {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-row);
 }
 
 .filterLabel {
-  font-size: 13px;
-  font-weight: 500;
-  color: #4b5563;
+  font-size: var(--font-label-size);
+  font-weight: var(--font-label-weight);
+  color: var(--text-muted);
 }
 
 .filterSelect {
-  padding: 8px 12px;
-  font-size: 14px;
+  padding: 0.5rem 0.75rem;
+  font-size: var(--font-body-size);
   border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border-radius: var(--radius-button);
   background: white;
   cursor: pointer;
   max-width: 200px;
@@ -57,49 +59,49 @@
 .filterSelect:focus {
   outline: none;
   border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .bookCount {
-  font-size: 14px;
+  font-size: var(--font-body-size);
   font-weight: 600;
-  color: #1a1a2e;
-  background: #e5e7eb;
+  color: var(--text-primary);
+  background: var(--border-light);
   padding: 4px 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
 }
 
 .resetButton {
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: 0.5rem 1rem;
+  font-size: var(--font-body-size);
   font-weight: 500;
-  color: #6b7280;
-  background: white;
+  color: #475569;
+  background: transparent;
   border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border-radius: var(--radius-button);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .resetButton:hover {
-  background: #f3f4f6;
-  color: #374151;
+  background: var(--border-light);
+  color: var(--text-secondary);
 }
 
 .syncButton {
-  padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 500;
+  padding: 0.5rem 1.25rem;
+  font-size: var(--font-body-size);
+  font-weight: 600;
   color: white;
-  background: #3b82f6;
+  background: #2563eb;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-button);
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .syncButton:hover:not(:disabled) {
-  background: #2563eb;
+  background: #1d4ed8;
 }
 
 .syncButton:disabled {
@@ -108,52 +110,53 @@
 }
 
 .lastSync {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--font-hint-size);
+  color: var(--text-muted);
   margin-right: 12px;
 }
 
 .syncMessage {
-  padding: 12px 16px;
-  margin-bottom: 16px;
+  padding: var(--space-card-inner);
+  margin-bottom: var(--space-section-card);
   background: #ecfdf5;
   border: 1px solid #10b981;
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   color: #059669;
-  font-size: 14px;
+  font-size: var(--font-body-size);
 }
 
 .loading,
 .empty,
 .error {
-  padding: 48px;
+  padding: 3rem;
   text-align: center;
-  color: #6b7280;
-  font-size: 14px;
+  color: var(--text-muted);
+  font-size: var(--font-body-size);
 }
 
 .error {
   color: #dc2626;
   background: #fef2f2;
-  border-radius: 8px;
+  border-radius: var(--radius-card);
 }
 
 .betsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-  gap: 16px;
+  gap: var(--space-card-inner);
 }
 
 .betCard {
   background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 16px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  padding: var(--space-card-inner);
   transition: box-shadow 0.15s ease;
+  box-shadow: var(--shadow-card);
 }
 
 .betCard:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .betHeader {
@@ -178,7 +181,7 @@
   padding: 4px 8px;
   background: #1a1a2e;
   color: #ffffff !important;
-  border-radius: 4px;
+  border-radius: var(--radius-button);
 }
 
 .categoryBadge {
@@ -189,7 +192,7 @@
   padding: 3px 6px;
   background: #818cf8;
   color: #ffffff;
-  border-radius: 4px;
+  border-radius: var(--radius-button);
 }
 
 .gameDate {
@@ -198,9 +201,9 @@
 }
 
 .matchup {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1a1a2e;
+  font-size: var(--font-section-title-size);
+  font-weight: var(--font-section-title-weight);
+  color: var(--text-primary);
   margin-bottom: 4px;
 }
 
@@ -226,7 +229,7 @@
   color: #6b7280;
   background: #f3f4f6;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-button);
 }
 
 .selection {
@@ -246,7 +249,7 @@
   color: #6b7280;
   background: #f3f4f6;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-button);
   margin-left: auto;
 }
 
@@ -262,8 +265,8 @@
   flex-direction: column;
   align-items: center;
   padding: 10px 8px;
-  background: #f9fafb;
-  border-radius: 8px;
+  background: var(--border-light);
+  border-radius: var(--radius-button);
   border: 1px solid transparent;
   transition: all 0.15s ease;
 }
@@ -298,7 +301,7 @@
   color: #6366f1;
   background: #e0e7ff;
   padding: 1px 3px;
-  border-radius: 3px;
+  border-radius: var(--radius-button);
   line-height: 1;
 }
 
@@ -317,7 +320,7 @@
   font-weight: 600;
   margin-top: 4px;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-button);
   color: #6b7280;
   background: #f3f4f6;
 }
@@ -336,27 +339,27 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 16px;
-  margin-top: 32px;
-  padding-top: 24px;
-  border-top: 1px solid #e5e7eb;
+  gap: var(--space-card-inner);
+  margin-top: var(--space-page-section);
+  padding-top: var(--space-section-card);
+  border-top: 1px solid var(--border-default);
 }
 
 .pageButton {
-  padding: 8px 16px;
-  font-size: 14px;
+  padding: 0.5rem 1rem;
+  font-size: var(--font-body-size);
   font-weight: 500;
-  color: #374151;
-  background: white;
+  color: #475569;
+  background: transparent;
   border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border-radius: var(--radius-button);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .pageButton:hover:not(:disabled) {
-  background: #f9fafb;
-  border-color: #9ca3af;
+  background: var(--border-light);
+  border-color: #94a3b8;
 }
 
 .pageButton:disabled {
@@ -365,8 +368,8 @@
 }
 
 .pageInfo {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--font-label-size);
+  color: var(--text-muted);
 }
 
 /* Fair Odds card (available) */
@@ -395,7 +398,7 @@
   text-transform: uppercase;
   letter-spacing: 0.3px;
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-button);
   margin-top: 4px;
 }
 .confidence_high { color: #059669; background: #ecfdf5; }
@@ -435,7 +438,7 @@
   background: #1f2937;
   color: #f9fafb;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-button);
   font-size: 12px;
   font-weight: 400;
   width: 200px;
@@ -475,7 +478,7 @@
   background: #1f2937;
   color: #f9fafb;
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-button);
   font-size: 12px;
   z-index: 20;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);

@@ -806,7 +806,7 @@ class TestGlobalCap:
     def test_six_display_tweets_capped_to_five(self, game_start):
         """6 blocks with display tweets → only 5 survive, lowest score demoted.
 
-        NBA period starts: Q1=0, Q2=18.75m, Q3=52.5m, Q4=71.25m, OT1=90m, OT2=105m.
+        NBA period starts: Q1=0, Q2=18.75m, Q3=52.5m, Q4=71.25m, OT1=75m, OT2=90m.
         Each tweet is placed in the middle of its period's window.
         """
         blocks = [
@@ -814,7 +814,7 @@ class TestGlobalCap:
             for i in range(6)
         ]
         # Timings that land one tweet per NBA period window
-        period_midpoints = [5, 25, 55, 75, 95, 110]  # minutes
+        period_midpoints = [5, 25, 55, 73, 80, 95]  # minutes
         tweets = [
             _make_tweet(i + 1, game_start + timedelta(minutes=m), score=float(i + 1))
             for i, m in enumerate(period_midpoints)
@@ -834,13 +834,13 @@ class TestGlobalCap:
     def test_five_display_tweets_within_cap(self, game_start):
         """5 blocks with display tweets → all kept (exactly at the cap).
 
-        NBA period starts: Q1=0, Q2=18.75m, Q3=52.5m, Q4=71.25m, OT1=90m.
+        NBA period starts: Q1=0, Q2=18.75m, Q3=52.5m, Q4=71.25m, OT1=75m.
         """
         blocks = [
             {"block_index": i, "period_start": i + 1}
             for i in range(5)
         ]
-        period_midpoints = [5, 25, 55, 75, 95]  # minutes
+        period_midpoints = [5, 25, 55, 73, 80]  # minutes
         tweets = [
             _make_tweet(i + 1, game_start + timedelta(minutes=m), score=float(i + 1))
             for i, m in enumerate(period_midpoints)
@@ -855,13 +855,13 @@ class TestGlobalCap:
         """7 blocks (max pipeline blocks) with tweets → 2 lowest scores demoted.
 
         NBA period starts: Q1=0, Q2=18.75m, Q3=52.5m, Q4=71.25m,
-        OT1=90m, OT2=105m, OT3=120m.
+        OT1=75m, OT2=90m, OT3=105m.
         """
         blocks = [
             {"block_index": i, "period_start": i + 1}
             for i in range(7)
         ]
-        period_midpoints = [5, 25, 55, 75, 95, 110, 125]  # minutes
+        period_midpoints = [5, 25, 55, 73, 80, 95, 110]  # minutes
         tweets = [
             _make_tweet(
                 i + 1,
@@ -889,7 +889,7 @@ class TestGlobalCap:
             {"block_index": i, "period_start": i + 1}
             for i in range(6)
         ]
-        period_midpoints = [5, 25, 55, 75, 95, 110]
+        period_midpoints = [5, 25, 55, 73, 80, 95]
         tweets = [
             _make_tweet(i + 1, game_start + timedelta(minutes=m), score=float(i + 1))
             for i, m in enumerate(period_midpoints)

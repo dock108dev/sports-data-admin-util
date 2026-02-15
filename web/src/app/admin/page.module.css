@@ -1,99 +1,63 @@
 .container {
-  color: #e2e8f0;
+  color: var(--text-secondary);
 }
 
 .header {
-  margin-bottom: 2rem;
+  margin-bottom: var(--space-page-section);
 }
 
 .title {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: #f8fafc;
-  margin: 0 0 0.5rem 0;
+  font-size: var(--font-page-title-size);
+  font-weight: var(--font-page-title-weight);
+  letter-spacing: var(--font-page-title-spacing);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-row) 0;
 }
 
 .subtitle {
-  color: #64748b;
-  font-size: 0.95rem;
+  color: var(--text-muted);
+  font-size: var(--font-body-size);
 }
 
 .statsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.statCard {
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 1.25rem;
-  transition: transform 0.15s ease, border-color 0.15s ease;
-}
-
-.statCard:hover {
-  transform: translateY(-2px);
-  border-color: rgba(59, 130, 246, 0.3);
-}
-
-.statLabel {
-  font-size: 0.75rem;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.5rem;
-}
-
-.statValue {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #f8fafc;
-}
-
-.statSub {
-  font-size: 0.8rem;
-  color: #94a3b8;
-  margin-top: 0.25rem;
+  gap: var(--space-card-inner);
+  margin-bottom: var(--space-page-section);
 }
 
 .section {
-  margin-bottom: 2rem;
+  margin-bottom: var(--space-page-section);
 }
 
 .sectionTitle {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #f8fafc;
-  margin-bottom: 1rem;
+  font-size: var(--font-section-title-size);
+  font-weight: var(--font-section-title-weight);
+  color: var(--text-primary);
+  margin-bottom: var(--space-card-inner);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-row);
 }
 
 .quickLinks {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1rem;
+  gap: var(--space-card-inner);
 }
 
 .quickLink {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  background: rgba(30, 41, 59, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
-  padding: 1rem 1.25rem;
+  gap: var(--space-card-inner);
+  padding: var(--space-card-inner) 1.25rem;
   text-decoration: none;
-  transition: all 0.15s ease;
+  border-radius: var(--radius-card);
+  transition: background 0.15s ease;
 }
 
 .quickLink:hover {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.3);
-  transform: translateX(4px);
+  background: var(--border-light);
 }
 
 .quickLinkIcon {
@@ -103,8 +67,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
+  background: var(--border-light);
+  border-radius: var(--radius-button);
 }
 
 .quickLinkContent {
@@ -112,35 +76,32 @@
 }
 
 .quickLinkTitle {
-  font-weight: 600;
-  color: #f8fafc;
-  font-size: 0.95rem;
+  font-weight: var(--font-section-title-weight);
+  color: var(--text-primary);
+  font-size: var(--font-body-size);
 }
 
 .quickLinkDesc {
-  font-size: 0.8rem;
-  color: #64748b;
+  font-size: var(--font-hint-size);
+  color: var(--text-muted);
   margin-top: 0.25rem;
 }
 
 .quickLinkArrow {
-  color: #475569;
+  color: var(--text-subtle);
   font-size: 1.25rem;
 }
 
 .recentRuns {
-  background: rgba(30, 41, 59, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
   overflow: hidden;
 }
 
 .runItem {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.875rem 1.25rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  gap: var(--space-card-inner);
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-light);
   text-decoration: none;
   transition: background 0.15s ease;
 }
@@ -150,13 +111,14 @@
 }
 
 .runItem:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: #fafbfc;
 }
 
 .runStatus {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .runStatusSuccess { background: #22c55e; }
@@ -175,27 +137,26 @@
 }
 
 .runTitle {
-  font-size: 0.9rem;
-  color: #e2e8f0;
+  font-size: var(--font-body-size);
+  color: var(--text-secondary);
 }
 
 .runMeta {
-  font-size: 0.75rem;
-  color: #64748b;
+  font-size: var(--font-label-size);
+  color: var(--text-muted);
   margin-top: 0.125rem;
 }
 
 .loading {
   text-align: center;
   padding: 3rem;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .error {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 8px;
-  padding: 1rem;
-  color: #fca5a5;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-card);
+  padding: var(--space-card-inner);
+  color: #dc2626;
 }
-

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .base import BaseSportsReferenceScraper, ScraperError
-from .nba_sportsref import NBASportsReferenceScraper
 from .ncaab_sportsref import NCAABSportsReferenceScraper
 
 if TYPE_CHECKING:
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 __all__ = [
     "BaseSportsReferenceScraper",
     "ScraperError",
-    "NBASportsReferenceScraper",
     "NCAABSportsReferenceScraper",
     "get_scraper",
     "get_all_scrapers",
@@ -22,9 +20,9 @@ __all__ = [
 
 
 # Scraper registry - maps league codes to scraper classes
+# NBA uses NBA CDN API for boxscores and NBA API for PBP (see services/nba_boxscore_ingestion.py)
 # NHL uses the official NHL API for boxscores and PBP (see live/nhl.py)
 _SCRAPER_REGISTRY: Dict[str, Type[BaseSportsReferenceScraper]] = {
-    "NBA": NBASportsReferenceScraper,
     "NCAAB": NCAABSportsReferenceScraper,
 }
 

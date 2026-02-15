@@ -25,7 +25,7 @@ class OddsUpsertResult(Enum):
     SKIPPED_LIVE = "skipped_live"
 
 
-from .odds_matching import (
+from .odds_matching import (  # noqa: E402
     cache_get,
     cache_set,
     canonicalize_team_names,
@@ -34,9 +34,9 @@ from .odds_matching import (
     match_game_by_team_ids,
     should_log,
 )
-from .games import upsert_game_stub
-from .teams import _find_team_by_name, _upsert_team
-from ..odds.fairbet import upsert_fairbet_odds
+from .games import upsert_game_stub  # noqa: E402
+from .teams import _find_team_by_name, _upsert_team  # noqa: E402
+from ..odds.fairbet import upsert_fairbet_odds  # noqa: E402
 
 
 def _execute_odds_upsert(

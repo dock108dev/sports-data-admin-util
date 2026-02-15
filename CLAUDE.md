@@ -36,6 +36,8 @@
 - `sql/` — Database schema and migrations
 - `infra/` — Docker and deployment
 - `docs/` — Architecture and API documentation
+- `packages/` — Shared JS libraries (js-core, ui, ui-kit)
+- `scripts/` — Backup and deployment scripts
 
 ## Data Hub Responsibilities
 
@@ -63,7 +65,7 @@ A game flow consists of 4-7 narrative blocks. Each block contains 2-4 sentences 
 - **Narrative Block:** Consumer-facing output (4-7 per game, 2-4 sentences each)
 - **Moments:** Internal traceability layer linking blocks to plays
 - **Semantic Roles:** SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION
-- **Guardrails:** Hard limits enforced (blocks ≤ 7, tweets ≤ 5, words ≤ 350)
+- **Guardrails:** Hard limits enforced (blocks ≤ 7, tweets ≤ 5, words ≤ 500)
 - **Social Independence:** Game flow structure identical with/without social data
 - **OpenAI is prose-only:** It renders narratives, not structure
 
@@ -87,6 +89,7 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GR
 - **Every 3 min** — Game state updates (game-state-machine)
 - **Every 5 min** — Live PBP polling
 - **Every 30 min** — Odds sync + active odds polling (pregame games only; live games are skipped to preserve closing lines)
+- **Every 30 min** — Props sync (offset at :15/:45 to avoid contention with odds sync at :00/:30)
 
 Configured in `scraper/sports_scraper/celery_app.py`
 

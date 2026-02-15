@@ -148,8 +148,7 @@ def run_scheduled_props_sync() -> dict:
     from ..odds.synchronizer import OddsSynchronizer
     from ..config_sports import get_odds_enabled_leagues
 
-    from sqlalchemy import select, cast
-    from sqlalchemy.dialects.postgresql import JSONB
+    from sqlalchemy import select
 
     leagues = get_odds_enabled_leagues()
     sync = OddsSynchronizer()

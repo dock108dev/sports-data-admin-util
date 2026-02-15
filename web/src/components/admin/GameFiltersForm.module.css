@@ -1,79 +1,77 @@
 .filtersCard {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: var(--space-section-card);
+  box-shadow: var(--shadow-card);
 }
 
 .filterSection {
-  margin-bottom: 1.5rem;
+  margin-bottom: var(--space-section-card);
 }
 
 .filterLabel {
   display: block;
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: #475569;
-  margin-bottom: 0.5rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: var(--font-label-weight);
+  font-size: var(--font-label-size);
+  color: var(--text-muted);
+  margin-bottom: var(--space-row);
 }
 
 .leagueChips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-row);
 }
 
 .chip {
   padding: 0.5rem 1rem;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: var(--radius-button);
+  background: transparent;
   color: #475569;
-  font-size: 0.875rem;
+  font-size: var(--font-body-size);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .chip:hover {
-  background: #e2e8f0;
+  background: var(--border-light);
   border-color: #94a3b8;
 }
 
 .chipActive {
-  background: #3b82f6;
+  background: #2563eb;
   color: white;
-  border-color: #3b82f6;
+  border-color: #2563eb;
 }
 
 .chipActive:hover {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: #1d4ed8;
+  border-color: #1d4ed8;
 }
 
 .filterRow {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: var(--space-card-inner);
+  margin-bottom: var(--space-card-inner);
 }
 
 .filterGroup {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-row);
 }
 
 .input {
   padding: 0.625rem;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  color: #1e293b;
+  border-radius: var(--radius-button);
+  font-size: var(--font-body-size);
+  color: var(--text-secondary);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -86,8 +84,8 @@
 .checkboxLabel {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
+  gap: var(--space-row);
+  font-size: var(--font-body-size);
   color: #475569;
   cursor: pointer;
 }
@@ -103,66 +101,65 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 1rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid #e2e8f0;
+  margin-bottom: var(--space-card-inner);
+  padding-top: var(--space-row);
+  border-top: 1px solid var(--border-default);
 }
 
 .quickButton {
   padding: 0.5rem 1rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: #f8fafc;
+  border: 1px solid #d1d5db;
+  border-radius: var(--radius-button);
+  background: transparent;
   color: #475569;
-  font-size: 0.875rem;
+  font-size: var(--font-body-size);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .quickButton:hover {
-  background: #e2e8f0;
+  background: var(--border-light);
   border-color: #94a3b8;
 }
 
 .actionsRow {
   display: flex;
   gap: 0.75rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e2e8f0;
+  margin-top: var(--space-card-inner);
+  padding-top: var(--space-card-inner);
+  border-top: 1px solid var(--border-default);
 }
 
 .applyButton {
-  padding: 0.625rem 1.5rem;
-  background: #3b82f6;
+  padding: 0.5rem 1.25rem;
+  background: #2563eb;
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-button);
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: var(--font-body-size);
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
 
 .applyButton:hover {
-  background: #2563eb;
+  background: #1d4ed8;
 }
 
 .resetButton {
-  padding: 0.625rem 1.5rem;
-  background: #f8fafc;
+  padding: 0.5rem 1rem;
+  background: transparent;
   color: #475569;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: var(--radius-button);
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: var(--font-body-size);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .resetButton:hover {
-  background: #e2e8f0;
+  background: var(--border-light);
   border-color: #94a3b8;
 }
-

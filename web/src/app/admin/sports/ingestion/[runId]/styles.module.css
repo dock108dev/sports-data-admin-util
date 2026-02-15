@@ -1,11 +1,10 @@
 .container {
   max-width: 900px;
   margin: 0 auto;
-  padding: 2rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  color: #0f172a;
+  gap: var(--space-section-card);
+  color: var(--text-primary);
 }
 
 .backLink {
@@ -20,89 +19,88 @@
 
 .card {
   background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  padding: 1.25rem 1.5rem;
+  box-shadow: var(--shadow-card);
 }
 
 .card h1 {
-  color: #0f172a;
+  color: var(--text-primary);
   margin-top: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: var(--font-page-title-size);
+  font-weight: var(--font-page-title-weight);
 }
 
 .card h2 {
-  color: #0f172a;
+  color: var(--text-primary);
   margin-top: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: var(--font-section-title-size);
+  font-weight: var(--font-section-title-weight);
 }
 
 .card p {
-  color: #0f172a;
+  color: var(--text-primary);
 }
 
 .metaGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1.2rem;
-  margin-top: 1rem;
+  gap: var(--space-card-inner);
+  margin-top: var(--space-card-inner);
 }
 
 .label {
   display: block;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  color: #475569;
-  letter-spacing: 0.08em;
+  font-size: var(--font-label-size);
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
   margin-bottom: 0.25rem;
-  font-weight: 700;
+  font-weight: var(--font-label-weight);
 }
 
 .metaGrid p {
-  color: #0f172a;
+  color: var(--text-primary);
   font-weight: 600;
   margin: 0.25rem 0 0;
 }
 
 .status {
   text-transform: capitalize;
-  color: #0f172a;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
 .configBlock {
-  margin-top: 2rem;
+  margin-top: var(--space-page-section);
 }
 
 .configBlock h2 {
-  color: #0f172a;
-  margin-bottom: 1rem;
+  color: var(--text-primary);
+  margin-bottom: var(--space-card-inner);
 }
 
 .configBlock pre {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 1rem;
+  background: var(--border-light);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-button);
+  padding: var(--space-card-inner);
   overflow: auto;
-  font-size: 0.9rem;
-  color: #1e293b;
+  font-size: var(--font-body-size);
+  color: var(--text-secondary);
 }
 
 .summary {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e2e8f0;
+  margin-top: var(--space-section-card);
+  padding-top: var(--space-card-inner);
+  border-top: 1px solid var(--border-default);
 }
 
 .summary h2 {
-  color: #0f172a;
-  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+  margin-bottom: var(--space-row);
 }
 
 .summary p {
-  color: #0f172a;
+  color: var(--text-primary);
 }

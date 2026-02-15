@@ -1,27 +1,28 @@
 .container {
-  color: #0f172a;
+  color: var(--text-primary);
 }
 
 .header {
-  margin-bottom: 1.5rem;
+  margin-bottom: var(--space-section-card);
 }
 
 .title {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 0.5rem 0;
+  font-size: var(--font-page-title-size);
+  font-weight: var(--font-page-title-weight);
+  letter-spacing: var(--font-page-title-spacing);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-row) 0;
 }
 
 .subtitle {
-  color: #64748b;
-  font-size: 0.95rem;
+  color: var(--text-muted);
+  font-size: var(--font-body-size);
 }
 
 .filters {
   display: flex;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: var(--space-card-inner);
+  margin-bottom: var(--space-section-card);
   flex-wrap: wrap;
 }
 
@@ -32,87 +33,87 @@
 }
 
 .filterLabel {
-  font-size: 0.75rem;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: var(--font-label-size);
+  color: var(--text-muted);
+  letter-spacing: var(--font-table-header-spacing);
 }
 
 .select,
 .input {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-button);
   padding: 0.5rem 0.75rem;
-  color: #0f172a;
-  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-size: var(--font-body-size);
   min-width: 150px;
 }
 
 .select:focus,
 .input:focus {
   outline: none;
-  border-color: #4f46e5;
-  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .teamsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1rem;
+  gap: var(--space-card-inner);
 }
 
 .teamCard {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  padding: var(--space-card-inner) 1.25rem;
   text-decoration: none;
   transition: all 0.15s ease;
+  box-shadow: var(--shadow-card);
 }
 
 .teamCard:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-color: #94a3b8;
+  box-shadow: var(--shadow-card-hover);
 }
 
 .teamHeader {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-row);
 }
 
 .colorSwatch {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-default);
   flex-shrink: 0;
 }
 
 .teamAbbr {
-  background: #f1f5f9;
+  background: var(--border-light);
   color: #475569;
   font-weight: 600;
-  font-size: 0.75rem;
+  font-size: var(--font-label-size);
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-button);
   font-family: monospace;
 }
 
 .teamName {
-  font-weight: 600;
-  color: #0f172a;
-  font-size: 0.95rem;
+  font-weight: var(--font-section-title-weight);
+  color: var(--text-primary);
+  font-size: var(--font-body-size);
   flex: 1;
 }
 
 .teamMeta {
   display: flex;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-  color: #64748b;
+  gap: var(--space-row);
+  font-size: var(--font-label-size);
+  color: var(--text-muted);
 }
 
 .metaItem {
@@ -127,45 +128,44 @@
 .loading {
   text-align: center;
   padding: 3rem;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .error {
   background: #fef2f2;
   border: 1px solid #fecaca;
-  border-radius: 8px;
-  padding: 1rem;
+  border-radius: var(--radius-card);
+  padding: var(--space-card-inner);
   color: #dc2626;
 }
 
 .empty {
   text-align: center;
   padding: 3rem;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .pagination {
   display: flex;
   justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
+  gap: var(--space-row);
+  margin-top: var(--space-section-card);
 }
 
 .pageButton {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  border-radius: var(--radius-button);
   padding: 0.5rem 1rem;
   color: #475569;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: var(--font-body-size);
   transition: all 0.15s ease;
 }
 
 .pageButton:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #0f172a;
+  background: var(--border-light);
+  border-color: #94a3b8;
 }
 
 .pageButton:disabled {

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from ..db.sports import SportsGame
+from ..db.sports import SportsGame, SportsTeam
 from ..db.odds import SportsGameOdds
 
 

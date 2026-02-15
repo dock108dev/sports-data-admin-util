@@ -1,33 +1,37 @@
 .badge {
   display: inline-block;
   padding: 0.25rem 0.75rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
+  border-radius: var(--radius-button);
+  font-size: var(--font-label-size);
   font-weight: 500;
-  color: white;
   text-transform: capitalize;
 }
 
-/* Status-specific classes */
+/* Tinted background badges */
 .statusSuccess {
-  background-color: #22c55e;
+  background-color: #ecfdf5;
+  color: #059669;
 }
 
 .statusPending {
-  background-color: #eab308;
+  background-color: #fffbeb;
+  color: #d97706;
 }
 
 .statusRunning {
-  background-color: #3b82f6;
+  background-color: #eff6ff;
+  color: #2563eb;
   animation: pulse 1.5s infinite;
 }
 
 .statusError {
-  background-color: #ef4444;
+  background-color: #fef2f2;
+  color: #dc2626;
 }
 
 .statusInterrupted {
-  background-color: #f97316;
+  background-color: #fff7ed;
+  color: #ea580c;
 }
 
 @keyframes pulse {
@@ -38,4 +42,3 @@
     opacity: 0.7;
   }
 }
-

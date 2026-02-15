@@ -25,7 +25,7 @@ The Docker Compose setup starts:
 | redis | 6379 | Redis for Celery queue |
 | api | 8000 | FastAPI backend |
 | scraper | — | Celery worker for data ingestion |
-| scraper-beat | — | Celery scheduler (daily at 08:30 UTC / 3:30 AM EST) |
+| scraper-beat | — | Celery scheduler (see CLAUDE.md for full schedule) |
 | web | 3000 | Next.js admin UI |
 
 ## Verify Everything Works
