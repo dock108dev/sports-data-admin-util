@@ -14,26 +14,26 @@ EV is computed **at query time only**, inside the FairBet API endpoint (`api/app
 
 The pipeline:
 
-1. **Group bets** by `(game_id, market_key, line_value)` — this collapses both sides of a two-way market into one group
-2. **Find Pinnacle** on each side (`ev.py:126-138`) — first match wins, `break` after finding one
-3. **Devig** both Pinnacle prices via additive normalization (`ev.py:42-57`) — divide each implied prob by the sum
-4. **Compute EV%** for every book using `(decimal_odds * true_prob - 1) * 100` (`ev.py:60-81`)
-5. **Annotate** each book entry with `ev_percent`, `implied_prob`, `is_sharp`, `true_prob`
-
-If the group has **exactly 2 bet keys** → two-way EV calc.
-If the group has **1 or 3+ bet keys** → no EV, only `is_sharp` flag set.
+1. **Group bets** by `(game_id, market_key, abs(line_value))` — forms candidate buckets
+2. **Pair opposite sides** via `_pair_opposite_sides()` — within each bucket, pairs entries with different `selection_key` values; unpaired entries get `ev_disabled_reason = "no_pair"`
+3. **Eligibility gate** (`evaluate_ev_eligibility()`) — checks strategy exists, Pinnacle present on both sides, freshness, minimum book count
+4. **Find Pinnacle** on each side (`ev.py`) — first match wins
+5. **Devig** both Pinnacle prices via additive normalization (`ev.py:56-71`) — divide each implied prob by the sum
+6. **Compute EV%** for every book using `(decimal_odds * true_prob - 1) * 100` (`ev.py:74-95`)
+7. **Annotate** each book entry with `ev_percent`, `implied_prob`, `is_sharp`, `true_prob`
 
 ### Where Assumptions Live
 
 | Assumption | Location | Detail |
 |-----------|----------|--------|
-| Pinnacle is the only sharp book | `api/app/services/ev.py:15` | `SHARP_BOOKS = {"Pinnacle"}` |
-| Two-way markets only | `api/app/routers/fairbet/odds.py:330` | `if len(bet_keys) == 2` — else branch skips EV |
-| Additive vig removal | `api/app/services/ev.py:55` | `[p / total for p in implied_probs]` |
-| Both Pinnacle sides required | `api/app/services/ev.py:144` | `if sharp_a_price is not None and sharp_b_price is not None` |
-| All markets treated identically | `api/app/routers/fairbet/odds.py:329-378` | Same formula for spreads, totals, ML, player props |
+| Pinnacle is the only sharp book | `api/app/services/ev_config.py` | `eligible_sharp_books = ("Pinnacle",)` on all strategies |
+| Two-way markets only | `api/app/routers/fairbet/odds.py` | `_pair_opposite_sides()` pairs entries with different `selection_key`; unpaired → `no_pair` |
+| Additive vig removal | `api/app/services/ev.py:56-71` | `[p / total for p in implied_probs]` |
+| Both Pinnacle sides required | `api/app/services/ev.py:250` | `if sharp_a_price is not None and sharp_b_price is not None` |
+| All markets treated identically | `api/app/services/ev.py:212-294` | Same devig formula for spreads, totals, ML, player props |
 | No longshot adjustment | Nowhere | No thresholds, caps, or warnings on high-implied-prob-discount bets |
-| All books equally valid for EV display | `api/app/services/ev.py:152-163` | Every book gets EV annotation regardless of quality |
+| No fair-odds sanity check | Nowhere | Devigged fair odds are never compared against market consensus |
+| All books equally valid for EV display | `api/app/services/ev.py:257-283` | Every book gets EV annotation regardless of quality |
 | EV is ephemeral | `api/app/routers/fairbet/odds.py` | Computed per request, never stored |
 
 ### Dual SHARP_BOOKS Definitions (Inconsistency)
@@ -83,19 +83,13 @@ The scraper definition is dead code relative to EV. Only the API definition matt
 | Any market with <3 qualifying books | Statistical noise, not signal |
 | Any market where Pinnacle line is >2 hours stale | Stale reference invalidates the calculation |
 
-### 2.3 Books That Contaminate Baselines
+### 2.3 Books That Contaminate Baselines — RESOLVED
 
-23 books are in the database that the user explicitly wants excluded (offshore, promo, irrelevant regional). These are currently:
-- Included in EV calculations (as "soft" side comparisons)
-- Counted toward market coverage
-- Displayed in the UI alongside actionable books
-- Not filtered at ingestion, persistence, or query time
+20 books are excluded from both display and EV computation via `EXCLUDED_BOOKS` in `api/app/services/ev_config.py`. Exclusion is enforced at SQL query time (`WHERE book NOT IN (...)`) in `_build_base_filters()` and in the eligibility gate's `min_qualifying_books` check. Books are still ingested and persisted — exclusion is query-time only.
 
-No exclusion mechanism exists at any layer.
+### 2.4 Minimum Book Threshold — RESOLVED
 
-### 2.4 Minimum Book Threshold
-
-No minimum qualifying book count exists. A market with 1 book and Pinnacle gets EV calculated and displayed identically to a market with 15 books and Pinnacle. The user wants a **minimum of 3 qualifying books** (non-excluded) for a bet to be shown at all.
+`min_qualifying_books = 3` is enforced per-side in the eligibility gate (`evaluate_ev_eligibility()`). Markets with fewer than 3 non-excluded books on either side get `ev_disabled_reason = "insufficient_books"`.
 
 ---
 
@@ -195,9 +189,10 @@ Natural home: a new module like `api/app/services/ev_config.py` or `shared/ev_co
 
 | Area | File | Key Lines |
 |------|------|-----------|
-| EV formulas | `api/app/services/ev.py` | 23-81 (formulas), 107-179 (market annotation) |
-| EV annotation in API | `api/app/routers/fairbet/odds.py` | 319-378 (grouping + annotation loop) |
-| Sharp books (API) | `api/app/services/ev.py` | 15 (`SHARP_BOOKS`) |
+| EV formulas | `api/app/services/ev.py` | 37-95 (formulas), 212-294 (market annotation) |
+| EV config & strategies | `api/app/services/ev_config.py` | Full file (book lists, strategy map, eligibility result) |
+| EV annotation in API | `api/app/routers/fairbet/odds.py` | Step 6 (grouping + `_pair_opposite_sides` + `_annotate_pair_ev`) |
+| Sharp books (API) | `api/app/services/ev_config.py` | `eligible_sharp_books` on each strategy |
 | Sharp books (scraper, unused) | `scraper/sports_scraper/odds/client.py` | 46 (`SHARP_BOOKS`) |
 | Market classification | `scraper/sports_scraper/models/schemas.py` | 123-142 (`classify_market`) |
 | Snapshot model | `scraper/sports_scraper/models/schemas.py` | 102-121 (`NormalizedOddsSnapshot`) |

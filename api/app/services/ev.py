@@ -32,6 +32,7 @@ class EVComputeResult:
     reference_price_b: float | None = None
     ev_method: str | None = None
     confidence_tier: str | None = None
+    fair_odds_suspect: bool = False
 
 
 def american_to_implied(price: float) -> float:
@@ -51,6 +52,23 @@ def american_to_implied(price: float) -> float:
         # Edge case: prices between -100 and +100 shouldn't occur
         # but handle gracefully
         return 0.5
+
+
+def implied_to_american(prob: float) -> float:
+    """Convert implied probability (0-1) to American odds.
+
+    Args:
+        prob: Implied probability as a float between 0 and 1.
+
+    Returns:
+        American odds (e.g., -300, +300). Returns 0.0 for degenerate inputs.
+    """
+    if prob <= 0 or prob >= 1:
+        return 0.0
+    if prob >= 0.5:
+        return -(prob / (1 - prob)) * 100.0
+    else:
+        return ((1 - prob) / prob) * 100.0
 
 
 def remove_vig(implied_probs: list[float]) -> list[float]:
@@ -209,6 +227,17 @@ def evaluate_ev_eligibility(
     )
 
 
+def _median(sorted_values: list[float]) -> float:
+    """Return the median of an already-sorted list of floats."""
+    n = len(sorted_values)
+    if n == 0:
+        return 0.0
+    mid = n // 2
+    if n % 2 == 1:
+        return sorted_values[mid]
+    return (sorted_values[mid - 1] + sorted_values[mid]) / 2.0
+
+
 def compute_ev_for_market(
     side_a_books: list[dict],
     side_b_books: list[dict],
@@ -282,6 +311,27 @@ def compute_ev_for_market(
             result["true_prob"] = None
         annotated_b.append(result)
 
+    # Sanity check: compare devigged fair odds against median book price
+    fair_odds_suspect = False
+    if true_prob_a is not None and true_prob_b is not None:
+        fair_american_a = implied_to_american(true_prob_a)
+        fair_american_b = implied_to_american(true_prob_b)
+
+        # Compute median price for each side from all books
+        prices_a = sorted(entry["price"] for entry in side_a_books)
+        prices_b = sorted(entry["price"] for entry in side_b_books)
+
+        if prices_a and prices_b:
+            median_a = _median(prices_a)
+            median_b = _median(prices_b)
+
+            divergence = max(
+                abs(fair_american_a - median_a),
+                abs(fair_american_b - median_b),
+            )
+            if divergence > strategy_config.max_fair_odds_divergence:
+                fair_odds_suspect = True
+
     return EVComputeResult(
         annotated_a=annotated_a,
         annotated_b=annotated_b,
@@ -291,4 +341,5 @@ def compute_ev_for_market(
         reference_price_b=sharp_b_price,
         ev_method=strategy_config.strategy_name,
         confidence_tier=strategy_config.confidence_tier.value,
+        fair_odds_suspect=fair_odds_suspect,
     )

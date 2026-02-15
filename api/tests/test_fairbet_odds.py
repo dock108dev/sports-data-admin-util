@@ -1,6 +1,7 @@
 """Tests for FairBet odds API endpoint."""
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,6 +12,7 @@ from app.routers.fairbet.odds import (
     FairbetOddsResponse,
     get_fairbet_odds,
     _build_base_filters,
+    _pair_opposite_sides,
 )
 
 
@@ -486,3 +488,386 @@ class TestResponseStructure:
         assert data["total"] == 1
         assert len(data["bets"]) == 1
         assert data["bets"][0]["league_code"] == "NBA"
+
+
+class TestPairOppositeSides:
+    """Unit tests for the _pair_opposite_sides helper."""
+
+    def test_simple_two_way_pair(self):
+        """Two keys with different selection_keys are paired."""
+        keys = [
+            (1, "spreads", "team:lakers", -3.5),
+            (1, "spreads", "team:celtics", 3.5),
+        ]
+        pairs, unpaired = _pair_opposite_sides(keys)
+        assert len(pairs) == 1
+        assert len(unpaired) == 0
+        assert pairs[0] == (keys[0], keys[1])
+
+    def test_single_key_unpaired(self):
+        """A single key has no partner."""
+        keys = [(1, "spreads", "team:lakers", -3.5)]
+        pairs, unpaired = _pair_opposite_sides(keys)
+        assert len(pairs) == 0
+        assert len(unpaired) == 1
+
+    def test_same_selection_key_not_paired(self):
+        """Two keys with the same selection_key are NOT paired."""
+        keys = [
+            (1, "spreads", "team:lakers", -1.5),
+            (1, "spreads", "team:lakers", -2.5),
+        ]
+        pairs, unpaired = _pair_opposite_sides(keys)
+        assert len(pairs) == 0
+        assert len(unpaired) == 2
+
+    def test_four_keys_two_pairs(self):
+        """Four keys forming two valid pairs are all matched."""
+        keys = [
+            (1, "spreads", "team:lakers", -1.5),
+            (1, "spreads", "team:celtics", 1.5),
+            (1, "spreads", "team:lakers", -2.5),
+            (1, "spreads", "team:celtics", 2.5),
+        ]
+        # abs(line_value) groups: {1.5: [0,1], 2.5: [2,3]}
+        # But this helper receives keys already in the same abs-group,
+        # so test two separate calls.
+
+        # Group 1: -1.5 and +1.5
+        pairs1, unpaired1 = _pair_opposite_sides([keys[0], keys[1]])
+        assert len(pairs1) == 1
+        assert len(unpaired1) == 0
+
+        # Group 2: -2.5 and +2.5
+        pairs2, unpaired2 = _pair_opposite_sides([keys[2], keys[3]])
+        assert len(pairs2) == 1
+        assert len(unpaired2) == 0
+
+    def test_three_keys_one_pair_one_unpaired(self):
+        """Three keys: first two pair, third is left unpaired."""
+        keys = [
+            (1, "spreads", "team:lakers", -3.5),
+            (1, "spreads", "team:celtics", 3.5),
+            (1, "spreads", "team:lakers", -3.5),  # duplicate side
+        ]
+        pairs, unpaired = _pair_opposite_sides(keys)
+        assert len(pairs) == 1
+        assert len(unpaired) == 1
+        # The unpaired key shares selection_key with the first
+        assert unpaired[0][2] == "team:lakers"
+
+    def test_empty_input(self):
+        """Empty list returns empty results."""
+        pairs, unpaired = _pair_opposite_sides([])
+        assert pairs == []
+        assert unpaired == []
+
+
+class TestAltSpreadGrouping:
+    """Tests for alt spread EV grouping — ensures distinct lines get independent EV."""
+
+    @pytest.fixture
+    def mock_session(self):
+        """Create a mock async database session."""
+        session = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def mock_game(self):
+        """Create a mock game with related objects."""
+        game = MagicMock()
+        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.status = "scheduled"
+
+        league = MagicMock()
+        league.code = "NCAAB"
+        game.league = league
+
+        home_team = MagicMock()
+        home_team.name = "Seton Hall"
+        game.home_team = home_team
+
+        away_team = MagicMock()
+        away_team.name = "Villanova"
+        game.away_team = away_team
+
+        return game
+
+    def _make_odds_row(
+        self,
+        game: MagicMock,
+        game_id: int,
+        market_key: str,
+        selection_key: str,
+        line_value: float,
+        book: str,
+        price: float,
+    ) -> MagicMock:
+        """Create a mock FairbetGameOddsWork row."""
+        row = MagicMock()
+        row.game_id = game_id
+        row.market_key = market_key
+        row.selection_key = selection_key
+        row.line_value = line_value
+        row.book = book
+        row.price = price
+        row.observed_at = datetime.now(timezone.utc)
+        row.market_category = "alternate"
+        row.player_name = None
+        row.game = game
+        return row
+
+    def _mock_execute_chain(self, session: AsyncMock, results_sequence: list[dict]) -> None:
+        """Set up mock execute to return results in sequence."""
+        async def execute_side_effect(*args, **kwargs):
+            if not hasattr(execute_side_effect, 'call_count'):
+                execute_side_effect.call_count = 0
+            idx = min(execute_side_effect.call_count, len(results_sequence) - 1)
+            execute_side_effect.call_count += 1
+            result_config = results_sequence[idx]
+            mock_result = MagicMock()
+            if 'scalar' in result_config:
+                mock_result.scalar.return_value = result_config['scalar']
+            if 'scalars_all' in result_config:
+                mock_scalars = MagicMock()
+                mock_scalars.all.return_value = result_config['scalars_all']
+                mock_result.scalars.return_value = mock_scalars
+            if 'all' in result_config:
+                mock_result.all.return_value = result_config['all']
+            return mock_result
+        session.execute = execute_side_effect
+
+    def _call_kwargs(self, session: AsyncMock, **overrides: Any) -> dict:
+        """Build kwargs for get_fairbet_odds."""
+        defaults = {
+            "session": session,
+            "league": None,
+            "market_category": None,
+            "game_id": None,
+            "book": None,
+            "player_name": None,
+            "min_ev": None,
+            "has_fair": None,
+            "sort_by": "ev",
+            "limit": 100,
+            "offset": 0,
+        }
+        defaults.update(overrides)
+        return defaults
+
+    @pytest.mark.asyncio
+    async def test_alt_spreads_get_distinct_fair_odds(self, mock_session, mock_game):
+        """Two alt spread lines (-1.5/+1.5 and -2.5/+2.5) get independent EV."""
+        rows = [
+            # Line pair 1: -1.5 / +1.5
+            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -1.5, "Pinnacle", -120),
+            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -1.5, "DraftKings", -115),
+            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 1.5, "Pinnacle", 105),
+            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 1.5, "DraftKings", 100),
+            # Line pair 2: -2.5 / +2.5
+            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -2.5, "Pinnacle", -145),
+            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -2.5, "DraftKings", -140),
+            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 2.5, "Pinnacle", 125),
+            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 2.5, "DraftKings", 120),
+        ]
+
+        self._mock_execute_chain(mock_session, [
+            {'scalar': 4},
+            {'scalars_all': rows},
+            {'all': [("Pinnacle",), ("DraftKings",)]},
+            {'all': [("alternate",)]},
+            {'scalars_all': []},
+        ])
+
+        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
+
+        # Should have 4 bet definitions (2 sides x 2 lines)
+        assert len(response.bets) == 4
+
+        # Group by line_value to check independence
+        by_line: dict[float, list[BetDefinition]] = {}
+        for bet in response.bets:
+            by_line.setdefault(abs(bet.line_value), []).append(bet)
+
+        assert 1.5 in by_line
+        assert 2.5 in by_line
+
+        # Each pair should NOT have ev_disabled_reason (they have valid pairs)
+        for bet in response.bets:
+            assert bet.ev_disabled_reason != "no_pair", (
+                f"Bet {bet.selection_key} @ {bet.line_value} should not be no_pair"
+            )
+
+    @pytest.mark.asyncio
+    async def test_alt_spreads_not_collapsed(self, mock_session, mock_game):
+        """Signed line_values that abs() collapses still get independent EV per pair."""
+        # Both SHU -1.5 and SHU -2.5 have abs values 1.5 and 2.5.
+        # Without the fix, 4 entries with abs=1.5 would mis-group.
+        rows = [
+            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -1.5, "Pinnacle", -120),
+            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 1.5, "Pinnacle", 105),
+            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -2.5, "Pinnacle", -145),
+            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 2.5, "Pinnacle", 125),
+        ]
+
+        self._mock_execute_chain(mock_session, [
+            {'scalar': 4},
+            {'scalars_all': rows},
+            {'all': [("Pinnacle",)]},
+            {'all': [("alternate",)]},
+            {'scalars_all': []},
+        ])
+
+        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
+
+        assert len(response.bets) == 4
+        # No bet should be marked no_pair — all have valid opposite sides
+        for bet in response.bets:
+            assert bet.ev_disabled_reason != "no_pair"
+
+    @pytest.mark.asyncio
+    async def test_same_selection_key_not_paired(self, mock_session, mock_game):
+        """Two entries with the same selection_key are NOT paired even if abs(line) matches."""
+        # Two SHU sides at -1.5 and -1.5 (duplicate) — no opposite side available
+        rows = [
+            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -1.5, "Pinnacle", -120),
+            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", 1.5, "DraftKings", -115),
+        ]
+
+        self._mock_execute_chain(mock_session, [
+            {'scalar': 2},
+            {'scalars_all': rows},
+            {'all': [("Pinnacle",), ("DraftKings",)]},
+            {'all': [("alternate",)]},
+            {'scalars_all': []},
+        ])
+
+        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
+
+        # Both bets have the same selection_key, so they should NOT pair
+        shu_bets = [b for b in response.bets if b.selection_key == "team:seton_hall"]
+        for bet in shu_bets:
+            assert bet.ev_disabled_reason == "no_pair"
+
+
+class TestFairOddsOutlierHandling:
+    """Integration tests for fair_odds_outlier handling via the endpoint."""
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def mock_game(self):
+        game = MagicMock()
+        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.status = "scheduled"
+        league = MagicMock()
+        league.code = "NBA"
+        game.league = league
+        home_team = MagicMock()
+        home_team.name = "Los Angeles Lakers"
+        game.home_team = home_team
+        away_team = MagicMock()
+        away_team.name = "Boston Celtics"
+        game.away_team = away_team
+        return game
+
+    def _make_odds_row(
+        self,
+        game: MagicMock,
+        game_id: int,
+        market_key: str,
+        selection_key: str,
+        line_value: float,
+        book: str,
+        price: float,
+        market_category: str = "player_prop",
+    ) -> MagicMock:
+        row = MagicMock()
+        row.game_id = game_id
+        row.market_key = market_key
+        row.selection_key = selection_key
+        row.line_value = line_value
+        row.book = book
+        row.price = price
+        row.observed_at = datetime.now(timezone.utc)
+        row.market_category = market_category
+        row.player_name = "Test Player"
+        row.game = game
+        return row
+
+    def _mock_execute_chain(self, session: AsyncMock, results_sequence: list[dict]) -> None:
+        async def execute_side_effect(*args, **kwargs):
+            if not hasattr(execute_side_effect, 'call_count'):
+                execute_side_effect.call_count = 0
+            idx = min(execute_side_effect.call_count, len(results_sequence) - 1)
+            execute_side_effect.call_count += 1
+            result_config = results_sequence[idx]
+            mock_result = MagicMock()
+            if 'scalar' in result_config:
+                mock_result.scalar.return_value = result_config['scalar']
+            if 'scalars_all' in result_config:
+                mock_scalars = MagicMock()
+                mock_scalars.all.return_value = result_config['scalars_all']
+                mock_result.scalars.return_value = mock_scalars
+            if 'all' in result_config:
+                mock_result.all.return_value = result_config['all']
+            return mock_result
+        session.execute = execute_side_effect
+
+    def _call_kwargs(self, session: AsyncMock, **overrides: Any) -> dict:
+        defaults = {
+            "session": session,
+            "league": None,
+            "market_category": None,
+            "game_id": None,
+            "book": None,
+            "player_name": None,
+            "min_ev": None,
+            "has_fair": None,
+            "sort_by": "ev",
+            "limit": 100,
+            "offset": 0,
+        }
+        defaults.update(overrides)
+        return defaults
+
+    @pytest.mark.asyncio
+    async def test_fair_odds_outlier_marked(self, mock_session, mock_game):
+        """When devig produces implausible fair odds, bet gets ev_disabled_reason='fair_odds_outlier'."""
+        # Pinnacle has extremely lopsided line; other books don't agree
+        rows = [
+            # Side A: over — Pinnacle at -1500, consensus near -400
+            self._make_odds_row(mock_game, 1, "player_points", "total:over", 20.5, "Pinnacle", -1500),
+            self._make_odds_row(mock_game, 1, "player_points", "total:over", 20.5, "DraftKings", -400),
+            self._make_odds_row(mock_game, 1, "player_points", "total:over", 20.5, "FanDuel", -400),
+            # Side B: under — Pinnacle at +800, consensus near +350
+            self._make_odds_row(mock_game, 1, "player_points", "total:under", 20.5, "Pinnacle", 800),
+            self._make_odds_row(mock_game, 1, "player_points", "total:under", 20.5, "DraftKings", 350),
+            self._make_odds_row(mock_game, 1, "player_points", "total:under", 20.5, "FanDuel", 350),
+        ]
+
+        self._mock_execute_chain(mock_session, [
+            {'scalar': 2},
+            {'scalars_all': rows},
+            {'all': [("Pinnacle",), ("DraftKings",), ("FanDuel",)]},
+            {'all': [("player_prop",)]},
+            {'scalars_all': []},
+        ])
+
+        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
+
+        # Both sides should be flagged as outliers
+        for bet in response.bets:
+            assert bet.ev_disabled_reason == "fair_odds_outlier", (
+                f"Bet {bet.selection_key} should have fair_odds_outlier, "
+                f"got {bet.ev_disabled_reason}"
+            )
+            # No EV annotation on books
+            for book in bet.books:
+                assert book.ev_percent is None
+            # But method and tier are still present
+            assert bet.ev_method == "pinnacle_devig"
+            assert bet.ev_confidence_tier == "low"

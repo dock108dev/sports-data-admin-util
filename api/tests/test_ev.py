@@ -11,6 +11,7 @@ from app.services.ev import (
     calculate_ev,
     compute_ev_for_market,
     evaluate_ev_eligibility,
+    implied_to_american,
     remove_vig,
 )
 from app.services.ev_config import ConfidenceTier, EVStrategyConfig, get_strategy
@@ -340,3 +341,110 @@ class TestComputeEVForMarket:
         # True probs should be ~0.5 each
         assert abs(result.true_prob_a - 0.5) < 0.001
         assert abs(result.true_prob_b - 0.5) < 0.001
+
+
+# ---------------------------------------------------------------------------
+# implied_to_american — inverse of american_to_implied
+# ---------------------------------------------------------------------------
+
+class TestImpliedToAmerican:
+    """Unit tests for the implied_to_american() helper."""
+
+    def test_favorite(self) -> None:
+        """0.75 implied → -300 American."""
+        result = implied_to_american(0.75)
+        assert abs(result - (-300)) < 0.1
+
+    def test_underdog(self) -> None:
+        """0.25 implied → +300 American."""
+        result = implied_to_american(0.25)
+        assert abs(result - 300) < 0.1
+
+    def test_even_money(self) -> None:
+        """0.5 implied → -100 American."""
+        result = implied_to_american(0.5)
+        assert abs(result - (-100)) < 0.1
+
+    def test_edge_zero(self) -> None:
+        """0 probability → 0 (degenerate)."""
+        assert implied_to_american(0) == 0.0
+
+    def test_edge_one(self) -> None:
+        """1.0 probability → 0 (degenerate)."""
+        assert implied_to_american(1.0) == 0.0
+
+    def test_roundtrip(self) -> None:
+        """american_to_implied(implied_to_american(p)) ≈ p for several values."""
+        for p in [0.2, 0.35, 0.5, 0.65, 0.8]:
+            american = implied_to_american(p)
+            roundtripped = american_to_implied(american)
+            assert abs(roundtripped - p) < 0.001, f"Roundtrip failed for p={p}"
+
+
+# ---------------------------------------------------------------------------
+# Fair odds sanity check — compute_ev_for_market() with divergence detection
+# ---------------------------------------------------------------------------
+
+class TestFairOddsSanityCheck:
+    """Tests for the fair odds divergence check in compute_ev_for_market()."""
+
+    @pytest.fixture
+    def nba_mainline_config(self) -> EVStrategyConfig:
+        config = get_strategy("NBA", "mainline")
+        assert config is not None
+        return config
+
+    @pytest.fixture
+    def player_prop_config(self) -> EVStrategyConfig:
+        config = get_strategy("NBA", "player_prop")
+        assert config is not None
+        return config
+
+    def test_normal_market_not_flagged(self, nba_mainline_config: EVStrategyConfig) -> None:
+        """Pinnacle -110/-110, consensus near -110 → not flagged."""
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -110, "DraftKings": -108, "FanDuel": -112}),
+            _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
+            nba_mainline_config,
+        )
+        assert result.fair_odds_suspect is False
+
+    def test_divergent_longshot_flagged(self, player_prop_config: EVStrategyConfig) -> None:
+        """Pinnacle -1500/+800, consensus near -400/+350 → flagged.
+
+        Pinnacle's extremely lopsided line devigs to a fair price far from consensus.
+        """
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -1500, "DraftKings": -400, "FanDuel": -400}),
+            _make_books({"Pinnacle": 800, "DraftKings": 350, "FanDuel": 350}),
+            player_prop_config,
+        )
+        assert result.fair_odds_suspect is True
+
+    def test_threshold_boundary_not_flagged(self, nba_mainline_config: EVStrategyConfig) -> None:
+        """Fair odds exactly at the threshold boundary → not flagged.
+
+        NBA mainline threshold is 150. Build a scenario where the divergence
+        is just under the limit.
+        """
+        # Pinnacle -150/+130, books consensus near the same range
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -150, "DraftKings": -145, "FanDuel": -155}),
+            _make_books({"Pinnacle": 130, "DraftKings": 125, "FanDuel": 135}),
+            nba_mainline_config,
+        )
+        assert result.fair_odds_suspect is False
+
+    def test_suspect_result_still_has_annotations(self, player_prop_config: EVStrategyConfig) -> None:
+        """Even when flagged, annotated_a/annotated_b are populated."""
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -1500, "DraftKings": -400, "FanDuel": -400}),
+            _make_books({"Pinnacle": 800, "DraftKings": 350, "FanDuel": 350}),
+            player_prop_config,
+        )
+        assert result.fair_odds_suspect is True
+        # Annotations are still computed — the caller decides what to do
+        assert len(result.annotated_a) == 3
+        assert len(result.annotated_b) == 3
+        for b in result.annotated_a:
+            assert b["ev_percent"] is not None

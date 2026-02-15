@@ -28,6 +28,7 @@ class EVStrategyConfig:
     max_reference_staleness_seconds: int  # observed_at vs now()
     confidence_tier: ConfidenceTier
     allow_longshots: bool  # Informational only in Phase 1
+    max_fair_odds_divergence: float  # Max |fair_american - median_american| allowed
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +37,7 @@ class EligibilityResult:
 
     eligible: bool
     strategy_config: EVStrategyConfig | None
-    disabled_reason: str | None  # "no_strategy" | "reference_missing" | "reference_stale" | "insufficient_books"
+    disabled_reason: str | None  # "no_strategy" | "reference_missing" | "reference_stale" | "insufficient_books" | "fair_odds_outlier"
     ev_method: str | None  # e.g., "pinnacle_devig"
     confidence_tier: str | None  # "high" | "medium" | "low"
 
@@ -107,6 +108,7 @@ _PINNACLE_MAINLINE_NBA_NHL = EVStrategyConfig(
     max_reference_staleness_seconds=3600,  # 1 hour
     confidence_tier=ConfidenceTier.HIGH,
     allow_longshots=False,
+    max_fair_odds_divergence=150,  # Tight — mainlines are efficient
 )
 
 _PINNACLE_MAINLINE_NCAAB = EVStrategyConfig(
@@ -116,6 +118,7 @@ _PINNACLE_MAINLINE_NCAAB = EVStrategyConfig(
     max_reference_staleness_seconds=1800,  # 30 minutes
     confidence_tier=ConfidenceTier.MEDIUM,
     allow_longshots=False,
+    max_fair_odds_divergence=200,  # Wider — less liquid
 )
 
 _PINNACLE_PLAYER_PROP = EVStrategyConfig(
@@ -125,6 +128,7 @@ _PINNACLE_PLAYER_PROP = EVStrategyConfig(
     max_reference_staleness_seconds=1800,  # 30 minutes
     confidence_tier=ConfidenceTier.LOW,
     allow_longshots=False,
+    max_fair_odds_divergence=250,  # Widest for non-alt — thin Pinnacle coverage
 )
 
 _PINNACLE_TEAM_PROP = EVStrategyConfig(
@@ -134,6 +138,7 @@ _PINNACLE_TEAM_PROP = EVStrategyConfig(
     max_reference_staleness_seconds=1800,  # 30 minutes
     confidence_tier=ConfidenceTier.MEDIUM,
     allow_longshots=False,
+    max_fair_odds_divergence=200,
 )
 
 _PINNACLE_ALTERNATE = EVStrategyConfig(
@@ -143,6 +148,7 @@ _PINNACLE_ALTERNATE = EVStrategyConfig(
     max_reference_staleness_seconds=1800,  # 30 minutes
     confidence_tier=ConfidenceTier.LOW,
     allow_longshots=False,
+    max_fair_odds_divergence=300,  # Widest — alt lines inherently have wider vig
 )
 
 # Map of (league_code, market_category) -> EVStrategyConfig | None

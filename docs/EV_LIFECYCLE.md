@@ -28,13 +28,16 @@ At query time, the FairBet endpoint groups rows into **bet definitions** keyed b
 
 Each bet definition collects all book prices for that specific bet.
 
-To compute EV, bet definitions are further grouped into **two-way markets** keyed by:
+To compute EV, bet definitions are further grouped into **candidate buckets** keyed by:
 
 ```
-(game_id, market_key, line_value)
+(game_id, market_key, abs(line_value))
 ```
 
-A valid two-way market has exactly 2 bet definitions (e.g., Lakers -3.5 / Celtics +3.5, or Over 220.5 / Under 220.5). Markets with 1 or 3+ sides get no EV annotation.
+Within each bucket, the `_pair_opposite_sides()` helper pairs entries that have **different `selection_key` values** (e.g., `team:lakers` vs `team:celtics`). This ensures that only actual opposite sides of a two-way market are paired — even when `abs()` groups multiple alt lines into the same bucket.
+
+- **Paired entries** proceed to EV computation (e.g., Lakers -3.5 / Celtics +3.5).
+- **Unpaired entries** (no valid opposite side found) get `ev_disabled_reason = "no_pair"`.
 
 ## 3. Book Qualification & Exclusion
 
@@ -173,10 +176,12 @@ When EV cannot be computed, the bet definition carries:
 
 | `ev_disabled_reason` | Meaning | Common Cause |
 |---|---|---|
-| `no_strategy` | No strategy configured for this (league, market_category) | `period` or `game_prop` market, or single-sided market |
+| `no_strategy` | No strategy configured for this (league, market_category) | `period` or `game_prop` market |
+| `no_pair` | No valid opposite side found for pairing | Single-sided market, or all entries in the `abs(line_value)` bucket share the same `selection_key` |
 | `reference_missing` | Sharp book (Pinnacle) not present on one or both sides | Low-liquidity market, Pinnacle doesn't offer this line |
 | `reference_stale` | Sharp book data is too old | Odds haven't been refreshed recently |
 | `insufficient_books` | Too few qualifying books on a side | Niche market with limited book coverage |
+| `fair_odds_outlier` | Devigged fair odds diverge too far from book median | Longshot markets, stale one-sided Pinnacle data, high-vig props |
 
 When disabled, `ev_percent` is `null` on all BookOdds entries, but `ev_disabled_reason` and `ev_confidence_tier` may be present on the BetDefinition.
 
