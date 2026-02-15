@@ -59,6 +59,8 @@ web/          Admin UI
 sql/          Database schema and migrations
 infra/        Docker, deployment config
 docs/         Documentation
+packages/     Shared JS libraries (js-core, ui, ui-kit)
+scripts/      Backup and deployment scripts
 ```
 
 ## Documentation

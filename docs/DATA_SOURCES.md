@@ -250,6 +250,7 @@ See also:
 - **Game State Updates**: Every 3 minutes
 - **Live PBP Polling**: Every 5 minutes (NBA, NHL only; NCAAB excluded — too many concurrent games)
 - **Odds Sync + Active Odds Polling**: Every 30 minutes (pregame games only; live games skipped to preserve closing lines)
+- **Props Sync**: Every 30 minutes (offset at :15/:45 to avoid contention with odds sync at :00/:30)
 - **Window**: Yesterday through today (catches overnight game completions)
 
 Configuration: `scraper/sports_scraper/celery_app.py`

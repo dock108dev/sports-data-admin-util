@@ -177,9 +177,13 @@ docker exec sports-api alembic revision --autogenerate -m "describe change"
 | `REDIS_PASSWORD` | No | Redis password |
 | `ENVIRONMENT` | No | `development` or `production` |
 | `RUN_MIGRATIONS` | No | Run Alembic on startup (dev-only; default false) |
+| `API_KEY` | Prod/Staging | API authentication key (min 32 chars) |
+| `OPENAI_API_KEY` | No | OpenAI key for AI enrichment (game flow narratives) |
 | `ODDS_API_KEY` | No | The Odds API key |
+| `CBB_STATS_API_KEY` | No | CBB Stats API key (NCAAB team mapping in migrations) |
 | `X_AUTH_TOKEN` | No | X/Twitter auth cookie |
 | `X_CT0` | No | X/Twitter CSRF cookie |
+| `X_BEARER_TOKEN` | No | X/Twitter bearer token (alternative to cookie auth) |
 | `NEXT_PUBLIC_SPORTS_API_URL` | Yes | API URL for frontend |
 | `SPORTS_API_INTERNAL_URL` | No | Internal API URL for server-side fetches in Docker |
 | `ALLOWED_CORS_ORIGINS` | Prod | Allowed CORS origins |
