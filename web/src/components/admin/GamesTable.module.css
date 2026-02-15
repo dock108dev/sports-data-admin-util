@@ -1,8 +1,8 @@
 .statsBar {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+  gap: var(--space-card-inner);
+  margin-bottom: var(--space-card-inner);
 }
 
 .statCard {
@@ -11,9 +11,9 @@
   align-items: center;
   justify-content: center;
   padding: 0.75rem 0.5rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-button);
   text-align: center;
 }
 
@@ -25,22 +25,20 @@
 .statValue {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--text-secondary);
   line-height: 1.2;
 }
 
 .statLabel {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: var(--font-hint-size);
+  font-weight: var(--font-label-weight);
+  color: var(--text-muted);
   margin-top: 0.25rem;
 }
 
 .statPct {
-  font-size: 0.65rem;
-  color: #94a3b8;
+  font-size: 0.625rem;
+  color: var(--text-subtle);
   margin-top: 0.125rem;
 }
 
@@ -59,36 +57,34 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: var(--font-body-size);
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
   overflow: hidden;
 }
 
 .table thead {
-  background: #f8fafc;
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 2px solid var(--border-default);
 }
 
 .table th {
-  padding: 0.75rem;
+  padding: 0.625rem 0.75rem;
   text-align: left;
-  font-weight: 600;
-  color: #475569;
-  font-size: 0.875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: var(--font-table-header-weight);
+  color: var(--text-muted);
+  font-size: var(--font-table-header-size);
+  letter-spacing: var(--font-table-header-spacing);
 }
 
 .table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid #e2e8f0;
-  color: #1e293b;
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
 }
 
 .table tbody tr:hover {
-  background: #f8fafc;
+  background-color: #fafbfc;
 }
 
 .table tbody tr:last-child td {
@@ -107,15 +103,15 @@
 
 .emptyCell {
   text-align: center;
-  color: #64748b;
+  color: var(--text-muted);
   font-style: italic;
   padding: 2rem;
 }
 
 .statusDot {
   display: inline-block;
-  width: 12px;
-  height: 12px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   margin-right: 6px;
   vertical-align: middle;
@@ -123,18 +119,15 @@
 
 .dotOk {
   background: #16a34a;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
 }
 
 .dotMissing {
   background: #dc2626;
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
 }
 
 .statusLabel {
-  font-size: 0.85rem;
-  color: #334155;
+  font-size: var(--font-body-size);
+  color: var(--text-secondary);
   vertical-align: middle;
-  font-weight: 600;
+  font-weight: var(--font-section-title-weight);
 }
-

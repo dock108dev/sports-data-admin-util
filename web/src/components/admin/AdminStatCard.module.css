@@ -1,29 +1,26 @@
 .card {
   background: #ffffff;
-  border-radius: 0.75rem;
-  border: 1px solid #e2e8f0;
-  padding: 1rem 1.25rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-default);
+  padding: var(--space-card-inner) 1.25rem;
+  box-shadow: var(--shadow-card);
 }
 
 .label {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #64748b;
+  font-size: var(--font-label-size);
+  font-weight: var(--font-label-weight);
+  color: var(--text-muted);
   margin-bottom: 0.25rem;
 }
 
 .value {
-  font-size: 1.4rem;
+  font-size: 1.25rem;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-primary);
 }
 
 .hint {
   margin-top: 0.2rem;
-  font-size: 0.8rem;
-  color: #94a3b8;
+  font-size: var(--font-hint-size);
+  color: var(--text-subtle);
 }
-
-

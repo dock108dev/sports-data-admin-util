@@ -12,7 +12,7 @@
 }
 
 .logo {
-  padding: 1.5rem;
+  padding: var(--space-section-card);
   border-bottom: 1px solid var(--admin-border, #e2e8f0);
 }
 
@@ -33,12 +33,12 @@
 
 .nav {
   flex: 1;
-  padding: 1rem 0;
+  padding: var(--space-card-inner) 0;
   overflow-y: auto;
 }
 
 .navSection {
-  margin-bottom: 1.5rem;
+  margin-bottom: var(--space-section-card);
 }
 
 .navSectionTitle {
@@ -47,15 +47,15 @@
   color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  padding: 0 1.5rem;
-  margin-bottom: 0.5rem;
+  padding: 0 var(--space-section-card);
+  margin-bottom: var(--space-row);
 }
 
 .navLink {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 1.5rem;
+  padding: 0.75rem var(--space-section-card);
   color: var(--admin-text-muted, #475569);
   text-decoration: none;
   font-size: 0.875rem;
@@ -76,14 +76,14 @@
 }
 
 .footer {
-  padding: 1rem 1.5rem;
+  padding: var(--space-card-inner) var(--space-section-card);
   border-top: 1px solid var(--admin-border, #e2e8f0);
 }
 
 .footerLink {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-row);
   color: var(--admin-text-muted, #64748b);
   text-decoration: none;
   font-size: 0.8rem;

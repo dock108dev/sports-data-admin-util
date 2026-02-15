@@ -1,30 +1,31 @@
 .card {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: var(--space-section-card);
+  box-shadow: var(--shadow-card);
 }
 
 .cardHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-card-inner);
 }
 
 .cardHeader h2 {
   margin: 0;
-  color: #0f172a;
-  font-size: 1.1rem;
+  color: var(--text-primary);
+  font-size: var(--font-section-title-size);
+  font-weight: var(--font-section-title-weight);
 }
 
 .cardHeader button {
   padding: 0.5rem 1rem;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border-radius: var(--radius-button);
+  border: 1px solid #d1d5db;
+  background: transparent;
   color: #475569;
   font-weight: 500;
   cursor: pointer;
@@ -32,7 +33,7 @@
 }
 
 .cardHeader button:hover:not(:disabled) {
-  background: #e2e8f0;
+  background: var(--border-light);
 }
 
 .cardHeader button:disabled {
@@ -43,41 +44,38 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: var(--font-body-size);
 }
 
 .table thead {
-  background: #f8fafc;
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 2px solid var(--border-default);
 }
 
 .table th {
-  padding: 0.75rem;
+  padding: 0.625rem 0.75rem;
   text-align: left;
-  font-weight: 600;
-  color: #475569;
-  font-size: 0.875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: var(--font-table-header-weight);
+  color: var(--text-muted);
+  font-size: var(--font-table-header-size);
+  letter-spacing: var(--font-table-header-spacing);
 }
 
 .table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid #e2e8f0;
-  color: #1e293b;
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
 }
 
 .table tbody tr:hover {
-  background: #f8fafc;
+  background-color: #fafbfc;
 }
 
 .statusPill {
   display: inline-block;
   padding: 0.25rem 0.75rem;
   border-radius: 12px;
-  font-size: 0.8rem;
+  font-size: var(--font-label-size);
   font-weight: 500;
-  color: white;
   text-transform: capitalize;
 }
 
@@ -87,22 +85,22 @@
 
 .cancelButton {
   padding: 0.375rem 0.75rem;
-  background: #ef4444;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.875rem;
+  background: transparent;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+  border-radius: var(--radius-button);
+  font-size: var(--font-body-size);
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
 }
 
 .cancelButton:hover:not(:disabled) {
-  background: #dc2626;
+  background: #fef2f2;
+  border-color: #dc2626;
 }
 
 .cancelButton:disabled {
-  background: #94a3b8;
+  opacity: 0.5;
   cursor: not-allowed;
 }
-

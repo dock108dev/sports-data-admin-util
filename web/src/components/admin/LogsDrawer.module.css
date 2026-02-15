@@ -44,9 +44,9 @@
 
 .header h2 {
   margin: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #0f172a;
+  font-size: var(--font-section-title-size);
+  font-weight: var(--font-section-title-weight);
+  color: var(--text-primary);
 }
 
 .headerActions {
@@ -58,21 +58,21 @@
 .refreshButton,
 .closeButton {
   padding: 0.4rem 0.75rem;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border-radius: var(--radius-button);
+  border: 1px solid #d1d5db;
+  background: transparent;
   color: #475569;
   font-weight: 500;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: var(--font-label-size);
   transition: all 0.15s ease;
 }
 
 .refreshButton:hover,
 .closeButton:hover {
-  background: #f1f5f9;
+  background: var(--border-light);
   border-color: #cbd5e1;
-  color: #1e293b;
+  color: var(--text-secondary);
 }
 
 .refreshButton:disabled {

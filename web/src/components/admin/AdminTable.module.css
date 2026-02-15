@@ -6,24 +6,28 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: var(--font-body-size);
 }
 
 .table th,
 .table td {
-  padding: 0.6rem 0.5rem;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 0.625rem 0.75rem;
   text-align: left;
 }
 
 .table th {
-  font-weight: 500;
-  color: #64748b;
-  background-color: #f8fafc;
+  font-weight: var(--font-table-header-weight);
+  color: var(--text-muted);
+  font-size: var(--font-table-header-size);
+  letter-spacing: var(--font-table-header-spacing);
+  border-bottom: 2px solid var(--border-default);
+}
+
+.table td {
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
 }
 
 .table tr:hover td {
-  background-color: #f1f5f9;
+  background-color: #fafbfc;
 }
-
-

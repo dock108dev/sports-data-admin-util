@@ -28,6 +28,51 @@
   --admin-sidebar-width: 240px;
   --admin-header-height: 60px;
 
+  /* ── Design Tokens ── */
+
+  /* Typography */
+  --font-page-title-size: 1.75rem;
+  --font-page-title-weight: 700;
+  --font-page-title-spacing: -0.02em;
+
+  --font-section-title-size: 1rem;
+  --font-section-title-weight: 600;
+
+  --font-body-size: 0.875rem;
+  --font-body-weight: 400;
+
+  --font-table-header-size: 0.75rem;
+  --font-table-header-weight: 600;
+  --font-table-header-spacing: 0.04em;
+
+  --font-label-size: 0.75rem;
+  --font-label-weight: 500;
+
+  --font-hint-size: 0.6875rem;
+
+  /* Colors */
+  --text-primary: #0f172a;
+  --text-secondary: #1e293b;
+  --text-muted: #64748b;
+  --text-subtle: #94a3b8;
+
+  --border-default: #e2e8f0;
+  --border-light: #f1f5f9;
+
+  /* Radius */
+  --radius-card: 0.75rem;
+  --radius-button: 0.5rem;
+
+  /* Spacing */
+  --space-page-section: 2.5rem;
+  --space-section-card: 1.5rem;
+  --space-card-inner: 1rem;
+  --space-row: 0.5rem;
+
+  /* Shadows */
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-card-hover: 0 4px 12px rgba(15, 23, 42, 0.08);
+
   /* Override dock theme variables for admin context */
   --dock-bg: var(--admin-bg);
   --dock-surface: var(--admin-surface);
