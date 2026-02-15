@@ -81,7 +81,6 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
             "narration_pct": round(total_narrated / total_plays * 100, 1) if total_plays else 0,
         }
     elif stage == "VALIDATE_MOMENTS":
-        # New format: {"validated": true/false, "errors": [...]}
         return {
             "validated": output.get("validated", False),
             "error_count": len(output.get("errors", [])),
@@ -110,7 +109,6 @@ def summarize_output(stage: str, output: dict[str, Any]) -> dict[str, Any]:
             "total_words": output.get("total_words", 0),
         }
     elif stage == "FINALIZE_MOMENTS":
-        # New format: {"finalized": true, "flow_id": N, "moment_count": N, ...}
         return {
             "finalized": output.get("finalized", False),
             "flow_id": output.get("flow_id"),

@@ -13,7 +13,6 @@ from .db_queries import (
 from .html_parsing import (
     extract_all_stats_from_row,
     extract_team_stats_from_table,
-    find_player_table,
     find_table_by_id,
     get_stat_from_row,
     get_table_ids_on_page,
@@ -35,7 +34,6 @@ __all__ = [
     "parse_float",
     # HTML parsing
     "find_table_by_id",
-    "find_player_table",
     "extract_team_stats_from_table",
     "extract_all_stats_from_row",
     "get_table_ids_on_page",

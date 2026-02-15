@@ -108,7 +108,10 @@ def calculate_ev(book_price: float, true_prob: float) -> float:
     elif book_price <= -100:
         decimal_odds = (100.0 / abs(book_price)) + 1.0
     else:
-        decimal_odds = 2.0  # Fallback
+        raise ValueError(
+            f"Invalid American odds: {book_price}. "
+            "Must be >= +100 or <= -100."
+        )
 
     return (decimal_odds * true_prob - 1.0) * 100.0
 

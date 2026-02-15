@@ -112,19 +112,6 @@ def extract_team_stats_from_table(table: Tag, team_abbr: str, table_id: str) -> 
     return totals
 
 
-def find_player_table(soup: BeautifulSoup, table_id: str, alternate_ids: list[str] | None = None) -> Tag | None:
-    """Find a player stats table by ID.
-    
-    Args:
-        soup: BeautifulSoup document
-        table_id: Primary table ID
-        alternate_ids: Optional alternate IDs
-        
-    Returns:
-        Table Tag if found, None otherwise
-    """
-    return find_table_by_id(soup, table_id, alternate_ids)
-
 
 def get_table_ids_on_page(soup: BeautifulSoup, limit: int = 15) -> list[str]:
     """Get all table IDs found on a page (for debugging).

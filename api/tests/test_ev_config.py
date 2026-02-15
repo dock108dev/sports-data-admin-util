@@ -62,6 +62,7 @@ class TestEVStrategyConfig:
             max_reference_staleness_seconds=3600,
             confidence_tier=ConfidenceTier.HIGH,
             allow_longshots=False,
+            max_fair_odds_divergence=150,
         )
         assert config.strategy_name == "test"
         assert config.min_qualifying_books == 3
@@ -74,6 +75,7 @@ class TestEVStrategyConfig:
             max_reference_staleness_seconds=3600,
             confidence_tier=ConfidenceTier.HIGH,
             allow_longshots=False,
+            max_fair_odds_divergence=150,
         )
         with pytest.raises(AttributeError):
             config.strategy_name = "modified"  # type: ignore[misc]
