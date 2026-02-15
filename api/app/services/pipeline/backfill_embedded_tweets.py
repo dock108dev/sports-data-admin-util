@@ -22,12 +22,12 @@ from sqlalchemy.orm import attributes, selectinload
 
 from ...db import AsyncSession
 from ...db.sports import SportsGame
-from ...db.story import SportsGameFlow
+from ...db.flow import SportsGameFlow
 from .stages.embedded_tweets import load_and_attach_embedded_tweets
 
 logger = logging.getLogger(__name__)
 
-STORY_VERSION = "v2-moments"
+FLOW_VERSION = "v2-moments"
 
 
 async def backfill_embedded_tweets_for_game(
@@ -58,7 +58,7 @@ async def backfill_embedded_tweets_for_game(
         flow_result = await session.execute(
             select(SportsGameFlow).where(
                 SportsGameFlow.game_id == game_id,
-                SportsGameFlow.story_version == STORY_VERSION,
+                SportsGameFlow.story_version == FLOW_VERSION,
             )
         )
         flow = flow_result.scalar_one_or_none()
@@ -161,7 +161,7 @@ async def find_and_backfill_all(
 
     flow_result = await session.execute(
         select(SportsGameFlow).where(
-            SportsGameFlow.story_version == STORY_VERSION,
+            SportsGameFlow.story_version == FLOW_VERSION,
             SportsGameFlow.blocks_json.isnot(None),
             SportsGameFlow.generated_at >= cutoff,
         )

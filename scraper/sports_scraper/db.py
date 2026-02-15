@@ -56,7 +56,6 @@ try:
         TeamSocialPost,
     )
     from app.db.flow import (  # type: ignore
-        FrontendPayloadVersion,
         SportsGameFlow,
         SportsGameTimelineArtifact,
     )
@@ -93,7 +92,6 @@ try:
         PipelineStageStatus=PipelineStageStatus,
         PipelineTrigger=PipelineTrigger,
         BulkFlowJobStatus=BulkFlowJobStatus,
-        FrontendPayloadVersion=FrontendPayloadVersion,
         # Sports models
         SportsLeague=SportsLeague,
         SportsTeam=SportsTeam,

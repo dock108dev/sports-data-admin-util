@@ -495,16 +495,16 @@ class TestParseTeamRow:
     @patch("sports_scraper.scrapers.base.HTMLCache")
     @patch("sports_scraper.scrapers.base.httpx.Client")
     def test_parses_valid_team_row(self, mock_client_class, mock_cache_class):
-        """Parses valid team row - use NBA scraper which has valid league_code."""
+        """Parses valid team row - use NCAAB scraper which has valid league_code."""
         from bs4 import BeautifulSoup
-        from sports_scraper.scrapers.nba_sportsref import NBASportsReferenceScraper
-        scraper = NBASportsReferenceScraper()
-        html = '<tr><td><a href="/team/bos">Boston Celtics</a></td><td class="right">110</td></tr>'
+        from sports_scraper.scrapers.ncaab_sportsref import NCAABSportsReferenceScraper
+        scraper = NCAABSportsReferenceScraper()
+        html = '<tr><td><a href="/team/duke">Duke Blue Devils</a></td><td class="right">85</td></tr>'
         soup = BeautifulSoup(html, "lxml")
         row = soup.find("tr")
         identity, score = scraper._parse_team_row(row)
-        assert score == 110
-        assert identity.league_code == "NBA"
+        assert score == 85
+        assert identity.league_code == "NCAAB"
 
 
 class TestSeasonFromDate:
