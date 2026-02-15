@@ -6,7 +6,7 @@ import {
   OUTCOME_KEYS,
   formatMetricValue,
   getOutcomeBadgeClass,
-} from "./GameDetailUtils";
+} from "./gameDetailUtils";
 import styles from "./styles.module.css";
 
 type ComputedFieldsSectionProps = {
