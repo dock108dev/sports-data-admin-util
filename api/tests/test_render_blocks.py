@@ -99,7 +99,7 @@ class TestBuildBlockPrompt:
         assert "RESOLUTION" in prompt
 
     def test_prompt_includes_key_play_descriptions(self) -> None:
-        """Prompt includes descriptions of key plays."""
+        """Prompt includes descriptions of key plays with team abbreviations."""
         blocks = [
             {
                 "block_index": 0,
@@ -111,14 +111,59 @@ class TestBuildBlockPrompt:
         ]
         game_context = {"home_team_name": "Home", "away_team_name": "Away"}
         pbp_events = [
-            {"play_index": 1, "description": "LeBron James makes 3-pointer"},
-            {"play_index": 2, "description": "Anthony Davis dunks"},
+            {"play_index": 1, "description": "LeBron James makes 3-pointer", "team_abbreviation": "LAL"},
+            {"play_index": 2, "description": "Anthony Davis dunks", "team_abbreviation": "LAL"},
         ]
 
         prompt = build_block_prompt(blocks, game_context, pbp_events)
 
-        assert "LeBron James makes 3-pointer" in prompt
-        assert "Anthony Davis dunks" in prompt
+        assert "[LAL] LeBron James makes 3-pointer" in prompt
+        assert "[LAL] Anthony Davis dunks" in prompt
+
+    def test_prompt_key_plays_include_team_abbreviation(self) -> None:
+        """Key plays from different teams show correct team abbreviation prefix."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [1, 2],
+            }
+        ]
+        game_context = {"home_team_name": "Hawks", "away_team_name": "Celtics"}
+        pbp_events = [
+            {"play_index": 1, "description": "Young makes 3-pointer", "team_abbreviation": "ATL"},
+            {"play_index": 2, "description": "Tatum drives for layup", "team_abbreviation": "BOS"},
+        ]
+
+        prompt = build_block_prompt(blocks, game_context, pbp_events)
+
+        assert "[ATL] Young makes 3-pointer" in prompt
+        assert "[BOS] Tatum drives for layup" in prompt
+
+    def test_prompt_key_plays_without_team_abbreviation(self) -> None:
+        """Plays without team_abbreviation render without empty brackets."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [1, 2],
+            }
+        ]
+        game_context = {"home_team_name": "Home", "away_team_name": "Away"}
+        pbp_events = [
+            {"play_index": 1, "description": "End of period"},
+            {"play_index": 2, "description": "Timeout called", "team_abbreviation": ""},
+        ]
+
+        prompt = build_block_prompt(blocks, game_context, pbp_events)
+
+        assert "- End of period" in prompt
+        assert "- Timeout called" in prompt
+        assert "[]" not in prompt
 
 
 class TestValidateBlockNarrative:

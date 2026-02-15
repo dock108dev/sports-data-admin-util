@@ -170,6 +170,23 @@ Each bet definition gets:
 - `ev_method` — e.g., "pinnacle_devig"
 - `ev_confidence_tier` — "high", "medium", or "low"
 
+### Fair Odds Sanity Check
+
+After devigging, the fair American odds are compared against the median book price on each side. If the divergence exceeds a per-strategy threshold (`max_fair_odds_divergence`), the market is flagged `fair_odds_suspect = True`:
+
+```python
+fair_american_a = implied_to_american(true_prob_a)
+fair_american_b = implied_to_american(true_prob_b)
+median_a = median(all book prices on side A)
+median_b = median(all book prices on side B)
+divergence = max(|fair_american_a - median_a|, |fair_american_b - median_b|)
+# If divergence > threshold → fair_odds_suspect = True
+```
+
+Thresholds: NBA/NHL mainline 150, NCAAB mainline 200, player prop 250, team prop 200, alternate 300.
+
+When flagged, the API layer sets `ev_disabled_reason = "fair_odds_outlier"` and strips EV annotations. The devig math still runs (annotations are computed), but the caller suppresses display.
+
 ## 7. EV Disabled Scenarios
 
 When EV cannot be computed, the bet definition carries:
