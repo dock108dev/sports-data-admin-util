@@ -5,6 +5,7 @@ Provides bet-centric odds views for cross-book comparison with EV annotation.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -18,6 +19,8 @@ from ...db.sports import SportsGame
 from ...db.odds import FairbetGameOddsWork
 from ...services.ev import compute_ev_for_market, evaluate_ev_eligibility
 from ...services.ev_config import EXCLUDED_BOOKS, get_strategy
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -67,6 +70,7 @@ class FairbetOddsResponse(BaseModel):
     books_available: list[str]
     market_categories_available: list[str]
     games_available: list[dict[str, Any]]
+    ev_diagnostics: dict[str, int] = {}
 
 
 def _pair_opposite_sides(
@@ -105,8 +109,11 @@ def _annotate_pair_ev(
     key_a: tuple,
     key_b: tuple,
     bets_map: dict[tuple, dict[str, Any]],
-) -> None:
-    """Compute and annotate EV for a single market pair in-place."""
+) -> str | None:
+    """Compute and annotate EV for a single market pair in-place.
+
+    Returns the disabled_reason string if EV was not computed, or None on success.
+    """
     books_a = bets_map[key_a]["books"]
     books_b = bets_map[key_b]["books"]
     league_code = bets_map[key_a].get("league_code", "UNKNOWN")
@@ -119,6 +126,21 @@ def _annotate_pair_ev(
         books_b,
     )
 
+    logger.info(
+        "ev_eligibility_result",
+        extra={
+            "league": league_code,
+            "market_category": market_cat,
+            "market_key": bets_map[key_a]["market_key"],
+            "eligible": eligibility.eligible,
+            "disabled_reason": eligibility.disabled_reason,
+            "confidence_tier": eligibility.confidence_tier,
+            "books_a_count": len(books_a),
+            "books_b_count": len(books_b),
+            "books_a_names": [b["book"] for b in books_a],
+        },
+    )
+
     if eligibility.eligible and eligibility.strategy_config is not None:
         ev_result = compute_ev_for_market(
             books_a,
@@ -127,6 +149,14 @@ def _annotate_pair_ev(
         )
 
         if ev_result.fair_odds_suspect:
+            logger.warning(
+                "fair_odds_outlier",
+                extra={
+                    "league": league_code,
+                    "market_category": market_cat,
+                    "market_key": bets_map[key_a]["market_key"],
+                },
+            )
             # Devig produced implausible fair odds — skip EV annotation
             sharp = set(eligibility.strategy_config.eligible_sharp_books)
             for key in (key_a, key_b):
@@ -142,7 +172,7 @@ def _annotate_pair_ev(
                     )
                     for b in bets_map[key]["books"]
                 ]
-            return
+            return "fair_odds_outlier"
 
         # Update with annotated data
         bets_map[key_a]["books"] = [
@@ -200,6 +230,7 @@ def _annotate_pair_ev(
 
         bets_map[key_a]["has_fair"] = True
         bets_map[key_b]["has_fair"] = True
+        return None
     else:
         # Not eligible: attach disabled metadata, convert books to BookOdds
         sharp = (
@@ -220,6 +251,7 @@ def _annotate_pair_ev(
                 )
                 for b in bets_map[key]["books"]
             ]
+        return eligibility.disabled_reason
 
 
 def _build_base_filters(
@@ -480,14 +512,21 @@ async def get_fairbet_odds(
             market_groups[group_key] = []
         market_groups[group_key].append(key)
 
+    ev_diagnostics: dict[str, int] = {"total_pairs": 0, "total_unpaired": 0}
+
     for group_key, bet_keys in market_groups.items():
         # Find valid pairs: entries with different selection_keys
         pairs, unpaired = _pair_opposite_sides(bet_keys)
 
         for key_a, key_b in pairs:
-            _annotate_pair_ev(key_a, key_b, bets_map)
+            ev_diagnostics["total_pairs"] += 1
+            reason = _annotate_pair_ev(key_a, key_b, bets_map)
+            bucket = reason or "passed"
+            ev_diagnostics[bucket] = ev_diagnostics.get(bucket, 0) + 1
 
         for key in unpaired:
+            ev_diagnostics["total_unpaired"] += 1
+            ev_diagnostics["no_pair"] = ev_diagnostics.get("no_pair", 0) + 1
             # Look up sharp books so is_sharp is set even without EV
             sample_league = bets_map[key].get("league_code", "UNKNOWN")
             sample_cat = bets_map[key].get("market_category", "mainline")
@@ -558,4 +597,5 @@ async def get_fairbet_odds(
         books_available=all_books,
         market_categories_available=all_cats,
         games_available=games_available,
+        ev_diagnostics=ev_diagnostics,
     )
