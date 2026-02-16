@@ -9,6 +9,7 @@ for a given (league, market_category) pair.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -18,6 +19,8 @@ from .ev_config import (
     EligibilityResult,
     get_strategy,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,9 +51,9 @@ def american_to_implied(price: float) -> float:
     elif price <= -100:
         return abs(price) / (abs(price) + 100.0)
     else:
-        # Edge case: prices between -100 and +100 shouldn't occur
-        # but handle gracefully
-        return 0.5
+        raise ValueError(
+            f"Invalid American odds: {price} (must be <= -100 or >= +100)"
+        )
 
 
 def remove_vig(implied_probs: list[float]) -> list[float]:
@@ -90,7 +93,9 @@ def calculate_ev(book_price: float, true_prob: float) -> float:
     elif book_price <= -100:
         decimal_odds = (100.0 / abs(book_price)) + 1.0
     else:
-        decimal_odds = 2.0  # Fallback
+        raise ValueError(
+            f"Invalid American odds: {book_price} (must be <= -100 or >= +100)"
+        )
 
     return (decimal_odds * true_prob - 1.0) * 100.0
 
@@ -209,6 +214,42 @@ def evaluate_ev_eligibility(
     )
 
 
+def _annotate_side(
+    books: list[dict],
+    sharp_books: set[str],
+    true_prob: float | None,
+) -> list[dict]:
+    """Annotate a list of book entries with implied_prob, ev_percent, is_sharp.
+
+    Entries with invalid American odds (between -100 and +100) are included
+    in the output but with implied_prob and ev_percent set to None.
+    """
+    annotated: list[dict] = []
+    for entry in books:
+        result = {**entry}
+        result["is_sharp"] = entry["book"] in sharp_books
+        try:
+            result["implied_prob"] = american_to_implied(entry["price"])
+            if true_prob is not None:
+                result["ev_percent"] = round(
+                    calculate_ev(entry["price"], true_prob), 2
+                )
+                result["true_prob"] = round(true_prob, 4)
+            else:
+                result["ev_percent"] = None
+                result["true_prob"] = None
+        except ValueError:
+            logger.warning(
+                "invalid_book_price_skipped",
+                extra={"book": entry["book"], "price": entry["price"]},
+            )
+            result["implied_prob"] = None
+            result["ev_percent"] = None
+            result["true_prob"] = None
+        annotated.append(result)
+    return annotated
+
+
 def compute_ev_for_market(
     side_a_books: list[dict],
     side_b_books: list[dict],
@@ -248,39 +289,27 @@ def compute_ev_for_market(
     true_prob_b: float | None = None
 
     if sharp_a_price is not None and sharp_b_price is not None:
-        implied_a = american_to_implied(sharp_a_price)
-        implied_b = american_to_implied(sharp_b_price)
-        true_probs = remove_vig([implied_a, implied_b])
-        true_prob_a = true_probs[0]
-        true_prob_b = true_probs[1]
+        try:
+            implied_a = american_to_implied(sharp_a_price)
+            implied_b = american_to_implied(sharp_b_price)
+            true_probs = remove_vig([implied_a, implied_b])
+            true_prob_a = true_probs[0]
+            true_prob_b = true_probs[1]
+        except ValueError:
+            logger.warning(
+                "invalid_sharp_price_skipped",
+                extra={
+                    "sharp_a_price": sharp_a_price,
+                    "sharp_b_price": sharp_b_price,
+                },
+            )
+            # true_prob_a/b stay None — no EV will be computed
 
     # Annotate side A
-    annotated_a = []
-    for entry in side_a_books:
-        result = {**entry}
-        result["is_sharp"] = entry["book"] in sharp_books
-        result["implied_prob"] = american_to_implied(entry["price"])
-        if true_prob_a is not None:
-            result["ev_percent"] = round(calculate_ev(entry["price"], true_prob_a), 2)
-            result["true_prob"] = round(true_prob_a, 4)
-        else:
-            result["ev_percent"] = None
-            result["true_prob"] = None
-        annotated_a.append(result)
+    annotated_a = _annotate_side(side_a_books, sharp_books, true_prob_a)
 
     # Annotate side B
-    annotated_b = []
-    for entry in side_b_books:
-        result = {**entry}
-        result["is_sharp"] = entry["book"] in sharp_books
-        result["implied_prob"] = american_to_implied(entry["price"])
-        if true_prob_b is not None:
-            result["ev_percent"] = round(calculate_ev(entry["price"], true_prob_b), 2)
-            result["true_prob"] = round(true_prob_b, 4)
-        else:
-            result["ev_percent"] = None
-            result["true_prob"] = None
-        annotated_b.append(result)
+    annotated_b = _annotate_side(side_b_books, sharp_books, true_prob_b)
 
     return EVComputeResult(
         annotated_a=annotated_a,

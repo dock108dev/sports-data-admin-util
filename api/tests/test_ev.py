@@ -67,10 +67,14 @@ class TestAmericanToImplied:
         result = american_to_implied(300)
         assert abs(result - 0.25) < 0.0001
 
-    def test_edge_case_midrange(self) -> None:
-        """Prices between -100 and +100 return 0.5."""
-        assert american_to_implied(50) == 0.5
-        assert american_to_implied(-50) == 0.5
+    def test_invalid_midrange_raises(self) -> None:
+        """Prices between -100 and +100 are invalid American odds."""
+        with pytest.raises(ValueError, match="Invalid American odds"):
+            american_to_implied(50)
+        with pytest.raises(ValueError, match="Invalid American odds"):
+            american_to_implied(-50)
+        with pytest.raises(ValueError, match="Invalid American odds"):
+            american_to_implied(0)
 
 
 class TestRemoveVig:
@@ -119,6 +123,13 @@ class TestCalculateEV:
         ev = calculate_ev(100, 0.5)
         # decimal_odds = 2.0, ev = (2.0 * 0.5 - 1) * 100 = 0%
         assert abs(ev) < 0.01
+
+    def test_invalid_midrange_raises(self) -> None:
+        """Prices between -100 and +100 are invalid American odds."""
+        with pytest.raises(ValueError, match="Invalid American odds"):
+            calculate_ev(50, 0.5)
+        with pytest.raises(ValueError, match="Invalid American odds"):
+            calculate_ev(0, 0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -340,3 +351,41 @@ class TestComputeEVForMarket:
         # True probs should be ~0.5 each
         assert abs(result.true_prob_a - 0.5) < 0.001
         assert abs(result.true_prob_b - 0.5) < 0.001
+
+    def test_invalid_book_price_skipped_gracefully(
+        self, nba_mainline_config: EVStrategyConfig
+    ) -> None:
+        """A single book with an invalid price (between -100 and +100) does not crash.
+
+        The bad entry should get implied_prob=None and ev_percent=None while
+        the valid entries are annotated normally.
+        """
+        side_a = _make_books({"Pinnacle": -110, "DraftKings": -105, "BadBook": 50})
+        side_b = _make_books({"Pinnacle": -110, "DraftKings": -115})
+        result = compute_ev_for_market(side_a, side_b, nba_mainline_config)
+
+        bad = next(b for b in result.annotated_a if b["book"] == "BadBook")
+        assert bad["implied_prob"] is None
+        assert bad["ev_percent"] is None
+
+        good = next(b for b in result.annotated_a if b["book"] == "DraftKings")
+        assert good["implied_prob"] is not None
+        assert good["ev_percent"] is not None
+
+    def test_invalid_sharp_price_skips_devig(
+        self, nba_mainline_config: EVStrategyConfig
+    ) -> None:
+        """If the sharp book itself has an invalid price, devig is skipped.
+
+        No true_prob can be computed, so ev_percent is None for all entries,
+        but the function does not raise.
+        """
+        side_a = _make_books({"Pinnacle": 50, "DraftKings": -105})
+        side_b = _make_books({"Pinnacle": -110, "DraftKings": -115})
+        result = compute_ev_for_market(side_a, side_b, nba_mainline_config)
+
+        assert result.true_prob_a is None
+        assert result.true_prob_b is None
+
+        for b in result.annotated_a + result.annotated_b:
+            assert b["ev_percent"] is None
