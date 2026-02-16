@@ -325,8 +325,8 @@ def _build_sharp_reference(
                     break
 
         for idx_a, idx_b in valid_pairs:
-            sel_a, price_a, mkey_a, _ = entries[idx_a]
-            sel_b, price_b, mkey_b, _ = entries[idx_b]
+            sel_a, price_a, mkey_a, line_a = entries[idx_a]
+            sel_b, price_b, mkey_b, line_b = entries[idx_b]
 
             try:
                 implied_a = american_to_implied(price_a)
@@ -343,6 +343,7 @@ def _build_sharp_reference(
                 "is_mainline": is_mainline,
                 "probs": {sel_a: true_probs[0], sel_b: true_probs[1]},
                 "prices": {sel_a: price_a, sel_b: price_b},
+                "signed_lines": {sel_a: line_a, sel_b: line_b},
             }
 
             ref_key = (game_id, mbase)
@@ -419,8 +420,28 @@ def _try_extrapolated_ev(
     if sel_a not in best_ref["probs"] or sel_b not in best_ref["probs"]:
         return "reference_missing"
 
-    # 6. Compute half-point distance and check max
-    n_half_points = (target_abs_line - best_ref["abs_line"]) / 0.5
+    # 6. Compute SIGNED half-point shift.
+    #
+    # The direction of the logit shift depends on which side sel_a is:
+    #   Spreads: positive line (getting points) → prob increases with higher line
+    #            negative line (giving points)  → prob decreases with higher line
+    #   Totals:  "under" → prob increases with higher line
+    #            "over"  → prob decreases with higher line
+    #
+    # Using signed line values (for spreads) or over/under semantics (for totals)
+    # ensures the shift direction is always correct regardless of pairing order.
+    if mbase == "spreads":
+        ref_signed_line_a = best_ref["signed_lines"][sel_a]
+        target_signed_line_a = key_a[3]
+        n_half_points = (target_signed_line_a - ref_signed_line_a) / 0.5
+    else:  # totals — both sides share the same positive line value
+        abs_shift = (target_abs_line - best_ref["abs_line"]) / 0.5
+        # Over: prob decreases with higher line → negate shift
+        # Under: prob increases with higher line → keep shift
+        if "under" in sel_a.lower():
+            n_half_points = abs_shift
+        else:
+            n_half_points = -abs_shift
 
     max_hp = MAX_EXTRAPOLATION_HALF_POINTS.get(league_code)
     if max_hp is None:
@@ -444,13 +465,9 @@ def _try_extrapolated_ev(
 
     base_logit_a = math.log(base_prob_a / (1 - base_prob_a))
 
-    # sel_a can be either side (favorite or underdog) — _pair_opposite_sides does
-    # not enforce ordering.  The formula is still correct because:
-    #   - base_prob_a comes from the devigged reference keyed by the same selection,
-    #   - n_half_points is signed (positive when target > ref), so the logit shift
-    #     direction is consistent regardless of which side is A,
-    #   - extrap_prob_b = 1 - extrap_prob_a preserves complementarity.
-    new_logit_a = base_logit_a - (n_half_points * slope)
+    # n_half_points is now signed so that positive always means "sel_a prob
+    # should increase" and negative means "sel_a prob should decrease".
+    new_logit_a = base_logit_a + (n_half_points * slope)
     extrap_prob_a = 1.0 / (1.0 + math.exp(-new_logit_a))
     extrap_prob_b = 1.0 - extrap_prob_a  # By construction, sums to 1.0
 

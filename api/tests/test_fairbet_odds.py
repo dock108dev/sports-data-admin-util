@@ -1718,6 +1718,71 @@ class TestTryExtrapolatedEv:
             assert b.ev_percent is not None
             assert b.ev_method == "pinnacle_extrapolated"
 
+    def test_underdog_as_key_a_extrapolation_direction(self):
+        """When sel_a is the underdog (positive line), prob should INCREASE
+        when getting more points (target_line > ref_line).
+
+        This is the core direction bug: the old formula always subtracted
+        the shift, which was correct for the favorite but inverted the
+        underdog's probability.
+        """
+        bets_map, refs, key_a, key_b = self._make_bets_map_and_refs()
+
+        # Swap key_a/key_b so the underdog (positive line) is key_a
+        result = _try_extrapolated_ev(key_b, key_a, bets_map, refs)
+
+        assert result is None
+        # key_b (team:b at +8.5) is now sel_a — underdog getting 8.5 points
+        # Reference has team:b at +6.0 covering ~47% (underdog getting fewer points)
+        # At +8.5 (more points), team:b's prob should be HIGHER than at +6.0
+        ref_prob_b = refs[(1, "spreads")][0]["probs"]["team:b"]
+        assert bets_map[key_b]["true_prob"] > ref_prob_b, (
+            f"Underdog at +8.5 ({bets_map[key_b]['true_prob']:.3f}) should have "
+            f"higher prob than at +6.0 ({ref_prob_b:.3f})"
+        )
+        # And the favorite's prob should be LOWER
+        ref_prob_a = refs[(1, "spreads")][0]["probs"]["team:a"]
+        assert bets_map[key_a]["true_prob"] < ref_prob_a, (
+            f"Favorite at -8.5 ({bets_map[key_a]['true_prob']:.3f}) should have "
+            f"lower prob than at -6.0 ({ref_prob_a:.3f})"
+        )
+        # Probs should sum to 1
+        assert abs(bets_map[key_a]["true_prob"] + bets_map[key_b]["true_prob"] - 1.0) < 0.01
+
+    def test_cross_zero_spread_extrapolation(self):
+        """Extrapolation for a cross-zero alt spread uses signed line shift.
+
+        Reference: team:a at -4.0 (favorite), team:b at +4.0 (underdog).
+        Target: team:a at +1.5 (now underdog!), team:b at -1.5 (now favorite!).
+        The signed shift for team:a is (+1.5 - (-4.0)) = +5.5, which is 11 half-points.
+        Team:a going from giving 4 to getting 1.5 → their cover prob should INCREASE.
+        """
+        bets_map, refs, key_a, key_b = self._make_bets_map_and_refs(
+            ref_line=4.0,
+            ref_price_a=-140,
+            ref_price_b=120,
+            target_line=1.5,
+            target_price_a=180,  # team:a at +1.5 (underdog in this market)
+            target_price_b=-220,  # team:b at -1.5 (favorite in this market)
+        )
+
+        # key_a = (1, "alternate_spreads", "team:a", -1.5)  (favorite in this market)
+        # key_b = (1, "alternate_spreads", "team:b", 1.5)   (underdog in this market)
+        # But wait — the helper creates (team:a, -target_line) and (team:b, target_line)
+        # So key_a = (team:a, -1.5) and key_b = (team:b, +1.5)
+
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, refs)
+
+        assert result is None
+        # team:a at reference had signed line -4.0 (giving 4), prob ~58%
+        # team:a at target has signed line -1.5 (giving 1.5)
+        # Giving FEWER points → prob should INCREASE (easier to cover)
+        ref_prob_a = refs[(1, "spreads")][0]["probs"]["team:a"]
+        assert bets_map[key_a]["true_prob"] > ref_prob_a, (
+            f"team:a at -1.5 ({bets_map[key_a]['true_prob']:.3f}) should have "
+            f"higher prob than at -4.0 ({ref_prob_a:.3f})"
+        )
+
     def test_total_extrapolation_success(self):
         """Extrapolation works for totals market."""
         bets_map, refs, key_a, key_b = self._make_bets_map_and_refs(
