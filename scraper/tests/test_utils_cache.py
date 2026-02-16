@@ -24,8 +24,10 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 
 from sports_scraper.utils.cache import (
+    FINAL_STATES,
     HTMLCache,
     MIN_SCOREBOARD_SIZE_BYTES,
+    should_cache_final,
 )
 
 
@@ -391,6 +393,91 @@ class TestHTMLCacheRecentBoxscoreStaleness:
 
             result = cache.get(self.BOXSCORE_URL, game_date=date(2024, 1, 15))
             assert result is None
+
+
+class TestShouldCacheFinal:
+    """Tests for should_cache_final() caching gate."""
+
+    # --- positive cases: should cache ---
+
+    def test_nba_final_with_data(self):
+        """Caches NBA game at status 3 (final) with player data."""
+        assert should_cache_final(True, 3) is True
+
+    def test_nhl_off_with_data(self):
+        """Caches NHL game at state 'OFF' with player data."""
+        assert should_cache_final(True, "OFF") is True
+
+    def test_nhl_final_with_data(self):
+        """Caches NHL game at state 'FINAL' with player data."""
+        assert should_cache_final(True, "FINAL") is True
+
+    # --- negative cases: should NOT cache ---
+
+    def test_nba_scheduled_with_data(self):
+        """Does not cache scheduled NBA game (status 1)."""
+        assert should_cache_final(True, 1) is False
+
+    def test_nba_live_with_data(self):
+        """Does not cache live NBA game (status 2)."""
+        assert should_cache_final(True, 2) is False
+
+    def test_nhl_fut_with_data(self):
+        """Does not cache future NHL game."""
+        assert should_cache_final(True, "FUT") is False
+
+    def test_nhl_pre_with_data(self):
+        """Does not cache pregame NHL game."""
+        assert should_cache_final(True, "PRE") is False
+
+    def test_nhl_live_with_data(self):
+        """Does not cache live NHL game."""
+        assert should_cache_final(True, "LIVE") is False
+
+    def test_final_without_data(self):
+        """Does not cache final game when payload is empty."""
+        assert should_cache_final(False, 3) is False
+
+    def test_nhl_off_without_data(self):
+        """Does not cache NHL 'OFF' game when payload is empty."""
+        assert should_cache_final(False, "OFF") is False
+
+    def test_no_data_no_status(self):
+        """Does not cache when both data and status are missing."""
+        assert should_cache_final(False, None) is False
+
+    def test_data_but_none_status(self):
+        """Does not cache when status is None even with data."""
+        assert should_cache_final(True, None) is False
+
+    def test_data_but_unknown_status_string(self):
+        """Does not cache for unrecognized status strings."""
+        assert should_cache_final(True, "POSTPONED") is False
+
+    def test_data_but_unknown_status_int(self):
+        """Does not cache for unrecognized status integers."""
+        assert should_cache_final(True, 99) is False
+
+
+class TestFinalStates:
+    """Tests for the FINAL_STATES constant."""
+
+    def test_contains_nba_final(self):
+        """Contains NBA final status (int 3)."""
+        assert 3 in FINAL_STATES
+
+    def test_contains_nhl_off(self):
+        """Contains NHL 'OFF' state."""
+        assert "OFF" in FINAL_STATES
+
+    def test_contains_nhl_final(self):
+        """Contains NHL 'FINAL' state."""
+        assert "FINAL" in FINAL_STATES
+
+    def test_does_not_contain_live_states(self):
+        """Does not contain any live/pregame states."""
+        for state in [1, 2, "FUT", "PRE", "LIVE"]:
+            assert state not in FINAL_STATES
 
 
 class TestModuleImports:

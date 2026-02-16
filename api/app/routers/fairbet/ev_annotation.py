@@ -19,11 +19,9 @@ from ...services.ev import (
     calculate_ev,
     compute_ev_for_market,
     evaluate_ev_eligibility,
-    implied_to_american,
     remove_vig,
 )
 from ...services.ev_config import (
-    EXCLUDED_BOOKS,
     HALF_POINT_LOGIT_SLOPE,
     MAX_EXTRAPOLATION_HALF_POINTS,
     extrapolation_confidence,
@@ -423,11 +421,12 @@ def _try_extrapolated_ev(
 
     base_logit_a = math.log(base_prob_a / (1 - base_prob_a))
 
-    # For spreads: wider line (higher abs) means the favorite is LESS likely to cover.
-    # sel_a is the favorite side (negative line_value) → logit decreases with positive n_half_points.
-    # For totals: higher line means LESS likely to go over → same direction.
-    # This sign convention works because n_half_points is positive when target > ref,
-    # meaning the line moved away from the favorite/over.
+    # sel_a can be either side (favorite or underdog) — _pair_opposite_sides does
+    # not enforce ordering.  The formula is still correct because:
+    #   - base_prob_a comes from the devigged reference keyed by the same selection,
+    #   - n_half_points is signed (positive when target > ref), so the logit shift
+    #     direction is consistent regardless of which side is A,
+    #   - extrap_prob_b = 1 - extrap_prob_a preserves complementarity.
     new_logit_a = base_logit_a - (n_half_points * slope)
     extrap_prob_a = 1.0 / (1.0 + math.exp(-new_logit_a))
     extrap_prob_b = 1.0 - extrap_prob_a  # By construction, sums to 1.0
