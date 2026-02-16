@@ -15,7 +15,7 @@ from ..models import (
     NormalizedTeamBoxscore,
     TeamIdentity,
 )
-from ..utils.cache import APICache
+from ..utils.cache import APICache, should_cache_final
 from ..utils.parsing import parse_int
 from .nba_constants import NBA_BOXSCORE_URL
 from .nba_models import NBABoxscore
@@ -104,16 +104,20 @@ class NBABoxscoreFetcher:
         # Only cache final game data — pregame/live data changes constantly
         game = payload.get("game", {})
         game_status = game.get("gameStatus")  # 1=scheduled, 2=live, 3=final
-        if game_status == 3:
-            home_players = game.get("homeTeam", {}).get("players", [])
-            away_players = game.get("awayTeam", {}).get("players", [])
-            if home_players or away_players:
-                self._cache.put(cache_key, payload)
-                logger.info("nba_boxscore_cached", game_id=game_id, game_status=game_status)
-            else:
-                logger.info("nba_boxscore_not_cached_empty", game_id=game_id, game_status=game_status)
+        home_players = game.get("homeTeam", {}).get("players", [])
+        away_players = game.get("awayTeam", {}).get("players", [])
+        has_data = bool(home_players or away_players)
+
+        if should_cache_final(has_data, game_status):
+            self._cache.put(cache_key, payload)
+            logger.info("nba_boxscore_cached", game_id=game_id, game_status=game_status)
         else:
-            logger.info("nba_boxscore_not_cached_not_final", game_id=game_id, game_status=game_status)
+            logger.info(
+                "nba_boxscore_not_cached",
+                game_id=game_id,
+                game_status=game_status,
+                has_data=has_data,
+            )
 
         return self._parse_boxscore_response(payload, game_id)
 

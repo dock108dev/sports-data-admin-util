@@ -18,6 +18,28 @@ from ..utils.datetime_utils import today_et
 MIN_SCOREBOARD_SIZE_BYTES = 5000
 
 
+# Recognized final/completed game states across all leagues.
+# Each fetcher extracts the status from its payload and passes it here.
+FINAL_STATES: set[str | int] = {3, "OFF", "FINAL"}
+
+
+def should_cache_final(has_data: bool, status: str | int | None) -> bool:
+    """Decide whether an API response should be cached.
+
+    Policy: only cache when the game is complete AND the response contains
+    meaningful data.  This prevents pregame/live/empty responses from being
+    permanently stuck in the no-TTL APICache.
+
+    Args:
+        has_data: Whether the payload contains non-empty data
+            (e.g. player stats, play events).
+        status: Game status extracted from the payload.
+            NBA: gameStatus int (1=scheduled, 2=live, 3=final).
+            NHL: gameState str ("FUT", "PRE", "LIVE", "OFF", "FINAL").
+    """
+    return has_data and status in FINAL_STATES
+
+
 class HTMLCache:
     """Local file cache for scraped HTML pages.
 
