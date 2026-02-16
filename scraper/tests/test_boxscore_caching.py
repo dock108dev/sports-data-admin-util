@@ -1,8 +1,7 @@
 """Tests for conditional caching logic in boxscore and PBP fetchers.
 
-Verifies that NBA/NHL boxscore fetchers only cache final-game responses
-with player data (via should_cache_final), and that the NCAAB PBP fetcher
-only caches responses containing actual plays.
+All fetchers use the same should_cache_final gate: cache only when the game
+is in a final state AND the response contains meaningful data.
 """
 
 from __future__ import annotations
@@ -26,6 +25,7 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.live.nba_boxscore import NBABoxscoreFetcher
 from sports_scraper.live.nhl_boxscore import NHLBoxscoreFetcher
+from sports_scraper.live.nhl_pbp import NHLPbpFetcher
 from sports_scraper.live.ncaab_pbp import NCAABPbpFetcher
 
 
@@ -267,12 +267,108 @@ class TestNHLBoxscoreCaching:
 
 
 # ---------------------------------------------------------------------------
+# NHL PBP fetcher caching
+# ---------------------------------------------------------------------------
+
+
+class TestNHLPbpCaching:
+    """Verify NHLPbpFetcher caches only final games with play data."""
+
+    @pytest.fixture
+    def cache(self) -> MagicMock:
+        mock = MagicMock()
+        mock.get.return_value = None
+        return mock
+
+    @pytest.fixture
+    def client(self) -> MagicMock:
+        return MagicMock()
+
+    def _nhl_pbp_payload(self, game_state: str, n_plays: int = 3) -> dict:
+        plays = [
+            {
+                "eventId": i,
+                "periodDescriptor": {"number": 1, "periodType": "REG"},
+                "timeInPeriod": f"0{i}:00",
+                "timeRemaining": f"{19 - i}:00",
+                "situationCode": "1551",
+                "typeDescKey": "shot-on-goal",
+                "sortOrder": i,
+                "details": {},
+            }
+            for i in range(1, n_plays + 1)
+        ]
+        return {"gameState": game_state, "plays": plays}
+
+    def test_caches_off_game_with_plays(self, client: MagicMock, cache: MagicMock) -> None:
+        """'OFF' game with play data is cached."""
+        payload = self._nhl_pbp_payload("OFF", n_plays=5)
+        client.get.return_value = _make_http_response(payload)
+
+        fetcher = NHLPbpFetcher(client, cache)
+        fetcher.fetch_play_by_play(2025020767)
+
+        cache.put.assert_called_once()
+
+    def test_caches_final_game_with_plays(self, client: MagicMock, cache: MagicMock) -> None:
+        """'FINAL' game with play data is cached."""
+        payload = self._nhl_pbp_payload("FINAL", n_plays=5)
+        client.get.return_value = _make_http_response(payload)
+
+        fetcher = NHLPbpFetcher(client, cache)
+        fetcher.fetch_play_by_play(2025020767)
+
+        cache.put.assert_called_once()
+
+    def test_skips_cache_for_live_game(self, client: MagicMock, cache: MagicMock) -> None:
+        """'LIVE' game with plays is not cached."""
+        payload = self._nhl_pbp_payload("LIVE", n_plays=5)
+        client.get.return_value = _make_http_response(payload)
+
+        fetcher = NHLPbpFetcher(client, cache)
+        fetcher.fetch_play_by_play(2025020767)
+
+        cache.put.assert_not_called()
+
+    def test_skips_cache_for_future_game(self, client: MagicMock, cache: MagicMock) -> None:
+        """'FUT' game is not cached."""
+        payload = self._nhl_pbp_payload("FUT", n_plays=0)
+        client.get.return_value = _make_http_response(payload)
+
+        fetcher = NHLPbpFetcher(client, cache)
+        fetcher.fetch_play_by_play(2025020767)
+
+        cache.put.assert_not_called()
+
+    def test_skips_cache_for_off_without_plays(self, client: MagicMock, cache: MagicMock) -> None:
+        """Completed game with empty play list is not cached."""
+        payload = self._nhl_pbp_payload("OFF", n_plays=0)
+        client.get.return_value = _make_http_response(payload)
+
+        fetcher = NHLPbpFetcher(client, cache)
+        fetcher.fetch_play_by_play(2025020767)
+
+        cache.put.assert_not_called()
+
+    def test_uses_cached_response(self, client: MagicMock, cache: MagicMock) -> None:
+        """Returns cached data without hitting the network."""
+        payload = self._nhl_pbp_payload("OFF", n_plays=5)
+        cache.get.return_value = payload
+
+        fetcher = NHLPbpFetcher(client, cache)
+        result = fetcher.fetch_play_by_play(2025020767)
+
+        client.get.assert_not_called()
+        assert len(result.plays) > 0
+
+
+# ---------------------------------------------------------------------------
 # NCAAB PBP fetcher caching
 # ---------------------------------------------------------------------------
 
 
 class TestNCAABPbpCaching:
-    """Verify NCAABPbpFetcher caches only responses with actual plays."""
+    """Verify NCAABPbpFetcher caches only final games with play data."""
 
     @pytest.fixture
     def cache(self) -> MagicMock:
@@ -300,23 +396,53 @@ class TestNCAABPbpCaching:
             for i in range(1, n + 1)
         ]
 
-    def test_caches_response_with_plays(self, client: MagicMock, cache: MagicMock) -> None:
-        """Response with parsed plays is cached."""
+    def test_caches_final_game_with_plays(self, client: MagicMock, cache: MagicMock) -> None:
+        """Final game with plays is cached."""
         payload = self._plays_payload(5)
         client.get.return_value = _make_http_response(payload)
 
         fetcher = NCAABPbpFetcher(client, cache)
-        result = fetcher.fetch_play_by_play(12345)
+        result = fetcher.fetch_play_by_play(12345, game_status="final")
 
         cache.put.assert_called_once()
         assert len(result.plays) == 5
 
-    def test_skips_cache_for_empty_response(self, client: MagicMock, cache: MagicMock) -> None:
-        """Empty play list is not cached."""
+    def test_skips_cache_for_live_game(self, client: MagicMock, cache: MagicMock) -> None:
+        """Live game with plays is not cached."""
+        payload = self._plays_payload(5)
+        client.get.return_value = _make_http_response(payload)
+
+        fetcher = NCAABPbpFetcher(client, cache)
+        fetcher.fetch_play_by_play(12345, game_status="live")
+
+        cache.put.assert_not_called()
+
+    def test_skips_cache_for_scheduled_game(self, client: MagicMock, cache: MagicMock) -> None:
+        """Scheduled game is not cached even with plays."""
+        payload = self._plays_payload(3)
+        client.get.return_value = _make_http_response(payload)
+
+        fetcher = NCAABPbpFetcher(client, cache)
+        fetcher.fetch_play_by_play(12345, game_status="scheduled")
+
+        cache.put.assert_not_called()
+
+    def test_skips_cache_when_status_none(self, client: MagicMock, cache: MagicMock) -> None:
+        """Not cached when game_status is not provided."""
+        payload = self._plays_payload(5)
+        client.get.return_value = _make_http_response(payload)
+
+        fetcher = NCAABPbpFetcher(client, cache)
+        fetcher.fetch_play_by_play(12345)
+
+        cache.put.assert_not_called()
+
+    def test_skips_cache_for_final_without_plays(self, client: MagicMock, cache: MagicMock) -> None:
+        """Final game with empty plays is not cached."""
         client.get.return_value = _make_http_response([])
 
         fetcher = NCAABPbpFetcher(client, cache)
-        result = fetcher.fetch_play_by_play(12345)
+        result = fetcher.fetch_play_by_play(12345, game_status="final")
 
         cache.put.assert_not_called()
         assert len(result.plays) == 0
@@ -327,7 +453,7 @@ class TestNCAABPbpCaching:
         cache.get.return_value = payload
 
         fetcher = NCAABPbpFetcher(client, cache)
-        result = fetcher.fetch_play_by_play(12345)
+        result = fetcher.fetch_play_by_play(12345, game_status="final")
 
         client.get.assert_not_called()
         assert len(result.plays) == 3

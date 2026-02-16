@@ -25,7 +25,6 @@ from ...services.ev_config import (
     HALF_POINT_LOGIT_SLOPE,
     MAX_EXTRAPOLATION_HALF_POINTS,
     extrapolation_confidence,
-    get_strategy,
 )
 
 logger = logging.getLogger(__name__)
@@ -377,7 +376,7 @@ def _try_extrapolated_ev(
     for ref in ref_list:
         distance = abs(ref["abs_line"] - target_abs_line)
         # Skip if this IS the exact same line (should have been handled by direct devig)
-        if distance == 0:
+        if distance < 1e-9:
             continue
         if distance < best_distance or (
             distance == best_distance and ref["is_mainline"] and best_ref and not best_ref["is_mainline"]
@@ -413,11 +412,9 @@ def _try_extrapolated_ev(
 
     # 8. Logit-space extrapolation
     base_prob_a = best_ref["probs"][sel_a]
-    base_prob_b = best_ref["probs"][sel_b]
 
-    # Clamp base probs to avoid log(0) — shouldn't happen from devig but be safe
+    # Clamp to avoid log(0) — shouldn't happen from devig but be safe
     base_prob_a = max(0.001, min(0.999, base_prob_a))
-    base_prob_b = max(0.001, min(0.999, base_prob_b))
 
     base_logit_a = math.log(base_prob_a / (1 - base_prob_a))
 
