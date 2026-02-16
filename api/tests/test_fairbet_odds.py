@@ -6,16 +6,18 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.routers.fairbet.odds import (
-    BetDefinition,
+from app.routers.fairbet.ev_annotation import (
     BookOdds,
-    FairbetOddsResponse,
-    get_fairbet_odds,
-    _build_base_filters,
     _build_sharp_reference,
     _market_base,
     _pair_opposite_sides,
     _try_extrapolated_ev,
+)
+from app.routers.fairbet.odds import (
+    BetDefinition,
+    FairbetOddsResponse,
+    get_fairbet_odds,
+    _build_base_filters,
 )
 from app.services.ev_config import extrapolation_confidence
 
