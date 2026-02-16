@@ -11,7 +11,7 @@ import httpx
 
 from ..logging import logger
 from ..models import NormalizedPlay, NormalizedPlayByPlay
-from ..utils.cache import APICache
+from ..utils.cache import APICache, should_cache_final
 from ..utils.parsing import parse_int
 from .nhl_constants import (
     NHL_EVENT_TYPE_MAP,
@@ -101,16 +101,16 @@ class NHLPbpFetcher:
                 game_state=game_state,
             )
 
-        # Only cache responses that have actual play data.
-        # Empty responses may be transient failures or games not yet started.
-        if plays:
+        # Only cache final game data with actual plays — same gate as boxscore fetchers
+        if should_cache_final(bool(plays), game_state):
             self._cache.put(cache_key, payload)
-            logger.info("nhl_pbp_cached", game_id=game_id, play_count=len(plays))
+            logger.info("nhl_pbp_cached", game_id=game_id, play_count=len(plays), game_state=game_state)
         else:
             logger.info(
-                "nhl_pbp_not_cached_empty",
+                "nhl_pbp_not_cached",
                 game_id=game_id,
-                message="Skipping cache for empty response to allow retry",
+                game_state=game_state,
+                has_data=bool(plays),
             )
 
         # Log first and last event for debugging

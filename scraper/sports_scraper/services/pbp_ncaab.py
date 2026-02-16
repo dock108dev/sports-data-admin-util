@@ -19,8 +19,8 @@ def select_games_for_pbp_ncaab_api(
     end_date: date,
     only_missing: bool,
     updated_before: datetime | None,
-) -> list[tuple[int, int]]:
-    """Return game ids and CBB game IDs for NCAAB API play-by-play ingestion.
+) -> list[tuple[int, int, str | None]]:
+    """Return game ids, CBB game IDs, and status for NCAAB API play-by-play ingestion.
 
     NCAAB PBP is fetched via the College Basketball Data API using the CBB game ID
     stored in external_ids['cbb_game_id'].
@@ -33,7 +33,7 @@ def select_games_for_pbp_ncaab_api(
         updated_before: Only include games with stale PBP data
 
     Returns:
-        List of (game_id, cbb_game_id) tuples for games needing PBP
+        List of (game_id, cbb_game_id, status) tuples for games needing PBP
     """
     league = session.query(db_models.SportsLeague).filter(
         db_models.SportsLeague.code == "NCAAB"
@@ -68,12 +68,12 @@ def select_games_for_pbp_ncaab_api(
         query = query.filter(not_(has_fresh))
 
     rows = query.all()
-    results = []
+    results: list[tuple[int, int, str | None]] = []
     for game_id, cbb_game_id, status in rows:
         if cbb_game_id:
             try:
                 cbb_id = int(cbb_game_id)
-                results.append((game_id, cbb_id))
+                results.append((game_id, cbb_id, status))
             except (ValueError, TypeError):
                 logger.warning(
                     "ncaab_pbp_invalid_game_id",
@@ -162,10 +162,10 @@ def ingest_pbp_via_ncaab_api(
     pbp_games = 0
     pbp_events = 0
 
-    for game_id, cbb_game_id in games:
+    for game_id, cbb_game_id, game_status in games:
         try:
             # Fetch PBP from CBB API
-            payload = client.fetch_play_by_play(cbb_game_id)
+            payload = client.fetch_play_by_play(cbb_game_id, game_status=game_status)
 
             if not payload.plays:
                 logger.warning(

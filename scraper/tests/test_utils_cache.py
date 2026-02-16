@@ -412,6 +412,10 @@ class TestShouldCacheFinal:
         """Caches NHL game at state 'FINAL' with player data."""
         assert should_cache_final(True, "FINAL") is True
 
+    def test_ncaab_final_with_data(self):
+        """Caches NCAAB game at normalized status 'final' with play data."""
+        assert should_cache_final(True, "final") is True
+
     # --- negative cases: should NOT cache ---
 
     def test_nba_scheduled_with_data(self):
@@ -433,6 +437,18 @@ class TestShouldCacheFinal:
     def test_nhl_live_with_data(self):
         """Does not cache live NHL game."""
         assert should_cache_final(True, "LIVE") is False
+
+    def test_ncaab_scheduled_with_data(self):
+        """Does not cache scheduled NCAAB game."""
+        assert should_cache_final(True, "scheduled") is False
+
+    def test_ncaab_live_with_data(self):
+        """Does not cache live NCAAB game."""
+        assert should_cache_final(True, "live") is False
+
+    def test_ncaab_final_without_data(self):
+        """Does not cache final NCAAB game when payload is empty."""
+        assert should_cache_final(False, "final") is False
 
     def test_final_without_data(self):
         """Does not cache final game when payload is empty."""
@@ -473,6 +489,10 @@ class TestFinalStates:
     def test_contains_nhl_final(self):
         """Contains NHL 'FINAL' state."""
         assert "FINAL" in FINAL_STATES
+
+    def test_contains_ncaab_final(self):
+        """Contains NCAAB normalized 'final' state."""
+        assert "final" in FINAL_STATES
 
     def test_does_not_contain_live_states(self):
         """Does not contain any live/pregame states."""
