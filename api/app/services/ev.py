@@ -9,6 +9,7 @@ for a given (league, market_category) pair.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -18,6 +19,8 @@ from .ev_config import (
     EligibilityResult,
     get_strategy,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,9 +52,9 @@ def american_to_implied(price: float) -> float:
     elif price <= -100:
         return abs(price) / (abs(price) + 100.0)
     else:
-        # Edge case: prices between -100 and +100 shouldn't occur
-        # but handle gracefully
-        return 0.5
+        raise ValueError(
+            f"Invalid American odds: {price} (must be <= -100 or >= +100)"
+        )
 
 
 def implied_to_american(prob: float) -> float:
