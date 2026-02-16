@@ -19,8 +19,8 @@ docker compose --profile prod up -d --build
 
 | Profile | Services | Use Case |
 |---------|----------|----------|
-| `dev` | postgres, redis, api, scraper, web, backup | Local development |
-| `prod` | postgres, redis, api, scraper, web, backup | Production |
+| `dev` | postgres, redis, api, api-worker, scraper, scraper-beat, social-scraper, migrate, web, backup, log-relay | Local development |
+| `prod` | postgres, redis, api, api-worker, scraper, scraper-beat, social-scraper, migrate, web, backup, log-relay | Production |
 
 ## Services
 
@@ -29,7 +29,11 @@ docker compose --profile prod up -d --build
 | postgres | 5432 | PostgreSQL database |
 | redis | 6379 | Redis for Celery queue |
 | api | 8000 | FastAPI backend |
-| scraper | — | Celery worker |
+| api-worker | — | Celery worker for API tasks (pipeline, flow generation) |
+| scraper | — | Celery worker for data ingestion |
+| scraper-beat | — | Celery scheduler (see CLAUDE.md for full schedule) |
+| social-scraper | — | Social media scraper (X/Twitter) |
+| migrate | — | One-shot Alembic migration runner |
 | web | 3000 | Next.js admin UI |
 | backup | — | Daily backup service |
 | log-relay | — | Docker log relay sidecar |

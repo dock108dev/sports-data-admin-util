@@ -57,7 +57,6 @@ EDGE CASES & ISSUES
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from typing import Any
@@ -65,89 +64,19 @@ from typing import Any
 from ...db.sports import SportsGame, SportsGamePlay
 from ...db.resolution import EntityResolution
 from ...db import AsyncSession, get_db
-from ...services.resolution_tracker import (
+from ...services.resolution_queries import (
     get_resolution_summary_for_game,
     get_resolution_summary_for_run,
 )
+from .resolution_models import (
+    ResolutionDetailResponse,
+    ResolutionStats,
+    ResolutionSummaryResponse,
+    TeamResolutionResult,
+    PlayerResolutionResult,
+)
 
 router = APIRouter()
-
-
-# =============================================================================
-# RESPONSE MODELS
-# =============================================================================
-
-
-class TeamResolutionResult(BaseModel):
-    """Single team resolution result."""
-
-    source: str = Field(description="Source identifier (abbreviation)")
-    resolved_id: int | None = Field(description="Internal team ID if resolved")
-    resolved_name: str | None = Field(description="Resolved team name")
-    status: str = Field(description="success, failed, ambiguous, partial")
-    method: str | None = Field(description="Resolution method used")
-    occurrences: int = Field(default=1, description="Times this team appeared")
-
-
-class PlayerResolutionResult(BaseModel):
-    """Single player resolution result."""
-
-    source: str = Field(description="Source player name")
-    resolved_name: str | None = Field(description="Normalized player name")
-    status: str = Field(description="success, failed")
-    method: str | None = Field(description="Resolution method used")
-    occurrences: int = Field(default=1, description="Times this player appeared")
-
-
-class ResolutionIssue(BaseModel):
-    """Resolution issue requiring review."""
-
-    source: str
-    reason: str | None = None
-    occurrences: int = Field(default=1)
-    candidates: list[dict[str, Any]] | None = None
-
-
-class ResolutionStats(BaseModel):
-    """Stats for a category of resolutions."""
-
-    total: int
-    resolved: int
-    failed: int
-    resolution_rate: float
-
-
-class ResolutionSummaryResponse(BaseModel):
-    """Summary of all entity resolutions for a game or run."""
-
-    game_id: int
-    pipeline_run_id: int | None
-    game_info: dict[str, Any] | None = Field(description="Game metadata")
-    teams: ResolutionStats
-    players: ResolutionStats
-    team_resolutions: list[TeamResolutionResult]
-    player_resolutions: list[PlayerResolutionResult]
-    issues: dict[str, Any] = Field(
-        description="Issues requiring review: unresolved_teams, ambiguous_teams, unresolved_players"
-    )
-
-
-class ResolutionDetailResponse(BaseModel):
-    """Detailed resolution info for a single entity."""
-
-    entity_type: str
-    source_identifier: str
-    resolved_id: int | None
-    resolved_name: str | None
-    status: str
-    method: str | None
-    confidence: float | None
-    failure_reason: str | None
-    candidates: list[dict[str, Any]] | None
-    occurrence_count: int
-    first_play_index: int | None
-    last_play_index: int | None
-    source_context: dict[str, Any] | None
 
 
 # =============================================================================
@@ -566,9 +495,7 @@ async def list_games_with_resolution_issues(
             EntityResolution.resolution_status.in_(["failed", "ambiguous"])
         )
 
-    query = query.order_by(func.count(EntityResolution.id).desc()).limit(
-        limit
-    )
+    query = query.order_by(func.count(EntityResolution.id).desc()).limit(limit)
 
     result = await session.execute(query)
     rows = result.all()

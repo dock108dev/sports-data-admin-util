@@ -300,7 +300,9 @@ def build_block_prompt(
             play = play_lookup.get(pid, {})
             desc = play.get("description", "")
             if desc:
-                key_plays_desc.append(f"- {desc}")
+                team_abbr = play.get("team_abbreviation", "")
+                prefix = f"[{team_abbr}] " if team_abbr else ""
+                key_plays_desc.append(f"- {prefix}{desc}")
 
         prompt_parts.append(f"\nBlock {block_idx} ({role}, {period_label}):")
         prompt_parts.append(

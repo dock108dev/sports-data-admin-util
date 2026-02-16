@@ -23,7 +23,6 @@ from sports_scraper.utils.html_parsing import (
     extract_all_stats_from_row,
     find_table_by_id,
     extract_team_stats_from_table,
-    find_player_table,
     get_table_ids_on_page,
 )
 
@@ -219,25 +218,6 @@ class TestExtractTeamStatsFromTable:
         assert "pts" in result
         assert "reb" not in result
 
-
-class TestFindPlayerTable:
-    """Tests for find_player_table function."""
-
-    def test_find_player_table(self):
-        soup = BeautifulSoup(SAMPLE_TABLE_HTML, "html.parser")
-        table = find_player_table(soup, "box-basic")
-        assert table is not None
-        assert table.get("id") == "box-basic"
-
-    def test_find_player_table_with_alternates(self):
-        soup = BeautifulSoup(SAMPLE_TABLE_HTML, "html.parser")
-        table = find_player_table(soup, "nonexistent", alternate_ids=["box-advanced"])
-        assert table is not None
-
-    def test_return_none_when_not_found(self):
-        soup = BeautifulSoup(SAMPLE_TABLE_HTML, "html.parser")
-        table = find_player_table(soup, "nonexistent")
-        assert table is None
 
 
 class TestGetTableIdsOnPage:

@@ -35,6 +35,7 @@ class EVComputeResult:
     reference_price_b: float | None = None
     ev_method: str | None = None
     confidence_tier: str | None = None
+    fair_odds_suspect: bool = False
 
 
 def american_to_implied(price: float) -> float:
@@ -51,9 +52,24 @@ def american_to_implied(price: float) -> float:
     elif price <= -100:
         return abs(price) / (abs(price) + 100.0)
     else:
-        raise ValueError(
-            f"Invalid American odds: {price} (must be <= -100 or >= +100)"
-        )
+        raise ValueError(f"Invalid American odds: {price} (must be <= -100 or >= +100)")
+
+
+def implied_to_american(prob: float) -> float:
+    """Convert implied probability (0-1) to American odds.
+
+    Args:
+        prob: Implied probability as a float between 0 and 1.
+
+    Returns:
+        American odds (e.g., -300, +300). Returns 0.0 for degenerate inputs.
+    """
+    if prob <= 0 or prob >= 1:
+        return 0.0
+    if prob >= 0.5:
+        return -(prob / (1 - prob)) * 100.0
+    else:
+        return ((1 - prob) / prob) * 100.0
 
 
 def remove_vig(implied_probs: list[float]) -> list[float]:
@@ -94,7 +110,7 @@ def calculate_ev(book_price: float, true_prob: float) -> float:
         decimal_odds = (100.0 / abs(book_price)) + 1.0
     else:
         raise ValueError(
-            f"Invalid American odds: {book_price} (must be <= -100 or >= +100)"
+            f"Invalid American odds: {book_price}. Must be >= +100 or <= -100."
         )
 
     return (decimal_odds * true_prob - 1.0) * 100.0
@@ -189,14 +205,13 @@ def evaluate_ev_eligibility(
             )
 
     # 4. Minimum qualifying books per side (non-excluded)
-    qualifying_a = sum(
-        1 for b in side_a_books if b["book"] not in EXCLUDED_BOOKS
-    )
-    qualifying_b = sum(
-        1 for b in side_b_books if b["book"] not in EXCLUDED_BOOKS
-    )
+    qualifying_a = sum(1 for b in side_a_books if b["book"] not in EXCLUDED_BOOKS)
+    qualifying_b = sum(1 for b in side_b_books if b["book"] not in EXCLUDED_BOOKS)
 
-    if qualifying_a < config.min_qualifying_books or qualifying_b < config.min_qualifying_books:
+    if (
+        qualifying_a < config.min_qualifying_books
+        or qualifying_b < config.min_qualifying_books
+    ):
         return EligibilityResult(
             eligible=False,
             strategy_config=config,
@@ -212,6 +227,17 @@ def evaluate_ev_eligibility(
         ev_method=config.strategy_name,
         confidence_tier=config.confidence_tier.value,
     )
+
+
+def _median(sorted_values: list[float]) -> float:
+    """Return the median of an already-sorted list of floats."""
+    n = len(sorted_values)
+    if n == 0:
+        return 0.0
+    mid = n // 2
+    if n % 2 == 1:
+        return sorted_values[mid]
+    return (sorted_values[mid - 1] + sorted_values[mid]) / 2.0
 
 
 def _annotate_side(
@@ -231,9 +257,7 @@ def _annotate_side(
         try:
             result["implied_prob"] = american_to_implied(entry["price"])
             if true_prob is not None:
-                result["ev_percent"] = round(
-                    calculate_ev(entry["price"], true_prob), 2
-                )
+                result["ev_percent"] = round(calculate_ev(entry["price"], true_prob), 2)
                 result["true_prob"] = round(true_prob, 4)
             else:
                 result["ev_percent"] = None
@@ -303,13 +327,31 @@ def compute_ev_for_market(
                     "sharp_b_price": sharp_b_price,
                 },
             )
-            # true_prob_a/b stay None — no EV will be computed
 
-    # Annotate side A
+    # Annotate both sides (bad prices handled per-entry inside _annotate_side)
     annotated_a = _annotate_side(side_a_books, sharp_books, true_prob_a)
-
-    # Annotate side B
     annotated_b = _annotate_side(side_b_books, sharp_books, true_prob_b)
+
+    # Sanity check: compare devigged fair odds against median book price
+    fair_odds_suspect = False
+    if true_prob_a is not None and true_prob_b is not None:
+        fair_american_a = implied_to_american(true_prob_a)
+        fair_american_b = implied_to_american(true_prob_b)
+
+        # Compute median price for each side from all books
+        prices_a = sorted(entry["price"] for entry in side_a_books)
+        prices_b = sorted(entry["price"] for entry in side_b_books)
+
+        if prices_a and prices_b:
+            median_a = _median(prices_a)
+            median_b = _median(prices_b)
+
+            divergence = max(
+                abs(fair_american_a - median_a),
+                abs(fair_american_b - median_b),
+            )
+            if divergence > strategy_config.max_fair_odds_divergence:
+                fair_odds_suspect = True
 
     return EVComputeResult(
         annotated_a=annotated_a,
@@ -320,4 +362,5 @@ def compute_ev_for_market(
         reference_price_b=sharp_b_price,
         ev_method=strategy_config.strategy_name,
         confidence_tier=strategy_config.confidence_tier.value,
+        fair_odds_suspect=fair_odds_suspect,
     )

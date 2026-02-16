@@ -1,6 +1,7 @@
 """Pydantic schemas for sports admin endpoints.
 
-Re-exports all models from domain-grouped sub-modules for backward compatibility.
+Re-exports all models from domain-grouped sub-modules so callers can
+import directly from the schemas package.
 """
 
 from .common import (

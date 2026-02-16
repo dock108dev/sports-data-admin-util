@@ -11,21 +11,22 @@
 1. [Authentication](#authentication)
 2. [Date & Time Convention](#date--time-convention)
 3. [Quick Start](#quick-start)
-4. [Health Check](#health-check)
-5. [Games](#games)
-6. [Game Flow](#game-flow)
-7. [Timeline](#timeline)
-8. [Teams](#teams)
-9. [Scraper Runs](#scraper-runs)
-10. [Game Flow Pipeline](#game-flow-pipeline)
-11. [Diagnostics](#diagnostics)
-12. [Jobs](#jobs)
-13. [PBP Inspection](#pbp-inspection)
-14. [Entity Resolution](#entity-resolution)
-15. [Social](#social)
-16. [FairBet](#fairbet)
-17. [Reading Positions](#reading-positions)
-18. [Response Models](#response-models)
+4. [Reference Tables](#reference-tables)
+5. [Health Check](#health-check)
+6. [Games](#games)
+7. [Game Flow](#game-flow)
+8. [Timeline](#timeline)
+9. [Teams](#teams)
+10. [Scraper Runs](#scraper-runs)
+11. [Game Flow Pipeline](#game-flow-pipeline)
+12. [Diagnostics](#diagnostics)
+13. [Jobs](#jobs)
+14. [PBP Inspection](#pbp-inspection)
+15. [Entity Resolution](#entity-resolution)
+16. [Social](#social)
+17. [FairBet](#fairbet)
+18. [Reading Positions](#reading-positions)
+19. [Response Models](#response-models)
 
 ---
 
@@ -120,6 +121,91 @@ GET /api/admin/sports/games/123/flow
 
 ---
 
+## Reference Tables
+
+Look up any valid filter value, enum, or config constant without digging into source code.
+
+### Game Statuses
+
+| Status | Description |
+|--------|-------------|
+| `scheduled` | Not yet started |
+| `pregame` | Within pregame window of tip time |
+| `live` | Game in progress |
+| `final` | Game completed |
+| `archived` | Data complete, flows generated, >7 days old |
+| `postponed` | Game postponed |
+| `canceled` | Game canceled |
+
+**Lifecycle:** `scheduled` &rarr; `pregame` &rarr; `live` &rarr; `final` &rarr; `archived`
+
+Source: `api/app/db/sports.py` &rarr; `GameStatus`
+
+### Market Types (Mainline)
+
+| API Key | Canonical Type |
+|---------|---------------|
+| `h2h` | Moneyline |
+| `spreads` | Spread (point spread / puck line) |
+| `totals` | Total (over/under) |
+
+Source: `scraper/sports_scraper/odds/client.py` &rarr; `MARKET_TYPES`
+
+### Market Categories
+
+| Category | Description | Example Markets |
+|----------|-------------|-----------------|
+| `mainline` | Core game odds | h2h, spreads, totals |
+| `player_prop` | Individual player performance | player_points, player_rebounds, etc. |
+| `team_prop` | Team performance bets | team_totals |
+| `alternate` | Alternate line variations | alternate_spreads, alternate_totals |
+| `period` | Period/quarter-specific | Markets ending in `_h1`, `_q1`, etc. |
+| `game_prop` | Other game props | Catch-all for unclassified markets |
+
+Source: `scraper/sports_scraper/models/schemas.py` &rarr; `classify_market()`
+
+### Prop Markets by Sport
+
+**NBA / NCAAB:** `player_points`, `player_rebounds`, `player_assists`, `player_threes`, `player_points_rebounds_assists`, `player_blocks`, `player_steals`, `team_totals`, `alternate_spreads`, `alternate_totals`
+
+**NHL:** `player_points`, `player_goals`, `player_assists`, `player_shots_on_goal`, `player_total_saves`, `team_totals`, `alternate_spreads`, `alternate_totals`
+
+Source: `scraper/sports_scraper/odds/client.py` &rarr; `PROP_MARKETS`
+
+### Included Sportsbooks (17)
+
+BetMGM, Caesars, DraftKings, ESPNBet, FanDuel, Fanatics, Hard Rock Bet, Pinnacle, PointsBet (US), bet365, Betway, Circa Sports, Fliff, SI Sportsbook, theScore Bet, Tipico, Unibet
+
+### Excluded Sportsbooks (20)
+
+BetOnline.ag, BetRivers, BetUS, Bovada, GTbets, LowVig.ag, MyBookie.ag, Nitrogen, SuperBook, TwinSpires, Wind Creek (Betfred PA), WynnBET, Bally Bet, Betsson, Coolbet, Marathonbet, Matchbook, NordicBet, William Hill (US), 1xBet
+
+> **Note:** All books are still scraped and persisted; exclusion happens at query time for quality filtering.
+
+Source: `api/app/services/ev_config.py` &rarr; `INCLUDED_BOOKS`, `EXCLUDED_BOOKS`
+
+### EV Confidence Tiers
+
+| Tier | Criteria | Typical Markets |
+|------|----------|-----------------|
+| `high` | Pinnacle reference, &ge;3 qualifying books, &le;1hr staleness | NBA/NHL mainlines |
+| `medium` | Pinnacle reference, &ge;3 qualifying books, &le;30min staleness | NCAAB mainlines, team props |
+| `low` | Pinnacle reference, &ge;3 qualifying books, &le;30min staleness | Player props, alternates |
+
+NCAAB mainlines use `medium` (vs `high` for NBA/NHL) due to thinner market liquidity. Period and game prop categories are disabled (no EV computation).
+
+Source: `api/app/services/ev_config.py` &rarr; `_STRATEGY_MAP`
+
+### Game Phases (Social Context)
+
+| Phase | Description |
+|-------|-------------|
+| `pregame` | Before game starts |
+| `in_game` | During live play |
+| `postgame` | After game ends |
+
+---
+
 ## Health Check
 
 ### `GET /healthz`
@@ -150,6 +236,7 @@ List games with filtering and pagination.
 | `missingOdds` | `bool` | Games without odds |
 | `missingSocial` | `bool` | Games without social posts |
 | `missingAny` | `bool` | Games missing any data type |
+| `hasPbp` | `bool` | Only games with play-by-play data |
 | `safe` | `bool` | Exclude games with conflicts or missing team mappings |
 | `limit` | `int` | Max results (1-200, default 50) |
 | `offset` | `int` | Pagination offset |
@@ -264,6 +351,29 @@ Trigger rescrape for a game.
 ### `POST /games/{gameId}/resync-odds`
 
 Resync odds for a game.
+
+### `GET /games/{gameId}/preview-score`
+
+Get a preview score for an upcoming game with excitement and quality ratings.
+
+**Response:**
+```json
+{
+  "gameId": "123",
+  "excitementScore": 82,
+  "qualityScore": 75,
+  "tags": ["rivalry", "playoff_implications"],
+  "nugget": "First meeting since the trade deadline blockbuster."
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `gameId` | `string` | Game identifier |
+| `excitementScore` | `int` | 0-100 excitement rating |
+| `qualityScore` | `int` | 0-100 quality rating |
+| `tags` | `string[]` | Descriptive tags |
+| `nugget` | `string` | Short text nugget |
 
 ---
 
@@ -424,6 +534,13 @@ Regenerate existing timelines.
 
 List teams with game counts.
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `league` | `string` | — | Filter by league code (NBA, NHL, NCAAB) |
+| `search` | `string` | — | Search by team name, short name, or abbreviation (partial match) |
+| `limit` | `int` | 100 | Max results (1-500) |
+| `offset` | `int` | 0 | Pagination offset |
+
 **Response:**
 ```json
 {
@@ -492,6 +609,12 @@ Create scrape job.
 
 List scrape runs.
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `league` | `string` | — | Filter by league code |
+| `status` | `string` | — | Filter by status: `pending`, `running`, `completed`, `error` |
+| `limit` | `int` | 50 | Max results (1-200) |
+
 ### `GET /scraper/runs/{runId}`
 
 Get run details.
@@ -506,7 +629,16 @@ Stream recent logs from a Docker container.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `lines` | `int` | 100 | Number of recent log lines to return |
+| `lines` | `int` | 1000 | Number of recent log lines to return (1-10,000) |
+
+### `POST /scraper/cache/clear`
+
+Clear cached scraper data for a league.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `league` | `string` | required | League code (e.g., NBA, NHL) |
+| `days` | `int` | 7 | Days of cache to clear (1-30) |
 
 ---
 
@@ -595,9 +727,19 @@ Get bulk generation job progress.
 
 Games missing play-by-play.
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `league` | `string` | — | Filter by league code |
+| `limit` | `int` | 100 | Max results (1-500) |
+
 ### `GET /conflicts`
 
 Unresolved game conflicts.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `league` | `string` | — | Filter by league code |
+| `limit` | `int` | 100 | Max results (1-500) |
 
 ---
 
@@ -678,6 +820,15 @@ List games with resolution issues.
 
 List social posts.
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `game_id` | `int` | — | Filter by game |
+| `team_id` | `string` | — | Filter by team abbreviation (e.g., "GSW") |
+| `start_date` | `datetime` | — | Filter by posted_at &ge; value (ISO 8601) |
+| `end_date` | `datetime` | — | Filter by posted_at &le; value (ISO 8601) |
+| `limit` | `int` | 100 | Max results (1-500) |
+| `offset` | `int` | 0 | Pagination offset |
+
 ### `GET /posts/game/{gameId}`
 
 Posts for a game.
@@ -698,6 +849,14 @@ Delete post.
 
 List social accounts.
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `league` | `string` | — | Filter by league code |
+| `team_id` | `int` | — | Filter by team ID |
+| `platform` | `string` | — | Filter by platform (e.g., "x") |
+| `limit` | `int` | 100 | Max results (1-500) |
+| `offset` | `int` | 0 | Pagination offset |
+
 ### `POST /accounts`
 
 Create/update account.
@@ -708,7 +867,7 @@ Create/update account.
 
 **Base path:** `/api/fairbet`
 
-Simple odds comparison tool displaying betting lines from multiple sportsbooks.
+Odds comparison tool with expected value (EV) analysis across multiple sportsbooks. Displays cross-book betting lines with fair odds computation using Pinnacle as the sharp reference.
 
 ### Supported Leagues
 
@@ -718,13 +877,22 @@ Simple odds comparison tool displaying betting lines from multiple sportsbooks.
 
 ### `GET /odds`
 
-Get bet-centric odds for cross-book comparison.
+Get bet-centric odds for cross-book comparison with EV annotations.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `league` | `string` | — | Filter by league code |
+| `league` | `string` | — | Filter by league code (NBA, NHL, NCAAB) |
+| `market_category` | `string` | — | Filter by market category (see [Market Categories](#market-categories)) |
+| `game_id` | `int` | — | Filter to a specific game |
+| `book` | `string` | — | Filter to a specific sportsbook |
+| `player_name` | `string` | — | Filter by player name (partial match, case-insensitive) |
+| `min_ev` | `float` | — | Minimum EV% threshold |
+| `has_fair` | `bool` | — | Filter to bets with (`true`) or without (`false`) fair odds |
+| `sort_by` | `string` | `ev` | Sort order: `ev`, `game_time`, `market` |
 | `limit` | `int` | 100 | Max results (1-500) |
 | `offset` | `int` | 0 | Pagination offset |
+
+> **Note:** Only includes pregame games (future start time). Excluded books (see [Reference Tables](#excluded-sportsbooks-20)) are filtered out automatically at query time.
 
 **Response:**
 ```json
@@ -735,25 +903,66 @@ Get bet-centric odds for cross-book comparison.
       "league_code": "NBA",
       "home_team": "Los Angeles Lakers",
       "away_team": "Boston Celtics",
-      "game_date": "2025-01-31T19:00:00Z",
+      "game_date": "2026-01-31T19:00:00Z",
       "market_key": "spreads",
       "selection_key": "team:los_angeles_lakers",
       "line_value": -3.5,
+      "market_category": "mainline",
+      "player_name": null,
+      "description": null,
+      "true_prob": 0.5432,
+      "reference_price": -118,
+      "opposite_reference_price": 108,
+      "ev_confidence_tier": "high",
+      "ev_disabled_reason": null,
+      "ev_method": "pinnacle_devig",
+      "has_fair": true,
       "books": [
-        {"book": "DraftKings", "price": -110, "observed_at": "2025-01-31T18:00:00Z"},
-        {"book": "FanDuel", "price": -108, "observed_at": "2025-01-31T18:00:00Z"}
+        {
+          "book": "DraftKings",
+          "price": -110,
+          "observed_at": "2026-01-31T18:00:00Z",
+          "ev_percent": 2.15,
+          "implied_prob": 0.5238,
+          "is_sharp": false,
+          "ev_method": "pinnacle_devig",
+          "ev_confidence_tier": "high"
+        },
+        {
+          "book": "Pinnacle",
+          "price": -118,
+          "observed_at": "2026-01-31T18:00:00Z",
+          "ev_percent": null,
+          "implied_prob": 0.5414,
+          "is_sharp": true,
+          "ev_method": "pinnacle_devig",
+          "ev_confidence_tier": "high"
+        }
       ]
     }
   ],
   "total": 245,
-  "books_available": ["DraftKings", "FanDuel", "BetMGM", "Caesars", "PointsBet"]
+  "books_available": ["BetMGM", "Caesars", "DraftKings", "FanDuel", "Pinnacle"],
+  "market_categories_available": ["mainline", "player_prop", "team_prop"],
+  "games_available": [
+    {
+      "game_id": 123,
+      "matchup": "Boston Celtics @ Los Angeles Lakers",
+      "game_date": "2026-01-31T19:00:00Z"
+    }
+  ]
 }
 ```
 
 **Field Notes:**
-- `market_key`: `"h2h"` (moneyline), `"spreads"`, or `"totals"`
-- `selection_key`: `{entity_type}:{entity_slug}` (e.g., `"team:los_angeles_lakers"`)
+- `market_key`: `"h2h"` (moneyline), `"spreads"`, `"totals"`, or any prop market key (e.g., `"player_points"`)
+- `selection_key`: `{entity_type}:{entity_slug}` (e.g., `"team:los_angeles_lakers"`, `"player:lebron_james"`)
 - `line_value`: Spread or total number; `0` for moneyline
+- `true_prob`: Fair probability derived from Pinnacle devig (null if EV computation disabled)
+- `ev_percent`: Expected value percentage vs fair odds (positive = +EV bet)
+- `is_sharp`: `true` for the Pinnacle reference line
+- `market_categories_available`: Dynamic list of categories with data for the current filter
+- `games_available`: Dropdown-friendly list of pregame games with odds data
 
 ---
 
@@ -1242,6 +1451,69 @@ interface TeamSummary {
   gamesCount: number;
   colorLightHex: string | null;   // Hex color for light backgrounds
   colorDarkHex: string | null;    // Hex color for dark backgrounds
+}
+```
+
+### FairbetOddsResponse
+
+```typescript
+interface FairbetOddsResponse {
+  bets: BetDefinition[];
+  total: number;
+  books_available: string[];
+  market_categories_available: string[];
+  games_available: GameDropdown[];
+}
+
+interface BetDefinition {
+  game_id: number;
+  league_code: string;
+  home_team: string;
+  away_team: string;
+  game_date: string;              // ISO 8601 UTC
+  market_key: string;
+  selection_key: string;
+  line_value: number;
+  market_category: string | null;
+  player_name: string | null;
+  description: string | null;
+  true_prob: number | null;       // Fair probability from Pinnacle devig
+  reference_price: number | null; // Pinnacle price for this side
+  opposite_reference_price: number | null;
+  books: BookOdds[];
+  ev_confidence_tier: string | null;  // "high", "medium", "low"
+  ev_disabled_reason: string | null;  // e.g. "no_strategy", reason EV is unavailable
+  ev_method: string | null;           // e.g. "pinnacle_devig"
+  has_fair: boolean;
+}
+
+interface BookOdds {
+  book: string;
+  price: number;
+  observed_at: string;            // ISO 8601
+  ev_percent: number | null;      // Expected value % (positive = +EV)
+  implied_prob: number | null;    // Implied probability from this book's price
+  is_sharp: boolean;              // true for Pinnacle reference line
+  ev_method: string | null;
+  ev_confidence_tier: string | null;
+}
+
+interface GameDropdown {
+  game_id: number;
+  matchup: string;                // "Away Team @ Home Team"
+  game_date: string | null;       // ISO 8601
+}
+```
+
+### GamePreviewScoreResponse
+
+```typescript
+interface GamePreviewScoreResponse {
+  gameId: string;
+  excitementScore: number;    // 0-100
+  qualityScore: number;       // 0-100
+  tags: string[];
+  nugget: string;
 }
 ```
 

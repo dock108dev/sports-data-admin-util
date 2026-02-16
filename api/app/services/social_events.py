@@ -189,7 +189,7 @@ def assign_social_phase_time_based(
     Returns:
         Phase string for timeline ordering (e.g., "q1", "first_half", "p2", "postgame")
     """
-    from .timeline_phases import (
+    from .tweet_phase_classifier import (
         classify_tweet_phase,
         map_tweet_to_segment,
     )
@@ -294,5 +294,3 @@ def build_social_events(
         )
 
     return events
-
-

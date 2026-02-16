@@ -38,12 +38,6 @@
 | [Timeline Assembly](TIMELINE_ASSEMBLY.md) | Assembly recipe: PBP + social + odds merged by phase |
 | [Timeline Validation](TIMELINE_VALIDATION.md) | Validation rules (C1-C6 critical, W1-W4 warnings) |
 
-## Server-Side Migration
-
-| Guide | Description |
-|-------|-------------|
-| [Server-Side Migration](SERVER_SIDE_MIGRATION.md) | Completed architecture reference: 6 phases of server-side computation |
-
 ## FairBet & EV
 
 | Guide | Description |
