@@ -737,6 +737,63 @@ class TestPairOppositeSides:
         assert pairs == []
         assert unpaired == []
 
+    def test_cross_zero_alt_spreads_paired_correctly(self):
+        """Four keys at abs=1.5 with cross-zero lines pair correctly.
+
+        SQL ORDER BY produces: (la, -1.5), (la, +1.5), (odu, -1.5), (odu, +1.5).
+        Before the fix, (la, -1.5) would pair with (odu, -1.5) — WRONG because
+        both are the "giving 1.5" side from different markets. The fix ensures
+        lines must sum to ~0 (opposite sides of same market).
+        """
+        # Simulate SQL ordering: team:la entries first, then team:odu, by line_value
+        keys = [
+            (1, "alternate_spreads", "team:louisiana", -1.5),
+            (1, "alternate_spreads", "team:louisiana", 1.5),
+            (1, "alternate_spreads", "team:old_dominion", -1.5),
+            (1, "alternate_spreads", "team:old_dominion", 1.5),
+        ]
+        pairs, unpaired = _pair_opposite_sides(keys)
+
+        assert len(pairs) == 2
+        assert len(unpaired) == 0
+
+        # Each pair must have line values that sum to zero (opposite sides)
+        for key_a, key_b in pairs:
+            assert abs(key_a[3] + key_b[3]) < 0.01, (
+                f"Pair lines should sum to 0: {key_a[3]} + {key_b[3]}"
+            )
+            assert key_a[2] != key_b[2], "Pair must have different selection_keys"
+
+    def test_same_sign_lines_not_paired(self):
+        """Two keys with same-sign non-zero lines are NOT paired even with different selections."""
+        keys = [
+            (1, "alternate_spreads", "team:la", -1.5),
+            (1, "alternate_spreads", "team:odu", -1.5),
+        ]
+        pairs, unpaired = _pair_opposite_sides(keys)
+        assert len(pairs) == 0
+        assert len(unpaired) == 2
+
+    def test_totals_same_line_paired(self):
+        """Totals: both sides have the same line_value and should pair."""
+        keys = [
+            (1, "totals", "total:over", 200.5),
+            (1, "totals", "total:under", 200.5),
+        ]
+        pairs, unpaired = _pair_opposite_sides(keys)
+        assert len(pairs) == 1
+        assert len(unpaired) == 0
+
+    def test_moneyline_zero_lines_paired(self):
+        """Moneyline: both sides have line_value=0 and should pair."""
+        keys = [
+            (1, "h2h", "team:a", 0),
+            (1, "h2h", "team:b", 0),
+        ]
+        pairs, unpaired = _pair_opposite_sides(keys)
+        assert len(pairs) == 1
+        assert len(unpaired) == 0
+
 
 class TestAltSpreadGrouping:
     """Tests for alt spread EV grouping — ensures distinct lines get independent EV."""
@@ -1477,6 +1534,80 @@ class TestBuildSharpReference:
 
         refs = _build_sharp_reference(bets_map, {"Pinnacle"})
         assert len(refs) == 0
+
+    def test_cross_zero_alt_spreads_produce_two_references(self):
+        """Four entries at abs=1.5 (cross-zero) produce two separate reference pairs."""
+        now = datetime.now(timezone.utc)
+        bets_map = self._make_bets_map([
+            # Market 1: ODU -1.5 / LA +1.5 (ODU favored)
+            (1, "alternate_spreads", "team:odu", -1.5, [
+                {"book": "Pinnacle", "price": -200, "observed_at": now},
+            ]),
+            (1, "alternate_spreads", "team:la", 1.5, [
+                {"book": "Pinnacle", "price": 170, "observed_at": now},
+            ]),
+            # Market 2: LA -1.5 / ODU +1.5 (LA favored — opposite direction)
+            (1, "alternate_spreads", "team:la", -1.5, [
+                {"book": "Pinnacle", "price": 300, "observed_at": now},
+            ]),
+            (1, "alternate_spreads", "team:odu", 1.5, [
+                {"book": "Pinnacle", "price": -400, "observed_at": now},
+            ]),
+        ])
+
+        refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+
+        assert (1, "spreads") in refs
+        ref_list = refs[(1, "spreads")]
+        # Should have 2 reference entries (one per valid market pair), not 1
+        assert len(ref_list) == 2
+
+        # Each reference should have probs summing to ~1.0
+        for ref in ref_list:
+            total_prob = sum(ref["probs"].values())
+            assert abs(total_prob - 1.0) < 0.01
+
+    def test_cross_zero_reference_does_not_mix_markets(self):
+        """Cross-zero references don't devig prices from different markets.
+
+        Without the fix, the dict would overwrite entries for the same selection_key,
+        mixing prices from different markets and producing wrong probabilities.
+        """
+        now = datetime.now(timezone.utc)
+        bets_map = self._make_bets_map([
+            # ODU -1.5 at -200 (ODU is moderate favorite)
+            (1, "alternate_spreads", "team:odu", -1.5, [
+                {"book": "Pinnacle", "price": -200, "observed_at": now},
+            ]),
+            # LA +1.5 at +170 (LA is moderate underdog — pairs with ODU -1.5)
+            (1, "alternate_spreads", "team:la", 1.5, [
+                {"book": "Pinnacle", "price": 170, "observed_at": now},
+            ]),
+            # LA -1.5 at +300 (LA needs to win by 2+ — big underdog)
+            (1, "alternate_spreads", "team:la", -1.5, [
+                {"book": "Pinnacle", "price": 300, "observed_at": now},
+            ]),
+            # ODU +1.5 at -400 (ODU just needs to not lose by 2+ — heavy favorite)
+            (1, "alternate_spreads", "team:odu", 1.5, [
+                {"book": "Pinnacle", "price": -400, "observed_at": now},
+            ]),
+        ])
+
+        refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+        ref_list = refs[(1, "spreads")]
+
+        for ref in ref_list:
+            # Verify the prices in each reference are from the same market
+            # (lines that sum to 0)
+            prices = ref["prices"]
+            sels = list(prices.keys())
+            price_a = prices[sels[0]]
+            price_b = prices[sels[1]]
+            # One should be negative (favorite) and one positive (underdog) —
+            # never both negative or both positive from the same market
+            assert (price_a > 0) != (price_b > 0) or (
+                abs(price_a) < 101 and abs(price_b) < 101
+            ), f"Prices {price_a}, {price_b} look like they're from different markets"
 
 
 class TestTryExtrapolatedEv:

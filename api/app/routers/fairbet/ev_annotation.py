@@ -64,8 +64,19 @@ def _pair_opposite_sides(
             if j in used:
                 continue
             key_b = bet_keys[j]
-            # selection_key is index 2 in the tuple (game_id, market_key, selection_key, line_value)
-            if key_a[2] != key_b[2]:
+            # selection_key is index 2, line_value is index 3
+            # in the tuple (game_id, market_key, selection_key, line_value)
+            if key_a[2] == key_b[2]:
+                continue  # Same selection_key — not opposite sides
+            # Line values must be compatible to be the same market:
+            # Spreads: sum to ~0 (e.g., -3.5 and +3.5)
+            # Totals/ML: equal non-negative (e.g., both 200.5 or both 0)
+            line_a, line_b = key_a[3], key_b[3]
+            lines_sum_to_zero = abs(line_a + line_b) < 0.01
+            lines_equal_nonneg = (
+                abs(line_a - line_b) < 0.01 and line_a >= 0 and line_b >= 0
+            )
+            if lines_sum_to_zero or lines_equal_nonneg:
                 pairs.append((key_a, key_b))
                 used.add(i)
                 used.add(j)
@@ -260,8 +271,8 @@ def _build_sharp_reference(
         mainline preference. Each entry has abs_line, is_mainline, probs, prices.
     """
     # Step 1: Collect sharp book entries grouped by (game_id, market_base, abs_line)
-    # Each group entry: (selection_key, sharp_price, market_key)
-    sharp_groups: dict[tuple[int, str, float], list[tuple[str, float, str]]] = {}
+    # Each group entry: (selection_key, sharp_price, market_key, signed_line_value)
+    sharp_groups: dict[tuple[int, str, float], list[tuple[str, float, str, float]]] = {}
 
     for key, bet in bets_map.items():
         game_id_k, market_key_k, selection_key_k, line_value_k = key
@@ -283,46 +294,61 @@ def _build_sharp_reference(
         group_key = (game_id_k, mbase, abs(line_value_k))
         if group_key not in sharp_groups:
             sharp_groups[group_key] = []
-        sharp_groups[group_key].append((selection_key_k, sharp_price, market_key_k))
+        sharp_groups[group_key].append((selection_key_k, sharp_price, market_key_k, line_value_k))
 
-    # Step 2: For each group with two sides, devig and store
+    # Step 2: For each group, find valid pairs (compatible line values) and devig
     refs: dict[tuple[int, str], list[dict[str, Any]]] = {}
 
     for (game_id, mbase, abs_line), entries in sharp_groups.items():
-        # Need exactly two different selection_keys
-        by_selection: dict[str, tuple[float, str]] = {}
-        for sel_key, price, mkey in entries:
-            if sel_key not in by_selection:
-                by_selection[sel_key] = (price, mkey)
+        # Pair entries with compatible line values using the same logic as
+        # _pair_opposite_sides: different selection_key AND lines sum to ~0 or equal
+        used: set[int] = set()
+        valid_pairs: list[tuple[int, int]] = []
+        for i in range(len(entries)):
+            if i in used:
+                continue
+            for j_idx in range(i + 1, len(entries)):
+                if j_idx in used:
+                    continue
+                sel_i, _, _, line_i = entries[i]
+                sel_j, _, _, line_j = entries[j_idx]
+                if sel_i == sel_j:
+                    continue
+                lines_sum_zero = abs(line_i + line_j) < 0.01
+                lines_eq_nonneg = (
+                    abs(line_i - line_j) < 0.01 and line_i >= 0 and line_j >= 0
+                )
+                if lines_sum_zero or lines_eq_nonneg:
+                    valid_pairs.append((i, j_idx))
+                    used.add(i)
+                    used.add(j_idx)
+                    break
 
-        if len(by_selection) != 2:
-            continue
+        for idx_a, idx_b in valid_pairs:
+            sel_a, price_a, mkey_a, _ = entries[idx_a]
+            sel_b, price_b, mkey_b, _ = entries[idx_b]
 
-        selections = list(by_selection.keys())
-        price_a, mkey_a = by_selection[selections[0]]
-        price_b, mkey_b = by_selection[selections[1]]
+            try:
+                implied_a = american_to_implied(price_a)
+                implied_b = american_to_implied(price_b)
+                true_probs = remove_vig([implied_a, implied_b])
+            except ValueError:
+                continue
 
-        try:
-            implied_a = american_to_implied(price_a)
-            implied_b = american_to_implied(price_b)
-            true_probs = remove_vig([implied_a, implied_b])
-        except ValueError:
-            continue
+            # Determine if this is a mainline market_key (not "alternate_*")
+            is_mainline = not mkey_a.lower().startswith("alternate")
 
-        # Determine if this is a mainline market_key (not "alternate_*")
-        is_mainline = not mkey_a.lower().startswith("alternate")
+            ref_entry: dict[str, Any] = {
+                "abs_line": abs_line,
+                "is_mainline": is_mainline,
+                "probs": {sel_a: true_probs[0], sel_b: true_probs[1]},
+                "prices": {sel_a: price_a, sel_b: price_b},
+            }
 
-        ref_entry: dict[str, Any] = {
-            "abs_line": abs_line,
-            "is_mainline": is_mainline,
-            "probs": {selections[0]: true_probs[0], selections[1]: true_probs[1]},
-            "prices": {selections[0]: price_a, selections[1]: price_b},
-        }
-
-        ref_key = (game_id, mbase)
-        if ref_key not in refs:
-            refs[ref_key] = []
-        refs[ref_key].append(ref_entry)
+            ref_key = (game_id, mbase)
+            if ref_key not in refs:
+                refs[ref_key] = []
+            refs[ref_key].append(ref_entry)
 
     # Step 3: Sort each list — mainline first, then by abs_line
     for ref_key in refs:
