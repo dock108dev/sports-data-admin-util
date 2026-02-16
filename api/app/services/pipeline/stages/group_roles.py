@@ -17,6 +17,12 @@ MIN_MOMENTUM_SWING = 8
 # Going from down 6+ to taking a lead is meaningful even if total swing is smaller
 MIN_DEFICIT_OVERCOME = 6
 
+# Close-game thresholds: in tight games, smaller swings are meaningful
+# A game is considered close if the max margin never exceeds this value
+CLOSE_GAME_MARGIN_THRESHOLD = 7
+CLOSE_GAME_MOMENTUM_SWING = 4
+CLOSE_GAME_DEFICIT_OVERCOME = 2
+
 
 def calculate_swing_metrics(block: NarrativeBlock) -> dict[str, int | bool]:
     """Calculate swing metrics for a block.
@@ -64,12 +70,10 @@ def assign_roles(blocks: list[NarrativeBlock]) -> None:
     1. First block -> SETUP
     2. Last block -> RESOLUTION
     3. Block with significant swing -> MOMENTUM_SHIFT (requires 8+ net swing OR 6+ deficit overcome)
+       In close games (max margin <= 7), thresholds are lowered (4+ swing or 2+ deficit)
     4. Block after momentum shift -> RESPONSE
     5. Second-to-last block -> DECISION_POINT (if not assigned)
     6. Remaining -> RESPONSE
-
-    In close back-and-forth games with no significant swings, middle blocks
-    are all RESPONSE - which narratively represents "trading buckets."
 
     Constraint: No role > 2 occurrences
     """
@@ -77,6 +81,19 @@ def assign_roles(blocks: list[NarrativeBlock]) -> None:
         return
 
     n = len(blocks)
+
+    # Detect close game: check max margin across all blocks
+    max_margin = 0
+    for block in blocks:
+        margin_before = abs(block.score_before[0] - block.score_before[1])
+        margin_after = abs(block.score_after[0] - block.score_after[1])
+        max_margin = max(max_margin, margin_before, margin_after)
+
+    is_close_game = max_margin <= CLOSE_GAME_MARGIN_THRESHOLD
+
+    # Use lower thresholds for close games where small swings are the story
+    swing_threshold = CLOSE_GAME_MOMENTUM_SWING if is_close_game else MIN_MOMENTUM_SWING
+    deficit_threshold = CLOSE_GAME_DEFICIT_OVERCOME if is_close_game else MIN_DEFICIT_OVERCOME
 
     # Reset all roles to None first - blocks may come with pre-assigned roles
     for block in blocks:
@@ -100,8 +117,8 @@ def assign_roles(blocks: list[NarrativeBlock]) -> None:
 
     # Find blocks with SIGNIFICANT momentum shifts
     # A true momentum shift requires either:
-    # - A large net swing (8+ points of ground gained)
-    # - OR overcoming a meaningful deficit (6+ points) to take the lead
+    # - A large net swing (8+ points, or 4+ in close games)
+    # - OR overcoming a meaningful deficit (6+ points, or 2+ in close games) to take the lead
     momentum_shift_candidates: list[tuple[int, int]] = []  # (index, score for sorting)
 
     for i, block in enumerate(blocks):
@@ -114,11 +131,11 @@ def assign_roles(blocks: list[NarrativeBlock]) -> None:
         qualifies = False
         score = 0
 
-        if metrics["net_swing"] >= MIN_MOMENTUM_SWING:
+        if metrics["net_swing"] >= swing_threshold:
             # Large swing regardless of lead change
             qualifies = True
             score = metrics["net_swing"]
-        elif metrics["has_lead_change"] and metrics["deficit_before"] >= MIN_DEFICIT_OVERCOME:
+        elif metrics["has_lead_change"] and metrics["deficit_before"] >= deficit_threshold:
             # Overcame meaningful deficit to take lead
             qualifies = True
             score = metrics["deficit_before"] + metrics["net_swing"]

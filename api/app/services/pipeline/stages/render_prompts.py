@@ -137,13 +137,26 @@ def build_game_flow_pass_prompt(
     away_team = game_context.get("away_team_name", "Away")
     league_code = game_context.get("sport", "NBA")
 
+    is_close_game, max_margin = _detect_close_game(blocks)
+
     prompt_parts = [
         GAME_FLOW_PASS_PROMPT,
         "",
         f"Game: {away_team} at {home_team}",
+    ]
+
+    if is_close_game:
+        prompt_parts.extend([
+            "",
+            f"NOTE: This was a close game (max margin: {max_margin} pts). Preserve the tight,",
+            "competitive tone. Do not overstate any leads. Ensure the final block captures the",
+            "tension of the close finish with specific detail — do not rush the ending.",
+        ])
+
+    prompt_parts.extend([
         "",
         "BLOCKS:",
-    ]
+    ])
 
     for block in blocks:
         block_idx = block["block_index"]
@@ -175,6 +188,23 @@ def build_game_flow_pass_prompt(
     return "\n".join(prompt_parts)
 
 
+def _detect_close_game(blocks: list[dict[str, Any]]) -> tuple[bool, int]:
+    """Detect if a game is close based on block score margins.
+
+    Returns:
+        Tuple of (is_close_game, max_margin_seen)
+    """
+    max_margin = 0
+    for block in blocks:
+        score_before = block.get("score_before", [0, 0])
+        score_after = block.get("score_after", [0, 0])
+        margin_before = abs(score_before[0] - score_before[1])
+        margin_after = abs(score_after[0] - score_after[1])
+        max_margin = max(max_margin, margin_before, margin_after)
+    # A game where no team ever led by more than 7 is a tight contest
+    return max_margin <= 7, max_margin
+
+
 def build_block_prompt(
     blocks: list[dict[str, Any]],
     game_context: dict[str, str],
@@ -199,6 +229,9 @@ def build_block_prompt(
         detect_overtime_info(block, league_code)["has_overtime"]
         for block in blocks
     )
+
+    # Detect close game for tone guidance
+    is_close_game, max_margin = _detect_close_game(blocks)
 
     # Build play lookup
     play_lookup: dict[int, dict[str, Any]] = {
@@ -260,6 +293,22 @@ def build_block_prompt(
         ", ".join(FORBIDDEN_WORDS),
         "",
     ]
+
+    # Add close-game-specific guidance
+    if is_close_game:
+        prompt_parts.extend([
+            f"CLOSE GAME CONTEXT (max margin: {max_margin} pts):",
+            "- This game was tight throughout — DO NOT overstate any lead or advantage",
+            "- Avoid phrases like 'take a lead', 'build an advantage', or 'pull away'",
+            "  when the margin is only 1-2 points",
+            "- Emphasize the back-and-forth nature: 'trading baskets', 'neither team could separate'",
+            "- For RESOLUTION: This close game deserves a detailed ending — describe the final",
+            "  sequence with tension and specificity, not a rushed summary. Capture what made",
+            "  the finish compelling: key shots, defensive stops, or free throws that sealed it.",
+            "- For DECISION_POINT: Highlight the specific plays or stretch that tipped the balance",
+            "  in a game where every possession mattered",
+            "",
+        ])
 
     # Add overtime-specific guidance if game went to OT
     if has_any_overtime:
