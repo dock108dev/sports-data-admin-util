@@ -6,6 +6,7 @@ All books are still ingested/persisted; exclusion is SQL-level at query time.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 
@@ -176,6 +177,42 @@ _STRATEGY_MAP: dict[tuple[str, str], EVStrategyConfig | None] = {
     ("NCAAB", "period"): None,
     ("NCAAB", "game_prop"): None,
 }
+
+
+# ---------------------------------------------------------------------------
+# Logit-space extrapolation constants
+# ---------------------------------------------------------------------------
+
+# Per-sport, per-market logit slope (logit shift per 0.5-point line change).
+# Operates in log-odds space so tails naturally compress.
+# Roughly calibrated: near 50%, a 1-half-point shift ≈ 1.5% prob (basketball).
+HALF_POINT_LOGIT_SLOPE: dict[str, dict[str, float]] = {
+    "NBA": {"spreads": 0.12, "totals": 0.10},
+    "NCAAB": {"spreads": 0.14, "totals": 0.12},
+    "NHL": {"spreads": 0.35, "totals": 0.30},
+}
+
+# Max number of half-points we'll extrapolate (beyond → too uncertain)
+MAX_EXTRAPOLATION_HALF_POINTS: dict[str, int] = {
+    "NBA": 20,    # 10 full points
+    "NCAAB": 20,  # 10 full points
+    "NHL": 6,     # 3 full goals
+}
+
+
+def extrapolation_confidence(n_half_points: float) -> str:
+    """Return confidence tier based on how far we're extrapolating.
+
+    Args:
+        n_half_points: Number of half-points from the reference line.
+
+    Returns:
+        "medium" for 1-2 half-points, "low" for 3+.
+    """
+    abs_hp = abs(n_half_points)
+    if abs_hp <= 2:
+        return "medium"
+    return "low"
 
 
 def get_strategy(league_code: str, market_category: str) -> EVStrategyConfig | None:
