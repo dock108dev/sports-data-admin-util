@@ -52,9 +52,7 @@ def american_to_implied(price: float) -> float:
     elif price <= -100:
         return abs(price) / (abs(price) + 100.0)
     else:
-        raise ValueError(
-            f"Invalid American odds: {price} (must be <= -100 or >= +100)"
-        )
+        raise ValueError(f"Invalid American odds: {price} (must be <= -100 or >= +100)")
 
 
 def implied_to_american(prob: float) -> float:
@@ -112,8 +110,7 @@ def calculate_ev(book_price: float, true_prob: float) -> float:
         decimal_odds = (100.0 / abs(book_price)) + 1.0
     else:
         raise ValueError(
-            f"Invalid American odds: {book_price}. "
-            "Must be >= +100 or <= -100."
+            f"Invalid American odds: {book_price}. Must be >= +100 or <= -100."
         )
 
     return (decimal_odds * true_prob - 1.0) * 100.0
@@ -208,14 +205,13 @@ def evaluate_ev_eligibility(
             )
 
     # 4. Minimum qualifying books per side (non-excluded)
-    qualifying_a = sum(
-        1 for b in side_a_books if b["book"] not in EXCLUDED_BOOKS
-    )
-    qualifying_b = sum(
-        1 for b in side_b_books if b["book"] not in EXCLUDED_BOOKS
-    )
+    qualifying_a = sum(1 for b in side_a_books if b["book"] not in EXCLUDED_BOOKS)
+    qualifying_b = sum(1 for b in side_b_books if b["book"] not in EXCLUDED_BOOKS)
 
-    if qualifying_a < config.min_qualifying_books or qualifying_b < config.min_qualifying_books:
+    if (
+        qualifying_a < config.min_qualifying_books
+        or qualifying_b < config.min_qualifying_books
+    ):
         return EligibilityResult(
             eligible=False,
             strategy_config=config,
@@ -242,6 +238,40 @@ def _median(sorted_values: list[float]) -> float:
     if n % 2 == 1:
         return sorted_values[mid]
     return (sorted_values[mid - 1] + sorted_values[mid]) / 2.0
+
+
+def _annotate_side(
+    books: list[dict],
+    sharp_books: set[str],
+    true_prob: float | None,
+) -> list[dict]:
+    """Annotate a list of book entries with implied_prob, ev_percent, is_sharp.
+
+    Entries with invalid American odds (between -100 and +100) are included
+    in the output but with implied_prob and ev_percent set to None.
+    """
+    annotated: list[dict] = []
+    for entry in books:
+        result = {**entry}
+        result["is_sharp"] = entry["book"] in sharp_books
+        try:
+            result["implied_prob"] = american_to_implied(entry["price"])
+            if true_prob is not None:
+                result["ev_percent"] = round(calculate_ev(entry["price"], true_prob), 2)
+                result["true_prob"] = round(true_prob, 4)
+            else:
+                result["ev_percent"] = None
+                result["true_prob"] = None
+        except ValueError:
+            logger.warning(
+                "invalid_book_price_skipped",
+                extra={"book": entry["book"], "price": entry["price"]},
+            )
+            result["implied_prob"] = None
+            result["ev_percent"] = None
+            result["true_prob"] = None
+        annotated.append(result)
+    return annotated
 
 
 def compute_ev_for_market(
@@ -283,39 +313,24 @@ def compute_ev_for_market(
     true_prob_b: float | None = None
 
     if sharp_a_price is not None and sharp_b_price is not None:
-        implied_a = american_to_implied(sharp_a_price)
-        implied_b = american_to_implied(sharp_b_price)
-        true_probs = remove_vig([implied_a, implied_b])
-        true_prob_a = true_probs[0]
-        true_prob_b = true_probs[1]
+        try:
+            implied_a = american_to_implied(sharp_a_price)
+            implied_b = american_to_implied(sharp_b_price)
+            true_probs = remove_vig([implied_a, implied_b])
+            true_prob_a = true_probs[0]
+            true_prob_b = true_probs[1]
+        except ValueError:
+            logger.warning(
+                "invalid_sharp_price_skipped",
+                extra={
+                    "sharp_a_price": sharp_a_price,
+                    "sharp_b_price": sharp_b_price,
+                },
+            )
 
-    # Annotate side A
-    annotated_a = []
-    for entry in side_a_books:
-        result = {**entry}
-        result["is_sharp"] = entry["book"] in sharp_books
-        result["implied_prob"] = american_to_implied(entry["price"])
-        if true_prob_a is not None:
-            result["ev_percent"] = round(calculate_ev(entry["price"], true_prob_a), 2)
-            result["true_prob"] = round(true_prob_a, 4)
-        else:
-            result["ev_percent"] = None
-            result["true_prob"] = None
-        annotated_a.append(result)
-
-    # Annotate side B
-    annotated_b = []
-    for entry in side_b_books:
-        result = {**entry}
-        result["is_sharp"] = entry["book"] in sharp_books
-        result["implied_prob"] = american_to_implied(entry["price"])
-        if true_prob_b is not None:
-            result["ev_percent"] = round(calculate_ev(entry["price"], true_prob_b), 2)
-            result["true_prob"] = round(true_prob_b, 4)
-        else:
-            result["ev_percent"] = None
-            result["true_prob"] = None
-        annotated_b.append(result)
+    # Annotate both sides (bad prices handled per-entry inside _annotate_side)
+    annotated_a = _annotate_side(side_a_books, sharp_books, true_prob_a)
+    annotated_b = _annotate_side(side_b_books, sharp_books, true_prob_b)
 
     # Sanity check: compare devigged fair odds against median book price
     fair_odds_suspect = False

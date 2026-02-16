@@ -202,8 +202,9 @@ class TestGetFairbetOddsEndpoint:
         - 'scalars_all': list for .scalars().all() call
         - 'all': list for .all() call
         """
+
         async def execute_side_effect(*args, **kwargs):
-            if not hasattr(execute_side_effect, 'call_count'):
+            if not hasattr(execute_side_effect, "call_count"):
                 execute_side_effect.call_count = 0
 
             idx = execute_side_effect.call_count
@@ -215,16 +216,16 @@ class TestGetFairbetOddsEndpoint:
             result_config = results_sequence[idx]
             mock_result = MagicMock()
 
-            if 'scalar' in result_config:
-                mock_result.scalar.return_value = result_config['scalar']
+            if "scalar" in result_config:
+                mock_result.scalar.return_value = result_config["scalar"]
 
-            if 'scalars_all' in result_config:
+            if "scalars_all" in result_config:
                 mock_scalars = MagicMock()
-                mock_scalars.all.return_value = result_config['scalars_all']
+                mock_scalars.all.return_value = result_config["scalars_all"]
                 mock_result.scalars.return_value = mock_scalars
 
-            if 'all' in result_config:
-                mock_result.all.return_value = result_config['all']
+            if "all" in result_config:
+                mock_result.all.return_value = result_config["all"]
 
             return mock_result
 
@@ -289,9 +290,12 @@ class TestGetFairbetOddsEndpoint:
     async def test_returns_empty_when_no_bets(self, mock_session):
         """Returns empty response when no bets exist."""
         # Mock count query returning 0
-        self._mock_execute_chain(mock_session, [
-            {'scalar': 0},  # Count query
-        ])
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 0},  # Count query
+            ],
+        )
 
         response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
@@ -315,13 +319,16 @@ class TestGetFairbetOddsEndpoint:
         mock_row2.player_name = None
         mock_row2.game = mock_odds_row.game
 
-        self._mock_execute_chain(mock_session, [
-            {'scalar': 1},  # Count query
-            {'scalars_all': [mock_odds_row, mock_row2]},  # Main data query
-            {'all': [("DraftKings",), ("FanDuel",)]},  # Books query
-            {'all': [("mainline",)]},  # Categories query
-            {'scalars_all': []},  # Games dropdown query
-        ])
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 1},  # Count query
+                {"scalars_all": [mock_odds_row, mock_row2]},  # Main data query
+                {"all": [("DraftKings",), ("FanDuel",)]},  # Books query
+                {"all": [("mainline",)]},  # Categories query
+                {"scalars_all": []},  # Games dropdown query
+            ],
+        )
 
         response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
@@ -349,13 +356,16 @@ class TestGetFairbetOddsEndpoint:
             row.game = mock_odds_row.game
             rows.append(row)
 
-        self._mock_execute_chain(mock_session, [
-            {'scalar': 1},  # Count query
-            {'scalars_all': rows},  # Main data query
-            {'all': [("BookA",), ("BookB",), ("BookC",)]},  # Books query
-            {'all': [("mainline",)]},  # Categories query
-            {'scalars_all': []},  # Games dropdown query
-        ])
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 1},  # Count query
+                {"scalars_all": rows},  # Main data query
+                {"all": [("BookA",), ("BookB",), ("BookC",)]},  # Books query
+                {"all": [("mainline",)]},  # Categories query
+                {"scalars_all": []},  # Games dropdown query
+            ],
+        )
 
         response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
@@ -368,38 +378,47 @@ class TestGetFairbetOddsEndpoint:
     @pytest.mark.asyncio
     async def test_pagination_limit_respected(self, mock_session):
         """Limit parameter is passed to database query."""
-        self._mock_execute_chain(mock_session, [
-            {'scalar': 0},  # Count query returns 0
-        ])
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 0},  # Count query returns 0
+            ],
+        )
 
         await get_fairbet_odds(**self._call_kwargs(mock_session, limit=50))
 
         # Verify execute was called (count query)
         # The helper tracks call_count
-        assert hasattr(mock_session.execute, 'call_count')
+        assert hasattr(mock_session.execute, "call_count")
 
     @pytest.mark.asyncio
     async def test_league_filter_applied(self, mock_session):
         """League filter is applied when specified."""
-        self._mock_execute_chain(mock_session, [
-            {'scalar': 0},  # Count query returns 0
-        ])
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 0},  # Count query returns 0
+            ],
+        )
 
         await get_fairbet_odds(**self._call_kwargs(mock_session, league="NBA"))
 
         # Verify execute was called with league filter
-        assert hasattr(mock_session.execute, 'call_count')
+        assert hasattr(mock_session.execute, "call_count")
 
     @pytest.mark.asyncio
     async def test_bet_definition_fields_populated(self, mock_session, mock_odds_row):
         """All BetDefinition fields are correctly populated."""
-        self._mock_execute_chain(mock_session, [
-            {'scalar': 1},  # Count query
-            {'scalars_all': [mock_odds_row]},  # Main data query
-            {'all': [("DraftKings",)]},  # Books query
-            {'all': [("mainline",)]},  # Categories query
-            {'scalars_all': []},  # Games dropdown query
-        ])
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 1},  # Count query
+                {"scalars_all": [mock_odds_row]},  # Main data query
+                {"all": [("DraftKings",)]},  # Books query
+                {"all": [("mainline",)]},  # Categories query
+                {"scalars_all": []},  # Games dropdown query
+            ],
+        )
 
         response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
@@ -468,7 +487,9 @@ class TestResponseStructure:
                         BookOdds(
                             book="DraftKings",
                             price=-110,
-                            observed_at=datetime(2025, 1, 15, 12, 0, tzinfo=timezone.utc),
+                            observed_at=datetime(
+                                2025, 1, 15, 12, 0, tzinfo=timezone.utc
+                            ),
                         )
                     ],
                 )
@@ -617,24 +638,28 @@ class TestAltSpreadGrouping:
         row.game = game
         return row
 
-    def _mock_execute_chain(self, session: AsyncMock, results_sequence: list[dict]) -> None:
+    def _mock_execute_chain(
+        self, session: AsyncMock, results_sequence: list[dict]
+    ) -> None:
         """Set up mock execute to return results in sequence."""
+
         async def execute_side_effect(*args, **kwargs):
-            if not hasattr(execute_side_effect, 'call_count'):
+            if not hasattr(execute_side_effect, "call_count"):
                 execute_side_effect.call_count = 0
             idx = min(execute_side_effect.call_count, len(results_sequence) - 1)
             execute_side_effect.call_count += 1
             result_config = results_sequence[idx]
             mock_result = MagicMock()
-            if 'scalar' in result_config:
-                mock_result.scalar.return_value = result_config['scalar']
-            if 'scalars_all' in result_config:
+            if "scalar" in result_config:
+                mock_result.scalar.return_value = result_config["scalar"]
+            if "scalars_all" in result_config:
                 mock_scalars = MagicMock()
-                mock_scalars.all.return_value = result_config['scalars_all']
+                mock_scalars.all.return_value = result_config["scalars_all"]
                 mock_result.scalars.return_value = mock_scalars
-            if 'all' in result_config:
-                mock_result.all.return_value = result_config['all']
+            if "all" in result_config:
+                mock_result.all.return_value = result_config["all"]
             return mock_result
+
         session.execute = execute_side_effect
 
     def _call_kwargs(self, session: AsyncMock, **overrides: Any) -> dict:
@@ -660,24 +685,43 @@ class TestAltSpreadGrouping:
         """Two alt spread lines (-1.5/+1.5 and -2.5/+2.5) get independent EV."""
         rows = [
             # Line pair 1: -1.5 / +1.5
-            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -1.5, "Pinnacle", -120),
-            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -1.5, "DraftKings", -115),
-            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 1.5, "Pinnacle", 105),
-            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 1.5, "DraftKings", 100),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -1.5, "Pinnacle", -120
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -1.5, "DraftKings", -115
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 1.5, "Pinnacle", 105
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 1.5, "DraftKings", 100
+            ),
             # Line pair 2: -2.5 / +2.5
-            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -2.5, "Pinnacle", -145),
-            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -2.5, "DraftKings", -140),
-            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 2.5, "Pinnacle", 125),
-            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 2.5, "DraftKings", 120),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -2.5, "Pinnacle", -145
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -2.5, "DraftKings", -140
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 2.5, "Pinnacle", 125
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 2.5, "DraftKings", 120
+            ),
         ]
 
-        self._mock_execute_chain(mock_session, [
-            {'scalar': 4},
-            {'scalars_all': rows},
-            {'all': [("Pinnacle",), ("DraftKings",)]},
-            {'all': [("alternate",)]},
-            {'scalars_all': []},
-        ])
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 4},
+                {"scalars_all": rows},
+                {"all": [("Pinnacle",), ("DraftKings",)]},
+                {"all": [("alternate",)]},
+                {"scalars_all": []},
+            ],
+        )
 
         response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
@@ -704,19 +748,30 @@ class TestAltSpreadGrouping:
         # Both SHU -1.5 and SHU -2.5 have abs values 1.5 and 2.5.
         # Without the fix, 4 entries with abs=1.5 would mis-group.
         rows = [
-            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -1.5, "Pinnacle", -120),
-            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 1.5, "Pinnacle", 105),
-            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -2.5, "Pinnacle", -145),
-            self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 2.5, "Pinnacle", 125),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -1.5, "Pinnacle", -120
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 1.5, "Pinnacle", 105
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -2.5, "Pinnacle", -145
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 2.5, "Pinnacle", 125
+            ),
         ]
 
-        self._mock_execute_chain(mock_session, [
-            {'scalar': 4},
-            {'scalars_all': rows},
-            {'all': [("Pinnacle",)]},
-            {'all': [("alternate",)]},
-            {'scalars_all': []},
-        ])
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 4},
+                {"scalars_all": rows},
+                {"all": [("Pinnacle",)]},
+                {"all": [("alternate",)]},
+                {"scalars_all": []},
+            ],
+        )
 
         response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
@@ -730,17 +785,24 @@ class TestAltSpreadGrouping:
         """Two entries with the same selection_key are NOT paired even if abs(line) matches."""
         # Two SHU sides at -1.5 and -1.5 (duplicate) — no opposite side available
         rows = [
-            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", -1.5, "Pinnacle", -120),
-            self._make_odds_row(mock_game, 1, "spreads", "team:seton_hall", 1.5, "DraftKings", -115),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -1.5, "Pinnacle", -120
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", 1.5, "DraftKings", -115
+            ),
         ]
 
-        self._mock_execute_chain(mock_session, [
-            {'scalar': 2},
-            {'scalars_all': rows},
-            {'all': [("Pinnacle",), ("DraftKings",)]},
-            {'all': [("alternate",)]},
-            {'scalars_all': []},
-        ])
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 2},
+                {"scalars_all": rows},
+                {"all": [("Pinnacle",), ("DraftKings",)]},
+                {"all": [("alternate",)]},
+                {"scalars_all": []},
+            ],
+        )
 
         response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
@@ -798,23 +860,26 @@ class TestFairOddsOutlierHandling:
         row.game = game
         return row
 
-    def _mock_execute_chain(self, session: AsyncMock, results_sequence: list[dict]) -> None:
+    def _mock_execute_chain(
+        self, session: AsyncMock, results_sequence: list[dict]
+    ) -> None:
         async def execute_side_effect(*args, **kwargs):
-            if not hasattr(execute_side_effect, 'call_count'):
+            if not hasattr(execute_side_effect, "call_count"):
                 execute_side_effect.call_count = 0
             idx = min(execute_side_effect.call_count, len(results_sequence) - 1)
             execute_side_effect.call_count += 1
             result_config = results_sequence[idx]
             mock_result = MagicMock()
-            if 'scalar' in result_config:
-                mock_result.scalar.return_value = result_config['scalar']
-            if 'scalars_all' in result_config:
+            if "scalar" in result_config:
+                mock_result.scalar.return_value = result_config["scalar"]
+            if "scalars_all" in result_config:
                 mock_scalars = MagicMock()
-                mock_scalars.all.return_value = result_config['scalars_all']
+                mock_scalars.all.return_value = result_config["scalars_all"]
                 mock_result.scalars.return_value = mock_scalars
-            if 'all' in result_config:
-                mock_result.all.return_value = result_config['all']
+            if "all" in result_config:
+                mock_result.all.return_value = result_config["all"]
             return mock_result
+
         session.execute = execute_side_effect
 
     def _call_kwargs(self, session: AsyncMock, **overrides: Any) -> dict:
@@ -840,22 +905,37 @@ class TestFairOddsOutlierHandling:
         # Pinnacle has extremely lopsided line; other books don't agree
         rows = [
             # Side A: over — Pinnacle at -1500, consensus near -400
-            self._make_odds_row(mock_game, 1, "player_points", "total:over", 20.5, "Pinnacle", -1500),
-            self._make_odds_row(mock_game, 1, "player_points", "total:over", 20.5, "DraftKings", -400),
-            self._make_odds_row(mock_game, 1, "player_points", "total:over", 20.5, "FanDuel", -400),
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:over", 20.5, "Pinnacle", -1500
+            ),
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:over", 20.5, "DraftKings", -400
+            ),
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:over", 20.5, "FanDuel", -400
+            ),
             # Side B: under — Pinnacle at +800, consensus near +350
-            self._make_odds_row(mock_game, 1, "player_points", "total:under", 20.5, "Pinnacle", 800),
-            self._make_odds_row(mock_game, 1, "player_points", "total:under", 20.5, "DraftKings", 350),
-            self._make_odds_row(mock_game, 1, "player_points", "total:under", 20.5, "FanDuel", 350),
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:under", 20.5, "Pinnacle", 800
+            ),
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:under", 20.5, "DraftKings", 350
+            ),
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:under", 20.5, "FanDuel", 350
+            ),
         ]
 
-        self._mock_execute_chain(mock_session, [
-            {'scalar': 2},
-            {'scalars_all': rows},
-            {'all': [("Pinnacle",), ("DraftKings",), ("FanDuel",)]},
-            {'all': [("player_prop",)]},
-            {'scalars_all': []},
-        ])
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 2},
+                {"scalars_all": rows},
+                {"all": [("Pinnacle",), ("DraftKings",), ("FanDuel",)]},
+                {"all": [("player_prop",)]},
+                {"scalars_all": []},
+            ],
+        )
 
         response = await get_fairbet_odds(**self._call_kwargs(mock_session))
 
@@ -871,3 +951,203 @@ class TestFairOddsOutlierHandling:
             # But method and tier are still present
             assert bet.ev_method == "pinnacle_devig"
             assert bet.ev_confidence_tier == "low"
+
+    @pytest.mark.asyncio
+    async def test_fair_odds_outlier_marks_sharp(self, mock_session, mock_game):
+        """When fair_odds_outlier suppresses EV, Pinnacle still gets is_sharp=True."""
+        rows = [
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:over", 20.5, "Pinnacle", -1500
+            ),
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:over", 20.5, "DraftKings", -400
+            ),
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:over", 20.5, "FanDuel", -400
+            ),
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:under", 20.5, "Pinnacle", 800
+            ),
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:under", 20.5, "DraftKings", 350
+            ),
+            self._make_odds_row(
+                mock_game, 1, "player_points", "total:under", 20.5, "FanDuel", 350
+            ),
+        ]
+
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 2},
+                {"scalars_all": rows},
+                {"all": [("Pinnacle",), ("DraftKings",), ("FanDuel",)]},
+                {"all": [("player_prop",)]},
+                {"scalars_all": []},
+            ],
+        )
+
+        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
+
+        for bet in response.bets:
+            pinnacle_books = [b for b in bet.books if b.book == "Pinnacle"]
+            assert len(pinnacle_books) == 1
+            assert pinnacle_books[0].is_sharp is True
+            # Non-sharp books should have is_sharp=False
+            for b in bet.books:
+                if b.book != "Pinnacle":
+                    assert b.is_sharp is False
+
+
+class TestSharpBooksRetainedWhenEvDisabled:
+    """Tests that is_sharp is set correctly when EV is disabled or unpaired."""
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def mock_game(self):
+        game = MagicMock()
+        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.status = "scheduled"
+        league = MagicMock()
+        league.code = "NBA"
+        game.league = league
+        home_team = MagicMock()
+        home_team.name = "Lakers"
+        game.home_team = home_team
+        away_team = MagicMock()
+        away_team.name = "Celtics"
+        game.away_team = away_team
+        return game
+
+    def _make_odds_row(
+        self,
+        game,
+        game_id,
+        market_key,
+        selection_key,
+        line_value,
+        book,
+        price,
+        market_category="mainline",
+    ):
+        row = MagicMock()
+        row.game_id = game_id
+        row.market_key = market_key
+        row.selection_key = selection_key
+        row.line_value = line_value
+        row.book = book
+        row.price = price
+        row.observed_at = datetime.now(timezone.utc)
+        row.market_category = market_category
+        row.player_name = None
+        row.game = game
+        return row
+
+    def _mock_execute_chain(self, session, results_sequence):
+        async def execute_side_effect(*args, **kwargs):
+            if not hasattr(execute_side_effect, "call_count"):
+                execute_side_effect.call_count = 0
+            idx = min(execute_side_effect.call_count, len(results_sequence) - 1)
+            execute_side_effect.call_count += 1
+            result_config = results_sequence[idx]
+            mock_result = MagicMock()
+            if "scalar" in result_config:
+                mock_result.scalar.return_value = result_config["scalar"]
+            if "scalars_all" in result_config:
+                mock_scalars = MagicMock()
+                mock_scalars.all.return_value = result_config["scalars_all"]
+                mock_result.scalars.return_value = mock_scalars
+            if "all" in result_config:
+                mock_result.all.return_value = result_config["all"]
+            return mock_result
+
+        session.execute = execute_side_effect
+
+    def _call_kwargs(self, session, **overrides):
+        defaults = {
+            "session": session,
+            "league": None,
+            "market_category": None,
+            "game_id": None,
+            "book": None,
+            "player_name": None,
+            "min_ev": None,
+            "has_fair": None,
+            "sort_by": "ev",
+            "limit": 100,
+            "offset": 0,
+        }
+        defaults.update(overrides)
+        return defaults
+
+    @pytest.mark.asyncio
+    async def test_unpaired_bet_marks_sharp(self, mock_session, mock_game):
+        """Single-sided bet (no pair) still marks Pinnacle as is_sharp."""
+        rows = [
+            self._make_odds_row(
+                mock_game, 1, "h2h", "team:lakers", 0, "Pinnacle", -150
+            ),
+            self._make_odds_row(
+                mock_game, 1, "h2h", "team:lakers", 0, "DraftKings", -145
+            ),
+        ]
+
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 1},
+                {"scalars_all": rows},
+                {"all": [("Pinnacle",), ("DraftKings",)]},
+                {"all": [("mainline",)]},
+                {"scalars_all": []},
+            ],
+        )
+
+        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
+
+        bet = response.bets[0]
+        assert bet.ev_disabled_reason == "no_pair"
+        pinnacle = next(b for b in bet.books if b.book == "Pinnacle")
+        assert pinnacle.is_sharp is True
+
+    @pytest.mark.asyncio
+    async def test_sharp_retained_with_book_filter_when_ev_disabled(
+        self, mock_session, mock_game
+    ):
+        """When filtering by book=DraftKings, Pinnacle is retained via is_sharp."""
+        rows = [
+            self._make_odds_row(
+                mock_game, 1, "h2h", "team:lakers", 0, "Pinnacle", -150
+            ),
+            self._make_odds_row(
+                mock_game, 1, "h2h", "team:lakers", 0, "DraftKings", -145
+            ),
+            self._make_odds_row(mock_game, 1, "h2h", "team:lakers", 0, "FanDuel", -148),
+        ]
+
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 1},
+                {"scalars_all": rows},
+                {"all": [("Pinnacle",), ("DraftKings",), ("FanDuel",)]},
+                {"all": [("mainline",)]},
+                {"scalars_all": []},
+            ],
+        )
+
+        response = await get_fairbet_odds(
+            **self._call_kwargs(mock_session, book="DraftKings")
+        )
+
+        bet = response.bets[0]
+        book_names = [b.book for b in bet.books]
+        # DraftKings kept by filter, Pinnacle kept by is_sharp
+        assert "DraftKings" in book_names
+        assert "Pinnacle" in book_names
+        # FanDuel filtered out
+        assert "FanDuel" not in book_names

@@ -17,7 +17,7 @@ from ...db import AsyncSession, get_db
 from ...db.sports import SportsGame
 from ...db.odds import FairbetGameOddsWork
 from ...services.ev import compute_ev_for_market, evaluate_ev_eligibility
-from ...services.ev_config import EXCLUDED_BOOKS
+from ...services.ev_config import EXCLUDED_BOOKS, get_strategy
 
 router = APIRouter()
 
@@ -128,6 +128,7 @@ def _annotate_pair_ev(
 
         if ev_result.fair_odds_suspect:
             # Devig produced implausible fair odds — skip EV annotation
+            sharp = set(eligibility.strategy_config.eligible_sharp_books)
             for key in (key_a, key_b):
                 bets_map[key]["ev_disabled_reason"] = "fair_odds_outlier"
                 bets_map[key]["ev_confidence_tier"] = ev_result.confidence_tier
@@ -137,6 +138,7 @@ def _annotate_pair_ev(
                         book=b["book"],
                         price=b["price"],
                         observed_at=b["observed_at"],
+                        is_sharp=b["book"] in sharp,
                     )
                     for b in bets_map[key]["books"]
                 ]
@@ -200,6 +202,11 @@ def _annotate_pair_ev(
         bets_map[key_b]["has_fair"] = True
     else:
         # Not eligible: attach disabled metadata, convert books to BookOdds
+        sharp = (
+            set(eligibility.strategy_config.eligible_sharp_books)
+            if eligibility.strategy_config
+            else set()
+        )
         for key in (key_a, key_b):
             bets_map[key]["ev_disabled_reason"] = eligibility.disabled_reason
             bets_map[key]["ev_confidence_tier"] = eligibility.confidence_tier
@@ -209,6 +216,7 @@ def _annotate_pair_ev(
                     book=b["book"],
                     price=b["price"],
                     observed_at=b["observed_at"],
+                    is_sharp=b["book"] in sharp,
                 )
                 for b in bets_map[key]["books"]
             ]
@@ -480,12 +488,18 @@ async def get_fairbet_odds(
             _annotate_pair_ev(key_a, key_b, bets_map)
 
         for key in unpaired:
+            # Look up sharp books so is_sharp is set even without EV
+            sample_league = bets_map[key].get("league_code", "UNKNOWN")
+            sample_cat = bets_map[key].get("market_category", "mainline")
+            cfg = get_strategy(sample_league, sample_cat)
+            sharp = set(cfg.eligible_sharp_books) if cfg else set()
             bets_map[key]["ev_disabled_reason"] = "no_pair"
             bets_map[key]["books"] = [
                 BookOdds(
                     book=b["book"],
                     price=b["price"],
                     observed_at=b["observed_at"],
+                    is_sharp=b["book"] in sharp,
                 )
                 for b in bets_map[key]["books"]
             ]

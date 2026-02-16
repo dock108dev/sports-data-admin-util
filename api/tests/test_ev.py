@@ -14,7 +14,7 @@ from app.services.ev import (
     implied_to_american,
     remove_vig,
 )
-from app.services.ev_config import ConfidenceTier, EVStrategyConfig, get_strategy
+from app.services.ev_config import EVStrategyConfig, get_strategy
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +40,7 @@ def _make_books(
 # ---------------------------------------------------------------------------
 # Math functions — byte-for-byte regression tests
 # ---------------------------------------------------------------------------
+
 
 class TestAmericanToImplied:
     """Regression tests for american_to_implied()."""
@@ -68,10 +69,14 @@ class TestAmericanToImplied:
         result = american_to_implied(300)
         assert abs(result - 0.25) < 0.0001
 
-    def test_edge_case_midrange(self) -> None:
-        """Prices between -100 and +100 return 0.5."""
-        assert american_to_implied(50) == 0.5
-        assert american_to_implied(-50) == 0.5
+    def test_invalid_midrange_raises(self) -> None:
+        """Prices between -100 and +100 are invalid American odds."""
+        with pytest.raises(ValueError, match="Invalid American odds"):
+            american_to_implied(50)
+        with pytest.raises(ValueError, match="Invalid American odds"):
+            american_to_implied(-50)
+        with pytest.raises(ValueError, match="Invalid American odds"):
+            american_to_implied(0)
 
 
 class TestRemoveVig:
@@ -121,10 +126,18 @@ class TestCalculateEV:
         # decimal_odds = 2.0, ev = (2.0 * 0.5 - 1) * 100 = 0%
         assert abs(ev) < 0.01
 
+    def test_invalid_midrange_raises(self) -> None:
+        """Prices between -100 and +100 are invalid American odds."""
+        with pytest.raises(ValueError, match="Invalid American odds"):
+            calculate_ev(50, 0.5)
+        with pytest.raises(ValueError, match="Invalid American odds"):
+            calculate_ev(0, 0.5)
+
 
 # ---------------------------------------------------------------------------
 # _find_sharp_entry
 # ---------------------------------------------------------------------------
+
 
 class TestFindSharpEntry:
     """Tests for _find_sharp_entry() helper."""
@@ -152,13 +165,15 @@ class TestFindSharpEntry:
 # evaluate_ev_eligibility — all 4 disabled reasons + eligible
 # ---------------------------------------------------------------------------
 
+
 class TestEvaluateEVEligibility:
     """Tests for the eligibility gate."""
 
     def test_no_strategy_for_period(self) -> None:
         """period markets have no strategy → disabled_reason='no_strategy'."""
         result = evaluate_ev_eligibility(
-            "NBA", "period",
+            "NBA",
+            "period",
             _make_books({"Pinnacle": -110, "DraftKings": -108, "FanDuel": -112}),
             _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
             now=NOW,
@@ -170,7 +185,8 @@ class TestEvaluateEVEligibility:
 
     def test_no_strategy_for_game_prop(self) -> None:
         result = evaluate_ev_eligibility(
-            "NBA", "game_prop",
+            "NBA",
+            "game_prop",
             _make_books({"Pinnacle": -110}),
             _make_books({"Pinnacle": -110}),
             now=NOW,
@@ -181,7 +197,8 @@ class TestEvaluateEVEligibility:
     def test_reference_missing_no_pinnacle(self) -> None:
         """No Pinnacle on side A → disabled_reason='reference_missing'."""
         result = evaluate_ev_eligibility(
-            "NBA", "mainline",
+            "NBA",
+            "mainline",
             _make_books({"DraftKings": -110, "FanDuel": -108, "BetMGM": -112}),
             _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
             now=NOW,
@@ -193,10 +210,16 @@ class TestEvaluateEVEligibility:
 
     def test_reference_stale(self) -> None:
         """Pinnacle observed_at older than staleness limit → 'reference_stale'."""
-        stale_books_a = _make_books({"Pinnacle": -110, "DraftKings": -108, "FanDuel": -112}, observed_at=STALE_1H)
-        fresh_books_b = _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}, observed_at=FRESH)
+        stale_books_a = _make_books(
+            {"Pinnacle": -110, "DraftKings": -108, "FanDuel": -112},
+            observed_at=STALE_1H,
+        )
+        fresh_books_b = _make_books(
+            {"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}, observed_at=FRESH
+        )
         result = evaluate_ev_eligibility(
-            "NBA", "mainline",
+            "NBA",
+            "mainline",
             stale_books_a,
             fresh_books_b,
             now=NOW,
@@ -207,7 +230,8 @@ class TestEvaluateEVEligibility:
     def test_insufficient_books(self) -> None:
         """Fewer than 3 qualifying books per side → 'insufficient_books'."""
         result = evaluate_ev_eligibility(
-            "NBA", "mainline",
+            "NBA",
+            "mainline",
             _make_books({"Pinnacle": -110, "DraftKings": -108}),  # Only 2 books
             _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
             now=NOW,
@@ -218,7 +242,8 @@ class TestEvaluateEVEligibility:
     def test_eligible_nba_mainline(self) -> None:
         """Full eligible NBA mainline market."""
         result = evaluate_ev_eligibility(
-            "NBA", "mainline",
+            "NBA",
+            "mainline",
             _make_books({"Pinnacle": -110, "DraftKings": -108, "FanDuel": -112}),
             _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
             now=NOW,
@@ -232,7 +257,8 @@ class TestEvaluateEVEligibility:
     def test_eligible_ncaab_player_prop(self) -> None:
         """Eligible NCAAB player prop → LOW confidence."""
         result = evaluate_ev_eligibility(
-            "NCAAB", "player_prop",
+            "NCAAB",
+            "player_prop",
             _make_books({"Pinnacle": -110, "DraftKings": -108, "FanDuel": -112}),
             _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
             now=NOW,
@@ -243,8 +269,11 @@ class TestEvaluateEVEligibility:
     def test_excluded_books_dont_count(self) -> None:
         """Excluded books should not count toward min_qualifying_books."""
         result = evaluate_ev_eligibility(
-            "NBA", "mainline",
-            _make_books({"Pinnacle": -110, "DraftKings": -108, "Bovada": -112}),  # Bovada is excluded
+            "NBA",
+            "mainline",
+            _make_books(
+                {"Pinnacle": -110, "DraftKings": -108, "Bovada": -112}
+            ),  # Bovada is excluded
             _make_books({"Pinnacle": -110, "DraftKings": -112, "FanDuel": -108}),
             now=NOW,
         )
@@ -256,6 +285,7 @@ class TestEvaluateEVEligibility:
 # compute_ev_for_market — new return type
 # ---------------------------------------------------------------------------
 
+
 class TestComputeEVForMarket:
     """Tests for compute_ev_for_market() with EVComputeResult."""
 
@@ -265,7 +295,9 @@ class TestComputeEVForMarket:
         assert config is not None
         return config
 
-    def test_returns_ev_compute_result(self, nba_mainline_config: EVStrategyConfig) -> None:
+    def test_returns_ev_compute_result(
+        self, nba_mainline_config: EVStrategyConfig
+    ) -> None:
         result = compute_ev_for_market(
             _make_books({"Pinnacle": -110, "DraftKings": -105}),
             _make_books({"Pinnacle": -110, "DraftKings": -115}),
@@ -285,7 +317,9 @@ class TestComputeEVForMarket:
         assert result.true_prob_b is not None
         assert abs(result.true_prob_a + result.true_prob_b - 1.0) < 0.0001
 
-    def test_reference_prices_captured(self, nba_mainline_config: EVStrategyConfig) -> None:
+    def test_reference_prices_captured(
+        self, nba_mainline_config: EVStrategyConfig
+    ) -> None:
         result = compute_ev_for_market(
             _make_books({"Pinnacle": -110, "DraftKings": -105}),
             _make_books({"Pinnacle": -110, "DraftKings": -115}),
@@ -294,7 +328,9 @@ class TestComputeEVForMarket:
         assert result.reference_price_a == -110
         assert result.reference_price_b == -110
 
-    def test_annotated_books_have_ev(self, nba_mainline_config: EVStrategyConfig) -> None:
+    def test_annotated_books_have_ev(
+        self, nba_mainline_config: EVStrategyConfig
+    ) -> None:
         result = compute_ev_for_market(
             _make_books({"Pinnacle": -110, "DraftKings": -105}),
             _make_books({"Pinnacle": -110, "DraftKings": -115}),
@@ -342,10 +378,49 @@ class TestComputeEVForMarket:
         assert abs(result.true_prob_a - 0.5) < 0.001
         assert abs(result.true_prob_b - 0.5) < 0.001
 
+    def test_invalid_book_price_skipped_gracefully(
+        self, nba_mainline_config: EVStrategyConfig
+    ) -> None:
+        """A single book with an invalid price (between -100 and +100) does not crash.
+
+        The bad entry should get implied_prob=None and ev_percent=None while
+        the valid entries are annotated normally.
+        """
+        side_a = _make_books({"Pinnacle": -110, "DraftKings": -105, "BadBook": 50})
+        side_b = _make_books({"Pinnacle": -110, "DraftKings": -115})
+        result = compute_ev_for_market(side_a, side_b, nba_mainline_config)
+
+        bad = next(b for b in result.annotated_a if b["book"] == "BadBook")
+        assert bad["implied_prob"] is None
+        assert bad["ev_percent"] is None
+
+        good = next(b for b in result.annotated_a if b["book"] == "DraftKings")
+        assert good["implied_prob"] is not None
+        assert good["ev_percent"] is not None
+
+    def test_invalid_sharp_price_skips_devig(
+        self, nba_mainline_config: EVStrategyConfig
+    ) -> None:
+        """If the sharp book itself has an invalid price, devig is skipped.
+
+        No true_prob can be computed, so ev_percent is None for all entries,
+        but the function does not raise.
+        """
+        side_a = _make_books({"Pinnacle": 50, "DraftKings": -105})
+        side_b = _make_books({"Pinnacle": -110, "DraftKings": -115})
+        result = compute_ev_for_market(side_a, side_b, nba_mainline_config)
+
+        assert result.true_prob_a is None
+        assert result.true_prob_b is None
+
+        for b in result.annotated_a + result.annotated_b:
+            assert b["ev_percent"] is None
+
 
 # ---------------------------------------------------------------------------
 # implied_to_american — inverse of american_to_implied
 # ---------------------------------------------------------------------------
+
 
 class TestImpliedToAmerican:
     """Unit tests for the implied_to_american() helper."""
@@ -385,6 +460,7 @@ class TestImpliedToAmerican:
 # Fair odds sanity check — compute_ev_for_market() with divergence detection
 # ---------------------------------------------------------------------------
 
+
 class TestFairOddsSanityCheck:
     """Tests for the fair odds divergence check in compute_ev_for_market()."""
 
@@ -400,7 +476,9 @@ class TestFairOddsSanityCheck:
         assert config is not None
         return config
 
-    def test_normal_market_not_flagged(self, nba_mainline_config: EVStrategyConfig) -> None:
+    def test_normal_market_not_flagged(
+        self, nba_mainline_config: EVStrategyConfig
+    ) -> None:
         """Pinnacle -110/-110, consensus near -110 → not flagged."""
         result = compute_ev_for_market(
             _make_books({"Pinnacle": -110, "DraftKings": -108, "FanDuel": -112}),
@@ -409,7 +487,9 @@ class TestFairOddsSanityCheck:
         )
         assert result.fair_odds_suspect is False
 
-    def test_divergent_longshot_flagged(self, player_prop_config: EVStrategyConfig) -> None:
+    def test_divergent_longshot_flagged(
+        self, player_prop_config: EVStrategyConfig
+    ) -> None:
         """Pinnacle -1500/+800, consensus near -400/+350 → flagged.
 
         Pinnacle's extremely lopsided line devigs to a fair price far from consensus.
@@ -421,7 +501,9 @@ class TestFairOddsSanityCheck:
         )
         assert result.fair_odds_suspect is True
 
-    def test_threshold_boundary_not_flagged(self, nba_mainline_config: EVStrategyConfig) -> None:
+    def test_threshold_boundary_not_flagged(
+        self, nba_mainline_config: EVStrategyConfig
+    ) -> None:
         """Fair odds exactly at the threshold boundary → not flagged.
 
         NBA mainline threshold is 150. Build a scenario where the divergence
@@ -435,7 +517,9 @@ class TestFairOddsSanityCheck:
         )
         assert result.fair_odds_suspect is False
 
-    def test_suspect_result_still_has_annotations(self, player_prop_config: EVStrategyConfig) -> None:
+    def test_suspect_result_still_has_annotations(
+        self, player_prop_config: EVStrategyConfig
+    ) -> None:
         """Even when flagged, annotated_a/annotated_b are populated."""
         result = compute_ev_for_market(
             _make_books({"Pinnacle": -1500, "DraftKings": -400, "FanDuel": -400}),
