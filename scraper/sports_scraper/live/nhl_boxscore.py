@@ -81,8 +81,22 @@ class NHLBoxscoreFetcher:
 
         payload = response.json()
 
-        # Cache the raw response
-        self._cache.put(cache_key, payload)
+        # Only cache final game data — pregame/live data changes constantly
+        game_state = payload.get("gameState", "")
+        if game_state in ("OFF", "FINAL"):
+            player_stats = payload.get("playerByGameStats", {})
+            has_players = bool(
+                player_stats.get("homeTeam", {}).get("forwards")
+                or player_stats.get("homeTeam", {}).get("defense")
+                or player_stats.get("homeTeam", {}).get("goalies")
+            )
+            if has_players:
+                self._cache.put(cache_key, payload)
+                logger.info("nhl_boxscore_cached", game_id=game_id, game_state=game_state)
+            else:
+                logger.info("nhl_boxscore_not_cached_empty", game_id=game_id, game_state=game_state)
+        else:
+            logger.info("nhl_boxscore_not_cached_not_final", game_id=game_id, game_state=game_state)
 
         return self._parse_boxscore_response(payload, game_id)
 

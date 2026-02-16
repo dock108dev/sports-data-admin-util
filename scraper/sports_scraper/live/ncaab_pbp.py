@@ -78,11 +78,15 @@ class NCAABPbpFetcher:
             return NormalizedPlayByPlay(source_game_key=str(game_id), plays=[])
 
         payload = response.json()
-
-        # Cache the raw response
-        self._cache.put(cache_key, payload)
-
         plays = self._parse_pbp_response(payload, game_id)
+
+        # Only cache responses with actual play data (same pattern as NHL PBP).
+        # Empty responses may be transient failures or games not yet started.
+        if plays:
+            self._cache.put(cache_key, payload)
+            logger.info("ncaab_pbp_cached", game_id=game_id, play_count=len(plays))
+        else:
+            logger.info("ncaab_pbp_not_cached_empty", game_id=game_id, reason="no_plays_in_response")
 
         # Log first and last event for debugging
         if plays:

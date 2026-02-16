@@ -52,19 +52,6 @@ class NCAABBoxscoreFetcher:
         Returns:
             List of team stats dictionaries for all games in the date range
         """
-        # Check cache first
-        cache_key = f"teams_{start_date}_{end_date}_{season}"
-        cached = self._cache.get(cache_key)
-        if cached is not None:
-            logger.info(
-                "ncaab_game_teams_using_cache",
-                start_date=str(start_date),
-                end_date=str(end_date),
-                season=season,
-                row_count=len(cached) if isinstance(cached, list) else 0,
-            )
-            return cached
-
         logger.info(
             "ncaab_game_teams_fetch_by_date",
             start_date=str(start_date),
@@ -100,9 +87,6 @@ class NCAABBoxscoreFetcher:
                 row_count=len(data) if isinstance(data, list) else 1,
             )
 
-            # Cache the response
-            self._cache.put(cache_key, data)
-
             return data
 
         except Exception as exc:
@@ -131,19 +115,6 @@ class NCAABBoxscoreFetcher:
         Returns:
             List of player stats dictionaries for all games in the date range
         """
-        # Check cache first
-        cache_key = f"players_{start_date}_{end_date}_{season}"
-        cached = self._cache.get(cache_key)
-        if cached is not None:
-            logger.info(
-                "ncaab_game_players_using_cache",
-                start_date=str(start_date),
-                end_date=str(end_date),
-                season=season,
-                row_count=len(cached) if isinstance(cached, list) else 0,
-            )
-            return cached
-
         logger.info(
             "ncaab_game_players_fetch_by_date",
             start_date=str(start_date),
@@ -178,9 +149,6 @@ class NCAABBoxscoreFetcher:
                 end_date=str(end_date),
                 row_count=len(data) if isinstance(data, list) else 1,
             )
-
-            # Cache the response
-            self._cache.put(cache_key, data)
 
             return data
 

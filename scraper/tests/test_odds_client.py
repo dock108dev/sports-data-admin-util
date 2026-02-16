@@ -275,39 +275,38 @@ class TestOddsAPIClientFetchMainlines:
         assert result == []
 
     @patch("sports_scraper.odds.client.settings")
-    def test_fetch_mainlines_cache_hit(self, mock_settings, tmp_path):
-        """Test that cached data is returned without API call."""
+    def test_fetch_mainlines_no_cache(self, mock_settings, tmp_path):
+        """Live odds are never cached — always hit the API."""
         mock_settings.odds_api_key = "test_key"
         mock_settings.odds_config.base_url = "https://api.test.com"
         mock_settings.odds_config.request_timeout_seconds = 10
-        mock_settings.odds_config.live_odds_cache_ttl_seconds = 1500
+        mock_settings.odds_config.regions = ["us"]
         mock_settings.scraper_config.html_cache_dir = str(tmp_path)
 
-        # Create cached response
-        cache_dir = tmp_path / "odds" / "NBA"
-        cache_dir.mkdir(parents=True)
-        cache_file = cache_dir / "2024-01-15_live.json"
-        cached_data = [
+        client = OddsAPIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = [
             {
-                "id": "cached123",
-                "commence_time": "2024-01-15T00:00:00Z",
+                "id": "test123",
+                "commence_time": "2024-01-15T19:00:00Z",
                 "home_team": "Boston Celtics",
                 "away_team": "Los Angeles Lakers",
                 "bookmakers": []
             }
         ]
-        cache_file.write_text(json.dumps(cached_data))
-
-        client = OddsAPIClient()
-        # Mock the HTTP client to verify it's not called
         client.client = MagicMock()
+        client.client.get.return_value = mock_response
 
-        result = client.fetch_mainlines("NBA", date(2024, 1, 15), date(2024, 1, 15))
+        client.fetch_mainlines("NBA", date(2024, 1, 15), date(2024, 1, 15))
 
-        # HTTP client should not be called when cache hits
-        client.client.get.assert_not_called()
-        # Result should contain cached data
-        assert len(result) >= 0
+        # API should always be called (no caching for live odds)
+        client.client.get.assert_called_once()
+        # No cache file should be written
+        cache_file = tmp_path / "odds" / "NBA" / "2024-01-15_live.json"
+        assert not cache_file.exists()
 
     @patch("sports_scraper.odds.client.settings")
     def test_fetch_mainlines_api_success(self, mock_settings, tmp_path):
@@ -406,11 +405,12 @@ class TestOddsAPIClientFetchMainlines:
         assert params["bookmakers"] == "pinnacle,draftkings"
 
     @patch("sports_scraper.odds.client.settings")
-    def test_fetch_mainlines_writes_cache(self, mock_settings, tmp_path):
-        """Test that successful responses are cached."""
+    def test_fetch_mainlines_does_not_write_cache(self, mock_settings, tmp_path):
+        """Live odds responses are not cached."""
         mock_settings.odds_api_key = "test_key"
         mock_settings.odds_config.base_url = "https://api.test.com"
         mock_settings.odds_config.request_timeout_seconds = 10
+        mock_settings.odds_config.regions = ["us"]
         mock_settings.scraper_config.html_cache_dir = str(tmp_path)
 
         client = OddsAPIClient()
@@ -432,9 +432,9 @@ class TestOddsAPIClientFetchMainlines:
 
         client.fetch_mainlines("NBA", date(2024, 1, 15), date(2024, 1, 15))
 
-        # Verify cache file was written
+        # Verify no cache file was written
         cache_file = tmp_path / "odds" / "NBA" / "2024-01-15_live.json"
-        assert cache_file.exists()
+        assert not cache_file.exists()
 
 
 class TestOddsAPIClientFetchHistorical:

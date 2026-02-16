@@ -168,15 +168,6 @@ class OddsAPIClient:
             logger.warning("unsupported_league_for_odds", league=league_code)
             return []
 
-        # Check cache first (use start_date as key for live odds)
-        # Live odds cache expires after TTL to ensure fresh data for scheduled syncs
-        cache_path = self._get_cache_path(league_code, start_date, is_historical=False)
-        live_cache_ttl = settings.odds_config.live_odds_cache_ttl_seconds
-        cached = self._read_cache(cache_path, max_age_seconds=live_cache_ttl)
-        if cached is not None:
-            logger.info("odds_using_cache", league=league_code, date=str(start_date), type="live")
-            return self._parse_odds_events(league_code, cached, books)
-
         start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
         end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
         
@@ -208,9 +199,6 @@ class OddsAPIClient:
             event_count=len(payload) if isinstance(payload, list) else 0,
             remaining=response.headers.get("x-requests-remaining"),
         )
-        
-        # Cache the response
-        self._write_cache(cache_path, payload)
         
         return self._parse_odds_events(league_code, payload, books)
 
@@ -505,14 +493,6 @@ class OddsAPIClient:
         if not markets:
             return []
 
-        # Check cache first
-        cache_path = self._cache_dir / league_code / f"props_{event_id}.json"
-        live_cache_ttl = settings.odds_config.live_odds_cache_ttl_seconds
-        cached = self._read_cache(cache_path, max_age_seconds=live_cache_ttl)
-        if cached is not None:
-            logger.debug("props_cache_hit", league=league_code, event_id=event_id)
-            return self._parse_prop_event(league_code, cached)
-
         regions = ",".join(settings.odds_config.regions)
         params = {
             "apiKey": settings.odds_api_key,
@@ -546,9 +526,6 @@ class OddsAPIClient:
             bookmaker_count=len(payload.get("bookmakers", [])),
             remaining=response.headers.get("x-requests-remaining"),
         )
-
-        # Cache the response
-        self._write_cache(cache_path, payload)
 
         return self._parse_prop_event(league_code, payload)
 

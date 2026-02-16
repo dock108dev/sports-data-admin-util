@@ -498,20 +498,25 @@ class TestNCAABBoxscoreFetcher:
         assert len(result) == 2
         assert result[0]["teamStats"]["points"] == 75
 
-    def test_fetch_game_teams_uses_cache(self):
+    def test_fetch_game_teams_no_cache(self):
+        """Date-range methods no longer cache — always hit the API."""
         mock_client = MagicMock()
-        cached_data = [{"gameId": 12345, "teamId": 1}]
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [{"gameId": 12345, "teamId": 1}]
+        mock_client.get.return_value = mock_response
 
         mock_cache = MagicMock()
-        mock_cache.get.return_value = cached_data
 
         fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
         result = fetcher.fetch_game_teams_by_date_range(
             date(2024, 1, 15), date(2024, 1, 15), 2024
         )
 
-        assert result == cached_data
-        mock_client.get.assert_not_called()
+        assert len(result) == 1
+        mock_client.get.assert_called_once()
+        mock_cache.get.assert_not_called()
+        mock_cache.put.assert_not_called()
 
     def test_fetch_game_teams_failure(self):
         mock_client = MagicMock()

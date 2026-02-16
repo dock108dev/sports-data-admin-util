@@ -101,8 +101,19 @@ class NBABoxscoreFetcher:
 
         payload = response.json()
 
-        # Cache the raw response
-        self._cache.put(cache_key, payload)
+        # Only cache final game data — pregame/live data changes constantly
+        game = payload.get("game", {})
+        game_status = game.get("gameStatus")  # 1=scheduled, 2=live, 3=final
+        if game_status == 3:
+            home_players = game.get("homeTeam", {}).get("players", [])
+            away_players = game.get("awayTeam", {}).get("players", [])
+            if home_players or away_players:
+                self._cache.put(cache_key, payload)
+                logger.info("nba_boxscore_cached", game_id=game_id, game_status=game_status)
+            else:
+                logger.info("nba_boxscore_not_cached_empty", game_id=game_id, game_status=game_status)
+        else:
+            logger.info("nba_boxscore_not_cached_not_final", game_id=game_id, game_status=game_status)
 
         return self._parse_boxscore_response(payload, game_id)
 
