@@ -39,7 +39,7 @@ curl http://localhost:8000/healthz
 
 # View logs
 docker compose logs -f api
-docker compose logs -f scraper-worker
+docker compose logs -f scraper
 ```
 
 ## Database Migrations

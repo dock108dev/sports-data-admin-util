@@ -18,8 +18,8 @@ The pipeline:
 2. **Pair opposite sides** via `_pair_opposite_sides()` — within each bucket, pairs entries with different `selection_key` values; unpaired entries get `ev_disabled_reason = "no_pair"`
 3. **Eligibility gate** (`evaluate_ev_eligibility()`) — checks strategy exists, Pinnacle present on both sides, freshness, minimum book count
 4. **Find Pinnacle** on each side (`ev.py`) — first match wins
-5. **Devig** both Pinnacle prices via additive normalization (`ev.py:56-71`) — divide each implied prob by the sum
-6. **Compute EV%** for every book using `(decimal_odds * true_prob - 1) * 100` (`ev.py:74-95`)
+5. **Devig** both Pinnacle prices via additive normalization (`ev.py:74-89`) — divide each implied prob by the sum
+6. **Compute EV%** for every book using `(decimal_odds * true_prob - 1) * 100` (`ev.py:92-116`)
 7. **Annotate** each book entry with `ev_percent`, `implied_prob`, `is_sharp`, `true_prob`
 
 ### Where Assumptions Live
@@ -28,22 +28,17 @@ The pipeline:
 |-----------|----------|--------|
 | Pinnacle is the only sharp book | `api/app/services/ev_config.py` | `eligible_sharp_books = ("Pinnacle",)` on all strategies |
 | Two-way markets only | `api/app/routers/fairbet/odds.py` | `_pair_opposite_sides()` pairs entries with different `selection_key`; unpaired → `no_pair` |
-| Additive vig removal | `api/app/services/ev.py:56-71` | `[p / total for p in implied_probs]` |
-| Both Pinnacle sides required | `api/app/services/ev.py:250` | `if sharp_a_price is not None and sharp_b_price is not None` |
-| All markets treated identically | `api/app/services/ev.py:212-294` | Same devig formula for spreads, totals, ML, player props |
+| Additive vig removal | `api/app/services/ev.py:74-89` | `[p / total for p in implied_probs]` |
+| Both Pinnacle sides required | `api/app/services/ev.py:282` | `if sharp_a_price is not None and sharp_b_price is not None` |
+| All markets treated identically | `api/app/services/ev.py:244-348` | Same devig formula for spreads, totals, ML, player props |
 | No longshot adjustment | Nowhere | No thresholds, caps, or warnings on high-implied-prob-discount bets |
-| No fair-odds sanity check | Nowhere | Devigged fair odds are never compared against market consensus |
-| All books equally valid for EV display | `api/app/services/ev.py:257-283` | Every book gets EV annotation regardless of quality |
+| Fair-odds sanity check | `api/app/services/ev.py:317-336` | Devigged fair odds compared against median book price; flags `fair_odds_suspect` if divergence exceeds threshold |
+| All books equally valid for EV display | `api/app/services/ev.py:290-315` | Every book gets EV annotation regardless of quality |
 | EV is ephemeral | `api/app/routers/fairbet/odds.py` | Computed per request, never stored |
 
-### Dual SHARP_BOOKS Definitions (Inconsistency)
+### Sharp Book Configuration — RESOLVED
 
-There are **two separate definitions** that are not synchronized:
-
-- **API** (`api/app/services/ev.py:15`): `SHARP_BOOKS = {"Pinnacle"}` — used for EV calculation
-- **Scraper** (`scraper/sports_scraper/odds/client.py:46`): `SHARP_BOOKS = {"pinnacle", "betfair_ex_eu", "betfair_ex_uk", "betfair_ex_au", "matchbook", "novig"}` — not used for anything currently
-
-The scraper definition is dead code relative to EV. Only the API definition matters today.
+Sharp book selection is now centralized in `api/app/services/ev_config.py`. Each `EVStrategyConfig` declares its own `eligible_sharp_books` tuple (currently `("Pinnacle",)` for all strategies). The old `SHARP_BOOKS` constant in `ev.py` has been removed. The scraper-side `SHARP_BOOKS` in `scraper/sports_scraper/odds/client.py` is an API-key-tier label list unrelated to EV computation.
 
 ---
 
@@ -95,93 +90,59 @@ The scraper definition is dead code relative to EV. Only the API definition matt
 
 ## 3. Integration Points
 
-### 3.1 Where the EV Reference Selector Should Plug In
+### 3.1 EV Reference Selector — IMPLEMENTED
 
-The natural integration point is **between Step 5 (grouping) and Step 6 (annotation)** in the FairBet API endpoint:
+The eligibility gate sits between market grouping and EV computation in the FairBet API endpoint:
 
 ```
 Current flow:
-  Query rows → Group by bet definition → Group by market (both sides) → [HERE] → Compute EV → Sort → Return
-
-What should happen at [HERE]:
-  1. Filter out excluded books
-  2. Check minimum qualifying book count
-  3. Look up (league, market_type) → reference strategy
-  4. Determine confidence tier
-  5. Decide: compute EV, mark informational, or disable entirely
-  6. Pass strategy + confidence to compute_ev_for_market()
+  Query rows → Group by bet definition → Pair opposite sides → evaluate_ev_eligibility() → compute_ev_for_market() → Sort → Return
 ```
 
-Currently `compute_ev_for_market()` is a pure function that takes two book lists. It would need to accept:
-- Which books are eligible as sharp references (not just hardcoded `SHARP_BOOKS`)
-- A confidence tier to attach to results
-- Whether to compute at all (vs returning `None` with a reason)
+`evaluate_ev_eligibility()` performs four checks in order: strategy exists, sharp book present on both sides, freshness within staleness window, minimum qualifying books. On failure it returns an `EligibilityResult` with a `disabled_reason`.
 
-### 3.2 What Needs Refactoring vs Extension
+`compute_ev_for_market()` accepts an `EVStrategyConfig`, returns confidence metadata, and includes a fair-odds sanity check.
 
-**Refactoring required:**
+### 3.2 Completed Refactoring
 
-| Component | Why |
-|-----------|-----|
-| `SHARP_BOOKS` in `ev.py` | Must become config-driven, not a constant. Must support (league, market_type) → book set mapping |
-| `compute_ev_for_market()` | Must accept strategy config, return confidence metadata, handle "disabled" case |
-| FairBet API query layer | Must filter excluded books before grouping, enforce min book threshold |
-| `_build_base_filters()` in odds.py | Must support book exclusion at the SQL level for efficiency |
+| Component | Status |
+|-----------|--------|
+| Sharp book selection | Config-driven via `EVStrategyConfig.eligible_sharp_books` per strategy |
+| `compute_ev_for_market()` | Accepts `EVStrategyConfig`, returns `EVComputeResult` with confidence tier and `fair_odds_suspect` flag |
+| Book exclusion | `EXCLUDED_BOOKS` frozenset filtered at SQL query time via `_build_base_filters()` |
+| Response models | `BookOdds` and `BetDefinition` include `confidence_tier`, `ev_method`, `ev_disabled_reason` |
 
-**Extension only (no breaking changes):**
+### 3.3 Config Location — IMPLEMENTED
 
-| Component | What to add |
-|-----------|-------------|
-| Response models (`BookOdds`, `BetDefinition`) | Add `confidence_tier`, `ev_method`, `ev_disabled_reason` fields |
-| `NormalizedOddsSnapshot` | No changes needed — classification already flows through |
-| `classify_market()` | Already works correctly; no changes |
-| Persistence layer | No changes in Phase 0 (EV is query-time only) |
-| `FairbetGameOddsWork` schema | No changes needed — it stores all book data already |
-
-### 3.3 Config Location
-
-The EV reference config should live as a **static Python mapping** (like `PROP_MARKETS` in `client.py` or `PREFERRED_BOOKS` in `odds_events.py`), not in the database or env vars. Reasons:
-- It changes infrequently (quarterly at most)
-- It must be deterministic and version-controlled
-- It's referenced in hot-path API queries
-- It's shared between scraper (for filtering) and API (for calculation)
-
-Natural home: a new module like `api/app/services/ev_config.py` or `shared/ev_config.py`.
+EV strategy config lives in `api/app/services/ev_config.py` as a static Python mapping. The module defines:
+- `EXCLUDED_BOOKS` and `INCLUDED_BOOKS` frozensets
+- `EVStrategyConfig` frozen dataclass
+- `get_strategy(league, market_category)` lookup function
+- `evaluate_ev_eligibility()` (in `ev.py`, using config from `ev_config.py`)
 
 ---
 
 ## 4. Open Questions
 
-### Data Quality
+### Resolved Questions
 
-1. **How stale is "too stale" for a Pinnacle reference?** If Pinnacle's `observed_at` is 4 hours old but FanDuel's is 5 minutes old, the EV number is noise. What's the acceptable staleness window? Per market type?
+1. **Staleness window** — Implemented per-strategy: NBA/NHL mainlines 3600s, NCAAB mainlines 1800s, all props/alternates 1800s.
 
-2. **Do we have Pinnacle coverage data?** What % of our (league, market_type) combinations actually have Pinnacle on both sides? This determines how much EV we can even show. Specifically:
-   - NBA mainlines: likely high coverage
-   - NHL mainlines: likely high coverage
-   - NCAAB mainlines: varies by game prominence
-   - Player props (any league): unknown, likely spotty for NCAAB
+2. **Book exclusion** — Query-time filtering via `EXCLUDED_BOOKS` frozenset. Books are still ingested and persisted for flexibility.
 
-3. **Are Pinnacle's prop lines actually sharp?** Pinnacle is unquestionably sharp on mainlines. On player props, their markets are thinner and higher-vig. Should we still treat Pinnacle as the reference for props, or should props get a different confidence tier entirely?
+3. **3-book minimum** — Enforced at the EV calculation level per-side in `evaluate_ev_eligibility()`. Markets with <3 non-excluded books get `ev_disabled_reason = "insufficient_books"`.
 
-### Architecture
+4. **Confidence tier** — A string label (`high`, `medium`, `low`) set per-strategy. Same devig formula is used regardless; the tier is metadata for consumer display decisions.
 
-4. **Should excluded books be filtered at ingestion or query time?** Filtering at ingestion saves storage and compute but loses data flexibility. Filtering at query time is more flexible but means we're persisting and processing data we'll never show.
+### Open Questions
 
-5. **Should EV ever be persisted?** Currently it's computed per-request. If we want historical EV tracking (e.g., "this bet was +3% EV when we first saw it"), we'd need to store it. Is that a future requirement?
+1. **Do we have Pinnacle coverage data?** What % of our (league, market_type) combinations actually have Pinnacle on both sides? This determines how much EV we can even show.
 
-6. **Where does the 3-book minimum apply?** At the API response level (hide bets with <3 qualifying books)? Or at the EV calculation level (compute EV but flag it as low-confidence if <3 books)?
+2. **Are Pinnacle's prop lines actually sharp?** Pinnacle is unquestionably sharp on mainlines. On player props, their markets are thinner and higher-vig. Currently treated as `low` confidence tier.
 
-### Scope
+3. **Should EV ever be persisted?** Currently computed per-request. Historical EV tracking would require storage.
 
-7. **What does "confidence tier" mean concretely?** Is it:
-   - A label? (`high`, `medium`, `low`, `disabled`)
-   - A number? (0.0-1.0 scale)
-   - A display decision? (show EV, show EV with warning, hide EV)
-
-8. **Does confidence affect only display or also computation?** If a market is "low confidence," do we still compute EV the same way but tag it? Or do we use a different formula (e.g., wider vig assumption)?
-
-9. **Game flow narrative odds (`odds_events.py`) — in scope?** Currently uses `PREFERRED_BOOKS = ["fanduel", "draftkings", "betmgm", "caesars"]` for selecting which book's odds appear in game flow text. This is a separate system from FairBet EV. Should the reference model also govern narrative book selection, or is that out of scope?
+4. **Game flow narrative odds (`odds_events.py`) — in scope?** Uses `PREFERRED_BOOKS` for selecting which book's odds appear in game flow text. Separate system from FairBet EV.
 
 ---
 
@@ -189,11 +150,11 @@ Natural home: a new module like `api/app/services/ev_config.py` or `shared/ev_co
 
 | Area | File | Key Lines |
 |------|------|-----------|
-| EV formulas | `api/app/services/ev.py` | 37-95 (formulas), 212-294 (market annotation) |
+| EV formulas | `api/app/services/ev.py` | 38-116 (formulas), 244-348 (market annotation) |
 | EV config & strategies | `api/app/services/ev_config.py` | Full file (book lists, strategy map, eligibility result) |
 | EV annotation in API | `api/app/routers/fairbet/odds.py` | Step 6 (grouping + `_pair_opposite_sides` + `_annotate_pair_ev`) |
-| Sharp books (API) | `api/app/services/ev_config.py` | `eligible_sharp_books` on each strategy |
-| Sharp books (scraper, unused) | `scraper/sports_scraper/odds/client.py` | 46 (`SHARP_BOOKS`) |
+| Sharp books (API) | `api/app/services/ev_config.py` | `eligible_sharp_books` on each strategy, `EXCLUDED_BOOKS`, `INCLUDED_BOOKS` |
+| Sharp books (scraper) | `scraper/sports_scraper/odds/client.py` | `SHARP_BOOKS` (API-tier label, not used for EV) |
 | Market classification | `scraper/sports_scraper/models/schemas.py` | 123-142 (`classify_market`) |
 | Snapshot model | `scraper/sports_scraper/models/schemas.py` | 102-121 (`NormalizedOddsSnapshot`) |
 | Persistence (sports_game_odds) | `scraper/sports_scraper/persistence/odds.py` | 42-99 (two-row upsert) |

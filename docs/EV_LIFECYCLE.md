@@ -41,7 +41,7 @@ Within each bucket, the `_pair_opposite_sides()` helper pairs entries that have 
 
 ## 3. Book Qualification & Exclusion
 
-23 books are excluded from both display and EV computation via SQL-level filtering:
+20 books are excluded from both display and EV computation via SQL-level filtering:
 
 ```sql
 WHERE book NOT IN ('BetOnline.ag', 'BetRivers', 'BetUS', 'Bovada', ...)
@@ -49,7 +49,7 @@ WHERE book NOT IN ('BetOnline.ag', 'BetRivers', 'BetUS', 'Bovada', ...)
 
 The full exclusion list is defined in `api/app/services/ev_config.py` as `EXCLUDED_BOOKS`. These books are still ingested and persisted — exclusion is query-time only.
 
-The remaining ~17 included books are the ones that appear in API responses and participate in EV calculation.
+The remaining 17 included books are the ones that appear in API responses and participate in EV calculation.
 
 ## 4. EV Eligibility Gating
 
