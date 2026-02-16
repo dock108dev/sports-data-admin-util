@@ -9,12 +9,14 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.services.timeline_phases import (
-    classify_tweet_phase,
-    map_tweet_to_segment,
-    assign_tweet_phase_and_segment,
     get_league_timing,
     estimate_game_end,
     compute_league_phase_boundaries,
+)
+from app.services.tweet_phase_classifier import (
+    classify_tweet_phase,
+    map_tweet_to_segment,
+    assign_tweet_phase_and_segment,
 )
 from app.services.timeline_types import (
     NCAAB_REGULATION_REAL_MINUTES,
@@ -124,8 +126,12 @@ class TestClassifyTweetPhase:
         # Without overtime, this would be postgame
         tweet_time = game_start + timedelta(minutes=170)
 
-        phase_no_ot = classify_tweet_phase(tweet_time, game_start, "NBA", has_overtime=False)
-        phase_with_ot = classify_tweet_phase(tweet_time, game_start, "NBA", has_overtime=True)
+        phase_no_ot = classify_tweet_phase(
+            tweet_time, game_start, "NBA", has_overtime=False
+        )
+        phase_with_ot = classify_tweet_phase(
+            tweet_time, game_start, "NBA", has_overtime=True
+        )
 
         assert phase_no_ot == "postgame"
         assert phase_with_ot == "in_game"
@@ -250,7 +256,13 @@ class TestComputeLeaguePhaseBoundaries:
         """NCAAB boundaries include halves instead of quarters."""
         boundaries = compute_league_phase_boundaries(game_start, "NCAAB")
 
-        expected_phases = ["pregame", "first_half", "halftime", "second_half", "postgame"]
+        expected_phases = [
+            "pregame",
+            "first_half",
+            "halftime",
+            "second_half",
+            "postgame",
+        ]
         for phase in expected_phases:
             assert phase in boundaries
             start, end = boundaries[phase]
@@ -268,17 +280,23 @@ class TestComputeLeaguePhaseBoundaries:
 
     def test_overtime_adds_ot_phase_nba(self, game_start):
         """NBA with OT includes ot1 phase."""
-        boundaries = compute_league_phase_boundaries(game_start, "NBA", has_overtime=True)
+        boundaries = compute_league_phase_boundaries(
+            game_start, "NBA", has_overtime=True
+        )
         assert "ot1" in boundaries
 
     def test_overtime_adds_ot_phase_ncaab(self, game_start):
         """NCAAB with OT includes ot phase."""
-        boundaries = compute_league_phase_boundaries(game_start, "NCAAB", has_overtime=True)
+        boundaries = compute_league_phase_boundaries(
+            game_start, "NCAAB", has_overtime=True
+        )
         assert "ot" in boundaries
 
     def test_overtime_adds_ot_phase_nhl(self, game_start):
         """NHL with OT includes ot phase."""
-        boundaries = compute_league_phase_boundaries(game_start, "NHL", has_overtime=True)
+        boundaries = compute_league_phase_boundaries(
+            game_start, "NHL", has_overtime=True
+        )
         assert "ot" in boundaries
 
     def test_pregame_starts_2_hours_before(self, game_start):

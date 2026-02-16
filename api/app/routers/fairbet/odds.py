@@ -113,12 +113,17 @@ def _annotate_pair_ev(
     market_cat = bets_map[key_a].get("market_category", "mainline")
 
     eligibility = evaluate_ev_eligibility(
-        league_code, market_cat, books_a, books_b,
+        league_code,
+        market_cat,
+        books_a,
+        books_b,
     )
 
     if eligibility.eligible and eligibility.strategy_config is not None:
         ev_result = compute_ev_for_market(
-            books_a, books_b, eligibility.strategy_config,
+            books_a,
+            books_b,
+            eligibility.strategy_config,
         )
 
         if ev_result.fair_odds_suspect:
@@ -144,7 +149,9 @@ def _annotate_pair_ev(
                 price=b["price"],
                 observed_at=b["observed_at"],
                 ev_percent=b.get("ev_percent"),
-                implied_prob=round(b.get("implied_prob", 0), 4) if b.get("implied_prob") else None,
+                implied_prob=round(b.get("implied_prob", 0), 4)
+                if b.get("implied_prob")
+                else None,
                 is_sharp=b.get("is_sharp", False),
                 ev_method=ev_result.ev_method,
                 ev_confidence_tier=ev_result.confidence_tier,
@@ -157,7 +164,9 @@ def _annotate_pair_ev(
                 price=b["price"],
                 observed_at=b["observed_at"],
                 ev_percent=b.get("ev_percent"),
-                implied_prob=round(b.get("implied_prob", 0), 4) if b.get("implied_prob") else None,
+                implied_prob=round(b.get("implied_prob", 0), 4)
+                if b.get("implied_prob")
+                else None,
                 is_sharp=b.get("is_sharp", False),
                 ev_method=ev_result.ev_method,
                 ev_confidence_tier=ev_result.confidence_tier,
@@ -166,9 +175,15 @@ def _annotate_pair_ev(
         ]
 
         # Set true_prob and EV metadata on the bet definition
-        if ev_result.annotated_a and ev_result.annotated_a[0].get("true_prob") is not None:
+        if (
+            ev_result.annotated_a
+            and ev_result.annotated_a[0].get("true_prob") is not None
+        ):
             bets_map[key_a]["true_prob"] = ev_result.annotated_a[0]["true_prob"]
-        if ev_result.annotated_b and ev_result.annotated_b[0].get("true_prob") is not None:
+        if (
+            ev_result.annotated_b
+            and ev_result.annotated_b[0].get("true_prob") is not None
+        ):
             bets_map[key_b]["true_prob"] = ev_result.annotated_b[0]["true_prob"]
 
         bets_map[key_a]["reference_price"] = ev_result.reference_price_a
@@ -247,13 +262,19 @@ def _build_base_filters(
 @router.get("/odds", response_model=FairbetOddsResponse)
 async def get_fairbet_odds(
     session: AsyncSession = Depends(get_db),
-    league: str | None = Query(None, description="Filter by league code (NBA, NHL, etc.)"),
-    market_category: str | None = Query(None, description="Filter by market category (mainline, player_prop, etc.)"),
+    league: str | None = Query(
+        None, description="Filter by league code (NBA, NHL, etc.)"
+    ),
+    market_category: str | None = Query(
+        None, description="Filter by market category (mainline, player_prop, etc.)"
+    ),
     game_id: int | None = Query(None, description="Filter to a specific game"),
     book: str | None = Query(None, description="Filter to a specific book"),
     player_name: str | None = Query(None, description="Filter by player name"),
     min_ev: float | None = Query(None, description="Minimum EV% threshold"),
-    has_fair: bool | None = Query(None, description="Filter to bets with (true) or without (false) fair odds"),
+    has_fair: bool | None = Query(
+        None, description="Filter to bets with (true) or without (false) fair odds"
+    ),
     sort_by: str = Query("ev", description="Sort order: ev, game_time, market"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -269,7 +290,11 @@ async def get_fairbet_odds(
     Uses database-level pagination for efficiency.
     """
     _, conditions = _build_base_filters(
-        league, market_category, game_id, book, player_name,
+        league,
+        market_category,
+        game_id,
+        book,
+        player_name,
         excluded_books=EXCLUDED_BOOKS,
     )
 
@@ -296,8 +321,11 @@ async def get_fairbet_odds(
 
     if total == 0:
         return FairbetOddsResponse(
-            bets=[], total=0, books_available=[],
-            market_categories_available=[], games_available=[],
+            bets=[],
+            total=0,
+            books_available=[],
+            market_categories_available=[],
+            games_available=[],
         )
 
     # When post-annotation filters are active (has_fair, min_ev), we must fetch
@@ -345,15 +373,9 @@ async def get_fairbet_odds(
         .join(SportsGame)
         .where(FairbetGameOddsWork.book.notin_(EXCLUDED_BOOKS))
         .options(
-            selectinload(FairbetGameOddsWork.game).selectinload(
-                SportsGame.league
-            ),
-            selectinload(FairbetGameOddsWork.game).selectinload(
-                SportsGame.home_team
-            ),
-            selectinload(FairbetGameOddsWork.game).selectinload(
-                SportsGame.away_team
-            ),
+            selectinload(FairbetGameOddsWork.game).selectinload(SportsGame.league),
+            selectinload(FairbetGameOddsWork.game).selectinload(SportsGame.home_team),
+            selectinload(FairbetGameOddsWork.game).selectinload(SportsGame.away_team),
         )
         .order_by(
             FairbetGameOddsWork.game_id,
@@ -390,7 +412,8 @@ async def get_fairbet_odds(
         .join(FairbetGameOddsWork, FairbetGameOddsWork.game_id == SportsGame.id)
         .where(
             SportsGame.status.notin_(["final", "completed"]),
-            func.coalesce(SportsGame.tip_time, SportsGame.game_date) > datetime.now(timezone.utc),
+            func.coalesce(SportsGame.tip_time, SportsGame.game_date)
+            > datetime.now(timezone.utc),
         )
         .distinct()
         .options(
@@ -475,11 +498,17 @@ async def get_fairbet_odds(
         def best_ev(bet: dict) -> float:
             evs = [b.ev_percent for b in bet["books"] if b.ev_percent is not None]
             return max(evs) if evs else float("-inf")
+
         bets_list.sort(key=best_ev, reverse=True)
     elif sort_by == "game_time":
-        bets_list.sort(key=lambda b: b.get("game_date") or datetime.min.replace(tzinfo=timezone.utc))
+        bets_list.sort(
+            key=lambda b: b.get("game_date")
+            or datetime.min.replace(tzinfo=timezone.utc)
+        )
     elif sort_by == "market":
-        bets_list.sort(key=lambda b: (b.get("market_key", ""), b.get("selection_key", "")))
+        bets_list.sort(
+            key=lambda b: (b.get("market_key", ""), b.get("selection_key", ""))
+        )
     # Sort books within each bet by price (best odds first)
     for bet in bets_list:
         bet["books"].sort(key=lambda b: -b.price)
@@ -490,7 +519,8 @@ async def get_fairbet_odds(
 
     if min_ev is not None:
         bets_list = [
-            bet for bet in bets_list
+            bet
+            for bet in bets_list
             if any(
                 b.ev_percent is not None and b.ev_percent >= min_ev
                 for b in bet["books"]
@@ -499,9 +529,11 @@ async def get_fairbet_odds(
 
     if needs_post_filter:
         total = len(bets_list)
-        bets_list = bets_list[offset:offset + limit]
+        bets_list = bets_list[offset : offset + limit]
 
-    # Step 9: Apply book filter for display (but we needed all books for EV calc)
+    # Step 9: Apply book filter for display (but we needed all books for EV calc).
+    # Sharp books are always retained even when filtering by a specific book so
+    # the UI can show the reference line that anchors the EV calculation.
     if book:
         for bet in bets_list:
             bet["books"] = [b for b in bet["books"] if b.book == book or b.is_sharp]
