@@ -88,6 +88,7 @@ class TestFetchPlayByPlay:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
+            "gameState": "OFF",
             "plays": [
                 {
                     "eventId": 1,
