@@ -13,7 +13,7 @@ from ..models import (
     NormalizedTeamBoxscore,
     TeamIdentity,
 )
-from ..utils.cache import APICache
+from ..utils.cache import APICache, should_cache_final
 from ..utils.parsing import parse_int
 from .nhl_constants import NHL_BOXSCORE_URL
 from .nhl_helpers import (
@@ -81,8 +81,25 @@ class NHLBoxscoreFetcher:
 
         payload = response.json()
 
-        # Cache the raw response
-        self._cache.put(cache_key, payload)
+        # Only cache final game data — pregame/live data changes constantly
+        game_state = payload.get("gameState", "")
+        player_stats = payload.get("playerByGameStats", {})
+        has_data = bool(
+            player_stats.get("homeTeam", {}).get("forwards")
+            or player_stats.get("homeTeam", {}).get("defense")
+            or player_stats.get("homeTeam", {}).get("goalies")
+        )
+
+        if should_cache_final(has_data, game_state):
+            self._cache.put(cache_key, payload)
+            logger.info("nhl_boxscore_cached", game_id=game_id, game_state=game_state)
+        else:
+            logger.info(
+                "nhl_boxscore_not_cached",
+                game_id=game_id,
+                game_state=game_state,
+                has_data=has_data,
+            )
 
         return self._parse_boxscore_response(payload, game_id)
 

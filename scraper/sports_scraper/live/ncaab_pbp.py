@@ -11,7 +11,7 @@ import httpx
 
 from ..logging import logger
 from ..models import NormalizedPlay, NormalizedPlayByPlay
-from ..utils.cache import APICache
+from ..utils.cache import APICache, should_cache_final
 from ..utils.parsing import parse_int
 from .ncaab_constants import (
     CBB_PLAYS_GAME_URL,
@@ -36,13 +36,18 @@ class NCAABPbpFetcher:
         self.client = client
         self._cache = cache
 
-    def fetch_play_by_play(self, game_id: int) -> NormalizedPlayByPlay:
+    def fetch_play_by_play(
+        self, game_id: int, game_status: str | None = None,
+    ) -> NormalizedPlayByPlay:
         """Fetch and normalize play-by-play data for a game.
 
         Results are cached to avoid burning API quota on repeated runs.
 
         Args:
             game_id: CBB game ID
+            game_status: Normalized game status from the DB (e.g. "final").
+                Used by should_cache_final to decide whether to persist the
+                response.  When None the response is never cached.
 
         Returns:
             NormalizedPlayByPlay with all events normalized to canonical format
@@ -78,11 +83,19 @@ class NCAABPbpFetcher:
             return NormalizedPlayByPlay(source_game_key=str(game_id), plays=[])
 
         payload = response.json()
-
-        # Cache the raw response
-        self._cache.put(cache_key, payload)
-
         plays = self._parse_pbp_response(payload, game_id)
+
+        # Only cache final game data with actual plays — same gate as boxscore fetchers
+        if should_cache_final(bool(plays), game_status):
+            self._cache.put(cache_key, payload)
+            logger.info("ncaab_pbp_cached", game_id=game_id, play_count=len(plays), game_status=game_status)
+        else:
+            logger.info(
+                "ncaab_pbp_not_cached",
+                game_id=game_id,
+                game_status=game_status,
+                has_data=bool(plays),
+            )
 
         # Log first and last event for debugging
         if plays:

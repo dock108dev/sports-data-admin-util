@@ -17,25 +17,22 @@ from sqlalchemy.orm import selectinload
 from ...db import AsyncSession, get_db
 from ...db.sports import SportsGame
 from ...db.odds import FairbetGameOddsWork
-from ...services.ev import compute_ev_for_market, evaluate_ev_eligibility
-from ...services.ev_config import EXCLUDED_BOOKS, get_strategy
+from ...services.ev_config import (
+    EXCLUDED_BOOKS,
+    get_strategy,
+)
+from .ev_annotation import (
+    BookOdds,
+    _annotate_pair_ev,
+    _build_sharp_reference,
+    _market_base,
+    _pair_opposite_sides,
+    _try_extrapolated_ev,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-class BookOdds(BaseModel):
-    """Odds from a single book for a bet."""
-
-    book: str
-    price: float
-    observed_at: datetime
-    ev_percent: float | None = None
-    implied_prob: float | None = None
-    is_sharp: bool = False
-    ev_method: str | None = None
-    ev_confidence_tier: str | None = None
 
 
 class BetDefinition(BaseModel):
@@ -71,187 +68,6 @@ class FairbetOddsResponse(BaseModel):
     market_categories_available: list[str]
     games_available: list[dict[str, Any]]
     ev_diagnostics: dict[str, int] = {}
-
-
-def _pair_opposite_sides(
-    bet_keys: list[tuple],
-) -> tuple[list[tuple[tuple, tuple]], list[tuple]]:
-    """Pair bet keys that represent opposite sides of a two-way market.
-
-    Two keys are opposite sides when they share (game_id, market_key, abs(line_value))
-    but have different selection_keys.
-
-    Returns:
-        (pairs, unpaired) — list of (key_a, key_b) pairs + list of unmatched keys.
-    """
-    pairs: list[tuple[tuple, tuple]] = []
-    used: set[int] = set()
-
-    for i, key_a in enumerate(bet_keys):
-        if i in used:
-            continue
-        for j in range(i + 1, len(bet_keys)):
-            if j in used:
-                continue
-            key_b = bet_keys[j]
-            # selection_key is index 2 in the tuple (game_id, market_key, selection_key, line_value)
-            if key_a[2] != key_b[2]:
-                pairs.append((key_a, key_b))
-                used.add(i)
-                used.add(j)
-                break
-
-    unpaired = [bet_keys[i] for i in range(len(bet_keys)) if i not in used]
-    return pairs, unpaired
-
-
-def _annotate_pair_ev(
-    key_a: tuple,
-    key_b: tuple,
-    bets_map: dict[tuple, dict[str, Any]],
-) -> str | None:
-    """Compute and annotate EV for a single market pair in-place.
-
-    Returns the disabled_reason string if EV was not computed, or None on success.
-    """
-    books_a = bets_map[key_a]["books"]
-    books_b = bets_map[key_b]["books"]
-    league_code = bets_map[key_a].get("league_code", "UNKNOWN")
-    market_cat = bets_map[key_a].get("market_category", "mainline")
-
-    eligibility = evaluate_ev_eligibility(
-        league_code,
-        market_cat,
-        books_a,
-        books_b,
-    )
-
-    logger.info(
-        "ev_eligibility_result",
-        extra={
-            "league": league_code,
-            "market_category": market_cat,
-            "market_key": bets_map[key_a]["market_key"],
-            "eligible": eligibility.eligible,
-            "disabled_reason": eligibility.disabled_reason,
-            "confidence_tier": eligibility.confidence_tier,
-            "books_a_count": len(books_a),
-            "books_b_count": len(books_b),
-            "books_a_names": [b["book"] for b in books_a],
-        },
-    )
-
-    if eligibility.eligible and eligibility.strategy_config is not None:
-        ev_result = compute_ev_for_market(
-            books_a,
-            books_b,
-            eligibility.strategy_config,
-        )
-
-        if ev_result.fair_odds_suspect:
-            logger.warning(
-                "fair_odds_outlier",
-                extra={
-                    "league": league_code,
-                    "market_category": market_cat,
-                    "market_key": bets_map[key_a]["market_key"],
-                },
-            )
-            # Devig produced implausible fair odds — skip EV annotation
-            sharp = set(eligibility.strategy_config.eligible_sharp_books)
-            for key in (key_a, key_b):
-                bets_map[key]["ev_disabled_reason"] = "fair_odds_outlier"
-                bets_map[key]["ev_confidence_tier"] = ev_result.confidence_tier
-                bets_map[key]["ev_method"] = ev_result.ev_method
-                bets_map[key]["books"] = [
-                    BookOdds(
-                        book=b["book"],
-                        price=b["price"],
-                        observed_at=b["observed_at"],
-                        is_sharp=b["book"] in sharp,
-                    )
-                    for b in bets_map[key]["books"]
-                ]
-            return "fair_odds_outlier"
-
-        # Update with annotated data
-        bets_map[key_a]["books"] = [
-            BookOdds(
-                book=b["book"],
-                price=b["price"],
-                observed_at=b["observed_at"],
-                ev_percent=b.get("ev_percent"),
-                implied_prob=round(b.get("implied_prob", 0), 4)
-                if b.get("implied_prob")
-                else None,
-                is_sharp=b.get("is_sharp", False),
-                ev_method=ev_result.ev_method,
-                ev_confidence_tier=ev_result.confidence_tier,
-            )
-            for b in ev_result.annotated_a
-        ]
-        bets_map[key_b]["books"] = [
-            BookOdds(
-                book=b["book"],
-                price=b["price"],
-                observed_at=b["observed_at"],
-                ev_percent=b.get("ev_percent"),
-                implied_prob=round(b.get("implied_prob", 0), 4)
-                if b.get("implied_prob")
-                else None,
-                is_sharp=b.get("is_sharp", False),
-                ev_method=ev_result.ev_method,
-                ev_confidence_tier=ev_result.confidence_tier,
-            )
-            for b in ev_result.annotated_b
-        ]
-
-        # Set true_prob and EV metadata on the bet definition
-        if (
-            ev_result.annotated_a
-            and ev_result.annotated_a[0].get("true_prob") is not None
-        ):
-            bets_map[key_a]["true_prob"] = ev_result.annotated_a[0]["true_prob"]
-        if (
-            ev_result.annotated_b
-            and ev_result.annotated_b[0].get("true_prob") is not None
-        ):
-            bets_map[key_b]["true_prob"] = ev_result.annotated_b[0]["true_prob"]
-
-        bets_map[key_a]["reference_price"] = ev_result.reference_price_a
-        bets_map[key_a]["opposite_reference_price"] = ev_result.reference_price_b
-        bets_map[key_b]["reference_price"] = ev_result.reference_price_b
-        bets_map[key_b]["opposite_reference_price"] = ev_result.reference_price_a
-
-        bets_map[key_a]["ev_method"] = ev_result.ev_method
-        bets_map[key_a]["ev_confidence_tier"] = ev_result.confidence_tier
-        bets_map[key_b]["ev_method"] = ev_result.ev_method
-        bets_map[key_b]["ev_confidence_tier"] = ev_result.confidence_tier
-
-        bets_map[key_a]["has_fair"] = True
-        bets_map[key_b]["has_fair"] = True
-        return None
-    else:
-        # Not eligible: attach disabled metadata, convert books to BookOdds
-        sharp = (
-            set(eligibility.strategy_config.eligible_sharp_books)
-            if eligibility.strategy_config
-            else set()
-        )
-        for key in (key_a, key_b):
-            bets_map[key]["ev_disabled_reason"] = eligibility.disabled_reason
-            bets_map[key]["ev_confidence_tier"] = eligibility.confidence_tier
-            bets_map[key]["ev_method"] = eligibility.ev_method
-            bets_map[key]["books"] = [
-                BookOdds(
-                    book=b["book"],
-                    price=b["price"],
-                    observed_at=b["observed_at"],
-                    is_sharp=b["book"] in sharp,
-                )
-                for b in bets_map[key]["books"]
-            ]
-        return eligibility.disabled_reason
 
 
 def _build_base_filters(
@@ -513,6 +329,7 @@ async def get_fairbet_odds(
         market_groups[group_key].append(key)
 
     ev_diagnostics: dict[str, int] = {"total_pairs": 0, "total_unpaired": 0}
+    sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
 
     for group_key, bet_keys in market_groups.items():
         # Find valid pairs: entries with different selection_keys
@@ -521,6 +338,17 @@ async def get_fairbet_odds(
         for key_a, key_b in pairs:
             ev_diagnostics["total_pairs"] += 1
             reason = _annotate_pair_ev(key_a, key_b, bets_map)
+            if reason == "reference_missing":
+                extrap_reason = _try_extrapolated_ev(
+                    key_a, key_b, bets_map, sharp_refs
+                )
+                if extrap_reason is None:
+                    ev_diagnostics["extrapolated"] = (
+                        ev_diagnostics.get("extrapolated", 0) + 1
+                    )
+                    reason = None  # Mark as passed
+                else:
+                    reason = extrap_reason
             bucket = reason or "passed"
             ev_diagnostics[bucket] = ev_diagnostics.get(bucket, 0) + 1
 

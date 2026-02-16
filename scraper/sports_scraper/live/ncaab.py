@@ -266,6 +266,8 @@ class NCAABLiveFeedClient:
         )
 
     # Delegate PBP methods to PBP fetcher
-    def fetch_play_by_play(self, game_id: int) -> NormalizedPlayByPlay:
+    def fetch_play_by_play(
+        self, game_id: int, game_status: str | None = None,
+    ) -> NormalizedPlayByPlay:
         """Fetch and normalize play-by-play data for a game."""
-        return self._pbp_fetcher.fetch_play_by_play(game_id)
+        return self._pbp_fetcher.fetch_play_by_play(game_id, game_status=game_status)

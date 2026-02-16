@@ -451,7 +451,7 @@ class TestSelectGamesForPbpNcaabApi:
         )
 
         assert len(result) == 1
-        assert result[0] == (100, 123456)
+        assert result[0] == (100, 123456, "final")
 
     def test_handles_invalid_cbb_game_id(self):
         """Handles invalid cbb_game_id values gracefully."""
@@ -814,7 +814,7 @@ class TestIngestPbpViaNcaabApi:
         from sports_scraper.models import NormalizedPlay
 
         mock_session = MagicMock()
-        mock_select.return_value = [(1, 123456)]
+        mock_select.return_value = [(1, 123456, "final")]
 
         mock_client = MagicMock()
         mock_payload = MagicMock()
@@ -844,7 +844,7 @@ class TestIngestPbpViaNcaabApi:
     def test_handles_empty_pbp_response(self, mock_select, mock_populate, mock_client_class):
         """Handles empty PBP response."""
         mock_session = MagicMock()
-        mock_select.return_value = [(1, 123456)]
+        mock_select.return_value = [(1, 123456, "final")]
 
         mock_client = MagicMock()
         mock_payload = MagicMock()
@@ -869,7 +869,7 @@ class TestIngestPbpViaNcaabApi:
     def test_handles_fetch_exception(self, mock_select, mock_populate, mock_client_class):
         """Handles fetch exception gracefully."""
         mock_session = MagicMock()
-        mock_select.return_value = [(1, 123456)]
+        mock_select.return_value = [(1, 123456, "final")]
 
         mock_client = MagicMock()
         mock_client.fetch_play_by_play.side_effect = Exception("CBB API error")
@@ -896,7 +896,7 @@ class TestIngestPbpViaNcaabApi:
         from sports_scraper.db import db_models
 
         mock_session = MagicMock()
-        mock_select.return_value = [(1, 123456)]
+        mock_select.return_value = [(1, 123456, "final")]
 
         mock_client = MagicMock()
         mock_payload = MagicMock()
