@@ -146,12 +146,9 @@ def build_game_flow_pass_prompt(
     ]
 
     if is_close_game:
-        prompt_parts.extend([
-            "",
-            f"NOTE: This was a close game (max margin: {max_margin} pts). Preserve the tight,",
-            "competitive tone. Do not overstate any leads. Ensure the final block captures the",
-            "tension of the close finish with specific detail — do not rush the ending.",
-        ])
+        prompt_parts.append(
+            f"\nNOTE: Close game (max margin: {max_margin} pts). Don't overstate leads. Detail the finish."
+        )
 
     prompt_parts.extend([
         "",
@@ -297,16 +294,9 @@ def build_block_prompt(
     # Add close-game-specific guidance
     if is_close_game:
         prompt_parts.extend([
-            f"CLOSE GAME CONTEXT (max margin: {max_margin} pts):",
-            "- This game was tight throughout — DO NOT overstate any lead or advantage",
-            "- Avoid phrases like 'take a lead', 'build an advantage', or 'pull away'",
-            "  when the margin is only 1-2 points",
-            "- Emphasize the back-and-forth nature: 'trading baskets', 'neither team could separate'",
-            "- For RESOLUTION: This close game deserves a detailed ending — describe the final",
-            "  sequence with tension and specificity, not a rushed summary. Capture what made",
-            "  the finish compelling: key shots, defensive stops, or free throws that sealed it.",
-            "- For DECISION_POINT: Highlight the specific plays or stretch that tipped the balance",
-            "  in a game where every possession mattered",
+            f"CLOSE GAME (max margin: {max_margin} pts):",
+            "- Do NOT overstate leads when margin is 1-2 pts. Emphasize back-and-forth.",
+            "- RESOLUTION: Capture the tension of the finish with specificity.",
             "",
         ])
 
@@ -364,6 +354,12 @@ def build_block_prompt(
             prompt_parts.append(f"*** ENTERS {ot_info['ot_label'].upper()} - MUST mention going to {ot_info['ot_label']} ***")
         elif ot_info["has_overtime"] and not ot_info["enters_overtime"]:
             prompt_parts.append(f"(In {ot_info['ot_label']})")
+
+        # Flag decided games so RESOLUTION doesn't narrate garbage time
+        if role == "RESOLUTION":
+            final_margin = abs(score_after[0] - score_after[1])
+            if final_margin >= 15:
+                prompt_parts.append("(Outcome decided — summarize the final margin, skip garbage time)")
 
         # Lead/margin context
         lead_line = _format_lead_line(score_before, score_after, home_team, away_team)
