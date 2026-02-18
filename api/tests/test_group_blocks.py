@@ -783,14 +783,15 @@ class TestCreateBlocksExtended:
 class TestAssignRolesExtended:
     """Extended tests for assign_roles function."""
 
-    def test_small_lead_changes_not_momentum_shift(self) -> None:
-        """Small lead changes (< 8 net swing) don't qualify as MOMENTUM_SHIFT.
+    def test_close_game_moderate_swing_is_momentum_shift(self) -> None:
+        """In close games (max margin <= 7), moderate swings (4+) qualify as MOMENTUM_SHIFT.
 
-        Back-and-forth close games should have RESPONSE blocks, not false momentum shifts.
+        Close games have lowered thresholds so the narrative captures the drama
+        of smaller but meaningful swings.
         """
         from app.services.pipeline.stages.block_types import NarrativeBlock
 
-        # Create blocks with small lead changes (close game)
+        # Create blocks with moderate lead changes (close game, max margin=3)
         blocks = [
             NarrativeBlock(0, SemanticRole.RESPONSE, [], 1, 1, (0, 0), (10, 8), [], []),  # Home leads +2
             NarrativeBlock(1, SemanticRole.RESPONSE, [], 1, 1, (10, 8), (12, 15), [], []),  # Away leads +3 (swing=5)
@@ -803,8 +804,26 @@ class TestAssignRolesExtended:
         # First/last get structural roles
         assert blocks[0].role == SemanticRole.SETUP
         assert blocks[-1].role == SemanticRole.RESOLUTION
-        # Middle blocks should NOT be MOMENTUM_SHIFT (swings too small)
-        # They should be DECISION_POINT or RESPONSE
+        # In a close game, a 5-point swing qualifies as MOMENTUM_SHIFT
+        assert blocks[1].role == SemanticRole.MOMENTUM_SHIFT or blocks[2].role == SemanticRole.MOMENTUM_SHIFT
+
+    def test_non_close_game_small_swings_not_momentum_shift(self) -> None:
+        """In non-close games (max margin > 7), small swings (< 8) don't qualify as MOMENTUM_SHIFT."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock
+
+        # Create blocks with a wide margin at some point (max margin=12), but small middle swings
+        blocks = [
+            NarrativeBlock(0, SemanticRole.RESPONSE, [], 1, 1, (0, 0), (20, 8), [], []),  # Home leads +12 (not close)
+            NarrativeBlock(1, SemanticRole.RESPONSE, [], 2, 2, (20, 8), (22, 15), [], []),  # Away gains 5 (swing=5 < 8)
+            NarrativeBlock(2, SemanticRole.RESPONSE, [], 3, 3, (22, 15), (30, 25), [], []),  # Home gains 2 (swing=2)
+            NarrativeBlock(3, SemanticRole.RESPONSE, [], 4, 4, (30, 25), (40, 35), [], []),
+        ]
+
+        assign_roles(blocks)
+
+        assert blocks[0].role == SemanticRole.SETUP
+        assert blocks[-1].role == SemanticRole.RESOLUTION
+        # In a non-close game, 5-point swings don't qualify as MOMENTUM_SHIFT
         assert blocks[1].role != SemanticRole.MOMENTUM_SHIFT and blocks[2].role != SemanticRole.MOMENTUM_SHIFT
 
     def test_significant_swing_is_momentum_shift(self) -> None:

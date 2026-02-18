@@ -253,7 +253,11 @@ def _build_margin_description(
 ) -> str | None:
     """Build a human-readable description of the margin change.
 
+    Uses softer language for slim margins (1-2 points) to avoid overstating
+    leads in close, back-and-forth games.
+
     Examples:
+    - "edge ahead" (1 point lead)
     - "take a 5 point lead"
     - "extend the lead to 8"
     - "cut the deficit to 3"
@@ -270,33 +274,50 @@ def _build_margin_description(
     if lead_after == 0:
         return "tie the game"
 
+    # Helper: build take-lead description with slim-margin awareness
+    def _take_lead_desc(margin: int) -> str:
+        if margin <= 1:
+            return "edge ahead"
+        if margin <= 2:
+            return "nudge ahead"
+        return f"take a {margin} point lead"
+
+    # Helper: build extend-lead description with slim-margin awareness
+    def _extend_lead_desc(margin_before: int, margin_after: int) -> str | None:
+        if margin_after >= 10 and margin_before < 10:
+            return "go up by double digits"
+        # Extending from 1 to 2 (or similar tiny shifts) isn't newsworthy
+        if margin_after <= 2:
+            return None
+        if margin_after <= 4:
+            return f"push the lead to {margin_after}"
+        return f"extend the lead to {margin_after}"
+
+    # Helper: build cut-deficit description
+    def _cut_deficit_desc(margin: int) -> str:
+        if margin <= 1:
+            return "pull within one"
+        if margin <= 2:
+            return "pull within 2"
+        return f"cut the deficit to {margin}"
+
     # Home team scored (lead increased or deficit decreased)
     if lead_after > lead_before:
         if lead_before <= 0 and lead_after > 0:
-            # Took the lead
-            return f"take a {abs_after} point lead"
+            return _take_lead_desc(abs_after)
         elif lead_before > 0:
-            # Extended lead
-            if abs_after >= 10 and abs_before < 10:
-                return "go up by double digits"
-            return f"extend the lead to {abs_after}"
+            return _extend_lead_desc(abs_before, abs_after)
         else:
-            # Cut deficit
-            return f"cut the deficit to {abs_after}"
+            return _cut_deficit_desc(abs_after)
 
     # Away team scored (lead decreased or deficit increased)
     else:
         if lead_before >= 0 and lead_after < 0:
-            # Took the lead
-            return f"take a {abs_after} point lead"
+            return _take_lead_desc(abs_after)
         elif lead_before < 0:
-            # Extended lead
-            if abs_after >= 10 and abs_before < 10:
-                return "go up by double digits"
-            return f"extend the lead to {abs_after}"
+            return _extend_lead_desc(abs_before, abs_after)
         else:
-            # Cut deficit
-            return f"cut the deficit to {abs_after}"
+            return _cut_deficit_desc(abs_after)
 
 
 def build_moment_context(

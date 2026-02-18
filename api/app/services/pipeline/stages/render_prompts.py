@@ -137,13 +137,23 @@ def build_game_flow_pass_prompt(
     away_team = game_context.get("away_team_name", "Away")
     league_code = game_context.get("sport", "NBA")
 
+    is_close_game, max_margin = _detect_close_game(blocks)
+
     prompt_parts = [
         GAME_FLOW_PASS_PROMPT,
         "",
         f"Game: {away_team} at {home_team}",
+    ]
+
+    if is_close_game:
+        prompt_parts.append(
+            f"\nNOTE: Close game (max margin: {max_margin} pts). Don't overstate leads. Detail the finish."
+        )
+
+    prompt_parts.extend([
         "",
         "BLOCKS:",
-    ]
+    ])
 
     for block in blocks:
         block_idx = block["block_index"]
@@ -175,6 +185,23 @@ def build_game_flow_pass_prompt(
     return "\n".join(prompt_parts)
 
 
+def _detect_close_game(blocks: list[dict[str, Any]]) -> tuple[bool, int]:
+    """Detect if a game is close based on block score margins.
+
+    Returns:
+        Tuple of (is_close_game, max_margin_seen)
+    """
+    max_margin = 0
+    for block in blocks:
+        score_before = block.get("score_before", [0, 0])
+        score_after = block.get("score_after", [0, 0])
+        margin_before = abs(score_before[0] - score_before[1])
+        margin_after = abs(score_after[0] - score_after[1])
+        max_margin = max(max_margin, margin_before, margin_after)
+    # A game where no team ever led by more than 7 is a tight contest
+    return max_margin <= 7, max_margin
+
+
 def build_block_prompt(
     blocks: list[dict[str, Any]],
     game_context: dict[str, str],
@@ -199,6 +226,9 @@ def build_block_prompt(
         detect_overtime_info(block, league_code)["has_overtime"]
         for block in blocks
     )
+
+    # Detect close game for tone guidance
+    is_close_game, max_margin = _detect_close_game(blocks)
 
     # Build play lookup
     play_lookup: dict[int, dict[str, Any]] = {
@@ -261,6 +291,15 @@ def build_block_prompt(
         "",
     ]
 
+    # Add close-game-specific guidance
+    if is_close_game:
+        prompt_parts.extend([
+            f"CLOSE GAME (max margin: {max_margin} pts):",
+            "- Do NOT overstate leads when margin is 1-2 pts. Emphasize back-and-forth.",
+            "- RESOLUTION: Capture the tension of the finish with specificity.",
+            "",
+        ])
+
     # Add overtime-specific guidance if game went to OT
     if has_any_overtime:
         prompt_parts.extend([
@@ -315,6 +354,12 @@ def build_block_prompt(
             prompt_parts.append(f"*** ENTERS {ot_info['ot_label'].upper()} - MUST mention going to {ot_info['ot_label']} ***")
         elif ot_info["has_overtime"] and not ot_info["enters_overtime"]:
             prompt_parts.append(f"(In {ot_info['ot_label']})")
+
+        # Flag decided games so RESOLUTION doesn't narrate garbage time
+        if role == "RESOLUTION":
+            final_margin = abs(score_after[0] - score_after[1])
+            if final_margin >= 15:
+                prompt_parts.append("(Outcome decided — summarize the final margin, skip garbage time)")
 
         # Lead/margin context
         lead_line = _format_lead_line(score_before, score_after, home_team, away_team)
