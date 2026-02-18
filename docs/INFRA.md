@@ -183,6 +183,8 @@ docker exec sports-api alembic revision --autogenerate -m "describe change"
 | `RUN_MIGRATIONS` | No | Run Alembic on startup (dev-only; default false) |
 | `API_KEY` | Prod/Staging | API authentication key (min 32 chars) |
 | `OPENAI_API_KEY` | No | OpenAI key for AI enrichment (game flow narratives) |
+| `OPENAI_MODEL_CLASSIFICATION` | No | OpenAI model for play classification (default: `gpt-4o-mini`) |
+| `OPENAI_MODEL_SUMMARY` | No | OpenAI model for narrative rendering (default: `gpt-4o`) |
 | `ODDS_API_KEY` | No | The Odds API key |
 | `CBB_STATS_API_KEY` | No | CBB Stats API key (NCAAB team mapping in migrations) |
 | `X_AUTH_TOKEN` | No | X/Twitter auth cookie |

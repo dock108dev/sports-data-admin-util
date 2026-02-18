@@ -145,17 +145,11 @@ Note: Restore uses `DROP DATABASE ... WITH (FORCE)` on Postgres 16+ so you don't
 
 ## Admin Access
 
-### Basic Auth Setup
-
-```bash
-htpasswd -c /etc/nginx/.htpasswd admin
-```
-
 ### SSH Tunnel Access
 
 For private access without exposing the UI:
 ```bash
-ssh -L 9000:localhost:80 ops@your-host
+ssh -L 9000:localhost:3000 ops@your-host
 ```
 Then visit `http://localhost:9000`.
 
