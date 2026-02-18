@@ -26,11 +26,10 @@ class OddsProviderConfig(BaseModel):
     live_odds_cache_ttl_seconds: int = Field(default=240)  # 4 minutes
     # Regions to fetch odds from — determines which books are available.
     # us: BetMGM, BetRivers, Bovada, Caesars, DraftKings, FanDuel
-    # us_ex: Kalshi, Polymarket
-    # uk: 888sport, Betfair Exchange, Betfair Sportsbook, Ladbrokes, Paddy Power, William Hill (UK)
     # eu: 888sport, Betfair Exchange, BetOnline.ag, Pinnacle, William Hill
+    # (us_ex and uk dropped to reduce credit burn — those books overlap or are excluded)
     regions: list[str] = Field(
-        default_factory=lambda: ["us", "us_ex", "eu", "uk"]
+        default_factory=lambda: ["us", "eu"]
     )
 
 

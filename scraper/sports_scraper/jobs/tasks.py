@@ -2,7 +2,7 @@
 
 Import directly from specific task modules:
 - scrape_tasks: Ingestion
-- odds_tasks: Unified odds sync (mainline + props)
+- odds_tasks: Odds sync (mainline every 15 min, props every 60 min)
 - pipeline_tasks: Pipeline triggering
 - timeline_tasks: Timeline generation
 - flow_tasks: Game flow generation
@@ -22,6 +22,8 @@ from .scrape_tasks import (
 )
 from .odds_tasks import (
     sync_all_odds,
+    sync_mainline_odds,
+    sync_prop_odds,
 )
 from .pipeline_tasks import (
     trigger_game_pipelines_task,
@@ -62,6 +64,8 @@ __all__ = [
     "run_scrape_job",
     "run_scheduled_ingestion",
     "sync_all_odds",
+    "sync_mainline_odds",
+    "sync_prop_odds",
     "trigger_game_pipelines_task",
     "generate_missing_timelines_task",
     "regenerate_timeline_task",

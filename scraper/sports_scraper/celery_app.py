@@ -56,6 +56,8 @@ app.conf.task_routes = {
     "update_game_states": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "poll_live_pbp": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "sync_all_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    "sync_mainline_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    "sync_prop_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "trigger_flow_for_game": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "run_daily_sweep": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     # Final-whistle social scrape runs on social-scraper queue (concurrency=1)
@@ -72,7 +74,7 @@ app.conf.task_routes = {
 # Each job is spaced 30 minutes apart. During EDT (March-November) all times
 # shift 1 hour later (e.g., ingestion at 4:30 AM EDT).
 #
-# Odds sync runs every 5 minutes to keep FairBet data fresh (mainline + props, all leagues).
+# Odds sync: mainlines every 15 min, props every 60 min.  Both skip 3–7 AM ET quiet window.
 # Always-on tasks (safe in all environments — pure DB, no external APIs)
 _always_on_schedule = {
     "game-state-updater-every-3-min": {
@@ -104,9 +106,14 @@ _prod_only_schedule = {
         "schedule": crontab(minute=30, hour=10),  # 5:30 AM EST = 10:30 UTC (+30 min after NHL flow)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
-    "odds-sync-every-5-min": {
-        "task": "sync_all_odds",
-        "schedule": crontab(minute="*/5"),
+    "mainline-odds-sync-every-15-min": {
+        "task": "sync_mainline_odds",
+        "schedule": crontab(minute="*/15"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+    "prop-odds-sync-every-60-min": {
+        "task": "sync_prop_odds",
+        "schedule": crontab(minute=0),
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     "live-pbp-poll-every-5-min": {
