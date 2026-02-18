@@ -49,6 +49,9 @@ export interface BetDefinition {
   ev_disabled_reason: string | null;
   ev_method: string | null;
   books: BookOdds[];
+  estimated_sharp_price: number | null;
+  extrapolation_ref_line: number | null;
+  extrapolation_distance: number | null;
 }
 
 export interface GameOption {
@@ -251,6 +254,10 @@ export function formatDisabledReason(reason: string | null): { title: string; de
       return { title: "Stale Data", detail: "The Pinnacle line is too old to use as a reference." };
     case "insufficient_books":
       return { title: "Too Few Books", detail: "Need at least 3 books on each side to calculate fair odds." };
+    case "extrapolation_exceeds_pinnacle":
+      return { title: "Extrapolation Invalid", detail: "Estimated fair odds exceed Pinnacle's actual price — extrapolation unreliable for this line." };
+    case "extrapolation_out_of_range":
+      return { title: "Too Far From Reference", detail: "The closest Pinnacle reference line is too far away for reliable extrapolation." };
     default:
       return { title: "Unavailable", detail: "Fair odds can't be calculated for this bet." };
   }

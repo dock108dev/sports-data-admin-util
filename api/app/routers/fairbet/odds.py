@@ -57,6 +57,9 @@ class BetDefinition(BaseModel):
     ev_disabled_reason: str | None = None
     ev_method: str | None = None
     has_fair: bool = False
+    estimated_sharp_price: float | None = None
+    extrapolation_ref_line: float | None = None
+    extrapolation_distance: float | None = None
 
 
 class FairbetOddsResponse(BaseModel):

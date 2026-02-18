@@ -19,6 +19,8 @@ from ...services.ev import (
     calculate_ev,
     compute_ev_for_market,
     evaluate_ev_eligibility,
+    implied_to_american,
+    prob_to_vigged_american,
     remove_vig,
 )
 from ...services.ev_config import (
@@ -239,14 +241,19 @@ def _market_base(market_key: str) -> str | None:
     """Normalize market_key to base type for extrapolation.
 
     Args:
-        market_key: Raw market key (e.g., "spreads", "alternate_spreads", "totals").
+        market_key: Raw market key (e.g., "spreads", "alternate_spreads", "totals",
+                     "team_totals").
 
     Returns:
-        "spreads" or "totals" for extrapolatable markets, None otherwise.
+        "spreads", "totals", or "team_totals" for extrapolatable markets,
+        None otherwise.
     """
     lower = market_key.lower()
     if "spread" in lower:
         return "spreads"
+    # "team_total" check MUST come before "total" since "team_totals" contains "total"
+    if "team_total" in lower:
+        return "team_totals"
     if "total" in lower:
         return "totals"
     return None
@@ -443,7 +450,10 @@ def _try_extrapolated_ev(
         else:
             n_half_points = -abs_shift
 
-    max_hp = MAX_EXTRAPOLATION_HALF_POINTS.get(league_code)
+    hp_map = MAX_EXTRAPOLATION_HALF_POINTS.get(league_code)
+    if hp_map is None:
+        return "reference_missing"
+    max_hp = hp_map.get(mbase)
     if max_hp is None:
         return "reference_missing"
     if abs(n_half_points) > max_hp:
@@ -471,6 +481,23 @@ def _try_extrapolated_ev(
     extrap_prob_a = 1.0 / (1.0 + math.exp(-new_logit_a))
     extrap_prob_b = 1.0 - extrap_prob_a  # By construction, sums to 1.0
 
+    # 8b. SANITY CHECK: If Pinnacle is present on the target line,
+    # the extrapolated true prob must NOT exceed Pinnacle's vigged implied prob.
+    # If it does, the extrapolation overshot — reject it.
+    for key, extrap_prob in [(key_a, extrap_prob_a), (key_b, extrap_prob_b)]:
+        bet = bets_map[key]
+        for b in bet["books"]:
+            book_name = b["book"] if isinstance(b, dict) else b.book
+            price = b["price"] if isinstance(b, dict) else b.price
+            if book_name == "Pinnacle":
+                try:
+                    pinnacle_implied = american_to_implied(price)
+                    if extrap_prob > pinnacle_implied:
+                        # Our "no-vig" prob exceeds Pinnacle's vigged prob — impossible
+                        return "extrapolation_exceeds_pinnacle"
+                except ValueError:
+                    pass
+
     # 9. Confidence tier
     confidence = extrapolation_confidence(n_half_points)
 
@@ -478,10 +505,14 @@ def _try_extrapolated_ev(
     ref_price_a = best_ref["prices"].get(sel_a)
     ref_price_b = best_ref["prices"].get(sel_b)
 
+    # 10b. Estimated Pinnacle prices at the target line
+    est_price_a = round(prob_to_vigged_american(extrap_prob_a))
+    est_price_b = round(prob_to_vigged_american(extrap_prob_b))
+
     # 11. Annotate books on both sides
-    for key, true_prob, ref_price, opp_ref_price in [
-        (key_a, extrap_prob_a, ref_price_a, ref_price_b),
-        (key_b, extrap_prob_b, ref_price_b, ref_price_a),
+    for key, true_prob, ref_price, opp_ref_price, est_price in [
+        (key_a, extrap_prob_a, ref_price_a, ref_price_b, est_price_a),
+        (key_b, extrap_prob_b, ref_price_b, ref_price_a, est_price_b),
     ]:
         bet = bets_map[key]
         new_books: list[BookOdds] = []
@@ -524,5 +555,8 @@ def _try_extrapolated_ev(
         bet["ev_confidence_tier"] = confidence
         bet["has_fair"] = True
         bet["ev_disabled_reason"] = None
+        bet["estimated_sharp_price"] = est_price
+        bet["extrapolation_ref_line"] = best_ref["abs_line"]
+        bet["extrapolation_distance"] = round(abs(n_half_points), 1)
 
     return None

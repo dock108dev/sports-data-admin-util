@@ -174,16 +174,17 @@ _STRATEGY_MAP: dict[tuple[str, str], EVStrategyConfig | None] = {
 # Operates in log-odds space so tails naturally compress.
 # Roughly calibrated: near 50%, a 1-half-point shift ≈ 1.5% prob (basketball).
 HALF_POINT_LOGIT_SLOPE: dict[str, dict[str, float]] = {
-    "NBA": {"spreads": 0.12, "totals": 0.10},
-    "NCAAB": {"spreads": 0.14, "totals": 0.12},
-    "NHL": {"spreads": 0.35, "totals": 0.30},
+    "NBA": {"spreads": 0.12, "totals": 0.10, "team_totals": 0.15},
+    "NCAAB": {"spreads": 0.14, "totals": 0.12, "team_totals": 0.18},
+    "NHL": {"spreads": 0.35, "totals": 0.30, "team_totals": 0.40},
 }
 
-# Max number of half-points we'll extrapolate (beyond → too uncertain)
-MAX_EXTRAPOLATION_HALF_POINTS: dict[str, int] = {
-    "NBA": 20,    # 10 full points
-    "NCAAB": 20,  # 10 full points
-    "NHL": 6,     # 3 full goals
+# Max number of half-points we'll extrapolate (beyond → too uncertain).
+# Per-market limits: team totals capped tighter (5 full points) vs game totals (10).
+MAX_EXTRAPOLATION_HALF_POINTS: dict[str, dict[str, int]] = {
+    "NBA": {"spreads": 20, "totals": 20, "team_totals": 10},
+    "NCAAB": {"spreads": 20, "totals": 20, "team_totals": 10},
+    "NHL": {"spreads": 6, "totals": 6, "team_totals": 6},
 }
 
 

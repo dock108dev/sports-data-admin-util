@@ -72,6 +72,22 @@ def implied_to_american(prob: float) -> float:
         return ((1 - prob) / prob) * 100.0
 
 
+def prob_to_vigged_american(true_prob: float, vig_per_side: float = 0.01) -> float:
+    """Convert true probability to estimated vigged American price.
+
+    Applies typical Pinnacle vig (~2% total overround, ~1% per side).
+
+    Args:
+        true_prob: True probability (0-1).
+        vig_per_side: Vig to add per side (default 0.01 = 1%).
+
+    Returns:
+        Estimated vigged American odds.
+    """
+    vigged_prob = max(0.001, min(0.999, true_prob * (1 + vig_per_side)))
+    return implied_to_american(vigged_prob)
+
+
 def remove_vig(implied_probs: list[float]) -> list[float]:
     """Remove vig from implied probabilities using additive normalization.
 

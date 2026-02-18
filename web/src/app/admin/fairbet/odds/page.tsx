@@ -406,6 +406,10 @@ export default function FairbetOddsPage() {
                               referencePrice={bet.reference_price}
                               oppositeReferencePrice={bet.opposite_reference_price}
                               trueProb={bet.true_prob}
+                              evMethod={bet.ev_method}
+                              estimatedSharpPrice={bet.estimated_sharp_price}
+                              extrapolationRefLine={bet.extrapolation_ref_line}
+                              extrapolationDistance={bet.extrapolation_distance}
                             />
                           )}
                       </div>
