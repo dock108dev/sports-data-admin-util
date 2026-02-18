@@ -192,6 +192,52 @@ class ActiveGamesResolver:
         logger.debug("games_needing_pbp", count=len(games))
         return games
 
+    def get_games_needing_boxscore(
+        self,
+        session: Session,
+    ) -> list[db_models.SportsGame]:
+        """Return live games where boxscore data is stale.
+
+        Only includes leagues with live_boxscore_enabled=True.
+        Boxscores are only meaningful for live games (no data before tip-off).
+        A game needs a boxscore refresh if last_boxscore_at is NULL or older
+        than pbp_stale_minutes (same staleness window as PBP).
+        """
+        now = now_utc()
+        stale_threshold = now - timedelta(minutes=self.pbp_stale_minutes)
+
+        enabled_leagues = [
+            code for code, cfg in LEAGUE_CONFIG.items() if cfg.live_boxscore_enabled
+        ]
+        if not enabled_leagues:
+            return []
+
+        league_ids = (
+            session.query(db_models.SportsLeague.id)
+            .filter(db_models.SportsLeague.code.in_(enabled_leagues))
+            .all()
+        )
+        league_id_list = [lid for (lid,) in league_ids]
+        if not league_id_list:
+            return []
+
+        games = (
+            session.query(db_models.SportsGame)
+            .filter(
+                db_models.SportsGame.league_id.in_(league_id_list),
+                db_models.SportsGame.status == db_models.GameStatus.live.value,
+                or_(
+                    db_models.SportsGame.last_boxscore_at.is_(None),
+                    db_models.SportsGame.last_boxscore_at < stale_threshold,
+                ),
+            )
+            .order_by(db_models.SportsGame.tip_time.asc().nullslast())
+            .all()
+        )
+
+        logger.debug("games_needing_boxscore", count=len(games))
+        return games
+
     def get_games_needing_social(
         self,
         session: Session,

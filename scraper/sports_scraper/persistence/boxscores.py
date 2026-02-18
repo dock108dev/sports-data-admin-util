@@ -237,7 +237,12 @@ def _build_player_stats(payload: NormalizedPlayerBoxscore) -> dict:
     return stats
 
 
-def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[NormalizedTeamBoxscore]) -> None:
+def upsert_team_boxscores(
+    session: Session,
+    game_id: int,
+    payloads: Sequence[NormalizedTeamBoxscore],
+    source: str = "sports_reference",
+) -> None:
     """Upsert team boxscores for a game."""
     updated = False
     for payload in payloads:
@@ -251,7 +256,7 @@ def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[Nor
             team_id=team_id,
             is_home=payload.is_home,
             raw_stats_json=stats,
-            source="sports_reference",
+            source=source,
         )
         stmt = stmt.on_conflict_do_update(
             constraint="uq_team_boxscore_game_team",
@@ -271,7 +276,10 @@ def upsert_team_boxscores(session: Session, game_id: int, payloads: Sequence[Nor
 
 
 def upsert_player_boxscores(
-    session: Session, game_id: int, payloads: Sequence[NormalizedPlayerBoxscore]
+    session: Session,
+    game_id: int,
+    payloads: Sequence[NormalizedPlayerBoxscore],
+    source: str = "sports_reference",
 ) -> PlayerBoxscoreStats:
     """Upsert player boxscores for a game.
 
@@ -321,7 +329,7 @@ def upsert_player_boxscores(
                 player_external_ref=payload.player_id,
                 player_name=payload.player_name,
                 raw_stats_json=stats,
-                source="sports_reference",
+                source=source,
             )
             stmt = stmt.on_conflict_do_update(
                 constraint="uq_player_boxscore_identity",
