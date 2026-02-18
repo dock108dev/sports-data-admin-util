@@ -167,4 +167,4 @@ EV strategy config lives in `api/app/services/ev_config.py` as a static Python m
 | Props parsing | `scraper/sports_scraper/odds/client.py` | 561-639 (`_parse_prop_event`) |
 | Odds config | `scraper/sports_scraper/config.py` | 20-32 (`OddsProviderConfig`) |
 | Celery beat schedule | `scraper/sports_scraper/celery_app.py` | 78-135 (schedule definitions) |
-| Migration (prop expansion) | `api/alembic/versions/20260215_000001_expand_odds_for_props.py` | Full file |
+| Schema (odds + props) | `api/alembic/versions/20260218_000001_baseline_squash.py` | `sports_game_odds` and `fairbet_game_odds_work` tables |

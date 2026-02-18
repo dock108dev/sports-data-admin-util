@@ -56,7 +56,6 @@ For manual setup, see [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md).
 api/          FastAPI backend
 scraper/      Multi-sport data scraper
 web/          Admin UI
-sql/          Database schema and migrations
 infra/        Docker, deployment config
 docs/         Documentation
 packages/     Shared JS libraries (js-core, ui, ui-kit)

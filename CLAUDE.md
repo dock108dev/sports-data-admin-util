@@ -33,7 +33,6 @@
 - `api/app/services/pipeline/` — Game flow generation pipeline (condensed moments)
 - `scraper/` — Multi-sport data scraper (automated ingestion)
 - `web/` — Admin UI (data browser, scraper management)
-- `sql/` — Database schema and migrations
 - `infra/` — Docker and deployment
 - `docs/` — Architecture and API documentation
 - `packages/` — Shared JS libraries (js-core, ui, ui-kit)
@@ -101,7 +100,7 @@ Configured in `scraper/sports_scraper/celery_app.py`
 | NHL | NHL API | NHL API | `external_ids.nhl_game_pk` |
 | NCAAB | CBB API | CBB API | `external_ids.cbb_game_id` |
 
-**NCAAB Team Mapping:** Requires `CBB_STATS_API_KEY` in migrate container to populate `sports_teams.external_codes.cbb_team_id` via Alembic migrations.
+**NCAAB Team Mapping:** Team data (including `external_codes.cbb_team_id`) is seeded via the baseline Alembic migration (`seed_data.sql`). New teams are added by updating the seed file and creating a new migration.
 
 ## Testing
 - Add comprehensive tests for API endpoints

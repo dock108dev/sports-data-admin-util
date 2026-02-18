@@ -153,7 +153,7 @@ See [TIMELINE_VALIDATION.md](TIMELINE_VALIDATION.md) for validation rules.
 - `fairbet_game_odds_work` - Bet-centric odds for cross-book comparison
 - `team_social_posts` - Social media content (mapped to games via `mapping_status`)
 
-See `sql/` for complete schema.
+Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). Reference data (leagues, teams, social handles) is seeded from `seed_data.sql`.
 
 ---
 

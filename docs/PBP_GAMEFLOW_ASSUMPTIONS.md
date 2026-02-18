@@ -22,7 +22,7 @@ This audit examines whether current PBP infrastructure meets these requirements 
 
 ### 2.1 Primary Storage: `sports_game_plays`
 
-**Location:** `sql/004_game_play_by_play.sql`, `api/app/db/sports.py`
+**Location:** `api/app/db/sports.py` (ORM model), `api/alembic/versions/20260218_000001_baseline_squash.py` (DDL)
 
 | Field | Type | Nullable | Description |
 |-------|------|----------|-------------|
@@ -55,7 +55,7 @@ Pydantic model used during ingestion. Fields mirror storage schema.
 
 ### 2.3 Snapshot Storage: `sports_pbp_snapshots`
 
-**Location:** `api/alembic/versions/20260218_000002_add_pbp_snapshots.py`
+**Location:** Defined in the baseline Alembic migration (`api/alembic/versions/20260218_000001_baseline_squash.py`)
 
 Stores PBP at different processing stages (raw, normalized, resolved) for auditability. Includes `resolution_stats` tracking:
 - `teams_unresolved`

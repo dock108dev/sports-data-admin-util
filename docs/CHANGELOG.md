@@ -7,15 +7,16 @@ All notable changes to Sports Data Admin.
 ### Live Boxscore Polling
 
 - **Live boxscore ingestion**: New polling task fetches boxscores for in-progress games every 5 minutes alongside live PBP
-- **`last_boxscore_at` column**: New timestamp on `sports_games` tracks when boxscore data was last refreshed (Alembic migration `20260217_000001`)
+- **`last_boxscore_at` column**: New timestamp on `sports_games` tracks when boxscore data was last refreshed
 - **Active game service**: New `services/active_games.py` module centralizes live game detection for polling tasks
 
 ### NCAAB Team Normalization & Matching
 
 - **NCAAB name normalization**: New `normalization/ncaab_teams.py` with 28 additional alias mappings for NCAAB team matching
 - **Odds matching improvements**: `persistence/odds_matching.py` enhanced with fuzzy matching for NCAAB teams where canonical names differ from odds API names
-- **Missing NCAAB teams seeded**: Alembic migration `20260217_000002` inserts teams that were missing from `sports_teams`
-- **NCAAB social handles fixed**: Alembic migration `20260218_000001` upserts corrected X handles for 66 NCAAB teams (8 NULL + 58 stale)
+- **Missing NCAAB teams seeded**: 7 HBCU/mid-major teams added to `sports_teams` (included in baseline seed data)
+- **NCAAB social handles fixed**: Corrected X handles for 66 NCAAB teams (8 NULL + 58 stale)
+- **Alembic squash**: Replaced 51 broken migration files (cycles, duplicates) with clean baseline + seed + linear chain
 
 ### Legacy Code Cleanup
 
