@@ -1,14 +1,21 @@
-"""Unified odds synchronization task.
+"""Odds synchronization tasks.
 
-Single Celery task that owns all odds ingestion: mainline + props for all
-odds-enabled leagues.  Runs every 5 minutes in production, replacing the
-previous trio of ``run_scheduled_odds_sync``, ``poll_active_odds``, and
-``run_scheduled_props_sync``.
+Two Celery tasks split by update frequency:
+
+- ``sync_mainline_odds`` — mainline odds (spreads, totals, moneyline) every 15 min
+- ``sync_prop_odds`` — player/team props every 60 min
+
+Both tasks skip execution during the 3–7 AM ET quiet window (no games in
+progress, saves API credits).
+
+The previous ``sync_all_odds`` task is kept as a thin wrapper so existing
+Celery-beat entries and manual invocations continue to work.
 """
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from celery import shared_task
 from sqlalchemy import select
@@ -20,30 +27,46 @@ from ..models import IngestionConfig
 from ..odds.synchronizer import OddsSynchronizer
 from ..utils.datetime_utils import today_et
 from ..utils.redis_lock import (
-    LOCK_TIMEOUT_5MIN,
+    LOCK_TIMEOUT_10MIN,
+    LOCK_TIMEOUT_1HOUR,
     acquire_redis_lock,
     release_redis_lock,
 )
 
+EASTERN = ZoneInfo("America/New_York")
+
+# Quiet window: no odds sync between 3:00 AM and 7:00 AM ET
+_QUIET_START_HOUR = 3
+_QUIET_END_HOUR = 7
+
+
+def _in_quiet_window() -> bool:
+    """Return True if the current ET hour falls in the 3–7 AM quiet window."""
+    now_et = datetime.now(EASTERN)
+    return _QUIET_START_HOUR <= now_et.hour < _QUIET_END_HOUR
+
+
+# ---------------------------------------------------------------------------
+# Mainline odds — every 15 minutes
+# ---------------------------------------------------------------------------
 
 @shared_task(
-    name="sync_all_odds",
+    name="sync_mainline_odds",
     autoretry_for=(Exception,),
     retry_backoff=True,
     retry_kwargs={"max_retries": 2},
 )
-def sync_all_odds(league_code: str | None = None) -> dict:
-    """Unified odds pipeline: mainline + props for all odds-enabled leagues.
+def sync_mainline_odds(league_code: str | None = None) -> dict:
+    """Sync mainline odds (spreads, totals, moneyline) for all leagues.
 
-    Args:
-        league_code: Optional single league to sync (e.g. ``"NBA"``).
-                     When *None*, syncs every odds-enabled league.
-
-    Returns:
-        Summary dict with per-league counts.
+    Runs every 15 minutes.  Skips during the 3–7 AM ET quiet window.
     """
-    if not acquire_redis_lock("lock:sync_all_odds", timeout=LOCK_TIMEOUT_5MIN):
-        logger.debug("sync_all_odds_skipped_locked")
+    if _in_quiet_window():
+        logger.debug("sync_mainline_odds_quiet_window")
+        return {"skipped": True, "reason": "quiet_window"}
+
+    if not acquire_redis_lock("lock:sync_mainline_odds", timeout=LOCK_TIMEOUT_10MIN):
+        logger.debug("sync_mainline_odds_skipped_locked")
         return {"skipped": True, "reason": "locked"}
 
     try:
@@ -59,10 +82,9 @@ def sync_all_odds(league_code: str | None = None) -> dict:
         sync = OddsSynchronizer()
         results: dict[str, dict] = {}
         total_odds = 0
-        total_props = 0
 
         logger.info(
-            "sync_all_odds_start",
+            "sync_mainline_odds_start",
             leagues=leagues,
             start_date=str(today),
             end_date=str(end),
@@ -71,11 +93,9 @@ def sync_all_odds(league_code: str | None = None) -> dict:
         for lc in leagues:
             league_result: dict[str, int | str] = {
                 "odds_count": 0,
-                "props_count": 0,
                 "status": "success",
             }
 
-            # --- Mainline odds (today + 1 day) ---
             try:
                 config = IngestionConfig(
                     league_code=lc,
@@ -90,7 +110,7 @@ def sync_all_odds(league_code: str | None = None) -> dict:
                 league_result["odds_count"] = odds_count
                 total_odds += odds_count
                 logger.info(
-                    "sync_all_odds_mainline_complete",
+                    "sync_mainline_odds_league_complete",
                     league=lc,
                     odds_count=odds_count,
                 )
@@ -98,14 +118,70 @@ def sync_all_odds(league_code: str | None = None) -> dict:
                 league_result["status"] = "error"
                 league_result["error"] = str(exc)
                 logger.exception(
-                    "sync_all_odds_mainline_failed",
+                    "sync_mainline_odds_league_failed",
                     league=lc,
                     error=str(exc),
                 )
-                results[lc] = league_result
-                continue  # skip props if mainline failed
 
-            # --- Props for pregame games with event IDs ---
+            results[lc] = league_result
+
+        logger.info(
+            "sync_mainline_odds_complete",
+            total_odds=total_odds,
+            results=results,
+        )
+
+        return {
+            "leagues": results,
+            "total_odds": total_odds,
+        }
+
+    finally:
+        release_redis_lock("lock:sync_mainline_odds")
+
+
+# ---------------------------------------------------------------------------
+# Prop odds — every 60 minutes
+# ---------------------------------------------------------------------------
+
+@shared_task(
+    name="sync_prop_odds",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def sync_prop_odds(league_code: str | None = None) -> dict:
+    """Sync prop odds for pregame events across all leagues.
+
+    Runs every 60 minutes.  Skips during the 3–7 AM ET quiet window.
+    """
+    if _in_quiet_window():
+        logger.debug("sync_prop_odds_quiet_window")
+        return {"skipped": True, "reason": "quiet_window"}
+
+    if not acquire_redis_lock("lock:sync_prop_odds", timeout=LOCK_TIMEOUT_1HOUR):
+        logger.debug("sync_prop_odds_skipped_locked")
+        return {"skipped": True, "reason": "locked"}
+
+    try:
+        if league_code is not None:
+            validate_league_code(league_code)
+            leagues = [league_code]
+        else:
+            leagues = get_odds_enabled_leagues()
+
+        sync = OddsSynchronizer()
+        results: dict[str, dict] = {}
+        total_props = 0
+
+        logger.info("sync_prop_odds_start", leagues=leagues)
+
+        for lc in leagues:
+            league_result: dict[str, int | str] = {
+                "props_count": 0,
+                "status": "success",
+            }
+
             try:
                 with get_session() as session:
                     stmt = (
@@ -131,18 +207,18 @@ def sync_all_odds(league_code: str | None = None) -> dict:
                     league_result["events"] = len(event_ids)
                     total_props += props_count
                     logger.info(
-                        "sync_all_odds_props_complete",
+                        "sync_prop_odds_league_complete",
                         league=lc,
                         props_count=props_count,
                         events=len(event_ids),
                     )
                 else:
-                    logger.info("sync_all_odds_props_no_events", league=lc)
+                    logger.info("sync_prop_odds_no_events", league=lc)
             except Exception as exc:
-                league_result["props_status"] = "error"
-                league_result["props_error"] = str(exc)
+                league_result["status"] = "error"
+                league_result["error"] = str(exc)
                 logger.exception(
-                    "sync_all_odds_props_failed",
+                    "sync_prop_odds_league_failed",
                     league=lc,
                     error=str(exc),
                 )
@@ -150,17 +226,40 @@ def sync_all_odds(league_code: str | None = None) -> dict:
             results[lc] = league_result
 
         logger.info(
-            "sync_all_odds_complete",
-            total_odds=total_odds,
+            "sync_prop_odds_complete",
             total_props=total_props,
             results=results,
         )
 
         return {
             "leagues": results,
-            "total_odds": total_odds,
             "total_props": total_props,
         }
 
     finally:
-        release_redis_lock("lock:sync_all_odds")
+        release_redis_lock("lock:sync_prop_odds")
+
+
+# ---------------------------------------------------------------------------
+# Legacy wrapper — keeps existing manual invocations working
+# ---------------------------------------------------------------------------
+
+@shared_task(
+    name="sync_all_odds",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def sync_all_odds(league_code: str | None = None) -> dict:
+    """Legacy wrapper: runs mainline + props sequentially.
+
+    Kept for backwards compatibility with manual Celery invocations.
+    The beat schedule now calls ``sync_mainline_odds`` and ``sync_prop_odds``
+    at different cadences instead.
+    """
+    mainline_result = sync_mainline_odds(league_code)
+    props_result = sync_prop_odds(league_code)
+    return {
+        "mainline": mainline_result,
+        "props": props_result,
+    }

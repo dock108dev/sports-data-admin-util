@@ -248,7 +248,9 @@ See also:
   - 10:30 UTC (5:30 AM EST) - NCAAB flow generation (capped at 10 games)
 - **Game State Updates**: Every 3 minutes
 - **Live PBP Polling**: Every 5 minutes (NBA, NHL per-game; NCAAB via batch CBB API)
-- **Unified Odds Sync**: Every 5 minutes (`sync_all_odds`: mainline + props for all leagues; live games skipped to preserve closing lines)
+- **Mainline Odds Sync**: Every 15 minutes (`sync_mainline_odds`: spreads, totals, moneyline for all leagues; `us` + `eu` regions)
+- **Prop Odds Sync**: Every 60 minutes (`sync_prop_odds`: player/team props for pregame events)
+- **Odds Quiet Window**: 3–7 AM ET daily (both odds tasks skip execution)
 - **Window**: Yesterday through today (catches overnight game completions)
 
 Configuration: `scraper/sports_scraper/celery_app.py`
