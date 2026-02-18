@@ -7,7 +7,7 @@ This document should allow a human to manually compute EV for one bet and match 
 
 ## 1. Odds Ingestion
 
-All odds are ingested via The Odds API into the `sports_game_odds` table, then upserted into the `fairbet_game_odds_work` work table for FairBet display. **All books are ingested** — no filtering at ingestion time. Each row stores:
+All odds are ingested via The Odds API into the `sports_game_odds` table, then upserted into the `fairbet_game_odds_work` work table for FairBet display. **All books are ingested** — no filtering at ingestion time. Each FairBet work row stores:
 
 - `game_id` — FK to `sports_games`
 - `book` — Display name (e.g., "Pinnacle", "DraftKings")
@@ -17,6 +17,10 @@ All odds are ingested via The Odds API into the `sports_game_odds` table, then u
 - `price` — American odds (e.g., -110, +150)
 - `observed_at` — Timestamp when the odds were recorded
 - `market_category` — One of: `mainline`, `player_prop`, `team_prop`, `alternate`, `period`, `game_prop`
+
+**Selection keys use DB team names.** When building `selection_key`, `upsert_fairbet_odds()` looks up the game's actual home/away teams from `sports_teams` (not the Odds API snapshot's team names). This prevents wrong team names from entering the work table when a game is mis-matched. A validation guard also checks that for team bets (moneyline/spread), the snapshot's side actually matches one of the game's DB teams — mismatches are logged and skipped.
+
+See [Odds & FairBet Pipeline](ODDS_AND_FAIRBET.md) for the full data flow.
 
 ## 2. Market Grouping
 
@@ -231,3 +235,7 @@ Confidence tier is set at the strategy level, not computed dynamically.
 7. **No line movement detection.** A sharp line that moved significantly since `observed_at` may still be within the staleness window.
 
 8. **Book list maintenance is manual.** `EXCLUDED_BOOKS` and `INCLUDED_BOOKS` are version-controlled constants, not database-driven.
+
+9. **Pinnacle prop coverage unknown.** We do not track what % of (league, market) combinations have Pinnacle on both sides. Pinnacle's player prop markets are thinner and higher-vig (5-8%) than mainlines (2-3%).
+
+10. **NCAAB game matching is fuzzy.** Despite tightened token overlap thresholds (requiring 2+ tokens for names with 2+ tokens), NCAAB name variations can cause false matches. The FairBet validation guard catches mismatches at upsert time.

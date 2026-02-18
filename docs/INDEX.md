@@ -42,8 +42,9 @@
 
 | Guide | Description |
 |-------|-------------|
-| [EV Lifecycle](EV_LIFECYCLE.md) | End-to-end EV computation: ingestion → grouping → eligibility → devig → annotation |
-| [EV Infrastructure Review](EV_INFRASTRUCTURE_REVIEW.md) | Codebase review: assumptions, gaps, open questions |
+| [Odds & FairBet Pipeline](ODDS_AND_FAIRBET.md) | **Start here:** Full pipeline from ingestion to API consumption |
+| [EV Lifecycle](EV_LIFECYCLE.md) | Detailed mathematical walkthrough of EV computation |
+| [EV Infrastructure Review](EV_INFRASTRUCTURE_REVIEW.md) | Historical codebase review: assumptions, gaps, open questions (2026-02-14) |
 
 ## Data Ingestion
 

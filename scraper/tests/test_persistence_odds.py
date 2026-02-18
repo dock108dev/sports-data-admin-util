@@ -29,6 +29,39 @@ from sports_scraper.persistence.odds_matching import (
 from sports_scraper.models import NormalizedOddsSnapshot, TeamIdentity
 
 
+def _setup_session_get(
+    mock_session: MagicMock,
+    mock_game: MagicMock,
+    home_name: str = "Lakers",
+    away_name: str = "Celtics",
+) -> None:
+    """Configure mock_session.get to return game and team mocks properly.
+
+    upsert_fairbet_odds looks up the game and its teams via
+    session.get(SportsGame, id) and session.get(SportsTeam, id).
+    This helper wires up side_effect so each model class gets the right mock.
+    """
+    from sports_scraper.db import db_models
+
+    mock_game.home_team_id = 100
+    mock_game.away_team_id = 200
+
+    mock_home_team = MagicMock()
+    mock_home_team.name = home_name
+    mock_away_team = MagicMock()
+    mock_away_team.name = away_name
+
+    def _get(model_class, id_value):
+        if model_class is db_models.SportsTeam:
+            if id_value == 100:
+                return mock_home_team
+            if id_value == 200:
+                return mock_away_team
+        return mock_game
+
+    mock_session.get.side_effect = _get
+
+
 class TestCanonicalizeTeamNames:
     """Tests for canonicalize_team_names function."""
 
@@ -444,10 +477,10 @@ class TestUpsertOddsFunction:
         mock_find_team.side_effect = [10, 20]  # home, away team IDs
         mock_cache_get.return_value = 42  # Cached game_id
 
-        # Mock session.get to return a game
+        # Mock session.get to return a game and its teams
         mock_game = MagicMock()
         mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game)
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
@@ -526,7 +559,7 @@ class TestUpsertOddsFunction:
 
         mock_game = MagicMock()
         mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game, "New Team", "Another Team")
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
@@ -567,7 +600,7 @@ class TestUpsertOddsFunction:
 
         mock_game = MagicMock()
         mock_game.tip_time = None  # No tip_time
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game)
 
         tip_time = datetime(2024, 1, 15, 19, 30, tzinfo=timezone.utc)
         snapshot = NormalizedOddsSnapshot(
@@ -624,7 +657,7 @@ class TestUpsertOddsCacheMiss:
 
         mock_game = MagicMock()
         mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game)
 
         # Mock execute for diagnostic queries
         mock_session.execute.return_value.all.return_value = []
@@ -680,7 +713,7 @@ class TestUpsertOddsCacheMiss:
 
         mock_game = MagicMock()
         mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game, "Duke Blue Devils", "North Carolina Tar Heels")
 
         mock_session.execute.return_value.all.return_value = []
 
@@ -735,7 +768,7 @@ class TestUpsertOddsCacheMiss:
 
         mock_game = MagicMock()
         mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game)
 
         mock_session.execute.return_value.all.return_value = []
 
@@ -790,7 +823,7 @@ class TestUpsertOddsCacheMiss:
 
         mock_game = MagicMock()
         mock_game.tip_time = None
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game)
 
         mock_session.execute.return_value.all.return_value = []
 
@@ -904,7 +937,7 @@ class TestUpsertOddsDiagnostics:
 
         mock_game = MagicMock()
         mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game)
 
         # Mock diagnostic query results
         mock_session.execute.return_value.all.return_value = [
@@ -955,7 +988,7 @@ class TestUpsertOddsWithSideValue:
 
         mock_game = MagicMock()
         mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game)
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
@@ -973,8 +1006,9 @@ class TestUpsertOddsWithSideValue:
         result = upsert_odds(mock_session, snapshot)
 
         assert result is OddsUpsertResult.PERSISTED
-        # Three execute calls: SportsGameOdds opening + closing + FairbetGameOddsWork
-        assert mock_session.execute.call_count == 3
+        # Two execute calls: SportsGameOdds opening + closing
+        # (FairBet skipped: side="home" doesn't match either DB team name)
+        assert mock_session.execute.call_count == 2
 
     @patch("sports_scraper.persistence.odds.cache_set")
     @patch("sports_scraper.persistence.odds.cache_get")
@@ -999,7 +1033,7 @@ class TestUpsertOddsWithSideValue:
 
         mock_game = MagicMock()
         mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game)
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
@@ -1045,7 +1079,7 @@ class TestUpsertOddsTeamCreation:
 
         mock_game = MagicMock()
         mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game, "New Team", "Celtics")
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
@@ -1087,7 +1121,7 @@ class TestUpsertOddsTeamCreation:
 
         mock_game = MagicMock()
         mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game, "Lakers", "New Team")
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
@@ -1142,7 +1176,7 @@ class TestUpsertOddsUpdateTipTime:
 
         mock_game = MagicMock()
         mock_game.tip_time = None
-        mock_session.get.return_value = mock_game
+        _setup_session_get(mock_session, mock_game)
         mock_session.execute.return_value.all.return_value = []
 
         tip_time = datetime(2024, 1, 15, 19, 30, tzinfo=timezone.utc)

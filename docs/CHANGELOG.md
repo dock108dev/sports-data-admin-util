@@ -4,6 +4,21 @@ All notable changes to Sports Data Admin.
 
 ## [2026-02-18] - Current
 
+### NCAAB Fair Odds Fix
+
+- **DB team names for FairBet selection keys**: `upsert_fairbet_odds()` now looks up the game's actual home/away teams from `sports_teams` instead of using Odds API snapshot names, preventing wrong team names from entering `fairbet_game_odds_work` when a game is mis-matched
+- **Team mismatch validation guard**: For moneyline/spread bets, the FairBet upsert now verifies that the snapshot's side matches one of the game's actual DB teams — mismatches are logged (`fairbet_skip_team_mismatch`) and skipped
+- **NCAAB token overlap threshold tightened**: `match_game_by_names_ncaab()` now requires 2+ overlapping tokens when both names have 2+ tokens (was 1 for names with ≤2 tokens), preventing false matches on shared words like "State" (e.g., "Illinois State" no longer matches "Youngstown State")
+- **Subset matching guard**: Single-token subsets (e.g., `{"state"}`) no longer qualify as subset matches — subsets must have 2+ tokens
+
+### Documentation
+
+- **ODDS_AND_FAIRBET.md** (NEW): Consolidated guide covering the full odds pipeline from ingestion through game matching, selection key generation, EV computation, and API consumption
+- **EV_LIFECYCLE.md**: Updated Section 1 with DB team name selection keys and validation guard; added NCAAB matching and Pinnacle coverage limitations
+- **DATA_SOURCES.md**: Rewrote Odds section with sync schedule, props markets, updated game matching description, credit management details
+- **API.md**: Added `ev_diagnostics` to FairbetOddsResponse TypeScript interface; cross-reference to ODDS_AND_FAIRBET.md; clarified selection_key uses DB team names
+- **INDEX.md**: Added ODDS_AND_FAIRBET.md as primary FairBet entry point
+
 ### Odds Sync Optimization
 
 - **Split cadence**: `sync_mainline_odds` (every 15 min) and `sync_prop_odds` (every 60 min) replace the unified `sync_all_odds` task

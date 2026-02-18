@@ -48,6 +48,7 @@ build/
 
 # Scraper cache (optional - can be large)
 scraper/game_data/
+*.json
 
 # Social scraper browser profile (contains X auth cookies)
 infra/social-scraper-profile/

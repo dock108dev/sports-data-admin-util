@@ -173,9 +173,12 @@ Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). R
 - `GET /api/admin/sports/pipeline/run/{id}` - Pipeline run status
 
 ### FairBet Endpoints
-- `GET /api/fairbet/odds` - Cross-book odds comparison
+- `GET /api/fairbet/odds` — Cross-book odds comparison with EV annotations
 
-See [API.md](API.md) for complete reference.
+FairBet reads from the `fairbet_game_odds_work` table (populated during odds ingestion with canonical DB team names) and annotates each bet with expected value computed at query time using Pinnacle as the sharp reference.
+
+See [Odds & FairBet Pipeline](ODDS_AND_FAIRBET.md) for the full data flow.
+See [API.md](API.md) for complete endpoint reference.
 
 ---
 

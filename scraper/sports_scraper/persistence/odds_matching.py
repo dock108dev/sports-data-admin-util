@@ -193,19 +193,23 @@ def match_game_by_names_ncaab(
         )
         if not home_matches:
             overlap_home = len(home_tokens & home_db_tokens)
-            threshold_home = 1 if min(len(home_tokens), len(home_db_tokens)) <= 2 else 2
+            # Require 2+ overlap unless one side has only 1 token.
+            # Old threshold of 1 for <=2-token names caused false matches
+            # (e.g., "Illinois State" matching "Youngstown State" on shared "state").
+            threshold_home = 1 if min(len(home_tokens), len(home_db_tokens)) <= 1 else 2
             home_matches = (
                 overlap_home >= threshold_home
-                or home_tokens.issubset(home_db_tokens)
-                or home_db_tokens.issubset(home_tokens)
+                # Only allow subset matching when the subset has 2+ tokens
+                or (len(home_tokens) >= 2 and home_tokens.issubset(home_db_tokens))
+                or (len(home_db_tokens) >= 2 and home_db_tokens.issubset(home_tokens))
             )
         if not away_matches:
             overlap_away = len(away_tokens & away_db_tokens)
-            threshold_away = 1 if min(len(away_tokens), len(away_db_tokens)) <= 2 else 2
+            threshold_away = 1 if min(len(away_tokens), len(away_db_tokens)) <= 1 else 2
             away_matches = (
                 overlap_away >= threshold_away
-                or away_tokens.issubset(away_db_tokens)
-                or away_db_tokens.issubset(away_tokens)
+                or (len(away_tokens) >= 2 and away_tokens.issubset(away_db_tokens))
+                or (len(away_db_tokens) >= 2 and away_db_tokens.issubset(away_tokens))
             )
 
         if home_matches and away_matches:

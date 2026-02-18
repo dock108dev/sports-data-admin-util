@@ -111,50 +111,73 @@ NHL uses the official NHL API for ALL data (schedule, PBP, boxscores).
 The Odds API (v4): `https://api.the-odds-api.com`
 
 ### Endpoints
-- **Live**: `/sports/{sport}/odds` - Today and future games
-- **Historical**: `/historical/sports/{sport}/odds` - Past dates
+- **Live**: `/sports/{sport}/odds` — Today and future games (mainlines)
+- **Historical**: `/historical/sports/{sport}/odds` — Past dates
+- **Event props**: `/sports/{sport}/events/{event_id}/odds` — Player/team props per event
 
 ### Markets
-- **Spread** (`spreads`) - Point spread with price
-- **Total** (`totals`) - Over/under with price
-- **Moneyline** (`h2h`) - Win/loss odds
+
+**Mainline:** `h2h` (moneyline), `spreads` (point spread), `totals` (over/under)
+
+**Props (NBA/NCAAB):** `player_points`, `player_rebounds`, `player_assists`, `player_threes`, `player_points_rebounds_assists`, `player_blocks`, `player_steals`, `team_totals`, `alternate_spreads`, `alternate_totals`
+
+**Props (NHL):** `player_points`, `player_goals`, `player_assists`, `player_shots_on_goal`, `player_total_saves`, `team_totals`, `alternate_spreads`, `alternate_totals`
+
+### Sync Schedule
+
+| Task | Cadence | Markets | Quiet Window |
+|------|---------|---------|-------------|
+| `sync_mainline_odds` | Every 15 min | h2h, spreads, totals | 3–7 AM ET (skips) |
+| `sync_prop_odds` | Every 60 min | Player/team props, alternates | 3–7 AM ET (skips) |
+
+Configuration: `scraper/sports_scraper/celery_app.py`
 
 ### Bookmakers
-- Configurable via `include_books` parameter
-- If unset, all bookmakers returned by API are accepted
-- Common books: DraftKings, FanDuel, BetMGM, Caesars
+- 17 included books participate in display and EV computation (DraftKings, FanDuel, BetMGM, Caesars, Pinnacle, etc.)
+- 20 excluded books (offshore, promo, prediction markets) are filtered at query time
+- **All books are still ingested and persisted** — exclusion is query-time only
+- Full lists: `api/app/services/ev_config.py` → `INCLUDED_BOOKS`, `EXCLUDED_BOOKS`
 
 ### Game Matching
-1. Try exact team ID match (home/away and away/home)
-2. Fall back to normalized team name matching (NCAAB only)
-3. If no match, log warning and skip
+
+Odds snapshots must be matched to a `SportsGame` row. Strategy:
+
+1. **Cache lookup** — In-memory LRU cache (512 entries) avoids repeated queries
+2. **Exact team ID match** — Home/away and swapped (Odds API sometimes reverses)
+3. **Name-based match:**
+   - **NBA/NHL:** Case-insensitive exact match against canonical and raw API names
+   - **NCAAB:** Multi-strategy fuzzy matching with manual overrides, normalized token overlap (requires 2+ overlapping tokens for multi-token names to prevent false matches on shared words like "State"), and substring matching with length-ratio guard
+4. **Game stub creation** — If no match and game within 48 hours, create a stub
+
+Code: `scraper/sports_scraper/persistence/odds.py`, `scraper/sports_scraper/persistence/odds_matching.py`
 
 ### Storage
-- `sports_game_odds` table (game-centric, for historical analysis)
+
+**`sports_game_odds`** — Game-centric historical record
+- Two rows per (game, book, market, side): opening line (immutable) + closing line (updated)
 - Unique constraint: `(game_id, book, market_type, side, is_closing_line)`
-- Upsert strategy: `ON CONFLICT DO UPDATE`
 
-### FairBet Work Table
+**`fairbet_game_odds_work`** — Bet-centric work table for cross-book comparison
+- One row per (game, market, selection, line, book), continuously upserted
+- Selection keys use **canonical DB team names** (not Odds API names)
+- Validation guard skips team bets where the snapshot's side doesn't match the game's actual teams
+- Only populated for non-completed games
+- `line_value = 0.0` is sentinel for moneyline
 
-A separate bet-centric table for cross-book odds comparison:
+See [Odds & FairBet Pipeline](ODDS_AND_FAIRBET.md) for the full data flow including EV computation.
 
-- `fairbet_game_odds_work` table
-- **Purpose:** Store odds by bet definition (game + market + selection + line) with books as rows
-- **Populated:** During odds ingestion for non-completed games only
-- **Primary key:** `(game_id, market_key, selection_key, line_value, book)`
-- **Note:** `line_value` of 0 is sentinel for moneylines (no line)
-
-This table enables efficient cross-book comparison without the game-centric structure of `sports_game_odds`.
-
-### Rate Limiting
-- Historical endpoint: 1-second pause every 5 days of iteration (to avoid rate limits)
-- Live games excluded from active odds polling to preserve pre-game closing lines
-- Caching: Per-league, per-date JSON files under scraper cache
+### Rate Limiting & Credit Management
+- Historical endpoint: 1-second pause every 5 days of iteration
+- Live games excluded from odds polling to preserve pre-game closing lines
+- Props sync aborts gracefully if API credits drop below 500 (mainlines prioritized)
+- Caching: Per-league, per-date JSON files under scraper cache directory
 
 ### Implementation
 - Client: `scraper/sports_scraper/odds/client.py`
 - Sync: `scraper/sports_scraper/odds/synchronizer.py`
+- FairBet upsert: `scraper/sports_scraper/odds/fairbet.py`
 - Persistence: `scraper/sports_scraper/persistence/odds.py`
+- Game matching: `scraper/sports_scraper/persistence/odds_matching.py`
 
 ## Social Media (X/Twitter)
 

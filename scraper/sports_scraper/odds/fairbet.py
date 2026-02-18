@@ -146,15 +146,56 @@ def upsert_fairbet_odds(
     if game_status in ("final", "completed"):
         return False
 
-    # Build selection key
+    # Look up game's actual teams from DB (not the Odds API snapshot)
+    # This prevents wrong team names from bleeding into fairbet_game_odds_work
+    # when a game is mis-matched by fuzzy name matching.
+    game = session.get(db_models.SportsGame, game_id)
+    if not game:
+        logger.warning("fairbet_skip_game_not_found", game_id=game_id)
+        return False
+    home_team = session.get(db_models.SportsTeam, game.home_team_id)
+    away_team = session.get(db_models.SportsTeam, game.away_team_id)
+    if not home_team or not away_team:
+        logger.warning(
+            "fairbet_skip_team_not_found",
+            game_id=game_id,
+            home_team_id=game.home_team_id,
+            away_team_id=game.away_team_id,
+        )
+        return False
+
+    # Build selection key using DB team names for consistent keys
     selection_key = build_selection_key(
         market_type=snapshot.market_type,
         side=snapshot.side,
-        home_team_name=snapshot.home_team.name,
-        away_team_name=snapshot.away_team.name,
+        home_team_name=home_team.name,
+        away_team_name=away_team.name,
         player_name=snapshot.player_name,
         market_category=snapshot.market_category,
     )
+
+    # Validation guard: for team bets (moneyline/spread), if the selection key
+    # fell through to the fallback path (side didn't match either DB team),
+    # it means the snapshot's team doesn't belong to this game — skip it.
+    is_team_bet = snapshot.market_type in ("moneyline", "spread") or (
+        snapshot.market_category == "mainline"
+        and snapshot.market_type not in ("total",)
+        and snapshot.source_key in ("h2h", "spreads")
+    )
+    if is_team_bet and selection_key.startswith("team:"):
+        home_slug = slugify(home_team.name)
+        away_slug = slugify(away_team.name)
+        key_slug = selection_key.removeprefix("team:")
+        if key_slug != home_slug and key_slug != away_slug:
+            logger.warning(
+                "fairbet_skip_team_mismatch",
+                game_id=game_id,
+                selection_key=selection_key,
+                home_team=home_team.name,
+                away_team=away_team.name,
+                snapshot_side=snapshot.side,
+            )
+            return False
 
     # Use source_key as market_key (e.g., "h2h", "spreads", "totals")
     # Fall back to market_type if source_key not available

@@ -4,6 +4,8 @@
 **Scope:** NBA, NHL, NCAAB — mainlines, game/team props, player props
 **Purpose:** Understand the terrain before building. No solutions proposed.
 
+> **Note:** This is a historical review snapshot. For the current system behavior including recent fixes (DB team names for selection keys, NCAAB matching tightening, validation guards), see [Odds & FairBet Pipeline](ODDS_AND_FAIRBET.md).
+
 ---
 
 ## 1. Current-State Summary
@@ -142,7 +144,7 @@ EV strategy config lives in `api/app/services/ev_config.py` as a static Python m
 
 3. **Should EV ever be persisted?** Currently computed per-request. Historical EV tracking would require storage.
 
-4. **Game flow narrative odds (`odds_events.py`) — in scope?** Uses `PREFERRED_BOOKS` for selecting which book's odds appear in game flow text. Separate system from FairBet EV.
+4. ~~**Game flow narrative odds (`odds_events.py`) — in scope?**~~ Resolved: Timeline odds integration implemented (2026-02-11). Uses `PREFERRED_BOOKS` for selecting which book's odds appear in game flow text. Separate system from FairBet EV.
 
 ---
 
@@ -158,7 +160,7 @@ EV strategy config lives in `api/app/services/ev_config.py` as a static Python m
 | Market classification | `scraper/sports_scraper/models/schemas.py` | 123-142 (`classify_market`) |
 | Snapshot model | `scraper/sports_scraper/models/schemas.py` | 102-121 (`NormalizedOddsSnapshot`) |
 | Persistence (sports_game_odds) | `scraper/sports_scraper/persistence/odds.py` | 42-99 (two-row upsert) |
-| Persistence (fairbet work) | `scraper/sports_scraper/odds/fairbet.py` | 118-203 (upsert), 57-116 (selection key) |
+| Persistence (fairbet work) | `scraper/sports_scraper/odds/fairbet.py` | upsert_fairbet_odds (uses DB team names + validation guard), build_selection_key |
 | FairBet work table schema | `api/app/db/odds.py` | 84-132 |
 | SportsGameOdds schema | `api/app/db/odds.py` | 27-82 (includes `raw_payload` JSONB) |
 | Game flow book selection | `api/app/services/odds_events.py` | 35-67 (`PREFERRED_BOOKS`, `select_preferred_book`) |

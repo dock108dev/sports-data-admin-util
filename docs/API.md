@@ -869,6 +869,8 @@ Create/update account.
 
 Odds comparison tool with expected value (EV) analysis across multiple sportsbooks. Displays cross-book betting lines with fair odds computation using Pinnacle as the sharp reference.
 
+> **Deep Dive:** See [Odds & FairBet Pipeline](ODDS_AND_FAIRBET.md) for the full data flow from ingestion through game matching, selection key generation, and EV computation.
+
 ### Supported Leagues
 
 - NBA
@@ -956,7 +958,7 @@ Get bet-centric odds for cross-book comparison with EV annotations.
 
 **Field Notes:**
 - `market_key`: `"h2h"` (moneyline), `"spreads"`, `"totals"`, or any prop market key (e.g., `"player_points"`)
-- `selection_key`: `{entity_type}:{entity_slug}` (e.g., `"team:los_angeles_lakers"`, `"player:lebron_james"`)
+- `selection_key`: `{entity_type}:{entity_slug}` — built from canonical DB team names, not Odds API names (e.g., `"team:los_angeles_lakers"`, `"player:lebron_james"`)
 - `line_value`: Spread or total number; `0` for moneyline
 - `true_prob`: Fair probability derived from Pinnacle devig (null if EV computation disabled)
 - `ev_percent`: Expected value percentage vs fair odds (positive = +EV bet)
@@ -1466,6 +1468,7 @@ interface FairbetOddsResponse {
   books_available: string[];
   market_categories_available: string[];
   games_available: GameDropdown[];
+  ev_diagnostics: Record<string, number>;  // Aggregate stats: total_pairs, total_unpaired, etc.
 }
 
 interface BetDefinition {
