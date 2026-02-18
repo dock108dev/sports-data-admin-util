@@ -10,17 +10,13 @@ from ..db import db_models, get_session
 from ..logging import logger
 from ..models import IngestionConfig
 from ..live import LiveFeedManager
-from ..odds.synchronizer import OddsSynchronizer
 from ..persistence import persist_game_payload
 from ..scrapers import get_all_scrapers
 from ..celery_app import SOCIAL_QUEUE
-from ..utils.datetime_utils import now_utc, today_et
+from ..utils.datetime_utils import now_utc, sports_today_et, today_et
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
 from .job_runs import complete_job_run, start_job_run
-from .game_selection import (
-    select_games_for_boxscores,
-    select_games_for_odds,
-)
+from .game_selection import select_games_for_boxscores
 from .pbp_ingestion import (
     ingest_pbp_via_nba_api,
     ingest_pbp_via_ncaab_api,
@@ -32,7 +28,6 @@ from .pbp_ingestion import (
 class ScrapeRunManager:
     def __init__(self) -> None:
         self.scrapers = get_all_scrapers()
-        self.odds_sync = OddsSynchronizer()
         self.live_feed_manager = LiveFeedManager()
 
         # Feature support varies by league. When a toggle is enabled for an unsupported
@@ -67,7 +62,6 @@ class ScrapeRunManager:
             "games": 0,
             "games_enriched": 0,  # Games enriched with boxscore data
             "games_with_stats": 0,  # Games that had player stats upserted
-            "odds": 0,
             "social_posts": 0,
             "pbp_games": 0,
         }
@@ -87,7 +81,6 @@ class ScrapeRunManager:
             run_id=run_id,
             league=config.league_code,
             boxscores=config.boxscores,
-            odds=config.odds,
             social=config.social,
             pbp=config.pbp,
             only_missing=config.only_missing,
@@ -105,44 +98,14 @@ class ScrapeRunManager:
         ingest_run_id: int | None = None
         ingest_run_completed = False
         try:
-            if config.boxscores or config.odds:
+            if config.boxscores:
                 ingest_run_id = start_job_run("ingest", [config.league_code])
 
-            # STAGE 1: Odds scraping (MUST run first - creates game records)
-            # Odds API is the sole creator of game records for the pregame → final lifecycle
-            if config.odds:
-                logger.info(
-                    "odds_scraping_start",
-                    run_id=run_id,
-                    league=config.league_code,
-                    start_date=str(start),
-                    end_date=str(end),
-                    only_missing=config.only_missing,
-                    stage="1_schedule_sync",
-                )
-
-                if config.only_missing:
-                    with get_session() as session:
-                        dates_to_fetch = select_games_for_odds(
-                            session, config.league_code, start, end,
-                            only_missing=True,
-                        )
-                    for fetch_date in dates_to_fetch:
-                        try:
-                            odds_count = self.odds_sync.sync_single_date(config.league_code, fetch_date)
-                            summary["odds"] += odds_count
-                        except Exception as e:
-                            logger.warning("odds_fetch_failed", date=str(fetch_date), error=str(e))
-                else:
-                    summary["odds"] = self.odds_sync.sync(config)
-
-                logger.info("odds_complete", count=summary["odds"], run_id=run_id)
-
-            # STAGE 2: Boxscore scraping (enrichment only - does NOT create games)
+            # Boxscore scraping (enrichment only - does NOT create games)
             # Boxscores enrich existing games created by Odds API
             # IMPORTANT: Only scrape boxscores for completed games (yesterday and earlier)
             if config.boxscores:
-                yesterday = today_et() - timedelta(days=1)
+                yesterday = sports_today_et() - timedelta(days=1)
                 boxscore_end = min(end, yesterday)
                 games_skipped = 0
 
@@ -353,7 +316,7 @@ class ScrapeRunManager:
 
                 # Gap detection: compare DB games for the date range vs enriched count
                 try:
-                    yesterday = today_et() - timedelta(days=1)
+                    yesterday = sports_today_et() - timedelta(days=1)
                     bs_end = min(end, yesterday)
                     window_start = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
                     window_end = datetime.combine(bs_end, datetime.max.time(), tzinfo=timezone.utc)
@@ -432,7 +395,7 @@ class ScrapeRunManager:
                 else:
                     # Non-live PBP scraping
                     # Only scrape PBP for completed games (yesterday and earlier)
-                    pbp_yesterday = today_et() - timedelta(days=1)
+                    pbp_yesterday = sports_today_et() - timedelta(days=1)
                     pbp_end = min(end, pbp_yesterday)
                     pbp_events = 0
 
@@ -584,8 +547,6 @@ class ScrapeRunManager:
                 summary_parts.append(
                     f'Games: {summary["games"]} ({summary["games_enriched"]} enriched, {summary["games_with_stats"]} with stats)'
                 )
-            if summary["odds"]:
-                summary_parts.append(f'Odds: {summary["odds"]}')
             if summary["social_posts"]:
                 social_val = summary["social_posts"]
                 if social_val == "dispatched":

@@ -137,7 +137,7 @@ def schedule_ingestion_runs(
                 start_date=start_date,
                 end_date=end_date,
                 boxscores=league_cfg.boxscores_enabled,
-                odds=league_cfg.odds_enabled,
+                odds=False,  # Odds handled by dedicated sync_all_odds task (every 5 min)
                 social=league_cfg.social_enabled,
                 pbp=league_cfg.pbp_enabled,
                 only_missing=False,
@@ -321,7 +321,7 @@ def schedule_single_league_and_wait(
             start_date=start_date,
             end_date=end_date,
             boxscores=league_cfg.boxscores_enabled,
-            odds=league_cfg.odds_enabled,
+            odds=False,  # Odds handled by dedicated sync_all_odds task (every 5 min)
             social=league_cfg.social_enabled,
             pbp=False,  # PBP runs separately
             only_missing=False,

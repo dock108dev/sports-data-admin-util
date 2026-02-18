@@ -17,6 +17,22 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 
+SPORTS_DAY_BOUNDARY_HOUR_ET = 4
+
+
+def sports_today_et() -> date:
+    """Return the current sports calendar date in Eastern Time.
+
+    In sports, action runs until ~4 AM ET. A timestamp at 2 AM ET on Feb 18
+    belongs to the Feb 17 sports day. This shifts the day boundary from
+    midnight to 4 AM ET.
+    """
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    if now_et.hour < SPORTS_DAY_BOUNDARY_HOUR_ET:
+        return (now_et - timedelta(days=1)).date()
+    return now_et.date()
+
+
 def now_utc() -> datetime:
     """Return the current timezone-aware UTC datetime."""
     return datetime.now(timezone.utc)

@@ -17,10 +17,9 @@ import {
   type FairbetOddsFilters,
   type GameOption,
 } from "@/lib/api/fairbet";
-import { createScrapeRun, listScrapeRuns } from "@/lib/api/sportsAdmin";
+import { listScrapeRuns } from "@/lib/api/sportsAdmin";
 import type { ScrapeRunResponse } from "@/lib/api/sportsAdmin/types";
 import { FAIRBET_LEAGUES } from "@/lib/constants/sports";
-import { formatDateInput } from "@/lib/utils/dateFormat";
 import { DerivationContent } from "./DerivationContent";
 import { formatGameDate, formatLastSync, formatLineValue } from "./helpers";
 
@@ -128,30 +127,22 @@ export default function FairbetOddsPage() {
     setError(null);
 
     try {
-      const today = formatDateInput(new Date());
-      const leaguesToSync = selectedLeague ? [selectedLeague] : LEAGUES;
+      const params = new URLSearchParams();
+      if (selectedLeague) params.set("league", selectedLeague);
 
-      const results = await Promise.all(
-        leaguesToSync.map((league) =>
-          createScrapeRun({
-            requestedBy: "fairbet-ui",
-            config: {
-              leagueCode: league,
-              startDate: today,
-              endDate: today,
-              boxscores: false,
-              odds: true,
-              social: false,
-              pbp: false,
-            },
-          })
-        )
-      );
+      const res = await fetch(`/api/proxy/api/admin/odds/sync?${params.toString()}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
 
-      const runIds = results.map((r) => r.id).join(", ");
-      const leagueNames = leaguesToSync.join(", ");
+      if (!res.ok) {
+        throw new Error(`Odds sync failed: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      const leagueLabel = selectedLeague || "all leagues";
       setSyncMessage(
-        `Odds sync started for ${leagueNames} (Run #${runIds}). Refresh in a moment to see results.`
+        `Odds sync dispatched for ${leagueLabel} (task ${data.task_id}). Refresh in a moment to see results.`
       );
 
       setTimeout(() => {

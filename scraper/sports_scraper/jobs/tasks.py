@@ -1,7 +1,8 @@
 """Celery tasks registry — re-exports all tasks for Celery discovery.
 
 Import directly from specific task modules:
-- scrape_tasks: Ingestion, odds sync
+- scrape_tasks: Ingestion
+- odds_tasks: Unified odds sync (mainline + props)
 - pipeline_tasks: Pipeline triggering
 - timeline_tasks: Timeline generation
 - flow_tasks: Game flow generation
@@ -18,7 +19,9 @@ from __future__ import annotations
 from .scrape_tasks import (
     run_scrape_job,
     run_scheduled_ingestion,
-    run_scheduled_odds_sync,
+)
+from .odds_tasks import (
+    sync_all_odds,
 )
 from .pipeline_tasks import (
     trigger_game_pipelines_task,
@@ -44,7 +47,6 @@ from .social_tasks import (
 from .polling_tasks import (
     update_game_states_task,
     poll_live_pbp_task,
-    poll_active_odds_task,
 )
 from .flow_trigger_tasks import (
     trigger_flow_for_game,
@@ -59,7 +61,7 @@ from .utility_tasks import (
 __all__ = [
     "run_scrape_job",
     "run_scheduled_ingestion",
-    "run_scheduled_odds_sync",
+    "sync_all_odds",
     "trigger_game_pipelines_task",
     "generate_missing_timelines_task",
     "regenerate_timeline_task",
@@ -75,7 +77,6 @@ __all__ = [
     "get_social_mapping_stats",
     "update_game_states_task",
     "poll_live_pbp_task",
-    "poll_active_odds_task",
     "trigger_flow_for_game",
     "run_daily_sweep",
     "clear_scraper_cache_task",

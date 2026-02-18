@@ -87,8 +87,7 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GR
 **Recurring Tasks:**
 - **Every 3 min** — Game state updates (game-state-machine)
 - **Every 5 min** — Live PBP polling
-- **Every 30 min** — Odds sync + active odds polling (pregame games only; live games are skipped to preserve closing lines)
-- **Every 30 min** — Props sync (offset at :15/:45 to avoid contention with odds sync at :00/:30)
+- **Every 5 min** — Unified odds sync (`sync_all_odds`: mainline + props for all leagues; live games skipped to preserve closing lines)
 
 Configured in `scraper/sports_scraper/celery_app.py`
 
