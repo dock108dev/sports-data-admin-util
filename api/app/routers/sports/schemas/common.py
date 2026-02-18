@@ -88,6 +88,9 @@ class OddsEntry(BaseModel):
 
     book: str
     market_type: str = Field(..., alias="marketType")
+    market_category: str = Field("mainline", alias="marketCategory")
+    player_name: str | None = Field(None, alias="playerName")
+    description: str | None = None
     side: str | None = None
     line: float | None = None
     price: float | None = None

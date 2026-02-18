@@ -102,6 +102,9 @@ export type NHLGoalieStat = {
 export type OddsEntry = {
   book: string;
   marketType: string;
+  marketCategory: string;
+  playerName: string | null;
+  description: string | null;
   side: string | null;
   line: number | null;
   price: number | null;

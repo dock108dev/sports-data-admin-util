@@ -1063,3 +1063,114 @@
   color: #64748b;
   font-style: italic;
 }
+
+/* Odds Category Tabs */
+.oddsCategoryTabs {
+  display: flex;
+  gap: var(--space-row);
+  margin-bottom: var(--space-card-inner);
+  flex-wrap: wrap;
+}
+
+.oddsCategoryTab {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-button);
+  background: #f8fafc;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #475569;
+  transition: all 0.15s;
+}
+
+.oddsCategoryTab:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.oddsCategoryTabActive {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.oddsCategoryTabActive:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.oddsCategoryTabCount {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+}
+
+.oddsCategoryTabActive .oddsCategoryTabCount {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.oddsSearchInput {
+  width: 100%;
+  max-width: 320px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-button);
+  font-size: 0.85rem;
+  margin-bottom: var(--space-card-inner);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.oddsSearchInput:focus {
+  border-color: #3b82f6;
+}
+
+.crossBookTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+  overflow-x: auto;
+  display: block;
+}
+
+.crossBookTable th,
+.crossBookTable td {
+  padding: 0.5rem 0.625rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.crossBookTable th {
+  font-size: var(--font-table-header-size);
+  letter-spacing: var(--font-table-header-spacing);
+  color: var(--text-muted);
+  font-weight: var(--font-table-header-weight);
+  border-bottom: 2px solid var(--border-default);
+}
+
+.crossBookTable td {
+  color: var(--text-primary);
+  font-size: var(--font-body-size);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.crossBookCell {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.8rem;
+}
+
+.propGroupHeader {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1e293b;
+  margin-top: var(--space-card-inner);
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border-default);
+}
