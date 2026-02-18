@@ -161,7 +161,8 @@ class TestCollectTeamTweets:
 
         assert result == 1
         session.add.assert_called_once()
-        session.commit.assert_called_once()
+        # commit is no longer called per-team; caller owns commit timing
+        session.commit.assert_not_called()
 
     @patch("sports_scraper.social.team_collector.settings", _mock_settings())
     @patch("sports_scraper.social.team_collector.playwright_available", return_value=True)
