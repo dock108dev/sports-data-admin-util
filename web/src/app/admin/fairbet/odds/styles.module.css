@@ -71,6 +71,24 @@
   border-radius: var(--radius-card);
 }
 
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-label-size);
+  font-weight: var(--font-label-weight);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #2563eb;
+}
+
 .resetButton {
   padding: 0.5rem 1rem;
   font-size: var(--font-body-size);
