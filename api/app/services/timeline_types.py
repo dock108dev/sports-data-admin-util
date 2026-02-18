@@ -20,9 +20,7 @@ NBA_QUARTER_REAL_SECONDS = NBA_REGULATION_REAL_SECONDS // 4
 NBA_QUARTER_GAME_SECONDS = 12 * 60
 NBA_OT_GAME_SECONDS = 5 * 60  # 5 min overtime game clock
 NBA_OT_REAL_SECONDS = 10 * 60  # ~10 min real time per OT for PBP normalization
-NBA_PREGAME_REAL_SECONDS = 10 * 60
 NBA_OVERTIME_REAL_SECONDS = 15 * 60  # 5 min game time, ~15 min real time (timeline)
-NBA_OVERTIME_PADDING_SECONDS = 30 * 60
 DEFAULT_TIMELINE_VERSION = "v1"
 
 # -----------------------------------------------------------------------------
@@ -62,22 +60,10 @@ NBA_OT_BUFFER_MINUTES = 20  # 5 min OT = ~15-20 min real time
 NHL_REGULATION_REAL_MINUTES = 165  # ~2h45m for 60 min game time
 NHL_OT_BUFFER_MINUTES = 20  # Sudden death OT = variable
 
-# Postgame window: tweets within 4 hours of game end are postgame
-POSTGAME_WINDOW_HOURS = 4
-
 # Social post time windows (configurable)
 # These define how far before/after the game we include social posts
 SOCIAL_PREGAME_WINDOW_SECONDS = 2 * 60 * 60  # 2 hours before game start
 SOCIAL_POSTGAME_WINDOW_SECONDS = 2 * 60 * 60  # 2 hours after game end
-
-# -----------------------------------------------------------------------------
-# League-specific segment counts
-# -----------------------------------------------------------------------------
-LEAGUE_SEGMENTS = {
-    "NBA": ["q1", "q2", "halftime", "q3", "q4"],
-    "NCAAB": ["first_half", "halftime", "second_half"],
-    "NHL": ["p1", "p2", "p3"],
-}
 
 # Canonical phase ordering - this is the source of truth for timeline order
 # Includes phases for all supported leagues (NBA, NCAAB, NHL)
