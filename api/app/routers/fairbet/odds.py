@@ -77,6 +77,7 @@ def _build_base_filters(
     book: str | None = None,
     player_name: str | None = None,
     excluded_books: frozenset[str] | None = None,
+    exclude_categories: list[str] | None = None,
 ) -> tuple:
     """Build common filter conditions for FairBet queries.
 
@@ -112,6 +113,9 @@ def _build_base_filters(
     if excluded_books:
         conditions.append(FairbetGameOddsWork.book.notin_(excluded_books))
 
+    if exclude_categories:
+        conditions.append(FairbetGameOddsWork.market_category.notin_(exclude_categories))
+
     return game_start, conditions
 
 
@@ -123,6 +127,9 @@ async def get_fairbet_odds(
     ),
     market_category: str | None = Query(
         None, description="Filter by market category (mainline, player_prop, etc.)"
+    ),
+    exclude_categories: list[str] | None = Query(
+        None, description="Exclude market categories (e.g. alternate)"
     ),
     game_id: int | None = Query(None, description="Filter to a specific game"),
     book: str | None = Query(None, description="Filter to a specific book"),
@@ -152,6 +159,7 @@ async def get_fairbet_odds(
         book,
         player_name,
         excluded_books=EXCLUDED_BOOKS,
+        exclude_categories=exclude_categories,
     )
 
     # Book filter applies at the row level, not the bet definition level
@@ -184,11 +192,11 @@ async def get_fairbet_odds(
             games_available=[],
         )
 
-    # When post-annotation filters are active (has_fair, min_ev), we must fetch
-    # ALL bet definitions, annotate, filter, then paginate in Python.  Otherwise
-    # DB-level pagination would silently drop matching bets from other pages and
-    # report a total that doesn't reflect the filter.
-    needs_post_filter = has_fair is not None or min_ev is not None
+    # When post-annotation filters or EV sort are active, we must fetch ALL bet
+    # definitions, annotate, then paginate in Python.  Otherwise DB-level
+    # pagination would silently drop matching bets (for filters) or only sort
+    # the current page (for EV sort).
+    needs_full_fetch = has_fair is not None or min_ev is not None or sort_by == "ev"
 
     # Step 2: Get bet definitions using CTE (skip DB pagination when post-filtering)
     paginated_bets_q = (
@@ -208,7 +216,7 @@ async def get_fairbet_odds(
             FairbetGameOddsWork.line_value,
         )
     )
-    if not needs_post_filter:
+    if not needs_full_fetch:
         paginated_bets_q = paginated_bets_q.limit(limit).offset(offset)
 
     paginated_bets_cte = paginated_bets_q.cte("paginated_bets")
@@ -408,7 +416,7 @@ async def get_fairbet_odds(
             )
         ]
 
-    if needs_post_filter:
+    if needs_full_fetch:
         total = len(bets_list)
         bets_list = bets_list[offset : offset + limit]
 

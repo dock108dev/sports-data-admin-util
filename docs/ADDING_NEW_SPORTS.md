@@ -34,13 +34,22 @@ Add matching entry to `api/app/config_sports.py` with the same structure.
 
 ### 2. Seed Database (if needed)
 
-Add league to `sql/000_sports_schema.sql`:
-```sql
-INSERT INTO sports_leagues (code, name, sport_type)
-VALUES ('MLB', 'Major League Baseball', 'baseball');
+Create a new Alembic migration to insert the league:
+```bash
+docker exec sports-api alembic revision -m "seed_mlb_league"
 ```
 
-Run migration or insert manually.
+In the migration:
+```python
+def upgrade() -> None:
+    op.execute("""
+        INSERT INTO sports_leagues (code, name, level)
+        VALUES ('MLB', 'Major League Baseball', 'pro')
+        ON CONFLICT (code) DO NOTHING;
+    """)
+```
+
+Also add the INSERT to `api/alembic/versions/seed_data.sql` so fresh installs include it.
 
 ### 3. Enable Scheduled Ingestion
 

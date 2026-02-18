@@ -83,7 +83,9 @@ docker inspect --format='{{.State.Health.Status}}' sports-api
 
 ## Migrations
 
-Alembic migrations are run explicitly (not on startup).
+Alembic migrations are run explicitly (not on startup). Migrations live in `api/alembic/versions/`.
+
+The schema is defined in a single baseline migration with reference data (leagues, teams, social handles) seeded from `seed_data.sql`. New migrations chain linearly from the baseline.
 
 ```bash
 # Run pending migrations (recommended)

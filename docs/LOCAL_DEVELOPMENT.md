@@ -44,7 +44,7 @@ docker compose logs -f scraper
 
 ## Database Migrations
 
-Migrations are run explicitly (not on container startup).
+Migrations are run explicitly (not on container startup). On a fresh database, `alembic upgrade head` creates all tables and seeds reference data (leagues, teams, social handles).
 
 ```bash
 # Run pending migrations (recommended)
@@ -57,7 +57,7 @@ docker exec sports-api alembic current
 docker exec sports-api alembic upgrade head
 
 # Create a new migration
-docker exec sports-api alembic revision --autogenerate -m "describe change"
+docker exec sports-api alembic revision -m "describe change"
 ```
 
 ## Container Commands
@@ -93,10 +93,7 @@ For development without Docker, run each service manually.
 ### 1. Database Setup
 
 ```bash
-# Apply schema (if starting fresh)
-psql "$DATABASE_URL" -f sql/000_sports_schema.sql
-
-# Or run Alembic migrations
+# Apply schema and seed data (Alembic handles everything)
 cd api && alembic upgrade head
 ```
 

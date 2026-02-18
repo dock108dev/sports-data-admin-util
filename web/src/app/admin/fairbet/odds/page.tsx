@@ -47,6 +47,7 @@ export default function FairbetOddsPage() {
   const [selectedGame, setSelectedGame] = useState<string>("");
   const [selectedBook, setSelectedBook] = useState<string>("");
   const [selectedSort, setSelectedSort] = useState<string>("ev");
+  const [excludeAlternates, setExcludeAlternates] = useState(true);
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
 
@@ -82,6 +83,7 @@ export default function FairbetOddsPage() {
       };
       if (selectedLeague) filters.league = selectedLeague;
       if (selectedCategory) filters.market_category = selectedCategory;
+      if (excludeAlternates) filters.exclude_categories = ["alternate"];
       if (selectedGame) filters.game_id = parseInt(selectedGame, 10);
       if (selectedBook) filters.book = selectedBook;
 
@@ -96,7 +98,7 @@ export default function FairbetOddsPage() {
     } finally {
       setLoading(false);
     }
-  }, [limit, offset, selectedLeague, selectedCategory, selectedGame, selectedBook, selectedSort]);
+  }, [limit, offset, selectedLeague, selectedCategory, excludeAlternates, selectedGame, selectedBook, selectedSort]);
 
   useEffect(() => {
     loadOdds();
@@ -169,6 +171,7 @@ export default function FairbetOddsPage() {
     setSelectedGame("");
     setSelectedBook("");
     setSelectedSort("ev");
+    setExcludeAlternates(true);
     setOffset(0);
   }
 
@@ -226,6 +229,21 @@ export default function FairbetOddsPage() {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className={styles.filterGroup}>
+          <label className={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={excludeAlternates}
+              onChange={(e) => {
+                setExcludeAlternates(e.target.checked);
+                setOffset(0);
+              }}
+              className={styles.checkbox}
+            />
+            Hide Alternates
+          </label>
         </div>
 
         <div className={styles.filterGroup}>

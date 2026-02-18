@@ -68,6 +68,7 @@ export interface FairbetOddsResponse {
 export interface FairbetOddsFilters {
   league?: string;
   market_category?: string;
+  exclude_categories?: string[];
   game_id?: number;
   book?: string;
   player_name?: string;
@@ -84,6 +85,11 @@ export async function fetchFairbetOdds(
 
   if (filters.league) params.set("league", filters.league);
   if (filters.market_category) params.set("market_category", filters.market_category);
+  if (filters.exclude_categories) {
+    for (const cat of filters.exclude_categories) {
+      params.append("exclude_categories", cat);
+    }
+  }
   if (filters.game_id) params.set("game_id", filters.game_id.toString());
   if (filters.book) params.set("book", filters.book);
   if (filters.player_name) params.set("player_name", filters.player_name);

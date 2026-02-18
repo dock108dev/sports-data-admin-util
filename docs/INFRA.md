@@ -156,6 +156,10 @@ docker exec sports-postgres psql -U sports -d sports -c "SELECT COUNT(*) FROM sp
 Alembic migrations are run explicitly (not on every API startup). Use the dedicated
 `migrate` service or run Alembic in the API container.
 
+Migration files live in `api/alembic/versions/`. The schema starts from a single
+baseline migration plus a seed migration that populates reference data (leagues,
+teams, social accounts, compact mode thresholds).
+
 ```bash
 # Recommended (explicit) migration job
 docker compose --profile prod run --rm migrate
@@ -167,8 +171,14 @@ docker exec sports-api alembic current
 docker exec sports-api alembic upgrade head
 
 # Create a new migration
-docker exec sports-api alembic revision --autogenerate -m "describe change"
+docker exec sports-api alembic revision -m "describe change"
 ```
+
+### Adding Reference Data
+
+To add new teams, leagues, or social handles:
+1. Add the INSERT to `api/alembic/versions/seed_data.sql` (for fresh installs)
+2. Create a new migration that applies the change to existing databases
 
 ## Environment Variables
 
@@ -186,7 +196,7 @@ docker exec sports-api alembic revision --autogenerate -m "describe change"
 | `OPENAI_MODEL_CLASSIFICATION` | No | OpenAI model for play classification (default: `gpt-4o-mini`) |
 | `OPENAI_MODEL_SUMMARY` | No | OpenAI model for narrative rendering (default: `gpt-4o`) |
 | `ODDS_API_KEY` | No | The Odds API key |
-| `CBB_STATS_API_KEY` | No | CBB Stats API key (NCAAB team mapping in migrations) |
+| `CBB_STATS_API_KEY` | No | CBB Stats API key (NCAAB boxscore ingestion) |
 | `X_AUTH_TOKEN` | No | X/Twitter auth cookie |
 | `X_CT0` | No | X/Twitter CSRF cookie |
 | `X_BEARER_TOKEN` | No | X/Twitter bearer token (alternative to cookie auth) |

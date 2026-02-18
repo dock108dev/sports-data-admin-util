@@ -25,13 +25,12 @@ This document describes where data comes from and how it's ingested.
 NCAAB boxscore ingestion requires `cbb_team_id` in `sports_teams.external_codes` to match games to the CBB API.
 
 **How it's populated:**
-- Alembic migration fetches teams from CBB API and maps by normalized name
-- Requires `CBB_STATS_API_KEY` in migrate container environment
-- Configured in `infra/docker-compose.yml`
+- Team data (including `cbb_team_id`) is seeded by the baseline Alembic migration from `seed_data.sql`
+- New teams are added by updating `seed_data.sql` and creating a new migration
 
 **If games aren't getting boxscores:**
 1. Check `sports_teams` has `external_codes.cbb_team_id` populated
-2. Verify `CBB_STATS_API_KEY` is set in `.env`
+2. If a team is missing, add it to `seed_data.sql` and create a migration
 3. Re-run migrations if needed
 
 ### Data Collected
