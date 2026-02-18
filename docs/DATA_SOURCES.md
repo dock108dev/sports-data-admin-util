@@ -10,7 +10,7 @@ This document describes where data comes from and how it's ingested.
 | Boxscores | CBB Stats API | NCAAB | Post-game |
 | Boxscores | NHL API | NHL | Post-game |
 | Play-by-Play | NBA API / NHL API / CBB API | NBA, NHL, NCAAB | Post-game |
-| Play-by-Play (Live) | League APIs | NBA, NHL | During game (5 min polling) |
+| Play-by-Play (Live) | League APIs | NBA, NHL, NCAAB | During game (5 min polling) |
 | Odds | The Odds API | NBA, NHL, NCAAB | Pre-game + live |
 | Social | X/Twitter | NBA, NHL, NCAAB | 24-hour game window |
 
@@ -248,7 +248,7 @@ See also:
   - 10:00 UTC (5:00 AM EST) - NHL flow generation
   - 10:30 UTC (5:30 AM EST) - NCAAB flow generation (capped at 10 games)
 - **Game State Updates**: Every 3 minutes
-- **Live PBP Polling**: Every 5 minutes (NBA, NHL only; NCAAB excluded — too many concurrent games)
+- **Live PBP Polling**: Every 5 minutes (NBA, NHL per-game; NCAAB via batch CBB API)
 - **Odds Sync + Active Odds Polling**: Every 30 minutes (pregame games only; live games skipped to preserve closing lines)
 - **Props Sync**: Every 30 minutes (offset at :15/:45 to avoid contention with odds sync at :00/:30)
 - **Window**: Yesterday through today (catches overnight game completions)

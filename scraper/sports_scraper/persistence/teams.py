@@ -87,6 +87,16 @@ _NCAAB_OVERRIDES = {
     "arkansas-pine bluff golden lions": "Arkansas-Pine Bluff",
     "south carolina upstate spartans": "USC Upstate",
     "siu-edwardsville cougars": "SIU Edwardsville",
+    # HBCU teams that collide with Power conference after normalization
+    "alabama a&m bulldogs": "Alabama A&M Bulldogs",
+    "north carolina central eagles": "North Carolina Central Eagles",
+    "maryland eastern shore hawks": "Maryland-Eastern Shore Hawks",
+    "maryland-eastern shore hawks": "Maryland-Eastern Shore Hawks",
+    "texas southern tigers": "Texas Southern Tigers",
+    "grambling tigers": "Grambling St Tigers",
+    "grambling state tigers": "Grambling St Tigers",
+    "howard bison": "Howard Bison",
+    "coppin state eagles": "Coppin St Eagles",
 }
 
 # Common NCAAB mascot/color tokens that should not drive matching.
@@ -294,16 +304,18 @@ def _find_team_by_name(
                 .where(db_models.SportsTeam.league_id == league_id)
             )
             all_teams = session.execute(all_teams_stmt).all()
+            def _ncaab_substring_match(a: str, b: str) -> bool:
+                shorter, longer = sorted([a, b], key=len)
+                return shorter in longer and len(shorter) / len(longer) >= 0.8
+
             for team_id, db_name, db_short_name in all_teams:
                 db_name_norm = _normalize_ncaab_name_for_matching(db_name or "")
                 db_short_norm = _normalize_ncaab_name_for_matching(db_short_name or "")
                 if (
                     normalized_input == db_name_norm or
                     normalized_input == db_short_norm or
-                    normalized_input in db_name_norm or
-                    db_name_norm in normalized_input or
-                    normalized_input in db_short_norm or
-                    db_short_norm in normalized_input
+                    _ncaab_substring_match(normalized_input, db_name_norm) or
+                    _ncaab_substring_match(normalized_input, db_short_norm)
                 ):
                     candidate_ids.append(team_id)
     else:

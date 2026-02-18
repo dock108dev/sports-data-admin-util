@@ -230,6 +230,9 @@ class SportsGame(Base):
     last_pbp_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    last_boxscore_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_social_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

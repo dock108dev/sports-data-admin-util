@@ -68,7 +68,7 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 
 - **Schema:** Normalized across sports
 - **Tables:** games, plays, box scores, odds, social posts, teams
-- **Migrations:** Alembic (see `sql/`)
+- **Migrations:** Alembic (see `api/alembic/versions/`)
 - **Access:** Async SQLAlchemy ORM
 
 ---

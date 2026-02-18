@@ -13,7 +13,7 @@ export interface ClientConfig {
 
 export class APIClient {
   private baseURL: string;
-  public timeout: number; // Made public so it can be overridden
+  private timeout: number;
   private retries: number;
   private retryDelay: number;
 
@@ -71,10 +71,14 @@ export class APIClient {
           );
         }
 
-        // Handle empty responses
+        // Reject non-JSON responses
         const contentType = response.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
-          return {} as T;
+          throw new APIError(
+            `Expected JSON response but got ${contentType ?? "no content-type"}`,
+            response.status,
+            `Non-JSON response from ${endpoint}`
+          );
         }
 
         return await response.json();

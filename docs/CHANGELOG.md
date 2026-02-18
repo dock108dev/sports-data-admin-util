@@ -2,13 +2,42 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-14] - Current
+## [2026-02-17] - Current
+
+### Live Boxscore Polling
+
+- **Live boxscore ingestion**: New polling task fetches boxscores for in-progress games every 5 minutes alongside live PBP
+- **`last_boxscore_at` column**: New timestamp on `sports_games` tracks when boxscore data was last refreshed (Alembic migration `20260217_000001`)
+- **Active game service**: New `services/active_games.py` module centralizes live game detection for polling tasks
+
+### NCAAB Team Normalization & Matching
+
+- **NCAAB name normalization**: New `normalization/ncaab_teams.py` with 28 additional alias mappings for NCAAB team matching
+- **Odds matching improvements**: `persistence/odds_matching.py` enhanced with fuzzy matching for NCAAB teams where canonical names differ from odds API names
+- **Missing NCAAB teams seeded**: Alembic migration `20260217_000002` inserts teams that were missing from `sports_teams`
+- **NCAAB social handles fixed**: Alembic migration `20260218_000001` upserts corrected X handles for 66 NCAAB teams (8 NULL + 58 stale)
+
+### Legacy Code Cleanup
+
+- **Dead timeline constants removed**: `NBA_PREGAME_REAL_SECONDS`, `NBA_OVERTIME_PADDING_SECONDS`, `POSTGAME_WINDOW_HOURS`, `LEAGUE_SEGMENTS` deleted from `timeline_types.py`
+- **Dead feature flags removed**: `ENABLE_AI_SOCIAL_ROLES`, `ENABLE_AI_SEGMENT_ENRICHMENT`, `ENABLE_AI_SUMMARY`, `NEXT_PUBLIC_ENABLE_INLINE_X_VIDEO` removed from `docker-compose.yml` and `.env`
+- **API client hardened**: `client.ts` timeout made private, silent `{} as T` fallback replaced with explicit error throw
+
+### Documentation
+
+- **Accuracy fixes**: Fixed migration path in ARCHITECTURE.md, updated live PBP info in DATA_SOURCES.md, removed stale nginx reference in OPERATOR_RUNBOOK.md
+- **Missing env vars documented**: Added `OPENAI_MODEL_CLASSIFICATION` and `OPENAI_MODEL_SUMMARY` to INFRA.md
+- **Phase N terminology removed**: Cleaned "Phase 5"/"Phase 1"/"Phase 4" labels from gameflow README.md
+
+---
+
+## [2026-02-14]
 
 ### FairBet EV Framework
 
 - **EV eligibility gating**: New `evaluate_ev_eligibility()` function with 4-check pipeline: strategy exists, sharp book present, freshness, minimum qualifying books
 - **EV strategy config**: `ev_config.py` maps `(league, market_category)` → strategy with confidence tiers (high/medium/low), staleness limits, and minimum book thresholds
-- **Book exclusion**: 23 offshore/promo/irrelevant books excluded at SQL level via `EXCLUDED_BOOKS`; remaining ~17 included books participate in EV calculation
+- **Book exclusion**: 20 offshore/promo/irrelevant books excluded at SQL level via `EXCLUDED_BOOKS`; remaining ~17 included books participate in EV calculation
 - **Confidence tiers**: High (NBA/NHL mainlines), Medium (NCAAB mainlines, team props), Low (player props, alternates); player props can never be High
 - **Pregame-only filter**: FairBet odds endpoint restricted to pregame games (`game_start > now`) — removed stale 4-hour live cutoff
 - **Odds model expansion**: Added `market_category`, `has_fair`, `player_name`, `selection_key` columns to odds tables; new prop market support

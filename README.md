@@ -72,6 +72,7 @@ scripts/      Backup and deployment scripts
 | [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) | Development setup |
 | [docs/API.md](docs/API.md) | API reference |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment guide |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release changelog |
 
 ## Contributing
 

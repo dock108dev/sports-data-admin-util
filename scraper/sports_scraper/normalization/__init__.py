@@ -236,7 +236,8 @@ def _fuzzy_match(league_code: SportCode, raw_name: str) -> tuple[str, str] | Non
             normalized_key = _normalize_string(key)
             if len(normalized_key) < 4:
                 continue
-            if normalized_input in normalized_key or normalized_key in normalized_input:
+            shorter, longer = sorted([normalized_input, normalized_key], key=len)
+            if shorter in longer and len(shorter) / len(longer) >= 0.8:
                 return (canonical, abbr)
 
     # Try word-based matching (check if key words match)
