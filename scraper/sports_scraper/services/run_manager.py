@@ -62,6 +62,7 @@ class ScrapeRunManager:
             "games": 0,
             "games_enriched": 0,  # Games enriched with boxscore data
             "games_with_stats": 0,  # Games that had player stats upserted
+            "odds": 0,
             "social_posts": 0,
             "pbp_games": 0,
         }
@@ -81,6 +82,7 @@ class ScrapeRunManager:
             run_id=run_id,
             league=config.league_code,
             boxscores=config.boxscores,
+            odds=config.odds,
             social=config.social,
             pbp=config.pbp,
             only_missing=config.only_missing,
@@ -351,6 +353,38 @@ class ScrapeRunManager:
                 complete_job_run(ingest_run_id, "success")
                 ingest_run_completed = True
 
+            # Odds synchronization
+            if config.odds:
+                odds_run_id = start_job_run("odds", [config.league_code])
+                logger.info(
+                    "odds_sync_start",
+                    run_id=run_id,
+                    league=config.league_code,
+                    start_date=str(start),
+                    end_date=str(end),
+                )
+                try:
+                    from ..odds.synchronizer import OddsSynchronizer
+
+                    sync = OddsSynchronizer()
+                    odds_count = sync.sync(config)
+                    summary["odds"] = odds_count
+                    logger.info(
+                        "odds_sync_complete",
+                        run_id=run_id,
+                        league=config.league_code,
+                        odds_count=odds_count,
+                    )
+                    complete_job_run(odds_run_id, "success")
+                except Exception as exc:
+                    logger.exception(
+                        "odds_sync_failed",
+                        run_id=run_id,
+                        league=config.league_code,
+                        error=str(exc),
+                    )
+                    complete_job_run(odds_run_id, "error", str(exc))
+
             # Play-by-play scraping
             if config.pbp:
                 pbp_run_id = start_job_run("pbp", [config.league_code])
@@ -547,6 +581,8 @@ class ScrapeRunManager:
                 summary_parts.append(
                     f'Games: {summary["games"]} ({summary["games_enriched"]} enriched, {summary["games_with_stats"]} with stats)'
                 )
+            if summary["odds"]:
+                summary_parts.append(f'Odds: {summary["odds"]}')
             if summary["social_posts"]:
                 social_val = summary["social_posts"]
                 if social_val == "dispatched":

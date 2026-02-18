@@ -127,6 +127,15 @@
   cursor: not-allowed;
 }
 
+.syncButtonActive {
+  animation: syncPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes syncPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
 .lastSync {
   font-size: var(--font-hint-size);
   color: var(--text-muted);

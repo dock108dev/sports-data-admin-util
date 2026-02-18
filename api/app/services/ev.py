@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from .ev_config import (
-    EXCLUDED_BOOKS,
+    INCLUDED_BOOKS,
     EVStrategyConfig,
     EligibilityResult,
     get_strategy,
@@ -204,9 +204,9 @@ def evaluate_ev_eligibility(
                 confidence_tier=config.confidence_tier.value,
             )
 
-    # 4. Minimum qualifying books per side (non-excluded)
-    qualifying_a = sum(1 for b in side_a_books if b["book"] not in EXCLUDED_BOOKS)
-    qualifying_b = sum(1 for b in side_b_books if b["book"] not in EXCLUDED_BOOKS)
+    # 4. Minimum qualifying books per side (must be in INCLUDED_BOOKS)
+    qualifying_a = sum(1 for b in side_a_books if b["book"] in INCLUDED_BOOKS)
+    qualifying_b = sum(1 for b in side_b_books if b["book"] in INCLUDED_BOOKS)
 
     if (
         qualifying_a < config.min_qualifying_books

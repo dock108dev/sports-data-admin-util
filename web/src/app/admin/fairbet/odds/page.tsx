@@ -142,16 +142,18 @@ export default function FairbetOddsPage() {
       const data = await res.json();
       const leagueLabel = selectedLeague || "all leagues";
       setSyncMessage(
-        `Odds sync dispatched for ${leagueLabel} (task ${data.task_id}). Refresh in a moment to see results.`
+        `Odds sync dispatched for ${leagueLabel} (task ${data.task_id}). Refreshing data shortly…`
       );
 
-      setTimeout(() => {
-        loadOdds();
-        loadLastOddsSync();
+      // Keep button disabled until background task has time to run and we refresh
+      setTimeout(async () => {
+        await loadOdds();
+        await loadLastOddsSync();
+        setSyncing(false);
+        setSyncMessage(null);
       }, 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
       setSyncing(false);
     }
   }
@@ -306,12 +308,14 @@ export default function FairbetOddsPage() {
             </span>
           )}
           <button
-            className={styles.syncButton}
+            className={`${styles.syncButton} ${syncing ? styles.syncButtonActive : ""}`}
             onClick={syncOdds}
             disabled={syncing}
           >
             {syncing
-              ? "Syncing..."
+              ? syncMessage
+                ? "Refreshing…"
+                : "Syncing…"
               : selectedLeague
               ? `Sync ${selectedLeague} Odds`
               : "Sync All Odds"}

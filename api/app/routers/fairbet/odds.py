@@ -18,7 +18,7 @@ from ...db import AsyncSession, get_db
 from ...db.sports import SportsGame
 from ...db.odds import FairbetGameOddsWork
 from ...services.ev_config import (
-    EXCLUDED_BOOKS,
+    INCLUDED_BOOKS,
     get_strategy,
 )
 from .ev_annotation import (
@@ -76,7 +76,7 @@ def _build_base_filters(
     game_id: int | None = None,
     book: str | None = None,
     player_name: str | None = None,
-    excluded_books: frozenset[str] | None = None,
+    included_books: frozenset[str] | None = None,
     exclude_categories: list[str] | None = None,
 ) -> tuple:
     """Build common filter conditions for FairBet queries.
@@ -110,8 +110,8 @@ def _build_base_filters(
             func.lower(FairbetGameOddsWork.player_name).contains(player_name.lower())
         )
 
-    if excluded_books:
-        conditions.append(FairbetGameOddsWork.book.notin_(excluded_books))
+    if included_books:
+        conditions.append(FairbetGameOddsWork.book.in_(included_books))
 
     if exclude_categories:
         conditions.append(FairbetGameOddsWork.market_category.notin_(exclude_categories))
@@ -158,7 +158,7 @@ async def get_fairbet_odds(
         game_id,
         book,
         player_name,
-        excluded_books=EXCLUDED_BOOKS,
+        included_books=INCLUDED_BOOKS,
         exclude_categories=exclude_categories,
     )
 
@@ -235,7 +235,7 @@ async def get_fairbet_odds(
             ),
         )
         .join(SportsGame)
-        .where(FairbetGameOddsWork.book.notin_(EXCLUDED_BOOKS))
+        .where(FairbetGameOddsWork.book.in_(INCLUDED_BOOKS))
         .options(
             selectinload(FairbetGameOddsWork.game).selectinload(SportsGame.league),
             selectinload(FairbetGameOddsWork.game).selectinload(SportsGame.home_team),

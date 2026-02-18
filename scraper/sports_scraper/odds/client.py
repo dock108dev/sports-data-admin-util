@@ -65,6 +65,29 @@ PROP_MARKETS: dict[str, list[str]] = {
 CREDIT_WARNING_THRESHOLD = 1000
 CREDIT_ABORT_THRESHOLD = 500
 
+# Books in scope for odds ingestion — only these are persisted.
+# Matches INCLUDED_BOOKS in api/app/services/ev_config.py.
+ALLOWED_BOOKS: frozenset[str] = frozenset(
+    {
+        # US sportsbooks
+        "BetMGM",
+        "BetRivers",
+        "Caesars",
+        "DraftKings",
+        "FanDuel",
+        # EU / sharp
+        "Pinnacle",
+        "888sport",
+        "William Hill",
+        # UK sportsbooks
+        "Betfair Exchange",
+        "Betfair Sportsbook",
+        "Ladbrokes",
+        "Paddy Power",
+        "William Hill (UK)",
+    }
+)
+
 # Default snapshot times for closing lines (in UTC)
 # Evening games typically close around these times
 CLOSING_LINE_HOURS = {
@@ -381,6 +404,8 @@ class OddsAPIClient:
             for bookmaker in event.get("bookmakers", []):
                 if books and bookmaker["key"] not in books:
                     continue
+                if bookmaker.get("title") not in ALLOWED_BOOKS:
+                    continue
                 for market in bookmaker.get("markets", []):
                     market_type = MARKET_TYPES.get(market["key"])
                     if not market_type:
@@ -566,6 +591,8 @@ class OddsAPIClient:
         )
 
         for bookmaker in event_data.get("bookmakers", []):
+            if bookmaker.get("title") not in ALLOWED_BOOKS:
+                continue
             for market in bookmaker.get("markets", []):
                 market_key = market.get("key", "")
                 market_category = classify_market(market_key)
