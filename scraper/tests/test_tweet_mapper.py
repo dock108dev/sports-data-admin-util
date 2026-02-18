@@ -100,7 +100,7 @@ class TestGetGameWindow:
         assert start == _utc(2026, 2, 5, 10, 0)  # 5 AM EST = 10:00 UTC
 
     def test_postgame_crosses_midnight_et(self):
-        """A 10 PM ET tip ends ~12:30 AM ET next day, postgame until ~3:30 AM ET."""
+        """A 10 PM ET tip ends ~12:30 AM ET next day, postgame until 4 AM ET floor."""
         # 10 PM EST = 03:00 UTC next day
         game = _make_game(
             tip_time=_utc(2026, 2, 7, 3, 0),   # 10 PM EST Feb 6
@@ -108,9 +108,11 @@ class TestGetGameWindow:
             league_code="NBA",
         )
         start, end = get_game_window(game)
-        # NBA duration = 2.5h, so end = 03:00 + 2.5h = 05:30 UTC
+        # NBA duration = 2.5h, so game_end = 05:30 UTC
         # postgame +3h = 08:30 UTC (3:30 AM EST Feb 7)
-        assert end == _utc(2026, 2, 7, 8, 30)
+        # Floor: 4 AM EST Feb 7 = 09:00 UTC Feb 7
+        # max(08:30, 09:00) = 09:00 UTC
+        assert end == _utc(2026, 2, 7, 9, 0)
 
     def test_uses_actual_end_time(self):
         game = _make_game(
@@ -119,7 +121,10 @@ class TestGetGameWindow:
             game_date=_utc(2025, 6, 15, 0, 0),
         )
         start, end = get_game_window(game)
-        assert end == _utc(2025, 6, 16, 1, 30)  # 3h after actual end
+        # 3h after actual end = 01:30 UTC Jun 16
+        # Floor: 4 AM EDT Jun 16 = 08:00 UTC Jun 16
+        # max(01:30, 08:00) = 08:00 UTC
+        assert end == _utc(2025, 6, 16, 8, 0)
 
     def test_ignores_end_time_before_start(self):
         game = _make_game(
@@ -128,8 +133,10 @@ class TestGetGameWindow:
             game_date=_utc(2025, 6, 15, 0, 0),
         )
         start, end = get_game_window(game)
-        # Falls back to estimated end (tip + 2.5h NBA + 3h postgame)
-        assert end == _utc(2025, 6, 16, 0, 30)
+        # Falls back to estimated end (tip + 2.5h NBA + 3h postgame) = 00:30 UTC
+        # Floor: 4 AM EDT Jun 16 = 08:00 UTC Jun 16
+        # max(00:30, 08:00) = 08:00 UTC
+        assert end == _utc(2025, 6, 16, 8, 0)
 
     def test_sport_specific_duration_nhl(self):
         game = _make_game(
@@ -138,8 +145,10 @@ class TestGetGameWindow:
             league_code="NHL",
         )
         start, end = get_game_window(game)
-        # NHL: 2.5h duration + 3h postgame = 5.5h after tip
-        assert end == _utc(2025, 6, 16, 4, 30)
+        # NHL: 2.5h duration + 3h postgame = 5.5h after tip = 04:30 UTC Jun 16
+        # Floor: 4 AM EDT Jun 16 = 08:00 UTC Jun 16
+        # max(04:30, 08:00) = 08:00 UTC
+        assert end == _utc(2025, 6, 16, 8, 0)
 
     def test_sport_specific_duration_ncaab(self):
         game = _make_game(
@@ -148,8 +157,10 @@ class TestGetGameWindow:
             league_code="NCAAB",
         )
         start, end = get_game_window(game)
-        # NCAAB: 2h duration + 3h postgame = 5h after tip
-        assert end == _utc(2025, 6, 16, 4, 0)
+        # NCAAB: 2h duration + 3h postgame = 5h after tip = 04:00 UTC Jun 16
+        # Floor: 4 AM EDT Jun 16 = 08:00 UTC Jun 16
+        # max(04:00, 08:00) = 08:00 UTC
+        assert end == _utc(2025, 6, 16, 8, 0)
 
     def test_naive_datetime_gets_utc(self):
         naive_tip = datetime(2025, 6, 15, 19, 0)  # no tzinfo

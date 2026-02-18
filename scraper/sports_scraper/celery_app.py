@@ -55,10 +55,9 @@ app.conf.task_routes = {
     # Game-state-machine polling tasks
     "update_game_states": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "poll_live_pbp": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    "poll_active_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    "sync_all_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "trigger_flow_for_game": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "run_daily_sweep": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    "run_scheduled_props_sync": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     # Final-whistle social scrape runs on social-scraper queue (concurrency=1)
     "run_final_whistle_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
 }
@@ -73,7 +72,7 @@ app.conf.task_routes = {
 # Each job is spaced 30 minutes apart. During EDT (March-November) all times
 # shift 1 hour later (e.g., ingestion at 4:30 AM EDT).
 #
-# Odds sync runs every 30 minutes to keep FairBet data fresh for all 3 leagues.
+# Odds sync runs every 5 minutes to keep FairBet data fresh (mainline + props, all leagues).
 # Always-on tasks (safe in all environments — pure DB, no external APIs)
 _always_on_schedule = {
     "game-state-updater-every-3-min": {
@@ -105,24 +104,14 @@ _prod_only_schedule = {
         "schedule": crontab(minute=30, hour=10),  # 5:30 AM EST = 10:30 UTC (+30 min after NHL flow)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
-    "odds-sync-every-30-minutes": {
-        "task": "run_scheduled_odds_sync",
-        "schedule": crontab(minute="*/30"),  # Every 30 minutes
+    "odds-sync-every-5-min": {
+        "task": "sync_all_odds",
+        "schedule": crontab(minute="*/5"),
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     "live-pbp-poll-every-5-min": {
         "task": "poll_live_pbp",
         "schedule": crontab(minute="*/5"),
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
-    "active-odds-poll-every-30-min": {
-        "task": "poll_active_odds",
-        "schedule": crontab(minute="*/30"),
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
-    "props-sync-every-30-min": {
-        "task": "run_scheduled_props_sync",
-        "schedule": crontab(minute="15,45"),  # Offset from mainline at :00/:30
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
     # === Daily sweep (status repair, social scrape #2, embedded tweets, archive) ===

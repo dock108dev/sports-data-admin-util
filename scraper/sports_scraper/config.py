@@ -22,12 +22,15 @@ class OddsProviderConfig(BaseModel):
     api_key: str | None = None
     default_books: list[str] = Field(default_factory=lambda: ["pinnacle", "fanduel"])
     request_timeout_seconds: int = 15
-    # TTL for live odds cache (future games) - expires before the 30-min sync interval
-    live_odds_cache_ttl_seconds: int = Field(default=1500)  # 25 minutes
-    # Regions to fetch odds from (us, us2, eu, uk, au)
-    # Enables international sharp books (Pinnacle) and exchanges (Betfair)
+    # TTL for live odds cache (future games) - expires before the 5-min sync interval
+    live_odds_cache_ttl_seconds: int = Field(default=240)  # 4 minutes
+    # Regions to fetch odds from — determines which books are available.
+    # us: BetMGM, BetRivers, Bovada, Caesars, DraftKings, FanDuel
+    # us_ex: Kalshi, Polymarket
+    # uk: 888sport, Betfair Exchange, Betfair Sportsbook, Ladbrokes, Paddy Power, William Hill (UK)
+    # eu: 888sport, Betfair Exchange, BetOnline.ag, Pinnacle, William Hill
     regions: list[str] = Field(
-        default_factory=lambda: ["us", "us2", "eu", "uk", "au"]
+        default_factory=lambda: ["us", "us_ex", "eu", "uk"]
     )
 
 

@@ -47,7 +47,7 @@ _RATE_LIMIT_BACKOFF_SECONDS = 60
 
 from ..utils.redis_lock import acquire_redis_lock as _acquire_redis_lock  # noqa: E402
 from ..utils.redis_lock import release_redis_lock as _release_redis_lock  # noqa: E402
-from ..utils.redis_lock import LOCK_TIMEOUT_5MIN, LOCK_TIMEOUT_10MIN  # noqa: E402
+from ..utils.redis_lock import LOCK_TIMEOUT_5MIN  # noqa: E402
 
 
 @shared_task(name="update_game_states")
@@ -294,94 +294,3 @@ def poll_live_pbp_task() -> dict:
         _release_redis_lock("lock:poll_live_pbp")
 
 
-@shared_task(name="poll_active_odds")
-def poll_active_odds_task() -> dict:
-    """Sync odds for active games only (replaces broad 30-min sweep).
-
-    Only fetches for:
-    - pregame games (live games excluded to preserve closing lines)
-    - recently-final games within 2h (closing line capture)
-    """
-    from ..services.active_games import ActiveGamesResolver
-    from ..odds.synchronizer import OddsSynchronizer
-    from ..models import IngestionConfig
-
-    if not _acquire_redis_lock("lock:poll_active_odds", timeout=LOCK_TIMEOUT_10MIN):
-        logger.debug("poll_active_odds_skipped_locked")
-        return {"skipped": True, "reason": "locked"}
-
-    try:
-        resolver = ActiveGamesResolver()
-
-        from ..db import db_models as _db_models
-
-        # Extract needed fields inside the session to avoid DetachedInstanceError
-        league_date_ranges: dict[int, tuple[str, list]] = {}
-        game_count = 0
-
-        with get_session() as session:
-            games = resolver.get_games_needing_odds(session)
-
-            if not games:
-                logger.debug("poll_active_odds_no_games")
-                return {"games": 0, "odds_count": 0}
-
-            game_count = len(games)
-
-            # Group games by league and collect date ranges while session is open
-            league_games: dict[int, list] = {}
-            for game in games:
-                league_games.setdefault(game.league_id, []).append(game)
-
-            for league_id, lg_games in league_games.items():
-                league = session.query(_db_models.SportsLeague).get(league_id)
-                if not league:
-                    continue
-
-                dates = [g.game_date.date() for g in lg_games if g.game_date]
-                if not dates:
-                    continue
-
-                league_date_ranges[league_id] = (league.code, dates)
-
-        logger.info(
-            "poll_active_odds_start",
-            total_games=game_count,
-            leagues=len(league_date_ranges),
-        )
-
-        # Use existing OddsSynchronizer per league
-        sync = OddsSynchronizer()
-        total_odds = 0
-        results: dict[str, dict] = {}
-
-        for league_id, (league_code, dates) in league_date_ranges.items():
-            start = min(dates)
-            end = max(dates)
-
-            try:
-                config = IngestionConfig(
-                    league_code=league_code,
-                    start_date=start,
-                    end_date=end,
-                    odds=True,
-                    boxscores=False,
-                    social=False,
-                    pbp=False,
-                )
-                count = sync.sync(config)
-                results[league_code] = {"odds_count": count, "status": "success"}
-                total_odds += count
-            except Exception as exc:
-                results[league_code] = {"odds_count": 0, "status": "error", "error": str(exc)}
-                logger.warning(
-                    "poll_active_odds_league_error",
-                    league=league_code,
-                    error=str(exc),
-                )
-
-        logger.info("poll_active_odds_complete", total_odds=total_odds, results=results)
-        return {"games": game_count, "odds_count": total_odds, "results": results}
-
-    finally:
-        _release_redis_lock("lock:poll_active_odds")

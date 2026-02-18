@@ -2,7 +2,34 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-17] - Current
+## [2026-02-18] - Current
+
+### Unified Odds Sync
+
+- **`sync_all_odds` task**: Replaced three separate Celery tasks (`run_scheduled_odds_sync`, `poll_active_odds`, `run_scheduled_props_sync`) with a single unified odds sync task
+- **5-minute cadence**: Odds now sync every 5 minutes (previously 30 min for mainlines, 30 min offset for props)
+- **Redis lock**: `sync_all_odds` acquires a Redis lock to prevent overlapping runs
+- **`OddsSynchronizer` removed from `ScrapeRunManager`**: Odds sync is now a standalone Celery beat task, no longer triggered during manual scrape runs
+
+### Odds Browser UI
+
+- **OddsEntry schema expansion**: Added `market_category`, `player_name`, `description` fields to the API schema and TypeScript types
+- **Tabbed cross-book view**: Game detail odds section rewritten with category tabs (Mainline, Player Props, Team Props, Alternates) and cross-book comparison tables showing all sportsbooks as columns
+- **Player prop search**: Search input to filter player props by player name
+- **Dynamic tabs**: Only categories with data are shown; defaults to Mainline
+
+### Tweet Mapper Floor Constraint
+
+- **4 AM ET sports day boundary**: `get_game_window()` now floors `window_end` at 4:00 AM ET on the day after the game date, ensuring the collection window extends to the end of the sports day
+
+### Test Fixes
+
+- **`test_run_manager.py` / `test_services_run_manager.py`**: Removed all `OddsSynchronizer` patches and obsolete odds-specific tests to match the refactored `ScrapeRunManager`
+- **`test_tweet_mapper.py`**: Updated 5 `TestGetGameWindow` expected values to account for the 4 AM ET floor constraint
+
+---
+
+## [2026-02-17]
 
 ### Live Boxscore Polling
 

@@ -26,10 +26,9 @@ class TestScrapeRunManagerInit:
     """Tests for ScrapeRunManager initialization."""
 
     @patch("sports_scraper.services.run_manager.LiveFeedManager")
-    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
     def test_init_creates_components(
-        self, mock_get_scrapers, mock_odds, mock_live
+        self, mock_get_scrapers, mock_live
     ):
         """Initializes with all required components."""
         mock_get_scrapers.return_value = {}
@@ -37,14 +36,12 @@ class TestScrapeRunManagerInit:
         manager = ScrapeRunManager()
 
         assert manager.scrapers == {}
-        mock_odds.assert_called_once()
         mock_live.assert_called_once()
 
     @patch("sports_scraper.services.run_manager.LiveFeedManager")
-    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
     def test_supported_leagues(
-        self, mock_get_scrapers, mock_odds, mock_live
+        self, mock_get_scrapers, mock_live
     ):
         """Manager has supported league lists."""
         mock_get_scrapers.return_value = {}
@@ -61,11 +58,10 @@ class TestScrapeRunManagerUpdateRun:
     """Tests for _update_run method."""
 
     @patch("sports_scraper.services.run_manager.LiveFeedManager")
-    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
     @patch("sports_scraper.services.run_manager.get_session")
     def test_update_run_sets_attributes(
-        self, mock_get_session, mock_get_scrapers, mock_odds, mock_live
+        self, mock_get_session, mock_get_scrapers, mock_live
     ):
         """Updates run record with provided attributes."""
         mock_get_scrapers.return_value = {}
@@ -81,11 +77,10 @@ class TestScrapeRunManagerUpdateRun:
         mock_session.flush.assert_called_once()
 
     @patch("sports_scraper.services.run_manager.LiveFeedManager")
-    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
     @patch("sports_scraper.services.run_manager.get_session")
     def test_update_run_handles_missing(
-        self, mock_get_session, mock_get_scrapers, mock_odds, mock_live
+        self, mock_get_session, mock_get_scrapers, mock_live
     ):
         """Handles missing run record gracefully."""
         mock_get_scrapers.return_value = {}
@@ -101,10 +96,9 @@ class TestScrapeRunManagerRun:
     """Tests for run method."""
 
     @patch("sports_scraper.services.run_manager.LiveFeedManager")
-    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
     def test_run_requires_scraper_for_boxscores(
-        self, mock_get_scrapers, mock_odds, mock_live
+        self, mock_get_scrapers, mock_live
     ):
         """Raises error when no scraper for boxscore league."""
         mock_get_scrapers.return_value = {}  # No scrapers
@@ -125,12 +119,10 @@ class TestScrapeRunManagerRun:
     @patch("sports_scraper.services.run_manager.detect_missing_pbp")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.LiveFeedManager")
-    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
     def test_run_returns_summary(
         self,
         mock_get_scrapers,
-        mock_odds,
         mock_live,
         mock_get_session,
         mock_detect_missing,
@@ -159,7 +151,6 @@ class TestScrapeRunManagerRun:
 
         assert isinstance(result, dict)
         assert "games" in result
-        assert "odds" in result
         assert "social_posts" in result
         assert "pbp_games" in result
 
@@ -169,61 +160,10 @@ class TestScrapeRunManagerRun:
     @patch("sports_scraper.services.run_manager.detect_missing_pbp")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.LiveFeedManager")
-    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
-    @patch("sports_scraper.services.run_manager.get_all_scrapers")
-    def test_run_calls_odds_sync(
-        self,
-        mock_get_scrapers,
-        mock_odds_cls,
-        mock_live,
-        mock_get_session,
-        mock_detect_missing,
-        mock_detect_conflicts,
-        mock_complete_job,
-        mock_start_job,
-    ):
-        """Runs odds sync when enabled."""
-        mock_get_scrapers.return_value = {}
-        mock_session = MagicMock()
-        mock_run = MagicMock()
-        mock_session.query.return_value.filter.return_value.first.return_value = mock_run
-        mock_get_session.return_value.__enter__.return_value = mock_session
-
-        mock_start_job.return_value = 1
-
-        mock_odds = MagicMock()
-        mock_odds.sync.return_value = 50
-        mock_odds_cls.return_value = mock_odds
-
-        from sports_scraper.models import IngestionConfig
-        config = IngestionConfig(
-            league_code="NHL",
-            start_date=date(2024, 1, 15),
-            end_date=date(2024, 1, 15),
-            boxscores=False,
-            odds=True,
-            social=False,
-            pbp=False,
-        )
-
-        manager = ScrapeRunManager()
-        result = manager.run(123, config)
-
-        mock_odds.sync.assert_called_once_with(config)
-        assert result["odds"] == 50
-
-    @patch("sports_scraper.services.run_manager.start_job_run")
-    @patch("sports_scraper.services.run_manager.complete_job_run")
-    @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
-    @patch("sports_scraper.services.run_manager.detect_missing_pbp")
-    @patch("sports_scraper.services.run_manager.get_session")
-    @patch("sports_scraper.services.run_manager.LiveFeedManager")
-    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
     def test_run_skips_unsupported_social_leagues(
         self,
         mock_get_scrapers,
-        mock_odds_cls,
         mock_live,
         mock_get_session,
         mock_detect_missing,
@@ -263,12 +203,10 @@ class TestScrapeRunManagerIntegration:
     @patch("sports_scraper.services.run_manager.detect_missing_pbp")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.LiveFeedManager")
-    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
     def test_run_with_no_phases_enabled(
         self,
         mock_get_scrapers,
-        mock_odds,
         mock_live,
         mock_get_session,
         mock_detect_missing,
@@ -296,7 +234,6 @@ class TestScrapeRunManagerIntegration:
         result = manager.run(123, config)
 
         assert result["games"] == 0
-        assert result["odds"] == 0
         assert result["social_posts"] == 0
         assert result["pbp_games"] == 0
 
@@ -306,12 +243,10 @@ class TestScrapeRunManagerIntegration:
     @patch("sports_scraper.services.run_manager.detect_missing_pbp")
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.LiveFeedManager")
-    @patch("sports_scraper.services.run_manager.OddsSynchronizer")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
     def test_run_handles_updated_before(
         self,
         mock_get_scrapers,
-        mock_odds,
         mock_live,
         mock_get_session,
         mock_detect_missing,

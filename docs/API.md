@@ -1292,7 +1292,10 @@ Betting odds for a game. Returned in the `odds` array of `GET /games/{gameId}`.
 ```typescript
 interface OddsEntry {
   book: string;               // e.g. "fanduel", "draftkings"
-  marketType: string;         // "h2h", "spreads", "totals"
+  marketType: string;         // "h2h", "spreads", "totals", or prop market key
+  marketCategory: string;     // "mainline", "player_prop", "team_prop", "alternate", etc.
+  playerName: string | null;  // Player name for player prop markets
+  description: string | null; // Market description (e.g. prop details)
   side: string | null;        // "home", "away", "over", "under"
   line: number | null;        // Spread or total value
   price: number | null;       // American odds (e.g. -110, +150)

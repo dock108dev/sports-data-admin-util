@@ -403,6 +403,9 @@ async def get_game(
         OddsEntry(
             book=odd.book,
             market_type=odd.market_type,
+            market_category=odd.market_category,
+            player_name=odd.player_name,
+            description=odd.description,
             side=odd.side,
             line=odd.line,
             price=odd.price,

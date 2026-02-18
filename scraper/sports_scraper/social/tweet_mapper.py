@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from ..logging import logger
-from ..utils.datetime_utils import now_utc
+from ..utils.datetime_utils import SPORTS_DAY_BOUNDARY_HOUR_ET, now_utc
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -129,6 +129,16 @@ def get_game_window(
 
     window_start = _pregame_start_utc(game)
     window_end = game_end + timedelta(hours=postgame_hours)
+
+    # Floor: window must extend to at least 4 AM ET on the day after game_date.
+    # Late-night games (ending after midnight ET) need postgame tweets captured
+    # until the sports day boundary.
+    next_day = game.game_date.date() + timedelta(days=1)
+    floor_et = datetime.combine(
+        next_day, datetime.min.time(), tzinfo=EASTERN
+    ).replace(hour=SPORTS_DAY_BOUNDARY_HOUR_ET)
+    floor_utc = floor_et.astimezone(timezone.utc)
+    window_end = max(window_end, floor_utc)
 
     return window_start, window_end
 

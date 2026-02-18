@@ -47,53 +47,40 @@ class EligibilityResult:
 # Book lists
 # ---------------------------------------------------------------------------
 
-# Books excluded from EV comparisons (junk / offshore / low-quality lines).
+# Books excluded from EV comparisons (offshore / exchanges / prediction markets).
 # All books still ingested and persisted; exclusion is SQL-level at query time.
 EXCLUDED_BOOKS: frozenset[str] = frozenset(
     {
+        # Offshore — unreliable lines for EV
         "BetOnline.ag",
-        "BetRivers",
-        "BetUS",
         "Bovada",
-        "GTbets",
-        "LowVig.ag",
-        "MyBookie.ag",
-        "Nitrogen",
-        "SuperBook",
-        "TwinSpires",
-        "Wind Creek (Betfred PA)",
-        "WynnBET",
-        "Bally Bet",
-        "Betsson",
-        "Coolbet",
-        "Marathonbet",
-        "Matchbook",
-        "NordicBet",
-        "William Hill (US)",
-        "1xBet",
+        # Prediction markets / exchanges — not traditional sportsbooks
+        "Kalshi",
+        "Polymarket",
     }
 )
 
-# Books included in EV comparisons (reputable US-licensed or sharp).
+# Books included in EV comparisons (reputable licensed sportsbooks + sharp books).
+# These are the only books available via our configured Odds API regions
+# (us, us_ex, eu, uk).
 INCLUDED_BOOKS: frozenset[str] = frozenset(
     {
+        # US sportsbooks
         "BetMGM",
+        "BetRivers",
         "Caesars",
         "DraftKings",
-        "ESPNBet",
         "FanDuel",
-        "Fanatics",
-        "Hard Rock Bet",
+        # EU / sharp
         "Pinnacle",
-        "PointsBet (US)",
-        "bet365",
-        "Betway",
-        "Circa Sports",
-        "Fliff",
-        "SI Sportsbook",
-        "theScore Bet",
-        "Tipico",
-        "Unibet",
+        "888sport",
+        "William Hill",
+        # UK sportsbooks
+        "Betfair Exchange",
+        "Betfair Sportsbook",
+        "Ladbrokes",
+        "Paddy Power",
+        "William Hill (UK)",
     }
 )
 
