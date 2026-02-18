@@ -5,6 +5,8 @@ import pytest
 from app.services.ev_config import (
     EXCLUDED_BOOKS,
     INCLUDED_BOOKS,
+    MAX_EXTRAPOLATED_PROB_DIVERGENCE,
+    MAX_EXTRAPOLATION_HALF_POINTS,
     ConfidenceTier,
     EligibilityResult,
     EVStrategyConfig,
@@ -186,3 +188,25 @@ class TestGetStrategy:
                 config = get_strategy(league, cat)
                 assert config is not None
                 assert config.strategy_name == "pinnacle_devig"
+
+
+class TestExtrapolationConfig:
+    """Tests for extrapolation constants."""
+
+    def test_nba_half_point_limits_tightened(self) -> None:
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NBA"]["spreads"] == 12
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NBA"]["totals"] == 12
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NBA"]["team_totals"] == 8
+
+    def test_ncaab_half_point_limits_tightened(self) -> None:
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NCAAB"]["spreads"] == 12
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NCAAB"]["totals"] == 12
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NCAAB"]["team_totals"] == 8
+
+    def test_nhl_half_point_limits_unchanged(self) -> None:
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NHL"]["spreads"] == 6
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NHL"]["totals"] == 6
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NHL"]["team_totals"] == 6
+
+    def test_max_extrapolated_prob_divergence_exists(self) -> None:
+        assert MAX_EXTRAPOLATED_PROB_DIVERGENCE == 0.15

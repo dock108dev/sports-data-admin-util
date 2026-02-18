@@ -25,6 +25,8 @@ from ...services.ev import (
 )
 from ...services.ev_config import (
     HALF_POINT_LOGIT_SLOPE,
+    INCLUDED_BOOKS,
+    MAX_EXTRAPOLATED_PROB_DIVERGENCE,
     MAX_EXTRAPOLATION_HALF_POINTS,
     extrapolation_confidence,
 )
@@ -497,6 +499,48 @@ def _try_extrapolated_ev(
                         return "extrapolation_exceeds_pinnacle"
                 except ValueError:
                     pass
+
+    # 8c. DIVERGENCE CHECK: Compare extrapolated fair prob against median
+    # implied prob across non-sharp books.  Catches phantom EV from
+    # long-distance extrapolation drift (e.g., fair 80% vs market 53%).
+    for key, extrap_prob in [(key_a, extrap_prob_a), (key_b, extrap_prob_b)]:
+        bet = bets_map[key]
+        non_sharp_implieds: list[float] = []
+        for b in bet["books"]:
+            book_name = b["book"] if isinstance(b, dict) else b.book
+            price = b["price"] if isinstance(b, dict) else b.price
+            if book_name == "Pinnacle":
+                continue
+            if book_name not in INCLUDED_BOOKS:
+                continue
+            try:
+                non_sharp_implieds.append(american_to_implied(price))
+            except ValueError:
+                continue
+        if non_sharp_implieds:
+            non_sharp_implieds.sort()
+            n = len(non_sharp_implieds)
+            mid = n // 2
+            median_implied = (
+                non_sharp_implieds[mid]
+                if n % 2 == 1
+                else (non_sharp_implieds[mid - 1] + non_sharp_implieds[mid]) / 2.0
+            )
+            if abs(extrap_prob - median_implied) > MAX_EXTRAPOLATED_PROB_DIVERGENCE:
+                logger.warning(
+                    "extrapolation_fair_divergence",
+                    extra={
+                        "game_id": game_id,
+                        "market_key": market_key,
+                        "extrap_prob": round(extrap_prob, 4),
+                        "median_implied": round(median_implied, 4),
+                        "divergence": round(abs(extrap_prob - median_implied), 4),
+                        "n_half_points": round(n_half_points, 1),
+                        "ref_line": best_ref["abs_line"],
+                        "target_line": target_abs_line,
+                    },
+                )
+                return "extrapolation_fair_divergence"
 
     # 9. Confidence tier
     confidence = extrapolation_confidence(n_half_points)

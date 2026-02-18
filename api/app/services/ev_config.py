@@ -182,10 +182,15 @@ HALF_POINT_LOGIT_SLOPE: dict[str, dict[str, float]] = {
 # Max number of half-points we'll extrapolate (beyond → too uncertain).
 # Per-market limits: team totals capped tighter (5 full points) vs game totals (10).
 MAX_EXTRAPOLATION_HALF_POINTS: dict[str, dict[str, int]] = {
-    "NBA": {"spreads": 20, "totals": 20, "team_totals": 10},
-    "NCAAB": {"spreads": 20, "totals": 20, "team_totals": 10},
+    "NBA": {"spreads": 12, "totals": 12, "team_totals": 8},
+    "NCAAB": {"spreads": 12, "totals": 12, "team_totals": 8},
     "NHL": {"spreads": 6, "totals": 6, "team_totals": 6},
 }
+
+# Max divergence (probability space) between extrapolated fair prob and median
+# implied prob across non-sharp books.  Catches phantom EV from long-distance
+# extrapolation drift (e.g., fair 80% vs market consensus 53%).
+MAX_EXTRAPOLATED_PROB_DIVERGENCE: float = 0.15
 
 
 def extrapolation_confidence(n_half_points: float) -> str:
