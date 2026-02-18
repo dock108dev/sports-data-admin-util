@@ -20,6 +20,15 @@ _ODDS_API_TO_DB_MAPPINGS: dict[str, str] = {
     "St. John's Red Storm": "St. John's (NY)",
     "St John's Red Storm": "St. John's (NY)",
     "St Johns Red Storm": "St. John's (NY)",
+    # HBCU / mid-major names that collide with Power conference after normalization
+    "Alabama A&M Bulldogs": "Alabama A&M Bulldogs",
+    "North Carolina Central Eagles": "North Carolina Central Eagles",
+    "Maryland Eastern Shore Hawks": "Maryland-Eastern Shore Hawks",
+    "Texas Southern Tigers": "Texas Southern Tigers",
+    "Grambling Tigers": "Grambling St Tigers",
+    "Grambling State Tigers": "Grambling St Tigers",
+    "Howard Bison": "Howard Bison",
+    "Coppin State Eagles": "Coppin St Eagles",
 }
 
 # Simple LRU cache to avoid repeating heavy match queries/logs for the same game+date.
@@ -110,6 +119,12 @@ def match_game_by_team_ids(
     return game_id
 
 
+def _ncaab_name_contains(a: str, b: str) -> bool:
+    """Substring match with 80% length-ratio guard."""
+    shorter, longer = sorted([a, b], key=len)
+    return shorter in longer and len(shorter) / len(longer) >= 0.8
+
+
 def match_game_by_names_ncaab(
     session: Session,
     league_id: int,
@@ -169,14 +184,12 @@ def match_game_by_names_ncaab(
         home_matches = (
             home_db_norm == home_normalized
             or home_db_norm == home_canonical_norm
-            or home_normalized in home_db_norm
-            or home_db_norm in home_normalized
+            or _ncaab_name_contains(home_normalized, home_db_norm)
         )
         away_matches = (
             away_db_norm == away_normalized
             or away_db_norm == away_canonical_norm
-            or away_normalized in away_db_norm
-            or away_db_norm in away_normalized
+            or _ncaab_name_contains(away_normalized, away_db_norm)
         )
         if not home_matches:
             overlap_home = len(home_tokens & home_db_tokens)
@@ -215,14 +228,12 @@ def match_game_by_names_ncaab(
         home_matches_swapped = (
             home_db_norm == away_normalized
             or home_db_norm == away_canonical_norm
-            or away_normalized in home_db_norm
-            or home_db_norm in away_normalized
+            or _ncaab_name_contains(away_normalized, home_db_norm)
         )
         away_matches_swapped = (
             away_db_norm == home_normalized
             or away_db_norm == home_canonical_norm
-            or home_normalized in away_db_norm
-            or away_db_norm in home_normalized
+            or _ncaab_name_contains(home_normalized, away_db_norm)
         )
 
         if home_matches_swapped and away_matches_swapped:
