@@ -70,7 +70,7 @@ def derive_entity_key(
     if parts[0] == "player" and len(parts) >= 3:
         slug = parts[1]
         if player_name:
-            h = hashlib.sha1(f"{player_name}:{market_key}".encode()).hexdigest()[:8]
+            h = hashlib.blake2s(f"{player_name}:{market_key}".encode(), digest_size=4).hexdigest()
             return f"player:{slug}:{h}"
         return f"player:{slug}"
 
