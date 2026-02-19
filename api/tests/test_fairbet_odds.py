@@ -1887,20 +1887,20 @@ class TestTryExtrapolatedEv:
         assert result == "reference_missing"
 
     def test_extreme_extrapolation_rejected_by_divergence(self):
-        """12 HP shift produces ~17% true prob vs ~51% median → rejected."""
+        """6 HP shift produces divergence > 10% threshold → rejected."""
         # Mainline at 148.0 with Pinnacle -110/-110 (50/50 after devig).
-        # Target at 142.0 → 12 half-points away.
-        # NCAAB totals slope=0.12 → logit shift=1.44 → extrap prob for "over"
-        # goes to ~80%, but soft books price it at ~-115 (~53%).
-        # Divergence ≈ 27% >> 15% threshold → rejected.
+        # Target at 145.0 → 6 half-points away (3 full points).
+        # NCAAB totals slope=0.12 → logit shift=0.72 → extrap prob for "over"
+        # goes to ~67%, but soft books price it at ~-115 (~53%).
+        # Divergence ≈ 14% > 10% threshold → rejected.
         now = datetime.now(timezone.utc)
         bets_map = {
-            # Target pair at 142.0 — no Pinnacle, soft books near -115
-            (1, "alternate_totals", "over", 142.0): {
+            # Target pair at 145.0 — no Pinnacle, soft books near -115
+            (1, "alternate_totals", "over", 145.0): {
                 "game_id": 1,
                 "market_key": "alternate_totals",
                 "selection_key": "over",
-                "line_value": 142.0,
+                "line_value": 145.0,
                 "league_code": "NCAAB",
                 "market_category": "alternate",
                 "books": [
@@ -1910,11 +1910,11 @@ class TestTryExtrapolatedEv:
                 ],
                 "ev_disabled_reason": "reference_missing",
             },
-            (1, "alternate_totals", "under", 142.0): {
+            (1, "alternate_totals", "under", 145.0): {
                 "game_id": 1,
                 "market_key": "alternate_totals",
                 "selection_key": "under",
-                "line_value": 142.0,
+                "line_value": 145.0,
                 "league_code": "NCAAB",
                 "market_category": "alternate",
                 "books": [
@@ -1950,18 +1950,18 @@ class TestTryExtrapolatedEv:
         }
 
         sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
-        key_a = (1, "alternate_totals", "over", 142.0)
-        key_b = (1, "alternate_totals", "under", 142.0)
+        key_a = (1, "alternate_totals", "over", 145.0)
+        key_b = (1, "alternate_totals", "under", 145.0)
 
         result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
         assert result == "extrapolation_fair_divergence"
 
     def test_moderate_extrapolation_passes_divergence(self):
         """3 HP shift stays within divergence threshold → passes."""
-        # Mainline at 148.0 with Pinnacle -110/-110.
+        # Mainline at 148.0 with Pinnacle -110/-110 → devigged to 50/50.
         # Target at 149.5 → 3 half-points away.
-        # NCAAB totals slope=0.12 → logit shift=0.36 → small prob shift (~4%).
-        # Soft books near -120 (~55%) vs extrap ~54% → divergence ~1% → passes.
+        # NCAAB totals slope=0.12 → logit shift=-0.36 for "over" → extrap ~41.1%.
+        # Soft books at +130 (~43.5%) vs extrap ~41.1% → divergence ~2.4% → passes.
         now = datetime.now(timezone.utc)
         bets_map = {
             (1, "alternate_totals", "over", 149.5): {
@@ -1972,9 +1972,9 @@ class TestTryExtrapolatedEv:
                 "league_code": "NCAAB",
                 "market_category": "alternate",
                 "books": [
-                    BookOdds(book="DraftKings", price=-120, observed_at=now),
-                    BookOdds(book="FanDuel", price=-118, observed_at=now),
-                    BookOdds(book="BetMGM", price=-122, observed_at=now),
+                    BookOdds(book="DraftKings", price=130, observed_at=now),
+                    BookOdds(book="FanDuel", price=125, observed_at=now),
+                    BookOdds(book="BetMGM", price=135, observed_at=now),
                 ],
                 "ev_disabled_reason": "reference_missing",
             },
@@ -1986,9 +1986,9 @@ class TestTryExtrapolatedEv:
                 "league_code": "NCAAB",
                 "market_category": "alternate",
                 "books": [
-                    BookOdds(book="DraftKings", price=100, observed_at=now),
-                    BookOdds(book="FanDuel", price=98, observed_at=now),
-                    BookOdds(book="BetMGM", price=102, observed_at=now),
+                    BookOdds(book="DraftKings", price=-140, observed_at=now),
+                    BookOdds(book="FanDuel", price=-135, observed_at=now),
+                    BookOdds(book="BetMGM", price=-145, observed_at=now),
                 ],
                 "ev_disabled_reason": "reference_missing",
             },
@@ -2024,6 +2024,374 @@ class TestTryExtrapolatedEv:
         assert result is None  # Should pass divergence check
         assert bets_map[key_a]["has_fair"] is True
         assert bets_map[key_a]["ev_method"] == "pinnacle_extrapolated"
+
+    def test_mainline_disagreement_blocked(self):
+        """Mainline-to-mainline extrapolation blocked when distance > 2 points.
+
+        Pinnacle totals 148.5, FanDuel totals 142.5 → 6 full points apart.
+        Both are mainline markets, so this is cross-book line disagreement,
+        NOT an alternate-line relationship. Should return mainline_line_disagreement.
+        """
+        now = datetime.now(timezone.utc)
+        bets_map = {
+            # Target pair: mainline totals at 142.5 (no Pinnacle)
+            (1, "totals", "over", 142.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 142.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    BookOdds(book="FanDuel", price=-115, observed_at=now),
+                    BookOdds(book="DraftKings", price=-112, observed_at=now),
+                    BookOdds(book="BetMGM", price=-118, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (1, "totals", "under", 142.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 142.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    BookOdds(book="FanDuel", price=-105, observed_at=now),
+                    BookOdds(book="DraftKings", price=-108, observed_at=now),
+                    BookOdds(book="BetMGM", price=-102, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            # Reference: Pinnacle mainline at 148.5
+            (1, "totals", "over", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+            (1, "totals", "under", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+        }
+
+        sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+        key_a = (1, "totals", "over", 142.5)
+        key_b = (1, "totals", "under", 142.5)
+
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result == "mainline_line_disagreement"
+
+    def test_alternate_allowed_within_bounds(self):
+        """Alternate totals 1.5 points from mainline → passes (within 6 HP max).
+
+        Pinnacle mainline at 148.5, alternate at 147.0 → 3 half-points.
+        Should succeed because: alternate market, within HP limit, and
+        probability divergence stays small.
+        """
+        now = datetime.now(timezone.utc)
+        bets_map = {
+            # Target pair: alternate totals at 147.0 (no Pinnacle)
+            (1, "alternate_totals", "over", 147.0): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "over",
+                "line_value": 147.0,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-118, observed_at=now),
+                    BookOdds(book="FanDuel", price=-115, observed_at=now),
+                    BookOdds(book="BetMGM", price=-120, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (1, "alternate_totals", "under", 147.0): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "under",
+                "line_value": 147.0,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-102, observed_at=now),
+                    BookOdds(book="FanDuel", price=-105, observed_at=now),
+                    BookOdds(book="BetMGM", price=-100, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            # Reference: Pinnacle mainline at 148.5
+            (1, "totals", "over", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+            (1, "totals", "under", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+        }
+
+        sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+        key_a = (1, "alternate_totals", "over", 147.0)
+        key_b = (1, "alternate_totals", "under", 147.0)
+
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result is None  # Should succeed
+        assert bets_map[key_a]["has_fair"] is True
+        assert bets_map[key_a]["ev_method"] == "pinnacle_extrapolated"
+
+    def test_out_of_range_at_new_limits(self):
+        """Alternate totals 148.5 → 142.5 = 12 HP > 6 max → out of range.
+
+        With the tightened limits (max 6 HP for NCAAB totals), a 12 half-point
+        extrapolation should be rejected even though the old 20 HP limit allowed it.
+        """
+        now = datetime.now(timezone.utc)
+        bets_map = {
+            # Target pair: alternate totals at 142.5 (12 HP from ref)
+            (1, "alternate_totals", "over", 142.5): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "over",
+                "line_value": 142.5,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-115, observed_at=now),
+                    BookOdds(book="FanDuel", price=-112, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (1, "alternate_totals", "under", 142.5): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "under",
+                "line_value": 142.5,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-105, observed_at=now),
+                    BookOdds(book="FanDuel", price=-108, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            # Reference: Pinnacle mainline at 148.5
+            (1, "totals", "over", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+            (1, "totals", "under", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+        }
+
+        sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+        key_a = (1, "alternate_totals", "over", 142.5)
+        key_b = (1, "alternate_totals", "under", 142.5)
+
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result == "extrapolation_out_of_range"
+
+    def test_stale_ref_excluded(self):
+        """Sharp reference older than SHARP_REF_MAX_AGE_SECONDS is excluded.
+
+        When Pinnacle's observed_at is 2 hours old (> 3600s threshold),
+        _build_sharp_reference with max_age_seconds=3600 should skip it,
+        leaving no reference → extrapolation returns reference_missing.
+        """
+        now = datetime.now(timezone.utc)
+        stale_time = now - timedelta(hours=2)  # 7200s ago > 3600s threshold
+        bets_map = {
+            # Target pair: alternate totals at 147.0
+            (1, "alternate_totals", "over", 147.0): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "over",
+                "line_value": 147.0,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-140, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (1, "alternate_totals", "under", 147.0): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "under",
+                "line_value": 147.0,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=130, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            # Reference: Pinnacle mainline at 148.5 — but STALE (2h old)
+            (1, "totals", "over", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": stale_time},
+                ],
+            },
+            (1, "totals", "under", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": stale_time},
+                ],
+            },
+        }
+
+        # Build with staleness check enabled (3600s)
+        sharp_refs = _build_sharp_reference(
+            bets_map, {"Pinnacle"}, max_age_seconds=3600
+        )
+        key_a = (1, "alternate_totals", "over", 147.0)
+        key_b = (1, "alternate_totals", "under", 147.0)
+
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result == "reference_missing"
+
+        # Verify the ref IS found when staleness check is disabled
+        sharp_refs_no_age = _build_sharp_reference(bets_map, {"Pinnacle"})
+        result_no_age = _try_extrapolated_ev(
+            key_a, key_b, bets_map, sharp_refs_no_age
+        )
+        assert result_no_age is None  # Should pass without staleness check
+
+    def test_regression_mainline_disagreement_wichita_ecu(self):
+        """Regression: Wichita St @ ECU mainline totals at different lines.
+
+        Simulates the production scenario where Pinnacle has totals at 148.5
+        but DraftKings/FanDuel have mainline totals at 145.5. This 3-point
+        difference exceeds MAINLINE_DISAGREEMENT_MAX_POINTS (2.0), so the
+        extrapolation path should be blocked with mainline_line_disagreement.
+
+        No bet should show EV > 10% from mainline-to-mainline extrapolation.
+        """
+        now = datetime.now(timezone.utc)
+        bets_map = {
+            # Pinnacle mainline totals at 148.5
+            (99, "totals", "over", 148.5): {
+                "game_id": 99,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -108, "observed_at": now},
+                    {"book": "BetMGM", "price": -112, "observed_at": now},
+                ],
+            },
+            (99, "totals", "under", 148.5): {
+                "game_id": 99,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -112, "observed_at": now},
+                    {"book": "BetMGM", "price": -108, "observed_at": now},
+                ],
+            },
+            # DraftKings/FanDuel mainline totals at 145.5 (3 points away)
+            (99, "totals", "over", 145.5): {
+                "game_id": 99,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 145.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    BookOdds(book="DraftKings", price=-110, observed_at=now),
+                    BookOdds(book="FanDuel", price=-108, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (99, "totals", "under", 145.5): {
+                "game_id": 99,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 145.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    BookOdds(book="DraftKings", price=-110, observed_at=now),
+                    BookOdds(book="FanDuel", price=-112, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+        }
+
+        sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+
+        # The 145.5 pair should be blocked as mainline disagreement
+        key_a = (99, "totals", "over", 145.5)
+        key_b = (99, "totals", "under", 145.5)
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result == "mainline_line_disagreement"
+
+        # Verify no phantom EV was annotated
+        for key in [key_a, key_b]:
+            for b in bets_map[key]["books"]:
+                ev = b.ev_percent if hasattr(b, "ev_percent") else None
+                assert ev is None or ev <= 10.0, (
+                    f"Phantom EV {ev}% on {b.book if hasattr(b, 'book') else b['book']}"
+                )
 
 
 class TestLogitTailBehavior:

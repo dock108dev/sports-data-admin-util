@@ -5,12 +5,15 @@ import pytest
 from app.services.ev_config import (
     EXCLUDED_BOOKS,
     INCLUDED_BOOKS,
+    MAINLINE_DISAGREEMENT_MAX_POINTS,
     MAX_EXTRAPOLATED_PROB_DIVERGENCE,
     MAX_EXTRAPOLATION_HALF_POINTS,
+    SHARP_REF_MAX_AGE_SECONDS,
     ConfidenceTier,
     EligibilityResult,
     EVStrategyConfig,
     get_strategy,
+    get_fairbet_debug_game_ids,
 )
 
 
@@ -193,20 +196,39 @@ class TestGetStrategy:
 class TestExtrapolationConfig:
     """Tests for extrapolation constants."""
 
-    def test_nba_half_point_limits_tightened(self) -> None:
-        assert MAX_EXTRAPOLATION_HALF_POINTS["NBA"]["spreads"] == 12
-        assert MAX_EXTRAPOLATION_HALF_POINTS["NBA"]["totals"] == 12
-        assert MAX_EXTRAPOLATION_HALF_POINTS["NBA"]["team_totals"] == 8
+    def test_nba_half_point_limits(self) -> None:
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NBA"]["spreads"] == 6
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NBA"]["totals"] == 6
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NBA"]["team_totals"] == 4
 
-    def test_ncaab_half_point_limits_tightened(self) -> None:
-        assert MAX_EXTRAPOLATION_HALF_POINTS["NCAAB"]["spreads"] == 12
-        assert MAX_EXTRAPOLATION_HALF_POINTS["NCAAB"]["totals"] == 12
-        assert MAX_EXTRAPOLATION_HALF_POINTS["NCAAB"]["team_totals"] == 8
+    def test_ncaab_half_point_limits(self) -> None:
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NCAAB"]["spreads"] == 6
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NCAAB"]["totals"] == 6
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NCAAB"]["team_totals"] == 4
 
-    def test_nhl_half_point_limits_unchanged(self) -> None:
-        assert MAX_EXTRAPOLATION_HALF_POINTS["NHL"]["spreads"] == 6
-        assert MAX_EXTRAPOLATION_HALF_POINTS["NHL"]["totals"] == 6
-        assert MAX_EXTRAPOLATION_HALF_POINTS["NHL"]["team_totals"] == 6
+    def test_nhl_half_point_limits(self) -> None:
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NHL"]["spreads"] == 4
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NHL"]["totals"] == 4
+        assert MAX_EXTRAPOLATION_HALF_POINTS["NHL"]["team_totals"] == 4
 
-    def test_max_extrapolated_prob_divergence_exists(self) -> None:
-        assert MAX_EXTRAPOLATED_PROB_DIVERGENCE == 0.15
+    def test_max_extrapolated_prob_divergence(self) -> None:
+        assert MAX_EXTRAPOLATED_PROB_DIVERGENCE == 0.10
+
+    def test_mainline_disagreement_max_points(self) -> None:
+        assert MAINLINE_DISAGREEMENT_MAX_POINTS == 2.0
+
+    def test_sharp_ref_max_age_seconds(self) -> None:
+        assert SHARP_REF_MAX_AGE_SECONDS == 3600
+
+    def test_get_fairbet_debug_game_ids_empty(self) -> None:
+        import os
+        os.environ.pop("FAIRBET_DEBUG_GAME_IDS", None)
+        assert get_fairbet_debug_game_ids() == frozenset()
+
+    def test_get_fairbet_debug_game_ids_set(self) -> None:
+        import os
+        os.environ["FAIRBET_DEBUG_GAME_IDS"] = "123,456"
+        try:
+            assert get_fairbet_debug_game_ids() == frozenset({123, 456})
+        finally:
+            os.environ.pop("FAIRBET_DEBUG_GAME_IDS", None)

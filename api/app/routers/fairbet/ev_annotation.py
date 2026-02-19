@@ -26,9 +26,12 @@ from ...services.ev import (
 from ...services.ev_config import (
     HALF_POINT_LOGIT_SLOPE,
     INCLUDED_BOOKS,
+    MAINLINE_DISAGREEMENT_MAX_POINTS,
     MAX_EXTRAPOLATED_PROB_DIVERGENCE,
     MAX_EXTRAPOLATION_HALF_POINTS,
+    SHARP_REF_MAX_AGE_SECONDS,
     extrapolation_confidence,
+    get_fairbet_debug_game_ids,
 )
 
 logger = logging.getLogger(__name__)
@@ -264,6 +267,7 @@ def _market_base(market_key: str) -> str | None:
 def _build_sharp_reference(
     bets_map: dict[tuple, dict[str, Any]],
     sharp_book_names: set[str],
+    max_age_seconds: int | None = None,
 ) -> dict[tuple[int, str], list[dict[str, Any]]]:
     """Pre-compute sharp reference index from all bets that have Pinnacle.
 
@@ -274,14 +278,23 @@ def _build_sharp_reference(
     Args:
         bets_map: The full bets map keyed by (game_id, market_key, selection_key, line_value).
         sharp_book_names: Set of sharp book display names (e.g., {"Pinnacle"}).
+        max_age_seconds: If set, discard sharp entries whose observed_at is
+            older than ``now - max_age_seconds``.
 
     Returns:
         Dict keyed by (game_id, market_base) → list of reference lines sorted by
-        mainline preference. Each entry has abs_line, is_mainline, probs, prices.
+        mainline preference. Each entry has abs_line, is_mainline, probs, prices,
+        observed_at.
     """
+    from datetime import timezone as _tz
+
+    now = datetime.now(_tz.utc)
+
     # Step 1: Collect sharp book entries grouped by (game_id, market_base, abs_line)
-    # Each group entry: (selection_key, sharp_price, market_key, signed_line_value)
-    sharp_groups: dict[tuple[int, str, float], list[tuple[str, float, str, float]]] = {}
+    # Each group entry: (selection_key, sharp_price, market_key, signed_line_value, observed_at)
+    sharp_groups: dict[
+        tuple[int, str, float], list[tuple[str, float, str, float, datetime]]
+    ] = {}
 
     for key, bet in bets_map.items():
         game_id_k, market_key_k, selection_key_k, line_value_k = key
@@ -292,18 +305,30 @@ def _build_sharp_reference(
         # Find sharp book entry
         books = bet["books"]
         sharp_price = None
+        sharp_observed_at = None
         for b in books:
             book_name = b["book"] if isinstance(b, dict) else b.book
             if book_name in sharp_book_names:
                 sharp_price = b["price"] if isinstance(b, dict) else b.price
+                sharp_observed_at = (
+                    b["observed_at"] if isinstance(b, dict) else b.observed_at
+                )
                 break
         if sharp_price is None:
             continue
 
+        # Staleness check
+        if max_age_seconds is not None and sharp_observed_at is not None:
+            age = (now - sharp_observed_at).total_seconds()
+            if age > max_age_seconds:
+                continue
+
         group_key = (game_id_k, mbase, abs(line_value_k))
         if group_key not in sharp_groups:
             sharp_groups[group_key] = []
-        sharp_groups[group_key].append((selection_key_k, sharp_price, market_key_k, line_value_k))
+        sharp_groups[group_key].append(
+            (selection_key_k, sharp_price, market_key_k, line_value_k, sharp_observed_at)
+        )
 
     # Step 2: For each group, find valid pairs (compatible line values) and devig
     refs: dict[tuple[int, str], list[dict[str, Any]]] = {}
@@ -319,8 +344,8 @@ def _build_sharp_reference(
             for j_idx in range(i + 1, len(entries)):
                 if j_idx in used:
                     continue
-                sel_i, _, _, line_i = entries[i]
-                sel_j, _, _, line_j = entries[j_idx]
+                sel_i, _, _, line_i, _ = entries[i]
+                sel_j, _, _, line_j, _ = entries[j_idx]
                 if sel_i == sel_j:
                     continue
                 lines_sum_zero = abs(line_i + line_j) < 0.01
@@ -334,8 +359,8 @@ def _build_sharp_reference(
                     break
 
         for idx_a, idx_b in valid_pairs:
-            sel_a, price_a, mkey_a, line_a = entries[idx_a]
-            sel_b, price_b, mkey_b, line_b = entries[idx_b]
+            sel_a, price_a, mkey_a, line_a, obs_at_a = entries[idx_a]
+            sel_b, price_b, mkey_b, line_b, _ = entries[idx_b]
 
             try:
                 implied_a = american_to_implied(price_a)
@@ -353,6 +378,7 @@ def _build_sharp_reference(
                 "probs": {sel_a: true_probs[0], sel_b: true_probs[1]},
                 "prices": {sel_a: price_a, sel_b: price_b},
                 "signed_lines": {sel_a: line_a, sel_b: line_b},
+                "observed_at": obs_at_a,
             }
 
             ref_key = (game_id, mbase)
@@ -422,6 +448,28 @@ def _try_extrapolated_ev(
 
     if best_ref is None:
         return "reference_missing"
+
+    # 4b. MAINLINE DISAGREEMENT CHECK: If both the target bet and the
+    # reference are mainlines, this is cross-book line disagreement (e.g.,
+    # Pinnacle 148.5 vs FanDuel 142.5), NOT an alternate relationship.
+    # Extrapolation is invalid here — reject it.
+    bet_is_mainline = not market_key.lower().startswith("alternate")
+    if (
+        bet_is_mainline
+        and best_ref["is_mainline"]
+        and best_distance > MAINLINE_DISAGREEMENT_MAX_POINTS
+    ):
+        logger.warning(
+            "mainline_line_disagreement",
+            extra={
+                "game_id": game_id,
+                "market_key": market_key,
+                "target_line": target_abs_line,
+                "ref_line": best_ref["abs_line"],
+                "distance_points": round(best_distance, 1),
+            },
+        )
+        return "mainline_line_disagreement"
 
     # 5. Match selection_keys between reference and target
     sel_a = key_a[2]  # selection_key
@@ -541,6 +589,34 @@ def _try_extrapolated_ev(
                     },
                 )
                 return "extrapolation_fair_divergence"
+
+    # 8d. TARGETED DEBUG LOGGING (game-ID toggle)
+    _debug_ids = get_fairbet_debug_game_ids()
+    if game_id in _debug_ids:
+        _book_prices_a = [
+            (b["book"] if isinstance(b, dict) else b.book,
+             b["price"] if isinstance(b, dict) else b.price)
+            for b in bets_map[key_a]["books"]
+        ]
+        logger.info(
+            "fairbet_extrapolation_debug",
+            extra={
+                "game_id": game_id,
+                "market_key": market_key,
+                "selection_key_a": sel_a,
+                "line_value_a": key_a[3],
+                "ref_line": best_ref["abs_line"],
+                "ref_is_mainline": best_ref["is_mainline"],
+                "ref_observed_at": str(best_ref.get("observed_at")),
+                "distance_points": round(best_distance, 2),
+                "n_half_points": round(n_half_points, 1),
+                "base_prob_a": round(base_prob_a, 4),
+                "extrap_prob_a": round(extrap_prob_a, 4),
+                "extrap_prob_b": round(extrap_prob_b, 4),
+                "book_prices_a": _book_prices_a,
+                "block_reason": None,
+            },
+        )
 
     # 9. Confidence tier
     confidence = extrapolation_confidence(n_half_points)

@@ -7,6 +7,7 @@ All books are still ingested/persisted; exclusion is SQL-level at query time.
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 from enum import Enum
 
@@ -180,17 +181,26 @@ HALF_POINT_LOGIT_SLOPE: dict[str, dict[str, float]] = {
 }
 
 # Max number of half-points we'll extrapolate (beyond → too uncertain).
-# Per-market limits: team totals capped tighter (5 full points) vs game totals (10).
+# 6 HP = 3 full points for basketball, 4 HP = 2 full goals for hockey.
 MAX_EXTRAPOLATION_HALF_POINTS: dict[str, dict[str, int]] = {
-    "NBA": {"spreads": 12, "totals": 12, "team_totals": 8},
-    "NCAAB": {"spreads": 12, "totals": 12, "team_totals": 8},
-    "NHL": {"spreads": 6, "totals": 6, "team_totals": 6},
+    "NBA": {"spreads": 6, "totals": 6, "team_totals": 4},
+    "NCAAB": {"spreads": 6, "totals": 6, "team_totals": 4},
+    "NHL": {"spreads": 4, "totals": 4, "team_totals": 4},
 }
 
 # Max divergence (probability space) between extrapolated fair prob and median
 # implied prob across non-sharp books.  Catches phantom EV from long-distance
 # extrapolation drift (e.g., fair 80% vs market consensus 53%).
-MAX_EXTRAPOLATED_PROB_DIVERGENCE: float = 0.15
+MAX_EXTRAPOLATED_PROB_DIVERGENCE: float = 0.10
+
+# Max distance (full points) between two mainline lines before we refuse to
+# extrapolate.  Mainline-to-mainline disagreement (e.g., Pinnacle 148.5 vs
+# FanDuel 142.5) is market opinion, not an alternate-line relationship.
+MAINLINE_DISAGREEMENT_MAX_POINTS: float = 2.0
+
+# Max age (seconds) for a sharp reference used in extrapolation.  Stale
+# references can amplify mismatch when market lines move.
+SHARP_REF_MAX_AGE_SECONDS: int = 3600
 
 
 def extrapolation_confidence(n_half_points: float) -> str:
@@ -219,3 +229,18 @@ def get_strategy(league_code: str, market_category: str) -> EVStrategyConfig | N
         EVStrategyConfig if EV is enabled for this combination, None otherwise.
     """
     return _STRATEGY_MAP.get((league_code.upper(), market_category))
+
+
+def get_fairbet_debug_game_ids() -> frozenset[int]:
+    """Return game IDs enabled for verbose EV debug logging.
+
+    Set via FAIRBET_DEBUG_GAME_IDS env var (comma-separated ints).
+    Returns empty frozenset when unset or on parse error.
+    """
+    raw = os.environ.get("FAIRBET_DEBUG_GAME_IDS", "")
+    if not raw.strip():
+        return frozenset()
+    try:
+        return frozenset(int(x.strip()) for x in raw.split(",") if x.strip())
+    except ValueError:
+        return frozenset()

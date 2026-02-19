@@ -19,6 +19,7 @@ from ...db.sports import SportsGame
 from ...db.odds import FairbetGameOddsWork
 from ...services.ev_config import (
     INCLUDED_BOOKS,
+    SHARP_REF_MAX_AGE_SECONDS,
     get_strategy,
 )
 from .ev_annotation import (
@@ -340,7 +341,9 @@ async def get_fairbet_odds(
         market_groups[group_key].append(key)
 
     ev_diagnostics: dict[str, int] = {"total_pairs": 0, "total_unpaired": 0}
-    sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+    sharp_refs = _build_sharp_reference(
+        bets_map, {"Pinnacle"}, max_age_seconds=SHARP_REF_MAX_AGE_SECONDS
+    )
 
     for group_key, bet_keys in market_groups.items():
         # Find valid pairs: entries with different selection_keys
