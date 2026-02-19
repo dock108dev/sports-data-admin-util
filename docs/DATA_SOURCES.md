@@ -11,7 +11,7 @@ This document describes where data comes from and how it's ingested.
 | Boxscores | NHL API | NHL | Post-game |
 | Play-by-Play | NBA API / NHL API / CBB API | NBA, NHL, NCAAB | Post-game |
 | Play-by-Play (Live) | League APIs | NBA, NHL, NCAAB | During game (5 min polling) |
-| Odds | The Odds API | NBA, NHL, NCAAB | Pre-game + live |
+| Odds | The Odds API | NBA, NHL, NCAAB | Pre-game only (live games skipped) |
 | Social | X/Twitter | NBA, NHL, NCAAB | 24-hour game window |
 
 ## Boxscores & Player Stats
@@ -263,14 +263,20 @@ See also:
 
 ### Automatic (Scheduled)
 - **Scheduler**: Celery Beat
-- **Ingestion**: Daily at 08:30 UTC (3:30 AM EST) - boxscores, odds, PBP
-- **Daily Sweep**: Runs at 09:00 UTC (4:00 AM EST) - truth repair, social scrape #2, backfill embedded tweets (7-day lookback)
-- **Flow Generation**: Runs after sweep, staggered by league (30 min apart):
-  - 09:30 UTC (4:30 AM EST) - NBA flow generation
-  - 10:00 UTC (5:00 AM EST) - NHL flow generation
-  - 10:30 UTC (5:30 AM EST) - NCAAB flow generation (capped at 10 games)
+
+**Always-on (all environments):**
 - **Game State Updates**: Every 3 minutes
-- **Live PBP Polling**: Every 5 minutes (NBA, NHL per-game; NCAAB via batch CBB API)
+
+**Live polling (production, or `LIVE_POLLING_ENABLED=true`):**
+- **Live PBP + Boxscore Polling**: Every 5 minutes (NBA, NHL per-game; NCAAB via batch CBB API)
+
+**Production-only:**
+- **Ingestion**: Daily at 08:30 UTC (3:30 AM ET) - boxscores, PBP
+- **Daily Sweep**: 09:00 UTC (4:00 AM ET) - truth repair, social scrape #2, backfill embedded tweets (7-day lookback)
+- **Flow Generation**: Staggered by league (30 min apart):
+  - 09:30 UTC (4:30 AM ET) - NBA flow generation
+  - 10:00 UTC (5:00 AM ET) - NHL flow generation
+  - 10:30 UTC (5:30 AM ET) - NCAAB flow generation (capped at 10 games)
 - **Mainline Odds Sync**: Every 15 minutes (`sync_mainline_odds`: spreads, totals, moneyline for all leagues; `us` + `eu` regions)
 - **Prop Odds Sync**: Every 60 minutes (`sync_prop_odds`: player/team props for pregame events)
 - **Odds Quiet Window**: 3–7 AM ET daily (both odds tasks skip execution)

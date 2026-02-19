@@ -4,6 +4,27 @@ All notable changes to Sports Data Admin.
 
 ## [2026-02-18] - Current
 
+### EV Annotation Enhancements
+
+- **Entity key derivation**: `derive_entity_key()` extracts team/game/player identity from selection keys for proper sharp reference grouping — prevents cross-entity EV (e.g., Lakers spread should not use Celtics Pinnacle reference)
+- **3-tuple sharp reference grouping**: `_build_sharp_reference()` now groups by `(game_id, market_base, entity_key)` instead of `(game_id, market_base)`, supporting entity-aware Pinnacle lookup
+- **Mainline disagreement check**: Rejects extrapolated EV when the mainline Pinnacle reference disagrees with the extrapolated direction
+- **Extrapolated probability divergence check**: Rejects extrapolated probabilities that diverge too far from the mainline reference
+
+### Live Stats & PBP SSOT
+
+- **`live_odds_enabled` field**: Added to `LeagueConfig` with import-time assertion ensuring it remains `False` for all leagues — documents the closing-line architecture constraint as code
+- **`LIVE_POLLING_ENABLED` setting**: New env var gates live PBP/boxscore polling independently from other production tasks, enabling live polling in non-prod environments
+- **Live polling schedule extraction**: `poll_live_pbp` moved from `_prod_only_schedule` to `_live_polling_schedule` with its own gating logic
+- **`IngestionConfig.live` → `batch_live_feed`**: Renamed to clarify that this flag controls batch ingestion's use of live endpoints (e.g., `cdn.nba.com`), not scheduled live polling
+- **Heartbeat logging**: `poll_live_pbp` zero-games log upgraded from `DEBUG` to `INFO` with structured `poll_live_pbp_heartbeat` event
+
+### Legacy Code Elimination
+
+- **`sync_all_odds` deleted**: Removed legacy wrapper that dispatched `sync_mainline_odds` + `sync_prop_odds`; admin odds sync endpoint now dispatches both tasks directly
+- **Backward-compat re-exports removed**: `ncaab_boxscore_ingestion.py` no longer re-exports functions from `ncaab_game_ids`; all importers updated to use canonical module
+- **`IngestionConfig` alias removed**: Dropped `Field(alias="live")` and `ConfigDict(populate_by_name=True)` — callers must use `batch_live_feed` directly
+
 ### NCAAB Fair Odds Fix
 
 - **DB team names for FairBet selection keys**: `upsert_fairbet_odds()` now looks up the game's actual home/away teams from `sports_teams` instead of using Odds API snapshot names, preventing wrong team names from entering `fairbet_game_odds_work` when a game is mis-matched
