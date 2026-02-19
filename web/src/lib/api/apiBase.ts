@@ -33,9 +33,10 @@ export function getApiBase(options?: ApiBaseOptions): string {
   const isBrowser = typeof window !== "undefined";
 
   if (isBrowser) {
-    // Browser requests go through the Next.js proxy to add the API key
-    // The proxy is at /api/proxy/... and forwards to the backend
-    return "/api/proxy";
+    // Browser requests go through the Next.js proxy to add the API key.
+    // The proxy lives at /proxy/... (NOT /api/proxy) so that Caddy's
+    // "handle /api/*" rule sends it to Next.js, not directly to FastAPI.
+    return "/proxy";
   }
 
   // Server-side requests can call the backend directly with the API key
