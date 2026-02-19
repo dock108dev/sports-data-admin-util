@@ -268,9 +268,9 @@ export default function StoryGeneratorPage() {
     <div className={styles.container}>
       <header className={styles.header}>
         <div className={styles.titleRow}>
-          <h1 className={styles.title}>Flow Generator</h1>
-          <button className={styles.logsButton} onClick={() => setLogsOpen(true)}>
-            View Logs
+          <h1 className={styles.title}>Pipelines</h1>
+          <button className={styles.logsButton} onClick={() => setLogsOpen(true)} title="Quick logs">
+            Logs
           </button>
         </div>
         <p className={styles.subtitle}>

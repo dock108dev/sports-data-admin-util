@@ -99,21 +99,21 @@ export default function AdminDashboardPage() {
 
       <AdminCard title="Quick actions" subtitle="Jump to common admin workflows">
         <div className={styles.quickLinks}>
-          <Link href={ROUTES.SPORTS_INGESTION} className={styles.quickLink}>
+          <Link href={ROUTES.RUNS} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>New scrape run</div>
               <div className={styles.quickLinkDesc}>Start a new data ingestion job</div>
             </div>
           </Link>
-          <Link href={ROUTES.SPORTS_BROWSER} className={styles.quickLink}>
+          <Link href={ROUTES.GAMES} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
-              <div className={styles.quickLinkTitle}>Data browser</div>
+              <div className={styles.quickLinkTitle}>Games</div>
               <div className={styles.quickLinkDesc}>Browse games, teams, and scrape runs</div>
             </div>
           </Link>
-          <Link href={ROUTES.SPORTS_FLOW_GENERATOR} className={styles.quickLink}>
+          <Link href={ROUTES.PIPELINES} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
-              <div className={styles.quickLinkTitle}>Flow Generator</div>
+              <div className={styles.quickLinkTitle}>Pipelines</div>
               <div className={styles.quickLinkDesc}>Generate and inspect game flow data</div>
             </div>
           </Link>
@@ -121,6 +121,12 @@ export default function AdminDashboardPage() {
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>FairBet Odds</div>
               <div className={styles.quickLinkDesc}>Compare odds across books</div>
+            </div>
+          </Link>
+          <Link href={ROUTES.LOGS} className={styles.quickLink}>
+            <div className={styles.quickLinkContent}>
+              <div className={styles.quickLinkTitle}>Logs</div>
+              <div className={styles.quickLinkDesc}>View container logs</div>
             </div>
           </Link>
         </div>

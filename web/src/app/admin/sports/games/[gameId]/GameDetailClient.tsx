@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { fetchGame, rescrapeGame, resyncOdds, type AdminGameDetail } from "@/lib/api/sportsAdmin";
 import { ROUTES } from "@/lib/constants/routes";
+import { deriveDataStatus, type DataField } from "@/lib/utils/dataStatus";
+import { DataStatusIndicator } from "@/components/admin/DataStatusIndicator";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { PbpSection } from "./PbpSection";
 import { SocialPostsSection } from "./SocialPostsSection";
@@ -12,6 +14,7 @@ import { FlowSection } from "./FlowSection";
 import { OddsSection } from "./OddsSection";
 import { PlayerStatsSection } from "./PlayerStatsSection";
 import { ComputedFieldsSection } from "./ComputedFieldsSection";
+import { PipelineRunsSection } from "./PipelineRunsSection";
 import { flattenStats, FieldLabel } from "./gameDetailUtils";
 import styles from "./styles.module.css";
 
@@ -44,16 +47,21 @@ export default function GameDetailClient() {
     }
   }, [isNumericId, load]);
 
-  const flags = useMemo(() => {
+  const statusFlags = useMemo(() => {
     if (!game) return [];
-    return [
-      { label: "Boxscore", ok: game.game.hasBoxscore },
-      { label: "Player stats", ok: game.game.hasPlayerStats },
-      { label: "Odds", ok: game.game.hasOdds },
-      { label: `Social (${game.game.socialPostCount || 0})`, ok: game.game.hasSocial },
-      { label: `PBP (${game.game.playCount || 0})`, ok: game.game.hasPbp },
-      { label: "Flow", ok: game.game.hasFlow },
+    const g = game.game;
+    const fields: { label: string; field: DataField; hasData: boolean; ts?: string | null }[] = [
+      { label: "Boxscore", field: "boxscore", hasData: g.hasBoxscore, ts: g.lastScrapedAt },
+      { label: "Player stats", field: "playerStats", hasData: g.hasPlayerStats, ts: g.lastScrapedAt },
+      { label: "Odds", field: "odds", hasData: g.hasOdds, ts: g.lastScrapedAt },
+      { label: `Social (${g.socialPostCount || 0})`, field: "social", hasData: g.hasSocial, ts: g.lastSocialAt },
+      { label: `PBP (${g.playCount || 0})`, field: "pbp", hasData: g.hasPbp, ts: g.lastPbpAt },
+      { label: "Flow", field: "flow", hasData: g.hasFlow, ts: g.lastScrapedAt },
     ];
+    return fields.map((f) => ({
+      label: f.label,
+      status: deriveDataStatus(f.field, f.hasData, g.gameDate, f.ts),
+    }));
   }, [game]);
 
   const handleRescrape = async () => {
@@ -92,8 +100,8 @@ export default function GameDetailClient() {
 
   return (
     <div className={styles.container}>
-      <Link href={ROUTES.SPORTS_BROWSER} className={styles.backLink}>
-        ← Back to Data Browser
+      <Link href={ROUTES.GAMES} className={styles.backLink}>
+        ← Back to Games
       </Link>
 
       <div className={styles.card}>
@@ -116,23 +124,13 @@ export default function GameDetailClient() {
           </div>
         </div>
         <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-          {flags.map((f) => (
-            <span
+          {statusFlags.map((f) => (
+            <DataStatusIndicator
               key={f.label}
-              title={`API field: ${f.label.toLowerCase().includes("boxscore") ? "hasBoxscore" : f.label.toLowerCase().includes("player") ? "hasPlayerStats" : f.label.toLowerCase().includes("odds") ? "hasOdds" : f.label.toLowerCase().includes("social") ? "hasSocial" : f.label.toLowerCase().includes("pbp") ? "hasPbp" : f.label.toLowerCase().includes("flow") ? "hasFlow" : f.label}`}
-              style={{
-                padding: "0.35rem 0.75rem",
-                borderRadius: "999px",
-                background: f.ok ? "#ecfdf3" : "#fef2f2",
-                color: f.ok ? "#166534" : "#b91c1c",
-                fontWeight: 700,
-                fontSize: "0.85rem",
-                cursor: "help",
-                borderBottom: "1px dotted #94a3b8",
-              }}
-            >
-              {f.label}: {f.ok ? "Yes" : "No"}
-            </span>
+              status={f.status}
+              label={f.label}
+              compact={false}
+            />
           ))}
         </div>
         <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
@@ -208,6 +206,8 @@ export default function GameDetailClient() {
       <PbpSection plays={game.plays || []} groupedPlays={game.groupedPlays} leagueCode={g.leagueCode} />
 
       <FlowSection gameId={g.id} hasFlow={g.hasFlow} leagueCode={g.leagueCode} />
+
+      <PipelineRunsSection gameId={g.id} />
 
       <ComputedFieldsSection derivedMetrics={game.derivedMetrics || {}} />
     </div>

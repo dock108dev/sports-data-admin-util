@@ -8,21 +8,30 @@ import styles from "./AdminNav.module.css";
 interface NavItem {
   href: string;
   label: string;
+  /** Use exact pathname match instead of startsWith */
+  exact?: boolean;
 }
 
 const navSections: { title: string; items: NavItem[] }[] = [
   {
-    title: "Sports",
+    title: "General",
     items: [
-      { href: ROUTES.SPORTS_BROWSER, label: "Data Browser" },
-      { href: ROUTES.SPORTS_INGESTION, label: "Scraper Runs" },
-      { href: ROUTES.SPORTS_FLOW_GENERATOR, label: "Flow Generator" },
+      { href: ROUTES.OVERVIEW, label: "Overview", exact: true },
     ],
   },
   {
-    title: "FairBet",
+    title: "Data",
     items: [
-      { href: ROUTES.FAIRBET_ODDS, label: "Odds Comparison" },
+      { href: ROUTES.GAMES, label: "Games" },
+      { href: ROUTES.RUNS, label: "Runs" },
+      { href: ROUTES.PIPELINES, label: "Pipelines" },
+      { href: ROUTES.FAIRBET_ODDS, label: "Odds (FairBet)" },
+    ],
+  },
+  {
+    title: "System",
+    items: [
+      { href: ROUTES.LOGS, label: "Logs" },
     ],
   },
 ];
@@ -30,7 +39,8 @@ const navSections: { title: string; items: NavItem[] }[] = [
 export function AdminNav() {
   const pathname = usePathname();
 
-  const isActive = (href: string) => pathname.startsWith(href);
+  const isActive = (href: string, exact?: boolean) =>
+    exact ? pathname === href : pathname.startsWith(href);
 
   return (
     <div className={styles.navContainer}>
@@ -47,7 +57,7 @@ export function AdminNav() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`${styles.navLink} ${isActive(item.href) ? styles.navLinkActive : ""}`}
+                className={`${styles.navLink} ${isActive(item.href, item.exact) ? styles.navLinkActive : ""}`}
               >
                 {item.label}
               </Link>

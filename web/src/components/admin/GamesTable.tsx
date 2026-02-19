@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { type GameSummary } from "@/lib/api/sportsAdmin";
 import { ROUTES } from "@/lib/constants/routes";
+import { deriveDataStatus, type DataField } from "@/lib/utils/dataStatus";
+import { DataStatusIndicator } from "./DataStatusIndicator";
 import styles from "./GamesTable.module.css";
 
 interface GamesTableProps {
@@ -11,9 +13,32 @@ interface GamesTableProps {
   showCompleteness?: boolean;
 }
 
+/** Map of data field → accessor on GameSummary for the boolean + optional timestamp */
+function getFieldStatus(game: GameSummary, field: DataField) {
+  const tsMap: Record<DataField, string | null | undefined> = {
+    boxscore: game.lastScrapedAt,
+    playerStats: game.lastScrapedAt,
+    odds: game.lastScrapedAt,
+    social: game.lastSocialAt,
+    pbp: game.lastPbpAt,
+    flow: game.lastScrapedAt,
+  };
+
+  const hasMap: Record<DataField, boolean> = {
+    boxscore: game.hasBoxscore,
+    playerStats: game.hasPlayerStats,
+    odds: game.hasOdds,
+    social: game.hasSocial,
+    pbp: game.hasPbp,
+    flow: game.hasFlow,
+  };
+
+  return deriveDataStatus(field, hasMap[field], game.gameDate, tsMap[field]);
+}
+
 /**
  * Table component for displaying game summaries.
- * Shows game metadata and data completeness indicators.
+ * Shows game metadata and structured data status indicators.
  */
 export function GamesTable({ games, detailLink = ROUTES.SPORTS_GAME, showCompleteness = true }: GamesTableProps) {
   return (
@@ -67,28 +92,28 @@ export function GamesTable({ games, detailLink = ROUTES.SPORTS_GAME, showComplet
                 {showCompleteness && (
                   <>
                     <td>
-                      <span className={`${styles.statusDot} ${game.hasBoxscore ? styles.dotOk : styles.dotMissing}`} />
+                      <DataStatusIndicator status={getFieldStatus(game, "boxscore")} />
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.hasPlayerStats ? styles.dotOk : styles.dotMissing}`} />
+                      <DataStatusIndicator status={getFieldStatus(game, "playerStats")} />
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.hasOdds ? styles.dotOk : styles.dotMissing}`} />
+                      <DataStatusIndicator status={getFieldStatus(game, "odds")} />
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.hasSocial ? styles.dotOk : styles.dotMissing}`} />
-                      {game.socialPostCount > 0 && (
-                        <span className={styles.statusLabel}>{game.socialPostCount}</span>
-                      )}
+                      <DataStatusIndicator
+                        status={getFieldStatus(game, "social")}
+                        count={game.socialPostCount}
+                      />
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.hasPbp ? styles.dotOk : styles.dotMissing}`} />
-                      {game.playCount > 0 && (
-                        <span className={styles.statusLabel}>{game.playCount}</span>
-                      )}
+                      <DataStatusIndicator
+                        status={getFieldStatus(game, "pbp")}
+                        count={game.playCount}
+                      />
                     </td>
                     <td>
-                      <span className={`${styles.statusDot} ${game.hasFlow ? styles.dotOk : styles.dotMissing}`} />
+                      <DataStatusIndicator status={getFieldStatus(game, "flow")} />
                     </td>
                   </>
                 )}

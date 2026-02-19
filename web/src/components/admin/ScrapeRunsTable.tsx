@@ -6,6 +6,8 @@ import { type ScrapeRunResponse } from "@/lib/api/sportsAdmin";
 import { SCRAPE_RUN_STATUS_COLORS } from "@/lib/constants/sports";
 import { ROUTES } from "@/lib/constants/routes";
 import { formatDateTime } from "@/lib/utils/dateFormat";
+import { RunOriginBadge } from "./RunOriginBadge";
+import { RunTaskBadges } from "./RunTaskBadges";
 import styles from "./ScrapeRunsTable.module.css";
 
 interface ScrapeRunsTableProps {
@@ -19,7 +21,7 @@ interface ScrapeRunsTableProps {
 
 /**
  * Table component for displaying scrape runs.
- * Shows run metadata, status, and actions (cancel, view details).
+ * Shows run metadata, status, origin, tasks, and actions (cancel, view details).
  */
 export function ScrapeRunsTable({
   runs,
@@ -48,6 +50,8 @@ export function ScrapeRunsTable({
             <th>ID</th>
             <th>League</th>
             <th>Status</th>
+            <th>Origin</th>
+            <th>Tasks</th>
             <th>Season</th>
             <th>Date range</th>
             <th>Summary</th>
@@ -69,6 +73,12 @@ export function ScrapeRunsTable({
                 >
                   {run.status}
                 </span>
+              </td>
+              <td>
+                <RunOriginBadge scraperType={run.scraper_type} requestedBy={run.requested_by} />
+              </td>
+              <td>
+                <RunTaskBadges config={run.config} />
               </td>
               <td>{run.season ?? "—"}</td>
               <td>
@@ -101,4 +111,3 @@ export function ScrapeRunsTable({
     </section>
   );
 }
-
