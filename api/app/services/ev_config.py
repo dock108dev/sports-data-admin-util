@@ -174,25 +174,25 @@ _STRATEGY_MAP: dict[tuple[str, str], EVStrategyConfig | None] = {
 # Operates in log-odds space so tails naturally compress.
 # Calibrated so near 50%, a 1-half-point shift ≈ 1.5% prob (basketball).
 # At p=0.50 the logit sensitivity is 0.25, so slope = 0.015/0.25 ≈ 0.06.
-# Team totals use ~1.3x game totals (lower scoring variance, σ≈11 vs σ≈15).
+# Team totals use ~1.25x game totals (lower team scoring variance, σ≈11-12 vs σ≈15-16).
 HALF_POINT_LOGIT_SLOPE: dict[str, dict[str, float]] = {
-    "NBA": {"spreads": 0.06, "totals": 0.05, "team_totals": 0.08},
-    "NCAAB": {"spreads": 0.07, "totals": 0.06, "team_totals": 0.09},
-    "NHL": {"spreads": 0.18, "totals": 0.15, "team_totals": 0.20},
+    "NBA": {"spreads": 0.06, "totals": 0.05, "team_totals": 0.065},
+    "NCAAB": {"spreads": 0.07, "totals": 0.06, "team_totals": 0.075},
+    "NHL": {"spreads": 0.18, "totals": 0.15, "team_totals": 0.19},
 }
 
 # Max number of half-points we'll extrapolate (beyond → too uncertain).
 # 6 HP = 3 full points for basketball, 4 HP = 2 full goals for hockey.
 MAX_EXTRAPOLATION_HALF_POINTS: dict[str, dict[str, int]] = {
-    "NBA": {"spreads": 6, "totals": 6, "team_totals": 4},
-    "NCAAB": {"spreads": 6, "totals": 6, "team_totals": 4},
-    "NHL": {"spreads": 4, "totals": 4, "team_totals": 4},
+    "NBA": {"spreads": 6, "totals": 4, "team_totals": 3},
+    "NCAAB": {"spreads": 6, "totals": 4, "team_totals": 3},
+    "NHL": {"spreads": 4, "totals": 4, "team_totals": 3},
 }
 
 # Max divergence (probability space) between extrapolated fair prob and median
 # implied prob across non-sharp books.  Catches phantom EV from long-distance
 # extrapolation drift (e.g., fair 80% vs market consensus 53%).
-MAX_EXTRAPOLATED_PROB_DIVERGENCE: float = 0.10
+MAX_EXTRAPOLATED_PROB_DIVERGENCE: float = 0.07
 
 # Max distance (full points) between two mainline lines before we refuse to
 # extrapolate.  Mainline-to-mainline disagreement (e.g., Pinnacle 148.5 vs

@@ -136,12 +136,12 @@ function MainlineTab({ odds, books }: { odds: OddsEntry[]; books: string[] }) {
     return map;
   }, [odds]);
 
-  const marketOrder = ["spread", "total", "moneyline"];
   const sortedKeys = useMemo(() => {
+    const order = ["spread", "total", "moneyline"];
     const keys = Array.from(byMarket.keys());
     return keys.sort((a, b) => {
-      const ai = marketOrder.indexOf(a);
-      const bi = marketOrder.indexOf(b);
+      const ai = order.indexOf(a);
+      const bi = order.indexOf(b);
       return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
     });
   }, [byMarket]);
@@ -312,15 +312,13 @@ export function OddsSection({ odds }: OddsSectionProps) {
     return Array.from(set).sort();
   }, [odds]);
 
-  // Odds for the active tab
-  const activeOdds = categoryMap.get(activeTab) ?? [];
-
   // Books present in the active tab
   const activeBooks = useMemo(() => {
+    const activeOdds = categoryMap.get(activeTab) ?? [];
     const set = new Set(activeOdds.map((o) => o.book));
     // Keep the same order as allBooks for consistency
     return allBooks.filter((b) => set.has(b));
-  }, [activeOdds, allBooks]);
+  }, [categoryMap, activeTab, allBooks]);
 
   // If activeTab isn't in categories (e.g. initial state with no mainline), pick first
   const effectiveTab = categories.includes(activeTab) ? activeTab : categories[0] ?? "mainline";
