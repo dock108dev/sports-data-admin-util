@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -105,6 +106,68 @@ def remove_vig(implied_probs: list[float]) -> list[float]:
     if total <= 0:
         return implied_probs
     return [p / total for p in implied_probs]
+
+
+def probability_confidence(true_prob: float) -> float:
+    """Confidence decay for low-probability outcomes.
+
+    Below 25% true probability, confidence decays as sqrt(p / 0.25).
+    This penalizes EV estimates for extreme longshots where small
+    devig errors produce large EV percentage swings.
+
+    Args:
+        true_prob: True (no-vig) probability of the outcome (0-1).
+
+    Returns:
+        Confidence factor between 0.0 and 1.0.
+    """
+    if true_prob >= 0.25:
+        return 1.0
+    if true_prob <= 0:
+        return 0.0
+    return math.sqrt(true_prob / 0.25)
+
+
+def pinnacle_alignment_factor(fair_prob: float, pinnacle_implied: float) -> float:
+    """Confidence factor based on vig gap between fair and Pinnacle implied.
+
+    A small gap means Pinnacle has low vig on this side — the devig is
+    reliable. A large gap (> 4%) indicates unusually high vig, suggesting
+    Pinnacle may be uncertain about this market.
+
+    Args:
+        fair_prob: Devigged true probability (0-1).
+        pinnacle_implied: Pinnacle's raw (vigged) implied probability (0-1).
+
+    Returns:
+        1.0 for gap <= 2%, 0.85 for gap <= 4%, 0.7 for gap > 4%.
+    """
+    gap = abs(fair_prob - pinnacle_implied)
+    if gap <= 0.02:
+        return 1.0
+    if gap <= 0.04:
+        return 0.85
+    return 0.7
+
+
+def extrapolation_distance_factor(n_half_points: float) -> float:
+    """Numeric confidence factor based on extrapolation distance.
+
+    Reduces confidence as the logit-space extrapolation extends further
+    from the reference line.
+
+    Args:
+        n_half_points: Number of half-points from the reference line.
+
+    Returns:
+        Confidence factor between 0.70 and 0.95.
+    """
+    abs_hp = abs(n_half_points)
+    if abs_hp <= 2:
+        return 0.95
+    if abs_hp <= 4:
+        return 0.85
+    return 0.70
 
 
 def calculate_ev(book_price: float, true_prob: float) -> float:

@@ -66,6 +66,8 @@ class BetDefinition(BaseModel):
     estimated_sharp_price: float | None = None
     extrapolation_ref_line: float | None = None
     extrapolation_distance: float | None = None
+    confidence: float | None = None
+    confidence_flags: list[str] = []
 
 
 class FairbetOddsResponse(BaseModel):
@@ -426,10 +428,14 @@ async def get_fairbet_odds(
     bets_list = list(bets_map.values())
 
     if sort_by == "ev":
-        # Sort by best EV across books (highest first)
+        # Sort by best display_ev (confidence-weighted) across books (highest first)
         def best_ev(bet: dict) -> float:
-            evs = [b.ev_percent for b in bet["books"] if b.ev_percent is not None]
-            return max(evs) if evs else float("-inf")
+            evs = [b.display_ev for b in bet["books"] if b.display_ev is not None]
+            if evs:
+                return max(evs)
+            # Fall back to raw ev_percent if display_ev not set
+            raw = [b.ev_percent for b in bet["books"] if b.ev_percent is not None]
+            return max(raw) if raw else float("-inf")
 
         bets_list.sort(key=best_ev, reverse=True)
     elif sort_by == "game_time":
@@ -454,7 +460,8 @@ async def get_fairbet_odds(
             bet
             for bet in bets_list
             if any(
-                b.ev_percent is not None and b.ev_percent >= min_ev
+                (b.display_ev is not None and b.display_ev >= min_ev)
+                or (b.display_ev is None and b.ev_percent is not None and b.ev_percent >= min_ev)
                 for b in bet["books"]
             )
         ]

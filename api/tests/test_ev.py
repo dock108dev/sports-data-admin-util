@@ -11,7 +11,10 @@ from app.services.ev import (
     calculate_ev,
     compute_ev_for_market,
     evaluate_ev_eligibility,
+    extrapolation_distance_factor,
     implied_to_american,
+    pinnacle_alignment_factor,
+    probability_confidence,
     remove_vig,
 )
 from app.services.ev_config import EVStrategyConfig, get_strategy
@@ -531,3 +534,148 @@ class TestFairOddsSanityCheck:
         assert len(result.annotated_b) == 3
         for b in result.annotated_a:
             assert b["ev_percent"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Confidence functions — probability_confidence, pinnacle_alignment_factor,
+# extrapolation_distance_factor
+# ---------------------------------------------------------------------------
+
+
+class TestProbabilityConfidence:
+    """Tests for probability_confidence() decay below 25%."""
+
+    def test_above_threshold_returns_one(self) -> None:
+        """Probabilities >= 25% have full confidence."""
+        assert probability_confidence(0.52) == 1.0
+        assert probability_confidence(0.28) == 1.0
+        assert probability_confidence(0.50) == 1.0
+        assert probability_confidence(0.25) == 1.0
+
+    def test_at_15_percent(self) -> None:
+        """15% → sqrt(0.15/0.25) ≈ 0.7746."""
+        result = probability_confidence(0.15)
+        assert abs(result - 0.7746) < 0.001
+
+    def test_at_12_percent(self) -> None:
+        """12% → sqrt(0.12/0.25) ≈ 0.6928."""
+        result = probability_confidence(0.12)
+        assert abs(result - 0.6928) < 0.001
+
+    def test_at_8_percent(self) -> None:
+        """8% → sqrt(0.08/0.25) ≈ 0.5657."""
+        result = probability_confidence(0.08)
+        assert abs(result - 0.5657) < 0.001
+
+    def test_at_5_percent(self) -> None:
+        """5% → sqrt(0.05/0.25) ≈ 0.4472."""
+        result = probability_confidence(0.05)
+        assert abs(result - 0.4472) < 0.001
+
+    def test_zero_returns_zero(self) -> None:
+        assert probability_confidence(0.0) == 0.0
+
+    def test_negative_returns_zero(self) -> None:
+        assert probability_confidence(-0.1) == 0.0
+
+    def test_monotonically_increasing(self) -> None:
+        """Confidence increases with probability below threshold."""
+        probs = [0.05, 0.08, 0.12, 0.15, 0.20, 0.25]
+        confidences = [probability_confidence(p) for p in probs]
+        for i in range(len(confidences) - 1):
+            assert confidences[i] < confidences[i + 1]
+
+
+class TestPinnacleAlignmentFactor:
+    """Tests for pinnacle_alignment_factor() vig-gap check."""
+
+    def test_small_gap_full_confidence(self) -> None:
+        """Gap < 2% → factor 1.0 (low vig, reliable devig)."""
+        assert pinnacle_alignment_factor(0.50, 0.505) == 1.0
+        assert pinnacle_alignment_factor(0.50, 0.515) == 1.0
+        assert pinnacle_alignment_factor(0.15, 0.155) == 1.0
+
+    def test_medium_gap(self) -> None:
+        """Gap between 2-4% → factor 0.85."""
+        assert pinnacle_alignment_factor(0.50, 0.525) == 0.85
+        assert pinnacle_alignment_factor(0.50, 0.535) == 0.85
+
+    def test_large_gap(self) -> None:
+        """Gap > 4% → factor 0.7 (high vig, suspicious)."""
+        assert pinnacle_alignment_factor(0.50, 0.55) == 0.7
+        assert pinnacle_alignment_factor(0.50, 0.60) == 0.7
+
+    def test_threshold_boundaries(self) -> None:
+        """Near boundary at 0.02 and 0.04."""
+        # gap clearly under 0.02 → 1.0
+        assert pinnacle_alignment_factor(0.50, 0.519) == 1.0
+        # gap clearly over 0.02 → 0.85
+        assert pinnacle_alignment_factor(0.50, 0.521) == 0.85
+        # gap clearly under 0.04 → 0.85
+        assert pinnacle_alignment_factor(0.50, 0.539) == 0.85
+        # gap clearly over 0.04 → 0.7
+        assert pinnacle_alignment_factor(0.50, 0.541) == 0.7
+
+
+class TestExtrapolationDistanceFactor:
+    """Tests for extrapolation_distance_factor()."""
+
+    def test_close_extrapolation(self) -> None:
+        """1-2 half points → 0.95."""
+        assert extrapolation_distance_factor(1.0) == 0.95
+        assert extrapolation_distance_factor(2.0) == 0.95
+
+    def test_medium_extrapolation(self) -> None:
+        """3-4 half points → 0.85."""
+        assert extrapolation_distance_factor(3.0) == 0.85
+        assert extrapolation_distance_factor(4.0) == 0.85
+
+    def test_far_extrapolation(self) -> None:
+        """5+ half points → 0.70."""
+        assert extrapolation_distance_factor(5.0) == 0.70
+        assert extrapolation_distance_factor(6.0) == 0.70
+
+    def test_negative_values_use_abs(self) -> None:
+        """Negative half-points should use absolute value."""
+        assert extrapolation_distance_factor(-1.0) == 0.95
+        assert extrapolation_distance_factor(-3.0) == 0.85
+        assert extrapolation_distance_factor(-5.0) == 0.70
+
+
+class TestDisplayEVComputation:
+    """Tests verifying display_ev = raw_ev * confidence end-to-end."""
+
+    @pytest.fixture
+    def nba_mainline_config(self) -> EVStrategyConfig:
+        config = get_strategy("NBA", "mainline")
+        assert config is not None
+        return config
+
+    def test_high_prob_confidence_one(
+        self, nba_mainline_config: EVStrategyConfig
+    ) -> None:
+        """52% true prob → confidence ~1.0, display_ev ≈ raw_ev."""
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -110, "DraftKings": -105, "FanDuel": 105}),
+            _make_books({"Pinnacle": -110, "DraftKings": -115, "FanDuel": -105}),
+            nba_mainline_config,
+        )
+        # true_prob should be ~0.5 each side
+        assert result.true_prob_a is not None
+        conf = probability_confidence(result.true_prob_a)
+        assert conf == 1.0
+
+    def test_low_prob_confidence_decays(self) -> None:
+        """15% true prob → confidence ≈ 0.77, display_ev < raw_ev."""
+        raw_ev = 14.2
+        conf = probability_confidence(0.15)
+        display = raw_ev * conf
+        assert abs(display - 11.0) < 0.5  # ~10.93
+
+    def test_extreme_longshot_confidence(self) -> None:
+        """8% true prob → confidence ≈ 0.57, significant reduction."""
+        raw_ev = 25.0
+        conf = probability_confidence(0.08)
+        display = raw_ev * conf
+        assert display < 15.0  # 25 * 0.566 ≈ 14.14
+        assert display > 13.0

@@ -7,6 +7,7 @@ SQLAlchemy, or the database — they operate entirely on in-memory dicts.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import math
@@ -20,7 +21,10 @@ from ...services.ev import (
     calculate_ev,
     compute_ev_for_market,
     evaluate_ev_eligibility,
+    extrapolation_distance_factor,
+    pinnacle_alignment_factor,
     prob_to_vigged_american,
+    probability_confidence,
     remove_vig,
 )
 from ...services.ev_config import (
@@ -43,6 +47,7 @@ class BookOdds(BaseModel):
     price: float
     observed_at: datetime
     ev_percent: float | None = None
+    display_ev: float | None = None
     implied_prob: float | None = None
     is_sharp: bool = False
     ev_method: str | None = None
@@ -130,6 +135,68 @@ def _pair_opposite_sides(
 
     unpaired = [bet_keys[i] for i in range(len(bet_keys)) if i not in used]
     return pairs, unpaired
+
+
+def _compute_side_confidence(
+    true_prob: float | None,
+    pinnacle_implied: float | None,
+    extrapolation_hp: float | None = None,
+) -> tuple[float, list[str]]:
+    """Compute confidence multiplier and flags for one side of a market.
+
+    Args:
+        true_prob: Devigged true probability for this side.
+        pinnacle_implied: Pinnacle's raw vigged implied probability for this side.
+        extrapolation_hp: Half-points from reference (None for direct devig).
+
+    Returns:
+        (confidence, flags) — confidence is 0-1 multiplier, flags is list of strings.
+    """
+    if true_prob is None:
+        return 1.0, []
+
+    confidence = 1.0
+    flags: list[str] = []
+
+    # Probability-based decay for longshots
+    prob_conf = probability_confidence(true_prob)
+    if prob_conf < 1.0:
+        confidence *= prob_conf
+        flags.append("low_probability")
+
+    # Pinnacle alignment (vig gap check)
+    if pinnacle_implied is not None:
+        align = pinnacle_alignment_factor(true_prob, pinnacle_implied)
+        if align < 1.0:
+            confidence *= align
+            flags.append("high_vig")
+
+    # Extrapolation distance penalty
+    if extrapolation_hp is not None:
+        extrap = extrapolation_distance_factor(extrapolation_hp)
+        confidence *= extrap
+        flags.append("extrapolated")
+
+    return round(confidence, 4), flags
+
+
+def _apply_display_ev(
+    books: list[BookOdds],
+    confidence: float,
+) -> list[BookOdds]:
+    """Set display_ev = ev_percent * confidence on each BookOdds.
+
+    Returns a new list with display_ev populated.
+    """
+    result: list[BookOdds] = []
+    for b in books:
+        display_ev = (
+            round(b.ev_percent * confidence, 2)
+            if b.ev_percent is not None
+            else None
+        )
+        result.append(b.model_copy(update={"display_ev": display_ev}))
+    return result
 
 
 def _annotate_pair_ev(
@@ -248,6 +315,27 @@ def _annotate_pair_ev(
             )
             for b in ev_result.annotated_b
         ]
+
+        # Compute confidence and display_ev for each side
+        for key, true_prob, annotated in [
+            (key_a, ev_result.true_prob_a, ev_result.annotated_a),
+            (key_b, ev_result.true_prob_b, ev_result.annotated_b),
+        ]:
+            # Find Pinnacle's vigged implied prob from annotated entries
+            pinnacle_implied = None
+            for b in annotated:
+                if b.get("is_sharp"):
+                    pinnacle_implied = b.get("implied_prob")
+                    break
+
+            confidence, flags = _compute_side_confidence(
+                true_prob, pinnacle_implied
+            )
+            bets_map[key]["books"] = _apply_display_ev(
+                bets_map[key]["books"], confidence
+            )
+            bets_map[key]["confidence"] = confidence
+            bets_map[key]["confidence_flags"] = flags
 
         # Set true_prob and EV metadata on the bet definition
         if (
@@ -674,8 +762,8 @@ def _try_extrapolated_ev(
             },
         )
 
-    # 9. Confidence tier
-    confidence = extrapolation_confidence(n_half_points)
+    # 9. Confidence tier (string for ev_confidence_tier field)
+    confidence_tier = extrapolation_confidence(n_half_points)
 
     # 10. Reference prices from the chosen ref (for display)
     ref_price_a = best_ref["prices"].get(sel_a)
@@ -691,6 +779,22 @@ def _try_extrapolated_ev(
         (key_b, extrap_prob_b, ref_price_b, ref_price_a, est_price_b),
     ]:
         bet = bets_map[key]
+
+        # Find Pinnacle's vigged implied at the target line (if present)
+        pinnacle_implied = None
+        for b in bet["books"]:
+            book_name = b["book"] if isinstance(b, dict) else b.book
+            price = b["price"] if isinstance(b, dict) else b.price
+            if book_name == "Pinnacle":
+                with contextlib.suppress(ValueError):
+                    pinnacle_implied = american_to_implied(price)
+                break
+
+        # Compute numeric confidence (with extrapolation penalty)
+        num_confidence, conf_flags = _compute_side_confidence(
+            true_prob, pinnacle_implied, extrapolation_hp=n_half_points
+        )
+
         new_books: list[BookOdds] = []
         for b in bet["books"]:
             # Handle both dict and BookOdds (already converted by _annotate_pair_ev)
@@ -710,16 +814,23 @@ def _try_extrapolated_ev(
                 ev_pct = None
                 impl_prob = None
 
+            display_ev = (
+                round(ev_pct * num_confidence, 2)
+                if ev_pct is not None
+                else None
+            )
+
             new_books.append(
                 BookOdds(
                     book=book_name,
                     price=price,
                     observed_at=observed_at,
                     ev_percent=ev_pct,
+                    display_ev=display_ev,
                     implied_prob=impl_prob,
                     is_sharp=book_name == "Pinnacle",
                     ev_method="pinnacle_extrapolated",
-                    ev_confidence_tier=confidence,
+                    ev_confidence_tier=confidence_tier,
                 )
             )
 
@@ -728,11 +839,13 @@ def _try_extrapolated_ev(
         bet["reference_price"] = ref_price
         bet["opposite_reference_price"] = opp_ref_price
         bet["ev_method"] = "pinnacle_extrapolated"
-        bet["ev_confidence_tier"] = confidence
+        bet["ev_confidence_tier"] = confidence_tier
         bet["has_fair"] = True
         bet["ev_disabled_reason"] = None
         bet["estimated_sharp_price"] = est_price
         bet["extrapolation_ref_line"] = best_ref["abs_line"]
         bet["extrapolation_distance"] = round(abs(n_half_points), 1)
+        bet["confidence"] = num_confidence
+        bet["confidence_flags"] = conf_flags
 
     return None
