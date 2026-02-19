@@ -258,7 +258,7 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
     ) -> tuple[bool, str]:
         """
         Heuristically detect women's games that may appear in the men's scoreboard.
-        
+
         Sports Reference women's pages often include markers like \"-women\"
         or slugs that start with \"w\". We skip these early to avoid persisting
         women's games into the men's NCAAB universe.

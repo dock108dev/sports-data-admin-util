@@ -118,10 +118,10 @@ def upsert_game_stub(
     tip_time: datetime | None = None,
 ) -> tuple[int, bool]:
     """Upsert a game without boxscores (used for live schedule feeds).
-    
+
     Game matching uses DATE only (not exact datetime) to prevent duplicates
     when different sources provide different times for the same game.
-    
+
     Args:
         tip_time: Actual scheduled start time (from Odds API or Live Feed).
                   If provided and game_date has no time component, tip_time is used.
@@ -250,7 +250,7 @@ def upsert_game(session: Session, normalized: NormalizedGame, tip_time: datetime
     """Upsert a game, creating or updating as needed.
 
     Returns the game ID and whether it was newly created.
-    
+
     Args:
         tip_time: Actual scheduled start time (from Odds API or Live Feed).
     """

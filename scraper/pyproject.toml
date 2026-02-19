@@ -78,6 +78,10 @@ ignore = [
   "E501",  # line too long (handled by formatter)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E402", "W293"]   # sys.path manipulation requires late imports
+"tests/*" = ["E402", "F841"]     # env setup requires late imports; unused vars in assertions
+
 [tool.ruff.lint.isort]
 known-first-party = ["sports_scraper"]
 

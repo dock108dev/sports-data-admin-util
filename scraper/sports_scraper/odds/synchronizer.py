@@ -141,7 +141,7 @@ class OddsSynchronizer:
         books: list[str] | None,
     ) -> int:
         """Sync odds using the historical API endpoint (for past games).
-        
+
         Iterates day by day to fetch historical snapshots.
         Cost: ~30 credits per day (3 markets x 1 region).
         """
@@ -192,7 +192,7 @@ class OddsSynchronizer:
         books: list[str] | None = None,
     ) -> int:
         """Sync odds for a single date. Used for backfilling missing odds.
-        
+
         Automatically chooses historical vs live API based on whether date is past or present.
         """
         today = today_et()

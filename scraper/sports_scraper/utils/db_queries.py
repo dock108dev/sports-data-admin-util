@@ -13,14 +13,14 @@ from ..db import db_models
 
 def get_league_id(session: Session, league_code: str) -> int:
     """Get league ID by code.
-    
+
     Args:
         session: Database session
         league_code: League code (NBA, NFL, etc.)
-        
+
     Returns:
         League ID
-        
+
     Raises:
         ValueError: If league not found
     """
@@ -33,11 +33,11 @@ def get_league_id(session: Session, league_code: str) -> int:
 
 def count_team_games(session: Session, team_id: int) -> int:
     """Count number of games for a team.
-    
+
     Args:
         session: Database session
         team_id: Team ID
-        
+
     Returns:
         Number of games (home or away)
     """
@@ -52,11 +52,11 @@ def count_team_games(session: Session, team_id: int) -> int:
 
 def has_player_boxscores(session: Session, game_id: int) -> bool:
     """Check if a game has player boxscores.
-    
+
     Args:
         session: Database session
         game_id: Game ID
-        
+
     Returns:
         True if game has player boxscores
     """
@@ -66,11 +66,11 @@ def has_player_boxscores(session: Session, game_id: int) -> bool:
 
 def has_odds(session: Session, game_id: int) -> bool:
     """Check if a game has odds data.
-    
+
     Args:
         session: Database session
         game_id: Game ID
-        
+
     Returns:
         True if game has odds
     """
@@ -88,7 +88,7 @@ def find_games_in_date_range(
     require_source_key: bool = True,
 ) -> Sequence[tuple[int, str | None, datetime | None]]:
     """Find games in a date range, optionally filtering by missing data.
-    
+
     Args:
         session: Database session
         league_id: League ID
@@ -97,7 +97,7 @@ def find_games_in_date_range(
         missing_players: If True, only return games missing player boxscores
         missing_odds: If True, only return games missing odds
         require_source_key: If True, only return games with source_game_key
-        
+
     Returns:
         Sequence of (game_id, source_game_key, game_date) tuples
     """

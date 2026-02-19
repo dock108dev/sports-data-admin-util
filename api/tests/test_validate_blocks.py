@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.pipeline.stages.block_types import (
     MAX_BLOCKS,

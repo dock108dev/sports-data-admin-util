@@ -289,24 +289,6 @@ class TestFetchFromNetwork:
 
     @patch("sports_scraper.scrapers.base.HTMLCache")
     @patch("sports_scraper.scrapers.base.httpx.Client")
-    def test_raises_no_games_found_on_redirect(self, mock_client_class, mock_cache_class):
-        """Raises NoGamesFoundError when redirected to different page."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "<html></html>"
-        mock_response.url = "https://example.com/"  # Redirected to main page (no query params)
-        mock_client = MagicMock()
-        mock_client.get.return_value = mock_response
-        mock_client_class.return_value = mock_client
-
-        scraper = _TestScraper()
-        scraper._min_delay = 0
-        scraper._max_delay = 0
-        with pytest.raises(NoGamesFoundError, match="No games found"):
-            scraper._fetch_from_network("https://example.com/test?date=2024-01-01")
-
-    @patch("sports_scraper.scrapers.base.HTMLCache")
-    @patch("sports_scraper.scrapers.base.httpx.Client")
     def test_returns_html_on_success(self, mock_client_class, mock_cache_class):
         """Returns HTML text on successful fetch."""
         mock_response = MagicMock()

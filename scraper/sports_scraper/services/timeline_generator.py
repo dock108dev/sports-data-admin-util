@@ -34,12 +34,12 @@ def find_games_missing_timelines(
 ) -> Sequence[tuple[int, datetime, str, str]]:
     """
     Find completed games with PBP data but missing timeline artifacts.
-    
+
     Args:
         session: Database session
         league_code: League to check (e.g., "NBA", "NHL")
         days_back: How many days back to check (None = ALL games, no limit)
-        
+
     Returns:
         List of (game_id, game_date, home_team, away_team) tuples
     """
@@ -117,17 +117,17 @@ def find_games_needing_regeneration(
 ) -> Sequence[tuple[int, datetime, str, str, str]]:
     """
     Find games with stale timelines that need regeneration.
-    
+
     A game needs regeneration if:
     - It has a timeline artifact
     - The game's PBP data was updated AFTER the timeline was generated
     - OR the game's social data was updated AFTER the timeline was generated
-    
+
     Args:
         session: Database session
         league_code: League to check (e.g., "NBA", "NHL")
         days_back: How many days back to check (None = ALL games, no limit)
-        
+
     Returns:
         List of (game_id, game_date, home_team, away_team, reason) tuples
     """
@@ -220,16 +220,16 @@ def find_all_games_needing_timelines(
 ) -> Sequence[tuple[int, datetime, str, str, str]]:
     """
     Find all games that need timeline generation or regeneration.
-    
+
     Combines:
     - Games missing timelines entirely
     - Games with stale timelines (data updated after generation)
-    
+
     Args:
         session: Database session
         league_code: League to check (e.g., "NBA", "NHL")
         days_back: How many days back to check (None = ALL games, no limit)
-        
+
     Returns:
         List of (game_id, game_date, home_team, away_team, reason) tuples
     """
@@ -277,12 +277,12 @@ def generate_timeline_for_game(
 ) -> bool:
     """
     Generate timeline artifact for a single game via API call.
-    
+
     Args:
         game_id: Game ID to generate timeline for
         timeline_version: Timeline version identifier
         api_base_url: Base URL for API (defaults to settings)
-        
+
     Returns:
         True if successful, False otherwise
     """
@@ -334,13 +334,13 @@ def generate_missing_timelines(
 ) -> dict[str, int]:
     """
     Find and generate timelines for games missing artifacts.
-    
+
     Args:
         league_code: League to process (required)
         days_back: How many days back to check (None = ALL games)
         max_games: Maximum number of games to process (None = all)
         timeline_version: Timeline version identifier
-        
+
     Returns:
         Summary dict with counts of processed/successful/failed games
     """
@@ -405,17 +405,17 @@ def generate_all_needed_timelines(
 ) -> dict[str, int]:
     """
     Find and generate/regenerate timelines for all games that need them.
-    
+
     This includes:
     - Games missing timeline artifacts entirely
     - Games with stale timelines (PBP or social updated after timeline was generated)
-    
+
     Args:
         league_code: League to process (required)
         days_back: How many days back to check (None = ALL games)
         max_games: Maximum number of games to process (None = all)
         timeline_version: Timeline version identifier
-        
+
     Returns:
         Summary dict with counts of processed/successful/failed games by reason
     """

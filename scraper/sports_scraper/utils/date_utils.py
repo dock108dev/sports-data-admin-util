@@ -35,7 +35,7 @@ def season_ending_year(game_date: date) -> int:
 
 def season_from_date(day: date, league_code: str) -> int:
     """Calculate season year from a date based on league.
-    
+
     Season calculation rules:
     - NBA: Season starts in October (month >= 10), ends in June
       - If month >= 10: season = year
@@ -52,11 +52,11 @@ def season_from_date(day: date, league_code: str) -> int:
     - NCAAB/NCAAF: Season starts in November (month >= 11), ends in April
       - If month >= 11: season = year
       - If month < 11: season = year - 1
-    
+
     Args:
         day: Date to calculate season for
         league_code: League code (NBA, NFL, MLB, NHL, NCAAB, NCAAF)
-        
+
     Returns:
         Season year (e.g., 2023 for 2023-24 season)
     """

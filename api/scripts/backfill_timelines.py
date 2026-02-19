@@ -36,7 +36,7 @@ async def get_eligible_games(limit: int | None = None) -> list[int]:
         FROM sports_games g
         JOIN sports_leagues l ON g.league_id = l.id
         LEFT JOIN sports_game_timeline_artifacts ta ON ta.game_id = g.id
-        WHERE l.code = 'NBA' 
+        WHERE l.code = 'NBA'
           AND g.status = 'final'
           AND ta.id IS NULL
           AND EXISTS (SELECT 1 FROM sports_game_plays p WHERE p.game_id = g.id)

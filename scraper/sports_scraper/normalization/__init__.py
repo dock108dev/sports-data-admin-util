@@ -255,11 +255,11 @@ def _fuzzy_match(league_code: SportCode, raw_name: str) -> tuple[str, str] | Non
 
 def normalize_team_name(league_code: SportCode, raw_name: str) -> tuple[str, str | None]:
     """Normalize team name to canonical form and return (canonical_name, abbreviation).
-    
+
     Args:
         league_code: The sport league code (NBA, NFL, etc.)
         raw_name: Raw team name from any source
-        
+
     Returns:
         Tuple of (canonical_name, abbreviation). If no mapping exists, returns
         the input name and a generated abbreviation (first 3-6 chars).

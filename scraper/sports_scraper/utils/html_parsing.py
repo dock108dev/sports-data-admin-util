@@ -15,7 +15,7 @@ from ..logging import logger
 def get_stat_from_row(row: Tag, stat_name: str) -> str | None:
     """
     Extract a stat value from a table row by data-stat attribute.
-    
+
     This is an HTML-specific helper for Sports Reference style tables.
     """
     cell = row.find("td", {"data-stat": stat_name})
@@ -45,12 +45,12 @@ def extract_all_stats_from_row(row: Tag) -> dict[str, str]:
 
 def find_table_by_id(soup: BeautifulSoup, table_id: str, alternate_ids: list[str] | None = None) -> Tag | None:
     """Find a table by ID, trying alternate IDs if provided.
-    
+
     Args:
         soup: BeautifulSoup document
         table_id: Primary table ID to search for
         alternate_ids: Optional list of alternate IDs to try
-        
+
     Returns:
         Table Tag if found, None otherwise
     """
@@ -115,11 +115,11 @@ def extract_team_stats_from_table(table: Tag, team_abbr: str, table_id: str) -> 
 
 def get_table_ids_on_page(soup: BeautifulSoup, limit: int = 15) -> list[str]:
     """Get all table IDs found on a page (for debugging).
-    
+
     Args:
         soup: BeautifulSoup document
         limit: Maximum number of IDs to return
-        
+
     Returns:
         List of table IDs
     """

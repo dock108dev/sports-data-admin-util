@@ -25,17 +25,17 @@ def create_raw_pbp_snapshot(
     scrape_run_id: int | None = None,
 ) -> int | None:
     """Create a raw PBP snapshot for auditability.
-    
+
     This stores the raw plays BEFORE team ID resolution, preserving
     the original data as received from the source.
-    
+
     Args:
         session: Database session
         game_id: ID of the game
         plays: Raw play data
         source: Data source (e.g., 'nba_live', 'nhl_api')
         scrape_run_id: Optional scrape run ID
-        
+
     Returns:
         Snapshot ID if created, None if no plays
     """

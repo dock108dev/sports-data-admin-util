@@ -180,7 +180,7 @@ class OddsAPIClient:
         books: list[str] | None = None,
     ) -> list[NormalizedOddsSnapshot]:
         """Fetch live odds for upcoming games.
-        
+
         Uses the standard /sports/{sport}/odds endpoint.
         """
         if not settings.odds_api_key:
@@ -232,15 +232,15 @@ class OddsAPIClient:
         books: list[str] | None = None,
     ) -> list[NormalizedOddsSnapshot]:
         """Fetch historical odds for a specific date using the historical API.
-        
+
         Uses /historical/sports/{sport}/odds endpoint.
         Cost: 30 credits per call (3 markets x 1 region).
-        
+
         Args:
             league_code: League code (NBA, NFL, etc.)
             game_date: The date to fetch odds for
             books: Optional list of bookmaker keys to filter
-            
+
         Returns:
             List of normalized odds snapshots for all games on that date
         """
@@ -335,7 +335,7 @@ class OddsAPIClient:
         books: list[str] | None = None,
     ) -> list[NormalizedOddsSnapshot]:
         """Parse events list into normalized odds snapshots.
-        
+
         Shared logic for both live and historical endpoints.
         """
         snapshots: list[NormalizedOddsSnapshot] = []

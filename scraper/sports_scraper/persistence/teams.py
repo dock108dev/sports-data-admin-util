@@ -156,7 +156,7 @@ if TYPE_CHECKING:
 
 def _normalize_ncaab_name_for_matching(name: str) -> str:
     """Normalize NCAAB team name for matching purposes.
-    
+
     Handles common variations:
     - Expands common abbreviations (BYU -> Brigham Young, UConn -> Connecticut, etc.)
     - Drops mascots/colors (Tigers, Golden, Red, etc.) so school/city drives the match
@@ -198,7 +198,7 @@ def _normalize_ncaab_name_for_matching(name: str) -> str:
 
 def _upsert_team(session: Session, league_id: int, identity: TeamIdentity) -> int:
     """Upsert a team, creating or updating as needed.
-    
+
     Note: abbreviations must be non-null in the DB schema. If a feed omits an
     abbreviation (common in some NCAAB sources), we derive a deterministic
     fallback to satisfy the constraint.
@@ -255,7 +255,7 @@ def _find_team_by_name(
     team_abbr: str | None = None,
 ) -> int | None:
     """Find existing team by name (exact or normalized match).
-    
+
     Tries multiple strategies:
     1. Exact match on name or short_name
     2. Normalized match for NCAAB (handles "St" vs "State", etc.)

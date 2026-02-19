@@ -171,7 +171,7 @@ else:
 def mark_stale_runs_interrupted():
     """
     Mark any runs that are stuck in 'running' status as 'interrupted'.
-    
+
     This handles cases where the Docker container was killed or the worker
     crashed, leaving runs in a 'running' state that will never complete.
     """

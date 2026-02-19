@@ -75,7 +75,7 @@ class SocialConfig(BaseModel):
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
-    
+
     In Docker, environment variables are passed directly via docker-compose.
     For local development, loads from root .env file (../../.env) to maintain
     consistency with other services. All settings are validated by Pydantic.
@@ -96,7 +96,7 @@ class Settings(BaseSettings):
     def convert_async_to_sync(cls, v: str) -> str:
         """
         Convert asyncpg URL to psycopg URL for synchronous SQLAlchemy.
-        
+
         The root .env file uses asyncpg (for FastAPI), but Celery workers
         need synchronous psycopg. This validator automatically converts
         the URL so we can keep a single DATABASE_URL in the .env file.
@@ -158,7 +158,7 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """
     Return cached settings instance.
-    
+
     Settings are cached to avoid re-parsing environment variables
     on every access. This is safe because environment variables
     don't change during runtime.
