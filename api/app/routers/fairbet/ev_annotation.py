@@ -7,6 +7,7 @@ SQLAlchemy, or the database — they operate entirely on in-memory dicts.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 from datetime import datetime
@@ -50,6 +51,39 @@ class BookOdds(BaseModel):
     ev_confidence_tier: str | None = None
 
 
+def derive_entity_key(
+    selection_key: str,
+    market_key: str,
+    player_name: str | None = None,
+) -> str:
+    """Derive canonical entity key from selection_key for entity-safe grouping.
+
+    Rules:
+      - player:{slug}:{over/under}  ->  "player:{slug}:{hash8}"  (with player_name)
+      - player:{slug}:{over/under}  ->  "player:{slug}"           (without player_name)
+      - team:{slug}                 ->  "game"                    (spreads/ML are game-level)
+      - total:{team_slug}:{o/u}     ->  "team_total:{team_slug}" (new team_total format)
+      - total:{over/under}          ->  "game"                    (game total or legacy)
+    """
+    if not selection_key:
+        return "game"
+    parts = selection_key.split(":")
+
+    if parts[0] == "player" and len(parts) >= 3:
+        slug = parts[1]
+        if player_name:
+            h = hashlib.sha1(f"{player_name}:{market_key}".encode()).hexdigest()[:8]
+            return f"player:{slug}:{h}"
+        return f"player:{slug}"
+
+    if parts[0] == "total" and len(parts) == 3 and parts[2] in ("over", "under"):
+        # New-format team_total: "total:{team_slug}:{over/under}"
+        return f"team_total:{parts[1]}"
+
+    # team:{slug} (spreads/ML), total:{over/under} (game total), anything else
+    return "game"
+
+
 def _pair_opposite_sides(
     bet_keys: list[tuple],
 ) -> tuple[list[tuple[tuple, tuple]], list[tuple]]:
@@ -75,6 +109,13 @@ def _pair_opposite_sides(
             # in the tuple (game_id, market_key, selection_key, line_value)
             if key_a[2] == key_b[2]:
                 continue  # Same selection_key — not opposite sides
+
+            # Defensive entity check (slug-only, no player_name hash needed here)
+            entity_a = derive_entity_key(key_a[2], key_a[1])
+            entity_b = derive_entity_key(key_b[2], key_b[1])
+            if entity_a != entity_b:
+                continue  # Different entities — not a valid pair
+
             # Line values must be compatible to be the same market:
             # Spreads: sum to ~0 (e.g., -3.5 and +3.5)
             # Totals/ML: equal non-negative (e.g., both 200.5 or both 0)
@@ -102,6 +143,22 @@ def _annotate_pair_ev(
 
     Returns the disabled_reason string if EV was not computed, or None on success.
     """
+    # Defense-in-depth: never compute EV across different entities
+    entity_a = bets_map[key_a].get("entity_key", "game")
+    entity_b = bets_map[key_b].get("entity_key", "game")
+    if entity_a != entity_b:
+        for key in (key_a, key_b):
+            bets_map[key]["ev_disabled_reason"] = "entity_mismatch"
+            bets_map[key]["books"] = [
+                BookOdds(
+                    book=b["book"] if isinstance(b, dict) else b.book,
+                    price=b["price"] if isinstance(b, dict) else b.price,
+                    observed_at=b["observed_at"] if isinstance(b, dict) else b.observed_at,
+                )
+                for b in bets_map[key]["books"]
+            ]
+        return "entity_mismatch"
+
     books_a = bets_map[key_a]["books"]
     books_b = bets_map[key_b]["books"]
     league_code = bets_map[key_a].get("league_code", "UNKNOWN")
@@ -290,10 +347,10 @@ def _build_sharp_reference(
 
     now = datetime.now(_tz.utc)
 
-    # Step 1: Collect sharp book entries grouped by (game_id, market_base, abs_line)
+    # Step 1: Collect sharp book entries grouped by (game_id, market_base, entity_key, abs_line)
     # Each group entry: (selection_key, sharp_price, market_key, signed_line_value, observed_at)
     sharp_groups: dict[
-        tuple[int, str, float], list[tuple[str, float, str, float, datetime]]
+        tuple[int, str, str, float], list[tuple[str, float, str, float, datetime]]
     ] = {}
 
     for key, bet in bets_map.items():
@@ -323,7 +380,8 @@ def _build_sharp_reference(
             if age > max_age_seconds:
                 continue
 
-        group_key = (game_id_k, mbase, abs(line_value_k))
+        entity_key = derive_entity_key(selection_key_k, market_key_k)
+        group_key = (game_id_k, mbase, entity_key, abs(line_value_k))
         if group_key not in sharp_groups:
             sharp_groups[group_key] = []
         sharp_groups[group_key].append(
@@ -333,7 +391,7 @@ def _build_sharp_reference(
     # Step 2: For each group, find valid pairs (compatible line values) and devig
     refs: dict[tuple[int, str], list[dict[str, Any]]] = {}
 
-    for (game_id, mbase, abs_line), entries in sharp_groups.items():
+    for (game_id, mbase, entity_key, abs_line), entries in sharp_groups.items():
         # Pair entries with compatible line values using the same logic as
         # _pair_opposite_sides: different selection_key AND lines sum to ~0 or equal
         used: set[int] = set()
@@ -381,7 +439,7 @@ def _build_sharp_reference(
                 "observed_at": obs_at_a,
             }
 
-            ref_key = (game_id, mbase)
+            ref_key = (game_id, mbase, entity_key)
             if ref_key not in refs:
                 refs[ref_key] = []
             refs[ref_key].append(ref_entry)

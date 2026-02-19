@@ -20,6 +20,7 @@ from ...db.odds import FairbetGameOddsWork
 from ...services.ev_config import (
     INCLUDED_BOOKS,
     SHARP_REF_MAX_AGE_SECONDS,
+    get_fairbet_debug_game_ids,
     get_strategy,
 )
 from .ev_annotation import (
@@ -29,6 +30,7 @@ from .ev_annotation import (
     _market_base,
     _pair_opposite_sides,
     _try_extrapolated_ev,
+    derive_entity_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -319,6 +321,7 @@ async def get_fairbet_odds(
                 "line_value": row.line_value,
                 "market_category": row.market_category,
                 "player_name": row.player_name,
+                "entity_key": derive_entity_key(row.selection_key, row.market_key, row.player_name),
                 "books": [],
             }
 
@@ -331,11 +334,13 @@ async def get_fairbet_odds(
         )
 
     # Step 6: EV annotation with eligibility gate
-    # Group bets by (game_id, market_key, abs(line_value)) to find candidate pairs
+    # Group bets by (game_id, market_key, entity_key, abs(line_value)) to find candidate pairs
+    # entity_key prevents cross-entity pairing (different players, different team totals)
     market_groups: dict[tuple, list[tuple]] = {}
     for key in bets_map:
         game_id_k, market_key_k, _, line_value_k = key
-        group_key = (game_id_k, market_key_k, abs(line_value_k))
+        entity_key = bets_map[key]["entity_key"]
+        group_key = (game_id_k, market_key_k, entity_key, abs(line_value_k))
         if group_key not in market_groups:
             market_groups[group_key] = []
         market_groups[group_key].append(key)
