@@ -348,19 +348,29 @@ def compute_ev_for_market(
     annotated_a = _annotate_side(side_a_books, sharp_books, true_prob_a)
     annotated_b = _annotate_side(side_b_books, sharp_books, true_prob_b)
 
-    # Sanity check: compare devigged fair odds against median book price
+    # Sanity check: compare devigged fair odds against median book price.
+    # Exclude sharp books from the median so it reflects market consensus
+    # rather than being biased by the sharp book's own (potentially
+    # outlier) pricing — especially on alternate / illiquid lines.
     fair_odds_suspect = False
     if true_prob_a is not None and true_prob_b is not None:
         fair_american_a = implied_to_american(true_prob_a)
         fair_american_b = implied_to_american(true_prob_b)
 
-        # Compute median price for each side from all books
-        prices_a = sorted(entry["price"] for entry in side_a_books)
-        prices_b = sorted(entry["price"] for entry in side_b_books)
+        non_sharp_prices_a = sorted(
+            entry["price"]
+            for entry in side_a_books
+            if entry["book"] not in sharp_books
+        )
+        non_sharp_prices_b = sorted(
+            entry["price"]
+            for entry in side_b_books
+            if entry["book"] not in sharp_books
+        )
 
-        if prices_a and prices_b:
-            median_a = _median(prices_a)
-            median_b = _median(prices_b)
+        if non_sharp_prices_a and non_sharp_prices_b:
+            median_a = _median(non_sharp_prices_a)
+            median_b = _median(non_sharp_prices_b)
 
             divergence = max(
                 abs(fair_american_a - median_a),
@@ -368,6 +378,9 @@ def compute_ev_for_market(
             )
             if divergence > strategy_config.max_fair_odds_divergence:
                 fair_odds_suspect = True
+        else:
+            # Not enough non-sharp books to verify — flag as suspect
+            fair_odds_suspect = True
 
     return EVComputeResult(
         annotated_a=annotated_a,

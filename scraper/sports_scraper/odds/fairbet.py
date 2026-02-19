@@ -91,8 +91,14 @@ def build_selection_key(
         else:
             return f"player:{player_slug}:{side_slug}"
 
-    # Total bets (mainline or team_prop): Over/Under
-    if market_type == "total" or market_category == "team_prop" or market_type.startswith("team_total"):
+    # Total bets (mainline, alternate, or team_prop): Over/Under
+    # Covers market_type values: "total", "alternate_totals", "team_totals", etc.
+    is_total_market = (
+        market_type == "total"
+        or market_category == "team_prop"
+        or "total" in market_type.lower()
+    )
+    if is_total_market:
         if "over" in side_lower:
             return "total:over"
         elif "under" in side_lower:

@@ -532,3 +532,48 @@ class TestFairOddsSanityCheck:
         assert len(result.annotated_b) == 3
         for b in result.annotated_a:
             assert b["ev_percent"] is not None
+
+    def test_sharp_excluded_from_median_catches_lopsided_alt(
+        self,
+    ) -> None:
+        """Regression: lopsided Pinnacle on alt line flagged as suspect.
+
+        Scenario (from production bug):
+        - Pinnacle has an alternate total at a far-from-mainline value
+          with extremely lopsided odds (e.g., Over -400 / Under +300).
+        - Non-sharp books (FanDuel, DK) price the same line near even
+          (-110 to -115).
+        - Old code included Pinnacle in the median, masking the divergence.
+        - Fix: sharp books excluded from median → divergence caught.
+        """
+        alt_config = get_strategy("NCAAB", "alternate")
+        assert alt_config is not None
+
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -400, "DraftKings": -105, "FanDuel": -115}),
+            _make_books({"Pinnacle": 300, "DraftKings": -115, "FanDuel": -105}),
+            alt_config,
+        )
+        # Devigged true_prob_a ≈ 0.76 → fair ≈ -320
+        # Non-sharp median_a ≈ -110, divergence ≈ 210
+        # Non-sharp median_b ≈ -110, fair_b ≈ +320, divergence ≈ 430
+        # Max > 300 → suspect
+        assert result.fair_odds_suspect is True
+
+    def test_no_non_sharp_books_flagged_as_suspect(
+        self,
+    ) -> None:
+        """If one side has only sharp books, flag as suspect.
+
+        Cannot verify devig against market consensus if there are no
+        non-sharp books on a side.
+        """
+        alt_config = get_strategy("NCAAB", "alternate")
+        assert alt_config is not None
+
+        result = compute_ev_for_market(
+            _make_books({"Pinnacle": -300, "DraftKings": -110, "FanDuel": -115}),
+            _make_books({"Pinnacle": 250}),  # Only sharp on side B
+            alt_config,
+        )
+        assert result.fair_odds_suspect is True

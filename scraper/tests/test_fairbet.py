@@ -140,3 +140,40 @@ class TestBuildSelectionKey:
             away_team_name="Boston Celtics",
         )
         assert key == "team:mystery_team"
+
+    def test_alternate_totals_over(self):
+        """Regression: alternate_totals market_type must produce total:over.
+
+        Before fix, market_type='alternate_totals' fell through to
+        team matching, producing 'team:over' instead.
+        """
+        key = build_selection_key(
+            market_type="alternate_totals",
+            side="Over",
+            home_team_name="Kansas Jayhawks",
+            away_team_name="Oklahoma St Cowboys",
+            market_category="alternate",
+        )
+        assert key == "total:over"
+
+    def test_alternate_totals_under(self):
+        """Regression: alternate_totals market_type must produce total:under."""
+        key = build_selection_key(
+            market_type="alternate_totals",
+            side="Under",
+            home_team_name="Wichita St Shockers",
+            away_team_name="East Carolina Pirates",
+            market_category="alternate",
+        )
+        assert key == "total:under"
+
+    def test_team_totals_over(self):
+        """team_totals market_type must produce total:over."""
+        key = build_selection_key(
+            market_type="team_totals",
+            side="Over",
+            home_team_name="Los Angeles Lakers",
+            away_team_name="Boston Celtics",
+            market_category="team_prop",
+        )
+        assert key == "total:over"
