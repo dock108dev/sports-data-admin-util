@@ -22,10 +22,7 @@ from ..models import (
 )
 from ..persistence import persist_game_payload
 from ..utils.date_utils import season_ending_year
-
-# Re-export moved functions for backward compatibility
-from .ncaab_game_ids import (  # noqa: F401
-    _normalize_ncaab_name_for_matching,
+from .ncaab_game_ids import (
     populate_ncaab_game_ids,
     select_games_for_boxscores_ncaab_api,
 )

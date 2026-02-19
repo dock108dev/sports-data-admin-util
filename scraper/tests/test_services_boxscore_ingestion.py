@@ -13,8 +13,10 @@ from sports_scraper.services.nhl_boxscore_ingestion import (
 )
 from sports_scraper.services.ncaab_boxscore_ingestion import (
     convert_ncaab_boxscore_to_normalized_game as _convert_ncaab_boxscore_to_normalized_game,
-    select_games_for_boxscores_ncaab_api,
     ingest_boxscores_via_ncaab_api,
+)
+from sports_scraper.services.ncaab_game_ids import (
+    select_games_for_boxscores_ncaab_api,
     populate_ncaab_game_ids as _populate_ncaab_game_ids,
 )
 

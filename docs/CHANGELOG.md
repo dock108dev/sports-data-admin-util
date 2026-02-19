@@ -21,10 +21,9 @@ All notable changes to Sports Data Admin.
 
 ### Odds Sync Optimization
 
-- **Split cadence**: `sync_mainline_odds` (every 15 min) and `sync_prop_odds` (every 60 min) replace the unified `sync_all_odds` task
+- **Split cadence**: `sync_mainline_odds` (every 15 min) and `sync_prop_odds` (every 60 min) run at independent intervals
 - **Regions trimmed**: Default regions reduced from `us, us_ex, eu, uk` to `us, eu` (`us_ex` books are excluded from EV anyway; `uk` overlaps with `eu`)
 - **3–7 AM ET quiet window**: Both odds tasks skip execution during the overnight quiet window (no games in progress)
-- **`sync_all_odds` kept as legacy wrapper**: Existing manual invocations and the "Sync All Odds" admin button continue to work
 - **`OddsSynchronizer` removed from `ScrapeRunManager`**: Odds sync is now a standalone Celery beat task, no longer triggered during manual scrape runs
 
 ### Odds Browser UI

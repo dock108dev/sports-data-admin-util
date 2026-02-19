@@ -21,7 +21,6 @@ from .scrape_tasks import (
     run_scheduled_ingestion,
 )
 from .odds_tasks import (
-    sync_all_odds,
     sync_mainline_odds,
     sync_prop_odds,
 )
@@ -63,7 +62,6 @@ from .utility_tasks import (
 __all__ = [
     "run_scrape_job",
     "run_scheduled_ingestion",
-    "sync_all_odds",
     "sync_mainline_odds",
     "sync_prop_odds",
     "trigger_game_pipelines_task",

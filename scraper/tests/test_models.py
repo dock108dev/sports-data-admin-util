@@ -468,7 +468,7 @@ class TestIngestionConfig:
             odds=False,
             social=True,
             pbp=True,
-            live=True,
+            batch_live_feed=True,
             only_missing=True,
         )
 

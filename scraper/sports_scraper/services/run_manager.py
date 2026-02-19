@@ -395,7 +395,7 @@ class ScrapeRunManager:
                     start_date=str(start),
                     end_date=str(end),
                     only_missing=config.only_missing,
-                    live=config.batch_live_feed,
+                    batch_live_feed=config.batch_live_feed,
                 )
                 if config.batch_live_feed:
                     # Live-feed PBP (explicit opt-in only).

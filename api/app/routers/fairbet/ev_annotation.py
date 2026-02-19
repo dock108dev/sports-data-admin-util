@@ -62,8 +62,8 @@ def derive_entity_key(
       - player:{slug}:{over/under}  ->  "player:{slug}:{hash8}"  (with player_name)
       - player:{slug}:{over/under}  ->  "player:{slug}"           (without player_name)
       - team:{slug}                 ->  "game"                    (spreads/ML are game-level)
-      - total:{team_slug}:{o/u}     ->  "team_total:{team_slug}" (new team_total format)
-      - total:{over/under}          ->  "game"                    (game total or legacy)
+      - total:{team_slug}:{o/u}     ->  "team_total:{team_slug}" (team total)
+      - total:{over/under}          ->  "game"                    (game total)
     """
     if not selection_key:
         return "game"

@@ -112,7 +112,7 @@ def ingest_pbp_via_ncaab_api(
     """
     from ..live.ncaab import NCAABLiveFeedClient
     from ..live.ncaab_constants import NCAAB_MIN_EXPECTED_PLAYS
-    from .ncaab_boxscore_ingestion import populate_ncaab_game_ids
+    from .ncaab_game_ids import populate_ncaab_game_ids
 
     logger.info(
         "ncaab_pbp_ingestion_start",

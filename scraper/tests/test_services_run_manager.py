@@ -701,7 +701,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         result = manager.run(1, config)
@@ -741,7 +741,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         result = manager.run(1, config)
@@ -779,7 +779,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=True,
+            batch_live_feed=True,
         )
 
         result = manager.run(1, config)
@@ -820,7 +820,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=True,
+            batch_live_feed=True,
         )
 
         result = manager.run(1, config)
@@ -859,7 +859,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=True,
+            batch_live_feed=True,
         )
 
         # Should not raise, handles exception internally
@@ -897,7 +897,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         result = manager.run(1, config)
@@ -937,7 +937,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         # Should not raise
@@ -977,7 +977,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         # Should not raise
@@ -1018,7 +1018,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         result = manager.run(1, config)
@@ -1060,7 +1060,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         # Should not raise

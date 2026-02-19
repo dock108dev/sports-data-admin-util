@@ -27,7 +27,6 @@ from .boxscore_helpers import (
 )
 from .teams import _find_team_by_name, _upsert_team
 
-# Re-export dataclasses for backward compatibility
 __all__ = [
     "GamePersistResult",
     "PlayerBoxscoreStats",

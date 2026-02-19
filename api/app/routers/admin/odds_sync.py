@@ -13,21 +13,28 @@ router = APIRouter()
 class OddsSyncResponse(BaseModel):
     status: str
     league: str
-    task_id: str
+    mainline_task_id: str
+    prop_task_id: str
 
 
 @router.post("/odds/sync", response_model=OddsSyncResponse)
 async def trigger_odds_sync(
     league: str | None = Query(None, description="League code (e.g. NBA). Omit for all leagues."),
 ) -> OddsSyncResponse:
-    """Dispatch the unified ``sync_all_odds`` Celery task.
+    """Dispatch mainline and prop odds sync tasks.
 
     Accepts an optional league filter so the UI can sync a single league
     on-demand without touching the others.
     """
     celery = get_celery_app()
-    result = celery.send_task(
-        "sync_all_odds",
+    mainline = celery.send_task(
+        "sync_mainline_odds",
+        args=[league],
+        queue="sports-scraper",
+        routing_key="sports-scraper",
+    )
+    props = celery.send_task(
+        "sync_prop_odds",
         args=[league],
         queue="sports-scraper",
         routing_key="sports-scraper",
@@ -35,5 +42,6 @@ async def trigger_odds_sync(
     return OddsSyncResponse(
         status="dispatched",
         league=league or "all",
-        task_id=result.id,
+        mainline_task_id=mainline.id,
+        prop_task_id=props.id,
     )
