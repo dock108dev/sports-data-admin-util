@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -10,7 +11,6 @@ from sqlalchemy.orm import Session
 from ..db import db_models
 from ..logging import logger
 from ..utils.datetime_utils import now_utc
-
 
 PBP_SUPPORTED_LEAGUES = {"NBA", "NHL", "NCAAB"}
 PBP_MIN_PLAY_COUNT = 1

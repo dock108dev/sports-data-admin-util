@@ -54,29 +54,30 @@ Source (NBA/NHL API)
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
-from typing import Any
 
 from ...db import AsyncSession, get_db
-from ...db.sports import SportsGame, SportsGamePlay
-from ...db.resolution import PBPSnapshot
 from ...db.pipeline import GamePipelineRun
+from ...db.resolution import PBPSnapshot
+from ...db.sports import SportsGame, SportsGamePlay
+from .pbp_helpers import (
+    build_resolution_summary,
+    play_to_detail,
+    play_to_summary,
+)
 from .pbp_models import (
-    GamePBPResponse,
     GamePBPDetailResponse,
+    GamePBPResponse,
     GamePBPSnapshotsResponse,
     PBPComparisonResponse,
     PBPSnapshotDetail,
     PBPSnapshotSummary,
     PipelineRunPBPResponse,
     PlayDetail,
-)
-from .pbp_helpers import (
-    build_resolution_summary,
-    play_to_summary,
-    play_to_detail,
 )
 
 router = APIRouter()

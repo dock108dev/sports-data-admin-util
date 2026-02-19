@@ -20,16 +20,16 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 
 from sports_scraper.config_sports import (
-    LeagueConfig,
     LEAGUE_CONFIG,
-    get_league_config,
+    LeagueConfig,
     get_enabled_leagues,
+    get_league_config,
     get_scheduled_leagues,
     get_social_enabled_leagues,
     get_timeline_enabled_leagues,
-    validate_league_code,
     is_social_enabled,
     is_timeline_enabled,
+    validate_league_code,
 )
 
 

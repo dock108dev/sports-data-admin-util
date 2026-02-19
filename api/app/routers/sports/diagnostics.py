@@ -5,9 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, select
 
-from ...db.sports import SportsLeague
-from ...db.scraper import SportsMissingPbp, SportsGameConflict
 from ...db import AsyncSession, get_db
+from ...db.scraper import SportsGameConflict, SportsMissingPbp
+from ...db.sports import SportsLeague
 from .schemas import GameConflictEntry, MissingPbpEntry
 
 router = APIRouter(prefix="/diagnostics")

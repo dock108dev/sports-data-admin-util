@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
     from ..models import NormalizedOddsSnapshot
 
 
@@ -154,10 +155,10 @@ def build_selection_key(
 
 
 def upsert_fairbet_odds(
-    session: "Session",
+    session: Session,
     game_id: int,
     game_status: str,
-    snapshot: "NormalizedOddsSnapshot",
+    snapshot: NormalizedOddsSnapshot,
 ) -> bool:
     """Upsert odds into the FairBet work table.
 

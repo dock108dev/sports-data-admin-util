@@ -1,13 +1,10 @@
 """Tests for app.services.odds_events."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
 from app.services.odds_events import (
-    MONEYLINE_MOVEMENT_THRESHOLD,
-    SPREAD_MOVEMENT_THRESHOLD,
-    TOTAL_MOVEMENT_THRESHOLD,
     build_odds_events,
     detect_significant_movements,
     select_preferred_book,
@@ -186,11 +183,11 @@ class TestDetectSignificantMovements:
 
 
 class TestBuildOddsEvents:
-    _game_start = datetime(2026, 1, 15, 19, 0, tzinfo=timezone.utc)
+    _game_start = datetime(2026, 1, 15, 19, 0, tzinfo=UTC)
     _phase_boundaries = {
         "pregame": (
-            datetime(2026, 1, 15, 17, 0, tzinfo=timezone.utc),
-            datetime(2026, 1, 15, 19, 0, tzinfo=timezone.utc),
+            datetime(2026, 1, 15, 17, 0, tzinfo=UTC),
+            datetime(2026, 1, 15, 19, 0, tzinfo=UTC),
         ),
     }
 

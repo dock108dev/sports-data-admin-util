@@ -8,8 +8,8 @@ from __future__ import annotations
 from typing import Any
 
 from .game_stats_helpers import (
-    compute_running_player_stats,
     compute_lead_context,
+    compute_running_player_stats,
     format_player_stat_hint,
 )
 

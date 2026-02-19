@@ -1,15 +1,15 @@
 """Tests for game_stats_helpers module."""
 
+from app.services.pipeline.stages.box_score_helpers import (
+    compute_block_mini_box,
+    compute_cumulative_box_score,
+)
 from app.services.pipeline.stages.game_stats_helpers import (
     _apply_basketball_scoring,
     _compute_single_team_delta,
-    compute_running_player_stats,
     compute_lead_context,
+    compute_running_player_stats,
     format_player_stat_hint,
-)
-from app.services.pipeline.stages.box_score_helpers import (
-    compute_cumulative_box_score,
-    compute_block_mini_box,
 )
 
 

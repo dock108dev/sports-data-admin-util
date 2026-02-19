@@ -24,8 +24,8 @@ from ..models import IngestionConfig
 from ..odds.synchronizer import OddsSynchronizer
 from ..utils.datetime_utils import today_et
 from ..utils.redis_lock import (
-    LOCK_TIMEOUT_10MIN,
     LOCK_TIMEOUT_1HOUR,
+    LOCK_TIMEOUT_10MIN,
     acquire_redis_lock,
     release_redis_lock,
 )

@@ -8,17 +8,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from .explicit_selection import select_explicitly_narrated_plays
 from .moment_types import (
     ABSOLUTE_MAX_PLAYS,
-    BoundaryReason,
     MAX_EXPLICIT_PLAYS_PER_MOMENT,
     MIN_PLAYS_BEFORE_SOFT_CLOSE,
     PREFERRED_EXPLICIT_PLAYS,
     SOFT_CAP_PLAYS,
+    BoundaryReason,
 )
 from .play_classification import is_stoppage_play, is_turnover_play
 from .score_detection import is_lead_change_play, is_scoring_play
-from .explicit_selection import select_explicitly_narrated_plays
 
 
 def should_force_close_moment(

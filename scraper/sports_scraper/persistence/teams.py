@@ -15,8 +15,9 @@ from sqlalchemy.orm import Session
 from ..db import db_models
 from ..logging import logger
 from ..normalization import normalize_team_name
-from ..utils.db_queries import count_team_games
 from ..utils.datetime_utils import now_utc
+from ..utils.db_queries import count_team_games
+
 _LOG_COUNTERS: dict[str, int] = {}
 _LOG_SAMPLE = 50
 
@@ -177,7 +178,7 @@ def _normalize_ncaab_name_for_matching(name: str) -> str:
     normalized = re.sub(r"[.,\-]", " ", normalized)
     normalized = re.sub(r"\s+", " ", normalized).strip()
     normalized = normalized.lower()
-    
+
     tokens: list[str] = []
     for token in normalized.split(" "):
         if not token:
@@ -188,10 +189,10 @@ def _normalize_ncaab_name_for_matching(name: str) -> str:
             if not piece or piece in _NCAAB_STOPWORDS:
                 continue
             tokens.append(piece)
-    
+
     if not tokens:
         return normalized  # fallback to original lowercased form
-    
+
     return " ".join(tokens)
 
 
@@ -206,7 +207,7 @@ def _upsert_team(session: Session, league_id: int, identity: TeamIdentity) -> in
     short_name = identity.short_name or team_name
     league = session.get(db_models.SportsLeague, league_id)
     league_code = league.code if league else None
-    
+
     abbreviation = identity.abbreviation or _derive_abbreviation(team_name)
     if identity.abbreviation is None and _should_log("team_abbreviation_derived", sample=25):
         logger.warning(
@@ -220,7 +221,7 @@ def _upsert_team(session: Session, league_id: int, identity: TeamIdentity) -> in
     abbreviation_update_value = (
         abbreviation if identity.abbreviation is not None else db_models.SportsTeam.abbreviation
     )
-    
+
     stmt = (
         insert(db_models.SportsTeam)
         .values(
@@ -296,7 +297,7 @@ def _find_team_by_name(
         )
         exact_matches = [row[0] for row in session.execute(exact_match_stmt).all()]
         candidate_ids.extend(exact_matches)
-        
+
         if not exact_matches:
             normalized_input = _normalize_ncaab_name_for_matching(team_name)
             all_teams_stmt = (
@@ -436,7 +437,7 @@ def _find_team_by_name(
                 db_short_norm = _normalize_ncaab_name_for_matching(team.short_name or "")
                 if normalized_input == db_name_norm or normalized_input == db_short_norm:
                     exact_matches.append(cid)
-        
+
         if exact_matches:
             unique_candidates = exact_matches
         elif unique_candidates:
@@ -490,7 +491,7 @@ def _find_team_by_name(
             )
         # For non-NCAAB: exact name match is highest priority
         return (100000 if exact_name_match else 0, 10000 if matches_canonical else 0, 1000 if has_full_name else 0, usage, 0)
-    
+
     scored_candidates = [(team_score(cid), cid) for cid in unique_candidates]
     scored_candidates.sort(reverse=True)
     best_id = scored_candidates[0][1]

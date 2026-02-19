@@ -148,7 +148,7 @@ class OddsSynchronizer:
         total_inserted = 0
         current = start
         days_processed = 0
-        
+
         logger.info(
             "starting_historical_odds_sync",
             league=league_code,
@@ -159,7 +159,7 @@ class OddsSynchronizer:
 
         while current <= end:
             snapshots = self.client.fetch_historical_odds(league_code, current, books)
-            
+
             if snapshots:
                 inserted = self._persist_snapshots(snapshots, league_code)
                 total_inserted += inserted
@@ -169,10 +169,10 @@ class OddsSynchronizer:
                     date=str(current),
                     inserted=inserted,
                 )
-            
+
             current += timedelta(days=1)
             days_processed += 1
-            
+
             # Small delay between API calls to avoid rate limiting (every 5 days)
             if days_processed % 5 == 0 and current <= end:
                 time.sleep(1)

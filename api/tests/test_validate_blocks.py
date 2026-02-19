@@ -4,21 +4,21 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.pipeline.stages.validate_blocks import (
-    _validate_block_count,
-    _validate_role_constraints,
-    _validate_word_counts,
-    _validate_score_continuity,
-    _validate_moment_coverage,
-    _validate_key_plays,
-    _count_sentences,
-)
 from app.services.pipeline.stages.block_types import (
-    SemanticRole,
-    MIN_BLOCKS,
     MAX_BLOCKS,
-    MAX_WORDS_PER_BLOCK,
     MAX_TOTAL_WORDS,
+    MAX_WORDS_PER_BLOCK,
+    MIN_BLOCKS,
+    SemanticRole,
+)
+from app.services.pipeline.stages.validate_blocks import (
+    _count_sentences,
+    _validate_block_count,
+    _validate_key_plays,
+    _validate_moment_coverage,
+    _validate_role_constraints,
+    _validate_score_continuity,
+    _validate_word_counts,
 )
 
 
@@ -359,7 +359,7 @@ class TestExecuteValidateBlocks:
     """Tests for execute_validate_blocks async function."""
 
     @pytest.fixture
-    def mock_session(self) -> "AsyncSession":
+    def mock_session(self) -> AsyncSession:
         """Create a mock session for testing.
 
         The session needs to return no social posts so embedded tweets are skipped.
@@ -380,9 +380,10 @@ class TestExecuteValidateBlocks:
     @pytest.mark.asyncio
     async def test_missing_previous_output_raises(self, mock_session) -> None:
         """Missing previous output raises ValueError."""
-        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
-        from app.services.pipeline.models import StageInput
         import pytest
+
+        from app.services.pipeline.models import StageInput
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
 
         stage_input = StageInput(
             game_id=1,
@@ -397,9 +398,10 @@ class TestExecuteValidateBlocks:
     @pytest.mark.asyncio
     async def test_not_rendered_raises(self, mock_session) -> None:
         """Previous output without blocks_rendered=True raises ValueError."""
-        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
-        from app.services.pipeline.models import StageInput
         import pytest
+
+        from app.services.pipeline.models import StageInput
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
 
         stage_input = StageInput(
             game_id=1,
@@ -414,9 +416,10 @@ class TestExecuteValidateBlocks:
     @pytest.mark.asyncio
     async def test_no_blocks_raises(self, mock_session) -> None:
         """Empty blocks list raises ValueError."""
-        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
-        from app.services.pipeline.models import StageInput
         import pytest
+
+        from app.services.pipeline.models import StageInput
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
 
         stage_input = StageInput(
             game_id=1,
@@ -431,8 +434,8 @@ class TestExecuteValidateBlocks:
     @pytest.mark.asyncio
     async def test_all_validations_passing(self, mock_session) -> None:
         """All validations pass with valid blocks."""
-        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
         from app.services.pipeline.models import StageInput
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
 
         blocks = [
             {
@@ -498,8 +501,8 @@ class TestExecuteValidateBlocks:
     @pytest.mark.asyncio
     async def test_with_validation_errors(self, mock_session) -> None:
         """Validation fails with invalid blocks."""
-        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
         from app.services.pipeline.models import StageInput
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
 
         blocks = [
             {
@@ -544,8 +547,8 @@ class TestExecuteValidateBlocks:
     @pytest.mark.asyncio
     async def test_with_warnings_only(self, mock_session) -> None:
         """Validation passes with warnings but no errors."""
-        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
         from app.services.pipeline.models import StageInput
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
 
         blocks = [
             {
@@ -610,8 +613,8 @@ class TestExecuteValidateBlocks:
     @pytest.mark.asyncio
     async def test_output_structure(self, mock_session) -> None:
         """Output contains all expected fields."""
-        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
         from app.services.pipeline.models import StageInput
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
 
         blocks = [
             {
@@ -656,8 +659,8 @@ class TestExecuteValidateBlocks:
     @pytest.mark.asyncio
     async def test_score_discontinuity_detected(self, mock_session) -> None:
         """Score discontinuity is detected as error."""
-        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
         from app.services.pipeline.models import StageInput
+        from app.services.pipeline.stages.validate_blocks import execute_validate_blocks
 
         blocks = [
             {

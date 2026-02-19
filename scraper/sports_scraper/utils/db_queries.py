@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
-from typing import Sequence
+from collections.abc import Sequence
+from datetime import UTC, date, datetime
 
 from sqlalchemy import exists, func, not_, or_, select
 from sqlalchemy.orm import Session
@@ -107,13 +107,13 @@ def find_games_in_date_range(
         db_models.SportsGame.game_date,
     ).filter(
         db_models.SportsGame.league_id == league_id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
-        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
+        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=UTC),
     )
-    
+
     if require_source_key:
         query = query.filter(db_models.SportsGame.source_game_key.isnot(None))
-    
+
     # Build filter conditions
     conditions = []
     if missing_players:
@@ -126,9 +126,9 @@ def find_games_in_date_range(
             db_models.SportsGameOdds.game_id == db_models.SportsGame.id
         )
         conditions.append(not_(has_odds))
-    
+
     if conditions:
         query = query.filter(or_(*conditions))
-    
+
     return query.all()
 

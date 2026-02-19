@@ -10,16 +10,16 @@ from sqlalchemy import desc, exists, func, not_, or_, select
 from sqlalchemy.orm import selectinload
 
 from ...db import AsyncSession, get_db
-from ...db.sports import (
-    SportsGame,
-    SportsTeamBoxscore,
-    SportsPlayerBoxscore,
-    SportsGamePlay,
-)
 from ...db.flow import SportsGameFlow
 from ...db.odds import SportsGameOdds
-from ...db.social import TeamSocialPost
 from ...db.scraper import SportsGameConflict
+from ...db.social import TeamSocialPost
+from ...db.sports import (
+    SportsGame,
+    SportsGamePlay,
+    SportsPlayerBoxscore,
+    SportsTeamBoxscore,
+)
 from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService

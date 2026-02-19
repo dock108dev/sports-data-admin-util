@@ -1,6 +1,6 @@
 """Tests for EV calculation engine — eligibility gate, compute, and math regression."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -16,12 +16,11 @@ from app.services.ev import (
 )
 from app.services.ev_config import EVStrategyConfig, get_strategy
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
-NOW = datetime(2026, 2, 14, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 2, 14, 12, 0, 0, tzinfo=UTC)
 FRESH = NOW - timedelta(minutes=5)
 STALE_1H = NOW - timedelta(hours=2)
 

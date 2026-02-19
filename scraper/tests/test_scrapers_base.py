@@ -21,7 +21,7 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
-from sports_scraper.scrapers.base import BaseSportsReferenceScraper, ScraperError, NoGamesFoundError
+from sports_scraper.scrapers.base import BaseSportsReferenceScraper, NoGamesFoundError, ScraperError
 
 
 # Concrete subclass for testing (base class can't be instantiated directly)
@@ -497,6 +497,7 @@ class TestParseTeamRow:
     def test_parses_valid_team_row(self, mock_client_class, mock_cache_class):
         """Parses valid team row - use NCAAB scraper which has valid league_code."""
         from bs4 import BeautifulSoup
+
         from sports_scraper.scrapers.ncaab_sportsref import NCAABSportsReferenceScraper
         scraper = NCAABSportsReferenceScraper()
         html = '<tr><td><a href="/team/duke">Duke Blue Devils</a></td><td class="right">85</td></tr>'

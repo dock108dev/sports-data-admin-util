@@ -39,13 +39,15 @@ from __future__ import annotations
 import logging
 
 from ..models import StageInput, StageOutput
-from .block_types import MIN_BLOCKS, MAX_BLOCKS
 from .block_analysis import (
     count_lead_changes,
-    find_scoring_runs,
     detect_blowout,
     find_garbage_time_start,
+    find_scoring_runs,
 )
+from .block_types import MAX_BLOCKS, MIN_BLOCKS
+from .group_helpers import calculate_block_count, create_blocks
+from .group_roles import assign_roles
 
 # Import from split modules
 from .group_split_points import (
@@ -53,8 +55,6 @@ from .group_split_points import (
     find_split_points,
     find_weighted_split_points,
 )
-from .group_roles import assign_roles
-from .group_helpers import calculate_block_count, create_blocks
 
 logger = logging.getLogger(__name__)
 

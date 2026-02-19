@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 # Ensure the scraper package is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -21,20 +19,17 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
-from sports_scraper.persistence.boxscores import (
-    upsert_team_boxscores,
-    upsert_player_boxscores,
-    persist_game_payload,
-    GamePersistResult,
-    _build_team_stats,
-    _build_player_stats,
-)
 from sports_scraper.models import (
-    NormalizedTeamBoxscore,
     NormalizedPlayerBoxscore,
-    NormalizedGame,
+    NormalizedTeamBoxscore,
     TeamIdentity,
-    GameIdentification,
+)
+from sports_scraper.persistence.boxscores import (
+    GamePersistResult,
+    _build_player_stats,
+    _build_team_stats,
+    upsert_player_boxscores,
+    upsert_team_boxscores,
 )
 
 
@@ -574,7 +569,7 @@ class TestFindGameForBoxscore:
         mock_game = MagicMock()
         mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = mock_game
 
-        game_date = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         result = _find_game_for_boxscore(
             mock_session,
             league_id=1,
@@ -592,7 +587,7 @@ class TestFindGameForBoxscore:
         mock_session = MagicMock()
         mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = None
 
-        game_date = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         result = _find_game_for_boxscore(
             mock_session,
             league_id=1,

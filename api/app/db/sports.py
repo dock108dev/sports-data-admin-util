@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     Boolean,
@@ -24,10 +24,10 @@ from sqlalchemy.sql import text
 from .base import Base
 
 if TYPE_CHECKING:
-    from .social import TeamSocialAccount, TeamSocialPost
+    from .flow import SportsGameTimelineArtifact
     from .odds import SportsGameOdds
     from .scraper import SportsScrapeRun
-    from .flow import SportsGameTimelineArtifact
+    from .social import TeamSocialAccount, TeamSocialPost
 
 
 class GameStatus(str, Enum):
@@ -66,13 +66,13 @@ class SportsLeague(Base):
         nullable=False,
     )
 
-    teams: Mapped[list["SportsTeam"]] = relationship(
+    teams: Mapped[list[SportsTeam]] = relationship(
         "SportsTeam", back_populates="league", cascade="all, delete-orphan"
     )
-    games: Mapped[list["SportsGame"]] = relationship(
+    games: Mapped[list[SportsGame]] = relationship(
         "SportsGame", back_populates="league", cascade="all, delete-orphan"
     )
-    scrape_runs: Mapped[list["SportsScrapeRun"]] = relationship(
+    scrape_runs: Mapped[list[SportsScrapeRun]] = relationship(
         "SportsScrapeRun", back_populates="league"
     )
 
@@ -111,17 +111,17 @@ class SportsTeam(Base):
     )
 
     league: Mapped[SportsLeague] = relationship("SportsLeague", back_populates="teams")
-    home_games: Mapped[list["SportsGame"]] = relationship(
+    home_games: Mapped[list[SportsGame]] = relationship(
         "SportsGame",
         foreign_keys="[SportsGame.home_team_id]",
         back_populates="home_team",
     )
-    away_games: Mapped[list["SportsGame"]] = relationship(
+    away_games: Mapped[list[SportsGame]] = relationship(
         "SportsGame",
         foreign_keys="[SportsGame.away_team_id]",
         back_populates="away_team",
     )
-    social_accounts: Mapped[list["TeamSocialAccount"]] = relationship(
+    social_accounts: Mapped[list[TeamSocialAccount]] = relationship(
         "TeamSocialAccount", back_populates="team", cascade="all, delete-orphan"
     )
 
@@ -165,7 +165,7 @@ class SportsPlayer(Base):
 
     league: Mapped[SportsLeague] = relationship("SportsLeague")
     team: Mapped[SportsTeam | None] = relationship("SportsTeam")
-    plays: Mapped[list["SportsGamePlay"]] = relationship(
+    plays: Mapped[list[SportsGamePlay]] = relationship(
         "SportsGamePlay", back_populates="player_ref"
     )
 
@@ -265,26 +265,26 @@ class SportsGame(Base):
     away_team: Mapped[SportsTeam] = relationship(
         "SportsTeam", foreign_keys=[away_team_id], back_populates="away_games"
     )
-    team_boxscores: Mapped[list["SportsTeamBoxscore"]] = relationship(
+    team_boxscores: Mapped[list[SportsTeamBoxscore]] = relationship(
         "SportsTeamBoxscore", back_populates="game", cascade="all, delete-orphan"
     )
-    player_boxscores: Mapped[list["SportsPlayerBoxscore"]] = relationship(
+    player_boxscores: Mapped[list[SportsPlayerBoxscore]] = relationship(
         "SportsPlayerBoxscore", back_populates="game", cascade="all, delete-orphan"
     )
-    odds: Mapped[list["SportsGameOdds"]] = relationship(
+    odds: Mapped[list[SportsGameOdds]] = relationship(
         "SportsGameOdds", back_populates="game", cascade="all, delete-orphan"
     )
-    social_posts: Mapped[list["TeamSocialPost"]] = relationship(
+    social_posts: Mapped[list[TeamSocialPost]] = relationship(
         "TeamSocialPost",
         primaryjoin="and_(SportsGame.id == TeamSocialPost.game_id, TeamSocialPost.mapping_status == 'mapped')",
         foreign_keys="[TeamSocialPost.game_id]",
         viewonly=True,
         lazy="select",
     )
-    plays: Mapped[list["SportsGamePlay"]] = relationship(
+    plays: Mapped[list[SportsGamePlay]] = relationship(
         "SportsGamePlay", back_populates="game", cascade="all, delete-orphan"
     )
-    timeline_artifacts: Mapped[list["SportsGameTimelineArtifact"]] = relationship(
+    timeline_artifacts: Mapped[list[SportsGameTimelineArtifact]] = relationship(
         "SportsGameTimelineArtifact",
         back_populates="game",
         cascade="all, delete-orphan",
@@ -467,11 +467,11 @@ class SportsGamePlay(Base):
         DateTime(timezone=True), nullable=False
     )
 
-    game: Mapped["SportsGame"] = relationship("SportsGame", back_populates="plays")
-    team: Mapped["SportsTeam | None"] = relationship(
+    game: Mapped[SportsGame] = relationship("SportsGame", back_populates="plays")
+    team: Mapped[SportsTeam | None] = relationship(
         "SportsTeam", foreign_keys=[team_id]
     )
-    player_ref: Mapped["SportsPlayer | None"] = relationship(
+    player_ref: Mapped[SportsPlayer | None] = relationship(
         "SportsPlayer", back_populates="plays"
     )
 

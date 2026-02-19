@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -805,7 +805,7 @@ class TestNCAABBoxscoreFetcherFullBoxscore:
 
         game = NCAABLiveGame(
             game_id=123,
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             status="final",
             season=2024,
             home_team_id=1,
@@ -840,7 +840,7 @@ class TestNCAABBoxscoreFetcherFullBoxscore:
 
         game = NCAABLiveGame(
             game_id=123,
-            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, tzinfo=UTC),
             status="final",
             season=2024,
             home_team_id=1,
@@ -888,7 +888,7 @@ class TestNCAABBoxscoreFetcherFullBoxscore:
         result = fetcher.fetch_boxscore_by_id(
             game_id=123,
             season=2024,
-            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, tzinfo=UTC),
             home_team_name="Duke",
             away_team_name="UNC",
         )
@@ -913,7 +913,7 @@ class TestNCAABBoxscoreFetcherFullBoxscore:
         result = fetcher.fetch_boxscore_by_id(
             game_id=999,
             season=2024,
-            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, tzinfo=UTC),
             home_team_name="Duke",
             away_team_name="UNC",
         )
@@ -939,7 +939,7 @@ class TestNCAABBoxscoreFetcherFullBoxscore:
         result = fetcher.fetch_boxscore_by_id(
             game_id=999,  # Not in response
             season=2024,
-            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, tzinfo=UTC),
             home_team_name="Duke",
             away_team_name="UNC",
         )

@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Sequence
 
 from fastapi import HTTPException
 from sqlalchemy import Select
 from sqlalchemy.sql import or_
 
 from ...celery_client import get_celery_app
-from ...db.sports import SportsGame, SportsTeam, SportsLeague
-from ...db.social import TeamSocialPost
-from ...db.scraper import SportsScrapeRun
 from ...db import AsyncSession
+from ...db.scraper import SportsScrapeRun
+from ...db.social import TeamSocialPost
+from ...db.sports import SportsGame, SportsLeague, SportsTeam
 from ...game_metadata.models import GameContext, StandingsEntry, TeamRatings
 from .schemas import GameSummary, JobResponse, ScrapeRunConfig, SocialPostEntry
 
@@ -353,7 +353,7 @@ def serialize_social_posts(
 
 
 async def enqueue_single_game_run(
-    session: "AsyncSession",
+    session: AsyncSession,
     game: SportsGame,
     *,
     include_boxscores: bool,

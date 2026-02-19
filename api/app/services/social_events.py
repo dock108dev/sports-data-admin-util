@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any
 
 from ..db.social import TeamSocialPost
 

@@ -17,12 +17,12 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.normalization import (
-    normalize_team_name,
-    TEAM_MAPPINGS,
+    MLB_TEAMS,
     NBA_TEAMS,
     NFL_TEAMS,
     NHL_TEAMS,
-    MLB_TEAMS,
+    TEAM_MAPPINGS,
+    normalize_team_name,
 )
 
 

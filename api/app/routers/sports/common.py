@@ -9,13 +9,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 
 from ...db import AsyncSession
-from ...db.sports import (
-    SportsLeague,
-    SportsTeamBoxscore,
-    SportsPlayerBoxscore,
-    SportsGamePlay,
-)
 from ...db.scraper import SportsScrapeRun
+from ...db.sports import (
+    SportsGamePlay,
+    SportsLeague,
+    SportsPlayerBoxscore,
+    SportsTeamBoxscore,
+)
 from .schemas import (
     NHLGoalieStat,
     NHLSkaterStat,

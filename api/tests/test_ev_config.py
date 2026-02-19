@@ -12,8 +12,8 @@ from app.services.ev_config import (
     ConfidenceTier,
     EligibilityResult,
     EVStrategyConfig,
-    get_strategy,
     get_fairbet_debug_game_ids,
+    get_strategy,
 )
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -273,8 +273,8 @@ def _find_game_by_abbr(
         logger.warning("live_feed_team_not_found", league=league_code, home=home_abbr, away=away_abbr)
         return None
 
-    day_start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
-    day_end = datetime.combine(day, datetime.max.time(), tzinfo=timezone.utc)
+    day_start = datetime.combine(day, datetime.min.time(), tzinfo=UTC)
+    day_end = datetime.combine(day, datetime.max.time(), tzinfo=UTC)
     return (
         session.query(db_models.SportsGame)
         .filter(db_models.SportsGame.league_id == league.id)

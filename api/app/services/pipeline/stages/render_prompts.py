@@ -7,10 +7,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .render_validation import FORBIDDEN_WORDS
-from .render_helpers import detect_overtime_info
 from .game_stats_helpers import compute_lead_context
-
+from .render_helpers import detect_overtime_info
+from .render_validation import FORBIDDEN_WORDS
 
 # Game-level flow pass prompt - intentionally tight and low-token
 GAME_FLOW_PASS_PROMPT = """You are given the full Game Flow for a single game as a sequence of blocks.

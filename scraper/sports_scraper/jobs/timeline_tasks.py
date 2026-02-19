@@ -6,9 +6,9 @@ from celery import shared_task
 
 from ..logging import logger
 from ..services.timeline_generator import (
-    generate_missing_timelines,
-    generate_all_needed_timelines,
     SCHEDULED_DAYS_BACK,
+    generate_all_needed_timelines,
+    generate_missing_timelines,
 )
 
 
@@ -79,6 +79,7 @@ def regenerate_timeline_task(
         Result dict with success/failure status
     """
     import httpx
+
     from ..api_client import get_api_headers
     from ..config import settings
 

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-import pytest
 
 # Ensure the scraper package is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -25,8 +24,8 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.persistence.games import (
     _normalize_status,
-    resolve_status_transition,
     merge_external_ids,
+    resolve_status_transition,
 )
 
 
@@ -188,15 +187,15 @@ class TestNormalizeNcaabNameForMatching:
 # Tests for persistence/boxscores.py
 # ============================================================================
 
-from sports_scraper.persistence.boxscores import (
-    _validate_nhl_player_boxscore,
-    _build_team_stats,
-    _build_player_stats,
-)
 from sports_scraper.models import (
-    TeamIdentity,
-    NormalizedTeamBoxscore,
     NormalizedPlayerBoxscore,
+    NormalizedTeamBoxscore,
+    TeamIdentity,
+)
+from sports_scraper.persistence.boxscores import (
+    _build_player_stats,
+    _build_team_stats,
+    _validate_nhl_player_boxscore,
 )
 
 
@@ -357,8 +356,9 @@ class TestBuildPlayerStats:
 # Tests for utils/datetime_utils.py
 # ============================================================================
 
+from datetime import UTC, date
 from unittest.mock import patch
-from datetime import date
+
 from sports_scraper.utils.datetime_utils import today_et
 
 
@@ -369,7 +369,7 @@ class TestTodayEt:
         """At 11 PM UTC (6 PM ET during EST), today_et() should return
         the ET date (same calendar day), not the UTC date."""
         # 2026-02-06 23:00 UTC = 2026-02-06 18:00 EST
-        mock_now = datetime(2026, 2, 6, 23, 0, 0, tzinfo=timezone.utc)
+        mock_now = datetime(2026, 2, 6, 23, 0, 0, tzinfo=UTC)
         with patch("sports_scraper.utils.datetime_utils.datetime") as mock_dt:
             mock_dt.now.return_value = mock_now.astimezone(
                 __import__("zoneinfo", fromlist=["ZoneInfo"]).ZoneInfo("America/New_York")
@@ -382,7 +382,7 @@ class TestTodayEt:
         """At 3 AM UTC (10 PM ET previous day during EST), today_et()
         should return the previous day's date in ET."""
         # 2026-02-06 03:00 UTC = 2026-02-05 22:00 EST
-        mock_now = datetime(2026, 2, 6, 3, 0, 0, tzinfo=timezone.utc)
+        mock_now = datetime(2026, 2, 6, 3, 0, 0, tzinfo=UTC)
         with patch("sports_scraper.utils.datetime_utils.datetime") as mock_dt:
             mock_dt.now.return_value = mock_now.astimezone(
                 __import__("zoneinfo", fromlist=["ZoneInfo"]).ZoneInfo("America/New_York")
@@ -395,7 +395,7 @@ class TestTodayEt:
         """At midnight UTC (7 PM ET previous day during EST), today_et()
         should return the previous day's ET date."""
         # 2026-02-06 00:00 UTC = 2026-02-05 19:00 EST
-        mock_now = datetime(2026, 2, 6, 0, 0, 0, tzinfo=timezone.utc)
+        mock_now = datetime(2026, 2, 6, 0, 0, 0, tzinfo=UTC)
         with patch("sports_scraper.utils.datetime_utils.datetime") as mock_dt:
             mock_dt.now.return_value = mock_now.astimezone(
                 __import__("zoneinfo", fromlist=["ZoneInfo"]).ZoneInfo("America/New_York")
@@ -416,6 +416,7 @@ class TestTodayEt:
 # ============================================================================
 
 from unittest.mock import MagicMock
+
 from sports_scraper.social.tweet_mapper import classify_game_phase
 
 
@@ -442,73 +443,73 @@ class TestClassifyGamePhase:
     def test_tweet_before_tip_time_is_pregame(self):
         """A tweet posted before tip_time is pregame."""
         game = _make_game(
-            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),  # 7 PM EST
-            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
+            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=UTC),  # 7 PM EST
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=UTC),
         )
-        posted_at = datetime(2026, 2, 5, 22, 0, tzinfo=timezone.utc)
+        posted_at = datetime(2026, 2, 5, 22, 0, tzinfo=UTC)
         assert classify_game_phase(posted_at, game) == "pregame"
 
     def test_tweet_at_tip_time_is_in_game(self):
         """A tweet posted exactly at tip_time is in_game."""
-        tip = datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc)
+        tip = datetime(2026, 2, 6, 0, 0, tzinfo=UTC)
         game = _make_game(
             tip_time=tip,
-            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=UTC),
         )
         assert classify_game_phase(tip, game) == "in_game"
 
     def test_tweet_during_game_is_in_game(self):
         """A tweet posted during the game (between start and end) is in_game."""
         game = _make_game(
-            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
-            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
-            end_time=datetime(2026, 2, 6, 2, 30, tzinfo=timezone.utc),
+            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=UTC),
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=UTC),
+            end_time=datetime(2026, 2, 6, 2, 30, tzinfo=UTC),
         )
-        posted_at = datetime(2026, 2, 6, 1, 0, tzinfo=timezone.utc)
+        posted_at = datetime(2026, 2, 6, 1, 0, tzinfo=UTC)
         assert classify_game_phase(posted_at, game) == "in_game"
 
     def test_tweet_after_end_time_is_postgame(self):
         """A tweet posted after end_time is postgame."""
         game = _make_game(
-            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
-            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
-            end_time=datetime(2026, 2, 6, 2, 30, tzinfo=timezone.utc),
+            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=UTC),
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=UTC),
+            end_time=datetime(2026, 2, 6, 2, 30, tzinfo=UTC),
         )
-        posted_at = datetime(2026, 2, 6, 3, 0, tzinfo=timezone.utc)
+        posted_at = datetime(2026, 2, 6, 3, 0, tzinfo=UTC)
         assert classify_game_phase(posted_at, game) == "postgame"
 
     def test_no_tip_time_uses_7pm_et_fallback(self):
         """When tip_time is None and game_date is midnight, falls back to 7 PM ET."""
         game = _make_game(
-            game_date=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
+            game_date=datetime(2026, 2, 6, 0, 0, tzinfo=UTC),
         )
         # 11 PM UTC on Feb 6 is before midnight UTC Feb 7 (7 PM EST) → pregame
-        posted_at = datetime(2026, 2, 6, 23, 0, tzinfo=timezone.utc)
+        posted_at = datetime(2026, 2, 6, 23, 0, tzinfo=UTC)
         assert classify_game_phase(posted_at, game) == "pregame"
 
     def test_no_end_time_uses_sport_duration(self):
         """NBA game without end_time uses 2.5h estimated duration."""
         game = _make_game(
-            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
-            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
+            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=UTC),
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=UTC),
             league_code="NBA",
         )
         # 2h in → in_game (within 2.5h NBA duration)
         assert classify_game_phase(
-            datetime(2026, 2, 6, 2, 0, tzinfo=timezone.utc), game
+            datetime(2026, 2, 6, 2, 0, tzinfo=UTC), game
         ) == "in_game"
 
         # 3h in → postgame (past 2.5h NBA duration)
         assert classify_game_phase(
-            datetime(2026, 2, 6, 3, 0, tzinfo=timezone.utc), game
+            datetime(2026, 2, 6, 3, 0, tzinfo=UTC), game
         ) == "postgame"
 
     def test_tweet_at_end_time_is_in_game(self):
         """A tweet posted exactly at end_time is still in_game (boundary inclusive)."""
-        end = datetime(2026, 2, 6, 2, 30, tzinfo=timezone.utc)
+        end = datetime(2026, 2, 6, 2, 30, tzinfo=UTC)
         game = _make_game(
-            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
-            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
+            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=UTC),
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=UTC),
             end_time=end,
         )
         assert classify_game_phase(end, game) == "in_game"
@@ -516,30 +517,30 @@ class TestClassifyGamePhase:
     def test_morning_tweet_on_gameday_is_pregame(self):
         """A tweet at 10 AM ET on game day should be pregame."""
         game = _make_game(
-            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
-            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc),
+            tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=UTC),
+            game_date=datetime(2026, 2, 5, 0, 0, tzinfo=UTC),
         )
         # 10 AM EST = 15:00 UTC on Feb 5
-        posted_at = datetime(2026, 2, 5, 15, 0, tzinfo=timezone.utc)
+        posted_at = datetime(2026, 2, 5, 15, 0, tzinfo=UTC)
         assert classify_game_phase(posted_at, game) == "pregame"
 
     def test_postgame_tweet_crosses_midnight_et(self):
         """A postgame tweet at 1 AM ET the next day is still postgame."""
         # Game tips 10 PM EST (03:00 UTC), ends ~12:30 AM EST (05:30 UTC)
         game = _make_game(
-            tip_time=datetime(2026, 2, 7, 3, 0, tzinfo=timezone.utc),
-            game_date=datetime(2026, 2, 6, 0, 0, tzinfo=timezone.utc),
-            end_time=datetime(2026, 2, 7, 5, 30, tzinfo=timezone.utc),
+            tip_time=datetime(2026, 2, 7, 3, 0, tzinfo=UTC),
+            game_date=datetime(2026, 2, 6, 0, 0, tzinfo=UTC),
+            end_time=datetime(2026, 2, 7, 5, 30, tzinfo=UTC),
         )
         # 1 AM EST Feb 7 = 06:00 UTC Feb 7 → postgame
-        posted_at = datetime(2026, 2, 7, 6, 0, tzinfo=timezone.utc)
+        posted_at = datetime(2026, 2, 7, 6, 0, tzinfo=UTC)
         assert classify_game_phase(posted_at, game) == "postgame"
 
 
+from sports_scraper.models import NormalizedOddsSnapshot
 from sports_scraper.persistence.odds_matching import (
     canonicalize_team_names,
 )
-from sports_scraper.models import NormalizedOddsSnapshot
 
 
 class TestCanonicalizeTeamNames:
@@ -552,10 +553,10 @@ class TestCanonicalizeTeamNames:
             league_code="NBA",
             book="Pinnacle",
             market_type="spread",
-            observed_at=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            observed_at=datetime(2024, 1, 15, tzinfo=UTC),
             home_team=home,
             away_team=away,
-            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, tzinfo=UTC),
         )
         home_name, away_name = canonicalize_team_names(snapshot)
         assert isinstance(home_name, str)

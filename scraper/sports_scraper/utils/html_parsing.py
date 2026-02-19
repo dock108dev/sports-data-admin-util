@@ -57,14 +57,14 @@ def find_table_by_id(soup: BeautifulSoup, table_id: str, alternate_ids: list[str
     table = soup.find("table", id=table_id)
     if table:
         return table
-    
+
     if alternate_ids:
         for alt_id in alternate_ids:
             table = soup.find("table", id=alt_id)
             if table:
                 logger.debug("table_found_alternate", primary_id=table_id, found_id=alt_id)
                 return table
-    
+
     return None
 
 
@@ -102,7 +102,7 @@ def extract_team_stats_from_table(table: Tag, team_abbr: str, table_id: str) -> 
             # Skip empty values - do not store empty strings
             if value:
                 totals[stat] = value
-    
+
     logger.debug(
         "team_stats_extracted",
         team_abbr=team_abbr,

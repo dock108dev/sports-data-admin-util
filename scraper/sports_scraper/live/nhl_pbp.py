@@ -16,8 +16,8 @@ from ..utils.parsing import parse_int
 from .nhl_constants import (
     NHL_EVENT_TYPE_MAP,
     NHL_MIN_EXPECTED_PLAYS,
-    NHL_PERIOD_MULTIPLIER,
     NHL_PBP_URL,
+    NHL_PERIOD_MULTIPLIER,
 )
 
 
@@ -270,9 +270,7 @@ class NHLPbpFetcher:
         """Extract the primary player ID from event details."""
         if type_desc_key == "goal":
             return parse_int(details.get("scoringPlayerId"))
-        elif type_desc_key == "shot-on-goal":
-            return parse_int(details.get("shootingPlayerId"))
-        elif type_desc_key == "missed-shot":
+        elif type_desc_key == "shot-on-goal" or type_desc_key == "missed-shot":
             return parse_int(details.get("shootingPlayerId"))
         elif type_desc_key == "blocked-shot":
             return parse_int(details.get("blockingPlayerId"))
@@ -282,9 +280,7 @@ class NHLPbpFetcher:
             return parse_int(details.get("committedByPlayerId"))
         elif type_desc_key == "faceoff":
             return parse_int(details.get("winningPlayerId"))
-        elif type_desc_key == "giveaway":
-            return parse_int(details.get("playerId"))
-        elif type_desc_key == "takeaway":
+        elif type_desc_key == "giveaway" or type_desc_key == "takeaway":
             return parse_int(details.get("playerId"))
 
         # Generic fallback

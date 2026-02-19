@@ -12,7 +12,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 # Maximum points from a single basketball play (3-pointer).
 # A score_delta exceeding this indicates dropped PBP events.
 _MAX_SINGLE_PLAY_SCORE = 3

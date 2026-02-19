@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from sports_scraper.services.pbp_ingestion import (
-    select_games_for_pbp_nba_api,
-    select_games_for_pbp_nhl_api,
-    select_games_for_pbp_ncaab_api,
     ingest_pbp_via_nba_api,
-    ingest_pbp_via_sportsref,
-    ingest_pbp_via_nhl_api,
     ingest_pbp_via_ncaab_api,
+    ingest_pbp_via_nhl_api,
+    ingest_pbp_via_sportsref,
     populate_nba_game_ids,
     populate_nhl_game_ids,
+    select_games_for_pbp_nba_api,
+    select_games_for_pbp_ncaab_api,
+    select_games_for_pbp_nhl_api,
 )
 
 
@@ -102,7 +100,7 @@ class TestSelectGamesForPbpNbaApi:
             start_date=date(2024, 10, 1),
             end_date=date(2024, 10, 31),
             only_missing=False,
-            updated_before=datetime(2024, 10, 15, tzinfo=timezone.utc),
+            updated_before=datetime(2024, 10, 15, tzinfo=UTC),
         )
 
         # Verify filter was applied
@@ -226,8 +224,8 @@ class TestIngestPbpViaNbaApi:
     @patch("sports_scraper.services.pbp_nba.select_games_for_pbp_nba_api")
     def test_warns_on_insufficient_plays_for_final_game(self, mock_select, mock_populate, mock_client_class, mock_upsert):
         """Warns when final game has too few plays."""
-        from sports_scraper.models import NormalizedPlay
         from sports_scraper.db import db_models
+        from sports_scraper.models import NormalizedPlay
 
         mock_session = MagicMock()
         mock_select.return_value = [(1, "0022400123")]
@@ -406,7 +404,7 @@ class TestSelectGamesForPbpNhlApi:
             start_date=date(2024, 10, 1),
             end_date=date(2024, 10, 31),
             only_missing=False,
-            updated_before=datetime(2024, 10, 15, tzinfo=timezone.utc),
+            updated_before=datetime(2024, 10, 15, tzinfo=UTC),
         )
 
         # Verify filter was applied
@@ -517,7 +515,7 @@ class TestSelectGamesForPbpNcaabApi:
             start_date=date(2025, 1, 1),
             end_date=date(2025, 1, 31),
             only_missing=False,
-            updated_before=datetime(2025, 1, 15, tzinfo=timezone.utc),
+            updated_before=datetime(2025, 1, 15, tzinfo=UTC),
         )
 
         # Verify filter was applied
@@ -749,8 +747,8 @@ class TestIngestPbpViaNhlApi:
     @patch("sports_scraper.services.pbp_nhl.select_games_for_pbp_nhl_api")
     def test_warns_on_insufficient_plays_for_final_game(self, mock_select, mock_populate, mock_client_class, mock_upsert):
         """Warns when final game has too few plays."""
-        from sports_scraper.models import NormalizedPlay
         from sports_scraper.db import db_models
+        from sports_scraper.models import NormalizedPlay
 
         mock_session = MagicMock()
         mock_select.return_value = [(1, 2025020001)]
@@ -892,8 +890,8 @@ class TestIngestPbpViaNcaabApi:
     @patch("sports_scraper.services.pbp_ncaab.select_games_for_pbp_ncaab_api")
     def test_warns_on_insufficient_plays_for_final_game(self, mock_select, mock_populate, mock_client_class, mock_upsert):
         """Warns when final game has too few plays."""
-        from sports_scraper.models import NormalizedPlay
         from sports_scraper.db import db_models
+        from sports_scraper.models import NormalizedPlay
 
         mock_session = MagicMock()
         mock_select.return_value = [(1, 123456, "final")]
@@ -974,7 +972,7 @@ class TestPopulateNhlGameIds:
         mock_league = MagicMock(id=1)
 
         # Mock game row: (game_id, game_date, home_team_id, away_team_id)
-        mock_game_row = (100, datetime(2024, 10, 15, 19, 0, tzinfo=timezone.utc), 10, 20)
+        mock_game_row = (100, datetime(2024, 10, 15, 19, 0, tzinfo=UTC), 10, 20)
 
         # Mock teams
         mock_team1 = MagicMock(id=10, abbreviation="BOS")
@@ -1011,7 +1009,7 @@ class TestPopulateNhlGameIds:
         mock_nhl_game = MagicMock()
         mock_nhl_game.home_team = MagicMock(abbreviation="BOS")
         mock_nhl_game.away_team = MagicMock(abbreviation="NYR")
-        mock_nhl_game.game_date = datetime(2024, 10, 15, 19, 0, tzinfo=timezone.utc)
+        mock_nhl_game.game_date = datetime(2024, 10, 15, 19, 0, tzinfo=UTC)
         mock_nhl_game.game_id = 2024020100
         mock_client.fetch_schedule.return_value = [mock_nhl_game]
         mock_client_class.return_value = mock_client
@@ -1034,7 +1032,7 @@ class TestPopulateNhlGameIds:
         mock_league = MagicMock(id=1)
 
         # Mock game row with team IDs that won't match
-        mock_game_row = (100, datetime(2024, 10, 15, 19, 0, tzinfo=timezone.utc), 10, 20)
+        mock_game_row = (100, datetime(2024, 10, 15, 19, 0, tzinfo=UTC), 10, 20)
 
         # Mock teams
         mock_team1 = MagicMock(id=10, abbreviation="BOS")
@@ -1061,7 +1059,7 @@ class TestPopulateNhlGameIds:
         mock_nhl_game = MagicMock()
         mock_nhl_game.home_team = MagicMock(abbreviation="LAK")  # Different team
         mock_nhl_game.away_team = MagicMock(abbreviation="CHI")  # Different team
-        mock_nhl_game.game_date = datetime(2024, 10, 15, 19, 0, tzinfo=timezone.utc)
+        mock_nhl_game.game_date = datetime(2024, 10, 15, 19, 0, tzinfo=UTC)
         mock_nhl_game.game_id = 2024020100
         mock_client.fetch_schedule.return_value = [mock_nhl_game]
         mock_client_class.return_value = mock_client

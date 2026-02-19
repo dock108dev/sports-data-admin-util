@@ -399,8 +399,9 @@ class TestPersist:
     @pytest.mark.asyncio
     async def test_empty_attempts_returns_early(self):
         """Empty attempts list returns 0 without db interaction."""
-        from app.services.resolution_tracker import ResolutionTracker
         from unittest.mock import AsyncMock
+
+        from app.services.resolution_tracker import ResolutionTracker
 
         tracker = ResolutionTracker(game_id=123)
         mock_session = AsyncMock()
@@ -414,8 +415,9 @@ class TestPersist:
     @pytest.mark.asyncio
     async def test_persist_team_resolutions(self):
         """Team resolutions are persisted to database."""
-        from app.services.resolution_tracker import ResolutionTracker
         from unittest.mock import AsyncMock, patch
+
+        from app.services.resolution_tracker import ResolutionTracker
 
         tracker = ResolutionTracker(game_id=123, pipeline_run_id=456)
         tracker.track_team(
@@ -437,8 +439,9 @@ class TestPersist:
     @pytest.mark.asyncio
     async def test_persist_player_resolutions(self):
         """Player resolutions are persisted to database."""
-        from app.services.resolution_tracker import ResolutionTracker
         from unittest.mock import AsyncMock, patch
+
+        from app.services.resolution_tracker import ResolutionTracker
 
         tracker = ResolutionTracker(game_id=123)
         tracker.track_player(
@@ -458,8 +461,9 @@ class TestPersist:
     @pytest.mark.asyncio
     async def test_persist_mixed_resolutions(self):
         """Both team and player resolutions are persisted."""
-        from app.services.resolution_tracker import ResolutionTracker
         from unittest.mock import AsyncMock, patch
+
+        from app.services.resolution_tracker import ResolutionTracker
 
         tracker = ResolutionTracker(game_id=123, pipeline_run_id=789)
         tracker.track_team("LAL", resolved_id=1)
@@ -476,8 +480,9 @@ class TestPersist:
     @pytest.mark.asyncio
     async def test_persist_includes_occurrence_count(self):
         """Occurrence count is included in persisted records."""
-        from app.services.resolution_tracker import ResolutionTracker
         from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.services.resolution_tracker import ResolutionTracker
 
         tracker = ResolutionTracker(game_id=123)
         tracker.track_team("LAL", resolved_id=1, play_index=1)
@@ -508,8 +513,9 @@ class TestGetResolutionSummaryForGame:
     @pytest.mark.asyncio
     async def test_no_records_found(self):
         """Returns empty summary when no records exist."""
-        from app.services.resolution_queries import get_resolution_summary_for_game
         from unittest.mock import AsyncMock, MagicMock
+
+        from app.services.resolution_queries import get_resolution_summary_for_game
 
         mock_session = AsyncMock()
         mock_result = MagicMock()
@@ -525,8 +531,9 @@ class TestGetResolutionSummaryForGame:
     @pytest.mark.asyncio
     async def test_mixed_resolutions(self):
         """Summary correctly aggregates mixed team/player resolutions."""
-        from app.services.resolution_queries import get_resolution_summary_for_game
         from unittest.mock import AsyncMock, MagicMock
+
+        from app.services.resolution_queries import get_resolution_summary_for_game
 
         # Create mock records
         mock_team_success = MagicMock(
@@ -584,8 +591,9 @@ class TestGetResolutionSummaryForGame:
     @pytest.mark.asyncio
     async def test_calculates_rates(self):
         """Resolution rates are calculated correctly."""
-        from app.services.resolution_queries import get_resolution_summary_for_game
         from unittest.mock import AsyncMock, MagicMock
+
+        from app.services.resolution_queries import get_resolution_summary_for_game
 
         # 3 teams: 2 resolved, 1 failed = 66.7% rate
         mock_records = [
@@ -641,8 +649,9 @@ class TestGetResolutionSummaryForRun:
     @pytest.mark.asyncio
     async def test_run_not_found(self):
         """Returns None when run doesn't exist."""
-        from app.services.resolution_queries import get_resolution_summary_for_run
         from unittest.mock import AsyncMock, MagicMock
+
+        from app.services.resolution_queries import get_resolution_summary_for_run
 
         mock_session = AsyncMock()
         mock_result = MagicMock()
@@ -656,8 +665,9 @@ class TestGetResolutionSummaryForRun:
     @pytest.mark.asyncio
     async def test_with_resolutions(self):
         """Returns summary with resolutions for existing run."""
-        from app.services.resolution_queries import get_resolution_summary_for_run
         from unittest.mock import AsyncMock, MagicMock
+
+        from app.services.resolution_queries import get_resolution_summary_for_run
 
         # Mock the run lookup
         mock_run = MagicMock(id=456, game_id=123)
@@ -699,8 +709,9 @@ class TestGetResolutionSummaryForRun:
     @pytest.mark.asyncio
     async def test_ambiguous_teams_tracked(self):
         """Ambiguous team resolutions are tracked separately."""
-        from app.services.resolution_queries import get_resolution_summary_for_run
         from unittest.mock import AsyncMock, MagicMock
+
+        from app.services.resolution_queries import get_resolution_summary_for_run
 
         mock_run = MagicMock(id=456, game_id=123)
 

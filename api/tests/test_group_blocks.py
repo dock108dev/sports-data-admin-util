@@ -4,20 +4,20 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.pipeline.stages.block_types import (
-    MIN_BLOCKS,
-    MAX_BLOCKS,
-    SemanticRole,
-)
 from app.services.pipeline.models import StageInput
 from app.services.pipeline.stages.block_analysis import (
+    BLOWOUT_MARGIN_THRESHOLD,
     count_lead_changes,
-    find_lead_change_indices,
-    find_scoring_runs,
-    find_period_boundaries,
     detect_blowout,
     find_garbage_time_start,
-    BLOWOUT_MARGIN_THRESHOLD,
+    find_lead_change_indices,
+    find_period_boundaries,
+    find_scoring_runs,
+)
+from app.services.pipeline.stages.block_types import (
+    MAX_BLOCKS,
+    MIN_BLOCKS,
+    SemanticRole,
 )
 from app.services.pipeline.stages.group_blocks import execute_group_blocks
 from app.services.pipeline.stages.group_helpers import (
@@ -27,9 +27,9 @@ from app.services.pipeline.stages.group_helpers import (
 )
 from app.services.pipeline.stages.group_roles import assign_roles
 from app.services.pipeline.stages.group_split_points import (
+    compress_blowout_blocks,
     find_split_points,
     find_weighted_split_points,
-    compress_blowout_blocks,
 )
 
 
@@ -489,7 +489,6 @@ class TestFindWeightedSplitPoints:
 
     def test_nba_q4_emphasis(self) -> None:
         """NBA games should emphasize Q4 with late-game amplification."""
-        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         moments = []
         for period in [1, 2, 3, 4]:
@@ -510,7 +509,6 @@ class TestFindWeightedSplitPoints:
 
     def test_ncaab_half_structure(self) -> None:
         """NCAAB games use half structure with H2 emphasis."""
-        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         moments = []
         for period in [1, 2]:  # NCAAB uses halves stored as Q1, Q2
@@ -530,7 +528,6 @@ class TestFindWeightedSplitPoints:
 
     def test_nhl_three_periods(self) -> None:
         """NHL games use 3 period structure."""
-        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         moments = []
         for period in [1, 2, 3]:  # NHL periods stored as Q1, Q2, Q3
@@ -550,7 +547,6 @@ class TestFindWeightedSplitPoints:
 
     def test_q1_hard_cap_enforced(self) -> None:
         """Q1 gets max 1 block unless it's the peak quarter."""
-        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         # Create moments with lots of Q1 activity
         moments = []
@@ -579,7 +575,6 @@ class TestFindWeightedSplitPoints:
 
     def test_peak_quarter_gets_minimum_blocks(self) -> None:
         """Peak drama quarter should get at least 2 blocks if target >= 4."""
-        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         moments = []
         for period in [1, 2, 3, 4]:
@@ -614,7 +609,6 @@ class TestFindWeightedSplitPoints:
 
     def test_deficit_backfill_respects_priority(self) -> None:
         """Deficit filling should prioritize higher-weight, later quarters."""
-        from app.services.pipeline.stages.group_split_points import find_weighted_split_points
 
         moments = []
         for period in [1, 2, 3, 4]:
@@ -641,7 +635,6 @@ class TestSelectKeyPlays:
 
     def test_lead_change_highest_priority(self) -> None:
         """Lead change plays get highest priority."""
-        from app.services.pipeline.stages.group_helpers import select_key_plays
 
         moments = [
             {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": []},
@@ -658,7 +651,6 @@ class TestSelectKeyPlays:
 
     def test_scoring_plays_ranked(self) -> None:
         """Scoring plays are prioritized."""
-        from app.services.pipeline.stages.group_helpers import select_key_plays
 
         moments = [
             {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": []},
@@ -675,7 +667,6 @@ class TestSelectKeyPlays:
 
     def test_fallback_to_last_play(self) -> None:
         """Falls back to last play if no better options."""
-        from app.services.pipeline.stages.group_helpers import select_key_plays
 
         moments = [
             {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": []},
@@ -693,7 +684,6 @@ class TestSelectKeyPlays:
 
     def test_max_three_key_plays(self) -> None:
         """No more than 3 key plays selected."""
-        from app.services.pipeline.stages.group_helpers import select_key_plays
 
         moments = [
             {"play_ids": list(range(1, 11)), "explicitly_narrated_play_ids": list(range(1, 11))},
@@ -709,7 +699,6 @@ class TestSelectKeyPlays:
 
     def test_explicitly_narrated_plays_boosted(self) -> None:
         """Explicitly narrated plays get priority boost."""
-        from app.services.pipeline.stages.group_helpers import select_key_plays
 
         moments = [
             {"play_ids": [1, 2, 3], "explicitly_narrated_play_ids": [2]},
@@ -888,7 +877,6 @@ class TestExecuteGroupBlocksExtended:
     @pytest.mark.asyncio
     async def test_blowout_game_compression(self) -> None:
         """Blowout games use compression strategy."""
-        from app.services.pipeline.stages.group_blocks import execute_group_blocks
 
         # Create a blowout scenario - sustained 20+ point margin
         moments = []
@@ -924,7 +912,6 @@ class TestExecuteGroupBlocksExtended:
     @pytest.mark.asyncio
     async def test_normal_game_with_drama_weights(self) -> None:
         """Normal game uses drama weights from ANALYZE_DRAMA."""
-        from app.services.pipeline.stages.group_blocks import execute_group_blocks
 
         moments = []
         for period in [1, 2, 3, 4]:
@@ -960,7 +947,6 @@ class TestExecuteGroupBlocksExtended:
     @pytest.mark.asyncio
     async def test_missing_moments_raises(self) -> None:
         """Missing moments raises ValueError."""
-        from app.services.pipeline.stages.group_blocks import execute_group_blocks
         import pytest
 
         stage_input = StageInput(
@@ -980,7 +966,6 @@ class TestExecuteGroupBlocksExtended:
     @pytest.mark.asyncio
     async def test_validation_required(self) -> None:
         """Validation must pass before grouping."""
-        from app.services.pipeline.stages.group_blocks import execute_group_blocks
         import pytest
 
         stage_input = StageInput(
@@ -1000,7 +985,6 @@ class TestExecuteGroupBlocksExtended:
     @pytest.mark.asyncio
     async def test_missing_previous_output_raises(self) -> None:
         """Missing previous output raises ValueError."""
-        from app.services.pipeline.stages.group_blocks import execute_group_blocks
         import pytest
 
         stage_input = StageInput(

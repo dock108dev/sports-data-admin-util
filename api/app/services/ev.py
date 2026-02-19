@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .ev_config import (
     INCLUDED_BOOKS,
-    EVStrategyConfig,
     EligibilityResult,
+    EVStrategyConfig,
     get_strategy,
 )
 
@@ -177,7 +177,7 @@ def evaluate_ev_eligibility(
         EligibilityResult with eligible=True or disabled_reason explaining why not.
     """
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
     # 1. Strategy exists?
     config = get_strategy(league_code, market_category)

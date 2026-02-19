@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from .utils.datetime_utils import now_utc
-
 from celery import Celery, signals
 from celery.schedules import crontab
 
 from .config import settings
 from .db import db_models, get_session
 from .logging import logger
+from .utils.datetime_utils import now_utc
 
 # Canonical queue names — import these instead of using string literals
 DEFAULT_QUEUE = "sports-scraper"
@@ -181,13 +180,13 @@ def mark_stale_runs_interrupted():
             # Find runs that have been running for more than 1 hour
             # (reasonable threshold - if a run is truly running, it should complete or fail)
             stale_threshold = now_utc() - timedelta(hours=1)
-            
+
             stale_runs = session.query(db_models.SportsScrapeRun).filter(
                 db_models.SportsScrapeRun.status == "running",
                 db_models.SportsScrapeRun.started_at.isnot(None),
                 db_models.SportsScrapeRun.started_at < stale_threshold,
             ).all()
-            
+
             if stale_runs:
                 for run in stale_runs:
                     run.status = "interrupted"
@@ -199,7 +198,7 @@ def mark_stale_runs_interrupted():
                         started_at=str(run.started_at),
                         hours_running=(now_utc() - run.started_at).total_seconds() / 3600,
                     )
-                
+
                 session.commit()
                 logger.info("stale_runs_marked_interrupted", count=len(stale_runs))
             else:
@@ -229,7 +228,7 @@ def on_worker_shutting_down(sender=None, **kwargs):
             running_runs = session.query(db_models.SportsScrapeRun).filter(
                 db_models.SportsScrapeRun.status == "running",
             ).all()
-            
+
             if running_runs:
                 for run in running_runs:
                     run.status = "interrupted"
@@ -240,7 +239,7 @@ def on_worker_shutting_down(sender=None, **kwargs):
                         run_id=run.id,
                         started_at=str(run.started_at),
                     )
-                
+
                 session.commit()
                 logger.info("runs_marked_interrupted_on_shutdown", count=len(running_runs))
     except Exception as exc:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -23,9 +22,9 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
-from sports_scraper.scrapers.ncaab_sportsref import NCAABSportsReferenceScraper
-from sports_scraper.scrapers.base import ScraperError
 from sports_scraper.models import TeamIdentity
+from sports_scraper.scrapers.base import ScraperError
+from sports_scraper.scrapers.ncaab_sportsref import NCAABSportsReferenceScraper
 
 
 class TestNCAABSportsReferenceScraperModuleImports:

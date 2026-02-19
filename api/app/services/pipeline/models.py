@@ -7,7 +7,7 @@ and individual stage implementations.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -39,7 +39,7 @@ class PipelineStage(str, Enum):
     FINALIZE_MOMENTS = "FINALIZE_MOMENTS"
 
     @classmethod
-    def ordered_stages(cls) -> list["PipelineStage"]:
+    def ordered_stages(cls) -> list[PipelineStage]:
         """Return stages in execution order."""
         return [
             cls.NORMALIZE_PBP,
@@ -52,7 +52,7 @@ class PipelineStage(str, Enum):
             cls.FINALIZE_MOMENTS,
         ]
 
-    def next_stage(self) -> "PipelineStage | None":
+    def next_stage(self) -> PipelineStage | None:
         """Return the next stage in the pipeline, or None if this is the last."""
         stages = self.ordered_stages()
         try:
@@ -63,7 +63,7 @@ class PipelineStage(str, Enum):
         except ValueError:
             return None
 
-    def previous_stage(self) -> "PipelineStage | None":
+    def previous_stage(self) -> PipelineStage | None:
         """Return the previous stage in the pipeline, or None if this is the first."""
         stages = self.ordered_stages()
         try:
@@ -108,7 +108,7 @@ class StageOutput:
         """Add a log entry."""
         self.logs.append(
             {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": level,
                 "message": message,
             }

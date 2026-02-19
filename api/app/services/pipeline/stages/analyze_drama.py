@@ -24,8 +24,8 @@ import json
 import logging
 from typing import Any
 
-from ..models import StageInput, StageOutput
 from ...openai_client import get_openai_client
+from ..models import StageInput, StageOutput
 
 logger = logging.getLogger(__name__)
 

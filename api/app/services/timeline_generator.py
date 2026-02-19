@@ -31,11 +31,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from ..db import AsyncSession
-from ..db.odds import SportsGameOdds
-from ..db.sports import SportsGame, SportsGamePlay
-from ..db.social import TeamSocialPost
 from ..db.flow import SportsGameTimelineArtifact
+from ..db.odds import SportsGameOdds
+from ..db.social import TeamSocialPost
+from ..db.sports import SportsGame, SportsGamePlay
 from ..utils.datetime_utils import now_utc
+from .odds_events import build_odds_events
+from .social_events import build_social_events
+from .timeline_events import build_pbp_events, merge_timeline_events
+from .timeline_phases import compute_phase_boundaries, nba_game_end
 from .timeline_types import (
     DEFAULT_TIMELINE_VERSION,
     SOCIAL_POSTGAME_WINDOW_SECONDS,
@@ -43,12 +47,7 @@ from .timeline_types import (
     TimelineArtifactPayload,
     TimelineGenerationError,
 )
-from .timeline_phases import compute_phase_boundaries
-from .timeline_events import build_pbp_events, merge_timeline_events
-from .timeline_validation import validate_and_log, TimelineValidationError
-from .odds_events import build_odds_events
-from .social_events import build_social_events
-from .timeline_phases import nba_game_end
+from .timeline_validation import TimelineValidationError, validate_and_log
 
 logger = logging.getLogger(__name__)
 

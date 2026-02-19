@@ -25,8 +25,9 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import Any, Sequence
+from typing import Any
 
 from ..db.odds import SportsGameOdds
 

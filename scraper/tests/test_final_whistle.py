@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 
@@ -21,7 +21,7 @@ def _make_game(
     game.social_scrape_1_at = social_scrape_1_at
     game.home_team_id = home_team_id
     game.away_team_id = away_team_id
-    game.game_date = game_date or datetime(2026, 2, 5, 0, 0, tzinfo=timezone.utc)
+    game.game_date = game_date or datetime(2026, 2, 5, 0, 0, tzinfo=UTC)
     game.last_social_at = None
     return game
 
@@ -35,7 +35,7 @@ class TestFinalWhistleSocial:
         from sports_scraper.jobs.final_whistle_tasks import run_final_whistle_social
 
         game = _make_game(
-            social_scrape_1_at=datetime(2026, 2, 5, 3, 0, tzinfo=timezone.utc)
+            social_scrape_1_at=datetime(2026, 2, 5, 3, 0, tzinfo=UTC)
         )
         session = MagicMock()
         session.query.return_value.get.return_value = game

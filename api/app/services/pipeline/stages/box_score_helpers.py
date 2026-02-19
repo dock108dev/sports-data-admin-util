@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from .game_stats_helpers import _apply_basketball_scoring, _compute_single_team_delta, _extract_assister_from_description
+from .game_stats_helpers import (
+    _apply_basketball_scoring,
+    _compute_single_team_delta,
+    _extract_assister_from_description,
+)
 
 
 def compute_cumulative_box_score(

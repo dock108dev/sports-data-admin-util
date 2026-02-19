@@ -12,12 +12,12 @@ import logging
 import math
 from typing import Any
 
-from .block_types import MIN_BLOCKS
 from .block_analysis import (
     find_lead_change_indices,
-    find_scoring_runs,
     find_period_boundaries,
+    find_scoring_runs,
 )
+from .block_types import MIN_BLOCKS
 
 # Blowout games get fewer blocks (less narrative needed)
 BLOWOUT_MAX_BLOCKS = 5

@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     openai_model_summary: str = Field(default="gpt-4o", alias="OPENAI_MODEL_SUMMARY")
 
     @model_validator(mode="after")
-    def _default_empty_openai_models(self) -> "Settings":
+    def _default_empty_openai_models(self) -> Settings:
         """Treat empty-string model names as unset so the Field defaults apply."""
         if not self.openai_model_classification:
             self.openai_model_classification = "gpt-4o-mini"
@@ -100,7 +100,7 @@ class Settings(BaseSettings):
         return self.celery_result_backend or self.celery_broker
 
     @model_validator(mode="after")
-    def validate_runtime_settings(self) -> "Settings":
+    def validate_runtime_settings(self) -> Settings:
         if self.environment in {"production", "staging"}:
             if not self.allowed_cors_origins_raw:
                 raise ValueError(

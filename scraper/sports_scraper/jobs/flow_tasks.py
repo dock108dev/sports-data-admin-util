@@ -22,9 +22,11 @@ def _run_flow_generation(
     Returns:
         dict with job result
     """
-    import httpx
     import time
     from datetime import timedelta
+
+    import httpx
+
     from ..config import settings
     from ..utils.datetime_utils import today_et
 
@@ -224,9 +226,11 @@ def run_scheduled_flow_generation() -> dict:
     Uses a 3-day window: today, yesterday, and 2 days ago.
     For example, if run on 1/23, generates flows for 1/21, 1/22, and 1/23.
     """
-    import httpx
     import time
     from datetime import timedelta
+
+    import httpx
+
     from ..config import settings
     from ..config_sports import get_scheduled_leagues
     from ..utils.datetime_utils import today_et

@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 # Ensure the scraper package is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -21,12 +19,12 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
+from sports_scraper.models import NormalizedOddsSnapshot, TeamIdentity
 from sports_scraper.persistence.odds import OddsUpsertResult
 from sports_scraper.persistence.odds_matching import (
     canonicalize_team_names,
     should_log,
 )
-from sports_scraper.models import NormalizedOddsSnapshot, TeamIdentity
 
 
 def _setup_session_get(
@@ -69,14 +67,14 @@ class TestCanonicalizeTeamNames:
         """Returns canonical team names from mappings."""
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             home_team=TeamIdentity(league_code="NBA", name="Boston Celtics", abbreviation="BOS"),
             away_team=TeamIdentity(league_code="NBA", name="New York Knicks", abbreviation="NYK"),
             book="FanDuel",
             market_type="spread",
             line=-5.5,
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         home, away = canonicalize_team_names(snapshot)
@@ -89,14 +87,14 @@ class TestCanonicalizeTeamNames:
         """Handles whitespace in team names (via normalize_team_name)."""
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             home_team=TeamIdentity(league_code="NBA", name="  Boston Celtics  ", abbreviation="BOS"),
             away_team=TeamIdentity(league_code="NBA", name="  New York Knicks  ", abbreviation="NYK"),
             book="FanDuel",
             market_type="spread",
             line=-5.5,
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         home, away = canonicalize_team_names(snapshot)
@@ -161,16 +159,18 @@ class TestCacheFunctions:
 
     def test_cache_get_miss_returns_false(self):
         """cache_get returns False for missing key."""
-        from sports_scraper.persistence.odds_matching import cache_get
         import time
+
+        from sports_scraper.persistence.odds_matching import cache_get
         key = ("test_league", "2024-01-15", time.time(), time.time() + 1)
         result = cache_get(key)
         assert result is False
 
     def test_cache_set_and_get(self):
         """cache_set stores value, cache_get retrieves it."""
-        from sports_scraper.persistence.odds_matching import cache_get, cache_set
         import time
+
+        from sports_scraper.persistence.odds_matching import cache_get, cache_set
         key = ("NBA", "2024-01-15", int(time.time()), int(time.time()) + 1)
         cache_set(key, 42)
         result = cache_get(key)
@@ -178,8 +178,9 @@ class TestCacheFunctions:
 
     def test_cache_set_none_value(self):
         """cache_set can store None values."""
-        from sports_scraper.persistence.odds_matching import cache_get, cache_set
         import time
+
+        from sports_scraper.persistence.odds_matching import cache_get, cache_set
         key = ("NCAAB", "2024-01-15", int(time.time()), int(time.time()) + 2)
         cache_set(key, None)
         result = cache_get(key)
@@ -187,8 +188,9 @@ class TestCacheFunctions:
 
     def test_cache_clear_returns_count(self):
         """cache_clear returns number of entries cleared."""
-        from sports_scraper.persistence.odds_matching import cache_set, cache_clear
         import time
+
+        from sports_scraper.persistence.odds_matching import cache_clear, cache_set
         # Add some entries
         for i in range(5):
             cache_set(("test", str(time.time()), i, i + 100), i)
@@ -199,13 +201,14 @@ class TestCacheFunctions:
 
     def test_cache_invalidate_game_removes_entries(self):
         """cache_invalidate_game removes entries with matching game_id."""
+        import time
+
         from sports_scraper.persistence.odds_matching import (
-            cache_set,
+            cache_clear,
             cache_get,
             cache_invalidate_game,
-            cache_clear,
+            cache_set,
         )
-        import time
         # Clear cache first
         cache_clear()
 
@@ -250,8 +253,8 @@ class TestMatchGameByTeamIds:
         mock_session = MagicMock()
         mock_session.execute.return_value.scalar.return_value = 42
 
-        day_start = datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc)
-        day_end = datetime(2024, 1, 15, 23, 59, tzinfo=timezone.utc)
+        day_start = datetime(2024, 1, 15, 0, 0, tzinfo=UTC)
+        day_end = datetime(2024, 1, 15, 23, 59, tzinfo=UTC)
 
         result = match_game_by_team_ids(
             mock_session,
@@ -272,8 +275,8 @@ class TestMatchGameByTeamIds:
         # First query returns None, second (swapped) returns 42
         mock_session.execute.return_value.scalar.side_effect = [None, 42]
 
-        day_start = datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc)
-        day_end = datetime(2024, 1, 15, 23, 59, tzinfo=timezone.utc)
+        day_start = datetime(2024, 1, 15, 0, 0, tzinfo=UTC)
+        day_end = datetime(2024, 1, 15, 23, 59, tzinfo=UTC)
 
         result = match_game_by_team_ids(
             mock_session,
@@ -293,8 +296,8 @@ class TestMatchGameByTeamIds:
         mock_session = MagicMock()
         mock_session.execute.return_value.scalar.side_effect = [None, None]
 
-        day_start = datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc)
-        day_end = datetime(2024, 1, 15, 23, 59, tzinfo=timezone.utc)
+        day_start = datetime(2024, 1, 15, 0, 0, tzinfo=UTC)
+        day_end = datetime(2024, 1, 15, 23, 59, tzinfo=UTC)
 
         result = match_game_by_team_ids(
             mock_session,
@@ -322,15 +325,15 @@ class TestMatchGameByNamesNcaab:
             league_code="NCAAB",
             home_team=TeamIdentity(league_code="NCAAB", name="Duke Blue Devils", abbreviation="DUKE"),
             away_team=TeamIdentity(league_code="NCAAB", name="North Carolina Tar Heels", abbreviation="UNC"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
-        day_start = datetime(2024, 1, 14, 0, 0, tzinfo=timezone.utc)
-        day_end = datetime(2024, 1, 16, 23, 59, tzinfo=timezone.utc)
+        day_start = datetime(2024, 1, 14, 0, 0, tzinfo=UTC)
+        day_end = datetime(2024, 1, 16, 23, 59, tzinfo=UTC)
 
         result = match_game_by_names_ncaab(
             mock_session,
@@ -359,15 +362,15 @@ class TestMatchGameByNamesNcaab:
             league_code="NCAAB",
             home_team=TeamIdentity(league_code="NCAAB", name="Duke Blue Devils", abbreviation="DUKE"),
             away_team=TeamIdentity(league_code="NCAAB", name="North Carolina Tar Heels", abbreviation="UNC"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
-        day_start = datetime(2024, 1, 14, 0, 0, tzinfo=timezone.utc)
-        day_end = datetime(2024, 1, 16, 23, 59, tzinfo=timezone.utc)
+        day_start = datetime(2024, 1, 14, 0, 0, tzinfo=UTC)
+        day_end = datetime(2024, 1, 16, 23, 59, tzinfo=UTC)
 
         result = match_game_by_names_ncaab(
             mock_session,
@@ -396,15 +399,15 @@ class TestMatchGameByNamesNonNcaab:
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Los Angeles Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Boston Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
-        day_start = datetime(2024, 1, 14, 0, 0, tzinfo=timezone.utc)
-        day_end = datetime(2024, 1, 16, 23, 59, tzinfo=timezone.utc)
+        day_start = datetime(2024, 1, 14, 0, 0, tzinfo=UTC)
+        day_end = datetime(2024, 1, 16, 23, 59, tzinfo=UTC)
 
         result = match_game_by_names_non_ncaab(
             mock_session,
@@ -430,15 +433,15 @@ class TestMatchGameByNamesNonNcaab:
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Los Angeles Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Boston Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
-        day_start = datetime(2024, 1, 14, 0, 0, tzinfo=timezone.utc)
-        day_end = datetime(2024, 1, 16, 23, 59, tzinfo=timezone.utc)
+        day_start = datetime(2024, 1, 14, 0, 0, tzinfo=UTC)
+        day_end = datetime(2024, 1, 16, 23, 59, tzinfo=UTC)
 
         result = match_game_by_names_non_ncaab(
             mock_session,
@@ -479,18 +482,18 @@ class TestUpsertOddsFunction:
 
         # Mock session.get to return a game and its teams
         mock_game = MagicMock()
-        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         _setup_session_get(mock_session, mock_game)
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         result = upsert_odds(mock_session, snapshot)
@@ -524,11 +527,11 @@ class TestUpsertOddsFunction:
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         result = upsert_odds(mock_session, snapshot)
@@ -558,18 +561,18 @@ class TestUpsertOddsFunction:
         mock_cache_get.return_value = 42
 
         mock_game = MagicMock()
-        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         _setup_session_get(mock_session, mock_game, "New Team", "Another Team")
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="New Team", abbreviation="NEW"),
             away_team=TeamIdentity(league_code="NBA", name="Another Team", abbreviation="ANO"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         result = upsert_odds(mock_session, snapshot)
@@ -602,16 +605,16 @@ class TestUpsertOddsFunction:
         mock_game.tip_time = None  # No tip_time
         _setup_session_get(mock_session, mock_game)
 
-        tip_time = datetime(2024, 1, 15, 19, 30, tzinfo=timezone.utc)
+        tip_time = datetime(2024, 1, 15, 19, 30, tzinfo=UTC)
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
             tip_time=tip_time,
         )
 
@@ -656,7 +659,7 @@ class TestUpsertOddsCacheMiss:
         mock_match_by_ids.return_value = 42  # Match found
 
         mock_game = MagicMock()
-        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         _setup_session_get(mock_session, mock_game)
 
         # Mock execute for diagnostic queries
@@ -666,11 +669,11 @@ class TestUpsertOddsCacheMiss:
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         result = upsert_odds(mock_session, snapshot)
@@ -712,7 +715,7 @@ class TestUpsertOddsCacheMiss:
         mock_match_by_names.return_value = 42  # Match by names
 
         mock_game = MagicMock()
-        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         _setup_session_get(mock_session, mock_game, "Duke Blue Devils", "North Carolina Tar Heels")
 
         mock_session.execute.return_value.all.return_value = []
@@ -721,12 +724,12 @@ class TestUpsertOddsCacheMiss:
             league_code="NCAAB",
             home_team=TeamIdentity(league_code="NCAAB", name="Duke Blue Devils", abbreviation="DUKE"),
             away_team=TeamIdentity(league_code="NCAAB", name="North Carolina Tar Heels", abbreviation="UNC"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="spread",
             line=-5.5,
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         result = upsert_odds(mock_session, snapshot)
@@ -767,7 +770,7 @@ class TestUpsertOddsCacheMiss:
         mock_match_by_names.return_value = 42  # Match by names
 
         mock_game = MagicMock()
-        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         _setup_session_get(mock_session, mock_game)
 
         mock_session.execute.return_value.all.return_value = []
@@ -776,11 +779,11 @@ class TestUpsertOddsCacheMiss:
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         result = upsert_odds(mock_session, snapshot)
@@ -827,16 +830,16 @@ class TestUpsertOddsCacheMiss:
 
         mock_session.execute.return_value.all.return_value = []
 
-        tip_time = datetime(2024, 1, 15, 19, 30, tzinfo=timezone.utc)
+        tip_time = datetime(2024, 1, 15, 19, 30, tzinfo=UTC)
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
             tip_time=tip_time,
             source_key="odds_api_123",
         )
@@ -888,11 +891,11 @@ class TestUpsertOddsCacheMiss:
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         result = upsert_odds(mock_session, snapshot)
@@ -936,7 +939,7 @@ class TestUpsertOddsDiagnostics:
         mock_match_by_ids.return_value = 42
 
         mock_game = MagicMock()
-        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         _setup_session_get(mock_session, mock_game)
 
         # Mock diagnostic query results
@@ -948,11 +951,11 @@ class TestUpsertOddsDiagnostics:
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         result = upsert_odds(mock_session, snapshot)
@@ -987,20 +990,20 @@ class TestUpsertOddsWithSideValue:
         mock_cache_get.return_value = 42
 
         mock_game = MagicMock()
-        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         _setup_session_get(mock_session, mock_game)
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="spread",
             side="home",
             line=-5.5,
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         result = upsert_odds(mock_session, snapshot)
@@ -1032,18 +1035,18 @@ class TestUpsertOddsWithSideValue:
         mock_cache_get.return_value = 42
 
         mock_game = MagicMock()
-        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         _setup_session_get(mock_session, mock_game)
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
             is_closing_line=True,
         )
 
@@ -1078,18 +1081,18 @@ class TestUpsertOddsTeamCreation:
         mock_cache_get.return_value = 42
 
         mock_game = MagicMock()
-        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         _setup_session_get(mock_session, mock_game, "New Team", "Celtics")
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="New Team", abbreviation="NEW"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         result = upsert_odds(mock_session, snapshot)
@@ -1120,18 +1123,18 @@ class TestUpsertOddsTeamCreation:
         mock_cache_get.return_value = 42
 
         mock_game = MagicMock()
-        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         _setup_session_get(mock_session, mock_game, "Lakers", "New Team")
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="New Team", abbreviation="NEW"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
 
         result = upsert_odds(mock_session, snapshot)
@@ -1179,16 +1182,16 @@ class TestUpsertOddsUpdateTipTime:
         _setup_session_get(mock_session, mock_game)
         mock_session.execute.return_value.all.return_value = []
 
-        tip_time = datetime(2024, 1, 15, 19, 30, tzinfo=timezone.utc)
+        tip_time = datetime(2024, 1, 15, 19, 30, tzinfo=UTC)
         snapshot = NormalizedOddsSnapshot(
             league_code="NBA",
             home_team=TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL"),
             away_team=TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS"),
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             book="draftkings",
             market_type="moneyline",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
             tip_time=tip_time,
         )
 

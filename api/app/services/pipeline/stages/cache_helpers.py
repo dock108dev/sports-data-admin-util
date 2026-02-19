@@ -34,7 +34,7 @@ def get_batch_cache_key(moment_indices: list[int]) -> str:
 
 
 async def get_cached_response(
-    session: "AsyncSession",
+    session: AsyncSession,
     game_id: int,
     batch_key: str,
 ) -> dict[str, Any] | None:
@@ -62,7 +62,7 @@ async def get_cached_response(
 
 
 async def store_cached_response(
-    session: "AsyncSession",
+    session: AsyncSession,
     game_id: int,
     batch_key: str,
     prompt_preview: str,

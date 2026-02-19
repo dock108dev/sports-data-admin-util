@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, call
+from datetime import UTC, date, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from sports_scraper.services.scheduler import (
-    build_scheduled_window,
-    _coerce_date,
     ScheduledIngestionSummary,
+    _coerce_date,
+    build_scheduled_window,
     create_scrape_run,
-    schedule_ingestion_runs,
     run_pbp_ingestion_for_league,
+    schedule_ingestion_runs,
     schedule_single_league_and_wait,
 )
 
@@ -31,24 +31,24 @@ class TestBuildScheduledWindow:
 
     def test_start_is_96_hours_back(self):
         """Start is 96 hours before anchor."""
-        now = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         start, end = build_scheduled_window(now)
         expected_start = now - timedelta(hours=96)
         assert start == expected_start
 
     def test_end_is_48_hours_forward(self):
         """End is 48 hours after anchor."""
-        now = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         start, end = build_scheduled_window(now)
         expected_end = now + timedelta(hours=48)
         assert end == expected_end
 
     def test_uses_utc_timezone(self):
         """All datetimes are in UTC."""
-        now = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         start, end = build_scheduled_window(now)
-        assert start.tzinfo == timezone.utc
-        assert end.tzinfo == timezone.utc
+        assert start.tzinfo == UTC
+        assert end.tzinfo == UTC
 
     def test_uses_current_time_when_none(self):
         """Uses current time when no argument provided."""
@@ -69,7 +69,7 @@ class TestCoerceDate:
 
     def test_strips_time_components(self):
         """Strips time components from datetime."""
-        dt = datetime(2024, 1, 15, 14, 30, 45, 123456, tzinfo=timezone.utc)
+        dt = datetime(2024, 1, 15, 14, 30, 45, 123456, tzinfo=UTC)
         result = _coerce_date(dt)
         assert result.hour == 0
         assert result.minute == 0
@@ -78,7 +78,7 @@ class TestCoerceDate:
 
     def test_preserves_date(self):
         """Preserves the date portion."""
-        dt = datetime(2024, 1, 15, 14, 30, 45, tzinfo=timezone.utc)
+        dt = datetime(2024, 1, 15, 14, 30, 45, tzinfo=UTC)
         result = _coerce_date(dt)
         assert result.year == 2024
         assert result.month == 1
@@ -95,7 +95,7 @@ class TestScheduledIngestionSummary:
             runs_skipped=2,
             run_failures=1,
             enqueue_failures=0,
-            last_run_at=datetime.now(timezone.utc),
+            last_run_at=datetime.now(UTC),
         )
         assert summary.runs_created == 5
         assert summary.runs_skipped == 2
@@ -109,7 +109,7 @@ class TestScheduledIngestionSummary:
             runs_skipped=2,
             run_failures=1,
             enqueue_failures=0,
-            last_run_at=datetime.now(timezone.utc),
+            last_run_at=datetime.now(UTC),
         )
         with pytest.raises(Exception):  # FrozenInstanceError
             summary.runs_created = 10
@@ -232,7 +232,7 @@ class TestScheduleIngestionRuns:
         mock_league.id = 1
         mock_session.query.return_value.filter.return_value.first.side_effect = [
             mock_league,  # First call for league lookup
-            MagicMock(id=123, created_at=datetime.now(timezone.utc)),  # Recent run
+            MagicMock(id=123, created_at=datetime.now(UTC)),  # Recent run
         ]
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)

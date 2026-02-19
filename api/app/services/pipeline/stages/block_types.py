@@ -47,7 +47,7 @@ class SemanticRole(str, Enum):
     RESOLUTION = "RESOLUTION"  # How game ended
 
     @classmethod
-    def get_description(cls, role: "SemanticRole") -> str:
+    def get_description(cls, role: SemanticRole) -> str:
         """Get a description of the role for prompt context."""
         descriptions = {
             cls.SETUP: "Sets the stage - how the game began and early context",
@@ -112,7 +112,7 @@ class NarrativeBlock:
         return result
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "NarrativeBlock":
+    def from_dict(cls, data: dict[str, Any]) -> NarrativeBlock:
         """Create from dict (e.g., from JSON)."""
         return cls(
             block_index=data["block_index"],

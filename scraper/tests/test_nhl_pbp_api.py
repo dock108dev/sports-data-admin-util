@@ -20,7 +20,6 @@ from sports_scraper.live.nhl_constants import NHL_EVENT_TYPE_MAP, NHL_MIN_EXPECT
 from sports_scraper.live.nhl_helpers import map_nhl_game_state
 from sports_scraper.utils.parsing import parse_int
 
-
 # Sample play data from the real NHL API
 SAMPLE_GOAL_PLAY = {
     "eventId": 151,

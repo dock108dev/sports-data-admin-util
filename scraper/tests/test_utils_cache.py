@@ -6,11 +6,9 @@ import os
 import sys
 import tempfile
 import time
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 # Ensure the scraper package is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -25,8 +23,8 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.utils.cache import (
     FINAL_STATES,
-    HTMLCache,
     MIN_SCOREBOARD_SIZE_BYTES,
+    HTMLCache,
     should_cache_final,
 )
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-
 STATUS_ID_PATTERN = re.compile(r"/status/(\d+)")
 
 

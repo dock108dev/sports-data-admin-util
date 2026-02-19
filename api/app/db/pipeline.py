@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone as dt_timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID
@@ -18,7 +18,8 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
@@ -39,7 +40,7 @@ class PipelineStage(str, Enum):
     FINALIZE_MOMENTS = "FINALIZE_MOMENTS"
 
     @classmethod
-    def ordered_stages(cls) -> list["PipelineStage"]:
+    def ordered_stages(cls) -> list[PipelineStage]:
         """Return stages in execution order."""
         return [
             cls.NORMALIZE_PBP,
@@ -116,7 +117,7 @@ class GamePipelineRun(Base):
     )
 
     game: Mapped[SportsGame] = relationship("SportsGame")
-    stages: Mapped[list["GamePipelineStage"]] = relationship(
+    stages: Mapped[list[GamePipelineStage]] = relationship(
         "GamePipelineStage", back_populates="run", cascade="all, delete-orphan"
     )
 
@@ -194,7 +195,7 @@ class GamePipelineStage(Base):
             self.logs_json = []
         self.logs_json.append(
             {
-                "timestamp": datetime.now(dt_timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "level": level,
                 "message": message,
             }

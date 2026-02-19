@@ -11,7 +11,7 @@ Benefits:
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
 
@@ -146,7 +146,7 @@ def ingest_boxscores_via_ncaab_api(
             continue
 
         try:
-            game_datetime = datetime.combine(game_date, datetime.min.time(), tzinfo=timezone.utc)
+            game_datetime = datetime.combine(game_date, datetime.min.time(), tzinfo=UTC)
             boxscore.game_date = game_datetime
 
             normalized_game = convert_ncaab_boxscore_to_normalized_game(boxscore)

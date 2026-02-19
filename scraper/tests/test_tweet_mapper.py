@@ -2,23 +2,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 from sports_scraper.social.tweet_mapper import (
+    _game_duration_hours,
+    _search_dates_for_tweet,
+    classify_game_phase,
     get_game_window,
     get_mapping_stats,
     map_tweets_for_team,
     map_unmapped_tweets,
-    classify_game_phase,
-    _search_dates_for_tweet,
-    _game_duration_hours,
-    GAME_DURATION_BY_LEAGUE,
 )
 
 
 def _utc(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> datetime:
-    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+    return datetime(year, month, day, hour, minute, tzinfo=UTC)
 
 
 def _make_game(**kwargs) -> MagicMock:
@@ -30,7 +29,7 @@ def _make_game(**kwargs) -> MagicMock:
     game.home_team_id = kwargs.get("home_team_id", 100)
     game.away_team_id = kwargs.get("away_team_id", 200)
     # League info for sport-specific durations
-    league = kwargs.get("league", None)
+    league = kwargs.get("league")
     if league is None:
         league = MagicMock()
         league.code = kwargs.get("league_code", "NBA")
@@ -44,9 +43,9 @@ def _make_tweet(**kwargs) -> MagicMock:
     tweet.team_id = kwargs.get("team_id", 100)
     tweet.posted_at = kwargs.get("posted_at", _utc(2025, 6, 15, 20, 0))
     tweet.mapping_status = kwargs.get("mapping_status", "unmapped")
-    tweet.game_id = kwargs.get("game_id", None)
-    tweet.game_phase = kwargs.get("game_phase", None)
-    tweet.updated_at = kwargs.get("updated_at", None)
+    tweet.game_id = kwargs.get("game_id")
+    tweet.game_phase = kwargs.get("game_phase")
+    tweet.updated_at = kwargs.get("updated_at")
     return tweet
 
 

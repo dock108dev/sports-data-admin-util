@@ -10,7 +10,6 @@ from sqlalchemy import select
 
 from ....db import AsyncSession, get_db
 from ....db.pipeline import BulkFlowGenerationJob
-
 from .models import (
     BulkGenerateAsyncResponse,
     BulkGenerateRequest,

@@ -62,7 +62,7 @@ def season_from_date(day: date, league_code: str) -> int:
     """
     month = day.month
     year = day.year
-    
+
     if league_code == "NBA":
         # NBA season: October (10) to June (6)
         return year if month >= 10 else year - 1

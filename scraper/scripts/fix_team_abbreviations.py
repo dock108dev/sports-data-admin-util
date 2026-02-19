@@ -15,7 +15,6 @@ import sys
 from pathlib import Path
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 # Add parent directory to path to import scraper modules
 script_dir = Path(__file__).resolve().parent
@@ -51,33 +50,33 @@ def fix_team_abbreviations(league_code: str | None = None, dry_run: bool = False
             if not league_id:
                 logger.error("league_not_found", league=league_code)
                 return
-        
+
         # Get all teams for the league
         if league_id:
             stmt = select(SportsTeam).where(SportsTeam.league_id == league_id)
         else:
             stmt = select(SportsTeam)
         teams = session.execute(stmt).scalars().all()
-        
+
         logger.info(
             "fix_abbreviations_start",
             league=league_code or "all",
             total_teams=len(teams),
             dry_run=dry_run,
         )
-        
+
         updated_count = 0
         unchanged_count = 0
         error_count = 0
-        
+
         for team in teams:
             try:
                 # Get league code for normalization
                 league_code_for_norm = team.league.code  # type: ignore
-                
+
                 # Get correct abbreviation from normalization
                 canonical_name, correct_abbr = normalize_team_name(league_code_for_norm, team.name)
-                
+
                 # Check if abbreviation needs updating
                 if team.abbreviation != correct_abbr:
                     logger.info(
@@ -88,7 +87,7 @@ def fix_team_abbreviations(league_code: str | None = None, dry_run: bool = False
                         new_abbreviation=correct_abbr,
                         league=league_code_for_norm,
                     )
-                    
+
                     if not dry_run:
                         team.abbreviation = correct_abbr
                         # Also update name to canonical if different
@@ -100,11 +99,11 @@ def fix_team_abbreviations(league_code: str | None = None, dry_run: bool = False
                                 new_name=canonical_name,
                             )
                             team.name = canonical_name
-                    
+
                     updated_count += 1
                 else:
                     unchanged_count += 1
-                    
+
             except Exception as exc:
                 logger.error(
                     "abbreviation_fix_error",
@@ -113,7 +112,7 @@ def fix_team_abbreviations(league_code: str | None = None, dry_run: bool = False
                     error=str(exc),
                 )
                 error_count += 1
-        
+
         if not dry_run:
             session.commit()
             logger.info(
@@ -145,9 +144,9 @@ def main() -> None:
         action="store_true",
         help="Show what would be changed without updating the database",
     )
-    
+
     args = parser.parse_args()
-    
+
     fix_team_abbreviations(league_code=args.league, dry_run=args.dry_run)
 
 

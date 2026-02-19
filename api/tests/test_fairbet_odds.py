@@ -1,6 +1,6 @@
 """Tests for FairBet odds API endpoint."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -8,18 +8,18 @@ import pytest
 
 from app.routers.fairbet.ev_annotation import (
     BookOdds,
+    _annotate_pair_ev,
     _build_sharp_reference,
     _market_base,
     _pair_opposite_sides,
     _try_extrapolated_ev,
     derive_entity_key,
-    _annotate_pair_ev,
 )
 from app.routers.fairbet.odds import (
     BetDefinition,
     FairbetOddsResponse,
-    get_fairbet_odds,
     _build_base_filters,
+    get_fairbet_odds,
 )
 from app.services.ev_config import extrapolation_confidence
 
@@ -32,7 +32,7 @@ class TestBookOddsModel:
         odds = BookOdds(
             book="DraftKings",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
         assert odds.book == "DraftKings"
         assert odds.price == -110
@@ -42,7 +42,7 @@ class TestBookOddsModel:
         odds = BookOdds(
             book="FanDuel",
             price=150,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
         assert odds.price == 150
 
@@ -57,12 +57,12 @@ class TestBetDefinitionModel:
             league_code="NBA",
             home_team="Lakers",
             away_team="Celtics",
-            game_date=datetime.now(timezone.utc),
+            game_date=datetime.now(UTC),
             market_key="spreads",
             selection_key="team:lakers",
             line_value=-3.5,
             books=[
-                BookOdds(book="DK", price=-110, observed_at=datetime.now(timezone.utc))
+                BookOdds(book="DK", price=-110, observed_at=datetime.now(UTC))
             ],
         )
         assert bet.game_id == 1
@@ -76,7 +76,7 @@ class TestBetDefinitionModel:
             league_code="NBA",
             home_team="Lakers",
             away_team="Celtics",
-            game_date=datetime.now(timezone.utc),
+            game_date=datetime.now(UTC),
             market_key="h2h",
             selection_key="team:lakers",
             line_value=0,
@@ -110,7 +110,7 @@ class TestFairbetOddsResponseModel:
                     league_code="NBA",
                     home_team="Lakers",
                     away_team="Celtics",
-                    game_date=datetime.now(timezone.utc),
+                    game_date=datetime.now(UTC),
                     market_key="h2h",
                     selection_key="team:lakers",
                     line_value=0,
@@ -154,9 +154,9 @@ class TestBooksSorting:
     def test_positive_odds_sorted_descending(self):
         """Positive odds sorted highest first."""
         books = [
-            BookOdds(book="A", price=120, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="B", price=150, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="C", price=100, observed_at=datetime.now(timezone.utc)),
+            BookOdds(book="A", price=120, observed_at=datetime.now(UTC)),
+            BookOdds(book="B", price=150, observed_at=datetime.now(UTC)),
+            BookOdds(book="C", price=100, observed_at=datetime.now(UTC)),
         ]
         # Simulate the sorting from the endpoint
         books.sort(key=lambda b: -b.price)
@@ -167,9 +167,9 @@ class TestBooksSorting:
     def test_negative_odds_sorted_best_first(self):
         """Negative odds sorted closest to zero first (better odds)."""
         books = [
-            BookOdds(book="A", price=-110, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="B", price=-105, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="C", price=-115, observed_at=datetime.now(timezone.utc)),
+            BookOdds(book="A", price=-110, observed_at=datetime.now(UTC)),
+            BookOdds(book="B", price=-105, observed_at=datetime.now(UTC)),
+            BookOdds(book="C", price=-115, observed_at=datetime.now(UTC)),
         ]
         books.sort(key=lambda b: -b.price)
         assert books[0].price == -105  # Best (closest to even)
@@ -179,10 +179,10 @@ class TestBooksSorting:
     def test_mixed_odds_sorted_correctly(self):
         """Mixed positive and negative odds sorted correctly."""
         books = [
-            BookOdds(book="A", price=-110, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="B", price=150, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="C", price=-105, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="D", price=120, observed_at=datetime.now(timezone.utc)),
+            BookOdds(book="A", price=-110, observed_at=datetime.now(UTC)),
+            BookOdds(book="B", price=150, observed_at=datetime.now(UTC)),
+            BookOdds(book="C", price=-105, observed_at=datetime.now(UTC)),
+            BookOdds(book="D", price=120, observed_at=datetime.now(UTC)),
         ]
         books.sort(key=lambda b: -b.price)
         # Positive odds first (higher is better), then negative (closer to 0 is better)
@@ -243,7 +243,7 @@ class TestGetFairbetOddsEndpoint:
     def mock_game(self):
         """Create a mock game with related objects."""
         game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.start_time = datetime.now(UTC) + timedelta(hours=2)
         game.status = "scheduled"
 
         league = MagicMock()
@@ -270,7 +270,7 @@ class TestGetFairbetOddsEndpoint:
         row.line_value = -3.5
         row.book = "DraftKings"
         row.price = -110
-        row.observed_at = datetime.now(timezone.utc)
+        row.observed_at = datetime.now(UTC)
         row.market_category = "mainline"
         row.player_name = None
         row.game = mock_game
@@ -323,7 +323,7 @@ class TestGetFairbetOddsEndpoint:
         mock_row2.line_value = -3.5
         mock_row2.book = "FanDuel"
         mock_row2.price = -108
-        mock_row2.observed_at = datetime.now(timezone.utc)
+        mock_row2.observed_at = datetime.now(UTC)
         mock_row2.market_category = "mainline"
         mock_row2.player_name = None
         mock_row2.game = mock_odds_row.game
@@ -359,7 +359,7 @@ class TestGetFairbetOddsEndpoint:
             row.line_value = -3.5
             row.book = book_name
             row.price = price
-            row.observed_at = datetime.now(timezone.utc)
+            row.observed_at = datetime.now(UTC)
             row.market_category = "mainline"
             row.player_name = None
             row.game = mock_odds_row.game
@@ -455,7 +455,7 @@ class TestSharpBooksRetainedWhenEvDisabled:
     @pytest.fixture
     def mock_game(self):
         game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.start_time = datetime.now(UTC) + timedelta(hours=2)
         game.status = "scheduled"
         league = MagicMock()
         league.code = "NBA"
@@ -518,7 +518,7 @@ class TestSharpBooksRetainedWhenEvDisabled:
             row.line_value = -3.5
             row.book = book_name
             row.price = -110
-            row.observed_at = datetime.now(timezone.utc)
+            row.observed_at = datetime.now(UTC)
             row.market_category = "mainline"
             row.player_name = None
             row.game = mock_game
@@ -562,7 +562,7 @@ class TestSharpBooksRetainedWhenEvDisabled:
             row.line_value = -3.5
             row.book = book_name
             row.price = price
-            row.observed_at = datetime.now(timezone.utc)
+            row.observed_at = datetime.now(UTC)
             row.market_category = "mainline"
             row.player_name = None
             row.game = mock_game
@@ -637,7 +637,7 @@ class TestResponseStructure:
                     league_code="NBA",
                     home_team="Lakers",
                     away_team="Celtics",
-                    game_date=datetime(2025, 1, 15, 19, 0, tzinfo=timezone.utc),
+                    game_date=datetime(2025, 1, 15, 19, 0, tzinfo=UTC),
                     market_key="h2h",
                     selection_key="team:lakers",
                     line_value=0,
@@ -646,7 +646,7 @@ class TestResponseStructure:
                             book="DraftKings",
                             price=-110,
                             observed_at=datetime(
-                                2025, 1, 15, 12, 0, tzinfo=timezone.utc
+                                2025, 1, 15, 12, 0, tzinfo=UTC
                             ),
                         )
                     ],
@@ -812,7 +812,7 @@ class TestAltSpreadGrouping:
     def mock_game(self):
         """Create a mock game with related objects."""
         game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.start_time = datetime.now(UTC) + timedelta(hours=2)
         game.status = "scheduled"
 
         league = MagicMock()
@@ -847,7 +847,7 @@ class TestAltSpreadGrouping:
         row.line_value = line_value
         row.book = book
         row.price = price
-        row.observed_at = datetime.now(timezone.utc)
+        row.observed_at = datetime.now(UTC)
         row.market_category = "alternate"
         row.player_name = None
         row.game = game
@@ -1039,7 +1039,7 @@ class TestFairOddsOutlierHandling:
     @pytest.fixture
     def mock_game(self):
         game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.start_time = datetime.now(UTC) + timedelta(hours=2)
         game.status = "scheduled"
         league = MagicMock()
         league.code = "NBA"
@@ -1070,7 +1070,7 @@ class TestFairOddsOutlierHandling:
         row.line_value = line_value
         row.book = book
         row.price = price
-        row.observed_at = datetime.now(timezone.utc)
+        row.observed_at = datetime.now(UTC)
         row.market_category = market_category
         row.player_name = "Test Player"
         row.game = game
@@ -1227,7 +1227,7 @@ class TestSharpBooksRetainedWhenEvDisabled:
     @pytest.fixture
     def mock_game(self):
         game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.start_time = datetime.now(UTC) + timedelta(hours=2)
         game.status = "scheduled"
         league = MagicMock()
         league.code = "NBA"
@@ -1258,7 +1258,7 @@ class TestSharpBooksRetainedWhenEvDisabled:
         row.line_value = line_value
         row.book = book
         row.price = price
-        row.observed_at = datetime.now(timezone.utc)
+        row.observed_at = datetime.now(UTC)
         row.market_category = market_category
         row.player_name = None
         row.game = game
@@ -1445,7 +1445,7 @@ class TestBuildSharpReference:
 
     def test_single_pinnacle_pair(self):
         """Builds reference from a single Pinnacle two-sided pair."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             (1, "spreads", "team:a", -6.0, [
                 {"book": "Pinnacle", "price": -120, "observed_at": now},
@@ -1471,7 +1471,7 @@ class TestBuildSharpReference:
 
     def test_multiple_lines_sorted(self):
         """Multiple Pinnacle lines are stored and sorted (mainline first)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             # Alternate line at 8.0
             (1, "alternate_spreads", "team:a", -8.0, [
@@ -1501,7 +1501,7 @@ class TestBuildSharpReference:
 
     def test_no_pinnacle_no_reference(self):
         """No reference built when Pinnacle is absent."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             (1, "spreads", "team:a", -6.0, [
                 {"book": "DraftKings", "price": -115, "observed_at": now},
@@ -1516,7 +1516,7 @@ class TestBuildSharpReference:
 
     def test_single_sided_pinnacle_no_reference(self):
         """No reference when Pinnacle exists only on one side."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             (1, "spreads", "team:a", -6.0, [
                 {"book": "Pinnacle", "price": -120, "observed_at": now},
@@ -1529,7 +1529,7 @@ class TestBuildSharpReference:
 
     def test_h2h_market_skipped(self):
         """h2h market keys are not extrapolatable."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             (1, "h2h", "team:a", 0, [
                 {"book": "Pinnacle", "price": -150, "observed_at": now},
@@ -1544,7 +1544,7 @@ class TestBuildSharpReference:
 
     def test_cross_zero_alt_spreads_produce_two_references(self):
         """Four entries at abs=1.5 (cross-zero) produce two separate reference pairs."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             # Market 1: ODU -1.5 / LA +1.5 (ODU favored)
             (1, "alternate_spreads", "team:odu", -1.5, [
@@ -1580,7 +1580,7 @@ class TestBuildSharpReference:
         Without the fix, the dict would overwrite entries for the same selection_key,
         mixing prices from different markets and producing wrong probabilities.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             # ODU -1.5 at -200 (ODU is moderate favorite)
             (1, "alternate_spreads", "team:odu", -1.5, [
@@ -1634,7 +1634,7 @@ class TestTryExtrapolatedEv:
         ref_market_key: str = "spreads",
     ):
         """Build a bets_map with a target pair and sharp refs."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         bets_map = {
             # Target pair (no Pinnacle)
@@ -1825,7 +1825,7 @@ class TestTryExtrapolatedEv:
 
     def test_non_extrapolatable_market(self):
         """h2h market returns reference_missing."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = {
             (1, "h2h", "team:a", 0): {
                 "game_id": 1,
@@ -1852,7 +1852,7 @@ class TestTryExtrapolatedEv:
 
     def test_selection_key_mismatch(self):
         """Returns reference_missing when selection_keys don't match."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Build refs with team:x/team:y, but target has team:a/team:b
         ref_bets = {
             (1, "spreads", "team:x", -6.0): {
@@ -1895,7 +1895,7 @@ class TestTryExtrapolatedEv:
         # NCAAB totals slope=0.12 → logit shift=0.72 → extrap prob for "over"
         # goes to ~67%, but soft books price it at ~-115 (~53%).
         # Divergence ≈ 14% > 10% threshold → rejected.
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = {
             # Target pair at 145.0 — no Pinnacle, soft books near -115
             (1, "alternate_totals", "over", 145.0): {
@@ -1964,7 +1964,7 @@ class TestTryExtrapolatedEv:
         # Target at 149.5 → 3 half-points away.
         # NCAAB totals slope=0.12 → logit shift=-0.36 for "over" → extrap ~41.1%.
         # Soft books at +130 (~43.5%) vs extrap ~41.1% → divergence ~2.4% → passes.
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = {
             (1, "alternate_totals", "over", 149.5): {
                 "game_id": 1,
@@ -2034,7 +2034,7 @@ class TestTryExtrapolatedEv:
         Both are mainline markets, so this is cross-book line disagreement,
         NOT an alternate-line relationship. Should return mainline_line_disagreement.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = {
             # Target pair: mainline totals at 142.5 (no Pinnacle)
             (1, "totals", "over", 142.5): {
@@ -2104,7 +2104,7 @@ class TestTryExtrapolatedEv:
         Should succeed because: alternate market, within HP limit, and
         probability divergence stays small.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = {
             # Target pair: alternate totals at 147.0 (no Pinnacle)
             (1, "alternate_totals", "over", 147.0): {
@@ -2175,7 +2175,7 @@ class TestTryExtrapolatedEv:
         With the tightened limits (max 6 HP for NCAAB totals), a 12 half-point
         extrapolation should be rejected even though the old 20 HP limit allowed it.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = {
             # Target pair: alternate totals at 142.5 (12 HP from ref)
             (1, "alternate_totals", "over", 142.5): {
@@ -2243,7 +2243,7 @@ class TestTryExtrapolatedEv:
         _build_sharp_reference with max_age_seconds=3600 should skip it,
         leaving no reference → extrapolation returns reference_missing.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stale_time = now - timedelta(hours=2)  # 7200s ago > 3600s threshold
         bets_map = {
             # Target pair: alternate totals at 147.0
@@ -2323,7 +2323,7 @@ class TestTryExtrapolatedEv:
 
         No bet should show EV > 10% from mainline-to-mainline extrapolation.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = {
             # Pinnacle mainline totals at 148.5
             (99, "totals", "over", 148.5): {
@@ -2478,7 +2478,7 @@ class TestExtrapolationEndToEnd:
     @pytest.fixture
     def mock_game(self):
         game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.start_time = datetime.now(UTC) + timedelta(hours=2)
         game.status = "scheduled"
         league = MagicMock()
         league.code = "NCAAB"
@@ -2499,7 +2499,7 @@ class TestExtrapolationEndToEnd:
         row.line_value = line_value
         row.book = book
         row.price = price
-        row.observed_at = datetime.now(timezone.utc)
+        row.observed_at = datetime.now(UTC)
         row.market_category = market_category
         row.player_name = None
         row.game = game
@@ -2708,7 +2708,7 @@ class TestEntitySafePairing:
 
     def test_cross_player_pairing_blocked(self):
         """Two different players with same line and market cannot pair."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = {
             (1, "player_points", "player:lebron_james:over", 25.5): {
                 "game_id": 1,
@@ -2752,7 +2752,7 @@ class TestEntitySafePairing:
 
     def test_same_player_valid_pair(self):
         """Same player over/under at same line pairs normally."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         entity_key = derive_entity_key(
             "player:lebron_james:over", "player_points", "LeBron James"
         )

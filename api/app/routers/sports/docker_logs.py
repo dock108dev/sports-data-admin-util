@@ -10,10 +10,9 @@ from __future__ import annotations
 import logging
 import os
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-
-import httpx
 
 logger = logging.getLogger(__name__)
 

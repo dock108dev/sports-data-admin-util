@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -22,11 +22,11 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 
 from sports_scraper.utils.db_queries import (
-    get_league_id,
     count_team_games,
-    has_player_boxscores,
-    has_odds,
     find_games_in_date_range,
+    get_league_id,
+    has_odds,
+    has_player_boxscores,
 )
 
 
@@ -146,12 +146,12 @@ class TestFindGamesInDateRange:
         mock_game = MagicMock()
         mock_game.id = 1
         mock_game.source_game_key = "ABC123"
-        mock_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
 
         mock_query = MagicMock()
         mock_session.query.return_value = mock_query
         mock_query.filter.return_value = mock_query
-        mock_query.all.return_value = [(1, "ABC123", datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc))]
+        mock_query.all.return_value = [(1, "ABC123", datetime(2024, 1, 15, 19, 0, tzinfo=UTC))]
 
         result = find_games_in_date_range(
             mock_session,

@@ -6,7 +6,7 @@ Provides bet-centric odds views for cross-book comparison with EV annotation.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -15,8 +15,8 @@ from sqlalchemy import and_, distinct, func, select
 from sqlalchemy.orm import selectinload
 
 from ...db import AsyncSession, get_db
-from ...db.sports import SportsGame
 from ...db.odds import FairbetGameOddsWork
+from ...db.sports import SportsGame
 from ...services.ev_config import (
     INCLUDED_BOOKS,
     SHARP_REF_MAX_AGE_SECONDS,
@@ -27,7 +27,6 @@ from .ev_annotation import (
     BookOdds,
     _annotate_pair_ev,
     _build_sharp_reference,
-    _market_base,
     _pair_opposite_sides,
     _try_extrapolated_ev,
     derive_entity_key,
@@ -89,7 +88,7 @@ def _build_base_filters(
 
     Returns (game_start_expr, filter_conditions) tuple.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Use COALESCE to get actual start time (tip_time preferred, else game_date)
     game_start = func.coalesce(
@@ -283,7 +282,7 @@ async def get_fairbet_odds(
         .where(
             SportsGame.status.notin_(["final", "completed"]),
             func.coalesce(SportsGame.tip_time, SportsGame.game_date)
-            > datetime.now(timezone.utc),
+            > datetime.now(UTC),
         )
         .distinct()
         .options(
@@ -416,7 +415,7 @@ async def get_fairbet_odds(
     elif sort_by == "game_time":
         bets_list.sort(
             key=lambda b: b.get("game_date")
-            or datetime.min.replace(tzinfo=timezone.utc)
+            or datetime.min.replace(tzinfo=UTC)
         )
     elif sort_by == "market":
         bets_list.sort(

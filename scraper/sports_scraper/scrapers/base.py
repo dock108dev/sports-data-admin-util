@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import random
 import time
+from collections.abc import Iterable, Iterator, Sequence
 from datetime import date, timedelta
-from typing import Iterable, Iterator, Sequence
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -50,7 +50,7 @@ class BaseSportsReferenceScraper:
     def __init__(self, timeout_seconds: int | None = None) -> None:
         timeout = timeout_seconds or settings.scraper_config.request_timeout_seconds
         self.client = httpx.Client(
-            timeout=timeout, 
+            timeout=timeout,
             headers={
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -138,13 +138,13 @@ class BaseSportsReferenceScraper:
         cached_html = self._cache.get(url, game_date)
         if cached_html:
             return BeautifulSoup(cached_html, "lxml")
-        
+
         # Fetch from network
         html = self._fetch_from_network(url)
-        
+
         # Save to cache
         self._cache.put(url, html, game_date)
-        
+
         return BeautifulSoup(html, "lxml")
 
     def fetch_games_for_date(self, day: date) -> Sequence[NormalizedGame]:

@@ -109,12 +109,12 @@ class TestParseMinutes:
 # ============================================================================
 
 from sports_scraper.live.nhl_helpers import (
-    parse_toi_to_minutes,
-    parse_save_shots,
     build_team_identity_from_api,
     map_nhl_game_state,
-    parse_datetime,
     one_day,
+    parse_datetime,
+    parse_save_shots,
+    parse_toi_to_minutes,
 )
 
 
@@ -263,7 +263,7 @@ class TestOneDay:
 # Tests for live/ncaab_models.py
 # ============================================================================
 
-from sports_scraper.live.ncaab_models import NCAABLiveGame, NCAABBoxscore
+from sports_scraper.live.ncaab_models import NCAABBoxscore, NCAABLiveGame
 from sports_scraper.models import TeamIdentity
 
 
@@ -346,7 +346,7 @@ class TestNCAABBoxscore:
 # Tests for live/nhl_models.py
 # ============================================================================
 
-from sports_scraper.live.nhl_models import NHLLiveGame, NHLBoxscore
+from sports_scraper.live.nhl_models import NHLBoxscore, NHLLiveGame
 
 
 class TestNHLLiveGame:

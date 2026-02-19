@@ -15,8 +15,9 @@ Create Date: 2026-02-18
 
 from __future__ import annotations
 
-from alembic import op
 from sqlalchemy import text
+
+from alembic import op
 
 revision = "20260218_fix_ncaab"
 down_revision = "20260218_seed"

@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import case, cast, Date, func, literal_column, or_
+from sqlalchemy import Date, case, cast, func, literal_column, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedGame
-from ..utils.db_queries import get_league_id
-from ..utils.datetime_utils import now_utc
 from ..utils.date_utils import season_from_date
+from ..utils.datetime_utils import now_utc
+from ..utils.db_queries import get_league_id
 from .teams import _upsert_team
 
 if TYPE_CHECKING:
@@ -108,8 +108,8 @@ def upsert_game_stub(
     *,
     league_code: str,
     game_date: datetime,
-    home_team: "TeamIdentity",
-    away_team: "TeamIdentity",
+    home_team: TeamIdentity,
+    away_team: TeamIdentity,
     status: str | None,
     home_score: int | None = None,
     away_score: int | None = None,
@@ -175,9 +175,9 @@ def upsert_game_stub(
         return existing.id, False
 
     # Normalize game_date to midnight UTC for storage (matching uses date only)
-    normalized_game_date = datetime.combine(game_date_only, datetime.min.time(), tzinfo=timezone.utc)
+    normalized_game_date = datetime.combine(game_date_only, datetime.min.time(), tzinfo=UTC)
     season = season_from_date(game_date_only, league_code)
-    
+
     game = db_models.SportsGame(
         league_id=league_id,
         season=season,
@@ -262,7 +262,7 @@ def upsert_game(session: Session, normalized: NormalizedGame, tip_time: datetime
 
     # Normalize game_date to midnight UTC for storage
     game_date_only = normalized.identity.game_date.date()
-    normalized_game_date = datetime.combine(game_date_only, datetime.min.time(), tzinfo=timezone.utc)
+    normalized_game_date = datetime.combine(game_date_only, datetime.min.time(), tzinfo=UTC)
 
     base_stmt = insert(db_models.SportsGame).values(
         league_id=league_id,

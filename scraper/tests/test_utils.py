@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -25,7 +24,7 @@ os.environ.setdefault("ENVIRONMENT", "development")
 # Tests for utils/parsing.py
 # ============================================================================
 
-from sports_scraper.utils.parsing import parse_int, parse_float
+from sports_scraper.utils.parsing import parse_float, parse_int
 
 
 class TestParseInt:
@@ -175,10 +174,10 @@ class TestSeasonFromDate:
 # ============================================================================
 
 from sports_scraper.utils.datetime_utils import (
-    now_utc,
-    today_utc,
     date_to_utc_datetime,
     date_window_for_matching,
+    now_utc,
+    today_utc,
 )
 
 
@@ -192,12 +191,12 @@ class TestNowUtc:
     def test_now_utc_is_timezone_aware(self):
         result = now_utc()
         assert result.tzinfo is not None
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
     def test_now_utc_is_recent(self):
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         result = now_utc()
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
         assert before <= result <= after
 
 
@@ -210,7 +209,7 @@ class TestTodayUtc:
 
     def test_today_utc_matches_now(self):
         result = today_utc()
-        expected = datetime.now(timezone.utc).date()
+        expected = datetime.now(UTC).date()
         assert result == expected
 
 
@@ -229,7 +228,7 @@ class TestDateToUtcDatetime:
 
     def test_date_to_utc_datetime_is_timezone_aware(self):
         result = date_to_utc_datetime(date(2024, 1, 15))
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
 
 class TestDateWindowForMatching:
@@ -256,7 +255,7 @@ class TestDateWindowForMatching:
 # Tests for utils/cache.py
 # ============================================================================
 
-from sports_scraper.utils.cache import HTMLCache, APICache, MIN_SCOREBOARD_SIZE_BYTES
+from sports_scraper.utils.cache import MIN_SCOREBOARD_SIZE_BYTES, APICache, HTMLCache
 
 
 class TestHTMLCache:

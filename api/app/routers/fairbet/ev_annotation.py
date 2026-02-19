@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -20,7 +20,6 @@ from ...services.ev import (
     calculate_ev,
     compute_ev_for_market,
     evaluate_ev_eligibility,
-    implied_to_american,
     prob_to_vigged_american,
     remove_vig,
 )
@@ -30,7 +29,6 @@ from ...services.ev_config import (
     MAINLINE_DISAGREEMENT_MAX_POINTS,
     MAX_EXTRAPOLATED_PROB_DIVERGENCE,
     MAX_EXTRAPOLATION_HALF_POINTS,
-    SHARP_REF_MAX_AGE_SECONDS,
     extrapolation_confidence,
     get_fairbet_debug_game_ids,
 )
@@ -343,9 +341,8 @@ def _build_sharp_reference(
         lines sorted by mainline preference. Each entry has abs_line,
         is_mainline, probs, prices, observed_at.
     """
-    from datetime import timezone as _tz
 
-    now = datetime.now(_tz.utc)
+    now = datetime.now(UTC)
 
     # Step 1: Collect sharp book entries grouped by (game_id, market_base, entity_key, abs_line)
     # Each group entry: (selection_key, sharp_price, market_key, signed_line_value, observed_at)

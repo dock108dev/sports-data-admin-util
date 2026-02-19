@@ -1,6 +1,6 @@
 """Tests for datetime_utils module."""
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 
 class TestNowUtc:
@@ -19,7 +19,7 @@ class TestNowUtc:
 
         result = now_utc()
         assert result.tzinfo is not None
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
 
 class TestTodayUtc:
@@ -62,7 +62,7 @@ class TestDateToUtcDatetime:
         from app.utils.datetime_utils import date_to_utc_datetime
 
         result = date_to_utc_datetime(date(2026, 1, 22))
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
     def test_midnight(self):
         """Result is at midnight."""
@@ -84,7 +84,7 @@ class TestEasternDateToUtcRange:
         start, end = eastern_date_to_utc_range(date(2026, 1, 22))
 
         # EST is UTC-5, so midnight ET = 5:00 UTC
-        assert start.tzinfo == timezone.utc
+        assert start.tzinfo == UTC
         assert start.hour == 5
         assert start.day == 22
         assert end.hour == 5
@@ -97,7 +97,7 @@ class TestEasternDateToUtcRange:
         start, end = eastern_date_to_utc_range(date(2026, 7, 15))
 
         # EDT is UTC-4, so midnight ET = 4:00 UTC
-        assert start.tzinfo == timezone.utc
+        assert start.tzinfo == UTC
         assert start.hour == 4
         assert end.hour == 4
 
@@ -114,6 +114,7 @@ class TestEasternDateToUtcRange:
     def test_24_hour_span(self):
         """Range spans exactly 24 hours."""
         from datetime import timedelta
+
         from app.utils.datetime_utils import eastern_date_to_utc_range
 
         start, end = eastern_date_to_utc_range(date(2026, 1, 22))

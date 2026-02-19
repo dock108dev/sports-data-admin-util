@@ -5,9 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
 from bs4 import BeautifulSoup
 
 # Ensure the scraper package is importable
@@ -21,12 +19,12 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
+from sports_scraper.models import TeamIdentity
 from sports_scraper.scrapers.ncaab_sportsref_helpers import (
-    extract_team_stats,
     extract_player_stats,
+    extract_team_stats,
     find_player_table_by_position,
 )
-from sports_scraper.models import TeamIdentity
 
 
 class TestExtractTeamStats:

@@ -8,19 +8,18 @@ See tweet_mapper.py for mapping unmapped tweets to games.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
-
-from ..logging import logger
 from zoneinfo import ZoneInfo
 
-from ..utils.datetime_utils import now_utc, date_to_utc_datetime
+from ..config import settings
+from ..logging import logger
+from ..utils.datetime_utils import date_to_utc_datetime, now_utc
 from .exceptions import XCircuitBreakerError
 from .playwright_collector import PlaywrightXCollector, playwright_available
 from .rate_limit import PlatformRateLimiter
 from .registry import fetch_team_accounts
 from .utils import extract_x_post_id
-from ..config import settings
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -54,12 +53,12 @@ class TeamTweetCollector:
 
     def _normalize_posted_at(self, posted_at: datetime) -> datetime:
         if posted_at.tzinfo is None:
-            return posted_at.replace(tzinfo=timezone.utc)
-        return posted_at.astimezone(timezone.utc)
+            return posted_at.replace(tzinfo=UTC)
+        return posted_at.astimezone(UTC)
 
     def collect_team_tweets(
         self,
-        session: "Session",
+        session: Session,
         team_id: int,
         start_date: date,
         end_date: date,
@@ -200,7 +199,7 @@ class TeamTweetCollector:
 
     def collect_for_date_range(
         self,
-        session: "Session",
+        session: Session,
         league_code: str,
         start_date: date,
         end_date: date,

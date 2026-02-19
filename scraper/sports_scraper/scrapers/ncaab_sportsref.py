@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import date
-from typing import Sequence
-
-from ..utils.datetime_utils import date_to_utc_datetime
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -15,13 +13,14 @@ from ..logging import logger
 from ..models import (
     GameIdentification,
     NormalizedGame,
-    NormalizedPlayerBoxscore,
     NormalizedPlay,
     NormalizedPlayByPlay,
+    NormalizedPlayerBoxscore,
     NormalizedTeamBoxscore,
     TeamIdentity,
 )
 from ..normalization import normalize_team_name
+from ..utils.datetime_utils import date_to_utc_datetime
 from ..utils.parsing import parse_int
 from .base import BaseSportsReferenceScraper, ScraperError
 from .ncaab_sportsref_helpers import extract_player_stats, extract_team_stats
@@ -390,7 +389,7 @@ class NCAABSportsReferenceScraper(BaseSportsReferenceScraper):
             # Extract player-level stats for both teams
             away_players = self._extract_player_stats(box_soup, away_identity, is_home=False)
             home_players = self._extract_player_stats(box_soup, home_identity, is_home=True)
-            
+
             total_players = len(away_players) + len(home_players)
             logger.debug(
                 "ncaab_game_player_extraction_summary",

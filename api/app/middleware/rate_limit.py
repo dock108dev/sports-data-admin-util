@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
-from typing import Callable, Deque
+from collections.abc import Callable
 
 from fastapi import Request
 from starlette.responses import JSONResponse
@@ -17,7 +17,7 @@ class RateLimitMiddleware:
 
     def __init__(self, app: Callable) -> None:
         self.app = app
-        self._requests: dict[str, Deque[float]] = defaultdict(deque)
+        self._requests: dict[str, deque[float]] = defaultdict(deque)
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
         if scope["type"] != "http":

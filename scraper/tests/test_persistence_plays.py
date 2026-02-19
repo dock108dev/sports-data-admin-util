@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 # Ensure the scraper package is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -21,11 +18,11 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
-from sports_scraper.persistence.plays import (
-    upsert_plays,
-    create_raw_pbp_snapshot,
-)
 from sports_scraper.models import NormalizedPlay
+from sports_scraper.persistence.plays import (
+    create_raw_pbp_snapshot,
+    upsert_plays,
+)
 
 
 class TestUpsertPlays:

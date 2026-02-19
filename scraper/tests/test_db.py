@@ -43,9 +43,8 @@ class TestGetSession:
         mock_session_local.return_value = mock_session
 
         from sports_scraper.db import get_session
-        with pytest.raises(ValueError):
-            with get_session() as session:
-                raise ValueError("test error")
+        with pytest.raises(ValueError), get_session() as session:
+            raise ValueError("test error")
 
         mock_session.rollback.assert_called_once()
         mock_session.close.assert_called_once()

@@ -20,12 +20,11 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.odds.client import (
-    OddsAPIClient,
-    SPORT_KEY_MAP,
-    MARKET_TYPES,
     CLOSING_LINE_HOURS,
+    MARKET_TYPES,
+    SPORT_KEY_MAP,
+    OddsAPIClient,
 )
-
 
 # ============================================================================
 # Constants Tests

@@ -14,7 +14,6 @@ from sqlalchemy.orm import selectinload
 from ....db import AsyncSession
 from ....db.pipeline import GamePipelineRun, GamePipelineStage
 from ....services.pipeline.models import PipelineStage
-
 from .models import (
     PipelineRunResponse,
     PipelineRunSummary,

@@ -43,7 +43,7 @@ async def get_eligible_games(limit: int | None = None) -> list[int]:
         ORDER BY g.game_date DESC
         LIMIT :limit
     """)
-    
+
     async with AsyncSessionLocal() as session:
         result = await session.execute(query, {"limit": limit or 10000})
         return [row[0] for row in result.fetchall()]
@@ -61,7 +61,7 @@ async def backfill_game(game_id: int) -> dict:
         "summary_keys": 0,
         "error": None,
     }
-    
+
     try:
         async with AsyncSessionLocal() as session:
             artifact = await generate_timeline_artifact(
@@ -71,17 +71,17 @@ async def backfill_game(game_id: int) -> dict:
                 generation_reason="initial_rollout",
             )
             await session.commit()
-            
+
             result["success"] = True
             result["timeline_events"] = len(artifact.timeline)
             result["analysis_keys"] = len(artifact.game_analysis)
             result["summary_keys"] = len(artifact.summary)
-            
+
     except TimelineGenerationError as e:
         result["error"] = str(e)
     except Exception as e:
         result["error"] = f"{type(e).__name__}: {str(e)}"
-    
+
     result["duration_ms"] = round((time.time() - start_time) * 1000, 2)
     return result
 
@@ -91,10 +91,10 @@ async def run_backfill(limit: int | None = None, dry_run: bool = False):
     logger.info("=" * 60)
     logger.info("TIMELINE BACKFILL - Phase B")
     logger.info("=" * 60)
-    
+
     game_ids = await get_eligible_games(limit)
     logger.info(f"Eligible games to process: {len(game_ids)}")
-    
+
     if dry_run:
         logger.info("DRY RUN - would process these game IDs:")
         for gid in game_ids[:20]:
@@ -102,7 +102,7 @@ async def run_backfill(limit: int | None = None, dry_run: bool = False):
         if len(game_ids) > 20:
             logger.info(f"  ... and {len(game_ids) - 20} more")
         return
-    
+
     stats = {
         "total": len(game_ids),
         "success": 0,
@@ -111,11 +111,11 @@ async def run_backfill(limit: int | None = None, dry_run: bool = False):
         "total_duration_ms": 0,
         "errors": [],
     }
-    
+
     for i, game_id in enumerate(game_ids, 1):
         result = await backfill_game(game_id)
         stats["total_duration_ms"] += result["duration_ms"]
-        
+
         if result["success"]:
             stats["success"] += 1
             stats["consecutive_failures"] = 0
@@ -135,13 +135,13 @@ async def run_backfill(limit: int | None = None, dry_run: bool = False):
                 f"duration={result['duration_ms']}ms | "
                 f"error={result['error']}"
             )
-            
+
             if stats["consecutive_failures"] >= MAX_CONSECUTIVE_FAILURES:
                 logger.error(
                     f"STOPPING: {MAX_CONSECUTIVE_FAILURES} consecutive failures reached"
                 )
                 break
-    
+
     # Summary
     logger.info("=" * 60)
     logger.info("BACKFILL COMPLETE")
@@ -153,14 +153,14 @@ async def run_backfill(limit: int | None = None, dry_run: bool = False):
     if stats["success"] > 0:
         avg_ms = stats["total_duration_ms"] / stats["success"]
         logger.info(f"Avg duration per success: {avg_ms:.2f}ms")
-    
+
     if stats["errors"]:
         logger.info("\nErrors encountered:")
         for err in stats["errors"][:10]:
             logger.info(f"  game_id={err['game_id']}: {err['error']}")
         if len(stats["errors"]) > 10:
             logger.info(f"  ... and {len(stats['errors']) - 10} more errors")
-    
+
     return stats
 
 
@@ -169,7 +169,7 @@ def main():
     parser.add_argument("--limit", type=int, help="Limit number of games to process")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done")
     args = parser.parse_args()
-    
+
     asyncio.run(run_backfill(limit=args.limit, dry_run=args.dry_run))
 
 

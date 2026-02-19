@@ -7,7 +7,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-
 SportCode = Literal["NBA", "NFL", "NCAAF", "NCAAB", "MLB", "NHL"]
 MarketType = Literal["spread", "total", "moneyline"]
 ScraperType = Literal["boxscore", "odds", "boxscore_and_odds", "social", "pbp", "all"]
@@ -184,10 +183,10 @@ class IngestionConfig(BaseModel):
     social: bool = False  # Scrape X posts for games
     pbp: bool = False  # Scrape play-by-play
     batch_live_feed: bool = False  # Use live endpoints (cdn.nba.com) for PBP
-    
+
     # Shared filters
     only_missing: bool = False  # Skip games that already have this data
     updated_before: date | None = None  # Only process if last updated before this date
-    
+
     # Optional book filter for odds
     include_books: list[str] | None = None
