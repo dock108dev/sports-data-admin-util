@@ -34,6 +34,10 @@ from .ev_annotation import (
 
 logger = logging.getLogger(__name__)
 
+# Minimum number of books required for a bet to appear in FairBet results.
+# Bets with fewer books lack sufficient market coverage for meaningful comparison.
+MIN_BOOKS_FOR_FAIRBET = 3
+
 router = APIRouter()
 
 
@@ -330,6 +334,22 @@ async def get_fairbet_odds(
                 "price": row.price,
                 "observed_at": row.observed_at,
             }
+        )
+
+    # Step 5b: Drop bets with insufficient book coverage
+    pre_filter_count = len(bets_map)
+    bets_map = {
+        key: bet for key, bet in bets_map.items()
+        if len(bet["books"]) >= MIN_BOOKS_FOR_FAIRBET
+    }
+    if pre_filter_count > len(bets_map):
+        logger.info(
+            "min_books_filter",
+            extra={
+                "dropped": pre_filter_count - len(bets_map),
+                "remaining": len(bets_map),
+                "threshold": MIN_BOOKS_FOR_FAIRBET,
+            },
         )
 
     # Step 6: EV annotation with eligibility gate

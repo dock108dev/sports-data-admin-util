@@ -172,11 +172,13 @@ _STRATEGY_MAP: dict[tuple[str, str], EVStrategyConfig | None] = {
 
 # Per-sport, per-market logit slope (logit shift per 0.5-point line change).
 # Operates in log-odds space so tails naturally compress.
-# Roughly calibrated: near 50%, a 1-half-point shift ≈ 1.5% prob (basketball).
+# Calibrated so near 50%, a 1-half-point shift ≈ 1.5% prob (basketball).
+# At p=0.50 the logit sensitivity is 0.25, so slope = 0.015/0.25 ≈ 0.06.
+# Team totals use ~1.3x game totals (lower scoring variance, σ≈11 vs σ≈15).
 HALF_POINT_LOGIT_SLOPE: dict[str, dict[str, float]] = {
-    "NBA": {"spreads": 0.12, "totals": 0.10, "team_totals": 0.15},
-    "NCAAB": {"spreads": 0.14, "totals": 0.12, "team_totals": 0.18},
-    "NHL": {"spreads": 0.35, "totals": 0.30, "team_totals": 0.40},
+    "NBA": {"spreads": 0.06, "totals": 0.05, "team_totals": 0.08},
+    "NCAAB": {"spreads": 0.07, "totals": 0.06, "team_totals": 0.09},
+    "NHL": {"spreads": 0.18, "totals": 0.15, "team_totals": 0.20},
 }
 
 # Max number of half-points we'll extrapolate (beyond → too uncertain).

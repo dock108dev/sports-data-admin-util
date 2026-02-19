@@ -315,7 +315,7 @@ class TestGetFairbetOddsEndpoint:
     @pytest.mark.asyncio
     async def test_returns_grouped_bets(self, mock_session, mock_odds_row):
         """Returns bets grouped by definition with multiple books."""
-        # Create second book for same bet
+        # Create additional books for same bet (need 3 to pass min-books filter)
         mock_row2 = MagicMock()
         mock_row2.game_id = 1
         mock_row2.market_key = "spreads"
@@ -328,12 +328,24 @@ class TestGetFairbetOddsEndpoint:
         mock_row2.player_name = None
         mock_row2.game = mock_odds_row.game
 
+        mock_row3 = MagicMock()
+        mock_row3.game_id = 1
+        mock_row3.market_key = "spreads"
+        mock_row3.selection_key = "team:los_angeles_lakers"
+        mock_row3.line_value = -3.5
+        mock_row3.book = "Pinnacle"
+        mock_row3.price = -112
+        mock_row3.observed_at = datetime.now(UTC)
+        mock_row3.market_category = "mainline"
+        mock_row3.player_name = None
+        mock_row3.game = mock_odds_row.game
+
         self._mock_execute_chain(
             mock_session,
             [
                 {"scalar": 1},  # Count query
-                {"scalars_all": [mock_odds_row, mock_row2]},  # Main data query
-                {"all": [("DraftKings",), ("FanDuel",)]},  # Books query
+                {"scalars_all": [mock_odds_row, mock_row2, mock_row3]},  # Main data query
+                {"all": [("DraftKings",), ("FanDuel",), ("Pinnacle",)]},  # Books query
                 {"all": [("mainline",)]},  # Categories query
                 {"scalars_all": []},  # Games dropdown query
             ],
@@ -343,8 +355,8 @@ class TestGetFairbetOddsEndpoint:
 
         assert response.total == 1
         assert len(response.bets) == 1
-        assert len(response.bets[0].books) == 2
-        assert response.books_available == ["DraftKings", "FanDuel"]
+        assert len(response.bets[0].books) == 3
+        assert response.books_available == ["DraftKings", "FanDuel", "Pinnacle"]
 
     @pytest.mark.asyncio
     async def test_books_sorted_by_best_odds(self, mock_session, mock_odds_row):
@@ -418,12 +430,37 @@ class TestGetFairbetOddsEndpoint:
     @pytest.mark.asyncio
     async def test_bet_definition_fields_populated(self, mock_session, mock_odds_row):
         """All BetDefinition fields are correctly populated."""
+        # Need 3 books to pass min-books filter
+        mock_row2 = MagicMock()
+        mock_row2.game_id = 1
+        mock_row2.market_key = "spreads"
+        mock_row2.selection_key = "team:los_angeles_lakers"
+        mock_row2.line_value = -3.5
+        mock_row2.book = "FanDuel"
+        mock_row2.price = -108
+        mock_row2.observed_at = datetime.now(UTC)
+        mock_row2.market_category = "mainline"
+        mock_row2.player_name = None
+        mock_row2.game = mock_odds_row.game
+
+        mock_row3 = MagicMock()
+        mock_row3.game_id = 1
+        mock_row3.market_key = "spreads"
+        mock_row3.selection_key = "team:los_angeles_lakers"
+        mock_row3.line_value = -3.5
+        mock_row3.book = "Pinnacle"
+        mock_row3.price = -112
+        mock_row3.observed_at = datetime.now(UTC)
+        mock_row3.market_category = "mainline"
+        mock_row3.player_name = None
+        mock_row3.game = mock_odds_row.game
+
         self._mock_execute_chain(
             mock_session,
             [
                 {"scalar": 1},  # Count query
-                {"scalars_all": [mock_odds_row]},  # Main data query
-                {"all": [("DraftKings",)]},  # Books query
+                {"scalars_all": [mock_odds_row, mock_row2, mock_row3]},  # Main data query
+                {"all": [("DraftKings",), ("FanDuel",), ("Pinnacle",)]},  # Books query
                 {"all": [("mainline",)]},  # Categories query
                 {"scalars_all": []},  # Games dropdown query
             ],
@@ -439,6 +476,65 @@ class TestGetFairbetOddsEndpoint:
         assert bet.market_key == "spreads"
         assert bet.selection_key == "team:los_angeles_lakers"
         assert bet.line_value == -3.5
+
+    @pytest.mark.asyncio
+    async def test_bets_below_min_books_filtered(self, mock_session, mock_odds_row):
+        """Bets with fewer than MIN_BOOKS_FOR_FAIRBET books are excluded."""
+        # Bet A (spreads, lakers, -3.5): 3 books → passes filter
+        row_a1 = mock_odds_row  # DraftKings
+        row_a2 = MagicMock()
+        row_a2.game_id = 1
+        row_a2.market_key = "spreads"
+        row_a2.selection_key = "team:los_angeles_lakers"
+        row_a2.line_value = -3.5
+        row_a2.book = "FanDuel"
+        row_a2.price = -108
+        row_a2.observed_at = datetime.now(UTC)
+        row_a2.market_category = "mainline"
+        row_a2.player_name = None
+        row_a2.game = mock_odds_row.game
+
+        row_a3 = MagicMock()
+        row_a3.game_id = 1
+        row_a3.market_key = "spreads"
+        row_a3.selection_key = "team:los_angeles_lakers"
+        row_a3.line_value = -3.5
+        row_a3.book = "Pinnacle"
+        row_a3.price = -112
+        row_a3.observed_at = datetime.now(UTC)
+        row_a3.market_category = "mainline"
+        row_a3.player_name = None
+        row_a3.game = mock_odds_row.game
+
+        # Bet B (h2h, lakers, 0): 1 book → filtered out
+        row_b1 = MagicMock()
+        row_b1.game_id = 1
+        row_b1.market_key = "h2h"
+        row_b1.selection_key = "team:los_angeles_lakers"
+        row_b1.line_value = 0
+        row_b1.book = "DraftKings"
+        row_b1.price = -150
+        row_b1.observed_at = datetime.now(UTC)
+        row_b1.market_category = "mainline"
+        row_b1.player_name = None
+        row_b1.game = mock_odds_row.game
+
+        self._mock_execute_chain(
+            mock_session,
+            [
+                {"scalar": 2},  # Count query (2 bet definitions)
+                {"scalars_all": [row_a1, row_a2, row_a3, row_b1]},  # Main data query
+                {"all": [("DraftKings",), ("FanDuel",), ("Pinnacle",)]},  # Books
+                {"all": [("mainline",)]},  # Categories
+                {"scalars_all": []},  # Games dropdown
+            ],
+        )
+
+        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
+
+        # Only bet A (3 books) should remain; bet B (1 book) filtered out
+        assert len(response.bets) == 1
+        assert response.bets[0].market_key == "spreads"
 
 
 class TestBetGrouping:
@@ -759,10 +855,16 @@ class TestAltSpreadGrouping:
                 mock_game, 1, "spreads", "team:seton_hall", -1.5, "DraftKings", -115
             ),
             self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -1.5, "FanDuel", -118
+            ),
+            self._make_odds_row(
                 mock_game, 1, "spreads", "team:villanova", 1.5, "Pinnacle", 105
             ),
             self._make_odds_row(
                 mock_game, 1, "spreads", "team:villanova", 1.5, "DraftKings", 100
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 1.5, "FanDuel", 102
             ),
             # Line pair 2: -2.5 / +2.5
             self._make_odds_row(
@@ -772,10 +874,16 @@ class TestAltSpreadGrouping:
                 mock_game, 1, "spreads", "team:seton_hall", -2.5, "DraftKings", -140
             ),
             self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -2.5, "FanDuel", -142
+            ),
+            self._make_odds_row(
                 mock_game, 1, "spreads", "team:villanova", 2.5, "Pinnacle", 125
             ),
             self._make_odds_row(
                 mock_game, 1, "spreads", "team:villanova", 2.5, "DraftKings", 120
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 2.5, "FanDuel", 122
             ),
         ]
 
@@ -784,7 +892,7 @@ class TestAltSpreadGrouping:
             [
                 {"scalar": 4},
                 {"scalars_all": rows},
-                {"all": [("Pinnacle",), ("DraftKings",)]},
+                {"all": [("Pinnacle",), ("DraftKings",), ("FanDuel",)]},
                 {"all": [("alternate",)]},
                 {"scalars_all": []},
             ],
@@ -819,13 +927,37 @@ class TestAltSpreadGrouping:
                 mock_game, 1, "spreads", "team:seton_hall", -1.5, "Pinnacle", -120
             ),
             self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -1.5, "DraftKings", -115
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -1.5, "FanDuel", -118
+            ),
+            self._make_odds_row(
                 mock_game, 1, "spreads", "team:villanova", 1.5, "Pinnacle", 105
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 1.5, "DraftKings", 100
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 1.5, "FanDuel", 102
             ),
             self._make_odds_row(
                 mock_game, 1, "spreads", "team:seton_hall", -2.5, "Pinnacle", -145
             ),
             self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -2.5, "DraftKings", -140
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -2.5, "FanDuel", -142
+            ),
+            self._make_odds_row(
                 mock_game, 1, "spreads", "team:villanova", 2.5, "Pinnacle", 125
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 2.5, "DraftKings", 120
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:villanova", 2.5, "FanDuel", 122
             ),
         ]
 
@@ -834,7 +966,7 @@ class TestAltSpreadGrouping:
             [
                 {"scalar": 4},
                 {"scalars_all": rows},
-                {"all": [("Pinnacle",)]},
+                {"all": [("Pinnacle",), ("DraftKings",), ("FanDuel",)]},
                 {"all": [("alternate",)]},
                 {"scalars_all": []},
             ],
@@ -850,13 +982,25 @@ class TestAltSpreadGrouping:
     @pytest.mark.asyncio
     async def test_same_selection_key_not_paired(self, mock_session, mock_game):
         """Two entries with the same selection_key are NOT paired even if abs(line) matches."""
-        # Two SHU sides at -1.5 and -1.5 (duplicate) — no opposite side available
+        # Two SHU sides at -1.5 and +1.5 (same selection_key) — no opposite side available
         rows = [
             self._make_odds_row(
                 mock_game, 1, "spreads", "team:seton_hall", -1.5, "Pinnacle", -120
             ),
             self._make_odds_row(
-                mock_game, 1, "spreads", "team:seton_hall", 1.5, "DraftKings", -115
+                mock_game, 1, "spreads", "team:seton_hall", -1.5, "DraftKings", -115
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", -1.5, "FanDuel", -118
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", 1.5, "Pinnacle", 105
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", 1.5, "DraftKings", 100
+            ),
+            self._make_odds_row(
+                mock_game, 1, "spreads", "team:seton_hall", 1.5, "FanDuel", 102
             ),
         ]
 
@@ -865,7 +1009,7 @@ class TestAltSpreadGrouping:
             [
                 {"scalar": 2},
                 {"scalars_all": rows},
-                {"all": [("Pinnacle",), ("DraftKings",)]},
+                {"all": [("Pinnacle",), ("DraftKings",), ("FanDuel",)]},
                 {"all": [("alternate",)]},
                 {"scalars_all": []},
             ],
@@ -1163,6 +1307,9 @@ class TestSharpBooksRetainedWhenEvDisabled:
             self._make_odds_row(
                 mock_game, 1, "h2h", "team:lakers", 0, "DraftKings", -145
             ),
+            self._make_odds_row(
+                mock_game, 1, "h2h", "team:lakers", 0, "FanDuel", -148
+            ),
         ]
 
         self._mock_execute_chain(
@@ -1170,7 +1317,7 @@ class TestSharpBooksRetainedWhenEvDisabled:
             [
                 {"scalar": 1},
                 {"scalars_all": rows},
-                {"all": [("Pinnacle",), ("DraftKings",)]},
+                {"all": [("Pinnacle",), ("DraftKings",), ("FanDuel",)]},
                 {"all": [("mainline",)]},
                 {"scalars_all": []},
             ],

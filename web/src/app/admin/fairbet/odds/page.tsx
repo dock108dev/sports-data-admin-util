@@ -339,6 +339,7 @@ export default function FairbetOddsPage() {
           <div className={styles.betsGrid}>
             {bets.map((bet, idx) => {
               const bestBook = getBestOdds(bet.books);
+              const bestBookHasPositiveEv = bestBook != null && bestBook.ev_percent != null && bestBook.ev_percent > 0;
               return (
                 <div key={idx} className={styles.betCard}>
                   <div className={styles.betHeader}>
@@ -433,7 +434,7 @@ export default function FairbetOddsPage() {
                         <div
                           key={bookIdx}
                           className={`${styles.bookOdds} ${
-                            bestBook && bookOdds.book === bestBook.book
+                            bestBookHasPositiveEv && bookOdds.book === bestBook.book
                               ? styles.bestOdds
                               : ""
                           } ${bookOdds.is_sharp ? styles.sharpBook : ""}`}
