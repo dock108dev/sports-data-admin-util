@@ -238,8 +238,8 @@ class TestValidationOutput:
     def test_to_dict_with_override(self):
         """to_dict includes override when present."""
         from app.services.pipeline.models import (
-            ValidationOutput,
             ScoreContinuityOverride,
+            ValidationOutput,
         )
 
         override = ScoreContinuityOverride(enabled=True, reason="Test")

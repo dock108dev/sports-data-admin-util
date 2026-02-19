@@ -10,7 +10,6 @@ from ..models import NormalizedPlay, TeamIdentity
 from ..normalization import normalize_team_name
 from ..utils.parsing import parse_int
 
-
 SCORE_PATTERN_TYPE = re.Pattern[str]
 
 

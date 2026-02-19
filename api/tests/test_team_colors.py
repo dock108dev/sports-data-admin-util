@@ -1,16 +1,13 @@
 """Tests for app.services.team_colors."""
 
-import math
 
 from app.services.team_colors import (
-    CLASH_THRESHOLD,
     NEUTRAL_DARK,
     NEUTRAL_LIGHT,
     color_distance,
     get_matchup_colors,
     hex_to_rgb,
 )
-
 
 # ---------------------------------------------------------------------------
 # hex_to_rgb

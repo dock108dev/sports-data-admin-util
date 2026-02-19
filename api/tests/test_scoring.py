@@ -44,6 +44,7 @@ class TestNormalize:
     def test_invalid_range_raises(self):
         """Invalid range raises ValueError."""
         import pytest
+
         from app.game_metadata.scoring import _normalize
 
         with pytest.raises(ValueError):
@@ -107,7 +108,7 @@ class TestNormalizeElo:
 
     def test_mid_elo(self):
         """Mid-range Elo normalizes correctly."""
-        from app.game_metadata.scoring import _normalize_elo, ELO_MIN, ELO_MAX
+        from app.game_metadata.scoring import ELO_MAX, ELO_MIN, _normalize_elo
 
         mid_elo = (ELO_MIN + ELO_MAX) / 2
         result = _normalize_elo(mid_elo)
@@ -120,9 +121,9 @@ class TestNormalizeEfficiency:
     def test_mid_efficiency(self):
         """Mid-range efficiency normalizes correctly."""
         from app.game_metadata.scoring import (
-            _normalize_efficiency,
-            KENPOM_EFF_MIN,
             KENPOM_EFF_MAX,
+            KENPOM_EFF_MIN,
+            _normalize_efficiency,
         )
 
         mid_eff = (KENPOM_EFF_MIN + KENPOM_EFF_MAX) / 2
@@ -135,8 +136,8 @@ class TestTeamStrength:
 
     def test_with_efficiency(self):
         """Team strength uses both Elo and efficiency."""
-        from app.game_metadata.scoring import _team_strength
         from app.game_metadata.models import TeamRatings
+        from app.game_metadata.scoring import _team_strength
 
         rating = TeamRatings(
             team_id="1", conference="Big 10", elo=1600.0, kenpom_adj_eff=15.0
@@ -146,8 +147,8 @@ class TestTeamStrength:
 
     def test_without_efficiency(self):
         """Team strength uses only Elo when no efficiency."""
-        from app.game_metadata.scoring import _team_strength
         from app.game_metadata.models import TeamRatings
+        from app.game_metadata.scoring import _team_strength
 
         rating = TeamRatings(
             team_id="1", conference="Big 10", elo=1600.0, kenpom_adj_eff=None
@@ -347,8 +348,8 @@ class TestQualityScore:
 
     def test_basic_quality_score(self):
         """Quality score returns normalized value."""
+        from app.game_metadata.models import StandingsEntry, TeamRatings
         from app.game_metadata.scoring import quality_score
-        from app.game_metadata.models import TeamRatings, StandingsEntry
 
         home_rating = TeamRatings(
             team_id="1", conference="Big 10", elo=1700.0, projected_seed=3
@@ -393,7 +394,7 @@ class TestScoreGameContext:
 
     def test_returns_excitement_score(self):
         """score_game_context returns excitement score."""
-        from app.game_metadata.scoring import score_game_context, excitement_score
+        from app.game_metadata.scoring import excitement_score, score_game_context
 
         context = self._make_context(rivalry=True)
         result = score_game_context(context)

@@ -5,9 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 # Ensure the scraper package is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -20,14 +18,14 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
+from sports_scraper.models import TeamIdentity
 from sports_scraper.persistence.teams import (
-    _upsert_team,
-    _normalize_ncaab_name_for_matching,
+    _NCAAB_ABBREV_EXPANSIONS,
     _NCAAB_STOPWORDS,
     _derive_abbreviation,
-    _NCAAB_ABBREV_EXPANSIONS,
+    _normalize_ncaab_name_for_matching,
+    _upsert_team,
 )
-from sports_scraper.models import TeamIdentity
 
 
 class TestNcaabStopwords:
@@ -256,8 +254,9 @@ class TestFindTeamByName:
 
     def test_function_signature(self):
         """Function has expected parameters."""
-        from sports_scraper.persistence.teams import _find_team_by_name
         import inspect
+
+        from sports_scraper.persistence.teams import _find_team_by_name
         sig = inspect.signature(_find_team_by_name)
         params = list(sig.parameters.keys())
         assert "session" in params
@@ -293,19 +292,19 @@ class TestShouldLogTeams:
 
     def test_logs_first_occurrence(self):
         """_should_log returns True for first occurrence."""
-        from sports_scraper.persistence.teams import _should_log, _LOG_COUNTERS
-
         # Use unique key to avoid state from other tests
         import time
+
+        from sports_scraper.persistence.teams import _should_log
         key = f"test_event_{time.time()}"
         result = _should_log(key)
         assert result is True
 
     def test_skips_intermediate_occurrences(self):
         """_should_log returns False for intermediate occurrences."""
-        from sports_scraper.persistence.teams import _should_log
-
         import time
+
+        from sports_scraper.persistence.teams import _should_log
         key = f"test_event_repeat_{time.time()}"
 
         _should_log(key)  # 1st - True

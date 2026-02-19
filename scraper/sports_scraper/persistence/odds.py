@@ -5,7 +5,7 @@ Handles odds matching to games and persistence, including NCAAB-specific name ma
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from enum import Enum
 
 from sqlalchemy import alias, func, or_, select
@@ -15,8 +15,10 @@ from sqlalchemy.orm import Session
 from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedOddsSnapshot
-from ..utils.db_queries import get_league_id
 from ..utils.datetime_utils import now_utc
+from ..utils.db_queries import get_league_id
+
+
 class OddsUpsertResult(Enum):
     """Result of an odds upsert attempt."""
 
@@ -25,6 +27,8 @@ class OddsUpsertResult(Enum):
     SKIPPED_LIVE = "skipped_live"
 
 
+from ..odds.fairbet import upsert_fairbet_odds  # noqa: E402
+from .games import upsert_game_stub  # noqa: E402
 from .odds_matching import (  # noqa: E402
     cache_get,
     cache_set,
@@ -34,9 +38,7 @@ from .odds_matching import (  # noqa: E402
     match_game_by_team_ids,
     should_log,
 )
-from .games import upsert_game_stub  # noqa: E402
 from .teams import _find_team_by_name, _upsert_team  # noqa: E402
-from ..odds.fairbet import upsert_fairbet_odds  # noqa: E402
 
 
 def _execute_odds_upsert(
@@ -185,8 +187,8 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
             upsert_fairbet_odds(session, game_id, game.status, snapshot)
 
         return OddsUpsertResult.PERSISTED
-    day_start = datetime.combine(game_day - timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
-    day_end = datetime.combine(game_day + timedelta(days=1), datetime.max.time(), tzinfo=timezone.utc)
+    day_start = datetime.combine(game_day - timedelta(days=1), datetime.min.time(), tzinfo=UTC)
+    day_end = datetime.combine(game_day + timedelta(days=1), datetime.max.time(), tzinfo=UTC)
 
     if should_log("odds_matching_start"):
         logger.debug(

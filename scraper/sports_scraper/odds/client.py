@@ -9,7 +9,7 @@ Includes local JSON caching to avoid repeat API calls and save credits.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -153,7 +153,7 @@ class OddsAPIClient:
                 data = json.loads(cache_path.read_text())
                 logger.debug("odds_cache_hit", path=str(cache_path))
                 return data
-            except (json.JSONDecodeError, IOError) as e:
+            except (OSError, json.JSONDecodeError) as e:
                 logger.warning("odds_cache_read_error", path=str(cache_path), error=str(e))
         return None
 
@@ -163,7 +163,7 @@ class OddsAPIClient:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(json.dumps(data, indent=2, default=str))
             logger.debug("odds_cache_written", path=str(cache_path))
-        except IOError as e:
+        except OSError as e:
             logger.warning("odds_cache_write_error", path=str(cache_path), error=str(e))
 
     # -------------------------------------------------------------------------
@@ -180,7 +180,7 @@ class OddsAPIClient:
         books: list[str] | None = None,
     ) -> list[NormalizedOddsSnapshot]:
         """Fetch live odds for upcoming games.
-        
+
         Uses the standard /sports/{sport}/odds endpoint.
         """
         if not settings.odds_api_key:
@@ -191,9 +191,9 @@ class OddsAPIClient:
             logger.warning("unsupported_league_for_odds", league=league_code)
             return []
 
-        start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-        end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
-        
+        start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=UTC)
+        end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=UTC)
+
         regions = ",".join(settings.odds_config.regions)
         params = {
             "apiKey": settings.odds_api_key,
@@ -222,7 +222,7 @@ class OddsAPIClient:
             event_count=len(payload) if isinstance(payload, list) else 0,
             remaining=response.headers.get("x-requests-remaining"),
         )
-        
+
         return self._parse_odds_events(league_code, payload, books)
 
     def fetch_historical_odds(
@@ -232,15 +232,15 @@ class OddsAPIClient:
         books: list[str] | None = None,
     ) -> list[NormalizedOddsSnapshot]:
         """Fetch historical odds for a specific date using the historical API.
-        
+
         Uses /historical/sports/{sport}/odds endpoint.
         Cost: 30 credits per call (3 markets x 1 region).
-        
+
         Args:
             league_code: League code (NBA, NFL, etc.)
             game_date: The date to fetch odds for
             books: Optional list of bookmaker keys to filter
-            
+
         Returns:
             List of normalized odds snapshots for all games on that date
         """
@@ -264,7 +264,7 @@ class OddsAPIClient:
 
         # Build snapshot time - use closing line hour for this sport
         closing_hour = CLOSING_LINE_HOURS.get(league_code.upper(), 23)
-        snapshot_dt = datetime.combine(game_date, time(closing_hour, 0), tzinfo=timezone.utc)
+        snapshot_dt = datetime.combine(game_date, time(closing_hour, 0), tzinfo=UTC)
         date_param = snapshot_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
         regions = ",".join(settings.odds_config.regions)
@@ -297,7 +297,7 @@ class OddsAPIClient:
             return []
 
         result = response.json()
-        
+
         # Log quota usage from headers
         remaining = response.headers.get("x-requests-remaining", "?")
         used = response.headers.get("x-requests-used", "?")
@@ -335,11 +335,11 @@ class OddsAPIClient:
         books: list[str] | None = None,
     ) -> list[NormalizedOddsSnapshot]:
         """Parse events list into normalized odds snapshots.
-        
+
         Shared logic for both live and historical endpoints.
         """
         snapshots: list[NormalizedOddsSnapshot] = []
-        
+
         for event in events:
             # Store event ID for downstream prop fetching
             event_id = event.get("id")
@@ -351,14 +351,14 @@ class OddsAPIClient:
             commence_et = commence_utc.astimezone(US_EASTERN)
             # Create game_date at midnight ET, then convert back to UTC for storage
             game_date_et = datetime.combine(commence_et.date(), datetime.min.time(), tzinfo=US_EASTERN)
-            game_date = game_date_et.astimezone(timezone.utc)
-            
+            game_date = game_date_et.astimezone(UTC)
+
             # Normalize team names to canonical form
             raw_home_name = event["home_team"]
             raw_away_name = event["away_team"]
             home_canonical, home_abbr = normalize_team_name(league_code, raw_home_name)
             away_canonical, away_abbr = normalize_team_name(league_code, raw_away_name)
-            
+
             # Log normalization - always log to help debug matching issues
             logger.debug(
                 "odds_team_normalization",
@@ -371,7 +371,7 @@ class OddsAPIClient:
                 away_abbr=away_abbr,
                 was_normalized=(raw_home_name != home_canonical or raw_away_name != away_canonical),
             )
-            
+
             # Warn if normalization fell back to generating abbreviation
             # (indicates team name not in mappings)
             # Skip this check for NCAAB since abbreviations are None
@@ -387,7 +387,7 @@ class OddsAPIClient:
                     generated_away_abbr=away_abbr,
                     message="Team names not found in mappings - using generated abbreviations",
                 )
-            
+
             home_team = TeamIdentity(
                 league_code=league_code,
                 name=home_canonical,
@@ -400,7 +400,7 @@ class OddsAPIClient:
                 short_name=away_canonical,
                 abbreviation=away_abbr,
             )
-            
+
             for bookmaker in event.get("bookmakers", []):
                 if books and bookmaker["key"] not in books:
                     continue
@@ -454,7 +454,7 @@ class OddsAPIClient:
                                 event_id=event_id,
                             )
                         )
-        
+
         return snapshots
 
     def _track_credits(self, response: httpx.Response) -> int | None:
@@ -570,7 +570,7 @@ class OddsAPIClient:
         commence_utc = datetime.fromisoformat(commence_str.replace("Z", "+00:00"))
         commence_et = commence_utc.astimezone(US_EASTERN)
         game_date_et = datetime.combine(commence_et.date(), datetime.min.time(), tzinfo=US_EASTERN)
-        game_date = game_date_et.astimezone(timezone.utc)
+        game_date = game_date_et.astimezone(UTC)
 
         raw_home_name = event_data.get("home_team", "")
         raw_away_name = event_data.get("away_team", "")

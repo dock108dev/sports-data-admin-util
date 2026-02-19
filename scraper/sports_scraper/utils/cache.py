@@ -292,7 +292,7 @@ class APICache:
                     path=str(cache_path),
                 )
                 return data
-            except (json.JSONDecodeError, IOError) as e:
+            except (OSError, json.JSONDecodeError) as e:
                 logger.warning(
                     "api_cache_read_error",
                     api=self.api_name,
@@ -331,7 +331,7 @@ class APICache:
                 size_kb=len(json.dumps(data)) // 1024,
             )
             return cache_path
-        except (IOError, TypeError) as e:
+        except (OSError, TypeError) as e:
             logger.warning(
                 "api_cache_write_error",
                 api=self.api_name,

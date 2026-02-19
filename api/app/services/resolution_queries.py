@@ -9,8 +9,8 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from ..db import AsyncSession
-from ..db.resolution import EntityResolution
 from ..db.pipeline import GamePipelineRun
+from ..db.resolution import EntityResolution
 from .resolution_tracker import ResolutionSummary
 
 

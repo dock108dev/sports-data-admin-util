@@ -10,8 +10,9 @@ Session management:
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, AsyncGenerator
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -23,11 +24,11 @@ if TYPE_CHECKING:
 # Lazy-loaded engine and session factory to avoid initialization at import time.
 # This allows tests to import modules without triggering database connection,
 # and lets the scraper import ORM models without pulling in the API config.
-_engine: "AsyncEngine | None" = None
+_engine: AsyncEngine | None = None
 _AsyncSessionLocal: async_sessionmaker[AsyncSession] | None = None
 
 
-def _get_engine() -> "AsyncEngine":
+def _get_engine() -> AsyncEngine:
     """Get or create the database engine (lazy initialization)."""
     global _engine
     if _engine is None:

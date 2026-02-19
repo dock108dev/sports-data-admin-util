@@ -15,9 +15,17 @@ import pytest
 
 from sports_scraper.validate_env import (
     ALLOWED_ENVIRONMENTS as SCRAPER_ALLOWED_ENVIRONMENTS,
+)
+from sports_scraper.validate_env import (
     require_env as scraper_require_env,
+)
+from sports_scraper.validate_env import (
     validate_database_credentials as scraper_validate_database_credentials,
+)
+from sports_scraper.validate_env import (
     validate_environment_value as scraper_validate_environment_value,
+)
+from sports_scraper.validate_env import (
     validate_non_local_url as scraper_validate_non_local_url,
 )
 
@@ -60,7 +68,7 @@ class TestAllowedEnvironmentsEquivalence:
     def test_allowed_environments_match(self) -> None:
         """ALLOWED_ENVIRONMENTS should be identical in both packages."""
         assert SCRAPER_ALLOWED_ENVIRONMENTS == API_ALLOWED_ENVIRONMENTS
-        assert SCRAPER_ALLOWED_ENVIRONMENTS == {"development", "staging", "production"}
+        assert {"development", "staging", "production"} == SCRAPER_ALLOWED_ENVIRONMENTS
 
 
 class TestRequireEnvEquivalence:

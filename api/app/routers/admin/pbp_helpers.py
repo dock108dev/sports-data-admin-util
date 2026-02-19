@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...db.sports import SportsGamePlay
-from .pbp_models import PlaySummary, PlayDetail
+from .pbp_models import PlayDetail, PlaySummary
 
 
 def build_resolution_summary(plays: list[SportsGamePlay]) -> dict[str, Any]:

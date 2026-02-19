@@ -6,9 +6,9 @@ import json
 import logging
 import os
 import sys
-from .utils.datetime_utils import now_utc
 from typing import Any
 
+from .utils.datetime_utils import now_utc
 
 _RESERVED_LOG_RECORD_KEYS = {
     "args",

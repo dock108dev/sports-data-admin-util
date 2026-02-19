@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta
+from importlib.util import find_spec
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 
@@ -11,8 +12,6 @@ from ..logging import logger
 from .exceptions import XCircuitBreakerError
 from .models import CollectedPost
 from .utils import extract_x_post_id
-
-from importlib.util import find_spec
 
 if find_spec("playwright.sync_api") is not None:
     from playwright.sync_api import sync_playwright

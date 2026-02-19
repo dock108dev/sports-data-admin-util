@@ -24,10 +24,9 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.live.nba_boxscore import NBABoxscoreFetcher
+from sports_scraper.live.ncaab_pbp import NCAABPbpFetcher
 from sports_scraper.live.nhl_boxscore import NHLBoxscoreFetcher
 from sports_scraper.live.nhl_pbp import NHLPbpFetcher
-from sports_scraper.live.ncaab_pbp import NCAABPbpFetcher
-
 
 # ---------------------------------------------------------------------------
 # Helpers

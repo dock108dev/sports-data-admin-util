@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from sports_scraper.services.game_state_updater import (
     _ARCHIVE_AFTER_DAYS,
     _promote_final_to_archived,
     _promote_scheduled_to_pregame,
-    _promote_stale_to_final,
     update_game_states,
 )
 
@@ -19,7 +18,7 @@ _PREGAME_WINDOW_HOURS = 6
 
 
 def _utc_now() -> datetime:
-    return datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+    return datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
 
 
 def _make_game(**kwargs) -> MagicMock:

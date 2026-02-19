@@ -7,8 +7,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 # Ensure the scraper package is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRAPER_ROOT = REPO_ROOT / "scraper"
@@ -21,9 +19,9 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 
 from sports_scraper.persistence.admin import (
+    clear_odds_cache,
     delete_game,
     delete_games_batch,
-    clear_odds_cache,
 )
 
 

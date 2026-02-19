@@ -6,12 +6,11 @@ games that need boxscore data fetched.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+import re
+from datetime import UTC, date, datetime
 
 from sqlalchemy import exists, not_, or_
 from sqlalchemy.orm import Session
-
-import re
 
 from ..db import db_models
 from ..logging import logger
@@ -108,8 +107,8 @@ def populate_ncaab_game_ids(
         )
         .filter(
             db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
-            db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
+            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+            db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=UTC),
             db_models.SportsGame.tip_time.isnot(None),
             or_(
                 cbb_game_id_expr.is_(None),
@@ -352,8 +351,8 @@ def select_games_for_boxscores_ncaab_api(
         db_models.SportsGame.away_team_id == away_team.c.id,
     ).filter(
         db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
-        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
+        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=UTC),
         cbb_game_id_expr.isnot(None),
     )
 

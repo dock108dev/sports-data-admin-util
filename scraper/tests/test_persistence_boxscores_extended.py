@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -20,12 +20,12 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
-from sports_scraper.persistence.boxscores import (
-    upsert_player,
-    _validate_nhl_player_boxscore,
-    _build_team_stats,
-)
 from sports_scraper.models import NormalizedPlayerBoxscore, NormalizedTeamBoxscore, TeamIdentity
+from sports_scraper.persistence.boxscores import (
+    _build_team_stats,
+    _validate_nhl_player_boxscore,
+    upsert_player,
+)
 
 
 class TestUpsertPlayer:
@@ -120,7 +120,6 @@ class TestValidateNhlPlayerBoxscore:
         team = TeamIdentity(league_code="NHL", name="Tampa Bay Lightning", abbreviation="TBL")
         # player_name=None would raise Pydantic validation error
         # Instead test with empty string which _validate_nhl_player_boxscore checks
-        import pytest
         with pytest.raises(Exception):  # Pydantic validation error
             NormalizedPlayerBoxscore(
                 player_id="12345",

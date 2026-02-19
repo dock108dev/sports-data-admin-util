@@ -7,8 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from ...db import AsyncSession, get_db
-from ...db.sports import SportsGame, SportsGamePlay
 from ...db.flow import SportsGameFlow, SportsGameTimelineArtifact
+from ...db.sports import SportsGame, SportsGamePlay
 from ...services.team_colors import get_matchup_colors
 from ...services.timeline_generator import (
     TimelineGenerationError,

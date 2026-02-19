@@ -8,11 +8,11 @@ from __future__ import annotations
 from typing import Any
 
 from .block_types import (
-    NarrativeBlock,
-    SemanticRole,
-    MIN_BLOCKS,
     MAX_BLOCKS,
     MAX_KEY_PLAYS,
+    MIN_BLOCKS,
+    NarrativeBlock,
+    SemanticRole,
 )
 from .box_score_helpers import compute_block_mini_box
 

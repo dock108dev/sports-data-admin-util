@@ -11,16 +11,16 @@ import pytest
 from app.services.pipeline.stages.guardrails import (
     # Constants
     MAX_BLOCKS,
-    MIN_BLOCKS,
     MAX_EMBEDDED_TWEETS,
     MAX_TWEETS_PER_BLOCK,
+    MIN_BLOCKS,
+    GuardrailViolationError,
+    assert_guardrails,
+    enforce_guardrails,
     # Functions
     validate_blocks_post_generation,
     validate_blocks_pre_render,
     validate_social_independence,
-    enforce_guardrails,
-    assert_guardrails,
-    GuardrailViolationError,
 )
 
 

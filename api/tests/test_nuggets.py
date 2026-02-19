@@ -197,7 +197,7 @@ class TestGenerateNugget:
 
     def test_default_nugget_when_no_match(self):
         """Returns default when no template matches."""
-        from app.game_metadata.nuggets import generate_nugget, DEFAULT_NUGGET
+        from app.game_metadata.nuggets import DEFAULT_NUGGET, generate_nugget
 
         context = self._make_context()
         result = generate_nugget(context, [])

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -21,17 +21,16 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.models import (
-    TeamIdentity,
     GameIdentification,
+    IngestionConfig,
     NormalizedGame,
-    NormalizedTeamBoxscore,
-    NormalizedPlayerBoxscore,
     NormalizedOddsSnapshot,
     NormalizedPlay,
     NormalizedPlayByPlay,
-    IngestionConfig,
+    NormalizedPlayerBoxscore,
+    NormalizedTeamBoxscore,
+    TeamIdentity,
 )
-
 
 # ============================================================================
 # TeamIdentity Tests
@@ -311,10 +310,10 @@ class TestNormalizedOddsSnapshot:
             side="Boston Celtics",
             line=-5.5,
             price=-110,
-            observed_at=datetime(2024, 1, 15, 22, 0, tzinfo=timezone.utc),
+            observed_at=datetime(2024, 1, 15, 22, 0, tzinfo=UTC),
             home_team=home,
             away_team=away,
-            game_date=datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 0, 0, tzinfo=UTC),
         )
 
         assert odds.market_type == "spread"
@@ -331,10 +330,10 @@ class TestNormalizedOddsSnapshot:
             market_type="moneyline",
             side="Boston Celtics",
             price=-180,
-            observed_at=datetime(2024, 1, 15, 22, 0, tzinfo=timezone.utc),
+            observed_at=datetime(2024, 1, 15, 22, 0, tzinfo=UTC),
             home_team=home,
             away_team=away,
-            game_date=datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 0, 0, tzinfo=UTC),
         )
 
         assert odds.market_type == "moneyline"
@@ -352,10 +351,10 @@ class TestNormalizedOddsSnapshot:
             side="Over",
             line=220.5,
             price=-110,
-            observed_at=datetime(2024, 1, 15, 22, 0, tzinfo=timezone.utc),
+            observed_at=datetime(2024, 1, 15, 22, 0, tzinfo=UTC),
             home_team=home,
             away_team=away,
-            game_date=datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 0, 0, tzinfo=UTC),
         )
 
         assert odds.market_type == "total"
@@ -447,7 +446,7 @@ class TestIngestionConfig:
         assert config.odds is True
         assert config.social is False
         assert config.pbp is False
-        assert config.live is False
+        assert config.batch_live_feed is False
         assert config.only_missing is False
 
     def test_create_with_dates(self):
@@ -468,7 +467,7 @@ class TestIngestionConfig:
             odds=False,
             social=True,
             pbp=True,
-            live=True,
+            batch_live_feed=True,
             only_missing=True,
         )
 
@@ -476,7 +475,7 @@ class TestIngestionConfig:
         assert config.odds is False
         assert config.social is True
         assert config.pbp is True
-        assert config.live is True
+        assert config.batch_live_feed is True
 
     def test_with_book_filter(self):
         config = IngestionConfig(

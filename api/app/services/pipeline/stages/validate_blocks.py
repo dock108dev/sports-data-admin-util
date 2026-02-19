@@ -30,12 +30,12 @@ from typing import Any
 from ....db import AsyncSession
 from ..models import StageInput, StageOutput
 from .block_types import (
-    SemanticRole,
-    MIN_BLOCKS,
     MAX_BLOCKS,
-    MIN_WORDS_PER_BLOCK,
-    MAX_WORDS_PER_BLOCK,
     MAX_TOTAL_WORDS,
+    MAX_WORDS_PER_BLOCK,
+    MIN_BLOCKS,
+    MIN_WORDS_PER_BLOCK,
+    SemanticRole,
 )
 from .embedded_tweets import load_and_attach_embedded_tweets
 

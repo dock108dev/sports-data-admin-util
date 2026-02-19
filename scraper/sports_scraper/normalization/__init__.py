@@ -222,12 +222,12 @@ def _fuzzy_match(league_code: SportCode, raw_name: str) -> tuple[str, str] | Non
     """Attempt fuzzy matching for team names that don't have exact matches."""
     normalized_input = _normalize_string(raw_name)
     mappings = TEAM_MAPPINGS.get(league_code, {})
-    
+
     # Try exact match first (case-insensitive)
     for key, (canonical, abbr) in mappings.items():
         if _normalize_string(key) == normalized_input:
             return (canonical, abbr)
-    
+
     # Try partial matches (contains) — require minimum 4 chars on both sides
     # to prevent false positives from short abbreviations (e.g., "ME" matching
     # any input containing "me").
@@ -249,17 +249,17 @@ def _fuzzy_match(league_code: SportCode, raw_name: str) -> tuple[str, str] | Non
             overlap = input_words & key_words
             if len(overlap) >= min(2, len(input_words), len(key_words)):
                 return (canonical, abbr)
-    
+
     return None
 
 
 def normalize_team_name(league_code: SportCode, raw_name: str) -> tuple[str, str | None]:
     """Normalize team name to canonical form and return (canonical_name, abbreviation).
-    
+
     Args:
         league_code: The sport league code (NBA, NFL, etc.)
         raw_name: Raw team name from any source
-        
+
     Returns:
         Tuple of (canonical_name, abbreviation). If no mapping exists, returns
         the input name and a generated abbreviation (first 3-6 chars).

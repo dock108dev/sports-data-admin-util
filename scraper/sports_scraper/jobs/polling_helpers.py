@@ -11,7 +11,6 @@ import time
 
 from ..logging import logger
 
-
 # Shared constants (also defined in polling_tasks.py for task-level use)
 _JITTER_MIN = 1.0
 _JITTER_MAX = 2.0
@@ -48,10 +47,10 @@ def _poll_single_game_pbp(session, game) -> dict:
 
 def _poll_nba_game(session, game) -> dict:
     """Poll a single NBA game via the NBA live API."""
-    from ..live.nba import NBALiveFeedClient
     from ..db import db_models
-    from ..persistence.plays import upsert_plays
+    from ..live.nba import NBALiveFeedClient
     from ..persistence.games import resolve_status_transition
+    from ..persistence.plays import upsert_plays
     from ..utils.datetime_utils import now_utc
 
     nba_game_id = (game.external_ids or {}).get("nba_game_id")
@@ -127,10 +126,10 @@ def _poll_nba_game(session, game) -> dict:
 
 def _poll_nhl_game(session, game) -> dict:
     """Poll a single NHL game via the NHL live API."""
-    from ..live.nhl import NHLLiveFeedClient
     from ..db import db_models
-    from ..persistence.plays import upsert_plays
+    from ..live.nhl import NHLLiveFeedClient
     from ..persistence.games import resolve_status_transition
+    from ..persistence.plays import upsert_plays
     from ..utils.datetime_utils import now_utc
 
     nhl_game_pk = (game.external_ids or {}).get("nhl_game_pk")
@@ -214,7 +213,7 @@ def _poll_nhl_game(session, game) -> dict:
 def _poll_nba_game_boxscore(session, game) -> dict:
     """Fetch and persist boxscore for a single live NBA game."""
     from ..live.nba import NBALiveFeedClient
-    from ..persistence.boxscores import upsert_team_boxscores, upsert_player_boxscores
+    from ..persistence.boxscores import upsert_player_boxscores, upsert_team_boxscores
     from ..utils.datetime_utils import now_utc
 
     nba_game_id = (game.external_ids or {}).get("nba_game_id")
@@ -257,7 +256,7 @@ def _poll_nba_game_boxscore(session, game) -> dict:
 def _poll_nhl_game_boxscore(session, game) -> dict:
     """Fetch and persist boxscore for a single live NHL game."""
     from ..live.nhl import NHLLiveFeedClient
-    from ..persistence.boxscores import upsert_team_boxscores, upsert_player_boxscores
+    from ..persistence.boxscores import upsert_player_boxscores, upsert_team_boxscores
     from ..utils.datetime_utils import now_utc
 
     nhl_game_pk = (game.external_ids or {}).get("nhl_game_pk")
@@ -313,12 +312,12 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
     PBP: per-game calls to the CBB plays endpoint.
     Boxscores: 2 batch API calls per unique date range (team + player endpoints).
     """
-    from ..live.ncaab import NCAABLiveFeedClient
     from ..db import db_models
+    from ..live.ncaab import NCAABLiveFeedClient
+    from ..persistence.boxscores import upsert_player_boxscores, upsert_team_boxscores
     from ..persistence.plays import upsert_plays
-    from ..persistence.boxscores import upsert_team_boxscores, upsert_player_boxscores
-    from ..utils.datetime_utils import now_utc
     from ..utils.date_utils import season_ending_year
+    from ..utils.datetime_utils import now_utc
 
     client = NCAABLiveFeedClient()
     api_calls = 0

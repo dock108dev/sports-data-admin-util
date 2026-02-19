@@ -20,16 +20,16 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 
 from sports_scraper.config_sports import (
-    LeagueConfig,
     LEAGUE_CONFIG,
-    get_league_config,
+    LeagueConfig,
     get_enabled_leagues,
+    get_league_config,
     get_scheduled_leagues,
     get_social_enabled_leagues,
     get_timeline_enabled_leagues,
-    validate_league_code,
     is_social_enabled,
     is_timeline_enabled,
+    validate_league_code,
 )
 
 
@@ -258,3 +258,17 @@ class TestIsTimelineEnabled:
         """Unknown league uses default config (timeline_enabled=True)."""
         # Default LeagueConfig has timeline_enabled=True
         assert is_timeline_enabled("UNKNOWN") is True
+
+
+class TestLiveOddsDisabled:
+    """Tests for live_odds_enabled safety invariant."""
+
+    def test_all_leagues_have_live_odds_disabled(self):
+        """All configured leagues must have live_odds_enabled=False."""
+        for code, cfg in LEAGUE_CONFIG.items():
+            assert cfg.live_odds_enabled is False, f"{code} has live_odds_enabled=True"
+
+    def test_default_live_odds_disabled(self):
+        """Default LeagueConfig has live_odds_enabled=False."""
+        config = LeagueConfig(code="TEST", display_name="Test")
+        assert config.live_odds_enabled is False

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def compute_nhl_data_health(
-    game: "SportsGame",
+    game: SportsGame,
     player_boxscores: list,
 ) -> NHLDataHealth | None:
     """Compute NHL-specific data health indicators.

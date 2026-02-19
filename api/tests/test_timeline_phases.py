@@ -4,31 +4,31 @@ Tests the league-aware, time-based phase classification and segment mapping
 implemented in timeline_phases.py.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from app.services.timeline_phases import (
-    get_league_timing,
-    estimate_game_end,
     compute_league_phase_boundaries,
-)
-from app.services.tweet_phase_classifier import (
-    classify_tweet_phase,
-    map_tweet_to_segment,
-    assign_tweet_phase_and_segment,
+    estimate_game_end,
+    get_league_timing,
 )
 from app.services.timeline_types import (
-    NCAAB_REGULATION_REAL_MINUTES,
     NBA_REGULATION_REAL_MINUTES,
+    NCAAB_REGULATION_REAL_MINUTES,
     NHL_REGULATION_REAL_MINUTES,
+)
+from app.services.tweet_phase_classifier import (
+    assign_tweet_phase_and_segment,
+    classify_tweet_phase,
+    map_tweet_to_segment,
 )
 
 
 @pytest.fixture
 def game_start() -> datetime:
     """Sample game start time."""
-    return datetime(2026, 1, 15, 19, 0, 0, tzinfo=timezone.utc)
+    return datetime(2026, 1, 15, 19, 0, 0, tzinfo=UTC)
 
 
 class TestGetLeagueTiming:

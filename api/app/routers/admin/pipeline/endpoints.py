@@ -5,19 +5,26 @@ This module contains all the FastAPI endpoint handlers for pipeline management.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
-from typing import Any
 
 from ....db import AsyncSession, get_db
-from ....db.sports import SportsGame, SportsGamePlay
-from ....db.pipeline import GamePipelineRun
 from ....db.flow import SportsGameTimelineArtifact
+from ....db.pipeline import GamePipelineRun
+from ....db.sports import SportsGame, SportsGamePlay
 from ....services.pipeline import PipelineExecutor
-from ....services.pipeline.models import PipelineStage
 from ....services.pipeline.executor import PipelineExecutionError
-
+from ....services.pipeline.models import PipelineStage
+from .helpers import (
+    build_run_response,
+    build_run_summary,
+    get_run_with_stages,
+    get_stage_description,
+    summarize_output,
+)
 from .models import (
     ContinuePipelineResponse,
     ExecuteStageRequest,
@@ -34,13 +41,6 @@ from .models import (
     StageOutputResponse,
     StartPipelineRequest,
     StartPipelineResponse,
-)
-from .helpers import (
-    build_run_response,
-    build_run_summary,
-    get_run_with_stages,
-    get_stage_description,
-    summarize_output,
 )
 
 router = APIRouter()

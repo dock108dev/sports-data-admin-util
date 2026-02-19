@@ -1,6 +1,7 @@
 """Models for social media post collection."""
 
 from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 

@@ -38,9 +38,10 @@ def trigger_flow_for_game(game_id: int) -> dict:
     Returns:
         dict with generation result
     """
-    from ..db import db_models
     from sqlalchemy import exists
-    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock, LOCK_TIMEOUT_5MIN
+
+    from ..db import db_models
+    from ..utils.redis_lock import LOCK_TIMEOUT_5MIN, acquire_redis_lock, release_redis_lock
 
     with get_session() as session:
         game = session.query(db_models.SportsGame).get(game_id)
@@ -104,6 +105,7 @@ def trigger_flow_for_game(game_id: int) -> dict:
 def _call_pipeline_api(game_id: int, league_code: str) -> dict:
     """Call the internal API to generate flows for a single game."""
     import httpx
+
     from ..api_client import get_api_headers
     from ..config import settings
 

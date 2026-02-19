@@ -56,8 +56,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from ....db.sports import SportsGame
 from ....db.flow import SportsGameFlow
+from ....db.sports import SportsGame
 from ....utils.datetime_utils import now_utc
 from ..models import StageInput, StageOutput
 
@@ -72,7 +72,7 @@ BLOCKS_VERSION = "v1-blocks"
 
 
 async def execute_finalize_moments(
-    session: "AsyncSession",
+    session: AsyncSession,
     stage_input: StageInput,
     run_uuid: str,
 ) -> StageOutput:

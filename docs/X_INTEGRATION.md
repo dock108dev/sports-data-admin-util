@@ -182,4 +182,4 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a high-level view of how social posts
 
 ## Rate Limiting
 
-The scraper uses polite delays (5-9 seconds between requests) to avoid overwhelming X servers.
+The scraper uses polite delays (10-15 seconds between requests) to avoid overwhelming X servers.

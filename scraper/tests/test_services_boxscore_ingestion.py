@@ -2,21 +2,29 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-from sports_scraper.utils.date_utils import season_ending_year as _season_from_date
-from sports_scraper.services.nhl_boxscore_ingestion import (
-    convert_nhl_boxscore_to_normalized_game as _convert_boxscore_to_normalized_game,
-    select_games_for_boxscores_nhl_api,
-    ingest_boxscores_via_nhl_api,
-)
 from sports_scraper.services.ncaab_boxscore_ingestion import (
     convert_ncaab_boxscore_to_normalized_game as _convert_ncaab_boxscore_to_normalized_game,
-    select_games_for_boxscores_ncaab_api,
+)
+from sports_scraper.services.ncaab_boxscore_ingestion import (
     ingest_boxscores_via_ncaab_api,
+)
+from sports_scraper.services.ncaab_game_ids import (
     populate_ncaab_game_ids as _populate_ncaab_game_ids,
 )
+from sports_scraper.services.ncaab_game_ids import (
+    select_games_for_boxscores_ncaab_api,
+)
+from sports_scraper.services.nhl_boxscore_ingestion import (
+    convert_nhl_boxscore_to_normalized_game as _convert_boxscore_to_normalized_game,
+)
+from sports_scraper.services.nhl_boxscore_ingestion import (
+    ingest_boxscores_via_nhl_api,
+    select_games_for_boxscores_nhl_api,
+)
+from sports_scraper.utils.date_utils import season_ending_year as _season_from_date
 
 
 class TestSeasonFromDate:
@@ -96,7 +104,7 @@ class TestConvertBoxscoreToNormalizedGameNhl:
 
     def test_converts_final_boxscore(self):
         """Converts NHL boxscore to NormalizedGame."""
-        from sports_scraper.models import TeamIdentity, NormalizedTeamBoxscore
+        from sports_scraper.models import NormalizedTeamBoxscore, TeamIdentity
 
         # Create minimal team boxscores to satisfy validation
         home_boxscore = NormalizedTeamBoxscore(
@@ -129,7 +137,7 @@ class TestConvertBoxscoreToNormalizedGameNhl:
 
     def test_converts_live_boxscore(self):
         """Converts live NHL boxscore."""
-        from sports_scraper.models import TeamIdentity, NormalizedTeamBoxscore
+        from sports_scraper.models import NormalizedTeamBoxscore, TeamIdentity
 
         home_boxscore = NormalizedTeamBoxscore(
             team=TeamIdentity(league_code="NHL", name="TBL", abbreviation="TBL"),
@@ -162,7 +170,7 @@ class TestConvertNcaabBoxscoreToNormalizedGame:
 
     def test_converts_final_boxscore(self):
         """Converts NCAAB boxscore to NormalizedGame."""
-        from sports_scraper.models import TeamIdentity, NormalizedTeamBoxscore
+        from sports_scraper.models import NormalizedTeamBoxscore, TeamIdentity
 
         home_boxscore = NormalizedTeamBoxscore(
             team=TeamIdentity(league_code="NCAAB", name="Duke", abbreviation="DUKE"),
@@ -179,7 +187,7 @@ class TestConvertNcaabBoxscoreToNormalizedGame:
         mock_boxscore.game_id = 123456
         mock_boxscore.season = 2025
         mock_boxscore.status = "final"
-        mock_boxscore.game_date = datetime(2025, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_boxscore.game_date = datetime(2025, 1, 15, 19, 0, tzinfo=UTC)
         mock_boxscore.home_team = TeamIdentity(league_code="NCAAB", name="Duke", abbreviation="DUKE")
         mock_boxscore.away_team = TeamIdentity(league_code="NCAAB", name="UNC", abbreviation="UNC")
         mock_boxscore.home_score = 85
@@ -222,7 +230,7 @@ class TestIngestBoxscoresViaNhlApi:
     @patch("sports_scraper.services.nhl_boxscore_ingestion.select_games_for_boxscores_nhl_api")
     def test_processes_games_successfully(self, mock_select, mock_populate, mock_client_class, mock_persist):
         """Processes games and returns counts."""
-        from sports_scraper.models import TeamIdentity, NormalizedTeamBoxscore
+        from sports_scraper.models import NormalizedTeamBoxscore, TeamIdentity
         from sports_scraper.persistence import GamePersistResult
 
         mock_session = MagicMock()
@@ -333,7 +341,7 @@ class TestIngestBoxscoresViaNcaabApi:
     @patch("sports_scraper.services.ncaab_boxscore_ingestion.select_games_for_boxscores_ncaab_api")
     def test_processes_games_successfully(self, mock_select, mock_populate, mock_client_class, mock_persist):
         """Processes games and returns counts."""
-        from sports_scraper.models import TeamIdentity, NormalizedTeamBoxscore
+        from sports_scraper.models import NormalizedTeamBoxscore, TeamIdentity
         from sports_scraper.persistence import GamePersistResult
 
         mock_session = MagicMock()
@@ -344,7 +352,7 @@ class TestIngestBoxscoresViaNcaabApi:
         mock_boxscore.game_id = 123456
         mock_boxscore.season = 2025
         mock_boxscore.status = "final"
-        mock_boxscore.game_date = datetime(2025, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_boxscore.game_date = datetime(2025, 1, 15, 19, 0, tzinfo=UTC)
         mock_boxscore.home_team = TeamIdentity(league_code="NCAAB", name="Duke", abbreviation="DUKE")
         mock_boxscore.away_team = TeamIdentity(league_code="NCAAB", name="UNC", abbreviation="UNC")
         mock_boxscore.home_score = 85
@@ -401,7 +409,7 @@ class TestIngestBoxscoresViaNcaabApi:
     @patch("sports_scraper.services.ncaab_boxscore_ingestion.select_games_for_boxscores_ncaab_api")
     def test_handles_persist_exception(self, mock_select, mock_populate, mock_client_class, mock_persist):
         """Handles persist exceptions gracefully."""
-        from sports_scraper.models import TeamIdentity, NormalizedTeamBoxscore
+        from sports_scraper.models import NormalizedTeamBoxscore, TeamIdentity
 
         mock_session = MagicMock()
         mock_select.return_value = [(1, 123456, date(2025, 1, 15), "Duke", "UNC")]
@@ -411,7 +419,7 @@ class TestIngestBoxscoresViaNcaabApi:
         mock_boxscore.game_id = 123456
         mock_boxscore.season = 2025
         mock_boxscore.status = "final"
-        mock_boxscore.game_date = datetime(2025, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_boxscore.game_date = datetime(2025, 1, 15, 19, 0, tzinfo=UTC)
         mock_boxscore.home_team = TeamIdentity(league_code="NCAAB", name="Duke", abbreviation="DUKE")
         mock_boxscore.away_team = TeamIdentity(league_code="NCAAB", name="UNC", abbreviation="UNC")
         mock_boxscore.home_score = 85
@@ -483,7 +491,7 @@ class TestPopulateNcaabGameIds:
         mock_session.query.return_value.filter.return_value.first.return_value = mock_league
 
         # Games missing IDs
-        mock_game_row = (1, datetime(2025, 1, 15, 19, 0, tzinfo=timezone.utc), 10, 20)
+        mock_game_row = (1, datetime(2025, 1, 15, 19, 0, tzinfo=UTC), 10, 20)
         mock_session.query.return_value.filter.return_value.all.return_value = [mock_game_row]
 
         # Teams with cbb_team_id
@@ -515,7 +523,7 @@ class TestPopulateNcaabGameIds:
         mock_league.id = 1
 
         # Mock query chain
-        game_time = datetime(2025, 1, 15, 19, 0, tzinfo=timezone.utc)
+        game_time = datetime(2025, 1, 15, 19, 0, tzinfo=UTC)
         mock_game = MagicMock()
         mock_game.id = 1
         mock_game.external_ids = {}
@@ -601,7 +609,7 @@ class TestSelectGamesForBoxscoresNhlApiFilters:
         mock_query.filter.return_value = mock_query
         mock_query.all.return_value = []
 
-        updated_before = datetime.now(timezone.utc) - timedelta(hours=24)
+        updated_before = datetime.now(UTC) - timedelta(hours=24)
         result = select_games_for_boxscores_nhl_api(
             mock_session,
             start_date=date(2024, 1, 1),

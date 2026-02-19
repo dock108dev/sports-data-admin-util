@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Sequence
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.dialects.postgresql import insert
 
@@ -24,23 +25,23 @@ def create_raw_pbp_snapshot(
     scrape_run_id: int | None = None,
 ) -> int | None:
     """Create a raw PBP snapshot for auditability.
-    
+
     This stores the raw plays BEFORE team ID resolution, preserving
     the original data as received from the source.
-    
+
     Args:
         session: Database session
         game_id: ID of the game
         plays: Raw play data
         source: Data source (e.g., 'nba_live', 'nhl_api')
         scrape_run_id: Optional scrape run ID
-        
+
     Returns:
         Snapshot ID if created, None if no plays
     """
     if not plays:
         return None
-    
+
     # Convert plays to JSON-serializable format
     plays_json: list[dict[str, Any]] = [
         {
@@ -58,13 +59,13 @@ def create_raw_pbp_snapshot(
         }
         for p in plays
     ]
-    
+
     # Compute resolution stats on raw data
     teams_with_abbrev = sum(1 for p in plays if p.team_abbreviation)
     players_with_name = sum(1 for p in plays if p.player_name)
     plays_with_score = sum(1 for p in plays if p.home_score is not None)
     clock_missing = sum(1 for p in plays if not p.game_clock)
-    
+
     resolution_stats = {
         "total_plays": len(plays),
         "teams_with_abbreviation": teams_with_abbrev,
@@ -75,7 +76,7 @@ def create_raw_pbp_snapshot(
         "plays_without_score": len(plays) - plays_with_score,
         "clock_missing": clock_missing,
     }
-    
+
     # Check if PBPSnapshot model exists in db_models
     if not hasattr(db_models, 'PBPSnapshot'):
         logger.warning(
@@ -84,7 +85,7 @@ def create_raw_pbp_snapshot(
             note="PBPSnapshot table not available; skipping snapshot creation",
         )
         return None
-    
+
     try:
         snapshot = db_models.PBPSnapshot(
             game_id=game_id,
@@ -101,7 +102,7 @@ def create_raw_pbp_snapshot(
         )
         session.add(snapshot)
         session.flush()
-        
+
         logger.info(
             "raw_pbp_snapshot_created",
             game_id=game_id,
@@ -109,7 +110,7 @@ def create_raw_pbp_snapshot(
             play_count=len(plays),
             source=source,
         )
-        
+
         return snapshot.id
     except Exception as e:
         logger.warning(

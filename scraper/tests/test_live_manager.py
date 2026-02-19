@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from sports_scraper.live.manager import (
-    LiveFeedSummary,
     LiveFeedManager,
-    _iter_dates,
+    LiveFeedSummary,
     _filter_new_plays,
-    _should_skip_pbp,
-    _max_play_index,
     _find_game_by_abbr,
+    _iter_dates,
+    _max_play_index,
+    _should_skip_pbp,
 )
 from sports_scraper.models import IngestionConfig, NormalizedPlay
 
@@ -143,7 +143,7 @@ class TestShouldSkipPbp:
     def test_skips_when_recently_updated(self):
         """Skips when plays were updated after updated_before."""
         mock_session = MagicMock()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         mock_session.execute.return_value.scalar.return_value = now  # Updated now
 
         result = _should_skip_pbp(
@@ -157,14 +157,14 @@ class TestShouldSkipPbp:
     def test_continues_when_stale(self):
         """Continues when plays are stale."""
         mock_session = MagicMock()
-        old_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        old_time = datetime(2024, 1, 1, tzinfo=UTC)
         mock_session.execute.return_value.scalar.return_value = old_time
 
         result = _should_skip_pbp(
             mock_session,
             game_id=1,
             only_missing=False,
-            updated_before=datetime.now(timezone.utc),
+            updated_before=datetime.now(UTC),
         )
         assert result is False
 
@@ -330,7 +330,7 @@ class TestLiveFeedManager:
         mock_nhl_client = MagicMock()
         mock_live_game = MagicMock()
         mock_live_game.game_id = 2025020001
-        mock_live_game.game_date = datetime(2024, 10, 15, 19, 0, tzinfo=timezone.utc)
+        mock_live_game.game_date = datetime(2024, 10, 15, 19, 0, tzinfo=UTC)
         mock_live_game.home_team = TeamIdentity(league_code="NHL", name="TBL", abbreviation="TBL")
         mock_live_game.away_team = TeamIdentity(league_code="NHL", name="BOS", abbreviation="BOS")
         mock_live_game.status = "final"
@@ -372,7 +372,7 @@ class TestLiveFeedManagerNbaSyncFull:
         mock_nba_client = MagicMock()
         mock_live_game = MagicMock()
         mock_live_game.game_id = "0022400123"
-        mock_live_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_live_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         mock_live_game.home_abbr = "BOS"
         mock_live_game.away_abbr = "LAL"
         mock_live_game.status = "final"
@@ -416,7 +416,7 @@ class TestLiveFeedManagerNbaSyncFull:
         mock_nba_client = MagicMock()
         mock_live_game = MagicMock()
         mock_live_game.game_id = "0022400123"
-        mock_live_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_live_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         mock_live_game.home_abbr = "BOS"
         mock_live_game.away_abbr = "LAL"
         mock_live_game.status = "final"
@@ -504,7 +504,7 @@ class TestLiveFeedManagerNhlSyncFull:
         mock_nhl_client = MagicMock()
         mock_live_game = MagicMock()
         mock_live_game.game_id = 2025020001
-        mock_live_game.game_date = datetime(2024, 10, 15, 19, 0, tzinfo=timezone.utc)
+        mock_live_game.game_date = datetime(2024, 10, 15, 19, 0, tzinfo=UTC)
         mock_live_game.home_team = TeamIdentity(league_code="NHL", name="TBL", abbreviation="TBL")
         mock_live_game.away_team = TeamIdentity(league_code="NHL", name="BOS", abbreviation="BOS")
         mock_live_game.status = "final"
@@ -556,7 +556,7 @@ class TestLiveFeedManagerNhlSyncFull:
         mock_nhl_client = MagicMock()
         mock_live_game = MagicMock()
         mock_live_game.game_id = 2025020001
-        mock_live_game.game_date = datetime(2024, 10, 15, 19, 0, tzinfo=timezone.utc)
+        mock_live_game.game_date = datetime(2024, 10, 15, 19, 0, tzinfo=UTC)
         mock_live_game.home_team = TeamIdentity(league_code="NHL", name="TBL", abbreviation="TBL")
         mock_live_game.away_team = TeamIdentity(league_code="NHL", name="BOS", abbreviation="BOS")
         mock_live_game.status = "final"

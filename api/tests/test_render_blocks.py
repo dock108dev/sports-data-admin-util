@@ -2,29 +2,28 @@
 
 from __future__ import annotations
 
-
-from app.services.pipeline.stages.render_validation import (
-    validate_block_narrative,
-    validate_style_constraints,
-    FORBIDDEN_WORDS,
+from app.services.pipeline.stages.block_types import (
+    MAX_WORDS_PER_BLOCK,
+    SemanticRole,
 )
 from app.services.pipeline.stages.render_helpers import (
-    detect_overtime_info,
-    check_play_coverage,
-    generate_play_injection_sentence,
     check_overtime_mention,
+    check_play_coverage,
+    detect_overtime_info,
+    generate_play_injection_sentence,
     inject_overtime_mention,
 )
 from app.services.pipeline.stages.render_prompts import (
+    GAME_FLOW_PASS_PROMPT,
+    _format_contributors_line,
+    _format_lead_line,
     build_block_prompt,
     build_game_flow_pass_prompt,
-    GAME_FLOW_PASS_PROMPT,
-    _format_lead_line,
-    _format_contributors_line,
 )
-from app.services.pipeline.stages.block_types import (
-    SemanticRole,
-    MAX_WORDS_PER_BLOCK,
+from app.services.pipeline.stages.render_validation import (
+    FORBIDDEN_WORDS,
+    validate_block_narrative,
+    validate_style_constraints,
 )
 
 

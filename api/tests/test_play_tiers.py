@@ -1,6 +1,6 @@
 """Tests for app.services.play_tiers."""
 
-from app.routers.sports.schemas import PlayEntry, TieredPlayGroup
+from app.routers.sports.schemas import PlayEntry
 from app.services.play_tiers import classify_all_tiers, group_tier3_plays
 
 

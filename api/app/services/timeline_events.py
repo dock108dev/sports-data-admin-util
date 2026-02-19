@@ -6,20 +6,21 @@ Merges PBP, social, and odds events using PHASE-FIRST ordering.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import Any, Sequence
+from typing import Any
 
 from ..db.sports import SportsGamePlay
 from ..utils.datetime_utils import parse_clock_to_seconds
-from .timeline_types import (
-    NBA_QUARTER_GAME_SECONDS,
-    NBA_QUARTER_REAL_SECONDS,
-    phase_sort_order,
-)
 from .timeline_phases import (
     nba_block_for_quarter,
     nba_phase_for_quarter,
     nba_quarter_start,
+)
+from .timeline_types import (
+    NBA_QUARTER_GAME_SECONDS,
+    NBA_QUARTER_REAL_SECONDS,
+    phase_sort_order,
 )
 
 

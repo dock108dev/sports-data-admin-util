@@ -1,6 +1,6 @@
 """Tests for embedded tweet selection and temporal block assignment."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -9,22 +9,22 @@ from app.services.pipeline.stages.embedded_tweets import (
     MAX_EMBEDDED_TWEETS,
     MAX_TWEETS_PER_BLOCK,
     MIN_EMBEDDED_TWEETS,
-    ScoredTweet,
     BlockTweetAssignment,
     # Scorer
     DefaultTweetScorer,
-    # Functions
-    select_embedded_tweets,
+    ScoredTweet,
     apply_embedded_tweets_to_blocks,
     assign_tweets_to_blocks_by_time,
     select_and_assign_embedded_tweets,
+    # Functions
+    select_embedded_tweets,
 )
 
 
 @pytest.fixture
 def game_start() -> datetime:
     """Sample game start time."""
-    return datetime(2026, 1, 15, 19, 0, 0, tzinfo=timezone.utc)
+    return datetime(2026, 1, 15, 19, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture

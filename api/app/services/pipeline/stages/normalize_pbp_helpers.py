@@ -6,50 +6,51 @@ PBP event building, and resolution statistics.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import Any, Sequence
+from typing import Any
 
 from ....db.sports import SportsGamePlay
-from ....utils.datetime_utils import parse_clock_to_seconds
+from ....services.timeline_phases import (
+    nba_block_for_quarter,
+    # Phase mapping
+    nba_phase_for_quarter,
+    # Period timing
+    nba_quarter_start,
+    ncaab_block_for_period,
+    ncaab_period_start,
+    ncaab_phase_for_period,
+    nhl_block_for_period,
+    nhl_period_start,
+    nhl_phase_for_period,
+)
 from ....services.timeline_types import (
-    # NBA Constants
-    NBA_REGULATION_REAL_SECONDS,
     NBA_HALFTIME_REAL_SECONDS,
-    NBA_QUARTER_REAL_SECONDS,
-    NBA_QUARTER_GAME_SECONDS,
     NBA_OT_GAME_SECONDS,
     NBA_OT_REAL_SECONDS,
-    # NCAAB Constants
-    NCAAB_REGULATION_REAL_SECONDS,
-    NCAAB_HALFTIME_REAL_SECONDS,
-    NCAAB_HALF_REAL_SECONDS,
+    NBA_QUARTER_GAME_SECONDS,
+    NBA_QUARTER_REAL_SECONDS,
+    # NBA Constants
+    NBA_REGULATION_REAL_SECONDS,
     NCAAB_HALF_GAME_SECONDS,
+    NCAAB_HALF_REAL_SECONDS,
+    NCAAB_HALFTIME_REAL_SECONDS,
     NCAAB_OT_GAME_SECONDS,
     NCAAB_OT_REAL_SECONDS,
-    # NHL Constants
-    NHL_REGULATION_REAL_SECONDS,
+    # NCAAB Constants
+    NCAAB_REGULATION_REAL_SECONDS,
     NHL_INTERMISSION_REAL_SECONDS,
-    NHL_PERIOD_REAL_SECONDS,
-    NHL_PERIOD_GAME_SECONDS,
     NHL_OT_GAME_SECONDS,
     NHL_OT_REAL_SECONDS,
+    NHL_PERIOD_GAME_SECONDS,
+    NHL_PERIOD_REAL_SECONDS,
     NHL_PLAYOFF_OT_GAME_SECONDS,
+    # NHL Constants
+    NHL_REGULATION_REAL_SECONDS,
     # Social windows
     SOCIAL_PREGAME_WINDOW_SECONDS,
 )
-from ....services.timeline_phases import (
-    # Phase mapping
-    nba_phase_for_quarter,
-    nba_block_for_quarter,
-    ncaab_phase_for_period,
-    ncaab_block_for_period,
-    nhl_phase_for_period,
-    nhl_block_for_period,
-    # Period timing
-    nba_quarter_start,
-    ncaab_period_start,
-    nhl_period_start,
-)
+from ....utils.datetime_utils import parse_clock_to_seconds
 
 
 def nba_game_end(

@@ -7,9 +7,6 @@ Two Celery tasks split by update frequency:
 
 Both tasks skip execution during the 3–7 AM ET quiet window (no games in
 progress, saves API credits).
-
-The previous ``sync_all_odds`` task is kept as a thin wrapper so existing
-Celery-beat entries and manual invocations continue to work.
 """
 
 from __future__ import annotations
@@ -27,8 +24,8 @@ from ..models import IngestionConfig
 from ..odds.synchronizer import OddsSynchronizer
 from ..utils.datetime_utils import today_et
 from ..utils.redis_lock import (
-    LOCK_TIMEOUT_10MIN,
     LOCK_TIMEOUT_1HOUR,
+    LOCK_TIMEOUT_10MIN,
     acquire_redis_lock,
     release_redis_lock,
 )
@@ -238,28 +235,3 @@ def sync_prop_odds(league_code: str | None = None) -> dict:
 
     finally:
         release_redis_lock("lock:sync_prop_odds")
-
-
-# ---------------------------------------------------------------------------
-# Legacy wrapper — keeps existing manual invocations working
-# ---------------------------------------------------------------------------
-
-@shared_task(
-    name="sync_all_odds",
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_kwargs={"max_retries": 2},
-)
-def sync_all_odds(league_code: str | None = None) -> dict:
-    """Legacy wrapper: runs mainline + props sequentially.
-
-    Kept for backwards compatibility with manual Celery invocations.
-    The beat schedule now calls ``sync_mainline_odds`` and ``sync_prop_odds``
-    at different cadences instead.
-    """
-    mainline_result = sync_mainline_odds(league_code)
-    props_result = sync_prop_odds(league_code)
-    return {
-        "mainline": mainline_result,
-        "props": props_result,
-    }

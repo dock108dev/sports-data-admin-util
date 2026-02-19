@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from ..db.config import GameReadingPosition
 from ..db import AsyncSession, get_db
+from ..db.config import GameReadingPosition
 
 router = APIRouter(prefix="/api", tags=["reading-position"])
 

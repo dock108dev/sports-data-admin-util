@@ -293,10 +293,10 @@ class TestExecuteGenerateMoments:
     @pytest.mark.asyncio
     async def test_requires_previous_output(self):
         """Raises if no previous output."""
+        from app.services.pipeline.models import StageInput
         from app.services.pipeline.stages.generate_moments import (
             execute_generate_moments,
         )
-        from app.services.pipeline.models import StageInput
 
         stage_input = StageInput(
             game_id=123,
@@ -310,10 +310,10 @@ class TestExecuteGenerateMoments:
     @pytest.mark.asyncio
     async def test_requires_pbp_events(self):
         """Raises if no pbp_events in previous output."""
+        from app.services.pipeline.models import StageInput
         from app.services.pipeline.stages.generate_moments import (
             execute_generate_moments,
         )
-        from app.services.pipeline.models import StageInput
 
         stage_input = StageInput(
             game_id=123,
@@ -327,10 +327,10 @@ class TestExecuteGenerateMoments:
     @pytest.mark.asyncio
     async def test_validates_event_ordering(self):
         """Raises if events not ordered."""
+        from app.services.pipeline.models import StageInput
         from app.services.pipeline.stages.generate_moments import (
             execute_generate_moments,
         )
-        from app.services.pipeline.models import StageInput
 
         # Out of order play_index
         stage_input = StageInput(
@@ -350,10 +350,10 @@ class TestExecuteGenerateMoments:
     @pytest.mark.asyncio
     async def test_successful_execution(self):
         """Successful execution returns moments."""
+        from app.services.pipeline.models import StageInput
         from app.services.pipeline.stages.generate_moments import (
             execute_generate_moments,
         )
-        from app.services.pipeline.models import StageInput
 
         events = [
             {"play_index": i, "quarter": 1, "game_clock": f"{12-i}:00", "away_score": i, "home_score": 0}
@@ -375,10 +375,10 @@ class TestExecuteGenerateMoments:
     @pytest.mark.asyncio
     async def test_output_has_compression_metrics(self):
         """Output includes compression metrics."""
+        from app.services.pipeline.models import StageInput
         from app.services.pipeline.stages.generate_moments import (
             execute_generate_moments,
         )
-        from app.services.pipeline.models import StageInput
 
         events = [
             {"play_index": i, "quarter": 1, "game_clock": f"{12-i}:00", "away_score": 0, "home_score": 0}
@@ -401,10 +401,10 @@ class TestExecuteGenerateMoments:
     @pytest.mark.asyncio
     async def test_logs_added(self):
         """Execution adds log entries."""
+        from app.services.pipeline.models import StageInput
         from app.services.pipeline.stages.generate_moments import (
             execute_generate_moments,
         )
-        from app.services.pipeline.models import StageInput
 
         events = [
             {"play_index": 1, "quarter": 1, "game_clock": "12:00", "away_score": 0, "home_score": 0},

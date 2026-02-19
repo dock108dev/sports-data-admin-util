@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from .utils.datetime_utils import now_utc
-
 from celery import Celery, signals
 from celery.schedules import crontab
 
 from .config import settings
 from .db import db_models, get_session
 from .logging import logger
+from .utils.datetime_utils import now_utc
 
 # Canonical queue names — import these instead of using string literals
 DEFAULT_QUEUE = "sports-scraper"
@@ -55,7 +54,6 @@ app.conf.task_routes = {
     # Game-state-machine polling tasks
     "update_game_states": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "poll_live_pbp": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    "sync_all_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "sync_mainline_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "sync_prop_odds": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     "trigger_flow_for_game": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
@@ -116,11 +114,6 @@ _prod_only_schedule = {
         "schedule": crontab(minute=0),
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
-    "live-pbp-poll-every-5-min": {
-        "task": "poll_live_pbp",
-        "schedule": crontab(minute="*/5"),
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
     # === Daily sweep (status repair, social scrape #2, embedded tweets, archive) ===
     # Lightweight housekeeping — no full pipeline re-runs or flow generation
     "daily-sweep-4am-eastern": {
@@ -130,25 +123,55 @@ _prod_only_schedule = {
     },
 }
 
+# Live polling — runs in production, or when LIVE_POLLING_ENABLED=true.
+# Only controls poll_live_pbp (stats + PBP). Does NOT enable odds sync,
+# daily ingestion, flow generation, or any other production tasks.
+_live_polling_schedule = {
+    "live-pbp-poll-every-5-min": {
+        "task": "poll_live_pbp",
+        "schedule": crontab(minute="*/5"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+}
+
+_beat_schedule = {**_always_on_schedule}
+
+_include_live_polling = (
+    settings.environment == "production" or settings.live_polling_enabled
+)
+
 if settings.environment == "production":
-    app.conf.beat_schedule = {**_always_on_schedule, **_prod_only_schedule}
+    _beat_schedule.update(_prod_only_schedule)
+
+if _include_live_polling:
+    _beat_schedule.update(_live_polling_schedule)
+
+app.conf.beat_schedule = _beat_schedule
+
+if settings.environment == "production":
     logger.info(
         "beat_schedule_production",
-        task_count=len(_always_on_schedule) + len(_prod_only_schedule),
+        task_count=len(_beat_schedule),
+    )
+elif _include_live_polling:
+    logger.info(
+        "beat_schedule_non_production_with_live_polling",
+        environment=settings.environment,
+        task_count=len(_beat_schedule),
+        live_polling_tasks=list(_live_polling_schedule.keys()),
     )
 else:
-    app.conf.beat_schedule = _always_on_schedule
     logger.info(
         "beat_schedule_non_production",
         environment=settings.environment,
-        task_count=len(_always_on_schedule),
+        task_count=len(_beat_schedule),
     )
 
 
 def mark_stale_runs_interrupted():
     """
     Mark any runs that are stuck in 'running' status as 'interrupted'.
-    
+
     This handles cases where the Docker container was killed or the worker
     crashed, leaving runs in a 'running' state that will never complete.
     """
@@ -157,13 +180,13 @@ def mark_stale_runs_interrupted():
             # Find runs that have been running for more than 1 hour
             # (reasonable threshold - if a run is truly running, it should complete or fail)
             stale_threshold = now_utc() - timedelta(hours=1)
-            
+
             stale_runs = session.query(db_models.SportsScrapeRun).filter(
                 db_models.SportsScrapeRun.status == "running",
                 db_models.SportsScrapeRun.started_at.isnot(None),
                 db_models.SportsScrapeRun.started_at < stale_threshold,
             ).all()
-            
+
             if stale_runs:
                 for run in stale_runs:
                     run.status = "interrupted"
@@ -175,7 +198,7 @@ def mark_stale_runs_interrupted():
                         started_at=str(run.started_at),
                         hours_running=(now_utc() - run.started_at).total_seconds() / 3600,
                     )
-                
+
                 session.commit()
                 logger.info("stale_runs_marked_interrupted", count=len(stale_runs))
             else:
@@ -205,7 +228,7 @@ def on_worker_shutting_down(sender=None, **kwargs):
             running_runs = session.query(db_models.SportsScrapeRun).filter(
                 db_models.SportsScrapeRun.status == "running",
             ).all()
-            
+
             if running_runs:
                 for run in running_runs:
                     run.status = "interrupted"
@@ -216,7 +239,7 @@ def on_worker_shutting_down(sender=None, **kwargs):
                         run_id=run.id,
                         started_at=str(run.started_at),
                     )
-                
+
                 session.commit()
                 logger.info("runs_marked_interrupted_on_shutdown", count=len(running_runs))
     except Exception as exc:

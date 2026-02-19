@@ -25,9 +25,10 @@ Related modules:
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Protocol, Sequence
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Protocol
 
 from sqlalchemy import select
 
@@ -541,8 +542,8 @@ async def load_and_attach_embedded_tweets(
     Returns:
         Tuple of (updated blocks, EmbeddedTweetSelection or None).
     """
-    from ....db.sports import SportsGame
     from ....db.social import TeamSocialPost
+    from ....db.sports import SportsGame
 
     # Load game for tip_time
     game_result = await session.execute(
@@ -556,7 +557,7 @@ async def load_and_attach_embedded_tweets(
 
     game_start = game.tip_time or game.game_date
     if game_start and game_start.tzinfo is None:
-        game_start = game_start.replace(tzinfo=timezone.utc)
+        game_start = game_start.replace(tzinfo=UTC)
 
     # Load mapped social posts
     social_result = await session.execute(

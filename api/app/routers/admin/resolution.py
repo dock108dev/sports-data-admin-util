@@ -56,24 +56,25 @@ EDGE CASES & ISSUES
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
-from typing import Any
 
-from ...db.sports import SportsGame, SportsGamePlay
-from ...db.resolution import EntityResolution
 from ...db import AsyncSession, get_db
+from ...db.resolution import EntityResolution
+from ...db.sports import SportsGame, SportsGamePlay
 from ...services.resolution_queries import (
     get_resolution_summary_for_game,
     get_resolution_summary_for_run,
 )
 from .resolution_models import (
+    PlayerResolutionResult,
     ResolutionDetailResponse,
     ResolutionStats,
     ResolutionSummaryResponse,
     TeamResolutionResult,
-    PlayerResolutionResult,
 )
 
 router = APIRouter()

@@ -75,22 +75,22 @@ import logging
 from typing import Any
 
 from ..models import StageInput, StageOutput
+from .boundary_detection import (
+    is_merge_eligible,
+    should_force_close_moment,
+    should_prefer_close_moment,
+)
+from .explicit_selection import select_explicitly_narrated_plays
 
 # Import from modular helpers
 from .moment_types import (
-    BoundaryReason,
-    CompressionMetrics,
     MAX_EXPLICIT_PLAYS_PER_MOMENT,
     SOFT_CAP_PLAYS,
+    BoundaryReason,
+    CompressionMetrics,
 )
-from .score_detection import get_score_before_moment, get_score_after_moment
 from .play_classification import is_period_boundary
-from .explicit_selection import select_explicitly_narrated_plays
-from .boundary_detection import (
-    should_force_close_moment,
-    should_prefer_close_moment,
-    is_merge_eligible,
-)
+from .score_detection import get_score_after_moment, get_score_before_moment
 
 logger = logging.getLogger(__name__)
 

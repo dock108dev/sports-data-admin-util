@@ -5,15 +5,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import exists, select
 
+from ...db import AsyncSession, get_db
+from ...db.flow import SportsGameTimelineArtifact
 from ...db.sports import (
+    GameStatus,
     SportsGame,
     SportsGamePlay,
-    SportsTeam,
     SportsLeague,
-    GameStatus,
+    SportsTeam,
 )
-from ...db.flow import SportsGameTimelineArtifact
-from ...db import AsyncSession, get_db
 from ...services.timeline_generator import (
     TimelineGenerationError,
     generate_timeline_artifact,
@@ -117,7 +117,9 @@ async def list_missing_timelines(
     timeline generation.
     """
     from datetime import timedelta
+
     from sqlalchemy.orm import aliased
+
     from ...utils.datetime_utils import now_utc
 
     # Get league
@@ -211,6 +213,7 @@ async def generate_timelines_batch(
     Note: For large batches, this may take several minutes.
     """
     from datetime import timedelta
+
     from ...utils.datetime_utils import now_utc
 
     # Verify league exists
@@ -298,7 +301,9 @@ async def list_existing_timelines(
     List games that have existing timeline artifacts.
     """
     from datetime import timedelta
+
     from sqlalchemy.orm import aliased
+
     from ...utils.datetime_utils import now_utc
 
     # Get league
@@ -382,8 +387,9 @@ async def regenerate_timelines_batch(
     If game_ids is provided, only those games are regenerated.
     Otherwise, all games with existing timelines in the date range are regenerated.
     """
-    from datetime import timedelta
     import logging
+    from datetime import timedelta
+
     from ...utils.datetime_utils import now_utc
 
     logger = logging.getLogger(__name__)

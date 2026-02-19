@@ -8,9 +8,9 @@ This module provides the main NBALiveFeedClient which composes:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date, datetime, timezone
 import re
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 
 import httpx
 
@@ -244,7 +244,7 @@ def _parse_nba_game_datetime(value: str | None) -> datetime:
         return now_utc()
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return parsed.astimezone(timezone.utc)
+        return parsed.astimezone(UTC)
     except ValueError:
         return now_utc()
 

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -35,7 +35,7 @@ class TestCollectedPost:
         """Create post with minimal required fields."""
         post = CollectedPost(
             post_url="https://x.com/user/status/123",
-            posted_at=datetime(2024, 1, 15, 12, 0, tzinfo=timezone.utc),
+            posted_at=datetime(2024, 1, 15, 12, 0, tzinfo=UTC),
         )
         assert post.post_url == "https://x.com/user/status/123"
         assert post.platform == "x"
@@ -47,7 +47,7 @@ class TestCollectedPost:
             post_url="https://x.com/user/status/456",
             external_post_id="456",
             platform="x",
-            posted_at=datetime(2024, 1, 15, 12, 0, tzinfo=timezone.utc),
+            posted_at=datetime(2024, 1, 15, 12, 0, tzinfo=UTC),
             has_video=True,
             text="Game highlights!",
             author_handle="@team",
@@ -149,7 +149,7 @@ class TestPlatformRateLimiter:
     def test_allow_denied_after_max_requests(self):
         """Allow returns False when max requests reached."""
         limiter = PlatformRateLimiter(max_requests=2, window_seconds=60)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Record 2 requests
         limiter.record(now)
         limiter.record(now)
@@ -171,8 +171,8 @@ class TestPlatformRateLimiter:
     def test_old_requests_expire(self):
         """Old requests outside window are pruned."""
         limiter = PlatformRateLimiter(max_requests=2, window_seconds=60)
-        old_time = datetime.now(timezone.utc) - timedelta(seconds=120)
-        now = datetime.now(timezone.utc)
+        old_time = datetime.now(UTC) - timedelta(seconds=120)
+        now = datetime.now(UTC)
         # Record old requests
         limiter.record(old_time)
         limiter.record(old_time)
@@ -325,7 +325,7 @@ class TestCacheDecision:
 
     def test_create_denied(self):
         """Create denied decision with retry time."""
-        retry_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        retry_at = datetime.now(UTC) + timedelta(minutes=5)
         decision = CacheDecision(allowed=False, reason="poll_interval", retry_at=retry_at)
         assert decision.allowed is False
         assert decision.reason == "poll_interval"
@@ -344,7 +344,7 @@ class TestSocialRequestCache:
     def test_should_poll_no_history(self):
         """Should poll when no history exists."""
         cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create mock session with no records
         mock_session = MagicMock()
@@ -366,7 +366,7 @@ class TestSocialRequestCache:
     def test_should_poll_rate_limited(self):
         """Should not poll when rate limited."""
         cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create mock recent poll record with rate limit
         mock_poll = MagicMock()
@@ -394,7 +394,7 @@ class TestSocialRequestCache:
     def test_should_poll_poll_interval(self):
         """Should not poll when within poll interval."""
         cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create mock recent poll record within interval (no rate limit)
         # Poll interval is only enforced for successful polls with posts found
@@ -426,7 +426,7 @@ class TestSocialRequestCache:
     def test_should_poll_skips_interval_for_backfill(self):
         """Should skip poll interval for backfill."""
         cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create mock recent poll record within interval
         # Note: We don't set status/posts_found here because the mock is reused
@@ -457,7 +457,7 @@ class TestSocialRequestCache:
     def test_should_poll_cached_window(self):
         """Should not poll when window is cached with success."""
         cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         window_start = now - timedelta(hours=3)
         window_end = now
 
@@ -493,7 +493,7 @@ class TestSocialRequestCache:
     def test_record_creates_new_entry(self):
         """Record creates new poll entry."""
         cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         mock_session = MagicMock()
         mock_query = MagicMock()
@@ -517,7 +517,7 @@ class TestSocialRequestCache:
     def test_record_updates_existing_entry(self):
         """Record updates existing poll entry."""
         cache = SocialRequestCache(poll_interval_seconds=60, cache_ttl_seconds=3600)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         mock_existing = MagicMock()
         mock_existing.status = "pending"

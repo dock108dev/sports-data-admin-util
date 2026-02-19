@@ -1,6 +1,6 @@
 """Tests for Eastern date to UTC range conversion."""
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 
@@ -21,7 +21,7 @@ class TestEasternDateToUtcRange:
         assert start_utc.day == 22
         assert start_utc.hour == 5
         assert start_utc.minute == 0
-        assert start_utc.tzinfo == timezone.utc
+        assert start_utc.tzinfo == UTC
 
         # Midnight Jan 23 ET = 5:00 AM Jan 23 UTC
         assert end_utc.day == 23
@@ -53,7 +53,7 @@ class TestEasternDateToUtcRange:
         # 10pm ET on Jan 22 = 3:00 AM Jan 23 UTC
         eastern = ZoneInfo("America/New_York")
         game_time_et = datetime(2026, 1, 22, 22, 0, tzinfo=eastern)
-        game_time_utc = game_time_et.astimezone(timezone.utc)
+        game_time_utc = game_time_et.astimezone(UTC)
 
         assert start_utc <= game_time_utc < end_utc
 

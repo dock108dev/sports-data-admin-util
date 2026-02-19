@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Dict
+from datetime import UTC, datetime, timedelta
 
+from ..celery_app import SOCIAL_QUEUE
 from ..config import settings
 from ..db import db_models, get_session
+from ..live import LiveFeedManager
 from ..logging import logger
 from ..models import IngestionConfig
-from ..live import LiveFeedManager
 from ..persistence import persist_game_payload
 from ..scrapers import get_all_scrapers
-from ..celery_app import SOCIAL_QUEUE
 from ..utils.datetime_utils import now_utc, sports_today_et, today_et
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
-from .job_runs import complete_job_run, start_job_run
 from .game_selection import select_games_for_boxscores
+from .job_runs import complete_job_run, start_job_run
 from .pbp_ingestion import (
     ingest_pbp_via_nba_api,
     ingest_pbp_via_ncaab_api,
@@ -58,7 +57,7 @@ class ScrapeRunManager:
             raise
 
     def run(self, run_id: int, config: IngestionConfig) -> dict:
-        summary: Dict[str, int | str] = {
+        summary: dict[str, int | str] = {
             "games": 0,
             "games_enriched": 0,  # Games enriched with boxscore data
             "games_with_stats": 0,  # Games that had player stats upserted
@@ -72,7 +71,7 @@ class ScrapeRunManager:
 
         # Convert updated_before date to datetime if provided
         updated_before_dt = (
-            datetime.combine(config.updated_before, datetime.min.time()).replace(tzinfo=timezone.utc)
+            datetime.combine(config.updated_before, datetime.min.time()).replace(tzinfo=UTC)
             if config.updated_before
             else None
         )
@@ -320,8 +319,8 @@ class ScrapeRunManager:
                 try:
                     yesterday = sports_today_et() - timedelta(days=1)
                     bs_end = min(end, yesterday)
-                    window_start = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
-                    window_end = datetime.combine(bs_end, datetime.max.time(), tzinfo=timezone.utc)
+                    window_start = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
+                    window_end = datetime.combine(bs_end, datetime.max.time(), tzinfo=UTC)
                     with get_session() as session:
                         total_final_games = (
                             session.query(db_models.SportsGame)
@@ -395,9 +394,9 @@ class ScrapeRunManager:
                     start_date=str(start),
                     end_date=str(end),
                     only_missing=config.only_missing,
-                    live=config.live,
+                    batch_live_feed=config.batch_live_feed,
                 )
-                if config.live:
+                if config.batch_live_feed:
                     # Live-feed PBP (explicit opt-in only).
                     if config.league_code not in self._supported_live_pbp_leagues:
                         logger.info(

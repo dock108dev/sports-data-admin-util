@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 # Natural language mappings for play types
 PLAY_TYPE_VERBS = {
     "2pt": "scored inside",

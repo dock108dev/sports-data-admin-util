@@ -216,10 +216,10 @@ def _repair_stale_statuses() -> dict:
     real status.
     """
     from ..db import db_models
-    from ..utils.datetime_utils import now_utc
     from ..live.nba import NBALiveFeedClient
     from ..live.nhl import NHLLiveFeedClient
     from ..persistence.games import resolve_status_transition
+    from ..utils.datetime_utils import now_utc
 
     now = now_utc()
     # Games with tip_time > 3 hours ago that are still scheduled/pregame

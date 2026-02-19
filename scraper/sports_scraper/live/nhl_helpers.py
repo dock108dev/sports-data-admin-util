@@ -5,7 +5,7 @@ Utility functions for parsing API responses and building domain objects.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from ..models import TeamIdentity
 from ..normalization import normalize_team_name
@@ -82,7 +82,7 @@ def parse_datetime(value: str | None) -> datetime:
     if not value:
         return now_utc()
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
     except ValueError:
         return now_utc()
 

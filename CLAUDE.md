@@ -77,19 +77,21 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GR
 
 ## Scheduled Scraping
 
-**Daily Schedule (US Eastern Time, 30 min between each job):**
-- **3:30 AM** — Sports ingestion (NBA → NHL → NCAAB sequentially)
-- **4:00 AM** — Daily sweep (truth repair, backfill missing data)
-- **4:30 AM** — NBA flow generation
-- **5:00 AM** — NHL flow generation
-- **5:30 AM** — NCAAB flow generation (max 10 games)
-
-**Recurring Tasks:**
+**Always-on (all environments):**
 - **Every 3 min** — Game state updates (game-state-machine)
-- **Every 5 min** — Live PBP polling
+
+**Live polling (production, or when `LIVE_POLLING_ENABLED=true`):**
+- **Every 5 min** — Live PBP + boxscore polling
+
+**Production-only:**
+- **3:30 AM ET** — Sports ingestion (NBA → NHL → NCAAB sequentially)
+- **4:00 AM ET** — Daily sweep (truth repair, backfill missing data)
+- **4:30 AM ET** — NBA flow generation
+- **5:00 AM ET** — NHL flow generation
+- **5:30 AM ET** — NCAAB flow generation (max 10 games)
 - **Every 15 min** — Mainline odds sync (`sync_mainline_odds`: spreads, totals, moneyline for all leagues; `us` + `eu` regions)
 - **Every 60 min** — Prop odds sync (`sync_prop_odds`: player/team props for pregame events)
-- **3–7 AM ET** — Odds quiet window (both tasks skip execution)
+- **3–7 AM ET** — Odds quiet window (both odds tasks skip execution)
 
 Configured in `scraper/sports_scraper/celery_app.py`
 

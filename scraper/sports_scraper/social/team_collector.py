@@ -8,19 +8,18 @@ See tweet_mapper.py for mapping unmapped tweets to games.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
-
-from ..logging import logger
 from zoneinfo import ZoneInfo
 
-from ..utils.datetime_utils import now_utc, date_to_utc_datetime
+from ..config import settings
+from ..logging import logger
+from ..utils.datetime_utils import date_to_utc_datetime, now_utc
 from .exceptions import XCircuitBreakerError
 from .playwright_collector import PlaywrightXCollector, playwright_available
 from .rate_limit import PlatformRateLimiter
 from .registry import fetch_team_accounts
 from .utils import extract_x_post_id
-from ..config import settings
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -54,18 +53,21 @@ class TeamTweetCollector:
 
     def _normalize_posted_at(self, posted_at: datetime) -> datetime:
         if posted_at.tzinfo is None:
-            return posted_at.replace(tzinfo=timezone.utc)
-        return posted_at.astimezone(timezone.utc)
+            return posted_at.replace(tzinfo=UTC)
+        return posted_at.astimezone(UTC)
 
     def collect_team_tweets(
         self,
-        session: "Session",
+        session: Session,
         team_id: int,
         start_date: date,
         end_date: date,
     ) -> int:
         """
         Scrape all tweets for a team in date range.
+
+        Posts are added to the session but NOT committed — the caller
+        (collect_for_date_range) owns commit timing for batch persistence.
 
         Args:
             session: Database session
@@ -185,9 +187,6 @@ class TeamTweetCollector:
                 session.add(new_post)
                 new_count += 1
 
-        if new_count > 0:
-            session.commit()
-
         logger.info(
             "team_collector_complete",
             team_id=team_id,
@@ -200,7 +199,7 @@ class TeamTweetCollector:
 
     def collect_for_date_range(
         self,
-        session: "Session",
+        session: Session,
         league_code: str,
         start_date: date,
         end_date: date,
@@ -266,18 +265,23 @@ class TeamTweetCollector:
             games_found=len(games),
         )
 
-        # Iterate game-by-game: scrape both teams per game, then wait 150s
+        # Iterate game-by-game: scrape both teams per game, then wait
         # before the next game to avoid X rate limits.
+        # Posts are committed in batches of _BATCH_SIZE_GAMES to survive
+        # mid-run failures — completed batches remain persisted.
         import time
 
-        _INTER_GAME_DELAY_SECONDS = 150
+        _INTER_GAME_DELAY_SECONDS = 15
         _MAX_CONSECUTIVE_BREAKER_HITS = 3
+        _BATCH_SIZE_GAMES = 5
 
         teams_processed = 0
         total_new_tweets = 0
         errors: list[str] = []
         consecutive_breaker_hits = 0
         scraped_team_ids: set[int] = set()
+        games_completed = 0
+        batch_new_tweets = 0
 
         for i, game in enumerate(games):
             # Wait between games (skip before the first one)
@@ -303,6 +307,7 @@ class TeamTweetCollector:
                     )
                     teams_processed += 1
                     total_new_tweets += new_tweets
+                    batch_new_tweets += new_tweets
                     consecutive_breaker_hits = 0  # Reset on success
                 except XCircuitBreakerError as exc:
                     consecutive_breaker_hits += 1
@@ -332,10 +337,28 @@ class TeamTweetCollector:
                         error=str(exc),
                     )
             else:
-                # Only reached if inner loop didn't break
+                # Only reached if inner loop didn't break — game completed
+                games_completed += 1
+                if games_completed % _BATCH_SIZE_GAMES == 0:
+                    session.commit()
+                    logger.info(
+                        "team_collector_batch_committed",
+                        games_processed=games_completed,
+                        posts=batch_new_tweets,
+                    )
+                    batch_new_tweets = 0
                 continue
             # Inner loop broke (batch abort) — stop outer loop too
             break
+
+        # Final flush for remaining games (< batch size) or abort
+        session.commit()
+        if batch_new_tweets > 0:
+            logger.info(
+                "team_collector_batch_committed",
+                games_processed=games_completed,
+                posts=batch_new_tweets,
+            )
 
         logger.info(
             "team_collector_range_complete",

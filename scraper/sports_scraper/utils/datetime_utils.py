@@ -13,9 +13,8 @@ date_utils.py.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
-
 
 SPORTS_DAY_BOUNDARY_HOUR_ET = 4
 
@@ -35,7 +34,7 @@ def sports_today_et() -> date:
 
 def now_utc() -> datetime:
     """Return the current timezone-aware UTC datetime."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def today_utc() -> date:
@@ -55,7 +54,7 @@ def today_et() -> date:
 
 def date_to_utc_datetime(day: date) -> datetime:
     """Convert a date to a timezone-aware UTC datetime at midnight."""
-    return datetime.combine(day, datetime.min.time()).replace(tzinfo=timezone.utc)
+    return datetime.combine(day, datetime.min.time()).replace(tzinfo=UTC)
 
 
 def date_window_for_matching(day: date, days_before: int = 1, days_after: int = 1) -> tuple[datetime, datetime]:
@@ -73,8 +72,8 @@ def date_window_for_matching(day: date, days_before: int = 1, days_after: int = 
     """
     start_date = day - timedelta(days=days_before)
     end_date = day + timedelta(days=days_after)
-    start = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-    end = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+    start = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=UTC)
+    end = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=UTC)
     return start, end
 
 

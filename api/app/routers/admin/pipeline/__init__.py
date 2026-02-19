@@ -26,9 +26,9 @@ SAFETY GUARANTEES
 
 from fastapi import APIRouter
 
-from .endpoints import router as endpoints_router
-from .bulk_endpoints import router as bulk_router
 from .backfill_endpoints import router as backfill_router
+from .bulk_endpoints import router as bulk_router
+from .endpoints import router as endpoints_router
 from .models import (
     BackfillEmbeddedTweetsResponse,
     BulkGenerateAsyncResponse,

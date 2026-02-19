@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 
+from sports_scraper.models import NormalizedPlay
 from sports_scraper.scrapers.nhl_sportsref_helpers import (
     extract_score,
     normalize_pbp_team_abbr,
@@ -15,7 +16,6 @@ from sports_scraper.scrapers.nhl_sportsref_helpers import (
     parse_scorebox_abbreviations,
     parse_scorebox_team,
 )
-from sports_scraper.models import NormalizedPlay, TeamIdentity
 
 # Re-usable patterns (mirroring what the real scraper constructs)
 SCORE_PATTERN = re.compile(r"(\d+)\s*[-–]\s*(\d+)")

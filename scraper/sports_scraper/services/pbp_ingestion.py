@@ -22,17 +22,17 @@ from .game_selection import select_games_for_pbp_sportsref
 # Re-export sport-specific functions
 from .pbp_nba import (
     ingest_pbp_via_nba_api,
-    select_games_for_pbp_nba_api,
     populate_nba_game_ids,
-)
-from .pbp_nhl import (
-    ingest_pbp_via_nhl_api,
-    select_games_for_pbp_nhl_api,
-    populate_nhl_game_ids,
+    select_games_for_pbp_nba_api,
 )
 from .pbp_ncaab import (
     ingest_pbp_via_ncaab_api,
     select_games_for_pbp_ncaab_api,
+)
+from .pbp_nhl import (
+    ingest_pbp_via_nhl_api,
+    populate_nhl_game_ids,
+    select_games_for_pbp_nhl_api,
 )
 
 __all__ = [

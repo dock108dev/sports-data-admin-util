@@ -36,6 +36,7 @@ def trigger_game_pipelines_task(
         Summary dict with counts of pipelines started
     """
     import httpx
+
     from ..config import settings
     from ..db import get_session
 

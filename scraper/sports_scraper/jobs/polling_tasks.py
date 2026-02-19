@@ -26,11 +26,11 @@ from celery import shared_task
 from ..db import get_session
 from ..logging import logger
 from .polling_helpers import (
-    _RateLimitError,
-    _poll_single_game_pbp,
     _poll_nba_game_boxscore,
-    _poll_nhl_game_boxscore,
     _poll_ncaab_games_batch,
+    _poll_nhl_game_boxscore,
+    _poll_single_game_pbp,
+    _RateLimitError,
 )
 
 # Maximum API calls per polling cycle to stay within rate limits
@@ -45,9 +45,9 @@ _JITTER_MAX = 2.0
 _RATE_LIMIT_BACKOFF_SECONDS = 60
 
 
+from ..utils.redis_lock import LOCK_TIMEOUT_5MIN  # noqa: E402
 from ..utils.redis_lock import acquire_redis_lock as _acquire_redis_lock  # noqa: E402
 from ..utils.redis_lock import release_redis_lock as _release_redis_lock  # noqa: E402
-from ..utils.redis_lock import LOCK_TIMEOUT_5MIN  # noqa: E402
 
 
 @shared_task(name="update_game_states")
@@ -122,7 +122,10 @@ def poll_live_pbp_task() -> dict:
                     nba_nhl_pbp_games.append(game)
 
             if not nba_nhl_pbp_games and not ncaab_pbp_games:
-                logger.debug("poll_live_pbp_no_pbp_games")
+                logger.info(
+                    "poll_live_pbp_heartbeat",
+                    games_found=0,
+                )
             else:
                 logger.info(
                     "poll_live_data_start",

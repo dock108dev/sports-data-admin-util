@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Iterable
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from ..celery_app import DEFAULT_QUEUE
+from ..config_sports import get_league_config, get_scheduled_leagues
 from ..db import db_models, get_session
 from ..logging import logger
 from ..models import IngestionConfig
 from ..utils.datetime_utils import now_utc
-from ..config_sports import get_scheduled_leagues, get_league_config
-from ..celery_app import DEFAULT_QUEUE
 
 
 @dataclass(frozen=True)
@@ -29,8 +29,8 @@ class ScheduledIngestionSummary:
 def build_scheduled_window(now: datetime | None = None) -> tuple[datetime, datetime]:
     """Build the scheduled ingestion window (96 hours back -> 48 hours forward in UTC)."""
     anchor = now or now_utc()
-    start = (anchor - timedelta(hours=96)).replace(tzinfo=timezone.utc)
-    end = (anchor + timedelta(hours=48)).replace(tzinfo=timezone.utc)
+    start = (anchor - timedelta(hours=96)).replace(tzinfo=UTC)
+    end = (anchor + timedelta(hours=48)).replace(tzinfo=UTC)
     return start, end
 
 
@@ -54,12 +54,12 @@ def create_scrape_run(
         season=config.season,
         season_type=config.season_type,
         start_date=_coerce_date(
-            datetime.combine(config.start_date, datetime.min.time(), tzinfo=timezone.utc)
+            datetime.combine(config.start_date, datetime.min.time(), tzinfo=UTC)
             if config.start_date
             else None
         ),
         end_date=_coerce_date(
-            datetime.combine(config.end_date, datetime.min.time(), tzinfo=timezone.utc)
+            datetime.combine(config.end_date, datetime.min.time(), tzinfo=UTC)
             if config.end_date
             else None
         ),
@@ -83,7 +83,7 @@ def schedule_ingestion_runs(
     if leagues is None:
         leagues = get_scheduled_leagues()
     leagues = list(leagues)
-    
+
     start_dt, end_dt = build_scheduled_window(now)
     start_date = start_dt.date()
     end_date = end_dt.date()
@@ -215,7 +215,11 @@ def run_pbp_ingestion_for_league(league_code: str) -> dict:
     Returns:
         Dict with pbp_games and pbp_events counts
     """
-    from .pbp_ingestion import ingest_pbp_via_nba_api, ingest_pbp_via_nhl_api, ingest_pbp_via_ncaab_api
+    from .pbp_ingestion import (
+        ingest_pbp_via_nba_api,
+        ingest_pbp_via_ncaab_api,
+        ingest_pbp_via_nhl_api,
+    )
 
     start_dt, end_dt = build_scheduled_window()
     start_date = start_dt.date()

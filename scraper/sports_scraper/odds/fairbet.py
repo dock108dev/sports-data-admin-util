@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
     from ..models import NormalizedOddsSnapshot
 
 
@@ -54,6 +55,25 @@ def slugify(text: str) -> str:
     return slug
 
 
+def _resolve_team_slug(
+    description: str | None,
+    home_team_name: str,
+    away_team_name: str,
+) -> str | None:
+    """Match team_total description to home/away team. Returns slug or None."""
+    if not description:
+        return None
+    desc_lower = description.lower()
+    home_slug = slugify(home_team_name)
+    away_slug = slugify(away_team_name)
+    desc_slug = slugify(description)
+    if desc_slug == home_slug or home_team_name.lower() in desc_lower or desc_lower in home_team_name.lower():
+        return home_slug
+    if desc_slug == away_slug or away_team_name.lower() in desc_lower or desc_lower in away_team_name.lower():
+        return away_slug
+    return desc_slug  # fallback: use description slug directly
+
+
 def build_selection_key(
     market_type: str,
     side: str | None,
@@ -61,6 +81,7 @@ def build_selection_key(
     away_team_name: str,
     player_name: str | None = None,
     market_category: str = "mainline",
+    description: str | None = None,
 ) -> str:
     """Build a deterministic, book-agnostic selection key.
 
@@ -91,8 +112,26 @@ def build_selection_key(
         else:
             return f"player:{player_slug}:{side_slug}"
 
-    # Total bets (mainline or team_prop): Over/Under
-    if market_type == "total" or market_category == "team_prop" or market_type.startswith("team_total"):
+    # Game totals (mainline): Over/Under — no team identity
+    if market_type == "total" and market_category != "team_prop":
+        if "over" in side_lower:
+            return "total:over"
+        elif "under" in side_lower:
+            return "total:under"
+        else:
+            return f"total:{side_slug}"
+
+    # Team totals: embed team slug from description
+    if market_category == "team_prop" or market_type.startswith("team_total"):
+        team_slug = _resolve_team_slug(description, home_team_name, away_team_name)
+        if team_slug:
+            if "over" in side_lower:
+                return f"total:{team_slug}:over"
+            elif "under" in side_lower:
+                return f"total:{team_slug}:under"
+            else:
+                return f"total:{team_slug}:{side_slug}"
+        # Fallback: no description available
         if "over" in side_lower:
             return "total:over"
         elif "under" in side_lower:
@@ -116,10 +155,10 @@ def build_selection_key(
 
 
 def upsert_fairbet_odds(
-    session: "Session",
+    session: Session,
     game_id: int,
     game_status: str,
-    snapshot: "NormalizedOddsSnapshot",
+    snapshot: NormalizedOddsSnapshot,
 ) -> bool:
     """Upsert odds into the FairBet work table.
 
@@ -172,6 +211,7 @@ def upsert_fairbet_odds(
         away_team_name=away_team.name,
         player_name=snapshot.player_name,
         market_category=snapshot.market_category,
+        description=snapshot.description,
     )
 
     # Validation guard: for team bets (moneyline/spread), if the selection key

@@ -49,17 +49,17 @@ import json
 import logging
 from typing import Any
 
-from ..models import StageInput, StageOutput
 from ...openai_client import get_openai_client
-from .render_validation import cleanup_pbp_artifacts, validate_block_narrative
+from ..models import StageInput, StageOutput
 from .render_helpers import (
-    detect_overtime_info,
-    check_play_coverage,
-    generate_play_injection_sentence,
     check_overtime_mention,
+    check_play_coverage,
+    detect_overtime_info,
+    generate_play_injection_sentence,
     inject_overtime_mention,
 )
 from .render_prompts import build_block_prompt, build_game_flow_pass_prompt
+from .render_validation import cleanup_pbp_artifacts, validate_block_narrative
 
 logger = logging.getLogger(__name__)
 

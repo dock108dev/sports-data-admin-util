@@ -7,8 +7,8 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import or_
 
-from ...db.sports import SportsTeam, SportsLeague, SportsGame
 from ...db import AsyncSession, get_db
+from ...db.sports import SportsGame, SportsLeague, SportsTeam
 from .schemas import (
     TeamColorUpdate,
     TeamDetail,

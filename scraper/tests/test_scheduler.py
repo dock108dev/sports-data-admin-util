@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -34,7 +34,7 @@ class TestScheduledIngestionSummary:
 
     def test_create_summary(self):
         """Create a summary with all fields."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         summary = ScheduledIngestionSummary(
             runs_created=5,
             runs_skipped=2,
@@ -50,7 +50,7 @@ class TestScheduledIngestionSummary:
 
     def test_summary_is_frozen(self):
         """Summary is immutable."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         summary = ScheduledIngestionSummary(
             runs_created=5,
             runs_skipped=2,
@@ -75,7 +75,7 @@ class TestBuildScheduledWindow:
 
     def test_window_spans_expected_range(self):
         """Window spans 96 hours back to 48 hours forward."""
-        now = datetime(2024, 1, 15, 12, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 1, 15, 12, 0, tzinfo=UTC)
         start, end = build_scheduled_window(now)
 
         expected_start = now - timedelta(hours=96)
@@ -97,8 +97,8 @@ class TestBuildScheduledWindow:
     def test_uses_utc_timezone(self):
         """Both datetimes are in UTC."""
         start, end = build_scheduled_window()
-        assert start.tzinfo == timezone.utc
-        assert end.tzinfo == timezone.utc
+        assert start.tzinfo == UTC
+        assert end.tzinfo == UTC
 
 
 class TestCreateScrapeRun:
@@ -197,7 +197,7 @@ class TestScheduleIngestionRuns:
 
         mock_recent_run = MagicMock()
         mock_recent_run.id = 100
-        mock_recent_run.created_at = datetime.now(timezone.utc)
+        mock_recent_run.created_at = datetime.now(UTC)
 
         mock_session = MagicMock()
         mock_query = MagicMock()
@@ -277,7 +277,7 @@ class TestCoerceDate:
     def test_coerces_to_midnight(self):
         """Datetime is coerced to midnight."""
         from sports_scraper.services.scheduler import _coerce_date
-        dt = datetime(2024, 1, 15, 14, 30, 45, 123456, tzinfo=timezone.utc)
+        dt = datetime(2024, 1, 15, 14, 30, 45, 123456, tzinfo=UTC)
         result = _coerce_date(dt)
         assert result.hour == 0
         assert result.minute == 0

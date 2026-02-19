@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import json
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+from app.services.pipeline.models import StageInput
 from app.services.pipeline.stages.analyze_drama import (
-    _extract_quarter_summary,
+    DEFAULT_QUARTER_WEIGHTS,
     _build_drama_prompt,
+    _extract_quarter_summary,
     _parse_ai_response,
     execute_analyze_drama,
-    DEFAULT_QUARTER_WEIGHTS,
 )
-from app.services.pipeline.models import StageInput, StageOutput
 
 
 class TestExtractQuarterSummary:

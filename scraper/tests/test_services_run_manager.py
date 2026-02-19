@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from datetime import UTC, date, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sports_scraper.services.run_manager import ScrapeRunManager
 from sports_scraper.models import IngestionConfig
+from sports_scraper.services.run_manager import ScrapeRunManager
 
 
 class TestScrapeRunManagerImports:
@@ -81,7 +81,7 @@ class TestScrapeRunManagerUpdateRun:
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         manager = ScrapeRunManager()
-        manager._update_run(1, status="running", started_at=datetime.now(timezone.utc))
+        manager._update_run(1, status="running", started_at=datetime.now(UTC))
 
         assert mock_run.status == "running"
         mock_session.flush.assert_called()
@@ -701,7 +701,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         result = manager.run(1, config)
@@ -741,7 +741,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         result = manager.run(1, config)
@@ -779,7 +779,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=True,
+            batch_live_feed=True,
         )
 
         result = manager.run(1, config)
@@ -820,7 +820,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=True,
+            batch_live_feed=True,
         )
 
         result = manager.run(1, config)
@@ -859,7 +859,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=True,
+            batch_live_feed=True,
         )
 
         # Should not raise, handles exception internally
@@ -897,7 +897,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         result = manager.run(1, config)
@@ -937,7 +937,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         # Should not raise
@@ -977,7 +977,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         # Should not raise
@@ -1018,7 +1018,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         result = manager.run(1, config)
@@ -1060,7 +1060,7 @@ class TestScrapeRunManagerPbp:
             odds=False,
             social=False,
             pbp=True,
-            live=False,
+            batch_live_feed=False,
         )
 
         # Should not raise

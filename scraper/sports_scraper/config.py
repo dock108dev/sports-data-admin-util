@@ -75,7 +75,7 @@ class SocialConfig(BaseModel):
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
-    
+
     In Docker, environment variables are passed directly via docker-compose.
     For local development, loads from root .env file (../../.env) to maintain
     consistency with other services. All settings are validated by Pydantic.
@@ -90,13 +90,13 @@ class Settings(BaseSettings):
     )
 
     database_url: str = Field(..., alias="DATABASE_URL")
-    
+
     @field_validator('database_url', mode='before')
     @classmethod
     def convert_async_to_sync(cls, v: str) -> str:
         """
         Convert asyncpg URL to psycopg URL for synchronous SQLAlchemy.
-        
+
         The root .env file uses asyncpg (for FastAPI), but Celery workers
         need synchronous psycopg. This validator automatically converts
         the URL so we can keep a single DATABASE_URL in the .env file.
@@ -104,15 +104,15 @@ class Settings(BaseSettings):
         if isinstance(v, str) and 'asyncpg' in v:
             return v.replace('asyncpg', 'psycopg')
         return v
-    
+
     # Redis configuration - can be set via REDIS_URL or constructed from components
     redis_url: str = Field("redis://localhost:6379/2", alias="REDIS_URL")
     redis_host: str = Field("localhost", alias="REDIS_HOST")
     redis_password: str | None = Field(None, alias="REDIS_PASSWORD")
     redis_db: int = Field(2, alias="REDIS_DB")
-    
+
     @model_validator(mode="after")
-    def _build_redis_url(self) -> "Settings":
+    def _build_redis_url(self) -> Settings:
         """
         Build Redis URL from components if REDIS_HOST is set to a non-localhost value.
         This handles Docker environments where we pass REDIS_HOST=redis and REDIS_PASSWORD separately.
@@ -124,10 +124,11 @@ class Settings(BaseSettings):
             else:
                 self.redis_url = f"redis://{self.redis_host}:6379/{self.redis_db}"
         return self
-    
+
     odds_api_key: str | None = Field(None, alias="ODDS_API_KEY")
     cbb_stats_api_key: str | None = Field(None, alias="CBB_STATS_API_KEY")
     environment: str = Field("development", alias="ENVIRONMENT")
+    live_polling_enabled: bool = Field(False, alias="LIVE_POLLING_ENABLED")
     log_level: str | None = Field(None, alias="LOG_LEVEL")
     scraper_config: ScraperConfig = Field(default_factory=ScraperConfig)
     odds_config: OddsProviderConfig = Field(default_factory=OddsProviderConfig)
@@ -139,7 +140,7 @@ class Settings(BaseSettings):
     odds_api_regions: str | None = Field(None, alias="ODDS_API_REGIONS")
 
     @model_validator(mode="after")
-    def _apply_scraper_overrides(self) -> "Settings":
+    def _apply_scraper_overrides(self) -> Settings:
         """
         Allow top-level env vars (SCRAPER_HTML_CACHE_DIR / SCRAPER_FORCE_CACHE_REFRESH)
         to override the nested scraper config without requiring double-underscore syntax.
@@ -157,7 +158,7 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """
     Return cached settings instance.
-    
+
     Settings are cached to avoid re-parsing environment variables
     on every access. This is safe because environment variables
     don't change during runtime.

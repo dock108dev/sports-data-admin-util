@@ -25,8 +25,8 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.live.nba import (
     NBALiveFeedClient,
-    _parse_nba_game_datetime,
     _parse_nba_clock,
+    _parse_nba_game_datetime,
 )
 
 

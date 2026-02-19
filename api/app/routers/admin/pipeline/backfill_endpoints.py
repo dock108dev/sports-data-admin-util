@@ -5,7 +5,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ....db import AsyncSession, get_db
-
 from .models import BackfillEmbeddedTweetsResponse
 
 router = APIRouter()

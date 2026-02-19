@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from urllib.parse import parse_qs
-from typing import Callable
 
 from fastapi import Request
 

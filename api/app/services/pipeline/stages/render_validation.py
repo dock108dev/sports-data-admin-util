@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from .block_types import MIN_WORDS_PER_BLOCK, MAX_WORDS_PER_BLOCK
+from .block_types import MAX_WORDS_PER_BLOCK, MIN_WORDS_PER_BLOCK
 
 # Forbidden words in block narratives
 FORBIDDEN_WORDS = [

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,7 +12,7 @@ from sports_scraper.social.models import CollectedPost
 
 
 def _utc(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> datetime:
-    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+    return datetime(year, month, day, hour, minute, tzinfo=UTC)
 
 
 def _make_post(**kwargs) -> CollectedPost:
@@ -72,18 +72,19 @@ class TestNormalizePostedAt:
         collector = TeamTweetCollector(strategy=MagicMock())
         naive = datetime(2025, 6, 15, 19, 0)
         result = collector._normalize_posted_at(naive)
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
     @patch("sports_scraper.social.team_collector.settings", _mock_settings())
     @patch("sports_scraper.social.team_collector.playwright_available", return_value=True)
     def test_non_utc_timezone(self, mock_pw):
-        from sports_scraper.social.team_collector import TeamTweetCollector
         from zoneinfo import ZoneInfo
+
+        from sports_scraper.social.team_collector import TeamTweetCollector
 
         collector = TeamTweetCollector(strategy=MagicMock())
         eastern = datetime(2025, 6, 15, 15, 0, tzinfo=ZoneInfo("America/New_York"))
         result = collector._normalize_posted_at(eastern)
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
         assert result.hour == 19  # 3 PM ET = 7 PM UTC in summer
 
 
@@ -161,7 +162,8 @@ class TestCollectTeamTweets:
 
         assert result == 1
         session.add.assert_called_once()
-        session.commit.assert_called_once()
+        # commit is no longer called per-team; caller owns commit timing
+        session.commit.assert_not_called()
 
     @patch("sports_scraper.social.team_collector.settings", _mock_settings())
     @patch("sports_scraper.social.team_collector.playwright_available", return_value=True)
@@ -229,8 +231,9 @@ class TestCollectTeamTweets:
     @patch("sports_scraper.social.team_collector.now_utc", return_value=_utc(2025, 6, 15, 23, 0))
     def test_window_is_et_based(self, mock_now, mock_extract, mock_fetch, mock_pw):
         """Verify collect window runs from 5 AM ET on start_date to 8 AM ET on end_date+1."""
-        from sports_scraper.social.team_collector import TeamTweetCollector
         from zoneinfo import ZoneInfo
+
+        from sports_scraper.social.team_collector import TeamTweetCollector
 
         team = MagicMock()
         team.x_handle = "celtics"
@@ -272,8 +275,9 @@ class TestCollectTeamTweets:
     @patch("sports_scraper.social.team_collector.now_utc", return_value=_utc(2025, 6, 15, 23, 0))
     def test_window_multi_day_range(self, mock_now, mock_extract, mock_fetch, mock_pw):
         """Verify multi-day range: 5 AM ET on start through 8 AM ET on end+1."""
-        from sports_scraper.social.team_collector import TeamTweetCollector
         from zoneinfo import ZoneInfo
+
+        from sports_scraper.social.team_collector import TeamTweetCollector
 
         team = MagicMock()
         team.x_handle = "celtics"

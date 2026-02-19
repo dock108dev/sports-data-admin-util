@@ -32,7 +32,7 @@ _ODDS_API_TO_DB_MAPPINGS: dict[str, str] = {
 }
 
 # Simple LRU cache to avoid repeating heavy match queries/logs for the same game+date.
-_MATCH_CACHE: "OrderedDict[tuple, int | None]" = OrderedDict()
+_MATCH_CACHE: OrderedDict[tuple, int | None] = OrderedDict()
 _MATCH_CACHE_MAX = 512
 
 

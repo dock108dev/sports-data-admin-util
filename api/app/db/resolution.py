@@ -20,9 +20,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
 from .base import Base
-from .sports import SportsGame
 from .pipeline import GamePipelineRun
 from .scraper import SportsScrapeRun
+from .sports import SportsGame
 
 
 class PBPSnapshotType(str, Enum):
@@ -81,7 +81,7 @@ class PBPSnapshot(Base):
 
     game: Mapped[SportsGame] = relationship("SportsGame")
     pipeline_run: Mapped[GamePipelineRun | None] = relationship("GamePipelineRun")
-    scrape_run: Mapped["SportsScrapeRun | None"] = relationship("SportsScrapeRun")
+    scrape_run: Mapped[SportsScrapeRun | None] = relationship("SportsScrapeRun")
 
     __table_args__ = (Index("idx_pbp_snapshots_game_type", "game_id", "snapshot_type"),)
 

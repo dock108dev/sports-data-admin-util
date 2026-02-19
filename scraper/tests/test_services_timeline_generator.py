@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from sports_scraper.services.timeline_generator import (
     SCHEDULED_DAYS_BACK,
+    find_all_games_needing_timelines,
     find_games_missing_timelines,
     find_games_needing_regeneration,
-    find_all_games_needing_timelines,
-    generate_timeline_for_game,
-    generate_missing_timelines,
     generate_all_needed_timelines,
+    generate_missing_timelines,
+    generate_timeline_for_game,
 )
 
 
@@ -65,8 +63,8 @@ class TestFindGamesMissingTimelines:
         mock_session.query.return_value.filter.return_value.first.return_value = mock_league
 
         mock_games = [
-            (100, datetime(2024, 1, 15, 19, 0, 0, tzinfo=timezone.utc), "Boston Celtics", "Los Angeles Lakers"),
-            (101, datetime(2024, 1, 16, 19, 0, 0, tzinfo=timezone.utc), "Miami Heat", "Chicago Bulls"),
+            (100, datetime(2024, 1, 15, 19, 0, 0, tzinfo=UTC), "Boston Celtics", "Los Angeles Lakers"),
+            (101, datetime(2024, 1, 16, 19, 0, 0, tzinfo=UTC), "Miami Heat", "Chicago Bulls"),
         ]
         mock_session.query.return_value.join.return_value.join.return_value.filter.return_value.filter.return_value.filter.return_value.order_by.return_value.all.return_value = mock_games
 
@@ -119,7 +117,7 @@ class TestFindGamesNeedingRegeneration:
         mock_league.id = 1
         mock_session.query.return_value.filter.return_value.first.return_value = mock_league
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         old_timeline = now - timedelta(hours=2)
         new_pbp = now - timedelta(hours=1)
 

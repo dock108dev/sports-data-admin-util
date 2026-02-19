@@ -5,7 +5,7 @@ Handles team and player boxscore upserts and game payload persistence.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import literal
 from sqlalchemy.dialects.postgresql import JSONB, insert
@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedGame, NormalizedPlayerBoxscore, NormalizedTeamBoxscore
-from ..utils.db_queries import get_league_id
 from ..utils.datetime_utils import now_utc
+from ..utils.db_queries import get_league_id
 from .boxscore_helpers import (
     GamePersistResult,
     PlayerBoxscoreStats,
@@ -27,7 +27,6 @@ from .boxscore_helpers import (
 )
 from .teams import _find_team_by_name, _upsert_team
 
-# Re-export dataclasses for backward compatibility
 __all__ = [
     "GamePersistResult",
     "PlayerBoxscoreStats",

@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 from sports_scraper.services.diagnostics import (
-    PBP_SUPPORTED_LEAGUES,
-    PBP_MIN_PLAY_COUNT,
     CONFLICT_OVERLAP_WINDOW_HOURS,
     EXTERNAL_ID_KEYS,
-    detect_missing_pbp,
+    PBP_MIN_PLAY_COUNT,
+    PBP_SUPPORTED_LEAGUES,
     detect_external_id_conflicts,
+    detect_missing_pbp,
 )
 
 
@@ -54,7 +52,7 @@ class TestDetectMissingPbp:
     @patch("sports_scraper.services.diagnostics.now_utc")
     def test_returns_empty_when_no_missing_games(self, mock_now):
         """Returns empty list when no games are missing PBP."""
-        mock_now.return_value = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        mock_now.return_value = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
 
         mock_session = MagicMock()
         mock_league = MagicMock()
@@ -73,7 +71,7 @@ class TestDetectMissingPbp:
     @patch("sports_scraper.services.diagnostics.insert")
     def test_detects_missing_pbp_for_nba(self, mock_insert, mock_now):
         """Detects missing PBP for NBA (supported league)."""
-        mock_now.return_value = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        mock_now.return_value = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
 
         mock_session = MagicMock()
         mock_league = MagicMock()
@@ -100,7 +98,7 @@ class TestDetectMissingPbp:
     @patch("sports_scraper.services.diagnostics.insert")
     def test_detects_missing_pbp_for_unsupported_league(self, mock_insert, mock_now):
         """Detects missing PBP for unsupported league with 'not_supported' reason."""
-        mock_now.return_value = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        mock_now.return_value = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
 
         mock_session = MagicMock()
         mock_league = MagicMock()
@@ -126,7 +124,7 @@ class TestDetectMissingPbp:
     @patch("sports_scraper.services.diagnostics.now_utc")
     def test_uses_custom_min_play_count(self, mock_now):
         """Uses custom minimum play count."""
-        mock_now.return_value = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        mock_now.return_value = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
 
         mock_session = MagicMock()
         mock_league = MagicMock()
@@ -198,13 +196,13 @@ class TestDetectExternalIdConflicts:
         # Two games with same external ID and overlapping times
         mock_game1 = MagicMock()
         mock_game1.id = 100
-        mock_game1.game_date = datetime(2024, 1, 1, 19, 0, 0, tzinfo=timezone.utc)
+        mock_game1.game_date = datetime(2024, 1, 1, 19, 0, 0, tzinfo=UTC)
         mock_game1.home_team_id = 1
         mock_game1.away_team_id = 2
 
         mock_game2 = MagicMock()
         mock_game2.id = 101
-        mock_game2.game_date = datetime(2024, 1, 1, 20, 0, 0, tzinfo=timezone.utc)  # 1 hour later
+        mock_game2.game_date = datetime(2024, 1, 1, 20, 0, 0, tzinfo=UTC)  # 1 hour later
         mock_game2.home_team_id = 1
         mock_game2.away_team_id = 2
 
@@ -240,13 +238,13 @@ class TestDetectExternalIdConflicts:
         # Two games with same external ID but different teams
         mock_game1 = MagicMock()
         mock_game1.id = 100
-        mock_game1.game_date = datetime(2024, 1, 1, 19, 0, 0, tzinfo=timezone.utc)
+        mock_game1.game_date = datetime(2024, 1, 1, 19, 0, 0, tzinfo=UTC)
         mock_game1.home_team_id = 1
         mock_game1.away_team_id = 2
 
         mock_game2 = MagicMock()
         mock_game2.id = 101
-        mock_game2.game_date = datetime(2024, 1, 15, 19, 0, 0, tzinfo=timezone.utc)  # Different day
+        mock_game2.game_date = datetime(2024, 1, 15, 19, 0, 0, tzinfo=UTC)  # Different day
         mock_game2.home_team_id = 3  # Different home team
         mock_game2.away_team_id = 4  # Different away team
 
@@ -282,13 +280,13 @@ class TestDetectExternalIdConflicts:
         # Two games with same external ID, far apart, same teams (no conflict)
         mock_game1 = MagicMock()
         mock_game1.id = 100
-        mock_game1.game_date = datetime(2024, 1, 1, 19, 0, 0, tzinfo=timezone.utc)
+        mock_game1.game_date = datetime(2024, 1, 1, 19, 0, 0, tzinfo=UTC)
         mock_game1.home_team_id = 1
         mock_game1.away_team_id = 2
 
         mock_game2 = MagicMock()
         mock_game2.id = 101
-        mock_game2.game_date = datetime(2024, 1, 15, 19, 0, 0, tzinfo=timezone.utc)  # 14 days later
+        mock_game2.game_date = datetime(2024, 1, 15, 19, 0, 0, tzinfo=UTC)  # 14 days later
         mock_game2.home_team_id = 1  # Same teams
         mock_game2.away_team_id = 2
 

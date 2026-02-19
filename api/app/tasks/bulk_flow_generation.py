@@ -18,12 +18,12 @@ from sqlalchemy.orm import selectinload
 
 from ..celery_app import celery_app
 from ..config import settings
-from ..db.sports import SportsGame, SportsLeague, SportsGamePlay
-from ..db.odds import SportsGameOdds  # noqa: F401 — register model for relationship resolution
-from ..db.social import TeamSocialPost  # noqa: F401 — register model for relationship resolution
-from ..db.scraper import SportsScrapeRun  # noqa: F401 — register model for relationship resolution
-from ..db.pipeline import BulkFlowGenerationJob
 from ..db.flow import SportsGameFlow
+from ..db.odds import SportsGameOdds  # noqa: F401 — register model for relationship resolution
+from ..db.pipeline import BulkFlowGenerationJob
+from ..db.scraper import SportsScrapeRun  # noqa: F401 — register model for relationship resolution
+from ..db.social import TeamSocialPost  # noqa: F401 — register model for relationship resolution
+from ..db.sports import SportsGame, SportsGamePlay, SportsLeague
 from ..services.pipeline import PipelineExecutor
 
 logger = logging.getLogger(__name__)

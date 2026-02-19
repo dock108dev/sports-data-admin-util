@@ -7,9 +7,10 @@ Bad timelines never ship.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Sequence
+from typing import Any
 
 from .timeline_types import PHASE_ORDER
 

@@ -6,9 +6,9 @@ This module contains all Pydantic models used by the pipeline endpoints.
 from __future__ import annotations
 
 from enum import Enum
-from pydantic import BaseModel, Field
 from typing import Any
 
+from pydantic import BaseModel, Field
 
 # =============================================================================
 # ENUMS FOR FRONTEND

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
-from ..db.sports import SportsGame, SportsTeam
 from ..db.odds import SportsGameOdds
+from ..db.sports import SportsGame, SportsTeam
 
 
 def _select_closing_lines(

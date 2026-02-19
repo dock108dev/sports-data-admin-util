@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, select
 
-from ...db.scraper import SportsJobRun
 from ...db import AsyncSession, get_db
+from ...db.scraper import SportsJobRun
 from .schemas import JobRunResponse
 
 router = APIRouter()

@@ -65,8 +65,8 @@ class TestCompressionMetrics:
     def test_pct_moments_under_soft_cap_all_under(self):
         """All moments under soft cap returns 100%."""
         from app.services.pipeline.stages.moment_types import (
-            CompressionMetrics,
             SOFT_CAP_PLAYS,
+            CompressionMetrics,
         )
 
         metrics = CompressionMetrics(
@@ -77,8 +77,8 @@ class TestCompressionMetrics:
     def test_pct_moments_under_soft_cap_some_over(self):
         """Some moments over soft cap calculated correctly."""
         from app.services.pipeline.stages.moment_types import (
-            CompressionMetrics,
             SOFT_CAP_PLAYS,
+            CompressionMetrics,
         )
 
         metrics = CompressionMetrics(
@@ -199,8 +199,8 @@ class TestConstants:
     def test_soft_cap_less_than_absolute_max(self):
         """Soft cap is less than absolute max."""
         from app.services.pipeline.stages.moment_types import (
-            SOFT_CAP_PLAYS,
             ABSOLUTE_MAX_PLAYS,
+            SOFT_CAP_PLAYS,
         )
 
         assert SOFT_CAP_PLAYS < ABSOLUTE_MAX_PLAYS
@@ -217,10 +217,10 @@ class TestConstants:
     def test_expected_values(self):
         """Constants have expected values."""
         from app.services.pipeline.stages.moment_types import (
-            SOFT_CAP_PLAYS,
             ABSOLUTE_MAX_PLAYS,
             MAX_EXPLICIT_PLAYS_PER_MOMENT,
             PREFERRED_EXPLICIT_PLAYS,
+            SOFT_CAP_PLAYS,
         )
 
         assert SOFT_CAP_PLAYS == 30

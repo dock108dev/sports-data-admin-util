@@ -29,8 +29,8 @@ def run_scrape_job(run_id: int, config_payload: dict) -> dict:
     Timeline generation is decoupled - call trigger_game_pipelines_task
     after this completes, or use Pipeline API endpoints for manual control.
     """
-    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock, LOCK_TIMEOUT_1HOUR
     from ..utils.datetime_utils import now_utc
+    from ..utils.redis_lock import LOCK_TIMEOUT_1HOUR, acquire_redis_lock, release_redis_lock
 
     league_code = config_payload.get("league_code", "UNKNOWN")
     lock_name = f"lock:ingest:{league_code}"
@@ -76,8 +76,8 @@ def run_scheduled_ingestion() -> dict:
     This is fire-and-forget - we don't wait for social to complete.
     """
     from ..services.scheduler import (
-        schedule_single_league_and_wait,
         run_pbp_ingestion_for_league,
+        schedule_single_league_and_wait,
     )
 
     results = {}

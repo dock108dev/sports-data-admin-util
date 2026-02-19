@@ -9,7 +9,6 @@ import pytest
 
 from sports_scraper.validate_env import (
     ALLOWED_SCRAPER_ROLES,
-    _validate_social_credentials,
     validate_env,
 )
 
@@ -134,4 +133,4 @@ class TestValidateEnvDevelopment:
 
 class TestAllowedScraperRoles:
     def test_roles_set(self):
-        assert ALLOWED_SCRAPER_ROLES == {"worker", "beat", "social"}
+        assert {"worker", "beat", "social"} == ALLOWED_SCRAPER_ROLES

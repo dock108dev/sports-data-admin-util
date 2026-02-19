@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import random
 import time
+from collections.abc import Iterable, Iterator, Sequence
 from datetime import date, timedelta
-from typing import Iterable, Iterator, Sequence
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -36,7 +36,7 @@ class NoGamesFoundError(ScraperError):
 
 class BaseSportsReferenceScraper:
     """Shared utilities for scraping Sports Reference scoreboards.
-    
+
     Features:
     - Local HTML cache (only fetch each page once)
     - Polite scraping (5-9 second random delays)
@@ -50,7 +50,7 @@ class BaseSportsReferenceScraper:
     def __init__(self, timeout_seconds: int | None = None) -> None:
         timeout = timeout_seconds or settings.scraper_config.request_timeout_seconds
         self.client = httpx.Client(
-            timeout=timeout, 
+            timeout=timeout,
             headers={
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -128,7 +128,7 @@ class BaseSportsReferenceScraper:
 
     def fetch_html(self, url: str, game_date: date | None = None) -> BeautifulSoup:
         """Fetch HTML, using cache if available.
-        
+
         1. Check local cache first
         2. If not cached, fetch from network (with polite delay)
         3. Save to cache for future use
@@ -138,13 +138,13 @@ class BaseSportsReferenceScraper:
         cached_html = self._cache.get(url, game_date)
         if cached_html:
             return BeautifulSoup(cached_html, "lxml")
-        
+
         # Fetch from network
         html = self._fetch_from_network(url)
-        
+
         # Save to cache
         self._cache.put(url, html, game_date)
-        
+
         return BeautifulSoup(html, "lxml")
 
     def fetch_games_for_date(self, day: date) -> Sequence[NormalizedGame]:
@@ -156,7 +156,7 @@ class BaseSportsReferenceScraper:
 
     def fetch_single_boxscore(self, source_game_key: str, game_date: date) -> NormalizedGame | None:
         """Fetch boxscore for a single game by its source key.
-        
+
         Used for backfilling player stats on existing games without re-scraping scoreboards.
         Override in subclass to support backfill mode.
         """
@@ -188,16 +188,16 @@ class BaseSportsReferenceScraper:
 
     def _parse_team_row(self, row: Tag) -> tuple[TeamIdentity, int]:
         """Parse a team row from a scoreboard table.
-        
+
         Common implementation for most Sports Reference scoreboards.
         Extracts team name, normalizes it, and gets the score.
-        
+
         Args:
             row: BeautifulSoup Tag representing a table row with team info
-            
+
         Returns:
             Tuple of (TeamIdentity, score)
-            
+
         Raises:
             ScraperError: If required elements are missing
         """
@@ -224,7 +224,7 @@ class BaseSportsReferenceScraper:
 
     def _season_from_date(self, day: date) -> int:
         """Calculate season year from a date.
-        
+
         Delegates to utils.date_utils.season_from_date with league_code.
         """
         return season_from_date(day, self.league_code)

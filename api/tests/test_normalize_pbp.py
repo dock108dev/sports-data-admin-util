@@ -1,7 +1,8 @@
 """Tests for normalize_pbp stage helper functions."""
 
-import pytest
 from datetime import datetime, timedelta
+
+import pytest
 
 
 class TestNbaPhaseForQuarter:
@@ -107,8 +108,8 @@ class TestNbaQuarterStart:
     def test_quarter_2_timing(self):
         """Quarter 2 starts after Q1."""
         from app.services.timeline_phases import (
-            nba_quarter_start,
             NBA_QUARTER_REAL_SECONDS,
+            nba_quarter_start,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -119,9 +120,9 @@ class TestNbaQuarterStart:
     def test_quarter_3_timing(self):
         """Quarter 3 starts after halftime."""
         from app.services.timeline_phases import (
-            nba_quarter_start,
-            NBA_QUARTER_REAL_SECONDS,
             NBA_HALFTIME_REAL_SECONDS,
+            NBA_QUARTER_REAL_SECONDS,
+            nba_quarter_start,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -134,9 +135,9 @@ class TestNbaQuarterStart:
     def test_quarter_4_timing(self):
         """Quarter 4 starts after Q3."""
         from app.services.timeline_phases import (
-            nba_quarter_start,
-            NBA_QUARTER_REAL_SECONDS,
             NBA_HALFTIME_REAL_SECONDS,
+            NBA_QUARTER_REAL_SECONDS,
+            nba_quarter_start,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -408,11 +409,12 @@ class TestNbaGameEnd:
 
     def test_regulation_game(self):
         """Regulation game ends after 4 quarters."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            nba_game_end,
-            NBA_REGULATION_REAL_SECONDS,
-        )
         from unittest.mock import MagicMock
+
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            NBA_REGULATION_REAL_SECONDS,
+            nba_game_end,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -429,11 +431,12 @@ class TestNbaGameEnd:
 
     def test_single_overtime(self):
         """Game with 1 OT ends after 5th quarter."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            nba_game_end,
-            NBA_REGULATION_REAL_SECONDS,
-        )
         from unittest.mock import MagicMock
+
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            NBA_REGULATION_REAL_SECONDS,
+            nba_game_end,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -450,11 +453,12 @@ class TestNbaGameEnd:
 
     def test_double_overtime(self):
         """Game with 2 OT ends after 6th quarter."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            nba_game_end,
-            NBA_REGULATION_REAL_SECONDS,
-        )
         from unittest.mock import MagicMock
+
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            NBA_REGULATION_REAL_SECONDS,
+            nba_game_end,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -467,8 +471,8 @@ class TestNbaGameEnd:
     def test_empty_plays(self):
         """Empty plays defaults to regulation end."""
         from app.services.pipeline.stages.normalize_pbp_helpers import (
-            nba_game_end,
             NBA_REGULATION_REAL_SECONDS,
+            nba_game_end,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -479,11 +483,12 @@ class TestNbaGameEnd:
 
     def test_none_quarter_ignored(self):
         """Plays with None quarter don't affect max."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            nba_game_end,
-            NBA_REGULATION_REAL_SECONDS,
-        )
         from unittest.mock import MagicMock
+
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            NBA_REGULATION_REAL_SECONDS,
+            nba_game_end,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -597,8 +602,9 @@ class TestBuildPbpEvents:
 
     def test_team_abbreviation_extracted(self):
         """Team abbreviation extracted from relationship."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import build_pbp_events
         from unittest.mock import MagicMock
+
+        from app.services.pipeline.stages.normalize_pbp_helpers import build_pbp_events
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -795,9 +801,9 @@ class TestNcaabPeriodStart:
     def test_half_2_timing(self):
         """Second half starts after H1 + halftime."""
         from app.services.timeline_phases import (
-            ncaab_period_start,
             NCAAB_HALF_REAL_SECONDS,
             NCAAB_HALFTIME_REAL_SECONDS,
+            ncaab_period_start,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -810,8 +816,8 @@ class TestNcaabPeriodStart:
     def test_overtime_timing(self):
         """Overtime periods start after regulation."""
         from app.services.timeline_phases import (
-            ncaab_period_start,
             NCAAB_REGULATION_REAL_SECONDS,
+            ncaab_period_start,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -827,11 +833,12 @@ class TestNcaabGameEnd:
 
     def test_regulation_game(self):
         """Regulation game ends after 2 halves."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            ncaab_game_end,
-            NCAAB_REGULATION_REAL_SECONDS,
-        )
         from unittest.mock import MagicMock
+
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            NCAAB_REGULATION_REAL_SECONDS,
+            ncaab_game_end,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -848,11 +855,12 @@ class TestNcaabGameEnd:
 
     def test_single_overtime(self):
         """Game with 1 OT ends after period 3."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            ncaab_game_end,
-            NCAAB_REGULATION_REAL_SECONDS,
-        )
         from unittest.mock import MagicMock
+
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            NCAAB_REGULATION_REAL_SECONDS,
+            ncaab_game_end,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -873,7 +881,9 @@ class TestComputeNcaabPhaseBoundaries:
 
     def test_has_all_phases(self):
         """All standard NCAAB phases are present."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_ncaab_phase_boundaries
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            compute_ncaab_phase_boundaries,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_ncaab_phase_boundaries(game_start, has_overtime=False)
@@ -886,7 +896,9 @@ class TestComputeNcaabPhaseBoundaries:
 
     def test_overtime_phases(self):
         """Overtime phases present when has_overtime=True."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_ncaab_phase_boundaries
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            compute_ncaab_phase_boundaries,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_ncaab_phase_boundaries(game_start, has_overtime=True)
@@ -898,7 +910,9 @@ class TestComputeNcaabPhaseBoundaries:
 
     def test_no_overtime_phases_when_false(self):
         """No overtime phases when has_overtime=False."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_ncaab_phase_boundaries
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            compute_ncaab_phase_boundaries,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_ncaab_phase_boundaries(game_start, has_overtime=False)
@@ -907,7 +921,9 @@ class TestComputeNcaabPhaseBoundaries:
 
     def test_h1_starts_at_game_start(self):
         """H1 starts when game starts."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_ncaab_phase_boundaries
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            compute_ncaab_phase_boundaries,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_ncaab_phase_boundaries(game_start)
@@ -1014,9 +1030,9 @@ class TestNhlPeriodStart:
     def test_period_2_timing(self):
         """Period 2 starts after P1 + first intermission."""
         from app.services.timeline_phases import (
-            nhl_period_start,
-            NHL_PERIOD_REAL_SECONDS,
             NHL_INTERMISSION_REAL_SECONDS,
+            NHL_PERIOD_REAL_SECONDS,
+            nhl_period_start,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -1029,9 +1045,9 @@ class TestNhlPeriodStart:
     def test_period_3_timing(self):
         """Period 3 starts after P2 + second intermission."""
         from app.services.timeline_phases import (
-            nhl_period_start,
-            NHL_PERIOD_REAL_SECONDS,
             NHL_INTERMISSION_REAL_SECONDS,
+            NHL_PERIOD_REAL_SECONDS,
+            nhl_period_start,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -1044,8 +1060,8 @@ class TestNhlPeriodStart:
     def test_overtime_timing(self):
         """Overtime starts after regulation."""
         from app.services.timeline_phases import (
-            nhl_period_start,
             NHL_REGULATION_REAL_SECONDS,
+            nhl_period_start,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -1061,11 +1077,12 @@ class TestNhlGameEnd:
 
     def test_regulation_game(self):
         """Regulation game ends after 3 periods."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            nhl_game_end,
-            NHL_REGULATION_REAL_SECONDS,
-        )
         from unittest.mock import MagicMock
+
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            NHL_REGULATION_REAL_SECONDS,
+            nhl_game_end,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -1082,11 +1099,12 @@ class TestNhlGameEnd:
 
     def test_overtime_game(self):
         """Game with OT ends after period 4."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            nhl_game_end,
-            NHL_REGULATION_REAL_SECONDS,
-        )
         from unittest.mock import MagicMock
+
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            NHL_REGULATION_REAL_SECONDS,
+            nhl_game_end,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -1103,11 +1121,12 @@ class TestNhlGameEnd:
 
     def test_shootout_game(self):
         """Game with shootout ends after period 5."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            nhl_game_end,
-            NHL_REGULATION_REAL_SECONDS,
-        )
         from unittest.mock import MagicMock
+
+        from app.services.pipeline.stages.normalize_pbp_helpers import (
+            NHL_REGULATION_REAL_SECONDS,
+            nhl_game_end,
+        )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -1125,8 +1144,8 @@ class TestNhlGameEnd:
     def test_empty_plays(self):
         """Empty plays defaults to regulation end."""
         from app.services.pipeline.stages.normalize_pbp_helpers import (
-            nhl_game_end,
             NHL_REGULATION_REAL_SECONDS,
+            nhl_game_end,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -1342,8 +1361,8 @@ class TestOvertimeTiming:
     def test_nba_ot_uses_5_minute_period(self):
         """NBA OT uses 5-minute period for intra_phase_order calculation."""
         from app.services.pipeline.stages.normalize_pbp_helpers import (
-            build_pbp_events,
             NBA_OT_GAME_SECONDS,
+            build_pbp_events,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -1358,8 +1377,8 @@ class TestOvertimeTiming:
     def test_ncaab_ot_uses_5_minute_period(self):
         """NCAAB OT uses 5-minute period for intra_phase_order calculation."""
         from app.services.pipeline.stages.normalize_pbp_helpers import (
-            build_pbp_events,
             NCAAB_OT_GAME_SECONDS,
+            build_pbp_events,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -1374,8 +1393,8 @@ class TestOvertimeTiming:
     def test_nhl_ot_uses_5_minute_period(self):
         """NHL regular season OT uses 5-minute period for intra_phase_order."""
         from app.services.pipeline.stages.normalize_pbp_helpers import (
-            build_pbp_events,
             NHL_OT_GAME_SECONDS,
+            build_pbp_events,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -1408,8 +1427,8 @@ class TestOvertimeTiming:
     def test_nhl_playoff_ot_uses_20_minute_period(self):
         """NHL playoff OT (periods 6+) uses 20-minute period."""
         from app.services.pipeline.stages.normalize_pbp_helpers import (
-            build_pbp_events,
             NHL_PLAYOFF_OT_GAME_SECONDS,
+            build_pbp_events,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -1424,10 +1443,10 @@ class TestOvertimeTiming:
     def test_regulation_period_still_uses_full_length(self):
         """Regulation periods still use correct full-length timing."""
         from app.services.pipeline.stages.normalize_pbp_helpers import (
-            build_pbp_events,
             NBA_QUARTER_GAME_SECONDS,
             NCAAB_HALF_GAME_SECONDS,
             NHL_PERIOD_GAME_SECONDS,
+            build_pbp_events,
         )
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
@@ -1578,9 +1597,10 @@ class TestExecuteNormalizePbp:
     @pytest.mark.asyncio
     async def test_game_not_found_raises(self):
         """Missing game raises ValueError."""
-        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
-        from app.services.pipeline.models import StageInput
         from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.services.pipeline.models import StageInput
+        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
 
         mock_session = AsyncMock()
         mock_result = MagicMock()
@@ -1602,9 +1622,10 @@ class TestExecuteNormalizePbp:
     @pytest.mark.asyncio
     async def test_game_not_final_raises(self):
         """Non-final game raises ValueError."""
-        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
-        from app.services.pipeline.models import StageInput
         from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.services.pipeline.models import StageInput
+        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
 
         mock_game = MagicMock()
         mock_game.is_final = False
@@ -1629,9 +1650,10 @@ class TestExecuteNormalizePbp:
     @pytest.mark.asyncio
     async def test_no_plays_raises(self):
         """Game with no plays raises ValueError."""
-        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
-        from app.services.pipeline.models import StageInput
         from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.services.pipeline.models import StageInput
+        from app.services.pipeline.stages.normalize_pbp import execute_normalize_pbp
 
         mock_game = MagicMock()
         mock_game.id = 123

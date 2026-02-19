@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -21,12 +21,12 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 
+from sports_scraper.models import TeamIdentity
 from sports_scraper.persistence.games import (
     _normalize_status,
-    resolve_status_transition,
     merge_external_ids,
+    resolve_status_transition,
 )
-from sports_scraper.models import TeamIdentity
 
 
 class TestNormalizeStatus:
@@ -318,7 +318,7 @@ class TestUpsertGameStub:
         game_id, created = upsert_game_stub(
             mock_session,
             league_code="NBA",
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             home_team=home_team,
             away_team=away_team,
             status="scheduled",
@@ -354,7 +354,7 @@ class TestUpsertGameStub:
         game_id, created = upsert_game_stub(
             mock_session,
             league_code="NBA",
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             home_team=home_team,
             away_team=away_team,
             status="live",
@@ -393,7 +393,7 @@ class TestUpsertGameStub:
         game_id, created = upsert_game_stub(
             mock_session,
             league_code="NBA",
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             home_team=home_team,
             away_team=away_team,
             status="scheduled",
@@ -424,12 +424,12 @@ class TestUpsertGameStub:
 
         home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
         away_team = TeamIdentity(league_code="NBA", name="Celtics", abbreviation="BOS")
-        tip_time = datetime(2024, 1, 15, 19, 30, tzinfo=timezone.utc)
+        tip_time = datetime(2024, 1, 15, 19, 30, tzinfo=UTC)
 
         upsert_game_stub(
             mock_session,
             league_code="NBA",
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             home_team=home_team,
             away_team=away_team,
             status="scheduled",
@@ -464,7 +464,7 @@ class TestUpsertGameStub:
         upsert_game_stub(
             mock_session,
             league_code="NBA",
-            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, 19, 0, tzinfo=UTC),
             home_team=home_team,
             away_team=away_team,
             status="scheduled",
@@ -563,7 +563,7 @@ class TestUpdateGameFromLiveFeed:
         mock_game.away_score = None
         mock_game.venue = None
         mock_game.external_ids = {}
-        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.tip_time = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
 
         result = update_game_from_live_feed(
             mock_session,
@@ -584,8 +584,8 @@ class TestUpsertGame:
     @patch("sports_scraper.persistence.games.get_league_id")
     def test_upserts_game(self, mock_get_league_id, mock_upsert_team):
         """Upserts a game via PostgreSQL insert."""
-        from sports_scraper.persistence.games import upsert_game
         from sports_scraper.models import GameIdentification, NormalizedGame, NormalizedTeamBoxscore
+        from sports_scraper.persistence.games import upsert_game
 
         mock_session = MagicMock()
         mock_get_league_id.return_value = 1
@@ -598,7 +598,7 @@ class TestUpsertGame:
             league_code="NBA",
             season=2024,
             season_type="regular",
-            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, tzinfo=UTC),
             home_team=home_team,
             away_team=away_team,
             source_game_key="nba_123",
@@ -627,8 +627,8 @@ class TestUpsertGame:
     @patch("sports_scraper.persistence.games.get_league_id")
     def test_raises_on_failed_upsert(self, mock_get_league_id, mock_upsert_team):
         """Raises RuntimeError when upsert fails."""
-        from sports_scraper.persistence.games import upsert_game
         from sports_scraper.models import GameIdentification, NormalizedGame, NormalizedTeamBoxscore
+        from sports_scraper.persistence.games import upsert_game
 
         mock_session = MagicMock()
         mock_get_league_id.return_value = 1
@@ -641,7 +641,7 @@ class TestUpsertGame:
             league_code="NBA",
             season=2024,
             season_type="regular",
-            game_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            game_date=datetime(2024, 1, 15, tzinfo=UTC),
             home_team=home_team,
             away_team=away_team,
             source_game_key="nba_123",

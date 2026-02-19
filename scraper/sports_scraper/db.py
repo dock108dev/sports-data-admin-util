@@ -9,10 +9,10 @@ across services and avoid duplicate model definitions.
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Iterator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -29,15 +29,17 @@ if str(SPORTS_API_PATH) not in sys.path:
 
 try:
     # Import all models from the new modular structure
-    from app.db.sports import (  # type: ignore
-        GameStatus,
-        SportsGame,
-        SportsGamePlay,
-        SportsLeague,
-        SportsPlayer,
-        SportsPlayerBoxscore,
-        SportsTeam,
-        SportsTeamBoxscore,
+    from app.db.cache import OpenAIResponseCache  # type: ignore
+    from app.db.config import (  # type: ignore
+        GameReadingPosition,
+    )
+    from app.db.flow import (  # type: ignore
+        SportsGameFlow,
+        SportsGameTimelineArtifact,
+    )
+    from app.db.odds import (  # type: ignore
+        FairbetGameOddsWork,
+        SportsGameOdds,
     )
     from app.db.pipeline import (  # type: ignore
         BulkFlowGenerationJob,
@@ -49,15 +51,11 @@ try:
         PipelineStageStatus,
         PipelineTrigger,
     )
-    from app.db.social import (  # type: ignore
-        MappingStatus,
-        SocialAccountPoll,
-        TeamSocialAccount,
-        TeamSocialPost,
-    )
-    from app.db.flow import (  # type: ignore
-        SportsGameFlow,
-        SportsGameTimelineArtifact,
+    from app.db.resolution import (  # type: ignore
+        EntityResolution,
+        PBPSnapshot,
+        PBPSnapshotType,
+        ResolutionStatus,
     )
     from app.db.scraper import (  # type: ignore
         SportsGameConflict,
@@ -65,20 +63,22 @@ try:
         SportsMissingPbp,
         SportsScrapeRun,
     )
-    from app.db.resolution import (  # type: ignore
-        EntityResolution,
-        PBPSnapshot,
-        PBPSnapshotType,
-        ResolutionStatus,
+    from app.db.social import (  # type: ignore
+        MappingStatus,
+        SocialAccountPoll,
+        TeamSocialAccount,
+        TeamSocialPost,
     )
-    from app.db.odds import (  # type: ignore
-        FairbetGameOddsWork,
-        SportsGameOdds,
+    from app.db.sports import (  # type: ignore
+        GameStatus,
+        SportsGame,
+        SportsGamePlay,
+        SportsLeague,
+        SportsPlayer,
+        SportsPlayerBoxscore,
+        SportsTeam,
+        SportsTeamBoxscore,
     )
-    from app.db.config import (  # type: ignore
-        GameReadingPosition,
-    )
-    from app.db.cache import OpenAIResponseCache  # type: ignore
 
     # Unified namespace exposing all ORM models for scraper imports
     db_models = SimpleNamespace(

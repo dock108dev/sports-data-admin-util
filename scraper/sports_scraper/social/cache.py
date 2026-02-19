@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from ..utils.datetime_utils import now_utc
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from ..db import db_models
+from ..utils.datetime_utils import now_utc
 
 
 @dataclass

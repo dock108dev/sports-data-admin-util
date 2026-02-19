@@ -6,7 +6,7 @@ Provides bet-centric odds views for cross-book comparison with EV annotation.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -15,19 +15,21 @@ from sqlalchemy import and_, distinct, func, select
 from sqlalchemy.orm import selectinload
 
 from ...db import AsyncSession, get_db
-from ...db.sports import SportsGame
 from ...db.odds import FairbetGameOddsWork
+from ...db.sports import SportsGame
 from ...services.ev_config import (
     INCLUDED_BOOKS,
+    SHARP_REF_MAX_AGE_SECONDS,
+    get_fairbet_debug_game_ids,
     get_strategy,
 )
 from .ev_annotation import (
     BookOdds,
     _annotate_pair_ev,
     _build_sharp_reference,
-    _market_base,
     _pair_opposite_sides,
     _try_extrapolated_ev,
+    derive_entity_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,7 +88,7 @@ def _build_base_filters(
 
     Returns (game_start_expr, filter_conditions) tuple.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Use COALESCE to get actual start time (tip_time preferred, else game_date)
     game_start = func.coalesce(
@@ -280,7 +282,7 @@ async def get_fairbet_odds(
         .where(
             SportsGame.status.notin_(["final", "completed"]),
             func.coalesce(SportsGame.tip_time, SportsGame.game_date)
-            > datetime.now(timezone.utc),
+            > datetime.now(UTC),
         )
         .distinct()
         .options(
@@ -318,6 +320,7 @@ async def get_fairbet_odds(
                 "line_value": row.line_value,
                 "market_category": row.market_category,
                 "player_name": row.player_name,
+                "entity_key": derive_entity_key(row.selection_key, row.market_key, row.player_name),
                 "books": [],
             }
 
@@ -330,17 +333,21 @@ async def get_fairbet_odds(
         )
 
     # Step 6: EV annotation with eligibility gate
-    # Group bets by (game_id, market_key, abs(line_value)) to find candidate pairs
+    # Group bets by (game_id, market_key, entity_key, abs(line_value)) to find candidate pairs
+    # entity_key prevents cross-entity pairing (different players, different team totals)
     market_groups: dict[tuple, list[tuple]] = {}
     for key in bets_map:
         game_id_k, market_key_k, _, line_value_k = key
-        group_key = (game_id_k, market_key_k, abs(line_value_k))
+        entity_key = bets_map[key]["entity_key"]
+        group_key = (game_id_k, market_key_k, entity_key, abs(line_value_k))
         if group_key not in market_groups:
             market_groups[group_key] = []
         market_groups[group_key].append(key)
 
     ev_diagnostics: dict[str, int] = {"total_pairs": 0, "total_unpaired": 0}
-    sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+    sharp_refs = _build_sharp_reference(
+        bets_map, {"Pinnacle"}, max_age_seconds=SHARP_REF_MAX_AGE_SECONDS
+    )
 
     for group_key, bet_keys in market_groups.items():
         # Find valid pairs: entries with different selection_keys
@@ -349,6 +356,19 @@ async def get_fairbet_odds(
         for key_a, key_b in pairs:
             ev_diagnostics["total_pairs"] += 1
             reason = _annotate_pair_ev(key_a, key_b, bets_map)
+            if reason == "entity_mismatch":
+                _debug_ids = get_fairbet_debug_game_ids()
+                if key_a[0] in _debug_ids:
+                    logger.info(
+                        "entity_pair_blocked",
+                        extra={
+                            "game_id": key_a[0],
+                            "entity_a": bets_map[key_a].get("entity_key"),
+                            "entity_b": bets_map[key_b].get("entity_key"),
+                            "market_key": key_a[1],
+                            "line_value": key_a[3],
+                        },
+                    )
             if reason == "reference_missing":
                 extrap_reason = _try_extrapolated_ev(
                     key_a, key_b, bets_map, sharp_refs
@@ -395,7 +415,7 @@ async def get_fairbet_odds(
     elif sort_by == "game_time":
         bets_list.sort(
             key=lambda b: b.get("game_date")
-            or datetime.min.replace(tzinfo=timezone.utc)
+            or datetime.min.replace(tzinfo=UTC)
         )
     elif sort_by == "market":
         bets_list.sort(

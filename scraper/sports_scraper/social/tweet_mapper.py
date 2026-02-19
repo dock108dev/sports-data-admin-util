@@ -12,7 +12,7 @@ See team_collector.py for collecting team tweets.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
@@ -39,7 +39,7 @@ DEFAULT_GAME_DURATION_HOURS = 3  # Fallback for unknown leagues
 def _to_et(dt: datetime) -> datetime:
     """Convert a datetime to US/Eastern."""
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.astimezone(EASTERN)
 
 
@@ -74,10 +74,10 @@ def _get_game_start(game) -> datetime:
             estimated_et = datetime.combine(
                 game_day, datetime.min.time(), tzinfo=EASTERN
             ).replace(hour=19)
-            game_start = estimated_et.astimezone(timezone.utc)
+            game_start = estimated_et.astimezone(UTC)
 
     if game_start.tzinfo is None:
-        game_start = game_start.replace(tzinfo=timezone.utc)
+        game_start = game_start.replace(tzinfo=UTC)
     return game_start
 
 
@@ -86,7 +86,7 @@ def _get_game_end(game, game_start: datetime) -> datetime:
     if game.end_time and game.end_time > game_start:
         game_end = game.end_time
         if game_end.tzinfo is None:
-            game_end = game_end.replace(tzinfo=timezone.utc)
+            game_end = game_end.replace(tzinfo=UTC)
     else:
         game_end = game_start + timedelta(hours=_game_duration_hours(game))
     return game_end
@@ -101,7 +101,7 @@ def _pregame_start_utc(game) -> datetime:
     pregame_et = datetime.combine(
         game_day, datetime.min.time(), tzinfo=EASTERN
     ).replace(hour=PREGAME_START_HOUR_ET)
-    return pregame_et.astimezone(timezone.utc)
+    return pregame_et.astimezone(UTC)
 
 
 def get_game_window(
@@ -137,7 +137,7 @@ def get_game_window(
     floor_et = datetime.combine(
         next_day, datetime.min.time(), tzinfo=EASTERN
     ).replace(hour=SPORTS_DAY_BOUNDARY_HOUR_ET)
-    floor_utc = floor_et.astimezone(timezone.utc)
+    floor_utc = floor_et.astimezone(UTC)
     window_end = max(window_end, floor_utc)
 
     return window_start, window_end
@@ -180,18 +180,18 @@ def _search_dates_for_tweet(posted_at: datetime) -> tuple[datetime, datetime]:
     search_start = datetime.combine(
         tweet_et_date - timedelta(days=1),
         datetime.min.time(),
-        tzinfo=timezone.utc,
+        tzinfo=UTC,
     )
     search_end = datetime.combine(
         tweet_et_date,
         datetime.min.time(),
-        tzinfo=timezone.utc,
+        tzinfo=UTC,
     )
     return search_start, search_end
 
 
 def map_unmapped_tweets(
-    session: "Session",
+    session: Session,
     batch_size: int = 1000,
 ) -> dict:
     """
@@ -210,8 +210,9 @@ def map_unmapped_tweets(
     Returns:
         Summary stats dict with mapped, no_game, errors counts
     """
-    from ..db import db_models
     from sqlalchemy import or_
+
+    from ..db import db_models
 
     # Counters
     total_processed = 0
@@ -243,7 +244,7 @@ def map_unmapped_tweets(
                 # Ensure posted_at is timezone-aware
                 posted_at = tweet.posted_at
                 if posted_at.tzinfo is None:
-                    posted_at = posted_at.replace(tzinfo=timezone.utc)
+                    posted_at = posted_at.replace(tzinfo=UTC)
 
                 # Search for games on the tweet's ET date and previous day
                 search_start, search_end = _search_dates_for_tweet(posted_at)
@@ -329,7 +330,7 @@ def map_unmapped_tweets(
 
 
 def map_tweets_for_team(
-    session: "Session",
+    session: Session,
     team_id: int,
 ) -> dict:
     """
@@ -367,7 +368,7 @@ def map_tweets_for_team(
     for tweet in unmapped_tweets:
         posted_at = tweet.posted_at
         if posted_at.tzinfo is None:
-            posted_at = posted_at.replace(tzinfo=timezone.utc)
+            posted_at = posted_at.replace(tzinfo=UTC)
 
         # Search for games on the tweet's ET date and previous day
         search_start, search_end = _search_dates_for_tweet(posted_at)
@@ -425,7 +426,7 @@ def map_tweets_for_team(
     }
 
 
-def get_mapping_stats(session: "Session") -> dict:
+def get_mapping_stats(session: Session) -> dict:
     """
     Get current mapping status distribution.
 
@@ -435,8 +436,9 @@ def get_mapping_stats(session: "Session") -> dict:
     Returns:
         Dict with counts per mapping_status
     """
-    from ..db import db_models
     from sqlalchemy import func
+
+    from ..db import db_models
 
     results = (
         session.query(

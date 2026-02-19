@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from ..db.social import TeamSocialAccount, TeamSocialPost
-from ..db.sports import SportsTeam, SportsGame, SportsLeague
 from ..db import AsyncSession, get_db
+from ..db.social import TeamSocialAccount, TeamSocialPost
+from ..db.sports import SportsGame, SportsLeague, SportsTeam
 
 router = APIRouter(prefix="/api/social", tags=["social"])
 

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from app.utils.datetime_utils import now_utc as _now_utc
-from typing import Iterable
 
 from ..db import db_models, get_session
 from ..logging import logger

@@ -21,8 +21,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import attributes, selectinload
 
 from ...db import AsyncSession
-from ...db.sports import SportsGame
 from ...db.flow import SportsGameFlow
+from ...db.sports import SportsGame
 from .stages.embedded_tweets import load_and_attach_embedded_tweets
 
 logger = logging.getLogger(__name__)

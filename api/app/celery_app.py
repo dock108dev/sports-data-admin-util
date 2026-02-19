@@ -1,6 +1,7 @@
 """Celery application for background tasks."""
 
 import os
+
 from celery import Celery
 
 # Redis connection from environment

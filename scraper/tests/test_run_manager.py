@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -21,6 +21,7 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.services.run_manager import ScrapeRunManager
+
 
 class TestScrapeRunManagerInit:
     """Tests for ScrapeRunManager initialization."""
@@ -71,7 +72,7 @@ class TestScrapeRunManagerUpdateRun:
         mock_get_session.return_value.__enter__.return_value = mock_session
 
         manager = ScrapeRunManager()
-        manager._update_run(123, status="running", started_at=datetime.now(timezone.utc))
+        manager._update_run(123, status="running", started_at=datetime.now(UTC))
 
         assert mock_run.status == "running"
         mock_session.flush.assert_called_once()

@@ -19,13 +19,12 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.utils.html_parsing import (
-    get_stat_from_row,
     extract_all_stats_from_row,
-    find_table_by_id,
     extract_team_stats_from_table,
+    find_table_by_id,
+    get_stat_from_row,
     get_table_ids_on_page,
 )
-
 
 # Sample HTML for testing
 SAMPLE_TABLE_HTML = """

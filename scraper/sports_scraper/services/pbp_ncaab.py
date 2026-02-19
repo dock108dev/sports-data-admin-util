@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import exists, not_
 from sqlalchemy.orm import Session
@@ -50,8 +50,8 @@ def select_games_for_pbp_ncaab_api(
         db_models.SportsGame.status,
     ).filter(
         db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc),
-        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc),
+        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=UTC),
         # cbb_game_id is required for CBB API PBP fetch
         cbb_game_id_expr.isnot(None),
     )
@@ -112,7 +112,7 @@ def ingest_pbp_via_ncaab_api(
     """
     from ..live.ncaab import NCAABLiveFeedClient
     from ..live.ncaab_constants import NCAAB_MIN_EXPECTED_PLAYS
-    from .ncaab_boxscore_ingestion import populate_ncaab_game_ids
+    from .ncaab_game_ids import populate_ncaab_game_ids
 
     logger.info(
         "ncaab_pbp_ingestion_start",

@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 # Ensure the scraper package is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -59,7 +57,7 @@ class TestSelectGamesForBoxscores:
         mock_game = MagicMock()
         mock_game.id = 100
         mock_game.source_game_key = "ABC123"
-        mock_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc)
+        mock_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         mock_session.query.return_value.filter.return_value.all.return_value = [mock_game]
 
         result = select_games_for_boxscores(
@@ -94,7 +92,7 @@ class TestSelectGamesForBoxscores:
         mock_session.query.return_value.filter.return_value.first.return_value = mock_league
         mock_session.query.return_value.filter.return_value.filter.return_value.all.return_value = []
 
-        cutoff = datetime(2024, 1, 14, tzinfo=timezone.utc)
+        cutoff = datetime(2024, 1, 14, tzinfo=UTC)
         result = select_games_for_boxscores(
             mock_session, "NBA", date(2024, 1, 15), date(2024, 1, 15),
             updated_before=cutoff
@@ -194,7 +192,7 @@ class TestSelectGamesForPbpSportsref:
         mock_session.query.return_value.filter.return_value.first.return_value = mock_league
 
         mock_session.query.return_value.filter.return_value.all.return_value = [
-            (100, "202401150BOS", datetime(2024, 1, 15, 19, 0, tzinfo=timezone.utc))
+            (100, "202401150BOS", datetime(2024, 1, 15, 19, 0, tzinfo=UTC))
         ]
 
         result = select_games_for_pbp_sportsref(
@@ -220,8 +218,8 @@ class TestSelectGamesForPbpSportsref:
         mock_session.query.return_value.filter.return_value.first.return_value = mock_league
 
         mock_session.query.return_value.filter.return_value.all.return_value = [
-            (100, "202401150BOS", datetime(2024, 1, 15, tzinfo=timezone.utc)),
-            (101, None, datetime(2024, 1, 15, tzinfo=timezone.utc)),
+            (100, "202401150BOS", datetime(2024, 1, 15, tzinfo=UTC)),
+            (101, None, datetime(2024, 1, 15, tzinfo=UTC)),
         ]
 
         result = select_games_for_pbp_sportsref(
@@ -242,11 +240,11 @@ class TestSelectGamesForPbpSportsref:
 # ============================================================================
 
 from sports_scraper.services.diagnostics import (
-    detect_missing_pbp,
-    detect_external_id_conflicts,
-    PBP_SUPPORTED_LEAGUES,
-    PBP_MIN_PLAY_COUNT,
     EXTERNAL_ID_KEYS,
+    PBP_MIN_PLAY_COUNT,
+    PBP_SUPPORTED_LEAGUES,
+    detect_external_id_conflicts,
+    detect_missing_pbp,
 )
 
 
@@ -348,8 +346,8 @@ class TestDetectExternalIdConflicts:
 # ============================================================================
 
 from sports_scraper.services.job_runs import (
-    start_job_run,
     complete_job_run,
+    start_job_run,
 )
 
 
@@ -387,7 +385,7 @@ class TestCompleteJobRun:
         """Updates job run with completion data."""
         mock_session = MagicMock()
         mock_run = MagicMock()
-        mock_run.started_at = datetime.now(timezone.utc)
+        mock_run.started_at = datetime.now(UTC)
         mock_session.get.return_value = mock_run
 
         mock_get_session.return_value.__enter__.return_value = mock_session
@@ -419,7 +417,7 @@ class TestCompleteJobRun:
         """Updates job run with error summary."""
         mock_session = MagicMock()
         mock_run = MagicMock()
-        mock_run.started_at = datetime.now(timezone.utc)
+        mock_run.started_at = datetime.now(UTC)
         mock_session.get.return_value = mock_run
 
         mock_get_session.return_value.__enter__.return_value = mock_session

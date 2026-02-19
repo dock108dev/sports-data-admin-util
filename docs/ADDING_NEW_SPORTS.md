@@ -76,6 +76,8 @@ When ready for production daily runs:
 | `timeline_enabled` | Generate game flow / timeline artifacts |
 | `scheduled_ingestion` | Include in daily cron jobs |
 | `live_pbp_enabled` | Poll live PBP during games (default True) |
+| `live_boxscore_enabled` | Poll live boxscores during games (default True) |
+| `live_odds_enabled` | Persist odds for live games — must remain False (closing-line architecture) |
 | `estimated_game_duration_hours` | Typical game length for time-based fallback (default 3.0) |
 
 ## Running Locally

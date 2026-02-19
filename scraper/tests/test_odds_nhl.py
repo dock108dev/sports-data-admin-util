@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -90,8 +90,8 @@ class TestOddsSynchronizerDateRouting:
 
     def test_past_dates_use_historical(self) -> None:
         """Dates in the past should route to historical endpoint."""
-        from sports_scraper.odds.synchronizer import OddsSynchronizer
         from sports_scraper.models.schemas import IngestionConfig
+        from sports_scraper.odds.synchronizer import OddsSynchronizer
 
         sync = OddsSynchronizer()
         today = date.today()
@@ -115,8 +115,8 @@ class TestOddsSynchronizerDateRouting:
 
     def test_future_dates_use_live(self) -> None:
         """Dates in the future should route to live endpoint."""
-        from sports_scraper.odds.synchronizer import OddsSynchronizer
         from sports_scraper.models.schemas import IngestionConfig
+        from sports_scraper.odds.synchronizer import OddsSynchronizer
 
         sync = OddsSynchronizer()
         today = date.today()
@@ -140,8 +140,8 @@ class TestOddsSynchronizerDateRouting:
 
     def test_mixed_range_uses_both(self) -> None:
         """Date range spanning past and future should use both endpoints."""
-        from sports_scraper.odds.synchronizer import OddsSynchronizer
         from sports_scraper.models.schemas import IngestionConfig
+        from sports_scraper.odds.synchronizer import OddsSynchronizer
 
         sync = OddsSynchronizer()
         today = date.today()
@@ -218,7 +218,7 @@ class TestNormalizedOddsSnapshot:
             short_name="Maple Leafs",
             abbreviation="TOR",
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         snapshot = NormalizedOddsSnapshot(
             league_code="NHL",
@@ -266,8 +266,8 @@ class TestOddsOnlyRunConfig:
 
     def test_odds_disabled_returns_zero(self) -> None:
         """Synchronizer should return 0 when odds is disabled."""
-        from sports_scraper.odds.synchronizer import OddsSynchronizer
         from sports_scraper.models.schemas import IngestionConfig
+        from sports_scraper.odds.synchronizer import OddsSynchronizer
 
         sync = OddsSynchronizer()
         config = IngestionConfig(

@@ -1,6 +1,6 @@
 """Tests for FairBet odds API endpoint."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -8,16 +8,18 @@ import pytest
 
 from app.routers.fairbet.ev_annotation import (
     BookOdds,
+    _annotate_pair_ev,
     _build_sharp_reference,
     _market_base,
     _pair_opposite_sides,
     _try_extrapolated_ev,
+    derive_entity_key,
 )
 from app.routers.fairbet.odds import (
     BetDefinition,
     FairbetOddsResponse,
-    get_fairbet_odds,
     _build_base_filters,
+    get_fairbet_odds,
 )
 from app.services.ev_config import extrapolation_confidence
 
@@ -30,7 +32,7 @@ class TestBookOddsModel:
         odds = BookOdds(
             book="DraftKings",
             price=-110,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
         assert odds.book == "DraftKings"
         assert odds.price == -110
@@ -40,7 +42,7 @@ class TestBookOddsModel:
         odds = BookOdds(
             book="FanDuel",
             price=150,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
         )
         assert odds.price == 150
 
@@ -55,12 +57,12 @@ class TestBetDefinitionModel:
             league_code="NBA",
             home_team="Lakers",
             away_team="Celtics",
-            game_date=datetime.now(timezone.utc),
+            game_date=datetime.now(UTC),
             market_key="spreads",
             selection_key="team:lakers",
             line_value=-3.5,
             books=[
-                BookOdds(book="DK", price=-110, observed_at=datetime.now(timezone.utc))
+                BookOdds(book="DK", price=-110, observed_at=datetime.now(UTC))
             ],
         )
         assert bet.game_id == 1
@@ -74,7 +76,7 @@ class TestBetDefinitionModel:
             league_code="NBA",
             home_team="Lakers",
             away_team="Celtics",
-            game_date=datetime.now(timezone.utc),
+            game_date=datetime.now(UTC),
             market_key="h2h",
             selection_key="team:lakers",
             line_value=0,
@@ -108,7 +110,7 @@ class TestFairbetOddsResponseModel:
                     league_code="NBA",
                     home_team="Lakers",
                     away_team="Celtics",
-                    game_date=datetime.now(timezone.utc),
+                    game_date=datetime.now(UTC),
                     market_key="h2h",
                     selection_key="team:lakers",
                     line_value=0,
@@ -152,9 +154,9 @@ class TestBooksSorting:
     def test_positive_odds_sorted_descending(self):
         """Positive odds sorted highest first."""
         books = [
-            BookOdds(book="A", price=120, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="B", price=150, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="C", price=100, observed_at=datetime.now(timezone.utc)),
+            BookOdds(book="A", price=120, observed_at=datetime.now(UTC)),
+            BookOdds(book="B", price=150, observed_at=datetime.now(UTC)),
+            BookOdds(book="C", price=100, observed_at=datetime.now(UTC)),
         ]
         # Simulate the sorting from the endpoint
         books.sort(key=lambda b: -b.price)
@@ -165,9 +167,9 @@ class TestBooksSorting:
     def test_negative_odds_sorted_best_first(self):
         """Negative odds sorted closest to zero first (better odds)."""
         books = [
-            BookOdds(book="A", price=-110, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="B", price=-105, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="C", price=-115, observed_at=datetime.now(timezone.utc)),
+            BookOdds(book="A", price=-110, observed_at=datetime.now(UTC)),
+            BookOdds(book="B", price=-105, observed_at=datetime.now(UTC)),
+            BookOdds(book="C", price=-115, observed_at=datetime.now(UTC)),
         ]
         books.sort(key=lambda b: -b.price)
         assert books[0].price == -105  # Best (closest to even)
@@ -177,10 +179,10 @@ class TestBooksSorting:
     def test_mixed_odds_sorted_correctly(self):
         """Mixed positive and negative odds sorted correctly."""
         books = [
-            BookOdds(book="A", price=-110, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="B", price=150, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="C", price=-105, observed_at=datetime.now(timezone.utc)),
-            BookOdds(book="D", price=120, observed_at=datetime.now(timezone.utc)),
+            BookOdds(book="A", price=-110, observed_at=datetime.now(UTC)),
+            BookOdds(book="B", price=150, observed_at=datetime.now(UTC)),
+            BookOdds(book="C", price=-105, observed_at=datetime.now(UTC)),
+            BookOdds(book="D", price=120, observed_at=datetime.now(UTC)),
         ]
         books.sort(key=lambda b: -b.price)
         # Positive odds first (higher is better), then negative (closer to 0 is better)
@@ -241,7 +243,7 @@ class TestGetFairbetOddsEndpoint:
     def mock_game(self):
         """Create a mock game with related objects."""
         game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.start_time = datetime.now(UTC) + timedelta(hours=2)
         game.status = "scheduled"
 
         league = MagicMock()
@@ -268,7 +270,7 @@ class TestGetFairbetOddsEndpoint:
         row.line_value = -3.5
         row.book = "DraftKings"
         row.price = -110
-        row.observed_at = datetime.now(timezone.utc)
+        row.observed_at = datetime.now(UTC)
         row.market_category = "mainline"
         row.player_name = None
         row.game = mock_game
@@ -321,7 +323,7 @@ class TestGetFairbetOddsEndpoint:
         mock_row2.line_value = -3.5
         mock_row2.book = "FanDuel"
         mock_row2.price = -108
-        mock_row2.observed_at = datetime.now(timezone.utc)
+        mock_row2.observed_at = datetime.now(UTC)
         mock_row2.market_category = "mainline"
         mock_row2.player_name = None
         mock_row2.game = mock_odds_row.game
@@ -357,7 +359,7 @@ class TestGetFairbetOddsEndpoint:
             row.line_value = -3.5
             row.book = book_name
             row.price = price
-            row.observed_at = datetime.now(timezone.utc)
+            row.observed_at = datetime.now(UTC)
             row.market_category = "mainline"
             row.player_name = None
             row.game = mock_odds_row.game
@@ -439,155 +441,6 @@ class TestGetFairbetOddsEndpoint:
         assert bet.line_value == -3.5
 
 
-class TestSharpBooksRetainedWhenEvDisabled:
-    """Sharp books must keep is_sharp=True even when EV is disabled/ineligible.
-
-    This ensures the book filter (Step 9: b.book == book or b.is_sharp) retains
-    the sharp reference line regardless of EV eligibility.
-    """
-
-    @pytest.fixture
-    def mock_session(self):
-        return AsyncMock()
-
-    @pytest.fixture
-    def mock_game(self):
-        game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
-        game.status = "scheduled"
-        league = MagicMock()
-        league.code = "NBA"
-        game.league = league
-        home = MagicMock()
-        home.name = "Lakers"
-        game.home_team = home
-        away = MagicMock()
-        away.name = "Celtics"
-        game.away_team = away
-        return game
-
-    def _mock_execute_chain(self, session, results_sequence):
-        async def execute_side_effect(*args, **kwargs):
-            if not hasattr(execute_side_effect, "call_count"):
-                execute_side_effect.call_count = 0
-            idx = min(execute_side_effect.call_count, len(results_sequence) - 1)
-            execute_side_effect.call_count += 1
-            cfg = results_sequence[idx]
-            mock_result = MagicMock()
-            if "scalar" in cfg:
-                mock_result.scalar.return_value = cfg["scalar"]
-            if "scalars_all" in cfg:
-                m = MagicMock()
-                m.all.return_value = cfg["scalars_all"]
-                mock_result.scalars.return_value = m
-            if "all" in cfg:
-                mock_result.all.return_value = cfg["all"]
-            return mock_result
-
-        session.execute = execute_side_effect
-
-    def _call_kwargs(self, session, **overrides):
-        defaults = {
-            "session": session,
-            "league": None,
-            "market_category": None,
-            "exclude_categories": None,
-            "game_id": None,
-            "book": None,
-            "player_name": None,
-            "min_ev": None,
-            "has_fair": None,
-            "sort_by": "ev",
-            "limit": 100,
-            "offset": 0,
-        }
-        defaults.update(overrides)
-        return defaults
-
-    @pytest.mark.asyncio
-    async def test_single_sided_bet_marks_sharp(self, mock_session, mock_game):
-        """Single-sided bet (no pair) still marks Pinnacle as is_sharp."""
-        rows = []
-        for book_name in ["DraftKings", "FanDuel", "Pinnacle"]:
-            row = MagicMock()
-            row.game_id = 1
-            row.market_key = "spreads"
-            row.selection_key = "team:lakers"
-            row.line_value = -3.5
-            row.book = book_name
-            row.price = -110
-            row.observed_at = datetime.now(timezone.utc)
-            row.market_category = "mainline"
-            row.player_name = None
-            row.game = mock_game
-            rows.append(row)
-
-        self._mock_execute_chain(
-            mock_session,
-            [
-                {"scalar": 1},
-                {"scalars_all": rows},
-                {"all": [("DraftKings",), ("FanDuel",), ("Pinnacle",)]},
-                {"all": [("mainline",)]},
-                {"scalars_all": []},
-            ],
-        )
-
-        response = await get_fairbet_odds(**self._call_kwargs(mock_session))
-
-        bet = response.bets[0]
-        pinnacle = [b for b in bet.books if b.book == "Pinnacle"]
-        assert len(pinnacle) == 1
-        assert pinnacle[0].is_sharp is True
-
-        non_sharp = [b for b in bet.books if b.book == "DraftKings"]
-        assert non_sharp[0].is_sharp is False
-
-    @pytest.mark.asyncio
-    async def test_sharp_retained_with_book_filter_when_ev_disabled(
-        self,
-        mock_session,
-        mock_game,
-    ):
-        """When filtering by book and EV is disabled, sharp book is retained."""
-        # Single-sided bet: only one selection_key, so no EV pair
-        rows = []
-        for book_name, price in [("DraftKings", -110), ("Pinnacle", -108)]:
-            row = MagicMock()
-            row.game_id = 1
-            row.market_key = "spreads"
-            row.selection_key = "team:lakers"
-            row.line_value = -3.5
-            row.book = book_name
-            row.price = price
-            row.observed_at = datetime.now(timezone.utc)
-            row.market_category = "mainline"
-            row.player_name = None
-            row.game = mock_game
-            rows.append(row)
-
-        self._mock_execute_chain(
-            mock_session,
-            [
-                {"scalar": 1},
-                {"scalars_all": rows},
-                {"all": [("DraftKings",), ("Pinnacle",)]},
-                {"all": [("mainline",)]},
-                {"scalars_all": []},
-            ],
-        )
-
-        response = await get_fairbet_odds(
-            **self._call_kwargs(mock_session, book="DraftKings"),
-        )
-
-        bet = response.bets[0]
-        book_names = [b.book for b in bet.books]
-        # DraftKings matches the filter, Pinnacle is retained via is_sharp
-        assert "DraftKings" in book_names
-        assert "Pinnacle" in book_names
-
-
 class TestBetGrouping:
     """Tests for bet grouping logic."""
 
@@ -635,7 +488,7 @@ class TestResponseStructure:
                     league_code="NBA",
                     home_team="Lakers",
                     away_team="Celtics",
-                    game_date=datetime(2025, 1, 15, 19, 0, tzinfo=timezone.utc),
+                    game_date=datetime(2025, 1, 15, 19, 0, tzinfo=UTC),
                     market_key="h2h",
                     selection_key="team:lakers",
                     line_value=0,
@@ -644,7 +497,7 @@ class TestResponseStructure:
                             book="DraftKings",
                             price=-110,
                             observed_at=datetime(
-                                2025, 1, 15, 12, 0, tzinfo=timezone.utc
+                                2025, 1, 15, 12, 0, tzinfo=UTC
                             ),
                         )
                     ],
@@ -810,7 +663,7 @@ class TestAltSpreadGrouping:
     def mock_game(self):
         """Create a mock game with related objects."""
         game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.start_time = datetime.now(UTC) + timedelta(hours=2)
         game.status = "scheduled"
 
         league = MagicMock()
@@ -845,7 +698,7 @@ class TestAltSpreadGrouping:
         row.line_value = line_value
         row.book = book
         row.price = price
-        row.observed_at = datetime.now(timezone.utc)
+        row.observed_at = datetime.now(UTC)
         row.market_category = "alternate"
         row.player_name = None
         row.game = game
@@ -1037,7 +890,7 @@ class TestFairOddsOutlierHandling:
     @pytest.fixture
     def mock_game(self):
         game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.start_time = datetime.now(UTC) + timedelta(hours=2)
         game.status = "scheduled"
         league = MagicMock()
         league.code = "NBA"
@@ -1068,7 +921,7 @@ class TestFairOddsOutlierHandling:
         row.line_value = line_value
         row.book = book
         row.price = price
-        row.observed_at = datetime.now(timezone.utc)
+        row.observed_at = datetime.now(UTC)
         row.market_category = market_category
         row.player_name = "Test Player"
         row.game = game
@@ -1225,7 +1078,7 @@ class TestSharpBooksRetainedWhenEvDisabled:
     @pytest.fixture
     def mock_game(self):
         game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.start_time = datetime.now(UTC) + timedelta(hours=2)
         game.status = "scheduled"
         league = MagicMock()
         league.code = "NBA"
@@ -1256,7 +1109,7 @@ class TestSharpBooksRetainedWhenEvDisabled:
         row.line_value = line_value
         row.book = book
         row.price = price
-        row.observed_at = datetime.now(timezone.utc)
+        row.observed_at = datetime.now(UTC)
         row.market_category = market_category
         row.player_name = None
         row.game = game
@@ -1443,7 +1296,7 @@ class TestBuildSharpReference:
 
     def test_single_pinnacle_pair(self):
         """Builds reference from a single Pinnacle two-sided pair."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             (1, "spreads", "team:a", -6.0, [
                 {"book": "Pinnacle", "price": -120, "observed_at": now},
@@ -1457,8 +1310,8 @@ class TestBuildSharpReference:
 
         refs = _build_sharp_reference(bets_map, {"Pinnacle"})
 
-        assert (1, "spreads") in refs
-        ref_list = refs[(1, "spreads")]
+        assert (1, "spreads", "game") in refs
+        ref_list = refs[(1, "spreads", "game")]
         assert len(ref_list) == 1
         assert ref_list[0]["abs_line"] == 6.0
         assert ref_list[0]["is_mainline"] is True
@@ -1469,7 +1322,7 @@ class TestBuildSharpReference:
 
     def test_multiple_lines_sorted(self):
         """Multiple Pinnacle lines are stored and sorted (mainline first)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             # Alternate line at 8.0
             (1, "alternate_spreads", "team:a", -8.0, [
@@ -1489,7 +1342,7 @@ class TestBuildSharpReference:
 
         refs = _build_sharp_reference(bets_map, {"Pinnacle"})
 
-        ref_list = refs[(1, "spreads")]
+        ref_list = refs[(1, "spreads", "game")]
         assert len(ref_list) == 2
         # Mainline comes first
         assert ref_list[0]["is_mainline"] is True
@@ -1499,7 +1352,7 @@ class TestBuildSharpReference:
 
     def test_no_pinnacle_no_reference(self):
         """No reference built when Pinnacle is absent."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             (1, "spreads", "team:a", -6.0, [
                 {"book": "DraftKings", "price": -115, "observed_at": now},
@@ -1514,7 +1367,7 @@ class TestBuildSharpReference:
 
     def test_single_sided_pinnacle_no_reference(self):
         """No reference when Pinnacle exists only on one side."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             (1, "spreads", "team:a", -6.0, [
                 {"book": "Pinnacle", "price": -120, "observed_at": now},
@@ -1527,7 +1380,7 @@ class TestBuildSharpReference:
 
     def test_h2h_market_skipped(self):
         """h2h market keys are not extrapolatable."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             (1, "h2h", "team:a", 0, [
                 {"book": "Pinnacle", "price": -150, "observed_at": now},
@@ -1542,7 +1395,7 @@ class TestBuildSharpReference:
 
     def test_cross_zero_alt_spreads_produce_two_references(self):
         """Four entries at abs=1.5 (cross-zero) produce two separate reference pairs."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             # Market 1: ODU -1.5 / LA +1.5 (ODU favored)
             (1, "alternate_spreads", "team:odu", -1.5, [
@@ -1562,8 +1415,8 @@ class TestBuildSharpReference:
 
         refs = _build_sharp_reference(bets_map, {"Pinnacle"})
 
-        assert (1, "spreads") in refs
-        ref_list = refs[(1, "spreads")]
+        assert (1, "spreads", "game") in refs
+        ref_list = refs[(1, "spreads", "game")]
         # Should have 2 reference entries (one per valid market pair), not 1
         assert len(ref_list) == 2
 
@@ -1578,7 +1431,7 @@ class TestBuildSharpReference:
         Without the fix, the dict would overwrite entries for the same selection_key,
         mixing prices from different markets and producing wrong probabilities.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = self._make_bets_map([
             # ODU -1.5 at -200 (ODU is moderate favorite)
             (1, "alternate_spreads", "team:odu", -1.5, [
@@ -1599,7 +1452,7 @@ class TestBuildSharpReference:
         ])
 
         refs = _build_sharp_reference(bets_map, {"Pinnacle"})
-        ref_list = refs[(1, "spreads")]
+        ref_list = refs[(1, "spreads", "game")]
 
         for ref in ref_list:
             # Verify the prices in each reference are from the same market
@@ -1632,7 +1485,7 @@ class TestTryExtrapolatedEv:
         ref_market_key: str = "spreads",
     ):
         """Build a bets_map with a target pair and sharp refs."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         bets_map = {
             # Target pair (no Pinnacle)
@@ -1740,13 +1593,13 @@ class TestTryExtrapolatedEv:
         # key_b (team:b at +8.5) is now sel_a — underdog getting 8.5 points
         # Reference has team:b at +6.0 covering ~47% (underdog getting fewer points)
         # At +8.5 (more points), team:b's prob should be HIGHER than at +6.0
-        ref_prob_b = refs[(1, "spreads")][0]["probs"]["team:b"]
+        ref_prob_b = refs[(1, "spreads", "game")][0]["probs"]["team:b"]
         assert bets_map[key_b]["true_prob"] > ref_prob_b, (
             f"Underdog at +8.5 ({bets_map[key_b]['true_prob']:.3f}) should have "
             f"higher prob than at +6.0 ({ref_prob_b:.3f})"
         )
         # And the favorite's prob should be LOWER
-        ref_prob_a = refs[(1, "spreads")][0]["probs"]["team:a"]
+        ref_prob_a = refs[(1, "spreads", "game")][0]["probs"]["team:a"]
         assert bets_map[key_a]["true_prob"] < ref_prob_a, (
             f"Favorite at -8.5 ({bets_map[key_a]['true_prob']:.3f}) should have "
             f"lower prob than at -6.0 ({ref_prob_a:.3f})"
@@ -1767,8 +1620,8 @@ class TestTryExtrapolatedEv:
             ref_price_a=-140,
             ref_price_b=120,
             target_line=1.5,
-            target_price_a=180,  # team:a at +1.5 (underdog in this market)
-            target_price_b=-220,  # team:b at -1.5 (favorite in this market)
+            target_price_a=-260,  # team:a at -1.5 (still favorite, giving fewer pts)
+            target_price_b=220,  # team:b at +1.5 (still underdog, getting fewer pts)
         )
 
         # key_a = (1, "alternate_spreads", "team:a", -1.5)  (favorite in this market)
@@ -1782,7 +1635,7 @@ class TestTryExtrapolatedEv:
         # team:a at reference had signed line -4.0 (giving 4), prob ~58%
         # team:a at target has signed line -1.5 (giving 1.5)
         # Giving FEWER points → prob should INCREASE (easier to cover)
-        ref_prob_a = refs[(1, "spreads")][0]["probs"]["team:a"]
+        ref_prob_a = refs[(1, "spreads", "game")][0]["probs"]["team:a"]
         assert bets_map[key_a]["true_prob"] > ref_prob_a, (
             f"team:a at -1.5 ({bets_map[key_a]['true_prob']:.3f}) should have "
             f"higher prob than at -4.0 ({ref_prob_a:.3f})"
@@ -1823,7 +1676,7 @@ class TestTryExtrapolatedEv:
 
     def test_non_extrapolatable_market(self):
         """h2h market returns reference_missing."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bets_map = {
             (1, "h2h", "team:a", 0): {
                 "game_id": 1,
@@ -1850,7 +1703,7 @@ class TestTryExtrapolatedEv:
 
     def test_selection_key_mismatch(self):
         """Returns reference_missing when selection_keys don't match."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Build refs with team:x/team:y, but target has team:a/team:b
         ref_bets = {
             (1, "spreads", "team:x", -6.0): {
@@ -1885,6 +1738,513 @@ class TestTryExtrapolatedEv:
         key_b = (1, "alternate_spreads", "team:b", 8.5)
         result = _try_extrapolated_ev(key_a, key_b, target_bets, sharp_refs)
         assert result == "reference_missing"
+
+    def test_extreme_extrapolation_rejected_by_divergence(self):
+        """6 HP shift produces divergence > 10% threshold → rejected."""
+        # Mainline at 148.0 with Pinnacle -110/-110 (50/50 after devig).
+        # Target at 145.0 → 6 half-points away (3 full points).
+        # NCAAB totals slope=0.12 → logit shift=0.72 → extrap prob for "over"
+        # goes to ~67%, but soft books price it at ~-115 (~53%).
+        # Divergence ≈ 14% > 10% threshold → rejected.
+        now = datetime.now(UTC)
+        bets_map = {
+            # Target pair at 145.0 — no Pinnacle, soft books near -115
+            (1, "alternate_totals", "over", 145.0): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "over",
+                "line_value": 145.0,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-115, observed_at=now),
+                    BookOdds(book="FanDuel", price=-112, observed_at=now),
+                    BookOdds(book="BetMGM", price=-118, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (1, "alternate_totals", "under", 145.0): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "under",
+                "line_value": 145.0,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-105, observed_at=now),
+                    BookOdds(book="FanDuel", price=-108, observed_at=now),
+                    BookOdds(book="BetMGM", price=-102, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            # Reference: Pinnacle mainline at 148.0
+            (1, "totals", "over", 148.0): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.0,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+            (1, "totals", "under", 148.0): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.0,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+        }
+
+        sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+        key_a = (1, "alternate_totals", "over", 145.0)
+        key_b = (1, "alternate_totals", "under", 145.0)
+
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result == "extrapolation_fair_divergence"
+
+    def test_moderate_extrapolation_passes_divergence(self):
+        """3 HP shift stays within divergence threshold → passes."""
+        # Mainline at 148.0 with Pinnacle -110/-110 → devigged to 50/50.
+        # Target at 149.5 → 3 half-points away.
+        # NCAAB totals slope=0.12 → logit shift=-0.36 for "over" → extrap ~41.1%.
+        # Soft books at +130 (~43.5%) vs extrap ~41.1% → divergence ~2.4% → passes.
+        now = datetime.now(UTC)
+        bets_map = {
+            (1, "alternate_totals", "over", 149.5): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "over",
+                "line_value": 149.5,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=130, observed_at=now),
+                    BookOdds(book="FanDuel", price=125, observed_at=now),
+                    BookOdds(book="BetMGM", price=135, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (1, "alternate_totals", "under", 149.5): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "under",
+                "line_value": 149.5,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-140, observed_at=now),
+                    BookOdds(book="FanDuel", price=-135, observed_at=now),
+                    BookOdds(book="BetMGM", price=-145, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (1, "totals", "over", 148.0): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.0,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+            (1, "totals", "under", 148.0): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.0,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+        }
+
+        sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+        key_a = (1, "alternate_totals", "over", 149.5)
+        key_b = (1, "alternate_totals", "under", 149.5)
+
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result is None  # Should pass divergence check
+        assert bets_map[key_a]["has_fair"] is True
+        assert bets_map[key_a]["ev_method"] == "pinnacle_extrapolated"
+
+    def test_mainline_disagreement_blocked(self):
+        """Mainline-to-mainline extrapolation blocked when distance > 2 points.
+
+        Pinnacle totals 148.5, FanDuel totals 142.5 → 6 full points apart.
+        Both are mainline markets, so this is cross-book line disagreement,
+        NOT an alternate-line relationship. Should return mainline_line_disagreement.
+        """
+        now = datetime.now(UTC)
+        bets_map = {
+            # Target pair: mainline totals at 142.5 (no Pinnacle)
+            (1, "totals", "over", 142.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 142.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    BookOdds(book="FanDuel", price=-115, observed_at=now),
+                    BookOdds(book="DraftKings", price=-112, observed_at=now),
+                    BookOdds(book="BetMGM", price=-118, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (1, "totals", "under", 142.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 142.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    BookOdds(book="FanDuel", price=-105, observed_at=now),
+                    BookOdds(book="DraftKings", price=-108, observed_at=now),
+                    BookOdds(book="BetMGM", price=-102, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            # Reference: Pinnacle mainline at 148.5
+            (1, "totals", "over", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+            (1, "totals", "under", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+        }
+
+        sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+        key_a = (1, "totals", "over", 142.5)
+        key_b = (1, "totals", "under", 142.5)
+
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result == "mainline_line_disagreement"
+
+    def test_alternate_allowed_within_bounds(self):
+        """Alternate totals 1.5 points from mainline → passes (within 6 HP max).
+
+        Pinnacle mainline at 148.5, alternate at 147.0 → 3 half-points.
+        Should succeed because: alternate market, within HP limit, and
+        probability divergence stays small.
+        """
+        now = datetime.now(UTC)
+        bets_map = {
+            # Target pair: alternate totals at 147.0 (no Pinnacle)
+            (1, "alternate_totals", "over", 147.0): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "over",
+                "line_value": 147.0,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-118, observed_at=now),
+                    BookOdds(book="FanDuel", price=-115, observed_at=now),
+                    BookOdds(book="BetMGM", price=-120, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (1, "alternate_totals", "under", 147.0): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "under",
+                "line_value": 147.0,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-102, observed_at=now),
+                    BookOdds(book="FanDuel", price=-105, observed_at=now),
+                    BookOdds(book="BetMGM", price=-100, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            # Reference: Pinnacle mainline at 148.5
+            (1, "totals", "over", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+            (1, "totals", "under", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+        }
+
+        sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+        key_a = (1, "alternate_totals", "over", 147.0)
+        key_b = (1, "alternate_totals", "under", 147.0)
+
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result is None  # Should succeed
+        assert bets_map[key_a]["has_fair"] is True
+        assert bets_map[key_a]["ev_method"] == "pinnacle_extrapolated"
+
+    def test_out_of_range_at_new_limits(self):
+        """Alternate totals 148.5 → 142.5 = 12 HP > 6 max → out of range.
+
+        With the tightened limits (max 6 HP for NCAAB totals), a 12 half-point
+        extrapolation should be rejected even though the old 20 HP limit allowed it.
+        """
+        now = datetime.now(UTC)
+        bets_map = {
+            # Target pair: alternate totals at 142.5 (12 HP from ref)
+            (1, "alternate_totals", "over", 142.5): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "over",
+                "line_value": 142.5,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-115, observed_at=now),
+                    BookOdds(book="FanDuel", price=-112, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (1, "alternate_totals", "under", 142.5): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "under",
+                "line_value": 142.5,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-105, observed_at=now),
+                    BookOdds(book="FanDuel", price=-108, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            # Reference: Pinnacle mainline at 148.5
+            (1, "totals", "over", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+            (1, "totals", "under", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": now},
+                ],
+            },
+        }
+
+        sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+        key_a = (1, "alternate_totals", "over", 142.5)
+        key_b = (1, "alternate_totals", "under", 142.5)
+
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result == "extrapolation_out_of_range"
+
+    def test_stale_ref_excluded(self):
+        """Sharp reference older than SHARP_REF_MAX_AGE_SECONDS is excluded.
+
+        When Pinnacle's observed_at is 2 hours old (> 3600s threshold),
+        _build_sharp_reference with max_age_seconds=3600 should skip it,
+        leaving no reference → extrapolation returns reference_missing.
+        """
+        now = datetime.now(UTC)
+        stale_time = now - timedelta(hours=2)  # 7200s ago > 3600s threshold
+        bets_map = {
+            # Target pair: alternate totals at 147.0
+            (1, "alternate_totals", "over", 147.0): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "over",
+                "line_value": 147.0,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=-140, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (1, "alternate_totals", "under", 147.0): {
+                "game_id": 1,
+                "market_key": "alternate_totals",
+                "selection_key": "under",
+                "line_value": 147.0,
+                "league_code": "NCAAB",
+                "market_category": "alternate",
+                "books": [
+                    BookOdds(book="DraftKings", price=130, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            # Reference: Pinnacle mainline at 148.5 — but STALE (2h old)
+            (1, "totals", "over", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": stale_time},
+                ],
+            },
+            (1, "totals", "under", 148.5): {
+                "game_id": 1,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -110, "observed_at": stale_time},
+                ],
+            },
+        }
+
+        # Build with staleness check enabled (3600s)
+        sharp_refs = _build_sharp_reference(
+            bets_map, {"Pinnacle"}, max_age_seconds=3600
+        )
+        key_a = (1, "alternate_totals", "over", 147.0)
+        key_b = (1, "alternate_totals", "under", 147.0)
+
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result == "reference_missing"
+
+        # Verify the ref IS found when staleness check is disabled
+        sharp_refs_no_age = _build_sharp_reference(bets_map, {"Pinnacle"})
+        result_no_age = _try_extrapolated_ev(
+            key_a, key_b, bets_map, sharp_refs_no_age
+        )
+        assert result_no_age is None  # Should pass without staleness check
+
+    def test_regression_mainline_disagreement_wichita_ecu(self):
+        """Regression: Wichita St @ ECU mainline totals at different lines.
+
+        Simulates the production scenario where Pinnacle has totals at 148.5
+        but DraftKings/FanDuel have mainline totals at 145.5. This 3-point
+        difference exceeds MAINLINE_DISAGREEMENT_MAX_POINTS (2.0), so the
+        extrapolation path should be blocked with mainline_line_disagreement.
+
+        No bet should show EV > 10% from mainline-to-mainline extrapolation.
+        """
+        now = datetime.now(UTC)
+        bets_map = {
+            # Pinnacle mainline totals at 148.5
+            (99, "totals", "over", 148.5): {
+                "game_id": 99,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -108, "observed_at": now},
+                    {"book": "BetMGM", "price": -112, "observed_at": now},
+                ],
+            },
+            (99, "totals", "under", 148.5): {
+                "game_id": 99,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 148.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    {"book": "Pinnacle", "price": -112, "observed_at": now},
+                    {"book": "BetMGM", "price": -108, "observed_at": now},
+                ],
+            },
+            # DraftKings/FanDuel mainline totals at 145.5 (3 points away)
+            (99, "totals", "over", 145.5): {
+                "game_id": 99,
+                "market_key": "totals",
+                "selection_key": "over",
+                "line_value": 145.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    BookOdds(book="DraftKings", price=-110, observed_at=now),
+                    BookOdds(book="FanDuel", price=-108, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+            (99, "totals", "under", 145.5): {
+                "game_id": 99,
+                "market_key": "totals",
+                "selection_key": "under",
+                "line_value": 145.5,
+                "league_code": "NCAAB",
+                "market_category": "mainline",
+                "books": [
+                    BookOdds(book="DraftKings", price=-110, observed_at=now),
+                    BookOdds(book="FanDuel", price=-112, observed_at=now),
+                ],
+                "ev_disabled_reason": "reference_missing",
+            },
+        }
+
+        sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
+
+        # The 145.5 pair should be blocked as mainline disagreement
+        key_a = (99, "totals", "over", 145.5)
+        key_b = (99, "totals", "under", 145.5)
+        result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
+        assert result == "mainline_line_disagreement"
+
+        # Verify no phantom EV was annotated
+        for key in [key_a, key_b]:
+            for b in bets_map[key]["books"]:
+                ev = b.ev_percent if hasattr(b, "ev_percent") else None
+                assert ev is None or ev <= 10.0, (
+                    f"Phantom EV {ev}% on {b.book if hasattr(b, 'book') else b['book']}"
+                )
 
 
 class TestLogitTailBehavior:
@@ -1969,7 +2329,7 @@ class TestExtrapolationEndToEnd:
     @pytest.fixture
     def mock_game(self):
         game = MagicMock()
-        game.start_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        game.start_time = datetime.now(UTC) + timedelta(hours=2)
         game.status = "scheduled"
         league = MagicMock()
         league.code = "NCAAB"
@@ -1990,7 +2350,7 @@ class TestExtrapolationEndToEnd:
         row.line_value = line_value
         row.book = book
         row.price = price
-        row.observed_at = datetime.now(timezone.utc)
+        row.observed_at = datetime.now(UTC)
         row.market_category = market_category
         row.player_name = None
         row.game = game
@@ -2122,3 +2482,191 @@ class TestExtrapolationEndToEnd:
             f"Favorite at wider line ({fav_alt.true_prob}) should be less "
             f"likely than at mainline ({fav_main.true_prob})"
         )
+
+
+class TestDeriveEntityKey:
+    """Unit tests for derive_entity_key() helper."""
+
+    def test_player_prop_with_player_name(self):
+        """Player prop with player_name produces player:{slug}:{hash8}."""
+        key = derive_entity_key(
+            "player:lebron_james:over", "player_points", player_name="LeBron James"
+        )
+        assert key.startswith("player:lebron_james:")
+        # Hash should be 8 hex chars
+        parts = key.split(":")
+        assert len(parts) == 3
+        assert len(parts[2]) == 8
+
+    def test_player_prop_without_player_name(self):
+        """Player prop without player_name produces player:{slug}."""
+        key = derive_entity_key("player:lebron_james:over", "player_points")
+        assert key == "player:lebron_james"
+
+    def test_team_spread(self):
+        """Team spread returns 'game'."""
+        key = derive_entity_key("team:los_angeles_lakers", "spreads")
+        assert key == "game"
+
+    def test_game_total(self):
+        """Game total returns 'game'."""
+        key = derive_entity_key("total:over", "totals")
+        assert key == "game"
+
+    def test_new_format_team_total(self):
+        """New-format team_total returns 'team_total:{slug}'."""
+        key = derive_entity_key("total:los_angeles_lakers:over", "team_totals")
+        assert key == "team_total:los_angeles_lakers"
+
+    def test_old_format_team_total(self):
+        """Old-format team_total (total:over) falls through to 'game'."""
+        key = derive_entity_key("total:over", "team_totals")
+        assert key == "game"
+
+    def test_different_players_different_entity_keys(self):
+        """Different players with different names produce different entity keys."""
+        key_a = derive_entity_key(
+            "player:lebron_james:over", "player_points", player_name="LeBron James"
+        )
+        key_b = derive_entity_key(
+            "player:jayson_tatum:under", "player_points", player_name="Jayson Tatum"
+        )
+        assert key_a != key_b
+
+    def test_same_player_same_market_same_hash(self):
+        """Same player + same market produces identical entity keys."""
+        key_a = derive_entity_key(
+            "player:lebron_james:over", "player_points", player_name="LeBron James"
+        )
+        key_b = derive_entity_key(
+            "player:lebron_james:under", "player_points", player_name="LeBron James"
+        )
+        assert key_a == key_b
+
+    def test_empty_selection_key(self):
+        """Empty selection_key returns 'game'."""
+        key = derive_entity_key("", "spreads")
+        assert key == "game"
+
+    def test_moneyline(self):
+        """Moneyline team:{slug} returns 'game'."""
+        key = derive_entity_key("team:boston_celtics", "h2h")
+        assert key == "game"
+
+
+class TestEntitySafePairing:
+    """Integration tests for entity-safe pairing."""
+
+    def test_cross_player_pairing_blocked(self):
+        """Two different players with same line and market cannot pair."""
+        now = datetime.now(UTC)
+        bets_map = {
+            (1, "player_points", "player:lebron_james:over", 25.5): {
+                "game_id": 1,
+                "market_key": "player_points",
+                "selection_key": "player:lebron_james:over",
+                "line_value": 25.5,
+                "league_code": "NBA",
+                "market_category": "player_prop",
+                "player_name": "LeBron James",
+                "entity_key": derive_entity_key(
+                    "player:lebron_james:over", "player_points", "LeBron James"
+                ),
+                "books": [
+                    {"book": "DraftKings", "price": -110, "observed_at": now},
+                    {"book": "Pinnacle", "price": -115, "observed_at": now},
+                ],
+            },
+            (1, "player_points", "player:jayson_tatum:under", 25.5): {
+                "game_id": 1,
+                "market_key": "player_points",
+                "selection_key": "player:jayson_tatum:under",
+                "line_value": 25.5,
+                "league_code": "NBA",
+                "market_category": "player_prop",
+                "player_name": "Jayson Tatum",
+                "entity_key": derive_entity_key(
+                    "player:jayson_tatum:under", "player_points", "Jayson Tatum"
+                ),
+                "books": [
+                    {"book": "DraftKings", "price": -110, "observed_at": now},
+                    {"book": "Pinnacle", "price": -105, "observed_at": now},
+                ],
+            },
+        }
+
+        key_a = (1, "player_points", "player:lebron_james:over", 25.5)
+        key_b = (1, "player_points", "player:jayson_tatum:under", 25.5)
+
+        reason = _annotate_pair_ev(key_a, key_b, bets_map)
+        assert reason == "entity_mismatch"
+
+    def test_same_player_valid_pair(self):
+        """Same player over/under at same line pairs normally."""
+        now = datetime.now(UTC)
+        entity_key = derive_entity_key(
+            "player:lebron_james:over", "player_points", "LeBron James"
+        )
+        bets_map = {
+            (1, "player_points", "player:lebron_james:over", 25.5): {
+                "game_id": 1,
+                "market_key": "player_points",
+                "selection_key": "player:lebron_james:over",
+                "line_value": 25.5,
+                "league_code": "NBA",
+                "market_category": "player_prop",
+                "player_name": "LeBron James",
+                "entity_key": entity_key,
+                "books": [
+                    {"book": "DraftKings", "price": -110, "observed_at": now},
+                    {"book": "Pinnacle", "price": -115, "observed_at": now},
+                ],
+            },
+            (1, "player_points", "player:lebron_james:under", 25.5): {
+                "game_id": 1,
+                "market_key": "player_points",
+                "selection_key": "player:lebron_james:under",
+                "line_value": 25.5,
+                "league_code": "NBA",
+                "market_category": "player_prop",
+                "player_name": "LeBron James",
+                "entity_key": entity_key,
+                "books": [
+                    {"book": "DraftKings", "price": -110, "observed_at": now},
+                    {"book": "Pinnacle", "price": -105, "observed_at": now},
+                ],
+            },
+        }
+
+        key_a = (1, "player_points", "player:lebron_james:over", 25.5)
+        key_b = (1, "player_points", "player:lebron_james:under", 25.5)
+
+        reason = _annotate_pair_ev(key_a, key_b, bets_map)
+        # Should NOT be entity_mismatch — should proceed to normal EV logic
+        assert reason != "entity_mismatch"
+
+    def test_new_format_team_totals_separate_groups(self):
+        """New-format team totals produce different entity keys, preventing grouping."""
+        lakers_entity = derive_entity_key("total:los_angeles_lakers:over", "team_totals")
+        celtics_entity = derive_entity_key("total:boston_celtics:over", "team_totals")
+
+        assert lakers_entity != celtics_entity
+        assert lakers_entity == "team_total:los_angeles_lakers"
+        assert celtics_entity == "team_total:boston_celtics"
+
+    def test_game_totals_unaffected(self):
+        """Game totals still group together as 'game'."""
+        over_entity = derive_entity_key("total:over", "totals")
+        under_entity = derive_entity_key("total:under", "totals")
+        assert over_entity == "game"
+        assert under_entity == "game"
+
+    def test_defensive_pair_check_blocks_cross_entity(self):
+        """_pair_opposite_sides blocks cross-entity pairs defensively."""
+        keys = [
+            (1, "player_points", "player:lebron_james:over", 25.5),
+            (1, "player_points", "player:jayson_tatum:under", 25.5),
+        ]
+        pairs, unpaired = _pair_opposite_sides(keys)
+        assert len(pairs) == 0
+        assert len(unpaired) == 2
