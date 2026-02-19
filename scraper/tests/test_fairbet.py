@@ -140,3 +140,77 @@ class TestBuildSelectionKey:
             away_team_name="Boston Celtics",
         )
         assert key == "team:mystery_team"
+
+
+class TestBuildSelectionKeyTeamTotals:
+    """Tests for team_total selection key with description embedding."""
+
+    def test_team_total_over_with_description(self):
+        """Team total over with description embeds team slug."""
+        key = build_selection_key(
+            market_type="team_total",
+            side="Over",
+            home_team_name="Los Angeles Lakers",
+            away_team_name="Boston Celtics",
+            market_category="team_prop",
+            description="Los Angeles Lakers",
+        )
+        assert key == "total:los_angeles_lakers:over"
+
+    def test_team_total_under_with_description(self):
+        """Team total under with description embeds team slug."""
+        key = build_selection_key(
+            market_type="team_total",
+            side="Under",
+            home_team_name="Los Angeles Lakers",
+            away_team_name="Boston Celtics",
+            market_category="team_prop",
+            description="Boston Celtics",
+        )
+        assert key == "total:boston_celtics:under"
+
+    def test_team_total_without_description_fallback(self):
+        """Team total without description falls back to total:over."""
+        key = build_selection_key(
+            market_type="team_total",
+            side="Over",
+            home_team_name="Los Angeles Lakers",
+            away_team_name="Boston Celtics",
+            market_category="team_prop",
+            description=None,
+        )
+        assert key == "total:over"
+
+    def test_game_total_unchanged(self):
+        """Game total still produces total:over (no team identity)."""
+        key = build_selection_key(
+            market_type="total",
+            side="Over",
+            home_team_name="Los Angeles Lakers",
+            away_team_name="Boston Celtics",
+        )
+        assert key == "total:over"
+
+    def test_team_total_away_team(self):
+        """Team total for away team embeds away team slug."""
+        key = build_selection_key(
+            market_type="team_total",
+            side="Over",
+            home_team_name="Los Angeles Lakers",
+            away_team_name="Boston Celtics",
+            market_category="team_prop",
+            description="Boston Celtics",
+        )
+        assert key == "total:boston_celtics:over"
+
+    def test_team_total_partial_match(self):
+        """Team total with partial team name match."""
+        key = build_selection_key(
+            market_type="team_total",
+            side="Under",
+            home_team_name="Los Angeles Lakers",
+            away_team_name="Boston Celtics",
+            market_category="team_prop",
+            description="Lakers",
+        )
+        assert key == "total:los_angeles_lakers:under"

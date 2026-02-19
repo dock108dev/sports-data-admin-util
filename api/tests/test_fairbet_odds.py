@@ -12,6 +12,8 @@ from app.routers.fairbet.ev_annotation import (
     _market_base,
     _pair_opposite_sides,
     _try_extrapolated_ev,
+    derive_entity_key,
+    _annotate_pair_ev,
 )
 from app.routers.fairbet.odds import (
     BetDefinition,
@@ -1457,8 +1459,8 @@ class TestBuildSharpReference:
 
         refs = _build_sharp_reference(bets_map, {"Pinnacle"})
 
-        assert (1, "spreads") in refs
-        ref_list = refs[(1, "spreads")]
+        assert (1, "spreads", "game") in refs
+        ref_list = refs[(1, "spreads", "game")]
         assert len(ref_list) == 1
         assert ref_list[0]["abs_line"] == 6.0
         assert ref_list[0]["is_mainline"] is True
@@ -1489,7 +1491,7 @@ class TestBuildSharpReference:
 
         refs = _build_sharp_reference(bets_map, {"Pinnacle"})
 
-        ref_list = refs[(1, "spreads")]
+        ref_list = refs[(1, "spreads", "game")]
         assert len(ref_list) == 2
         # Mainline comes first
         assert ref_list[0]["is_mainline"] is True
@@ -1562,8 +1564,8 @@ class TestBuildSharpReference:
 
         refs = _build_sharp_reference(bets_map, {"Pinnacle"})
 
-        assert (1, "spreads") in refs
-        ref_list = refs[(1, "spreads")]
+        assert (1, "spreads", "game") in refs
+        ref_list = refs[(1, "spreads", "game")]
         # Should have 2 reference entries (one per valid market pair), not 1
         assert len(ref_list) == 2
 
@@ -1599,7 +1601,7 @@ class TestBuildSharpReference:
         ])
 
         refs = _build_sharp_reference(bets_map, {"Pinnacle"})
-        ref_list = refs[(1, "spreads")]
+        ref_list = refs[(1, "spreads", "game")]
 
         for ref in ref_list:
             # Verify the prices in each reference are from the same market
@@ -1740,13 +1742,13 @@ class TestTryExtrapolatedEv:
         # key_b (team:b at +8.5) is now sel_a — underdog getting 8.5 points
         # Reference has team:b at +6.0 covering ~47% (underdog getting fewer points)
         # At +8.5 (more points), team:b's prob should be HIGHER than at +6.0
-        ref_prob_b = refs[(1, "spreads")][0]["probs"]["team:b"]
+        ref_prob_b = refs[(1, "spreads", "game")][0]["probs"]["team:b"]
         assert bets_map[key_b]["true_prob"] > ref_prob_b, (
             f"Underdog at +8.5 ({bets_map[key_b]['true_prob']:.3f}) should have "
             f"higher prob than at +6.0 ({ref_prob_b:.3f})"
         )
         # And the favorite's prob should be LOWER
-        ref_prob_a = refs[(1, "spreads")][0]["probs"]["team:a"]
+        ref_prob_a = refs[(1, "spreads", "game")][0]["probs"]["team:a"]
         assert bets_map[key_a]["true_prob"] < ref_prob_a, (
             f"Favorite at -8.5 ({bets_map[key_a]['true_prob']:.3f}) should have "
             f"lower prob than at -6.0 ({ref_prob_a:.3f})"
@@ -1782,7 +1784,7 @@ class TestTryExtrapolatedEv:
         # team:a at reference had signed line -4.0 (giving 4), prob ~58%
         # team:a at target has signed line -1.5 (giving 1.5)
         # Giving FEWER points → prob should INCREASE (easier to cover)
-        ref_prob_a = refs[(1, "spreads")][0]["probs"]["team:a"]
+        ref_prob_a = refs[(1, "spreads", "game")][0]["probs"]["team:a"]
         assert bets_map[key_a]["true_prob"] > ref_prob_a, (
             f"team:a at -1.5 ({bets_map[key_a]['true_prob']:.3f}) should have "
             f"higher prob than at -4.0 ({ref_prob_a:.3f})"
@@ -2629,3 +2631,191 @@ class TestExtrapolationEndToEnd:
             f"Favorite at wider line ({fav_alt.true_prob}) should be less "
             f"likely than at mainline ({fav_main.true_prob})"
         )
+
+
+class TestDeriveEntityKey:
+    """Unit tests for derive_entity_key() helper."""
+
+    def test_player_prop_with_player_name(self):
+        """Player prop with player_name produces player:{slug}:{hash8}."""
+        key = derive_entity_key(
+            "player:lebron_james:over", "player_points", player_name="LeBron James"
+        )
+        assert key.startswith("player:lebron_james:")
+        # Hash should be 8 hex chars
+        parts = key.split(":")
+        assert len(parts) == 3
+        assert len(parts[2]) == 8
+
+    def test_player_prop_without_player_name(self):
+        """Player prop without player_name produces player:{slug}."""
+        key = derive_entity_key("player:lebron_james:over", "player_points")
+        assert key == "player:lebron_james"
+
+    def test_team_spread(self):
+        """Team spread returns 'game'."""
+        key = derive_entity_key("team:los_angeles_lakers", "spreads")
+        assert key == "game"
+
+    def test_game_total(self):
+        """Game total returns 'game'."""
+        key = derive_entity_key("total:over", "totals")
+        assert key == "game"
+
+    def test_new_format_team_total(self):
+        """New-format team_total returns 'team_total:{slug}'."""
+        key = derive_entity_key("total:los_angeles_lakers:over", "team_totals")
+        assert key == "team_total:los_angeles_lakers"
+
+    def test_old_format_team_total(self):
+        """Old-format team_total (total:over) falls through to 'game'."""
+        key = derive_entity_key("total:over", "team_totals")
+        assert key == "game"
+
+    def test_different_players_different_entity_keys(self):
+        """Different players with different names produce different entity keys."""
+        key_a = derive_entity_key(
+            "player:lebron_james:over", "player_points", player_name="LeBron James"
+        )
+        key_b = derive_entity_key(
+            "player:jayson_tatum:under", "player_points", player_name="Jayson Tatum"
+        )
+        assert key_a != key_b
+
+    def test_same_player_same_market_same_hash(self):
+        """Same player + same market produces identical entity keys."""
+        key_a = derive_entity_key(
+            "player:lebron_james:over", "player_points", player_name="LeBron James"
+        )
+        key_b = derive_entity_key(
+            "player:lebron_james:under", "player_points", player_name="LeBron James"
+        )
+        assert key_a == key_b
+
+    def test_empty_selection_key(self):
+        """Empty selection_key returns 'game'."""
+        key = derive_entity_key("", "spreads")
+        assert key == "game"
+
+    def test_moneyline(self):
+        """Moneyline team:{slug} returns 'game'."""
+        key = derive_entity_key("team:boston_celtics", "h2h")
+        assert key == "game"
+
+
+class TestEntitySafePairing:
+    """Integration tests for entity-safe pairing."""
+
+    def test_cross_player_pairing_blocked(self):
+        """Two different players with same line and market cannot pair."""
+        now = datetime.now(timezone.utc)
+        bets_map = {
+            (1, "player_points", "player:lebron_james:over", 25.5): {
+                "game_id": 1,
+                "market_key": "player_points",
+                "selection_key": "player:lebron_james:over",
+                "line_value": 25.5,
+                "league_code": "NBA",
+                "market_category": "player_prop",
+                "player_name": "LeBron James",
+                "entity_key": derive_entity_key(
+                    "player:lebron_james:over", "player_points", "LeBron James"
+                ),
+                "books": [
+                    {"book": "DraftKings", "price": -110, "observed_at": now},
+                    {"book": "Pinnacle", "price": -115, "observed_at": now},
+                ],
+            },
+            (1, "player_points", "player:jayson_tatum:under", 25.5): {
+                "game_id": 1,
+                "market_key": "player_points",
+                "selection_key": "player:jayson_tatum:under",
+                "line_value": 25.5,
+                "league_code": "NBA",
+                "market_category": "player_prop",
+                "player_name": "Jayson Tatum",
+                "entity_key": derive_entity_key(
+                    "player:jayson_tatum:under", "player_points", "Jayson Tatum"
+                ),
+                "books": [
+                    {"book": "DraftKings", "price": -110, "observed_at": now},
+                    {"book": "Pinnacle", "price": -105, "observed_at": now},
+                ],
+            },
+        }
+
+        key_a = (1, "player_points", "player:lebron_james:over", 25.5)
+        key_b = (1, "player_points", "player:jayson_tatum:under", 25.5)
+
+        reason = _annotate_pair_ev(key_a, key_b, bets_map)
+        assert reason == "entity_mismatch"
+
+    def test_same_player_valid_pair(self):
+        """Same player over/under at same line pairs normally."""
+        now = datetime.now(timezone.utc)
+        entity_key = derive_entity_key(
+            "player:lebron_james:over", "player_points", "LeBron James"
+        )
+        bets_map = {
+            (1, "player_points", "player:lebron_james:over", 25.5): {
+                "game_id": 1,
+                "market_key": "player_points",
+                "selection_key": "player:lebron_james:over",
+                "line_value": 25.5,
+                "league_code": "NBA",
+                "market_category": "player_prop",
+                "player_name": "LeBron James",
+                "entity_key": entity_key,
+                "books": [
+                    {"book": "DraftKings", "price": -110, "observed_at": now},
+                    {"book": "Pinnacle", "price": -115, "observed_at": now},
+                ],
+            },
+            (1, "player_points", "player:lebron_james:under", 25.5): {
+                "game_id": 1,
+                "market_key": "player_points",
+                "selection_key": "player:lebron_james:under",
+                "line_value": 25.5,
+                "league_code": "NBA",
+                "market_category": "player_prop",
+                "player_name": "LeBron James",
+                "entity_key": entity_key,
+                "books": [
+                    {"book": "DraftKings", "price": -110, "observed_at": now},
+                    {"book": "Pinnacle", "price": -105, "observed_at": now},
+                ],
+            },
+        }
+
+        key_a = (1, "player_points", "player:lebron_james:over", 25.5)
+        key_b = (1, "player_points", "player:lebron_james:under", 25.5)
+
+        reason = _annotate_pair_ev(key_a, key_b, bets_map)
+        # Should NOT be entity_mismatch — should proceed to normal EV logic
+        assert reason != "entity_mismatch"
+
+    def test_new_format_team_totals_separate_groups(self):
+        """New-format team totals produce different entity keys, preventing grouping."""
+        lakers_entity = derive_entity_key("total:los_angeles_lakers:over", "team_totals")
+        celtics_entity = derive_entity_key("total:boston_celtics:over", "team_totals")
+
+        assert lakers_entity != celtics_entity
+        assert lakers_entity == "team_total:los_angeles_lakers"
+        assert celtics_entity == "team_total:boston_celtics"
+
+    def test_game_totals_unaffected(self):
+        """Game totals still group together as 'game'."""
+        over_entity = derive_entity_key("total:over", "totals")
+        under_entity = derive_entity_key("total:under", "totals")
+        assert over_entity == "game"
+        assert under_entity == "game"
+
+    def test_defensive_pair_check_blocks_cross_entity(self):
+        """_pair_opposite_sides blocks cross-entity pairs defensively."""
+        keys = [
+            (1, "player_points", "player:lebron_james:over", 25.5),
+            (1, "player_points", "player:jayson_tatum:under", 25.5),
+        ]
+        pairs, unpaired = _pair_opposite_sides(keys)
+        assert len(pairs) == 0
+        assert len(unpaired) == 2

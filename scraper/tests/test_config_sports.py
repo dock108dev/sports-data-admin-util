@@ -258,3 +258,17 @@ class TestIsTimelineEnabled:
         """Unknown league uses default config (timeline_enabled=True)."""
         # Default LeagueConfig has timeline_enabled=True
         assert is_timeline_enabled("UNKNOWN") is True
+
+
+class TestLiveOddsDisabled:
+    """Tests for live_odds_enabled safety invariant."""
+
+    def test_all_leagues_have_live_odds_disabled(self):
+        """All configured leagues must have live_odds_enabled=False."""
+        for code, cfg in LEAGUE_CONFIG.items():
+            assert cfg.live_odds_enabled is False, f"{code} has live_odds_enabled=True"
+
+    def test_default_live_odds_disabled(self):
+        """Default LeagueConfig has live_odds_enabled=False."""
+        config = LeagueConfig(code="TEST", display_name="Test")
+        assert config.live_odds_enabled is False

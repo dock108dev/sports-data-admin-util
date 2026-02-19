@@ -128,6 +128,7 @@ class Settings(BaseSettings):
     odds_api_key: str | None = Field(None, alias="ODDS_API_KEY")
     cbb_stats_api_key: str | None = Field(None, alias="CBB_STATS_API_KEY")
     environment: str = Field("development", alias="ENVIRONMENT")
+    live_polling_enabled: bool = Field(False, alias="LIVE_POLLING_ENABLED")
     log_level: str | None = Field(None, alias="LOG_LEVEL")
     scraper_config: ScraperConfig = Field(default_factory=ScraperConfig)
     odds_config: OddsProviderConfig = Field(default_factory=OddsProviderConfig)

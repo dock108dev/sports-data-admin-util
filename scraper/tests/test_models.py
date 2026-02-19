@@ -447,7 +447,7 @@ class TestIngestionConfig:
         assert config.odds is True
         assert config.social is False
         assert config.pbp is False
-        assert config.live is False
+        assert config.batch_live_feed is False
         assert config.only_missing is False
 
     def test_create_with_dates(self):
@@ -476,7 +476,7 @@ class TestIngestionConfig:
         assert config.odds is False
         assert config.social is True
         assert config.pbp is True
-        assert config.live is True
+        assert config.batch_live_feed is True
 
     def test_with_book_filter(self):
         config = IngestionConfig(

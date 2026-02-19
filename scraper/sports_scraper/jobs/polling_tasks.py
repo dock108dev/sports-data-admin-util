@@ -122,7 +122,10 @@ def poll_live_pbp_task() -> dict:
                     nba_nhl_pbp_games.append(game)
 
             if not nba_nhl_pbp_games and not ncaab_pbp_games:
-                logger.debug("poll_live_pbp_no_pbp_games")
+                logger.info(
+                    "poll_live_pbp_heartbeat",
+                    games_found=0,
+                )
             else:
                 logger.info(
                     "poll_live_data_start",

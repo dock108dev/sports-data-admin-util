@@ -395,9 +395,9 @@ class ScrapeRunManager:
                     start_date=str(start),
                     end_date=str(end),
                     only_missing=config.only_missing,
-                    live=config.live,
+                    live=config.batch_live_feed,
                 )
-                if config.live:
+                if config.batch_live_feed:
                     # Live-feed PBP (explicit opt-in only).
                     if config.league_code not in self._supported_live_pbp_leagues:
                         logger.info(

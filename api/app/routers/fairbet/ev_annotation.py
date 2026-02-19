@@ -325,12 +325,12 @@ def _build_sharp_reference(
     bets_map: dict[tuple, dict[str, Any]],
     sharp_book_names: set[str],
     max_age_seconds: int | None = None,
-) -> dict[tuple[int, str], list[dict[str, Any]]]:
+) -> dict[tuple[int, str, str], list[dict[str, Any]]]:
     """Pre-compute sharp reference index from all bets that have Pinnacle.
 
     Scans bets_map for entries where a sharp book is present. Groups by
-    (game_id, market_base, abs(line_value)). For each group with two different
-    selection_keys (both sides), devigs the sharp book's prices.
+    (game_id, market_base, entity_key, abs(line_value)). For each group with
+    two different selection_keys (both sides), devigs the sharp book's prices.
 
     Args:
         bets_map: The full bets map keyed by (game_id, market_key, selection_key, line_value).
@@ -339,9 +339,9 @@ def _build_sharp_reference(
             older than ``now - max_age_seconds``.
 
     Returns:
-        Dict keyed by (game_id, market_base) → list of reference lines sorted by
-        mainline preference. Each entry has abs_line, is_mainline, probs, prices,
-        observed_at.
+        Dict keyed by (game_id, market_base, entity_key) → list of reference
+        lines sorted by mainline preference. Each entry has abs_line,
+        is_mainline, probs, prices, observed_at.
     """
     from datetime import timezone as _tz
 
@@ -389,7 +389,7 @@ def _build_sharp_reference(
         )
 
     # Step 2: For each group, find valid pairs (compatible line values) and devig
-    refs: dict[tuple[int, str], list[dict[str, Any]]] = {}
+    refs: dict[tuple[int, str, str], list[dict[str, Any]]] = {}
 
     for (game_id, mbase, entity_key, abs_line), entries in sharp_groups.items():
         # Pair entries with compatible line values using the same logic as
@@ -455,7 +455,7 @@ def _try_extrapolated_ev(
     key_a: tuple,
     key_b: tuple,
     bets_map: dict[tuple, dict[str, Any]],
-    sharp_refs: dict[tuple[int, str], list[dict[str, Any]]],
+    sharp_refs: dict[tuple[int, str, str], list[dict[str, Any]]],
 ) -> str | None:
     """Attempt to compute EV via logit-space extrapolation from a sharp reference.
 
@@ -481,8 +481,9 @@ def _try_extrapolated_ev(
     if mbase is None:
         return "reference_missing"
 
-    # 2. Look up sharp references for this game + market type
-    ref_key = (game_id, mbase)
+    # 2. Look up sharp references for this game + market type + entity
+    entity_key = derive_entity_key(key_a[2], key_a[1])
+    ref_key = (game_id, mbase, entity_key)
     ref_list = sharp_refs.get(ref_key)
     if not ref_list:
         return "reference_missing"

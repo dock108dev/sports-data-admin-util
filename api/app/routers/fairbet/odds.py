@@ -357,6 +357,19 @@ async def get_fairbet_odds(
         for key_a, key_b in pairs:
             ev_diagnostics["total_pairs"] += 1
             reason = _annotate_pair_ev(key_a, key_b, bets_map)
+            if reason == "entity_mismatch":
+                _debug_ids = get_fairbet_debug_game_ids()
+                if key_a[0] in _debug_ids:
+                    logger.info(
+                        "entity_pair_blocked",
+                        extra={
+                            "game_id": key_a[0],
+                            "entity_a": bets_map[key_a].get("entity_key"),
+                            "entity_b": bets_map[key_b].get("entity_key"),
+                            "market_key": key_a[1],
+                            "line_value": key_a[3],
+                        },
+                    )
             if reason == "reference_missing":
                 extrap_reason = _try_extrapolated_ev(
                     key_a, key_b, bets_map, sharp_refs

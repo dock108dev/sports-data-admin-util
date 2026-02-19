@@ -116,11 +116,6 @@ _prod_only_schedule = {
         "schedule": crontab(minute=0),
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
-    "live-pbp-poll-every-5-min": {
-        "task": "poll_live_pbp",
-        "schedule": crontab(minute="*/5"),
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
     # === Daily sweep (status repair, social scrape #2, embedded tweets, archive) ===
     # Lightweight housekeeping — no full pipeline re-runs or flow generation
     "daily-sweep-4am-eastern": {
@@ -130,18 +125,48 @@ _prod_only_schedule = {
     },
 }
 
+# Live polling — runs in production, or when LIVE_POLLING_ENABLED=true.
+# Only controls poll_live_pbp (stats + PBP). Does NOT enable odds sync,
+# daily ingestion, flow generation, or any other production tasks.
+_live_polling_schedule = {
+    "live-pbp-poll-every-5-min": {
+        "task": "poll_live_pbp",
+        "schedule": crontab(minute="*/5"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+}
+
+_beat_schedule = {**_always_on_schedule}
+
+_include_live_polling = (
+    settings.environment == "production" or settings.live_polling_enabled
+)
+
 if settings.environment == "production":
-    app.conf.beat_schedule = {**_always_on_schedule, **_prod_only_schedule}
+    _beat_schedule.update(_prod_only_schedule)
+
+if _include_live_polling:
+    _beat_schedule.update(_live_polling_schedule)
+
+app.conf.beat_schedule = _beat_schedule
+
+if settings.environment == "production":
     logger.info(
         "beat_schedule_production",
-        task_count=len(_always_on_schedule) + len(_prod_only_schedule),
+        task_count=len(_beat_schedule),
+    )
+elif _include_live_polling:
+    logger.info(
+        "beat_schedule_non_production_with_live_polling",
+        environment=settings.environment,
+        task_count=len(_beat_schedule),
+        live_polling_tasks=list(_live_polling_schedule.keys()),
     )
 else:
-    app.conf.beat_schedule = _always_on_schedule
     logger.info(
         "beat_schedule_non_production",
         environment=settings.environment,
-        task_count=len(_always_on_schedule),
+        task_count=len(_beat_schedule),
     )
 
 

@@ -16,7 +16,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class LeagueConfig:
-    """Configuration for a single league/sport."""
+    """Configuration for a single league/sport.
+
+    This is the Single Source of Truth (SSOT) for per-league live-data behavior:
+    - live_pbp_enabled: poll live play-by-play data
+    - live_boxscore_enabled: poll live boxscores during games
+    - live_odds_enabled: persist odds for live games (must remain False —
+      closing-line architecture requires pre-game odds only)
+    """
 
     code: str                       # "NBA", "NHL", "NCAAB"
     display_name: str               # "NBA Basketball"
@@ -37,6 +44,7 @@ class LeagueConfig:
     live_pbp_poll_minutes: int = 5      # Minutes between PBP polls for live games
     live_pbp_enabled: bool = True       # Whether to poll live PBP for this league
     live_boxscore_enabled: bool = True  # Whether to poll live boxscores for this league
+    live_odds_enabled: bool = False   # Must remain False — closing-line-only architecture
     estimated_game_duration_hours: float = 3.0  # Typical game length for time-based fallback
 
 
@@ -75,6 +83,15 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         estimated_game_duration_hours=2.5,  # Regulation ~2h + OT buffer
     ),
 }
+
+# --- Static validation: live_odds_enabled must remain False for all leagues ---
+# Live odds would overwrite pre-game closing lines. This assertion catches
+# accidental config changes at import time.
+for _code, _cfg in LEAGUE_CONFIG.items():
+    assert not _cfg.live_odds_enabled, (
+        f"live_odds_enabled must be False for {_code}. "
+        f"Live odds would overwrite pre-game closing lines."
+    )
 
 
 def get_league_config(league_code: str) -> LeagueConfig:
