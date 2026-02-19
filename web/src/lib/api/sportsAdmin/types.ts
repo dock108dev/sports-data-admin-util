@@ -47,12 +47,12 @@ export type GameSummary = {
   hasFlow: boolean;
   playCount: number;
   socialPostCount: number;
-  hasRequiredData: boolean;
   scrapeVersion: number | null;
   lastScrapedAt: string | null;
   lastIngestedAt: string | null;
   lastPbpAt: string | null;
   lastSocialAt: string | null;
+  lastOddsAt: string | null;
   derivedMetrics: Record<string, unknown> | null;
 };
 
@@ -179,6 +179,7 @@ export type AdminGameDetail = {
     lastIngestedAt: string | null;
     lastPbpAt: string | null;
     lastSocialAt: string | null;
+    lastOddsAt: string | null;
     hasBoxscore: boolean;
     hasPlayerStats: boolean;
     hasOdds: boolean;

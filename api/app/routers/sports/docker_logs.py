@@ -67,7 +67,11 @@ async def get_docker_logs(
         )
 
     if resp.status_code != 200:
-        body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        body = (
+            resp.json()
+            if resp.headers.get("content-type", "").startswith("application/json")
+            else {}
+        )
         logger.error(
             "Log relay error %s for container %s: %s",
             resp.status_code,
@@ -86,3 +90,13 @@ async def get_docker_logs(
         lines=data["lines"],
         logs=data["logs"],
     )
+
+
+# ── Alias: /logs is the canonical admin path; /scraper/logs is legacy ───
+@router.get("/logs", response_model=DockerLogsResponse, include_in_schema=False)
+async def get_docker_logs_alias(
+    container: str = Query(..., description="Container name"),
+    lines: int = Query(1000, ge=1, le=10000, description="Number of tail lines"),
+) -> DockerLogsResponse:
+    """Alias route — delegates to canonical handler."""
+    return await get_docker_logs(container=container, lines=lines)

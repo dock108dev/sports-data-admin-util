@@ -8,7 +8,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 # =============================================================================
 # ENUMS FOR FRONTEND
@@ -113,7 +113,11 @@ class RunFullPipelineRequest(BaseModel):
 
 
 class StageStatusResponse(BaseModel):
-    """Status of a single pipeline stage."""
+    """Status of a single pipeline stage.
+
+    Includes compatibility alias fields (stage_name, completed_at,
+    error_message) so the admin UI can consume responses without changes.
+    """
 
     stage: str = Field(description="Stage name (e.g., NORMALIZE_PBP)")
     stage_order: int = Field(description="Execution order (1-5)")
@@ -128,6 +132,25 @@ class StageStatusResponse(BaseModel):
     )
     log_count: int = Field(description="Number of log entries")
     can_execute: bool = Field(description="Whether this stage can be executed now")
+
+    # ── Compatibility aliases for admin UI ──────────────────────────────
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def stage_name(self) -> str:
+        """Alias of ``stage`` consumed by the admin UI."""
+        return self.stage
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def completed_at(self) -> str | None:
+        """Alias of ``finished_at`` consumed by the admin UI."""
+        return self.finished_at
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def error_message(self) -> str | None:
+        """Alias of ``error_details`` consumed by the admin UI."""
+        return self.error_details
 
 
 class StageOutputResponse(BaseModel):
@@ -174,6 +197,14 @@ class PipelineRunResponse(BaseModel):
     finished_at: str | None
     duration_seconds: float | None
     created_at: str
+
+    # ── Compatibility alias for admin UI ────────────────────────────────
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def completed_at(self) -> str | None:
+        """Alias of ``finished_at`` consumed by the admin UI."""
+        return self.finished_at
+
     stages: list[StageStatusResponse]
     stages_completed: int
     stages_failed: int
@@ -184,7 +215,12 @@ class PipelineRunResponse(BaseModel):
 
 
 class PipelineRunSummary(BaseModel):
-    """Summary of a pipeline run for listing."""
+    """Summary of a pipeline run for listing.
+
+    Includes per-stage detail (``stages``) so the admin UI can render
+    expandable rows without an extra fetch, plus compatibility aliases
+    (``completed_at``, ``auto_chain``, ``next_stage``).
+    """
 
     run_id: int
     run_uuid: str
@@ -198,6 +234,32 @@ class PipelineRunSummary(BaseModel):
     stages_completed: int
     stages_total: int
     progress_percent: int
+    stages: list[StageStatusResponse] = Field(
+        default_factory=list,
+        description="Per-stage detail for expandable UI rows",
+    )
+
+    # ── Compatibility aliases for admin UI ──────────────────────────────
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def completed_at(self) -> str | None:
+        """Alias of ``finished_at`` consumed by the admin UI."""
+        return self.finished_at
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def auto_chain(self) -> bool:
+        """Compatibility field — summaries don't track auto_chain, default False."""
+        return False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def next_stage(self) -> str | None:
+        """Derived from stages — returns next pending stage, if any."""
+        for s in self.stages:
+            if s.status == "pending" and s.can_execute:
+                return s.stage
+        return None
 
 
 class StartPipelineResponse(BaseModel):
@@ -267,9 +329,7 @@ class RunFullPipelineResponse(BaseModel):
     stages_completed: int
     stages_failed: int
     duration_seconds: float | None
-    artifact_id: int | None = Field(
-        description="Timeline artifact ID if finalization succeeded"
-    )
+    artifact_id: int | None = Field(description="Timeline artifact ID if finalization succeeded")
     message: str
 
 

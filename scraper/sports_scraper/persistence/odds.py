@@ -114,7 +114,9 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
     """
     league_id = get_league_id(session, snapshot.league_code)
 
-    home_team_id = _find_team_by_name(session, league_id, snapshot.home_team.name, snapshot.home_team.abbreviation)
+    home_team_id = _find_team_by_name(
+        session, league_id, snapshot.home_team.name, snapshot.home_team.abbreviation
+    )
     if home_team_id is None:
         logger.debug(
             "odds_team_not_found_creating",
@@ -132,7 +134,9 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
                 league=snapshot.league_code,
             )
 
-    away_team_id = _find_team_by_name(session, league_id, snapshot.away_team.name, snapshot.away_team.abbreviation)
+    away_team_id = _find_team_by_name(
+        session, league_id, snapshot.away_team.name, snapshot.away_team.abbreviation
+    )
     if away_team_id is None:
         logger.debug(
             "odds_team_not_found_creating",
@@ -185,6 +189,7 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
         # FairBet work table: append odds for non-completed games (cached path)
         if game is not None:
             upsert_fairbet_odds(session, game_id, game.status, snapshot)
+            game.last_odds_at = now_utc()
 
         return OddsUpsertResult.PERSISTED
     day_start = datetime.combine(game_day - timedelta(days=1), datetime.min.time(), tzinfo=UTC)
@@ -310,7 +315,9 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
             ],
         )
 
-    game_id = match_game_by_team_ids(session, league_id, home_team_id, away_team_id, day_start, day_end)
+    game_id = match_game_by_team_ids(
+        session, league_id, home_team_id, away_team_id, day_start, day_end
+    )
 
     logger.debug(
         "odds_exact_match_attempt",
@@ -433,6 +440,7 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
     # This enables cross-book comparison in FairBet
     if game is not None:
         upsert_fairbet_odds(session, game_id, game.status, snapshot)
+        game.last_odds_at = now_utc()
 
     cache_set(cache_key, game_id)
     return OddsUpsertResult.PERSISTED

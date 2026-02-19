@@ -21,14 +21,13 @@ from .schemas import (
     NHLSkaterStat,
     PlayEntry,
     PlayerStat,
+    ScrapeRunConfig,
     ScrapeRunResponse,
     TeamStat,
 )
 
 
-def serialize_play_entry(
-    play: SportsGamePlay, league_code: str | None = None
-) -> PlayEntry:
+def serialize_play_entry(play: SportsGamePlay, league_code: str | None = None) -> PlayEntry:
     """Serialize a play record to API response format."""
     from ...services.period_labels import period_label, time_label
 
@@ -76,9 +75,7 @@ def normalize_post_text(text: str | None) -> str | None:
 
 async def get_league(session: AsyncSession, code: str) -> SportsLeague:
     """Fetch league by code or raise 404."""
-    stmt = select(SportsLeague).where(
-        SportsLeague.code == code.upper()
-    )
+    stmt = select(SportsLeague).where(SportsLeague.code == code.upper())
     result = await session.execute(stmt)
     league = result.scalar_one_or_none()
     if not league:
@@ -88,9 +85,18 @@ async def get_league(session: AsyncSession, code: str) -> SportsLeague:
     return league
 
 
-def serialize_run(
-    run: SportsScrapeRun, league_code: str
-) -> ScrapeRunResponse:
+def _normalize_config(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Parse raw JSONB config through ScrapeRunConfig for consistent camelCase."""
+    if not raw:
+        return raw
+    try:
+        return ScrapeRunConfig(**raw).model_dump(by_alias=True)
+    except Exception:
+        # Config may be from an older format — return as-is rather than crash.
+        return raw
+
+
+def serialize_run(run: SportsScrapeRun, league_code: str) -> ScrapeRunResponse:
     """Serialize scrape run to API response."""
     return ScrapeRunResponse(
         id=run.id,
@@ -107,7 +113,7 @@ def serialize_run(
         started_at=run.started_at,
         finished_at=run.finished_at,
         requested_by=run.requested_by,
-        config=run.config,
+        config=_normalize_config(run.config),
     )
 
 
@@ -138,9 +144,7 @@ def _extract_minutes(stats: dict[str, Any]) -> float | None:
     return float(minutes_val) if isinstance(minutes_val, (int, float)) else None
 
 
-def _get_int_stat(
-    stats: dict[str, Any], normalized_key: str, raw_key: str
-) -> int | None:
+def _get_int_stat(stats: dict[str, Any], normalized_key: str, raw_key: str) -> int | None:
     # Check normalized key first, then raw key
     # Use 'in' check to properly handle 0 values
     if normalized_key in stats and stats[normalized_key] is not None:
@@ -249,9 +253,7 @@ def serialize_nhl_skater(player: SportsPlayerBoxscore) -> NHLSkaterStat:
     )
 
 
-def _get_float_stat(
-    stats: dict[str, Any], normalized_key: str, raw_key: str
-) -> float | None:
+def _get_float_stat(stats: dict[str, Any], normalized_key: str, raw_key: str) -> float | None:
     """Extract float stat from raw or normalized key."""
     value = stats.get(normalized_key) or stats.get(raw_key)
     if value is None:

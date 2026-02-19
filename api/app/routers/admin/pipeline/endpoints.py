@@ -111,9 +111,7 @@ async def rerun_pipeline(
     executor = PipelineExecutor(session)
 
     count_result = await session.execute(
-        select(func.count(GamePipelineRun.id)).where(
-            GamePipelineRun.game_id == game_id
-        )
+        select(func.count(GamePipelineRun.id)).where(GamePipelineRun.game_id == game_id)
     )
     previous_runs = count_result.scalar() or 0
 
@@ -471,9 +469,7 @@ async def get_game_pipeline_summary(
         )
 
     pbp_result = await session.execute(
-        select(func.count(SportsGamePlay.id)).where(
-            SportsGamePlay.game_id == game_id
-        )
+        select(func.count(SportsGamePlay.id)).where(SportsGamePlay.game_id == game_id)
     )
     has_pbp = (pbp_result.scalar() or 0) > 0
 
@@ -597,9 +593,7 @@ async def get_stage_output(
         status=stage_record.status,
         output_json=output,
         output_summary=summary,
-        generated_at=(
-            stage_record.finished_at.isoformat() if stage_record.finished_at else None
-        ),
+        generated_at=(stage_record.finished_at.isoformat() if stage_record.finished_at else None),
     )
 
 
@@ -710,3 +704,62 @@ async def list_pipeline_stages() -> dict[str, Any]:
         "stages": stages,
         "total_stages": len(stages),
     }
+
+
+# =============================================================================
+# ROUTE ALIASES — frontend-compatible paths
+#
+# The admin UI calls these paths; keep canonical routes above and aliases here.
+# =============================================================================
+
+
+@router.get(
+    "/pipeline/{game_id}/runs",
+    response_model=GamePipelineRunsResponse,
+    summary="List runs for game (alias)",
+    description="Alias for GET /pipeline/game/{game_id}.",
+    include_in_schema=False,
+)
+async def get_game_pipeline_runs_alias(
+    game_id: int,
+    limit: int = Query(default=20, ge=1, le=100),
+    include_game_info: bool = Query(default=True),
+    session: AsyncSession = Depends(get_db),
+) -> GamePipelineRunsResponse:
+    """Alias route — delegates to canonical handler."""
+    return await get_game_pipeline_runs(
+        game_id=game_id,
+        limit=limit,
+        include_game_info=include_game_info,
+        session=session,
+    )
+
+
+@router.get(
+    "/pipeline/runs/{run_id}",
+    response_model=PipelineRunResponse,
+    summary="Get run status (alias)",
+    description="Alias for GET /pipeline/run/{run_id}.",
+    include_in_schema=False,
+)
+async def get_run_status_alias(
+    run_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> PipelineRunResponse:
+    """Alias route — delegates to canonical handler."""
+    return await get_run_status(run_id=run_id, session=session)
+
+
+@router.get(
+    "/pipeline/{game_id}/summary",
+    response_model=GamePipelineSummary,
+    summary="Get game pipeline summary (alias)",
+    description="Alias for GET /pipeline/game/{game_id}/summary.",
+    include_in_schema=False,
+)
+async def get_game_pipeline_summary_alias(
+    game_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> GamePipelineSummary:
+    """Alias route — delegates to canonical handler."""
+    return await get_game_pipeline_summary(game_id=game_id, session=session)
