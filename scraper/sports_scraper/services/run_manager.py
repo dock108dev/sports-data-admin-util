@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from ..celery_app import SOCIAL_QUEUE
 from ..config import settings
@@ -104,13 +104,16 @@ class ScrapeRunManager:
 
             # Boxscore scraping (enrichment only - does NOT create games)
             # Boxscores enrich existing games created by Odds API
-            # IMPORTANT: Only scrape boxscores for completed games (yesterday and earlier)
+            # IMPORTANT: Only scrape boxscores for completed games.
+            # sports_today_et() uses a 4 AM ET boundary, so at 3:30 AM it already
+            # returns the previous calendar date (the last completed sports day).
+            # No need to subtract an additional day.
             if config.boxscores:
-                yesterday = sports_today_et() - timedelta(days=1)
-                boxscore_end = min(end, yesterday)
+                boxscore_cutoff = sports_today_et()
+                boxscore_end = min(end, boxscore_cutoff)
                 games_skipped = 0
 
-                if start > yesterday:
+                if start > boxscore_cutoff:
                     logger.info(
                         "boxscore_scraping_skipped_future_dates",
                         run_id=run_id,
@@ -317,8 +320,7 @@ class ScrapeRunManager:
 
                 # Gap detection: compare DB games for the date range vs enriched count
                 try:
-                    yesterday = sports_today_et() - timedelta(days=1)
-                    bs_end = min(end, yesterday)
+                    bs_end = min(end, boxscore_cutoff)
                     window_start = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
                     window_end = datetime.combine(bs_end, datetime.max.time(), tzinfo=UTC)
                     with get_session() as session:
@@ -427,12 +429,13 @@ class ScrapeRunManager:
                             complete_job_run(pbp_run_id, "error", str(exc))
                 else:
                     # Non-live PBP scraping
-                    # Only scrape PBP for completed games (yesterday and earlier)
-                    pbp_yesterday = sports_today_et() - timedelta(days=1)
-                    pbp_end = min(end, pbp_yesterday)
+                    # Only scrape PBP for completed games.
+                    # sports_today_et() already accounts for the 4 AM boundary.
+                    pbp_cutoff = sports_today_et()
+                    pbp_end = min(end, pbp_cutoff)
                     pbp_events = 0
 
-                    if start > pbp_yesterday:
+                    if start > pbp_cutoff:
                         logger.info(
                             "pbp_skipped_future_dates",
                             run_id=run_id,
