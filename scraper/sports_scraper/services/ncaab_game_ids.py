@@ -75,7 +75,7 @@ def _normalize_ncaab_name_for_matching(name: str) -> str:
 def populate_ncaab_game_ids(
     session: Session,
     *,
-    run_id: int,
+    run_id: int = 0,
     start_date: date,
     end_date: date,
 ) -> int:
@@ -174,9 +174,6 @@ def populate_ncaab_game_ids(
     cbb_by_names: dict[tuple[str, str], tuple[date, int]] = {}
 
     for cg in cbb_games:
-        if cg.status != "final":
-            continue
-
         game_day = cg.game_date.date()
 
         cbb_by_teams[(cg.home_team_id, cg.away_team_id)] = (game_day, cg.game_id)

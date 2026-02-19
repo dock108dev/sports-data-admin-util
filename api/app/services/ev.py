@@ -9,6 +9,7 @@ for a given (league, market_category) pair.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -348,25 +349,27 @@ def compute_ev_for_market(
     annotated_a = _annotate_side(side_a_books, sharp_books, true_prob_a)
     annotated_b = _annotate_side(side_b_books, sharp_books, true_prob_b)
 
-    # Sanity check: compare devigged fair odds against median book price
+    # Sanity check: compare devigged fair probs against median implied prob
     fair_odds_suspect = False
     if true_prob_a is not None and true_prob_b is not None:
-        fair_american_a = implied_to_american(true_prob_a)
-        fair_american_b = implied_to_american(true_prob_b)
+        implied_probs_a: list[float] = []
+        implied_probs_b: list[float] = []
+        for entry in side_a_books:
+            with contextlib.suppress(ValueError):
+                implied_probs_a.append(american_to_implied(entry["price"]))
+        for entry in side_b_books:
+            with contextlib.suppress(ValueError):
+                implied_probs_b.append(american_to_implied(entry["price"]))
 
-        # Compute median price for each side from all books
-        prices_a = sorted(entry["price"] for entry in side_a_books)
-        prices_b = sorted(entry["price"] for entry in side_b_books)
-
-        if prices_a and prices_b:
-            median_a = _median(prices_a)
-            median_b = _median(prices_b)
+        if implied_probs_a and implied_probs_b:
+            median_implied_a = _median(sorted(implied_probs_a))
+            median_implied_b = _median(sorted(implied_probs_b))
 
             divergence = max(
-                abs(fair_american_a - median_a),
-                abs(fair_american_b - median_b),
+                abs(true_prob_a - median_implied_a),
+                abs(true_prob_b - median_implied_b),
             )
-            if divergence > strategy_config.max_fair_odds_divergence:
+            if divergence > strategy_config.max_fair_prob_divergence:
                 fair_odds_suspect = True
 
     return EVComputeResult(

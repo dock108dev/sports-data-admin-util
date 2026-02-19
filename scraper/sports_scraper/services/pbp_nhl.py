@@ -87,7 +87,7 @@ def select_games_for_pbp_nhl_api(
 def populate_nhl_game_ids(
     session: Session,
     *,
-    run_id: int,
+    run_id: int = 0,
     start_date: date,
     end_date: date,
 ) -> int:

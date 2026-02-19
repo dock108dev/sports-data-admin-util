@@ -121,6 +121,36 @@ def poll_live_pbp_task() -> dict:
                 else:
                     nba_nhl_pbp_games.append(game)
 
+            # --- Phase 0: Populate missing external IDs (all leagues) ---
+            if pbp_games:
+                from ..services.ncaab_game_ids import populate_ncaab_game_ids
+                from ..services.pbp_nba import populate_nba_game_ids
+                from ..services.pbp_nhl import populate_nhl_game_ids
+
+                game_dates = [g.game_date.date() for g in pbp_games if g.game_date]
+                if game_dates:
+                    start = min(game_dates)
+                    end = max(game_dates)
+
+                    try:
+                        populate_nba_game_ids(session, start_date=start, end_date=end)
+                    except Exception as exc:
+                        logger.warning("poll_populate_nba_ids_error", error=str(exc))
+
+                    try:
+                        populate_nhl_game_ids(session, start_date=start, end_date=end)
+                    except Exception as exc:
+                        logger.warning("poll_populate_nhl_ids_error", error=str(exc))
+
+                    try:
+                        populate_ncaab_game_ids(session, start_date=start, end_date=end)
+                    except Exception as exc:
+                        logger.warning("poll_populate_ncaab_ids_error", error=str(exc))
+
+                    # Refresh game objects to pick up newly-set external_ids
+                    for game in pbp_games:
+                        session.refresh(game)
+
             if not nba_nhl_pbp_games and not ncaab_pbp_games:
                 logger.info(
                     "poll_live_pbp_heartbeat",
@@ -265,6 +295,7 @@ def poll_live_pbp_task() -> dict:
                     api_calls += ncaab_stats.get("api_calls", 0)
                     pbp_updated += ncaab_stats.get("pbp_updated", 0)
                     boxscores_updated += ncaab_stats.get("boxscores_updated", 0)
+                    transitions.extend(ncaab_stats.get("transitions", []))
                 except _RateLimitError:
                     logger.warning("poll_ncaab_rate_limited")
                     rate_limited = True

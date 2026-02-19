@@ -306,6 +306,75 @@ def _poll_nhl_game_boxscore(session, game) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _update_ncaab_statuses(session, games: list, client) -> list[dict]:
+    """Check CBB API for current game statuses and apply transitions.
+
+    Returns list of transition dicts for logging.
+    """
+    from ..db import db_models
+    from ..persistence.games import resolve_status_transition
+    from ..utils.datetime_utils import now_utc
+
+    game_dates = [g.game_date.date() for g in games if g.game_date]
+    if not game_dates:
+        return []
+
+    start_date = min(game_dates)
+    end_date = max(game_dates)
+
+    try:
+        cbb_games = client.fetch_games(start_date, end_date)
+    except Exception as exc:
+        logger.warning("ncaab_status_fetch_error", error=str(exc))
+        return []
+
+    # Build cbb_game_id -> status map
+    cbb_status_map: dict[int, str] = {}
+    for cg in cbb_games:
+        cbb_status_map[cg.game_id] = cg.status
+
+    transitions: list[dict] = []
+    now = now_utc()
+
+    for game in games:
+        cbb_game_id = (game.external_ids or {}).get("cbb_game_id")
+        if not cbb_game_id:
+            continue
+
+        try:
+            cbb_id = int(cbb_game_id)
+        except (ValueError, TypeError):
+            continue
+
+        api_status = cbb_status_map.get(cbb_id)
+        if not api_status:
+            continue
+
+        new_status = resolve_status_transition(game.status, api_status)
+        if new_status != game.status:
+            old_status = game.status
+            game.status = new_status
+            game.updated_at = now
+
+            if new_status == db_models.GameStatus.final.value and game.end_time is None:
+                game.end_time = now
+
+            transitions.append({
+                "game_id": game.id,
+                "from": old_status,
+                "to": new_status,
+            })
+            logger.info(
+                "poll_ncaab_status_transition",
+                game_id=game.id,
+                from_status=old_status,
+                to_status=new_status,
+                cbb_game_id=cbb_id,
+            )
+
+    return transitions
+
+
 def _poll_ncaab_games_batch(session, games: list) -> dict:
     """Poll PBP and boxscores for NCAAB games in batch.
 
@@ -320,7 +389,10 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
     from ..utils.datetime_utils import now_utc
 
     client = NCAABLiveFeedClient()
-    api_calls = 0
+
+    # Check for status transitions before polling
+    ncaab_transitions = _update_ncaab_statuses(session, games, client)
+    api_calls = 1 if games else 0  # count the fetch_games call
     pbp_updated = 0
     boxscores_updated = 0
 
@@ -442,4 +514,5 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
         "api_calls": api_calls,
         "pbp_updated": pbp_updated,
         "boxscores_updated": boxscores_updated,
+        "transitions": ncaab_transitions,
     }
