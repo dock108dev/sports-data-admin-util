@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .game_stats_helpers import _extract_last_name
+
 # Natural language mappings for play types
 PLAY_TYPE_VERBS = {
     "2pt": "scored inside",
@@ -185,7 +187,6 @@ def normalize_player_name(name: str) -> str:
     # Match patterns like "j. smith" or "J. Dončić" - use \S+ for Unicode support
     if re.match(r"^[A-Za-z]\.\s+\S+", name):
         # Strip initial prefix, then extract last name (handles suffixes)
-        from .game_stats_helpers import _extract_last_name
         without_initial = re.sub(r"^[A-Za-z]\.\s+", "", name)
         return _extract_last_name(without_initial).title()
     return name.title() if name.islower() else name

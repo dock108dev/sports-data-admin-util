@@ -95,7 +95,12 @@ function formatStatWithDelta(
  */
 function MiniBoxDisplay({ miniBox }: { miniBox: BlockMiniBox }) {
   const formatPlayer = (player: BlockPlayerStat, isHockey: boolean) => {
-    const lastName = player.name.split(" ").pop() || player.name;
+    const suffixes = new Set(["jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v", "vi"]);
+    const words = player.name.split(" ");
+    const last = words[words.length - 1];
+    const lastName = words.length > 2 && suffixes.has(last.toLowerCase())
+      ? `${words[words.length - 2]} ${last}`
+      : last || player.name;
 
     if (isHockey) {
       const goals = player.goals || 0;
