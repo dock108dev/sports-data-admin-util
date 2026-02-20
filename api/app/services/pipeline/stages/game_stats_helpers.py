@@ -53,6 +53,23 @@ def _extract_assister_from_description(desc: str) -> str | None:
     return None
 
 
+def _extract_scorer_from_description(desc: str) -> str | None:
+    """Extract the actual scorer from a play description.
+
+    Handles NCAAB-style descriptions where the event's player field may be
+    the assister while the description names the scorer:
+      "Emmanuel Ogbole makes 3-foot dunk (Tariq Francis assists)" → "Emmanuel Ogbole"
+      "Tariq Francis makes 19-foot jumper" → "Tariq Francis"
+      "Tariq Francis makes free throw 1 of 2" → "Tariq Francis"
+
+    Returns the scorer's full name, or None if not parseable.
+    """
+    match = re.match(r"^(.+?)\s+makes?\s+", desc, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
 def _compute_single_team_delta(
     curr_home: int,
     curr_away: int,
@@ -148,21 +165,32 @@ def compute_running_player_stats(
             stats[player] = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0, "reb": 0, "ast": 0}
 
         # Scoring detection: use score delta (works for all data sources)
-        scored = _apply_basketball_scoring(stats[player], score_delta)
+        # Check if event player is actually the assister (NCAAB pattern:
+        # player field = assister, description = "Scorer makes shot (Player assists)")
+        actual_scorer = _extract_scorer_from_description(original_desc) if score_delta > 0 else None
+        if actual_scorer and actual_scorer.lower() != player.lower() and score_delta > 0:
+            # Event player is the assister; credit actual scorer with points
+            if actual_scorer not in stats:
+                stats[actual_scorer] = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0, "reb": 0, "ast": 0}
+            scored = _apply_basketball_scoring(stats[actual_scorer], score_delta)
+            if scored:
+                stats[player]["ast"] += 1
+        else:
+            scored = _apply_basketball_scoring(stats[player], score_delta)
+
+            # Extract and credit assists from scoring plays (NBA format)
+            if scored:
+                assister = _extract_assister_from_description(original_desc)
+                if assister:
+                    if assister not in stats:
+                        stats[assister] = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0, "reb": 0, "ast": 0}
+                    stats[assister]["ast"] += 1
 
         # Non-scoring stats: play_type matching for reb/ast
         if play_type in ("rebound", "offensive_rebound", "defensive_rebound"):
             stats[player]["reb"] += 1
         elif play_type == "assist":
             stats[player]["ast"] += 1
-
-        # Extract and credit assists from scoring plays
-        if scored:
-            assister = _extract_assister_from_description(original_desc)
-            if assister:
-                if assister not in stats:
-                    stats[assister] = {"pts": 0, "fgm": 0, "3pm": 0, "ftm": 0, "reb": 0, "ast": 0}
-                stats[assister]["ast"] += 1
 
         prev_home = curr_home
         prev_away = curr_away

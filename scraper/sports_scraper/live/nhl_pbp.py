@@ -240,7 +240,7 @@ class NHLPbpFetcher:
             team_abbreviation=team_abbr,
             player_id=str(player_id) if player_id else None,
             player_name=player_name,
-            description=self._build_description(type_desc_key, details),
+            description=self._build_description(type_desc_key, details, player_id_to_name),
             home_score=home_score,
             away_score=away_score,
             raw_data=raw_data,
@@ -290,11 +290,28 @@ class NHLPbpFetcher:
 
         return None
 
-    def _build_description(self, type_desc_key: str, details: dict[str, Any]) -> str | None:
+    def _build_description(
+        self,
+        type_desc_key: str,
+        details: dict[str, Any],
+        player_id_to_name: dict[int, str] | None = None,
+    ) -> str | None:
         """Build a human-readable description from event details."""
         if type_desc_key == "goal":
             shot_type = details.get("shotType", "")
-            return f"Goal ({shot_type})" if shot_type else "Goal"
+            parts = [f"Goal ({shot_type})" if shot_type else "Goal"]
+            # Include assist player names so the pipeline can credit them
+            if player_id_to_name:
+                assists: list[str] = []
+                a1_id = parse_int(details.get("assist1PlayerId"))
+                a2_id = parse_int(details.get("assist2PlayerId"))
+                if a1_id and a1_id in player_id_to_name:
+                    assists.append(player_id_to_name[a1_id])
+                if a2_id and a2_id in player_id_to_name:
+                    assists.append(player_id_to_name[a2_id])
+                if assists:
+                    parts.append(f"(assists: {', '.join(assists)})")
+            return " ".join(parts)
         elif type_desc_key == "shot-on-goal":
             shot_type = details.get("shotType", "")
             return f"Shot on goal ({shot_type})" if shot_type else "Shot on goal"
