@@ -24,7 +24,6 @@ omit = [
   "**/alembic/**",
   # Init files (no logic)
   "**/__init__.py",
-  # Database models (removed stale db_models.py — no such file exists)
   # Database connection (requires running database)
   "**/db.py",
   # Configuration (environment-dependent)

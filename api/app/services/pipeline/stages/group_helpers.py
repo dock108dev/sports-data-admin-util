@@ -93,14 +93,18 @@ def select_key_plays(
     consecutive_scorer: int | None = None
     run_points = 0
     run_last_play: int | None = None
+    prev_home: int | None = None
+    prev_away: int | None = None
     for play_id in all_play_ids:
         event = play_id_to_event.get(play_id, {})
         play_type = event.get("play_type", "")
         home_score = event.get("home_score", 0) or 0
         away_score = event.get("away_score", 0) or 0
-        # Determine scoring team (simplified)
-        if play_type and "score" in play_type.lower():
-            scorer = 1 if home_score > away_score else -1
+        # Determine scoring team by score delta from previous play
+        if play_type and "score" in play_type.lower() and prev_home is not None:
+            home_delta = home_score - prev_home
+            away_delta = away_score - prev_away  # type: ignore[operator]
+            scorer = 1 if home_delta > away_delta else -1
             if consecutive_scorer == scorer:
                 run_points += 2  # approximate
                 run_last_play = play_id
@@ -110,6 +114,8 @@ def select_key_plays(
                 consecutive_scorer = scorer
                 run_points = 2
                 run_last_play = play_id
+        prev_home = home_score
+        prev_away = away_score
     if run_points >= 8 and run_last_play is not None:
         run_ending_plays.add(run_last_play)
 
