@@ -159,20 +159,7 @@ Then visit `http://localhost:9000`.
 
 ## CI/CD
 
-### GitHub Secrets Required
-
-| Secret | Description |
-|--------|-------------|
-| `GHCR_TOKEN` | GitHub PAT with `write:packages` |
-| `DEPLOY_HOST` | Server IP address |
-| `DEPLOY_USER` | SSH user (typically `root`) |
-| `DEPLOY_SSH_KEY` | Private SSH key |
-| `DEPLOY_PATH` | Project path on server |
-
-### Behavior
-
-- Deploys only changed services
-- Restarts with `docker compose up -d <service>`
+See [DEPLOYMENT.md](DEPLOYMENT.md) for GitHub secrets, deploy flow, and rollback strategy.
 
 ---
 
@@ -214,37 +201,13 @@ Containers validate required environment at startup and exit if misconfigured.
 
 ## Troubleshooting
 
-### Deployment fails with "permission denied" on SSH
-
-- Verify `DEPLOY_SSH_KEY` contains the complete private key
-- Ensure public key is in server's `~/.ssh/authorized_keys`
-- Check permissions: `chmod 600 ~/.ssh/authorized_keys`
-
-### Images fail to pull from GHCR
-
-- Verify `GHCR_TOKEN` has correct permissions
-- Check if token has expired
-- Test: `echo $GHCR_TOKEN | docker login ghcr.io -u dock108 --password-stdin`
-
-### Service health checks fail
-
-- Check logs: `docker compose --profile prod logs <service>`
-- Verify `infra/.env` variables
-- Check migration logs: `docker compose --profile prod logs migrate`
-
 ### Container keeps restarting
 
 - Check environment validation errors in logs
-- Verify required env vars are set
+- Verify required env vars are set (see [Environment Variables](#environment-variables-production))
 - Check database connectivity
 
----
-
-## Guardrails
-
-- **Do not** edit production files on VM without committing to repo (except `.env`)
-- **Migrations:** Run explicitly via `migrate` service, not at startup
-- **Debug failures:** Start with GitHub Actions logs, then check container logs
+For deployment troubleshooting (SSH, GHCR, health checks), see [DEPLOYMENT.md](DEPLOYMENT.md#troubleshooting).
 
 ---
 

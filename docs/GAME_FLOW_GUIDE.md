@@ -29,7 +29,7 @@ Each game flow contains **3-7 narrative blocks** designed for a **60-90 second r
 | Blocks per game | 3-7 |
 | Words per block | 30-100 (~65 avg) |
 | Sentences per block | 2-4 |
-| Total words | ≤ 500 |
+| Total words | ≤ 600 |
 | Read time | 60-90 seconds |
 
 ---

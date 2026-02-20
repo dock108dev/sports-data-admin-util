@@ -82,7 +82,7 @@ The game flow system converts play-by-play data into block-based narratives thro
 
 ### Architecture
 
-A game flow consists of **4-7 narrative blocks**, each containing 2-4 sentences (~65 words). Blocks are designed for 60-90 second total read time.
+A game flow consists of **3-7 narrative blocks**, each containing 2-4 sentences (~65 words). Blocks are designed for 60-90 second total read time.
 
 ```
 NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GROUP_BLOCKS → RENDER_BLOCKS → VALIDATE_BLOCKS → FINALIZE_MOMENTS
@@ -96,7 +96,7 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GR
 | GENERATE_MOMENTS | Segment plays into moment boundaries |
 | VALIDATE_MOMENTS | Validate moment structure |
 | ANALYZE_DRAMA | Use AI to identify dramatic peak and weight quarters |
-| GROUP_BLOCKS | Group moments into 4-7 narrative blocks (drama-weighted) |
+| GROUP_BLOCKS | Group moments into 3-7 narrative blocks (drama-weighted) |
 | RENDER_BLOCKS | Generate block narratives via OpenAI |
 | VALIDATE_BLOCKS | Enforce guardrail invariants |
 | FINALIZE_MOMENTS | Persist to database |
@@ -112,7 +112,7 @@ A narrative block contains:
 
 ### Key Properties
 
-- **Consumer-focused:** 4-7 blocks, 60-90 second read time
+- **Consumer-focused:** 3-7 blocks, 60-90 second read time
 - **Traceability:** Blocks → Moments → Plays
 - **Semantic roles:** Each block has a narrative purpose
 - **Guardrails enforced:** Hard limits on block count, social post count, word count
