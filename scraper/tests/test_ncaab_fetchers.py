@@ -73,6 +73,46 @@ class TestNCAABPbpFetcher:
         assert result.plays[0].play_type == "JUMP_BALL"
         assert result.plays[1].home_score == 2
 
+    def test_fetch_play_by_play_preserves_zero_scores(self):
+        """Test that score=0 is preserved, not treated as None."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "period": 1,
+                "sequenceNumber": 1,
+                "clock": "20:00",
+                "playType": "JUMP_BALL",
+                "homeScore": 0,
+                "awayScore": 0,
+                "description": "Jump ball",
+            },
+            {
+                "period": 1,
+                "sequenceNumber": 2,
+                "clock": "19:45",
+                "playType": "MADE_2PT",
+                "homeScore": 2,
+                "awayScore": 0,
+                "description": "Player makes 2-point shot",
+            },
+        ]
+        mock_client.get.return_value = mock_response
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        fetcher = NCAABPbpFetcher(mock_client, mock_cache)
+        result = fetcher.fetch_play_by_play(12345)
+
+        assert len(result.plays) == 2
+        # Score 0 must be preserved as 0, not None
+        assert result.plays[0].home_score == 0
+        assert result.plays[0].away_score == 0
+        assert result.plays[1].home_score == 2
+        assert result.plays[1].away_score == 0
+
     def test_fetch_play_by_play_uses_cache(self):
         """Test PBP fetch uses cache when available."""
         mock_client = MagicMock()

@@ -225,15 +225,11 @@ class NCAABPbpFetcher:
                 player_name = player_name or p.get("displayName") or p.get("name")
                 player_id = player_id or p.get("id")
 
-        # Get scores - try multiple keys
-        home_score = (
-            parse_int(play.get("homeScore"))
-            or parse_int(play.get("homeTeamScore"))
-        )
-        away_score = (
-            parse_int(play.get("awayScore"))
-            or parse_int(play.get("awayTeamScore"))
-        )
+        # Get scores - try multiple keys (avoid `or` since 0 is a valid score)
+        _hs = parse_int(play.get("homeScore"))
+        home_score = _hs if _hs is not None else parse_int(play.get("homeTeamScore"))
+        _as = parse_int(play.get("awayScore"))
+        away_score = _as if _as is not None else parse_int(play.get("awayTeamScore"))
 
         # Get description - try multiple keys
         description = (
