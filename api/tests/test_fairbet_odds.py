@@ -1624,9 +1624,9 @@ class TestTryExtrapolatedEv:
         ref_line: float = 6.0,
         ref_price_a: float = -120,
         ref_price_b: float = 105,
-        target_line: float = 8.5,
-        target_price_a: float = 150,
-        target_price_b: float = -180,
+        target_line: float = 7.5,
+        target_price_a: float = 110,
+        target_price_b: float = -110,
         league: str = "NCAAB",
         market_key: str = "alternate_spreads",
         ref_market_key: str = "spreads",
@@ -1706,7 +1706,7 @@ class TestTryExtrapolatedEv:
         return bets_map, sharp_refs, key_a, key_b
 
     def test_spread_extrapolation_success(self):
-        """Extrapolation succeeds for a spread 5 half-points away."""
+        """Extrapolation succeeds for a spread 3 half-points away."""
         bets_map, refs, key_a, key_b = self._make_bets_map_and_refs()
 
         result = _try_extrapolated_ev(key_a, key_b, bets_map, refs)
@@ -1737,9 +1737,9 @@ class TestTryExtrapolatedEv:
         result = _try_extrapolated_ev(key_b, key_a, bets_map, refs)
 
         assert result is None
-        # key_b (team:b at +8.5) is now sel_a — underdog getting 8.5 points
+        # key_b (team:b at +7.5) is now sel_a — underdog getting 7.5 points
         # Reference has team:b at +6.0 covering ~47% (underdog getting fewer points)
-        # At +8.5 (more points), team:b's prob should be HIGHER than at +6.0
+        # At +7.5 (more points), team:b's prob should be HIGHER than at +6.0
         ref_prob_b = refs[(1, "spreads", "game")][0]["probs"]["team:b"]
         assert bets_map[key_b]["true_prob"] > ref_prob_b, (
             f"Underdog at +8.5 ({bets_map[key_b]['true_prob']:.3f}) should have "
@@ -1758,47 +1758,45 @@ class TestTryExtrapolatedEv:
         """Extrapolation for a cross-zero alt spread uses signed line shift.
 
         Reference: team:a at -4.0 (favorite), team:b at +4.0 (underdog).
-        Target: team:a at +1.5 (now underdog!), team:b at -1.5 (now favorite!).
-        The signed shift for team:a is (+1.5 - (-4.0)) = +5.5, which is 11 half-points.
-        Team:a going from giving 4 to getting 1.5 → their cover prob should INCREASE.
+        Target: team:a at -2.5 (still favorite, giving fewer pts), team:b at +2.5.
+        The signed shift for team:a is (-2.5 - (-4.0)) = +1.5, which is 3 half-points.
+        Team:a going from giving 4 to giving 2.5 → their cover prob should INCREASE.
         """
         bets_map, refs, key_a, key_b = self._make_bets_map_and_refs(
             ref_line=4.0,
             ref_price_a=-140,
             ref_price_b=120,
-            target_line=1.5,
-            target_price_a=-260,  # team:a at -1.5 (still favorite, giving fewer pts)
-            target_price_b=220,  # team:b at +1.5 (still underdog, getting fewer pts)
+            target_line=2.5,
+            target_price_a=-200,  # team:a at -2.5 (still favorite, giving fewer pts)
+            target_price_b=170,  # team:b at +2.5 (still underdog, getting fewer pts)
         )
 
-        # key_a = (1, "alternate_spreads", "team:a", -1.5)  (favorite in this market)
-        # key_b = (1, "alternate_spreads", "team:b", 1.5)   (underdog in this market)
-        # But wait — the helper creates (team:a, -target_line) and (team:b, target_line)
-        # So key_a = (team:a, -1.5) and key_b = (team:b, +1.5)
+        # key_a = (1, "alternate_spreads", "team:a", -2.5)  (favorite in this market)
+        # key_b = (1, "alternate_spreads", "team:b", 2.5)   (underdog in this market)
 
         result = _try_extrapolated_ev(key_a, key_b, bets_map, refs)
 
         assert result is None
-        # team:a at reference had signed line -4.0 (giving 4), prob ~58%
-        # team:a at target has signed line -1.5 (giving 1.5)
+        # team:a at reference had signed line -4.0 (giving 4), prob ~56%
+        # team:a at target has signed line -2.5 (giving 2.5)
         # Giving FEWER points → prob should INCREASE (easier to cover)
         ref_prob_a = refs[(1, "spreads", "game")][0]["probs"]["team:a"]
         assert bets_map[key_a]["true_prob"] > ref_prob_a, (
-            f"team:a at -1.5 ({bets_map[key_a]['true_prob']:.3f}) should have "
+            f"team:a at -2.5 ({bets_map[key_a]['true_prob']:.3f}) should have "
             f"higher prob than at -4.0 ({ref_prob_a:.3f})"
         )
 
     def test_total_extrapolation_success(self):
-        """Extrapolation works for totals market."""
+        """Extrapolation works for totals market (3 HP away)."""
         bets_map, refs, key_a, key_b = self._make_bets_map_and_refs(
             market_key="alternate_totals",
             ref_market_key="totals",
             ref_line=220.0,
             ref_price_a=-110,
             ref_price_b=-110,
-            target_line=222.5,
-            target_price_a=120,
-            target_price_b=-140,
+            target_line=221.5,
+            target_price_a=105,
+            target_price_b=-125,
         )
 
         result = _try_extrapolated_ev(key_a, key_b, bets_map, refs)
@@ -1887,40 +1885,41 @@ class TestTryExtrapolatedEv:
         assert result == "reference_missing"
 
     def test_extreme_extrapolation_rejected_by_divergence(self):
-        """6 HP shift produces divergence > 10% threshold → rejected."""
+        """4 HP shift produces divergence > 7% threshold → rejected."""
         # Mainline at 148.0 with Pinnacle -110/-110 (50/50 after devig).
-        # Target at 145.0 → 6 half-points away (3 full points).
-        # NCAAB totals slope=0.12 → logit shift=0.72 → extrap prob for "over"
-        # goes to ~67%, but soft books price it at ~-115 (~53%).
-        # Divergence ≈ 14% > 10% threshold → rejected.
+        # Target at 146.0 → 4 half-points away (2 full points).
+        # NCAAB totals slope=0.06 → logit shift=0.24 → extrap prob for "over"
+        # goes to ~56%, but soft books price it at ~-115 (~53.5%).
+        # We use wide book prices that push divergence above 7%.
         now = datetime.now(UTC)
         bets_map = {
-            # Target pair at 145.0 — no Pinnacle, soft books near -115
-            (1, "alternate_totals", "over", 145.0): {
+            # Target pair at 146.0 — no Pinnacle, soft books price "over" low
+            # Extrap says ~56% but books price it at ~43% → divergence ~13%
+            (1, "alternate_totals", "over", 146.0): {
                 "game_id": 1,
                 "market_key": "alternate_totals",
                 "selection_key": "over",
-                "line_value": 145.0,
+                "line_value": 146.0,
                 "league_code": "NCAAB",
                 "market_category": "alternate",
                 "books": [
-                    BookOdds(book="DraftKings", price=-115, observed_at=now),
-                    BookOdds(book="FanDuel", price=-112, observed_at=now),
-                    BookOdds(book="BetMGM", price=-118, observed_at=now),
+                    BookOdds(book="DraftKings", price=130, observed_at=now),
+                    BookOdds(book="FanDuel", price=125, observed_at=now),
+                    BookOdds(book="BetMGM", price=135, observed_at=now),
                 ],
                 "ev_disabled_reason": "reference_missing",
             },
-            (1, "alternate_totals", "under", 145.0): {
+            (1, "alternate_totals", "under", 146.0): {
                 "game_id": 1,
                 "market_key": "alternate_totals",
                 "selection_key": "under",
-                "line_value": 145.0,
+                "line_value": 146.0,
                 "league_code": "NCAAB",
                 "market_category": "alternate",
                 "books": [
-                    BookOdds(book="DraftKings", price=-105, observed_at=now),
-                    BookOdds(book="FanDuel", price=-108, observed_at=now),
-                    BookOdds(book="BetMGM", price=-102, observed_at=now),
+                    BookOdds(book="DraftKings", price=-150, observed_at=now),
+                    BookOdds(book="FanDuel", price=-145, observed_at=now),
+                    BookOdds(book="BetMGM", price=-155, observed_at=now),
                 ],
                 "ev_disabled_reason": "reference_missing",
             },
@@ -1950,8 +1949,8 @@ class TestTryExtrapolatedEv:
         }
 
         sharp_refs = _build_sharp_reference(bets_map, {"Pinnacle"})
-        key_a = (1, "alternate_totals", "over", 145.0)
-        key_b = (1, "alternate_totals", "under", 145.0)
+        key_a = (1, "alternate_totals", "over", 146.0)
+        key_b = (1, "alternate_totals", "under", 146.0)
 
         result = _try_extrapolated_ev(key_a, key_b, bets_map, sharp_refs)
         assert result == "extrapolation_fair_divergence"
@@ -2544,13 +2543,13 @@ class TestExtrapolationEndToEnd:
             self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 6.0, "Pinnacle", 105),
             self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 6.0, "DraftKings", 100),
             self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 6.0, "FanDuel", 102),
-            # Alternate at -8.5/+8.5 — NO Pinnacle, so _annotate_pair_ev will fail → fallback
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -8.5, "DraftKings", 150, market_category="alternate"),
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -8.5, "FanDuel", 145, market_category="alternate"),
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -8.5, "Caesars", 148, market_category="alternate"),
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 8.5, "DraftKings", -180, market_category="alternate"),
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 8.5, "FanDuel", -175, market_category="alternate"),
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 8.5, "Caesars", -178, market_category="alternate"),
+            # Alternate at -7.5/+7.5 (3 HP from mainline) — NO Pinnacle → fallback
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -7.5, "DraftKings", 110, market_category="alternate"),
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -7.5, "FanDuel", 108, market_category="alternate"),
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -7.5, "Caesars", 112, market_category="alternate"),
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 7.5, "DraftKings", -130, market_category="alternate"),
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 7.5, "FanDuel", -128, market_category="alternate"),
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 7.5, "Caesars", -132, market_category="alternate"),
         ]
 
         self._mock_execute_chain(mock_session, [
@@ -2596,13 +2595,13 @@ class TestExtrapolationEndToEnd:
             self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 6.0, "Pinnacle", 105),
             self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 6.0, "DraftKings", 100),
             self._make_odds_row(mock_game, 1, "spreads", "team:villanova", 6.0, "FanDuel", 102),
-            # Alternate at -8.5/+8.5 (5 half-points away)
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -8.5, "DraftKings", 150, market_category="alternate"),
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -8.5, "FanDuel", 145, market_category="alternate"),
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -8.5, "Caesars", 148, market_category="alternate"),
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 8.5, "DraftKings", -180, market_category="alternate"),
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 8.5, "FanDuel", -175, market_category="alternate"),
-            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 8.5, "Caesars", -178, market_category="alternate"),
+            # Alternate at -7.5/+7.5 (3 half-points away)
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -7.5, "DraftKings", 110, market_category="alternate"),
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -7.5, "FanDuel", 108, market_category="alternate"),
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:seton_hall", -7.5, "Caesars", 112, market_category="alternate"),
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 7.5, "DraftKings", -130, market_category="alternate"),
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 7.5, "FanDuel", -128, market_category="alternate"),
+            self._make_odds_row(mock_game, 1, "alternate_spreads", "team:villanova", 7.5, "Caesars", -132, market_category="alternate"),
         ]
 
         self._mock_execute_chain(mock_session, [
