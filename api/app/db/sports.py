@@ -37,10 +37,10 @@ class GameStatus(str, Enum):
     """
 
     scheduled = "scheduled"
-    pregame = "pregame"      # Within pregame_window_hours of tip_time
+    pregame = "pregame"  # Within pregame_window_hours of tip_time
     live = "live"
     final = "final"
-    archived = "archived"    # Data complete, flows generated, >7 days old
+    archived = "archived"  # Data complete, flows generated, >7 days old
     postponed = "postponed"
     canceled = "canceled"
 
@@ -51,9 +51,7 @@ class SportsLeague(Base):
     __tablename__ = "sports_leagues"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    code: Mapped[str] = mapped_column(
-        String(20), unique=True, nullable=False, index=True
-    )
+    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     level: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -190,15 +188,11 @@ class SportsGame(Base):
     )
     season: Mapped[int] = mapped_column(Integer, nullable=False)
     season_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    game_date: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, index=True
-    )
+    game_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     tip_time: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
-    end_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     home_team_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("sports_teams.id", ondelete="CASCADE"),
@@ -217,25 +211,18 @@ class SportsGame(Base):
     status: Mapped[str] = mapped_column(
         String(20), default=GameStatus.scheduled, nullable=False, index=True
     )
-    source_game_key: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, unique=True
-    )
+    source_game_key: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
     scrape_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    last_scraped_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_scraped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_ingested_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    last_pbp_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_pbp_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_boxscore_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    last_social_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_social_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_odds_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     external_ids: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
     )
@@ -245,9 +232,7 @@ class SportsGame(Base):
     social_scrape_2_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    closed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -368,14 +353,10 @@ class SportsTeamBoxscore(Base):
         nullable=False,
     )
 
-    game: Mapped[SportsGame] = relationship(
-        "SportsGame", back_populates="team_boxscores"
-    )
+    game: Mapped[SportsGame] = relationship("SportsGame", back_populates="team_boxscores")
     team: Mapped[SportsTeam] = relationship("SportsTeam")
 
-    __table_args__ = (
-        UniqueConstraint("game_id", "team_id", name="uq_team_boxscore_game_team"),
-    )
+    __table_args__ = (UniqueConstraint("game_id", "team_id", name="uq_team_boxscore_game_team"),)
 
 
 class SportsPlayerBoxscore(Base):
@@ -412,9 +393,7 @@ class SportsPlayerBoxscore(Base):
         nullable=False,
     )
 
-    game: Mapped[SportsGame] = relationship(
-        "SportsGame", back_populates="player_boxscores"
-    )
+    game: Mapped[SportsGame] = relationship("SportsGame", back_populates="player_boxscores")
     team: Mapped[SportsTeam] = relationship("SportsTeam")
 
     __table_args__ = (
@@ -463,17 +442,11 @@ class SportsGamePlay(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     game: Mapped[SportsGame] = relationship("SportsGame", back_populates="plays")
-    team: Mapped[SportsTeam | None] = relationship(
-        "SportsTeam", foreign_keys=[team_id]
-    )
-    player_ref: Mapped[SportsPlayer | None] = relationship(
-        "SportsPlayer", back_populates="plays"
-    )
+    team: Mapped[SportsTeam | None] = relationship("SportsTeam", foreign_keys=[team_id])
+    player_ref: Mapped[SportsPlayer | None] = relationship("SportsPlayer", back_populates="plays")
 
     __table_args__ = (
         Index("idx_game_plays_game", "game_id"),

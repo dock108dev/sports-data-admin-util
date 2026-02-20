@@ -111,9 +111,7 @@ async def rerun_pipeline(
     executor = PipelineExecutor(session)
 
     count_result = await session.execute(
-        select(func.count(GamePipelineRun.id)).where(
-            GamePipelineRun.game_id == game_id
-        )
+        select(func.count(GamePipelineRun.id)).where(GamePipelineRun.game_id == game_id)
     )
     previous_runs = count_result.scalar() or 0
 
@@ -471,9 +469,7 @@ async def get_game_pipeline_summary(
         )
 
     pbp_result = await session.execute(
-        select(func.count(SportsGamePlay.id)).where(
-            SportsGamePlay.game_id == game_id
-        )
+        select(func.count(SportsGamePlay.id)).where(SportsGamePlay.game_id == game_id)
     )
     has_pbp = (pbp_result.scalar() or 0) > 0
 
@@ -597,9 +593,7 @@ async def get_stage_output(
         status=stage_record.status,
         output_json=output,
         output_summary=summary,
-        generated_at=(
-            stage_record.finished_at.isoformat() if stage_record.finished_at else None
-        ),
+        generated_at=(stage_record.finished_at.isoformat() if stage_record.finished_at else None),
     )
 
 

@@ -49,11 +49,7 @@ def apply_game_filters(
     """Apply filtering options for list endpoints."""
     if leagues:
         league_codes = [code.upper() for code in leagues]
-        stmt = stmt.where(
-            SportsGame.league.has(
-                SportsLeague.code.in_(league_codes)
-            )
-        )
+        stmt = stmt.where(SportsGame.league.has(SportsLeague.code.in_(league_codes)))
 
     if season is not None:
         stmt = stmt.where(SportsGame.season == season)
@@ -62,24 +58,12 @@ def apply_game_filters(
         pattern = f"%{team}%"
         stmt = stmt.where(
             or_(
-                SportsGame.home_team.has(
-                    SportsTeam.name.ilike(pattern)
-                ),
-                SportsGame.away_team.has(
-                    SportsTeam.name.ilike(pattern)
-                ),
-                SportsGame.home_team.has(
-                    SportsTeam.short_name.ilike(pattern)
-                ),
-                SportsGame.away_team.has(
-                    SportsTeam.short_name.ilike(pattern)
-                ),
-                SportsGame.home_team.has(
-                    SportsTeam.abbreviation.ilike(pattern)
-                ),
-                SportsGame.away_team.has(
-                    SportsTeam.abbreviation.ilike(pattern)
-                ),
+                SportsGame.home_team.has(SportsTeam.name.ilike(pattern)),
+                SportsGame.away_team.has(SportsTeam.name.ilike(pattern)),
+                SportsGame.home_team.has(SportsTeam.short_name.ilike(pattern)),
+                SportsGame.away_team.has(SportsTeam.short_name.ilike(pattern)),
+                SportsGame.home_team.has(SportsTeam.abbreviation.ilike(pattern)),
+                SportsGame.away_team.has(SportsTeam.abbreviation.ilike(pattern)),
             )
         )
 
@@ -204,12 +188,9 @@ def build_preview_context(
         for seed in (home_rating.projected_seed, away_rating.projected_seed)
     )
     playoff_implications = all(
-        seed is not None
-        for seed in (home_rating.projected_seed, away_rating.projected_seed)
+        seed is not None for seed in (home_rating.projected_seed, away_rating.projected_seed)
     )
-    national_broadcast = (
-        home_rating.elo + away_rating.elo
-    ) / 2 >= PREVIEW_NATIONAL_ELO_THRESHOLD
+    national_broadcast = (home_rating.elo + away_rating.elo) / 2 >= PREVIEW_NATIONAL_ELO_THRESHOLD
 
     return GameContext(
         game_id=str(game.id),
@@ -286,12 +267,12 @@ def summarize_game(
         has_flow=has_flow,
         play_count=play_count,
         social_post_count=social_post_count,
-        has_required_data=has_boxscore and has_odds,
         scrape_version=getattr(game, "scrape_version", None),
         last_scraped_at=game.last_scraped_at,
         last_ingested_at=game.last_ingested_at,
         last_pbp_at=game.last_pbp_at,
         last_social_at=game.last_social_at,
+        last_odds_at=game.last_odds_at,
         derived_metrics=derived,
         home_team_abbr=game.home_team.abbreviation,
         away_team_abbr=game.away_team.abbreviation,
@@ -302,9 +283,7 @@ def summarize_game(
     )
 
 
-def resolve_team_abbreviation(
-    game: SportsGame, post: TeamSocialPost
-) -> str:
+def resolve_team_abbreviation(game: SportsGame, post: TeamSocialPost) -> str:
     """Resolve a team's abbreviation for a social post entry. Fails fast if not resolvable."""
     if hasattr(post, "team") and post.team and post.team.abbreviation:
         return post.team.abbreviation
@@ -313,9 +292,7 @@ def resolve_team_abbreviation(
             return game.home_team.abbreviation
         if game.away_team and game.away_team.id == post.team_id:
             return game.away_team.abbreviation
-    raise ValueError(
-        f"Cannot resolve team abbreviation for post {post.id} in game {game.id}"
-    )
+    raise ValueError(f"Cannot resolve team abbreviation for post {post.id} in game {game.id}")
 
 
 def _total_interactions(post: TeamSocialPost) -> int:

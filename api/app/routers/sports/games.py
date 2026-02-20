@@ -113,11 +113,7 @@ async def list_games(
 
     # Filter to games with play-by-play data
     if hasPbp:
-        pbp_exists = exists(
-            select(1).where(
-                SportsGamePlay.game_id == SportsGame.id
-            )
-        )
+        pbp_exists = exists(select(1).where(SportsGamePlay.game_id == SportsGame.id))
         base_stmt = base_stmt.where(pbp_exists)
 
     # Safety filtering: exclude games with conflicts or missing team mappings
@@ -129,8 +125,7 @@ async def list_games(
             .where(
                 or_(
                     SportsGameConflict.game_id == SportsGame.id,
-                    SportsGameConflict.conflict_game_id
-                    == SportsGame.id,
+                    SportsGameConflict.conflict_game_id == SportsGame.id,
                 )
             )
         )
@@ -141,11 +136,7 @@ async def list_games(
             SportsGame.away_team_id.isnot(None),
         )
 
-    stmt = (
-        base_stmt.order_by(desc(SportsGame.game_date))
-        .offset(offset)
-        .limit(limit)
-    )
+    stmt = base_stmt.order_by(desc(SportsGame.game_date)).offset(offset).limit(limit)
     results = await session.execute(stmt)
     games = results.scalars().unique().all()
 
@@ -166,11 +157,7 @@ async def list_games(
 
     # Apply hasPbp filter to count query
     if hasPbp:
-        pbp_exists_count = exists(
-            select(1).where(
-                SportsGamePlay.game_id == SportsGame.id
-            )
-        )
+        pbp_exists_count = exists(select(1).where(SportsGamePlay.game_id == SportsGame.id))
         count_stmt = count_stmt.where(pbp_exists_count)
 
     # Apply same safety filtering to count query
@@ -181,8 +168,7 @@ async def list_games(
             .where(
                 or_(
                     SportsGameConflict.game_id == SportsGame.id,
-                    SportsGameConflict.conflict_game_id
-                    == SportsGame.id,
+                    SportsGameConflict.conflict_game_id == SportsGame.id,
                 )
             )
         )
@@ -195,23 +181,13 @@ async def list_games(
     total = (await session.execute(count_stmt)).scalar_one()
 
     with_boxscore_count_stmt = count_stmt.where(
-        exists(
-            select(1).where(
-                SportsTeamBoxscore.game_id == SportsGame.id
-            )
-        )
+        exists(select(1).where(SportsTeamBoxscore.game_id == SportsGame.id))
     )
     with_player_stats_count_stmt = count_stmt.where(
-        exists(
-            select(1).where(
-                SportsPlayerBoxscore.game_id == SportsGame.id
-            )
-        )
+        exists(select(1).where(SportsPlayerBoxscore.game_id == SportsGame.id))
     )
     with_odds_count_stmt = count_stmt.where(
-        exists(
-            select(1).where(SportsGameOdds.game_id == SportsGame.id)
-        )
+        exists(select(1).where(SportsGameOdds.game_id == SportsGame.id))
     )
     with_social_count_stmt = count_stmt.where(
         exists(
@@ -222,9 +198,7 @@ async def list_games(
         )
     )
     with_pbp_count_stmt = count_stmt.where(
-        exists(
-            select(1).where(SportsGamePlay.game_id == SportsGame.id)
-        )
+        exists(select(1).where(SportsGamePlay.game_id == SportsGame.id))
     )
     with_flow_count_stmt = count_stmt.where(
         exists(
@@ -236,9 +210,7 @@ async def list_games(
     )
 
     with_boxscore_count = (await session.execute(with_boxscore_count_stmt)).scalar_one()
-    with_player_stats_count = (
-        await session.execute(with_player_stats_count_stmt)
-    ).scalar_one()
+    with_player_stats_count = (await session.execute(with_player_stats_count_stmt)).scalar_one()
     with_odds_count = (await session.execute(with_odds_count_stmt)).scalar_one()
     with_social_count = (await session.execute(with_social_count_stmt)).scalar_one()
     with_pbp_count = (await session.execute(with_pbp_count_stmt)).scalar_one()
@@ -257,10 +229,7 @@ async def list_games(
         games_with_flow = set()
 
     next_offset = offset + limit if offset + limit < total else None
-    summaries = [
-        summarize_game(game, has_flow=game.id in games_with_flow)
-        for game in games
-    ]
+    summaries = [summarize_game(game, has_flow=game.id in games_with_flow) for game in games]
 
     return GameListResponse(
         games=summaries,
@@ -291,9 +260,7 @@ async def get_game_preview_score(
     )
     game = result.scalar_one_or_none()
     if not game:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
     if not game.home_team or not game.away_team:
         logger.error("Preview score missing team data", extra={"game_id": game_id})
         raise HTTPException(
@@ -336,37 +303,25 @@ async def get_game_preview_score(
 
 
 @router.get("/games/{game_id}", response_model=GameDetailResponse)
-async def get_game(
-    game_id: int, session: AsyncSession = Depends(get_db)
-) -> GameDetailResponse:
+async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> GameDetailResponse:
     result = await session.execute(
         select(SportsGame)
         .options(
             selectinload(SportsGame.league),
             selectinload(SportsGame.home_team),
             selectinload(SportsGame.away_team),
-            selectinload(SportsGame.team_boxscores).selectinload(
-                SportsTeamBoxscore.team
-            ),
-            selectinload(SportsGame.player_boxscores).selectinload(
-                SportsPlayerBoxscore.team
-            ),
+            selectinload(SportsGame.team_boxscores).selectinload(SportsTeamBoxscore.team),
+            selectinload(SportsGame.player_boxscores).selectinload(SportsPlayerBoxscore.team),
             selectinload(SportsGame.odds),
-            selectinload(SportsGame.social_posts).selectinload(
-                TeamSocialPost.team
-            ),
-            selectinload(SportsGame.plays).selectinload(
-                SportsGamePlay.team
-            ),
+            selectinload(SportsGame.social_posts).selectinload(TeamSocialPost.team),
+            selectinload(SportsGame.plays).selectinload(SportsGamePlay.team),
             selectinload(SportsGame.timeline_artifacts),
         )
         .where(SportsGame.id == game_id)
     )
     game = result.scalar_one_or_none()
     if not game:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
 
     team_stats = [serialize_team_stat(box) for box in game.team_boxscores]
 
@@ -395,9 +350,7 @@ async def get_game(
         nhl_goalies = goalies
     else:
         # Non-NHL: use generic player stats
-        player_stats = [
-            serialize_player_stat(player) for player in game.player_boxscores
-        ]
+        player_stats = [serialize_player_stat(player) for player in game.player_boxscores]
 
     odds_entries = [
         OddsEntry(
@@ -431,10 +384,12 @@ async def get_game(
 
     # Check if game has a flow in SportsGameFlow table
     flow_check = await session.execute(
-        select(SportsGameFlow.id).where(
+        select(SportsGameFlow.id)
+        .where(
             SportsGameFlow.game_id == game_id,
             SportsGameFlow.moments_json.isnot(None),
-        ).limit(1)
+        )
+        .limit(1)
     )
     has_flow = flow_check.scalar() is not None
 
@@ -461,6 +416,7 @@ async def get_game(
         last_ingested_at=game.last_ingested_at,
         last_pbp_at=game.last_pbp_at,
         last_social_at=game.last_social_at,
+        last_odds_at=game.last_odds_at,
         has_boxscore=bool(game.team_boxscores),
         has_player_stats=bool(game.player_boxscores),
         has_odds=bool(game.odds),
@@ -532,14 +488,10 @@ async def get_game(
 
 
 @router.post("/games/{game_id}/rescrape", response_model=JobResponse)
-async def rescrape_game(
-    game_id: int, session: AsyncSession = Depends(get_db)
-) -> JobResponse:
+async def rescrape_game(game_id: int, session: AsyncSession = Depends(get_db)) -> JobResponse:
     game = await session.get(SportsGame, game_id)
     if not game:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
     return await enqueue_single_game_run(
         session,
         game,
@@ -550,14 +502,10 @@ async def rescrape_game(
 
 
 @router.post("/games/{game_id}/resync-odds", response_model=JobResponse)
-async def resync_game_odds(
-    game_id: int, session: AsyncSession = Depends(get_db)
-) -> JobResponse:
+async def resync_game_odds(game_id: int, session: AsyncSession = Depends(get_db)) -> JobResponse:
     game = await session.get(SportsGame, game_id)
     if not game:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
     return await enqueue_single_game_run(
         session,
         game,

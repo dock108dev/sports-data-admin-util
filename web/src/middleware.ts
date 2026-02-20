@@ -87,8 +87,9 @@ function unauthorizedResponse(): NextResponse {
   });
 }
 
-// Apply to all routes except static assets, API routes, and healthz
-// API routes use X-API-Key auth, not basic auth
+// Apply to all routes except static assets, API proxy, API routes, and healthz.
+// API routes use X-API-Key auth, not basic auth.
+// The /proxy/ route forwards browser requests to the backend with the API key.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|healthz).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|proxy/|healthz).*)"],
 };

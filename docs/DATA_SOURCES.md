@@ -223,7 +223,18 @@ Requires X session cookies:
 - `X_AUTH_TOKEN` - Auth token from logged-in session
 - `X_CT0` - CSRF token
 
-Get from browser: Dev Tools → Application → Cookies → x.com
+**Getting cookies (Safari):**
+1. Log into x.com in Safari
+2. Develop → Show Web Inspector → Storage → Cookies
+3. Copy values for `auth_token` and `ct0`
+4. Add to `infra/.env`
+
+**Getting cookies (Chrome/Edge):**
+1. Log into x.com
+2. DevTools → Application → Cookies → x.com
+3. Copy `auth_token` and `ct0` values
+
+Cookies expire periodically. If scraping returns empty results, log into x.com again, copy fresh values, update `.env`, and restart the scraper container.
 
 ### Filtering
 - **Retweets**: Excluded via `data-testid="socialContext"` check
@@ -255,9 +266,6 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 - Playwright: `scraper/sports_scraper/social/playwright_collector.py`
 - Registry: `scraper/sports_scraper/social/registry.py`
 - Reveal utils: `api/app/utils/reveal_utils.py` (shared with API)
-
-See also:
-- [X_INTEGRATION.md](X_INTEGRATION.md) - X/Twitter integration architecture
 
 ## Scraper Execution
 

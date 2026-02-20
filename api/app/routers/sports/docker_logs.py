@@ -34,7 +34,7 @@ class DockerLogsResponse(BaseModel):
     logs: str
 
 
-@router.get("/scraper/logs", response_model=DockerLogsResponse)
+@router.get("/logs", response_model=DockerLogsResponse)
 async def get_docker_logs(
     container: str = Query(..., description="Container name"),
     lines: int = Query(1000, ge=1, le=10000, description="Number of tail lines"),
@@ -67,7 +67,11 @@ async def get_docker_logs(
         )
 
     if resp.status_code != 200:
-        body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        body = (
+            resp.json()
+            if resp.headers.get("content-type", "").startswith("application/json")
+            else {}
+        )
         logger.error(
             "Log relay error %s for container %s: %s",
             resp.status_code,

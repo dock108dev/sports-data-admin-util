@@ -198,6 +198,10 @@ class PipelineRunSummary(BaseModel):
     stages_completed: int
     stages_total: int
     progress_percent: int
+    stages: list[StageStatusResponse] = Field(
+        default_factory=list,
+        description="Per-stage detail for expandable UI rows",
+    )
 
 
 class StartPipelineResponse(BaseModel):
@@ -267,9 +271,7 @@ class RunFullPipelineResponse(BaseModel):
     stages_completed: int
     stages_failed: int
     duration_seconds: float | None
-    artifact_id: int | None = Field(
-        description="Timeline artifact ID if finalization succeeded"
-    )
+    artifact_id: int | None = Field(description="Timeline artifact ID if finalization succeeded")
     message: str
 
 

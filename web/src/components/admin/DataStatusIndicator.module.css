@@ -1,0 +1,77 @@
+.wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: help;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dash {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  flex-shrink: 0;
+  background: #94a3b8;
+  border-radius: 1px;
+}
+
+.dotPresent {
+  background: #16a34a;
+}
+
+.dotMissing {
+  background: #dc2626;
+}
+
+.dotStale {
+  background: #d97706;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary, #475569);
+  white-space: nowrap;
+}
+
+/* Expanded mode (game detail) */
+.expanded {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.expandedPresent {
+  background: #ecfdf3;
+  color: #166534;
+}
+
+.expandedMissing {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.expandedStale {
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.expandedNotApplicable {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.count {
+  font-size: var(--font-body-size, 0.875rem);
+  color: var(--text-secondary, #475569);
+  vertical-align: middle;
+  font-weight: 600;
+}

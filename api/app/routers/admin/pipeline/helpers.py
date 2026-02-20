@@ -39,12 +39,8 @@ def build_stage_status(
         stage=stage_record.stage,
         stage_order=stage_order,
         status=stage_record.status,
-        started_at=(
-            stage_record.started_at.isoformat() if stage_record.started_at else None
-        ),
-        finished_at=(
-            stage_record.finished_at.isoformat() if stage_record.finished_at else None
-        ),
+        started_at=(stage_record.started_at.isoformat() if stage_record.started_at else None),
+        finished_at=(stage_record.finished_at.isoformat() if stage_record.finished_at else None),
         duration_seconds=duration,
         error_details=stage_record.error_details,
         has_output=stage_record.output_json is not None,
@@ -202,8 +198,29 @@ def build_run_response(run: GamePipelineRun) -> PipelineRunResponse:
 
 
 def build_run_summary(run: GamePipelineRun) -> PipelineRunSummary:
-    """Build a PipelineRunSummary from a run."""
-    completed = sum(1 for s in run.stages if s.status == "success")
+    """Build a PipelineRunSummary from a run, including per-stage detail."""
+    ordered_stages = PipelineStage.ordered_stages()
+    stage_map = {s.stage: s for s in run.stages}
+
+    stages: list[StageStatusResponse] = []
+    prev_succeeded = True
+    completed = 0
+
+    for i, stage_enum in enumerate(ordered_stages):
+        stage_record = stage_map.get(stage_enum.value)
+        if not stage_record:
+            continue
+
+        is_pending = stage_record.status == "pending"
+        can_execute = prev_succeeded and is_pending
+        stages.append(build_stage_status(stage_record, i + 1, can_execute))
+
+        if stage_record.status == "success":
+            completed += 1
+            prev_succeeded = True
+        elif stage_record.status in ("failed", "running"):
+            prev_succeeded = False
+
     total = len(run.stages)
     progress = int((completed / total) * 100) if total > 0 else 0
 
@@ -220,6 +237,7 @@ def build_run_summary(run: GamePipelineRun) -> PipelineRunSummary:
         stages_completed=completed,
         stages_total=total,
         progress_percent=progress,
+        stages=stages,
     )
 
 

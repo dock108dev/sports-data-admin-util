@@ -87,9 +87,9 @@ export default function IngestionAdminPage() {
   return (
     <div className={styles.container}>
       <div className={styles.titleRow}>
-        <h1>Sports Data Ingestion</h1>
-        <button className={styles.logsButton} onClick={() => setLogsOpen(true)}>
-          View Logs
+        <h1>Runs</h1>
+        <button className={styles.logsButton} onClick={() => setLogsOpen(true)} title="Quick logs">
+          Logs
         </button>
       </div>
       <p className={styles.subtitle}>Configure and monitor boxscore, odds, and social post scrapes.</p>

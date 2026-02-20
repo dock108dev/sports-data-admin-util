@@ -67,5 +67,5 @@ export type DockerLogsResponse = {
 };
 
 export async function fetchDockerLogs(container: string, lines = 1000): Promise<DockerLogsResponse> {
-  return request(`/api/admin/sports/scraper/logs?container=${container}&lines=${lines}`);
+  return request(`/api/admin/sports/logs?container=${container}&lines=${lines}`);
 }

@@ -130,7 +130,7 @@ export default function FairbetOddsPage() {
       const params = new URLSearchParams();
       if (selectedLeague) params.set("league", selectedLeague);
 
-      const res = await fetch(`/api/proxy/api/admin/odds/sync?${params.toString()}`, {
+      const res = await fetch(`/proxy/api/admin/odds/sync?${params.toString()}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });

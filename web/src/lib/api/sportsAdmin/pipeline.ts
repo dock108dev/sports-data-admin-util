@@ -1,26 +1,33 @@
 import { request } from "./client";
 
 export interface PipelineStageStatus {
-  stage_name: string;
-  status: "pending" | "in_progress" | "completed" | "failed" | "skipped";
+  stage: string;
+  stage_order: number;
+  status: "pending" | "running" | "success" | "failed" | "skipped";
   started_at: string | null;
-  completed_at: string | null;
-  error_message: string | null;
-  output_summary: string | null;
+  finished_at: string | null;
+  duration_seconds: number | null;
+  error_details: string | null;
+  has_output: boolean;
+  output_summary: Record<string, unknown> | null;
+  log_count: number;
+  can_execute: boolean;
 }
 
 export interface PipelineRunSummary {
   run_id: number;
   run_uuid: string;
   game_id: number;
-  status: "pending" | "in_progress" | "completed" | "failed";
-  auto_chain: boolean;
   triggered_by: string;
-  started_at: string;
-  completed_at: string | null;
-  stages: PipelineStageStatus[];
+  status: "pending" | "running" | "completed" | "failed" | "paused";
   current_stage: string | null;
-  next_stage: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  stages_completed: number;
+  stages_total: number;
+  progress_percent: number;
+  stages: PipelineStageStatus[];
 }
 
 export interface RunFullPipelineResponse {
@@ -28,30 +35,34 @@ export interface RunFullPipelineResponse {
   run_uuid: string;
   game_id: number;
   status: string;
-  stages: PipelineStageStatus[];
+  stages_completed: number;
+  stages_failed: number;
+  duration_seconds: number | null;
+  artifact_id: number | null;
   message: string;
-  flow_saved: boolean;
-  word_count: number | null;
-  moment_count: number | null;
 }
 
 export interface GamePipelineSummary {
   game_id: number;
   game_date: string;
-  league: string;
   home_team: string;
   away_team: string;
-  status: string;
+  game_status: string;
   has_pbp: boolean;
-  has_flow: boolean;
+  has_timeline_artifact: boolean;
+  latest_artifact_at: string | null;
+  total_pipeline_runs: number;
   latest_run: PipelineRunSummary | null;
-  total_runs: number;
+  can_run_pipeline: boolean;
 }
 
 export interface GamePipelineRunsResponse {
   game_id: number;
-  total_runs: number;
+  game_info: Record<string, unknown>;
   runs: PipelineRunSummary[];
+  total_runs: number;
+  has_successful_run: boolean;
+  latest_artifact_at: string | null;
 }
 
 export async function runFullPipeline(
@@ -69,19 +80,19 @@ export async function runFullPipeline(
 export async function getPipelineRuns(
   gameId: number
 ): Promise<GamePipelineRunsResponse> {
-  return request(`/api/admin/sports/pipeline/${gameId}/runs`);
+  return request(`/api/admin/sports/pipeline/game/${gameId}`);
 }
 
 export async function getPipelineRun(
   runId: number
 ): Promise<PipelineRunSummary> {
-  return request(`/api/admin/sports/pipeline/runs/${runId}`);
+  return request(`/api/admin/sports/pipeline/run/${runId}`);
 }
 
 export async function getGamePipelineSummary(
   gameId: number
 ): Promise<GamePipelineSummary> {
-  return request(`/api/admin/sports/pipeline/${gameId}/summary`);
+  return request(`/api/admin/sports/pipeline/game/${gameId}/summary`);
 }
 
 // Bulk generation types

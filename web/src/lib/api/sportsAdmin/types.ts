@@ -1,3 +1,18 @@
+export type ScrapeRunConfig = {
+  leagueCode?: string;
+  season?: number;
+  seasonType?: string;
+  startDate?: string;
+  endDate?: string;
+  boxscores?: boolean;
+  odds?: boolean;
+  social?: boolean;
+  pbp?: boolean;
+  onlyMissing?: boolean;
+  updatedBefore?: string;
+  books?: string[];
+};
+
 export type ScrapeRunResponse = {
   id: number;
   league_code: string;
@@ -13,7 +28,7 @@ export type ScrapeRunResponse = {
   started_at: string | null;
   finished_at: string | null;
   requested_by: string | null;
-  config: Record<string, unknown> | null;
+  config: ScrapeRunConfig | null;
 };
 
 export type GameSummary = {
@@ -32,12 +47,12 @@ export type GameSummary = {
   hasFlow: boolean;
   playCount: number;
   socialPostCount: number;
-  hasRequiredData: boolean;
   scrapeVersion: number | null;
   lastScrapedAt: string | null;
   lastIngestedAt: string | null;
   lastPbpAt: string | null;
   lastSocialAt: string | null;
+  lastOddsAt: string | null;
   derivedMetrics: Record<string, unknown> | null;
 };
 
@@ -164,6 +179,7 @@ export type AdminGameDetail = {
     lastIngestedAt: string | null;
     lastPbpAt: string | null;
     lastSocialAt: string | null;
+    lastOddsAt: string | null;
     hasBoxscore: boolean;
     hasPlayerStats: boolean;
     hasOdds: boolean;

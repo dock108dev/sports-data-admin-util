@@ -44,14 +44,12 @@
 |-------|-------------|
 | [Odds & FairBet Pipeline](ODDS_AND_FAIRBET.md) | **Start here:** Full pipeline from ingestion to API consumption |
 | [EV Lifecycle](EV_LIFECYCLE.md) | Detailed mathematical walkthrough of EV computation |
-| [EV Infrastructure Review](EV_INFRASTRUCTURE_REVIEW.md) | Historical codebase review: assumptions, gaps, open questions (2026-02-14) |
 
 ## Data Ingestion
 
 | Guide | Description |
 |-------|-------------|
-| [Data Sources](DATA_SOURCES.md) | **Start here:** Where data comes from |
-| [X Integration](X_INTEGRATION.md) | X/Twitter social scraping |
+| [Data Sources](DATA_SOURCES.md) | **Start here:** Where data comes from (boxscores, PBP, odds, social) |
 
 ## Operations
 
