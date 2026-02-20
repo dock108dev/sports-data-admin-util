@@ -24,8 +24,7 @@ omit = [
   "**/alembic/**",
   # Init files (no logic)
   "**/__init__.py",
-  # Database models (schema definitions)
-  "**/db_models.py",
+  # Database models (removed stale db_models.py — no such file exists)
   # Database connection (requires running database)
   "**/db.py",
   # Configuration (environment-dependent)
@@ -47,11 +46,13 @@ omit = [
   "**/services/reveal_levels.py",
   "**/utils/reveal_utils.py",
   # Pipeline stages requiring OpenAI API
-  "**/services/pipeline/stages/render_blocks.py",
   "**/services/openai_client.py",
   # Pipeline stages requiring database
   "**/services/pipeline/stages/finalize_moments.py",
+  "**/services/pipeline/stages/normalize_pbp.py",
   "**/services/pipeline/executor.py",
+  # Backfill script requiring database
+  "**/services/pipeline/backfill_embedded_tweets.py",
   # Sports configuration (constants only)
   "**/config_sports.py",
 ]
