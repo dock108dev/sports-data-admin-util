@@ -190,16 +190,27 @@ function BlockMiniBoxDisplay({ miniBox }: { miniBox: BlockMiniBox }) {
   // Detect hockey by checking for goals stat
   const isHockey = miniBox.home.players.some(p => p.goals !== undefined);
 
+  const fmt = (val: number | undefined, delta: number | undefined, label: string) => {
+    if (!val) return null;
+    return delta ? `${val} ${label} (+${delta})` : `${val} ${label}`;
+  };
+
   const formatPlayer = (p: BlockPlayerStat) => {
     const lastName = p.name.split(" ").pop() || p.name;
     if (isHockey) {
-      const parts: string[] = [];
-      if (p.goals) parts.push(p.deltaGoals ? `${p.goals}G (+${p.deltaGoals})` : `${p.goals}G`);
-      if (p.assists) parts.push(p.deltaAssists ? `${p.assists}A (+${p.deltaAssists})` : `${p.assists}A`);
+      const parts = [
+        fmt(p.goals, p.deltaGoals, "G"),
+        fmt(p.assists, p.deltaAssists, "A"),
+        p.sog ? `${p.sog} SOG` : null,
+      ].filter(Boolean);
       return parts.length ? { name: lastName, stats: parts.join(", ") } : null;
     }
-    if (!p.pts) return null;
-    return { name: lastName, stats: p.deltaPts ? `${p.pts} pts (+${p.deltaPts})` : `${p.pts} pts` };
+    const parts = [
+      fmt(p.pts, p.deltaPts, "pts"),
+      fmt(p.reb, p.deltaReb, "reb"),
+      fmt(p.ast, p.deltaAst, "ast"),
+    ].filter(Boolean);
+    return parts.length ? { name: lastName, stats: parts.join(", ") } : null;
   };
 
   const home = miniBox.home.players.map(formatPlayer).filter(Boolean).slice(0, 3);
