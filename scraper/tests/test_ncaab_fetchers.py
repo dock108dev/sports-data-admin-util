@@ -323,6 +323,148 @@ class TestNCAABPbpFetcher:
 
         assert result.plays == []
 
+    def test_fill_missing_scores_first_scoring_play(self):
+        """First scoring play with null API scores gets filled from points + isHomeTeam."""
+        mock_client = MagicMock()
+        mock_cache = MagicMock()
+        fetcher = NCAABPbpFetcher(mock_client, mock_cache)
+
+        payload = [
+            {
+                "period": 1,
+                "sequenceNumber": 1,
+                "clock": "20:00",
+                "playType": "JumpBall",
+                "team": "Bryant",
+            },
+            {
+                "period": 1,
+                "sequenceNumber": 5,
+                "clock": "18:27",
+                "playType": "Layup",
+                "team": "Bryant",
+                "isHomeTeam": False,
+                "points": 2,
+                "description": "Ty Tabales makes driving layup",
+            },
+            {
+                "period": 1,
+                "sequenceNumber": 8,
+                "clock": "17:54",
+                "playType": "Layup",
+                "team": "Binghamton",
+                "isHomeTeam": True,
+                "points": 2,
+                "homeScore": 2,
+                "awayScore": 2,
+                "description": "Jeremiah Quigley makes driving layup",
+            },
+        ]
+
+        plays = fetcher._parse_pbp_response(payload, 99999)
+
+        assert len(plays) == 3
+        # Jump ball: no points, forward-filled from 0-0 baseline
+        assert plays[0].home_score == 0
+        assert plays[0].away_score == 0
+        # First scoring play: away team scores 2, filled to 0-2
+        assert plays[1].home_score == 0
+        assert plays[1].away_score == 2
+        # Second scoring play: API provides 2-2, used as-is
+        assert plays[2].home_score == 2
+        assert plays[2].away_score == 2
+
+    def test_fill_missing_scores_preserves_api_scores(self):
+        """Plays with API-provided scores are never overwritten."""
+        mock_client = MagicMock()
+        mock_cache = MagicMock()
+        fetcher = NCAABPbpFetcher(mock_client, mock_cache)
+
+        payload = [
+            {
+                "period": 1,
+                "sequenceNumber": 1,
+                "clock": "19:00",
+                "playType": "Layup",
+                "team": "Duke",
+                "isHomeTeam": True,
+                "points": 2,
+                "homeScore": 2,
+                "awayScore": 0,
+                "description": "Duke layup",
+            },
+            {
+                "period": 1,
+                "sequenceNumber": 2,
+                "clock": "18:30",
+                "playType": "JumpShot",
+                "team": "UNC",
+                "isHomeTeam": False,
+                "points": 3,
+                "homeScore": 2,
+                "awayScore": 3,
+                "description": "UNC three pointer",
+            },
+        ]
+
+        plays = fetcher._parse_pbp_response(payload, 99999)
+
+        assert plays[0].home_score == 2
+        assert plays[0].away_score == 0
+        assert plays[1].home_score == 2
+        assert plays[1].away_score == 3
+
+    def test_fill_missing_scores_syncs_to_api_after_drift(self):
+        """API-provided scores correct any drift in running totals."""
+        mock_client = MagicMock()
+        mock_cache = MagicMock()
+        fetcher = NCAABPbpFetcher(mock_client, mock_cache)
+
+        payload = [
+            {
+                "period": 1,
+                "sequenceNumber": 1,
+                "clock": "19:00",
+                "playType": "Layup",
+                "team": "Duke",
+                # Missing points/isHomeTeam — can't compute
+            },
+            {
+                "period": 1,
+                "sequenceNumber": 2,
+                "clock": "18:00",
+                "playType": "JumpShot",
+                "team": "UNC",
+                "isHomeTeam": False,
+                "points": 2,
+                "homeScore": 5,
+                "awayScore": 7,
+                "description": "Mid-game play with API scores",
+            },
+            {
+                "period": 1,
+                "sequenceNumber": 3,
+                "clock": "17:00",
+                "playType": "Layup",
+                "team": "Duke",
+                "isHomeTeam": True,
+                "points": 2,
+                # No API scores — should use synced running total
+            },
+        ]
+
+        plays = fetcher._parse_pbp_response(payload, 99999)
+
+        # First play: no data, gets 0-0
+        assert plays[0].home_score == 0
+        assert plays[0].away_score == 0
+        # Second play: API says 5-7, running total syncs
+        assert plays[1].home_score == 5
+        assert plays[1].away_score == 7
+        # Third play: Duke (home) +2 from synced 5-7 → 7-7
+        assert plays[2].home_score == 7
+        assert plays[2].away_score == 7
+
 
 # ============================================================================
 # Tests for live/ncaab_boxscore.py - NCAABBoxscoreFetcher

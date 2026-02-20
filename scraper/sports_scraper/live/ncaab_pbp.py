@@ -125,7 +125,50 @@ class NCAABPbpFetcher:
         # Sort by play_index to ensure canonical ordering
         plays.sort(key=lambda p: p.play_index)
 
+        # Fill gaps where the CBB API omits scores (common on early plays)
+        self._fill_missing_scores(plays, game_id)
+
         return plays
+
+    def _fill_missing_scores(self, plays: list[NormalizedPlay], game_id: int) -> None:
+        """Fill missing scores using play-level point data and forward-fill.
+
+        The CBB API sometimes omits homeScore/awayScore on early plays.
+        We reconstruct running scores from the ``points`` and ``is_home_team``
+        fields in raw_data, syncing to API-provided scores when available.
+        """
+        home_running = 0
+        away_running = 0
+        filled = 0
+
+        for play in plays:
+            # Add points from this play to running totals (before checking API scores)
+            points = play.raw_data.get("points") if play.raw_data else None
+            is_home = play.raw_data.get("is_home_team") if play.raw_data else None
+
+            if isinstance(points, (int, float)) and points > 0 and is_home is not None:
+                if is_home:
+                    home_running += int(points)
+                else:
+                    away_running += int(points)
+
+            # If API provided scores, trust them and sync running totals
+            if play.home_score is not None and play.away_score is not None:
+                home_running = play.home_score
+                away_running = play.away_score
+            else:
+                # Fill from running totals
+                play.home_score = home_running
+                play.away_score = away_running
+                filled += 1
+
+        if filled:
+            logger.info(
+                "ncaab_pbp_scores_filled",
+                game_id=game_id,
+                filled_count=filled,
+                total_plays=len(plays),
+            )
 
     def _normalize_play(
         self,
@@ -258,6 +301,9 @@ class NCAABPbpFetcher:
         for key in ["shotType", "shotOutcome", "assistPlayerId", "foulType", "shotDistance", "points"]:
             if key in play and play[key] is not None:
                 raw_data[key] = play[key]
+        # Store home/away flag for score reconstruction
+        if play.get("isHomeTeam") is not None:
+            raw_data["is_home_team"] = play.get("isHomeTeam")
 
         normalized = NormalizedPlay(
             play_index=play_index,
