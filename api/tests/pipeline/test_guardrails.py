@@ -32,8 +32,8 @@ class TestConstants:
         assert MAX_BLOCKS == 7
 
     def test_min_blocks(self):
-        """Min blocks is 4."""
-        assert MIN_BLOCKS == 4
+        """Min blocks is 3."""
+        assert MIN_BLOCKS == 3
 
     def test_max_embedded_tweets(self):
         """Max embedded tweets is 5."""

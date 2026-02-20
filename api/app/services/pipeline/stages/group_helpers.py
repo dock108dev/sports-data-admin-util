@@ -21,6 +21,7 @@ def calculate_block_count(
     moments: list[dict[str, Any]],
     lead_changes: int,
     total_plays: int,
+    is_blowout: bool = False,
 ) -> int:
     """Calculate optimal block count based on game intensity.
 
@@ -28,11 +29,16 @@ def calculate_block_count(
         moments: List of validated moments
         lead_changes: Number of lead changes in the game
         total_plays: Total play count
+        is_blowout: Whether the game was a blowout
 
     Returns:
-        Block count in range [4, 7]
+        Block count in range [3, 7]
     """
-    base = MIN_BLOCKS
+    # Blowouts with minimal lead changes get 3 blocks
+    if is_blowout and lead_changes <= 1:
+        return MIN_BLOCKS  # 3
+
+    base = 4  # Default base for non-blowout games
 
     # More lead changes = more dramatic game = more blocks
     if lead_changes >= 3:
@@ -56,8 +62,12 @@ def select_key_plays(
 
     Priority:
     1. Lead change plays
-    2. High-point scoring plays
-    3. Explicitly narrated plays from moments
+    2. Late-game / clutch-time plays (Q4/OT/final 2 minutes)
+    3. Plays ending scoring runs (8+ point run)
+    4. Scoring plays (reduced weight vs lead changes)
+    5. Explicitly narrated plays from moments
+
+    Competitive window: plays in blowout margins (>15) get reduced importance.
     """
     key_plays: list[int] = []
     play_id_to_event: dict[int, dict[str, Any]] = {
@@ -77,6 +87,31 @@ def select_key_plays(
             explicit_plays.extend(
                 moments[idx].get("explicitly_narrated_play_ids", [])
             )
+
+    # Detect scoring runs for run-ending bonus
+    run_ending_plays: set[int] = set()
+    consecutive_scorer: int | None = None
+    run_points = 0
+    run_last_play: int | None = None
+    for play_id in all_play_ids:
+        event = play_id_to_event.get(play_id, {})
+        play_type = event.get("play_type", "")
+        home_score = event.get("home_score", 0) or 0
+        away_score = event.get("away_score", 0) or 0
+        # Determine scoring team (simplified)
+        if play_type and "score" in play_type.lower():
+            scorer = 1 if home_score > away_score else -1
+            if consecutive_scorer == scorer:
+                run_points += 2  # approximate
+                run_last_play = play_id
+            else:
+                if run_points >= 8 and run_last_play is not None:
+                    run_ending_plays.add(run_last_play)
+                consecutive_scorer = scorer
+                run_points = 2
+                run_last_play = play_id
+    if run_points >= 8 and run_last_play is not None:
+        run_ending_plays.add(run_last_play)
 
     # Score each play
     play_scores: dict[int, float] = {}
@@ -104,14 +139,28 @@ def select_key_plays(
         if current_leader != 0:
             prev_leader = current_leader
 
-        # Scoring plays
+        # Scoring plays (reduced from +10 to +5)
         play_type = event.get("play_type", "")
         if play_type and "score" in play_type.lower():
-            score += 10
+            score += 5
 
         # Explicitly narrated
         if play_id in explicit_plays:
             score += 20
+
+        # Clock context: Q4/OT plays get a bonus
+        period = event.get("period", 1) or 1
+        if period >= 4:
+            score += 15
+
+        # Run-ending bonus
+        if play_id in run_ending_plays:
+            score += 25
+
+        # Competitive window: reduce importance in blowout margin
+        margin = abs(home_score - away_score)
+        if margin > 15:
+            score *= 0.5
 
         play_scores[play_id] = score
 

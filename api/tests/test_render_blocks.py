@@ -98,7 +98,7 @@ class TestBuildBlockPrompt:
         assert "RESOLUTION" in prompt
 
     def test_prompt_includes_key_play_descriptions(self) -> None:
-        """Prompt includes descriptions of key plays with team abbreviations."""
+        """Prompt includes descriptions of key plays (without team abbreviation brackets)."""
         blocks = [
             {
                 "block_index": 0,
@@ -116,11 +116,14 @@ class TestBuildBlockPrompt:
 
         prompt = build_block_prompt(blocks, game_context, pbp_events)
 
-        assert "[LAL] LeBron James makes 3-pointer" in prompt
-        assert "[LAL] Anthony Davis dunks" in prompt
+        # Key plays are now pre-processed: team abbreviation brackets removed
+        assert "LeBron James makes 3-pointer" in prompt
+        assert "Anthony Davis dunks" in prompt
+        # Brackets should not appear
+        assert "[LAL]" not in prompt
 
     def test_prompt_key_plays_include_team_abbreviation(self) -> None:
-        """Key plays from different teams show correct team abbreviation prefix."""
+        """Key plays from different teams render without team abbreviation brackets."""
         blocks = [
             {
                 "block_index": 0,
@@ -138,8 +141,11 @@ class TestBuildBlockPrompt:
 
         prompt = build_block_prompt(blocks, game_context, pbp_events)
 
-        assert "[ATL] Young makes 3-pointer" in prompt
-        assert "[BOS] Tatum drives for layup" in prompt
+        # Team abbreviation brackets are now stripped during pre-processing
+        assert "Young makes 3-pointer" in prompt
+        assert "Tatum drives for layup" in prompt
+        assert "[ATL]" not in prompt
+        assert "[BOS]" not in prompt
 
     def test_prompt_key_plays_without_team_abbreviation(self) -> None:
         """Plays without team_abbreviation render without empty brackets."""

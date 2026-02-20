@@ -4,15 +4,15 @@ This stage validates the rendered blocks to ensure they meet all constraints.
 
 VALIDATION RULES
 ================
-1. Block count in range [4, 7]
+1. Block count in range [3, 7]
 2. No role appears more than twice
-3. Each narrative >= 30 words (meaningful content, 2+ sentences)
-4. Each narrative <= 100 words (up to 4 sentences)
+3. Each narrative >= 30 words (meaningful content)
+4. Each narrative <= 120 words (up to 5 sentences)
 5. First block role = SETUP
 6. Last block role = RESOLUTION
 7. Score continuity across block boundaries
-8. Total word count <= 500 (~90-second read target)
-9. Each narrative has 2-4 sentences
+8. Total word count <= 600
+9. Each narrative has 1-5 sentences
 
 GUARANTEES
 ==========
@@ -42,8 +42,8 @@ from .embedded_tweets import load_and_attach_embedded_tweets
 logger = logging.getLogger(__name__)
 
 # Sentence count constraints
-MIN_SENTENCES_PER_BLOCK = 2
-MAX_SENTENCES_PER_BLOCK = 4
+MIN_SENTENCES_PER_BLOCK = 1  # RESOLUTION blocks may be a single powerful sentence
+MAX_SENTENCES_PER_BLOCK = 5  # DECISION_POINT blocks may need more detail
 
 # Common abbreviations that contain periods but don't end sentences
 # Used to avoid false sentence breaks in _count_sentences
@@ -90,7 +90,7 @@ def _count_sentences(text: str) -> int:
 
 
 def _validate_block_count(blocks: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
-    """Validate block count is in range [4, 7]."""
+    """Validate block count is in range [3, 7]."""
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -363,7 +363,7 @@ async def execute_validate_blocks(
     all_warnings: list[str] = []
 
     # 1. Block count
-    output.add_log("Checking Rule 1: Block count in range [4, 7]")
+    output.add_log("Checking Rule 1: Block count in range [3, 7]")
     errors, warnings = _validate_block_count(blocks)
     all_errors.extend(errors)
     all_warnings.extend(warnings)

@@ -34,8 +34,8 @@ class TestValidateBlockCount:
             assert len(errors) == 0
 
     def test_too_few_blocks(self) -> None:
-        """Fewer than 4 blocks is error."""
-        blocks = [{"block_index": i} for i in range(3)]
+        """Fewer than 3 blocks is error."""
+        blocks = [{"block_index": i} for i in range(2)]
         errors, warnings = _validate_block_count(blocks)
         assert len(errors) > 0
         assert "few" in errors[0].lower()

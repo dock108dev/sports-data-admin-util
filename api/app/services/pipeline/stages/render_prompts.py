@@ -5,6 +5,7 @@ Contains prompt templates and builders for OpenAI calls.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .game_stats_helpers import compute_lead_context
@@ -15,16 +16,18 @@ from .render_validation import FORBIDDEN_WORDS
 GAME_FLOW_PASS_PROMPT = """You are given the full Game Flow for a single game as a sequence of blocks.
 
 Each block is already correct and final in structure, timing, and scoring.
-Your job is to lightly rewrite the narrative text so the blocks flow naturally
+Your job is to rewrite for narrative coherence so the blocks flow naturally
 as a single game recap, while keeping each block as its own paragraph.
 
 Rules:
 - Preserve block order and boundaries
-- Do not add or remove events
-- Do not change scores, players, or periods
-- Each block should be 2-4 sentences in one paragraph
+- Preserve scores, players, and chronology. You may restructure sentences for flow.
+- Do not change scores or periods
+- Each block should be 1-5 sentences in one paragraph
 - Improve flow, reduce repetition, and acknowledge the passage of time across blocks
 - No hype, no speculation, no raw play-by-play
+- Ensure player names appear in full only on first mention across the entire flow. Use last name thereafter.
+- Use full team name only once early. Rotate between short name and pronoun.
 - CRITICAL: If the game goes to overtime/OT/shootout, the narrative MUST mention this transition
   (e.g., "the game headed to overtime", "forcing an extra period", "sending it to OT")
 
@@ -240,11 +243,12 @@ def build_block_prompt(
         f"Teams: {away_team} (away) vs {home_team} (home)",
         "",
         "NARRATIVE STRUCTURE:",
-        "- Write 2-4 sentences per block (~50-80 words)",
+        "- Write 1-5 sentences per block (~40-100 words). Vary length by role — RESOLUTION may be brief, DECISION_POINT may be detailed.",
         "- Each block describes a STRETCH of play, not isolated events",
         "- Connect plays with cause-and-effect",
         "- Vary sentence openings",
-        "- Focus on the key plays provided - EVERY key play must be referenced",
+        "- Key plays are provided for context. Reference them when narratively important, but omission is acceptable editorial judgment.",
+        "- Describe stretches and effects, not individual events. Collapse consecutive scoring into runs where appropriate.",
         "",
         "CONNECTING PHRASES TO USE:",
         "- 'building on that', 'in response', 'shortly after'",
@@ -252,17 +256,18 @@ def build_block_prompt(
         "- 'trading baskets', 'the teams exchanged leads'",
         "",
         "ROLE-SPECIFIC GUIDANCE:",
-        "- SETUP: Opening tone, early pace, how the game began",
-        "- MOMENTUM_SHIFT: What triggered the change, how it unfolded over several plays",
-        "- RESPONSE: How the trailing team fought back, the adjustment they made",
-        "- DECISION_POINT: The pivotal stretch that determined the outcome",
-        "- RESOLUTION: How the game concluded, the final sequence",
+        "- SETUP: Establish tone and early shape. May contain zero specific plays. Abstraction encouraged.",
+        "- MOMENTUM_SHIFT: Name the trigger, summarize the effect. Describe the run, not each play.",
+        "- RESPONSE: Bridge narrative rhythm. Team-level summary preferred. Often abstract.",
+        "- DECISION_POINT: Highest specificity. Name exact plays and players. This block earns detail.",
+        "- RESOLUTION: Land the outcome. No re-narration. Final impression + score. May be the shortest block.",
         "",
         "PLAYER NAMES (CRITICAL):",
         "- Use FULL NAME on first mention (e.g., 'Donovan Mitchell', 'Brandon Miller')",
         "- NEVER use initials like 'D. Mitchell' or 'B. Miller' - always spell out first names",
         "- After first mention, use LAST NAME only (e.g., 'Mitchell', 'Miller')",
         "- Common names are fine abbreviated after first mention (Williams, Smith, Jones)",
+        "- Names apply across the entire flow, not per-block. If a player was named in a previous block, use last name only.",
         "",
         "TEAM ATTRIBUTION (CRITICAL):",
         "- On FIRST mention of each player, tie them to their team naturally:",
@@ -270,6 +275,8 @@ def build_block_prompt(
         f"  * \"[Player Name] for {home_team}\" or \"[Player Name] for {away_team}\" (scoring context)",
         "- After first mention, just use last name without team",
         "- Do NOT use parenthetical abbreviations like '(CHA)' or '(NOP)'",
+        "- Full team name once in SETUP. Rotate between short name, nickname, and pronoun thereafter.",
+        "- Avoid repeated 'Full Team Name's Player Name' constructions.",
         "",
         "STYLE REQUIREMENTS:",
         "- Use broadcast tone, not stat-feed prose",
@@ -277,6 +284,13 @@ def build_block_prompt(
         "- NO subjective adjectives (incredible, amazing, unbelievable, insane)",
         "- Describe ACTIONS, not statistics",
         "- Keep individual sentences concise (under 30 words each)",
+        "",
+        "NARRATIVE COMPRESSION:",
+        "- Collapse consecutive scoring into runs (e.g., 'went on a 12-0 run')",
+        "- Use team-level descriptions for collective action",
+        "- Describe momentum through state change, not event enumeration",
+        "- Narrate consequences, not transactions",
+        "- Omitting routine scoring detail is acceptable",
         "",
         "CONTEXTUAL DATA USAGE:",
         "- [Lead:] lines describe how the lead/deficit changed during this block",
@@ -332,15 +346,18 @@ def build_block_prompt(
         # Build period label
         period_label = _build_period_label(league_code, period_start, period_end)
 
-        # Get key play descriptions
+        # Get key play descriptions - pre-processed into consequence-oriented format
         key_plays_desc = []
         for pid in key_play_ids:
             play = play_lookup.get(pid, {})
             desc = play.get("description", "")
             if desc:
-                team_abbr = play.get("team_abbreviation", "")
-                prefix = f"[{team_abbr}] " if team_abbr else ""
-                key_plays_desc.append(f"- {prefix}{desc}")
+                # Remove team abbreviation brackets for cleaner context
+                # Strip execution detail (shot distance, assist counts)
+                # Keep player + action + outcome
+                clean_desc = re.sub(r"^\[.*?\]\s*", "", desc)
+                clean_desc = re.sub(r"\d+'\s*", "", clean_desc)  # shot distance like "26'"
+                key_plays_desc.append(f"- {clean_desc}")
 
         prompt_parts.append(f"\nBlock {block_idx} ({role}, {period_label}):")
         prompt_parts.append(

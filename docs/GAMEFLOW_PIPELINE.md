@@ -18,7 +18,7 @@ The pipeline produces two related outputs:
 
 | Output | Purpose | Count | Content |
 |--------|---------|-------|---------|
-| **Blocks** | Consumer-facing narrative | 4-7 per game | 2-4 sentences (~65 words) |
+| **Blocks** | Consumer-facing narrative | 3-7 per game | 1-5 sentences (~65 words) |
 | **Moments** | Internal traceability | 15-25 per game | Play references, scores, timing |
 
 **Blocks are the primary output.** They contain short narratives with semantic roles (SETUP, MOMENTUM_SHIFT, etc.).
@@ -102,7 +102,7 @@ The pipeline produces two related outputs:
 
 ### 5. GROUP_BLOCKS
 
-**Purpose:** Group validated moments into 4-7 narrative blocks with semantic roles, using drama weights from ANALYZE_DRAMA.
+**Purpose:** Group validated moments into 3-7 narrative blocks with semantic roles, using drama weights from ANALYZE_DRAMA.
 
 **Input:** Validated moments
 **Output:** Blocks with moment assignments and semantic roles
@@ -111,6 +111,9 @@ The pipeline produces two related outputs:
 
 **Block Count Formula:**
 ```python
+# Blowouts with minimal lead changes get 3 blocks
+if is_blowout and lead_changes <= 1: return 3
+
 base = 4
 if lead_changes >= 3: base += 1
 if lead_changes >= 6: base += 1
@@ -157,7 +160,7 @@ return min(base, 7)
 **OpenAI Usage:**
 - All blocks rendered in a single call
 - Input per block: semantic role, score progression, key play descriptions, lead/margin context, top contributors from mini box
-- Output: 2-4 sentences (~65 words) per block
+- Output: 1-5 sentences (~65 words) per block
 
 **Prompt Context:**
 - **Scores:** Score-before → score-after for each block
@@ -171,6 +174,8 @@ return min(base, 7)
 - Each block narrative is role-aware
 - Lead and contributor lines are narrative fuel, not to be quoted verbatim
 - Forbidden phrases: "momentum", "turning point", "crucial", "clutch", etc.
+- Play injection recovery has been removed — key plays are context, not mandatory references
+- Narrative uses consequence-based importance: describe effects, not individual transactions
 
 **Output Schema:**
 ```python
@@ -200,13 +205,13 @@ return min(base, 7)
 **Implementation:** `stages/validate_blocks.py`
 
 **Guardrail Invariants (Non-negotiable):**
-- Block count: 4-7 (hard limits)
+- Block count: 3-7 (hard limits)
 - Embedded social posts: ≤ 5 per game, ≤ 1 per block
-- Total word count: ≤ 500 words (~60-90 second read)
-- Each block: 30-100 words (2-4 sentences)
+- Total word count: ≤ 600 words (~60-90 second read)
+- Each block: 30-120 words (1-5 sentences)
 
 **Validation Rules:**
-1. Block count in range [4, 7]
+1. Block count in range [3, 7]
 2. No role appears more than twice
 3. First block role = SETUP
 4. Last block role = RESOLUTION
@@ -295,7 +300,7 @@ Returns:
 
 ## Key Principles
 
-1. **Blocks are consumer-facing** - 4-7 blocks per game, 60-90 second read time
+1. **Blocks are consumer-facing** - 3-7 blocks per game, 60-90 second read time
 2. **Moments enable traceability** - Every block maps to underlying plays
 3. **Segmentation is mechanical** - Block grouping is deterministic, not AI-driven
 4. **OpenAI is prose-only** - It renders narratives, not structure

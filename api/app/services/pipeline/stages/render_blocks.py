@@ -1,7 +1,7 @@
 """RENDER_BLOCKS Stage Implementation.
 
 This stage generates narrative text for each block using OpenAI.
-Each block gets 2-4 sentences (~65 words) describing that stretch of play.
+Each block gets 1-5 sentences (~65 words) describing that stretch of play.
 
 TWO-PASS RENDERING
 ==================
@@ -11,9 +11,9 @@ TWO-PASS RENDERING
 RENDERING RULES
 ===============
 The prompt REQUIRES:
-- 2-4 sentences per block (~50-80 words)
+- 1-5 sentences per block (~40-100 words)
 - Role-aware context (SETUP, MOMENTUM_SHIFT, etc.)
-- Focus on key plays identified
+- Consequence-based narration over play enumeration
 - Concrete actions and score changes
 - SportsCenter-style prose describing stretches of play
 
@@ -37,8 +37,8 @@ VALIDATION
 ==========
 Post-generation validation ensures:
 - Non-empty narratives
-- Word count within limits (30-100 words)
-- Sentence count within limits (2-4 sentences)
+- Word count within limits (30-120 words)
+- Sentence count within limits (1-5 sentences)
 - No forbidden language
 """
 
@@ -53,9 +53,7 @@ from ...openai_client import get_openai_client
 from ..models import StageInput, StageOutput
 from .render_helpers import (
     check_overtime_mention,
-    check_play_coverage,
     detect_overtime_info,
-    generate_play_injection_sentence,
     inject_overtime_mention,
 )
 from .render_prompts import build_block_prompt, build_game_flow_pass_prompt
@@ -151,7 +149,7 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
     """Execute the RENDER_BLOCKS stage.
 
     Generates narrative text for each block using OpenAI.
-    Each block gets 2-4 sentences (~65 words).
+    Each block gets 1-5 sentences (~65 words).
 
     Args:
         stage_input: Input containing previous_output with grouped blocks
@@ -266,33 +264,6 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         # If hard errors, fail fast
         if errors:
             raise ValueError(f"Block {block_idx} validation failed: {errors}")
-
-        # Check play coverage - ensure key plays are mentioned
-        key_play_ids = block.get("key_play_ids", [])
-        if key_play_ids:
-            missing_ids, missing_events = check_play_coverage(
-                narrative, key_play_ids, pbp_events
-            )
-
-            if missing_events:
-                output.add_log(
-                    f"Block {block_idx}: {len(missing_events)} key plays not referenced, injecting sentences",
-                    level="warning",
-                )
-
-                # Recovery strategy: inject deterministic sentences for missing plays
-                for event in missing_events:
-                    injection = generate_play_injection_sentence(event, game_context)
-                    if injection:
-                        narrative = narrative.rstrip()
-                        if not narrative.endswith("."):
-                            narrative += "."
-                        narrative = f"{narrative} {injection}"
-                        play_injections += 1
-
-                all_warnings.append(
-                    f"Block {block_idx}: Injected {len(missing_events)} play references"
-                )
 
         # Check and inject overtime mention if needed
         league_code = game_context.get("sport", "NBA")
