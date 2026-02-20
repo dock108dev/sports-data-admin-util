@@ -22,11 +22,11 @@ curl -H "X-API-Key: YOUR_KEY" \
 
 ## What You Get
 
-Each game flow contains **4-7 narrative blocks** designed for a **60-90 second read**.
+Each game flow contains **3-7 narrative blocks** designed for a **60-90 second read**.
 
 | Property | Value |
 |----------|-------|
-| Blocks per game | 4-7 |
+| Blocks per game | 3-7 |
 | Words per block | 30-100 (~65 avg) |
 | Sentences per block | 2-4 |
 | Total words | ≤ 500 |

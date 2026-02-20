@@ -15,7 +15,6 @@ from app.services.pipeline.stages.render_prompts import (
     GAME_FLOW_PASS_PROMPT,
     _format_contributors_line,
     _format_lead_line,
-    _format_player_stat,
     build_block_prompt,
     build_game_flow_pass_prompt,
 )
