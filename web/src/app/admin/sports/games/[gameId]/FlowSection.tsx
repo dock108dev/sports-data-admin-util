@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchGameFlow } from "@/lib/api/sportsAdmin";
-import type { GameFlowResponse, GameFlowMoment, GameFlowPlay, MomentBoxScore, MomentPlayerStat, NarrativeBlock } from "@/lib/api/sportsAdmin/gameFlowTypes";
+import type { GameFlowResponse, GameFlowMoment, GameFlowPlay, MomentBoxScore, MomentPlayerStat, NarrativeBlock, BlockMiniBox, BlockPlayerStat } from "@/lib/api/sportsAdmin/gameFlowTypes";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { formatPeriodRange } from "@/lib/utils/periodLabels";
 import styles from "./styles.module.css";
@@ -186,6 +186,57 @@ function MomentCard({ moment, momentIndex, plays }: MomentCardProps) {
   );
 }
 
+function BlockMiniBoxDisplay({ miniBox }: { miniBox: BlockMiniBox }) {
+  // Detect hockey by checking for goals stat
+  const isHockey = miniBox.home.players.some(p => p.goals !== undefined);
+
+  const formatPlayer = (p: BlockPlayerStat) => {
+    const lastName = p.name.split(" ").pop() || p.name;
+    if (isHockey) {
+      const parts: string[] = [];
+      if (p.goals) parts.push(p.deltaGoals ? `${p.goals}G (+${p.deltaGoals})` : `${p.goals}G`);
+      if (p.assists) parts.push(p.deltaAssists ? `${p.assists}A (+${p.deltaAssists})` : `${p.assists}A`);
+      return parts.length ? { name: lastName, stats: parts.join(", ") } : null;
+    }
+    if (!p.pts) return null;
+    return { name: lastName, stats: p.deltaPts ? `${p.pts} pts (+${p.deltaPts})` : `${p.pts} pts` };
+  };
+
+  const home = miniBox.home.players.map(formatPlayer).filter(Boolean).slice(0, 3);
+  const away = miniBox.away.players.map(formatPlayer).filter(Boolean).slice(0, 3);
+  if (!home.length && !away.length) return null;
+
+  return (
+    <div className={styles.miniBoxScore}>
+      <div className={styles.miniBoxScoreTeams}>
+        {/* Away team first (matches score display convention) */}
+        <div className={styles.miniBoxScoreTeam}>
+          <div className={styles.miniBoxScoreHeader}>
+            <span className={styles.miniBoxScoreTeamName}>{miniBox.away.team}</span>
+          </div>
+          {away.map((p, i) => (
+            <div key={i} className={styles.miniBoxScorePlayer}>
+              <span className={styles.miniBoxScorePlayerName}>{p!.name}</span>
+              <span className={styles.miniBoxScorePlayerStats}>{p!.stats}</span>
+            </div>
+          ))}
+        </div>
+        <div className={styles.miniBoxScoreTeam}>
+          <div className={styles.miniBoxScoreHeader}>
+            <span className={styles.miniBoxScoreTeamName}>{miniBox.home.team}</span>
+          </div>
+          {home.map((p, i) => (
+            <div key={i} className={styles.miniBoxScorePlayer}>
+              <span className={styles.miniBoxScorePlayerName}>{p!.name}</span>
+              <span className={styles.miniBoxScorePlayerStats}>{p!.stats}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function FlowSection({ gameId, hasFlow, leagueCode }: FlowSectionProps) {
   const [story, setStory] = useState<GameFlowResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -269,6 +320,7 @@ export function FlowSection({ gameId, hasFlow, leagueCode }: FlowSectionProps) {
                     <div className={styles.momentNarrative}>
                       {block.narrative || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>No narrative</span>}
                     </div>
+                    {block.miniBox && <BlockMiniBoxDisplay miniBox={block.miniBox} />}
                   </div>
                 ))}
               </div>
