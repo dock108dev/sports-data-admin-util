@@ -18,7 +18,7 @@ function getFieldStatus(game: GameSummary, field: DataField) {
   const tsMap: Record<DataField, string | null | undefined> = {
     boxscore: game.lastScrapedAt,
     playerStats: game.lastScrapedAt,
-    odds: game.lastOddsAt ?? game.lastScrapedAt,
+    odds: game.lastOddsAt,
     social: game.lastSocialAt,
     pbp: game.lastPbpAt,
     flow: game.lastScrapedAt,

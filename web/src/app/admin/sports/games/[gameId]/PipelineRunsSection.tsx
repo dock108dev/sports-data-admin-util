@@ -42,11 +42,11 @@ function formatTime(ts: string): string {
 
 function stageStatusColor(status: PipelineStageStatus["status"]): string {
   switch (status) {
-    case "completed":
+    case "success":
       return "#16a34a";
     case "failed":
       return "#dc2626";
-    case "in_progress":
+    case "running":
       return "#2563eb";
     case "skipped":
       return "#94a3b8";
@@ -62,8 +62,10 @@ function runStatusLabel(status: PipelineRunSummary["status"]): { text: string; c
       return { text: "Completed", color: "#16a34a" };
     case "failed":
       return { text: "Failed", color: "#dc2626" };
-    case "in_progress":
+    case "running":
       return { text: "Running", color: "#2563eb" };
+    case "paused":
+      return { text: "Paused", color: "#f59e0b" };
     case "pending":
     default:
       return { text: "Pending", color: "#94a3b8" };
@@ -181,8 +183,8 @@ export function PipelineRunsSection({ gameId }: PipelineRunsSectionProps) {
                         {statusInfo.text}
                       </span>
                     </td>
-                    <td>{formatTime(run.started_at)}</td>
-                    <td>{formatDuration(run.started_at, run.completed_at)}</td>
+                    <td>{run.started_at ? formatTime(run.started_at) : "—"}</td>
+                    <td>{run.started_at ? formatDuration(run.started_at, run.finished_at) : "—"}</td>
                     <td style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
                       {isExpanded ? "▲" : "▼"}
                     </td>
@@ -193,7 +195,7 @@ export function PipelineRunsSection({ gameId }: PipelineRunsSectionProps) {
                         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
                           {PIPELINE_STAGES.map((stageName, idx) => {
                             const stage = run.stages.find(
-                              (s) => s.stage_name === stageName
+                              (s) => s.stage === stageName
                             );
                             const color = stage
                               ? stageStatusColor(stage.status)
@@ -202,7 +204,7 @@ export function PipelineRunsSection({ gameId }: PipelineRunsSectionProps) {
                             return (
                               <div key={stageName} style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
                                 <span
-                                  title={`${stageName}: ${label}${stage?.error_message ? ` — ${stage.error_message}` : ""}`}
+                                  title={`${stageName}: ${label}${stage?.error_details ? ` — ${stage.error_details}` : ""}`}
                                   style={{
                                     display: "inline-block",
                                     padding: "0.2rem 0.5rem",
@@ -223,13 +225,13 @@ export function PipelineRunsSection({ gameId }: PipelineRunsSectionProps) {
                             );
                           })}
                         </div>
-                        {run.stages.some((s) => s.error_message) && (
+                        {run.stages.some((s) => s.error_details) && (
                           <div style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "#dc2626" }}>
                             {run.stages
-                              .filter((s) => s.error_message)
+                              .filter((s) => s.error_details)
                               .map((s) => (
-                                <div key={s.stage_name}>
-                                  <strong>{s.stage_name}:</strong> {s.error_message}
+                                <div key={s.stage}>
+                                  <strong>{s.stage}:</strong> {s.error_details}
                                 </div>
                               ))}
                           </div>

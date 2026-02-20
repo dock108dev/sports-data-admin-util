@@ -261,12 +261,12 @@ List games with filtering and pagination.
       "hasFlow": true,
       "playCount": 450,
       "socialPostCount": 12,
-      "hasRequiredData": true,
       "scrapeVersion": 2,
       "lastScrapedAt": "2026-01-23T05:00:00Z",
       "lastIngestedAt": "2026-01-23T05:00:00Z",
       "lastPbpAt": "2026-01-23T05:00:00Z",
       "lastSocialAt": "2026-01-23T04:00:00Z",
+      "lastOddsAt": "2026-01-23T05:00:00Z",
       "homeTeamAbbr": "LAL",
       "awayTeamAbbr": "GSW",
       "homeTeamColorLight": "#FDB927",
@@ -623,7 +623,7 @@ Get run details.
 
 Cancel pending job.
 
-### `GET /scraper/logs/{container}`
+### `GET /logs`
 
 Stream recent logs from a Docker container.
 
@@ -1005,12 +1005,12 @@ interface GameSummary {
   hasFlow: boolean;
   playCount: number;
   socialPostCount: number;
-  hasRequiredData: boolean;
   scrapeVersion: number | null;
   lastScrapedAt: string | null;
   lastIngestedAt: string | null;
   lastPbpAt: string | null;
   lastSocialAt: string | null;
+  lastOddsAt: string | null;
   derivedMetrics: Record<string, any> | null;  // Server-computed metrics (40+)
   homeTeamAbbr: string | null;       // Clash-resolved team abbreviation
   awayTeamAbbr: string | null;

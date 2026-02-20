@@ -34,7 +34,7 @@ class DockerLogsResponse(BaseModel):
     logs: str
 
 
-@router.get("/scraper/logs", response_model=DockerLogsResponse)
+@router.get("/logs", response_model=DockerLogsResponse)
 async def get_docker_logs(
     container: str = Query(..., description="Container name"),
     lines: int = Query(1000, ge=1, le=10000, description="Number of tail lines"),
@@ -90,13 +90,3 @@ async def get_docker_logs(
         lines=data["lines"],
         logs=data["logs"],
     )
-
-
-# ── Alias: /logs is the canonical admin path; /scraper/logs is legacy ───
-@router.get("/logs", response_model=DockerLogsResponse, include_in_schema=False)
-async def get_docker_logs_alias(
-    container: str = Query(..., description="Container name"),
-    lines: int = Query(1000, ge=1, le=10000, description="Number of tail lines"),
-) -> DockerLogsResponse:
-    """Alias route — delegates to canonical handler."""
-    return await get_docker_logs(container=container, lines=lines)

@@ -7,16 +7,10 @@ export const ROUTES = {
   /** Admin dashboard / overview */
   OVERVIEW: "/admin",
 
-  // Artifact-oriented aliases
   GAMES: "/admin/sports/browser",
   RUNS: "/admin/sports/ingestion",
   PIPELINES: "/admin/sports/flow-generator",
   LOGS: "/admin/sports/logs",
-
-  // Original names kept for existing references
-  SPORTS_BROWSER: "/admin/sports/browser",
-  SPORTS_INGESTION: "/admin/sports/ingestion",
-  SPORTS_FLOW_GENERATOR: "/admin/sports/flow-generator",
 
   FAIRBET_ODDS: "/admin/fairbet/odds",
   SPORTS_GAME: (id: number | string) => `/admin/sports/games/${id}`,

@@ -53,7 +53,7 @@ export default function GameDetailClient() {
     const fields: { label: string; field: DataField; hasData: boolean; ts?: string | null }[] = [
       { label: "Boxscore", field: "boxscore", hasData: g.hasBoxscore, ts: g.lastScrapedAt },
       { label: "Player stats", field: "playerStats", hasData: g.hasPlayerStats, ts: g.lastScrapedAt },
-      { label: "Odds", field: "odds", hasData: g.hasOdds, ts: g.lastOddsAt ?? g.lastScrapedAt },
+      { label: "Odds", field: "odds", hasData: g.hasOdds, ts: g.lastOddsAt },
       { label: `Social (${g.socialPostCount || 0})`, field: "social", hasData: g.hasSocial, ts: g.lastSocialAt },
       { label: `PBP (${g.playCount || 0})`, field: "pbp", hasData: g.hasPbp, ts: g.lastPbpAt },
       { label: "Flow", field: "flow", hasData: g.hasFlow, ts: g.lastScrapedAt },

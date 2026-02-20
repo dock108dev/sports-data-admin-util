@@ -89,11 +89,7 @@ def _normalize_config(raw: dict[str, Any] | None) -> dict[str, Any] | None:
     """Parse raw JSONB config through ScrapeRunConfig for consistent camelCase."""
     if not raw:
         return raw
-    try:
-        return ScrapeRunConfig(**raw).model_dump(by_alias=True)
-    except Exception:
-        # Config may be from an older format — return as-is rather than crash.
-        return raw
+    return ScrapeRunConfig(**raw).model_dump(by_alias=True)
 
 
 def serialize_run(run: SportsScrapeRun, league_code: str) -> ScrapeRunResponse:

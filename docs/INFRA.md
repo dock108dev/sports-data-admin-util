@@ -40,7 +40,7 @@ docker compose --profile prod up -d --build
 
 ### Log Relay Sidecar
 
-Container log viewing is provided by a dedicated `log-relay` sidecar instead of mounting the Docker socket into the API container. The sidecar is the **only** container with Docker socket access and has no database credentials, API keys, or external network access (internal network only). It exposes a single `GET /logs?container=X&lines=N` endpoint on port 9999 with a hardcoded container allowlist. The API calls this sidecar over HTTP to serve the `GET /scraper/logs` endpoint.
+Container log viewing is provided by a dedicated `log-relay` sidecar instead of mounting the Docker socket into the API container. The sidecar is the **only** container with Docker socket access and has no database credentials, API keys, or external network access (internal network only). It exposes a single `GET /logs?container=X&lines=N` endpoint on port 9999 with a hardcoded container allowlist. The API calls this sidecar over HTTP to serve the `GET /logs` endpoint.
 
 ## URLs
 
