@@ -411,8 +411,8 @@ def build_block_prompt(
                     clean_desc = f"({team_name}) {desc[bracket_match.end():]}"
                 else:
                     clean_desc = desc
-                # Strip shot distance like "26'"
-                clean_desc = re.sub(r"\d+'\s*", "", clean_desc)
+                # Strip shot distance like "26'" but not "3's" (three-pointers)
+                clean_desc = re.sub(r"\b\d+'(?![a-zA-Z])\s*", "", clean_desc)
                 key_plays_desc.append(f"- {clean_desc}")
 
         prompt_parts.append(f"\nBlock {block_idx} ({role}, {period_label}):")
