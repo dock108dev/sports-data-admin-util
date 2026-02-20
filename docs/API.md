@@ -70,6 +70,10 @@ The API key is configured via the `API_KEY` environment variable on the server.
 
 The `/healthz` endpoint does not require authentication to support infrastructure monitoring.
 
+### Request Correlation
+
+Every response includes an `X-Request-ID` header for log correlation. If the client sends an `X-Request-ID` header, the same value is echoed back; otherwise the server generates a UUID. Use this ID when reporting issues to trace the request through server logs.
+
 ---
 
 ## Date & Time Convention

@@ -2,7 +2,43 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-18] - Current
+## [2026-02-19] - Current
+
+### Admin Console Refactor
+
+- **Sidebar reorganization**: Nav restructured into General (Overview), Data (Games, Runs, Pipelines, Odds), and System (Logs) sections with renamed page titles
+- **Structured status indicators**: Replaced green/red dots with 4-state indicators (`present`, `missing`, `stale`, `not_applicable`) that explain *why* data is missing, with contextual tooltips and staleness thresholds
+- **Pipeline runs section**: Game detail page now shows pipeline run history with expandable per-stage progress, error details, and a "Run Pipeline" action button
+- **Run origin and task badges**: Scrape runs table shows origin (Manual/Scheduled/Rescrape/Odds Sync) and task breakdown (Box/Odds/Social/PBP) badges derived from existing `scraper_type`, `requested_by`, and `config` fields
+- **Logs page**: Full-width container log viewer at `/admin/sports/logs` with container tabs, line count selector, text search, auto-refresh, and log level highlighting
+
+### API Alignment
+
+- **`last_odds_at` column**: New nullable timestamp on `sports_games` tracking when odds were last synced for a game; set during odds persistence, exposed in `GameSummary` and game detail responses
+- **X-Request-ID correlation**: `StructuredLoggingMiddleware` now generates or echoes `X-Request-ID` headers for request tracing through server logs
+- **Pipeline run enrichment**: `PipelineRunSummary` now includes per-stage detail (`stages` field) so the admin UI can render expandable rows without extra fetches
+- **Config normalization**: Scrape run config JSONB is parsed through `ScrapeRunConfig` for consistent camelCase serialization
+
+### Legacy Code Elimination
+
+- **Route aliases deleted**: Removed 3 pipeline route aliases and 1 docker logs route alias (`include_in_schema=False` endpoints that delegated to canonical handlers)
+- **Computed field shims deleted**: Removed 7 `computed_field` compatibility aliases from pipeline models (`stage_name`, `completed_at`, `error_message`, `auto_chain`, `next_stage`)
+- **Docker logs path consolidated**: `/scraper/logs` (legacy) removed; `/logs` is the single canonical path
+- **Config fallback removed**: `_normalize_config()` no longer silently falls back to raw JSONB on parse failure — fails fast
+- **Frontend fallbacks removed**: `lastOddsAt ?? lastScrapedAt` replaced with direct `lastOddsAt`; duplicate route constants (`SPORTS_BROWSER`, `SPORTS_INGESTION`, `SPORTS_FLOW_GENERATOR`) deleted
+- **`has_required_data` removed**: Dropped from schema, backend, and frontend
+
+### Documentation
+
+- **EV_INFRASTRUCTURE_REVIEW.md deleted**: Historical snapshot (2026-02-14) whose findings were already acted upon; superseded by ODDS_AND_FAIRBET.md
+- **X_INTEGRATION.md deleted**: Content fully consolidated into DATA_SOURCES.md social section (authentication instructions merged)
+- **ARCHITECTURE.md**: Updated admin UI features to reflect refactored console
+- **API.md**: Added X-Request-ID correlation documentation; updated `GameSummary` fields (`lastOddsAt` added, `hasRequiredData` removed); logs endpoint path corrected to `/logs`
+- **INDEX.md**: Removed entries for deleted docs
+
+---
+
+## [2026-02-18]
 
 ### EV Annotation Enhancements
 

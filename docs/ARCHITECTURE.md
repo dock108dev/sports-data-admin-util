@@ -59,9 +59,12 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 
 - **Framework:** React + TypeScript + Next.js
 - **Features:**
-  - Data browser (games, plays, stats)
-  - Scraper run management
-  - Data quality monitoring
+  - Game browser with structured status indicators (present/missing/stale/not applicable)
+  - Scraper run management with origin badges and task breakdown
+  - Pipeline management (run, monitor, inspect stage outputs)
+  - Cross-book odds comparison (FairBet viewer)
+  - Container log viewer
+  - Game detail with boxscores, player stats, odds, social, PBP, flow, and pipeline runs
 
 ### 4. Database (PostgreSQL)
 **Purpose:** Single source of truth
@@ -171,6 +174,9 @@ Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). R
 - `GET /api/admin/sports/scraper/runs` - List scraper runs
 - `POST /api/admin/sports/scraper/runs` - Create scraper run
 - `GET /api/admin/sports/pipeline/run/{id}` - Pipeline run status
+- `GET /api/admin/sports/pipeline/game/{id}` - Pipeline runs for a game
+- `POST /api/admin/sports/pipeline/{id}/run-full` - Execute full pipeline
+- `GET /api/admin/sports/logs` - Container log viewer
 
 ### FairBet Endpoints
 - `GET /api/fairbet/odds` — Cross-book odds comparison with EV annotations
