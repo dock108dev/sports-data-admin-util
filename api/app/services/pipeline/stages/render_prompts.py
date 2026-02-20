@@ -68,11 +68,11 @@ def _format_contributors_line(
     mini_box: dict[str, Any] | None,
     league_code: str,
 ) -> str | None:
-    """Format a contributors line from block mini_box data.
+    """Format a contributors line from block mini_box data, grouped by team.
 
     Reads blockStars and matches to player delta stats.
-    NBA/NCAAB: "Contributors: Young +6 pts, Tatum +5 pts"
-    NHL: "Contributors: Pastrnak +1g/+1a, Marchand +1g"
+    NBA/NCAAB: "Contributors: Hawks — Young +8 pts | Celtics — Tatum +5 pts"
+    NHL: "Contributors: Bruins — Pastrnak +1g/+1a, Marchand +1g"
 
     Returns None if mini_box is None, empty, or has no block stars.
     """
@@ -83,40 +83,55 @@ def _format_contributors_line(
     if not block_stars:
         return None
 
-    # Build lookup from last name -> player dict
-    all_players: dict[str, dict[str, Any]] = {}
+    block_stars_set = set(block_stars)
+
+    # Build per-side lookup: last_name -> (player_dict, team_name)
+    side_parts: dict[str, list[str]] = {}  # team_name -> stat strings
     for side in ("home", "away"):
         team_data = mini_box.get(side, {})
+        team_name = team_data.get("team", side.capitalize())
         for player in team_data.get("players", []):
             name = player.get("name", "")
             last_name = name.split()[-1] if " " in name else name
-            all_players[last_name] = player
+            if last_name not in block_stars_set:
+                continue
 
-    parts: list[str] = []
-    for star in block_stars:
-        player = all_players.get(star)
-        if not player:
-            continue
+            stat_str = _format_player_stat(last_name, player, league_code)
+            if stat_str:
+                side_parts.setdefault(team_name, []).append(stat_str)
 
-        if league_code == "NHL":
-            g = player.get("deltaGoals", 0)
-            a = player.get("deltaAssists", 0)
-            stat_parts = []
-            if g:
-                stat_parts.append(f"+{g}g")
-            if a:
-                stat_parts.append(f"+{a}a")
-            if stat_parts:
-                parts.append(f"{star} {'/'.join(stat_parts)}")
-        else:  # NBA / NCAAB
-            delta_pts = player.get("deltaPts", 0)
-            if delta_pts:
-                parts.append(f"{star} +{delta_pts} pts")
-
-    if not parts:
+    if not side_parts:
         return None
 
-    return f"Contributors: {', '.join(parts)}"
+    # Join per-team groups with " | "
+    team_sections = [
+        f"{team} \u2014 {', '.join(stats)}"
+        for team, stats in side_parts.items()
+    ]
+    return f"Contributors: {' | '.join(team_sections)}"
+
+
+def _format_player_stat(
+    last_name: str,
+    player: dict[str, Any],
+    league_code: str,
+) -> str | None:
+    """Format a single player's stat string for the contributors line."""
+    if league_code == "NHL":
+        g = player.get("deltaGoals", 0)
+        a = player.get("deltaAssists", 0)
+        stat_parts = []
+        if g:
+            stat_parts.append(f"+{g}g")
+        if a:
+            stat_parts.append(f"+{a}a")
+        if stat_parts:
+            return f"{last_name} {'/'.join(stat_parts)}"
+    else:  # NBA / NCAAB
+        delta_pts = player.get("deltaPts", 0)
+        if delta_pts:
+            return f"{last_name} +{delta_pts} pts"
+    return None
 
 
 def build_game_flow_pass_prompt(
@@ -221,7 +236,16 @@ def build_block_prompt(
     """
     home_team = game_context.get("home_team_name", "Home")
     away_team = game_context.get("away_team_name", "Away")
+    home_abbrev = game_context.get("home_team_abbrev", "")
+    away_abbrev = game_context.get("away_team_abbrev", "")
     league_code = game_context.get("sport", "NBA")
+
+    # Build abbreviation -> full team name lookup for key plays
+    abbrev_to_team: dict[str, str] = {}
+    if home_abbrev:
+        abbrev_to_team[home_abbrev.upper()] = home_team
+    if away_abbrev:
+        abbrev_to_team[away_abbrev.upper()] = away_team
 
     # Check if any block involves overtime
     has_any_overtime = any(
@@ -237,10 +261,37 @@ def build_block_prompt(
         e["play_index"]: e for e in pbp_events if "play_index" in e
     }
 
+    # Build player roster from PBP events
+    home_players: set[str] = set()
+    away_players: set[str] = set()
+    for evt in pbp_events:
+        name = evt.get("player_name", "")
+        evt_abbrev = (evt.get("team_abbreviation") or "").upper()
+        if not name or not evt_abbrev:
+            continue
+        if home_abbrev and evt_abbrev == home_abbrev.upper():
+            home_players.add(name)
+        elif away_abbrev and evt_abbrev == away_abbrev.upper():
+            away_players.add(name)
+
     prompt_parts = [
         "Generate broadcast-quality narrative blocks for a game recap.",
         "",
         f"Teams: {away_team} (away) vs {home_team} (home)",
+    ]
+
+    # Add player roster so OpenAI has authoritative player -> team mapping
+    if home_players or away_players:
+        prompt_parts.append("")
+        prompt_parts.append("ROSTERS:")
+        if home_players:
+            roster = ", ".join(sorted(home_players)[:10])
+            prompt_parts.append(f"{home_team} (home): {roster}")
+        if away_players:
+            roster = ", ".join(sorted(away_players)[:10])
+            prompt_parts.append(f"{away_team} (away): {roster}")
+
+    prompt_parts.extend([
         "",
         "NARRATIVE STRUCTURE:",
         "- Write 1-5 sentences per block (~40-100 words). Vary length by role — RESOLUTION may be brief, DECISION_POINT may be detailed.",
@@ -346,17 +397,22 @@ def build_block_prompt(
         # Build period label
         period_label = _build_period_label(league_code, period_start, period_end)
 
-        # Get key play descriptions - pre-processed into consequence-oriented format
+        # Get key play descriptions - replace team abbreviation brackets with
+        # full team names so OpenAI knows which team each play belongs to
         key_plays_desc = []
         for pid in key_play_ids:
             play = play_lookup.get(pid, {})
             desc = play.get("description", "")
             if desc:
-                # Remove team abbreviation brackets for cleaner context
-                # Strip execution detail (shot distance, assist counts)
-                # Keep player + action + outcome
-                clean_desc = re.sub(r"^\[.*?\]\s*", "", desc)
-                clean_desc = re.sub(r"\d+'\s*", "", clean_desc)  # shot distance like "26'"
+                bracket_match = re.match(r"^\[([^\]]+)\]\s*", desc)
+                if bracket_match:
+                    abbrev = bracket_match.group(1).upper()
+                    team_name = abbrev_to_team.get(abbrev, bracket_match.group(1))
+                    clean_desc = f"({team_name}) {desc[bracket_match.end():]}"
+                else:
+                    clean_desc = desc
+                # Strip shot distance like "26'"
+                clean_desc = re.sub(r"\d+'\s*", "", clean_desc)
                 key_plays_desc.append(f"- {clean_desc}")
 
         prompt_parts.append(f"\nBlock {block_idx} ({role}, {period_label}):")

@@ -17,6 +17,7 @@ from app.services.pipeline.stages.render_prompts import (
     GAME_FLOW_PASS_PROMPT,
     _format_contributors_line,
     _format_lead_line,
+    _format_player_stat,
     build_block_prompt,
     build_game_flow_pass_prompt,
 )
@@ -98,7 +99,7 @@ class TestBuildBlockPrompt:
         assert "RESOLUTION" in prompt
 
     def test_prompt_includes_key_play_descriptions(self) -> None:
-        """Prompt includes descriptions of key plays (without team abbreviation brackets)."""
+        """Prompt includes descriptions of key plays with team names."""
         blocks = [
             {
                 "block_index": 0,
@@ -108,22 +109,26 @@ class TestBuildBlockPrompt:
                 "key_play_ids": [1, 2],
             }
         ]
-        game_context = {"home_team_name": "Home", "away_team_name": "Away"}
+        game_context = {
+            "home_team_name": "Lakers",
+            "away_team_name": "Celtics",
+            "home_team_abbrev": "LAL",
+            "away_team_abbrev": "BOS",
+        }
         pbp_events = [
-            {"play_index": 1, "description": "LeBron James makes 3-pointer", "team_abbreviation": "LAL"},
-            {"play_index": 2, "description": "Anthony Davis dunks", "team_abbreviation": "LAL"},
+            {"play_index": 1, "description": "[LAL] LeBron James makes 3-pointer", "team_abbreviation": "LAL"},
+            {"play_index": 2, "description": "[LAL] Anthony Davis dunks", "team_abbreviation": "LAL"},
         ]
 
         prompt = build_block_prompt(blocks, game_context, pbp_events)
 
-        # Key plays are now pre-processed: team abbreviation brackets removed
-        assert "LeBron James makes 3-pointer" in prompt
-        assert "Anthony Davis dunks" in prompt
-        # Brackets should not appear
+        # Key plays should have team name in parentheses, not brackets
+        assert "(Lakers) LeBron James makes 3-pointer" in prompt
+        assert "(Lakers) Anthony Davis dunks" in prompt
         assert "[LAL]" not in prompt
 
-    def test_prompt_key_plays_include_team_abbreviation(self) -> None:
-        """Key plays from different teams render without team abbreviation brackets."""
+    def test_prompt_key_plays_include_team_name(self) -> None:
+        """Key plays from different teams render with full team names in parentheses."""
         blocks = [
             {
                 "block_index": 0,
@@ -133,17 +138,23 @@ class TestBuildBlockPrompt:
                 "key_play_ids": [1, 2],
             }
         ]
-        game_context = {"home_team_name": "Hawks", "away_team_name": "Celtics"}
+        game_context = {
+            "home_team_name": "Hawks",
+            "away_team_name": "Celtics",
+            "home_team_abbrev": "ATL",
+            "away_team_abbrev": "BOS",
+        }
         pbp_events = [
-            {"play_index": 1, "description": "Young makes 3-pointer", "team_abbreviation": "ATL"},
-            {"play_index": 2, "description": "Tatum drives for layup", "team_abbreviation": "BOS"},
+            {"play_index": 1, "description": "[ATL] Young makes 3-pointer", "team_abbreviation": "ATL"},
+            {"play_index": 2, "description": "[BOS] Tatum drives for layup", "team_abbreviation": "BOS"},
         ]
 
         prompt = build_block_prompt(blocks, game_context, pbp_events)
 
-        # Team abbreviation brackets are now stripped during pre-processing
-        assert "Young makes 3-pointer" in prompt
-        assert "Tatum drives for layup" in prompt
+        # Full team names should appear in parentheses
+        assert "(Hawks) Young makes 3-pointer" in prompt
+        assert "(Celtics) Tatum drives for layup" in prompt
+        # Abbreviation brackets should NOT appear
         assert "[ATL]" not in prompt
         assert "[BOS]" not in prompt
 
@@ -785,7 +796,7 @@ class TestFormatContributorsLine:
         assert _format_contributors_line(mini_box, "NBA") is None
 
     def test_nba_format(self) -> None:
-        """NBA contributors formatted with pts."""
+        """NBA contributors formatted with pts, grouped by team."""
         mini_box = {
             "blockStars": ["Young", "Tatum"],
             "home": {
@@ -804,11 +815,14 @@ class TestFormatContributorsLine:
         result = _format_contributors_line(mini_box, "NBA")
         assert result is not None
         assert "Contributors:" in result
+        assert "Hawks" in result
+        assert "Celtics" in result
         assert "Young +8 pts" in result
         assert "Tatum +5 pts" in result
+        assert "|" in result  # team separator
 
     def test_nhl_format(self) -> None:
-        """NHL contributors formatted with goals and assists."""
+        """NHL contributors formatted with goals and assists, grouped by team."""
         mini_box = {
             "blockStars": ["Pastrnak", "Marchand"],
             "home": {
@@ -823,6 +837,7 @@ class TestFormatContributorsLine:
         result = _format_contributors_line(mini_box, "NHL")
         assert result is not None
         assert "Contributors:" in result
+        assert "Bruins" in result
         assert "Pastrnak +1g/+1a" in result
         assert "Marchand +1g" in result
 
@@ -859,7 +874,7 @@ class TestLeadAndContributorsInPrompt:
         assert "Lead:" in prompt
 
     def test_contributors_line_appears_in_prompt(self) -> None:
-        """Contributors line appears when mini_box has block stars."""
+        """Contributors line appears when mini_box has block stars, grouped by team."""
         blocks = [
             {
                 "block_index": 0,
@@ -886,6 +901,7 @@ class TestLeadAndContributorsInPrompt:
         }
         prompt = build_block_prompt(blocks, game_context, [])
         assert "Contributors:" in prompt
+        assert "Hawks" in prompt
         assert "Young +6 pts" in prompt
 
     def test_no_lead_line_when_scores_unchanged(self) -> None:
@@ -948,3 +964,253 @@ class TestLeadAndContributorsInPrompt:
         prompt = build_block_prompt(blocks, game_context, [])
         assert "CONTEXTUAL DATA USAGE:" in prompt
         assert "narrative fuel" in prompt
+
+
+class TestContributorsGroupedByTeam:
+    """Tests for team-grouped contributors formatting."""
+
+    def test_single_team_contributors(self) -> None:
+        """Only home-side contributors produce single-team output without separator."""
+        mini_box = {
+            "blockStars": ["Young", "Hunter"],
+            "home": {
+                "team": "Hawks",
+                "players": [
+                    {"name": "Trae Young", "deltaPts": 8, "pts": 18},
+                    {"name": "De'Andre Hunter", "deltaPts": 4, "pts": 10},
+                ],
+            },
+            "away": {"team": "Celtics", "players": []},
+        }
+        result = _format_contributors_line(mini_box, "NBA")
+        assert result is not None
+        assert "Hawks" in result
+        assert "Young +8 pts" in result
+        assert "Hunter +4 pts" in result
+        # No pipe separator since only one team
+        assert "|" not in result
+
+    def test_both_teams_contributors(self) -> None:
+        """Contributors from both teams produce pipe-separated output."""
+        mini_box = {
+            "blockStars": ["Young", "Tatum"],
+            "home": {
+                "team": "Hawks",
+                "players": [
+                    {"name": "Trae Young", "deltaPts": 8, "pts": 18},
+                ],
+            },
+            "away": {
+                "team": "Celtics",
+                "players": [
+                    {"name": "Jayson Tatum", "deltaPts": 5, "pts": 12},
+                ],
+            },
+        }
+        result = _format_contributors_line(mini_box, "NBA")
+        assert result is not None
+        assert "Hawks" in result
+        assert "Celtics" in result
+        assert "|" in result
+
+    def test_name_collision_across_teams(self) -> None:
+        """Two players with same last name on different teams both appear."""
+        mini_box = {
+            "blockStars": ["Williams"],
+            "home": {
+                "team": "Hawks",
+                "players": [
+                    {"name": "Patrick Williams", "deltaPts": 6, "pts": 14},
+                ],
+            },
+            "away": {
+                "team": "Celtics",
+                "players": [
+                    {"name": "Grant Williams", "deltaPts": 4, "pts": 8},
+                ],
+            },
+        }
+        result = _format_contributors_line(mini_box, "NBA")
+        assert result is not None
+        # Both teams should have a Williams entry
+        assert "Hawks" in result
+        assert "Celtics" in result
+
+
+class TestPlayerRosterInPrompt:
+    """Tests for the ROSTERS section in block prompts."""
+
+    def test_prompt_includes_player_roster(self) -> None:
+        """ROSTERS section present when PBP events have player/team data."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [],
+            }
+        ]
+        game_context = {
+            "home_team_name": "Rutgers Scarlet Knights",
+            "away_team_name": "Penn State Nittany Lions",
+            "home_team_abbrev": "RUT",
+            "away_team_abbrev": "PSU",
+            "sport": "NCAAB",
+        }
+        pbp_events = [
+            {"play_index": 1, "player_name": "Emmanuel Ogbole", "team_abbreviation": "RUT", "description": "dunk"},
+            {"play_index": 2, "player_name": "Dylan Grant", "team_abbreviation": "RUT", "description": "3pt"},
+            {"play_index": 3, "player_name": "Kayden Mingo", "team_abbreviation": "PSU", "description": "layup"},
+            {"play_index": 4, "player_name": "Freddie Dilione V", "team_abbreviation": "PSU", "description": "jumper"},
+        ]
+
+        prompt = build_block_prompt(blocks, game_context, pbp_events)
+
+        assert "ROSTERS:" in prompt
+        assert "Rutgers Scarlet Knights (home):" in prompt
+        assert "Penn State Nittany Lions (away):" in prompt
+        assert "Emmanuel Ogbole" in prompt
+        assert "Dylan Grant" in prompt
+        assert "Kayden Mingo" in prompt
+        assert "Freddie Dilione V" in prompt
+
+    def test_no_roster_without_abbrevs(self) -> None:
+        """No ROSTERS section when game_context lacks abbreviations."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [],
+            }
+        ]
+        game_context = {
+            "home_team_name": "Home",
+            "away_team_name": "Away",
+            "sport": "NBA",
+        }
+        pbp_events = [
+            {"play_index": 1, "player_name": "LeBron James", "team_abbreviation": "LAL", "description": "dunk"},
+        ]
+
+        prompt = build_block_prompt(blocks, game_context, pbp_events)
+
+        # No roster because abbreviations are empty strings by default
+        assert "ROSTERS:" not in prompt
+
+    def test_roster_limits_to_10_players(self) -> None:
+        """Roster is limited to 10 players per team."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [],
+            }
+        ]
+        game_context = {
+            "home_team_name": "Hawks",
+            "away_team_name": "Celtics",
+            "home_team_abbrev": "ATL",
+            "away_team_abbrev": "BOS",
+            "sport": "NBA",
+        }
+        # Create 15 unique home players
+        pbp_events = [
+            {"play_index": i, "player_name": f"Player{i}", "team_abbreviation": "ATL", "description": "play"}
+            for i in range(15)
+        ]
+
+        prompt = build_block_prompt(blocks, game_context, pbp_events)
+
+        assert "ROSTERS:" in prompt
+        # Count how many "Player" entries appear in the home roster line
+        roster_section = prompt.split("ROSTERS:")[1].split("\n\n")[0]
+        home_line = [l for l in roster_section.split("\n") if "Hawks" in l][0]
+        player_count = home_line.count("Player")
+        assert player_count == 10
+
+
+class TestKeyPlayTeamNames:
+    """Tests for team name replacement in key play descriptions."""
+
+    def test_bracket_replaced_with_team_name(self) -> None:
+        """[ATL] bracket replaced with (Hawks) in key play."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [1],
+            }
+        ]
+        game_context = {
+            "home_team_name": "Hawks",
+            "away_team_name": "Celtics",
+            "home_team_abbrev": "ATL",
+            "away_team_abbrev": "BOS",
+        }
+        pbp_events = [
+            {"play_index": 1, "description": "[ATL] Young makes 3-pointer"},
+        ]
+
+        prompt = build_block_prompt(blocks, game_context, pbp_events)
+
+        assert "(Hawks) Young makes 3-pointer" in prompt
+        assert "[ATL]" not in prompt
+
+    def test_unknown_bracket_falls_back_to_raw(self) -> None:
+        """Unknown abbreviation in brackets falls back to raw abbreviation text."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [1],
+            }
+        ]
+        game_context = {
+            "home_team_name": "Hawks",
+            "away_team_name": "Celtics",
+            "home_team_abbrev": "ATL",
+            "away_team_abbrev": "BOS",
+        }
+        pbp_events = [
+            {"play_index": 1, "description": "[UNK] Player does something"},
+        ]
+
+        prompt = build_block_prompt(blocks, game_context, pbp_events)
+
+        # Falls back to raw bracket content
+        assert "(UNK) Player does something" in prompt
+        assert "[UNK]" not in prompt
+
+    def test_no_bracket_passes_through(self) -> None:
+        """Play without brackets passes through unchanged."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [1],
+            }
+        ]
+        game_context = {
+            "home_team_name": "Hawks",
+            "away_team_name": "Celtics",
+            "home_team_abbrev": "ATL",
+            "away_team_abbrev": "BOS",
+        }
+        pbp_events = [
+            {"play_index": 1, "description": "End of period"},
+        ]
+
+        prompt = build_block_prompt(blocks, game_context, pbp_events)
+
+        assert "- End of period" in prompt
