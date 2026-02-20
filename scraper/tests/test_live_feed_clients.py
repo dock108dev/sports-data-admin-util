@@ -421,6 +421,102 @@ class TestNCAABLiveFeedClient:
         assert games[0].status == "live"
 
     @patch("sports_scraper.live.ncaab.settings")
+    def test_fetch_games_in_progress_underscore_status(self, mock_settings):
+        """CBB API returns 'in_progress' (underscore) for live games."""
+        mock_settings.cbb_stats_api_key = "test-api-key"
+        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "id": 12347,
+                "startDate": "2024-01-15T19:00:00Z",
+                "status": "in_progress",
+                "homeTeamId": 5,
+                "homeTeam": "Kansas",
+                "awayTeamId": 6,
+                "awayTeam": "Missouri",
+                "homePoints": 38,
+                "awayPoints": 35,
+                "neutralSite": False,
+            }
+        ]
+
+        client = NCAABLiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_games(date(2024, 1, 15), date(2024, 1, 15))
+
+        assert len(games) == 1
+        assert games[0].status == "live"
+
+    @patch("sports_scraper.live.ncaab.settings")
+    def test_fetch_games_postponed_status(self, mock_settings):
+        """CBB API returns 'postponed' for postponed games."""
+        mock_settings.cbb_stats_api_key = "test-api-key"
+        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "id": 12348,
+                "startDate": "2024-01-15T19:00:00Z",
+                "status": "postponed",
+                "homeTeamId": 7,
+                "homeTeam": "UNC",
+                "awayTeamId": 8,
+                "awayTeam": "NC State",
+                "homePoints": 0,
+                "awayPoints": 0,
+                "neutralSite": False,
+            }
+        ]
+
+        client = NCAABLiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_games(date(2024, 1, 15), date(2024, 1, 15))
+
+        assert len(games) == 1
+        assert games[0].status == "postponed"
+
+    @patch("sports_scraper.live.ncaab.settings")
+    def test_fetch_games_cancelled_status(self, mock_settings):
+        """CBB API returns 'cancelled' for cancelled games."""
+        mock_settings.cbb_stats_api_key = "test-api-key"
+        mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "id": 12349,
+                "startDate": "2024-01-15T19:00:00Z",
+                "status": "cancelled",
+                "homeTeamId": 9,
+                "homeTeam": "Virginia",
+                "awayTeamId": 10,
+                "awayTeam": "Virginia Tech",
+                "homePoints": 0,
+                "awayPoints": 0,
+                "neutralSite": False,
+            }
+        ]
+
+        client = NCAABLiveFeedClient()
+        client.client = MagicMock()
+        client.client.get.return_value = mock_response
+
+        games = client.fetch_games(date(2024, 1, 15), date(2024, 1, 15))
+
+        assert len(games) == 1
+        assert games[0].status == "canceled"
+
+    @patch("sports_scraper.live.ncaab.settings")
     def test_fetch_games_failure(self, mock_settings):
         mock_settings.cbb_stats_api_key = "test-api-key"
         mock_settings.scraper_config.html_cache_dir = "/tmp/test-cache"

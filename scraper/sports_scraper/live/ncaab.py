@@ -199,8 +199,12 @@ class NCAABLiveFeedClient:
         status_raw = game.get("status") or ""
         if status_raw.lower() in ["final", "complete", "completed"]:
             status = "final"
-        elif status_raw.lower() in ["live", "in progress", "inprogress"]:
+        elif status_raw.lower() in ["live", "in progress", "inprogress", "in_progress"]:
             status = "live"
+        elif status_raw.lower() in ["postponed"]:
+            status = "postponed"
+        elif status_raw.lower() in ["canceled", "cancelled"]:
+            status = "canceled"
         else:
             status = "scheduled"
 
