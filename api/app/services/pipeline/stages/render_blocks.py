@@ -126,8 +126,8 @@ async def _apply_game_level_flow_pass(
     # Build lookup by block index
     narrative_lookup: dict[int, str] = {}
     for item in block_items:
-        idx = item.get("i") if item.get("i") is not None else item.get("block_index")
-        narrative = item.get("n") or item.get("narrative", "")
+        idx = item.get("i")
+        narrative = item.get("n", "")
         if idx is not None and narrative:
             narrative_lookup[idx] = narrative
 
@@ -234,8 +234,8 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
     # Build lookup by block index
     narrative_lookup: dict[int, str] = {}
     for item in block_items:
-        idx = item.get("i") if item.get("i") is not None else item.get("block_index")
-        narrative = item.get("n") or item.get("narrative", "")
+        idx = item.get("i")
+        narrative = item.get("n", "")
         if idx is not None:
             narrative_lookup[idx] = narrative
 
@@ -243,7 +243,6 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
     all_errors: list[str] = []
     all_warnings: list[str] = []
     total_words = 0
-    play_injections = 0
 
     for block in blocks:
         block_idx = block["block_index"]
@@ -281,8 +280,6 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         total_words += len(narrative.split())
 
     output.add_log(f"Total word count: {total_words}")
-    if play_injections > 0:
-        output.add_log(f"Play injection sentences added: {play_injections}")
 
     if all_warnings:
         output.add_log(f"Warnings: {len(all_warnings)}", level="warning")
@@ -325,7 +322,6 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         "block_count": len(blocks),
         "total_words": total_words,
         "openai_calls": 2,  # Initial render + flow pass
-        "play_injections": play_injections,
         "errors": all_errors,
         "warnings": all_warnings,
         # Pass through

@@ -37,12 +37,7 @@ class NormalizedTeamBoxscore(BaseModel):
     rebounds: int | None = None
     assists: int | None = None
     turnovers: int | None = None
-    passing_yards: int | None = None
-    rushing_yards: int | None = None
-    receiving_yards: int | None = None
     hits: int | None = None
-    runs: int | None = None
-    errors: int | None = None
     shots_on_goal: int | None = None
     penalty_minutes: int | None = None
     raw_stats: dict = Field(default_factory=dict)
@@ -59,8 +54,6 @@ class NormalizedPlayerBoxscore(BaseModel):
     points: int | None = None
     rebounds: int | None = None
     assists: int | None = None
-    yards: int | None = None
-    touchdowns: int | None = None
     # Skater stats (NHL)
     shots_on_goal: int | None = None
     penalties: int | None = None

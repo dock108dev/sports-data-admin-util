@@ -8,9 +8,7 @@ from app.services.pipeline.stages.block_types import (
 )
 from app.services.pipeline.stages.render_helpers import (
     check_overtime_mention,
-    check_play_coverage,
     detect_overtime_info,
-    generate_play_injection_sentence,
     inject_overtime_mention,
 )
 from app.services.pipeline.stages.render_prompts import (
@@ -252,97 +250,6 @@ class TestForbiddenWords:
             errors, warnings = validate_block_narrative(narrative, 0)
             assert any(word.lower() in w.lower() for w in warnings), f"'{word}' not caught"
 
-
-class TestPlayCoverage:
-    """Tests for explicit play coverage invariant."""
-
-    def test_play_referenced_by_player_name(self) -> None:
-        """Play is detected when player name appears in narrative."""
-        narrative = "LeBron James scored on a drive to the basket."
-        pbp_events = [
-            {"play_index": 1, "player_name": "LeBron James", "description": "James layup"}
-        ]
-        missing_ids, _ = check_play_coverage(narrative, [1], pbp_events)
-        assert len(missing_ids) == 0
-
-    def test_missing_play_detected(self) -> None:
-        """Missing play is detected when not referenced."""
-        narrative = "The home team extended their lead."
-        pbp_events = [
-            {"play_index": 1, "player_name": "Anthony Davis", "description": "Davis dunk"}
-        ]
-        missing_ids, missing_events = check_play_coverage(narrative, [1], pbp_events)
-        assert 1 in missing_ids
-        assert len(missing_events) == 1
-
-    def test_play_referenced_by_action_keyword(self) -> None:
-        """Play is detected via action keywords."""
-        narrative = "A three-pointer from the corner extended the lead."
-        pbp_events = [
-            {"play_index": 1, "player_name": "Curry", "description": "Curry 3-pointer"}
-        ]
-        missing_ids, _ = check_play_coverage(narrative, [1], pbp_events)
-        assert len(missing_ids) == 0
-
-    def test_empty_narrative_returns_no_missing(self) -> None:
-        """Empty narrative returns empty list."""
-        missing_ids, _ = check_play_coverage("", [1], [])
-        assert missing_ids == []
-
-
-class TestPlayInjection:
-    """Tests for play injection recovery with natural language."""
-
-    def test_generates_sentence_with_player_and_layup(self) -> None:
-        """Generates natural language sentence for layup plays."""
-        event = {
-            "player_name": "LeBron James",
-            "description": "makes driving layup",
-            "play_type": "layup",
-        }
-        sentence = generate_play_injection_sentence(event, {})
-        assert "LeBron James" in sentence
-        # Should produce natural language, not raw PBP
-        assert "finished at the rim" in sentence.lower()
-
-    def test_generates_sentence_with_3pt_play_type(self) -> None:
-        """Uses play_type to generate natural verb."""
-        event = {
-            "player_name": "Curry",
-            "play_type": "3pt",
-        }
-        sentence = generate_play_injection_sentence(event, {})
-        assert "Curry" in sentence
-        assert "three-pointer" in sentence.lower()
-
-    def test_normalizes_initial_style_names(self) -> None:
-        """Converts 'j. smith' to 'Smith'."""
-        event = {
-            "player_name": "j. smith",
-            "play_type": "dunk",
-        }
-        sentence = generate_play_injection_sentence(event, {})
-        assert "Smith" in sentence
-        assert "j." not in sentence.lower()
-
-    def test_handles_international_names(self) -> None:
-        """Handles names with diacritical marks (e.g., Dončić)."""
-        event = {
-            "player_name": "l. dončić",
-            "play_type": "3pt",
-        }
-        sentence = generate_play_injection_sentence(event, {})
-        assert "Dončić" in sentence
-        assert "l." not in sentence.lower()
-
-    def test_fallback_to_scored_when_no_match(self) -> None:
-        """Falls back to 'scored' when play type not recognized."""
-        event = {
-            "player_name": "Player",
-            "play_type": "unknown_play",
-        }
-        sentence = generate_play_injection_sentence(event, {})
-        assert "Player scored" in sentence
 
 
 class TestStyleConstraints:

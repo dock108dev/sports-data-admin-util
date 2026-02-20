@@ -191,7 +191,7 @@ class DefaultTweetScorer:
         score = 0.0
 
         # Media presence (images/videos are engaging)
-        if tweet.get("has_media") or tweet.get("media_type"):
+        if tweet.get("has_media"):
             score += self.media_weight
 
         # Team account (authoritative source)
@@ -392,7 +392,7 @@ def select_embedded_tweets(
         elif not isinstance(posted_at, datetime):
             continue
 
-        raw_id = tweet.get("id") or tweet.get("tweet_id")
+        raw_id = tweet.get("id")
         if raw_id is None:
             continue
         try:
@@ -406,10 +406,10 @@ def select_embedded_tweets(
             tweet_id=tweet_id,
             posted_at=posted_at,
             text=text,
-            author=tweet.get("author") or tweet.get("source_handle", ""),
+            author=tweet.get("author", ""),
             phase=tweet.get("phase", "unknown"),
             score=score,
-            has_media=bool(tweet.get("has_media") or tweet.get("media_type")),
+            has_media=bool(tweet.get("has_media")),
             media_type=tweet.get("media_type"),
             engagement=tweet.get("engagement", 0),
             is_verified=tweet.get("is_verified", False),

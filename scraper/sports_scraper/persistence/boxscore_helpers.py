@@ -136,18 +136,8 @@ def _build_team_stats(payload: NormalizedTeamBoxscore) -> dict:
         stats["assists"] = payload.assists
     if payload.turnovers is not None:
         stats["turnovers"] = payload.turnovers
-    if payload.passing_yards is not None:
-        stats["passing_yards"] = payload.passing_yards
-    if payload.rushing_yards is not None:
-        stats["rushing_yards"] = payload.rushing_yards
-    if payload.receiving_yards is not None:
-        stats["receiving_yards"] = payload.receiving_yards
     if payload.hits is not None:
         stats["hits"] = payload.hits
-    if payload.runs is not None:
-        stats["runs"] = payload.runs
-    if payload.errors is not None:
-        stats["errors"] = payload.errors
     if payload.shots_on_goal is not None:
         stats["shots_on_goal"] = payload.shots_on_goal
     if payload.penalty_minutes is not None:
@@ -175,10 +165,6 @@ def _build_player_stats(payload: NormalizedPlayerBoxscore) -> dict:
         stats["rebounds"] = payload.rebounds
     if payload.assists is not None:
         stats["assists"] = payload.assists
-    if payload.yards is not None:
-        stats["yards"] = payload.yards
-    if payload.touchdowns is not None:
-        stats["touchdowns"] = payload.touchdowns
     # NHL skater stats
     if payload.shots_on_goal is not None:
         stats["shots_on_goal"] = payload.shots_on_goal

@@ -33,7 +33,6 @@ def serialize_play_entry(play: SportsGamePlay, league_code: str | None = None) -
     """Serialize a play record to API response format."""
     from ...services.period_labels import period_label, time_label
 
-    # Get team abbreviation from the relationship (preferred) or raw_data (fallback)
     team_abbr = None
     if play.team:
         team_abbr = play.team.abbreviation
@@ -134,7 +133,8 @@ def serialize_team_stat(box: SportsTeamBoxscore) -> TeamStat:
 
 
 def _extract_minutes(stats: dict[str, Any]) -> float | None:
-    minutes_val = stats.get("minutes") or stats.get("mp")
+    """Extract minutes played from stats dict."""
+    minutes_val = stats.get("minutes")
     if isinstance(minutes_val, str) and ":" in minutes_val:
         parts = minutes_val.split(":")
         try:
@@ -149,19 +149,14 @@ def _extract_minutes(stats: dict[str, Any]) -> float | None:
     return float(minutes_val) if isinstance(minutes_val, (int, float)) else None
 
 
-def _get_int_stat(stats: dict[str, Any], normalized_key: str, raw_key: str) -> int | None:
-    # Check normalized key first, then raw key
-    # Use 'in' check to properly handle 0 values
-    if normalized_key in stats and stats[normalized_key] is not None:
-        value = stats[normalized_key]
-    elif raw_key in stats and stats[raw_key] is not None:
-        value = stats[raw_key]
-    else:
-        return None
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return None
+def _get_int_stat(stats: dict[str, Any], key: str) -> int | None:
+    """Extract int stat from JSONB stats dict."""
+    if key in stats and stats[key] is not None:
+        try:
+            return int(stats[key])
+        except (ValueError, TypeError):
+            return None
+    return None
 
 
 def _get_nested_int(stats: dict[str, Any], key: str) -> int | None:
@@ -188,8 +183,8 @@ def serialize_player_stat(player: SportsPlayerBoxscore) -> PlayerStat:
     stats = player.stats or {}
     minutes_val = _extract_minutes(stats)
 
-    # Rebounds: try multiple keys, handling nested format
-    rebounds = _get_int_stat(stats, "rebounds", "trb")
+    # Rebounds: try flat key, then nested CBB API format
+    rebounds = _get_int_stat(stats, "rebounds")
     if rebounds is None:
         rebounds = _get_nested_int(stats, "rebounds") or _get_nested_int(stats, "totalRebounds")
 
@@ -197,11 +192,9 @@ def serialize_player_stat(player: SportsPlayerBoxscore) -> PlayerStat:
         team=player.team.name if player.team else "Unknown",
         player_name=player.player_name,
         minutes=round(minutes_val, 1) if minutes_val is not None else None,
-        points=_get_int_stat(stats, "points", "pts") or _get_nested_int(stats, "points"),
+        points=_get_int_stat(stats, "points") or _get_nested_int(stats, "points"),
         rebounds=rebounds,
-        assists=_get_int_stat(stats, "assists", "ast") or _get_nested_int(stats, "assists"),
-        yards=_get_int_stat(stats, "yards", "yds"),
-        touchdowns=_get_int_stat(stats, "touchdowns", "td"),
+        assists=_get_int_stat(stats, "assists") or _get_nested_int(stats, "assists"),
         raw_stats=stats,
         source=player.source,
         updated_at=player.updated_at,
@@ -216,8 +209,7 @@ def _extract_toi(stats: dict[str, Any]) -> str | None:
     - "minutes" as decimal float (e.g., 21.2 -> "21:12")
     - "toi" as total seconds (e.g., 1272 -> "21:12")
     """
-    # First try toi/time_on_ice
-    toi = stats.get("toi") or stats.get("time_on_ice")
+    toi = stats.get("toi")
     if isinstance(toi, str) and ":" in toi:
         return toi
 
@@ -244,29 +236,28 @@ def serialize_nhl_skater(player: SportsPlayerBoxscore) -> NHLSkaterStat:
         team=player.team.name if player.team else "Unknown",
         player_name=player.player_name,
         toi=_extract_toi(stats),
-        goals=_get_int_stat(stats, "goals", "g"),
-        assists=_get_int_stat(stats, "assists", "a"),
-        points=_get_int_stat(stats, "points", "pts"),
-        shots_on_goal=_get_int_stat(stats, "shots_on_goal", "sog"),
-        plus_minus=_get_int_stat(stats, "plus_minus", "+/-"),
-        penalty_minutes=_get_int_stat(stats, "penalty_minutes", "pim"),
-        hits=_get_int_stat(stats, "hits", "hit"),
-        blocked_shots=_get_int_stat(stats, "blocked_shots", "blk"),
+        goals=_get_int_stat(stats, "goals"),
+        assists=_get_int_stat(stats, "assists"),
+        points=_get_int_stat(stats, "points"),
+        shots_on_goal=_get_int_stat(stats, "shots_on_goal"),
+        plus_minus=_get_int_stat(stats, "plus_minus"),
+        penalty_minutes=_get_int_stat(stats, "penalty_minutes"),
+        hits=_get_int_stat(stats, "hits"),
+        blocked_shots=_get_int_stat(stats, "blocked_shots"),
         raw_stats=stats,
         source=player.source,
         updated_at=player.updated_at,
     )
 
 
-def _get_float_stat(stats: dict[str, Any], normalized_key: str, raw_key: str) -> float | None:
-    """Extract float stat from raw or normalized key."""
-    value = stats.get(normalized_key) or stats.get(raw_key)
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return None
+def _get_float_stat(stats: dict[str, Any], key: str) -> float | None:
+    """Extract float stat from JSONB stats dict."""
+    if key in stats and stats[key] is not None:
+        try:
+            return float(stats[key])
+        except (ValueError, TypeError):
+            return None
+    return None
 
 
 def serialize_nhl_goalie(player: SportsPlayerBoxscore) -> NHLGoalieStat:
@@ -276,10 +267,10 @@ def serialize_nhl_goalie(player: SportsPlayerBoxscore) -> NHLGoalieStat:
         team=player.team.name if player.team else "Unknown",
         player_name=player.player_name,
         toi=_extract_toi(stats),
-        shots_against=_get_int_stat(stats, "shots_against", "sa"),
-        saves=_get_int_stat(stats, "saves", "sv"),
-        goals_against=_get_int_stat(stats, "goals_against", "ga"),
-        save_percentage=_get_float_stat(stats, "save_percentage", "sv_pct"),
+        shots_against=_get_int_stat(stats, "shots_against"),
+        saves=_get_int_stat(stats, "saves"),
+        goals_against=_get_int_stat(stats, "goals_against"),
+        save_percentage=_get_float_stat(stats, "save_percentage"),
         raw_stats=stats,
         source=player.source,
         updated_at=player.updated_at,
