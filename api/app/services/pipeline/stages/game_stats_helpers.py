@@ -53,6 +53,17 @@ def _extract_assister_from_description(desc: str) -> str | None:
     return None
 
 
+_NAME_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v", "vi"}
+
+
+def _extract_last_name(full_name: str) -> str:
+    """Extract display last name, preserving suffixes like Jr., III, V."""
+    parts = full_name.split()
+    if len(parts) > 2 and parts[-1].lower() in _NAME_SUFFIXES:
+        return f"{parts[-2]} {parts[-1]}"
+    return parts[-1] if parts else full_name
+
+
 def _extract_scorer_from_description(desc: str) -> str | None:
     """Extract the actual scorer from a play description.
 
@@ -415,7 +426,7 @@ def format_player_stat_hint(player: str, stats: dict[str, int]) -> str | None:
         return None
 
     # Use last name only
-    last_name = player.split()[-1] if " " in player else player
+    last_name = _extract_last_name(player)
     return f"{last_name}: {', '.join(parts)}"
 
 

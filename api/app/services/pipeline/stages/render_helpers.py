@@ -184,7 +184,10 @@ def normalize_player_name(name: str) -> str:
         return ""
     # Match patterns like "j. smith" or "J. Dončić" - use \S+ for Unicode support
     if re.match(r"^[A-Za-z]\.\s+\S+", name):
-        return name.split()[-1].title()
+        # Strip initial prefix, then extract last name (handles suffixes)
+        from .game_stats_helpers import _extract_last_name
+        without_initial = re.sub(r"^[A-Za-z]\.\s+", "", name)
+        return _extract_last_name(without_initial).title()
     return name.title() if name.islower() else name
 
 

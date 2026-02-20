@@ -13,6 +13,7 @@ from .game_stats_helpers import (
     _apply_basketball_scoring,
     _compute_single_team_delta,
     _extract_assister_from_description,
+    _extract_last_name,
     _extract_scorer_from_description,
 )
 
@@ -419,7 +420,7 @@ def compute_block_mini_box(
 
             # Track block stars (players who contributed significantly this segment)
             if delta_contribution >= 5 or (league_code == "NHL" and delta_contribution >= 1):
-                last_name = name.split()[-1] if " " in name else name
+                last_name = _extract_last_name(name)
                 block_stars.append(last_name)
 
     # Trim to top 3 per team for mini box

@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .game_stats_helpers import compute_lead_context
+from .game_stats_helpers import _extract_last_name, compute_lead_context
 from .render_helpers import detect_overtime_info
 from .render_validation import FORBIDDEN_WORDS
 
@@ -92,7 +92,7 @@ def _format_contributors_line(
         team_name = team_data.get("team", side.capitalize())
         for player in team_data.get("players", []):
             name = player.get("name", "")
-            last_name = name.split()[-1] if " " in name else name
+            last_name = _extract_last_name(name)
             if last_name not in block_stars_set:
                 continue
 

@@ -196,7 +196,12 @@ function BlockMiniBoxDisplay({ miniBox }: { miniBox: BlockMiniBox }) {
   };
 
   const formatPlayer = (p: BlockPlayerStat) => {
-    const lastName = p.name.split(" ").pop() || p.name;
+    const suffixes = new Set(["jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v", "vi"]);
+    const words = p.name.split(" ");
+    const last = words[words.length - 1];
+    const lastName = words.length > 2 && suffixes.has(last.toLowerCase())
+      ? `${words[words.length - 2]} ${last}`
+      : last || p.name;
     if (isHockey) {
       const parts = [
         fmt(p.goals, p.deltaGoals, "G"),
