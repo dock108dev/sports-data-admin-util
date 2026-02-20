@@ -353,7 +353,7 @@ def build_block_prompt(
         "FORBIDDEN WORDS (do not use):",
         ", ".join(FORBIDDEN_WORDS),
         "",
-    ]
+    ])
 
     # Add close-game-specific guidance
     if is_close_game:
