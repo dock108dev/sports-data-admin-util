@@ -2,10 +2,10 @@
 
 ## Foundational Axiom
 
-**A game flow consists of 4-7 narrative blocks. Each block is grounded in one or more moments. Each moment is backed by specific plays.**
+**A game flow consists of 3-7 narrative blocks. Each block is grounded in one or more moments. Each moment is backed by specific plays.**
 
 This creates a two-level structure:
-- **Blocks** — Consumer-facing narratives (4-7 per game, 2-4 sentences each, ~65 words)
+- **Blocks** — Consumer-facing narratives (3-7 per game, 1-5 sentences each, ~65 words)
 - **Moments** — Internal traceability (15-25 per game, linking blocks to plays)
 
 ---
@@ -17,9 +17,9 @@ Game Flow produces a readable, condensed replay of a game designed for 60-90 sec
 - The output is a sequence of narrative blocks
 - Each block has a semantic role (SETUP, MOMENTUM_SHIFT, RESOLUTION, etc.)
 - The sequence preserves game chronology
-- Total read time: 60-90 seconds (~500 words max)
+- Total read time: 60-90 seconds (~600 words max)
 
-**This system is not a recap generator.** It does not summarize. It does not abstract. It condenses and narrates concrete events.
+**This system narrates consequences, not transactions.** It condenses game action into reporter-style prose, collapsing sequences into runs and describing effects rather than enumerating individual plays.
 
 ---
 
@@ -29,10 +29,10 @@ Game Flow produces a readable, condensed replay of a game designed for 60-90 sec
 
 A **narrative block** is:
 
-- A short narrative (2-4 sentences, ~65 words)
+- A short narrative (1-5 sentences, ~65 words)
 - Assigned a semantic role describing its function
 - Grounded in one or more moments
-- Part of a 4-7 block sequence
+- Part of a 3-7 block sequence
 
 **Semantic Roles:**
 | Role | Description |
@@ -44,7 +44,7 @@ A **narrative block** is:
 | RESOLUTION | How game ended (always last) |
 
 **Block Limits:**
-- Minimum: 4 blocks per game
+- Minimum: 3 blocks per game (blowouts)
 - Maximum: 7 blocks per game
 - No role appears more than twice
 
@@ -72,7 +72,7 @@ Moments do not have consumer-facing narratives. They exist for auditability.
 | `moment_indices` | list[int] | Which moments are grouped |
 | `score_before` | [away, home] | Score at block start |
 | `score_after` | [away, home] | Score at block end |
-| `narrative` | string | 2-4 sentences (~65 words) |
+| `narrative` | string | 1-5 sentences (~65 words) |
 | `embedded_social_post_id` | int | null | Optional social post ID (max 1 per block) |
 
 ### Moment Fields (Traceability)
@@ -94,11 +94,12 @@ Moments do not have consumer-facing narratives. They exist for auditability.
 ### Block Narratives
 
 Each block narrative:
-- Is 2-4 sentences, approximately 65 words
-- Describes a stretch of play with cause-and-effect connections
-- References key plays from its underlying moments
+- Is 1-5 sentences, approximately 65 words
+- Describes a stretch of play with consequence-based narration
+- Key plays provide context; referencing them is editorial judgment, not mandatory
 - Is role-aware (SETUP blocks set context, RESOLUTION blocks conclude)
 - Uses SportsCenter-style broadcast prose
+- Collapses consecutive scoring into runs where appropriate
 
 ### Forbidden Language
 
@@ -141,12 +142,12 @@ Blocks may contain an embedded social post ID that adds social context.
 
 | Invariant | Limit | Enforcement |
 |-----------|-------|-------------|
-| Block count | 4-7 | Pipeline fails on violation |
+| Block count | 3-7 | Pipeline fails on violation |
 | Embedded social posts | ≤ 5 per game | Hard cap enforced |
 | Social post per block | ≤ 1 | Hard cap enforced |
-| Total words | ≤ 500 | Warning, not failure |
-| Words per block | 30-100 | Warning, not failure |
-| Sentences per block | 2-4 | Warning, not failure |
+| Total words | ≤ 600 | Warning, not failure |
+| Words per block | 30-120 | Warning, not failure |
+| Sentences per block | 1-5 | Warning, not failure |
 | Read time | 60-90 seconds | Implicit via word limits |
 
 Violations are logged at ERROR level with full context.
@@ -172,7 +173,7 @@ A Game Flow output is correct if and only if:
 
 ### Structural Tests
 
-- [ ] The game flow contains 4-7 blocks
+- [ ] The game flow contains 3-7 blocks
 - [ ] Each block has a semantic role
 - [ ] First block is SETUP, last block is RESOLUTION
 - [ ] No role appears more than twice
@@ -180,9 +181,9 @@ A Game Flow output is correct if and only if:
 
 ### Narrative Tests
 
-- [ ] Each narrative is 30-100 words
-- [ ] Each narrative has 2-4 sentences
-- [ ] Total word count ≤ 500
+- [ ] Each narrative is 30-120 words
+- [ ] Each narrative has 1-5 sentences
+- [ ] Total word count ≤ 600
 - [ ] No forbidden phrases
 - [ ] No retrospective commentary
 - [ ] No raw PBP artifacts (initials, score artifacts)
@@ -204,7 +205,7 @@ A Game Flow output is correct if and only if:
 
 A compliant system answers these questions for any output:
 
-1. "How many blocks?" → 4-7
+1. "How many blocks?" → 3-7
 2. "What role is block N?" → One of the semantic roles
 3. "Which plays back this block?" → Via moments → plays
 4. "Total read time?" → 60-90 seconds

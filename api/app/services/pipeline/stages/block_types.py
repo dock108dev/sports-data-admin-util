@@ -7,7 +7,7 @@ This module defines the core types for the block-based narrative system:
 BLOCK SYSTEM OVERVIEW
 =====================
 Blocks replace moment-level narratives. Instead of 15-25 moments with 6-10
-sentences each, we produce 4-7 blocks with 2-4 sentences each (~65 words).
+sentences each, we produce 3-7 blocks with 1-5 sentences each (~65 words).
 
 This ensures the collapsed game flow is consumable in 60-90 seconds.
 
@@ -65,7 +65,7 @@ class NarrativeBlock:
 
     Blocks are the consumer-facing narrative output, replacing moment
     narratives. Each block represents a stretch of play that should
-    be described in 2-4 sentences (~65 words).
+    be described in 1-5 sentences (~65 words).
 
     Attributes:
         block_index: 0-indexed position in the flow (0-6)
@@ -77,7 +77,7 @@ class NarrativeBlock:
         score_after: Score at the end of this block [home, away]
         play_ids: All play_indices in this block
         key_play_ids: 1-3 most important plays for narrative focus
-        narrative: Generated narrative text (2-4 sentences, ~65 words)
+        narrative: Generated narrative text (1-5 sentences, ~65 words)
         mini_box: Cumulative box score at end of block with segment deltas
     """
 
@@ -180,14 +180,14 @@ class BlocksOutput:
 
 
 # Block count limits
-MIN_BLOCKS = 4
+MIN_BLOCKS = 3  # Allow 3-block flows for blowouts
 MAX_BLOCKS = 7
 
 # Narrative constraints
-MIN_WORDS_PER_BLOCK = 30  # Ensures 2+ sentences minimum
-MAX_WORDS_PER_BLOCK = 100  # Allows up to 4 sentences
+MIN_WORDS_PER_BLOCK = 30  # Ensures meaningful content
+MAX_WORDS_PER_BLOCK = 120  # Allows up to 5 sentences; gives DECISION_POINT breathing room
 TARGET_WORDS_PER_BLOCK = 65  # ~3 sentences
-MAX_TOTAL_WORDS = 500  # ~90 second read time
+MAX_TOTAL_WORDS = 600  # Accommodates richer narratives
 
 # Key play constraints
 MIN_KEY_PLAYS = 1

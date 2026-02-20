@@ -35,8 +35,8 @@ def compute_nhl_data_health(
     no_role_count = 0
     has_non_hockey_fields = False
 
-    # Non-hockey fields that should never appear in NHL player data
-    non_hockey_fields = {"rebounds", "yards", "touchdowns", "trb", "yds", "td"}
+    # Non-hockey fields that indicate cross-sport data pollution
+    non_hockey_fields = {"rebounds"}
 
     for player in player_boxscores:
         stats = player.stats or {}

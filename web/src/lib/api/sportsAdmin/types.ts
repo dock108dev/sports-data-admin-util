@@ -83,8 +83,6 @@ export type PlayerStat = {
   points: number | null;
   rebounds: number | null;
   assists: number | null;
-  yards: number | null;
-  touchdowns: number | null;
   rawStats: Record<string, unknown>;
 };
 

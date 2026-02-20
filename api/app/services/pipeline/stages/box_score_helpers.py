@@ -6,13 +6,28 @@ enrich narrative blocks with per-team/per-player stat summaries.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .game_stats_helpers import (
     _apply_basketball_scoring,
     _compute_single_team_delta,
     _extract_assister_from_description,
+    _extract_last_name,
+    _extract_scorer_from_description,
 )
+
+
+def _extract_nhl_assisters(desc: str) -> list[str]:
+    """Extract assist player names from an NHL goal description.
+
+    Descriptions like "Goal (wrist-shot) (assists: Connor McDavid, Leon Draisaitl)"
+    return ["Connor McDavid", "Leon Draisaitl"].
+    """
+    match = re.search(r"\(assists?:\s*(.+?)\)", desc, re.IGNORECASE)
+    if match:
+        return [name.strip() for name in match.group(1).split(",") if name.strip()]
+    return []
 
 
 def compute_cumulative_box_score(
@@ -144,28 +159,53 @@ def compute_cumulative_box_score(
 
         if league_code == "NHL":
             _accumulate_nhl_stats(player_stats[player], play_type, desc)
+            # Credit assists from goal descriptions (format: "goal ... (assists: Name1, Name2)")
+            if play_type.lower() in ("goal", "scored"):
+                for assister in _extract_nhl_assisters(original_desc):
+                    if assister not in player_stats:
+                        player_stats[assister] = {
+                            "goals": 0, "assists": 0, "sog": 0,
+                            "plusMinus": 0, "saves": 0, "ga": 0, "is_goalie": False,
+                        }
+                    player_stats[assister]["assists"] += 1
+                    if assister not in player_teams and team_abbrev:
+                        player_teams[assister] = team_abbrev
         else:
-            # Scoring detection: use score delta (works for all data sources)
-            scored = _apply_basketball_scoring(player_stats[player], score_delta)
+            # Check if event player is actually the assister (NCAAB pattern:
+            # player field = assister, description = "Scorer makes shot (Player assists)")
+            actual_scorer = _extract_scorer_from_description(original_desc) if score_delta > 0 else None
+            if actual_scorer and actual_scorer.lower() != player.lower() and score_delta > 0:
+                # Event player is the assister; credit actual scorer with points
+                if actual_scorer not in player_stats:
+                    player_stats[actual_scorer] = {
+                        "pts": 0, "reb": 0, "ast": 0, "3pm": 0, "fgm": 0, "ftm": 0
+                    }
+                if actual_scorer not in player_teams and team_abbrev:
+                    player_teams[actual_scorer] = team_abbrev
+                scored = _apply_basketball_scoring(player_stats[actual_scorer], score_delta)
+                if scored:
+                    player_stats[player]["ast"] += 1
+            else:
+                scored = _apply_basketball_scoring(player_stats[player], score_delta)
+
+                # Extract and credit assists from scoring plays (NBA format)
+                if scored:
+                    assister = _extract_assister_from_description(original_desc)
+                    if assister:
+                        if assister not in player_stats:
+                            player_stats[assister] = {
+                                "pts": 0, "reb": 0, "ast": 0, "3pm": 0, "fgm": 0, "ftm": 0
+                            }
+                        player_stats[assister]["ast"] += 1
+                        # Track assister's team (same as scorer's team)
+                        if assister not in player_teams and team_abbrev:
+                            player_teams[assister] = team_abbrev
 
             # Non-scoring stats: play_type matching for reb/ast
             if play_type in ("rebound", "offensive_rebound", "defensive_rebound"):
                 player_stats[player]["reb"] += 1
             elif play_type == "assist":
                 player_stats[player]["ast"] += 1
-
-            # Extract and credit assists from scoring plays (basketball only)
-            if scored:
-                assister = _extract_assister_from_description(original_desc)
-                if assister:
-                    if assister not in player_stats:
-                        player_stats[assister] = {
-                            "pts": 0, "reb": 0, "ast": 0, "3pm": 0, "fgm": 0, "ftm": 0
-                        }
-                    player_stats[assister]["ast"] += 1
-                    # Track assister's team (same as scorer's team)
-                    if assister not in player_teams and team_abbrev:
-                        player_teams[assister] = team_abbrev
 
         prev_home = curr_home
         prev_away = curr_away
@@ -380,7 +420,7 @@ def compute_block_mini_box(
 
             # Track block stars (players who contributed significantly this segment)
             if delta_contribution >= 5 or (league_code == "NHL" and delta_contribution >= 1):
-                last_name = name.split()[-1] if " " in name else name
+                last_name = _extract_last_name(name)
                 block_stars.append(last_name)
 
     # Trim to top 3 per team for mini box

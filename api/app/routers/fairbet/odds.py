@@ -26,11 +26,10 @@ from ...services.ev_config import (
 from .ev_annotation import (
     BookOdds,
     _annotate_pair_ev,
-    _build_sharp_reference,
     _pair_opposite_sides,
-    _try_extrapolated_ev,
     derive_entity_key,
 )
+from .ev_extrapolation import _build_sharp_reference, _try_extrapolated_ev
 
 logger = logging.getLogger(__name__)
 

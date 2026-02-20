@@ -455,6 +455,7 @@ GET /api/fairbet/odds?market_category=player_prop&has_fair=true
 | Celery beat schedule | `scraper/sports_scraper/celery_app.py` |
 | FairBet API endpoint | `api/app/routers/fairbet/odds.py` |
 | EV annotation logic | `api/app/routers/fairbet/ev_annotation.py` |
+| EV extrapolation logic | `api/app/routers/fairbet/ev_extrapolation.py` |
 | EV math functions | `api/app/services/ev.py` |
 | EV strategy config | `api/app/services/ev_config.py` |
 | DB models (odds tables) | `api/app/db/odds.py` |

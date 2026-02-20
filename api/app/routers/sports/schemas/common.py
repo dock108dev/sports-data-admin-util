@@ -22,20 +22,16 @@ class TeamStat(BaseModel):
 
 
 class PlayerStat(BaseModel):
-    """Generic player stat for NBA/NCAAB/NFL with camelCase output."""
+    """Generic player stat for NBA/NCAAB with camelCase output."""
 
     model_config = ConfigDict(populate_by_name=True)
 
     team: str
     player_name: str = Field(..., alias="playerName")
-    # Flattened common stats for frontend display
     minutes: float | None = None
     points: int | None = None
     rebounds: int | None = None
     assists: int | None = None
-    yards: int | None = None
-    touchdowns: int | None = None
-    # Full raw stats dict for detail view
     raw_stats: dict[str, Any] = Field(default_factory=dict, alias="rawStats")
     source: str | None = None
     updated_at: datetime | None = Field(None, alias="updatedAt")

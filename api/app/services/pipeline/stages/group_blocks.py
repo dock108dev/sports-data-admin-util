@@ -1,6 +1,6 @@
 """GROUP_BLOCKS Stage Implementation.
 
-This stage deterministically groups validated moments into 4-7 narrative blocks.
+This stage deterministically groups validated moments into 3-7 narrative blocks.
 No AI is used - block boundaries and role assignments are rule-based.
 
 BLOCK GROUPING ALGORITHM
@@ -12,14 +12,20 @@ BLOCK GROUPING ALGORITHM
 
 BLOCK COUNT FORMULA
 ===================
-base = 4
-if lead_changes >= 3: base += 1
-if lead_changes >= 6: base += 1
-if total_plays > 400: base += 1
-return min(base, 7)
+Blowouts (is_blowout and lead_changes <= 1): return 3
+Otherwise:
+  base = 4
+  if lead_changes >= 3: base += 1
+  if lead_changes >= 6: base += 1
+  if total_plays > 400: base += 1
+  return min(base, 7)
 
 ROLE ASSIGNMENT RULES
 =====================
+For 3-block games (blowouts):
+  Block 0 -> SETUP, Block 1 -> DECISION_POINT, Block 2 -> RESOLUTION
+
+For 4+ block games:
 1. Block 0 -> SETUP (always)
 2. Block N-1 -> RESOLUTION (always)
 3. First lead change -> MOMENTUM_SHIFT
@@ -62,7 +68,7 @@ logger = logging.getLogger(__name__)
 async def execute_group_blocks(stage_input: StageInput) -> StageOutput:
     """Execute the GROUP_BLOCKS stage.
 
-    Groups validated moments into 4-7 narrative blocks with semantic roles.
+    Groups validated moments into 3-7 narrative blocks with semantic roles.
     This is a deterministic, rule-based stage with no AI involvement.
 
     Args:
@@ -130,7 +136,9 @@ async def execute_group_blocks(stage_input: StageInput) -> StageOutput:
         output.add_log(f"Using blowout compression: {target_blocks} blocks")
     else:
         # Calculate target block count normally
-        target_blocks = calculate_block_count(moments, lead_changes, total_plays)
+        target_blocks = calculate_block_count(
+            moments, lead_changes, total_plays, is_blowout=is_blowout,
+        )
         output.add_log(f"Target block count: {target_blocks}")
 
         # Find optimal split points - use drama weights if available from ANALYZE_DRAMA

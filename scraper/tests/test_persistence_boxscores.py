@@ -252,34 +252,6 @@ class TestBuildTeamStatsAdvanced:
         result = _build_team_stats(boxscore)
         assert result.get("turnovers") == 12
 
-    def test_includes_football_stats(self):
-        """Includes football-specific stats."""
-        boxscore = NormalizedTeamBoxscore(
-            team=TeamIdentity(league_code="NFL", name="Patriots", abbreviation="NE"),
-            is_home=True,
-            passing_yards=250,
-            rushing_yards=100,
-            receiving_yards=200,
-        )
-        result = _build_team_stats(boxscore)
-        assert result.get("passing_yards") == 250
-        assert result.get("rushing_yards") == 100
-        assert result.get("receiving_yards") == 200
-
-    def test_includes_baseball_stats(self):
-        """Includes baseball-specific stats."""
-        boxscore = NormalizedTeamBoxscore(
-            team=TeamIdentity(league_code="MLB", name="Red Sox", abbreviation="BOS"),
-            is_home=True,
-            hits=10,
-            runs=5,
-            errors=1,
-        )
-        result = _build_team_stats(boxscore)
-        assert result.get("hits") == 10
-        assert result.get("runs") == 5
-        assert result.get("errors") == 1
-
     def test_includes_hockey_stats(self):
         """Includes hockey-specific stats."""
         boxscore = NormalizedTeamBoxscore(
@@ -332,19 +304,6 @@ class TestBuildPlayerStatsAdvanced:
         result = _build_player_stats(boxscore)
         assert result.get("position") == "C"
         assert result.get("sweater_number") == 37
-
-    def test_includes_football_stats(self):
-        """Includes football-specific stats."""
-        boxscore = NormalizedPlayerBoxscore(
-            player_id="123",
-            player_name="Test Player",
-            team=TeamIdentity(league_code="NFL", name="Patriots", abbreviation="NE"),
-            yards=150,
-            touchdowns=2,
-        )
-        result = _build_player_stats(boxscore)
-        assert result.get("yards") == 150
-        assert result.get("touchdowns") == 2
 
     def test_includes_nhl_skater_stats(self):
         """Includes NHL skater-specific stats."""

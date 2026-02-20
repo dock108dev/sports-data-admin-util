@@ -45,7 +45,7 @@ This audit examines whether current PBP infrastructure meets these requirements 
 **Constraints:**
 - UNIQUE on `(game_id, play_index)` - enforces ordering uniqueness
 
-**Sports Coverage:** NBA, NHL, NCAAB, NCAAF, MLB, NFL
+**Sports Coverage:** NBA, NHL, NCAAB
 
 ### 2.2 Normalized Input Model: `NormalizedPlay`
 

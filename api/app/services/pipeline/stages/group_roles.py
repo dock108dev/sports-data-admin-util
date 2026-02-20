@@ -67,6 +67,12 @@ def assign_roles(blocks: list[NarrativeBlock]) -> None:
     """Assign semantic roles to blocks in place.
 
     Rules:
+    For 3-block games (blowouts):
+      - Block 0 -> SETUP
+      - Block 1 -> DECISION_POINT
+      - Block 2 -> RESOLUTION
+
+    For 4+ block games:
     1. First block -> SETUP
     2. Last block -> RESOLUTION
     3. Block with significant swing -> MOMENTUM_SHIFT (requires 8+ net swing OR 6+ deficit overcome)
@@ -81,6 +87,13 @@ def assign_roles(blocks: list[NarrativeBlock]) -> None:
         return
 
     n = len(blocks)
+
+    # Special case: 3-block games (blowouts)
+    if n == 3:
+        blocks[0].role = SemanticRole.SETUP
+        blocks[1].role = SemanticRole.DECISION_POINT
+        blocks[2].role = SemanticRole.RESOLUTION
+        return
 
     # Detect close game: check max margin across all blocks
     max_margin = 0

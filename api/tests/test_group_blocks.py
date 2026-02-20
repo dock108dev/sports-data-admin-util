@@ -37,13 +37,31 @@ class TestCalculateBlockCount:
     """Tests for block count calculation."""
 
     def test_minimum_blocks(self) -> None:
-        """Short games with few lead changes produce minimum blocks."""
+        """Short non-blowout games produce 4 blocks (default base)."""
         moments: list[dict] = []
         lead_changes = 0
         total_plays = 100
 
         count = calculate_block_count(moments, lead_changes, total_plays)
-        assert count == MIN_BLOCKS
+        assert count == 4
+
+    def test_blowout_minimum_blocks(self) -> None:
+        """Blowout games with minimal lead changes produce 3 blocks (MIN_BLOCKS)."""
+        moments: list[dict] = []
+        lead_changes = 0
+        total_plays = 100
+
+        count = calculate_block_count(moments, lead_changes, total_plays, is_blowout=True)
+        assert count == MIN_BLOCKS  # 3
+
+    def test_blowout_with_lead_changes(self) -> None:
+        """Blowout games with lead changes use normal formula."""
+        moments: list[dict] = []
+        lead_changes = 3
+        total_plays = 100
+
+        count = calculate_block_count(moments, lead_changes, total_plays, is_blowout=True)
+        assert count == 5  # base 4 + 1 for lead changes
 
     def test_moderate_lead_changes(self) -> None:
         """3+ lead changes adds one block."""
@@ -52,7 +70,7 @@ class TestCalculateBlockCount:
         total_plays = 100
 
         count = calculate_block_count(moments, lead_changes, total_plays)
-        assert count == MIN_BLOCKS + 1
+        assert count == 5  # base 4 + 1
 
     def test_many_lead_changes(self) -> None:
         """6+ lead changes adds two blocks."""
@@ -61,7 +79,7 @@ class TestCalculateBlockCount:
         total_plays = 100
 
         count = calculate_block_count(moments, lead_changes, total_plays)
-        assert count == MIN_BLOCKS + 2
+        assert count == 6  # base 4 + 2
 
     def test_long_game(self) -> None:
         """Long games (400+ plays) add one block."""
@@ -70,7 +88,7 @@ class TestCalculateBlockCount:
         total_plays = 500
 
         count = calculate_block_count(moments, lead_changes, total_plays)
-        assert count == MIN_BLOCKS + 1
+        assert count == 5  # base 4 + 1
 
     def test_maximum_blocks(self) -> None:
         """Block count is capped at maximum."""
@@ -258,6 +276,21 @@ class TestAssignRoles:
         for count in role_counts.values():
             assert count <= 2
 
+    def test_assign_roles_three_blocks(self) -> None:
+        """3-block games get SETUP, DECISION_POINT, RESOLUTION."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock
+
+        blocks = [
+            NarrativeBlock(0, SemanticRole.RESPONSE, [], 1, 1, (0, 0), (30, 10), [], []),
+            NarrativeBlock(1, SemanticRole.RESPONSE, [], 2, 3, (30, 10), (60, 25), [], []),
+            NarrativeBlock(2, SemanticRole.RESPONSE, [], 4, 4, (60, 25), (90, 40), [], []),
+        ]
+        assign_roles(blocks)
+
+        assert blocks[0].role == SemanticRole.SETUP
+        assert blocks[1].role == SemanticRole.DECISION_POINT
+        assert blocks[2].role == SemanticRole.RESOLUTION
+
 
 class TestBlockCreation:
     """Tests for block creation from moments."""
@@ -336,7 +369,7 @@ class TestBlockConstraints:
             assert MIN_BLOCKS <= target_blocks <= MAX_BLOCKS
 
     def test_short_game_produces_minimum_blocks(self) -> None:
-        """Even short games produce at least 4 blocks."""
+        """Even short games produce at least MIN_BLOCKS blocks."""
         moments = [
             {"play_ids": [1], "period": 1, "score_before": [0, 0], "score_after": [2, 0]},
             {"play_ids": [2], "period": 1, "score_before": [2, 0], "score_after": [4, 2]},

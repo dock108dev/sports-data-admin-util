@@ -449,7 +449,7 @@ Get the AI-generated game flow for a game.
 ```
 
 **Key Notes:**
-- **Blocks are the primary output** — Use `blocks` for consumer-facing game summaries (4-7 blocks, 60-90 second read time)
+- **Blocks are the primary output** — Use `blocks` for consumer-facing game summaries (3-7 blocks, 60-90 second read time)
 - **Moments are for traceability** — Use `moments` to link narratives back to specific plays
 - Each block has a semantic `role`: SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, or RESOLUTION
 - `scoreBefore`/`scoreAfter` arrays are `[awayScore, homeScore]`
@@ -460,12 +460,12 @@ Get the AI-generated game flow for a game.
 
 ### Game Flow Structure
 
-Game flows are AI-generated narrative summaries built from play-by-play data. Each game flow contains 4-7 **blocks** — short narratives (2-4 sentences each, ~65 words) designed for 60-90 second total read time.
+Game flows are AI-generated narrative summaries built from play-by-play data. Each game flow contains 3-7 **blocks** — short narratives (2-4 sentences each, ~65 words) designed for 60-90 second total read time.
 
 **Blocks** are the consumer-facing output:
 - Each block has a semantic role (SETUP, MOMENTUM_SHIFT, RESPONSE, DECISION_POINT, RESOLUTION)
 - First block is always SETUP, last block is always RESOLUTION
-- Total word count ≤ 500 words
+- Total word count ≤ 600 words
 
 **Moments** remain for internal traceability:
 - Link blocks back to specific plays
@@ -1062,7 +1062,7 @@ interface GameFlowResponse {
 }
 
 interface GameFlowContent {
-  blocks: GameFlowBlock[];       // Consumer-facing narratives (4-7 per game)
+  blocks: GameFlowBlock[];       // Consumer-facing narratives (3-7 per game)
   moments: GameFlowMoment[];     // Internal traceability (15-25 per game)
 }
 
@@ -1226,8 +1226,6 @@ interface PlayerStat {
   points: number | null;
   rebounds: number | null;
   assists: number | null;
-  yards: number | null;         // Football only
-  touchdowns: number | null;    // Football only
   rawStats: Record<string, any>;  // Full stat dict — league-specific keys (see below)
   source: string | null;
   updatedAt: string | null;

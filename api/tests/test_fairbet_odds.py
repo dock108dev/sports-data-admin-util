@@ -9,12 +9,11 @@ import pytest
 from app.routers.fairbet.ev_annotation import (
     BookOdds,
     _annotate_pair_ev,
-    _build_sharp_reference,
     _market_base,
     _pair_opposite_sides,
-    _try_extrapolated_ev,
     derive_entity_key,
 )
+from app.routers.fairbet.ev_extrapolation import _build_sharp_reference, _try_extrapolated_ev
 from app.routers.fairbet.odds import (
     BetDefinition,
     FairbetOddsResponse,

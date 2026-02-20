@@ -27,7 +27,7 @@
 
 | Guide | Description |
 |-------|-------------|
-| [Game Flow Contract](GAMEFLOW_CONTRACT.md) | **Authoritative:** Block-based narrative model (4-7 blocks per game) |
+| [Game Flow Contract](GAMEFLOW_CONTRACT.md) | **Authoritative:** Block-based narrative model (3-7 blocks per game) |
 | [Game Flow Pipeline](GAMEFLOW_PIPELINE.md) | 8-stage pipeline from PBP to narratives |
 | [PBP Game Flow Assumptions](PBP_GAMEFLOW_ASSUMPTIONS.md) | Technical assumptions about PBP data |
 
