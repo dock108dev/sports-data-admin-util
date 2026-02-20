@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 from fastapi import HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from ...db import AsyncSession
@@ -85,11 +87,18 @@ async def get_league(session: AsyncSession, code: str) -> SportsLeague:
     return league
 
 
+logger = logging.getLogger(__name__)
+
+
 def _normalize_config(raw: dict[str, Any] | None) -> dict[str, Any] | None:
     """Parse raw JSONB config through ScrapeRunConfig for consistent camelCase."""
     if not raw:
         return raw
-    return ScrapeRunConfig(**raw).model_dump(by_alias=True)
+    try:
+        return ScrapeRunConfig(**raw).model_dump(by_alias=True)
+    except ValidationError:
+        logger.warning("malformed_scrape_run_config", extra={"raw_config": raw})
+        return raw
 
 
 def serialize_run(run: SportsScrapeRun, league_code: str) -> ScrapeRunResponse:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   getPipelineRuns,
   runFullPipeline,
@@ -164,8 +164,8 @@ export function PipelineRunsSection({ gameId }: PipelineRunsSectionProps) {
               const statusInfo = runStatusLabel(run.status);
               const isExpanded = expandedRunId === run.run_id;
               return (
-                <>
-                  <tr key={run.run_id} style={{ cursor: "pointer" }} onClick={() => toggleExpand(run.run_id)}>
+                <React.Fragment key={run.run_id}>
+                  <tr style={{ cursor: "pointer" }} onClick={() => toggleExpand(run.run_id)}>
                     <td>{run.run_id}</td>
                     <td>{run.triggered_by}</td>
                     <td>
@@ -190,7 +190,7 @@ export function PipelineRunsSection({ gameId }: PipelineRunsSectionProps) {
                     </td>
                   </tr>
                   {isExpanded && (
-                    <tr key={`${run.run_id}-stages`}>
+                    <tr>
                       <td colSpan={6} style={{ padding: "0.5rem 1rem", background: "#f8fafc" }}>
                         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
                           {PIPELINE_STAGES.map((stageName, idx) => {
@@ -239,7 +239,7 @@ export function PipelineRunsSection({ gameId }: PipelineRunsSectionProps) {
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               );
             })}
           </tbody>
