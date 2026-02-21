@@ -129,6 +129,9 @@ def run_final_whistle_social(game_id: int) -> dict:
                     error=str(exc),
                 )
 
+        # Flush pending INSERTs so the mapper's query can see them
+        session.flush()
+
         # Map unmapped tweets for both teams to this game
         mapped_total = 0
         for team_id in team_ids:

@@ -141,6 +141,9 @@ def collect_social_for_league(league: str) -> dict:
             end_date=end_date,
         )
 
+        # Flush pending INSERTs so the mapper's query can see them
+        session.flush()
+
         # Map newly collected tweets to games
         map_result = map_unmapped_tweets(session=session, batch_size=1000)
         result["mapping"] = map_result
@@ -203,6 +206,9 @@ def collect_team_social(
                 start_date=start,
                 end_date=end,
             )
+
+            # Flush pending INSERTs so the mapper's query can see them
+            session.flush()
 
             # Always map tweets to games after collection
             map_result = map_unmapped_tweets(session=session, batch_size=1000)
@@ -299,7 +305,14 @@ def collect_game_social() -> dict:
 
         if not games:
             logger.info("collect_game_social_no_games", game_date=str(game_date))
-            return {"game_date": str(game_date), "teams_processed": 0, "total_new_tweets": 0}
+            # Still map any leftover unmapped tweets from previous runs
+            map_result = map_unmapped_tweets(session=session, batch_size=1000)
+            return {
+                "game_date": str(game_date),
+                "teams_processed": 0,
+                "total_new_tweets": 0,
+                "mapped": map_result.get("mapped", 0),
+            }
 
         # Deduplicate team IDs across all games
         team_ids: set[int] = set()
@@ -355,6 +368,9 @@ def collect_game_social() -> dict:
                     team_id=team_id,
                     error=str(exc),
                 )
+
+        # Flush pending INSERTs so the mapper's query can see them
+        session.flush()
 
         # Map newly collected tweets to games
         map_result = map_unmapped_tweets(session=session, batch_size=1000)

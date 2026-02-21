@@ -150,6 +150,9 @@ def _run_social_scrape_2() -> dict:
                         error=str(exc),
                     )
 
+            # Flush pending INSERTs so the mapper's query can see them
+            session.flush()
+
             # Map unmapped tweets
             for team_id in team_ids:
                 try:
