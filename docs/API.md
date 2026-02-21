@@ -21,12 +21,13 @@
 11. [Game Flow Pipeline](#game-flow-pipeline)
 12. [Diagnostics](#diagnostics)
 13. [Jobs](#jobs)
-14. [PBP Inspection](#pbp-inspection)
-15. [Entity Resolution](#entity-resolution)
-16. [Social](#social)
-17. [FairBet](#fairbet)
-18. [Reading Positions](#reading-positions)
-19. [Response Models](#response-models)
+14. [Task Control](#task-control)
+15. [PBP Inspection](#pbp-inspection)
+16. [Entity Resolution](#entity-resolution)
+17. [Social](#social)
+18. [FairBet](#fairbet)
+19. [Reading Positions](#reading-positions)
+20. [Response Models](#response-models)
 
 ---
 
@@ -757,6 +758,59 @@ List job runs.
 |-----------|------|-------------|
 | `limit` | `int` | Max results (1-200, default 50) |
 | `phase` | `string` | Filter: `timeline_generation`, `flow_generation` |
+
+---
+
+## Task Control
+
+**Base path:** `/api/admin`
+
+On-demand dispatch of registered Celery tasks. Used by the Control Panel admin page.
+
+### `GET /tasks/registry`
+
+List all tasks available for manual dispatch.
+
+**Response:**
+```json
+[
+  {
+    "name": "sync_mainline_odds",
+    "queue": "sports-scraper",
+    "description": "Sync mainline odds (spreads, totals, moneyline)"
+  }
+]
+```
+
+17 tasks are registered across categories: Ingestion, Polling, Odds, Social, Flows, Timelines, and Utility. Each task specifies which Celery queue it routes to (`sports-scraper` or `social-scraper`).
+
+### `POST /tasks/trigger`
+
+Dispatch a registered Celery task by name.
+
+**Request:**
+```json
+{
+  "task_name": "sync_mainline_odds",
+  "args": ["NBA"]
+}
+```
+
+**Response:**
+```json
+{
+  "status": "dispatched",
+  "task_name": "sync_mainline_odds",
+  "task_id": "abc-123-def"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `task_name` | `string` | Must match a name from `GET /tasks/registry` |
+| `args` | `array` | Positional arguments passed to the Celery task (optional, default `[]`) |
+
+**Error (400):** Unknown task name.
 
 ---
 

@@ -32,7 +32,7 @@
 - `api/` — FastAPI backend (REST API, data serving)
 - `api/app/services/pipeline/` — Game flow generation pipeline (condensed moments)
 - `scraper/` — Multi-sport data scraper (automated ingestion)
-- `web/` — Admin UI (data browser, scraper management)
+- `web/` — Admin UI (data browser, task control panel, job monitoring)
 - `infra/` — Docker and deployment
 - `docs/` — Architecture and API documentation
 - `packages/` — Shared JS libraries (js-core, ui, ui-kit)
@@ -77,23 +77,24 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GR
 
 ## Scheduled Scraping
 
-**Always-on (all environments):**
+All tasks run in all environments (local mirrors production). Configured in `scraper/sports_scraper/celery_app.py`.
+
+**Polling (continuous):**
 - **Every 3 min** — Game state updates (game-state-machine)
-
-**Live polling (all environments):**
 - **Every 5 min** — Live PBP + boxscore polling
+- **Every 60 min** — Game social collection (`collect_game_social`)
 
-**Production-only:**
+**Daily (timed):**
 - **3:30 AM ET** — Sports ingestion (NBA → NHL → NCAAB sequentially)
 - **4:00 AM ET** — Daily sweep (truth repair, backfill missing data)
 - **4:30 AM ET** — NBA flow generation
 - **5:00 AM ET** — NHL flow generation
 - **5:30 AM ET** — NCAAB flow generation (max 10 games)
+
+**Odds sync:**
 - **Every 15 min** — Mainline odds sync (`sync_mainline_odds`: spreads, totals, moneyline for all leagues; `us` + `eu` regions)
 - **Every 60 min** — Prop odds sync (`sync_prop_odds`: player/team props for pregame events)
 - **3–7 AM ET** — Odds quiet window (both odds tasks skip execution)
-
-Configured in `scraper/sports_scraper/celery_app.py`
 
 ## Data Sources by League
 

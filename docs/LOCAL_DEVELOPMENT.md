@@ -24,9 +24,14 @@ The Docker Compose setup starts:
 | postgres | 5432 | PostgreSQL database |
 | redis | 6379 | Redis for Celery queue |
 | api | 8000 | FastAPI backend |
+| api-worker | — | Celery worker for API tasks (pipeline, flow generation) |
 | scraper | — | Celery worker for data ingestion |
 | scraper-beat | — | Celery scheduler (see CLAUDE.md for full schedule) |
+| social-scraper | — | Social media scraper (X/Twitter, concurrency=1) |
+| migrate | — | One-shot Alembic migration runner |
 | web | 3000 | Next.js admin UI |
+| backup | — | Daily backup service |
+| log-relay | — | Docker log relay sidecar |
 
 ## Verify Everything Works
 
@@ -238,7 +243,7 @@ CONFIRM_DESTRUCTIVE=true docker exec sports-postgres /scripts/restore.sh /backup
 
 1. **Explore Admin UI**: http://localhost:3000
 2. **Browse API Docs**: http://localhost:8000/docs
-3. **Trigger a scrape**: Use the admin UI to create a scrape run
+3. **Trigger a task**: Use the Control Panel to dispatch Celery tasks on-demand
 4. **View data**: Browse games, teams, and timeline artifacts
 
 ## See Also
