@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { type ScrapeRunResponse } from "@/lib/api/sportsAdmin";
 import { SCRAPE_RUN_STATUS_COLORS } from "@/lib/constants/sports";
-import { ROUTES } from "@/lib/constants/routes";
 import { formatDateTime } from "@/lib/utils/dateFormat";
 import { RunOriginBadge } from "./RunOriginBadge";
 import { RunTaskBadges } from "./RunTaskBadges";
@@ -29,7 +28,7 @@ export function ScrapeRunsTable({
   onRefresh,
   onCancel,
   cancellingRunId = null,
-  detailLinkPrefix = ROUTES.RUNS,
+  detailLinkPrefix = "/admin/sports/ingestion",
 }: ScrapeRunsTableProps) {
   const latestRuns = useMemo(() => runs.slice(0, 25), [runs]);
   const isCancelable = (status: string) => status === "pending" || status === "running";

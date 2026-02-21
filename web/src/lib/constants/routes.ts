@@ -8,11 +8,9 @@ export const ROUTES = {
   OVERVIEW: "/admin",
 
   GAMES: "/admin/sports/browser",
-  RUNS: "/admin/sports/ingestion",
-  PIPELINES: "/admin/sports/flow-generator",
   LOGS: "/admin/sports/logs",
 
-  TASKS: "/admin/sports/tasks",
+  CONTROL_PANEL: "/admin/control-panel",
   FAIRBET_ODDS: "/admin/fairbet/odds",
   SPORTS_GAME: (id: number | string) => `/admin/sports/games/${id}`,
 } as const;

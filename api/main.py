@@ -14,7 +14,7 @@ from app.logging_config import configure_logging
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.routers import fairbet, reading_positions, social, sports
-from app.routers.admin import odds_sync, pbp, pipeline, resolution, timeline_jobs
+from app.routers.admin import odds_sync, pbp, pipeline, resolution, task_control, timeline_jobs
 
 configure_logging(
     service="sports-data-admin-api",
@@ -69,6 +69,12 @@ app.include_router(
     odds_sync.router,
     prefix="/api/admin",
     tags=["admin", "odds"],
+    dependencies=auth_dependency,
+)
+app.include_router(
+    task_control.router,
+    prefix="/api/admin",
+    tags=["admin", "tasks"],
     dependencies=auth_dependency,
 )
 app.include_router(fairbet.router, dependencies=auth_dependency)

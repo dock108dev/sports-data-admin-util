@@ -16,6 +16,151 @@
   margin-bottom: var(--space-section-card);
 }
 
+/* ── Task trigger section ── */
+
+.categoryGroup {
+  margin-bottom: var(--space-section-card);
+}
+
+.categoryTitle {
+  font-size: var(--font-section-title-size);
+  font-weight: var(--font-section-title-weight);
+  color: var(--text-primary);
+  margin: 0 0 0.75rem 0;
+}
+
+.taskGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 0.75rem;
+}
+
+.taskCard {
+  background: #ffffff;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.taskHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.taskName {
+  font-family: monospace;
+  font-size: var(--font-body-size);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.queueBadge {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-button);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.queueSports {
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+.queueSocial {
+  background: #faf5ff;
+  color: #7c3aed;
+}
+
+.taskDescription {
+  font-size: var(--font-label-size);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.taskControls {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.paramGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+}
+
+.paramLabel {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.paramInput {
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--radius-button);
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: var(--text-secondary);
+  font-size: var(--font-body-size);
+  width: 100%;
+}
+
+.paramInput:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.runButton {
+  padding: 0.375rem 0.875rem;
+  border-radius: var(--radius-button);
+  border: 1px solid #3b82f6;
+  background: #3b82f6;
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: var(--font-body-size);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.runButton:hover:not(:disabled) {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.runButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dispatchedMsg {
+  font-size: var(--font-label-size);
+  color: #16a34a;
+  font-weight: 500;
+}
+
+.dispatchedTaskId {
+  font-family: monospace;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+/* ── Run History section (migrated from tasks page) ── */
+
 .card {
   background: #ffffff;
   border: 1px solid var(--border-default);
@@ -187,12 +332,6 @@
   border-radius: var(--radius-card);
   border: 1px solid #fecaca;
   font-size: var(--font-body-size);
-}
-
-.loading {
-  padding: 2rem;
-  text-align: center;
-  color: var(--text-muted);
 }
 
 .empty {

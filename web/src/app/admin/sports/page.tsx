@@ -105,10 +105,10 @@ export default function AdminDashboardPage() {
               <div className={styles.quickLinkDesc}>Filter games, odds, and completeness</div>
             </div>
           </Link>
-          <Link href={ROUTES.RUNS} className={styles.quickLink}>
+          <Link href={ROUTES.CONTROL_PANEL} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
-              <div className={styles.quickLinkTitle}>New scrape run</div>
-              <div className={styles.quickLinkDesc}>Start a new data ingestion job</div>
+              <div className={styles.quickLinkTitle}>Control Panel</div>
+              <div className={styles.quickLinkDesc}>Trigger tasks and monitor job runs</div>
             </div>
           </Link>
         </div>
@@ -121,7 +121,7 @@ export default function AdminDashboardPage() {
             {recentRuns.map((run) => (
               <Link
                 key={run.id}
-                href={`/admin/sports/ingestion/${run.id}`}
+                href={ROUTES.CONTROL_PANEL}
                 className={styles.runItem}
               >
                 <div className={`${styles.runStatus} ${getStatusClassName(run.status)}`} />
