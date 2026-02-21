@@ -129,7 +129,7 @@ TASK_REGISTRY: dict[str, TaskRegistryEntry] = {
         ),
         # Utility
         TaskRegistryEntry(
-            name="clear_scraper_cache_task",
+            name="clear_scraper_cache",
             queue="sports-scraper",
             description="Clear scraper cache for a league (optionally limit by days)",
         ),

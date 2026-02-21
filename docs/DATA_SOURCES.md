@@ -275,7 +275,7 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 **Always-on (all environments):**
 - **Game State Updates**: Every 3 minutes
 
-**Live polling (production, or `LIVE_POLLING_ENABLED=true`):**
+**Live polling (all environments):**
 - **Live PBP + Boxscore Polling**: Every 5 minutes (NBA, NHL per-game; NCAAB via batch CBB API)
 
 **Production-only:**

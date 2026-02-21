@@ -42,20 +42,6 @@ export interface RunFullPipelineResponse {
   message: string;
 }
 
-export interface GamePipelineSummary {
-  game_id: number;
-  game_date: string;
-  home_team: string;
-  away_team: string;
-  game_status: string;
-  has_pbp: boolean;
-  has_timeline_artifact: boolean;
-  latest_artifact_at: string | null;
-  total_pipeline_runs: number;
-  latest_run: PipelineRunSummary | null;
-  can_run_pipeline: boolean;
-}
-
 export interface GamePipelineRunsResponse {
   game_id: number;
   game_info: Record<string, unknown>;
@@ -82,16 +68,3 @@ export async function getPipelineRuns(
 ): Promise<GamePipelineRunsResponse> {
   return request(`/api/admin/sports/pipeline/game/${gameId}`);
 }
-
-export async function getPipelineRun(
-  runId: number
-): Promise<PipelineRunSummary> {
-  return request(`/api/admin/sports/pipeline/run/${runId}`);
-}
-
-export async function getGamePipelineSummary(
-  gameId: number
-): Promise<GamePipelineSummary> {
-  return request(`/api/admin/sports/pipeline/game/${gameId}/summary`);
-}
-

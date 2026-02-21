@@ -196,7 +196,7 @@ const TASK_REGISTRY: TaskDef[] = [
   },
   // Utility
   {
-    name: "clear_scraper_cache_task",
+    name: "clear_scraper_cache",
     label: "Clear Cache",
     description: "Clear scraper cache for a league (optionally limit by days)",
     category: "Utility",

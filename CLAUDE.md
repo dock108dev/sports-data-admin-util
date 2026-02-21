@@ -80,7 +80,7 @@ NORMALIZE_PBP → GENERATE_MOMENTS → VALIDATE_MOMENTS → ANALYZE_DRAMA → GR
 **Always-on (all environments):**
 - **Every 3 min** — Game state updates (game-state-machine)
 
-**Live polling (production, or when `LIVE_POLLING_ENABLED=true`):**
+**Live polling (all environments):**
 - **Every 5 min** — Live PBP + boxscore polling
 
 **Production-only:**

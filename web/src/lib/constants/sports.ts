@@ -23,39 +23,4 @@ export const SCRAPE_RUN_STATUS_COLORS: Record<string, string> = {
   canceled: "#94a3b8",
 } as const;
 
-/**
- * Simplified scrape run form state.
- */
-export type ScrapeRunForm = {
-  leagueCode: LeagueCode;
-  season: string;
-  startDate: string;
-  endDate: string;
-  // Data type toggles
-  boxscores: boolean;
-  odds: boolean;
-  social: boolean;
-  pbp: boolean;
-  // Shared filters
-  onlyMissing: boolean;
-  updatedBefore: string; // ISO date string or empty
-  requestedBy: string;
-};
-
-/**
- * Default form values for scrape run creation.
- */
-export const DEFAULT_SCRAPE_RUN_FORM: ScrapeRunForm = {
-  leagueCode: "NBA",
-  season: "",
-  startDate: "",
-  endDate: "",
-  boxscores: true,
-  odds: true,
-  social: true,
-  pbp: true,
-  onlyMissing: false,
-  updatedBefore: "",
-  requestedBy: "admin@dock108.ai",
-};
 

@@ -373,22 +373,3 @@ def collect_game_social() -> dict:
     return result
 
 
-@shared_task(name="get_social_mapping_stats")
-def get_social_mapping_stats() -> dict:
-    """
-    Get current mapping status distribution for team_social_posts.
-
-    Returns:
-        Dict with counts per mapping_status (unmapped, mapped, no_game)
-    """
-    from ..db import get_session
-    from ..social.tweet_mapper import get_mapping_stats
-
-    logger.info("get_social_mapping_stats_start")
-
-    with get_session() as session:
-        result = get_mapping_stats(session)
-
-    logger.info("get_social_mapping_stats_complete", result=result)
-
-    return result
