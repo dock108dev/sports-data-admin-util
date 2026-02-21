@@ -686,7 +686,7 @@ class TestNCAATeamNameMatching:
 # Game Matching Logic Tests
 # ============================================================================
 
-from sports_scraper.jobs.polling_helpers import _match_ncaa_scoreboard_to_games
+from sports_scraper.jobs.polling_helpers_ncaab import _match_ncaa_scoreboard_to_games
 
 
 class TestNCAAGameMatching:

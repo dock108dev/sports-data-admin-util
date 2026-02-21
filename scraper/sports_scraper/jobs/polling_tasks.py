@@ -27,11 +27,11 @@ from ..db import get_session
 from ..logging import logger
 from .polling_helpers import (
     _poll_nba_game_boxscore,
-    _poll_ncaab_games_batch,
     _poll_nhl_game_boxscore,
     _poll_single_game_pbp,
     _RateLimitError,
 )
+from .polling_helpers_ncaab import _poll_ncaab_games_batch
 
 # Maximum API calls per polling cycle to stay within rate limits
 _MAX_PBP_CALLS_PER_CYCLE = 30
@@ -48,6 +48,30 @@ _RATE_LIMIT_BACKOFF_SECONDS = 60
 from ..utils.redis_lock import LOCK_TIMEOUT_5MIN  # noqa: E402
 from ..utils.redis_lock import acquire_redis_lock as _acquire_redis_lock  # noqa: E402
 from ..utils.redis_lock import release_redis_lock as _release_redis_lock  # noqa: E402
+
+
+def _dispatch_final_actions(game_id: int) -> None:
+    """Dispatch social scrape and flow generation for a game that just went final."""
+    try:
+        from .final_whistle_tasks import run_final_whistle_social
+        run_final_whistle_social.apply_async(
+            args=[game_id],
+            countdown=300,
+            queue="social-scraper",
+        )
+        logger.info("final_whistle_social_dispatched", game_id=game_id)
+    except Exception as exc:
+        logger.warning("final_whistle_social_dispatch_error", game_id=game_id, error=str(exc))
+
+    try:
+        from .flow_trigger_tasks import trigger_flow_for_game
+        trigger_flow_for_game.apply_async(
+            args=[game_id],
+            countdown=3600,
+        )
+        logger.info("flow_trigger_dispatched", game_id=game_id, countdown=3600)
+    except Exception as exc:
+        logger.warning("flow_trigger_dispatch_error", game_id=game_id, error=str(exc))
 
 
 @shared_task(name="update_game_states")
@@ -190,44 +214,8 @@ def poll_live_pbp_task() -> dict:
 
                     if result.get("transition"):
                         transitions.append(result["transition"])
-                        tr = result["transition"]
-                        if tr["to"] == "final":
-                            try:
-                                from .final_whistle_tasks import run_final_whistle_social
-                                run_final_whistle_social.apply_async(
-                                    args=[tr["game_id"]],
-                                    countdown=300,
-                                    queue="social-scraper",
-                                )
-                                logger.info(
-                                    "final_whistle_social_dispatched",
-                                    game_id=tr["game_id"],
-                                )
-                            except Exception as flow_exc:
-                                logger.warning(
-                                    "final_whistle_social_dispatch_error",
-                                    game_id=tr["game_id"],
-                                    error=str(flow_exc),
-                                )
-
-                            # Dispatch flow generation 60 min after final
-                            try:
-                                from .flow_trigger_tasks import trigger_flow_for_game
-                                trigger_flow_for_game.apply_async(
-                                    args=[tr["game_id"]],
-                                    countdown=3600,
-                                )
-                                logger.info(
-                                    "flow_trigger_dispatched",
-                                    game_id=tr["game_id"],
-                                    countdown=3600,
-                                )
-                            except Exception as flow_exc:
-                                logger.warning(
-                                    "flow_trigger_dispatch_error",
-                                    game_id=tr["game_id"],
-                                    error=str(flow_exc),
-                                )
+                        if result["transition"]["to"] == "final":
+                            _dispatch_final_actions(result["transition"]["game_id"])
                     if result.get("pbp_events", 0) > 0:
                         pbp_updated += 1
 
@@ -324,45 +312,10 @@ def poll_live_pbp_task() -> dict:
                     boxscores_updated += ncaab_stats.get("boxscores_updated", 0)
                     transitions.extend(ncaab_stats.get("transitions", []))
 
-                    # Dispatch final-whistle social for NCAAB games that went final
+                    # Dispatch final-whistle social + flow for NCAAB games that went final
                     for tr in ncaab_stats.get("transitions", []):
                         if tr["to"] == "final":
-                            try:
-                                from .final_whistle_tasks import run_final_whistle_social
-                                run_final_whistle_social.apply_async(
-                                    args=[tr["game_id"]],
-                                    countdown=300,
-                                    queue="social-scraper",
-                                )
-                                logger.info(
-                                    "final_whistle_social_dispatched",
-                                    game_id=tr["game_id"],
-                                )
-                            except Exception as flow_exc:
-                                logger.warning(
-                                    "final_whistle_social_dispatch_error",
-                                    game_id=tr["game_id"],
-                                    error=str(flow_exc),
-                                )
-
-                            # Dispatch flow generation 60 min after final
-                            try:
-                                from .flow_trigger_tasks import trigger_flow_for_game
-                                trigger_flow_for_game.apply_async(
-                                    args=[tr["game_id"]],
-                                    countdown=3600,
-                                )
-                                logger.info(
-                                    "flow_trigger_dispatched",
-                                    game_id=tr["game_id"],
-                                    countdown=3600,
-                                )
-                            except Exception as flow_exc:
-                                logger.warning(
-                                    "flow_trigger_dispatch_error",
-                                    game_id=tr["game_id"],
-                                    error=str(flow_exc),
-                                )
+                            _dispatch_final_actions(tr["game_id"])
 
                 except _RateLimitError:
                     logger.warning("poll_ncaab_rate_limited")

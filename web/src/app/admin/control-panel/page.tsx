@@ -233,7 +233,9 @@ function TaskCard({ task }: { task: TaskDef }) {
     return defaults;
   });
   const [dispatching, setDispatching] = useState(false);
-  const [result, setResult] = useState<{ taskId: string } | null>(null);
+  const [result, setResult] = useState<
+    { taskId: string } | { error: string } | null
+  >(null);
 
   const canRun = task.params
     .filter((p) => p.required)
@@ -256,8 +258,10 @@ function TaskCard({ task }: { task: TaskDef }) {
       }
       const res = await triggerTask(task.name, args);
       setResult({ taskId: res.task_id });
-    } catch {
-      setResult(null);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Dispatch failed";
+      setResult({ error: msg });
     } finally {
       setDispatching(false);
     }
@@ -332,11 +336,14 @@ function TaskCard({ task }: { task: TaskDef }) {
         >
           {dispatching ? "Dispatching..." : "Run"}
         </button>
-        {result && (
+        {result && "taskId" in result && (
           <span className={styles.dispatchedMsg}>
             Dispatched{" "}
             <span className={styles.dispatchedTaskId}>{result.taskId}</span>
           </span>
+        )}
+        {result && "error" in result && (
+          <span className={styles.errorMsg}>{result.error}</span>
         )}
       </div>
     </div>

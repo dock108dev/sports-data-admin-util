@@ -172,3 +172,9 @@
   font-size: 0.65rem;
   color: var(--text-muted);
 }
+
+.errorMsg {
+  font-size: var(--font-label-size);
+  color: #dc2626;
+  font-weight: 500;
+}

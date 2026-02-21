@@ -162,19 +162,6 @@ def _run_social_scrape_2() -> dict:
                         error=str(exc),
                     )
 
-            # For Scrape #2: remove any pregame/in_game tweets that were newly mapped
-            # to this game (they should already exist from Scrape #1; dedup handles it,
-            # but if any slipped through, unmap them)
-            (
-                session.query(db_models.TeamSocialPost)
-                .filter(
-                    db_models.TeamSocialPost.game_id == game.id,
-                    db_models.TeamSocialPost.mapping_status == "mapped",
-                    db_models.TeamSocialPost.game_phase.in_(["pregame", "in_game"]),
-                )
-                .count()
-            )
-
             # Count postgame posts for this game (the ones we care about)
             postgame_count = (
                 session.query(db_models.TeamSocialPost)
