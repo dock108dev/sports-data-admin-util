@@ -27,11 +27,11 @@ from ..db import get_session
 from ..logging import logger
 from .polling_helpers import (
     _poll_nba_game_boxscore,
-    _poll_ncaab_games_batch,
     _poll_nhl_game_boxscore,
     _poll_single_game_pbp,
     _RateLimitError,
 )
+from .polling_helpers_ncaab import _poll_ncaab_games_batch
 
 # Maximum API calls per polling cycle to stay within rate limits
 _MAX_PBP_CALLS_PER_CYCLE = 30
@@ -50,6 +50,30 @@ from ..utils.redis_lock import acquire_redis_lock as _acquire_redis_lock  # noqa
 from ..utils.redis_lock import release_redis_lock as _release_redis_lock  # noqa: E402
 
 
+def _dispatch_final_actions(game_id: int) -> None:
+    """Dispatch social scrape and flow generation for a game that just went final."""
+    try:
+        from .final_whistle_tasks import run_final_whistle_social
+        run_final_whistle_social.apply_async(
+            args=[game_id],
+            countdown=300,
+            queue="social-scraper",
+        )
+        logger.info("final_whistle_social_dispatched", game_id=game_id)
+    except Exception as exc:
+        logger.warning("final_whistle_social_dispatch_error", game_id=game_id, error=str(exc))
+
+    try:
+        from .flow_trigger_tasks import trigger_flow_for_game
+        trigger_flow_for_game.apply_async(
+            args=[game_id],
+            countdown=3600,
+        )
+        logger.info("flow_trigger_dispatched", game_id=game_id, countdown=3600)
+    except Exception as exc:
+        logger.warning("flow_trigger_dispatch_error", game_id=game_id, error=str(exc))
+
+
 @shared_task(name="update_game_states")
 def update_game_states_task() -> dict:
     """Promote games through lifecycle states (runs every 3 min).
@@ -59,15 +83,21 @@ def update_game_states_task() -> dict:
     - final → archived (>7 days with timeline artifacts)
     """
     from ..services.game_state_updater import update_game_states
+    from ..services.job_runs import complete_job_run, start_job_run
 
     if not _acquire_redis_lock("lock:update_game_states", timeout=180):
         logger.debug("update_game_states_skipped_locked")
         return {"skipped": True, "reason": "locked"}
 
+    job_run_id = start_job_run("update_game_states", [])
     try:
         with get_session() as session:
             counts = update_game_states(session)
+        complete_job_run(job_run_id, status="success", summary_data=counts)
         return counts
+    except Exception as exc:
+        complete_job_run(job_run_id, status="error", error_summary=str(exc)[:500])
+        raise
     finally:
         _release_redis_lock("lock:update_game_states")
 
@@ -82,11 +112,13 @@ def poll_live_pbp_task() -> dict:
     3. NCAAB batch polling (PBP per-game + boxscores via batch endpoint)
     """
     from ..services.active_games import ActiveGamesResolver
+    from ..services.job_runs import complete_job_run, start_job_run
 
     if not _acquire_redis_lock("lock:poll_live_pbp", timeout=LOCK_TIMEOUT_5MIN):
         logger.debug("poll_live_pbp_skipped_locked")
         return {"skipped": True, "reason": "locked"}
 
+    job_run_id = start_job_run("poll_live_pbp", [])
     try:
         resolver = ActiveGamesResolver()
 
@@ -182,25 +214,8 @@ def poll_live_pbp_task() -> dict:
 
                     if result.get("transition"):
                         transitions.append(result["transition"])
-                        tr = result["transition"]
-                        if tr["to"] == "final":
-                            try:
-                                from .final_whistle_tasks import run_final_whistle_social
-                                run_final_whistle_social.apply_async(
-                                    args=[tr["game_id"]],
-                                    countdown=300,
-                                    queue="social-scraper",
-                                )
-                                logger.info(
-                                    "final_whistle_social_dispatched",
-                                    game_id=tr["game_id"],
-                                )
-                            except Exception as flow_exc:
-                                logger.warning(
-                                    "final_whistle_social_dispatch_error",
-                                    game_id=tr["game_id"],
-                                    error=str(flow_exc),
-                                )
+                        if result["transition"]["to"] == "final":
+                            _dispatch_final_actions(result["transition"]["game_id"])
                     if result.get("pbp_events", 0) > 0:
                         pbp_updated += 1
 
@@ -296,6 +311,12 @@ def poll_live_pbp_task() -> dict:
                     pbp_updated += ncaab_stats.get("pbp_updated", 0)
                     boxscores_updated += ncaab_stats.get("boxscores_updated", 0)
                     transitions.extend(ncaab_stats.get("transitions", []))
+
+                    # Dispatch final-whistle social + flow for NCAAB games that went final
+                    for tr in ncaab_stats.get("transitions", []):
+                        if tr["to"] == "final":
+                            _dispatch_final_actions(tr["game_id"])
+
                 except _RateLimitError:
                     logger.warning("poll_ncaab_rate_limited")
                     rate_limited = True
@@ -315,7 +336,7 @@ def poll_live_pbp_task() -> dict:
                 rate_limited=rate_limited,
             )
 
-            return {
+            result = {
                 "games_polled": games_polled,
                 "api_calls": total_api_calls,
                 "transitions": transitions,
@@ -323,7 +344,14 @@ def poll_live_pbp_task() -> dict:
                 "boxscores_updated": boxscores_updated,
                 "rate_limited": rate_limited,
             }
+            summary = {k: v for k, v in result.items() if k != "transitions"}
+            summary["transitions"] = len(transitions)
+            complete_job_run(job_run_id, status="success", summary_data=summary)
+            return result
 
+    except Exception as exc:
+        complete_job_run(job_run_id, status="error", error_summary=str(exc)[:500])
+        raise
     finally:
         _release_redis_lock("lock:poll_live_pbp")
 

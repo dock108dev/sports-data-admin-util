@@ -76,6 +76,11 @@ class NBALiveFeedClient:
             return live_games
 
         # Fallback to schedule API (no live status — all games report "scheduled")
+        logger.warning(
+            "nba_scoreboard_fallback_to_schedule",
+            date=str(day),
+            reason="live_scoreboard_returned_empty",
+        )
         return self._fetch_games_from_schedule(day)
 
     def _fetch_live_scoreboard(self, day: date) -> list[NBALiveGame]:

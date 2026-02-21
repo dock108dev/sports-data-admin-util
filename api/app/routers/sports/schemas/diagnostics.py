@@ -21,6 +21,7 @@ class JobRunResponse(BaseModel):
     finished_at: datetime | None = Field(None, alias="finishedAt")
     duration_seconds: float | None = Field(None, alias="durationSeconds")
     error_summary: str | None = Field(None, alias="errorSummary")
+    summary_data: dict[str, Any] | None = Field(None, alias="summaryData")
     created_at: datetime = Field(..., alias="createdAt")
 
 

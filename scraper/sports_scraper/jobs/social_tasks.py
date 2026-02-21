@@ -19,41 +19,29 @@ from ..logging import logger
 
 def _report_social_completion(
     scrape_run_id: int | None,
-    social_job_run_id: int | None,
     result: dict | None,
     error: str | None,
 ) -> None:
-    """Report social task completion back to SportsScrapeRun and SportsJobRun.
+    """Update the SportsScrapeRun summary with actual social stats.
 
-    Updates the SportsJobRun status and replaces the placeholder text in
-    SportsScrapeRun.summary with actual stats.
+    Replaces the "Social: dispatched to worker" placeholder text with
+    real tweet counts. Called from collect_team_social on the social-scraper
+    worker after collection finishes.
 
-    Both IDs are optional to support callers that don't track run state.
     All DB work is wrapped in try/except so reporting failures never crash the task.
     """
     try:
         from ..db import db_models, get_session
-        from ..services.job_runs import complete_job_run
 
         # Build the replacement summary string
         if error:
             social_summary = f"Social: error ({error[:80]})"
-            job_status = "error"
-            error_summary = error[:200]
         elif result:
             tweets = result.get("total_new_tweets", 0)
             mapped = result.get("mapping", {}).get("mapped", 0)
             social_summary = f"Social: {tweets} tweets ({mapped} mapped)"
-            job_status = "success"
-            error_summary = None
         else:
             social_summary = "Social: 0 tweets (0 mapped)"
-            job_status = "success"
-            error_summary = None
-
-        # Finalize the SportsJobRun
-        if social_job_run_id is not None:
-            complete_job_run(social_job_run_id, job_status, error_summary)
 
         # Update the SportsScrapeRun summary (replace placeholder)
         if scrape_run_id is not None:
@@ -76,7 +64,6 @@ def _report_social_completion(
         logger.warning(
             "social_completion_report_failed",
             scrape_run_id=scrape_run_id,
-            social_job_run_id=social_job_run_id,
             error=str(exc),
         )
 
@@ -85,7 +72,6 @@ def _report_social_completion(
 def handle_social_task_failure(
     task_id: str,
     scrape_run_id: int | None = None,
-    social_job_run_id: int | None = None,
 ) -> None:
     """Celery link_error callback for collect_team_social failures.
 
@@ -93,7 +79,8 @@ def handle_social_task_failure(
     Celery passes the failed task's ID as the first positional argument,
     followed by the args bound via `.s()`.
 
-    Reports the error back to SportsScrapeRun and SportsJobRun records.
+    Updates the SportsScrapeRun summary with the error message.
+    (SportsJobRun tracking is handled inside collect_team_social itself.)
     """
     from celery.result import AsyncResult
 
@@ -105,10 +92,9 @@ def handle_social_task_failure(
         "social_task_failed_callback",
         task_id=task_id,
         scrape_run_id=scrape_run_id,
-        social_job_run_id=social_job_run_id,
         error=error_msg,
     )
-    _report_social_completion(scrape_run_id, social_job_run_id, result=None, error=error_msg)
+    _report_social_completion(scrape_run_id, result=None, error=error_msg)
 
 
 @shared_task(
@@ -176,22 +162,25 @@ def collect_team_social(
     start_date: str,
     end_date: str,
     scrape_run_id: int | None = None,
-    social_job_run_id: int | None = None,
 ) -> dict:
     """
     Collect tweets for all teams in a league that played in the date range.
 
-    Tweets are saved to team_social_posts with mapping_status='unmapped'.
+    Job run tracking happens here on the social-scraper worker (not at
+    dispatch time on the main scraper) so the SportsJobRun accurately
+    reflects actual execution state.
 
     Args:
         league_code: League code (NBA, NHL, NCAAB)
         start_date: Start date string (YYYY-MM-DD)
         end_date: End date string (YYYY-MM-DD)
+        scrape_run_id: Optional parent SportsScrapeRun ID for summary update
 
     Returns:
         Summary stats dict
     """
     from ..db import get_session
+    from ..services.job_runs import track_job_run
     from ..social.team_collector import TeamTweetCollector
     from ..social.tweet_mapper import map_unmapped_tweets
 
@@ -205,18 +194,21 @@ def collect_team_social(
     start = date.fromisoformat(start_date)
     end = date.fromisoformat(end_date)
 
-    with get_session() as session:
-        collector = TeamTweetCollector()
-        result = collector.collect_for_date_range(
-            session=session,
-            league_code=league_code,
-            start_date=start,
-            end_date=end,
-        )
+    with track_job_run("social", [league_code]) as tracker:
+        with get_session() as session:
+            collector = TeamTweetCollector()
+            result = collector.collect_for_date_range(
+                session=session,
+                league_code=league_code,
+                start_date=start,
+                end_date=end,
+            )
 
-        # Always map tweets to games after collection
-        map_result = map_unmapped_tweets(session=session, batch_size=1000)
-        result["mapping"] = map_result
+            # Always map tweets to games after collection
+            map_result = map_unmapped_tweets(session=session, batch_size=1000)
+            result["mapping"] = map_result
+
+        tracker.summary_data = result
 
     logger.info(
         "collect_team_social_complete",
@@ -224,7 +216,8 @@ def collect_team_social(
         result=result,
     )
 
-    _report_social_completion(scrape_run_id, social_job_run_id, result, error=None)
+    # Update parent SportsScrapeRun summary (replace "dispatched" placeholder)
+    _report_social_completion(scrape_run_id, result, error=None)
 
     return result
 
@@ -260,22 +253,123 @@ def map_social_to_games(batch_size: int = 1000) -> dict:
     return result
 
 
-@shared_task(name="get_social_mapping_stats")
-def get_social_mapping_stats() -> dict:
-    """
-    Get current mapping status distribution for team_social_posts.
+@shared_task(
+    name="collect_game_social",
+    queue="social-scraper",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def collect_game_social() -> dict:
+    """Collect social posts for teams with games today (runs hourly at :30).
+
+    Queries today's games across all phases (scheduled, pregame, live, final),
+    deduplicates teams, and collects tweets for each. Runs on the
+    social-scraper queue with a 3-min cooldown between teams.
 
     Returns:
-        Dict with counts per mapping_status (unmapped, mapped, no_game)
+        Summary stats dict with teams_processed, total_new_tweets, errors
     """
-    from ..db import get_session
-    from ..social.tweet_mapper import get_mapping_stats
+    import time
 
-    logger.info("get_social_mapping_stats_start")
+    from ..db import db_models, get_session
+    from ..services.job_runs import track_job_run
+    from ..social.team_collector import TeamTweetCollector
+    from ..social.tweet_mapper import map_unmapped_tweets
+    from ..utils.datetime_utils import today_et
 
-    with get_session() as session:
-        result = get_mapping_stats(session)
+    game_date = today_et()
+    logger.info("collect_game_social_start", game_date=str(game_date))
 
-    logger.info("get_social_mapping_stats_complete", result=result)
+    with track_job_run("collect_game_social") as tracker, get_session() as session:
+        # Find today's games across all active phases
+        games = (
+            session.query(db_models.SportsGame)
+            .filter(
+                db_models.SportsGame.game_date == game_date,
+                db_models.SportsGame.status.in_([
+                    db_models.GameStatus.scheduled.value,
+                    db_models.GameStatus.pregame.value,
+                    db_models.GameStatus.live.value,
+                    db_models.GameStatus.final.value,
+                ]),
+            )
+            .all()
+        )
+
+        if not games:
+            logger.info("collect_game_social_no_games", game_date=str(game_date))
+            return {"game_date": str(game_date), "teams_processed": 0, "total_new_tweets": 0}
+
+        # Deduplicate team IDs across all games
+        team_ids: set[int] = set()
+        for game in games:
+            team_ids.add(game.home_team_id)
+            team_ids.add(game.away_team_id)
+
+        logger.info(
+            "collect_game_social_found",
+            game_date=str(game_date),
+            games=len(games),
+            teams=len(team_ids),
+        )
+
+        try:
+            collector = TeamTweetCollector()
+        except RuntimeError as exc:
+            logger.error("collect_game_social_collector_unavailable", error=str(exc))
+            return {
+                "game_date": str(game_date),
+                "teams_processed": 0,
+                "total_new_tweets": 0,
+                "error": str(exc),
+            }
+
+        total_new = 0
+        teams_processed = 0
+        errors = 0
+
+        for i, team_id in enumerate(sorted(team_ids)):
+            # Inter-team cooldown (3 min) — skip before the first team
+            if i > 0:
+                time.sleep(180)
+
+            try:
+                new_tweets = collector.collect_team_tweets(
+                    session=session,
+                    team_id=team_id,
+                    start_date=game_date,
+                    end_date=game_date,
+                )
+                total_new += new_tweets
+                teams_processed += 1
+                logger.info(
+                    "collect_game_social_team_done",
+                    team_id=team_id,
+                    new_tweets=new_tweets,
+                )
+            except Exception as exc:
+                errors += 1
+                logger.warning(
+                    "collect_game_social_team_error",
+                    team_id=team_id,
+                    error=str(exc),
+                )
+
+        # Map newly collected tweets to games
+        map_result = map_unmapped_tweets(session=session, batch_size=1000)
+
+        result = {
+            "game_date": str(game_date),
+            "teams_processed": teams_processed,
+            "total_new_tweets": total_new,
+            "mapped": map_result.get("mapped", 0),
+            "errors": errors,
+        }
+        tracker.summary_data = result
+
+    logger.info("collect_game_social_complete", **result)
 
     return result
+
+

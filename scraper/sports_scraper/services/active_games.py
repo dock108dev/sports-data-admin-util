@@ -196,10 +196,9 @@ class ActiveGamesResolver:
         self,
         session: Session,
     ) -> list[db_models.SportsGame]:
-        """Return live games where boxscore data is stale.
+        """Return live and recently-final games within postgame window where boxscore data is stale.
 
         Only includes leagues with live_boxscore_enabled=True.
-        Boxscores are only meaningful for live games (no data before tip-off).
         A game needs a boxscore refresh if last_boxscore_at is NULL or older
         than pbp_stale_minutes (same staleness window as PBP).
         """
@@ -225,7 +224,14 @@ class ActiveGamesResolver:
             session.query(db_models.SportsGame)
             .filter(
                 db_models.SportsGame.league_id.in_(league_id_list),
-                db_models.SportsGame.status == db_models.GameStatus.live.value,
+                or_(
+                    db_models.SportsGame.status == db_models.GameStatus.live.value,
+                    (
+                        (db_models.SportsGame.status == db_models.GameStatus.final.value)
+                        & (db_models.SportsGame.end_time.isnot(None))
+                        & (db_models.SportsGame.end_time > now - timedelta(hours=self.postgame_hours))
+                    ),
+                ),
                 or_(
                     db_models.SportsGame.last_boxscore_at.is_(None),
                     db_models.SportsGame.last_boxscore_at < stale_threshold,

@@ -2,7 +2,46 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-19] - Current
+## [2026-02-20] - Current
+
+### Control Panel & Admin Consolidation
+
+- **Control Panel page**: New `/admin/control-panel` replaces three separate pages (Runs, Pipelines, Tasks) with a single interface for dispatching any of 17 registered Celery tasks with inline parameter inputs
+- **Task Control API**: New `POST /api/admin/tasks/trigger` and `GET /api/admin/tasks/registry` endpoints with a whitelisted task registry (17 tasks across 7 categories: Ingestion, Polling, Odds, Social, Flows, Timelines, Utility)
+- **RunsDrawer**: IDE-style bottom panel for job run monitoring, available on all admin pages with collapsed/half/full height states, phase and status filters, and auto-refresh
+- **Nav consolidation**: Sidebar simplified to General (Overview), Data (Games, Odds), System (Control Panel, Logs) — Runs, Pipelines, and Tasks pages removed
+
+### Game State & Live Polling
+
+- **Game state machine enhancements**: Improved game state transitions and tracking in `game_state_updater.py`
+- **Final whistle social**: New `run_final_whistle_social` task collects post-game social content when games transition to FINAL
+- **Live polling unconditional**: `LIVE_POLLING_ENABLED` config field removed; live PBP + boxscore polling now runs in all environments (schedule is unconditional in `celery_app.py`)
+- **Job run summaries**: New `job_run_summary_data` column on `sports_job_runs` for tracking run statistics
+
+### NCAAB Enhancements
+
+- **NCAAB live feed clients**: New `ncaa_boxscore.py`, `ncaa_pbp.py`, `ncaa_scoreboard.py`, `ncaa_constants.py` for direct CBB API integration
+- **Score filling**: Early plays in NCAAB PBP now get scores filled correctly
+- **Game status handling**: Enhanced NCAAB game status parsing in `NCAABLiveFeedClient`
+
+### Legacy Code Cleanup
+
+- **Dead Python code removed**: `pipeline_tasks.py` (dead `trigger_game_pipelines_task`), `get_social_mapping_stats` task, `live_polling_enabled` config field
+- **Dead web components removed**: `ScrapeRunForm`, `ScrapeRunsTable`, `RunOriginBadge`, `RunTaskBadges`, `useScrapeRuns` hook
+- **Dead API client functions removed**: `createScrapeRun`, `cancelScrapeRun`, `clearScraperCache`, `fetchScrapeRun`, `getGamePipelineSummary`, `getPipelineRun` from frontend API clients
+- **Dead pages removed**: `/admin/sports/ingestion/`, `/admin/sports/flow-generator/`, `/admin/sports/tasks/`
+- **Bug fix**: Task registry entry `clear_scraper_cache_task` corrected to `clear_scraper_cache` (matching actual Celery task name)
+
+### Tests
+
+- **NCAAB API tests**: 829-line test suite for new NCAA API clients (`test_ncaa_api.py`)
+- **Game state updater tests**: Enhanced coverage in `test_game_state_updater.py`
+- **Final whistle tests**: Updated `test_final_whistle.py`
+- **Flow immutability tests**: Updated `test_flow_immutability.py`
+
+---
+
+## [2026-02-19]
 
 ### Admin Console Refactor
 

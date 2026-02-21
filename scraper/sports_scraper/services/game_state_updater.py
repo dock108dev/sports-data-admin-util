@@ -4,6 +4,8 @@ Pure DB operations — no external API calls. Designed to run every 3 minutes
 via Celery beat. State transitions:
 
 - scheduled → pregame: when now() >= tip_time - pregame_window_hours
+- pregame → live: when tip_time < now() AND tip_time + estimated_game_duration > now()
+  (time-based fallback when scoreboard APIs don't report "live")
 - scheduled/pregame → final: when tip_time + estimated_game_duration_hours
   + postgame_window_hours < now() (stale timeout safety net)
 - final → archived: when game has timeline artifacts AND end_time < now() - 7 days
@@ -36,11 +38,13 @@ def update_game_states(session: Session) -> dict[str, int]:
     """
     counts: dict[str, int] = {
         "scheduled_to_pregame": 0,
+        "pregame_to_live": 0,
         "stale_to_final": 0,
         "final_to_archived": 0,
     }
 
     counts["scheduled_to_pregame"] = _promote_scheduled_to_pregame(session)
+    counts["pregame_to_live"] = _promote_pregame_to_live(session)
     counts["stale_to_final"] = _promote_stale_to_final(session)
     counts["final_to_archived"] = _promote_final_to_archived(session)
 
@@ -96,6 +100,56 @@ def _promote_scheduled_to_pregame(session: Session) -> int:
                 from_status="scheduled",
                 to_status="pregame",
                 tip_time=str(game.tip_time),
+            )
+
+    return promoted
+
+
+def _promote_pregame_to_live(session: Session) -> int:
+    """Promote pregame games to live based on tip_time.
+
+    Time-based fallback for when scoreboard APIs don't reliably report "live".
+    Condition: tip_time < now AND tip_time + estimated_game_duration > now.
+    This ensures we only promote games that are plausibly in progress.
+    """
+    now = now_utc()
+    promoted = 0
+
+    for league_code, config in LEAGUE_CONFIG.items():
+        duration = timedelta(hours=config.estimated_game_duration_hours)
+
+        league_id = (
+            session.query(db_models.SportsLeague.id)
+            .filter(db_models.SportsLeague.code == league_code)
+            .scalar()
+        )
+        if league_id is None:
+            continue
+
+        games = (
+            session.query(db_models.SportsGame)
+            .filter(
+                db_models.SportsGame.league_id == league_id,
+                db_models.SportsGame.status == db_models.GameStatus.pregame.value,
+                db_models.SportsGame.tip_time.isnot(None),
+                db_models.SportsGame.tip_time < now,              # past tip-off
+                db_models.SportsGame.tip_time > now - duration,   # not yet expired
+            )
+            .all()
+        )
+
+        for game in games:
+            game.status = db_models.GameStatus.live.value
+            game.updated_at = now
+            promoted += 1
+            logger.info(
+                "game_state_transition",
+                game_id=game.id,
+                league=league_code,
+                from_status="pregame",
+                to_status="live",
+                tip_time=str(game.tip_time),
+                reason="time_based_promotion",
             )
 
     return promoted

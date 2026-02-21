@@ -23,14 +23,13 @@ const navSections: { title: string; items: NavItem[] }[] = [
     title: "Data",
     items: [
       { href: ROUTES.GAMES, label: "Games" },
-      { href: ROUTES.RUNS, label: "Runs" },
-      { href: ROUTES.PIPELINES, label: "Pipelines" },
       { href: ROUTES.FAIRBET_ODDS, label: "Odds (FairBet)" },
     ],
   },
   {
     title: "System",
     items: [
+      { href: ROUTES.CONTROL_PANEL, label: "Control Panel" },
       { href: ROUTES.LOGS, label: "Logs" },
     ],
   },

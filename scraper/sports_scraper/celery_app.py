@@ -60,6 +60,8 @@ app.conf.task_routes = {
     "run_daily_sweep": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     # Final-whistle social scrape runs on social-scraper queue (concurrency=1)
     "run_final_whistle_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
+    # Hourly game social collection (all phases)
+    "collect_game_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
 }
 # Daily pipeline schedule (all times US Eastern / UTC during EST):
 #
@@ -82,8 +84,9 @@ _always_on_schedule = {
     },
 }
 
-# Production-only tasks (external APIs, cost, rate limits)
-_prod_only_schedule = {
+# Scheduled tasks — active in all environments.
+# Local deploys mirror production for testing purposes.
+_scheduled_tasks = {
     "daily-sports-ingestion-330am-eastern": {
         "task": "run_scheduled_ingestion",
         "schedule": crontab(minute=30, hour=8),  # 3:30 AM EST = 08:30 UTC
@@ -123,49 +126,34 @@ _prod_only_schedule = {
     },
 }
 
-# Live polling — runs in production, or when LIVE_POLLING_ENABLED=true.
-# Only controls poll_live_pbp (stats + PBP). Does NOT enable odds sync,
-# daily ingestion, flow generation, or any other production tasks.
+# Live polling — PBP + boxscores + game social
 _live_polling_schedule = {
     "live-pbp-poll-every-5-min": {
         "task": "poll_live_pbp",
         "schedule": crontab(minute="*/5"),
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
+    "game-social-every-60-min": {
+        "task": "collect_game_social",
+        "schedule": crontab(minute=30),
+        "options": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
+    },
 }
 
-_beat_schedule = {**_always_on_schedule}
-
-_include_live_polling = (
-    settings.environment == "production" or settings.live_polling_enabled
-)
-
-if settings.environment == "production":
-    _beat_schedule.update(_prod_only_schedule)
-
-if _include_live_polling:
-    _beat_schedule.update(_live_polling_schedule)
+# All environments run the full schedule — local mirrors production.
+_beat_schedule = {
+    **_always_on_schedule,
+    **_scheduled_tasks,
+    **_live_polling_schedule,
+}
 
 app.conf.beat_schedule = _beat_schedule
 
-if settings.environment == "production":
-    logger.info(
-        "beat_schedule_production",
-        task_count=len(_beat_schedule),
-    )
-elif _include_live_polling:
-    logger.info(
-        "beat_schedule_non_production_with_live_polling",
-        environment=settings.environment,
-        task_count=len(_beat_schedule),
-        live_polling_tasks=list(_live_polling_schedule.keys()),
-    )
-else:
-    logger.info(
-        "beat_schedule_non_production",
-        environment=settings.environment,
-        task_count=len(_beat_schedule),
-    )
+logger.info(
+    "beat_schedule_loaded",
+    environment=settings.environment,
+    task_count=len(_beat_schedule),
+)
 
 
 def mark_stale_runs_interrupted():
@@ -174,6 +162,7 @@ def mark_stale_runs_interrupted():
 
     This handles cases where the Docker container was killed or the worker
     crashed, leaving runs in a 'running' state that will never complete.
+    Covers both SportsScrapeRun (ingestion runs) and SportsJobRun (task runs).
     """
     try:
         with get_session() as session:
@@ -181,6 +170,7 @@ def mark_stale_runs_interrupted():
             # (reasonable threshold - if a run is truly running, it should complete or fail)
             stale_threshold = now_utc() - timedelta(hours=1)
 
+            # --- SportsScrapeRun (ingestion runs) ---
             stale_runs = session.query(db_models.SportsScrapeRun).filter(
                 db_models.SportsScrapeRun.status == "running",
                 db_models.SportsScrapeRun.started_at.isnot(None),
@@ -201,7 +191,31 @@ def mark_stale_runs_interrupted():
 
                 session.commit()
                 logger.info("stale_runs_marked_interrupted", count=len(stale_runs))
-            else:
+
+            # --- SportsJobRun (task runs) ---
+            stale_job_runs = session.query(db_models.SportsJobRun).filter(
+                db_models.SportsJobRun.status == "running",
+                db_models.SportsJobRun.started_at.isnot(None),
+                db_models.SportsJobRun.started_at < stale_threshold,
+            ).all()
+
+            if stale_job_runs:
+                for jr in stale_job_runs:
+                    jr.status = "interrupted"
+                    jr.finished_at = now_utc()
+                    jr.duration_seconds = (now_utc() - jr.started_at).total_seconds()
+                    jr.error_summary = "Task was interrupted (worker shutdown or container killed)"
+                    logger.warning(
+                        "marking_stale_job_run_interrupted",
+                        run_id=jr.id,
+                        phase=jr.phase,
+                        started_at=str(jr.started_at),
+                    )
+
+                session.commit()
+                logger.info("stale_job_runs_marked_interrupted", count=len(stale_job_runs))
+
+            if not stale_runs and not stale_job_runs:
                 logger.debug("no_stale_runs_found")
     except Exception as exc:
         logger.exception("failed_to_mark_stale_runs", error=str(exc))

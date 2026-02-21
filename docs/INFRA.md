@@ -190,7 +190,6 @@ To add new teams, leagues, or social handles:
 | `POSTGRES_PORT` | No | Host port for postgres (default: 5432) |
 | `REDIS_PASSWORD` | No | Redis password |
 | `ENVIRONMENT` | No | `development` or `production` |
-| `LIVE_POLLING_ENABLED` | No | Enable live PBP + boxscore polling in non-production (default false) |
 | `RUN_MIGRATIONS` | No | Run Alembic on startup (dev-only; default false) |
 | `API_KEY` | Prod/Staging | API authentication key (min 32 chars) |
 | `OPENAI_API_KEY` | No | OpenAI key for AI enrichment (game flow narratives) |

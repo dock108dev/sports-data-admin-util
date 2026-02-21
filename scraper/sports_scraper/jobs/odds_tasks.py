@@ -58,6 +58,8 @@ def sync_mainline_odds(league_code: str | None = None) -> dict:
 
     Runs every 15 minutes.  Skips during the 3–7 AM ET quiet window.
     """
+    from ..services.job_runs import track_job_run
+
     if _in_quiet_window():
         logger.debug("sync_mainline_odds_quiet_window")
         return {"skipped": True, "reason": "quiet_window"}
@@ -73,65 +75,68 @@ def sync_mainline_odds(league_code: str | None = None) -> dict:
         else:
             leagues = get_odds_enabled_leagues()
 
-        today = today_et()
-        end = today + timedelta(days=1)
+        with track_job_run("sync_mainline_odds", leagues) as tracker:
+            today = today_et()
+            end = today + timedelta(days=1)
 
-        sync = OddsSynchronizer()
-        results: dict[str, dict] = {}
-        total_odds = 0
+            sync = OddsSynchronizer()
+            results: dict[str, dict] = {}
+            total_odds = 0
 
-        logger.info(
-            "sync_mainline_odds_start",
-            leagues=leagues,
-            start_date=str(today),
-            end_date=str(end),
-        )
+            logger.info(
+                "sync_mainline_odds_start",
+                leagues=leagues,
+                start_date=str(today),
+                end_date=str(end),
+            )
 
-        for lc in leagues:
-            league_result: dict[str, int | str] = {
-                "odds_count": 0,
-                "status": "success",
+            for lc in leagues:
+                league_result: dict[str, int | str] = {
+                    "odds_count": 0,
+                    "status": "success",
+                }
+
+                try:
+                    config = IngestionConfig(
+                        league_code=lc,
+                        start_date=today,
+                        end_date=end,
+                        odds=True,
+                        boxscores=False,
+                        social=False,
+                        pbp=False,
+                    )
+                    odds_count = sync.sync(config)
+                    league_result["odds_count"] = odds_count
+                    total_odds += odds_count
+                    logger.info(
+                        "sync_mainline_odds_league_complete",
+                        league=lc,
+                        odds_count=odds_count,
+                    )
+                except Exception as exc:
+                    league_result["status"] = "error"
+                    league_result["error"] = str(exc)
+                    logger.exception(
+                        "sync_mainline_odds_league_failed",
+                        league=lc,
+                        error=str(exc),
+                    )
+
+                results[lc] = league_result
+
+            logger.info(
+                "sync_mainline_odds_complete",
+                total_odds=total_odds,
+                results=results,
+            )
+
+            tracker.summary_data = {"total_odds": total_odds, "leagues": results}
+
+            return {
+                "leagues": results,
+                "total_odds": total_odds,
             }
-
-            try:
-                config = IngestionConfig(
-                    league_code=lc,
-                    start_date=today,
-                    end_date=end,
-                    odds=True,
-                    boxscores=False,
-                    social=False,
-                    pbp=False,
-                )
-                odds_count = sync.sync(config)
-                league_result["odds_count"] = odds_count
-                total_odds += odds_count
-                logger.info(
-                    "sync_mainline_odds_league_complete",
-                    league=lc,
-                    odds_count=odds_count,
-                )
-            except Exception as exc:
-                league_result["status"] = "error"
-                league_result["error"] = str(exc)
-                logger.exception(
-                    "sync_mainline_odds_league_failed",
-                    league=lc,
-                    error=str(exc),
-                )
-
-            results[lc] = league_result
-
-        logger.info(
-            "sync_mainline_odds_complete",
-            total_odds=total_odds,
-            results=results,
-        )
-
-        return {
-            "leagues": results,
-            "total_odds": total_odds,
-        }
 
     finally:
         release_redis_lock("lock:sync_mainline_odds")
@@ -152,6 +157,8 @@ def sync_prop_odds(league_code: str | None = None) -> dict:
 
     Runs every 60 minutes.  Skips during the 3–7 AM ET quiet window.
     """
+    from ..services.job_runs import track_job_run
+
     if _in_quiet_window():
         logger.debug("sync_prop_odds_quiet_window")
         return {"skipped": True, "reason": "quiet_window"}
@@ -167,71 +174,74 @@ def sync_prop_odds(league_code: str | None = None) -> dict:
         else:
             leagues = get_odds_enabled_leagues()
 
-        sync = OddsSynchronizer()
-        results: dict[str, dict] = {}
-        total_props = 0
+        with track_job_run("sync_prop_odds", leagues) as tracker:
+            sync = OddsSynchronizer()
+            results: dict[str, dict] = {}
+            total_props = 0
 
-        logger.info("sync_prop_odds_start", leagues=leagues)
+            logger.info("sync_prop_odds_start", leagues=leagues)
 
-        for lc in leagues:
-            league_result: dict[str, int | str] = {
-                "props_count": 0,
-                "status": "success",
-            }
+            for lc in leagues:
+                league_result: dict[str, int | str] = {
+                    "props_count": 0,
+                    "status": "success",
+                }
 
-            try:
-                with get_session() as session:
-                    stmt = (
-                        select(db_models.SportsGame)
-                        .join(db_models.SportsLeague)
-                        .where(
-                            db_models.SportsLeague.code == lc,
-                            db_models.SportsGame.status.in_(["scheduled", "pregame"]),
-                            db_models.SportsGame.external_ids["odds_api_event_id"].astext.isnot(None),
+                try:
+                    with get_session() as session:
+                        stmt = (
+                            select(db_models.SportsGame)
+                            .join(db_models.SportsLeague)
+                            .where(
+                                db_models.SportsLeague.code == lc,
+                                db_models.SportsGame.status.in_(["scheduled", "pregame"]),
+                                db_models.SportsGame.external_ids["odds_api_event_id"].astext.isnot(None),
+                            )
                         )
-                    )
-                    games = session.execute(stmt).scalars().all()
+                        games = session.execute(stmt).scalars().all()
 
-                    event_ids = [
-                        g.external_ids["odds_api_event_id"]
-                        for g in games
-                        if g.external_ids.get("odds_api_event_id")
-                    ]
+                        event_ids = [
+                            g.external_ids["odds_api_event_id"]
+                            for g in games
+                            if g.external_ids.get("odds_api_event_id")
+                        ]
 
-                if event_ids:
-                    props_count = sync.sync_props(lc, event_ids)
-                    league_result["props_count"] = props_count
-                    league_result["events"] = len(event_ids)
-                    total_props += props_count
-                    logger.info(
-                        "sync_prop_odds_league_complete",
+                    if event_ids:
+                        props_count = sync.sync_props(lc, event_ids)
+                        league_result["props_count"] = props_count
+                        league_result["events"] = len(event_ids)
+                        total_props += props_count
+                        logger.info(
+                            "sync_prop_odds_league_complete",
+                            league=lc,
+                            props_count=props_count,
+                            events=len(event_ids),
+                        )
+                    else:
+                        logger.info("sync_prop_odds_no_events", league=lc)
+                except Exception as exc:
+                    league_result["status"] = "error"
+                    league_result["error"] = str(exc)
+                    logger.exception(
+                        "sync_prop_odds_league_failed",
                         league=lc,
-                        props_count=props_count,
-                        events=len(event_ids),
+                        error=str(exc),
                     )
-                else:
-                    logger.info("sync_prop_odds_no_events", league=lc)
-            except Exception as exc:
-                league_result["status"] = "error"
-                league_result["error"] = str(exc)
-                logger.exception(
-                    "sync_prop_odds_league_failed",
-                    league=lc,
-                    error=str(exc),
-                )
 
-            results[lc] = league_result
+                results[lc] = league_result
 
-        logger.info(
-            "sync_prop_odds_complete",
-            total_props=total_props,
-            results=results,
-        )
+            logger.info(
+                "sync_prop_odds_complete",
+                total_props=total_props,
+                results=results,
+            )
 
-        return {
-            "leagues": results,
-            "total_props": total_props,
-        }
+            tracker.summary_data = {"total_props": total_props, "leagues": results}
+
+            return {
+                "leagues": results,
+                "total_props": total_props,
+            }
 
     finally:
         release_redis_lock("lock:sync_prop_odds")

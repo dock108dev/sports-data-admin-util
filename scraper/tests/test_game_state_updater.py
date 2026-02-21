@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from sports_scraper.services.game_state_updater import (
     _ARCHIVE_AFTER_DAYS,
     _promote_final_to_archived,
+    _promote_pregame_to_live,
     _promote_scheduled_to_pregame,
     update_game_states,
 )
@@ -40,17 +41,24 @@ def _make_game(**kwargs) -> MagicMock:
 class TestUpdateGameStates:
     @patch(f"{_MOD}._promote_final_to_archived", return_value=0)
     @patch(f"{_MOD}._promote_stale_to_final", return_value=0)
+    @patch(f"{_MOD}._promote_pregame_to_live", return_value=0)
     @patch(f"{_MOD}._promote_scheduled_to_pregame", return_value=0)
-    def test_returns_counts_dict(self, mock_sched, mock_stale, mock_final):
+    def test_returns_counts_dict(self, mock_sched, mock_pregame, mock_stale, mock_final):
         session = MagicMock()
         result = update_game_states(session)
-        assert result == {"scheduled_to_pregame": 0, "stale_to_final": 0, "final_to_archived": 0}
+        assert result == {
+            "scheduled_to_pregame": 0,
+            "pregame_to_live": 0,
+            "stale_to_final": 0,
+            "final_to_archived": 0,
+        }
 
     @patch(f"{_MOD}.logger")
     @patch(f"{_MOD}._promote_final_to_archived", return_value=1)
     @patch(f"{_MOD}._promote_stale_to_final", return_value=0)
+    @patch(f"{_MOD}._promote_pregame_to_live", return_value=0)
     @patch(f"{_MOD}._promote_scheduled_to_pregame", return_value=2)
-    def test_logs_info_when_transitions(self, mock_sched, mock_stale, mock_final, mock_logger):
+    def test_logs_info_when_transitions(self, mock_sched, mock_pregame, mock_stale, mock_final, mock_logger):
         session = MagicMock()
         result = update_game_states(session)
         assert result["scheduled_to_pregame"] == 2
@@ -60,8 +68,9 @@ class TestUpdateGameStates:
     @patch(f"{_MOD}.logger")
     @patch(f"{_MOD}._promote_final_to_archived", return_value=0)
     @patch(f"{_MOD}._promote_stale_to_final", return_value=0)
+    @patch(f"{_MOD}._promote_pregame_to_live", return_value=0)
     @patch(f"{_MOD}._promote_scheduled_to_pregame", return_value=0)
-    def test_logs_debug_when_no_transitions(self, mock_sched, mock_stale, mock_final, mock_logger):
+    def test_logs_debug_when_no_transitions(self, mock_sched, mock_pregame, mock_stale, mock_final, mock_logger):
         session = MagicMock()
         update_game_states(session)
         mock_logger.debug.assert_called_once_with("game_state_updater_no_transitions")
@@ -139,6 +148,87 @@ class TestPromoteScheduledToPregame:
 
         result = _promote_scheduled_to_pregame(session)
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# _promote_pregame_to_live
+# ---------------------------------------------------------------------------
+_ESTIMATED_GAME_DURATION_HOURS = 3.0
+
+
+class TestPromotePregameToLive:
+    @patch("sports_scraper.services.game_state_updater.LEAGUE_CONFIG")
+    @patch("sports_scraper.services.game_state_updater.now_utc", return_value=_utc_now())
+    def test_promotes_game_past_tip_time(self, mock_now, mock_config):
+        now = _utc_now()
+        config = MagicMock()
+        config.estimated_game_duration_hours = _ESTIMATED_GAME_DURATION_HOURS
+        mock_config.items.return_value = [("NBA", config)]
+
+        game = _make_game(
+            status="pregame",
+            tip_time=now - timedelta(hours=1),  # started 1 hour ago
+        )
+
+        session = MagicMock()
+        session.query.return_value.filter.return_value.scalar.return_value = _MOCK_LEAGUE_ID
+        session.query.return_value.filter.return_value.all.return_value = [game]
+
+        result = _promote_pregame_to_live(session)
+        assert result == 1
+        assert game.status == "live"
+        assert game.updated_at == now
+
+    @patch("sports_scraper.services.game_state_updater.LEAGUE_CONFIG")
+    @patch("sports_scraper.services.game_state_updater.now_utc", return_value=_utc_now())
+    def test_skips_game_before_tip_time(self, mock_now, mock_config):
+        """Games whose tip_time is in the future should NOT be promoted."""
+        now = _utc_now()
+        config = MagicMock()
+        config.estimated_game_duration_hours = _ESTIMATED_GAME_DURATION_HOURS
+        mock_config.items.return_value = [("NBA", config)]
+
+        session = MagicMock()
+        session.query.return_value.filter.return_value.scalar.return_value = _MOCK_LEAGUE_ID
+        session.query.return_value.filter.return_value.all.return_value = []
+
+        result = _promote_pregame_to_live(session)
+        assert result == 0
+
+    @patch("sports_scraper.services.game_state_updater.LEAGUE_CONFIG")
+    @patch("sports_scraper.services.game_state_updater.now_utc", return_value=_utc_now())
+    def test_skips_league_not_in_db(self, mock_now, mock_config):
+        config = MagicMock()
+        config.estimated_game_duration_hours = _ESTIMATED_GAME_DURATION_HOURS
+        mock_config.items.return_value = [("FAKE", config)]
+
+        session = MagicMock()
+        session.query.return_value.filter.return_value.scalar.return_value = None
+
+        result = _promote_pregame_to_live(session)
+        assert result == 0
+
+    @patch("sports_scraper.services.game_state_updater.LEAGUE_CONFIG")
+    @patch("sports_scraper.services.game_state_updater.now_utc", return_value=_utc_now())
+    def test_multiple_games(self, mock_now, mock_config):
+        now = _utc_now()
+        config = MagicMock()
+        config.estimated_game_duration_hours = _ESTIMATED_GAME_DURATION_HOURS
+        mock_config.items.return_value = [("NBA", config)]
+
+        games = [
+            _make_game(id=1, status="pregame", tip_time=now - timedelta(hours=1)),
+            _make_game(id=2, status="pregame", tip_time=now - timedelta(minutes=30)),
+        ]
+
+        session = MagicMock()
+        session.query.return_value.filter.return_value.scalar.return_value = _MOCK_LEAGUE_ID
+        session.query.return_value.filter.return_value.all.return_value = games
+
+        result = _promote_pregame_to_live(session)
+        assert result == 2
+        for g in games:
+            assert g.status == "live"
 
 
 # ---------------------------------------------------------------------------

@@ -13,9 +13,9 @@ export default function Home() {
       </div>
 
       <div className={styles.links}>
-        <Link href={ROUTES.RUNS} className={styles.card}>
-          <div className={styles.cardTitle}>Runs</div>
-          <div className={styles.cardBody}>Schedule and monitor boxscore + odds scrapes.</div>
+        <Link href={ROUTES.CONTROL_PANEL} className={styles.card}>
+          <div className={styles.cardTitle}>Control Panel</div>
+          <div className={styles.cardBody}>Trigger tasks and monitor job runs.</div>
         </Link>
         <Link href={ROUTES.GAMES} className={styles.card}>
           <div className={styles.cardTitle}>Games</div>

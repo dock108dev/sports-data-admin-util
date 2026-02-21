@@ -99,22 +99,16 @@ export default function AdminDashboardPage() {
 
       <AdminCard title="Quick actions" subtitle="Jump to common admin workflows">
         <div className={styles.quickLinks}>
-          <Link href={ROUTES.RUNS} className={styles.quickLink}>
+          <Link href={ROUTES.CONTROL_PANEL} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
-              <div className={styles.quickLinkTitle}>New scrape run</div>
-              <div className={styles.quickLinkDesc}>Start a new data ingestion job</div>
+              <div className={styles.quickLinkTitle}>Control Panel</div>
+              <div className={styles.quickLinkDesc}>Trigger tasks and monitor job runs</div>
             </div>
           </Link>
           <Link href={ROUTES.GAMES} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>Games</div>
               <div className={styles.quickLinkDesc}>Browse games, teams, and scrape runs</div>
-            </div>
-          </Link>
-          <Link href={ROUTES.PIPELINES} className={styles.quickLink}>
-            <div className={styles.quickLinkContent}>
-              <div className={styles.quickLinkTitle}>Pipelines</div>
-              <div className={styles.quickLinkDesc}>Generate and inspect game flow data</div>
             </div>
           </Link>
           <Link href={ROUTES.FAIRBET_ODDS} className={styles.quickLink}>
@@ -138,7 +132,7 @@ export default function AdminDashboardPage() {
             {recentRuns.map((run) => (
               <Link
                 key={run.id}
-                href={`/admin/sports/ingestion/${run.id}`}
+                href={ROUTES.CONTROL_PANEL}
                 className={styles.runItem}
               >
                 <div className={`${styles.runStatus} ${getStatusClassName(run.status)}`} />

@@ -168,7 +168,7 @@ Build `NormalizedGame` objects with:
 
 Add to `_SCRAPER_REGISTRY` in `scraper/sports_scraper/scrapers/__init__.py`.
 
-> **Note:** NHL uses the official NHL API instead of the scraper registry. See `scraper/sports_scraper/live/nhl.py` and `scraper/sports_scraper/services/boxscore_ingestion.py` for the API-based approach.
+> **Note:** NHL and NCAAB use official APIs instead of the scraper registry. See `scraper/sports_scraper/live/nhl.py` and the league-specific ingestion modules (`nba_boxscore_ingestion.py`, `nhl_boxscore_ingestion.py`, `ncaab_boxscore_ingestion.py`) in `scraper/sports_scraper/services/`.
 
 ### 4. Run Through Orchestrator
 

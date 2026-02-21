@@ -77,10 +77,12 @@ class TestFinalWhistleSocial:
 
         assert result["status"] == "not_found"
 
+    @patch("sports_scraper.services.job_runs.complete_job_run")
+    @patch("sports_scraper.services.job_runs.start_job_run", return_value=1)
     @patch("sports_scraper.jobs.final_whistle_tasks.time")
     @patch("sports_scraper.jobs.final_whistle_tasks.get_session")
-    def test_collects_and_dispatches_flow(self, mock_get_session, mock_time):
-        """Successful scrape sets social_scrape_1_at and dispatches flow."""
+    def test_collects_and_completes(self, mock_get_session, mock_time, mock_start, mock_complete):
+        """Successful scrape sets social_scrape_1_at and logs job run."""
         from sports_scraper.jobs.final_whistle_tasks import run_final_whistle_social
 
         game = _make_game()
@@ -101,21 +103,22 @@ class TestFinalWhistleSocial:
             ) as mock_map:
                 mock_map.return_value = {"mapped": 3, "no_game": 2}
 
-                with patch(
-                    "sports_scraper.jobs.flow_trigger_tasks.trigger_flow_for_game"
-                ) as mock_flow:
-                    result = run_final_whistle_social(1)
+                result = run_final_whistle_social(1)
 
-                    assert result["status"] == "success"
-                    assert result["teams_scraped"] == 2
-                    assert game.social_scrape_1_at is not None
-                    mock_flow.delay.assert_called_once_with(1)
-                    # Verify inter-game cooldown
-                    mock_time.sleep.assert_called_once_with(180)
+                assert result["status"] == "success"
+                assert result["teams_scraped"] == 2
+                assert game.social_scrape_1_at is not None
+                # Verify job run tracking
+                mock_start.assert_called_once_with("final_whistle_social", [])
+                mock_complete.assert_called_once()
+                # Verify inter-game cooldown
+                mock_time.sleep.assert_called_once_with(180)
 
+    @patch("sports_scraper.services.job_runs.complete_job_run")
+    @patch("sports_scraper.services.job_runs.start_job_run", return_value=1)
     @patch("sports_scraper.jobs.final_whistle_tasks.time")
     @patch("sports_scraper.jobs.final_whistle_tasks.get_session")
-    def test_discards_postgame_tweets(self, mock_get_session, mock_time):
+    def test_discards_postgame_tweets(self, mock_get_session, mock_time, mock_start, mock_complete):
         """Postgame tweets are unmapped after collection."""
         from sports_scraper.jobs.final_whistle_tasks import run_final_whistle_social
 
@@ -138,9 +141,6 @@ class TestFinalWhistleSocial:
             ) as mock_map:
                 mock_map.return_value = {"mapped": 3}
 
-                with patch(
-                    "sports_scraper.jobs.flow_trigger_tasks.trigger_flow_for_game"
-                ):
-                    result = run_final_whistle_social(1)
+                result = run_final_whistle_social(1)
 
-                    assert result["postgame_discarded"] == 2
+                assert result["postgame_discarded"] == 2

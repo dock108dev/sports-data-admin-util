@@ -26,8 +26,8 @@ def _append_pbp_to_run_summary(run_id: int | None, pbp_games: int) -> None:
 def run_scrape_job(run_id: int, config_payload: dict) -> dict:
     """Run a scrape job (data ingestion only).
 
-    Timeline generation is decoupled - call trigger_game_pipelines_task
-    after this completes, or use Pipeline API endpoints for manual control.
+    Timeline/flow generation is decoupled — use the per-league flow
+    generation tasks or Pipeline API endpoints for manual control.
     """
     from ..utils.datetime_utils import now_utc
     from ..utils.redis_lock import LOCK_TIMEOUT_1HOUR, acquire_redis_lock, release_redis_lock

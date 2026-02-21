@@ -60,8 +60,8 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 - **Framework:** React + TypeScript + Next.js
 - **Features:**
   - Game browser with structured status indicators (present/missing/stale/not applicable)
-  - Scraper run management with origin badges and task breakdown
-  - Pipeline management (run, monitor, inspect stage outputs)
+  - Control Panel for on-demand Celery task dispatch (ingestion, odds, social, flows, timelines, utility)
+  - Job run monitoring via RunsDrawer (IDE-style bottom panel, available on all admin pages)
   - Cross-book odds comparison (FairBet viewer)
   - Container log viewer
   - Game detail with boxscores, player stats, odds, social, PBP, flow, and pipeline runs
@@ -171,9 +171,9 @@ Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). R
 ### Admin Endpoints
 - `GET /api/admin/sports/games` - List games with filtering
 - `GET /api/admin/sports/games/{id}` - Full game detail
+- `POST /api/admin/tasks/trigger` - Dispatch a Celery task by name (Control Panel)
+- `GET /api/admin/tasks/registry` - List available tasks and their metadata
 - `GET /api/admin/sports/scraper/runs` - List scraper runs
-- `POST /api/admin/sports/scraper/runs` - Create scraper run
-- `GET /api/admin/sports/pipeline/run/{id}` - Pipeline run status
 - `GET /api/admin/sports/pipeline/game/{id}` - Pipeline runs for a game
 - `POST /api/admin/sports/pipeline/{id}/run-full` - Execute full pipeline
 - `GET /api/admin/sports/logs` - Container log viewer

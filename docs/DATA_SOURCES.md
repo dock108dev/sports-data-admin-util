@@ -200,9 +200,10 @@ This architecture allows collecting tweets once and mapping to multiple games if
 
 ### Schedule
 
-Social collection uses a two-scrape-per-game model:
-- **Scrape #1 (final-whistle):** Triggered automatically when games transition to FINAL
-- **Scrape #2 (daily sweep):** Runs at **4:00 AM EST** as part of the daily sweep
+Social collection uses three complementary mechanisms:
+- **Hourly collection** (`collect_game_social`): Runs every 60 minutes, collects tweets for all teams with games today across all phases (scheduled, pregame, live, final)
+- **Final-whistle scrape** (`run_final_whistle_social`): Triggered automatically when games transition to FINAL status
+- **Daily sweep catch-up**: Runs at **4:00 AM EST** as part of the daily sweep for any missed games
 
 See `scraper/sports_scraper/celery_app.py` for schedule configuration.
 
@@ -271,20 +272,22 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 
 ### Automatic (Scheduled)
 - **Scheduler**: Celery Beat
+- All tasks run in all environments (local mirrors production)
 
-**Always-on (all environments):**
+**Polling (continuous):**
 - **Game State Updates**: Every 3 minutes
-
-**Live polling (production, or `LIVE_POLLING_ENABLED=true`):**
 - **Live PBP + Boxscore Polling**: Every 5 minutes (NBA, NHL per-game; NCAAB via batch CBB API)
+- **Game Social Collection**: Every 60 minutes (`collect_game_social`)
 
-**Production-only:**
-- **Ingestion**: Daily at 08:30 UTC (3:30 AM ET) - boxscores, PBP
-- **Daily Sweep**: 09:00 UTC (4:00 AM ET) - truth repair, social scrape #2, backfill embedded tweets (7-day lookback)
+**Daily (timed):**
+- **Ingestion**: 08:30 UTC (3:30 AM ET) — boxscores, PBP
+- **Daily Sweep**: 09:00 UTC (4:00 AM ET) — truth repair, social scrape #2, backfill embedded tweets (7-day lookback)
 - **Flow Generation**: Staggered by league (30 min apart):
-  - 09:30 UTC (4:30 AM ET) - NBA flow generation
-  - 10:00 UTC (5:00 AM ET) - NHL flow generation
-  - 10:30 UTC (5:30 AM ET) - NCAAB flow generation (capped at 10 games)
+  - 09:30 UTC (4:30 AM ET) — NBA flow generation
+  - 10:00 UTC (5:00 AM ET) — NHL flow generation
+  - 10:30 UTC (5:30 AM ET) — NCAAB flow generation (capped at 10 games)
+
+**Odds sync:**
 - **Mainline Odds Sync**: Every 15 minutes (`sync_mainline_odds`: spreads, totals, moneyline for all leagues; `us` + `eu` regions)
 - **Prop Odds Sync**: Every 60 minutes (`sync_prop_odds`: player/team props for pregame events)
 - **Odds Quiet Window**: 3–7 AM ET daily (both odds tasks skip execution)
@@ -293,10 +296,10 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 Configuration: `scraper/sports_scraper/celery_app.py`
 
 ### Manual (Admin UI)
-- Create scrape run via `/api/admin/sports/scraper/runs`
-- Specify: league, date range, data types, bookmakers
-- Job queued to Celery worker
-- Status tracked in `sports_scrape_runs` table
+- Dispatch any registered Celery task via the Control Panel (`POST /api/admin/tasks/trigger`)
+- Tasks include ingestion, odds sync, social collection, flow generation, cache clearing, and more
+- Task dispatch is routed to the appropriate Celery queue (`sports-scraper` or `social-scraper`)
+- Job run history viewable in the RunsDrawer (bottom panel on all admin pages)
 
 ### Execution Flow
 ```
