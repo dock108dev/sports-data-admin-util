@@ -19,41 +19,29 @@ from ..logging import logger
 
 def _report_social_completion(
     scrape_run_id: int | None,
-    social_job_run_id: int | None,
     result: dict | None,
     error: str | None,
 ) -> None:
-    """Report social task completion back to SportsScrapeRun and SportsJobRun.
+    """Update the SportsScrapeRun summary with actual social stats.
 
-    Updates the SportsJobRun status and replaces the placeholder text in
-    SportsScrapeRun.summary with actual stats.
+    Replaces the "Social: dispatched to worker" placeholder text with
+    real tweet counts. Called from collect_team_social on the social-scraper
+    worker after collection finishes.
 
-    Both IDs are optional to support callers that don't track run state.
     All DB work is wrapped in try/except so reporting failures never crash the task.
     """
     try:
         from ..db import db_models, get_session
-        from ..services.job_runs import complete_job_run
 
         # Build the replacement summary string
         if error:
             social_summary = f"Social: error ({error[:80]})"
-            job_status = "error"
-            error_summary = error[:200]
         elif result:
             tweets = result.get("total_new_tweets", 0)
             mapped = result.get("mapping", {}).get("mapped", 0)
             social_summary = f"Social: {tweets} tweets ({mapped} mapped)"
-            job_status = "success"
-            error_summary = None
         else:
             social_summary = "Social: 0 tweets (0 mapped)"
-            job_status = "success"
-            error_summary = None
-
-        # Finalize the SportsJobRun
-        if social_job_run_id is not None:
-            complete_job_run(social_job_run_id, job_status, error_summary)
 
         # Update the SportsScrapeRun summary (replace placeholder)
         if scrape_run_id is not None:
@@ -76,7 +64,6 @@ def _report_social_completion(
         logger.warning(
             "social_completion_report_failed",
             scrape_run_id=scrape_run_id,
-            social_job_run_id=social_job_run_id,
             error=str(exc),
         )
 
@@ -85,7 +72,6 @@ def _report_social_completion(
 def handle_social_task_failure(
     task_id: str,
     scrape_run_id: int | None = None,
-    social_job_run_id: int | None = None,
 ) -> None:
     """Celery link_error callback for collect_team_social failures.
 
@@ -93,7 +79,8 @@ def handle_social_task_failure(
     Celery passes the failed task's ID as the first positional argument,
     followed by the args bound via `.s()`.
 
-    Reports the error back to SportsScrapeRun and SportsJobRun records.
+    Updates the SportsScrapeRun summary with the error message.
+    (SportsJobRun tracking is handled inside collect_team_social itself.)
     """
     from celery.result import AsyncResult
 
@@ -105,10 +92,9 @@ def handle_social_task_failure(
         "social_task_failed_callback",
         task_id=task_id,
         scrape_run_id=scrape_run_id,
-        social_job_run_id=social_job_run_id,
         error=error_msg,
     )
-    _report_social_completion(scrape_run_id, social_job_run_id, result=None, error=error_msg)
+    _report_social_completion(scrape_run_id, result=None, error=error_msg)
 
 
 @shared_task(
@@ -176,22 +162,25 @@ def collect_team_social(
     start_date: str,
     end_date: str,
     scrape_run_id: int | None = None,
-    social_job_run_id: int | None = None,
 ) -> dict:
     """
     Collect tweets for all teams in a league that played in the date range.
 
-    Tweets are saved to team_social_posts with mapping_status='unmapped'.
+    Job run tracking happens here on the social-scraper worker (not at
+    dispatch time on the main scraper) so the SportsJobRun accurately
+    reflects actual execution state.
 
     Args:
         league_code: League code (NBA, NHL, NCAAB)
         start_date: Start date string (YYYY-MM-DD)
         end_date: End date string (YYYY-MM-DD)
+        scrape_run_id: Optional parent SportsScrapeRun ID for summary update
 
     Returns:
         Summary stats dict
     """
     from ..db import get_session
+    from ..services.job_runs import track_job_run
     from ..social.team_collector import TeamTweetCollector
     from ..social.tweet_mapper import map_unmapped_tweets
 
@@ -205,18 +194,21 @@ def collect_team_social(
     start = date.fromisoformat(start_date)
     end = date.fromisoformat(end_date)
 
-    with get_session() as session:
-        collector = TeamTweetCollector()
-        result = collector.collect_for_date_range(
-            session=session,
-            league_code=league_code,
-            start_date=start,
-            end_date=end,
-        )
+    with track_job_run("social", [league_code]) as tracker:
+        with get_session() as session:
+            collector = TeamTweetCollector()
+            result = collector.collect_for_date_range(
+                session=session,
+                league_code=league_code,
+                start_date=start,
+                end_date=end,
+            )
 
-        # Always map tweets to games after collection
-        map_result = map_unmapped_tweets(session=session, batch_size=1000)
-        result["mapping"] = map_result
+            # Always map tweets to games after collection
+            map_result = map_unmapped_tweets(session=session, batch_size=1000)
+            result["mapping"] = map_result
+
+        tracker.summary_data = result
 
     logger.info(
         "collect_team_social_complete",
@@ -224,7 +216,8 @@ def collect_team_social(
         result=result,
     )
 
-    _report_social_completion(scrape_run_id, social_job_run_id, result, error=None)
+    # Update parent SportsScrapeRun summary (replace "dispatched" placeholder)
+    _report_social_completion(scrape_run_id, result, error=None)
 
     return result
 

@@ -542,8 +542,9 @@ class ScrapeRunManager:
 
             # Social scraping — dispatched to the dedicated social-scraper worker.
             # The social-scraper has X auth tokens and concurrency=1 for rate limiting.
+            # Job run tracking happens inside collect_team_social on the social worker,
+            # so the SportsJobRun accurately reflects actual execution state.
             if config.social:
-                social_run_id = start_job_run("social", [config.league_code])
                 if config.league_code not in self._supported_social_leagues:
                     logger.info(
                         "x_social_not_implemented",
@@ -551,7 +552,6 @@ class ScrapeRunManager:
                         league=config.league_code,
                         message="X/social scraping is not yet implemented for this league; skipping.",
                     )
-                    complete_job_run(social_run_id, "success", "x_social_not_implemented")
                 else:
                     from ..jobs.social_tasks import collect_team_social, handle_social_task_failure
 
@@ -562,14 +562,11 @@ class ScrapeRunManager:
                         start_date=str(start),
                         end_date=str(end),
                     )
-                    # collect_team_social maps tweets to games internally after collection.
-                    # The social task will finalize the SportsJobRun and update the
-                    # SportsScrapeRun summary on completion (or via link_error on failure).
                     collect_team_social.apply_async(
                         args=[config.league_code, str(start), str(end)],
-                        kwargs={"scrape_run_id": run_id, "social_job_run_id": social_run_id},
+                        kwargs={"scrape_run_id": run_id},
                         queue=SOCIAL_QUEUE,
-                        link_error=handle_social_task_failure.s(run_id, social_run_id),
+                        link_error=handle_social_task_failure.s(run_id),
                     )
                     summary["social_posts"] = "dispatched"
 

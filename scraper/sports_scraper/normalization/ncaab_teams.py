@@ -399,6 +399,18 @@ NCAAB_CBB_ID_TO_TEAM: dict[int, tuple[str, str]] = {
 NCAAB_VARIATIONS: dict[str, tuple[str, str]] = {}
 
 
+def _name_to_seo(name: str) -> str:
+    """Convert a canonical team name to NCAA seo format.
+
+    NCAA API returns team names in lowercase-hyphenated format without mascot,
+    e.g. "Michigan St Spartans" -> "michigan-st", "North Carolina Tar Heels" -> "north-carolina".
+    """
+    # Strip mascot (last word) — same as the "school without mascot" logic
+    parts = name.rsplit(" ", 1)
+    school = parts[0] if len(parts) > 1 else name
+    return school.lower().replace(" ", "-").replace("'", "").replace(".", "")
+
+
 def _build_variations() -> None:
     """Build variation lookup from team data.
 
@@ -407,6 +419,7 @@ def _build_variations() -> None:
     - Lowercase canonical name
     - Abbreviation (e.g., "DUKE" -> Duke Blue Devils)
     - School name without mascot (last word stripped)
+    - NCAA seo format (lowercase-hyphenated, e.g., "michigan-st")
     - Common short forms for well-known programs
     """
     for name, abbr, _cbb_id in _NCAAB_TEAM_DATA:
@@ -424,6 +437,11 @@ def _build_variations() -> None:
             school = parts[0]
             NCAAB_VARIATIONS[school] = (name, abbr)
             NCAAB_VARIATIONS[school.lower()] = (name, abbr)
+
+        # NCAA seo format (e.g., "michigan-st", "north-carolina")
+        seo = _name_to_seo(name)
+        if seo and seo not in NCAAB_VARIATIONS:
+            NCAAB_VARIATIONS[seo] = (name, abbr)
 
     # Manual well-known variations
     _WELL_KNOWN: dict[str, str] = {
