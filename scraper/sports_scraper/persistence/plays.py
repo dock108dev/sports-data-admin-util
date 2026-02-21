@@ -199,13 +199,20 @@ def upsert_plays(
 
     # Process each play
     for play in plays:
-        # Resolve team_id - try cbb_team_id first (for NCAAB), then abbreviation/name
+        # Resolve team_id - try cbb_team_id first (for NCAAB), then abbreviation/name,
+        # then is_home_team flag (for NCAA API plays)
         team_id = None
         if play.raw_data and play.raw_data.get("cbb_team_id"):
             cbb_id = play.raw_data.get("cbb_team_id")
             team_id = cbb_team_map.get(int(cbb_id))
         if team_id is None and play.team_abbreviation:
             team_id = team_map.get(play.team_abbreviation.upper())
+        if team_id is None and play.raw_data and play.raw_data.get("is_home_team") is not None:
+            is_home = play.raw_data["is_home_team"]
+            if is_home is True and game.home_team:
+                team_id = game.home_team.id
+            elif is_home is False and game.away_team:
+                team_id = game.away_team.id
 
         # Resolve player_ref_id from player_id (external_id in sports_players)
         player_ref_id = None

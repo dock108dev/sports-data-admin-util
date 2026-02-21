@@ -247,14 +247,19 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
     # Collect games that have an ncaa_game_id
     ncaa_games: list = []
     team_names_by_game_id: dict[int, tuple[str, str]] = {}  # DB game.id -> (home, away)
+    team_abbrs_by_game_id: dict[int, tuple[str, str]] = {}  # DB game.id -> (home_abbr, away_abbr)
 
     for game in games:
-        # Resolve team names (needed for boxscores)
+        # Resolve team names and abbreviations (needed for PBP and boxscores)
         home_team = session.query(db_models.SportsTeam).get(game.home_team_id)
         away_team = session.query(db_models.SportsTeam).get(game.away_team_id)
         home_name = home_team.name if home_team else "Unknown"
         away_name = away_team.name if away_team else "Unknown"
         team_names_by_game_id[game.id] = (home_name, away_name)
+        team_abbrs_by_game_id[game.id] = (
+            home_team.abbreviation if home_team and home_team.abbreviation else home_name,
+            away_team.abbreviation if away_team and away_team.abbreviation else away_name,
+        )
 
         ncaa_game_id = (game.external_ids or {}).get("ncaa_game_id")
 
@@ -279,12 +284,18 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
     # --- PBP: NCAA API ---
     for game in ncaa_games:
         ncaa_game_id = game.external_ids["ncaa_game_id"]
+        home_abbr, away_abbr = team_abbrs_by_game_id[game.id]
 
         if api_calls > 0:
             time.sleep(random.uniform(_JITTER_MIN, _JITTER_MAX))
 
         try:
-            payload = client.fetch_ncaa_play_by_play(ncaa_game_id, game_status=game.status)
+            payload = client.fetch_ncaa_play_by_play(
+                ncaa_game_id,
+                game_status=game.status,
+                home_abbr=home_abbr,
+                away_abbr=away_abbr,
+            )
             api_calls += 1
 
             if payload.plays:

@@ -26,7 +26,11 @@ class NCAAPbpFetcher:
         self._cache = cache
 
     def fetch_play_by_play(
-        self, ncaa_game_id: str, game_status: str | None = None,
+        self,
+        ncaa_game_id: str,
+        game_status: str | None = None,
+        home_abbr: str | None = None,
+        away_abbr: str | None = None,
     ) -> NormalizedPlayByPlay:
         """Fetch and normalize play-by-play data for a game.
 
@@ -34,6 +38,9 @@ class NCAAPbpFetcher:
             ncaa_game_id: NCAA game ID (string)
             game_status: Normalized game status from the DB (e.g. "final").
                 Used by should_cache_final to decide whether to persist.
+            home_abbr: Home team abbreviation (used to set team_abbreviation
+                on each play via the isHome boolean from the API).
+            away_abbr: Away team abbreviation.
 
         Returns:
             NormalizedPlayByPlay with all events normalized to canonical format
@@ -43,7 +50,9 @@ class NCAAPbpFetcher:
         cached = self._cache.get(cache_key)
         if cached is not None:
             logger.info("ncaa_pbp_using_cache", ncaa_game_id=ncaa_game_id)
-            plays = self._parse_periods(cached.get("periods", []), ncaa_game_id)
+            plays = self._parse_periods(
+                cached.get("periods", []), ncaa_game_id, home_abbr, away_abbr,
+            )
             return NormalizedPlayByPlay(source_game_key=ncaa_game_id, plays=plays)
 
         url = NCAA_PBP_URL.format(game_id=ncaa_game_id)
@@ -70,7 +79,7 @@ class NCAAPbpFetcher:
 
         payload = response.json()
         periods = payload.get("periods", [])
-        plays = self._parse_periods(periods, ncaa_game_id)
+        plays = self._parse_periods(periods, ncaa_game_id, home_abbr, away_abbr)
 
         # Only cache final game data with actual plays
         if should_cache_final(bool(plays), game_status):
@@ -98,7 +107,11 @@ class NCAAPbpFetcher:
         return NormalizedPlayByPlay(source_game_key=ncaa_game_id, plays=plays)
 
     def _parse_periods(
-        self, periods: list[dict], game_id: str,
+        self,
+        periods: list[dict],
+        game_id: str,
+        home_abbr: str | None = None,
+        away_abbr: str | None = None,
     ) -> list[NormalizedPlay]:
         """Parse all periods and their plays into NormalizedPlay objects.
 
@@ -134,7 +147,9 @@ class NCAAPbpFetcher:
             plays_list = period_data.get("playbyplayStats", [])
 
             for seq, play in enumerate(plays_list):
-                normalized = self._normalize_ncaa_play(play, period_num, seq, game_id)
+                normalized = self._normalize_ncaa_play(
+                    play, period_num, seq, game_id, home_abbr, away_abbr,
+                )
                 if normalized:
                     all_plays.append(normalized)
 
@@ -149,6 +164,8 @@ class NCAAPbpFetcher:
         period: int,
         sequence: int,
         game_id: str,
+        home_abbr: str | None = None,
+        away_abbr: str | None = None,
     ) -> NormalizedPlay | None:
         """Normalize a single play event from the NCAA API."""
         # Build play_index: period * multiplier + sequence
@@ -165,6 +182,13 @@ class NCAAPbpFetcher:
 
         # Classify play type from description text
         play_type = self._classify_play_type(description)
+
+        # Resolve team abbreviation from isHome flag
+        team_abbr: str | None = None
+        if is_home is True and home_abbr:
+            team_abbr = home_abbr
+        elif is_home is False and away_abbr:
+            team_abbr = away_abbr
 
         # Player name from firstName + lastName
         first_name = play.get("firstName") or ""
@@ -195,7 +219,7 @@ class NCAAPbpFetcher:
             quarter=period,
             game_clock=clock,
             play_type=play_type,
-            team_abbreviation=None,  # Resolved at persistence layer
+            team_abbreviation=team_abbr,
             player_id=None,  # NCAA API doesn't provide stable player IDs in PBP
             player_name=player_name,
             description=description,

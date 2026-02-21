@@ -298,10 +298,19 @@ class NCAABLiveFeedClient:
         return self._ncaa_scoreboard.fetch_scoreboard()
 
     def fetch_ncaa_play_by_play(
-        self, ncaa_game_id: str, game_status: str | None = None,
+        self,
+        ncaa_game_id: str,
+        game_status: str | None = None,
+        home_abbr: str | None = None,
+        away_abbr: str | None = None,
     ) -> NormalizedPlayByPlay:
         """Fetch PBP from the NCAA API for a game."""
-        return self._ncaa_pbp.fetch_play_by_play(ncaa_game_id, game_status=game_status)
+        return self._ncaa_pbp.fetch_play_by_play(
+            ncaa_game_id,
+            game_status=game_status,
+            home_abbr=home_abbr,
+            away_abbr=away_abbr,
+        )
 
     def fetch_ncaa_boxscore(
         self,
