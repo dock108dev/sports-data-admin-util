@@ -59,6 +59,9 @@ def trigger_flow_for_game(game_id: int) -> dict:
             )
             return {"game_id": game_id, "status": "skipped", "reason": "not_final"}
 
+        # Capture scalar before session closes — game object will be detached
+        league_id = game.league_id
+
         # Check if game has PBP data
         has_pbp = session.query(
             exists().where(db_models.SportsGamePlay.game_id == game_id)
@@ -100,7 +103,7 @@ def trigger_flow_for_game(game_id: int) -> dict:
                 return {"game_id": game_id, "status": "skipped", "reason": "immutable"}
 
             # Get league code for the API call
-            league = session.query(db_models.SportsLeague).get(game.league_id)
+            league = session.query(db_models.SportsLeague).get(league_id)
             league_code = league.code if league else "UNKNOWN"
 
         # Call the API pipeline endpoint (outside session)
