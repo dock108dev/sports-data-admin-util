@@ -92,20 +92,31 @@ class NCAABoxscoreFetcher:
     ) -> NCAABBoxscore | None:
         """Parse the NCAA boxscore API response.
 
-        Expected structure:
+        Actual API structure (ncaa-api.henrygd.me):
         {
           "teams": [
             {
-              "team": {"teamName": "Purdue", "teamSeo": "purdue"},
-              "playerTotals": {
+              "isHome": true,
+              "teamId": "123",
+              "nameShort": "PUR"
+            },
+            {
+              "isHome": false,
+              "teamId": "456",
+              "nameShort": "IND"
+            }
+          ],
+          "teamBoxscore": [
+            {
+              "teamStats": {
                 "fieldGoalsMade": "25", "fieldGoalsAttempted": "55",
                 "totalRebounds": "35", "assists": "15", "turnovers": "10",
                 "steals": "5", "blockedShots": "3", "personalFouls": "18",
                 "points": "72"
               },
-              "players": [
+              "playerStats": [
                 {
-                  "id": "12345", "firstName": "Zach", "lastName": "Edey",
+                  "id": 12345, "firstName": "Zach", "lastName": "Edey",
                   "position": "C", "starter": true,
                   "minutesPlayed": "32:00", "points": "25",
                   "rebounds": "12", "assists": "1", "steals": "0",
@@ -117,55 +128,77 @@ class NCAABoxscoreFetcher:
               ]
             },
             ...
-          ],
-          "homeIndex": 0
+          ]
         }
+
+        teams[] and teamBoxscore[] share the same order. Home/away is
+        determined by the isHome boolean on each teams[] entry.
         """
-        teams_data = payload.get("teams", [])
-        if not teams_data or len(teams_data) < 2:
+        # teams[] has metadata (isHome, teamId, nameShort)
+        teams_meta = payload.get("teams", [])
+        # teamBoxscore[] has stats (teamStats, playerStats) in same order
+        team_boxscore_data = payload.get("teamBoxscore", [])
+
+        if not teams_meta or len(teams_meta) < 2:
             logger.warning("ncaa_boxscore_no_teams", ncaa_game_id=ncaa_game_id)
             return None
 
-        home_index = parse_int(payload.get("homeIndex"))
-        if home_index is None:
-            home_index = 0
+        if not team_boxscore_data or len(team_boxscore_data) < 2:
+            logger.warning("ncaa_boxscore_no_stats", ncaa_game_id=ncaa_game_id)
+            return None
 
-        home_data = teams_data[home_index]
-        away_index = 1 - home_index
-        away_data = teams_data[away_index] if away_index < len(teams_data) else {}
+        # Build home/away map from teams metadata using isHome boolean
+        home_idx: int | None = None
+        away_idx: int | None = None
+        for i, team_meta in enumerate(teams_meta):
+            if team_meta.get("isHome") is True:
+                home_idx = i
+            else:
+                away_idx = i
+
+        if home_idx is None or away_idx is None:
+            logger.warning(
+                "ncaa_boxscore_no_home_away",
+                ncaa_game_id=ncaa_game_id,
+                teams_meta=teams_meta,
+            )
+            return None
+
+        home_stats_data = team_boxscore_data[home_idx]
+        away_stats_data = team_boxscore_data[away_idx]
 
         # Build team identities
         home_team = build_team_identity(home_team_name, 0)
         away_team = build_team_identity(away_team_name, 0)
 
-        # Parse team stats
+        # Parse team stats from teamStats dict
         team_boxscores: list[NormalizedTeamBoxscore] = []
         home_score = 0
         away_score = 0
 
-        home_totals = home_data.get("playerTotals", {})
+        home_totals = home_stats_data.get("teamStats", {})
         if home_totals:
             home_score = parse_int(home_totals.get("points")) or 0
             team_boxscores.append(
                 self._parse_team_stats(home_totals, home_team, True, home_score)
             )
 
-        away_totals = away_data.get("playerTotals", {})
+        away_totals = away_stats_data.get("teamStats", {})
         if away_totals:
             away_score = parse_int(away_totals.get("points")) or 0
             team_boxscores.append(
                 self._parse_team_stats(away_totals, away_team, False, away_score)
             )
 
-        # Parse player stats
+        # Parse player stats from playerStats array
         player_boxscores: list[NormalizedPlayerBoxscore] = []
 
-        for player in home_data.get("players", []):
+        for player in home_stats_data.get("playerStats", []):
             parsed = self._parse_player_stats(player, home_team, ncaa_game_id)
             if parsed:
                 player_boxscores.append(parsed)
 
-        for player in away_data.get("players", []):
+        for player in away_stats_data.get("playerStats", []):
             parsed = self._parse_player_stats(player, away_team, ncaa_game_id)
             if parsed:
                 player_boxscores.append(parsed)
@@ -229,7 +262,7 @@ class NCAABoxscoreFetcher:
         All stat values come as strings from the NCAA API.
         """
         player_id = player.get("id")
-        if not player_id:
+        if player_id is None:
             return None
 
         first_name = player.get("firstName") or ""

@@ -218,8 +218,8 @@ class TestNCAAPbpFetcher:
         data = {
             "periods": [
                 {
-                    "period": "1",
-                    "plays": [
+                    "periodNumber": "1",
+                    "playbyplayStats": [
                         {
                             "homeScore": "0",
                             "visitorScore": "0",
@@ -245,8 +245,8 @@ class TestNCAAPbpFetcher:
                     ],
                 },
                 {
-                    "period": "2",
-                    "plays": [
+                    "periodNumber": "2",
+                    "playbyplayStats": [
                         {
                             "homeScore": "35",
                             "visitorScore": "30",
@@ -287,12 +287,12 @@ class TestNCAAPbpFetcher:
         data = {
             "periods": [
                 {
-                    "period": "1",
-                    "plays": [{"clock": "20:00", "homeScore": "0", "visitorScore": "0"}],
+                    "periodNumber": "1",
+                    "playbyplayStats": [{"clock": "20:00", "homeScore": "0", "visitorScore": "0"}],
                 },
                 {
-                    "period": "2",
-                    "plays": [{"clock": "20:00", "homeScore": "30", "visitorScore": "25"}],
+                    "periodNumber": "2",
+                    "playbyplayStats": [{"clock": "20:00", "homeScore": "30", "visitorScore": "25"}],
                 },
             ]
         }
@@ -329,8 +329,8 @@ class TestNCAAPbpFetcher:
         data = {
             "periods": [
                 {
-                    "period": "1",
-                    "plays": [
+                    "periodNumber": "1",
+                    "playbyplayStats": [
                         {
                             "homeScore": "2",
                             "visitorScore": "0",
@@ -355,8 +355,8 @@ class TestNCAAPbpFetcher:
         data = {
             "periods": [
                 {
-                    "period": "1",
-                    "plays": [
+                    "periodNumber": "1",
+                    "playbyplayStats": [
                         {
                             "homeScore": "0",
                             "visitorScore": "3",
@@ -396,8 +396,8 @@ class TestNCAAPbpFetcher:
         cached_data = {
             "periods": [
                 {
-                    "period": "1",
-                    "plays": [
+                    "periodNumber": "1",
+                    "playbyplayStats": [
                         {"clock": "20:00", "homeScore": "0", "visitorScore": "0"},
                     ],
                 }
@@ -439,8 +439,19 @@ class TestNCAABoxscoreFetcher:
     SAMPLE_BOXSCORE = {
         "teams": [
             {
-                "team": {"teamName": "Purdue", "teamSeo": "purdue"},
-                "playerTotals": {
+                "isHome": True,
+                "teamId": "101",
+                "nameShort": "PUR",
+            },
+            {
+                "isHome": False,
+                "teamId": "102",
+                "nameShort": "IND",
+            },
+        ],
+        "teamBoxscore": [
+            {
+                "teamStats": {
                     "fieldGoalsMade": "25",
                     "fieldGoalsAttempted": "55",
                     "totalRebounds": "35",
@@ -451,7 +462,7 @@ class TestNCAABoxscoreFetcher:
                     "personalFouls": "18",
                     "points": "72",
                 },
-                "players": [
+                "playerStats": [
                     {
                         "id": "12345",
                         "firstName": "Zach",
@@ -476,8 +487,7 @@ class TestNCAABoxscoreFetcher:
                 ],
             },
             {
-                "team": {"teamName": "Indiana", "teamSeo": "indiana"},
-                "playerTotals": {
+                "teamStats": {
                     "fieldGoalsMade": "22",
                     "fieldGoalsAttempted": "58",
                     "totalRebounds": "30",
@@ -488,7 +498,7 @@ class TestNCAABoxscoreFetcher:
                     "personalFouls": "20",
                     "points": "65",
                 },
-                "players": [
+                "playerStats": [
                     {
                         "id": "67890",
                         "firstName": "Trayce",
@@ -509,7 +519,6 @@ class TestNCAABoxscoreFetcher:
                 ],
             },
         ],
-        "homeIndex": 0,
     }
 
     def _make_fetcher(self, response_data: dict | None = None, status_code: int = 200) -> tuple:
@@ -583,14 +592,29 @@ class TestNCAABoxscoreFetcher:
 
     def test_empty_teams_returns_none(self):
         """Test that response with no teams returns None."""
-        fetcher, _, _ = self._make_fetcher({"teams": [], "homeIndex": 0})
+        fetcher, _, _ = self._make_fetcher({"teams": [], "teamBoxscore": []})
         result = fetcher.fetch_boxscore("111", "Team A", "Team B")
         assert result is None
 
-    def test_home_index_respected(self):
-        """Test that homeIndex determines home/away correctly."""
-        data = dict(self.SAMPLE_BOXSCORE)
-        data["homeIndex"] = 1  # Flip home/away
+    def test_is_home_flag_respected(self):
+        """Test that isHome boolean determines home/away correctly."""
+        # Flip isHome: second team is now home
+        data = {
+            "teams": [
+                {"isHome": False, "teamId": "101", "nameShort": "PUR"},
+                {"isHome": True, "teamId": "102", "nameShort": "IND"},
+            ],
+            "teamBoxscore": [
+                {
+                    "teamStats": {"points": "72", "totalRebounds": "35", "assists": "15", "turnovers": "10"},
+                    "playerStats": [],
+                },
+                {
+                    "teamStats": {"points": "65", "totalRebounds": "30", "assists": "12", "turnovers": "14"},
+                    "playerStats": [],
+                },
+            ],
+        }
 
         fetcher, _, _ = self._make_fetcher(data)
         result = fetcher.fetch_boxscore(
@@ -598,7 +622,7 @@ class TestNCAABoxscoreFetcher:
         )
 
         assert result is not None
-        # With homeIndex=1, Indiana (index 1) is home
+        # With isHome on index 1, Indiana (index 1) is home
         assert result.home_score == 65  # Indiana's points
         assert result.away_score == 72  # Purdue's points
 

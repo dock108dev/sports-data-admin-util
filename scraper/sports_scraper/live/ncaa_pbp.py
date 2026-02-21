@@ -102,12 +102,12 @@ class NCAAPbpFetcher:
     ) -> list[NormalizedPlay]:
         """Parse all periods and their plays into NormalizedPlay objects.
 
-        NCAA API structure:
+        NCAA API structure (ncaa-api.henrygd.me):
         {
           "periods": [
             {
-              "period": "1",
-              "plays": [
+              "periodNumber": "1",
+              "playbyplayStats": [
                 {
                   "teamId": "123",
                   "homeScore": "0",
@@ -130,8 +130,8 @@ class NCAAPbpFetcher:
         all_plays: list[NormalizedPlay] = []
 
         for period_data in periods:
-            period_num = parse_int(period_data.get("period")) or 0
-            plays_list = period_data.get("plays", [])
+            period_num = parse_int(period_data.get("periodNumber")) or 0
+            plays_list = period_data.get("playbyplayStats", [])
 
             for seq, play in enumerate(plays_list):
                 normalized = self._normalize_ncaa_play(play, period_num, seq, game_id)
