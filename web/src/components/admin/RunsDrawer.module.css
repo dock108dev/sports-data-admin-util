@@ -1,0 +1,254 @@
+/* ── Bottom drawer (IDE console style) ── */
+
+.drawer {
+  position: fixed;
+  bottom: 0;
+  left: var(--admin-sidebar-width);
+  right: 0;
+  background: var(--admin-surface);
+  border-top: 1px solid var(--admin-border);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  transition: height 0.25s ease;
+}
+
+.drawerCollapsed {
+  height: 36px;
+}
+
+.drawerHalf {
+  height: 50vh;
+}
+
+.drawerFull {
+  height: calc(100vh - var(--admin-header-height));
+}
+
+/* ── Tab bar (always visible) ── */
+
+.tabBar {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 0.75rem;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--admin-border);
+  background: var(--admin-elevated);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tabLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.tabControls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.tabBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.tabBtn:hover {
+  background: var(--border-light);
+  color: var(--text-primary);
+}
+
+.tabBtnActive {
+  background: var(--border-light);
+  color: var(--text-primary);
+}
+
+/* ── Drawer body ── */
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+/* ── Toolbar (filters) ── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--admin-surface);
+}
+
+.toolbar select {
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-button);
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.toolbar select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.refreshBtn {
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-button);
+  border: 1px solid #d1d5db;
+  background: transparent;
+  color: #475569;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.15s ease;
+}
+
+.refreshBtn:hover:not(:disabled) {
+  background: var(--border-light);
+}
+
+.refreshBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.autoRefreshLabel {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+/* ── Table ── */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.table th,
+.table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-light);
+  text-align: left;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--admin-surface);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border-bottom: 2px solid var(--border-default);
+  z-index: 1;
+}
+
+.table td {
+  color: var(--text-secondary);
+}
+
+.table tbody tr:hover {
+  background-color: #fafbfc;
+}
+
+.table tbody tr.expandable {
+  cursor: pointer;
+}
+
+.statusPill {
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-button);
+  font-size: 0.7rem;
+  text-transform: capitalize;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.statusSuccess {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.statusRunning {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.statusError {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.phaseBadge {
+  font-family: monospace;
+  font-size: 0.7rem;
+  background: var(--border-light);
+  padding: 0.125rem 0.4rem;
+  border-radius: var(--radius-button);
+}
+
+.leagueBadge {
+  font-size: 0.7rem;
+  background: #eff6ff;
+  color: #1e40af;
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-button);
+  margin-right: 0.2rem;
+}
+
+.durationCell {
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryRow td {
+  padding: 0.4rem 0.75rem;
+  background: #f9fafb;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.summaryPre {
+  font-size: 0.7rem;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  color: var(--text-secondary);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.error {
+  color: #dc2626;
+  padding: 0.5rem 1rem;
+  font-weight: 500;
+  font-size: 0.8rem;
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+}
+
+.empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}

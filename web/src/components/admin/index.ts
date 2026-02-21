@@ -16,4 +16,5 @@ export { RunOriginBadge } from "./RunOriginBadge";
 export { RunTaskBadges } from "./RunTaskBadges";
 export { LogsDrawer } from "./LogsDrawer";
 export type { LogsTab } from "./LogsDrawer";
+export { RunsDrawer } from "./RunsDrawer";
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { RunsDrawer } from "@/components/admin/RunsDrawer";
 import styles from "./layout.module.css";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -15,6 +16,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <AdminNav />
       </aside>
       <main className={styles.main}>{children}</main>
+      <RunsDrawer />
     </div>
   );
 }
