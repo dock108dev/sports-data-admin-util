@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from ...services.ev import (
     american_to_implied,
+    book_spread_factor,
     compute_ev_for_market,
     evaluate_ev_eligibility,
     extrapolation_distance_factor,
@@ -131,6 +132,7 @@ def _compute_side_confidence(
     true_prob: float | None,
     pinnacle_implied: float | None,
     extrapolation_hp: float | None = None,
+    book_implieds: list[float] | None = None,
 ) -> tuple[float, list[str]]:
     """Compute confidence multiplier and flags for one side of a market.
 
@@ -138,6 +140,7 @@ def _compute_side_confidence(
         true_prob: Devigged true probability for this side.
         pinnacle_implied: Pinnacle's raw vigged implied probability for this side.
         extrapolation_hp: Half-points from reference (None for direct devig).
+        book_implieds: Non-sharp implied probabilities for book outlier detection.
 
     Returns:
         (confidence, flags) — confidence is 0-1 multiplier, flags is list of strings.
@@ -166,6 +169,13 @@ def _compute_side_confidence(
         extrap = extrapolation_distance_factor(extrapolation_hp)
         confidence *= extrap
         flags.append("extrapolated")
+
+    # Book consensus spread — penalize when one book is a pricing outlier
+    if book_implieds is not None:
+        spread_conf = book_spread_factor(book_implieds)
+        if spread_conf < 1.0:
+            confidence *= spread_conf
+            flags.append("book_outlier")
 
     return round(confidence, 4), flags
 
@@ -313,13 +323,16 @@ def _annotate_pair_ev(
         ]:
             # Find Pinnacle's vigged implied prob from annotated entries
             pinnacle_implied = None
+            non_sharp_implieds: list[float] = []
             for b in annotated:
                 if b.get("is_sharp"):
                     pinnacle_implied = b.get("implied_prob")
-                    break
+                elif b.get("implied_prob") is not None:
+                    non_sharp_implieds.append(b["implied_prob"])
 
             confidence, flags = _compute_side_confidence(
-                true_prob, pinnacle_implied
+                true_prob, pinnacle_implied,
+                book_implieds=non_sharp_implieds or None,
             )
             bets_map[key]["books"] = _apply_display_ev(
                 bets_map[key]["books"], confidence

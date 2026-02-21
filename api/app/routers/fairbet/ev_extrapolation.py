@@ -413,17 +413,22 @@ def _try_extrapolated_ev(
 
         # Find Pinnacle's vigged implied at the target line (if present)
         pinnacle_implied = None
+        non_sharp_implieds: list[float] = []
         for b in bet["books"]:
             book_name = b["book"] if isinstance(b, dict) else b.book
             price = b["price"] if isinstance(b, dict) else b.price
             if book_name == "Pinnacle":
                 with contextlib.suppress(ValueError):
                     pinnacle_implied = american_to_implied(price)
-                break
+            else:
+                with contextlib.suppress(ValueError):
+                    non_sharp_implieds.append(american_to_implied(price))
 
         # Compute numeric confidence (with extrapolation penalty)
         num_confidence, conf_flags = _compute_side_confidence(
-            true_prob, pinnacle_implied, extrapolation_hp=n_half_points
+            true_prob, pinnacle_implied,
+            extrapolation_hp=n_half_points,
+            book_implieds=non_sharp_implieds or None,
         )
 
         new_books: list[BookOdds] = []
