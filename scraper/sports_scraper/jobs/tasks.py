@@ -7,6 +7,7 @@ Import directly from specific task modules:
 - timeline_tasks: Timeline generation
 - flow_tasks: Game flow generation
 - social_tasks: Team-centric social collection
+- final_whistle_tasks: Post-game social scrape on FINAL transition
 - polling_tasks: Game-state-machine polling
 - flow_trigger_tasks: Edge-triggered flow generation
 - sweep_tasks: Daily sweep / truth repair
@@ -15,6 +16,9 @@ Import directly from specific task modules:
 
 from __future__ import annotations
 
+from .final_whistle_tasks import (
+    run_final_whistle_social,
+)
 from .flow_tasks import (
     run_scheduled_flow_generation,
     run_scheduled_nba_flow_generation,
@@ -62,6 +66,7 @@ from .utility_tasks import (
 )
 
 __all__ = [
+    "run_final_whistle_social",
     "run_scrape_job",
     "run_scheduled_ingestion",
     "sync_mainline_odds",
