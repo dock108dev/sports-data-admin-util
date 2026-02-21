@@ -13,7 +13,7 @@ const PHASE_OPTIONS = [
   { value: "final_whistle_social", label: "Final Whistle Social" },
   { value: "trigger_flow", label: "Trigger Flow" },
   { value: "daily_sweep", label: "Daily Sweep" },
-  { value: "collect_pregame_social", label: "Pregame Social" },
+  { value: "collect_game_social", label: "Game Social" },
 ];
 
 const STATUS_OPTIONS = [

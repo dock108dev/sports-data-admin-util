@@ -46,7 +46,7 @@ from .scrape_tasks import (
     run_scrape_job,
 )
 from .social_tasks import (
-    collect_pregame_social,
+    collect_game_social,
     collect_social_for_league,
     collect_team_social,
     get_social_mapping_stats,
@@ -79,7 +79,7 @@ __all__ = [
     "run_scheduled_nhl_flow_generation",
     "run_scheduled_ncaab_flow_generation",
     "run_scheduled_flow_generation",
-    "collect_pregame_social",
+    "collect_game_social",
     "collect_social_for_league",
     "collect_team_social",
     "handle_social_task_failure",

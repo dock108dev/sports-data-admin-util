@@ -254,16 +254,16 @@ def map_social_to_games(batch_size: int = 1000) -> dict:
 
 
 @shared_task(
-    name="collect_pregame_social",
+    name="collect_game_social",
     queue="social-scraper",
     autoretry_for=(Exception,),
     retry_backoff=True,
     retry_kwargs={"max_retries": 2},
 )
-def collect_pregame_social() -> dict:
+def collect_game_social() -> dict:
     """Collect social posts for teams with games today (runs hourly at :30).
 
-    Queries today's scheduled/pregame/live games across all leagues,
+    Queries today's games across all phases (scheduled, pregame, live, final),
     deduplicates teams, and collects tweets for each. Runs on the
     social-scraper queue with a 3-min cooldown between teams.
 
@@ -279,10 +279,10 @@ def collect_pregame_social() -> dict:
     from ..utils.datetime_utils import today_et
 
     game_date = today_et()
-    logger.info("collect_pregame_social_start", game_date=str(game_date))
+    logger.info("collect_game_social_start", game_date=str(game_date))
 
-    with track_job_run("collect_pregame_social") as tracker, get_session() as session:
-        # Find today's games that are scheduled, pregame, or live
+    with track_job_run("collect_game_social") as tracker, get_session() as session:
+        # Find today's games across all active phases
         games = (
             session.query(db_models.SportsGame)
             .filter(
@@ -291,13 +291,14 @@ def collect_pregame_social() -> dict:
                     db_models.GameStatus.scheduled.value,
                     db_models.GameStatus.pregame.value,
                     db_models.GameStatus.live.value,
+                    db_models.GameStatus.final.value,
                 ]),
             )
             .all()
         )
 
         if not games:
-            logger.info("collect_pregame_social_no_games", game_date=str(game_date))
+            logger.info("collect_game_social_no_games", game_date=str(game_date))
             return {"game_date": str(game_date), "teams_processed": 0, "total_new_tweets": 0}
 
         # Deduplicate team IDs across all games
@@ -307,7 +308,7 @@ def collect_pregame_social() -> dict:
             team_ids.add(game.away_team_id)
 
         logger.info(
-            "collect_pregame_social_found",
+            "collect_game_social_found",
             game_date=str(game_date),
             games=len(games),
             teams=len(team_ids),
@@ -316,7 +317,7 @@ def collect_pregame_social() -> dict:
         try:
             collector = TeamTweetCollector()
         except RuntimeError as exc:
-            logger.error("collect_pregame_social_collector_unavailable", error=str(exc))
+            logger.error("collect_game_social_collector_unavailable", error=str(exc))
             return {
                 "game_date": str(game_date),
                 "teams_processed": 0,
@@ -343,14 +344,14 @@ def collect_pregame_social() -> dict:
                 total_new += new_tweets
                 teams_processed += 1
                 logger.info(
-                    "collect_pregame_social_team_done",
+                    "collect_game_social_team_done",
                     team_id=team_id,
                     new_tweets=new_tweets,
                 )
             except Exception as exc:
                 errors += 1
                 logger.warning(
-                    "collect_pregame_social_team_error",
+                    "collect_game_social_team_error",
                     team_id=team_id,
                     error=str(exc),
                 )
@@ -358,16 +359,16 @@ def collect_pregame_social() -> dict:
         # Map newly collected tweets to games
         map_result = map_unmapped_tweets(session=session, batch_size=1000)
 
-    result = {
-        "game_date": str(game_date),
-        "teams_processed": teams_processed,
-        "total_new_tweets": total_new,
-        "mapped": map_result.get("mapped", 0),
-        "errors": errors,
-    }
+        result = {
+            "game_date": str(game_date),
+            "teams_processed": teams_processed,
+            "total_new_tweets": total_new,
+            "mapped": map_result.get("mapped", 0),
+            "errors": errors,
+        }
+        tracker.summary_data = result
 
-    logger.info("collect_pregame_social_complete", **result)
-    tracker.summary_data = result
+    logger.info("collect_game_social_complete", **result)
 
     return result
 
