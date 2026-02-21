@@ -1,8 +1,9 @@
 """Final-whistle social scrape: Social Scrape #1 triggered when a game goes FINAL.
 
-Collects pregame and in-game tweets for both teams, maps them to the game,
-then dispatches flow generation. Postgame tweets are discarded — they are
-captured later by Social Scrape #2 in the daily sweep.
+Collects pregame and in-game tweets for both teams, maps them to the game.
+Postgame tweets are discarded — they are captured later by Social Scrape #2
+in the daily sweep. Flow generation is dispatched independently from
+polling_tasks.py with a 60-min delay.
 
 Non-negotiable rules:
 - Exactly two social scrapes per game (this is #1)
@@ -45,7 +46,7 @@ def run_final_whistle_social(game_id: int) -> dict:
     2. Collect tweets for each team (home then away, no cooldown between them)
     3. Map to game, tag phase (pregame/in_game only; discard postgame)
     4. Set game.social_scrape_1_at = now()
-    5. Dispatch trigger_flow_for_game(game_id)
+    5. Backfill embedded tweets if flow already exists
     6. Sleep 3 min as inter-game cooldown (rate limit protection)
 
     Rate limiting: This runs on the social-scraper queue (concurrency=1).
@@ -53,6 +54,7 @@ def run_final_whistle_social(game_id: int) -> dict:
     The 3-minute cooldown between games keeps X scraping sustainable.
     """
     from ..db import db_models
+    from ..services.job_runs import complete_job_run, start_job_run
     from ..social.team_collector import TeamTweetCollector
     from ..social.tweet_mapper import map_tweets_for_team
     from ..utils.datetime_utils import now_utc
@@ -81,6 +83,9 @@ def run_final_whistle_social(game_id: int) -> dict:
                 scraped_at=str(game.social_scrape_1_at),
             )
             return {"game_id": game_id, "status": "skipped", "reason": "already_scraped"}
+
+        # Start tracking job run (after skip checks, so skips don't create rows)
+        job_run_id = start_job_run("final_whistle_social", [])
 
         # Determine game_date for collection window
         game_date = game.game_date.date() if hasattr(game.game_date, "date") else game.game_date
@@ -164,18 +169,8 @@ def run_final_whistle_social(game_id: int) -> dict:
         game.last_social_at = now_utc()
         session.commit()
 
-    # Dispatch flow generation (outside the DB session)
-    try:
-        from .flow_trigger_tasks import trigger_flow_for_game
-
-        trigger_flow_for_game.delay(game_id)
-        logger.info("final_whistle_flow_dispatched", game_id=game_id)
-    except Exception as exc:
-        logger.warning(
-            "final_whistle_flow_dispatch_error",
-            game_id=game_id,
-            error=str(exc),
-        )
+    # Flow generation is now dispatched independently from polling_tasks.py
+    # with a 60-min delay (countdown=3600), decoupled from social scraping.
 
     # Backfill embedded tweets if a flow already exists for this game
     try:
@@ -202,6 +197,18 @@ def run_final_whistle_social(game_id: int) -> dict:
         total_new=total_new,
         mapped=mapped_total,
         postgame_discarded=postgame_discarded,
+    )
+
+    complete_job_run(
+        job_run_id,
+        status="success",
+        summary_data={
+            "game_id": game_id,
+            "teams_scraped": teams_scraped,
+            "total_new_tweets": total_new,
+            "mapped": mapped_total,
+            "postgame_discarded": postgame_discarded,
+        },
     )
 
     return {

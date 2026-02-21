@@ -8,8 +8,10 @@ from unittest.mock import MagicMock, patch
 class TestFlowImmutability:
     """Tests for trigger_flow_for_game immutability guard."""
 
+    @patch("sports_scraper.services.job_runs.complete_job_run")
+    @patch("sports_scraper.services.job_runs.start_job_run", return_value=1)
     @patch("sports_scraper.jobs.flow_trigger_tasks.get_session")
-    def test_flow_not_regenerated_when_exists(self, mock_get_session):
+    def test_flow_not_regenerated_when_exists(self, mock_get_session, mock_start, mock_complete):
         """Second call to trigger_flow_for_game returns 'immutable'."""
         from sports_scraper.jobs.flow_trigger_tasks import trigger_flow_for_game
 
@@ -31,10 +33,12 @@ class TestFlowImmutability:
         assert result["status"] == "skipped"
         assert result["reason"] == "immutable"
 
+    @patch("sports_scraper.services.job_runs.complete_job_run")
+    @patch("sports_scraper.services.job_runs.start_job_run", return_value=1)
     @patch("sports_scraper.jobs.flow_trigger_tasks._call_pipeline_api")
     @patch("sports_scraper.jobs.flow_trigger_tasks.get_session")
     def test_flow_generated_when_no_existing_artifacts(
-        self, mock_get_session, mock_call_api
+        self, mock_get_session, mock_call_api, mock_start, mock_complete
     ):
         """First call generates the flow."""
         from sports_scraper.jobs.flow_trigger_tasks import trigger_flow_for_game

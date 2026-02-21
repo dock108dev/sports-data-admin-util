@@ -60,6 +60,8 @@ app.conf.task_routes = {
     "run_daily_sweep": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     # Final-whistle social scrape runs on social-scraper queue (concurrency=1)
     "run_final_whistle_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
+    # Hourly pregame social collection
+    "collect_pregame_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
 }
 # Daily pipeline schedule (all times US Eastern / UTC during EST):
 #
@@ -131,6 +133,11 @@ _live_polling_schedule = {
         "task": "poll_live_pbp",
         "schedule": crontab(minute="*/5"),
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+    "pregame-social-every-60-min": {
+        "task": "collect_pregame_social",
+        "schedule": crontab(minute=30),
+        "options": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
     },
 }
 

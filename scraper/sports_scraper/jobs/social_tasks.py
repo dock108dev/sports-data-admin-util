@@ -260,6 +260,125 @@ def map_social_to_games(batch_size: int = 1000) -> dict:
     return result
 
 
+@shared_task(
+    name="collect_pregame_social",
+    queue="social-scraper",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def collect_pregame_social() -> dict:
+    """Collect social posts for teams with games today (runs hourly at :30).
+
+    Queries today's scheduled/pregame/live games across all leagues,
+    deduplicates teams, and collects tweets for each. Runs on the
+    social-scraper queue with a 3-min cooldown between teams.
+
+    Returns:
+        Summary stats dict with teams_processed, total_new_tweets, errors
+    """
+    import time
+
+    from ..db import db_models, get_session
+    from ..services.job_runs import track_job_run
+    from ..social.team_collector import TeamTweetCollector
+    from ..social.tweet_mapper import map_unmapped_tweets
+    from ..utils.datetime_utils import today_et
+
+    game_date = today_et()
+    logger.info("collect_pregame_social_start", game_date=str(game_date))
+
+    with track_job_run("collect_pregame_social") as tracker, get_session() as session:
+        # Find today's games that are scheduled, pregame, or live
+        games = (
+            session.query(db_models.SportsGame)
+            .filter(
+                db_models.SportsGame.game_date == game_date,
+                db_models.SportsGame.status.in_([
+                    db_models.GameStatus.scheduled.value,
+                    db_models.GameStatus.pregame.value,
+                    db_models.GameStatus.live.value,
+                ]),
+            )
+            .all()
+        )
+
+        if not games:
+            logger.info("collect_pregame_social_no_games", game_date=str(game_date))
+            return {"game_date": str(game_date), "teams_processed": 0, "total_new_tweets": 0}
+
+        # Deduplicate team IDs across all games
+        team_ids: set[int] = set()
+        for game in games:
+            team_ids.add(game.home_team_id)
+            team_ids.add(game.away_team_id)
+
+        logger.info(
+            "collect_pregame_social_found",
+            game_date=str(game_date),
+            games=len(games),
+            teams=len(team_ids),
+        )
+
+        try:
+            collector = TeamTweetCollector()
+        except RuntimeError as exc:
+            logger.error("collect_pregame_social_collector_unavailable", error=str(exc))
+            return {
+                "game_date": str(game_date),
+                "teams_processed": 0,
+                "total_new_tweets": 0,
+                "error": str(exc),
+            }
+
+        total_new = 0
+        teams_processed = 0
+        errors = 0
+
+        for i, team_id in enumerate(sorted(team_ids)):
+            # Inter-team cooldown (3 min) — skip before the first team
+            if i > 0:
+                time.sleep(180)
+
+            try:
+                new_tweets = collector.collect_team_tweets(
+                    session=session,
+                    team_id=team_id,
+                    start_date=game_date,
+                    end_date=game_date,
+                )
+                total_new += new_tweets
+                teams_processed += 1
+                logger.info(
+                    "collect_pregame_social_team_done",
+                    team_id=team_id,
+                    new_tweets=new_tweets,
+                )
+            except Exception as exc:
+                errors += 1
+                logger.warning(
+                    "collect_pregame_social_team_error",
+                    team_id=team_id,
+                    error=str(exc),
+                )
+
+        # Map newly collected tweets to games
+        map_result = map_unmapped_tweets(session=session, batch_size=1000)
+
+    result = {
+        "game_date": str(game_date),
+        "teams_processed": teams_processed,
+        "total_new_tweets": total_new,
+        "mapped": map_result.get("mapped", 0),
+        "errors": errors,
+    }
+
+    logger.info("collect_pregame_social_complete", **result)
+    tracker.summary_data = result
+
+    return result
+
+
 @shared_task(name="get_social_mapping_stats")
 def get_social_mapping_stats() -> dict:
     """

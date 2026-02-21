@@ -41,6 +41,7 @@ def trigger_flow_for_game(game_id: int) -> dict:
     from sqlalchemy import exists
 
     from ..db import db_models
+    from ..services.job_runs import complete_job_run, start_job_run
     from ..utils.redis_lock import LOCK_TIMEOUT_5MIN, acquire_redis_lock, release_redis_lock
 
     with get_session() as session:
@@ -78,6 +79,7 @@ def trigger_flow_for_game(game_id: int) -> dict:
             logger.info("flow_trigger_skipped_locked", game_id=game_id)
             return {"game_id": game_id, "status": "skipped", "reason": "locked"}
 
+    job_run_id = start_job_run("trigger_flow", [])
     try:
         with get_session() as session:
             # Check if flows already exist (skip if so)
@@ -90,6 +92,11 @@ def trigger_flow_for_game(game_id: int) -> dict:
                     "flow_trigger_skip_immutable",
                     game_id=game_id,
                 )
+                complete_job_run(
+                    job_run_id,
+                    status="success",
+                    summary_data={"game_id": game_id, "skipped": "immutable"},
+                )
                 return {"game_id": game_id, "status": "skipped", "reason": "immutable"}
 
             # Get league code for the API call
@@ -97,7 +104,17 @@ def trigger_flow_for_game(game_id: int) -> dict:
             league_code = league.code if league else "UNKNOWN"
 
         # Call the API pipeline endpoint (outside session)
-        return _call_pipeline_api(game_id, league_code)
+        result = _call_pipeline_api(game_id, league_code)
+        complete_job_run(
+            job_run_id,
+            status="success" if result.get("status") == "success" else "error",
+            summary_data={"game_id": game_id, "league": league_code},
+            error_summary=result.get("error"),
+        )
+        return result
+    except Exception as exc:
+        complete_job_run(job_run_id, status="error", error_summary=str(exc)[:500])
+        raise
     finally:
         release_redis_lock(lock_name)
 

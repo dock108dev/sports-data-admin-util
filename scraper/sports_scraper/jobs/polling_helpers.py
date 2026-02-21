@@ -455,13 +455,16 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
             logger.warning("poll_ncaab_pbp_error", game_id=game.id, cbb_id=cbb_id, error=str(exc))
 
     # --- Boxscores: batch fetch (2 API calls for all games in date range) ---
-    # Only fetch boxscores for live games (boxscores have no data before tip)
-    live_cbb_ids = [
+    # Fetch boxscores for live and recently-final games (pregame excluded)
+    live_or_post_cbb_ids = [
         cbb_id for cbb_id in cbb_game_ids
-        if game_by_cbb_id[cbb_id].status == db_models.GameStatus.live.value
+        if game_by_cbb_id[cbb_id].status in (
+            db_models.GameStatus.live.value,
+            db_models.GameStatus.final.value,
+        )
     ]
 
-    if live_cbb_ids and game_dates:
+    if live_or_post_cbb_ids and game_dates:
         start_date = min(game_dates)
         end_date = max(game_dates)
         season = season_ending_year(start_date)
@@ -470,13 +473,13 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
 
         try:
             boxscores = client.fetch_boxscores_batch(
-                game_ids=live_cbb_ids,
+                game_ids=live_or_post_cbb_ids,
                 start_date=start_date,
                 end_date=end_date,
                 season=season,
                 team_names_by_game={
                     cbb_id: team_names_by_game[cbb_id]
-                    for cbb_id in live_cbb_ids
+                    for cbb_id in live_or_post_cbb_ids
                     if cbb_id in team_names_by_game
                 },
             )

@@ -12,6 +12,7 @@ export const ROUTES = {
   PIPELINES: "/admin/sports/flow-generator",
   LOGS: "/admin/sports/logs",
 
+  TASKS: "/admin/sports/tasks",
   FAIRBET_ODDS: "/admin/fairbet/odds",
   SPORTS_GAME: (id: number | string) => `/admin/sports/games/${id}`,
 } as const;

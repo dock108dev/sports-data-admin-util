@@ -31,38 +31,49 @@ from ..logging import logger
 )
 def run_daily_sweep() -> dict:
     """Run all daily sweep operations."""
+    from ..services.job_runs import track_job_run
+
     results: dict = {}
 
     logger.info("daily_sweep_start")
 
-    # --- Phase 1: Pre-ingestion housekeeping ---
-    try:
-        results["status_repair"] = _repair_stale_statuses()
-    except Exception as exc:
-        results["status_repair"] = {"error": str(exc)}
-        logger.exception("daily_sweep_status_repair_error", error=str(exc))
+    with track_job_run("daily_sweep") as tracker:
+        # --- Phase 1: Pre-ingestion housekeeping ---
+        try:
+            results["status_repair"] = _repair_stale_statuses()
+        except Exception as exc:
+            results["status_repair"] = {"error": str(exc)}
+            logger.exception("daily_sweep_status_repair_error", error=str(exc))
 
-    # --- Phase 2: Post-ingestion housekeeping ---
-    try:
-        results["social_scrape_2"] = _run_social_scrape_2()
-    except Exception as exc:
-        results["social_scrape_2"] = {"error": str(exc)}
-        logger.exception("daily_sweep_social_scrape_2_error", error=str(exc))
+        # --- Phase 2: Post-ingestion housekeeping ---
+        try:
+            results["social_scrape_2"] = _run_social_scrape_2()
+        except Exception as exc:
+            results["social_scrape_2"] = {"error": str(exc)}
+            logger.exception("daily_sweep_social_scrape_2_error", error=str(exc))
 
-    try:
-        results["embedded_tweets_backfill"] = _backfill_embedded_tweets()
-    except Exception as exc:
-        results["embedded_tweets_backfill"] = {"error": str(exc)}
-        logger.exception("daily_sweep_embedded_tweets_backfill_error", error=str(exc))
+        try:
+            results["embedded_tweets_backfill"] = _backfill_embedded_tweets()
+        except Exception as exc:
+            results["embedded_tweets_backfill"] = {"error": str(exc)}
+            logger.exception("daily_sweep_embedded_tweets_backfill_error", error=str(exc))
 
-    try:
-        results["archive"] = _archive_old_games()
-    except Exception as exc:
-        results["archive"] = {"error": str(exc)}
-        logger.exception("daily_sweep_archive_error", error=str(exc))
+        try:
+            results["archive"] = _archive_old_games()
+        except Exception as exc:
+            results["archive"] = {"error": str(exc)}
+            logger.exception("daily_sweep_archive_error", error=str(exc))
 
-    logger.info("daily_sweep_complete", results=results)
-    return results
+        # --- Phase 3: Retention — prune old job runs ---
+        try:
+            results["job_run_pruning"] = _prune_old_job_runs()
+        except Exception as exc:
+            results["job_run_pruning"] = {"error": str(exc)}
+            logger.exception("daily_sweep_job_run_pruning_error", error=str(exc))
+
+        tracker.summary_data = results
+        logger.info("daily_sweep_complete", results=results)
+        return results
 
 
 def _run_social_scrape_2() -> dict:
@@ -381,3 +392,30 @@ def _archive_old_games() -> dict:
         archived = _promote_final_to_archived(session)
 
     return {"archived": archived}
+
+
+def _prune_old_job_runs(retention_days: int = 7) -> dict:
+    """Delete job run records older than retention_days.
+
+    At ~900 rows/day (all recurring tasks), 7-day retention keeps
+    the table at ~6300 rows max — trivial for Postgres.
+    """
+    from ..db import db_models
+    from ..utils.datetime_utils import now_utc
+
+    cutoff = now_utc() - timedelta(days=retention_days)
+
+    with get_session() as session:
+        deleted = (
+            session.query(db_models.SportsJobRun)
+            .filter(db_models.SportsJobRun.created_at < cutoff)
+            .delete(synchronize_session="fetch")
+        )
+
+    logger.info(
+        "job_runs_pruned",
+        deleted=deleted,
+        retention_days=retention_days,
+    )
+
+    return {"deleted": deleted, "retention_days": retention_days}

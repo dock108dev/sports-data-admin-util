@@ -31,6 +31,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "System",
     items: [
+      { href: ROUTES.TASKS, label: "Tasks" },
       { href: ROUTES.LOGS, label: "Logs" },
     ],
   },
