@@ -24,6 +24,7 @@ export interface BookOdds {
   price: number;
   observed_at: string;
   ev_percent: number | null;
+  display_ev: number | null;
   implied_prob: number | null;
   is_sharp: boolean;
   ev_method: string | null;
@@ -48,6 +49,9 @@ export interface BetDefinition {
   ev_confidence_tier: string | null;
   ev_disabled_reason: string | null;
   ev_method: string | null;
+  has_fair: boolean;
+  confidence: number | null;
+  confidence_flags: string[];
   books: BookOdds[];
   estimated_sharp_price: number | null;
   extrapolation_ref_line: number | null;

@@ -150,6 +150,29 @@ def pinnacle_alignment_factor(fair_prob: float, pinnacle_implied: float) -> floa
     return 0.7
 
 
+def book_spread_factor(book_implieds: list[float]) -> float:
+    """Confidence decay when one book is a pricing outlier.
+
+    Compares the most generous book (lowest implied prob = best odds for bettor)
+    against the median of all non-sharp books. Large spread indicates one book
+    is an outlier rather than genuine market-wide value.
+    """
+    if len(book_implieds) < 2:
+        return 0.80  # Thin market — inherently less reliable
+    sorted_probs = sorted(book_implieds)
+    n = len(sorted_probs)
+    mid = n // 2
+    median = sorted_probs[mid] if n % 2 == 1 else (sorted_probs[mid - 1] + sorted_probs[mid]) / 2.0
+    spread = abs(sorted_probs[0] - median)
+    if spread <= 0.03:
+        return 1.0
+    if spread <= 0.06:
+        return 0.85
+    if spread <= 0.10:
+        return 0.70
+    return 0.55
+
+
 def extrapolation_distance_factor(n_half_points: float) -> float:
     """Numeric confidence factor based on extrapolation distance.
 
@@ -164,10 +187,10 @@ def extrapolation_distance_factor(n_half_points: float) -> float:
     """
     abs_hp = abs(n_half_points)
     if abs_hp <= 2:
-        return 0.95
+        return 0.90
     if abs_hp <= 4:
-        return 0.85
-    return 0.70
+        return 0.80
+    return 0.65
 
 
 def calculate_ev(book_price: float, true_prob: float) -> float:

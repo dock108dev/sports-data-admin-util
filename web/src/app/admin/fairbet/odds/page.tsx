@@ -339,7 +339,8 @@ export default function FairbetOddsPage() {
           <div className={styles.betsGrid}>
             {bets.map((bet, idx) => {
               const bestBook = getBestOdds(bet.books);
-              const bestBookHasPositiveEv = bestBook != null && bestBook.ev_percent != null && bestBook.ev_percent > 0;
+              const bestBookEv = bestBook != null ? (bestBook.display_ev ?? bestBook.ev_percent) : null;
+              const bestBookHasPositiveEv = bestBook != null && bestBookEv != null && bestBookEv > 0;
               return (
                 <div key={idx} className={styles.betCard}>
                   <div className={styles.betHeader}>
@@ -429,7 +430,8 @@ export default function FairbetOddsPage() {
                       </div>
                     )}
                     {bet.books.map((bookOdds, bookIdx) => {
-                      const evColor = getEvColor(bookOdds.ev_percent);
+                      const displayEv = bookOdds.display_ev ?? bookOdds.ev_percent;
+                      const evColor = getEvColor(displayEv);
                       return (
                         <div
                           key={bookIdx}
@@ -448,7 +450,7 @@ export default function FairbetOddsPage() {
                           <span className={styles.bookPrice}>
                             {formatOdds(bookOdds.price)}
                           </span>
-                          {bookOdds.ev_percent !== null && bookOdds.ev_percent !== undefined && (
+                          {displayEv !== null && displayEv !== undefined && (
                             <span
                               className={`${styles.evBadge} ${
                                 evColor === "positive"
@@ -458,7 +460,7 @@ export default function FairbetOddsPage() {
                                   : ""
                               }`}
                             >
-                              {formatEv(bookOdds.ev_percent)}
+                              {formatEv(displayEv)}
                             </span>
                           )}
                         </div>

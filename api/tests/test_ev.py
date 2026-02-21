@@ -8,6 +8,7 @@ from app.services.ev import (
     EVComputeResult,
     _find_sharp_entry,
     american_to_implied,
+    book_spread_factor,
     calculate_ev,
     compute_ev_for_market,
     evaluate_ev_eligibility,
@@ -621,25 +622,60 @@ class TestExtrapolationDistanceFactor:
     """Tests for extrapolation_distance_factor()."""
 
     def test_close_extrapolation(self) -> None:
-        """1-2 half points → 0.95."""
-        assert extrapolation_distance_factor(1.0) == 0.95
-        assert extrapolation_distance_factor(2.0) == 0.95
+        """1-2 half points → 0.90."""
+        assert extrapolation_distance_factor(1.0) == 0.90
+        assert extrapolation_distance_factor(2.0) == 0.90
 
     def test_medium_extrapolation(self) -> None:
-        """3-4 half points → 0.85."""
-        assert extrapolation_distance_factor(3.0) == 0.85
-        assert extrapolation_distance_factor(4.0) == 0.85
+        """3-4 half points → 0.80."""
+        assert extrapolation_distance_factor(3.0) == 0.80
+        assert extrapolation_distance_factor(4.0) == 0.80
 
     def test_far_extrapolation(self) -> None:
-        """5+ half points → 0.70."""
-        assert extrapolation_distance_factor(5.0) == 0.70
-        assert extrapolation_distance_factor(6.0) == 0.70
+        """5+ half points → 0.65."""
+        assert extrapolation_distance_factor(5.0) == 0.65
+        assert extrapolation_distance_factor(6.0) == 0.65
 
     def test_negative_values_use_abs(self) -> None:
         """Negative half-points should use absolute value."""
-        assert extrapolation_distance_factor(-1.0) == 0.95
-        assert extrapolation_distance_factor(-3.0) == 0.85
-        assert extrapolation_distance_factor(-5.0) == 0.70
+        assert extrapolation_distance_factor(-1.0) == 0.90
+        assert extrapolation_distance_factor(-3.0) == 0.80
+        assert extrapolation_distance_factor(-5.0) == 0.65
+
+
+class TestBookSpreadFactor:
+    """Tests for book_spread_factor() outlier detection."""
+
+    def test_tight_consensus(self) -> None:
+        """All books within 3% of median → 1.0 (no penalty)."""
+        assert book_spread_factor([0.40, 0.41, 0.42, 0.43]) == 1.0
+
+    def test_moderate_spread(self) -> None:
+        """Best book 3-6% from median → 0.85."""
+        # min=0.36, median ~0.41 → spread 0.05
+        assert book_spread_factor([0.36, 0.40, 0.42, 0.44]) == 0.85
+
+    def test_wide_spread(self) -> None:
+        """Best book 6-10% from median → 0.70."""
+        # min=0.33, median ~0.42 → spread 0.09
+        assert book_spread_factor([0.33, 0.41, 0.43, 0.45]) == 0.70
+
+    def test_extreme_outlier(self) -> None:
+        """Best book >10% from median → 0.55."""
+        # min=0.30, median ~0.43 → spread 0.13
+        assert book_spread_factor([0.30, 0.42, 0.44, 0.46]) == 0.55
+
+    def test_thin_market(self) -> None:
+        """Single book → 0.80 (thin market penalty)."""
+        assert book_spread_factor([0.45]) == 0.80
+
+    def test_two_books_tight(self) -> None:
+        """Two books close together → 1.0."""
+        assert book_spread_factor([0.40, 0.42]) == 1.0
+
+    def test_empty_list(self) -> None:
+        """Empty list → 0.80 (thin market)."""
+        assert book_spread_factor([]) == 0.80
 
 
 class TestDisplayEVComputation:
