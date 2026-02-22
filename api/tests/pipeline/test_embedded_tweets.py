@@ -6,6 +6,7 @@ import pytest
 
 from app.services.pipeline.stages.embedded_tweets import (
     # Constants
+    DEFAULT_TWEET_LAG_SECONDS,
     MAX_EMBEDDED_TWEETS,
     MAX_TWEETS_PER_BLOCK,
     MIN_EMBEDDED_TWEETS,
@@ -406,15 +407,17 @@ def _assigned_tweet_ids(assignments: list[BlockTweetAssignment]) -> dict[int, in
 # =============================================================================
 # NBA TEMPORAL MATCHING (4 quarters + halftime)
 #
-# NBA real-time layout (from timeline_types):
-#   NBA_QUARTER_REAL_SECONDS = 75*60 / 4 = 1125 s ≈ 18 m 45 s
-#   NBA_HALFTIME_REAL_SECONDS = 15*60 = 900 s = 15 m
+# Wall-clock layout (165 min regulation / 4 quarters + 15 min halftime):
+#   Quarter = 165/4 = 41.25 min = 2475 s
+#   Halftime = 15 min = 900 s
 #
 #   Q1 starts at: game_start
-#   Q2 starts at: game_start + 1125 s  (≈ +18 m 45 s)
-#   Q3 starts at: game_start + 2*1125 + 900 s  (= +3150 s ≈ +52 m 30 s)
-#   Q4 starts at: game_start + 3*1125 + 900 s  (= +4275 s ≈ +71 m 15 s)
-#   OT1 starts at: game_start + 4500 + 900 s   (= +5400 s = +90 m)
+#   Q2 starts at: game_start + 2475 s   (= +41 m 15 s)
+#   Q3 starts at: game_start + 5850 s   (= +97 m 30 s)
+#   Q4 starts at: game_start + 8325 s   (= +138 m 45 s)
+#   OT1 starts at: game_start + 10800 s (= +180 m)
+#
+# All temporal tests pass tweet_lag_seconds=0 to isolate boundary logic.
 # =============================================================================
 
 
@@ -430,13 +433,15 @@ class TestNBATemporalAssignment:
             {"block_index": 3, "period_start": 4},
         ]
         tweets = [
-            _make_tweet(10, game_start + timedelta(minutes=5)),    # Q1 window
-            _make_tweet(20, game_start + timedelta(minutes=25)),   # Q2 window
-            _make_tweet(30, game_start + timedelta(minutes=60)),   # Q3 window
-            _make_tweet(40, game_start + timedelta(minutes=75)),   # Q4 window
+            _make_tweet(10, game_start + timedelta(minutes=5)),    # Q1 (0-41.25 min)
+            _make_tweet(20, game_start + timedelta(minutes=50)),   # Q2 (41.25-97.5 min)
+            _make_tweet(30, game_start + timedelta(minutes=100)),  # Q3 (97.5-138.75 min)
+            _make_tweet(40, game_start + timedelta(minutes=140)),  # Q4 (138.75-180 min)
         ]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] == 10
@@ -446,14 +451,16 @@ class TestNBATemporalAssignment:
 
     def test_tweet_exactly_at_quarter_boundary(self, game_start):
         """Tweet posted exactly when Q2 starts goes to the Q2 block."""
-        q2_start_offset = timedelta(seconds=1125)  # NBA Q2 real-time start
+        q2_start_offset = timedelta(seconds=2475)  # NBA Q2 wall-clock start (41.25 min)
         blocks = [
             {"block_index": 0, "period_start": 1},
             {"block_index": 1, "period_start": 2},
         ]
         tweets = [_make_tweet(99, game_start + q2_start_offset)]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[1] == 99
@@ -466,7 +473,9 @@ class TestNBATemporalAssignment:
         ]
         tweets = [_make_tweet(1, game_start - timedelta(minutes=10))]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] is None
@@ -481,7 +490,9 @@ class TestNBATemporalAssignment:
             _make_tweet(3, game_start + timedelta(minutes=10), score=1.0),
         ]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
 
         assert assignments[0].tweet is not None
         assert assignments[0].tweet.tweet_id == 2  # highest score
@@ -495,7 +506,9 @@ class TestNBATemporalAssignment:
             {"block_index": 1, "period_start": 2},
         ]
 
-        assignments = assign_tweets_to_blocks_by_time([], blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            [], blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] is None
@@ -504,7 +517,9 @@ class TestNBATemporalAssignment:
     def test_empty_blocks_returns_empty(self, game_start):
         """Empty block list returns empty assignments."""
         tweets = [_make_tweet(1, game_start + timedelta(minutes=5))]
-        assignments = assign_tweets_to_blocks_by_time(tweets, [], game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, [], game_start, "NBA", tweet_lag_seconds=0
+        )
 
         assert assignments == []
 
@@ -514,10 +529,12 @@ class TestNBATemporalAssignment:
             {"block_index": 0, "period_start": 4},
             {"block_index": 1, "period_start": 5},  # OT1
         ]
-        # OT1 starts at game_start + 4500 + 900 = +5400s = +90 min
-        tweets = [_make_tweet(77, game_start + timedelta(minutes=92))]
+        # OT1 starts at game_start + 4*2475 + 900 = +10800s = +180 min
+        tweets = [_make_tweet(77, game_start + timedelta(minutes=182))]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] is None
@@ -528,7 +545,7 @@ class TestSamePeriodMultipleBlocks:
     """Tests for blocks that share the same period_start value.
 
     When blocks share the same period_start, the algorithm subdivides the
-    period's real-time window evenly so tweets distribute across blocks
+    period's wall-clock window evenly so tweets distribute across blocks
     rather than collapsing to the last one.
     """
 
@@ -536,8 +553,8 @@ class TestSamePeriodMultipleBlocks:
         """Two blocks in period 1 subdivide the window; early tweet goes to block 0.
 
         blocks 0, 1 share period 1; block 2 is period 3.
-        Period 1 starts at game_start, period 3 starts at ~52.5 min.
-        Subdivision: block 0 gets [0, 26.25 min), block 1 gets [26.25, 52.5 min).
+        Period 1 starts at game_start, period 3 starts at 97.5 min.
+        Subdivision: block 0 gets [0, 48.75 min), block 1 gets [48.75, 97.5 min).
         Tweet at +5 min falls in block 0's sub-window.
         """
         blocks = [
@@ -547,7 +564,9 @@ class TestSamePeriodMultipleBlocks:
         ]
         tweets = [_make_tweet(10, game_start + timedelta(minutes=5))]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] == 10
@@ -557,17 +576,19 @@ class TestSamePeriodMultipleBlocks:
     def test_two_blocks_same_period_late_tweet_goes_to_second(self, game_start):
         """Late tweet in subdivided window goes to the second block.
 
-        Same setup: block 0 gets [0, 26.25 min), block 1 gets [26.25, 52.5 min).
-        Tweet at +30 min falls in block 1's sub-window.
+        Same setup: block 0 gets [0, 48.75 min), block 1 gets [48.75, 97.5 min).
+        Tweet at +50 min falls in block 1's sub-window.
         """
         blocks = [
             {"block_index": 0, "period_start": 1},
             {"block_index": 1, "period_start": 1},
             {"block_index": 2, "period_start": 3},
         ]
-        tweets = [_make_tweet(10, game_start + timedelta(minutes=30))]
+        tweets = [_make_tweet(10, game_start + timedelta(minutes=50))]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] is None
@@ -576,10 +597,10 @@ class TestSamePeriodMultipleBlocks:
     def test_three_blocks_same_period_tweets_distribute(self, game_start):
         """Three blocks in period 1: tweets spread across sub-windows.
 
-        All 3 blocks share period 1. Next period (2) starts at ~18.75 min.
-        Subdivision: block 0 [0, 6.25 min), block 1 [6.25, 12.5 min),
-        block 2 [12.5, 18.75 min).
-        Tweet at +2 min → block 0, tweet at +8 min → block 1.
+        All 3 blocks share period 1. Next period (2) starts at 41.25 min.
+        Subdivision: block 0 [0, 13.75 min), block 1 [13.75, 27.5 min),
+        block 2 [27.5, 41.25 min).
+        Tweet at +2 min → block 0, tweet at +15 min → block 1.
         """
         blocks = [
             {"block_index": 0, "period_start": 1},
@@ -588,28 +609,32 @@ class TestSamePeriodMultipleBlocks:
         ]
         tweets = [
             _make_tweet(1, game_start + timedelta(minutes=2), score=5.0),
-            _make_tweet(2, game_start + timedelta(minutes=8), score=3.0),
+            _make_tweet(2, game_start + timedelta(minutes=15), score=3.0),
         ]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] == 1  # tweet at +2 min in first sub-window
-        assert ids[1] == 2  # tweet at +8 min in second sub-window
+        assert ids[1] == 2  # tweet at +15 min in second sub-window
         assert ids[2] is None  # no tweet in third sub-window
 
 
 # =============================================================================
 # NHL TEMPORAL MATCHING (3 periods + intermissions)
 #
-# NHL real-time layout:
-#   NHL_PERIOD_REAL_SECONDS = 90*60 / 3 = 1800 s = 30 m
-#   NHL_INTERMISSION_REAL_SECONDS = 18*60 = 1080 s = 18 m
+# Wall-clock layout (165 min regulation / 3 periods + 18 min intermissions):
+#   Period = 165/3 = 55 min = 3300 s
+#   Intermission = 18 min = 1080 s
 #
 #   P1 starts at: game_start
-#   P2 starts at: game_start + 1800 + 1080 = +2880 s = +48 m
-#   P3 starts at: game_start + 3600 + 2160 = +5760 s = +96 m
-#   OT starts at: game_start + 5400 + 600 = +6000 s = +100 m
+#   P2 starts at: game_start + 4380 s   (= +73 m)
+#   P3 starts at: game_start + 8760 s   (= +146 m)
+#   OT starts at: game_start + 12060 s  (= +201 m)
+#
+# All temporal tests pass tweet_lag_seconds=0 to isolate boundary logic.
 # =============================================================================
 
 
@@ -624,12 +649,14 @@ class TestNHLTemporalAssignment:
             {"block_index": 2, "period_start": 3},
         ]
         tweets = [
-            _make_tweet(10, game_start + timedelta(minutes=15)),   # P1 (0-48 min)
-            _make_tweet(20, game_start + timedelta(minutes=60)),   # P2 (48-96 min)
-            _make_tweet(30, game_start + timedelta(minutes=100)),  # P3 (96+ min)
+            _make_tweet(10, game_start + timedelta(minutes=15)),   # P1 (0-73 min)
+            _make_tweet(20, game_start + timedelta(minutes=80)),   # P2 (73-146 min)
+            _make_tweet(30, game_start + timedelta(minutes=150)),  # P3 (146-201 min)
         ]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NHL")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NHL", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] == 10
@@ -639,16 +666,18 @@ class TestNHLTemporalAssignment:
     def test_nhl_intermission_tweet_lands_in_preceding_period(self, game_start):
         """Tweet during intermission (after P1 ends, before P2 starts) stays in P1 block.
 
-        P1 real time runs ~30 min, P2 starts at ~48 min.
-        A tweet at 35 min is after P1 game time but before P2 start — belongs to P1.
+        P1 real time runs ~55 min, P2 starts at ~73 min.
+        A tweet at 60 min is after P1 game time but before P2 start — belongs to P1.
         """
         blocks = [
             {"block_index": 0, "period_start": 1},
             {"block_index": 1, "period_start": 2},
         ]
-        tweets = [_make_tweet(55, game_start + timedelta(minutes=35))]
+        tweets = [_make_tweet(55, game_start + timedelta(minutes=60))]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NHL")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NHL", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] == 55
@@ -660,10 +689,12 @@ class TestNHLTemporalAssignment:
             {"block_index": 0, "period_start": 3},
             {"block_index": 1, "period_start": 4},  # OT
         ]
-        # OT starts at game_start + 5400 + 600 = +100 min
-        tweets = [_make_tweet(88, game_start + timedelta(minutes=105))]
+        # OT starts at game_start + 3*3300 + 2*1080 = +12060s = +201 min
+        tweets = [_make_tweet(88, game_start + timedelta(minutes=203))]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NHL")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NHL", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] is None
@@ -673,42 +704,43 @@ class TestNHLTemporalAssignment:
         """Same blocks and tweet time yield different assignments for NHL vs NBA.
 
         A tweet at game_start + 50 min:
-        - NBA: Q3 started at ~52.5 min, so tweet is still in Q2 window → block 1
-        - NHL: P2 started at 48 min, so tweet is in P2 window → block 1
-        Both map to block 1 here, but for different reasons.
-
-        A tweet at game_start + 20 min:
-        - NBA: Q2 starts at ~18.75 min, so tweet is in Q2 → block 1
-        - NHL: P1 runs until P2 at 48 min, so tweet is still in P1 → block 0
+        - NBA: Q2 starts at ~41.25 min, so tweet is in Q2 → block 1
+        - NHL: P2 starts at 73 min, so tweet is still in P1 → block 0
         """
         blocks = [
             {"block_index": 0, "period_start": 1},
             {"block_index": 1, "period_start": 2},
         ]
-        tweets = [_make_tweet(42, game_start + timedelta(minutes=20))]
+        tweets = [_make_tweet(42, game_start + timedelta(minutes=50))]
 
-        nba_assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
-        nhl_assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NHL")
+        nba_assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
+        nhl_assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NHL", tweet_lag_seconds=0
+        )
 
         nba_ids = _assigned_tweet_ids(nba_assignments)
         nhl_ids = _assigned_tweet_ids(nhl_assignments)
 
-        # NBA Q2 starts at ~18.75 min → tweet at 20 min is in Q2
+        # NBA Q2 starts at ~41.25 min → tweet at 50 min is in Q2
         assert nba_ids[1] == 42
-        # NHL P2 starts at 48 min → tweet at 20 min is still in P1
+        # NHL P2 starts at 73 min → tweet at 50 min is still in P1
         assert nhl_ids[0] == 42
 
 
 # =============================================================================
 # NCAAB TEMPORAL MATCHING (2 halves + halftime)
 #
-# NCAAB real-time layout:
-#   NCAAB_HALF_REAL_SECONDS = 75*60 / 2 = 2250 s = 37 m 30 s
-#   NCAAB_HALFTIME_REAL_SECONDS = 20*60 = 1200 s = 20 m
+# Wall-clock layout (135 min regulation / 2 halves + 20 min halftime):
+#   Half = 135/2 = 67.5 min = 4050 s
+#   Halftime = 20 min = 1200 s
 #
 #   H1 starts at: game_start
-#   H2 starts at: game_start + 2250 + 1200 = +3450 s = +57 m 30 s
-#   OT1 starts at: game_start + 4500 + 600 = +5100 s = +85 m
+#   H2 starts at: game_start + 5250 s  (= +87 m 30 s)
+#   OT1 starts at: game_start + 9300 s (= +155 m)
+#
+# All temporal tests pass tweet_lag_seconds=0 to isolate boundary logic.
 # =============================================================================
 
 
@@ -722,11 +754,13 @@ class TestNCAABTemporalAssignment:
             {"block_index": 1, "period_start": 2},
         ]
         tweets = [
-            _make_tweet(10, game_start + timedelta(minutes=20)),  # H1 (0-57.5 min)
-            _make_tweet(20, game_start + timedelta(minutes=65)),  # H2 (57.5+ min)
+            _make_tweet(10, game_start + timedelta(minutes=20)),  # H1 (0-87.5 min)
+            _make_tweet(20, game_start + timedelta(minutes=90)),  # H2 (87.5-155 min)
         ]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NCAAB")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NCAAB", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] == 10
@@ -735,16 +769,18 @@ class TestNCAABTemporalAssignment:
     def test_ncaab_halftime_tweet_stays_in_first_half(self, game_start):
         """Tweet during NCAAB halftime (after H1 game time, before H2 start) stays in H1.
 
-        H1 real time is ~37.5 min, H2 starts at ~57.5 min.
-        A tweet at 45 min is in the halftime window — belongs to H1.
+        H1 real time is ~67.5 min, H2 starts at ~87.5 min.
+        A tweet at 75 min is in the halftime window — belongs to H1.
         """
         blocks = [
             {"block_index": 0, "period_start": 1},
             {"block_index": 1, "period_start": 2},
         ]
-        tweets = [_make_tweet(33, game_start + timedelta(minutes=45))]
+        tweets = [_make_tweet(33, game_start + timedelta(minutes=75))]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NCAAB")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NCAAB", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] == 33
@@ -756,38 +792,44 @@ class TestNCAABTemporalAssignment:
             {"block_index": 0, "period_start": 2},
             {"block_index": 1, "period_start": 3},  # OT1
         ]
-        # OT1 starts at game_start + 4500 + 600 = +85 min
-        tweets = [_make_tweet(66, game_start + timedelta(minutes=90))]
+        # OT1 starts at game_start + 2*4050 + 1200 = +9300s = +155 min
+        tweets = [_make_tweet(66, game_start + timedelta(minutes=157))]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NCAAB")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NCAAB", tweet_lag_seconds=0
+        )
         ids = _assigned_tweet_ids(assignments)
 
         assert ids[0] is None
         assert ids[1] == 66
 
     def test_ncaab_longer_halftime_than_nba(self, game_start):
-        """NCAAB's 20-min halftime vs NBA's 15-min halftime affects assignment.
+        """NCAAB's longer H1 period vs NBA's shorter Q1 affects assignment.
 
-        A tweet at game_start + 55 min:
-        - NBA: Q3 started at ~52.5 min → tweet is in Q3 window
-        - NCAAB: H2 starts at ~57.5 min → tweet is still in H1 window
+        A tweet at game_start + 45 min:
+        - NBA: Q2 started at ~41.25 min → tweet is in Q2 window → block 1
+        - NCAAB: H2 starts at ~87.5 min → tweet is still in H1 window → block 0
         """
         blocks = [
             {"block_index": 0, "period_start": 1},
             {"block_index": 1, "period_start": 2},
             {"block_index": 2, "period_start": 3},
         ]
-        tweets = [_make_tweet(50, game_start + timedelta(minutes=55))]
+        tweets = [_make_tweet(50, game_start + timedelta(minutes=45))]
 
-        nba_assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
-        ncaab_assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NCAAB")
+        nba_assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
+        ncaab_assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NCAAB", tweet_lag_seconds=0
+        )
 
         nba_ids = _assigned_tweet_ids(nba_assignments)
         ncaab_ids = _assigned_tweet_ids(ncaab_assignments)
 
-        # NBA: Q3 starts at ~52.5 min, so 55 min is in Q3 → block 2
-        assert nba_ids[2] == 50
-        # NCAAB: H2 starts at ~57.5 min, so 55 min is still in H1 → block 0
+        # NBA: Q2 starts at ~41.25 min, so 45 min is in Q2 → block 1
+        assert nba_ids[1] == 50
+        # NCAAB: H2 starts at ~87.5 min, so 45 min is still in H1 → block 0
         assert ncaab_ids[0] == 50
 
 
@@ -801,26 +843,28 @@ class TestGlobalCap:
 
     When more than 5 blocks have display tweets, only the top 5 by score
     are kept; the rest are demoted to additional_tweets.
+
+    Wall-clock NBA period starts:
+    Q1=0, Q2=41.25m, Q3=97.5m, Q4=138.75m, OT1=180m, OT2=200m, OT3=220m.
     """
 
     def test_six_display_tweets_capped_to_five(self, game_start):
-        """6 blocks with display tweets → only 5 survive, lowest score demoted.
-
-        NBA period starts: Q1=0, Q2=18.75m, Q3=52.5m, Q4=71.25m, OT1=75m, OT2=90m.
-        Each tweet is placed in the middle of its period's window.
-        """
+        """6 blocks with display tweets → only 5 survive, lowest score demoted."""
         blocks = [
             {"block_index": i, "period_start": i + 1}
             for i in range(6)
         ]
-        # Timings that land one tweet per NBA period window
-        period_midpoints = [5, 25, 55, 73, 80, 95]  # minutes
+        # Timings that land one tweet per NBA wall-clock period window
+        # Q1=0, Q2=41.25m, Q3=97.5m, Q4=138.75m, OT1=180m, OT2=200m
+        period_midpoints = [5, 50, 100, 140, 182, 205]  # minutes
         tweets = [
             _make_tweet(i + 1, game_start + timedelta(minutes=m), score=float(i + 1))
             for i, m in enumerate(period_midpoints)
         ]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
 
         display_count = sum(1 for a in assignments if a.tweet is not None)
         assert display_count == MAX_EMBEDDED_TWEETS  # 5
@@ -832,36 +876,32 @@ class TestGlobalCap:
         assert demoted_block.additional_tweets[0].tweet_id == 1
 
     def test_five_display_tweets_within_cap(self, game_start):
-        """5 blocks with display tweets → all kept (exactly at the cap).
-
-        NBA period starts: Q1=0, Q2=18.75m, Q3=52.5m, Q4=71.25m, OT1=75m.
-        """
+        """5 blocks with display tweets → all kept (exactly at the cap)."""
         blocks = [
             {"block_index": i, "period_start": i + 1}
             for i in range(5)
         ]
-        period_midpoints = [5, 25, 55, 73, 80]  # minutes
+        period_midpoints = [5, 50, 100, 140, 182]  # minutes
         tweets = [
             _make_tweet(i + 1, game_start + timedelta(minutes=m), score=float(i + 1))
             for i, m in enumerate(period_midpoints)
         ]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
 
         display_count = sum(1 for a in assignments if a.tweet is not None)
         assert display_count == 5  # all kept
 
     def test_seven_blocks_two_demoted(self, game_start):
-        """7 blocks (max pipeline blocks) with tweets → 2 lowest scores demoted.
-
-        NBA period starts: Q1=0, Q2=18.75m, Q3=52.5m, Q4=71.25m,
-        OT1=75m, OT2=90m, OT3=105m.
-        """
+        """7 blocks (max pipeline blocks) with tweets → 2 lowest scores demoted."""
         blocks = [
             {"block_index": i, "period_start": i + 1}
             for i in range(7)
         ]
-        period_midpoints = [5, 25, 55, 73, 80, 95, 110]  # minutes
+        # OT1=180m, OT2=200m, OT3=220m
+        period_midpoints = [5, 50, 100, 140, 182, 205, 225]  # minutes
         tweets = [
             _make_tweet(
                 i + 1,
@@ -871,7 +911,9 @@ class TestGlobalCap:
             for i, m in enumerate(period_midpoints)
         ]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
 
         display_count = sum(1 for a in assignments if a.tweet is not None)
         assert display_count == MAX_EMBEDDED_TWEETS
@@ -889,16 +931,210 @@ class TestGlobalCap:
             {"block_index": i, "period_start": i + 1}
             for i in range(6)
         ]
-        period_midpoints = [5, 25, 55, 73, 80, 95]
+        period_midpoints = [5, 50, 100, 140, 182, 205]
         tweets = [
             _make_tweet(i + 1, game_start + timedelta(minutes=m), score=float(i + 1))
             for i, m in enumerate(period_midpoints)
         ]
 
-        assignments = assign_tweets_to_blocks_by_time(tweets, blocks, game_start, "NBA")
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
 
         # Block 0 had tweet_id=1 (lowest score=1.0), now demoted
         demoted = assignments[0]
         assert demoted.tweet is None
         all_additional_ids = {t.tweet_id for t in demoted.additional_tweets}
         assert 1 in all_additional_ids
+
+
+# =============================================================================
+# TWEET LAG ADJUSTMENT
+# =============================================================================
+
+
+class TestTweetLagAdjustment:
+    """Tests for the tweet_lag_seconds parameter.
+
+    The lag subtracts a fixed offset from each tweet's posted_at before
+    matching it to a block window, compensating for the typical delay
+    between a play occurring and the team account tweeting about it.
+    """
+
+    def test_default_lag_constant(self):
+        """Default lag is 90 seconds."""
+        assert DEFAULT_TWEET_LAG_SECONDS == 90
+
+    def test_lag_shifts_borderline_tweet_to_earlier_block(self, game_start):
+        """A tweet posted just after Q2 starts is shifted back into Q1 by lag.
+
+        Q2 wall-clock start = 41.25 min = 2475 s.
+        Tweet at 41.25 min + 60 s = 42.25 min.
+        With 90 s lag: adjusted = 42.25 - 1.5 = 40.75 min → before Q2 → Q1 (block 0).
+        Without lag: 42.25 min ≥ 41.25 min → Q2 (block 1).
+        """
+        blocks = [
+            {"block_index": 0, "period_start": 1},
+            {"block_index": 1, "period_start": 2},
+        ]
+        # 42.25 min after game start (just past Q2 boundary)
+        tweet_time = game_start + timedelta(seconds=2475 + 60)
+        tweets = [_make_tweet(1, tweet_time)]
+
+        # With default lag (90s) → shifted to 40.75 min → Q1
+        with_lag = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=90
+        )
+        assert _assigned_tweet_ids(with_lag)[0] == 1
+
+        # Without lag → 42.25 min → Q2
+        without_lag = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
+        assert _assigned_tweet_ids(without_lag)[1] == 1
+
+    def test_custom_lag_value(self, game_start):
+        """Custom lag value is respected."""
+        blocks = [
+            {"block_index": 0, "period_start": 1},
+            {"block_index": 1, "period_start": 2},
+        ]
+        # Tweet at exactly Q2 boundary + 3 min = 41.25 + 3 = 44.25 min
+        tweet_time = game_start + timedelta(seconds=2475 + 180)
+        tweets = [_make_tweet(1, tweet_time)]
+
+        # With 240s (4 min) lag: adjusted = 44.25 - 4 = 40.25 min → Q1
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=240
+        )
+        assert _assigned_tweet_ids(assignments)[0] == 1
+
+    def test_zero_lag_no_shift(self, game_start):
+        """Zero lag means no adjustment (tweet matches by raw posted_at)."""
+        blocks = [
+            {"block_index": 0, "period_start": 1},
+            {"block_index": 1, "period_start": 2},
+        ]
+        # Tweet 1 second after Q2 starts
+        tweet_time = game_start + timedelta(seconds=2475 + 1)
+        tweets = [_make_tweet(1, tweet_time)]
+
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=0
+        )
+        # Should land in Q2 (block 1) since no lag adjustment
+        assert _assigned_tweet_ids(assignments)[1] == 1
+
+    def test_lag_does_not_push_tweet_before_game_start(self, game_start):
+        """Lag that pushes adjusted time before game_start → tweet unassigned."""
+        blocks = [
+            {"block_index": 0, "period_start": 1},
+        ]
+        # Tweet 30 seconds after game start
+        tweet_time = game_start + timedelta(seconds=30)
+        tweets = [_make_tweet(1, tweet_time)]
+
+        # With 60s lag: adjusted = game_start - 30s → before game_start → unassigned
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=60
+        )
+        assert _assigned_tweet_ids(assignments)[0] is None
+
+
+# =============================================================================
+# REAL-WORLD SCENARIOS
+# =============================================================================
+
+
+class TestRealWorldScenarios:
+    """Reproduce real-world misalignment bugs to prevent regression."""
+
+    def test_ncaab_h2_opening_tweet_correct_block(self, game_start):
+        """NCAAB tweet about "opening the half" at ~72 min lands in early H2 block.
+
+        Bug report: A tweet about "nails a 3 to open the half" at ~72 min
+        real time was landing in a later sub-block instead of the first H2
+        sub-block.  This happened because the old PBP-normalization timing
+        placed H2 start at 57.5 min instead of the realistic 87.5 min.
+
+        With wall-clock timing (H2 starts at 87.5 min), a tweet at 90 min
+        should land in the first H2 sub-block.
+        """
+        # Two blocks in H2 (sub-divided), one in OT
+        blocks = [
+            {"block_index": 0, "period_start": 2},  # early H2
+            {"block_index": 1, "period_start": 2},  # late H2
+            {"block_index": 2, "period_start": 3},  # OT
+        ]
+        # Tweet posted 90 min after tip (H2 opening play)
+        tweets = [_make_tweet(1, game_start + timedelta(minutes=90), score=5.0)]
+
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NCAAB", tweet_lag_seconds=0
+        )
+        ids = _assigned_tweet_ids(assignments)
+
+        # H2 starts at 87.5 min, OT at 155 min.
+        # Subdivision: block 0 [87.5, 121.25), block 1 [121.25, 155).
+        # Tweet at 90 min → first H2 sub-block (block 0).
+        assert ids[0] == 1
+        assert ids[1] is None
+        assert ids[2] is None
+
+    def test_ncaab_h2_opening_tweet_with_lag(self, game_start):
+        """Same scenario with default lag: tweet at ~90 min still lands in H2 block 0."""
+        blocks = [
+            {"block_index": 0, "period_start": 2},
+            {"block_index": 1, "period_start": 2},
+            {"block_index": 2, "period_start": 3},
+        ]
+        # Tweet at 90 min with 90s lag → adjusted = 88.5 min → still in first H2 sub-block
+        tweets = [_make_tweet(1, game_start + timedelta(minutes=90), score=5.0)]
+
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NCAAB", tweet_lag_seconds=90
+        )
+        ids = _assigned_tweet_ids(assignments)
+
+        assert ids[0] == 1
+
+    def test_pregame_tweet_does_not_leak_into_first_block(self, game_start):
+        """Pregame tweet with lag does not leak into the first in-game block.
+
+        A pregame lineup tweet posted 2 min before tip-off:
+        With 0 lag: -2 min → before game_start → unassigned.
+        With 90s lag: adjusted = -3.5 min → still unassigned.
+        """
+        blocks = [
+            {"block_index": 0, "period_start": 1},
+            {"block_index": 1, "period_start": 2},
+        ]
+        tweets = [_make_tweet(1, game_start - timedelta(minutes=2))]
+
+        for lag in [0, 90, 180]:
+            assignments = assign_tweets_to_blocks_by_time(
+                tweets, blocks, game_start, "NBA", tweet_lag_seconds=lag
+            )
+            ids = _assigned_tweet_ids(assignments)
+            assert ids[0] is None, f"Pregame tweet leaked with lag={lag}"
+            assert ids[1] is None, f"Pregame tweet leaked with lag={lag}"
+
+    def test_nba_late_q4_tweet_stays_in_q4(self, game_start):
+        """Late Q4 tweet near regulation end stays in Q4, not pushed to OT.
+
+        Q4 starts at 138.75 min, OT1 at 180 min.
+        Tweet at 175 min (late Q4), with 90s lag → 173.5 min → still Q4.
+        """
+        blocks = [
+            {"block_index": 0, "period_start": 4},
+            {"block_index": 1, "period_start": 5},  # OT
+        ]
+        tweets = [_make_tweet(1, game_start + timedelta(minutes=175))]
+
+        assignments = assign_tweets_to_blocks_by_time(
+            tweets, blocks, game_start, "NBA", tweet_lag_seconds=90
+        )
+        ids = _assigned_tweet_ids(assignments)
+
+        assert ids[0] == 1
+        assert ids[1] is None

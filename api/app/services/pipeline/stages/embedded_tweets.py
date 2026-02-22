@@ -51,6 +51,31 @@ PREFERRED_MAX_EMBEDDED = 5  # Prefer up to 5
 # Cap enforcement
 MAX_TWEETS_PER_BLOCK = 1  # Hard cap: 1 tweet per block
 
+# =============================================================================
+# WALL-CLOCK TIMING FOR TWEET MATCHING
+# =============================================================================
+# These constants use realistic wall-clock estimates (derived from
+# *_REGULATION_REAL_MINUTES in timeline_types.py) rather than compressed
+# PBP normalization timing.  Tweets have real wall-clock timestamps and
+# must be matched using wall-clock period windows.
+
+DEFAULT_TWEET_LAG_SECONDS = 90  # Team accounts typically post 1-2 min after a play
+
+# NBA wall-clock: 165 min regulation, 15 min halftime, ~20 min per OT
+_NBA_WALL_QUARTER_SECONDS = int(165 * 60 / 4)  # 2475s = 41.25 min
+_NBA_WALL_HALFTIME_SECONDS = 15 * 60            # 900s = 15 min
+_NBA_WALL_OT_SECONDS = 20 * 60                  # 1200s = 20 min
+
+# NCAAB wall-clock: 135 min regulation, 20 min halftime, ~15 min per OT
+_NCAAB_WALL_HALF_SECONDS = int(135 * 60 / 2)    # 4050s = 67.5 min
+_NCAAB_WALL_HALFTIME_SECONDS = 20 * 60          # 1200s = 20 min
+_NCAAB_WALL_OT_SECONDS = 15 * 60                # 900s = 15 min
+
+# NHL wall-clock: 165 min regulation, 18 min intermission, ~20 min per OT
+_NHL_WALL_PERIOD_SECONDS = int(165 * 60 / 3)    # 3300s = 55 min
+_NHL_WALL_INTERMISSION_SECONDS = 18 * 60        # 1080s = 18 min
+_NHL_WALL_OT_SECONDS = 20 * 60                  # 1200s = 20 min
+
 
 # =============================================================================
 # DATA STRUCTURES
@@ -227,6 +252,10 @@ class DefaultTweetScorer:
 def _period_real_start(game_start: datetime, period: int, league_code: str) -> datetime:
     """Dispatch to league-specific period start calculator.
 
+    NOTE: This uses PBP normalization timing (compressed synthetic timeline).
+    For tweet matching use ``_tweet_period_wall_start`` instead, which uses
+    realistic wall-clock estimates.
+
     Args:
         game_start: Tip-off / puck-drop time.
         period: 1-based period number.
@@ -241,11 +270,88 @@ def _period_real_start(game_start: datetime, period: int, league_code: str) -> d
     return nba_quarter_start(game_start, period)
 
 
+# -- Wall-clock period start helpers (for tweet matching) --------------------
+
+
+def _nba_wall_period_start(game_start: datetime, period: int) -> datetime:
+    """NBA wall-clock period start.  Q1=1, Q2=2, Q3=3, Q4=4, OT1=5, …"""
+    if period == 1:
+        return game_start
+    if period == 2:
+        return game_start + timedelta(seconds=_NBA_WALL_QUARTER_SECONDS)
+    if period == 3:
+        return game_start + timedelta(
+            seconds=2 * _NBA_WALL_QUARTER_SECONDS + _NBA_WALL_HALFTIME_SECONDS
+        )
+    if period == 4:
+        return game_start + timedelta(
+            seconds=3 * _NBA_WALL_QUARTER_SECONDS + _NBA_WALL_HALFTIME_SECONDS
+        )
+    # Overtime: OT1 = period 5, etc.
+    ot_num = period - 4
+    regulation_end = 4 * _NBA_WALL_QUARTER_SECONDS + _NBA_WALL_HALFTIME_SECONDS
+    return game_start + timedelta(
+        seconds=regulation_end + (ot_num - 1) * _NBA_WALL_OT_SECONDS
+    )
+
+
+def _ncaab_wall_period_start(game_start: datetime, period: int) -> datetime:
+    """NCAAB wall-clock period start.  H1=1, H2=2, OT1=3, …"""
+    if period == 1:
+        return game_start
+    if period == 2:
+        return game_start + timedelta(
+            seconds=_NCAAB_WALL_HALF_SECONDS + _NCAAB_WALL_HALFTIME_SECONDS
+        )
+    # Overtime
+    ot_num = period - 2
+    regulation_end = 2 * _NCAAB_WALL_HALF_SECONDS + _NCAAB_WALL_HALFTIME_SECONDS
+    return game_start + timedelta(
+        seconds=regulation_end + (ot_num - 1) * _NCAAB_WALL_OT_SECONDS
+    )
+
+
+def _nhl_wall_period_start(game_start: datetime, period: int) -> datetime:
+    """NHL wall-clock period start.  P1=1, P2=2, P3=3, OT1=4, …"""
+    if period == 1:
+        return game_start
+    if period == 2:
+        return game_start + timedelta(
+            seconds=_NHL_WALL_PERIOD_SECONDS + _NHL_WALL_INTERMISSION_SECONDS
+        )
+    if period == 3:
+        return game_start + timedelta(
+            seconds=2 * _NHL_WALL_PERIOD_SECONDS + 2 * _NHL_WALL_INTERMISSION_SECONDS
+        )
+    # Overtime
+    ot_num = period - 3
+    regulation_end = 3 * _NHL_WALL_PERIOD_SECONDS + 2 * _NHL_WALL_INTERMISSION_SECONDS
+    return game_start + timedelta(
+        seconds=regulation_end + (ot_num - 1) * _NHL_WALL_OT_SECONDS
+    )
+
+
+def _tweet_period_wall_start(
+    game_start: datetime, period: int, league_code: str
+) -> datetime:
+    """Dispatch to league-specific wall-clock period start calculator.
+
+    Uses realistic wall-clock timing for tweet matching, NOT PBP
+    normalization timing.
+    """
+    if league_code == "NHL":
+        return _nhl_wall_period_start(game_start, period)
+    if league_code == "NCAAB":
+        return _ncaab_wall_period_start(game_start, period)
+    return _nba_wall_period_start(game_start, period)
+
+
 def assign_tweets_to_blocks_by_time(
     scored_tweets: list[ScoredTweet],
     blocks: list[dict[str, Any]],
     game_start: datetime,
     league_code: str,
+    tweet_lag_seconds: int = DEFAULT_TWEET_LAG_SECONDS,
 ) -> list[BlockTweetAssignment]:
     """Assign tweets to blocks by temporal matching.
 
@@ -269,7 +375,7 @@ def assign_tweets_to_blocks_by_time(
     for block in blocks:
         idx = block.get("block_index", len(block_starts))
         period = block.get("period_start", 1)
-        window_start = _period_real_start(game_start, period, league_code)
+        window_start = _tweet_period_wall_start(game_start, period, league_code)
         block_starts.append((idx, window_start))
     block_starts.sort(key=lambda x: (x[1], x[0]))
 
@@ -282,7 +388,7 @@ def assign_tweets_to_blocks_by_time(
             groups[-1].append(entry)
 
     max_period = max(block.get("period_start", 1) for block in blocks)
-    final_end = _period_real_start(game_start, max_period + 1, league_code)
+    final_end = _tweet_period_wall_start(game_start, max_period + 1, league_code)
 
     subdivided: list[tuple[int, datetime]] = []
     for g_idx, group in enumerate(groups):
@@ -298,12 +404,16 @@ def assign_tweets_to_blocks_by_time(
 
     subdivided.sort(key=lambda x: (x[1], x[0]))
 
-    # 3. Match each tweet to the last block whose start <= posted_at
+    # 3. Match each tweet to the last block whose start <= adjusted time
+    #    Subtract tweet_lag_seconds to compensate for the typical delay
+    #    between a play occurring and the team account posting about it.
+    lag = timedelta(seconds=tweet_lag_seconds)
     block_tweets: dict[int, list[ScoredTweet]] = {bs[0]: [] for bs in subdivided}
     for tweet in scored_tweets:
+        adjusted_time = tweet.posted_at - lag
         target: int | None = None
         for block_idx, window_start in subdivided:
-            if tweet.posted_at >= window_start:
+            if adjusted_time >= window_start:
                 target = block_idx
             else:
                 break
@@ -482,6 +592,7 @@ def select_and_assign_embedded_tweets(
     game_start: datetime,
     league_code: str = "NBA",
     scorer: TweetScorer | None = None,
+    tweet_lag_seconds: int = DEFAULT_TWEET_LAG_SECONDS,
 ) -> tuple[list[dict[str, Any]], EmbeddedTweetSelection]:
     """Complete embedded tweet pipeline: score and assign by temporal match.
 
@@ -496,6 +607,8 @@ def select_and_assign_embedded_tweets(
         game_start: Game start time
         league_code: League code for period timing ("NBA", "NHL", "NCAAB")
         scorer: Optional custom scorer
+        tweet_lag_seconds: Seconds to subtract from tweet timestamps to
+            compensate for posting delay (default 90s).
 
     Returns:
         Tuple of (updated_blocks, selection_result)
@@ -505,7 +618,7 @@ def select_and_assign_embedded_tweets(
 
     # Assign to blocks by temporal matching
     assignments = assign_tweets_to_blocks_by_time(
-        selection.tweets, blocks, game_start, league_code
+        selection.tweets, blocks, game_start, league_code, tweet_lag_seconds
     )
 
     # Apply to blocks
@@ -525,6 +638,7 @@ async def load_and_attach_embedded_tweets(
     blocks: list[dict[str, Any]],
     league_code: str = "NBA",
     scorer: TweetScorer | None = None,
+    tweet_lag_seconds: int = DEFAULT_TWEET_LAG_SECONDS,
 ) -> tuple[list[dict[str, Any]], EmbeddedTweetSelection | None]:
     """Load social posts for a game and attach to blocks.
 
@@ -538,6 +652,8 @@ async def load_and_attach_embedded_tweets(
         blocks: Blocks to attach tweets to.
         league_code: League code for period timing.
         scorer: Optional custom scorer.
+        tweet_lag_seconds: Seconds to subtract from tweet timestamps to
+            compensate for posting delay (default 90s).
 
     Returns:
         Tuple of (updated blocks, EmbeddedTweetSelection or None).
@@ -601,5 +717,6 @@ async def load_and_attach_embedded_tweets(
         game_start=game_start,
         league_code=league_code,
         scorer=scorer,
+        tweet_lag_seconds=tweet_lag_seconds,
     )
     return updated_blocks, selection
