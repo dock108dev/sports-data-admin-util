@@ -135,6 +135,7 @@ class PlaywrightXCollector:
         x_handle: str,
         window_start: datetime,
         window_end: datetime,
+        known_post_ids: set[str] | None = None,
     ) -> tuple[list[CollectedPost], str | None]:
         """Execute a single scrape attempt.
 
@@ -317,9 +318,12 @@ class PlaywrightXCollector:
                         total=len(posts),
                     )
 
-                    # Stop early if no new posts found (reached end of results)
+                    # Stop early if no new posts or all posts already known
                     if len(new_ids) == 0:
                         logger.debug("x_scroll_complete_early", handle=x_handle, reason="no_new_posts")
+                        break
+                    if known_post_ids and new_ids.issubset(known_post_ids):
+                        logger.debug("x_scroll_complete_early", handle=x_handle, reason="all_posts_known")
                         break
 
                 self._mark_request_done()
@@ -334,6 +338,7 @@ class PlaywrightXCollector:
         x_handle: str,
         window_start: datetime,
         window_end: datetime,
+        known_post_ids: set[str] | None = None,
     ) -> list[CollectedPost]:
         if not sync_playwright:
             logger.warning("x_playwright_missing", handle=x_handle)
@@ -350,7 +355,7 @@ class PlaywrightXCollector:
 
         last_error: str = ""
         for attempt in range(1, _MAX_ATTEMPTS + 1):
-            posts, error_message = self._scrape_once(x_handle, window_start, window_end)
+            posts, error_message = self._scrape_once(x_handle, window_start, window_end, known_post_ids=known_post_ids)
 
             # "no_results" is not an error — just no tweets in that window
             if error_message == "no_results":

@@ -138,6 +138,11 @@ _live_polling_schedule = {
         "schedule": crontab(minute=30),
         "options": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
     },
+    "map-social-to-games-every-30-min": {
+        "task": "map_social_to_games",
+        "schedule": crontab(minute="0,30"),
+        "options": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
+    },
 }
 
 # All environments run the full schedule — local mirrors production.

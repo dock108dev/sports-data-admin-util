@@ -28,7 +28,7 @@ from ..logging import logger
 # Cooldown between games (seconds) — rate limit protection for X scraping.
 # Since the social-scraper queue runs concurrency=1, this sleep at the end
 # of each task ensures a gap before the next game's scrape starts.
-_INTER_GAME_COOLDOWN_SECONDS = 180
+_INTER_GAME_COOLDOWN_SECONDS = 15
 
 
 @shared_task(
@@ -47,11 +47,11 @@ def run_final_whistle_social(game_id: int) -> dict:
     3. Map to game, tag phase (pregame/in_game only; discard postgame)
     4. Set game.social_scrape_1_at = now()
     5. Backfill embedded tweets if flow already exists
-    6. Sleep 3 min as inter-game cooldown (rate limit protection)
+    6. Sleep 15s as inter-game cooldown (rate limit protection)
 
     Rate limiting: This runs on the social-scraper queue (concurrency=1).
     If 5 games finish simultaneously, tasks queue up and execute one at a time.
-    The 3-minute cooldown between games keeps X scraping sustainable.
+    The 15-second cooldown between games keeps X scraping sustainable.
     """
     from ..db import db_models
     from ..services.job_runs import complete_job_run, start_job_run

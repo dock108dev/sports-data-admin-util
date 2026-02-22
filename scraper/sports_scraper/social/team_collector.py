@@ -117,12 +117,31 @@ class TeamTweetCollector:
             end_date=str(end_date),
         )
 
+        # Query recent post IDs for this team so the collector can stop
+        # scrolling early when it hits posts we already have.
+        recent_post_ids: set[str] = set()
+        try:
+            recent_rows = (
+                session.query(db_models.TeamSocialPost.external_post_id)
+                .filter(
+                    db_models.TeamSocialPost.team_id == team_id,
+                    db_models.TeamSocialPost.external_post_id.isnot(None),
+                )
+                .order_by(db_models.TeamSocialPost.posted_at.desc())
+                .limit(50)
+                .all()
+            )
+            recent_post_ids = {row[0] for row in recent_rows}
+        except Exception:
+            pass  # Non-critical — scrolling just won't terminate early
+
         # Collect tweets using the configured strategy
         try:
             posts = self.strategy.collect_posts(
                 x_handle=x_handle,
                 window_start=window_start,
                 window_end=window_end,
+                known_post_ids=recent_post_ids or None,
             )
         except XCircuitBreakerError:
             # Circuit breaker tripped - propagate to stop the entire scrape
@@ -140,6 +159,7 @@ class TeamTweetCollector:
 
         # Save tweets to team_social_posts
         new_count = 0
+        consecutive_known = 0
         for post in posts:
             normalized_posted_at = self._normalize_posted_at(post.posted_at)
             external_id = post.external_post_id or extract_x_post_id(post.post_url)
@@ -154,6 +174,7 @@ class TeamTweetCollector:
                 )
 
             if existing:
+                consecutive_known += 1
                 # Update existing record
                 existing.posted_at = normalized_posted_at
                 existing.tweet_text = post.text
@@ -168,7 +189,18 @@ class TeamTweetCollector:
                     external_id=external_id,
                     team_id=team_id,
                 )
+                # Early exit: 3+ consecutive known posts means we've caught up
+                if consecutive_known >= 3:
+                    logger.info(
+                        "team_collector_early_exit_known_posts",
+                        team_id=team_id,
+                        consecutive_known=consecutive_known,
+                        posts_processed=posts.index(post) + 1,
+                        total_posts=len(posts),
+                    )
+                    break
             else:
+                consecutive_known = 0
                 # Insert new record with mapping_status='unmapped'
                 new_post = db_models.TeamSocialPost(
                     team_id=team_id,

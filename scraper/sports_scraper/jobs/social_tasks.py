@@ -271,7 +271,7 @@ def collect_game_social() -> dict:
 
     Queries today's games across all phases (scheduled, pregame, live, final),
     deduplicates teams, and collects tweets for each. Runs on the
-    social-scraper queue with a 3-min cooldown between teams.
+    social-scraper queue with a 15-second cooldown between teams.
 
     Returns:
         Summary stats dict with teams_processed, total_new_tweets, errors
@@ -314,17 +314,10 @@ def collect_game_social() -> dict:
                 "mapped": map_result.get("mapped", 0),
             }
 
-        # Deduplicate team IDs across all games
-        team_ids: set[int] = set()
-        for game in games:
-            team_ids.add(game.home_team_id)
-            team_ids.add(game.away_team_id)
-
         logger.info(
             "collect_game_social_found",
             game_date=str(game_date),
             games=len(games),
-            teams=len(team_ids),
         )
 
         try:
@@ -338,39 +331,58 @@ def collect_game_social() -> dict:
                 "error": str(exc),
             }
 
+        _INTER_GAME_DELAY_SECONDS = 15
+        _BATCH_SIZE_GAMES = 5
+
         total_new = 0
         teams_processed = 0
         errors = 0
+        games_completed = 0
+        scraped_team_ids: set[int] = set()
 
-        for i, team_id in enumerate(sorted(team_ids)):
-            # Inter-team cooldown (3 min) — skip before the first team
+        for i, game in enumerate(games):
+            # Inter-game cooldown (15s) — skip before the first game
             if i > 0:
-                time.sleep(180)
+                time.sleep(_INTER_GAME_DELAY_SECONDS)
 
-            try:
-                new_tweets = collector.collect_team_tweets(
-                    session=session,
-                    team_id=team_id,
-                    start_date=game_date,
-                    end_date=game_date,
-                )
-                total_new += new_tweets
-                teams_processed += 1
+            for team_id in (game.home_team_id, game.away_team_id):
+                if team_id in scraped_team_ids:
+                    continue
+                scraped_team_ids.add(team_id)
+
+                try:
+                    new_tweets = collector.collect_team_tweets(
+                        session=session,
+                        team_id=team_id,
+                        start_date=game_date,
+                        end_date=game_date,
+                    )
+                    total_new += new_tweets
+                    teams_processed += 1
+                    logger.info(
+                        "collect_game_social_team_done",
+                        team_id=team_id,
+                        new_tweets=new_tweets,
+                    )
+                except Exception as exc:
+                    errors += 1
+                    logger.warning(
+                        "collect_game_social_team_error",
+                        team_id=team_id,
+                        error=str(exc),
+                    )
+
+            games_completed += 1
+            if games_completed % _BATCH_SIZE_GAMES == 0:
+                session.commit()
                 logger.info(
-                    "collect_game_social_team_done",
-                    team_id=team_id,
-                    new_tweets=new_tweets,
-                )
-            except Exception as exc:
-                errors += 1
-                logger.warning(
-                    "collect_game_social_team_error",
-                    team_id=team_id,
-                    error=str(exc),
+                    "collect_game_social_batch_committed",
+                    games_processed=games_completed,
+                    total_new=total_new,
                 )
 
-        # Flush pending INSERTs so the mapper's query can see them
-        session.flush()
+        # Final commit for remaining games (< batch size)
+        session.commit()
 
         # Map newly collected tweets to games
         map_result = map_unmapped_tweets(session=session, batch_size=1000)
