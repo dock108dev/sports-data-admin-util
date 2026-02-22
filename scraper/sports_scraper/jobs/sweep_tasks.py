@@ -83,7 +83,7 @@ def _run_social_scrape_2() -> dict:
     Query: games WHERE status='final' AND social_scrape_1_at IS NOT NULL
            AND social_scrape_2_at IS NULL AND end_time > now() - 48 hours
 
-    For each game (sequentially, 3 min cooldown between games):
+    For each game (sequentially, configurable cooldown between games):
     1. Scrape game_date and game_date + 1 (day-bounded)
     2. Map tweets, only keep phase = 'postgame'
     3. Skip tweets already stored (dedup via external_post_id)
