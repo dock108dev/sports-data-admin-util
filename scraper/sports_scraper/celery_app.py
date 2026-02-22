@@ -27,13 +27,6 @@ celery_config = {
     "task_time_limit": 43200,       # 12 hours hard limit
     "task_soft_time_limit": 42600,  # 11h 50m soft limit
     "task_default_queue": DEFAULT_QUEUE,
-    "task_routes": {
-        "run_scrape_job": {"queue": DEFAULT_QUEUE},
-        # Social tasks route to dedicated social-scraper worker
-        "collect_social_for_league": {"queue": SOCIAL_QUEUE},
-        "collect_team_social": {"queue": SOCIAL_QUEUE},
-        "map_social_to_games": {"queue": SOCIAL_QUEUE},
-    },
 }
 
 app = Celery(

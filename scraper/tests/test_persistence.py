@@ -488,20 +488,20 @@ class TestClassifyGamePhase:
         assert classify_game_phase(posted_at, game) == "pregame"
 
     def test_no_end_time_uses_sport_duration(self):
-        """NBA game without end_time uses 2.5h estimated duration."""
+        """NBA game without end_time uses 3.0h estimated duration."""
         game = _make_game(
             tip_time=datetime(2026, 2, 6, 0, 0, tzinfo=UTC),
             game_date=datetime(2026, 2, 5, 0, 0, tzinfo=UTC),
             league_code="NBA",
         )
-        # 2h in → in_game (within 2.5h NBA duration)
+        # 2h in → in_game (within 3.0h NBA duration)
         assert classify_game_phase(
             datetime(2026, 2, 6, 2, 0, tzinfo=UTC), game
         ) == "in_game"
 
-        # 3h in → postgame (past 2.5h NBA duration)
+        # 3.5h in → postgame (past 3.0h NBA duration)
         assert classify_game_phase(
-            datetime(2026, 2, 6, 3, 0, tzinfo=UTC), game
+            datetime(2026, 2, 6, 3, 30, tzinfo=UTC), game
         ) == "postgame"
 
     def test_tweet_at_end_time_is_in_game(self):

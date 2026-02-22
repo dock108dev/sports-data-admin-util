@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from ..celery_app import SOCIAL_QUEUE
 from ..config import settings
+from ..config_sports import get_social_enabled_leagues
 from ..db import db_models, get_session
 from ..live import LiveFeedManager
 from ..logging import logger
@@ -31,7 +32,7 @@ class ScrapeRunManager:
 
         # Feature support varies by league. When a toggle is enabled for an unsupported
         # league, we must NOT fail the run; we log and continue.
-        self._supported_social_leagues = ("NBA", "NHL", "NCAAB")
+        self._supported_social_leagues = tuple(get_social_enabled_leagues())
         self._supported_live_pbp_leagues = ("NBA", "NHL", "NCAAB")
 
     def _update_run(self, run_id: int, **updates) -> None:

@@ -8,6 +8,7 @@ from importlib.util import find_spec
 
 from tenacity import retry, stop_after_attempt, wait_fixed
 
+from ..config import settings
 from ..logging import logger
 from .exceptions import XCircuitBreakerError
 from .models import CollectedPost
@@ -21,11 +22,6 @@ else:  # pragma: no cover - optional dependency
 
 def playwright_available() -> bool:  # pragma: no cover
     return sync_playwright is not None
-
-
-# Retry constants
-_BACKOFF_SECONDS = 60  # Backoff on retryable error (login wall / "Something went wrong")
-_MAX_ATTEMPTS = 2  # Try twice, then fail fast — team_collector handles batch-level retry
 
 
 class PlaywrightXCollector:
@@ -52,9 +48,9 @@ class PlaywrightXCollector:
         - Concurrency=1 in Celery naturally caps throughput
 
     Retry Logic:
-        - On "login wall" or "Something went wrong": sleep 90s, retry up to 3 times
+        - On "login wall" or "Something went wrong": sleep 60s (configurable), retry up to 2 times (configurable via SocialConfig)
         - On "No results": return empty list (not an error)
-        - After 3 failures: raise XCircuitBreakerError to fail the job
+        - After max failures: raise XCircuitBreakerError to fail the job
         - No class-level state — each collect_posts() call is self-contained
     """
 
@@ -353,8 +349,12 @@ class PlaywrightXCollector:
 
         self._polite_delay()
 
+        social_cfg = settings.social_config
+        max_attempts = social_cfg.playwright_max_attempts
+        backoff_seconds = social_cfg.playwright_backoff_seconds
+
         last_error: str = ""
-        for attempt in range(1, _MAX_ATTEMPTS + 1):
+        for attempt in range(1, max_attempts + 1):
             posts, error_message = self._scrape_once(x_handle, window_start, window_end, known_post_ids=known_post_ids)
 
             # "no_results" is not an error — just no tweets in that window
@@ -373,22 +373,22 @@ class PlaywrightXCollector:
                 "x_scrape_retry",
                 handle=x_handle,
                 attempt=attempt,
-                max_attempts=_MAX_ATTEMPTS,
+                max_attempts=max_attempts,
                 error=error_message,
-                backoff_seconds=_BACKOFF_SECONDS,
+                backoff_seconds=backoff_seconds,
             )
 
-            if attempt < _MAX_ATTEMPTS:
-                time.sleep(_BACKOFF_SECONDS)
+            if attempt < max_attempts:
+                time.sleep(backoff_seconds)
 
         # All attempts exhausted — fail the job loudly
         logger.error(
             "x_scrape_failed_permanently",
             handle=x_handle,
-            attempts=_MAX_ATTEMPTS,
+            attempts=max_attempts,
             error=last_error,
         )
         raise XCircuitBreakerError(
-            f"X scrape failed after {_MAX_ATTEMPTS} attempts: {last_error}",
+            f"X scrape failed after {max_attempts} attempts: {last_error}",
             retry_after_seconds=0,
         )

@@ -19,6 +19,7 @@ from datetime import timedelta
 
 from celery import shared_task
 
+from ..config import settings
 from ..db import get_session
 from ..logging import logger
 
@@ -190,7 +191,7 @@ def _run_social_scrape_2() -> dict:
 
             # Inter-game cooldown
             if game != games[-1]:
-                time.sleep(180)
+                time.sleep(settings.social_config.sweep_inter_game_delay_seconds)
 
         session.commit()
 

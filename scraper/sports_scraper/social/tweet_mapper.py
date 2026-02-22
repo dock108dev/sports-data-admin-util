@@ -16,6 +16,8 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+from ..config import settings
+from ..config_sports import LEAGUE_CONFIG, LeagueConfig
 from ..logging import logger
 from ..utils.datetime_utils import SPORTS_DAY_BOUNDARY_HOUR_ET, now_utc
 
@@ -24,16 +26,6 @@ if TYPE_CHECKING:
 
 
 EASTERN = ZoneInfo("America/New_York")
-PREGAME_START_HOUR_ET = 5  # Pregame window opens at 5 AM ET on game day
-DEFAULT_POSTGAME_HOURS = 3  # Hours after game end to include
-
-# Sport-specific estimated game durations (hours) when end_time is unavailable
-GAME_DURATION_BY_LEAGUE: dict[str, float] = {
-    "NBA": 2.5,
-    "NHL": 2.5,
-    "NCAAB": 2.0,
-}
-DEFAULT_GAME_DURATION_HOURS = 3  # Fallback for unknown leagues
 
 
 def _to_et(dt: datetime) -> datetime:
@@ -55,9 +47,9 @@ def _get_league_code(game) -> str | None:
 def _game_duration_hours(game) -> float:
     """Return the estimated game duration based on the sport."""
     league_code = _get_league_code(game)
-    if league_code and league_code in GAME_DURATION_BY_LEAGUE:
-        return GAME_DURATION_BY_LEAGUE[league_code]
-    return DEFAULT_GAME_DURATION_HOURS
+    if league_code and league_code in LEAGUE_CONFIG:
+        return LEAGUE_CONFIG[league_code].estimated_game_duration_hours
+    return LeagueConfig(code="", display_name="").estimated_game_duration_hours
 
 
 def _get_game_start(game) -> datetime:
@@ -93,37 +85,44 @@ def _get_game_end(game, game_start: datetime) -> datetime:
 
 
 def _pregame_start_utc(game) -> datetime:
-    """Return 5 AM ET on the game's calendar date, as a UTC datetime.
+    """Return pregame_start_hour_et on the game's calendar date, as a UTC datetime.
 
     game.game_date is stored as midnight UTC representing the ET calendar date.
     """
     game_day = game.game_date.date()
     pregame_et = datetime.combine(
         game_day, datetime.min.time(), tzinfo=EASTERN
-    ).replace(hour=PREGAME_START_HOUR_ET)
+    ).replace(hour=settings.social_config.pregame_start_hour_et)
     return pregame_et.astimezone(UTC)
 
 
 def get_game_window(
     game,
-    postgame_hours: int = DEFAULT_POSTGAME_HOURS,
+    postgame_hours: int | None = None,
 ) -> tuple[datetime, datetime]:
     """
     Calculate the tweet window for a game.
 
-    The window spans from 5 AM ET on the game's calendar date through
-    postgame_hours after game end. Game end is determined by end_time if
-    available, otherwise estimated using sport-specific duration.
+    The window spans from pregame_start_hour_et on the game's calendar date
+    through postgame_hours after game end. Game end is determined by end_time
+    if available, otherwise estimated using sport-specific duration.
 
     The window will cross midnight ET for evening games — this is expected.
 
     Args:
         game: SportsGame object (must have game_date, tip_time, end_time)
-        postgame_hours: Hours after game end to include
+        postgame_hours: Hours after game end to include (default: from LeagueConfig)
 
     Returns:
         Tuple of (window_start, window_end) as timezone-aware UTC datetimes
     """
+    if postgame_hours is None:
+        league_code = _get_league_code(game)
+        if league_code and league_code in LEAGUE_CONFIG:
+            postgame_hours = LEAGUE_CONFIG[league_code].postgame_window_hours
+        else:
+            postgame_hours = LeagueConfig(code="", display_name="").postgame_window_hours
+
     game_start = _get_game_start(game)
     game_end = _get_game_end(game, game_start)
 

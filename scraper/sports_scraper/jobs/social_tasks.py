@@ -3,7 +3,7 @@
 These tasks run on the dedicated social-scraper worker for consistent IP/session.
 
 Tasks:
-- collect_social_for_league: Main entry point called from scheduled ingestion
+- collect_social_for_league: Manual social collection triggered from admin UI / API
 - collect_team_social: Scrape tweets for teams in a date range
 - map_social_to_games: Assign unmapped tweets to games
 """
@@ -14,6 +14,8 @@ from datetime import date
 
 from celery import shared_task
 
+from ..celery_app import SOCIAL_QUEUE
+from ..config import settings
 from ..logging import logger
 
 
@@ -99,7 +101,7 @@ def handle_social_task_failure(
 
 @shared_task(
     name="collect_social_for_league",
-    queue="social-scraper",
+    queue=SOCIAL_QUEUE,
     autoretry_for=(Exception,),
     retry_backoff=True,
     retry_kwargs={"max_retries": 2},
@@ -107,8 +109,7 @@ def handle_social_task_failure(
 def collect_social_for_league(league: str) -> dict:
     """Collect social posts for a league. Runs on dedicated social-scraper worker.
 
-    This is the main entry point for social collection, dispatched from
-    run_scheduled_ingestion in scrape_tasks.py. It runs asynchronously
+    Manual social collection triggered from admin UI / API. It runs asynchronously
     (fire-and-forget) so sports ingestion doesn't wait for social.
 
     Collects tweets for all teams that played in the last 3 days, then
@@ -145,7 +146,7 @@ def collect_social_for_league(league: str) -> dict:
         session.flush()
 
         # Map newly collected tweets to games
-        map_result = map_unmapped_tweets(session=session, batch_size=1000)
+        map_result = map_unmapped_tweets(session=session)
         result["mapping"] = map_result
 
     logger.info("social_task_complete", league=league, **{
@@ -211,7 +212,7 @@ def collect_team_social(
             session.flush()
 
             # Always map tweets to games after collection
-            map_result = map_unmapped_tweets(session=session, batch_size=1000)
+            map_result = map_unmapped_tweets(session=session)
             result["mapping"] = map_result
 
         tracker.summary_data = result
@@ -261,7 +262,7 @@ def map_social_to_games(batch_size: int = 1000) -> dict:
 
 @shared_task(
     name="collect_game_social",
-    queue="social-scraper",
+    queue=SOCIAL_QUEUE,
     autoretry_for=(Exception,),
     retry_backoff=True,
     retry_kwargs={"max_retries": 2},
@@ -306,7 +307,7 @@ def collect_game_social() -> dict:
         if not games:
             logger.info("collect_game_social_no_games", game_date=str(game_date))
             # Still map any leftover unmapped tweets from previous runs
-            map_result = map_unmapped_tweets(session=session, batch_size=1000)
+            map_result = map_unmapped_tweets(session=session)
             return {
                 "game_date": str(game_date),
                 "teams_processed": 0,
@@ -331,8 +332,7 @@ def collect_game_social() -> dict:
                 "error": str(exc),
             }
 
-        _INTER_GAME_DELAY_SECONDS = 15
-        _BATCH_SIZE_GAMES = 5
+        social_cfg = settings.social_config
 
         total_new = 0
         teams_processed = 0
@@ -341,9 +341,9 @@ def collect_game_social() -> dict:
         scraped_team_ids: set[int] = set()
 
         for i, game in enumerate(games):
-            # Inter-game cooldown (15s) — skip before the first game
+            # Inter-game cooldown — skip before the first game
             if i > 0:
-                time.sleep(_INTER_GAME_DELAY_SECONDS)
+                time.sleep(social_cfg.inter_game_delay_seconds)
 
             for team_id in (game.home_team_id, game.away_team_id):
                 if team_id in scraped_team_ids:
@@ -373,7 +373,7 @@ def collect_game_social() -> dict:
                     )
 
             games_completed += 1
-            if games_completed % _BATCH_SIZE_GAMES == 0:
+            if games_completed % social_cfg.game_batch_size == 0:
                 session.commit()
                 logger.info(
                     "collect_game_social_batch_committed",
@@ -385,7 +385,7 @@ def collect_game_social() -> dict:
         session.commit()
 
         # Map newly collected tweets to games
-        map_result = map_unmapped_tweets(session=session, batch_size=1000)
+        map_result = map_unmapped_tweets(session=session)
 
         result = {
             "game_date": str(game_date),
