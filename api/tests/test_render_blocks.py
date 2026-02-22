@@ -11,12 +11,14 @@ from app.services.pipeline.stages.render_helpers import (
     detect_overtime_info,
     inject_overtime_mention,
 )
-from app.services.pipeline.stages.render_prompts import (
-    GAME_FLOW_PASS_PROMPT,
+from app.services.pipeline.stages.render_prompt_helpers import (
     _detect_big_lead_comeback,
     _detect_close_game,
     _format_contributors_line,
     _format_lead_line,
+)
+from app.services.pipeline.stages.render_prompts import (
+    GAME_FLOW_PASS_PROMPT,
     build_block_prompt,
     build_game_flow_pass_prompt,
 )

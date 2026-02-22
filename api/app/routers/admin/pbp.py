@@ -65,6 +65,7 @@ from ...db.pipeline import GamePipelineRun
 from ...db.resolution import PBPSnapshot
 from ...db.sports import SportsGame, SportsGamePlay
 from .pbp_helpers import (
+    build_resolution_issues,
     build_resolution_summary,
     play_to_detail,
     play_to_summary,
@@ -571,91 +572,13 @@ async def get_resolution_issues(
         .where(SportsGamePlay.game_id == game_id)
         .order_by(SportsGamePlay.play_index)
     )
-    plays = plays_result.scalars().all()
+    plays = list(plays_result.scalars().all())
 
-    issues: dict[str, list[dict[str, Any]]] = {
-        "team_unresolved": [],
-        "player_missing": [],
-        "score_missing": [],
-        "clock_missing": [],
-    }
-
-    for play in plays:
-        play_info = {
-            "play_index": play.play_index,
-            "quarter": play.quarter,
-            "description": play.description[:100] if play.description else None,
-        }
-
-        # Team resolution issues
-        if issue_type in ("all", "team"):
-            if play.team_id is None and play.description:
-                # Check if raw_data has team info
-                raw_team = play.raw_data.get("teamTricode") or play.raw_data.get("team")
-                if raw_team:
-                    issues["team_unresolved"].append(
-                        {
-                            **play_info,
-                            "raw_team": raw_team,
-                            "issue": "Team abbreviation in raw data but not resolved",
-                        }
-                    )
-
-        # Player issues
-        if issue_type in ("all", "player"):
-            if not play.player_name and play.description:
-                # Check if play type typically has a player
-                if play.play_type and play.play_type not in (
-                    "timeout",
-                    "substitution",
-                    "period_start",
-                    "period_end",
-                ):
-                    issues["player_missing"].append(
-                        {
-                            **play_info,
-                            "play_type": play.play_type,
-                            "issue": "Expected player name but not found",
-                        }
-                    )
-
-        # Score issues
-        if issue_type in ("all", "score"):
-            if play.home_score is None or play.away_score is None:
-                issues["score_missing"].append(
-                    {
-                        **play_info,
-                        "issue": "Missing score information",
-                    }
-                )
-
-        # Clock issues
-        if issue_type in ("all", "clock"):
-            if not play.game_clock:
-                issues["clock_missing"].append(
-                    {
-                        **play_info,
-                        "issue": "Missing game clock",
-                    }
-                )
-
-    # Filter by requested type
-    if issue_type != "all":
-        filtered = {
-            issue_type: issues.get(f"{issue_type}_unresolved", [])
-            or issues.get(f"{issue_type}_missing", [])
-        }
-        issues = filtered
+    result = build_resolution_issues(plays, issue_type)
 
     return {
         "game_id": game_id,
         "total_plays": len(plays),
         "issue_type_filter": issue_type,
-        "issues": issues,
-        "summary": {
-            "team_unresolved": len(issues.get("team_unresolved", [])),
-            "player_missing": len(issues.get("player_missing", [])),
-            "score_missing": len(issues.get("score_missing", [])),
-            "clock_missing": len(issues.get("clock_missing", [])),
-        },
+        **result,
     }

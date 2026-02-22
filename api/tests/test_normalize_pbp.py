@@ -188,7 +188,7 @@ class TestComputePhaseBoundaries:
 
     def test_has_all_phases(self):
         """All standard phases are present."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_phase_boundaries(game_start, has_overtime=False)
@@ -203,7 +203,7 @@ class TestComputePhaseBoundaries:
 
     def test_overtime_phases(self):
         """Overtime phases present when has_overtime=True."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_phase_boundaries(game_start, has_overtime=True)
@@ -215,7 +215,7 @@ class TestComputePhaseBoundaries:
 
     def test_no_overtime_phases_when_false(self):
         """No overtime phases when has_overtime=False."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_phase_boundaries(game_start, has_overtime=False)
@@ -224,7 +224,7 @@ class TestComputePhaseBoundaries:
 
     def test_boundaries_are_tuples(self):
         """Each boundary is a (start, end) tuple."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_phase_boundaries(game_start)
@@ -236,7 +236,7 @@ class TestComputePhaseBoundaries:
 
     def test_pregame_ends_at_game_start(self):
         """Pregame ends when game starts."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_phase_boundaries(game_start)
@@ -246,7 +246,7 @@ class TestComputePhaseBoundaries:
 
     def test_q1_starts_at_game_start(self):
         """Q1 starts when game starts."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_phase_boundaries(game_start)
@@ -411,10 +411,8 @@ class TestNbaGameEnd:
         """Regulation game ends after 4 quarters."""
         from unittest.mock import MagicMock
 
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            NBA_REGULATION_REAL_SECONDS,
-            nba_game_end,
-        )
+        from app.services.pipeline.stages.phase_boundaries import nba_game_end
+        from app.services.timeline_types import NBA_REGULATION_REAL_SECONDS
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -433,10 +431,8 @@ class TestNbaGameEnd:
         """Game with 1 OT ends after 5th quarter."""
         from unittest.mock import MagicMock
 
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            NBA_REGULATION_REAL_SECONDS,
-            nba_game_end,
-        )
+        from app.services.pipeline.stages.phase_boundaries import nba_game_end
+        from app.services.timeline_types import NBA_REGULATION_REAL_SECONDS
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -455,10 +451,8 @@ class TestNbaGameEnd:
         """Game with 2 OT ends after 6th quarter."""
         from unittest.mock import MagicMock
 
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            NBA_REGULATION_REAL_SECONDS,
-            nba_game_end,
-        )
+        from app.services.pipeline.stages.phase_boundaries import nba_game_end
+        from app.services.timeline_types import NBA_REGULATION_REAL_SECONDS
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -470,10 +464,8 @@ class TestNbaGameEnd:
 
     def test_empty_plays(self):
         """Empty plays defaults to regulation end."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            NBA_REGULATION_REAL_SECONDS,
-            nba_game_end,
-        )
+        from app.services.pipeline.stages.phase_boundaries import nba_game_end
+        from app.services.timeline_types import NBA_REGULATION_REAL_SECONDS
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         result = nba_game_end(game_start, [])
@@ -485,10 +477,8 @@ class TestNbaGameEnd:
         """Plays with None quarter don't affect max."""
         from unittest.mock import MagicMock
 
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            NBA_REGULATION_REAL_SECONDS,
-            nba_game_end,
-        )
+        from app.services.pipeline.stages.phase_boundaries import nba_game_end
+        from app.services.timeline_types import NBA_REGULATION_REAL_SECONDS
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -835,10 +825,8 @@ class TestNcaabGameEnd:
         """Regulation game ends after 2 halves."""
         from unittest.mock import MagicMock
 
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            NCAAB_REGULATION_REAL_SECONDS,
-            ncaab_game_end,
-        )
+        from app.services.pipeline.stages.phase_boundaries import ncaab_game_end
+        from app.services.timeline_types import NCAAB_REGULATION_REAL_SECONDS
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -857,10 +845,8 @@ class TestNcaabGameEnd:
         """Game with 1 OT ends after period 3."""
         from unittest.mock import MagicMock
 
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            NCAAB_REGULATION_REAL_SECONDS,
-            ncaab_game_end,
-        )
+        from app.services.pipeline.stages.phase_boundaries import ncaab_game_end
+        from app.services.timeline_types import NCAAB_REGULATION_REAL_SECONDS
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -881,7 +867,7 @@ class TestComputeNcaabPhaseBoundaries:
 
     def test_has_all_phases(self):
         """All standard NCAAB phases are present."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
+        from app.services.pipeline.stages.phase_boundaries import (
             compute_ncaab_phase_boundaries,
         )
 
@@ -896,7 +882,7 @@ class TestComputeNcaabPhaseBoundaries:
 
     def test_overtime_phases(self):
         """Overtime phases present when has_overtime=True."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
+        from app.services.pipeline.stages.phase_boundaries import (
             compute_ncaab_phase_boundaries,
         )
 
@@ -910,7 +896,7 @@ class TestComputeNcaabPhaseBoundaries:
 
     def test_no_overtime_phases_when_false(self):
         """No overtime phases when has_overtime=False."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
+        from app.services.pipeline.stages.phase_boundaries import (
             compute_ncaab_phase_boundaries,
         )
 
@@ -921,7 +907,7 @@ class TestComputeNcaabPhaseBoundaries:
 
     def test_h1_starts_at_game_start(self):
         """H1 starts when game starts."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
+        from app.services.pipeline.stages.phase_boundaries import (
             compute_ncaab_phase_boundaries,
         )
 
@@ -1079,10 +1065,8 @@ class TestNhlGameEnd:
         """Regulation game ends after 3 periods."""
         from unittest.mock import MagicMock
 
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            NHL_REGULATION_REAL_SECONDS,
-            nhl_game_end,
-        )
+        from app.services.pipeline.stages.phase_boundaries import nhl_game_end
+        from app.services.timeline_types import NHL_REGULATION_REAL_SECONDS
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -1101,10 +1085,8 @@ class TestNhlGameEnd:
         """Game with OT ends after period 4."""
         from unittest.mock import MagicMock
 
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            NHL_REGULATION_REAL_SECONDS,
-            nhl_game_end,
-        )
+        from app.services.pipeline.stages.phase_boundaries import nhl_game_end
+        from app.services.timeline_types import NHL_REGULATION_REAL_SECONDS
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -1123,10 +1105,8 @@ class TestNhlGameEnd:
         """Game with shootout ends after period 5."""
         from unittest.mock import MagicMock
 
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            NHL_REGULATION_REAL_SECONDS,
-            nhl_game_end,
-        )
+        from app.services.pipeline.stages.phase_boundaries import nhl_game_end
+        from app.services.timeline_types import NHL_REGULATION_REAL_SECONDS
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
 
@@ -1143,10 +1123,8 @@ class TestNhlGameEnd:
 
     def test_empty_plays(self):
         """Empty plays defaults to regulation end."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import (
-            NHL_REGULATION_REAL_SECONDS,
-            nhl_game_end,
-        )
+        from app.services.pipeline.stages.phase_boundaries import nhl_game_end
+        from app.services.timeline_types import NHL_REGULATION_REAL_SECONDS
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         result = nhl_game_end(game_start, [])
@@ -1160,7 +1138,7 @@ class TestComputeNhlPhaseBoundaries:
 
     def test_has_all_regulation_phases(self):
         """All standard NHL phases are present."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_nhl_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_nhl_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_nhl_phase_boundaries(game_start)
@@ -1175,7 +1153,7 @@ class TestComputeNhlPhaseBoundaries:
 
     def test_overtime_phase(self):
         """Overtime phase present when has_overtime=True."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_nhl_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_nhl_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_nhl_phase_boundaries(game_start, has_overtime=True)
@@ -1184,7 +1162,7 @@ class TestComputeNhlPhaseBoundaries:
 
     def test_shootout_phase(self):
         """Shootout phase present when has_shootout=True."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_nhl_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_nhl_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_nhl_phase_boundaries(
@@ -1196,7 +1174,7 @@ class TestComputeNhlPhaseBoundaries:
 
     def test_no_overtime_phases_when_false(self):
         """No overtime phases when has_overtime=False."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_nhl_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_nhl_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_nhl_phase_boundaries(game_start, has_overtime=False)
@@ -1206,7 +1184,7 @@ class TestComputeNhlPhaseBoundaries:
 
     def test_p1_starts_at_game_start(self):
         """P1 starts when game starts."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_nhl_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_nhl_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_nhl_phase_boundaries(game_start)
@@ -1216,7 +1194,7 @@ class TestComputeNhlPhaseBoundaries:
 
     def test_boundaries_are_tuples(self):
         """Each boundary is a (start, end) tuple."""
-        from app.services.pipeline.stages.normalize_pbp_helpers import compute_nhl_phase_boundaries
+        from app.services.pipeline.stages.phase_boundaries import compute_nhl_phase_boundaries
 
         game_start = datetime(2025, 1, 15, 19, 0, 0)
         boundaries = compute_nhl_phase_boundaries(game_start)
