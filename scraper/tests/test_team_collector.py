@@ -34,6 +34,12 @@ def _mock_settings() -> MagicMock:
     mock = MagicMock()
     mock.social_config.platform_rate_limit_max_requests = 100
     mock.social_config.platform_rate_limit_window_seconds = 900
+    mock.social_config.inter_game_delay_seconds = 15
+    mock.social_config.game_batch_size = 5
+    mock.social_config.consecutive_known_post_exit = 3
+    mock.social_config.max_consecutive_breaker_hits = 3
+    mock.social_config.breaker_backoff_seconds = 120
+    mock.social_config.pregame_start_hour_et = 5
     return mock
 
 

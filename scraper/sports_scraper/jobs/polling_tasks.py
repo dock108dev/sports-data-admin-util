@@ -23,6 +23,7 @@ import time
 
 from celery import shared_task
 
+from ..celery_app import SOCIAL_QUEUE
 from ..db import get_session
 from ..logging import logger
 from .polling_helpers import (
@@ -57,7 +58,7 @@ def _dispatch_final_actions(game_id: int) -> None:
         run_final_whistle_social.apply_async(
             args=[game_id],
             countdown=300,
-            queue="social-scraper",
+            queue=SOCIAL_QUEUE,
         )
         logger.info("final_whistle_social_dispatched", game_id=game_id)
     except Exception as exc:

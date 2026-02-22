@@ -91,21 +91,36 @@ def prob_to_vigged_american(true_prob: float, vig_per_side: float = 0.01) -> flo
 
 
 def remove_vig(implied_probs: list[float]) -> list[float]:
-    """Remove vig from implied probabilities using additive normalization.
+    """Remove vig using Shin's method (accounts for favorite-longshot bias).
 
-    The sum of implied probabilities from a bookmaker exceeds 1.0 by the vig.
-    This function normalizes them to sum to 1.0, giving true probabilities.
+    Shin's model distributes more vig correction to longshots, producing
+    fairer true probabilities than simple additive normalization.
+
+    Falls back to additive normalization when overround <= 0.
 
     Args:
         implied_probs: List of implied probabilities for all outcomes in a market.
 
     Returns:
-        List of true (no-vig) probabilities summing to 1.0.
+        List of true (no-vig) probabilities summing to ~1.0.
     """
     total = sum(implied_probs)
     if total <= 0:
         return implied_probs
-    return [p / total for p in implied_probs]
+
+    # z = informed trading proportion (Shin's parameter)
+    z = 1.0 - 1.0 / total
+
+    # Fall back to additive when there's no meaningful overround
+    if z <= 0:
+        return [p / total for p in implied_probs]
+
+    result: list[float] = []
+    for q in implied_probs:
+        numerator = math.sqrt(z ** 2 + 4.0 * (1.0 - z) * (q ** 2) / total) - z
+        denominator = 2.0 * (1.0 - z)
+        result.append(numerator / denominator)
+    return result
 
 
 def probability_confidence(true_prob: float) -> float:

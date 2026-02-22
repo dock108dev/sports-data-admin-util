@@ -224,6 +224,18 @@ def create_blocks(
         score_before = tuple(moments[start_idx].get("score_before", [0, 0]))
         score_after = tuple(moments[end_idx - 1].get("score_after", [0, 0]))
 
+        # Compute peak margin from all moments in this block
+        peak_margin = 0
+        peak_leader = 0
+        for idx in moment_indices:
+            m = moments[idx]
+            for score_key in ("score_before", "score_after"):
+                s = m.get(score_key, [0, 0])
+                margin = abs(s[0] - s[1])
+                if margin > peak_margin:
+                    peak_margin = margin
+                    peak_leader = 1 if s[0] > s[1] else (-1 if s[1] > s[0] else 0)
+
         # Select key plays
         key_play_ids = select_key_plays(moments, moment_indices, pbp_events)
 
@@ -255,6 +267,8 @@ def create_blocks(
             key_play_ids=key_play_ids,
             narrative=None,
             mini_box=mini_box,
+            peak_margin=peak_margin,
+            peak_leader=peak_leader,
         )
         blocks.append(block)
 

@@ -828,7 +828,7 @@ class TestNCAABBoxscoreFetcherParsing:
             },
         }
 
-        result = fetcher._parse_team_stats_nested(ts, team, True, 75)
+        result = fetcher._parse_team_stats(ts, team, True, 75)
 
         assert result.team.name == "Duke"
         assert result.is_home is True

@@ -2,7 +2,46 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-20] - Current
+## [2026-02-22] - Current
+
+### EV: Shin's Method for Vig Removal
+
+- **Shin's method**: `remove_vig()` now uses Shin's model to account for favorite-longshot bias, distributing more vig correction to longshots. Falls back to additive normalization when overround is zero.
+- **Frontend update**: DerivationContent popover shows Shin's parameter (`z`) and Shin formula instead of simple additive ratio
+
+### Pipeline: Peak Margin Tracking
+
+- **`peak_margin` / `peak_leader` on NarrativeBlock**: Each block now tracks the largest absolute margin that occurred within it, even if that margin eroded by block's end
+- **Comeback detection**: New `_detect_big_lead_comeback()` identifies games where a large lead (≥15) was overcome, adding targeted prompt guidance for comeback narratives
+- **Close game fix**: `_detect_close_game()` now includes `peak_margin` in max margin calculation, preventing misclassification of games with hidden mid-block leads
+- **Drama analysis**: Quarter summaries track `peak_margin` and `peak_leader` for richer AI prompts
+- **Render prompts**: `Peak:` lines appear in block prompts when peak margin exceeds boundary margin by ≥6 points
+
+### Social Scraping: SSOT Consolidation
+
+- **`SocialConfig` reshaped**: Removed 7 dead fields (`recent_game_window_hours`, `pregame_window_minutes`, `postgame_window_minutes`, `gameday_start_hour`, `gameday_end_hour`, `max_consecutive_empty_results`, `hourly_request_cap`); added 10 new fields that were previously scattered as local constants
+- **`SOCIAL_QUEUE` constant**: All `queue="social-scraper"` hardcoded strings in scraper replaced with `SOCIAL_QUEUE` from `celery_app.py`
+- **Config-driven constants**: `team_collector.py`, `playwright_collector.py`, `tweet_mapper.py`, `final_whistle_tasks.py`, `sweep_tasks.py` all read from `SocialConfig` instead of local `_CONSTANTS`
+- **`LeagueConfig` for durations**: `tweet_mapper.py` reads game duration and postgame window from `LEAGUE_CONFIG` instead of local dicts. NBA/NHL duration changed from 2.5h to 3.0h, NCAAB from 2.0h to 2.5h (wider mapping windows).
+- **`get_social_enabled_leagues()`**: `run_manager.py` derives supported leagues from config instead of hardcoded tuple
+- **Dead `task_routes` removed**: Redundant `task_routes` dict in `celery_config` deleted (was immediately overwritten)
+- **`collect_game_social` restructured**: Changed from flat team-based iteration to game-based iteration with team dedup, batch commits, and configurable cooldowns
+- **`map_social_to_games` scheduled task**: New Celery beat task runs every 30 minutes to map unmapped tweets to games
+
+### Tests
+
+- **Shin's method tests**: 4 new tests (`test_shin_favors_longshot_correction`, `test_shin_extreme_longshot`, `test_shin_near_even_minimal_difference`, `test_no_vig_no_change`) and updated tolerances for symmetric lines
+- **Peak margin tests**: Tests for peak margin in quarter summaries (`test_analyze_drama.py`), block creation (`test_group_blocks.py`), serialization round-trip, and prompt rendering (`test_render_blocks.py`)
+- **Comeback detection tests**: Tests for `_detect_big_lead_comeback` and `_detect_close_game` with peak margin
+- **Social SSOT test fixes**: Updated `test_final_whistle.py` (cooldown 180→15), `test_team_collector.py` (mock settings), `test_persistence.py` (NBA duration 2.5→3.0), `test_tweet_mapper.py` (all duration assertions)
+
+### Documentation
+
+- **EV_LIFECYCLE.md**: Updated devig section from "Additive Normalization" to "Shin's Method" with formula, updated example EV numbers, updated limitation #3
+
+---
+
+## [2026-02-20]
 
 ### Control Panel & Admin Consolidation
 

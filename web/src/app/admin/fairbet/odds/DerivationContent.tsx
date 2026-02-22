@@ -1,4 +1,4 @@
-import { americanToImplied, formatOdds, trueProbToAmerican } from "@/lib/api/fairbet";
+import { americanToImplied, formatOdds, shinDevig, trueProbToAmerican } from "@/lib/api/fairbet";
 import styles from "./styles.module.css";
 
 export function DerivationContent({
@@ -56,15 +56,17 @@ export function DerivationContent({
     );
   }
 
-  // Default: direct Pinnacle devig
+  // Default: direct Pinnacle devig (Shin's method)
   const impliedThis = americanToImplied(referencePrice);
   const impliedOther = americanToImplied(oppositeReferencePrice);
   const overround = impliedThis + impliedOther;
   const vigPct = overround - 1;
+  const z = 1 - 1 / overround;
+  const shinProb = shinDevig(impliedThis, impliedOther);
 
   return (
     <div className={styles.derivationPopover} onClick={(e) => e.stopPropagation()}>
-      <div className={styles.derivationTitle}>Pinnacle Devig</div>
+      <div className={styles.derivationTitle}>Pinnacle Devig (Shin)</div>
       <div className={styles.derivationDivider} />
       <div className={styles.derivationRow}>
         <span className={styles.derivationLabel}>This side</span>
@@ -84,10 +86,16 @@ export function DerivationContent({
           {(overround * 100).toFixed(1)}% (+{(vigPct * 100).toFixed(1)}% vig)
         </span>
       </div>
+      <div className={styles.derivationRow}>
+        <span className={styles.derivationLabel}>Shin z</span>
+        <span className={styles.derivationValue}>
+          {(z * 100).toFixed(2)}%
+        </span>
+      </div>
       <div className={styles.derivationDivider} />
       <div className={`${styles.derivationRow} ${styles.derivationFormula}`}>
         <span className={styles.derivationValue}>
-          {(impliedThis * 100).toFixed(1)}% &divide; {(overround * 100).toFixed(1)}% = {(trueProb * 100).toFixed(1)}%
+          Shin({(impliedThis * 100).toFixed(1)}%, z={z.toFixed(3)}) = {(shinProb * 100).toFixed(1)}%
         </span>
       </div>
       <div className={`${styles.derivationRow} ${styles.derivationResult}`}>

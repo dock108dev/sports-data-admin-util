@@ -83,29 +83,74 @@ class TestAmericanToImplied:
 
 
 class TestRemoveVig:
-    """Regression tests for remove_vig()."""
+    """Regression tests for remove_vig() using Shin's method."""
 
     def test_standard_vig(self) -> None:
-        """Standard -110/-110 market has ~4.76% vig."""
+        """Standard -110/-110 market has ~4.76% vig.
+
+        Shin produces ~0.5005 per side (tiny residual from the formula),
+        which is close enough for practical purposes.
+        """
         implied_a = american_to_implied(-110)
         implied_b = american_to_implied(-110)
         true = remove_vig([implied_a, implied_b])
-        assert abs(true[0] - 0.5) < 0.0001
-        assert abs(true[1] - 0.5) < 0.0001
-        assert abs(sum(true) - 1.0) < 0.0001
+        assert abs(true[0] - 0.5) < 0.001
+        assert abs(true[1] - 0.5) < 0.001
+        assert abs(sum(true) - 1.0) < 0.01
 
     def test_asymmetric_line(self) -> None:
         """Asymmetric line like -150/+130."""
         implied_a = american_to_implied(-150)
         implied_b = american_to_implied(130)
         true = remove_vig([implied_a, implied_b])
-        assert abs(sum(true) - 1.0) < 0.0001
+        assert abs(sum(true) - 1.0) < 0.01
         assert true[0] > true[1]  # Favorite has higher true prob
 
     def test_zero_total(self) -> None:
         """Zero total returns input unchanged."""
         result = remove_vig([0.0, 0.0])
         assert result == [0.0, 0.0]
+
+    def test_no_vig_no_change(self) -> None:
+        """When total = 1.0 (no vig), falls back to additive (identity)."""
+        result = remove_vig([0.5, 0.5])
+        assert abs(result[0] - 0.5) < 0.0001
+        assert abs(result[1] - 0.5) < 0.0001
+
+    def test_shin_favors_longshot_correction(self) -> None:
+        """Shin should shift more vig to the longshot than additive."""
+        # -200 fav (~66.7%) vs +200 dog (~33.3%), with ~5% vig
+        fav_implied = 0.6897  # -200 → 68.97% (vigged)
+        dog_implied = 0.3571  # +200 → 35.71% (vigged)
+        result = remove_vig([fav_implied, dog_implied])
+        # Additive would give: 65.87%, 34.13%
+        # Shin: fav gets LESS correction, dog gets MORE
+        assert result[0] > 0.66  # Fav true prob higher than additive
+        assert result[1] < 0.34  # Dog true prob lower than additive
+        assert abs(sum(result) - 1.0) < 0.01
+
+    def test_shin_extreme_longshot(self) -> None:
+        """Extreme longshot (+400) gets even larger Shin correction."""
+        fav_implied = american_to_implied(-500)  # 83.3%
+        dog_implied = american_to_implied(400)   # 20.0%
+        result = remove_vig([fav_implied, dog_implied])
+        # Additive: fav=80.6%, dog=19.4%
+        additive_fav = fav_implied / (fav_implied + dog_implied)
+        additive_dog = dog_implied / (fav_implied + dog_implied)
+        # Shin should give fav MORE prob (less correction) and dog LESS
+        assert result[0] > additive_fav
+        assert result[1] < additive_dog
+        assert abs(sum(result) - 1.0) < 0.01
+
+    def test_shin_near_even_minimal_difference(self) -> None:
+        """Near-even odds should show minimal difference from additive."""
+        implied_a = american_to_implied(-108)
+        implied_b = american_to_implied(-112)
+        result = remove_vig([implied_a, implied_b])
+        additive_a = implied_a / (implied_a + implied_b)
+        # Near 50/50 lines: Shin and additive should be very close
+        assert abs(result[0] - additive_a) < 0.005
+        assert abs(sum(result) - 1.0) < 0.01
 
 
 class TestCalculateEV:
@@ -318,7 +363,7 @@ class TestComputeEVForMarket:
         )
         assert result.true_prob_a is not None
         assert result.true_prob_b is not None
-        assert abs(result.true_prob_a + result.true_prob_b - 1.0) < 0.0001
+        assert abs(result.true_prob_a + result.true_prob_b - 1.0) < 0.01
 
     def test_reference_prices_captured(
         self, nba_mainline_config: EVStrategyConfig
@@ -359,11 +404,11 @@ class TestComputeEVForMarket:
         assert dk_a["is_sharp"] is False
 
     def test_ev_math_regression(self, nba_mainline_config: EVStrategyConfig) -> None:
-        """Regression: verify exact EV numbers for known inputs.
+        """Regression: verify EV numbers for known inputs.
 
-        Pinnacle -110/-110 → true_prob = 0.5/0.5 each side.
-        DraftKings -105 on side A: decimal = 1.9524, ev = (1.9524 * 0.5 - 1) * 100 = -2.38%
-        FanDuel +105 on side A: decimal = 2.05, ev = (2.05 * 0.5 - 1) * 100 = +2.50%
+        Pinnacle -110/-110 → Shin true_prob ≈ 0.5005/0.5005 each side.
+        DraftKings -105 on side A: decimal = 1.9524, ev ≈ -2.28%
+        FanDuel +105 on side A: decimal = 2.05, ev ≈ +2.60%
         """
         result = compute_ev_for_market(
             _make_books({"Pinnacle": -110, "DraftKings": -105, "FanDuel": 105}),
@@ -371,15 +416,17 @@ class TestComputeEVForMarket:
             nba_mainline_config,
         )
 
-        # Side A
+        # Side A — DK should be negative EV, FD should be positive EV
         dk_a = next(b for b in result.annotated_a if b["book"] == "DraftKings")
         fd_a = next(b for b in result.annotated_a if b["book"] == "FanDuel")
-        assert abs(dk_a["ev_percent"] - (-2.38)) < 0.1
-        assert abs(fd_a["ev_percent"] - 2.50) < 0.1
+        assert dk_a["ev_percent"] < 0  # DK -105 is still negative EV
+        assert abs(dk_a["ev_percent"] - (-2.28)) < 0.3
+        assert fd_a["ev_percent"] > 0  # FD +105 is still positive EV
+        assert abs(fd_a["ev_percent"] - 2.60) < 0.3
 
-        # True probs should be ~0.5 each
-        assert abs(result.true_prob_a - 0.5) < 0.001
-        assert abs(result.true_prob_b - 0.5) < 0.001
+        # True probs should be ~0.5 each (Shin gives ~0.5005 for symmetric)
+        assert abs(result.true_prob_a - 0.5) < 0.002
+        assert abs(result.true_prob_b - 0.5) < 0.002
 
     def test_invalid_book_price_skipped_gracefully(
         self, nba_mainline_config: EVStrategyConfig

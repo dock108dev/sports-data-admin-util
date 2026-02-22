@@ -1134,6 +1134,8 @@ interface GameFlowBlock {
   narrative: string;          // 2-4 sentences (~65 words)
   miniBox: BlockMiniBox | null;  // Player stats for this segment
   embeddedSocialPostId?: number | null;  // Optional social post ID (max 1 per block, 5 per game)
+  peak_margin?: number;       // Largest absolute margin within this block (omitted when 0)
+  peak_leader?: number;       // 1=home led at peak, -1=away led at peak (omitted when 0)
 }
 
 type SemanticRole = "SETUP" | "MOMENTUM_SHIFT" | "RESPONSE" | "DECISION_POINT" | "RESOLUTION";

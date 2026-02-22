@@ -224,7 +224,7 @@ EV is computed **at query time** inside `GET /api/fairbet/odds`. Nothing is pers
 2. **Group** by `(game_id, market_key, abs(line_value))` into candidate buckets
 3. **Pair** opposite sides within each bucket (e.g., Lakers spread vs Celtics spread)
 4. **Gate** each pair through `evaluate_ev_eligibility()` (4 checks)
-5. **Devig** Pinnacle's prices to derive true probability
+5. **Devig** Pinnacle's prices via Shin's method to derive true probability (see [EV Lifecycle](EV_LIFECYCLE.md) for formula)
 6. **Calculate** EV% for every book: `EV% = (decimal_odds × true_prob − 1) × 100`
 7. **Sanity check** fair odds against median book price
 8. **Annotate** each book entry with `ev_percent`, `implied_prob`, `is_sharp`

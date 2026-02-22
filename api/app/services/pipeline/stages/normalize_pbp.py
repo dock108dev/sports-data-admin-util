@@ -21,10 +21,12 @@ from ....services.resolution_tracker import ResolutionTracker
 from ..models import NormalizedPBPOutput, StageInput, StageOutput
 from .normalize_pbp_helpers import (
     build_pbp_events,
+    compute_resolution_stats,
+)
+from .phase_boundaries import (
     compute_ncaab_phase_boundaries,
     compute_nhl_phase_boundaries,
     compute_phase_boundaries,
-    compute_resolution_stats,
     nba_game_end,
     ncaab_game_end,
     nhl_game_end,

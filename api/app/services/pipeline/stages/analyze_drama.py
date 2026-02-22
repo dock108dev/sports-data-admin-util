@@ -67,6 +67,8 @@ def _extract_quarter_summary(
                 "score_start": moment.get("score_before", [0, 0]),
                 "score_end": moment.get("score_after", [0, 0]),
                 "lead_changes": 0,
+                "peak_margin": 0,
+                "peak_leader": 0,
                 "moments": [],
             }
 
@@ -82,6 +84,14 @@ def _extract_quarter_summary(
         margin_after = score_after[0] - score_after[1]
         if (margin_before > 0 and margin_after < 0) or (margin_before < 0 and margin_after > 0):
             q["lead_changes"] += 1
+
+        # Track peak margin within the quarter
+        for margin in (abs(margin_before), abs(margin_after)):
+            if margin > q["peak_margin"]:
+                q["peak_margin"] = margin
+                # Use the margin that set the peak to determine leader
+                raw = margin_before if abs(margin_before) == margin else margin_after
+                q["peak_leader"] = 1 if raw > 0 else (-1 if raw < 0 else 0)
 
     # Calculate point swings
     for q_data in quarters.values():
@@ -113,11 +123,16 @@ def _build_drama_prompt(
     quarter_lines = []
     for q_key in sorted(quarter_summary.keys()):
         q = quarter_summary[q_key]
+        end_margin = abs(q["score_end"][0] - q["score_end"][1])
+        peak = q.get("peak_margin", 0)
+        peak_suffix = ""
+        if peak >= end_margin + 6:
+            peak_suffix = f", peak margin {peak}"
         quarter_lines.append(
             f"{q_key}: {q['score_start'][0]}-{q['score_start'][1]} → "
             f"{q['score_end'][0]}-{q['score_end'][1]} "
             f"({q['moment_count']} moments, {q['lead_changes']} lead changes, "
-            f"{q['point_swing']}pt swing)"
+            f"{q['point_swing']}pt swing{peak_suffix})"
         )
 
     final_margin = abs(final_score[0] - final_score[1])
@@ -138,6 +153,7 @@ Consider:
 - Big comebacks deserve weight on the comeback quarters
 - Blowouts should compress the boring stretches
 - Lead changes and point swings indicate drama
+- Peak margins much larger than final margins indicate comebacks worth narrating
 
 Respond with ONLY valid JSON:
 {{"quarter_weights": {{"Q1": 1.0, "Q2": 1.0, "Q3": 1.5, "Q4": 2.0}}, "peak_quarter": "Q3", "story_type": "comeback", "headline": "Brief 5-10 word summary"}}"""

@@ -92,6 +92,8 @@ class NarrativeBlock:
     key_play_ids: list[int]
     narrative: str | None = None
     mini_box: dict[str, Any] | None = None
+    peak_margin: int = 0  # Largest absolute margin within this block
+    peak_leader: int = 0  # 1=home led at peak, -1=away led at peak
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
@@ -109,6 +111,9 @@ class NarrativeBlock:
         }
         if self.mini_box is not None:
             result["mini_box"] = self.mini_box
+        if self.peak_margin:
+            result["peak_margin"] = self.peak_margin
+            result["peak_leader"] = self.peak_leader
         return result
 
     @classmethod
@@ -126,6 +131,8 @@ class NarrativeBlock:
             key_play_ids=data["key_play_ids"],
             narrative=data.get("narrative"),
             mini_box=data.get("mini_box"),
+            peak_margin=data.get("peak_margin", 0),
+            peak_leader=data.get("peak_leader", 0),
         )
 
     @property

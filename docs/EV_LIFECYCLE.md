@@ -130,15 +130,17 @@ Example: -110 → `110 / (110 + 100)` = 0.5238
 
 ## 6. Devig & Final Math
 
-### Additive Normalization (Remove Vig)
+### Shin's Method (Remove Vig)
 
 ```python
 total = implied_a + implied_b  # e.g., 0.5238 + 0.5238 = 1.0476
-true_prob_a = implied_a / total  # e.g., 0.5238 / 1.0476 = 0.5000
-true_prob_b = implied_b / total  # e.g., 0.5238 / 1.0476 = 0.5000
+z = 1.0 - 1.0 / total          # Shin's informed-trading parameter (~0.0454)
+
+# For each implied probability q:
+true_prob = (sqrt(z² + 4(1-z)(q²/total)) - z) / (2(1-z))
 ```
 
-The sum of implied probabilities exceeds 1.0 by the vig (4.76% in this case). Normalization distributes the vig equally across outcomes.
+Shin's model accounts for **favorite-longshot bias**: it shifts more vig correction to longshots, producing fairer true probabilities than simple additive normalization. When overround is zero (`z <= 0`), it falls back to additive normalization (`q / total`).
 
 ### EV Calculation
 
@@ -154,13 +156,13 @@ elif book_price <= -100:
 ev_percent = (decimal_odds * true_prob - 1.0) * 100.0
 ```
 
-Example: DraftKings has -105 on side A, true_prob_a = 0.5000
+Example: DraftKings has -105 on side A, true_prob_a ≈ 0.5005 (Shin)
 - decimal_odds = (100 / 105) + 1.0 = 1.9524
-- ev_percent = (1.9524 * 0.5000 - 1.0) * 100 = -2.38%
+- ev_percent = (1.9524 * 0.5005 - 1.0) * 100 ≈ -2.28%
 
-Example: FanDuel has +105 on side A, true_prob_a = 0.5000
+Example: FanDuel has +105 on side A, true_prob_a ≈ 0.5005 (Shin)
 - decimal_odds = (105 / 100) + 1.0 = 2.0500
-- ev_percent = (2.0500 * 0.5000 - 1.0) * 100 = +2.50%
+- ev_percent = (2.0500 * 0.5005 - 1.0) * 100 ≈ +2.60%
 
 ### Annotation
 
@@ -224,7 +226,7 @@ Confidence tier is set at the strategy level, not computed dynamically.
 
 2. **Single sharp book.** Only Pinnacle is used as the reference. Future: consensus strategy averaging multiple sharp books.
 
-3. **Additive normalization only.** Other devig methods (multiplicative, power, Shin) are not implemented. Additive is simplest and works well for two-way markets.
+3. **Single devig method (Shin).** Only Shin's method is implemented. Additive normalization is used as a fallback when overround is zero. Other methods (multiplicative, power) are not supported.
 
 4. **EV not persisted.** EV is computed at query time on every request. No historical EV tracking.
 

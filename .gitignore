@@ -59,3 +59,9 @@ infra/social-scraper-profile/
 data/
 *.coverage
 coverage_html/
+
+# Benchmark artifacts
+.benchmarks/
+
+# Generated build files
+web/next-env.d.ts

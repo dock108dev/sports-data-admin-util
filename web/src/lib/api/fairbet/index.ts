@@ -246,6 +246,24 @@ export function americanToImplied(price: number): number {
 }
 
 /**
+ * Shin devig: remove vig accounting for favorite-longshot bias.
+ * Returns true probability for `impliedThis` given both sides.
+ */
+export function shinDevig(impliedThis: number, impliedOther: number): number {
+  const total = impliedThis + impliedOther;
+  if (total <= 0) return impliedThis;
+
+  const z = 1.0 - 1.0 / total;
+
+  // Fall back to additive when no meaningful overround
+  if (z <= 0) return impliedThis / total;
+
+  const numerator = Math.sqrt(z * z + (4.0 * (1.0 - z) * impliedThis * impliedThis) / total) - z;
+  const denominator = 2.0 * (1.0 - z);
+  return numerator / denominator;
+}
+
+/**
  * Map ev_disabled_reason codes to human-readable popover content
  */
 export function formatDisabledReason(reason: string | null): { title: string; detail: string } {

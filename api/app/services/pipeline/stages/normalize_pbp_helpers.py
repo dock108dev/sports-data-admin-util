@@ -1,7 +1,7 @@
 """Helper functions for the NORMALIZE_PBP stage.
 
-Contains game-end calculations, phase boundary computations,
-PBP event building, and resolution statistics.
+Contains PBP event building, progress calculation, and resolution statistics.
+Phase boundary computations are in phase_boundaries.py.
 """
 
 from __future__ import annotations
@@ -25,235 +25,21 @@ from ....services.timeline_phases import (
     nhl_phase_for_period,
 )
 from ....services.timeline_types import (
-    NBA_HALFTIME_REAL_SECONDS,
     NBA_OT_GAME_SECONDS,
     NBA_OT_REAL_SECONDS,
     NBA_QUARTER_GAME_SECONDS,
     NBA_QUARTER_REAL_SECONDS,
-    # NBA Constants
-    NBA_REGULATION_REAL_SECONDS,
     NCAAB_HALF_GAME_SECONDS,
     NCAAB_HALF_REAL_SECONDS,
-    NCAAB_HALFTIME_REAL_SECONDS,
     NCAAB_OT_GAME_SECONDS,
     NCAAB_OT_REAL_SECONDS,
-    # NCAAB Constants
-    NCAAB_REGULATION_REAL_SECONDS,
-    NHL_INTERMISSION_REAL_SECONDS,
     NHL_OT_GAME_SECONDS,
     NHL_OT_REAL_SECONDS,
     NHL_PERIOD_GAME_SECONDS,
     NHL_PERIOD_REAL_SECONDS,
     NHL_PLAYOFF_OT_GAME_SECONDS,
-    # NHL Constants
-    NHL_REGULATION_REAL_SECONDS,
-    # Social windows
-    SOCIAL_PREGAME_WINDOW_SECONDS,
 )
 from ....utils.datetime_utils import parse_clock_to_seconds
-
-
-def nba_game_end(
-    game_start: datetime, plays: Sequence[SportsGamePlay]
-) -> datetime:
-    """Calculate actual game end time based on plays."""
-    max_quarter = 4
-    for play in plays:
-        if play.quarter and play.quarter > max_quarter:
-            max_quarter = play.quarter
-
-    if max_quarter <= 4:
-        return game_start + timedelta(seconds=NBA_REGULATION_REAL_SECONDS)
-
-    ot_count = max_quarter - 4
-    return game_start + timedelta(
-        seconds=NBA_REGULATION_REAL_SECONDS + ot_count * 15 * 60
-    )
-
-
-def ncaab_game_end(
-    game_start: datetime, plays: Sequence[SportsGamePlay]
-) -> datetime:
-    """Calculate NCAAB game end time based on plays."""
-    max_period = 2
-    for play in plays:
-        if play.quarter and play.quarter > max_period:
-            max_period = play.quarter
-
-    if max_period <= 2:
-        return game_start + timedelta(seconds=NCAAB_REGULATION_REAL_SECONDS)
-
-    ot_count = max_period - 2
-    return game_start + timedelta(
-        seconds=NCAAB_REGULATION_REAL_SECONDS + ot_count * 10 * 60
-    )
-
-
-def nhl_game_end(
-    game_start: datetime, plays: Sequence[SportsGamePlay]
-) -> datetime:
-    """Calculate NHL game end time based on plays."""
-    max_period = 3
-    for play in plays:
-        if play.quarter and play.quarter > max_period:
-            max_period = play.quarter
-
-    if max_period <= 3:
-        return game_start + timedelta(seconds=NHL_REGULATION_REAL_SECONDS)
-
-    ot_count = max_period - 3
-    return game_start + timedelta(
-        seconds=NHL_REGULATION_REAL_SECONDS + ot_count * 10 * 60
-    )
-
-
-def compute_phase_boundaries(
-    game_start: datetime, has_overtime: bool = False
-) -> dict[str, tuple[datetime, datetime]]:
-    """Compute start/end times for each narrative phase."""
-    boundaries: dict[str, tuple[datetime, datetime]] = {}
-
-    # Pregame: 2 hours before to game start
-    pregame_start = game_start - timedelta(seconds=SOCIAL_PREGAME_WINDOW_SECONDS)
-    boundaries["pregame"] = (pregame_start, game_start)
-
-    # Q1
-    q1_start = game_start
-    q1_end = game_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    boundaries["q1"] = (q1_start, q1_end)
-
-    # Q2
-    q2_start = q1_end
-    q2_end = q2_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    boundaries["q2"] = (q2_start, q2_end)
-
-    # Halftime
-    halftime_start = q2_end
-    halftime_end = halftime_start + timedelta(seconds=NBA_HALFTIME_REAL_SECONDS)
-    boundaries["halftime"] = (halftime_start, halftime_end)
-
-    # Q3
-    q3_start = halftime_end
-    q3_end = q3_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    boundaries["q3"] = (q3_start, q3_end)
-
-    # Q4
-    q4_start = q3_end
-    q4_end = q4_start + timedelta(seconds=NBA_QUARTER_REAL_SECONDS)
-    boundaries["q4"] = (q4_start, q4_end)
-
-    # Overtime periods (if applicable)
-    if has_overtime:
-        ot_start = q4_end
-        for i in range(1, 5):  # Up to 4 OT periods
-            ot_end = ot_start + timedelta(seconds=15 * 60)
-            boundaries[f"ot{i}"] = (ot_start, ot_end)
-            ot_start = ot_end
-        boundaries["postgame"] = (ot_start, ot_start + timedelta(hours=2))
-    else:
-        boundaries["postgame"] = (q4_end, q4_end + timedelta(hours=2))
-
-    return boundaries
-
-
-def compute_ncaab_phase_boundaries(
-    game_start: datetime, has_overtime: bool = False
-) -> dict[str, tuple[datetime, datetime]]:
-    """Compute start/end times for each NCAAB narrative phase."""
-    boundaries: dict[str, tuple[datetime, datetime]] = {}
-
-    # Pregame: 2 hours before to game start
-    pregame_start = game_start - timedelta(seconds=SOCIAL_PREGAME_WINDOW_SECONDS)
-    boundaries["pregame"] = (pregame_start, game_start)
-
-    # H1 (first half)
-    h1_start = game_start
-    h1_end = game_start + timedelta(seconds=NCAAB_HALF_REAL_SECONDS)
-    boundaries["h1"] = (h1_start, h1_end)
-
-    # Halftime
-    halftime_start = h1_end
-    halftime_end = halftime_start + timedelta(seconds=NCAAB_HALFTIME_REAL_SECONDS)
-    boundaries["halftime"] = (halftime_start, halftime_end)
-
-    # H2 (second half)
-    h2_start = halftime_end
-    h2_end = h2_start + timedelta(seconds=NCAAB_HALF_REAL_SECONDS)
-    boundaries["h2"] = (h2_start, h2_end)
-
-    # Overtime periods (if applicable)
-    if has_overtime:
-        ot_start = h2_end
-        for i in range(1, 5):  # Up to 4 OT periods
-            ot_end = ot_start + timedelta(seconds=10 * 60)  # ~10 min real per OT
-            boundaries[f"ot{i}"] = (ot_start, ot_end)
-            ot_start = ot_end
-        boundaries["postgame"] = (ot_start, ot_start + timedelta(hours=2))
-    else:
-        boundaries["postgame"] = (h2_end, h2_end + timedelta(hours=2))
-
-    return boundaries
-
-
-def compute_nhl_phase_boundaries(
-    game_start: datetime,
-    has_overtime: bool = False,
-    has_shootout: bool = False,
-) -> dict[str, tuple[datetime, datetime]]:
-    """Compute start/end times for each NHL narrative phase.
-
-    NHL has 3 periods with 2 intermissions, plus optional OT and shootout.
-    """
-    boundaries: dict[str, tuple[datetime, datetime]] = {}
-
-    # Pregame: 2 hours before to game start
-    pregame_start = game_start - timedelta(seconds=SOCIAL_PREGAME_WINDOW_SECONDS)
-    boundaries["pregame"] = (pregame_start, game_start)
-
-    # P1 (first period)
-    p1_start = game_start
-    p1_end = game_start + timedelta(seconds=NHL_PERIOD_REAL_SECONDS)
-    boundaries["p1"] = (p1_start, p1_end)
-
-    # First intermission
-    int1_start = p1_end
-    int1_end = int1_start + timedelta(seconds=NHL_INTERMISSION_REAL_SECONDS)
-    boundaries["int1"] = (int1_start, int1_end)
-
-    # P2 (second period)
-    p2_start = int1_end
-    p2_end = p2_start + timedelta(seconds=NHL_PERIOD_REAL_SECONDS)
-    boundaries["p2"] = (p2_start, p2_end)
-
-    # Second intermission
-    int2_start = p2_end
-    int2_end = int2_start + timedelta(seconds=NHL_INTERMISSION_REAL_SECONDS)
-    boundaries["int2"] = (int2_start, int2_end)
-
-    # P3 (third period)
-    p3_start = int2_end
-    p3_end = p3_start + timedelta(seconds=NHL_PERIOD_REAL_SECONDS)
-    boundaries["p3"] = (p3_start, p3_end)
-
-    # Overtime (if applicable)
-    if has_overtime:
-        ot_start = p3_end
-        ot_end = ot_start + timedelta(seconds=10 * 60)  # ~10 min real for OT
-        boundaries["ot"] = (ot_start, ot_end)
-        last_end = ot_end
-    else:
-        last_end = p3_end
-
-    # Shootout (if applicable)
-    if has_shootout:
-        so_start = last_end
-        so_end = so_start + timedelta(seconds=10 * 60)  # ~10 min for shootout
-        boundaries["shootout"] = (so_start, so_end)
-        last_end = so_end
-
-    boundaries["postgame"] = (last_end, last_end + timedelta(hours=2))
-
-    return boundaries
 
 
 def progress_from_index(index: int, total: int) -> float:

@@ -82,3 +82,103 @@ def play_to_detail(play: SportsGamePlay) -> PlayDetail:
         created_at=play.created_at.isoformat(),
         updated_at=play.updated_at.isoformat(),
     )
+
+
+def build_resolution_issues(
+    plays: list[SportsGamePlay],
+    issue_type: str = "all",
+) -> dict[str, Any]:
+    """Categorize resolution issues from PBP plays.
+
+    Scans plays for missing team resolution, missing player names,
+    missing scores, and missing game clocks.
+
+    Args:
+        plays: List of game plays (with team relationship loaded)
+        issue_type: Filter type — "team", "player", "score", "clock", or "all"
+
+    Returns:
+        Dict with issues by category and summary counts
+    """
+    issues: dict[str, list[dict[str, Any]]] = {
+        "team_unresolved": [],
+        "player_missing": [],
+        "score_missing": [],
+        "clock_missing": [],
+    }
+
+    for play in plays:
+        play_info = {
+            "play_index": play.play_index,
+            "quarter": play.quarter,
+            "description": play.description[:100] if play.description else None,
+        }
+
+        # Team resolution issues
+        if issue_type in ("all", "team") and play.team_id is None and play.description:
+            raw_team = play.raw_data.get("teamTricode") or play.raw_data.get("team")
+            if raw_team:
+                issues["team_unresolved"].append(
+                    {
+                        **play_info,
+                        "raw_team": raw_team,
+                        "issue": "Team abbreviation in raw data but not resolved",
+                    }
+                )
+
+        # Player issues
+        if (
+            issue_type in ("all", "player")
+            and not play.player_name
+            and play.description
+            and play.play_type
+            and play.play_type not in (
+                "timeout",
+                "substitution",
+                "period_start",
+                "period_end",
+            )
+        ):
+            issues["player_missing"].append(
+                {
+                    **play_info,
+                    "play_type": play.play_type,
+                    "issue": "Expected player name but not found",
+                }
+            )
+
+        # Score issues
+        if issue_type in ("all", "score") and (play.home_score is None or play.away_score is None):
+            issues["score_missing"].append(
+                {
+                    **play_info,
+                    "issue": "Missing score information",
+                }
+            )
+
+        # Clock issues
+        if issue_type in ("all", "clock") and not play.game_clock:
+            issues["clock_missing"].append(
+                {
+                    **play_info,
+                    "issue": "Missing game clock",
+                }
+            )
+
+    # Filter by requested type
+    if issue_type != "all":
+        filtered = {
+            issue_type: issues.get(f"{issue_type}_unresolved", [])
+            or issues.get(f"{issue_type}_missing", [])
+        }
+        issues = filtered
+
+    return {
+        "issues": issues,
+        "summary": {
+            "team_unresolved": len(issues.get("team_unresolved", [])),
+            "player_missing": len(issues.get("player_missing", [])),
+            "score_missing": len(issues.get("score_missing", [])),
+            "clock_missing": len(issues.get("clock_missing", [])),
+        },
+    }

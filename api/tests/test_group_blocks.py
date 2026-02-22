@@ -346,6 +346,101 @@ class TestBlockCreation:
         assert blocks[1].score_after == (20, 18)
 
 
+class TestPeakMarginInBlocks:
+    """Tests for peak margin computation in block creation."""
+
+    def test_peak_margin_computed_from_moments(self) -> None:
+        """Peak margin is computed from all moment scores within a block."""
+        moments = [
+            {"play_ids": [1], "period": 1, "score_before": [0, 0], "score_after": [22, 0]},   # margin 22
+            {"play_ids": [2], "period": 1, "score_before": [22, 0], "score_after": [25, 18]},  # margin 7
+            {"play_ids": [3], "period": 2, "score_before": [25, 18], "score_after": [30, 28]},  # margin 2
+            {"play_ids": [4], "period": 2, "score_before": [30, 28], "score_after": [35, 30]},  # margin 5
+        ]
+        split_points = [2]  # Block 0: moments 0,1; Block 1: moments 2,3
+
+        blocks = create_blocks(moments, split_points, [])
+
+        # Block 0 should have peak_margin=22 (from score_after of moment 0)
+        assert blocks[0].peak_margin == 22
+        assert blocks[0].peak_leader == 1  # Home led
+
+        # Block 1 should have peak_margin=7 (from score_before of moment 2)
+        assert blocks[1].peak_margin == 7
+        assert blocks[1].peak_leader == 1  # Home led
+
+    def test_peak_margin_away_leader(self) -> None:
+        """Peak margin correctly tracks away team as leader."""
+        moments = [
+            {"play_ids": [1], "period": 1, "score_before": [0, 0], "score_after": [5, 20]},   # Away +15
+            {"play_ids": [2], "period": 1, "score_before": [5, 20], "score_after": [15, 22]},  # Away +7
+        ]
+        split_points = []  # Single block
+
+        blocks = create_blocks(moments, split_points, [])
+
+        assert blocks[0].peak_margin == 15
+        assert blocks[0].peak_leader == -1  # Away led
+
+    def test_peak_margin_zero_for_tied_block(self) -> None:
+        """Peak margin is 0 when all scores within block are tied."""
+        moments = [
+            {"play_ids": [1], "period": 1, "score_before": [0, 0], "score_after": [10, 10]},
+            {"play_ids": [2], "period": 1, "score_before": [10, 10], "score_after": [20, 20]},
+        ]
+        split_points = []
+
+        blocks = create_blocks(moments, split_points, [])
+
+        assert blocks[0].peak_margin == 0
+
+    def test_peak_margin_serialization(self) -> None:
+        """Peak margin survives to_dict/from_dict round trip."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock, SemanticRole
+
+        block = NarrativeBlock(
+            block_index=0,
+            role=SemanticRole.SETUP,
+            moment_indices=[0, 1],
+            period_start=1,
+            period_end=1,
+            score_before=(0, 0),
+            score_after=(25, 18),
+            play_ids=[1, 2],
+            key_play_ids=[1],
+            peak_margin=22,
+            peak_leader=1,
+        )
+
+        d = block.to_dict()
+        assert d["peak_margin"] == 22
+        assert d["peak_leader"] == 1
+
+        restored = NarrativeBlock.from_dict(d)
+        assert restored.peak_margin == 22
+        assert restored.peak_leader == 1
+
+    def test_peak_margin_backward_compatible(self) -> None:
+        """from_dict works without peak_margin (backward compatibility)."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock, SemanticRole
+
+        d = {
+            "block_index": 0,
+            "role": "SETUP",
+            "moment_indices": [0],
+            "period_start": 1,
+            "period_end": 1,
+            "score_before": [0, 0],
+            "score_after": [10, 8],
+            "play_ids": [1],
+            "key_play_ids": [1],
+        }
+
+        block = NarrativeBlock.from_dict(d)
+        assert block.peak_margin == 0
+        assert block.peak_leader == 0
+
+
 class TestBlockConstraints:
     """Tests for block system constraints."""
 

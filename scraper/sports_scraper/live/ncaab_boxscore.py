@@ -20,7 +20,13 @@ from ..utils.cache import APICache
 from ..utils.datetime_utils import eastern_date_range_to_utc_iso, now_utc
 from ..utils.parsing import parse_int
 from .ncaab_constants import CBB_GAMES_PLAYERS_URL, CBB_GAMES_TEAMS_URL
-from .ncaab_helpers import build_team_identity, extract_points, parse_minutes
+from .ncaab_helpers import (
+    build_team_identity,
+    extract_points,
+    extract_shooting_stat,
+    extract_total,
+    parse_minutes,
+)
 from .ncaab_models import NCAABBoxscore, NCAABLiveGame
 
 
@@ -294,12 +300,12 @@ class NCAABBoxscoreFetcher:
         # Parse team boxscores
         team_boxscores: list[NormalizedTeamBoxscore] = []
         if home_team_stats_raw:
-            team_boxscore = self._parse_team_stats_nested(
+            team_boxscore = self._parse_team_stats(
                 home_team_stats_raw, home_team, True, home_score
             )
             team_boxscores.append(team_boxscore)
         if away_team_stats_raw:
-            team_boxscore = self._parse_team_stats_nested(
+            team_boxscore = self._parse_team_stats(
                 away_team_stats_raw, away_team, False, away_score
             )
             team_boxscores.append(team_boxscore)
@@ -553,12 +559,12 @@ class NCAABBoxscoreFetcher:
         # Parse team boxscores
         team_boxscores: list[NormalizedTeamBoxscore] = []
         if home_team_stats_raw:
-            team_boxscore = self._parse_team_stats_nested(
+            team_boxscore = self._parse_team_stats(
                 home_team_stats_raw, home_team, True, home_score
             )
             team_boxscores.append(team_boxscore)
         if away_team_stats_raw:
-            team_boxscore = self._parse_team_stats_nested(
+            team_boxscore = self._parse_team_stats(
                 away_team_stats_raw, away_team, False, away_score
             )
             team_boxscores.append(team_boxscore)
@@ -598,26 +604,6 @@ class NCAABBoxscoreFetcher:
             away_score=away_score,
             team_boxscores=team_boxscores,
             player_boxscores=player_boxscores,
-        )
-
-    def _parse_team_stats_nested(
-        self,
-        ts: dict,
-        team_identity: TeamIdentity,
-        is_home: bool,
-        score: int,
-    ) -> NormalizedTeamBoxscore:
-        """Parse team-level stats from games/teams endpoint (nested format)."""
-        stats = ts.get("teamStats", {}) or {}
-
-        return NormalizedTeamBoxscore(
-            team=team_identity,
-            is_home=is_home,
-            points=score,
-            rebounds=parse_int(stats.get("totalRebounds")) or parse_int(stats.get("rebounds")),
-            assists=parse_int(stats.get("assists")),
-            turnovers=parse_int(stats.get("turnovers")),
-            raw_stats={k: v for k, v in stats.items() if v is not None},
         )
 
     def _parse_team_stats(
@@ -682,14 +668,6 @@ class NCAABBoxscoreFetcher:
 
         minutes = parse_minutes(ps.get("minutes"))
 
-        # Helper to extract int from value that may be int or {"total": int, ...}
-        def extract_total(value: int | dict | None) -> int | None:
-            if value is None:
-                return None
-            if isinstance(value, dict):
-                return parse_int(value.get("total"))
-            return parse_int(value)
-
         # Extract stats handling both flat and nested formats
         points = extract_total(ps.get("points"))
         rebounds = extract_total(ps.get("rebounds")) or extract_total(ps.get("totalRebounds"))
@@ -698,38 +676,30 @@ class NCAABBoxscoreFetcher:
         blocks = extract_total(ps.get("blocks"))
         turnovers = extract_total(ps.get("turnovers"))
 
-        # Shooting stats
-        fg_made = extract_total(ps.get("fieldGoalsMade")) or extract_total(ps.get("fieldGoals", {}).get("made") if isinstance(ps.get("fieldGoals"), dict) else None)
-        fg_att = extract_total(ps.get("fieldGoalsAttempted")) or extract_total(ps.get("fieldGoals", {}).get("attempted") if isinstance(ps.get("fieldGoals"), dict) else None)
-        fg3_made = extract_total(ps.get("threePointFieldGoalsMade")) or extract_total(ps.get("threePointFieldGoals", {}).get("made") if isinstance(ps.get("threePointFieldGoals"), dict) else None)
-        fg3_att = extract_total(ps.get("threePointFieldGoalsAttempted")) or extract_total(ps.get("threePointFieldGoals", {}).get("attempted") if isinstance(ps.get("threePointFieldGoals"), dict) else None)
-        ft_made = extract_total(ps.get("freeThrowsMade")) or extract_total(ps.get("freeThrows", {}).get("made") if isinstance(ps.get("freeThrows"), dict) else None)
-        ft_att = extract_total(ps.get("freeThrowsAttempted")) or extract_total(ps.get("freeThrows", {}).get("attempted") if isinstance(ps.get("freeThrows"), dict) else None)
+        # Shooting stats (flat key → nested key.sub_key)
+        fg_made = extract_shooting_stat(ps, "fieldGoalsMade", "fieldGoals", "made")
+        fg_att = extract_shooting_stat(ps, "fieldGoalsAttempted", "fieldGoals", "attempted")
+        fg3_made = extract_shooting_stat(ps, "threePointFieldGoalsMade", "threePointFieldGoals", "made")
+        fg3_att = extract_shooting_stat(ps, "threePointFieldGoalsAttempted", "threePointFieldGoals", "attempted")
+        ft_made = extract_shooting_stat(ps, "freeThrowsMade", "freeThrows", "made")
+        ft_att = extract_shooting_stat(ps, "freeThrowsAttempted", "freeThrows", "attempted")
         fouls = extract_total(ps.get("fouls")) or extract_total(ps.get("personalFouls"))
 
         # Build raw_stats with flattened values for display
-        raw_stats = {k: v for k, v in ps.items() if v is not None and k not in [
-            "playerId", "athleteId", "player", "athleteName", "name", "teamId", "team", "minutes"
-        ]}
+        _METADATA_KEYS = {"playerId", "athleteId", "player", "athleteName", "name", "teamId", "team", "minutes"}
+        raw_stats = {k: v for k, v in ps.items() if v is not None and k not in _METADATA_KEYS}
 
-        # Add flattened shooting stats to raw_stats for frontend display
-        if fg_made is not None or fg_att is not None:
-            raw_stats["fgMade"] = fg_made
-            raw_stats["fgAttempted"] = fg_att
-        if fg3_made is not None or fg3_att is not None:
-            raw_stats["fg3Made"] = fg3_made
-            raw_stats["fg3Attempted"] = fg3_att
-        if ft_made is not None or ft_att is not None:
-            raw_stats["ftMade"] = ft_made
-            raw_stats["ftAttempted"] = ft_att
-        if steals is not None:
-            raw_stats["steals"] = steals
-        if blocks is not None:
-            raw_stats["blocks"] = blocks
-        if turnovers is not None:
-            raw_stats["turnovers"] = turnovers
-        if fouls is not None:
-            raw_stats["fouls"] = fouls
+        # Overlay flattened shooting / counting stats for frontend display
+        _FLAT_STATS: dict[str, int | None] = {
+            "fgMade": fg_made, "fgAttempted": fg_att,
+            "fg3Made": fg3_made, "fg3Attempted": fg3_att,
+            "ftMade": ft_made, "ftAttempted": ft_att,
+            "steals": steals, "blocks": blocks,
+            "turnovers": turnovers, "fouls": fouls,
+        }
+        for key, val in _FLAT_STATS.items():
+            if val is not None:
+                raw_stats[key] = val
 
         return NormalizedPlayerBoxscore(
             player_id=str(player_id),

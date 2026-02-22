@@ -105,7 +105,7 @@ class TeamTweetCollector:
         # runs from 5 AM ET on the game date through 8 AM ET the next day
         # (covers latest postgame ~3 AM ET + buffer).
         eastern = ZoneInfo("America/New_York")
-        window_start = datetime.combine(start_date, datetime.min.time(), tzinfo=eastern).replace(hour=5)
+        window_start = datetime.combine(start_date, datetime.min.time(), tzinfo=eastern).replace(hour=settings.social_config.pregame_start_hour_et)
         window_end = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=eastern).replace(hour=8)
 
         logger.info(
@@ -117,12 +117,31 @@ class TeamTweetCollector:
             end_date=str(end_date),
         )
 
+        # Query recent post IDs for this team so the collector can stop
+        # scrolling early when it hits posts we already have.
+        recent_post_ids: set[str] = set()
+        try:
+            recent_rows = (
+                session.query(db_models.TeamSocialPost.external_post_id)
+                .filter(
+                    db_models.TeamSocialPost.team_id == team_id,
+                    db_models.TeamSocialPost.external_post_id.isnot(None),
+                )
+                .order_by(db_models.TeamSocialPost.posted_at.desc())
+                .limit(50)
+                .all()
+            )
+            recent_post_ids = {row[0] for row in recent_rows}
+        except Exception:
+            pass  # Non-critical — scrolling just won't terminate early
+
         # Collect tweets using the configured strategy
         try:
             posts = self.strategy.collect_posts(
                 x_handle=x_handle,
                 window_start=window_start,
                 window_end=window_end,
+                known_post_ids=recent_post_ids or None,
             )
         except XCircuitBreakerError:
             # Circuit breaker tripped - propagate to stop the entire scrape
@@ -140,6 +159,7 @@ class TeamTweetCollector:
 
         # Save tweets to team_social_posts
         new_count = 0
+        consecutive_known = 0
         for post in posts:
             normalized_posted_at = self._normalize_posted_at(post.posted_at)
             external_id = post.external_post_id or extract_x_post_id(post.post_url)
@@ -154,6 +174,7 @@ class TeamTweetCollector:
                 )
 
             if existing:
+                consecutive_known += 1
                 # Update existing record
                 existing.posted_at = normalized_posted_at
                 existing.tweet_text = post.text
@@ -168,7 +189,18 @@ class TeamTweetCollector:
                     external_id=external_id,
                     team_id=team_id,
                 )
+                # Early exit: N consecutive known posts means we've caught up
+                if consecutive_known >= settings.social_config.consecutive_known_post_exit:
+                    logger.info(
+                        "team_collector_early_exit_known_posts",
+                        team_id=team_id,
+                        consecutive_known=consecutive_known,
+                        posts_processed=posts.index(post) + 1,
+                        total_posts=len(posts),
+                    )
+                    break
             else:
+                consecutive_known = 0
                 # Insert new record with mapping_status='unmapped'
                 new_post = db_models.TeamSocialPost(
                     team_id=team_id,
@@ -267,13 +299,11 @@ class TeamTweetCollector:
 
         # Iterate game-by-game: scrape both teams per game, then wait
         # before the next game to avoid X rate limits.
-        # Posts are committed in batches of _BATCH_SIZE_GAMES to survive
+        # Posts are committed in batches to survive
         # mid-run failures — completed batches remain persisted.
         import time
 
-        _INTER_GAME_DELAY_SECONDS = 15
-        _MAX_CONSECUTIVE_BREAKER_HITS = 3
-        _BATCH_SIZE_GAMES = 5
+        social_cfg = settings.social_config
 
         teams_processed = 0
         total_new_tweets = 0
@@ -288,10 +318,10 @@ class TeamTweetCollector:
             if i > 0:
                 logger.info(
                     "team_collector_inter_game_delay",
-                    delay_seconds=_INTER_GAME_DELAY_SECONDS,
+                    delay_seconds=social_cfg.inter_game_delay_seconds,
                     games_remaining=len(games) - i,
                 )
-                time.sleep(_INTER_GAME_DELAY_SECONDS)
+                time.sleep(social_cfg.inter_game_delay_seconds)
 
             for team_id in (game.home_team_id, game.away_team_id):
                 if team_id in scraped_team_ids:
@@ -318,7 +348,7 @@ class TeamTweetCollector:
                         consecutive_hits=consecutive_breaker_hits,
                         error=str(exc),
                     )
-                    if consecutive_breaker_hits >= _MAX_CONSECUTIVE_BREAKER_HITS:
+                    if consecutive_breaker_hits >= social_cfg.max_consecutive_breaker_hits:
                         logger.error(
                             "team_collector_batch_abort",
                             teams_processed=teams_processed,
@@ -326,8 +356,8 @@ class TeamTweetCollector:
                         )
                         break
                     # Back off before trying the next team
-                    logger.info("team_collector_rate_limit_backoff", backoff_seconds=120)
-                    time.sleep(120)
+                    logger.info("team_collector_rate_limit_backoff", backoff_seconds=social_cfg.breaker_backoff_seconds)
+                    time.sleep(social_cfg.breaker_backoff_seconds)
                 except Exception as exc:
                     error_msg = f"Team {team_id}: {str(exc)}"
                     errors.append(error_msg)
@@ -339,7 +369,7 @@ class TeamTweetCollector:
             else:
                 # Only reached if inner loop didn't break — game completed
                 games_completed += 1
-                if games_completed % _BATCH_SIZE_GAMES == 0:
+                if games_completed % social_cfg.game_batch_size == 0:
                     session.commit()
                     logger.info(
                         "team_collector_batch_committed",

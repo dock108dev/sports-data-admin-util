@@ -16,7 +16,7 @@ from typing import Literal
 from sqlalchemy import case, literal_column, or_
 from sqlalchemy.orm import Session
 
-from ..config_sports import LEAGUE_CONFIG
+from ..config_sports import LEAGUE_CONFIG, LeagueConfig
 from ..db import db_models
 from ..logging import logger
 from ..utils.datetime_utils import now_utc
@@ -24,8 +24,8 @@ from ..utils.datetime_utils import now_utc
 WindowState = Literal["PRE", "IN", "POST", "NONE"]
 
 # Default windows used when no league-specific config is available
-_DEFAULT_PREGAME_HOURS = 6
-_DEFAULT_POSTGAME_HOURS = 3
+_DEFAULT_PREGAME_HOURS = LeagueConfig(code="", display_name="").pregame_window_hours
+_DEFAULT_POSTGAME_HOURS = LeagueConfig(code="", display_name="").postgame_window_hours
 _DEFAULT_PBP_STALE_MINUTES = 4
 
 

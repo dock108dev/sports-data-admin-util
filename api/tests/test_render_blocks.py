@@ -11,10 +11,14 @@ from app.services.pipeline.stages.render_helpers import (
     detect_overtime_info,
     inject_overtime_mention,
 )
-from app.services.pipeline.stages.render_prompts import (
-    GAME_FLOW_PASS_PROMPT,
+from app.services.pipeline.stages.render_prompt_helpers import (
+    _detect_big_lead_comeback,
+    _detect_close_game,
     _format_contributors_line,
     _format_lead_line,
+)
+from app.services.pipeline.stages.render_prompts import (
+    GAME_FLOW_PASS_PROMPT,
     build_block_prompt,
     build_game_flow_pass_prompt,
 )
@@ -1038,6 +1042,254 @@ class TestPlayerRosterInPrompt:
         home_line = [l for l in roster_section.split("\n") if "Hawks" in l][0]
         player_count = home_line.count("Player")
         assert player_count == 10
+
+
+class TestDetectBigLeadComeback:
+    """Tests for _detect_big_lead_comeback function."""
+
+    def test_comeback_detected(self) -> None:
+        """Detects comeback when peak margin >= 15 and final margin < half peak."""
+        blocks = [
+            {
+                "block_index": 0,
+                "score_before": [0, 0],
+                "score_after": [25, 18],
+                "peak_margin": 25,  # Home led by 25
+            },
+            {
+                "block_index": 1,
+                "score_before": [25, 18],
+                "score_after": [50, 43],
+                "peak_margin": 10,
+            },
+            {
+                "block_index": 2,
+                "score_before": [50, 43],
+                "score_after": [70, 68],
+                "peak_margin": 7,  # Final margin 2
+            },
+        ]
+        is_comeback, peak, final = _detect_big_lead_comeback(blocks)
+        assert is_comeback is True
+        assert peak == 25
+        assert final == 2
+
+    def test_no_comeback_when_margin_holds(self) -> None:
+        """No comeback when final margin >= half of peak margin."""
+        blocks = [
+            {
+                "block_index": 0,
+                "score_before": [0, 0],
+                "score_after": [20, 0],
+                "peak_margin": 20,
+            },
+            {
+                "block_index": 1,
+                "score_before": [20, 0],
+                "score_after": [40, 25],
+                "peak_margin": 20,  # Final margin 15 >= 20*0.5
+            },
+        ]
+        is_comeback, peak, final = _detect_big_lead_comeback(blocks)
+        assert is_comeback is False
+
+    def test_no_comeback_small_peak(self) -> None:
+        """No comeback when peak margin < 15."""
+        blocks = [
+            {
+                "block_index": 0,
+                "score_before": [0, 0],
+                "score_after": [12, 2],
+                "peak_margin": 12,
+            },
+            {
+                "block_index": 1,
+                "score_before": [12, 2],
+                "score_after": [15, 14],
+                "peak_margin": 10,
+            },
+        ]
+        is_comeback, peak, final = _detect_big_lead_comeback(blocks)
+        assert is_comeback is False
+        assert peak == 12
+
+    def test_empty_blocks(self) -> None:
+        """Empty blocks returns no comeback."""
+        is_comeback, peak, final = _detect_big_lead_comeback([])
+        assert is_comeback is False
+
+
+class TestDetectCloseGameWithPeakMargin:
+    """Tests for _detect_close_game including peak_margin."""
+
+    def test_peak_margin_prevents_close_game_misclassification(self) -> None:
+        """Game with hidden mid-block lead not misclassified as close."""
+        blocks = [
+            {
+                "score_before": [0, 0],
+                "score_after": [25, 22],
+                "peak_margin": 15,  # Home led by 15 mid-block
+            },
+            {
+                "score_before": [25, 22],
+                "score_after": [50, 48],
+                "peak_margin": 5,
+            },
+        ]
+        is_close, max_margin = _detect_close_game(blocks)
+        assert is_close is False
+        assert max_margin == 15
+
+    def test_truly_close_game_still_detected(self) -> None:
+        """Truly close game (peak_margin <= 7) still detected."""
+        blocks = [
+            {
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "peak_margin": 5,
+            },
+            {
+                "score_before": [10, 8],
+                "score_after": [20, 18],
+                "peak_margin": 4,
+            },
+        ]
+        is_close, max_margin = _detect_close_game(blocks)
+        assert is_close is True
+
+
+class TestPeakLineInPrompt:
+    """Tests for Peak: line appearing in block prompt."""
+
+    def test_peak_line_appears_when_threshold_met(self) -> None:
+        """Peak: line appears when peak_margin >= boundary_margin + 6."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [50, 43],  # boundary margin = 7
+                "key_play_ids": [],
+                "peak_margin": 22,  # 22 >= 7 + 6
+                "peak_leader": 1,
+            }
+        ]
+        game_context = {
+            "home_team_name": "Illinois",
+            "away_team_name": "UCLA",
+            "sport": "NCAAB",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+
+        assert "Peak: Illinois led by as many as 22 during this stretch" in prompt
+
+    def test_peak_line_suppressed_when_below_threshold(self) -> None:
+        """Peak: line suppressed when peak_margin < boundary_margin + 6."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [25, 18],  # boundary margin = 7
+                "key_play_ids": [],
+                "peak_margin": 10,  # 10 < 7 + 6
+                "peak_leader": 1,
+            }
+        ]
+        game_context = {
+            "home_team_name": "Illinois",
+            "away_team_name": "UCLA",
+            "sport": "NCAAB",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+        blocks_section = prompt.split("BLOCKS:")[-1]
+
+        assert "Peak:" not in blocks_section
+
+    def test_peak_line_away_team(self) -> None:
+        """Peak: line uses away team name when away led."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 12],  # boundary margin = 2
+                "key_play_ids": [],
+                "peak_margin": 15,
+                "peak_leader": -1,  # Away led
+            }
+        ]
+        game_context = {
+            "home_team_name": "Hawks",
+            "away_team_name": "Celtics",
+            "sport": "NBA",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+
+        assert "Peak: Celtics led by as many as 15 during this stretch" in prompt
+
+    def test_comeback_guidance_appears(self) -> None:
+        """BIG LEAD / COMEBACK guidance appears for comeback games."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [50, 43],
+                "key_play_ids": [],
+                "peak_margin": 22,
+                "peak_leader": 1,
+            },
+            {
+                "block_index": 1,
+                "role": SemanticRole.RESOLUTION.value,
+                "score_before": [50, 43],
+                "score_after": [70, 68],
+                "key_play_ids": [],
+                "peak_margin": 7,
+                "peak_leader": 1,
+            },
+        ]
+        game_context = {
+            "home_team_name": "Illinois",
+            "away_team_name": "UCLA",
+            "sport": "NCAAB",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+
+        assert "BIG LEAD / COMEBACK" in prompt
+        assert "Do NOT describe this as a 'modest' or 'slim' lead" in prompt
+
+    def test_no_comeback_guidance_for_normal_game(self) -> None:
+        """No BIG LEAD / COMEBACK guidance for normal games."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [10, 8],
+                "key_play_ids": [],
+                "peak_margin": 5,
+                "peak_leader": 1,
+            },
+            {
+                "block_index": 1,
+                "role": SemanticRole.RESOLUTION.value,
+                "score_before": [10, 8],
+                "score_after": [20, 18],
+                "key_play_ids": [],
+                "peak_margin": 3,
+                "peak_leader": 1,
+            },
+        ]
+        game_context = {
+            "home_team_name": "Home",
+            "away_team_name": "Away",
+            "sport": "NBA",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+
+        assert "BIG LEAD / COMEBACK" not in prompt
 
 
 class TestKeyPlayTeamNames:
