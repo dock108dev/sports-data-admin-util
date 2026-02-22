@@ -437,11 +437,55 @@ def _build_variations() -> None:
             school = parts[0]
             NCAAB_VARIATIONS[school] = (name, abbr)
             NCAAB_VARIATIONS[school.lower()] = (name, abbr)
+            # NCAA API adds trailing period to abbreviations (e.g., "Michigan St.")
+            if school.endswith(" St") or school.endswith(" Univ"):
+                NCAAB_VARIATIONS[school + "."] = (name, abbr)
+                NCAAB_VARIATIONS[(school + ".").lower()] = (name, abbr)
 
         # NCAA seo format (e.g., "michigan-st", "north-carolina")
         seo = _name_to_seo(name)
         if seo and seo not in NCAAB_VARIATIONS:
             NCAAB_VARIATIONS[seo] = (name, abbr)
+
+        # For teams with "State" in their name, add "St"/"St." short forms
+        # so NCAA API names like "Ohio St." resolve correctly.
+        # Handles both "Ohio State Buckeyes" (State in name) and multi-word
+        # mascots like "Penn State Nittany Lions" or "Kent State Golden Flashes".
+        state_idx = name.find(" State ")
+        if state_idx != -1:
+            # e.g., "Ohio State Buckeyes" → prefix = "Ohio"
+            prefix = name[:state_idx]
+            # "Ohio St" / "Ohio St."
+            for suffix in ["St", "St."]:
+                variant = f"{prefix} {suffix}"
+                NCAAB_VARIATIONS[variant] = (name, abbr)
+                NCAAB_VARIATIONS[variant.lower()] = (name, abbr)
+            # "Penn State" (for multi-word mascots where school != "X State")
+            state_variant = f"{prefix} State"
+            if state_variant not in NCAAB_VARIATIONS:
+                NCAAB_VARIATIONS[state_variant] = (name, abbr)
+                NCAAB_VARIATIONS[state_variant.lower()] = (name, abbr)
+            # SEO variant: "ohio-st"
+            st_seo = f"{prefix.lower().replace(' ', '-')}-st"
+            if st_seo not in NCAAB_VARIATIONS:
+                NCAAB_VARIATIONS[st_seo] = (name, abbr)
+
+        # For "St" teams (canonical already abbreviated, e.g., "Michigan St Spartans"),
+        # add truncated short form ("Michigan St", "Michigan St.") and
+        # "State" full form ("Michigan State").
+        st_idx = name.find(" St ")
+        if st_idx != -1:
+            prefix = name[:st_idx]
+            # "Michigan St" / "Michigan St."
+            for suffix in ["St", "St."]:
+                variant = f"{prefix} {suffix}"
+                NCAAB_VARIATIONS[variant] = (name, abbr)
+                NCAAB_VARIATIONS[variant.lower()] = (name, abbr)
+            # "Michigan State"
+            state_variant = f"{prefix} State"
+            if state_variant not in NCAAB_VARIATIONS:
+                NCAAB_VARIATIONS[state_variant] = (name, abbr)
+                NCAAB_VARIATIONS[state_variant.lower()] = (name, abbr)
 
     # Manual well-known variations
     _WELL_KNOWN: dict[str, str] = {
@@ -567,6 +611,11 @@ def _build_variations() -> None:
         "North Carolina Central Eagles": "North Carolina Central Eagles",
         "Texas Southern": "Texas Southern Tigers",
         "Texas Southern Tigers": "Texas Southern Tigers",
+        # NCAA API short name abbreviations
+        "Boston U.": "Boston Univ. Terriers",
+        "Boston U": "Boston Univ. Terriers",
+        "Northern Ky.": "Northern Kentucky Norse",
+        "Northern Ky": "Northern Kentucky Norse",
     }
 
     for variation, canonical in _WELL_KNOWN.items():
