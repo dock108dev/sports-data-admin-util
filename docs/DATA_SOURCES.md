@@ -200,12 +200,13 @@ This architecture allows collecting tweets once and mapping to multiple games if
 
 ### Schedule
 
-Social collection uses three complementary mechanisms:
-- **Hourly collection** (`collect_game_social`): Runs every 60 minutes, collects tweets for all teams with games today across all phases (scheduled, pregame, live, final)
+Social collection uses four complementary mechanisms:
+- **Hourly collection** (`collect_game_social`): Runs every 60 minutes, collects tweets for all teams with games today across all phases (scheduled, pregame, live, final). Iterates game-by-game with team dedup and configurable inter-game cooldown.
+- **Tweet mapping** (`map_social_to_games`): Runs every 30 minutes to map unmapped tweets in `team_social_posts` to games based on team and posting time.
 - **Final-whistle scrape** (`run_final_whistle_social`): Triggered automatically when games transition to FINAL status
 - **Daily sweep catch-up**: Runs at **4:00 AM EST** as part of the daily sweep for any missed games
 
-See `scraper/sports_scraper/celery_app.py` for schedule configuration.
+Cooldown and batch sizes are configurable via `SocialConfig` in `scraper/sports_scraper/config.py`. See `scraper/sports_scraper/celery_app.py` for schedule configuration.
 
 ### Collection Window
 - **Start**: 5:00 AM ET on game day

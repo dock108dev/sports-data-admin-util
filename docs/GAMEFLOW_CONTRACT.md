@@ -74,6 +74,8 @@ Moments do not have consumer-facing narratives. They exist for auditability.
 | `score_after` | [away, home] | Score at block end |
 | `narrative` | string | 1-5 sentences (~65 words) |
 | `embedded_social_post_id` | int | null | Optional social post ID (max 1 per block) |
+| `peak_margin` | int (optional) | Largest absolute margin within this block (0 if omitted) |
+| `peak_leader` | int (optional) | Who led at peak: 1=home, -1=away, 0=tied (0 if omitted) |
 
 ### Moment Fields (Traceability)
 
