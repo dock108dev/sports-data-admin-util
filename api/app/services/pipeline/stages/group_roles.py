@@ -100,7 +100,7 @@ def assign_roles(blocks: list[NarrativeBlock]) -> None:
     for block in blocks:
         margin_before = abs(block.score_before[0] - block.score_before[1])
         margin_after = abs(block.score_after[0] - block.score_after[1])
-        max_margin = max(max_margin, margin_before, margin_after)
+        max_margin = max(max_margin, margin_before, margin_after, block.peak_margin)
 
     is_close_game = max_margin <= CLOSE_GAME_MARGIN_THRESHOLD
 

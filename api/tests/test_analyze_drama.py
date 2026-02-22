@@ -93,6 +93,40 @@ class TestExtractQuarterSummary:
         # Actually: start margin = 0-0=0, end margin = 25-30=-5, swing = |-5-0| = 5
         assert summary["Q1"]["point_swing"] == 5
 
+    def test_peak_margin_tracked_within_quarter(self) -> None:
+        """Peak margin tracks the largest margin within a quarter, even if it erodes."""
+        moments = [
+            {"period": 1, "score_before": [0, 0], "score_after": [22, 0]},   # Home leads by 22
+            {"period": 1, "score_before": [22, 0], "score_after": [25, 18]},  # Lead shrinks to 7
+        ]
+
+        summary = _extract_quarter_summary(moments)
+
+        assert summary["Q1"]["peak_margin"] == 22
+        assert summary["Q1"]["peak_leader"] == 1  # Home led at peak
+
+    def test_peak_margin_away_team(self) -> None:
+        """Peak margin correctly identifies away team as leader."""
+        moments = [
+            {"period": 1, "score_before": [0, 0], "score_after": [5, 20]},   # Away leads by 15
+            {"period": 1, "score_before": [5, 20], "score_after": [15, 22]},  # Away still leads but margin shrinks
+        ]
+
+        summary = _extract_quarter_summary(moments)
+
+        assert summary["Q1"]["peak_margin"] == 15
+        assert summary["Q1"]["peak_leader"] == -1  # Away led at peak
+
+    def test_peak_margin_zero_in_tied_game(self) -> None:
+        """Peak margin is 0 when game stays tied."""
+        moments = [
+            {"period": 1, "score_before": [0, 0], "score_after": [10, 10]},
+        ]
+
+        summary = _extract_quarter_summary(moments)
+
+        assert summary["Q1"]["peak_margin"] == 0
+
     def test_score_start_and_end_tracked(self) -> None:
         """Score start and end tracked correctly for each quarter."""
         moments = [

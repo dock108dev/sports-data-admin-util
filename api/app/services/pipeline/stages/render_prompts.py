@@ -155,6 +155,7 @@ def build_game_flow_pass_prompt(
     league_code = game_context.get("sport", "NBA")
 
     is_close_game, max_margin = _detect_close_game(blocks)
+    is_comeback, game_peak_margin, final_margin = _detect_big_lead_comeback(blocks)
 
     prompt_parts = [
         GAME_FLOW_PASS_PROMPT,
@@ -165,6 +166,12 @@ def build_game_flow_pass_prompt(
     if is_close_game:
         prompt_parts.append(
             f"\nNOTE: Close game (max margin: {max_margin} pts). Don't overstate leads. Detail the finish."
+        )
+
+    if is_comeback:
+        prompt_parts.append(
+            f"\nNOTE: Comeback game (peak margin: {game_peak_margin}, final: {final_margin}). "
+            f"A team led by {game_peak_margin} at one point — narrate the swing."
         )
 
     prompt_parts.extend([
@@ -197,6 +204,13 @@ def build_game_flow_pass_prompt(
         if ot_info["enters_overtime"]:
             prompt_parts.append(f"*** MUST MENTION: Game goes to {ot_info['ot_label']} ***")
 
+        # Add peak margin context for flow pass when meaningfully different
+        flow_peak = block.get("peak_margin", 0)
+        flow_boundary = max(abs(score_before[0] - score_before[1]),
+                            abs(score_after[0] - score_after[1]))
+        if flow_peak >= flow_boundary + 6:
+            prompt_parts.append(f"(Peak margin in this block: {flow_peak})")
+
         prompt_parts.append(f"Current narrative: {narrative}")
 
     return "\n".join(prompt_parts)
@@ -214,9 +228,43 @@ def _detect_close_game(blocks: list[dict[str, Any]]) -> tuple[bool, int]:
         score_after = block.get("score_after", [0, 0])
         margin_before = abs(score_before[0] - score_before[1])
         margin_after = abs(score_after[0] - score_after[1])
-        max_margin = max(max_margin, margin_before, margin_after)
+        block_peak = block.get("peak_margin", 0)
+        max_margin = max(max_margin, margin_before, margin_after, block_peak)
     # A game where no team ever led by more than 7 is a tight contest
     return max_margin <= 7, max_margin
+
+
+def _detect_big_lead_comeback(
+    blocks: list[dict[str, Any]],
+) -> tuple[bool, int, int]:
+    """Detect if a game had a big lead that was overcome (comeback).
+
+    A comeback = peak_margin >= 15 AND final_margin < peak_margin * 0.5
+
+    Returns:
+        Tuple of (is_comeback, game_peak_margin, final_margin)
+    """
+    game_peak_margin = 0
+    for block in blocks:
+        # Check block-level peak_margin field
+        block_peak = block.get("peak_margin", 0)
+        if block_peak > game_peak_margin:
+            game_peak_margin = block_peak
+        # Also check boundary scores
+        score_before = block.get("score_before", [0, 0])
+        score_after = block.get("score_after", [0, 0])
+        for s in (score_before, score_after):
+            margin = abs(s[0] - s[1])
+            if margin > game_peak_margin:
+                game_peak_margin = margin
+
+    # Final margin from the last block
+    last_block = blocks[-1] if blocks else {}
+    final_score = last_block.get("score_after", [0, 0])
+    final_margin = abs(final_score[0] - final_score[1])
+
+    is_comeback = game_peak_margin >= 15 and final_margin < game_peak_margin * 0.5
+    return is_comeback, game_peak_margin, final_margin
 
 
 def build_block_prompt(
@@ -255,6 +303,9 @@ def build_block_prompt(
 
     # Detect close game for tone guidance
     is_close_game, max_margin = _detect_close_game(blocks)
+
+    # Detect big lead / comeback
+    is_comeback, game_peak_margin, final_margin = _detect_big_lead_comeback(blocks)
 
     # Build play lookup
     play_lookup: dict[int, dict[str, Any]] = {
@@ -346,6 +397,8 @@ def build_block_prompt(
         "CONTEXTUAL DATA USAGE:",
         "- [Lead:] lines describe how the lead/deficit changed during this block",
         "  Weave naturally: 'extending the lead to 8' or 'pulling within 3'",
+        "- [Peak:] lines show the largest lead WITHIN a block, even if it eroded by block's end",
+        "  Use this to anchor the high-water mark: 'built a 22-point lead before...'",
         "- [Contributors:] lines show who drove the scoring in this block",
         "  Integrate naturally: mention these players' actions, not their stat lines",
         "- Do NOT quote these lines verbatim - use them as narrative fuel",
@@ -361,6 +414,16 @@ def build_block_prompt(
             f"CLOSE GAME (max margin: {max_margin} pts):",
             "- Do NOT overstate leads when margin is 1-2 pts. Emphasize back-and-forth.",
             "- RESOLUTION: Capture the tension of the finish with specificity.",
+            "",
+        ])
+
+    # Add big lead / comeback guidance
+    if is_comeback:
+        prompt_parts.extend([
+            f"BIG LEAD / COMEBACK (peak margin: {game_peak_margin}, final: {final_margin}):",
+            f"- A team led by {game_peak_margin} at one point. Do NOT describe this as a 'modest' or 'slim' lead.",
+            "- If the lead eroded, narrate the comeback arc — name the swing.",
+            "- Use [Peak:] data in blocks to anchor the high-water mark.",
             "",
         ])
 
@@ -437,6 +500,17 @@ def build_block_prompt(
         lead_line = _format_lead_line(score_before, score_after, home_team, away_team)
         if lead_line:
             prompt_parts.append(lead_line)
+
+        # Peak margin context — only when peak is meaningfully larger than boundary margin
+        block_peak_margin = block.get("peak_margin", 0)
+        block_peak_leader = block.get("peak_leader", 0)
+        boundary_margin = max(abs(score_before[0] - score_before[1]),
+                              abs(score_after[0] - score_after[1]))
+        if block_peak_margin >= boundary_margin + 6:
+            peak_team = home_team if block_peak_leader == 1 else away_team
+            prompt_parts.append(
+                f"Peak: {peak_team} led by as many as {block_peak_margin} during this stretch"
+            )
 
         # Block star contributors
         mini_box = block.get("mini_box")
