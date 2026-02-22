@@ -241,6 +241,41 @@ def build_run_summary(run: GamePipelineRun) -> PipelineRunSummary:
     )
 
 
+def validate_pipeline_stage(stage: str) -> PipelineStage:
+    """Validate a stage string and return the corresponding PipelineStage.
+
+    Raises HTTPException 400 if the stage is invalid.
+    """
+    try:
+        return PipelineStage(stage)
+    except ValueError as exc:
+        valid_stages = [s.value for s in PipelineStage]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid stage: {stage}. Valid stages: {valid_stages}",
+        ) from exc
+
+
+def get_stage_record(
+    run: GamePipelineRun,
+    stage: str,
+    *,
+    raise_not_found: bool = True,
+) -> GamePipelineStage | None:
+    """Find a stage record in a run's stages.
+
+    If raise_not_found is True (default), raises HTTPException 404 when stage
+    is not found.  Otherwise returns None.
+    """
+    record = next((s for s in run.stages if s.stage == stage), None)
+    if record is None and raise_not_found:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stage {stage} not found for run {run.id}",
+        )
+    return record
+
+
 def get_stage_description(stage: PipelineStage) -> str:
     """Get human-readable description for a stage."""
     descriptions = {

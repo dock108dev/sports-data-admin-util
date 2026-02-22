@@ -73,3 +73,36 @@ def parse_minutes(value: str | int | float | None) -> float | None:
             pass
 
     return None
+
+
+def extract_total(value: int | dict | None) -> int | None:
+    """Extract an int from a value that may be int or ``{"total": int, ...}``.
+
+    Used for player stats where the CBB API returns either flat integers or
+    nested objects.
+    """
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return parse_int(value.get("total"))
+    return parse_int(value)
+
+
+def extract_shooting_stat(
+    ps: dict,
+    flat_key: str,
+    nested_key: str,
+    sub_key: str,
+) -> int | None:
+    """Extract a shooting stat that may be flat or nested.
+
+    Tries ``ps[flat_key]`` first (flat format), then falls back to
+    ``ps[nested_key][sub_key]`` (nested format).
+    """
+    flat_val = extract_total(ps.get(flat_key))
+    if flat_val is not None:
+        return flat_val
+    nested = ps.get(nested_key)
+    if isinstance(nested, dict):
+        return extract_total(nested.get(sub_key))
+    return None

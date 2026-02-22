@@ -146,7 +146,7 @@ def collect_social_for_league(league: str) -> dict:
         session.flush()
 
         # Map newly collected tweets to games
-        map_result = map_unmapped_tweets(session=session)
+        map_result = map_unmapped_tweets(session=session, batch_size=settings.social_config.tweet_mapper_batch_size)
         result["mapping"] = map_result
 
     logger.info("social_task_complete", league=league, **{
@@ -212,7 +212,7 @@ def collect_team_social(
             session.flush()
 
             # Always map tweets to games after collection
-            map_result = map_unmapped_tweets(session=session)
+            map_result = map_unmapped_tweets(session=session, batch_size=settings.social_config.tweet_mapper_batch_size)
             result["mapping"] = map_result
 
         tracker.summary_data = result
@@ -307,7 +307,7 @@ def collect_game_social() -> dict:
         if not games:
             logger.info("collect_game_social_no_games", game_date=str(game_date))
             # Still map any leftover unmapped tweets from previous runs
-            map_result = map_unmapped_tweets(session=session)
+            map_result = map_unmapped_tweets(session=session, batch_size=settings.social_config.tweet_mapper_batch_size)
             return {
                 "game_date": str(game_date),
                 "teams_processed": 0,
@@ -385,7 +385,7 @@ def collect_game_social() -> dict:
         session.commit()
 
         # Map newly collected tweets to games
-        map_result = map_unmapped_tweets(session=session)
+        map_result = map_unmapped_tweets(session=session, batch_size=settings.social_config.tweet_mapper_batch_size)
 
         result = {
             "game_date": str(game_date),

@@ -23,7 +23,9 @@ from .helpers import (
     build_run_summary,
     get_run_with_stages,
     get_stage_description,
+    get_stage_record,
     summarize_output,
+    validate_pipeline_stage,
 )
 from .models import (
     ContinuePipelineResponse,
@@ -186,14 +188,7 @@ async def execute_stage(
     session: AsyncSession = Depends(get_db),
 ) -> ExecuteStageResponse:
     """Execute a specific stage of a pipeline run."""
-    try:
-        pipeline_stage = PipelineStage(stage)
-    except ValueError:
-        valid_stages = [s.value for s in PipelineStage]
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid stage: {stage}. Valid stages: {valid_stages}",
-        )
+    pipeline_stage = validate_pipeline_stage(stage)
 
     executor = PipelineExecutor(session)
 
@@ -205,10 +200,7 @@ async def execute_stage(
         next_stage = pipeline_stage.next_stage()
 
         output_summary = None
-        stage_record = next(
-            (s for s in run.stages if s.stage == stage),
-            None,
-        )
+        stage_record = get_stage_record(run, stage, raise_not_found=False)
         if stage_record and stage_record.output_json:
             output_summary = summarize_output(stage, stage_record.output_json)
 
@@ -523,23 +515,10 @@ async def get_stage_logs(
     session: AsyncSession = Depends(get_db),
 ) -> StageLogsResponse:
     """Get logs from a specific stage."""
-    try:
-        PipelineStage(stage)
-    except ValueError:
-        valid_stages = [s.value for s in PipelineStage]
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid stage: {stage}. Valid stages: {valid_stages}",
-        )
+    validate_pipeline_stage(stage)
 
     run = await get_run_with_stages(session, run_id)
-    stage_record = next((s for s in run.stages if s.stage == stage), None)
-
-    if not stage_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Stage {stage} not found for run {run_id}",
-        )
+    stage_record = get_stage_record(run, stage)
 
     logs = stage_record.logs_json or []
 
@@ -565,23 +544,10 @@ async def get_stage_output(
     session: AsyncSession = Depends(get_db),
 ) -> StageOutputResponse:
     """Get full output from a specific stage."""
-    try:
-        PipelineStage(stage)
-    except ValueError:
-        valid_stages = [s.value for s in PipelineStage]
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid stage: {stage}. Valid stages: {valid_stages}",
-        )
+    validate_pipeline_stage(stage)
 
     run = await get_run_with_stages(session, run_id)
-    stage_record = next((s for s in run.stages if s.stage == stage), None)
-
-    if not stage_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Stage {stage} not found for run {run_id}",
-        )
+    stage_record = get_stage_record(run, stage)
 
     output = stage_record.output_json
     summary = summarize_output(stage, output) if output else {}
@@ -611,14 +577,7 @@ async def compare_stage_outputs(
     session: AsyncSession = Depends(get_db),
 ) -> StageComparisonResponse:
     """Compare a stage's output between two runs."""
-    try:
-        PipelineStage(stage)
-    except ValueError:
-        valid_stages = [s.value for s in PipelineStage]
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid stage: {stage}. Valid stages: {valid_stages}",
-        )
+    validate_pipeline_stage(stage)
 
     run_a = await get_run_with_stages(session, run_a_id)
     run_b = await get_run_with_stages(session, run_b_id)
@@ -629,8 +588,8 @@ async def compare_stage_outputs(
             detail="Both runs must be for the specified game",
         )
 
-    stage_a = next((s for s in run_a.stages if s.stage == stage), None)
-    stage_b = next((s for s in run_b.stages if s.stage == stage), None)
+    stage_a = get_stage_record(run_a, stage, raise_not_found=False)
+    stage_b = get_stage_record(run_b, stage, raise_not_found=False)
 
     if not stage_a or not stage_b:
         raise HTTPException(
