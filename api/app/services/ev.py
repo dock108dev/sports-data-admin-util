@@ -74,19 +74,52 @@ def implied_to_american(prob: float) -> float:
         return ((1 - prob) / prob) * 100.0
 
 
-def prob_to_vigged_american(true_prob: float, vig_per_side: float = 0.01) -> float:
+def shin_add_vig(true_probs: list[float], overround: float = 1.02) -> list[float]:
+    """Add vig using Shin's model (inverse of remove_vig).
+
+    Given true probabilities summing to ~1.0, produces implied probabilities
+    summing to *overround*.  Allocates more vig to longshots than favorites,
+    mirroring how sharp books actually price markets.
+
+    Falls back to proportional scaling when overround <= 1.
+
+    Args:
+        true_probs: List of true (no-vig) probabilities.
+        overround: Target sum of implied probabilities (e.g., 1.02 for 2% vig).
+
+    Returns:
+        List of implied (vigged) probabilities.
+    """
+    if overround <= 1.0:
+        return [p * overround for p in true_probs]
+
+    z = 1.0 - 1.0 / overround
+
+    result: list[float] = []
+    for p in true_probs:
+        a = 2.0 * (1.0 - z) * p + z
+        q = math.sqrt(a * a - z * z) / (2.0 * (1.0 - z))
+        result.append(q)
+    return result
+
+
+def prob_to_vigged_american(true_prob: float, overround: float = 1.02) -> float:
     """Convert true probability to estimated vigged American price.
 
-    Applies typical Pinnacle vig (~2% total overround, ~1% per side).
+    Uses Shin's model to add vig (consistent with how remove_vig strips it),
+    allocating more vig to the longshot side.
+
+    Assumes Pinnacle-typical ~2% total overround by default.
 
     Args:
         true_prob: True probability (0-1).
-        vig_per_side: Vig to add per side (default 0.01 = 1%).
+        overround: Target total overround (default 1.02 = ~2% vig).
 
     Returns:
         Estimated vigged American odds.
     """
-    vigged_prob = max(0.001, min(0.999, true_prob * (1 + vig_per_side)))
+    vigged_probs = shin_add_vig([true_prob, 1.0 - true_prob], overround)
+    vigged_prob = max(0.001, min(0.999, vigged_probs[0]))
     return implied_to_american(vigged_prob)
 
 
