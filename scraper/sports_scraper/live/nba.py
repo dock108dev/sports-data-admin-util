@@ -23,7 +23,9 @@ from ..utils.parsing import parse_int
 from .nba_boxscore import NBABoxscoreFetcher
 from .nba_models import NBABoxscore
 
-NBA_SCOREBOARD_URL = "https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_{date}.json"
+# NBA retired date-specific scoreboard URLs (403). The generic _00 endpoint
+# always returns the current NBA-day scoreboard with live status + scores.
+NBA_SCOREBOARD_URL = "https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json"
 NBA_SCHEDULE_URL = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
 NBA_PBP_URL = "https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
 NBA_PERIOD_MULTIPLIER = 10000
@@ -84,8 +86,12 @@ class NBALiveFeedClient:
         return self._fetch_games_from_schedule(day)
 
     def _fetch_live_scoreboard(self, day: date) -> list[NBALiveGame]:
-        """Fetch the date-specific live scoreboard with real status + scores."""
-        url = NBA_SCOREBOARD_URL.format(date=day.strftime("%Y%m%d"))
+        """Fetch the live scoreboard with real status + scores.
+
+        Uses the generic _00 endpoint which returns the current NBA-day games.
+        The `day` parameter is logged but no longer used to build the URL.
+        """
+        url = NBA_SCOREBOARD_URL
         logger.info("nba_scoreboard_fetch", url=url, date=str(day))
         try:
             response = self.client.get(url)

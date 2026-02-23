@@ -611,11 +611,62 @@ def _build_variations() -> None:
         "North Carolina Central Eagles": "North Carolina Central Eagles",
         "Texas Southern": "Texas Southern Tigers",
         "Texas Southern Tigers": "Texas Southern Tigers",
-        # NCAA API short name abbreviations
+        # NCAA API short name abbreviations — the NCAA scoreboard uses
+        # abbreviated state prefixes (Fla., N., S., W., E.) and drops mascots.
+        # Multi-word mascots (Mean Green, Tar Heels, Golden Eagles, etc.)
+        # break rsplit-based stripping, so explicit mappings are required.
         "Boston U.": "Boston Univ. Terriers",
         "Boston U": "Boston Univ. Terriers",
         "Northern Ky.": "Northern Kentucky Norse",
         "Northern Ky": "Northern Kentucky Norse",
+        # Florida -> Fla.
+        "Fla. Atlantic": "Florida Atlantic Owls",
+        "Fla. Gulf Coast": "Florida Gulf Coast Eagles",
+        "Fla. A&M": "Florida A&M Rattlers",
+        "Fla. International": "Florida Int'l Golden Panthers",
+        "Fla. State": "Florida St Seminoles",
+        "Fla. St.": "Florida St Seminoles",
+        # Multi-word mascot teams (school name without mascot)
+        "North Texas": "North Texas Mean Green",
+        "North Carolina": "North Carolina Tar Heels",
+        "Southern Miss": "Southern Miss Golden Eagles",
+        "South Carolina Upstate": "South Carolina Upstate Spartans",
+        "Southern Indiana": "Southern Indiana Screaming Eagles",
+        "Fort Wayne": "Fort Wayne Mastodons",
+        "Purdue Fort Wayne": "Fort Wayne Mastodons",
+        # North/South/East/West abbreviated
+        "N. Texas": "North Texas Mean Green",
+        "N. Carolina": "North Carolina Tar Heels",
+        "N. Carolina A&T": "North Carolina A&T Aggies",
+        "N. Carolina Central": "North Carolina Central Eagles",
+        "N. Alabama": "North Alabama Lions",
+        "N. Florida": "North Florida Ospreys",
+        "N. Dakota St.": "North Dakota St Bison",
+        "N. Dakota": "North Dakota Fighting Hawks",
+        "N. Arizona": "Northern Arizona Lumberjacks",
+        "N. Illinois": "Northern Illinois Huskies",
+        "N. Iowa": "Northern Iowa Panthers",
+        "S. Carolina": "South Carolina Gamecocks",
+        "S. Carolina St.": "South Carolina St Bulldogs",
+        "S. Florida": "South Florida Bulls",
+        "S. Alabama": "South Alabama Jaguars",
+        "S. Dakota St.": "South Dakota St Jackrabbits",
+        "S. Dakota": "South Dakota Coyotes",
+        "S. Illinois": "Southern Illinois Salukis",
+        "S. Miss": "Southern Miss Golden Eagles",
+        "S. Utah": "Southern Utah Thunderbirds",
+        "W. Virginia": "West Virginia Mountaineers",
+        "W. Kentucky": "Western Kentucky Hilltoppers",
+        "W. Michigan": "Western Michigan Broncos",
+        "W. Carolina": "Western Carolina Catamounts",
+        "W. Illinois": "Western Illinois Leathernecks",
+        "E. Carolina": "East Carolina Pirates",
+        "E. Michigan": "Eastern Michigan Eagles",
+        "E. Kentucky": "Eastern Kentucky Colonels",
+        "E. Washington": "Eastern Washington Eagles",
+        "E. Illinois": "Eastern Illinois Panthers",
+        "E. Tennessee St.": "East Tennessee St Buccaneers",
+        "Detroit Mercy": "Detroit Mercy Titans",
     }
 
     for variation, canonical in _WELL_KNOWN.items():
