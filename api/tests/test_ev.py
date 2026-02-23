@@ -254,7 +254,7 @@ class TestEvaluateEVEligibility:
         assert result.eligible is False
         assert result.disabled_reason == "reference_missing"
         assert result.ev_method == "pinnacle_devig"
-        assert result.confidence_tier == "high"
+        assert result.confidence_tier is None  # No tier when reference missing
 
     def test_reference_stale(self) -> None:
         """Pinnacle observed_at older than staleness limit → 'reference_stale'."""
@@ -299,11 +299,12 @@ class TestEvaluateEVEligibility:
         assert result.eligible is True
         assert result.disabled_reason is None
         assert result.ev_method == "pinnacle_devig"
-        assert result.confidence_tier == "high"
+        # 2 non-sharp books per side (DraftKings, FanDuel) → "thin"
+        assert result.confidence_tier == "thin"
         assert result.strategy_config is not None
 
     def test_eligible_ncaab_player_prop(self) -> None:
-        """Eligible NCAAB player prop → LOW confidence."""
+        """Eligible NCAAB player prop — 2 non-sharp books → thin."""
         result = evaluate_ev_eligibility(
             "NCAAB",
             "player_prop",
@@ -312,7 +313,8 @@ class TestEvaluateEVEligibility:
             now=NOW,
         )
         assert result.eligible is True
-        assert result.confidence_tier == "low"
+        # 2 non-sharp books per side → "thin"
+        assert result.confidence_tier == "thin"
 
     def test_excluded_books_dont_count(self) -> None:
         """Excluded books should not count toward min_qualifying_books."""
@@ -353,7 +355,8 @@ class TestComputeEVForMarket:
         )
         assert isinstance(result, EVComputeResult)
         assert result.ev_method == "pinnacle_devig"
-        assert result.confidence_tier == "high"
+        # 1 non-sharp book per side (DraftKings) → "thin"
+        assert result.confidence_tier == "thin"
 
     def test_true_probs_sum_to_one(self, nba_mainline_config: EVStrategyConfig) -> None:
         result = compute_ev_for_market(

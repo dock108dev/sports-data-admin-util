@@ -393,8 +393,11 @@ def _try_extrapolated_ev(
             },
         )
 
-    # 9. Confidence tier (string for ev_confidence_tier field)
-    confidence_tier = extrapolation_confidence(n_half_points)
+    # 9. Confidence tier based on non-sharp book count (min of both sides)
+    _sharp_set = {"Pinnacle"}
+    _ns_a = sum(1 for b in bets_map[key_a]["books"] if (b["book"] if isinstance(b, dict) else b.book) in INCLUDED_BOOKS and (b["book"] if isinstance(b, dict) else b.book) not in _sharp_set)
+    _ns_b = sum(1 for b in bets_map[key_b]["books"] if (b["book"] if isinstance(b, dict) else b.book) in INCLUDED_BOOKS and (b["book"] if isinstance(b, dict) else b.book) not in _sharp_set)
+    confidence_tier = extrapolation_confidence(min(_ns_a, _ns_b))
 
     # 10. Reference prices from the chosen ref (for display)
     ref_price_a = best_ref["prices"].get(sel_a)

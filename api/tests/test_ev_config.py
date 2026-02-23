@@ -14,6 +14,7 @@ from app.services.ev_config import (
     EVStrategyConfig,
     get_fairbet_debug_game_ids,
     get_strategy,
+    market_confidence_tier,
 )
 
 
@@ -44,16 +45,30 @@ class TestBookLists:
 
 
 class TestConfidenceTier:
-    """Tests for ConfidenceTier enum."""
+    """Tests for ConfidenceTier enum and market_confidence_tier()."""
 
-    def test_high_value(self) -> None:
-        assert ConfidenceTier.HIGH.value == "high"
+    def test_full_value(self) -> None:
+        assert ConfidenceTier.FULL.value == "full"
 
-    def test_medium_value(self) -> None:
-        assert ConfidenceTier.MEDIUM.value == "medium"
+    def test_decent_value(self) -> None:
+        assert ConfidenceTier.DECENT.value == "decent"
 
-    def test_low_value(self) -> None:
-        assert ConfidenceTier.LOW.value == "low"
+    def test_thin_value(self) -> None:
+        assert ConfidenceTier.THIN.value == "thin"
+
+    def test_market_confidence_tier_full(self) -> None:
+        assert market_confidence_tier(5) == "full"
+        assert market_confidence_tier(6) == "full"
+        assert market_confidence_tier(10) == "full"
+
+    def test_market_confidence_tier_decent(self) -> None:
+        assert market_confidence_tier(3) == "decent"
+        assert market_confidence_tier(4) == "decent"
+
+    def test_market_confidence_tier_thin(self) -> None:
+        assert market_confidence_tier(0) == "thin"
+        assert market_confidence_tier(1) == "thin"
+        assert market_confidence_tier(2) == "thin"
 
 
 class TestEVStrategyConfig:
@@ -65,7 +80,6 @@ class TestEVStrategyConfig:
             eligible_sharp_books=("Pinnacle",),
             min_qualifying_books=3,
             max_reference_staleness_seconds=3600,
-            confidence_tier=ConfidenceTier.HIGH,
             allow_longshots=False,
             max_fair_prob_divergence=0.08,
         )
@@ -78,7 +92,6 @@ class TestEVStrategyConfig:
             eligible_sharp_books=("Pinnacle",),
             min_qualifying_books=3,
             max_reference_staleness_seconds=3600,
-            confidence_tier=ConfidenceTier.HIGH,
             allow_longshots=False,
             max_fair_prob_divergence=0.08,
         )
@@ -95,7 +108,7 @@ class TestEligibilityResult:
             strategy_config=None,
             disabled_reason=None,
             ev_method="pinnacle_devig",
-            confidence_tier="high",
+            confidence_tier="full",
         )
         assert result.eligible is True
         assert result.disabled_reason is None
@@ -115,41 +128,35 @@ class TestEligibilityResult:
 class TestGetStrategy:
     """Tests for get_strategy() lookup."""
 
-    def test_nba_mainline_returns_high(self) -> None:
+    def test_nba_mainline_staleness(self) -> None:
         config = get_strategy("NBA", "mainline")
         assert config is not None
-        assert config.confidence_tier == ConfidenceTier.HIGH
         assert config.max_reference_staleness_seconds == 3600
 
-    def test_nhl_mainline_returns_high(self) -> None:
+    def test_nhl_mainline_staleness(self) -> None:
         config = get_strategy("NHL", "mainline")
         assert config is not None
-        assert config.confidence_tier == ConfidenceTier.HIGH
         assert config.max_reference_staleness_seconds == 3600
 
-    def test_ncaab_mainline_returns_medium(self) -> None:
+    def test_ncaab_mainline_staleness(self) -> None:
         config = get_strategy("NCAAB", "mainline")
         assert config is not None
-        assert config.confidence_tier == ConfidenceTier.MEDIUM
         assert config.max_reference_staleness_seconds == 1800
 
-    def test_player_prop_returns_low(self) -> None:
+    def test_player_prop_exists(self) -> None:
         for league in ("NBA", "NHL", "NCAAB"):
             config = get_strategy(league, "player_prop")
             assert config is not None
-            assert config.confidence_tier == ConfidenceTier.LOW
 
-    def test_team_prop_returns_medium(self) -> None:
+    def test_team_prop_exists(self) -> None:
         for league in ("NBA", "NHL", "NCAAB"):
             config = get_strategy(league, "team_prop")
             assert config is not None
-            assert config.confidence_tier == ConfidenceTier.MEDIUM
 
-    def test_alternate_returns_low(self) -> None:
+    def test_alternate_exists(self) -> None:
         for league in ("NBA", "NHL", "NCAAB"):
             config = get_strategy(league, "alternate")
             assert config is not None
-            assert config.confidence_tier == ConfidenceTier.LOW
 
     def test_period_returns_none(self) -> None:
         for league in ("NBA", "NHL", "NCAAB"):

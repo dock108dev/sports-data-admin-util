@@ -12,11 +12,31 @@ from enum import Enum
 
 
 class ConfidenceTier(str, Enum):
-    """Confidence tier for EV estimates."""
+    """Market confidence tier — how much to trust the line reflects true probability.
 
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
+    Based on non-sharp book count: more books pricing a market means more
+    two-way action keeping the line honest.
+    """
+
+    FULL = "full"      # 5+ non-sharp books — deep, efficient market
+    DECENT = "decent"  # 3-4 non-sharp books — reasonable price discovery
+    THIN = "thin"      # ≤2 non-sharp books — low liquidity, line may be stale/unbalanced
+
+
+def market_confidence_tier(non_sharp_book_count: int) -> str:
+    """Compute market confidence tier from non-sharp book count.
+
+    Args:
+        non_sharp_book_count: Number of non-sharp books pricing one side of the market.
+
+    Returns:
+        "full", "decent", or "thin".
+    """
+    if non_sharp_book_count >= 5:
+        return ConfidenceTier.FULL.value
+    if non_sharp_book_count >= 3:
+        return ConfidenceTier.DECENT.value
+    return ConfidenceTier.THIN.value
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +47,6 @@ class EVStrategyConfig:
     eligible_sharp_books: tuple[str, ...]  # Reference price sources (display names)
     min_qualifying_books: int  # Per-side minimum non-excluded books
     max_reference_staleness_seconds: int  # observed_at vs now()
-    confidence_tier: ConfidenceTier
     allow_longshots: bool  # Informational only in Phase 1
     max_fair_prob_divergence: float  # Max |fair_prob - median_implied_prob| allowed
 
@@ -40,7 +59,7 @@ class EligibilityResult:
     strategy_config: EVStrategyConfig | None
     disabled_reason: str | None  # "no_strategy" | "reference_missing" | "reference_stale" | "insufficient_books" | "fair_odds_outlier"
     ev_method: str | None  # e.g., "pinnacle_devig"
-    confidence_tier: str | None  # "high" | "medium" | "low"
+    confidence_tier: str | None  # "full" | "decent" | "thin"
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +113,6 @@ _PINNACLE_MAINLINE_NBA_NHL = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=3600,  # 1 hour
-    confidence_tier=ConfidenceTier.HIGH,
     allow_longshots=False,
     max_fair_prob_divergence=0.08,  # Tight — mainlines are efficient
 )
@@ -104,7 +122,6 @@ _PINNACLE_MAINLINE_NCAAB = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    confidence_tier=ConfidenceTier.MEDIUM,
     allow_longshots=False,
     max_fair_prob_divergence=0.10,  # Wider — less liquid
 )
@@ -114,9 +131,8 @@ _PINNACLE_PLAYER_PROP = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    confidence_tier=ConfidenceTier.LOW,
     allow_longshots=False,
-    max_fair_prob_divergence=0.10,  # Widest for non-alt — thin Pinnacle coverage
+    max_fair_prob_divergence=0.10,  # Thin Pinnacle coverage
 )
 
 _PINNACLE_TEAM_PROP = EVStrategyConfig(
@@ -124,7 +140,6 @@ _PINNACLE_TEAM_PROP = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    confidence_tier=ConfidenceTier.MEDIUM,
     allow_longshots=False,
     max_fair_prob_divergence=0.10,
 )
@@ -134,7 +149,6 @@ _PINNACLE_ALTERNATE = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    confidence_tier=ConfidenceTier.LOW,
     allow_longshots=False,
     max_fair_prob_divergence=0.12,  # Widest — alt lines inherently have wider vig
 )
@@ -204,19 +218,19 @@ MAINLINE_DISAGREEMENT_MAX_POINTS: float = 2.0
 SHARP_REF_MAX_AGE_SECONDS: int = 3600
 
 
-def extrapolation_confidence(n_half_points: float) -> str:
-    """Return confidence tier based on how far we're extrapolating.
+def extrapolation_confidence(non_sharp_book_count: int) -> str:
+    """Return confidence tier for an extrapolated market.
+
+    Uses the same book-count logic as direct devig — the tier reflects
+    market depth, not derivation method.
 
     Args:
-        n_half_points: Number of half-points from the reference line.
+        non_sharp_book_count: Number of non-sharp books pricing the market.
 
     Returns:
-        "medium" for 1-2 half-points, "low" for 3+.
+        "full", "decent", or "thin".
     """
-    abs_hp = abs(n_half_points)
-    if abs_hp <= 2:
-        return "medium"
-    return "low"
+    return market_confidence_tier(non_sharp_book_count)
 
 
 def get_strategy(league_code: str, market_category: str) -> EVStrategyConfig | None:

@@ -20,6 +20,7 @@ from .ev_config import (
     EligibilityResult,
     EVStrategyConfig,
     get_strategy,
+    market_confidence_tier,
 )
 
 logger = logging.getLogger(__name__)
@@ -335,7 +336,7 @@ def evaluate_ev_eligibility(
             strategy_config=config,
             disabled_reason="reference_missing",
             ev_method=config.strategy_name,
-            confidence_tier=config.confidence_tier.value,
+            confidence_tier=None,
         )
 
     # 3. Freshness check
@@ -352,12 +353,17 @@ def evaluate_ev_eligibility(
                 strategy_config=config,
                 disabled_reason="reference_stale",
                 ev_method=config.strategy_name,
-                confidence_tier=config.confidence_tier.value,
+                confidence_tier=None,
             )
 
     # 4. Minimum qualifying books per side (must be in INCLUDED_BOOKS)
     qualifying_a = sum(1 for b in side_a_books if b["book"] in INCLUDED_BOOKS)
     qualifying_b = sum(1 for b in side_b_books if b["book"] in INCLUDED_BOOKS)
+
+    # Non-sharp book count = total included minus sharp books
+    non_sharp_a = sum(1 for b in side_a_books if b["book"] in INCLUDED_BOOKS and b["book"] not in config.eligible_sharp_books)
+    non_sharp_b = sum(1 for b in side_b_books if b["book"] in INCLUDED_BOOKS and b["book"] not in config.eligible_sharp_books)
+    non_sharp_count = min(non_sharp_a, non_sharp_b)
 
     if (
         qualifying_a < config.min_qualifying_books
@@ -368,7 +374,7 @@ def evaluate_ev_eligibility(
             strategy_config=config,
             disabled_reason="insufficient_books",
             ev_method=config.strategy_name,
-            confidence_tier=config.confidence_tier.value,
+            confidence_tier=market_confidence_tier(non_sharp_count),
         )
 
     return EligibilityResult(
@@ -376,7 +382,7 @@ def evaluate_ev_eligibility(
         strategy_config=config,
         disabled_reason=None,
         ev_method=config.strategy_name,
-        confidence_tier=config.confidence_tier.value,
+        confidence_tier=market_confidence_tier(non_sharp_count),
     )
 
 
@@ -506,6 +512,12 @@ def compute_ev_for_market(
             if divergence > strategy_config.max_fair_prob_divergence:
                 fair_odds_suspect = True
 
+    # Non-sharp book count (min of both sides) for confidence tier
+    sharp_set = set(strategy_config.eligible_sharp_books)
+    non_sharp_a = sum(1 for b in side_a_books if b["book"] in INCLUDED_BOOKS and b["book"] not in sharp_set)
+    non_sharp_b = sum(1 for b in side_b_books if b["book"] in INCLUDED_BOOKS and b["book"] not in sharp_set)
+    tier = market_confidence_tier(min(non_sharp_a, non_sharp_b))
+
     return EVComputeResult(
         annotated_a=annotated_a,
         annotated_b=annotated_b,
@@ -514,6 +526,6 @@ def compute_ev_for_market(
         reference_price_a=sharp_a_price,
         reference_price_b=sharp_b_price,
         ev_method=strategy_config.strategy_name,
-        confidence_tier=strategy_config.confidence_tier.value,
+        confidence_tier=tier,
         fair_odds_suspect=fair_odds_suspect,
     )

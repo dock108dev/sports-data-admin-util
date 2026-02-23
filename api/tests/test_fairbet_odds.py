@@ -1161,7 +1161,7 @@ class TestFairOddsOutlierHandling:
                 assert book.ev_percent is None
             # But method and tier are still present
             assert bet.ev_method == "pinnacle_devig"
-            assert bet.ev_confidence_tier == "low"
+            assert bet.ev_confidence_tier == "thin"
 
     @pytest.mark.asyncio
     async def test_fair_odds_outlier_marks_sharp(self, mock_session, mock_game):
