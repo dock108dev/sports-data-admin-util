@@ -77,7 +77,7 @@ def sync_mainline_odds(league_code: str | None = None) -> dict:
 
         with track_job_run("sync_mainline_odds", leagues) as tracker:
             today = today_et()
-            end = today + timedelta(days=1)
+            end = today + timedelta(days=2)
 
             sync = OddsSynchronizer()
             results: dict[str, dict] = {}

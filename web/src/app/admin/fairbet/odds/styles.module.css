@@ -500,9 +500,8 @@
 .derivationPopover {
   position: absolute;
   bottom: calc(100% + 10px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: 240px;
+  left: 0;
+  width: 260px;
   background: #1f2937;
   color: #f9fafb;
   padding: 12px 14px;
@@ -517,8 +516,7 @@
   content: "";
   position: absolute;
   top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 20px;
   border: 6px solid transparent;
   border-top-color: #1f2937;
 }
