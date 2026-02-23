@@ -1400,26 +1400,28 @@ class TestMarketBase:
 
 
 class TestExtrapolationConfidence:
-    """Tests for extrapolation_confidence() tiers."""
+    """Tests for extrapolation_confidence() tiers based on non-sharp book count."""
 
-    def test_zero_is_medium(self):
-        assert extrapolation_confidence(0) == "medium"
+    def test_zero_books_is_thin(self):
+        assert extrapolation_confidence(0) == "thin"
 
-    def test_one_hp_is_medium(self):
-        assert extrapolation_confidence(1) == "medium"
+    def test_one_book_is_thin(self):
+        assert extrapolation_confidence(1) == "thin"
 
-    def test_two_hp_is_medium(self):
-        assert extrapolation_confidence(2) == "medium"
+    def test_two_books_is_thin(self):
+        assert extrapolation_confidence(2) == "thin"
 
-    def test_three_hp_is_low(self):
-        assert extrapolation_confidence(3) == "low"
+    def test_three_books_is_decent(self):
+        assert extrapolation_confidence(3) == "decent"
 
-    def test_ten_hp_is_low(self):
-        assert extrapolation_confidence(10) == "low"
+    def test_four_books_is_decent(self):
+        assert extrapolation_confidence(4) == "decent"
 
-    def test_negative_uses_abs(self):
-        assert extrapolation_confidence(-2) == "medium"
-        assert extrapolation_confidence(-3) == "low"
+    def test_five_books_is_full(self):
+        assert extrapolation_confidence(5) == "full"
+
+    def test_ten_books_is_full(self):
+        assert extrapolation_confidence(10) == "full"
 
 
 class TestBuildSharpReference:
