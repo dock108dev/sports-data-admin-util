@@ -201,6 +201,7 @@ When EV cannot be computed, the bet definition carries:
 |---|---|---|
 | `no_strategy` | No strategy configured for this (league, market_category) | `period` or `game_prop` market |
 | `no_pair` | No valid opposite side found for pairing | Single-sided market, or all entries in the `abs(line_value)` bucket share the same `selection_key` |
+| `entity_mismatch` | Cannot pair opposite sides of this market | Paired entries belong to different entities (e.g., different players, different team totals) |
 | `reference_missing` | Sharp book (Pinnacle) not present on one or both sides | Low-liquidity market, Pinnacle doesn't offer this line |
 | `reference_stale` | Sharp book data is too old | Odds haven't been refreshed recently |
 | `insufficient_books` | Too few qualifying books on a side | Niche market with limited book coverage |

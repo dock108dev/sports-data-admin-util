@@ -985,6 +985,50 @@ Get bet-centric odds for cross-book comparison with EV annotations.
       "confidence_display_label": "Sharp",
       "ev_method_display_name": "Pinnacle Devig",
       "ev_method_explanation": "Fair odds derived by removing vig from Pinnacle's line using Shin's method.",
+      "explanation_steps": [
+        {
+          "step_number": 1,
+          "title": "Convert odds to implied probability",
+          "description": "Each side's American odds are converted to an implied win probability.",
+          "detail_rows": [
+            { "label": "This side", "value": "-118 → 54.1%", "is_highlight": false },
+            { "label": "Other side", "value": "+108 → 48.1%", "is_highlight": false },
+            { "label": "Total", "value": "102.2%", "is_highlight": false }
+          ]
+        },
+        {
+          "step_number": 2,
+          "title": "Identify the vig",
+          "description": "The total implied probability exceeds 100% — the excess is the bookmaker's margin (vig).",
+          "detail_rows": [
+            { "label": "Total implied", "value": "102.2%", "is_highlight": false },
+            { "label": "Should be", "value": "100.0%", "is_highlight": false },
+            { "label": "Vig (margin)", "value": "2.2%", "is_highlight": true }
+          ]
+        },
+        {
+          "step_number": 3,
+          "title": "Remove the vig (Shin's method)",
+          "description": "Shin's method accounts for favorite-longshot bias, allocating more vig correction to longshots than favorites.",
+          "detail_rows": [
+            { "label": "Shin parameter (z)", "value": "0.0215", "is_highlight": false },
+            { "label": "Formula", "value": "p = (√(z² + 4(1−z)q²) − z) / (2(1−z))", "is_highlight": false },
+            { "label": "Fair probability", "value": "54.3%", "is_highlight": true },
+            { "label": "Fair odds", "value": "-119", "is_highlight": false }
+          ]
+        },
+        {
+          "step_number": 4,
+          "title": "Calculate EV at best price",
+          "description": "Expected value measures the average profit per dollar wagered at the best available price.",
+          "detail_rows": [
+            { "label": "Best price", "value": "-110 (DraftKings)", "is_highlight": false },
+            { "label": "Win", "value": "54.3% x $0.91 profit = +$0.4941", "is_highlight": false },
+            { "label": "Loss", "value": "45.7% x $1.00 risked = -$0.4570", "is_highlight": false },
+            { "label": "EV", "value": "+2.15%", "is_highlight": true }
+          ]
+        }
+      ],
       "books": [
         {
           "book": "DraftKings",
@@ -1049,6 +1093,7 @@ Get bet-centric odds for cross-book comparison with EV annotations.
 - `confidence_display_label`: Human-readable confidence tier ("Sharp", "Market", "Thin")
 - `ev_method_display_name`: Human-readable EV method name (e.g., "Pinnacle Devig")
 - `ev_method_explanation`: Sentence explaining how fair odds were derived
+- `explanation_steps`: Step-by-step math walkthrough of how fair odds were derived. Each step has `step_number`, `title`, `description`, and `detail_rows` (label/value pairs with optional `is_highlight`). `null` when not enriched. Paths: Pinnacle devig (3-4 steps), extrapolated (3-4 steps), fallback (1-2 steps), not available (1 step with disabled reason label)
 - `ev_config`: Global configuration for EV display thresholds
 - Per-book `book_abbr`: Short abbreviation (e.g., "DK", "FD", "PIN")
 - Per-book `price_decimal`: Decimal odds equivalent of the American price
@@ -1695,6 +1740,20 @@ interface BetDefinition {
   ev_disabled_reason: string | null;  // e.g. "no_strategy", reason EV is unavailable
   ev_method: string | null;           // e.g. "pinnacle_devig"
   has_fair: boolean;
+  explanation_steps: ExplanationStep[] | null;  // Step-by-step math walkthrough
+}
+
+interface ExplanationStep {
+  step_number: number;
+  title: string;
+  description: string;
+  detail_rows: ExplanationDetailRow[];
+}
+
+interface ExplanationDetailRow {
+  label: string;
+  value: string;
+  is_highlight: boolean;          // Client can bold/accent highlighted rows
 }
 
 interface BookOdds {

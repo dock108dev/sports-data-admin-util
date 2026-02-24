@@ -8,6 +8,13 @@ All notable changes to Sports Data Admin.
 
 Moves client-side display logic to the API so clients become dumb renderers. All new fields are additive (`Optional` with `None` defaults) — no breaking changes.
 
+#### FairBet Explanation Steps
+- **`explanation_steps`** on `BetDefinition`: Pre-computed step-by-step math walkthrough explaining how fair odds were derived — eliminates ~300 lines of client-side devig math/formatting logic in `FairExplainerSheet.swift`
+- **4 dispatch paths**: Pinnacle paired devig (3-4 steps), Pinnacle extrapolated (3-4 steps), fallback (1-2 steps), not available (1 step with human-readable disabled reason)
+- **`ExplanationStep` / `ExplanationDetailRow` models**: Each step has `step_number`, `title`, `description`, and `detail_rows` (label/value with `is_highlight` for client emphasis)
+- **Pure function**: `build_explanation_steps()` in `fairbet_display.py` — all inputs passed explicitly, no router imports
+- **8 new tests** in `test_fairbet_display.py`: all paths, sequential numbering, EV math consistency with `calculate_ev()`
+
 #### Status Flags + Live Snapshot
 - **Status convenience flags** on `GameSummary` and `GameMeta`: `isLive`, `isFinal`, `isPregame`, `isTrulyCompleted`, `readEligible` — eliminates client-side `deriveGameStatus()` / `isGameTrulyCompleted()`
 - **`currentPeriodLabel`**: Server-computed period label ("Q4", "2nd Half", "P3", "OT") reusing existing `period_label()` — eliminates client-side `getPeriodLabel()`
@@ -43,8 +50,8 @@ Moves client-side display logic to the API so clients become dumb renderers. All
 
 ### Tests
 
-- **116 new tests** across 7 test files: `test_game_status.py` (19), `test_fairbet_display.py` (25), `test_odds_table.py` (8), `test_stat_normalization.py` (10), `test_stat_annotations.py` (8), `test_parlay.py` (8), `test_play_tiers.py` (9 new + existing)
-- All 1329 tests pass (116 new + 1213 existing)
+- **124 new tests** across 7 test files: `test_game_status.py` (19), `test_fairbet_display.py` (33), `test_odds_table.py` (8), `test_stat_normalization.py` (10), `test_stat_annotations.py` (8), `test_parlay.py` (8), `test_play_tiers.py` (9 new + existing)
+- All 1337 tests pass (124 new + 1213 existing)
 
 ---
 
