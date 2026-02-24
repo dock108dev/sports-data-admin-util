@@ -30,8 +30,11 @@ class GameSummary(BaseModel):
     game_date: datetime = Field(..., alias="gameDate")
     home_team: str = Field(..., alias="homeTeam")
     away_team: str = Field(..., alias="awayTeam")
+    status: str | None = None
     home_score: int | None = Field(None, alias="homeScore")
     away_score: int | None = Field(None, alias="awayScore")
+    current_period: int | None = Field(None, alias="currentPeriod")
+    game_clock: str | None = Field(None, alias="gameClock")
     has_boxscore: bool = Field(..., alias="hasBoxscore")
     has_player_stats: bool = Field(..., alias="hasPlayerStats")
     has_odds: bool = Field(..., alias="hasOdds")

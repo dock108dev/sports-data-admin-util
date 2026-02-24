@@ -251,14 +251,22 @@ def summarize_game(
         game.away_team.color_dark_hex,
     )
 
+    # Latest play's period/clock for live score context
+    latest_play = max(plays, key=lambda p: p.play_index, default=None) if plays else None
+    current_period = getattr(latest_play, "quarter", None) if latest_play else None
+    game_clock_val = getattr(latest_play, "game_clock", None) if latest_play else None
+
     return GameSummary(
         id=game.id,
         league_code=game.league.code,
         game_date=game.start_time,
+        status=game.status,
         home_team=game.home_team.name,
         away_team=game.away_team.name,
         home_score=game.home_score,
         away_score=game.away_score,
+        current_period=current_period,
+        game_clock=game_clock_val,
         has_boxscore=has_boxscore,
         has_player_stats=has_player_stats,
         has_odds=has_odds,
