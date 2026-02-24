@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from .common import (
+    LiveSnapshot,
     NHLDataHealth,
     NHLGoalieStat,
     NHLSkaterStat,
@@ -30,8 +31,11 @@ class GameSummary(BaseModel):
     game_date: datetime = Field(..., alias="gameDate")
     home_team: str = Field(..., alias="homeTeam")
     away_team: str = Field(..., alias="awayTeam")
+    status: str | None = None
     home_score: int | None = Field(None, alias="homeScore")
     away_score: int | None = Field(None, alias="awayScore")
+    current_period: int | None = Field(None, alias="currentPeriod")
+    game_clock: str | None = Field(None, alias="gameClock")
     has_boxscore: bool = Field(..., alias="hasBoxscore")
     has_player_stats: bool = Field(..., alias="hasPlayerStats")
     has_odds: bool = Field(..., alias="hasOdds")
@@ -53,6 +57,14 @@ class GameSummary(BaseModel):
     home_team_color_dark: str | None = Field(None, alias="homeTeamColorDark")
     away_team_color_light: str | None = Field(None, alias="awayTeamColorLight")
     away_team_color_dark: str | None = Field(None, alias="awayTeamColorDark")
+    is_live: bool | None = Field(None, alias="isLive")
+    is_final: bool | None = Field(None, alias="isFinal")
+    is_pregame: bool | None = Field(None, alias="isPregame")
+    is_truly_completed: bool | None = Field(None, alias="isTrulyCompleted")
+    read_eligible: bool | None = Field(None, alias="readEligible")
+    current_period_label: str | None = Field(None, alias="currentPeriodLabel")
+    live_snapshot: LiveSnapshot | None = Field(None, alias="liveSnapshot")
+    date_section: str | None = Field(None, alias="dateSection")
 
 
 class GameListResponse(BaseModel):
@@ -108,6 +120,13 @@ class GameMeta(BaseModel):
     home_team_color_dark: str | None = Field(None, alias="homeTeamColorDark")
     away_team_color_light: str | None = Field(None, alias="awayTeamColorLight")
     away_team_color_dark: str | None = Field(None, alias="awayTeamColorDark")
+    is_live: bool | None = Field(None, alias="isLive")
+    is_final: bool | None = Field(None, alias="isFinal")
+    is_pregame: bool | None = Field(None, alias="isPregame")
+    is_truly_completed: bool | None = Field(None, alias="isTrulyCompleted")
+    read_eligible: bool | None = Field(None, alias="readEligible")
+    current_period_label: str | None = Field(None, alias="currentPeriodLabel")
+    live_snapshot: LiveSnapshot | None = Field(None, alias="liveSnapshot")
 
 
 class GameDetailResponse(BaseModel):
@@ -130,6 +149,8 @@ class GameDetailResponse(BaseModel):
     raw_payloads: dict[str, Any] = Field(..., alias="rawPayloads")
     # NHL-specific data health (only populated for NHL games)
     data_health: NHLDataHealth | None = Field(None, alias="dataHealth")
+    odds_table: list[dict[str, Any]] | None = Field(None, alias="oddsTable")
+    stat_annotations: list[dict[str, Any]] | None = Field(None, alias="statAnnotations")
 
 
 class GamePreviewScoreResponse(BaseModel):

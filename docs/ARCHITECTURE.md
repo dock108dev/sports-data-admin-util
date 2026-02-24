@@ -51,8 +51,9 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 
 - **Framework:** FastAPI
 - **Database:** PostgreSQL (async SQLAlchemy)
-- **Endpoints:** Games, plays, box scores, odds, social, teams
+- **Endpoints:** Games, plays, box scores, odds, social, teams, FairBet (odds + parlay)
 - **Admin Endpoints:** Scraper management, data browser
+- **Server-Side Services:** Status flags (`game_status.py`), date sections (`date_section.py`), FairBet display helpers (`fairbet_display.py`), odds table builder (`odds_table.py`), stat normalization (`stat_normalization.py`), stat annotations (`stat_annotations.py`), play timeline enrichment (`play_tiers.py`), period labels (`period_labels.py`), derived metrics (`derived_metrics.py`)
 
 ### 3. Admin UI (`web/`)
 **Purpose:** Data management and monitoring
@@ -179,9 +180,10 @@ Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). R
 - `GET /api/admin/sports/logs` - Container log viewer
 
 ### FairBet Endpoints
-- `GET /api/fairbet/odds` — Cross-book odds comparison with EV annotations
+- `GET /api/fairbet/odds` — Cross-book odds comparison with EV annotations and display fields
+- `POST /api/fairbet/parlay/evaluate` — Parlay evaluation (combined fair probability + odds)
 
-FairBet reads from the `fairbet_game_odds_work` table (populated during odds ingestion with canonical DB team names) and annotates each bet with expected value computed at query time using Pinnacle as the sharp reference.
+FairBet reads from the `fairbet_game_odds_work` table (populated during odds ingestion with canonical DB team names) and annotates each bet with expected value computed at query time using Pinnacle as the sharp reference. Each bet includes server-computed display fields (fair American odds, selection display name, market display name, book abbreviations, confidence labels, EV method explanations) so clients don't need to maintain their own formatting logic.
 
 See [Odds & FairBet Pipeline](ODDS_AND_FAIRBET.md) for the full data flow.
 See [API.md](API.md) for complete endpoint reference.

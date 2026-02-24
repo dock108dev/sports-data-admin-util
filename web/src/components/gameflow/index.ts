@@ -1,7 +1,7 @@
 /**
  * Game Flow Components
  *
- * Phase 5 UI components for game flow rendering.
+ * UI components for game flow rendering.
  */
 
 export { CollapsedGameFlow } from "./CollapsedGameFlow";

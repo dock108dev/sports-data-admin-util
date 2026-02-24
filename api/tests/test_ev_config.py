@@ -80,7 +80,6 @@ class TestEVStrategyConfig:
             eligible_sharp_books=("Pinnacle",),
             min_qualifying_books=3,
             max_reference_staleness_seconds=3600,
-            allow_longshots=False,
             max_fair_prob_divergence=0.08,
         )
         assert config.strategy_name == "test"
@@ -92,7 +91,6 @@ class TestEVStrategyConfig:
             eligible_sharp_books=("Pinnacle",),
             min_qualifying_books=3,
             max_reference_staleness_seconds=3600,
-            allow_longshots=False,
             max_fair_prob_divergence=0.08,
         )
         with pytest.raises(AttributeError):

@@ -108,7 +108,7 @@ export type GameFlowResponse = {
   plays: GameFlowPlay[];
   validationPassed: boolean;
   validationErrors: string[];
-  /** Phase 1 narrative blocks (4-7 blocks with narratives) */
+  /** Narrative blocks (4-7 blocks with narratives) */
   blocks?: NarrativeBlock[];
   /** Total word count across all block narratives */
   totalWords?: number;

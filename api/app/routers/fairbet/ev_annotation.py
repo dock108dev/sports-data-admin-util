@@ -19,7 +19,6 @@ from typing import Any
 from pydantic import BaseModel
 
 from ...services.ev import (
-    american_to_implied,
     book_spread_factor,
     compute_ev_for_market,
     evaluate_ev_eligibility,
@@ -43,6 +42,9 @@ class BookOdds(BaseModel):
     is_sharp: bool = False
     ev_method: str | None = None
     ev_confidence_tier: str | None = None
+    book_abbr: str | None = None
+    price_decimal: float | None = None
+    ev_tier: str | None = None
 
 
 def derive_entity_key(

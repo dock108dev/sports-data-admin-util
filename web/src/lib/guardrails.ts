@@ -267,7 +267,7 @@ export function validateSocialIndependence(
 /**
  * Log validation result with appropriate level.
  *
- * Violations are logged LOUDLY as required by Phase 6 contract.
+ * Violations are logged LOUDLY per guardrails contract.
  */
 function logValidationResult(result: GuardrailResult, checkpoint: string): void {
   // Only log in development or when there are violations

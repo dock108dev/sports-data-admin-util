@@ -6,9 +6,11 @@ import directly from the schemas package.
 
 from .common import (
     GamePhase,
+    LiveSnapshot,
     NHLDataHealth,
     NHLGoalieStat,
     NHLSkaterStat,
+    NormalizedStat,
     OddsEntry,
     PlayEntry,
     PlayerStat,
@@ -40,22 +42,22 @@ from .games import (
 )
 from .scraper import ScrapeRunConfig, ScrapeRunCreateRequest, ScrapeRunResponse
 from .teams import (
-    _HEX_COLOR_RE,
     TeamColorUpdate,
     TeamDetail,
     TeamGameSummary,
     TeamListResponse,
     TeamSocialInfo,
     TeamSummary,
-    _validate_hex_color,
 )
 
 __all__ = [
     # common
     "GamePhase",
+    "LiveSnapshot",
     "NHLDataHealth",
     "NHLGoalieStat",
     "NHLSkaterStat",
+    "NormalizedStat",
     "OddsEntry",
     "PlayEntry",
     "PlayerStat",
@@ -96,6 +98,4 @@ __all__ = [
     "TeamListResponse",
     "TeamSocialInfo",
     "TeamSummary",
-    "_HEX_COLOR_RE",
-    "_validate_hex_color",
 ]

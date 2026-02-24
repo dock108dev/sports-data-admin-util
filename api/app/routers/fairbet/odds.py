@@ -17,11 +17,21 @@ from sqlalchemy.orm import selectinload
 from ...db import AsyncSession, get_db
 from ...db.odds import FairbetGameOddsWork
 from ...db.sports import SportsGame
+from ...services.ev import american_to_implied
 from ...services.ev_config import (
     INCLUDED_BOOKS,
     SHARP_REF_MAX_AGE_SECONDS,
     get_fairbet_debug_game_ids,
     get_strategy,
+)
+from ...services.fairbet_display import (
+    book_abbreviation,
+    confidence_display_label,
+    ev_method_display_name,
+    ev_method_explanation,
+    fair_american_odds,
+    market_display_name,
+    selection_display,
 )
 from .ev_annotation import (
     BookOdds,
@@ -67,6 +77,15 @@ class BetDefinition(BaseModel):
     extrapolation_distance: float | None = None
     confidence: float | None = None
     confidence_flags: list[str] = []
+    fair_american_odds: int | None = None
+    selection_display: str | None = None
+    market_display_name: str | None = None
+    best_book: str | None = None
+    best_ev_percent: float | None = None
+    is_reliably_positive: bool | None = None
+    confidence_display_label: str | None = None
+    ev_method_display_name: str | None = None
+    ev_method_explanation: str | None = None
 
 
 class FairbetOddsResponse(BaseModel):
@@ -78,6 +97,7 @@ class FairbetOddsResponse(BaseModel):
     market_categories_available: list[str]
     games_available: list[dict[str, Any]]
     ev_diagnostics: dict[str, int] = {}
+    ev_config: dict[str, Any] | None = None
 
 
 def _build_base_filters(
@@ -476,6 +496,73 @@ async def get_fairbet_odds(
         for bet in bets_list:
             bet["books"] = [b for b in bet["books"] if b.book == book or b.is_sharp]
 
+    # Enrich bets with display fields
+    for bet in bets_list:
+        # BetDefinition-level display fields
+        bet["fair_american_odds"] = fair_american_odds(bet.get("true_prob"))
+        bet["selection_display"] = selection_display(
+            bet.get("selection_key", ""),
+            bet.get("market_key", ""),
+            home_team=bet.get("home_team"),
+            away_team=bet.get("away_team"),
+            player_name=bet.get("player_name"),
+            line_value=bet.get("line_value"),
+        )
+        bet["market_display_name"] = market_display_name(bet.get("market_key", ""))
+        bet["confidence_display_label"] = confidence_display_label(
+            bet.get("ev_confidence_tier")
+        )
+        bet["ev_method_display_name"] = ev_method_display_name(bet.get("ev_method"))
+        bet["ev_method_explanation"] = ev_method_explanation(bet.get("ev_method"))
+
+        # Best book + best EV
+        best_ev_val: float | None = None
+        best_book_name: str | None = None
+        for b in bet["books"]:
+            ev_val = b.display_ev if b.display_ev is not None else b.ev_percent
+            if ev_val is not None and (best_ev_val is None or ev_val > best_ev_val):
+                best_ev_val = ev_val
+                best_book_name = b.book
+        bet["best_book"] = best_book_name
+        bet["best_ev_percent"] = round(best_ev_val, 2) if best_ev_val is not None else None
+        bet["is_reliably_positive"] = (
+            best_ev_val is not None
+            and best_ev_val > 0
+            and (bet.get("confidence") or 0) >= 0.7
+        )
+
+        # BookOdds-level display fields
+        enriched_books: list[BookOdds] = []
+        for b in bet["books"]:
+            abbr = book_abbreviation(b.book)
+            # Convert American to decimal: decimal = 1 + |100/price| or 1 + price/100
+            price_dec: float | None = None
+            try:
+                imp = american_to_implied(b.price)
+                price_dec = round(1.0 / imp, 3) if imp > 0 else None
+            except (ValueError, ZeroDivisionError):
+                pass
+            # EV tier per book
+            ev_tier: str | None = None
+            ev_val = b.display_ev if b.display_ev is not None else b.ev_percent
+            if ev_val is not None:
+                if ev_val >= 5.0:
+                    ev_tier = "strong_positive"
+                elif ev_val >= 0.0:
+                    ev_tier = "positive"
+                else:
+                    ev_tier = "negative"
+            elif b.is_sharp:
+                ev_tier = "neutral"
+            enriched_books.append(
+                b.model_copy(update={
+                    "book_abbr": abbr,
+                    "price_decimal": price_dec,
+                    "ev_tier": ev_tier,
+                })
+            )
+        bet["books"] = enriched_books
+
     return FairbetOddsResponse(
         bets=[BetDefinition(**bet) for bet in bets_list],
         total=total,
@@ -483,4 +570,8 @@ async def get_fairbet_odds(
         market_categories_available=all_cats,
         games_available=games_available,
         ev_diagnostics=ev_diagnostics,
+        ev_config={
+            "min_books_for_display": MIN_BOOKS_FOR_FAIRBET,
+            "ev_color_thresholds": {"strong_positive": 5.0, "positive": 0.0},
+        },
     )

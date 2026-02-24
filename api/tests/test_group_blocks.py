@@ -422,7 +422,7 @@ class TestPeakMarginInBlocks:
 
     def test_peak_margin_backward_compatible(self) -> None:
         """from_dict works without peak_margin (backward compatibility)."""
-        from app.services.pipeline.stages.block_types import NarrativeBlock, SemanticRole
+        from app.services.pipeline.stages.block_types import NarrativeBlock
 
         d = {
             "block_index": 0,

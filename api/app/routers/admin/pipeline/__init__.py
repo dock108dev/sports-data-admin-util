@@ -28,7 +28,9 @@ from fastapi import APIRouter
 
 from .backfill_endpoints import router as backfill_router
 from .bulk_endpoints import router as bulk_router
-from .endpoints import router as endpoints_router
+from .run_endpoints import router as run_router
+from .stage_endpoints import router as stage_router
+from .status_endpoints import router as status_router
 from .models import (
     BackfillEmbeddedTweetsResponse,
     BulkGenerateAsyncResponse,
@@ -57,7 +59,9 @@ from .models import (
 
 # Create the main router and include the endpoints
 router = APIRouter()
-router.include_router(endpoints_router)
+router.include_router(run_router)
+router.include_router(status_router)
+router.include_router(stage_router)
 router.include_router(bulk_router)
 router.include_router(backfill_router)
 

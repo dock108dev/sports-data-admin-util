@@ -120,7 +120,7 @@ class BlockMiniBox(BaseModel):
 class GameFlowBlock(BaseModel):
     """A narrative block grouping multiple moments.
 
-    Blocks are the consumer-facing narrative output (Phase 1).
+    Blocks are the consumer-facing narrative output.
     Each block represents a stretch of play described in 1-2 sentences.
     """
 
@@ -146,7 +146,7 @@ class GameFlowResponse(BaseModel):
     Returns the persisted Game Flow exactly as stored.
     No transformation, no aggregation, no additional prose.
 
-    Phase 1 additions:
+    Additional fields:
     - blocks: 4-7 narrative blocks (consumer-facing output)
     - total_words: Total word count across all block narratives
     """

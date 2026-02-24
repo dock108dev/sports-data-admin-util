@@ -9,6 +9,18 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class NormalizedStat(BaseModel):
+    """A single normalized stat with canonical key and display label."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    key: str
+    display_label: str = Field(..., alias="displayLabel")
+    group: str
+    value: int | float | str | None = None
+    format_type: str = Field("int", alias="formatType")
+
+
 class TeamStat(BaseModel):
     """Team boxscore stats with camelCase output."""
 
@@ -19,6 +31,7 @@ class TeamStat(BaseModel):
     stats: dict[str, Any]
     source: str | None = None
     updated_at: datetime | None = Field(None, alias="updatedAt")
+    normalized_stats: list[NormalizedStat] | None = Field(None, alias="normalizedStats")
 
 
 class PlayerStat(BaseModel):
@@ -35,6 +48,7 @@ class PlayerStat(BaseModel):
     raw_stats: dict[str, Any] = Field(default_factory=dict, alias="rawStats")
     source: str | None = None
     updated_at: datetime | None = Field(None, alias="updatedAt")
+    normalized_stats: list[NormalizedStat] | None = Field(None, alias="normalizedStats")
 
 
 class NHLSkaterStat(BaseModel):
@@ -121,6 +135,19 @@ class SocialPostEntry(BaseModel):
     replies_count: int | None = Field(None, alias="repliesCount")
 
 
+class LiveSnapshot(BaseModel):
+    """Live game snapshot for at-a-glance display."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    period_label: str | None = Field(None, alias="periodLabel")
+    time_label: str | None = Field(None, alias="timeLabel")
+    home_score: int | None = Field(None, alias="homeScore")
+    away_score: int | None = Field(None, alias="awayScore")
+    current_period: int | None = Field(None, alias="currentPeriod")
+    game_clock: str | None = Field(None, alias="gameClock")
+
+
 class PlayEntry(BaseModel):
     """Play entry with camelCase output."""
 
@@ -138,6 +165,12 @@ class PlayEntry(BaseModel):
     home_score: int | None = Field(None, alias="homeScore")
     away_score: int | None = Field(None, alias="awayScore")
     tier: int | None = None
+    score_changed: bool | None = Field(None, alias="scoreChanged")
+    scoring_team_abbr: str | None = Field(None, alias="scoringTeamAbbr")
+    points_scored: int | None = Field(None, alias="pointsScored")
+    home_score_before: int | None = Field(None, alias="homeScoreBefore")
+    away_score_before: int | None = Field(None, alias="awayScoreBefore")
+    phase: str | None = None
 
 
 class TieredPlayGroup(BaseModel):

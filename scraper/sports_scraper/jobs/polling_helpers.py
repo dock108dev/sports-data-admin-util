@@ -8,9 +8,6 @@ These are called by the @shared_task entry points in polling_tasks.py.
 
 from __future__ import annotations
 
-import random
-import time
-
 from ..logging import logger
 
 # Shared constants (also defined in polling_tasks.py for task-level use)

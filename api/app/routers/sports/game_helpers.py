@@ -16,7 +16,8 @@ from ...db.scraper import SportsScrapeRun
 from ...db.social import TeamSocialPost
 from ...db.sports import SportsGame, SportsLeague, SportsTeam
 from ...game_metadata.models import GameContext, StandingsEntry, TeamRatings
-from .schemas import GameSummary, JobResponse, ScrapeRunConfig, SocialPostEntry
+from ...services.game_status import compute_status_flags
+from .schemas import GameSummary, JobResponse, LiveSnapshot, ScrapeRunConfig, SocialPostEntry
 
 logger = logging.getLogger(__name__)
 
@@ -251,14 +252,44 @@ def summarize_game(
         game.away_team.color_dark_hex,
     )
 
+    # Latest play's period/clock for live score context
+    latest_play = max(plays, key=lambda p: p.play_index, default=None) if plays else None
+    current_period = getattr(latest_play, "quarter", None) if latest_play else None
+    game_clock_val = getattr(latest_play, "game_clock", None) if latest_play else None
+
+    status_flags = compute_status_flags(game.status)
+    league_code = game.league.code
+
+    from ...services.period_labels import period_label, time_label
+
+    current_period_label: str | None = None
+    live_snapshot: LiveSnapshot | None = None
+    if current_period is not None:
+        current_period_label = period_label(current_period, league_code)
+        live_snapshot = LiveSnapshot(
+            period_label=current_period_label,
+            time_label=time_label(current_period, game_clock_val, league_code),
+            home_score=game.home_score,
+            away_score=game.away_score,
+            current_period=current_period,
+            game_clock=game_clock_val,
+        )
+
+    from ...services.date_section import classify_date_section
+
+    date_section = classify_date_section(game.start_time)
+
     return GameSummary(
         id=game.id,
-        league_code=game.league.code,
+        league_code=league_code,
         game_date=game.start_time,
+        status=game.status,
         home_team=game.home_team.name,
         away_team=game.away_team.name,
         home_score=game.home_score,
         away_score=game.away_score,
+        current_period=current_period,
+        game_clock=game_clock_val,
         has_boxscore=has_boxscore,
         has_player_stats=has_player_stats,
         has_odds=has_odds,
@@ -280,6 +311,14 @@ def summarize_game(
         home_team_color_dark=matchup_colors["homeDarkHex"],
         away_team_color_light=matchup_colors["awayLightHex"],
         away_team_color_dark=matchup_colors["awayDarkHex"],
+        is_live=status_flags["is_live"],
+        is_final=status_flags["is_final"],
+        is_pregame=status_flags["is_pregame"],
+        is_truly_completed=status_flags["is_truly_completed"],
+        read_eligible=status_flags["read_eligible"],
+        current_period_label=current_period_label,
+        live_snapshot=live_snapshot,
+        date_section=date_section,
     )
 
 

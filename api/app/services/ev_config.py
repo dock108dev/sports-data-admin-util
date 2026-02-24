@@ -47,7 +47,6 @@ class EVStrategyConfig:
     eligible_sharp_books: tuple[str, ...]  # Reference price sources (display names)
     min_qualifying_books: int  # Per-side minimum non-excluded books
     max_reference_staleness_seconds: int  # observed_at vs now()
-    allow_longshots: bool  # Informational only in Phase 1
     max_fair_prob_divergence: float  # Max |fair_prob - median_implied_prob| allowed
 
 
@@ -78,6 +77,70 @@ EXCLUDED_BOOKS: frozenset[str] = frozenset(
         "Polymarket",
     }
 )
+
+# ---------------------------------------------------------------------------
+# Display constants — single source of truth for client rendering
+# ---------------------------------------------------------------------------
+
+BOOK_ABBREVIATIONS: dict[str, str] = {
+    "BetMGM": "MGM",
+    "BetRivers": "BR",
+    "Caesars": "CZR",
+    "DraftKings": "DK",
+    "FanDuel": "FD",
+    "Pinnacle": "PIN",
+    "888sport": "888",
+    "William Hill": "WH",
+    "Betfair Exchange": "BFX",
+    "Betfair Sportsbook": "BF",
+    "Ladbrokes": "LAD",
+    "Paddy Power": "PP",
+    "William Hill (UK)": "WHUK",
+}
+
+CONFIDENCE_DISPLAY_LABELS: dict[str, str] = {
+    "full": "Sharp",
+    "decent": "Market",
+    "thin": "Thin",
+}
+
+MARKET_DISPLAY_NAMES: dict[str, str] = {
+    "spreads": "Spread",
+    "totals": "Total",
+    "h2h": "Moneyline",
+    "moneyline": "Moneyline",
+    "player_points": "Player Points",
+    "player_rebounds": "Player Rebounds",
+    "player_assists": "Player Assists",
+    "player_threes": "Player Threes",
+    "player_blocks": "Player Blocks",
+    "player_steals": "Player Steals",
+    "player_turnovers": "Player Turnovers",
+    "player_points_rebounds_assists": "Player PRA",
+    "player_points_rebounds": "Player Pts+Reb",
+    "player_points_assists": "Player Pts+Ast",
+    "player_rebounds_assists": "Player Reb+Ast",
+    "player_double_double": "Double Double",
+    "player_first_basket": "First Basket",
+    "player_first_goal": "First Goal",
+    "player_goals": "Player Goals",
+    "player_shots_on_goal": "Shots on Goal",
+    "player_power_play_points": "PP Points",
+    "team_totals": "Team Total",
+    "alternate_spreads": "Alt Spread",
+    "alternate_totals": "Alt Total",
+}
+
+FAIRBET_METHOD_DISPLAY_NAMES: dict[str, str] = {
+    "pinnacle_devig": "Pinnacle Devig",
+    "pinnacle_extrapolated": "Pinnacle Extrapolated",
+}
+
+FAIRBET_METHOD_EXPLANATIONS: dict[str, str] = {
+    "pinnacle_devig": "Fair odds derived by removing vig from Pinnacle's line",
+    "pinnacle_extrapolated": "Fair odds extrapolated from Pinnacle's reference line using logit-space projection",
+}
+
 
 # Books included in EV comparisons (reputable licensed sportsbooks + sharp books).
 # These are the only books available via our configured Odds API regions
@@ -113,7 +176,6 @@ _PINNACLE_MAINLINE_NBA_NHL = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=3600,  # 1 hour
-    allow_longshots=False,
     max_fair_prob_divergence=0.08,  # Tight — mainlines are efficient
 )
 
@@ -122,7 +184,6 @@ _PINNACLE_MAINLINE_NCAAB = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    allow_longshots=False,
     max_fair_prob_divergence=0.10,  # Wider — less liquid
 )
 
@@ -131,7 +192,6 @@ _PINNACLE_PLAYER_PROP = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    allow_longshots=False,
     max_fair_prob_divergence=0.10,  # Thin Pinnacle coverage
 )
 
@@ -140,7 +200,6 @@ _PINNACLE_TEAM_PROP = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    allow_longshots=False,
     max_fair_prob_divergence=0.10,
 )
 
@@ -149,7 +208,6 @@ _PINNACLE_ALTERNATE = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    allow_longshots=False,
     max_fair_prob_divergence=0.12,  # Widest — alt lines inherently have wider vig
 )
 

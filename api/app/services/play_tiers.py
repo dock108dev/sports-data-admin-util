@@ -134,3 +134,87 @@ def group_tier3_plays(
 
     _flush()
     return groups
+
+
+# ---------------------------------------------------------------------------
+# Timeline enrichment
+# ---------------------------------------------------------------------------
+
+# Phase classification by league and period
+_PHASE_MAP: dict[str, dict[int, str]] = {
+    "NBA": {1: "early", 2: "early", 3: "mid", 4: "late"},
+    "NCAAB": {1: "early", 2: "late"},
+    "NHL": {1: "early", 2: "mid", 3: "late"},
+}
+
+# Regular-time period counts (periods above this are OT)
+_REGULAR_PERIODS: dict[str, int] = {"NBA": 4, "NCAAB": 2, "NHL": 3}
+
+
+def _classify_phase(period: int | None, league_code: str) -> str | None:
+    """Classify a period into a game phase."""
+    if period is None:
+        return None
+    code = league_code.upper()
+    regular_max = _REGULAR_PERIODS.get(code, 4)
+    if period > regular_max:
+        return "ot"
+    phase_map = _PHASE_MAP.get(code, {})
+    return phase_map.get(period)
+
+
+def enrich_play_entries(
+    plays: list[PlayEntry],
+    league_code: str,
+    home_abbr: str,
+    away_abbr: str,
+) -> None:
+    """Enrich play entries in-place with score deltas and phase info.
+
+    Adds scoreChanged, scoringTeamAbbr, pointsScored, homeScoreBefore,
+    awayScoreBefore, and phase to each PlayEntry.
+
+    Args:
+        plays: List of PlayEntry objects (mutated in-place).
+        league_code: League code (e.g., "NBA", "NHL").
+        home_abbr: Home team abbreviation.
+        away_abbr: Away team abbreviation.
+    """
+    if not plays:
+        return
+
+    last_home = 0
+    last_away = 0
+
+    for play in plays:
+        cur_home = play.home_score if play.home_score is not None else last_home
+        cur_away = play.away_score if play.away_score is not None else last_away
+
+        play.home_score_before = last_home
+        play.away_score_before = last_away
+
+        home_diff = cur_home - last_home
+        away_diff = cur_away - last_away
+        changed = home_diff != 0 or away_diff != 0
+        play.score_changed = changed
+
+        if changed:
+            if home_diff > 0 and away_diff == 0:
+                play.scoring_team_abbr = home_abbr
+                play.points_scored = home_diff
+            elif away_diff > 0 and home_diff == 0:
+                play.scoring_team_abbr = away_abbr
+                play.points_scored = away_diff
+            else:
+                # Both changed (unusual) — attribute to larger change
+                if home_diff >= away_diff:
+                    play.scoring_team_abbr = home_abbr
+                    play.points_scored = home_diff
+                else:
+                    play.scoring_team_abbr = away_abbr
+                    play.points_scored = away_diff
+
+        play.phase = _classify_phase(play.quarter, league_code)
+
+        last_home = cur_home
+        last_away = cur_away

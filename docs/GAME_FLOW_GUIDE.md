@@ -89,13 +89,27 @@ GET /api/admin/sports/games?league=NBA&startDate=2026-01-22&endDate=2026-01-22
       "homeTeamColorLight": "#FDB927",
       "homeTeamColorDark": "#552583",
       "awayTeamColorLight": "#006BB6",
-      "awayTeamColorDark": "#FDB927"
+      "awayTeamColorDark": "#FDB927",
+      "isLive": false,
+      "isFinal": true,
+      "isPregame": false,
+      "isTrulyCompleted": true,
+      "readEligible": true,
+      "currentPeriodLabel": "Q4",
+      "dateSection": "Yesterday",
+      "liveSnapshot": null
     }
   ],
   "total": 12,
   "withFlowCount": 10
 }
 ```
+
+**New fields (all nullable, additive — no breakage):**
+- `isLive`, `isFinal`, `isPregame`, `isTrulyCompleted`, `readEligible` — status convenience booleans
+- `currentPeriodLabel` — league-aware period label ("Q4", "2nd Half", "P3", "OT")
+- `dateSection` — date grouping in US Eastern ("Today", "Yesterday", "Tomorrow", "Earlier", "Upcoming")
+- `liveSnapshot` — at-a-glance live state (periodLabel, timeLabel, scores, clock)
 
 Games with `"hasFlow": true` have game flow available.
 

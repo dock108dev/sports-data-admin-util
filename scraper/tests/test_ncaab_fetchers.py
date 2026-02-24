@@ -802,12 +802,8 @@ class TestNCAABBoxscoreFetcherParsing:
     """Tests for NCAABBoxscoreFetcher parsing methods."""
 
     def test_parse_team_stats_nested(self):
-        """Test _parse_team_stats_nested extracts nested stats."""
-        mock_client = MagicMock()
-        mock_cache = MagicMock()
-
-        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
-
+        """Test parse_team_stats extracts nested stats."""
+        from sports_scraper.live.ncaab_boxscore_parser import parse_team_stats
         from sports_scraper.models import TeamIdentity
 
         team = TeamIdentity(
@@ -828,7 +824,7 @@ class TestNCAABBoxscoreFetcherParsing:
             },
         }
 
-        result = fetcher._parse_team_stats(ts, team, True, 75)
+        result = parse_team_stats(ts, team, True, 75)
 
         assert result.team.name == "Duke"
         assert result.is_home is True
@@ -838,12 +834,8 @@ class TestNCAABBoxscoreFetcherParsing:
         assert result.turnovers == 12
 
     def test_parse_player_stats_extracts_all_fields(self):
-        """Test _parse_player_stats extracts player data."""
-        mock_client = MagicMock()
-        mock_cache = MagicMock()
-
-        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
-
+        """Test parse_player_stats extracts player data."""
+        from sports_scraper.live.ncaab_boxscore_parser import parse_player_stats
         from sports_scraper.models import TeamIdentity
 
         team = TeamIdentity(
@@ -867,7 +859,7 @@ class TestNCAABBoxscoreFetcherParsing:
             "blocks": 2,
         }
 
-        result = fetcher._parse_player_stats(ps, team, 999)
+        result = parse_player_stats(ps, team, 999)
 
         assert result is not None
         assert result.player_id == "12345"
@@ -878,12 +870,8 @@ class TestNCAABBoxscoreFetcherParsing:
         assert result.assists == 5
 
     def test_parse_player_stats_missing_player_id(self):
-        """Test _parse_player_stats returns None for missing player ID."""
-        mock_client = MagicMock()
-        mock_cache = MagicMock()
-
-        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
-
+        """Test parse_player_stats returns None for missing player ID."""
+        from sports_scraper.live.ncaab_boxscore_parser import parse_player_stats
         from sports_scraper.models import TeamIdentity
 
         team = TeamIdentity(
@@ -896,17 +884,13 @@ class TestNCAABBoxscoreFetcherParsing:
 
         ps = {"name": "Player Without ID", "points": 10}
 
-        result = fetcher._parse_player_stats(ps, team, 999)
+        result = parse_player_stats(ps, team, 999)
 
         assert result is None
 
     def test_parse_player_stats_missing_name(self):
-        """Test _parse_player_stats returns None for missing name."""
-        mock_client = MagicMock()
-        mock_cache = MagicMock()
-
-        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
-
+        """Test parse_player_stats returns None for missing name."""
+        from sports_scraper.live.ncaab_boxscore_parser import parse_player_stats
         from sports_scraper.models import TeamIdentity
 
         team = TeamIdentity(
@@ -919,17 +903,13 @@ class TestNCAABBoxscoreFetcherParsing:
 
         ps = {"playerId": 12345, "points": 10}
 
-        result = fetcher._parse_player_stats(ps, team, 999)
+        result = parse_player_stats(ps, team, 999)
 
         assert result is None
 
     def test_parse_player_stats_alternative_field_names(self):
-        """Test _parse_player_stats handles alternative field names."""
-        mock_client = MagicMock()
-        mock_cache = MagicMock()
-
-        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
-
+        """Test parse_player_stats handles alternative field names."""
+        from sports_scraper.live.ncaab_boxscore_parser import parse_player_stats
         from sports_scraper.models import TeamIdentity
 
         team = TeamIdentity(
@@ -948,7 +928,7 @@ class TestNCAABBoxscoreFetcherParsing:
             "totalRebounds": 7,  # Alternative for rebounds
         }
 
-        result = fetcher._parse_player_stats(ps, team, 999)
+        result = parse_player_stats(ps, team, 999)
 
         assert result is not None
         assert result.player_id == "54321"
@@ -1133,12 +1113,8 @@ class TestNCAABBoxscoreFetcherTeamStatsParsing:
     """Tests for team stats parsing methods."""
 
     def test_parse_team_stats_flat_format(self):
-        """Test _parse_team_stats with flat stats format."""
-        mock_client = MagicMock()
-        mock_cache = MagicMock()
-
-        fetcher = NCAABBoxscoreFetcher(mock_client, mock_cache)
-
+        """Test parse_team_stats with flat stats format."""
+        from sports_scraper.live.ncaab_boxscore_parser import parse_team_stats
         from sports_scraper.models import TeamIdentity
 
         team = TeamIdentity(
@@ -1158,7 +1134,7 @@ class TestNCAABBoxscoreFetcherTeamStatsParsing:
             "turnovers": 12,
         }
 
-        result = fetcher._parse_team_stats(ts, team, True, 75)
+        result = parse_team_stats(ts, team, True, 75)
 
         assert result.points == 75
         # Should prefer rebounds over totalRebounds
