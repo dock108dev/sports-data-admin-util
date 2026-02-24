@@ -26,6 +26,7 @@ from ...services.ev_config import (
 )
 from ...services.fairbet_display import (
     book_abbreviation,
+    build_explanation_steps,
     confidence_display_label,
     ev_method_display_name,
     ev_method_explanation,
@@ -48,6 +49,23 @@ logger = logging.getLogger(__name__)
 MIN_BOOKS_FOR_FAIRBET = 3
 
 router = APIRouter()
+
+
+class ExplanationDetailRow(BaseModel):
+    """A single key-value row in an explanation step."""
+
+    label: str
+    value: str
+    is_highlight: bool = False  # Client can bold/accent highlighted rows
+
+
+class ExplanationStep(BaseModel):
+    """One step in the math walkthrough explaining how fair odds were derived."""
+
+    step_number: int
+    title: str
+    description: str
+    detail_rows: list[ExplanationDetailRow] = []
 
 
 class BetDefinition(BaseModel):
@@ -86,6 +104,7 @@ class BetDefinition(BaseModel):
     confidence_display_label: str | None = None
     ev_method_display_name: str | None = None
     ev_method_explanation: str | None = None
+    explanation_steps: list[ExplanationStep] | None = None
 
 
 class FairbetOddsResponse(BaseModel):
@@ -529,6 +548,29 @@ async def get_fairbet_odds(
             best_ev_val is not None
             and best_ev_val > 0
             and (bet.get("confidence") or 0) >= 0.7
+        )
+
+        # Explanation steps
+        best_book_price: float | None = None
+        if best_book_name:
+            for b in bet["books"]:
+                if b.book == best_book_name:
+                    best_book_price = b.price
+                    break
+
+        bet["explanation_steps"] = build_explanation_steps(
+            ev_method=bet.get("ev_method"),
+            ev_disabled_reason=bet.get("ev_disabled_reason"),
+            true_prob=bet.get("true_prob"),
+            reference_price=bet.get("reference_price"),
+            opposite_reference_price=bet.get("opposite_reference_price"),
+            fair_odds=bet["fair_american_odds"],
+            best_book=best_book_name,
+            best_book_price=best_book_price,
+            best_ev_percent=bet["best_ev_percent"],
+            estimated_sharp_price=bet.get("estimated_sharp_price"),
+            extrapolation_ref_line=bet.get("extrapolation_ref_line"),
+            extrapolation_distance=bet.get("extrapolation_distance"),
         )
 
         # BookOdds-level display fields
