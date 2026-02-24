@@ -403,7 +403,6 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         game.away_team.color_dark_hex if game.away_team else None,
     )
 
-    # Phase 1: Status flags + live snapshot for GameMeta
     status_flags = compute_status_flags(game.status)
     latest_play = max(game.plays, key=lambda p: p.play_index, default=None) if game.plays else None
     meta_current_period = getattr(latest_play, "quarter", None) if latest_play else None
@@ -502,10 +501,8 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     # Compute NHL-specific data health (None for non-NHL games)
     data_health = compute_nhl_data_health(game, game.player_boxscores)
 
-    # Phase 3: Structured odds table
     odds_table = build_odds_table(game.odds) if game.odds else None
 
-    # Phase 4: Stat annotations
     from ...services.stat_annotations import compute_team_annotations
 
     stat_annotations: list[dict] | None = None
@@ -523,7 +520,6 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
                 league_code,
             )
 
-    # Phase 5: Timeline enrichment
     from ...services.play_tiers import enrich_play_entries
 
     if plays_entries and league_code:

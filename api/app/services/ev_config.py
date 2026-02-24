@@ -47,7 +47,6 @@ class EVStrategyConfig:
     eligible_sharp_books: tuple[str, ...]  # Reference price sources (display names)
     min_qualifying_books: int  # Per-side minimum non-excluded books
     max_reference_staleness_seconds: int  # observed_at vs now()
-    allow_longshots: bool  # Informational only in Phase 1
     max_fair_prob_divergence: float  # Max |fair_prob - median_implied_prob| allowed
 
 
@@ -177,7 +176,6 @@ _PINNACLE_MAINLINE_NBA_NHL = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=3600,  # 1 hour
-    allow_longshots=False,
     max_fair_prob_divergence=0.08,  # Tight — mainlines are efficient
 )
 
@@ -186,7 +184,6 @@ _PINNACLE_MAINLINE_NCAAB = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    allow_longshots=False,
     max_fair_prob_divergence=0.10,  # Wider — less liquid
 )
 
@@ -195,7 +192,6 @@ _PINNACLE_PLAYER_PROP = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    allow_longshots=False,
     max_fair_prob_divergence=0.10,  # Thin Pinnacle coverage
 )
 
@@ -204,7 +200,6 @@ _PINNACLE_TEAM_PROP = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    allow_longshots=False,
     max_fair_prob_divergence=0.10,
 )
 
@@ -213,7 +208,6 @@ _PINNACLE_ALTERNATE = EVStrategyConfig(
     eligible_sharp_books=("Pinnacle",),
     min_qualifying_books=3,
     max_reference_staleness_seconds=1800,  # 30 minutes
-    allow_longshots=False,
     max_fair_prob_divergence=0.12,  # Widest — alt lines inherently have wider vig
 )
 

@@ -8,7 +8,7 @@ All notable changes to Sports Data Admin.
 
 Moves client-side display logic to the API so clients become dumb renderers. All new fields are additive (`Optional` with `None` defaults) — no breaking changes.
 
-#### Phase 1: Status Flags + Live Snapshot
+#### Status Flags + Live Snapshot
 - **Status convenience flags** on `GameSummary` and `GameMeta`: `isLive`, `isFinal`, `isPregame`, `isTrulyCompleted`, `readEligible` — eliminates client-side `deriveGameStatus()` / `isGameTrulyCompleted()`
 - **`currentPeriodLabel`**: Server-computed period label ("Q4", "2nd Half", "P3", "OT") reusing existing `period_label()` — eliminates client-side `getPeriodLabel()`
 - **`liveSnapshot`**: At-a-glance live state (`periodLabel`, `timeLabel`, `homeScore`, `awayScore`, `currentPeriod`, `gameClock`)
@@ -16,28 +16,28 @@ Moves client-side display logic to the API so clients become dumb renderers. All
 - **New service**: `game_status.py` — pure function mapping status strings to booleans
 - **New service**: `date_section.py` — date classification in US Eastern timezone
 
-#### Phase 2: FairBet Display Fields
+#### FairBet Display Fields
 - **`BetDefinition` display fields**: `fairAmericanOdds`, `selectionDisplay`, `marketDisplayName`, `bestBook`, `bestEvPercent`, `confidenceDisplayLabel`, `evMethodDisplayName`, `evMethodExplanation` — eliminates client-side odds formatting, selection display, and confidence label logic
 - **`BookOdds` display fields**: `bookAbbr`, `priceDecimal`, `evTier` — eliminates client-side book abbreviation tables and EV tier computation
 - **`evConfig`** on `FairbetOddsResponse`: `minBooksForDisplay`, `evColorThresholds` — server controls display thresholds
 - **New service**: `fairbet_display.py` — display-oriented helpers for FairBet odds
 - **New constants** in `ev_config.py`: `BOOK_ABBREVIATIONS`, `CONFIDENCE_DISPLAY_LABELS`, `MARKET_DISPLAY_NAMES`, `FAIRBET_METHOD_DISPLAY_NAMES`, `FAIRBET_METHOD_EXPLANATIONS`
 
-#### Phase 3: Game Detail Odds Table
+#### Game Detail Odds Table
 - **`oddsTable`** on `GameDetailResponse`: Structured odds grouped by market (spread → total → moneyline) with opening/closing lines and `isBest` flags — eliminates client-side odds grouping/sorting/best-line logic
 - **New service**: `odds_table.py` — builds structured odds table from raw `SportsGameOdds`
 
-#### Phase 4: Stats Normalization + Annotations
+#### Stats Normalization + Annotations
 - **`normalizedStats`** on `TeamStat` and `PlayerStat`: Canonical stat array with display labels, resolving alias differences across data sources (Basketball Reference, NBA API, CBB API) — eliminates client-side alias tables
 - **`statAnnotations`** on `GameDetailResponse`: Human-readable callouts for notable stat advantages (e.g., "BOS dominated the glass (+7 OREB)") — eliminates client-side `generateAnnotations()`
 - **New service**: `stat_normalization.py` — alias resolution with nested dict handling
 - **New service**: `stat_annotations.py` — threshold-based annotation generation
 
-#### Phase 5: Timeline Enrichment
+#### Timeline Enrichment
 - **`PlayEntry` enrichment fields**: `scoreChanged`, `scoringTeamAbbr`, `pointsScored`, `homeScoreBefore`, `awayScoreBefore`, `phase` — eliminates client-side score delta computation and phase classification
 - **`enrich_play_entries()`** in `play_tiers.py`: Tracks running scores, computes deltas, assigns game phase per league
 
-#### Phase 6: Miscellaneous
+#### Miscellaneous
 - **Parlay evaluation endpoint**: `POST /api/fairbet/parlay/evaluate` — accepts 2-20 legs with `trueProb` and optional `confidence`, returns combined fair probability, fair American odds, and geometric mean confidence
 - **New router**: `parlay.py` registered under `/api/fairbet`
 

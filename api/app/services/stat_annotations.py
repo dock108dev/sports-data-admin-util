@@ -8,26 +8,21 @@ from __future__ import annotations
 
 from typing import Any
 
+from .stat_normalization import _resolve_value
+
 
 def _get_val(stats: dict[str, Any], key: str, *aliases: str) -> int:
-    """Extract an int stat value, trying aliases and nested dicts."""
-    for k in (key, *aliases):
-        val = stats.get(k)
-        if val is None:
-            continue
-        if isinstance(val, dict):
-            total = val.get("total")
-            if total is not None:
-                try:
-                    return int(total)
-                except (ValueError, TypeError):
-                    pass
-            continue
-        try:
-            return int(val)
-        except (ValueError, TypeError):
-            continue
-    return 0
+    """Extract an int stat value, trying aliases and nested dicts.
+
+    Delegates alias resolution to stat_normalization._resolve_value (SSOT).
+    """
+    val = _resolve_value(stats, aliases, key)
+    if val is None:
+        return 0
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return 0
 
 
 # Annotation rules: (key, aliases, threshold, label_template)

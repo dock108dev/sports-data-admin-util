@@ -77,7 +77,6 @@ class BetDefinition(BaseModel):
     extrapolation_distance: float | None = None
     confidence: float | None = None
     confidence_flags: list[str] = []
-    # Phase 2: Display fields
     fair_american_odds: int | None = None
     selection_display: str | None = None
     market_display_name: str | None = None
@@ -85,7 +84,6 @@ class BetDefinition(BaseModel):
     best_ev_percent: float | None = None
     is_reliably_positive: bool | None = None
     confidence_display_label: str | None = None
-    # Phase 6b: EV method display
     ev_method_display_name: str | None = None
     ev_method_explanation: str | None = None
 
@@ -498,7 +496,7 @@ async def get_fairbet_odds(
         for bet in bets_list:
             bet["books"] = [b for b in bet["books"] if b.book == book or b.is_sharp]
 
-    # Step 10: Enrich bets with display fields (Phase 2 + 6b + 6d)
+    # Enrich bets with display fields
     for bet in bets_list:
         # BetDefinition-level display fields
         bet["fair_american_odds"] = fair_american_odds(bet.get("true_prob"))
@@ -514,7 +512,6 @@ async def get_fairbet_odds(
         bet["confidence_display_label"] = confidence_display_label(
             bet.get("ev_confidence_tier")
         )
-        # Phase 6b: EV method display
         bet["ev_method_display_name"] = ev_method_display_name(bet.get("ev_method"))
         bet["ev_method_explanation"] = ev_method_explanation(bet.get("ev_method"))
 
@@ -545,7 +542,7 @@ async def get_fairbet_odds(
                 price_dec = round(1.0 / imp, 3) if imp > 0 else None
             except (ValueError, ZeroDivisionError):
                 pass
-            # Phase 6d: EV tier per book
+            # EV tier per book
             ev_tier: str | None = None
             ev_val = b.display_ev if b.display_ev is not None else b.ev_percent
             if ev_val is not None:

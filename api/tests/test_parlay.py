@@ -32,7 +32,7 @@ class TestParlayMath:
 
 
 class TestDateSection:
-    """Test date section classification (Phase 6c)."""
+    """Test date section classification."""
 
     def test_today(self) -> None:
         from datetime import datetime

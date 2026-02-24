@@ -57,7 +57,6 @@ class GameSummary(BaseModel):
     home_team_color_dark: str | None = Field(None, alias="homeTeamColorDark")
     away_team_color_light: str | None = Field(None, alias="awayTeamColorLight")
     away_team_color_dark: str | None = Field(None, alias="awayTeamColorDark")
-    # Status convenience flags (Phase 1)
     is_live: bool | None = Field(None, alias="isLive")
     is_final: bool | None = Field(None, alias="isFinal")
     is_pregame: bool | None = Field(None, alias="isPregame")
@@ -65,7 +64,6 @@ class GameSummary(BaseModel):
     read_eligible: bool | None = Field(None, alias="readEligible")
     current_period_label: str | None = Field(None, alias="currentPeriodLabel")
     live_snapshot: LiveSnapshot | None = Field(None, alias="liveSnapshot")
-    # Date section classification (Phase 6c)
     date_section: str | None = Field(None, alias="dateSection")
 
 
@@ -122,7 +120,6 @@ class GameMeta(BaseModel):
     home_team_color_dark: str | None = Field(None, alias="homeTeamColorDark")
     away_team_color_light: str | None = Field(None, alias="awayTeamColorLight")
     away_team_color_dark: str | None = Field(None, alias="awayTeamColorDark")
-    # Status convenience flags (Phase 1)
     is_live: bool | None = Field(None, alias="isLive")
     is_final: bool | None = Field(None, alias="isFinal")
     is_pregame: bool | None = Field(None, alias="isPregame")
@@ -152,9 +149,7 @@ class GameDetailResponse(BaseModel):
     raw_payloads: dict[str, Any] = Field(..., alias="rawPayloads")
     # NHL-specific data health (only populated for NHL games)
     data_health: NHLDataHealth | None = Field(None, alias="dataHealth")
-    # Structured odds table (Phase 3)
     odds_table: list[dict[str, Any]] | None = Field(None, alias="oddsTable")
-    # Stat annotations (Phase 4)
     stat_annotations: list[dict[str, Any]] | None = Field(None, alias="statAnnotations")
 
 

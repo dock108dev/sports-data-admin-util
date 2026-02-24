@@ -165,7 +165,6 @@ class PlayEntry(BaseModel):
     home_score: int | None = Field(None, alias="homeScore")
     away_score: int | None = Field(None, alias="awayScore")
     tier: int | None = None
-    # Phase 5: Timeline enrichment fields
     score_changed: bool | None = Field(None, alias="scoreChanged")
     scoring_team_abbr: str | None = Field(None, alias="scoringTeamAbbr")
     points_scored: int | None = Field(None, alias="pointsScored")

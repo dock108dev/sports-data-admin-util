@@ -257,7 +257,6 @@ def summarize_game(
     current_period = getattr(latest_play, "quarter", None) if latest_play else None
     game_clock_val = getattr(latest_play, "game_clock", None) if latest_play else None
 
-    # Phase 1: Status flags + live snapshot
     status_flags = compute_status_flags(game.status)
     league_code = game.league.code
 
@@ -276,7 +275,6 @@ def summarize_game(
             game_clock=game_clock_val,
         )
 
-    # Phase 6c: Date section classification
     from ...services.date_section import classify_date_section
 
     date_section = classify_date_section(game.start_time)

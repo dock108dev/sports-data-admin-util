@@ -39,8 +39,7 @@ def classify_date_section(
 
     if game_time.tzinfo is None:
         # Assume UTC for naive datetimes
-        from zoneinfo import ZoneInfo as ZI
-        game_time = game_time.replace(tzinfo=ZI("UTC"))
+        game_time = game_time.replace(tzinfo=ZoneInfo("UTC"))
 
     game_et = game_time.astimezone(_ET)
     today = now.date()

@@ -42,14 +42,12 @@ from .games import (
 )
 from .scraper import ScrapeRunConfig, ScrapeRunCreateRequest, ScrapeRunResponse
 from .teams import (
-    _HEX_COLOR_RE,
     TeamColorUpdate,
     TeamDetail,
     TeamGameSummary,
     TeamListResponse,
     TeamSocialInfo,
     TeamSummary,
-    _validate_hex_color,
 )
 
 __all__ = [
@@ -100,6 +98,4 @@ __all__ = [
     "TeamListResponse",
     "TeamSocialInfo",
     "TeamSummary",
-    "_HEX_COLOR_RE",
-    "_validate_hex_color",
 ]

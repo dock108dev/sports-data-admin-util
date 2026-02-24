@@ -137,7 +137,7 @@ def group_tier3_plays(
 
 
 # ---------------------------------------------------------------------------
-# Phase 5: Timeline enrichment
+# Timeline enrichment
 # ---------------------------------------------------------------------------
 
 # Phase classification by league and period

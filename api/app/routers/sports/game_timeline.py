@@ -108,7 +108,7 @@ async def get_game_flow(
     - plays: Only plays referenced by moments
     - validation_passed: Whether validation passed
     - validation_errors: Any validation errors (empty if passed)
-    - blocks: 4-7 narrative blocks (Phase 1, consumer-facing output)
+    - blocks: 4-7 narrative blocks (consumer-facing output)
     - total_words: Total word count across all block narratives
 
     Returns:
@@ -203,7 +203,7 @@ async def get_game_flow(
         if (play := play_lookup.get(play_index))
     ]
 
-    # Build response blocks if present (Phase 1)
+    # Build response blocks if present
     response_blocks: list[GameFlowBlock] | None = None
     total_words: int | None = None
 
