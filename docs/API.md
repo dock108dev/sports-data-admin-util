@@ -977,6 +977,14 @@ Get bet-centric odds for cross-book comparison with EV annotations.
       "ev_disabled_reason": null,
       "ev_method": "pinnacle_devig",
       "has_fair": true,
+      "fair_american_odds": -119,
+      "selection_display": "LAL -3.5",
+      "market_display_name": "Spread",
+      "best_book": "DraftKings",
+      "best_ev_percent": 2.15,
+      "confidence_display_label": "Sharp",
+      "ev_method_display_name": "Pinnacle Devig",
+      "ev_method_explanation": "Fair odds derived by removing vig from Pinnacle's line using Shin's method.",
       "books": [
         {
           "book": "DraftKings",
@@ -986,7 +994,10 @@ Get bet-centric odds for cross-book comparison with EV annotations.
           "implied_prob": 0.5238,
           "is_sharp": false,
           "ev_method": "pinnacle_devig",
-          "ev_confidence_tier": "high"
+          "ev_confidence_tier": "high",
+          "book_abbr": "DK",
+          "price_decimal": 1.909,
+          "ev_tier": "positive"
         },
         {
           "book": "Pinnacle",
@@ -996,7 +1007,10 @@ Get bet-centric odds for cross-book comparison with EV annotations.
           "implied_prob": 0.5414,
           "is_sharp": true,
           "ev_method": "pinnacle_devig",
-          "ev_confidence_tier": "high"
+          "ev_confidence_tier": "high",
+          "book_abbr": "PIN",
+          "price_decimal": 1.847,
+          "ev_tier": "neutral"
         }
       ]
     }
@@ -1010,7 +1024,11 @@ Get bet-centric odds for cross-book comparison with EV annotations.
       "matchup": "Boston Celtics @ Los Angeles Lakers",
       "game_date": "2026-01-31T19:00:00Z"
     }
-  ]
+  ],
+  "ev_config": {
+    "min_books_for_display": 3,
+    "ev_color_thresholds": { "strong_positive": 5.0, "positive": 0.0 }
+  }
 }
 ```
 
@@ -1023,6 +1041,53 @@ Get bet-centric odds for cross-book comparison with EV annotations.
 - `is_sharp`: `true` for the Pinnacle reference line
 - `market_categories_available`: Dynamic list of categories with data for the current filter
 - `games_available`: Dropdown-friendly list of pregame games with odds data
+- `fair_american_odds`: Fair odds in American format derived from `true_prob`
+- `selection_display`: Human-readable selection label (e.g., "LAL -3.5", "Over 215.5", "LeBron James Over 25.5")
+- `market_display_name`: Human-readable market name (e.g., "Spread", "Player Points")
+- `best_book`: Book with the highest EV% for this bet
+- `best_ev_percent`: Highest EV% across all books
+- `confidence_display_label`: Human-readable confidence tier ("Sharp", "Market", "Thin")
+- `ev_method_display_name`: Human-readable EV method name (e.g., "Pinnacle Devig")
+- `ev_method_explanation`: Sentence explaining how fair odds were derived
+- `ev_config`: Global configuration for EV display thresholds
+- Per-book `book_abbr`: Short abbreviation (e.g., "DK", "FD", "PIN")
+- Per-book `price_decimal`: Decimal odds equivalent of the American price
+- Per-book `ev_tier`: `"strong_positive"` (≥5%), `"positive"` (≥0%), `"negative"`, or `"neutral"` (sharp book)
+
+### `POST /parlay/evaluate`
+
+Evaluate a parlay by multiplying true probabilities. Returns combined fair probability and fair American odds.
+
+**Request Body:**
+```json
+{
+  "legs": [
+    { "trueProb": 0.55, "confidence": 0.9 },
+    { "trueProb": 0.60, "confidence": 0.85 }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `legs` | `array` | 2-20 legs, each with `trueProb` (0-1) and optional `confidence` (0-1) |
+
+**Response:**
+```json
+{
+  "fairProbability": 0.33,
+  "fairAmericanOdds": 203,
+  "combinedConfidence": 0.8746,
+  "legCount": 2
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fairProbability` | `float` | Product of all leg `trueProb` values |
+| `fairAmericanOdds` | `int \| null` | Fair odds in American format |
+| `combinedConfidence` | `float` | Geometric mean of leg confidences (1.0 if none provided) |
+| `legCount` | `int` | Number of legs |
 
 ---
 
@@ -1053,8 +1118,11 @@ interface GameSummary {
   gameDate: string;           // ISO 8601 UTC
   homeTeam: string;
   awayTeam: string;
+  status: string | null;
   homeScore: number | null;
   awayScore: number | null;
+  currentPeriod: number | null;
+  gameClock: string | null;
   hasBoxscore: boolean;
   hasPlayerStats: boolean;
   hasOdds: boolean;
@@ -1076,6 +1144,24 @@ interface GameSummary {
   homeTeamColorDark: string | null;   // Clash-resolved hex color (dark mode)
   awayTeamColorLight: string | null;
   awayTeamColorDark: string | null;
+  // Status convenience flags
+  isLive: boolean | null;              // Game currently in progress
+  isFinal: boolean | null;             // Game completed (final/completed/official)
+  isPregame: boolean | null;           // Game not yet started
+  isTrulyCompleted: boolean | null;    // Final + has boxscore data
+  readEligible: boolean | null;        // Game flow can be consumed
+  currentPeriodLabel: string | null;   // "Q4", "2nd Half", "P3", "OT"
+  liveSnapshot: LiveSnapshot | null;   // At-a-glance live state
+  dateSection: string | null;          // "Today", "Yesterday", "Tomorrow", "Earlier", "Upcoming"
+}
+
+interface LiveSnapshot {
+  periodLabel: string | null;   // "Q4", "2nd Half", "P3"
+  timeLabel: string | null;     // "Q4 2:35", "2H 12:30"
+  homeScore: number | null;
+  awayScore: number | null;
+  currentPeriod: number | null;
+  gameClock: string | null;
 }
 ```
 
@@ -1199,8 +1285,19 @@ interface TeamStat {
   stats: Record<string, any>;   // Raw JSONB — league-specific keys (see below)
   source: string | null;        // e.g. "nba_cdn", "cbb_api", "nhl_api"
   updatedAt: string | null;     // ISO 8601
+  normalizedStats: NormalizedStat[] | null;  // Canonical stats with display labels (see below)
+}
+
+interface NormalizedStat {
+  key: string;              // Canonical key (e.g. "points", "rebounds", "three_pointers_made")
+  displayLabel: string;     // Display label (e.g. "PTS", "REB", "3PM")
+  group: string;            // Stat group: "scoring", "shooting", "rebounds", "playmaking", "defense"
+  value: number | string | null;
+  formatType: string;       // "int", "float", "pct", "str"
 }
 ```
+
+`normalizedStats` resolves alias differences across data sources (Basketball Reference, NBA API, CBB API) into canonical keys with display labels. Clients can use these directly instead of maintaining their own alias tables.
 
 #### NBA Team Stats JSONB (`stats` field)
 
@@ -1285,6 +1382,7 @@ interface PlayerStat {
   rawStats: Record<string, any>;  // Full stat dict — league-specific keys (see below)
   source: string | null;
   updatedAt: string | null;
+  normalizedStats: NormalizedStat[] | null;  // Same as TeamStat.normalizedStats
 }
 ```
 
@@ -1414,8 +1512,23 @@ interface PlayEntry {
   homeScore: number | null;
   awayScore: number | null;
   tier: number | null;          // Server-computed: 1 (key), 2 (notable), 3 (routine)
+  // Timeline enrichment fields
+  scoreChanged: boolean | null;       // Whether score changed from previous play
+  scoringTeamAbbr: string | null;     // Which team scored (e.g. "BOS")
+  pointsScored: number | null;       // Points scored on this play
+  homeScoreBefore: number | null;    // Home score before this play
+  awayScoreBefore: number | null;    // Away score before this play
+  phase: string | null;              // Game phase: "early", "mid", "late", "ot"
 }
 ```
+
+**Phase mapping by league:**
+
+| League | Early | Mid | Late | OT |
+|--------|-------|-----|------|----|
+| NBA | Q1-Q2 | Q3 | Q4 | Q5+ |
+| NCAAB | H1 | — | H2 | H3+ |
+| NHL | P1 | P2 | P3 | P4+ |
 
 ### TieredPlayGroup
 
@@ -1448,6 +1561,30 @@ interface GameDetailResponse {
   derivedMetrics: Record<string, any>;
   rawPayloads: Record<string, any>;
   dataHealth: NHLDataHealth | null;     // NHL only
+  oddsTable: OddsTableGroup[] | null;   // Structured odds table (see below)
+  statAnnotations: StatAnnotation[] | null;  // Notable stat advantage callouts
+}
+
+interface OddsTableGroup {
+  marketType: string;           // "spreads", "totals", "h2h"
+  marketDisplay: string;        // "Spread", "Total", "Moneyline"
+  openingLines: OddsTableLine[];
+  closingLines: OddsTableLine[];
+}
+
+interface OddsTableLine {
+  book: string;
+  side: string;
+  line: number | null;
+  price: number;
+  priceDisplay: string;         // e.g. "-110", "+150"
+  isClosingLine: boolean;
+  isBest: boolean;              // Best line for this side within closing lines
+}
+
+interface StatAnnotation {
+  key: string;                  // e.g. "offensive_rebounds", "turnovers"
+  text: string;                 // e.g. "BOS dominated the glass (+7 OREB)"
 }
 
 interface GameMeta {
@@ -1474,6 +1611,7 @@ interface GameMeta {
   lastIngestedAt: string | null;
   lastPbpAt: string | null;
   lastSocialAt: string | null;
+  lastOddsAt: string | null;
   homeTeamXHandle: string | null;
   awayTeamXHandle: string | null;
   homeTeamAbbr: string | null;
@@ -1482,6 +1620,14 @@ interface GameMeta {
   homeTeamColorDark: string | null;
   awayTeamColorLight: string | null;
   awayTeamColorDark: string | null;
+  // Status convenience flags (same as GameSummary)
+  isLive: boolean | null;
+  isFinal: boolean | null;
+  isPregame: boolean | null;
+  isTrulyCompleted: boolean | null;
+  readEligible: boolean | null;
+  currentPeriodLabel: string | null;
+  liveSnapshot: LiveSnapshot | null;
 }
 ```
 

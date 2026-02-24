@@ -272,10 +272,11 @@ For the detailed mathematical walkthrough, see [EV Lifecycle](EV_LIFECYCLE.md).
 
 ## API Consumption Guide
 
-### Endpoint
+### Endpoints
 
 ```
 GET /api/fairbet/odds
+POST /api/fairbet/parlay/evaluate
 ```
 
 **Base path:** `/api/fairbet`
@@ -387,6 +388,38 @@ GET /api/fairbet/odds
 | `books_available` | All sportsbooks present in the current filtered result set. |
 | `games_available` | Dropdown-friendly list of pregame games: `{game_id, matchup, game_date}`. |
 
+### Display Fields (Server-Computed)
+
+The API enriches each `BetDefinition` and `BookOdds` with display-ready fields so clients don't need to maintain formatting logic:
+
+| Field | Level | Meaning |
+|-------|-------|---------|
+| `fair_american_odds` | Bet | Fair odds in American format from `true_prob` |
+| `selection_display` | Bet | Human-readable label: "LAL -3.5", "Over 215.5", "LeBron James Over 25.5" |
+| `market_display_name` | Bet | Human-readable market: "Spread", "Player Points", "Moneyline" |
+| `best_book` | Bet | Book with the highest EV% |
+| `best_ev_percent` | Bet | Highest EV% across all books |
+| `confidence_display_label` | Bet | "Sharp", "Market", or "Thin" |
+| `ev_method_display_name` | Bet | "Pinnacle Devig" or "Pinnacle Extrapolated" |
+| `ev_method_explanation` | Bet | Sentence explaining the derivation method |
+| `book_abbr` | Book | Short abbreviation: "DK", "FD", "PIN", etc. |
+| `price_decimal` | Book | Decimal odds equivalent |
+| `ev_tier` | Book | `"strong_positive"` (≥5%), `"positive"` (≥0%), `"negative"`, `"neutral"` |
+
+The response also includes `ev_config` with global display thresholds:
+```json
+{
+  "ev_config": {
+    "min_books_for_display": 3,
+    "ev_color_thresholds": { "strong_positive": 5.0, "positive": 0.0 }
+  }
+}
+```
+
+### Parlay Evaluation
+
+`POST /api/fairbet/parlay/evaluate` accepts 2-20 legs with `trueProb` (and optional `confidence`) and returns the combined fair probability, fair American odds, and geometric mean confidence. See [API.md](API.md#post-parlayevaluate) for request/response schema.
+
 ### EV Disabled Reasons
 
 | Reason | Meaning |
@@ -454,8 +487,10 @@ GET /api/fairbet/odds?market_category=player_prop&has_fair=true
 | Celery task definitions | `scraper/sports_scraper/jobs/odds_tasks.py` |
 | Celery beat schedule | `scraper/sports_scraper/celery_app.py` |
 | FairBet API endpoint | `api/app/routers/fairbet/odds.py` |
+| FairBet parlay endpoint | `api/app/routers/fairbet/parlay.py` |
 | EV annotation logic | `api/app/routers/fairbet/ev_annotation.py` |
 | EV extrapolation logic | `api/app/routers/fairbet/ev_extrapolation.py` |
+| FairBet display helpers | `api/app/services/fairbet_display.py` |
 | EV math functions | `api/app/services/ev.py` |
 | EV strategy config | `api/app/services/ev_config.py` |
 | DB models (odds tables) | `api/app/db/odds.py` |
