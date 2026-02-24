@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from app.services.stat_annotations import compute_team_annotations
 
 

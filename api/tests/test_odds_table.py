@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, UTC
 from unittest.mock import MagicMock
-
-import pytest
 
 from app.services.odds_table import build_odds_table
 

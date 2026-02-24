@@ -19,7 +19,6 @@ from typing import Any
 from pydantic import BaseModel
 
 from ...services.ev import (
-    american_to_implied,
     book_spread_factor,
     compute_ev_for_market,
     evaluate_ev_eligibility,

@@ -628,7 +628,6 @@ def _build_variations() -> None:
         "Fla. St.": "Florida St Seminoles",
         # Multi-word mascot teams (school name without mascot)
         "North Texas": "North Texas Mean Green",
-        "North Carolina": "North Carolina Tar Heels",
         "Southern Miss": "Southern Miss Golden Eagles",
         "South Carolina Upstate": "South Carolina Upstate Spartans",
         "Southern Indiana": "Southern Indiana Screaming Eagles",

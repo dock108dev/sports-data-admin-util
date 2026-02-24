@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from app.services.fairbet_display import (
     book_abbreviation,
     confidence_display_label,
