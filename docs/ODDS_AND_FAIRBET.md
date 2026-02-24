@@ -325,6 +325,47 @@ POST /api/fairbet/parlay/evaluate
       "ev_disabled_reason": null,
       "ev_method": "pinnacle_devig",
       "has_fair": true,
+      "explanation_steps": [
+        {
+          "step_number": 1,
+          "title": "Convert odds to implied probability",
+          "description": "Each side's American odds are converted to an implied win probability.",
+          "detail_rows": [
+            { "label": "This side", "value": "-118 → 54.1%", "is_highlight": false },
+            { "label": "Other side", "value": "+108 → 48.1%", "is_highlight": false },
+            { "label": "Total", "value": "102.2%", "is_highlight": false }
+          ]
+        },
+        {
+          "step_number": 2,
+          "title": "Identify the vig",
+          "description": "The total implied probability exceeds 100% — the excess is the bookmaker's margin (vig).",
+          "detail_rows": [
+            { "label": "Total implied", "value": "102.2%", "is_highlight": false },
+            { "label": "Should be", "value": "100.0%", "is_highlight": false },
+            { "label": "Vig (margin)", "value": "2.2%", "is_highlight": true }
+          ]
+        },
+        {
+          "step_number": 3,
+          "title": "Remove the vig (Shin's method)",
+          "description": "Shin's method accounts for favorite-longshot bias, allocating more vig correction to longshots than favorites.",
+          "detail_rows": [
+            { "label": "Shin parameter (z)", "value": "0.0215", "is_highlight": false },
+            { "label": "Fair probability", "value": "54.3%", "is_highlight": true },
+            { "label": "Fair odds", "value": "-119", "is_highlight": false }
+          ]
+        },
+        {
+          "step_number": 4,
+          "title": "Calculate EV at best price",
+          "description": "Expected value measures the average profit per dollar wagered at the best available price.",
+          "detail_rows": [
+            { "label": "Best price", "value": "-110 (DraftKings)", "is_highlight": false },
+            { "label": "EV", "value": "+2.15%", "is_highlight": true }
+          ]
+        }
+      ],
       "books": [
         {
           "book": "DraftKings",
@@ -384,6 +425,7 @@ POST /api/fairbet/parlay/evaluate
 | `has_fair` | `true` if EV was successfully computed for this bet. |
 | `ev_disabled_reason` | Why EV couldn't be computed (see table below). |
 | `ev_confidence_tier` | `high`, `medium`, or `low`. Set per-strategy, not dynamically. |
+| `explanation_steps` | Step-by-step math walkthrough (see [Explanation Steps](#explanation-steps)). `null` if not enriched. |
 | `ev_diagnostics` | Aggregate stats on EV computation for the current query. |
 | `books_available` | All sportsbooks present in the current filtered result set. |
 | `games_available` | Dropdown-friendly list of pregame games: `{game_id, matchup, game_date}`. |
@@ -402,6 +444,7 @@ The API enriches each `BetDefinition` and `BookOdds` with display-ready fields s
 | `confidence_display_label` | Bet | "Sharp", "Market", or "Thin" |
 | `ev_method_display_name` | Bet | "Pinnacle Devig" or "Pinnacle Extrapolated" |
 | `ev_method_explanation` | Bet | Sentence explaining the derivation method |
+| `explanation_steps` | Bet | Step-by-step math walkthrough with detail rows (see below) |
 | `book_abbr` | Book | Short abbreviation: "DK", "FD", "PIN", etc. |
 | `price_decimal` | Book | Decimal odds equivalent |
 | `ev_tier` | Book | `"strong_positive"` (≥5%), `"positive"` (≥0%), `"negative"`, `"neutral"` |
@@ -416,6 +459,24 @@ The response also includes `ev_config` with global display thresholds:
 }
 ```
 
+### Explanation Steps
+
+The `explanation_steps` field provides a pre-computed math walkthrough so clients can render the derivation without reimplementing devig logic. Each step has a `step_number`, `title`, `description`, and `detail_rows` (label/value pairs with an `is_highlight` flag for emphasis).
+
+Four dispatch paths based on `ev_method` and `ev_disabled_reason`:
+
+| Condition | Path | Steps |
+|-----------|------|-------|
+| `ev_disabled_reason` is set | Not available | 1 step: human-readable disabled reason |
+| `ev_method = "pinnacle_devig"` | Paired devig | 3-4: implied conversion → vig → Shin's devig → EV (if best book) |
+| `ev_method = "pinnacle_extrapolated"` | Extrapolated | 3-4: implied conversion → vig → logit extrapolation → EV (if best book) |
+| `true_prob` is set (other method) | Fallback | 1-2: fair probability → EV (if best book) |
+| All null | Not available | 1 step: generic not-available message |
+
+**Detail row highlights:** Rows with `is_highlight: true` are the key results the client should visually emphasize (e.g., vig percentage, fair probability, EV%).
+
+Code: `api/app/services/fairbet_display.py` — `build_explanation_steps()`
+
 ### Parlay Evaluation
 
 `POST /api/fairbet/parlay/evaluate` accepts 2-20 legs with `trueProb` (and optional `confidence`) and returns the combined fair probability, fair American odds, and geometric mean confidence. See [API.md](API.md#post-parlayevaluate) for request/response schema.
@@ -426,6 +487,7 @@ The response also includes `ev_config` with global display thresholds:
 |--------|---------|
 | `no_strategy` | No EV config for this (league, market_category) — e.g., `period`, `game_prop` |
 | `no_pair` | No valid opposite side found for pairing |
+| `entity_mismatch` | Cannot pair opposite sides (different players/entities) |
 | `reference_missing` | Pinnacle not present on one or both sides |
 | `reference_stale` | Pinnacle data exceeds staleness limit |
 | `insufficient_books` | Fewer than 3 qualifying books on one side |
