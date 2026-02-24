@@ -43,6 +43,11 @@ class BookOdds(BaseModel):
     is_sharp: bool = False
     ev_method: str | None = None
     ev_confidence_tier: str | None = None
+    # Phase 2: Display fields
+    book_abbr: str | None = None
+    price_decimal: float | None = None
+    # Phase 6d: EV tier
+    ev_tier: str | None = None
 
 
 def derive_entity_key(

@@ -1,7 +1,7 @@
 """Tests for app.services.play_tiers."""
 
 from app.routers.sports.schemas import PlayEntry
-from app.services.play_tiers import classify_all_tiers, group_tier3_plays
+from app.services.play_tiers import classify_all_tiers, enrich_play_entries, group_tier3_plays
 
 
 def _play(
@@ -267,3 +267,104 @@ class TestGroupTier3Plays:
         assert "3 plays" in groups[0].summary_label
         assert "rebound" in groups[0].summary_label
         assert "pass" in groups[0].summary_label
+
+
+# ---------------------------------------------------------------------------
+# enrich_play_entries (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichPlayEntries:
+    def test_empty_plays(self):
+        enrich_play_entries([], "NBA", "BOS", "NYK")
+
+    def test_score_change_detected(self):
+        plays = [
+            _play(1, quarter=1, home_score=0, away_score=0),
+            _play(2, quarter=1, home_score=2, away_score=0),
+        ]
+        enrich_play_entries(plays, "NBA", "BOS", "NYK")
+        assert plays[0].score_changed is False  # 0,0 -> 0,0 — no change
+        assert plays[1].score_changed is True
+        assert plays[1].scoring_team_abbr == "BOS"
+        assert plays[1].points_scored == 2
+
+    def test_away_team_scores(self):
+        plays = [
+            _play(1, quarter=1, home_score=5, away_score=5),
+            _play(2, quarter=1, home_score=5, away_score=8),
+        ]
+        enrich_play_entries(plays, "NBA", "BOS", "NYK")
+        assert plays[1].scoring_team_abbr == "NYK"
+        assert plays[1].points_scored == 3
+
+    def test_no_score_change(self):
+        plays = [
+            _play(1, quarter=1, home_score=10, away_score=8),
+            _play(2, quarter=1, play_type="rebound", home_score=10, away_score=8),
+        ]
+        enrich_play_entries(plays, "NBA", "BOS", "NYK")
+        assert plays[1].score_changed is False
+        assert plays[1].scoring_team_abbr is None
+        assert plays[1].points_scored is None
+
+    def test_before_scores_tracked(self):
+        plays = [
+            _play(1, quarter=1, home_score=0, away_score=0),
+            _play(2, quarter=1, home_score=3, away_score=0),
+        ]
+        enrich_play_entries(plays, "NBA", "BOS", "NYK")
+        assert plays[0].home_score_before == 0
+        assert plays[0].away_score_before == 0
+        assert plays[1].home_score_before == 0
+        assert plays[1].away_score_before == 0
+
+    def test_phase_nba(self):
+        plays = [
+            _play(1, quarter=1),
+            _play(2, quarter=2),
+            _play(3, quarter=3),
+            _play(4, quarter=4),
+            _play(5, quarter=5),
+        ]
+        enrich_play_entries(plays, "NBA", "BOS", "NYK")
+        assert plays[0].phase == "early"
+        assert plays[1].phase == "early"
+        assert plays[2].phase == "mid"
+        assert plays[3].phase == "late"
+        assert plays[4].phase == "ot"
+
+    def test_phase_ncaab(self):
+        plays = [
+            _play(1, quarter=1),
+            _play(2, quarter=2),
+            _play(3, quarter=3),
+        ]
+        enrich_play_entries(plays, "NCAAB", "KU", "DUKE")
+        assert plays[0].phase == "early"
+        assert plays[1].phase == "late"
+        assert plays[2].phase == "ot"
+
+    def test_phase_nhl(self):
+        plays = [
+            _play(1, quarter=1),
+            _play(2, quarter=2),
+            _play(3, quarter=3),
+            _play(4, quarter=4),
+        ]
+        enrich_play_entries(plays, "NHL", "BOS", "MTL")
+        assert plays[0].phase == "early"
+        assert plays[1].phase == "mid"
+        assert plays[2].phase == "late"
+        assert plays[3].phase == "ot"
+
+    def test_missing_scores_carry_forward(self):
+        plays = [
+            _play(1, quarter=1, home_score=5, away_score=3),
+            _play(2, quarter=1),  # No scores
+            _play(3, quarter=1, home_score=7, away_score=3),
+        ]
+        enrich_play_entries(plays, "NBA", "BOS", "NYK")
+        assert plays[1].score_changed is False
+        assert plays[2].score_changed is True
+        assert plays[2].scoring_team_abbr == "BOS"

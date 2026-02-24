@@ -121,14 +121,28 @@ def serialize_run(run: SportsScrapeRun, league_code: str) -> ScrapeRunResponse:
     )
 
 
-def serialize_team_stat(box: SportsTeamBoxscore) -> TeamStat:
+def serialize_team_stat(
+    box: SportsTeamBoxscore,
+    league_code: str | None = None,
+) -> TeamStat:
     """Serialize team boxscore from JSONB stats column."""
+    normalized = None
+    if league_code and box.stats:
+        from ...services.stat_normalization import normalize_stats
+
+        normalized_dicts = normalize_stats(box.stats, league_code)
+        if normalized_dicts:
+            from .schemas import NormalizedStat
+
+            normalized = [NormalizedStat(**s) for s in normalized_dicts]
+
     return TeamStat(
         team=box.team.name if box.team else "Unknown",
         is_home=box.is_home,
         stats=box.stats or {},
         source=box.source,
         updated_at=box.updated_at,
+        normalized_stats=normalized,
     )
 
 
@@ -178,7 +192,10 @@ def _get_nested_int(stats: dict[str, Any], key: str) -> int | None:
         return None
 
 
-def serialize_player_stat(player: SportsPlayerBoxscore) -> PlayerStat:
+def serialize_player_stat(
+    player: SportsPlayerBoxscore,
+    league_code: str | None = None,
+) -> PlayerStat:
     """Serialize player boxscore, flattening stats for frontend display."""
     stats = player.stats or {}
     minutes_val = _extract_minutes(stats)
@@ -187,6 +204,16 @@ def serialize_player_stat(player: SportsPlayerBoxscore) -> PlayerStat:
     rebounds = _get_int_stat(stats, "rebounds")
     if rebounds is None:
         rebounds = _get_nested_int(stats, "rebounds") or _get_nested_int(stats, "totalRebounds")
+
+    normalized = None
+    if league_code and stats:
+        from ...services.stat_normalization import normalize_stats
+
+        normalized_dicts = normalize_stats(stats, league_code)
+        if normalized_dicts:
+            from .schemas import NormalizedStat
+
+            normalized = [NormalizedStat(**s) for s in normalized_dicts]
 
     return PlayerStat(
         team=player.team.name if player.team else "Unknown",
@@ -198,6 +225,7 @@ def serialize_player_stat(player: SportsPlayerBoxscore) -> PlayerStat:
         raw_stats=stats,
         source=player.source,
         updated_at=player.updated_at,
+        normalized_stats=normalized,
     )
 
 

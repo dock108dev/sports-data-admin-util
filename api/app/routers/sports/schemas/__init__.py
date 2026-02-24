@@ -6,9 +6,11 @@ import directly from the schemas package.
 
 from .common import (
     GamePhase,
+    LiveSnapshot,
     NHLDataHealth,
     NHLGoalieStat,
     NHLSkaterStat,
+    NormalizedStat,
     OddsEntry,
     PlayEntry,
     PlayerStat,
@@ -53,9 +55,11 @@ from .teams import (
 __all__ = [
     # common
     "GamePhase",
+    "LiveSnapshot",
     "NHLDataHealth",
     "NHLGoalieStat",
     "NHLSkaterStat",
+    "NormalizedStat",
     "OddsEntry",
     "PlayEntry",
     "PlayerStat",

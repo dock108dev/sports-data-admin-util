@@ -24,6 +24,9 @@ from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
 from ...services.derived_metrics import compute_derived_metrics
+from ...services.game_status import compute_status_flags
+from ...services.odds_table import build_odds_table
+from ...services.period_labels import period_label, time_label
 from ...services.play_tiers import classify_all_tiers, group_tier3_plays
 from ...services.team_colors import get_matchup_colors
 from .common import (
@@ -323,7 +326,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     if not game:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
 
-    team_stats = [serialize_team_stat(box) for box in game.team_boxscores]
+    team_stats = [serialize_team_stat(box, league_code=league_code) for box in game.team_boxscores]
 
     # Determine if this is an NHL game
     league_code = game.league.code if game.league else None
@@ -350,7 +353,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         nhl_goalies = goalies
     else:
         # Non-NHL: use generic player stats
-        player_stats = [serialize_player_stat(player) for player in game.player_boxscores]
+        player_stats = [serialize_player_stat(player, league_code=league_code) for player in game.player_boxscores]
 
     odds_entries = [
         OddsEntry(
@@ -400,6 +403,27 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         game.away_team.color_dark_hex if game.away_team else None,
     )
 
+    # Phase 1: Status flags + live snapshot for GameMeta
+    status_flags = compute_status_flags(game.status)
+    latest_play = max(game.plays, key=lambda p: p.play_index, default=None) if game.plays else None
+    meta_current_period = getattr(latest_play, "quarter", None) if latest_play else None
+    meta_game_clock = getattr(latest_play, "game_clock", None) if latest_play else None
+
+    from .schemas import LiveSnapshot
+
+    meta_period_label: str | None = None
+    meta_live_snapshot: LiveSnapshot | None = None
+    if meta_current_period is not None and league_code:
+        meta_period_label = period_label(meta_current_period, league_code)
+        meta_live_snapshot = LiveSnapshot(
+            period_label=meta_period_label,
+            time_label=time_label(meta_current_period, meta_game_clock, league_code),
+            home_score=game.home_score,
+            away_score=game.away_score,
+            current_period=meta_current_period,
+            game_clock=meta_game_clock,
+        )
+
     meta = GameMeta(
         id=game.id,
         league_code=game.league.code if game.league else "UNKNOWN",
@@ -433,6 +457,13 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         homeTeamColorDark=matchup_colors["homeDarkHex"],
         awayTeamColorLight=matchup_colors["awayLightHex"],
         awayTeamColorDark=matchup_colors["awayDarkHex"],
+        is_live=status_flags["is_live"],
+        is_final=status_flags["is_final"],
+        is_pregame=status_flags["is_pregame"],
+        is_truly_completed=status_flags["is_truly_completed"],
+        read_eligible=status_flags["read_eligible"],
+        current_period_label=meta_period_label,
+        live_snapshot=meta_live_snapshot,
     )
 
     social_posts_entries = serialize_social_posts(game, game.social_posts or [])
@@ -471,6 +502,36 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     # Compute NHL-specific data health (None for non-NHL games)
     data_health = compute_nhl_data_health(game, game.player_boxscores)
 
+    # Phase 3: Structured odds table
+    odds_table = build_odds_table(game.odds) if game.odds else None
+
+    # Phase 4: Stat annotations
+    from ...services.stat_annotations import compute_team_annotations
+
+    stat_annotations: list[dict] | None = None
+    home_box = next((b for b in game.team_boxscores if b.is_home), None)
+    away_box = next((b for b in game.team_boxscores if not b.is_home), None)
+    if home_box and away_box and league_code:
+        home_abbr = game.home_team.abbreviation if game.home_team else None
+        away_abbr = game.away_team.abbreviation if game.away_team else None
+        if home_abbr and away_abbr:
+            stat_annotations = compute_team_annotations(
+                home_box.stats or {},
+                away_box.stats or {},
+                home_abbr,
+                away_abbr,
+                league_code,
+            )
+
+    # Phase 5: Timeline enrichment
+    from ...services.play_tiers import enrich_play_entries
+
+    if plays_entries and league_code:
+        home_abbr_val = game.home_team.abbreviation if game.home_team else None
+        away_abbr_val = game.away_team.abbreviation if game.away_team else None
+        if home_abbr_val and away_abbr_val:
+            enrich_play_entries(plays_entries, league_code, home_abbr_val, away_abbr_val)
+
     return GameDetailResponse(
         game=meta,
         team_stats=team_stats,
@@ -484,6 +545,8 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         derived_metrics=derived,
         raw_payloads=raw_payloads,
         data_health=data_health,
+        odds_table=odds_table,
+        stat_annotations=stat_annotations,
     )
 
 
