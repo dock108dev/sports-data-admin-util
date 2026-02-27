@@ -82,6 +82,11 @@ async def list_games(
         alias="hasPbp",
         description="Only return games with play-by-play data",
     ),
+    finalOnly: bool = Query(
+        False,
+        alias="finalOnly",
+        description="Only include games with final/completed/official status",
+    ),
     safe: bool = Query(
         False,
         description="Exclude games with conflicts or missing team mappings (app-safe mode)",
@@ -113,6 +118,7 @@ async def list_games(
         missing_odds=missingOdds,
         missing_social=missingSocial,
         missing_any=missingAny,
+        final_only=finalOnly,
     )
 
     # Filter to games with play-by-play data
@@ -157,6 +163,7 @@ async def list_games(
         missing_odds=missingOdds,
         missing_social=missingSocial,
         missing_any=missingAny,
+        final_only=finalOnly,
     )
 
     # Apply hasPbp filter to count query
