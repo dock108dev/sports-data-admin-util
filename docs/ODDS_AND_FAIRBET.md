@@ -25,8 +25,8 @@ The Odds API (v4)
       │
       ▼
 OddsAPIClient  ───────────────  Celery tasks:
-  .fetch_mainlines()              sync_mainline_odds (every 15 min)
-  .fetch_event_props()            sync_prop_odds     (every 60 min)
+  .fetch_mainlines()              sync_mainline_odds (every 60s)
+  .fetch_event_props()            sync_prop_odds     (every 60s)
       │
       ▼
 NormalizedOddsSnapshot
@@ -66,8 +66,8 @@ Two tasks run on separate cadences:
 
 | Task | Cadence | Markets | Description |
 |------|---------|---------|-------------|
-| `sync_mainline_odds` | Every 15 min | h2h, spreads, totals | All leagues, today + tomorrow |
-| `sync_prop_odds` | Every 60 min | Player/team props, alternates | All leagues, pregame events |
+| `sync_mainline_odds` | Every 60s | h2h, spreads, totals | All leagues, today + tomorrow |
+| `sync_prop_odds` | Every 60s | Player/team props, alternates | All leagues, pregame events |
 
 Both tasks skip during the **3–7 AM ET quiet window** (no games in progress, saves API credits).
 

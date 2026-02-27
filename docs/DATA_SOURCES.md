@@ -127,8 +127,8 @@ The Odds API (v4): `https://api.the-odds-api.com`
 
 | Task | Cadence | Markets | Quiet Window |
 |------|---------|---------|-------------|
-| `sync_mainline_odds` | Every 15 min | h2h, spreads, totals | 3–7 AM ET (skips) |
-| `sync_prop_odds` | Every 60 min | Player/team props, alternates | 3–7 AM ET (skips) |
+| `sync_mainline_odds` | Every 60s | h2h, spreads, totals | 3–7 AM ET (skips) |
+| `sync_prop_odds` | Every 60s | Player/team props, alternates | 3–7 AM ET (skips) |
 
 Configuration: `scraper/sports_scraper/celery_app.py`
 
@@ -301,9 +301,11 @@ Implementation: `queue_job_run()`, `activate_queued_job_run()`, `enforce_social_
 - **Scheduler**: Celery Beat
 - All tasks run in all environments (local mirrors production)
 
-**Polling (continuous):**
-- **Game State Updates**: Every 3 minutes
-- **Live PBP + Boxscore Polling**: Every 5 minutes (NBA, NHL per-game; NCAAB via batch CBB API)
+**Polling (every 60 seconds, staggered 15s apart via countdown):**
+- **Game State Updates**: Every 60s — disabled 3–11 AM EST (08–16 UTC)
+- **Live PBP + Boxscore Polling**: Every 60s — disabled 3–11 AM EST (08–16 UTC)
+- **Mainline Odds Sync**: Every 60s (`sync_mainline_odds`: spreads, totals, moneyline; 3–7 AM ET quiet window in task)
+- **Prop Odds Sync**: Every 60s (`sync_prop_odds`: player/team props; 3–7 AM ET quiet window in task)
 - **Game Social Collection**: Every 60 minutes (`collect_game_social`)
 
 **Daily (timed):**
@@ -313,12 +315,6 @@ Implementation: `queue_job_run()`, `activate_queued_job_run()`, `enforce_social_
   - 09:30 UTC (4:30 AM ET) — NBA flow generation
   - 10:00 UTC (5:00 AM ET) — NHL flow generation
   - 10:30 UTC (5:30 AM ET) — NCAAB flow generation (capped at 10 games)
-
-**Odds sync:**
-- **Mainline Odds Sync**: Every 15 minutes (`sync_mainline_odds`: spreads, totals, moneyline for all leagues; `us` + `eu` regions)
-- **Prop Odds Sync**: Every 60 minutes (`sync_prop_odds`: player/team props for pregame events)
-- **Odds Quiet Window**: 3–7 AM ET daily (both odds tasks skip execution)
-- **Window**: Yesterday through today (catches overnight game completions)
 
 Configuration: `scraper/sports_scraper/celery_app.py`
 
