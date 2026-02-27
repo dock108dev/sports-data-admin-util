@@ -87,7 +87,8 @@ class TestParseNBAClock:
 class TestNBALiveFeedClient:
     """Tests for NBALiveFeedClient with mocked HTTP."""
 
-    def test_fetch_scoreboard_success(self):
+    @patch("sports_scraper.utils.datetime_utils.today_et", return_value=date(2024, 1, 15))
+    def test_fetch_scoreboard_success(self, _mock_today):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -119,7 +120,8 @@ class TestNBALiveFeedClient:
         assert games[0].home_score == 110
         assert games[0].away_score == 105
 
-    def test_fetch_scoreboard_live_game(self):
+    @patch("sports_scraper.utils.datetime_utils.today_et", return_value=date(2024, 1, 15))
+    def test_fetch_scoreboard_live_game(self, _mock_today):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -145,7 +147,8 @@ class TestNBALiveFeedClient:
 
         assert games[0].status == "live"
 
-    def test_fetch_scoreboard_scheduled_game(self):
+    @patch("sports_scraper.utils.datetime_utils.today_et", return_value=date(2024, 1, 15))
+    def test_fetch_scoreboard_scheduled_game(self, _mock_today):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {

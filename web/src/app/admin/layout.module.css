@@ -156,6 +156,7 @@
 .main {
   grid-area: main;
   padding: 2rem;
+  padding-bottom: var(--runs-drawer-height, 36px);
   overflow-y: auto;
   z-index: 1;
 }

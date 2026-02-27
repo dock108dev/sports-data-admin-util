@@ -529,6 +529,11 @@ class ScrapeRunManager:
         ingest_run_id: int | None = None
         ingest_run_completed = False
         try:
+            # Odds first: creates games from the Odds API so that
+            # boxscore enrichment and PBP have games to work with.
+            if config.odds:
+                self._sync_odds(run_id, config, summary, start, end)
+
             if config.boxscores:
                 ingest_run_id = start_job_run("ingest", [config.league_code])
 
@@ -538,9 +543,6 @@ class ScrapeRunManager:
             if ingest_run_id is not None:
                 complete_job_run(ingest_run_id, "success")
                 ingest_run_completed = True
-
-            if config.odds:
-                self._sync_odds(run_id, config, summary, start, end)
 
             if config.pbp:
                 self._ingest_pbp(run_id, config, summary, start, end, updated_before_dt)

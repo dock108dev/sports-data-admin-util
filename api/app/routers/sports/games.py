@@ -326,11 +326,11 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     if not game:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
 
-    team_stats = [serialize_team_stat(box, league_code=league_code) for box in game.team_boxscores]
-
     # Determine if this is an NHL game
     league_code = game.league.code if game.league else None
     is_nhl = league_code == "NHL"
+
+    team_stats = [serialize_team_stat(box, league_code=league_code) for box in game.team_boxscores]
 
     # For NHL, separate skaters and goalies; for other sports use generic player stats
     nhl_skaters: list[NHLSkaterStat] | None = None

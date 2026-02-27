@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 from celery import Celery, signals
 from celery.schedules import crontab
 
@@ -158,33 +156,28 @@ def mark_stale_runs_interrupted():
     """
     Mark any runs that are stuck in 'running' status as 'interrupted'.
 
-    This handles cases where the Docker container was killed or the worker
-    crashed, leaving runs in a 'running' state that will never complete.
+    Called on worker startup. If the worker just booted, any 'running' job is
+    orphaned — the previous worker process that owned it is gone. No time
+    threshold is needed; every running record is stale by definition.
+
     Covers both SportsScrapeRun (ingestion runs) and SportsJobRun (task runs).
     """
     try:
         with get_session() as session:
-            # Find runs that have been running for more than 1 hour
-            # (reasonable threshold - if a run is truly running, it should complete or fail)
-            stale_threshold = now_utc() - timedelta(hours=1)
-
             # --- SportsScrapeRun (ingestion runs) ---
             stale_runs = session.query(db_models.SportsScrapeRun).filter(
-                db_models.SportsScrapeRun.status == "running",
-                db_models.SportsScrapeRun.started_at.isnot(None),
-                db_models.SportsScrapeRun.started_at < stale_threshold,
+                db_models.SportsScrapeRun.status.in_(["running", "pending"]),
             ).all()
 
             if stale_runs:
                 for run in stale_runs:
                     run.status = "interrupted"
                     run.finished_at = now_utc()
-                    run.error_details = "Run was interrupted (worker shutdown or container killed)"
+                    run.error_details = "Run was interrupted (worker restart or container killed)"
                     logger.warning(
                         "marking_stale_run_interrupted",
                         run_id=run.id,
                         started_at=str(run.started_at),
-                        hours_running=(now_utc() - run.started_at).total_seconds() / 3600,
                     )
 
                 session.commit()
@@ -193,16 +186,14 @@ def mark_stale_runs_interrupted():
             # --- SportsJobRun (task runs) ---
             stale_job_runs = session.query(db_models.SportsJobRun).filter(
                 db_models.SportsJobRun.status == "running",
-                db_models.SportsJobRun.started_at.isnot(None),
-                db_models.SportsJobRun.started_at < stale_threshold,
             ).all()
 
             if stale_job_runs:
                 for jr in stale_job_runs:
                     jr.status = "interrupted"
                     jr.finished_at = now_utc()
-                    jr.duration_seconds = (now_utc() - jr.started_at).total_seconds()
-                    jr.error_summary = "Task was interrupted (worker shutdown or container killed)"
+                    jr.duration_seconds = (now_utc() - jr.started_at).total_seconds() if jr.started_at else None
+                    jr.error_summary = "Task was interrupted (worker restart or container killed)"
                     logger.warning(
                         "marking_stale_job_run_interrupted",
                         run_id=jr.id,
@@ -236,23 +227,44 @@ def on_worker_shutting_down(sender=None, **kwargs):
     logger.info("celery_worker_shutting_down", worker=worker_name)
     try:
         with get_session() as session:
-            # Mark any runs that are currently running as interrupted
+            # --- SportsScrapeRun ---
             running_runs = session.query(db_models.SportsScrapeRun).filter(
                 db_models.SportsScrapeRun.status == "running",
             ).all()
 
-            if running_runs:
-                for run in running_runs:
-                    run.status = "interrupted"
-                    run.finished_at = now_utc()
-                    run.error_details = "Run was interrupted (worker shutdown)"
-                    logger.warning(
-                        "marking_run_interrupted_on_shutdown",
-                        run_id=run.id,
-                        started_at=str(run.started_at),
-                    )
+            for run in running_runs:
+                run.status = "interrupted"
+                run.finished_at = now_utc()
+                run.error_details = "Run was interrupted (worker shutdown)"
+                logger.warning(
+                    "marking_run_interrupted_on_shutdown",
+                    run_id=run.id,
+                    started_at=str(run.started_at),
+                )
 
+            # --- SportsJobRun ---
+            running_jobs = session.query(db_models.SportsJobRun).filter(
+                db_models.SportsJobRun.status == "running",
+            ).all()
+
+            for jr in running_jobs:
+                jr.status = "interrupted"
+                jr.finished_at = now_utc()
+                jr.duration_seconds = (now_utc() - jr.started_at).total_seconds() if jr.started_at else None
+                jr.error_summary = "Task was interrupted (worker shutdown)"
+                logger.warning(
+                    "marking_job_run_interrupted_on_shutdown",
+                    run_id=jr.id,
+                    phase=jr.phase,
+                    started_at=str(jr.started_at),
+                )
+
+            if running_runs or running_jobs:
                 session.commit()
-                logger.info("runs_marked_interrupted_on_shutdown", count=len(running_runs))
+                logger.info(
+                    "runs_marked_interrupted_on_shutdown",
+                    scrape_runs=len(running_runs),
+                    job_runs=len(running_jobs),
+                )
     except Exception as exc:
         logger.exception("failed_to_mark_runs_on_shutdown", error=str(exc))

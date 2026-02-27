@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import styles from "./styles.module.css";
-import { triggerTask } from "@/lib/api/sportsAdmin/taskControl";
+import {
+  triggerTask,
+  createScrapeRun,
+  triggerBulkFlowGeneration,
+} from "@/lib/api/sportsAdmin/taskControl";
 
 // ── Task registry (mirrors API whitelist) ──
 
@@ -226,6 +230,8 @@ function TaskCard({ task }: { task: TaskDef }) {
     for (const p of task.params) {
       if (p.default !== undefined) {
         defaults[p.name] = String(p.default);
+      } else if (p.required && p.type === "select" && p.options?.length) {
+        defaults[p.name] = p.options[0];
       } else {
         defaults[p.name] = "";
       }
@@ -350,6 +356,292 @@ function TaskCard({ task }: { task: TaskDef }) {
   );
 }
 
+// ── Chip toggle helper ──
+
+function ChipToggle({
+  items,
+  selected,
+  onToggle,
+}: {
+  items: string[];
+  selected: Set<string>;
+  onToggle: (item: string) => void;
+}) {
+  return (
+    <div className={styles.chipGroup}>
+      {items.map((item) => (
+        <button
+          key={item}
+          type="button"
+          className={selected.has(item) ? styles.chipActive : styles.chip}
+          onClick={() => onToggle(item)}
+        >
+          {item}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Data Backfill card ──
+
+const DATA_TYPES = ["Boxscores", "Odds", "PBP", "Social"] as const;
+const DATA_TYPE_KEYS: Record<(typeof DATA_TYPES)[number], string> = {
+  Boxscores: "boxscores",
+  Odds: "odds",
+  PBP: "pbp",
+  Social: "social",
+};
+
+function DataBackfillCard() {
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [leagues, setLeagues] = useState<Set<string>>(
+    () => new Set(LEAGUE_OPTIONS)
+  );
+  const [dataTypes, setDataTypes] = useState<Set<string>>(
+    () => new Set(["Boxscores", "Odds", "PBP"])
+  );
+  const [dispatching, setDispatching] = useState(false);
+  const [results, setResults] = useState<
+    { league: string; jobId?: string; error?: string }[]
+  >([]);
+
+  const toggleLeague = (l: string) =>
+    setLeagues((prev) => {
+      const next = new Set(prev);
+      next.has(l) ? next.delete(l) : next.add(l);
+      return next;
+    });
+
+  const toggleDataType = (dt: string) =>
+    setDataTypes((prev) => {
+      const next = new Set(prev);
+      next.has(dt) ? next.delete(dt) : next.add(dt);
+      return next;
+    });
+
+  const canRun =
+    startDate && endDate && leagues.size > 0 && dataTypes.size > 0;
+
+  const handleRun = async () => {
+    setDispatching(true);
+    setResults([]);
+    const newResults: typeof results = [];
+
+    for (const league of Array.from(leagues)) {
+      try {
+        const res = await createScrapeRun({
+          leagueCode: league,
+          startDate,
+          endDate,
+          boxscores: dataTypes.has("Boxscores"),
+          odds: dataTypes.has("Odds"),
+          pbp: dataTypes.has("PBP"),
+          social: dataTypes.has("Social"),
+          onlyMissing: false,
+        });
+        newResults.push({ league, jobId: res.job_id ?? `run#${res.id}` });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed";
+        newResults.push({ league, error: msg });
+      }
+    }
+
+    setResults(newResults);
+    setDispatching(false);
+  };
+
+  return (
+    <div className={styles.backfillCard}>
+      <div className={styles.taskHeader}>
+        <span className={styles.taskName}>Data Backfill</span>
+      </div>
+      <div className={styles.taskDescription}>
+        Create scrape runs for selected leagues and data types over a date range.
+      </div>
+
+      <div className={styles.dateRow}>
+        <div className={styles.paramGroup}>
+          <label className={styles.paramLabel}>Start Date</label>
+          <input
+            type="date"
+            className={styles.paramInput}
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+        </div>
+        <div className={styles.paramGroup}>
+          <label className={styles.paramLabel}>End Date</label>
+          <input
+            type="date"
+            className={styles.paramInput}
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className={styles.paramGroup}>
+        <label className={styles.paramLabel}>Leagues</label>
+        <ChipToggle
+          items={LEAGUE_OPTIONS}
+          selected={leagues}
+          onToggle={toggleLeague}
+        />
+      </div>
+
+      <div className={styles.paramGroup}>
+        <label className={styles.paramLabel}>Data Types</label>
+        <ChipToggle
+          items={[...DATA_TYPES]}
+          selected={dataTypes}
+          onToggle={toggleDataType}
+        />
+      </div>
+
+      <div className={styles.taskFooter}>
+        <button
+          className={styles.runButton}
+          disabled={!canRun || dispatching}
+          onClick={handleRun}
+        >
+          {dispatching ? "Dispatching..." : "Run Backfill"}
+        </button>
+      </div>
+
+      {results.length > 0 && (
+        <div className={styles.resultList}>
+          {results.map((r) => (
+            <span
+              key={r.league}
+              className={r.error ? styles.errorMsg : styles.dispatchedMsg}
+            >
+              {r.league}:{" "}
+              {r.error
+                ? r.error
+                : <>Dispatched <span className={styles.dispatchedTaskId}>{r.jobId}</span></>}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Gameflow Generation card ──
+
+function GameflowCard() {
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [leagues, setLeagues] = useState<Set<string>>(
+    () => new Set(LEAGUE_OPTIONS)
+  );
+  const [force, setForce] = useState(false);
+  const [dispatching, setDispatching] = useState(false);
+  const [result, setResult] = useState<
+    { jobId: string } | { error: string } | null
+  >(null);
+
+  const toggleLeague = (l: string) =>
+    setLeagues((prev) => {
+      const next = new Set(prev);
+      next.has(l) ? next.delete(l) : next.add(l);
+      return next;
+    });
+
+  const canRun = startDate && endDate && leagues.size > 0;
+
+  const handleRun = async () => {
+    setDispatching(true);
+    setResult(null);
+    try {
+      const res = await triggerBulkFlowGeneration({
+        start_date: startDate,
+        end_date: endDate,
+        leagues: Array.from(leagues),
+        force,
+      });
+      setResult({ jobId: res.job_id });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed";
+      setResult({ error: msg });
+    } finally {
+      setDispatching(false);
+    }
+  };
+
+  return (
+    <div className={styles.backfillCard}>
+      <div className={styles.taskHeader}>
+        <span className={styles.taskName}>Gameflow Generation</span>
+      </div>
+      <div className={styles.taskDescription}>
+        Trigger bulk gameflow generation for selected leagues over a date range.
+      </div>
+
+      <div className={styles.dateRow}>
+        <div className={styles.paramGroup}>
+          <label className={styles.paramLabel}>Start Date</label>
+          <input
+            type="date"
+            className={styles.paramInput}
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+        </div>
+        <div className={styles.paramGroup}>
+          <label className={styles.paramLabel}>End Date</label>
+          <input
+            type="date"
+            className={styles.paramInput}
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className={styles.paramGroup}>
+        <label className={styles.paramLabel}>Leagues</label>
+        <ChipToggle
+          items={LEAGUE_OPTIONS}
+          selected={leagues}
+          onToggle={toggleLeague}
+        />
+      </div>
+
+      <div className={styles.checkboxRow}>
+        <input
+          type="checkbox"
+          id="forceRegenerate"
+          checked={force}
+          onChange={(e) => setForce(e.target.checked)}
+        />
+        <label htmlFor="forceRegenerate">Force Regenerate</label>
+      </div>
+
+      <div className={styles.taskFooter}>
+        <button
+          className={styles.runButton}
+          disabled={!canRun || dispatching}
+          onClick={handleRun}
+        >
+          {dispatching ? "Dispatching..." : "Run Flows"}
+        </button>
+        {result && "jobId" in result && (
+          <span className={styles.dispatchedMsg}>
+            Dispatched{" "}
+            <span className={styles.dispatchedTaskId}>{result.jobId}</span>
+          </span>
+        )}
+        {result && "error" in result && (
+          <span className={styles.errorMsg}>{result.error}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ──
 
 export default function ControlPanelPage() {
@@ -360,6 +652,14 @@ export default function ControlPanelPage() {
         Trigger Celery tasks on-demand. Open the Runs drawer at the bottom to
         monitor job history.
       </p>
+
+      <div className={styles.categoryGroup}>
+        <h2 className={styles.categoryTitle}>Backfill</h2>
+        <div className={styles.backfillGrid}>
+          <DataBackfillCard />
+          <GameflowCard />
+        </div>
+      </div>
 
       {CATEGORIES.map((cat) => (
         <div key={cat} className={styles.categoryGroup}>
