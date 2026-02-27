@@ -111,8 +111,8 @@ class TestFinalWhistleSocial:
                 # Verify job run tracking
                 mock_start.assert_called_once_with("final_whistle_social", [])
                 mock_complete.assert_called_once()
-                # Verify inter-game cooldown (15s from SocialConfig default)
-                mock_time.sleep.assert_called_once_with(15)
+                # Verify inter-game cooldown (45s from SocialConfig default)
+                mock_time.sleep.assert_called_once_with(45)
 
     @patch("sports_scraper.services.job_runs.complete_job_run")
     @patch("sports_scraper.services.job_runs.start_job_run", return_value=1)

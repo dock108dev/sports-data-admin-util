@@ -1,59 +1,3 @@
-.statsBar {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: var(--space-card-inner);
-  margin-bottom: var(--space-card-inner);
-}
-
-.statCard {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 0.75rem 0.5rem;
-  background: #ffffff;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-button);
-  text-align: center;
-}
-
-.statCard.ready {
-  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-  border-color: #a7f3d0;
-}
-
-.statValue {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text-secondary);
-  line-height: 1.2;
-}
-
-.statLabel {
-  font-size: var(--font-hint-size);
-  font-weight: var(--font-label-weight);
-  color: var(--text-muted);
-  margin-top: 0.25rem;
-}
-
-.statPct {
-  font-size: 0.625rem;
-  color: var(--text-subtle);
-  margin-top: 0.125rem;
-}
-
-@media (max-width: 900px) {
-  .statsBar {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (max-width: 600px) {
-  .statsBar {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -106,28 +50,4 @@
   color: var(--text-muted);
   font-style: italic;
   padding: 2rem;
-}
-
-.statusDot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 6px;
-  vertical-align: middle;
-}
-
-.dotOk {
-  background: #16a34a;
-}
-
-.dotMissing {
-  background: #dc2626;
-}
-
-.statusLabel {
-  font-size: var(--font-body-size);
-  color: var(--text-secondary);
-  vertical-align: middle;
-  font-weight: var(--font-section-title-weight);
 }

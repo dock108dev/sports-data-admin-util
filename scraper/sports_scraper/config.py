@@ -57,7 +57,7 @@ class SocialConfig(BaseModel):
     team_poll_interval_seconds: int = Field(default=900)
     request_cache_ttl_seconds: int = Field(default=900)
     # Inter-game cooldown (seconds) between social scrapes
-    inter_game_delay_seconds: int = Field(default=15)
+    inter_game_delay_seconds: int = Field(default=45)
     # Sweep task uses a longer cooldown between games
     sweep_inter_game_delay_seconds: int = Field(default=180)
     # Number of games to process before committing a batch
@@ -65,11 +65,11 @@ class SocialConfig(BaseModel):
     # Early-exit threshold: stop scrolling after N consecutive known posts
     consecutive_known_post_exit: int = Field(default=3)
     # Circuit breaker: abort after N consecutive rate-limit hits
-    max_consecutive_breaker_hits: int = Field(default=3)
+    max_consecutive_breaker_hits: int = Field(default=2)
     # Backoff (seconds) after a circuit breaker hit before retrying
-    breaker_backoff_seconds: int = Field(default=120)
+    breaker_backoff_seconds: int = Field(default=300)
     # Playwright retry backoff (seconds) on login wall / "Something went wrong"
-    playwright_backoff_seconds: int = Field(default=60)
+    playwright_backoff_seconds: int = Field(default=120)
     # Playwright max attempts per collect_posts call
     playwright_max_attempts: int = Field(default=2)
     # Hour (ET) when the pregame tweet window opens on game day

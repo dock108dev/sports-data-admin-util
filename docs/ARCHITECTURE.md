@@ -163,21 +163,26 @@ Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). R
 
 ## API Endpoints
 
-### App Endpoints (for external apps)
-- `GET /api/games` - List games by date range
-- `GET /api/games/{id}` - Single game details
-- `GET /api/games/{id}/pbp` - Play-by-play by period
-- `GET /api/games/{id}/flow` - AI-generated game flow
-
-### Admin Endpoints
+### Game Data Endpoints
 - `GET /api/admin/sports/games` - List games with filtering
-- `GET /api/admin/sports/games/{id}` - Full game detail
+- `GET /api/admin/sports/games/{id}` - Full game detail (boxscores, odds, social, PBP, flow)
+- `GET /api/admin/sports/games/{id}/flow` - AI-generated game flow
+- `GET /api/admin/sports/games/{id}/timeline` - Persisted timeline artifact
+- `GET /api/admin/sports/teams` - List teams
+- `GET /api/admin/sports/teams/{id}` - Team detail with recent games
+
+### Operations Endpoints
 - `POST /api/admin/tasks/trigger` - Dispatch a Celery task by name (Control Panel)
 - `GET /api/admin/tasks/registry` - List available tasks and their metadata
 - `GET /api/admin/sports/scraper/runs` - List scraper runs
 - `GET /api/admin/sports/pipeline/game/{id}` - Pipeline runs for a game
 - `POST /api/admin/sports/pipeline/{id}/run-full` - Execute full pipeline
 - `GET /api/admin/sports/logs` - Container log viewer
+
+### PBP Inspection Endpoints
+- `GET /api/admin/sports/pbp/game/{id}` - PBP events by period
+- `GET /api/admin/sports/pbp/game/{id}/detail` - Detailed PBP with resolution stats
+- `GET /api/admin/sports/pbp/game/{id}/snapshots` - PBP snapshot history
 
 ### FairBet Endpoints
 - `GET /api/fairbet/odds` — Cross-book odds comparison with EV annotations and display fields
@@ -221,4 +226,4 @@ See [API.md](API.md) for complete endpoint reference.
 4. **Traceable changes** — Every transformation explainable
 5. **Single source of truth** — Normalized data across sports
 
-See [CLAUDE.md](../CLAUDE.md) for coding standards.
+See the Key Principles section above for coding standards.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -25,9 +27,17 @@ from .schemas import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Flow version identifier (DB filter value — "v2-moments")
 FLOW_VERSION = "v2-moments"
+
+
+def _swap_score(raw: list | None) -> list[int]:
+    """Convert [home, away] → [away, home] with safe fallback."""
+    if raw and len(raw) >= 2:
+        return [raw[1], raw[0]]
+    return [0, 0]
 
 
 @router.get("/games/{game_id}/timeline", response_model=TimelineArtifactResponse)
@@ -172,14 +182,14 @@ async def get_game_flow(
     # Build response moments (exact data, no transformation)
     response_moments = [
         GameFlowMoment(
-            playIds=moment["play_ids"],
-            explicitlyNarratedPlayIds=moment["explicitly_narrated_play_ids"],
-            period=moment["period"],
+            playIds=moment.get("play_ids", []),
+            explicitlyNarratedPlayIds=moment.get("explicitly_narrated_play_ids", []),
+            period=moment.get("period", 1),
             startClock=moment.get("start_clock"),
             endClock=moment.get("end_clock"),
             # Internal format is [home, away], API contract is [away, home]
-            scoreBefore=[moment["score_before"][1], moment["score_before"][0]],
-            scoreAfter=[moment["score_after"][1], moment["score_after"][0]],
+            scoreBefore=_swap_score(moment.get("score_before")),
+            scoreAfter=_swap_score(moment.get("score_after")),
             narrative=moment.get("narrative"),
             cumulativeBoxScore=moment.get("cumulative_box_score"),
         )
@@ -209,28 +219,37 @@ async def get_game_flow(
 
     blocks_data = flow_record.blocks_json
     if blocks_data:
-        response_blocks = [
-            GameFlowBlock(
-                blockIndex=block["block_index"],
-                role=block["role"],
-                momentIndices=block["moment_indices"],
-                periodStart=block["period_start"],
-                periodEnd=block["period_end"],
-                # Internal format is [home, away], API contract is [away, home]
-                scoreBefore=[block["score_before"][1], block["score_before"][0]],
-                scoreAfter=[block["score_after"][1], block["score_after"][0]],
-                playIds=block["play_ids"],
-                keyPlayIds=block["key_play_ids"],
-                narrative=block.get("narrative"),
-                miniBox=block.get("mini_box"),
-                embeddedSocialPostId=block.get("embedded_social_post_id"),
+        response_blocks = []
+        for idx, block in enumerate(blocks_data):
+            role = block.get("role")
+            if not role:
+                logger.warning(
+                    "Block %d missing required 'role', skipping",
+                    idx,
+                    extra={"game_id": game_id},
+                )
+                continue
+            response_blocks.append(
+                GameFlowBlock(
+                    blockIndex=block.get("block_index", idx),
+                    role=role,
+                    momentIndices=block.get("moment_indices", []),
+                    periodStart=block.get("period_start", 1),
+                    periodEnd=block.get("period_end", 1),
+                    # Internal format is [home, away], API contract is [away, home]
+                    scoreBefore=_swap_score(block.get("score_before")),
+                    scoreAfter=_swap_score(block.get("score_after")),
+                    playIds=block.get("play_ids", []),
+                    keyPlayIds=block.get("key_play_ids", []),
+                    narrative=block.get("narrative"),
+                    miniBox=block.get("mini_box"),
+                    embeddedSocialPostId=block.get("embedded_social_post_id"),
+                )
             )
-            for block in blocks_data
-        ]
-        # Calculate total words from block narratives
+        # Calculate total words from accepted block narratives
         total_words = sum(
-            len((block.get("narrative") or "").split())
-            for block in blocks_data
+            len((b.narrative or "").split())
+            for b in response_blocks
         )
 
     # Validation status from persisted data

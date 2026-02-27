@@ -254,11 +254,6 @@ export type TeamDetail = {
   recentGames: TeamGameSummary[];
 };
 
-export type AvailableStatKeysResponse = {
-  leagueCode: string;
-  teamStatKeys: string[];
-  playerStatKeys: string[];
-};
 
 export type JobResponse = {
   runId: number;

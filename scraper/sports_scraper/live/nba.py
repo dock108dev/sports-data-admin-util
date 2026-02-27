@@ -71,17 +71,24 @@ class NBALiveFeedClient:
 
         Tries the live scoreboard first (has real status + scores),
         falls back to the static schedule API (game IDs only, no live status).
+
+        The live scoreboard endpoint always returns today's games regardless of
+        the requested date, so we skip it for past dates and go straight to the
+        schedule API which has the full season's game IDs.
         """
-        # Try live scoreboard first — it has actual game status and scores
-        live_games = self._fetch_live_scoreboard(day)
-        if live_games:
-            return live_games
+        from ..utils.datetime_utils import today_et
+
+        # Live scoreboard only has today's games; use schedule API for past dates
+        if day >= today_et():
+            live_games = self._fetch_live_scoreboard(day)
+            if live_games:
+                return live_games
 
         # Fallback to schedule API (no live status — all games report "scheduled")
         logger.warning(
             "nba_scoreboard_fallback_to_schedule",
             date=str(day),
-            reason="live_scoreboard_returned_empty",
+            reason="live_scoreboard_skipped_or_empty",
         )
         return self._fetch_games_from_schedule(day)
 

@@ -97,6 +97,23 @@ export function RunsDrawer() {
     return () => clearInterval(interval);
   }, [fetchRuns, size]);
 
+  // Keep main content padding in sync with drawer height so content
+  // behind the drawer remains scrollable.
+  useEffect(() => {
+    const heights: Record<DrawerSize, string> = {
+      collapsed: "36px",
+      half: "50vh",
+      full: "calc(100vh - var(--admin-header-height))",
+    };
+    document.documentElement.style.setProperty(
+      "--runs-drawer-height",
+      heights[size],
+    );
+    return () => {
+      document.documentElement.style.removeProperty("--runs-drawer-height");
+    };
+  }, [size]);
+
   const toggleSize = () => {
     setSize((prev) => (prev === "collapsed" ? "half" : "collapsed"));
   };

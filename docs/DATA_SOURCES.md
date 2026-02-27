@@ -64,7 +64,7 @@ NBA uses the official NBA API for PBP ingestion. The scraper matches games using
 
 **Storage:** `sports_game_plays`
 
-**Implementation:** `scraper/sports_scraper/services/pbp_ingestion.py` → `ingest_pbp_via_nba_api`
+**Implementation:** `scraper/sports_scraper/services/pbp_nba.py` → `ingest_pbp_via_nba_api`
 
 ### NCAAB (CBB Stats API)
 

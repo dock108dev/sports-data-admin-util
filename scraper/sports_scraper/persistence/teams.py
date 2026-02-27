@@ -86,7 +86,7 @@ def _derive_abbreviation(team_name: str, strip_mascots: bool = True) -> str:
 _NCAAB_OVERRIDES = {
     "george washington colonials": "George Washington",
     "arkansas-pine bluff golden lions": "Arkansas-Pine Bluff",
-    "south carolina upstate spartans": "USC Upstate",
+    "south carolina upstate spartans": "South Carolina Upstate Spartans",
     "siu-edwardsville cougars": "SIU Edwardsville",
     # HBCU teams that collide with Power conference after normalization
     "alabama a&m bulldogs": "Alabama A&M Bulldogs",

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from sqlalchemy import exists, func, not_
+from sqlalchemy import exists, not_
 from sqlalchemy.orm import Session
 
 from ..db import db_models
@@ -53,38 +53,6 @@ def select_games_for_boxscores(
     results = query.all()
     return [(r.id, r.source_game_key, r.game_date.date() if r.game_date else None) for r in results]
 
-
-def select_games_for_odds(
-    session: Session,
-    league_code: str,
-    start_date: date,
-    end_date: date,
-    *,
-    only_missing: bool = False,
-) -> list[date]:
-    """Return unique dates needing odds fetch."""
-    league = session.query(db_models.SportsLeague).filter(
-        db_models.SportsLeague.code == league_code
-    ).first()
-    if not league:
-        return []
-
-    query = session.query(
-        func.date(db_models.SportsGame.game_date).label("game_day")
-    ).filter(
-        db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
-        db_models.SportsGame.game_date <= datetime.combine(end_date, datetime.max.time(), tzinfo=UTC),
-    ).distinct()
-
-    if only_missing:
-        has_odds = exists().where(
-            db_models.SportsGameOdds.game_id == db_models.SportsGame.id
-        )
-        query = query.filter(not_(has_odds))
-
-    results = query.all()
-    return [r.game_day for r in results if r.game_day]
 
 
 def select_games_for_pbp_sportsref(

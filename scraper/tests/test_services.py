@@ -25,7 +25,6 @@ os.environ.setdefault("ENVIRONMENT", "development")
 
 from sports_scraper.services.game_selection import (
     select_games_for_boxscores,
-    select_games_for_odds,
     select_games_for_pbp_sportsref,
 )
 
@@ -100,68 +99,6 @@ class TestSelectGamesForBoxscores:
 
         assert result == []
 
-
-class TestSelectGamesForOdds:
-    """Tests for select_games_for_odds function."""
-
-    def test_no_league_returns_empty(self):
-        """Returns empty list when league not found."""
-        mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.first.return_value = None
-
-        result = select_games_for_odds(
-            mock_session, "INVALID", date(2024, 1, 15), date(2024, 1, 15)
-        )
-
-        assert result == []
-
-    def test_returns_unique_dates(self):
-        """Returns list of unique game dates."""
-        mock_session = MagicMock()
-
-        mock_league = MagicMock()
-        mock_league.id = 1
-        mock_session.query.return_value.filter.return_value.first.return_value = mock_league
-
-        # Mock date query results
-        mock_result1 = MagicMock()
-        mock_result1.game_day = date(2024, 1, 15)
-        mock_result2 = MagicMock()
-        mock_result2.game_day = date(2024, 1, 16)
-        mock_session.query.return_value.filter.return_value.distinct.return_value.all.return_value = [
-            mock_result1, mock_result2
-        ]
-
-        result = select_games_for_odds(
-            mock_session, "NBA", date(2024, 1, 15), date(2024, 1, 16)
-        )
-
-        assert len(result) == 2
-        assert date(2024, 1, 15) in result
-        assert date(2024, 1, 16) in result
-
-    def test_filters_none_dates(self):
-        """Filters out None game_day values."""
-        mock_session = MagicMock()
-
-        mock_league = MagicMock()
-        mock_league.id = 1
-        mock_session.query.return_value.filter.return_value.first.return_value = mock_league
-
-        mock_result1 = MagicMock()
-        mock_result1.game_day = date(2024, 1, 15)
-        mock_result2 = MagicMock()
-        mock_result2.game_day = None
-        mock_session.query.return_value.filter.return_value.distinct.return_value.all.return_value = [
-            mock_result1, mock_result2
-        ]
-
-        result = select_games_for_odds(
-            mock_session, "NBA", date(2024, 1, 15), date(2024, 1, 16)
-        )
-
-        assert len(result) == 1
-        assert date(2024, 1, 15) in result
 
 
 class TestSelectGamesForPbpSportsref:

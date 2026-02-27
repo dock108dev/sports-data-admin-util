@@ -43,12 +43,12 @@ class PlaywrightXCollector:
         3. Copy the values of 'auth_token' and 'ct0' cookies
 
     Rate Limiting:
-        - Polite delay of 10-15 seconds between requests
+        - Polite delay of 20-30 seconds between requests
         - Random jitter to appear more human-like
         - Concurrency=1 in Celery naturally caps throughput
 
     Retry Logic:
-        - On "login wall" or "Something went wrong": sleep 60s (configurable), retry up to 2 times (configurable via SocialConfig)
+        - On "login wall" or "Something went wrong": sleep 120s (configurable), retry up to 2 times (configurable via SocialConfig)
         - On "No results": return empty list (not an error)
         - After max failures: raise XCircuitBreakerError to fail the job
         - No class-level state — each collect_posts() call is self-contained
@@ -61,8 +61,8 @@ class PlaywrightXCollector:
         timeout_ms: int = 30000,
         auth_token: str | None = None,
         ct0: str | None = None,
-        min_delay_seconds: float = 10.0,
-        max_delay_seconds: float = 15.0,
+        min_delay_seconds: float = 20.0,
+        max_delay_seconds: float = 30.0,
     ):
         import os
 
@@ -83,7 +83,7 @@ class PlaywrightXCollector:
             logger.warning("x_auth_missing", message="X_AUTH_TOKEN and/or X_CT0 not set - search will not work")
 
     def _polite_delay(self) -> None:  # pragma: no cover - timing-dependent
-        """Wait between requests to be a good citizen (10-15 seconds)."""
+        """Wait between requests to be a good citizen (20-30 seconds)."""
         import random
         import time
 

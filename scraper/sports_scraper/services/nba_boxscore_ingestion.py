@@ -191,6 +191,7 @@ def ingest_boxscores_via_nba_api(
         start_date=start_date,
         end_date=end_date,
     )
+    session.expire_all()  # ensure select sees freshly-populated external_ids
 
     # Step 2: Select games for boxscore ingestion
     games = select_games_for_boxscores_nba_api(

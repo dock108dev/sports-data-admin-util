@@ -24,6 +24,7 @@ from ...game_metadata.nuggets import generate_nugget
 from ...game_metadata.scoring import excitement_score, quality_score
 from ...game_metadata.services import RatingsService, StandingsService
 from ...services.derived_metrics import compute_derived_metrics
+from ...services.stat_annotations import compute_team_annotations
 from ...services.game_status import compute_status_flags
 from ...services.odds_table import build_odds_table
 from ...services.period_labels import period_label, time_label
@@ -326,11 +327,11 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     if not game:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
 
-    team_stats = [serialize_team_stat(box, league_code=league_code) for box in game.team_boxscores]
-
     # Determine if this is an NHL game
     league_code = game.league.code if game.league else None
     is_nhl = league_code == "NHL"
+
+    team_stats = [serialize_team_stat(box, league_code=league_code) for box in game.team_boxscores]
 
     # For NHL, separate skaters and goalies; for other sports use generic player stats
     nhl_skaters: list[NHLSkaterStat] | None = None
@@ -502,8 +503,6 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     data_health = compute_nhl_data_health(game, game.player_boxscores)
 
     odds_table = build_odds_table(game.odds) if game.odds else None
-
-    from ...services.stat_annotations import compute_team_annotations
 
     stat_annotations: list[dict] | None = None
     home_box = next((b for b in game.team_boxscores if b.is_home), None)
