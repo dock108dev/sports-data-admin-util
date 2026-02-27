@@ -22,6 +22,7 @@ class JobRunResponse(BaseModel):
     duration_seconds: float | None = Field(None, alias="durationSeconds")
     error_summary: str | None = Field(None, alias="errorSummary")
     summary_data: dict[str, Any] | None = Field(None, alias="summaryData")
+    celery_task_id: str | None = Field(None, alias="celeryTaskId")
     created_at: datetime = Field(..., alias="createdAt")
 
 

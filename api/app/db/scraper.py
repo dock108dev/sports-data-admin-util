@@ -95,6 +95,7 @@ class SportsJobRun(Base):
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    celery_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
