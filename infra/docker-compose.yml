@@ -331,7 +331,7 @@ services:
     profiles: ["dev", "prod"]
     logging: *default-logging
     group_add:
-      - root
+      - "${DOCKER_GID:-988}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
