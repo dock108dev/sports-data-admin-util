@@ -204,6 +204,11 @@
   color: #854d0e;
 }
 
+.statusQueued {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
 .phaseBadge {
   font-family: monospace;
   font-size: 0.7rem;

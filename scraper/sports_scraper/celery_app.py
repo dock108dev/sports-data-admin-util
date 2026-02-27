@@ -65,13 +65,34 @@ app.conf.task_routes = {
 # Each job is spaced 30 minutes apart. During EDT (March-November) all times
 # shift 1 hour later (e.g., ingestion at 4:30 AM EDT).
 #
-# Odds sync: mainlines every 15 min, props every 60 min.  Both skip 3–7 AM ET quiet window.
-# Always-on tasks (safe in all environments — pure DB, no external APIs)
-_always_on_schedule = {
-    "game-state-updater-every-3-min": {
+# High-frequency polling (every 60s, staggered 15s apart via countdown):
+#   :00  update_game_states  — disabled 3–11 AM EST (08–16 UTC)
+#   :15  poll_live_pbp       — disabled 3–11 AM EST (08–16 UTC)
+#   :30  sync_mainline_odds  — no quiet window
+#   :45  sync_prop_odds      — no quiet window
+
+# High-frequency polling — all fire every 60s, staggered by countdown offsets.
+# Stats/PBP disabled 3–11 AM EST (hour 08–16 UTC excluded from crontab).
+_polling_schedule = {
+    "game-state-updater-every-60s": {
         "task": "update_game_states",
-        "schedule": crontab(minute="*/3"),
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+        "schedule": crontab(minute="*/1", hour="0-7,16-23"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE, "countdown": 0},
+    },
+    "live-pbp-poll-every-60s": {
+        "task": "poll_live_pbp",
+        "schedule": crontab(minute="*/1", hour="0-7,16-23"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE, "countdown": 15},
+    },
+    "mainline-odds-sync-every-60s": {
+        "task": "sync_mainline_odds",
+        "schedule": crontab(minute="*/1"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE, "countdown": 30},
+    },
+    "prop-odds-sync-every-60s": {
+        "task": "sync_prop_odds",
+        "schedule": crontab(minute="*/1"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE, "countdown": 45},
     },
 }
 
@@ -98,16 +119,6 @@ _scheduled_tasks = {
         "schedule": crontab(minute=30, hour=10),  # 5:30 AM EST = 10:30 UTC (+30 min after NHL flow)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
-    "mainline-odds-sync-every-15-min": {
-        "task": "sync_mainline_odds",
-        "schedule": crontab(minute="*/15"),
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
-    "prop-odds-sync-every-60-min": {
-        "task": "sync_prop_odds",
-        "schedule": crontab(minute=0),
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
     # === Daily sweep (status repair, social scrape #2, embedded tweets, archive) ===
     # Lightweight housekeeping — no full pipeline re-runs or flow generation
     "daily-sweep-4am-eastern": {
@@ -117,13 +128,8 @@ _scheduled_tasks = {
     },
 }
 
-# Live polling — PBP + boxscores + game social
+# Social polling — game social collection + tweet mapping
 _live_polling_schedule = {
-    "live-pbp-poll-every-5-min": {
-        "task": "poll_live_pbp",
-        "schedule": crontab(minute="*/5"),
-        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    },
     "game-social-every-60-min": {
         "task": "collect_game_social",
         "schedule": crontab(minute=30),
@@ -138,7 +144,7 @@ _live_polling_schedule = {
 
 # All environments run the full schedule — local mirrors production.
 _beat_schedule = {
-    **_always_on_schedule,
+    **_polling_schedule,
     **_scheduled_tasks,
     **_live_polling_schedule,
 }
@@ -185,7 +191,7 @@ def mark_stale_runs_interrupted():
 
             # --- SportsJobRun (task runs) ---
             stale_job_runs = session.query(db_models.SportsJobRun).filter(
-                db_models.SportsJobRun.status == "running",
+                db_models.SportsJobRun.status.in_(["running", "queued"]),
             ).all()
 
             if stale_job_runs:
@@ -244,7 +250,7 @@ def on_worker_shutting_down(sender=None, **kwargs):
 
             # --- SportsJobRun ---
             running_jobs = session.query(db_models.SportsJobRun).filter(
-                db_models.SportsJobRun.status == "running",
+                db_models.SportsJobRun.status.in_(["running", "queued"]),
             ).all()
 
             for jr in running_jobs:

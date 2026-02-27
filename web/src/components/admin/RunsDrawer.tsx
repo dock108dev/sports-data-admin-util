@@ -12,6 +12,7 @@ const PHASE_OPTIONS = [
   { value: "poll_live_pbp", label: "Poll Live PBP" },
   { value: "sync_mainline_odds", label: "Mainline Odds" },
   { value: "sync_prop_odds", label: "Prop Odds" },
+  { value: "social", label: "Social" },
   { value: "final_whistle_social", label: "Final Whistle Social" },
   { value: "trigger_flow", label: "Trigger Flow" },
   { value: "daily_sweep", label: "Daily Sweep" },
@@ -22,6 +23,7 @@ const STATUS_OPTIONS = [
   { value: "", label: "All statuses" },
   { value: "success", label: "Success" },
   { value: "running", label: "Running" },
+  { value: "queued", label: "Queued" },
   { value: "error", label: "Error" },
 ];
 
@@ -129,6 +131,8 @@ export function RunsDrawer() {
         return styles.statusError;
       case "canceled":
         return styles.statusCanceled;
+      case "queued":
+        return styles.statusQueued;
       default:
         return "";
     }
@@ -272,8 +276,9 @@ export function RunsDrawer() {
                           </span>
                         </td>
                         <td>
-                          {formatDate(run.startedAt)}{" "}
-                          {formatTime(run.startedAt)}
+                          {run.status === "queued"
+                            ? `${formatDate(run.createdAt)} ${formatTime(run.createdAt)}`
+                            : `${formatDate(run.startedAt)} ${formatTime(run.startedAt)}`}
                         </td>
                         <td className={styles.durationCell}>
                           {formatDuration(run.durationSeconds)}
@@ -286,7 +291,7 @@ export function RunsDrawer() {
                               : "-"}
                         </td>
                         <td>
-                          {run.status === "running" ? (
+                          {run.status === "running" || run.status === "queued" ? (
                             <button
                               className={styles.cancelBtn}
                               disabled={cancelingIds.has(run.id)}

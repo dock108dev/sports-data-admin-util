@@ -56,8 +56,10 @@ class SocialConfig(BaseModel):
     platform_rate_limit_window_seconds: int = Field(default=900)
     team_poll_interval_seconds: int = Field(default=900)
     request_cache_ttl_seconds: int = Field(default=900)
-    # Inter-game cooldown (seconds) between social scrapes
-    inter_game_delay_seconds: int = Field(default=45)
+    # Inter-game cooldown (seconds) between social scrapes (min of random range)
+    inter_game_delay_seconds: int = Field(default=30)
+    # Max inter-game cooldown (seconds) — actual delay is uniform(min, max)
+    inter_game_delay_max_seconds: int = Field(default=60)
     # Sweep task uses a longer cooldown between games
     sweep_inter_game_delay_seconds: int = Field(default=180)
     # Number of games to process before committing a batch

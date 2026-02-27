@@ -2,7 +2,34 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-02-24] - Current
+## [2026-02-27] - Current
+
+### Documentation Consolidation
+
+- **DATABASE_INTEGRATION.md**: Expanded schema table from 11 to 26 tables, organized into sections (Core, Odds, Social, Game Flow, Operations). Fixed `status = 'completed'` → `'final'` in example query.
+- **EV_LIFECYCLE.md**: Consolidated from 245 lines to ~100 lines. Removed sections 1-4 and 7-9 that duplicated ODDS_AND_FAIRBET.md (~60% overlap). Retained unique value: Shin's formula, American-to-implied conversion, decimal odds conversion, worked examples, and fair odds sanity check.
+- **DATA_SOURCES.md**: Added social task queue documentation (pre-dispatch visibility, FIFO cap at 10, queued status, eviction). Added comprehensive rate limiting table (per-scroll, between teams, between games, circuit breaker). Fixed NBA boxscore source from "basketball-reference.com" to "NBA API (cdn.nba.com)".
+- **ARCHITECTURE.md**: Fixed NBA boxscore source from "Sports Reference" to "NBA API (cdn.nba.com)".
+- **INDEX.md**, **ODDS_AND_FAIRBET.md**: Updated cross-references to match EV_LIFECYCLE.md consolidation.
+
+### Queued Social Tasks
+
+- Social backfill tasks are now immediately visible in the RunsDrawer with `status="queued"` before the worker picks them up
+- Queued tasks are cancellable (Celery task revoked) and capped at 10 with oldest-first eviction
+- Pre-generated Celery task IDs link the DB record to the Redis-queued task
+- Worker transition: `queued` → `running` → `success`/`error`
+- Cancel endpoint accepts both `"running"` and `"queued"` statuses
+- Job list sorted by `created_at` instead of `started_at` so queued tasks sort correctly
+- Stale-run cleanup on worker restart/shutdown includes `"queued"` status
+- UI: RunsDrawer shows queued status pill, social phase filter, cancel button for queued tasks
+
+### Social Rate Limiting
+
+- Per-scroll delay changed from fixed 2s to random 5–10s
+- Polite delay between team requests changed from 20–30s to 30–60s
+- Inter-game delay changed from fixed 45s to random 30–60s (configurable via `inter_game_delay_seconds`/`inter_game_delay_max_seconds`)
+
+## [2026-02-24]
 
 ### Server-Side Business Logic Migration
 

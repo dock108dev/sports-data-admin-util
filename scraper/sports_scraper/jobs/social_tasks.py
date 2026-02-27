@@ -166,6 +166,7 @@ def collect_team_social(
     start_date: str,
     end_date: str,
     scrape_run_id: int | None = None,
+    job_run_id: int | None = None,
 ) -> dict:
     """
     Collect tweets for all teams in a league that played in the date range.
@@ -198,7 +199,7 @@ def collect_team_social(
     start = date.fromisoformat(start_date)
     end = date.fromisoformat(end_date)
 
-    with track_job_run("social", [league_code]) as tracker:
+    with track_job_run("social", [league_code], job_run_id=job_run_id) as tracker:
         with get_session() as session:
             collector = TeamTweetCollector()
             result = collector.collect_for_date_range(
@@ -277,6 +278,7 @@ def collect_game_social() -> dict:
     Returns:
         Summary stats dict with teams_processed, total_new_tweets, errors
     """
+    import random
     import time
 
     from ..db import db_models, get_session
@@ -343,7 +345,10 @@ def collect_game_social() -> dict:
         for i, game in enumerate(games):
             # Inter-game cooldown — skip before the first game
             if i > 0:
-                time.sleep(social_cfg.inter_game_delay_seconds)
+                time.sleep(random.uniform(
+                    social_cfg.inter_game_delay_seconds,
+                    social_cfg.inter_game_delay_max_seconds,
+                ))
 
             for team_id in (game.home_team_id, game.away_team_id):
                 if team_id in scraped_team_ids:

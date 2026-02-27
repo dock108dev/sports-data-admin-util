@@ -16,7 +16,7 @@ from ..scrapers import get_all_scrapers
 from ..utils.datetime_utils import now_utc, sports_today_et, today_et
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
 from .game_selection import select_games_for_boxscores
-from .job_runs import complete_job_run, start_job_run
+from .job_runs import complete_job_run, enforce_social_queue_limit, queue_job_run, start_job_run
 from .pbp_ingestion import (
     ingest_pbp_via_nba_api,
     ingest_pbp_via_ncaab_api,
@@ -424,7 +424,14 @@ class ScrapeRunManager:
         start: datetime,
         end: datetime,
     ) -> None:
-        """Phase: dispatch social scraping to dedicated worker."""
+        """Phase: dispatch social scraping to dedicated worker.
+
+        Creates a 'queued' DB record *before* dispatching so the task is
+        immediately visible (and cancellable) in the RunsDrawer.  Oldest
+        queued social tasks are evicted when the queue exceeds 10.
+        """
+        import uuid
+
         if config.league_code not in self._supported_social_leagues:
             logger.info(
                 "x_social_not_implemented",
@@ -435,17 +442,27 @@ class ScrapeRunManager:
         else:
             from ..jobs.social_tasks import collect_team_social, handle_social_task_failure
 
+            # Enforce FIFO queue cap before adding a new task
+            enforce_social_queue_limit(10)
+
+            # Pre-generate Celery task ID so we can store it in the DB
+            task_id = str(uuid.uuid4())
+            job_run_id = queue_job_run("social", [config.league_code], celery_task_id=task_id)
+
             logger.info(
                 "social_dispatched_to_worker",
                 run_id=run_id,
                 league=config.league_code,
                 start_date=str(start),
                 end_date=str(end),
+                job_run_id=job_run_id,
+                celery_task_id=task_id,
             )
             collect_team_social.apply_async(
                 args=[config.league_code, str(start), str(end)],
-                kwargs={"scrape_run_id": run_id},
+                kwargs={"scrape_run_id": run_id, "job_run_id": job_run_id},
                 queue=SOCIAL_QUEUE,
+                task_id=task_id,
                 link_error=handle_social_task_failure.s(run_id),
             )
             summary["social_posts"] = "dispatched"

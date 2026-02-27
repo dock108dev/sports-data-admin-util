@@ -42,7 +42,7 @@
 | Guide | Description |
 |-------|-------------|
 | [Odds & FairBet Pipeline](ODDS_AND_FAIRBET.md) | **Start here:** Full pipeline from ingestion to API consumption |
-| [EV Lifecycle](EV_LIFECYCLE.md) | Detailed mathematical walkthrough of EV computation |
+| [EV Math](EV_LIFECYCLE.md) | Devig formulas (Shin's method), conversion math, and worked examples |
 
 ## Data Ingestion
 

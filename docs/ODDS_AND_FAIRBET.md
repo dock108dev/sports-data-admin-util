@@ -25,8 +25,8 @@ The Odds API (v4)
       │
       ▼
 OddsAPIClient  ───────────────  Celery tasks:
-  .fetch_mainlines()              sync_mainline_odds (every 15 min)
-  .fetch_event_props()            sync_prop_odds     (every 60 min)
+  .fetch_mainlines()              sync_mainline_odds (every 60s)
+  .fetch_event_props()            sync_prop_odds     (every 60s)
       │
       ▼
 NormalizedOddsSnapshot
@@ -66,10 +66,10 @@ Two tasks run on separate cadences:
 
 | Task | Cadence | Markets | Description |
 |------|---------|---------|-------------|
-| `sync_mainline_odds` | Every 15 min | h2h, spreads, totals | All leagues, today + tomorrow |
-| `sync_prop_odds` | Every 60 min | Player/team props, alternates | All leagues, pregame events |
+| `sync_mainline_odds` | Every 60s | h2h, spreads, totals | All leagues, today + tomorrow |
+| `sync_prop_odds` | Every 60s | Player/team props, alternates | All leagues, pregame events |
 
-Both tasks skip during the **3–7 AM ET quiet window** (no games in progress, saves API credits).
+Both tasks run continuously with no quiet window.
 
 Configuration: `scraper/sports_scraper/celery_app.py`
 
@@ -224,7 +224,7 @@ EV is computed **at query time** inside `GET /api/fairbet/odds`. Nothing is pers
 2. **Group** by `(game_id, market_key, abs(line_value))` into candidate buckets
 3. **Pair** opposite sides within each bucket (e.g., Lakers spread vs Celtics spread)
 4. **Gate** each pair through `evaluate_ev_eligibility()` (4 checks)
-5. **Devig** Pinnacle's prices via Shin's method to derive true probability (see [EV Lifecycle](EV_LIFECYCLE.md) for formula)
+5. **Devig** Pinnacle's prices via Shin's method to derive true probability (see [EV Math](EV_LIFECYCLE.md) for formula)
 6. **Calculate** EV% for every book: `EV% = (decimal_odds × true_prob − 1) × 100`
 7. **Sanity check** fair odds against median book price
 8. **Annotate** each book entry with `ev_percent`, `implied_prob`, `is_sharp`
@@ -266,7 +266,7 @@ When Pinnacle doesn't have the exact line but has a nearby reference, the system
 
 20 books are excluded from display and EV computation at query time. They are still ingested and persisted. Exclusion list: `api/app/services/ev_config.py` → `EXCLUDED_BOOKS`.
 
-For the detailed mathematical walkthrough, see [EV Lifecycle](EV_LIFECYCLE.md).
+For the detailed mathematical walkthrough (Shin's formula, conversion formulas, worked examples), see [EV Math](EV_LIFECYCLE.md).
 
 ---
 
@@ -559,6 +559,6 @@ GET /api/fairbet/odds?market_category=player_prop&has_fair=true
 
 ## See Also
 
-- [EV Lifecycle](EV_LIFECYCLE.md) — Detailed mathematical walkthrough of EV computation
+- [EV Math](EV_LIFECYCLE.md) — Devig formulas, Shin's method, and worked examples
 - [API Reference](API.md) — Full API endpoint documentation
 - [Data Sources](DATA_SOURCES.md) — All data ingestion sources and timing

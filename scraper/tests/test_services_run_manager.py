@@ -1114,8 +1114,10 @@ class TestScrapeRunManagerSocial:
     @patch("sports_scraper.services.run_manager.detect_external_id_conflicts")
     @patch("sports_scraper.services.run_manager.LiveFeedManager")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    @patch("sports_scraper.services.run_manager.queue_job_run", return_value=42)
+    @patch("sports_scraper.services.run_manager.enforce_social_queue_limit", return_value=[])
     def test_social_collects_posts(
-        self, mock_scrapers, mock_live,
+        self, mock_enforce, mock_queue, mock_scrapers, mock_live,
         mock_conflicts, mock_missing, mock_complete, mock_start,
         mock_get_session, mock_chain, mock_collect, mock_map
     ):
