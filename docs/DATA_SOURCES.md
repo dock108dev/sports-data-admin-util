@@ -6,7 +6,7 @@ This document describes where data comes from and how it's ingested.
 
 | Data Type | Source | Leagues | Update Frequency |
 |-----------|--------|---------|------------------|
-| Boxscores | Sports Reference | NBA | Post-game |
+| Boxscores | NBA API (cdn.nba.com) | NBA | Post-game |
 | Boxscores | CBB Stats API | NCAAB | Post-game |
 | Boxscores | NHL API | NHL | Post-game |
 | Play-by-Play | NBA API / NHL API / CBB API | NBA, NHL, NCAAB | Post-game |
@@ -17,7 +17,7 @@ This document describes where data comes from and how it's ingested.
 ## Boxscores & Player Stats
 
 ### Source
-- **NBA**: basketball-reference.com
+- **NBA**: NBA API (`cdn.nba.com/static/json/liveData/boxscore/boxscore_{game_id}.json`)
 - **NHL**: NHL API (`api-web.nhle.com/v1/gamecenter/{game_id}/boxscore`)
 - **NCAAB**: CBB Stats API (`/games/teams`, `/games/players`) with date range batching
 
@@ -255,8 +255,34 @@ Conservative patterns in `api/app/utils/reveal_utils.py`:
 - Existing posts updated in place (timestamps, text, media, reveal flags)
 
 ### Rate Limiting
-- In-memory limiter: 300 requests / 15 minutes
-- DB-backed cache: `social_account_polls` prevents repeated polling
+
+Multiple layers of rate limiting prevent X from detecting and blocking the scraper:
+
+| Layer | Delay | Purpose |
+|-------|-------|---------|
+| Per scroll | Random 5–10s | Mimics human reading speed during page scroll |
+| Between team requests | Random 30–60s | Polite delay between separate `collect_posts()` calls |
+| Between games | Random 30–60s | Cooldown between processing different games |
+| Between games (sweep) | Fixed 180s | Extended cooldown for the daily sweep's Social Scrape #2 |
+| In-memory limiter | 300 requests / 15 min | Sliding window platform rate limit |
+| Circuit breaker | 300s backoff | After 2 consecutive rate-limit errors, abort batch |
+| Playwright retry | 120s backoff | On login wall or "Something went wrong", retry up to 2 times |
+
+DB-backed cache: `social_account_polls` prevents repeated polling of the same account within the poll interval.
+
+Configuration: `SocialConfig` in `scraper/sports_scraper/config.py`
+
+### Social Task Queue
+
+Social tasks dispatched from the admin UI are queued with **pre-dispatch visibility**: a `SportsJobRun` record with `status="queued"` is created *before* the Celery task is dispatched. This means:
+
+- Queued tasks appear immediately in the RunsDrawer (no waiting for the worker to pick them up)
+- Queued tasks can be canceled before the worker starts them (Celery task is revoked)
+- A **FIFO queue cap of 10** prevents queue pileups — when a new task would exceed the cap, the oldest queued task is evicted (canceled with `error_summary="Evicted: social queue exceeded max limit"`)
+
+The pre-generated Celery task ID is stored in the DB record so that cancellation can revoke the correct Redis-queued task. When the worker picks up the task, the record transitions from `"queued"` → `"running"`.
+
+Implementation: `queue_job_run()`, `activate_queued_job_run()`, `enforce_social_queue_limit()` in `scraper/sports_scraper/services/job_runs.py`
 
 ### Storage
 - `team_social_posts` table - Collected tweets, mapped to games via `mapping_status='mapped'` and `game_id`
@@ -331,8 +357,8 @@ Configuration: `scraper/sports_scraper/celery_app.py`
 - Duplicate detection via unique constraints
 
 ### Monitoring
-- `sports_scrape_runs` table tracks all executions
-- `sports_job_runs` table tracks post-processing (timeline generation)
+- `sports_scrape_runs` table tracks top-level ingestion runs
+- `sports_job_runs` table tracks phase-level tasks (odds, ingest, pbp, social, flow generation). Status values: `queued`, `running`, `success`, `error`, `canceled`, `interrupted`
 - Logs include game counts, error summaries, duration
 
 ## See Also

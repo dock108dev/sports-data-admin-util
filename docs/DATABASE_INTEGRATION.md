@@ -14,19 +14,60 @@ DATABASE_URL = "postgresql+psycopg://user:pass@host:5432/sports"
 
 ## Schema Overview
 
+### Core Sports Data
+
 | Table | Description |
 |-------|-------------|
-| sports_leagues | League definitions (NBA, NHL, NCAAB) |
-| sports_teams | Teams with names, abbreviations, X handles |
-| sports_games | Games with scores, dates, status |
-| sports_team_boxscores | Team stats as JSONB |
-| sports_player_boxscores | Player stats as JSONB |
-| sports_game_odds | Spreads, totals, moneylines (game-centric) |
-| fairbet_game_odds_work | Cross-book odds (bet-centric) |
-| sports_game_plays | Play-by-play events |
-| team_social_posts | X/Twitter posts per team (mapped to games via `mapping_status`) |
-| game_reading_positions | User reading position tracking |
-| sports_scrape_runs | Scrape job audit log |
+| `sports_leagues` | League definitions (NBA, NHL, NCAAB) |
+| `sports_teams` | Teams with names, abbreviations, colors, X handles, `external_codes` |
+| `sports_players` | Player records linked to teams |
+| `sports_games` | Games with scores, dates, status lifecycle, social scrape timestamps |
+| `sports_team_boxscores` | Team-level stats per game (JSONB `raw_stats_json`) |
+| `sports_player_boxscores` | Player-level stats per game (JSONB `raw_stats_json`) |
+| `sports_game_plays` | Play-by-play events with period, clock, scores, play type |
+
+### Odds & FairBet
+
+| Table | Description |
+|-------|-------------|
+| `sports_game_odds` | Game-centric historical odds (opening + closing lines per book/market/side) |
+| `fairbet_game_odds_work` | Bet-centric work table for cross-book comparison and EV computation |
+
+### Social Media
+
+| Table | Description |
+|-------|-------------|
+| `team_social_posts` | X/Twitter posts per team, mapped to games via `mapping_status` and `game_id` |
+| `team_social_accounts` | Team social media accounts (X handles, metadata) |
+| `social_account_polls` | Tracks when each account was last polled (prevents redundant scraping) |
+
+### Game Flow & Timeline
+
+| Table | Description |
+|-------|-------------|
+| `sports_game_stories` | Generated game flow narratives (block-based, AI-generated) |
+| `sports_game_timeline_artifacts` | Timeline artifacts combining PBP + social + odds events |
+| `sports_game_pipeline_runs` | Pipeline execution tracking (per-game, per-run) |
+| `sports_game_pipeline_stages` | Individual stage execution within a pipeline run |
+| `bulk_story_generation_jobs` | Tracks bulk flow generation jobs |
+| `sports_pbp_snapshots` | PBP data at different processing stages (for debugging/comparison) |
+| `sports_entity_resolutions` | Entity resolution tracking for PBP data |
+
+### Operations & Monitoring
+
+| Table | Description |
+|-------|-------------|
+| `sports_scrape_runs` | Top-level scrape run audit log (ingestion runs) |
+| `sports_job_runs` | Phase-level job tracking (odds, ingest, pbp, social, etc.) |
+| `sports_game_conflicts` | Duplicate/ambiguous game identity tracking |
+| `sports_missing_pbp` | Flags games missing required play-by-play data |
+
+### Other
+
+| Table | Description |
+|-------|-------------|
+| `game_reading_positions` | User reading position tracking (resume point per game) |
+| `openai_response_cache` | Cached OpenAI API responses for pipeline stages |
 
 ## Python Examples
 
@@ -66,7 +107,7 @@ df = pd.read_sql("""
     FROM sports_games g
     JOIN sports_leagues l ON g.league_id = l.id
     LEFT JOIN sports_team_boxscores tb ON tb.game_id = g.id AND tb.is_home = true
-    WHERE l.code = 'NBA' AND g.status = 'completed'
+    WHERE l.code = 'NBA' AND g.status = 'final'
 """, engine)
 ```
 
