@@ -5,8 +5,7 @@
 | Guide | Description |
 |-------|-------------|
 | [Local Development](LOCAL_DEVELOPMENT.md) | **Start here:** Run locally with Docker or manual setup |
-| [Project Rules](../CLAUDE.md) | Development principles, coding standards, and AI agent context |
-| [Architecture](ARCHITECTURE.md) | System components, data flow, database schema |
+| [Architecture](ARCHITECTURE.md) | System components, data flow, database schema, key principles |
 | [API Reference](API.md) | FastAPI endpoints and usage |
 
 ## External App Integration

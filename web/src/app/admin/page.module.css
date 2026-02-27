@@ -26,20 +26,6 @@
   margin-bottom: var(--space-page-section);
 }
 
-.section {
-  margin-bottom: var(--space-page-section);
-}
-
-.sectionTitle {
-  font-size: var(--font-section-title-size);
-  font-weight: var(--font-section-title-weight);
-  color: var(--text-primary);
-  margin-bottom: var(--space-card-inner);
-  display: flex;
-  align-items: center;
-  gap: var(--space-row);
-}
-
 .quickLinks {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -60,17 +46,6 @@
   background: var(--border-light);
 }
 
-.quickLinkIcon {
-  font-size: 1.5rem;
-  width: 2.5rem;
-  height: 2.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--border-light);
-  border-radius: var(--radius-button);
-}
-
 .quickLinkContent {
   flex: 1;
 }
@@ -85,11 +60,6 @@
   font-size: var(--font-hint-size);
   color: var(--text-muted);
   margin-top: 0.25rem;
-}
-
-.quickLinkArrow {
-  color: var(--text-subtle);
-  font-size: 1.25rem;
 }
 
 .recentRuns {

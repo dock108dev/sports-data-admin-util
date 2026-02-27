@@ -93,17 +93,6 @@
   box-shadow: var(--shadow-card-hover);
 }
 
-.quickLinkIcon {
-  font-size: 1.5rem;
-  width: 2.5rem;
-  height: 2.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--border-light);
-  border-radius: var(--radius-button);
-}
-
 .quickLinkContent {
   flex: 1;
 }
@@ -118,11 +107,6 @@
   font-size: var(--font-hint-size);
   color: var(--text-muted);
   margin-top: 0.25rem;
-}
-
-.quickLinkArrow {
-  color: var(--text-subtle);
-  font-size: 1.25rem;
 }
 
 .recentRuns {

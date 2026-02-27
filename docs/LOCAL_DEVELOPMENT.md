@@ -26,7 +26,7 @@ The Docker Compose setup starts:
 | api | 8000 | FastAPI backend |
 | api-worker | — | Celery worker for API tasks (pipeline, flow generation) |
 | scraper | — | Celery worker for data ingestion |
-| scraper-beat | — | Celery scheduler (see CLAUDE.md for full schedule) |
+| scraper-beat | — | Celery scheduler (see [DATA_SOURCES.md](DATA_SOURCES.md) for full schedule) |
 | social-scraper | — | Social media scraper (X/Twitter, concurrency=1) |
 | migrate | — | One-shot Alembic migration runner |
 | web | 3000 | Next.js admin UI |

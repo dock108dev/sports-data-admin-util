@@ -75,4 +75,4 @@ scripts/      Backup and deployment scripts
 
 ## Contributing
 
-See [CLAUDE.md](CLAUDE.md) for coding standards and development principles.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system architecture and key principles.

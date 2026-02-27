@@ -386,12 +386,6 @@ function ChipToggle({
 // ── Data Backfill card ──
 
 const DATA_TYPES = ["Boxscores", "Odds", "PBP", "Social"] as const;
-const DATA_TYPE_KEYS: Record<(typeof DATA_TYPES)[number], string> = {
-  Boxscores: "boxscores",
-  Odds: "odds",
-  PBP: "pbp",
-  Social: "social",
-};
 
 function DataBackfillCard() {
   const [startDate, setStartDate] = useState("");
