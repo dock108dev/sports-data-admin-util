@@ -185,7 +185,7 @@ def mark_stale_runs_interrupted():
 
             # --- SportsJobRun (task runs) ---
             stale_job_runs = session.query(db_models.SportsJobRun).filter(
-                db_models.SportsJobRun.status == "running",
+                db_models.SportsJobRun.status.in_(["running", "queued"]),
             ).all()
 
             if stale_job_runs:
@@ -244,7 +244,7 @@ def on_worker_shutting_down(sender=None, **kwargs):
 
             # --- SportsJobRun ---
             running_jobs = session.query(db_models.SportsJobRun).filter(
-                db_models.SportsJobRun.status == "running",
+                db_models.SportsJobRun.status.in_(["running", "queued"]),
             ).all()
 
             for jr in running_jobs:

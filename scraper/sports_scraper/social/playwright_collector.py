@@ -43,7 +43,8 @@ class PlaywrightXCollector:
         3. Copy the values of 'auth_token' and 'ct0' cookies
 
     Rate Limiting:
-        - Polite delay of 20-30 seconds between requests
+        - Polite delay of 30-60 seconds between requests
+        - Random 5-10 second delay per scroll action
         - Random jitter to appear more human-like
         - Concurrency=1 in Celery naturally caps throughput
 
@@ -61,8 +62,8 @@ class PlaywrightXCollector:
         timeout_ms: int = 30000,
         auth_token: str | None = None,
         ct0: str | None = None,
-        min_delay_seconds: float = 20.0,
-        max_delay_seconds: float = 30.0,
+        min_delay_seconds: float = 30.0,
+        max_delay_seconds: float = 60.0,
     ):
         import os
 
@@ -303,7 +304,9 @@ class PlaywrightXCollector:
                 # Scroll and extract until no new posts appear
                 for scroll_num in range(self.max_scrolls):
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    page.wait_for_timeout(self.wait_ms)
+                    # Random 5-10s delay per scroll to mimic human behavior
+                    import random as _rng
+                    page.wait_for_timeout(int(_rng.uniform(5, 10) * 1000))
 
                     new_ids = extract_posts_from_page()
                     logger.debug(

@@ -166,6 +166,7 @@ def collect_team_social(
     start_date: str,
     end_date: str,
     scrape_run_id: int | None = None,
+    job_run_id: int | None = None,
 ) -> dict:
     """
     Collect tweets for all teams in a league that played in the date range.
@@ -198,7 +199,7 @@ def collect_team_social(
     start = date.fromisoformat(start_date)
     end = date.fromisoformat(end_date)
 
-    with track_job_run("social", [league_code]) as tracker:
+    with track_job_run("social", [league_code], job_run_id=job_run_id) as tracker:
         with get_session() as session:
             collector = TeamTweetCollector()
             result = collector.collect_for_date_range(

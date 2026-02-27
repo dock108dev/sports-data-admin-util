@@ -29,7 +29,7 @@ async def list_job_runs(
         stmt = stmt.where(SportsJobRun.phase == phase)
     if status:
         stmt = stmt.where(SportsJobRun.status == status)
-    stmt = stmt.order_by(desc(SportsJobRun.started_at)).limit(limit)
+    stmt = stmt.order_by(desc(SportsJobRun.created_at)).limit(limit)
     results = await session.execute(stmt)
     runs = results.scalars().all()
     return [_serialize_run(run) for run in runs]
@@ -64,11 +64,13 @@ async def cancel_job_run(
             status_code=status.HTTP_404_NOT_FOUND, detail="Run not found"
         )
 
-    if run.status != "running":
+    if run.status not in ("running", "queued"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only running jobs can be canceled",
+            detail="Only running or queued jobs can be canceled",
         )
+
+    original_status = run.status
 
     if run.celery_task_id:
         celery_app = get_celery_app()
@@ -87,7 +89,7 @@ async def cancel_job_run(
     now = now_utc()
     run.status = "canceled"
     run.finished_at = now
-    run.duration_seconds = (now - run.started_at).total_seconds()
+    run.duration_seconds = 0.0 if original_status == "queued" else (now - run.started_at).total_seconds()
     run.error_summary = "Canceled by user via admin UI"
     await session.commit()
     return _serialize_run(run)
