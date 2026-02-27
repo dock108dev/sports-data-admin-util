@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -25,6 +27,7 @@ from .schemas import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Flow version identifier (DB filter value — "v2-moments")
 FLOW_VERSION = "v2-moments"
@@ -216,28 +219,37 @@ async def get_game_flow(
 
     blocks_data = flow_record.blocks_json
     if blocks_data:
-        response_blocks = [
-            GameFlowBlock(
-                blockIndex=block.get("block_index", idx),
-                role=block.get("role", ""),
-                momentIndices=block.get("moment_indices", []),
-                periodStart=block.get("period_start", 1),
-                periodEnd=block.get("period_end", 1),
-                # Internal format is [home, away], API contract is [away, home]
-                scoreBefore=_swap_score(block.get("score_before")),
-                scoreAfter=_swap_score(block.get("score_after")),
-                playIds=block.get("play_ids", []),
-                keyPlayIds=block.get("key_play_ids", []),
-                narrative=block.get("narrative"),
-                miniBox=block.get("mini_box"),
-                embeddedSocialPostId=block.get("embedded_social_post_id"),
+        response_blocks = []
+        for idx, block in enumerate(blocks_data):
+            role = block.get("role")
+            if not role:
+                logger.warning(
+                    "Block %d missing required 'role', skipping",
+                    idx,
+                    extra={"game_id": game_id},
+                )
+                continue
+            response_blocks.append(
+                GameFlowBlock(
+                    blockIndex=block.get("block_index", idx),
+                    role=role,
+                    momentIndices=block.get("moment_indices", []),
+                    periodStart=block.get("period_start", 1),
+                    periodEnd=block.get("period_end", 1),
+                    # Internal format is [home, away], API contract is [away, home]
+                    scoreBefore=_swap_score(block.get("score_before")),
+                    scoreAfter=_swap_score(block.get("score_after")),
+                    playIds=block.get("play_ids", []),
+                    keyPlayIds=block.get("key_play_ids", []),
+                    narrative=block.get("narrative"),
+                    miniBox=block.get("mini_box"),
+                    embeddedSocialPostId=block.get("embedded_social_post_id"),
+                )
             )
-            for idx, block in enumerate(blocks_data)
-        ]
-        # Calculate total words from block narratives
+        # Calculate total words from accepted block narratives
         total_words = sum(
-            len((block.get("narrative") or "").split())
-            for block in blocks_data
+            len((b.narrative or "").split())
+            for b in response_blocks
         )
 
     # Validation status from persisted data

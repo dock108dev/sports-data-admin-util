@@ -109,6 +109,9 @@ export function RunsDrawer() {
       "--runs-drawer-height",
       heights[size],
     );
+    return () => {
+      document.documentElement.style.removeProperty("--runs-drawer-height");
+    };
   }, [size]);
 
   const toggleSize = () => {
