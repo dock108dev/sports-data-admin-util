@@ -84,7 +84,7 @@ class PlaywrightXCollector:
             logger.warning("x_auth_missing", message="X_AUTH_TOKEN and/or X_CT0 not set - search will not work")
 
     def _polite_delay(self) -> None:  # pragma: no cover - timing-dependent
-        """Wait between requests to be a good citizen (20-30 seconds)."""
+        """Wait between requests to be a good citizen (30-60 seconds)."""
         import random
         import time
 

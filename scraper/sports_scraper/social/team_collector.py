@@ -301,6 +301,7 @@ class TeamTweetCollector:
         # before the next game to avoid X rate limits.
         # Posts are committed in batches to survive
         # mid-run failures — completed batches remain persisted.
+        import random
         import time
 
         social_cfg = settings.social_config
@@ -316,12 +317,16 @@ class TeamTweetCollector:
         for i, game in enumerate(games):
             # Wait between games (skip before the first one)
             if i > 0:
+                delay = random.uniform(
+                    social_cfg.inter_game_delay_seconds,
+                    social_cfg.inter_game_delay_max_seconds,
+                )
                 logger.info(
                     "team_collector_inter_game_delay",
-                    delay_seconds=social_cfg.inter_game_delay_seconds,
+                    delay_seconds=round(delay, 1),
                     games_remaining=len(games) - i,
                 )
-                time.sleep(social_cfg.inter_game_delay_seconds)
+                time.sleep(delay)
 
             for team_id in (game.home_team_id, game.away_team_id):
                 if team_id in scraped_team_ids:

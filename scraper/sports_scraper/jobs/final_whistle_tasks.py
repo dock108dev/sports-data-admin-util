@@ -18,6 +18,7 @@ Non-negotiable rules:
 
 from __future__ import annotations
 
+import random
 import time
 
 from celery import shared_task
@@ -183,11 +184,14 @@ def run_final_whistle_social(game_id: int) -> dict:
         )
 
     # Inter-game cooldown: sleep so the next game's task doesn't hit X too fast
-    cooldown = settings.social_config.inter_game_delay_seconds
+    cooldown = random.uniform(
+        settings.social_config.inter_game_delay_seconds,
+        settings.social_config.inter_game_delay_max_seconds,
+    )
     logger.info(
         "final_whistle_cooldown",
         game_id=game_id,
-        seconds=cooldown,
+        seconds=round(cooldown, 1),
     )
     time.sleep(cooldown)
 
