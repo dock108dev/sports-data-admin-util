@@ -1,18 +1,16 @@
 """Odds synchronization tasks.
 
-Two Celery tasks split by update frequency:
+Two Celery tasks split by market type:
 
-- ``sync_mainline_odds`` — mainline odds (spreads, totals, moneyline) every 15 min
-- ``sync_prop_odds`` — player/team props every 60 min
+- ``sync_mainline_odds`` — mainline odds (spreads, totals, moneyline)
+- ``sync_prop_odds`` — player/team props
 
-Both tasks skip execution during the 3–7 AM ET quiet window (no games in
-progress, saves API credits).
+Both run every 60 seconds (staggered via countdown offsets in celery_app.py).
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import timedelta
 
 from celery import shared_task
 from sqlalchemy import select
@@ -30,21 +28,9 @@ from ..utils.redis_lock import (
     release_redis_lock,
 )
 
-EASTERN = ZoneInfo("America/New_York")
-
-# Quiet window: no odds sync between 3:00 AM and 7:00 AM ET
-_QUIET_START_HOUR = 3
-_QUIET_END_HOUR = 7
-
-
-def _in_quiet_window() -> bool:
-    """Return True if the current ET hour falls in the 3–7 AM quiet window."""
-    now_et = datetime.now(EASTERN)
-    return _QUIET_START_HOUR <= now_et.hour < _QUIET_END_HOUR
-
 
 # ---------------------------------------------------------------------------
-# Mainline odds — every 15 minutes
+# Mainline odds
 # ---------------------------------------------------------------------------
 
 @shared_task(
@@ -54,15 +40,8 @@ def _in_quiet_window() -> bool:
     retry_kwargs={"max_retries": 2},
 )
 def sync_mainline_odds(league_code: str | None = None) -> dict:
-    """Sync mainline odds (spreads, totals, moneyline) for all leagues.
-
-    Runs every 15 minutes.  Skips during the 3–7 AM ET quiet window.
-    """
+    """Sync mainline odds (spreads, totals, moneyline) for all leagues."""
     from ..services.job_runs import track_job_run
-
-    if _in_quiet_window():
-        logger.debug("sync_mainline_odds_quiet_window")
-        return {"skipped": True, "reason": "quiet_window"}
 
     if not acquire_redis_lock("lock:sync_mainline_odds", timeout=LOCK_TIMEOUT_10MIN):
         logger.debug("sync_mainline_odds_skipped_locked")
@@ -143,7 +122,7 @@ def sync_mainline_odds(league_code: str | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Prop odds — every 60 minutes
+# Prop odds
 # ---------------------------------------------------------------------------
 
 @shared_task(
@@ -153,15 +132,8 @@ def sync_mainline_odds(league_code: str | None = None) -> dict:
     retry_kwargs={"max_retries": 2},
 )
 def sync_prop_odds(league_code: str | None = None) -> dict:
-    """Sync prop odds for pregame events across all leagues.
-
-    Runs every 60 minutes.  Skips during the 3–7 AM ET quiet window.
-    """
+    """Sync prop odds for pregame events across all leagues."""
     from ..services.job_runs import track_job_run
-
-    if _in_quiet_window():
-        logger.debug("sync_prop_odds_quiet_window")
-        return {"skipped": True, "reason": "quiet_window"}
 
     if not acquire_redis_lock("lock:sync_prop_odds", timeout=LOCK_TIMEOUT_1HOUR):
         logger.debug("sync_prop_odds_skipped_locked")

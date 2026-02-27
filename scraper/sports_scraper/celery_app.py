@@ -68,8 +68,8 @@ app.conf.task_routes = {
 # High-frequency polling (every 60s, staggered 15s apart via countdown):
 #   :00  update_game_states  — disabled 3–11 AM EST (08–16 UTC)
 #   :15  poll_live_pbp       — disabled 3–11 AM EST (08–16 UTC)
-#   :30  sync_mainline_odds  — 3–7 AM ET quiet window handled in task
-#   :45  sync_prop_odds      — 3–7 AM ET quiet window handled in task
+#   :30  sync_mainline_odds  — no quiet window
+#   :45  sync_prop_odds      — no quiet window
 
 # High-frequency polling — all fire every 60s, staggered by countdown offsets.
 # Stats/PBP disabled 3–11 AM EST (hour 08–16 UTC excluded from crontab).

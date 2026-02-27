@@ -125,10 +125,10 @@ The Odds API (v4): `https://api.the-odds-api.com`
 
 ### Sync Schedule
 
-| Task | Cadence | Markets | Quiet Window |
-|------|---------|---------|-------------|
-| `sync_mainline_odds` | Every 60s | h2h, spreads, totals | 3–7 AM ET (skips) |
-| `sync_prop_odds` | Every 60s | Player/team props, alternates | 3–7 AM ET (skips) |
+| Task | Cadence | Markets |
+|------|---------|---------|
+| `sync_mainline_odds` | Every 60s | h2h, spreads, totals |
+| `sync_prop_odds` | Every 60s | Player/team props, alternates |
 
 Configuration: `scraper/sports_scraper/celery_app.py`
 
@@ -304,8 +304,8 @@ Implementation: `queue_job_run()`, `activate_queued_job_run()`, `enforce_social_
 **Polling (every 60 seconds, staggered 15s apart via countdown):**
 - **Game State Updates**: Every 60s — disabled 3–11 AM EST (08–16 UTC)
 - **Live PBP + Boxscore Polling**: Every 60s — disabled 3–11 AM EST (08–16 UTC)
-- **Mainline Odds Sync**: Every 60s (`sync_mainline_odds`: spreads, totals, moneyline; 3–7 AM ET quiet window in task)
-- **Prop Odds Sync**: Every 60s (`sync_prop_odds`: player/team props; 3–7 AM ET quiet window in task)
+- **Mainline Odds Sync**: Every 60s (`sync_mainline_odds`: spreads, totals, moneyline)
+- **Prop Odds Sync**: Every 60s (`sync_prop_odds`: player/team props)
 - **Game Social Collection**: Every 60 minutes (`collect_game_social`)
 
 **Daily (timed):**

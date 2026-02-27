@@ -69,7 +69,7 @@ Two tasks run on separate cadences:
 | `sync_mainline_odds` | Every 60s | h2h, spreads, totals | All leagues, today + tomorrow |
 | `sync_prop_odds` | Every 60s | Player/team props, alternates | All leagues, pregame events |
 
-Both tasks skip during the **3–7 AM ET quiet window** (no games in progress, saves API credits).
+Both tasks run continuously with no quiet window.
 
 Configuration: `scraper/sports_scraper/celery_app.py`
 
