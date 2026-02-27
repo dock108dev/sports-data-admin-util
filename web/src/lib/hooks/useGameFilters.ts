@@ -1,20 +1,33 @@
 import { useState, useEffect, useCallback } from "react";
 import { GameSummary, GameFilters, listGames } from "@/lib/api/sportsAdmin";
+import { formatDateInput } from "@/lib/utils/dateFormat";
 
-export const DEFAULT_GAME_FILTERS: GameFilters = {
-  leagues: [],
-  season: undefined,
-  team: "",
-  startDate: undefined,
-  endDate: undefined,
-  missingBoxscore: false,
-  missingPlayerStats: false,
-  missingOdds: false,
-  missingSocial: false,
-  missingAny: false,
-  limit: 25,
-  offset: 0,
-};
+/** Build default filters with 7-day window ending yesterday and finalOnly. */
+function getDefaultGameFilters(limit = 25): GameFilters {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const weekAgo = new Date(today);
+  weekAgo.setDate(today.getDate() - 7);
+
+  return {
+    leagues: [],
+    season: undefined,
+    team: "",
+    startDate: formatDateInput(weekAgo),
+    endDate: formatDateInput(yesterday),
+    missingBoxscore: false,
+    missingPlayerStats: false,
+    missingOdds: false,
+    missingSocial: false,
+    missingAny: false,
+    finalOnly: true,
+    limit,
+    offset: 0,
+  };
+}
+
+export const DEFAULT_GAME_FILTERS: GameFilters = getDefaultGameFilters();
 
 interface UseGameFiltersOptions {
   defaultLimit?: number;
@@ -51,14 +64,12 @@ interface UseGameFiltersReturn {
 export function useGameFilters(options: UseGameFiltersOptions = {}): UseGameFiltersReturn {
   const { defaultLimit = 25, loadMoreMode = false } = options;
   
-  const [formFilters, setFormFilters] = useState<GameFilters>({
-    ...DEFAULT_GAME_FILTERS,
-    limit: defaultLimit,
-  });
-  const [appliedFilters, setAppliedFilters] = useState<GameFilters>({
-    ...DEFAULT_GAME_FILTERS,
-    limit: defaultLimit,
-  });
+  const [formFilters, setFormFilters] = useState<GameFilters>(() =>
+    getDefaultGameFilters(defaultLimit),
+  );
+  const [appliedFilters, setAppliedFilters] = useState<GameFilters>(() =>
+    getDefaultGameFilters(defaultLimit),
+  );
   const [games, setGames] = useState<GameSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [aggregates, setAggregates] = useState<{
@@ -126,7 +137,7 @@ export function useGameFilters(options: UseGameFiltersOptions = {}): UseGameFilt
   );
 
   const resetFilters = useCallback(() => {
-    const defaultFilters = { ...DEFAULT_GAME_FILTERS, limit: defaultLimit };
+    const defaultFilters = getDefaultGameFilters(defaultLimit);
     setFormFilters(defaultFilters);
     setAppliedFilters(defaultFilters);
     setGames([]);

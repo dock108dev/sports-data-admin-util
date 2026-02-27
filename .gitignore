@@ -40,7 +40,7 @@ yarn.lock
 
 # Logs
 *.log
-logs/
+/logs/
 
 # Build artifacts
 dist/

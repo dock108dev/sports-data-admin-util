@@ -199,6 +199,11 @@
   color: #991b1b;
 }
 
+.statusCanceled {
+  background: #fefce8;
+  color: #854d0e;
+}
+
 .phaseBadge {
   font-family: monospace;
   font-size: 0.7rem;
@@ -244,6 +249,28 @@
   font-size: 0.8rem;
   background: #fef2f2;
   border-bottom: 1px solid #fecaca;
+}
+
+.cancelBtn {
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-button);
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  color: #991b1b;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 0.7rem;
+  transition: all 0.15s ease;
+}
+
+.cancelBtn:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.cancelBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .empty {

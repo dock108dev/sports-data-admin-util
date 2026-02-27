@@ -34,6 +34,9 @@ PREVIEW_TOTAL_MIN = 100.0
 PREVIEW_TOTAL_MAX = 180.0
 
 
+_FINAL_STATUSES = ("final", "completed", "official")
+
+
 def apply_game_filters(
     stmt: Select[tuple[SportsGame]],
     leagues: Sequence[str] | None,
@@ -46,8 +49,12 @@ def apply_game_filters(
     missing_odds: bool,
     missing_social: bool,
     missing_any: bool,
+    final_only: bool = False,
 ) -> Select[tuple[SportsGame]]:
     """Apply filtering options for list endpoints."""
+    if final_only:
+        stmt = stmt.where(SportsGame.status.in_(_FINAL_STATUSES))
+
     if leagues:
         league_codes = [code.upper() for code in leagues]
         stmt = stmt.where(SportsGame.league.has(SportsLeague.code.in_(league_codes)))

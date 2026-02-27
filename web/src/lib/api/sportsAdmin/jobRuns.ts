@@ -10,6 +10,7 @@ export interface JobRunResponse {
   durationSeconds: number | null;
   errorSummary: string | null;
   summaryData: Record<string, unknown> | null;
+  celeryTaskId: string | null;
   createdAt: string;
 }
 
@@ -26,4 +27,8 @@ export async function listJobRuns(filters: JobRunFilters = {}): Promise<JobRunRe
   if (typeof filters.limit === "number") query.append("limit", String(filters.limit));
   const qs = query.toString();
   return request(`/api/admin/sports/jobs${qs ? `?${qs}` : ""}`);
+}
+
+export async function cancelJobRun(runId: number): Promise<JobRunResponse> {
+  return request(`/api/admin/sports/jobs/${runId}/cancel`, { method: "POST" });
 }

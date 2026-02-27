@@ -12,7 +12,11 @@ from ..db import db_models, get_session
 from ..logging import logger
 
 
-def start_job_run(phase: str, leagues: Iterable[str]) -> int:
+def start_job_run(
+    phase: str,
+    leagues: Iterable[str],
+    celery_task_id: str | None = None,
+) -> int:
     """Create a job run record and return its ID."""
     leagues_list = [league.upper() for league in leagues]
     with get_session() as session:
@@ -21,6 +25,7 @@ def start_job_run(phase: str, leagues: Iterable[str]) -> int:
             leagues=leagues_list,
             status="running",
             started_at=_now_utc(),
+            celery_task_id=celery_task_id,
         )
         session.add(run)
         session.flush()
@@ -68,6 +73,18 @@ class JobRunTracker:
         self.summary_data[key] = self.summary_data.get(key, 0) + amount
 
 
+def _get_current_celery_task_id() -> str | None:
+    """Return the current Celery task ID if running inside a Celery worker."""
+    try:
+        from celery import current_task
+
+        if current_task and current_task.request and current_task.request.id:
+            return str(current_task.request.id)
+    except Exception:
+        pass
+    return None
+
+
 @contextmanager
 def track_job_run(
     phase: str,
@@ -84,7 +101,8 @@ def track_job_run(
     On normal exit: status="success", summary_data from tracker.
     On exception: status="error", error_summary from exception.
     """
-    run_id = start_job_run(phase, leagues)
+    celery_task_id = _get_current_celery_task_id()
+    run_id = start_job_run(phase, leagues, celery_task_id=celery_task_id)
     tracker = JobRunTracker(run_id)
 
     try:

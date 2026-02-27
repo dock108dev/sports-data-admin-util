@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import styles from "./RunsDrawer.module.css";
-import { listJobRuns, type JobRunResponse } from "@/lib/api/sportsAdmin";
+import { cancelJobRun, listJobRuns, type JobRunResponse } from "@/lib/api/sportsAdmin";
 
 type DrawerSize = "collapsed" | "half" | "full";
 
@@ -65,6 +65,7 @@ export function RunsDrawer() {
   const [phase, setPhase] = useState("");
   const [status, setStatus] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [cancelingIds, setCancelingIds] = useState<Set<number>>(new Set());
 
   const fetchRuns = useCallback(async () => {
     try {
@@ -126,8 +127,26 @@ export function RunsDrawer() {
         return styles.statusRunning;
       case "error":
         return styles.statusError;
+      case "canceled":
+        return styles.statusCanceled;
       default:
         return "";
+    }
+  };
+
+  const handleCancel = async (runId: number) => {
+    setCancelingIds((prev) => new Set(prev).add(runId));
+    try {
+      await cancelJobRun(runId);
+      await fetchRuns();
+    } catch {
+      // errors surface via fetchRuns or are transient
+    } finally {
+      setCancelingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(runId);
+        return next;
+      });
     }
   };
 
@@ -214,6 +233,7 @@ export function RunsDrawer() {
                     <th>Started</th>
                     <th>Duration</th>
                     <th>Summary</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -265,13 +285,29 @@ export function RunsDrawer() {
                               ? "Click to expand"
                               : "-"}
                         </td>
+                        <td>
+                          {run.status === "running" ? (
+                            <button
+                              className={styles.cancelBtn}
+                              disabled={cancelingIds.has(run.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancel(run.id);
+                              }}
+                            >
+                              {cancelingIds.has(run.id) ? "Canceling..." : "Cancel"}
+                            </button>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
                       </tr>
                       {expandedId === run.id && run.summaryData && (
                         <tr
                           key={`${run.id}-detail`}
                           className={styles.summaryRow}
                         >
-                          <td colSpan={6}>
+                          <td colSpan={7}>
                             <pre className={styles.summaryPre}>
                               {JSON.stringify(run.summaryData, null, 2)}
                             </pre>
