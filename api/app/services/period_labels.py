@@ -25,6 +25,12 @@ def period_label(period: int, league_code: str) -> str:
         ot_num = period - 2
         return "OT" if ot_num == 1 else f"{ot_num}OT"
 
+    if code == "MLB":
+        if period <= 9:
+            ordinals = {1: "1st", 2: "2nd", 3: "3rd"}
+            return ordinals.get(period, f"{period}th")
+        return f"{period}th"  # extras
+
     # NBA (default)
     if period <= 4:
         return f"Q{period}"

@@ -11,6 +11,10 @@ import styles from "./styles.module.css";
  * - NCAAB: 1st Half, 2nd Half, OT1, OT2...
  */
 const getPeriodLabel = (period: number, leagueCode?: string) => {
+  if (leagueCode === "MLB") {
+    const ordinals: Record<number, string> = {1: "1st", 2: "2nd", 3: "3rd"};
+    return ordinals[period] ?? `${period}th`;
+  }
   if (leagueCode === "NCAAB") {
     // NCAAB uses halves
     if (period === 1) return "1st Half";

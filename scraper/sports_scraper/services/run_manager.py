@@ -18,6 +18,7 @@ from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
 from .game_selection import select_games_for_boxscores
 from .job_runs import complete_job_run, enforce_social_queue_limit, queue_job_run, start_job_run
 from .pbp_ingestion import (
+    ingest_pbp_via_mlb_api,
     ingest_pbp_via_nba_api,
     ingest_pbp_via_ncaab_api,
     ingest_pbp_via_nhl_api,
@@ -33,7 +34,7 @@ class ScrapeRunManager:
         # Feature support varies by league. When a toggle is enabled for an unsupported
         # league, we must NOT fail the run; we log and continue.
         self._supported_social_leagues = tuple(get_social_enabled_leagues())
-        self._supported_live_pbp_leagues = ("NBA", "NHL", "NCAAB")
+        self._supported_live_pbp_leagues = ("NBA", "NHL", "NCAAB", "MLB")
 
     def _update_run(self, run_id: int, **updates) -> None:
         try:
@@ -98,6 +99,9 @@ class ScrapeRunManager:
             elif config.league_code == "NBA":
                 from .nba_boxscore_ingestion import ingest_boxscores_via_nba_api
                 _LEAGUE_DISPATCH["NBA"] = (ingest_boxscores_via_nba_api, "nba_api", "nba_boxscore_ingestion_failed")
+            elif config.league_code == "MLB":
+                from .mlb_boxscore_ingestion import ingest_boxscores_via_mlb_api
+                _LEAGUE_DISPATCH["MLB"] = (ingest_boxscores_via_mlb_api, "mlb_api", "mlb_boxscore_ingestion_failed")
 
             dispatch = _LEAGUE_DISPATCH.get(config.league_code)
 
@@ -361,6 +365,7 @@ class ScrapeRunManager:
                     "NHL": (ingest_pbp_via_nhl_api, "pbp_nhl_api_failed"),
                     "NCAAB": (ingest_pbp_via_ncaab_api, "pbp_ncaab_api_failed"),
                     "NBA": (ingest_pbp_via_nba_api, "pbp_nba_api_failed"),
+                    "MLB": (ingest_pbp_via_mlb_api, "pbp_mlb_api_failed"),
                 }
 
                 dispatch = _PBP_DISPATCH.get(config.league_code)
@@ -537,8 +542,8 @@ class ScrapeRunManager:
             end_date=str(end),
         )
 
-        # NHL, NBA, and NCAAB use official APIs for boxscores, so scraper is not required
-        if not scraper and config.boxscores and config.league_code not in ("NHL", "NBA", "NCAAB"):
+        # NHL, NBA, NCAAB, and MLB use official APIs for boxscores, so scraper is not required
+        if not scraper and config.boxscores and config.league_code not in ("NHL", "NBA", "NCAAB", "MLB"):
             raise RuntimeError(f"No scraper implemented for {config.league_code}")
 
         self._update_run(run_id, status="running", started_at=now_utc())

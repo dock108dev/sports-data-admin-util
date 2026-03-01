@@ -51,10 +51,31 @@ _BASKETBALL_STATS: tuple[StatDefinition, ...] = (
 NBA_STATS = _BASKETBALL_STATS
 NCAAB_STATS = _BASKETBALL_STATS
 
+MLB_STATS: tuple[StatDefinition, ...] = (
+    # Core line score
+    StatDefinition("runs", "R", "scoring", "int", ("runs",)),
+    StatDefinition("hits", "H", "scoring", "int", ("hits",)),
+    StatDefinition("errors", "E", "scoring", "int", ("errors",)),
+    StatDefinition("left_on_base", "LOB", "scoring", "int", ("leftOnBase", "lob")),
+    # Batting
+    StatDefinition("at_bats", "AB", "batting", "int", ("atBats", "ab")),
+    StatDefinition("home_runs", "HR", "batting", "int", ("homeRuns", "hr")),
+    StatDefinition("rbi", "RBI", "batting", "int", ("rbi",)),
+    StatDefinition("base_on_balls", "BB", "batting", "int", ("baseOnBalls", "bb")),
+    StatDefinition("strike_outs", "SO", "batting", "int", ("strikeOuts", "so")),
+    StatDefinition("stolen_bases", "SB", "batting", "int", ("stolenBases", "sb")),
+    StatDefinition("avg", "AVG", "batting", "str", ("avg",)),
+    StatDefinition("obp", "OBP", "batting", "str", ("obp",)),
+    StatDefinition("slg", "SLG", "batting", "str", ("slg",)),
+    # Pitching
+    StatDefinition("era", "ERA", "pitching", "str", ("era",)),
+)
+
 # Registry by league
 _LEAGUE_STATS: dict[str, tuple[StatDefinition, ...]] = {
     "NBA": NBA_STATS,
     "NCAAB": NCAAB_STATS,
+    "MLB": MLB_STATS,
 }
 
 

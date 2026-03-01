@@ -33,6 +33,12 @@ _TIER_2_TYPES: dict[str, frozenset[str]] = {
     "NHL": frozenset(
         ["penalty", "delayed_penalty", "takeaway", "giveaway", "hit"]
     ),
+    "MLB": frozenset([
+        "strikeout", "walk", "intent_walk", "hit_by_pitch",
+        "stolen_base", "caught_stealing", "field_error",
+        "wild_pitch", "balk", "double_play", "triple_play",
+        "pickoff", "passed_ball",
+    ]),
 }
 
 
@@ -145,10 +151,11 @@ _PHASE_MAP: dict[str, dict[int, str]] = {
     "NBA": {1: "early", 2: "early", 3: "mid", 4: "late"},
     "NCAAB": {1: "early", 2: "late"},
     "NHL": {1: "early", 2: "mid", 3: "late"},
+    "MLB": {1: "early", 2: "early", 3: "early", 4: "mid", 5: "mid", 6: "mid", 7: "late", 8: "late", 9: "late"},
 }
 
 # Regular-time period counts (periods above this are OT)
-_REGULAR_PERIODS: dict[str, int] = {"NBA": 4, "NCAAB": 2, "NHL": 3}
+_REGULAR_PERIODS: dict[str, int] = {"NBA": 4, "NCAAB": 2, "NHL": 3, "MLB": 9}
 
 
 def _classify_phase(period: int | None, league_code: str) -> str | None:

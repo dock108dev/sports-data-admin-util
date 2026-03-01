@@ -7,6 +7,8 @@ import directly from the schemas package.
 from .common import (
     GamePhase,
     LiveSnapshot,
+    MLBBatterStat,
+    MLBPitcherStat,
     NHLDataHealth,
     NHLGoalieStat,
     NHLSkaterStat,
@@ -54,6 +56,8 @@ __all__ = [
     # common
     "GamePhase",
     "LiveSnapshot",
+    "MLBBatterStat",
+    "MLBPitcherStat",
     "NHLDataHealth",
     "NHLGoalieStat",
     "NHLSkaterStat",

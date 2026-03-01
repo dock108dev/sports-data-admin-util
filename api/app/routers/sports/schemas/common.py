@@ -91,6 +91,53 @@ class NHLGoalieStat(BaseModel):
     updated_at: datetime | None = Field(None, alias="updatedAt")
 
 
+class MLBBatterStat(BaseModel):
+    """MLB batter stats with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    team: str
+    player_name: str = Field(..., alias="playerName")
+    position: str | None = None
+    at_bats: int | None = Field(None, alias="atBats")
+    hits: int | None = None
+    runs: int | None = None
+    rbi: int | None = None
+    home_runs: int | None = Field(None, alias="homeRuns")
+    base_on_balls: int | None = Field(None, alias="baseOnBalls")
+    strike_outs: int | None = Field(None, alias="strikeOuts")
+    stolen_bases: int | None = Field(None, alias="stolenBases")
+    avg: str | None = None
+    obp: str | None = None
+    slg: str | None = None
+    ops: str | None = None
+    raw_stats: dict[str, Any] = Field(default_factory=dict, alias="rawStats")
+    source: str | None = None
+    updated_at: datetime | None = Field(None, alias="updatedAt")
+
+
+class MLBPitcherStat(BaseModel):
+    """MLB pitcher stats with camelCase output."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    team: str
+    player_name: str = Field(..., alias="playerName")
+    innings_pitched: str | None = Field(None, alias="inningsPitched")
+    hits: int | None = None
+    runs: int | None = None
+    earned_runs: int | None = Field(None, alias="earnedRuns")
+    base_on_balls: int | None = Field(None, alias="baseOnBalls")
+    strike_outs: int | None = Field(None, alias="strikeOuts")
+    home_runs: int | None = Field(None, alias="homeRuns")
+    era: str | None = None
+    pitch_count: int | None = Field(None, alias="pitchCount")
+    strikes: int | None = None
+    raw_stats: dict[str, Any] = Field(default_factory=dict, alias="rawStats")
+    source: str | None = None
+    updated_at: datetime | None = Field(None, alias="updatedAt")
+
+
 class OddsEntry(BaseModel):
     """Odds entry with camelCase output."""
 

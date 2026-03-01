@@ -27,6 +27,7 @@ from ..celery_app import SOCIAL_QUEUE
 from ..db import get_session
 from ..logging import logger
 from .polling_helpers import (
+    _poll_mlb_game_boxscore,
     _poll_nba_game_boxscore,
     _poll_nhl_game_boxscore,
     _poll_single_game_pbp,
@@ -156,6 +157,7 @@ def poll_live_pbp_task() -> dict:
 
             # --- Phase 0: Populate missing external IDs (all leagues) ---
             if pbp_games:
+                from ..services.mlb_boxscore_ingestion import populate_mlb_game_ids
                 from ..services.ncaab_game_ids import populate_ncaab_game_ids
                 from ..services.pbp_nba import populate_nba_game_ids
                 from ..services.pbp_nhl import populate_nhl_game_ids
@@ -174,6 +176,11 @@ def poll_live_pbp_task() -> dict:
                         populate_nhl_game_ids(session, start_date=start, end_date=end)
                     except Exception as exc:
                         logger.warning("poll_populate_nhl_ids_error", error=str(exc))
+
+                    try:
+                        populate_mlb_game_ids(session, start_date=start, end_date=end)
+                    except Exception as exc:
+                        logger.warning("poll_populate_mlb_ids_error", error=str(exc))
 
                     try:
                         populate_ncaab_game_ids(session, start_date=start, end_date=end)
@@ -246,7 +253,7 @@ def poll_live_pbp_task() -> dict:
                 # Filter to NBA/NHL only (NCAAB boxscores handled in batch phase)
                 nba_nhl_box_games = [
                     g for g in boxscore_games
-                    if league_map.get(g.league_id, "") in ("NBA", "NHL")
+                    if league_map.get(g.league_id, "") in ("NBA", "NHL", "MLB")
                 ]
                 # Ensure league_map covers boxscore games too
                 if boxscore_games:
@@ -260,7 +267,7 @@ def poll_live_pbp_task() -> dict:
                         league_map.update({lg.id: lg.code for lg in extra})
                     nba_nhl_box_games = [
                         g for g in boxscore_games
-                        if league_map.get(g.league_id, "") in ("NBA", "NHL")
+                        if league_map.get(g.league_id, "") in ("NBA", "NHL", "MLB")
                     ]
 
                 for game in nba_nhl_box_games:
@@ -279,6 +286,8 @@ def poll_live_pbp_task() -> dict:
                             bc_result = _poll_nba_game_boxscore(session, game)
                         elif code == "NHL":
                             bc_result = _poll_nhl_game_boxscore(session, game)
+                        elif code == "MLB":
+                            bc_result = _poll_mlb_game_boxscore(session, game)
                         else:
                             continue
 

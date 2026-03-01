@@ -168,7 +168,7 @@ export default function GameDetailClient() {
         ) : (
           <div className={styles.teamStatsGrid}>
             {game.teamStats.map((t) => {
-              const flattened = flattenStats(t.stats || {});
+              const flattened = flattenStats(t.stats || {}, g.leagueCode);
               return (
                 <div key={t.team} className={styles.teamStatsCard}>
                   <div className={styles.teamStatsHeader}>
@@ -196,7 +196,10 @@ export default function GameDetailClient() {
         playerStats={game.playerStats}
         nhlSkaters={game.nhlSkaters}
         nhlGoalies={game.nhlGoalies}
+        mlbBatters={game.mlbBatters}
+        mlbPitchers={game.mlbPitchers}
         isNHL={g.leagueCode === "NHL"}
+        isMLB={g.leagueCode === "MLB"}
       />
 
       <OddsSection odds={game.odds} />

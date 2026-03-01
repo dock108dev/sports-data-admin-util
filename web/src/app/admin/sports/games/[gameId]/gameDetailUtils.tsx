@@ -106,11 +106,28 @@ export function formatStatValue(value: unknown): string {
  */
 export function flattenStats(
   stats: Record<string, unknown>,
+  leagueCode?: string,
 ): Array<{ key: string; label: string; value: string }> {
   const result: Array<{ key: string; label: string; value: string }> = [];
 
+  const mlbDisplayStats: Array<{ key: string; label: string }> = [
+    { key: "runs", label: "Runs" },
+    { key: "hits", label: "Hits" },
+    { key: "errors", label: "Errors" },
+    { key: "leftOnBase", label: "LOB" },
+    { key: "atBats", label: "AB" },
+    { key: "homeRuns", label: "HR" },
+    { key: "rbi", label: "RBI" },
+    { key: "baseOnBalls", label: "BB" },
+    { key: "strikeOuts", label: "SO" },
+    { key: "stolenBases", label: "SB" },
+    { key: "avg", label: "AVG" },
+    { key: "obp", label: "OBP" },
+    { key: "slg", label: "SLG" },
+  ];
+
   // Stats to display in order, with display labels
-  const displayStats: Array<{ key: string; label: string }> = [
+  const basketballDisplayStats: Array<{ key: string; label: string }> = [
     { key: "points", label: "Points" },
     { key: "rebounds", label: "Rebounds" },
     { key: "assists", label: "Assists" },
@@ -125,6 +142,8 @@ export function flattenStats(
     { key: "possessions", label: "Possessions" },
     { key: "trueShooting", label: "TS%" },
   ];
+
+  const displayStats = leagueCode === "MLB" ? mlbDisplayStats : basketballDisplayStats;
 
   for (const { key, label } of displayStats) {
     const value = stats[key];

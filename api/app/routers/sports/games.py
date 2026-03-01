@@ -31,6 +31,8 @@ from ...services.period_labels import period_label, time_label
 from ...services.play_tiers import classify_all_tiers, group_tier3_plays
 from ...services.team_colors import get_matchup_colors
 from .common import (
+    serialize_mlb_batter,
+    serialize_mlb_pitcher,
     serialize_nhl_goalie,
     serialize_nhl_skater,
     serialize_play_entry,
@@ -55,6 +57,8 @@ from .schemas import (
     GameMeta,
     GamePreviewScoreResponse,
     JobResponse,
+    MLBBatterStat,
+    MLBPitcherStat,
     NHLGoalieStat,
     NHLSkaterStat,
     OddsEntry,
@@ -334,15 +338,18 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
     if not game:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
 
-    # Determine if this is an NHL game
+    # Determine league
     league_code = game.league.code if game.league else None
     is_nhl = league_code == "NHL"
+    is_mlb = league_code == "MLB"
 
     team_stats = [serialize_team_stat(box, league_code=league_code) for box in game.team_boxscores]
 
-    # For NHL, separate skaters and goalies; for other sports use generic player stats
+    # For NHL/MLB, separate into sport-specific lists; for other sports use generic player stats
     nhl_skaters: list[NHLSkaterStat] | None = None
     nhl_goalies: list[NHLGoalieStat] | None = None
+    mlb_batters: list[MLBBatterStat] | None = None
+    mlb_pitchers: list[MLBPitcherStat] | None = None
     player_stats: list = []
 
     if is_nhl:
@@ -359,8 +366,21 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
                 skaters.append(serialize_nhl_skater(player))
         nhl_skaters = skaters
         nhl_goalies = goalies
+    elif is_mlb:
+        # MLB: separate batters and pitchers, leave player_stats empty
+        batters = []
+        pitchers = []
+        for player in game.player_boxscores:
+            stats = player.stats or {}
+            player_role = stats.get("player_role")
+            if player_role == "pitcher":
+                pitchers.append(serialize_mlb_pitcher(player))
+            else:
+                batters.append(serialize_mlb_batter(player))
+        mlb_batters = batters
+        mlb_pitchers = pitchers
     else:
-        # Non-NHL: use generic player stats
+        # Non-NHL/MLB: use generic player stats
         player_stats = [serialize_player_stat(player, league_code=league_code) for player in game.player_boxscores]
 
     odds_entries = [
@@ -540,6 +560,8 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         player_stats=player_stats,
         nhl_skaters=nhl_skaters,
         nhl_goalies=nhl_goalies,
+        mlb_batters=mlb_batters,
+        mlb_pitchers=mlb_pitchers,
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,
