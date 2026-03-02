@@ -94,15 +94,29 @@ def populate_mlb_game_ids(
     client = MLBLiveFeedClient()
     mlb_games = client.fetch_schedule(start_date, end_date)
 
-    # Build lookup: (home_abbr, away_abbr, date) -> mlb_game_pk
-    mlb_lookup: dict[tuple[str, str, date], int] = {}
+    # Build lookup: (home_abbr, away_abbr, date) -> sorted list of game_pks.
+    # Using a list prevents doubleheader collisions where the same teams play
+    # twice on the same date (lower game_pk = earlier game).
+    mlb_lookup: dict[tuple[str, str, date], list[int]] = {}
     for mg in mlb_games:
         key = (
             mg.home_team.abbreviation.upper(),
             mg.away_team.abbreviation.upper(),
             mg.game_date.date(),
         )
-        mlb_lookup[key] = mg.game_pk
+        mlb_lookup.setdefault(key, []).append(mg.game_pk)
+
+    for pks in mlb_lookup.values():
+        pks.sort()
+        if len(pks) > 1:
+            logger.info(
+                "mlb_doubleheader_detected",
+                run_id=run_id,
+                game_pks=pks,
+            )
+
+    # Track assigned game_pks to avoid double-assignment in doubleheaders
+    assigned_pks: set[int] = set()
 
     # Match and update
     updated = 0
@@ -115,9 +129,13 @@ def populate_mlb_game_ids(
             continue
 
         key = (home_abbr, away_abbr, game_day)
-        mlb_game_pk = mlb_lookup.get(key)
+        candidates = mlb_lookup.get(key, [])
+
+        # Pick the first unassigned game_pk
+        mlb_game_pk = next((pk for pk in candidates if pk not in assigned_pks), None)
 
         if mlb_game_pk:
+            assigned_pks.add(mlb_game_pk)
             game = session.query(db_models.SportsGame).get(game_id)
             if game:
                 new_external_ids = dict(game.external_ids) if game.external_ids else {}

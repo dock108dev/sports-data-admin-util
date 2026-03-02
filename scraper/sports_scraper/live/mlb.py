@@ -25,6 +25,7 @@ from .mlb_helpers import (
     build_team_identity_from_api,
     map_mlb_game_state,
     one_day,
+    parse_datetime,
 )
 from .mlb_models import MLBBoxscore, MLBLiveGame
 from .mlb_pbp import MLBPbpFetcher
@@ -112,8 +113,13 @@ class MLBLiveFeedClient:
                 status_code = status_data.get("statusCode", "")
                 status = map_mlb_game_state(abstract_state or status_code)
 
-                # Use schedule date for game_date matching
-                game_date = date_to_utc_datetime(target_date)
+                # Use actual game datetime from API when available (needed for
+                # doubleheader disambiguation), fall back to date-only.
+                game_date_str = game_data.get("gameDate")
+                if game_date_str:
+                    game_date = parse_datetime(game_date_str)
+                else:
+                    game_date = date_to_utc_datetime(target_date)
 
                 # Extract team info
                 teams = game_data.get("teams", {})
