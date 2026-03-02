@@ -290,6 +290,10 @@ class TestIsTimelineEnabled:
         """NCAAB has timeline enabled."""
         assert is_timeline_enabled("NCAAB") is True
 
+    def test_mlb_enabled(self):
+        """MLB has timeline enabled."""
+        assert is_timeline_enabled("MLB") is True
+
     def test_unknown_league_uses_default(self):
         """Unknown league uses default config (timeline_enabled=True)."""
         # Default LeagueConfig has timeline_enabled=True

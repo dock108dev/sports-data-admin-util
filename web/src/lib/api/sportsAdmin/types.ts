@@ -68,10 +68,19 @@ export type GameListResponse = {
   withFlowCount?: number;
 };
 
+export type NormalizedStat = {
+  key: string;
+  displayLabel: string;
+  group: string;
+  value: number | string | null;
+  formatType: string;
+};
+
 export type TeamStat = {
   team: string;
   isHome: boolean;
   stats: Record<string, unknown>;
+  normalizedStats?: NormalizedStat[] | null;
   source?: string | null;
   updatedAt?: string | null;
 };

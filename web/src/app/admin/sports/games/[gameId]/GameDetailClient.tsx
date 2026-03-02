@@ -168,7 +168,7 @@ export default function GameDetailClient() {
         ) : (
           <div className={styles.teamStatsGrid}>
             {game.teamStats.map((t) => {
-              const flattened = flattenStats(t.stats || {}, g.leagueCode);
+              const flattened = flattenStats(t.stats || {}, g.leagueCode, t.normalizedStats);
               return (
                 <div key={t.team} className={styles.teamStatsCard}>
                   <div className={styles.teamStatsHeader}>
