@@ -2,19 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { RunsDrawer } from "@/components/admin/RunsDrawer";
 import styles from "./layout.module.css";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const pathname = usePathname();
-
-  // Close sidebar on route change
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [pathname]);
 
   // Close sidebar on Escape key
   useEffect(() => {
