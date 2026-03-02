@@ -72,9 +72,10 @@ def build_game_flow_pass_prompt(
         f"Game: {away_team} at {home_team}",
     ]
 
+    score_unit = "runs" if league_code == "MLB" else "pts"
     if is_close_game:
         prompt_parts.append(
-            f"\nNOTE: Close game (max margin: {max_margin} pts). Don't overstate leads. Detail the finish."
+            f"\nNOTE: Close game (max margin: {max_margin} {score_unit}). Don't overstate leads. Detail the finish."
         )
 
     if is_comeback:
@@ -210,10 +211,25 @@ def build_block_prompt(
         "- Key plays are provided for context. Reference them when narratively important, but omission is acceptable editorial judgment.",
         "- Describe stretches and effects, not individual events. Collapse consecutive scoring into runs where appropriate.",
         "",
-        "CONNECTING PHRASES TO USE:",
-        "- 'building on that', 'in response', 'shortly after'",
-        "- 'over the next several possessions', 'as the quarter progressed'",
-        "- 'trading baskets', 'the teams exchanged leads'",
+    ])
+
+    # League-specific connecting phrases
+    if league_code == "MLB":
+        prompt_parts.extend([
+            "CONNECTING PHRASES TO USE:",
+            "- 'building on that', 'in response', 'shortly after'",
+            "- 'over the next several at-bats', 'as the inning progressed'",
+            "- 'trading runs', 'the teams exchanged leads'",
+        ])
+    else:
+        prompt_parts.extend([
+            "CONNECTING PHRASES TO USE:",
+            "- 'building on that', 'in response', 'shortly after'",
+            "- 'over the next several possessions', 'as the period progressed'",
+            "- 'trading baskets', 'the teams exchanged leads'",
+        ])
+
+    prompt_parts.extend([
         "",
         "ROLE-SPECIFIC GUIDANCE:",
         "- SETUP: Establish tone and early shape. May contain zero specific plays. Abstraction encouraged.",
@@ -246,7 +262,7 @@ def build_block_prompt(
         "- Keep individual sentences concise (under 30 words each)",
         "",
         "NARRATIVE COMPRESSION:",
-        "- Collapse consecutive scoring into runs (e.g., 'went on a 12-0 run')",
+        "- Collapse consecutive scoring into runs (e.g., 'went on a 3-run rally')" if league_code == "MLB" else "- Collapse consecutive scoring into runs (e.g., 'went on a 12-0 run')",
         "- Use team-level descriptions for collective action",
         "- Describe momentum through state change, not event enumeration",
         "- Narrate consequences, not transactions",
@@ -266,11 +282,25 @@ def build_block_prompt(
         "",
     ])
 
+    # Add league-specific sport guidance
+    if league_code == "MLB":
+        prompt_parts.extend([
+            "BASEBALL-SPECIFIC:",
+            "- Use 'innings' not 'quarters' or 'periods'",
+            "- Use 'runs' not 'points'",
+            "- Refer to 'at-bats', 'innings', 'pitching changes', 'defensive plays'",
+            "- Late-game = 7th inning onward",
+            "- Extra innings (10th+), not 'overtime'",
+            "- 'went on a 3-run rally' not 'went on a 12-0 run'",
+            "",
+        ])
+
     # Add close-game-specific guidance
+    score_unit = "runs" if league_code == "MLB" else "pts"
     if is_close_game:
         prompt_parts.extend([
-            f"CLOSE GAME (max margin: {max_margin} pts):",
-            "- Do NOT overstate leads when margin is 1-2 pts. Emphasize back-and-forth.",
+            f"CLOSE GAME (max margin: {max_margin} {score_unit}):",
+            f"- Do NOT overstate leads when margin is 1-2 {score_unit}. Emphasize back-and-forth.",
             "- RESOLUTION: Capture the tension of the finish with specificity.",
             "",
         ])

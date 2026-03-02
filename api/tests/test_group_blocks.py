@@ -1124,3 +1124,114 @@ class TestExecuteGroupBlocksExtended:
 
         with pytest.raises(ValueError, match="requires previous stage output"):
             await execute_group_blocks(stage_input)
+
+
+class TestMLBLeagueConfig:
+    """Tests for MLB-specific league config and thresholds."""
+
+    def test_mlb_config_values(self) -> None:
+        """MLB config has baseball-appropriate thresholds."""
+        from app.services.pipeline.stages.league_config import get_config
+
+        cfg = get_config("MLB")
+        assert cfg["regulation_periods"] == 9
+        assert cfg["momentum_swing"] == 3
+        assert cfg["late_game_period"] == 7
+        assert cfg["blowout_margin"] == 8
+        assert cfg["scoring_run_min"] == 3
+        assert cfg["period_noun"] == "inning"
+        assert cfg["score_noun"] == "run"
+        assert cfg["extra_period_label"] == "extra innings"
+
+    def test_unknown_league_falls_back_to_nba(self) -> None:
+        """Unknown league codes fall back to NBA defaults."""
+        from app.services.pipeline.stages.league_config import get_config
+
+        cfg = get_config("WNBA")
+        assert cfg["regulation_periods"] == 4
+
+    def test_mlb_assign_roles_uses_lower_thresholds(self) -> None:
+        """MLB role assignment uses 3-run swing threshold, not 8-point."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock
+
+        # A 3-run swing is significant in MLB
+        blocks = [
+            NarrativeBlock(0, SemanticRole.RESPONSE, [], 1, 3, (0, 0), (2, 1), [], []),
+            NarrativeBlock(1, SemanticRole.RESPONSE, [], 4, 6, (2, 1), (2, 4), [], [],
+                           peak_margin=3),
+            NarrativeBlock(2, SemanticRole.RESPONSE, [], 7, 7, (2, 4), (5, 4), [], [],
+                           peak_margin=1),
+            NarrativeBlock(3, SemanticRole.RESPONSE, [], 8, 9, (5, 4), (6, 4), [], []),
+        ]
+        assign_roles(blocks, league_code="MLB")
+
+        assert blocks[0].role == SemanticRole.SETUP
+        assert blocks[-1].role == SemanticRole.RESOLUTION
+
+    def test_mlb_late_game_bonus_uses_7th_inning(self) -> None:
+        """MLB late-game bonus kicks in at inning 7, not quarter 4."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock
+
+        # Block in 7th+ inning with a swing should get period bonus
+        blocks = [
+            NarrativeBlock(0, SemanticRole.RESPONSE, [], 1, 3, (0, 0), (3, 1), [], []),
+            NarrativeBlock(1, SemanticRole.RESPONSE, [], 4, 6, (3, 1), (3, 4), [], [],
+                           peak_margin=3),
+            NarrativeBlock(2, SemanticRole.RESPONSE, [], 7, 8, (3, 4), (3, 7), [], [],
+                           peak_margin=3),
+            NarrativeBlock(3, SemanticRole.RESPONSE, [], 9, 9, (3, 7), (3, 8), [], []),
+        ]
+        assign_roles(blocks, league_code="MLB")
+
+        # Block 2 is in late-game (7th+) with a swing — should get MOMENTUM_SHIFT
+        assert blocks[2].role == SemanticRole.MOMENTUM_SHIFT
+
+    def test_mlb_zero_scoring_block_gets_decision_point(self) -> None:
+        """A block with no scoring change gets DECISION_POINT, not RESPONSE."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock
+
+        blocks = [
+            NarrativeBlock(0, SemanticRole.RESPONSE, [], 1, 3, (0, 0), (3, 1), [], []),
+            NarrativeBlock(1, SemanticRole.RESPONSE, [], 4, 5, (3, 1), (3, 1), [], []),  # no scoring
+            NarrativeBlock(2, SemanticRole.RESPONSE, [], 6, 7, (3, 1), (3, 4), [], [],
+                           peak_margin=3),
+            NarrativeBlock(3, SemanticRole.RESPONSE, [], 8, 9, (3, 4), (5, 4), [], []),
+        ]
+        assign_roles(blocks, league_code="MLB")
+
+        assert blocks[1].role == SemanticRole.DECISION_POINT
+
+    def test_mlb_blowout_detection_uses_8_runs(self) -> None:
+        """MLB blowout threshold is 8 runs, not 15 points."""
+        from app.services.pipeline.stages.block_analysis import detect_blowout
+
+        moments = [
+            {"score_after": [0, 0], "period": 1},
+            {"score_after": [8, 0], "period": 3},
+            {"score_after": [10, 0], "period": 5},
+        ]
+        is_blowout, _, _ = detect_blowout(moments, league_code="MLB")
+        assert is_blowout is True
+
+    def test_mlb_blowout_not_triggered_at_7_runs(self) -> None:
+        """7-run margin does not trigger MLB blowout."""
+        from app.services.pipeline.stages.block_analysis import detect_blowout
+
+        moments = [
+            {"score_after": [0, 0], "period": 1},
+            {"score_after": [7, 0], "period": 3},
+        ]
+        is_blowout, _, _ = detect_blowout(moments, league_code="MLB")
+        assert is_blowout is False
+
+    def test_mlb_garbage_time_uses_7th_inning(self) -> None:
+        """MLB garbage time starts at 7th inning with 10+ run margin."""
+        from app.services.pipeline.stages.block_analysis import find_garbage_time_start
+
+        moments = [
+            {"score_after": [0, 0], "period": 1},
+            {"score_after": [5, 0], "period": 3},
+            {"score_after": [10, 0], "period": 7},  # 10-run lead in 7th
+        ]
+        idx = find_garbage_time_start(moments, league_code="MLB")
+        assert idx == 2

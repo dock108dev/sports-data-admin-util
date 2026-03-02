@@ -45,6 +45,25 @@ class TestPeriodLabelNCAAB:
         assert period_label(5, "NCAAB") == "3OT"
 
 
+class TestPeriodLabelMLB:
+    def test_regulation_innings(self):
+        assert period_label(1, "MLB") == "1st"
+        assert period_label(2, "MLB") == "2nd"
+        assert period_label(3, "MLB") == "3rd"
+        assert period_label(4, "MLB") == "4th"
+        assert period_label(9, "MLB") == "9th"
+
+    def test_extra_innings(self):
+        assert period_label(10, "MLB") == "10th"
+        assert period_label(11, "MLB") == "11th"
+        assert period_label(12, "MLB") == "12th"
+
+    def test_period_zero_clamped(self):
+        """period=0 should be clamped to 1, not produce '0th'."""
+        assert period_label(0, "MLB") == "1st"
+        assert period_label(0, "NBA") == "Q1"
+
+
 class TestPeriodLabelUnknownLeague:
     def test_defaults_to_nba_style(self):
         assert period_label(1, "WNBA") == "Q1"

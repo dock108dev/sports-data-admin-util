@@ -268,8 +268,8 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         league_code = game_context.get("sport", "NBA")
         ot_info = detect_overtime_info(block, league_code)
         if ot_info["enters_overtime"]:
-            if not check_overtime_mention(narrative, ot_info):
-                narrative = inject_overtime_mention(narrative, ot_info)
+            if not check_overtime_mention(narrative, ot_info, league_code):
+                narrative = inject_overtime_mention(narrative, ot_info, league_code)
                 output.add_log(
                     f"Block {block_idx}: Injected {ot_info['ot_label']} mention",
                     level="warning",
@@ -299,8 +299,8 @@ async def execute_render_blocks(stage_input: StageInput) -> StageOutput:
         ot_info = detect_overtime_info(block, league_code)
         if ot_info["enters_overtime"]:
             narrative = block.get("narrative", "")
-            if not check_overtime_mention(narrative, ot_info):
-                block["narrative"] = inject_overtime_mention(narrative, ot_info)
+            if not check_overtime_mention(narrative, ot_info, league_code):
+                block["narrative"] = inject_overtime_mention(narrative, ot_info, league_code)
                 ot_injections += 1
                 output.add_log(
                     f"Block {block['block_index']}: Re-injected {ot_info['ot_label']} mention after flow pass",

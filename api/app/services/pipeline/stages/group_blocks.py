@@ -106,18 +106,22 @@ async def execute_group_blocks(stage_input: StageInput) -> StageOutput:
 
     output.add_log(f"Processing {len(moments)} moments")
 
+    # Resolve league code early for all downstream calls
+    game_context = stage_input.game_context
+    league_code = game_context.get("sport", "NBA") if game_context else "NBA"
+
     # Calculate game metrics
     lead_changes = count_lead_changes(moments)
     total_plays = sum(len(m.get("play_ids", [])) for m in moments)
-    scoring_runs = find_scoring_runs(moments)
+    scoring_runs = find_scoring_runs(moments, league_code=league_code)
     largest_run = max((r[2] for r in scoring_runs), default=0)
 
     output.add_log(f"Game metrics: {lead_changes} lead changes, {total_plays} plays")
     output.add_log(f"Found {len(scoring_runs)} scoring runs, largest: {largest_run}")
 
     # Check for blowout
-    is_blowout, decisive_idx, max_margin = detect_blowout(moments)
-    garbage_time_idx = find_garbage_time_start(moments) if is_blowout else None
+    is_blowout, decisive_idx, max_margin = detect_blowout(moments, league_code=league_code)
+    garbage_time_idx = find_garbage_time_start(moments, league_code=league_code) if is_blowout else None
 
     if is_blowout:
         output.add_log(
@@ -143,7 +147,6 @@ async def execute_group_blocks(stage_input: StageInput) -> StageOutput:
 
         # Find optimal split points - use drama weights if available from ANALYZE_DRAMA
         quarter_weights = previous_output.get("quarter_weights")
-        league_code = stage_input.game_context.get("sport", "NBA")
         if quarter_weights:
             output.add_log(f"Using drama-weighted block distribution: {quarter_weights}")
             split_points = find_weighted_split_points(
@@ -155,15 +158,13 @@ async def execute_group_blocks(stage_input: StageInput) -> StageOutput:
     output.add_log(f"Split points: {split_points}")
 
     # Create blocks with mini boxscores
-    game_context = stage_input.game_context
-    league_code = game_context.get("sport", "NBA") if game_context else "NBA"
     blocks = create_blocks(
         moments, split_points, pbp_events, game_context, league_code
     )
     output.add_log(f"Created {len(blocks)} blocks with mini boxscores")
 
     # Assign semantic roles
-    assign_roles(blocks)
+    assign_roles(blocks, league_code)
 
     # Log role assignments
     role_summary = {}

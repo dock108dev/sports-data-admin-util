@@ -10,6 +10,7 @@ def period_label(period: int, league_code: str) -> str:
     NHL:   P1-P3, OT, SO
     NCAAB: H1, H2, OT, 2OT, 3OT …
     """
+    period = max(period, 1)  # Guard against period=0 from bad data
     code = league_code.upper()
 
     if code == "NHL":

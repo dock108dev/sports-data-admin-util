@@ -15,6 +15,7 @@ from .block_types import (
     SemanticRole,
 )
 from .box_score_helpers import compute_block_mini_box
+from .league_config import get_config
 
 
 def calculate_block_count(
@@ -57,6 +58,7 @@ def select_key_plays(
     moments: list[dict[str, Any]],
     moment_indices: list[int],
     pbp_events: list[dict[str, Any]],
+    league_code: str = "NBA",
 ) -> list[int]:
     """Select 1-3 key plays for a block.
 
@@ -154,9 +156,10 @@ def select_key_plays(
         if play_id in explicit_plays:
             score += 20
 
-        # Clock context: Q4/OT plays get a bonus
+        # Clock context: late-game plays get a bonus
+        cfg = get_config(league_code)
         period = event.get("period", 1) or 1
-        if period >= 4:
+        if period >= cfg["late_game_period"]:
             score += 15
 
         # Run-ending bonus
@@ -165,7 +168,7 @@ def select_key_plays(
 
         # Competitive window: reduce importance in blowout margin
         margin = abs(home_score - away_score)
-        if margin > 15:
+        if margin > cfg["blowout_margin"]:
             score *= 0.5
 
         play_scores[play_id] = score
@@ -237,7 +240,7 @@ def create_blocks(
                     peak_leader = 1 if s[0] > s[1] else (-1 if s[1] > s[0] else 0)
 
         # Select key plays
-        key_play_ids = select_key_plays(moments, moment_indices, pbp_events)
+        key_play_ids = select_key_plays(moments, moment_indices, pbp_events, league_code)
 
         # Compute mini box score with deltas
         block_start_play_idx = min(all_play_ids) if all_play_ids else 0

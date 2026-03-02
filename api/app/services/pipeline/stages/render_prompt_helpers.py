@@ -181,6 +181,9 @@ def _build_period_label(league_code: str, period_start: int, period_end: int) ->
     Returns:
         Period label string (e.g., "Q1", "P2-P3", "H1", "OT")
     """
+    period_start = max(period_start, 1)  # Guard against period=0 from bad data
+    period_end = max(period_end, 1)
+
     def _mlb_ordinal(n: int) -> str:
         ordinals = {1: "1st", 2: "2nd", 3: "3rd"}
         return ordinals.get(n, f"{n}th")
