@@ -503,6 +503,30 @@ class TestOvertimeDetection:
         assert info["enters_overtime"] is True
         assert info["ot_label"] == "overtime"
 
+    def test_mlb_regulation_no_overtime(self) -> None:
+        """MLB innings 1-9 are regulation."""
+        block = {"period_start": 1, "period_end": 9}
+        info = detect_overtime_info(block, "MLB")
+        assert info["has_overtime"] is False
+        assert info["enters_overtime"] is False
+        assert info["regulation_end_period"] == 9
+
+    def test_mlb_extra_innings_detected(self) -> None:
+        """MLB period 10+ is extra innings."""
+        block = {"period_start": 10, "period_end": 10}
+        info = detect_overtime_info(block, "MLB")
+        assert info["has_overtime"] is True
+        assert info["enters_overtime"] is False  # Starts in extras
+        assert info["ot_label"] == "extra innings"
+
+    def test_mlb_enters_extra_innings(self) -> None:
+        """Block spanning 9th to 10th enters extra innings."""
+        block = {"period_start": 9, "period_end": 10}
+        info = detect_overtime_info(block, "MLB")
+        assert info["has_overtime"] is True
+        assert info["enters_overtime"] is True
+        assert info["ot_label"] == "extra innings"
+
 
 class TestOvertimeMention:
     """Tests for overtime mention checking and injection."""
@@ -566,6 +590,28 @@ class TestOvertimeMention:
         narrative = "A normal regulation narrative."
         result = inject_overtime_mention(narrative, ot_info)
         assert result == narrative
+
+    def test_mlb_extra_innings_mention_detected(self) -> None:
+        """Detects 'extra innings' in MLB narrative."""
+        ot_info = {"enters_overtime": True, "is_shootout": False}
+        assert check_overtime_mention(
+            "The game went to extra innings.", ot_info, league_code="MLB"
+        ) is True
+
+    def test_mlb_extras_mention_detected(self) -> None:
+        """Detects 'extras' shorthand in MLB narrative."""
+        ot_info = {"enters_overtime": True, "is_shootout": False}
+        assert check_overtime_mention(
+            "Tied at 6, heading to extras.", ot_info, league_code="MLB"
+        ) is True
+
+    def test_mlb_injection_uses_extra_innings(self) -> None:
+        """MLB injection says 'extra innings', not 'overtime'."""
+        ot_info = {"enters_overtime": True, "is_shootout": False, "ot_label": "extra innings"}
+        narrative = "The teams remained tied after nine."
+        result = inject_overtime_mention(narrative, ot_info, league_code="MLB")
+        assert "extra innings" in result.lower()
+        assert "overtime" not in result.lower()
 
 
 class TestOvertimeInPrompt:

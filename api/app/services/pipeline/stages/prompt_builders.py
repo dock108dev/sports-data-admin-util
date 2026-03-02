@@ -24,6 +24,14 @@ def _format_period(period: int, league_code: str = "NBA") -> str:
     Returns:
         Formatted period string (Q1-Q4, H1-H2, P1-P3, OT, SO, etc.)
     """
+    period = max(period, 1)  # Guard against period=0 from bad data
+
+    if league_code == "MLB":
+        ordinals = {1: "1st", 2: "2nd", 3: "3rd"}
+        label = ordinals.get(period, f"{period}th")
+        if period > 9:
+            return f"{label} (extra)"
+        return label
     if league_code == "NHL":
         if period <= 3:
             return f"P{period}"  # P1, P2, P3

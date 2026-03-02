@@ -30,7 +30,9 @@ def detect_overtime_info(
     period_end = block.get("period_end", period_start)
 
     # Determine regulation end period by sport
-    if league_code == "NHL":
+    if league_code == "MLB":
+        regulation_end = 9  # MLB has 9 innings
+    elif league_code == "NHL":
         regulation_end = 3  # NHL has 3 periods
     elif league_code == "NCAAB":
         regulation_end = 2  # NCAAB has 2 halves
@@ -51,6 +53,8 @@ def detect_overtime_info(
     if has_overtime:
         if is_shootout:
             ot_label = "shootout"
+        elif league_code == "MLB":
+            ot_label = "extra innings"
         elif league_code == "NHL":
             ot_label = "overtime"
         else:
@@ -70,12 +74,14 @@ def detect_overtime_info(
 def check_overtime_mention(
     narrative: str,
     ot_info: dict[str, Any],
+    league_code: str = "NBA",
 ) -> bool:
     """Check if narrative properly mentions overtime/shootout.
 
     Args:
         narrative: The narrative text
         ot_info: Overtime info dict from detect_overtime_info
+        league_code: Sport code (NBA, MLB, NHL, NCAAB)
 
     Returns:
         True if OT is mentioned or not required, False if missing required mention
@@ -105,6 +111,18 @@ def check_overtime_mention(
     if ot_info.get("is_shootout"):
         ot_patterns.extend(["shootout", "shoot out", "shoot-out"])
 
+    # MLB-specific patterns
+    if league_code == "MLB":
+        ot_patterns.extend([
+            "extra inning",
+            "extras",
+            "went to the 10th",
+            "went to the 11th",
+            "10th inning",
+            "11th inning",
+            "12th inning",
+        ])
+
     for pattern in ot_patterns:
         if pattern in narrative_lower:
             return True
@@ -115,12 +133,14 @@ def check_overtime_mention(
 def inject_overtime_mention(
     narrative: str,
     ot_info: dict[str, Any],
+    league_code: str = "NBA",
 ) -> str:
     """Inject overtime mention into narrative if missing.
 
     Args:
         narrative: The narrative text
         ot_info: Overtime info from detect_overtime_info
+        league_code: Sport code (NBA, MLB, NHL, NCAAB)
 
     Returns:
         Narrative with OT mention injected if it was missing
@@ -128,7 +148,7 @@ def inject_overtime_mention(
     if not ot_info.get("enters_overtime"):
         return narrative
 
-    if check_overtime_mention(narrative, ot_info):
+    if check_overtime_mention(narrative, ot_info, league_code):
         return narrative  # Already has mention
 
     # Inject OT mention at the end
@@ -138,6 +158,8 @@ def inject_overtime_mention(
 
     if ot_info.get("is_shootout"):
         injection = " The game headed to a shootout to determine the winner."
+    elif league_code == "MLB":
+        injection = " The game went to extra innings."
     else:
         ot_label = ot_info.get("ot_label", "overtime")
         injection = f" The game headed to {ot_label}."

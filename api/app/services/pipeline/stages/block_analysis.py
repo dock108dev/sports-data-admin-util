@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from typing import Any
 
-# Blowout detection constants
+from .league_config import get_config
+
+# Legacy constants kept for backward-compatible imports in tests
 BLOWOUT_MARGIN_THRESHOLD = 15
 BLOWOUT_SUSTAINED_PERIODS = 1
 GARBAGE_TIME_MARGIN = 15
@@ -81,6 +83,7 @@ def find_lead_change_indices(moments: list[dict[str, Any]]) -> list[int]:
 def find_scoring_runs(
     moments: list[dict[str, Any]],
     min_run_size: int = 8,
+    league_code: str = "NBA",
 ) -> list[tuple[int, int, int]]:
     """Find significant scoring runs (unanswered points).
 
@@ -147,18 +150,24 @@ def find_period_boundaries(moments: list[dict[str, Any]]) -> list[int]:
     return boundaries
 
 
-def detect_blowout(moments: list[dict[str, Any]]) -> tuple[bool, int | None, int]:
+def detect_blowout(
+    moments: list[dict[str, Any]],
+    league_code: str = "NBA",
+) -> tuple[bool, int | None, int]:
     """Detect if game is a blowout and find when it became decisive.
 
     A blowout is detected when:
-    - Margin reaches BLOWOUT_MARGIN_THRESHOLD (20 points)
-    - Margin is sustained for BLOWOUT_SUSTAINED_PERIODS (2+ periods)
+    - Margin reaches the league's blowout_margin threshold
+    - Margin is sustained for BLOWOUT_SUSTAINED_PERIODS (1+ periods)
 
     Returns:
         Tuple of (is_blowout, decisive_moment_idx, max_margin)
     """
     if not moments:
         return False, None, 0
+
+    cfg = get_config(league_code)
+    blowout_threshold = cfg["blowout_margin"]
 
     decisive_moment_idx: int | None = None
     margin_start_period: int | None = None
@@ -173,7 +182,7 @@ def detect_blowout(moments: list[dict[str, Any]]) -> tuple[bool, int | None, int
 
         max_margin = max(max_margin, margin)
 
-        if margin >= BLOWOUT_MARGIN_THRESHOLD:
+        if margin >= blowout_threshold:
             if margin_start_period is None:
                 margin_start_period = period
                 margin_start_idx = i
@@ -189,23 +198,30 @@ def detect_blowout(moments: list[dict[str, Any]]) -> tuple[bool, int | None, int
     return False, decisive_moment_idx, max_margin
 
 
-def find_garbage_time_start(moments: list[dict[str, Any]]) -> int | None:
+def find_garbage_time_start(
+    moments: list[dict[str, Any]],
+    league_code: str = "NBA",
+) -> int | None:
     """Find when garbage time begins (if at all).
 
     Garbage time is when:
-    - Margin exceeds GARBAGE_TIME_MARGIN (25 points)
-    - Period is GARBAGE_TIME_PERIOD_MIN or later (3rd quarter+)
+    - Margin exceeds the league's garbage_time_margin
+    - Period is at or beyond the league's garbage_time_period
 
     Returns:
         Moment index where garbage time starts, or None
     """
+    cfg = get_config(league_code)
+    gt_margin = cfg["garbage_time_margin"]
+    gt_period = cfg["garbage_time_period"]
+
     for i, moment in enumerate(moments):
         score_after = moment.get("score_after", [0, 0])
         period = moment.get("period", 1)
         home, away = score_after[0], score_after[1]
         margin = abs(home - away)
 
-        if margin >= GARBAGE_TIME_MARGIN and period >= GARBAGE_TIME_PERIOD_MIN:
+        if margin >= gt_margin and period >= gt_period:
             return i
 
     return None

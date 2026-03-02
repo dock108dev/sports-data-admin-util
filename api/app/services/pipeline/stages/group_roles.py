@@ -7,21 +7,7 @@ RESPONSE, DECISION_POINT, RESOLUTION) to narrative blocks.
 from __future__ import annotations
 
 from .block_types import NarrativeBlock, SemanticRole
-
-# Minimum point swing required for a block to qualify as MOMENTUM_SHIFT
-# A 4-point swing (down 2 to up 2) is not a momentum shift - just back-and-forth
-# True momentum requires a significant swing (8+ net points gained)
-MIN_MOMENTUM_SWING = 8
-
-# Minimum deficit overcome to qualify as momentum shift via lead change
-# Going from down 6+ to taking a lead is meaningful even if total swing is smaller
-MIN_DEFICIT_OVERCOME = 6
-
-# Close-game thresholds: in tight games, smaller swings are meaningful
-# A game is considered close if the max margin never exceeds this value
-CLOSE_GAME_MARGIN_THRESHOLD = 7
-CLOSE_GAME_MOMENTUM_SWING = 4
-CLOSE_GAME_DEFICIT_OVERCOME = 2
+from .league_config import get_config
 
 
 def calculate_swing_metrics(block: NarrativeBlock) -> dict[str, int | bool]:
@@ -63,7 +49,7 @@ def calculate_swing_metrics(block: NarrativeBlock) -> dict[str, int | bool]:
     }
 
 
-def assign_roles(blocks: list[NarrativeBlock]) -> None:
+def assign_roles(blocks: list[NarrativeBlock], league_code: str = "NBA") -> None:
     """Assign semantic roles to blocks in place.
 
     Rules:
@@ -75,17 +61,18 @@ def assign_roles(blocks: list[NarrativeBlock]) -> None:
     For 4+ block games:
     1. First block -> SETUP
     2. Last block -> RESOLUTION
-    3. Block with significant swing -> MOMENTUM_SHIFT (requires 8+ net swing OR 6+ deficit overcome)
-       In close games (max margin <= 7), thresholds are lowered (4+ swing or 2+ deficit)
+    3. Block with significant swing -> MOMENTUM_SHIFT (league-tuned thresholds)
+       In close games, thresholds are lowered
     4. Block after momentum shift -> RESPONSE
     5. Second-to-last block -> DECISION_POINT (if not assigned)
-    6. Remaining -> RESPONSE
+    6. Remaining -> RESPONSE (or DECISION_POINT for zero-scoring blocks)
 
     Constraint: No role > 2 occurrences
     """
     if not blocks:
         return
 
+    cfg = get_config(league_code)
     n = len(blocks)
 
     # Special case: 3-block games (blowouts)
@@ -102,11 +89,11 @@ def assign_roles(blocks: list[NarrativeBlock]) -> None:
         margin_after = abs(block.score_after[0] - block.score_after[1])
         max_margin = max(max_margin, margin_before, margin_after, block.peak_margin)
 
-    is_close_game = max_margin <= CLOSE_GAME_MARGIN_THRESHOLD
+    is_close_game = max_margin <= cfg["close_game_margin"]
 
     # Use lower thresholds for close games where small swings are the story
-    swing_threshold = CLOSE_GAME_MOMENTUM_SWING if is_close_game else MIN_MOMENTUM_SWING
-    deficit_threshold = CLOSE_GAME_DEFICIT_OVERCOME if is_close_game else MIN_DEFICIT_OVERCOME
+    swing_threshold = cfg["close_game_swing"] if is_close_game else cfg["momentum_swing"]
+    deficit_threshold = cfg["close_game_deficit"] if is_close_game else cfg["deficit_overcome"]
 
     # Reset all roles to None first - blocks may come with pre-assigned roles
     for block in blocks:
@@ -155,9 +142,9 @@ def assign_roles(blocks: list[NarrativeBlock]) -> None:
 
         if qualifies:
             # Prefer later blocks (late game drama), then larger swings
-            # Add period bonus: Q4/OT blocks get priority
+            # Add period bonus: late-game blocks get priority
             period_bonus = 0
-            if hasattr(block, "period_end") and block.period_end >= 4:
+            if hasattr(block, "period_end") and block.period_end >= cfg["late_game_period"]:
                 period_bonus = 100
             momentum_shift_candidates.append((i, period_bonus + score))
 
@@ -182,11 +169,16 @@ def assign_roles(blocks: list[NarrativeBlock]) -> None:
     if n > 2 and blocks[-2].role is None and can_assign(SemanticRole.DECISION_POINT):
         assign(blocks[-2], SemanticRole.DECISION_POINT)
 
-    # Rule 6: Remaining blocks -> RESPONSE
-    # For close back-and-forth games, all middle blocks become RESPONSE
+    # Rule 6: Remaining blocks -> RESPONSE (or DECISION_POINT for zero-scoring)
     for block in blocks:
         if block.role is None:
-            if can_assign(SemanticRole.RESPONSE):
+            # A block with no scoring change is a defensive stand, not a "response"
+            if (
+                block.score_before == block.score_after
+                and can_assign(SemanticRole.DECISION_POINT)
+            ):
+                assign(block, SemanticRole.DECISION_POINT)
+            elif can_assign(SemanticRole.RESPONSE):
                 assign(block, SemanticRole.RESPONSE)
             elif can_assign(SemanticRole.MOMENTUM_SHIFT):
                 assign(block, SemanticRole.MOMENTUM_SHIFT)
