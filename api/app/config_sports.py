@@ -25,7 +25,7 @@ class LeagueConfig:
       closing-line architecture requires pre-game odds only)
     """
 
-    code: str                       # "NBA", "NHL", "NCAAB"
+    code: str                       # "NBA", "NHL", "NCAAB", "MLB"
     display_name: str               # "NBA Basketball"
 
     # Pipeline feature flags
@@ -81,6 +81,19 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         scheduled_ingestion=True,  # Uses api.collegebasketballdata.com
         live_pbp_enabled=True,  # Handled via NCAAB batch polling
         estimated_game_duration_hours=2.5,  # Regulation ~2h + OT buffer
+    ),
+    "MLB": LeagueConfig(
+        code="MLB",
+        display_name="MLB Baseball",
+        boxscores_enabled=True,
+        odds_enabled=True,
+        social_enabled=True,
+        pbp_enabled=True,
+        timeline_enabled=True,
+        scheduled_ingestion=True,
+        live_pbp_enabled=True,
+        live_boxscore_enabled=True,
+        estimated_game_duration_hours=3.5,
     ),
 }
 

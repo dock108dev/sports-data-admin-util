@@ -51,6 +51,8 @@ class TestLeagueConfig:
         assert config.pbp_enabled is True
         assert config.timeline_enabled is True
         assert config.scheduled_ingestion is True
+        assert config.live_pbp_enabled is True
+        assert config.live_boxscore_enabled is True
 
     def test_config_is_frozen(self):
         """Config is immutable."""
@@ -92,10 +94,39 @@ class TestLeagueConfigConstants:
         """NCAAB has social integration enabled."""
         assert LEAGUE_CONFIG["NCAAB"].social_enabled is True
 
+    def test_contains_mlb(self):
+        """Contains MLB configuration."""
+        assert "MLB" in LEAGUE_CONFIG
+        assert LEAGUE_CONFIG["MLB"].code == "MLB"
+
+    def test_mlb_fully_enabled(self):
+        """MLB has all features enabled."""
+        mlb = LEAGUE_CONFIG["MLB"]
+        assert mlb.boxscores_enabled is True
+        assert mlb.odds_enabled is True
+        assert mlb.social_enabled is True
+        assert mlb.pbp_enabled is True
+        assert mlb.timeline_enabled is True
+        assert mlb.scheduled_ingestion is True
+        assert mlb.live_pbp_enabled is True
+        assert mlb.live_boxscore_enabled is True
+
+    def test_mlb_in_scheduled_leagues(self):
+        """MLB is in scheduled ingestion leagues."""
+        assert "MLB" in get_scheduled_leagues()
+
+    def test_mlb_in_social_leagues(self):
+        """MLB is in social-enabled leagues."""
+        assert "MLB" in get_social_enabled_leagues()
+
+    def test_mlb_in_timeline_leagues(self):
+        """MLB is in timeline-enabled leagues."""
+        assert "MLB" in get_timeline_enabled_leagues()
+
     def test_all_leagues_have_boxscores(self):
         """All leagues have boxscores enabled."""
-        for league_config in LEAGUE_CONFIG.values():
-            assert league_config.boxscores_enabled is True
+        for code, league_config in LEAGUE_CONFIG.items():
+            assert league_config.boxscores_enabled is True, f"{code} missing boxscores"
 
     def test_all_leagues_have_odds(self):
         """All leagues have odds enabled."""
@@ -146,6 +177,7 @@ class TestGetEnabledLeagues:
         assert "NBA" in result
         assert "NHL" in result
         assert "NCAAB" in result
+        assert "MLB" in result
 
 
 class TestGetScheduledLeagues:
@@ -163,6 +195,7 @@ class TestGetScheduledLeagues:
         assert "NBA" in result
         assert "NHL" in result
         assert "NCAAB" in result
+        assert "MLB" in result
 
 
 class TestGetSocialEnabledLeagues:
@@ -173,16 +206,13 @@ class TestGetSocialEnabledLeagues:
         result = get_social_enabled_leagues()
         assert isinstance(result, list)
 
-    def test_contains_nba_and_nhl(self):
-        """Contains NBA and NHL (which have social enabled)."""
+    def test_contains_all_social_leagues(self):
+        """Contains all leagues with social enabled."""
         result = get_social_enabled_leagues()
         assert "NBA" in result
         assert "NHL" in result
-
-    def test_includes_ncaab(self):
-        """Includes NCAAB (which has social enabled)."""
-        result = get_social_enabled_leagues()
         assert "NCAAB" in result
+        assert "MLB" in result
 
 
 class TestGetTimelineEnabledLeagues:
@@ -199,6 +229,7 @@ class TestGetTimelineEnabledLeagues:
         assert "NBA" in result
         assert "NHL" in result
         assert "NCAAB" in result
+        assert "MLB" in result
 
 
 class TestValidateLeagueCode:
@@ -209,6 +240,7 @@ class TestValidateLeagueCode:
         assert validate_league_code("NBA") == "NBA"
         assert validate_league_code("NHL") == "NHL"
         assert validate_league_code("NCAAB") == "NCAAB"
+        assert validate_league_code("MLB") == "MLB"
 
     def test_raises_for_invalid_code(self):
         """Raises ValueError for invalid league code."""
@@ -233,6 +265,10 @@ class TestIsSocialEnabled:
         """NCAAB has social enabled."""
         assert is_social_enabled("NCAAB") is True
 
+    def test_mlb_enabled(self):
+        """MLB has social enabled."""
+        assert is_social_enabled("MLB") is True
+
     def test_unknown_league_uses_default(self):
         """Unknown league uses default config (social_enabled=True)."""
         # Default LeagueConfig has social_enabled=True
@@ -253,6 +289,10 @@ class TestIsTimelineEnabled:
     def test_ncaab_enabled(self):
         """NCAAB has timeline enabled."""
         assert is_timeline_enabled("NCAAB") is True
+
+    def test_mlb_enabled(self):
+        """MLB has timeline enabled."""
+        assert is_timeline_enabled("MLB") is True
 
     def test_unknown_league_uses_default(self):
         """Unknown league uses default config (timeline_enabled=True)."""

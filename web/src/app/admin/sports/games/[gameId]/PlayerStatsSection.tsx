@@ -9,10 +9,13 @@ type PlayerStatsSectionProps = {
   playerStats: AdminGameDetail["playerStats"];
   nhlSkaters: AdminGameDetail["nhlSkaters"];
   nhlGoalies: AdminGameDetail["nhlGoalies"];
+  mlbBatters: AdminGameDetail["mlbBatters"];
+  mlbPitchers: AdminGameDetail["mlbPitchers"];
   isNHL: boolean;
+  isMLB: boolean;
 };
 
-export function PlayerStatsSection({ playerStats, nhlSkaters, nhlGoalies, isNHL }: PlayerStatsSectionProps) {
+export function PlayerStatsSection({ playerStats, nhlSkaters, nhlGoalies, mlbBatters, mlbPitchers, isNHL, isMLB }: PlayerStatsSectionProps) {
   const playerStatsByTeam = useMemo(() => {
     return playerStats.reduce<Record<string, typeof playerStats>>((acc, p) => {
       acc[p.team] = acc[p.team] || [];
@@ -38,6 +41,24 @@ export function PlayerStatsSection({ playerStats, nhlSkaters, nhlGoalies, isNHL 
       return acc;
     }, {});
   }, [nhlGoalies]);
+
+  const mlbBattersByTeam = useMemo(() => {
+    if (!mlbBatters) return {};
+    return mlbBatters.reduce<Record<string, NonNullable<typeof mlbBatters>>>((acc, p) => {
+      acc[p.team] = acc[p.team] || [];
+      acc[p.team].push(p);
+      return acc;
+    }, {});
+  }, [mlbBatters]);
+
+  const mlbPitchersByTeam = useMemo(() => {
+    if (!mlbPitchers) return {};
+    return mlbPitchers.reduce<Record<string, NonNullable<typeof mlbPitchers>>>((acc, p) => {
+      acc[p.team] = acc[p.team] || [];
+      acc[p.team].push(p);
+      return acc;
+    }, {});
+  }, [mlbPitchers]);
 
   return (
     <CollapsibleSection title="Player Stats" defaultOpen={false}>
@@ -123,6 +144,113 @@ export function PlayerStatsSection({ playerStats, nhlSkaters, nhlGoalies, isNHL 
                         ))}
                       </tbody>
                     </table>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )
+      ) : isMLB ? (
+        // MLB-specific player stats display - one card per team with batters + pitchers
+        Object.keys(mlbBattersByTeam).length === 0 && Object.keys(mlbPitchersByTeam).length === 0 ? (
+          <div style={{ color: "#475569" }}>No player stats found.</div>
+        ) : (
+          <div className={styles.playerStatsGrid}>
+            {Array.from(new Set([...Object.keys(mlbBattersByTeam), ...Object.keys(mlbPitchersByTeam)])).map((team) => (
+              <div key={team} className={styles.teamStatsCard}>
+                <div className={styles.teamStatsHeader}>
+                  <h3>{team}</h3>
+                </div>
+
+                {/* Batters section */}
+                {mlbBattersByTeam[team] && mlbBattersByTeam[team].length > 0 && (
+                  <>
+                    <h4 style={{ margin: "0.75rem 0 0.25rem", fontSize: "0.9rem", color: "#475569" }}>Batters</h4>
+                    <div style={{ overflowX: "auto" }}>
+                      <table className={styles.table} style={{ fontSize: "0.85rem" }}>
+                        <thead>
+                          <tr>
+                            <th>Player</th>
+                            <th>Pos</th>
+                            <th>AB</th>
+                            <th>H</th>
+                            <th>R</th>
+                            <th>RBI</th>
+                            <th>HR</th>
+                            <th>BB</th>
+                            <th>SO</th>
+                            <th>SB</th>
+                            <th>AVG</th>
+                            <th>OBP</th>
+                            <th>SLG</th>
+                            <th>OPS</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mlbBattersByTeam[team].map((p, idx) => (
+                            <tr key={`${team}-batter-${idx}-${p.playerName}`}>
+                              <td>{p.playerName}</td>
+                              <td>{p.position ?? "—"}</td>
+                              <td>{p.atBats ?? "—"}</td>
+                              <td>{p.hits ?? "—"}</td>
+                              <td>{p.runs ?? "—"}</td>
+                              <td>{p.rbi ?? "—"}</td>
+                              <td>{p.homeRuns ?? "—"}</td>
+                              <td>{p.baseOnBalls ?? "—"}</td>
+                              <td>{p.strikeOuts ?? "—"}</td>
+                              <td>{p.stolenBases ?? "—"}</td>
+                              <td>{p.avg ?? "—"}</td>
+                              <td>{p.obp ?? "—"}</td>
+                              <td>{p.slg ?? "—"}</td>
+                              <td>{p.ops ?? "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+
+                {/* Pitchers section */}
+                {mlbPitchersByTeam[team] && mlbPitchersByTeam[team].length > 0 && (
+                  <>
+                    <h4 style={{ margin: "0.75rem 0 0.25rem", fontSize: "0.9rem", color: "#475569" }}>Pitchers</h4>
+                    <div style={{ overflowX: "auto" }}>
+                      <table className={styles.table} style={{ fontSize: "0.85rem" }}>
+                        <thead>
+                          <tr>
+                            <th>Player</th>
+                            <th>IP</th>
+                            <th>H</th>
+                            <th>R</th>
+                            <th>ER</th>
+                            <th>BB</th>
+                            <th>SO</th>
+                            <th>HR</th>
+                            <th>ERA</th>
+                            <th>PC</th>
+                            <th>STR</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mlbPitchersByTeam[team].map((p, idx) => (
+                            <tr key={`${team}-pitcher-${idx}-${p.playerName}`}>
+                              <td>{p.playerName}</td>
+                              <td>{p.inningsPitched ?? "—"}</td>
+                              <td>{p.hits ?? "—"}</td>
+                              <td>{p.runs ?? "—"}</td>
+                              <td>{p.earnedRuns ?? "—"}</td>
+                              <td>{p.baseOnBalls ?? "—"}</td>
+                              <td>{p.strikeOuts ?? "—"}</td>
+                              <td>{p.homeRuns ?? "—"}</td>
+                              <td>{p.era ?? "—"}</td>
+                              <td>{p.pitchCount ?? "—"}</td>
+                              <td>{p.strikes ?? "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </>
                 )}
               </div>

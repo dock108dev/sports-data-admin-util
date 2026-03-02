@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .common import (
     LiveSnapshot,
+    MLBBatterStat,
+    MLBPitcherStat,
     NHLDataHealth,
     NHLGoalieStat,
     NHLSkaterStat,
@@ -141,6 +143,9 @@ class GameDetailResponse(BaseModel):
     # NHL-specific player stats (only populated for NHL games)
     nhl_skaters: list[NHLSkaterStat] | None = Field(None, alias="nhlSkaters")
     nhl_goalies: list[NHLGoalieStat] | None = Field(None, alias="nhlGoalies")
+    # MLB-specific player stats (only populated for MLB games)
+    mlb_batters: list[MLBBatterStat] | None = Field(None, alias="mlbBatters")
+    mlb_pitchers: list[MLBPitcherStat] | None = Field(None, alias="mlbPitchers")
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry] = Field(..., alias="socialPosts")
     plays: list[PlayEntry]

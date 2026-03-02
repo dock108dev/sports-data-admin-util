@@ -15,6 +15,12 @@ SCRAPER_ROOT = REPO_ROOT / "scraper"
 if str(SCRAPER_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRAPER_ROOT))
 
+# Ensure the API package is importable (needed by sports_scraper.db and
+# modules like job_runs.py that import from ``app.*`` before ``..db``).
+API_ROOT = REPO_ROOT / "api"
+if str(API_ROOT) not in sys.path:
+    sys.path.insert(0, str(API_ROOT))
+
 # Set required environment variables before any imports
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://user:pass@localhost:5432/test_db")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")

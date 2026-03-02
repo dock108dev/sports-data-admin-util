@@ -106,7 +106,7 @@ class TestScrapeRunManagerRun:
 
         from sports_scraper.models import IngestionConfig
         config = IngestionConfig(
-            league_code="MLB",  # MLB not in NHL/NCAAB exception list
+            league_code="NFL",  # WNBA not in API dispatch (NHL/NBA/NCAAB/MLB)
             start_date=date(2024, 1, 15),
             end_date=date(2024, 1, 15),
             boxscores=True,
@@ -183,7 +183,7 @@ class TestScrapeRunManagerRun:
 
         from sports_scraper.models import IngestionConfig
         config = IngestionConfig(
-            league_code="MLB",  # MLB not in supported social leagues
+            league_code="NFL",  # WNBA not in supported social leagues
             start_date=date(2024, 1, 15),
             end_date=date(2024, 1, 15),
             boxscores=False,

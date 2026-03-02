@@ -19,6 +19,8 @@ from ...db.sports import (
     SportsTeamBoxscore,
 )
 from .schemas import (
+    MLBBatterStat,
+    MLBPitcherStat,
     NHLGoalieStat,
     NHLSkaterStat,
     PlayEntry,
@@ -299,6 +301,53 @@ def serialize_nhl_goalie(player: SportsPlayerBoxscore) -> NHLGoalieStat:
         saves=_get_int_stat(stats, "saves"),
         goals_against=_get_int_stat(stats, "goals_against"),
         save_percentage=_get_float_stat(stats, "save_percentage"),
+        raw_stats=stats,
+        source=player.source,
+        updated_at=player.updated_at,
+    )
+
+
+def serialize_mlb_batter(player: SportsPlayerBoxscore) -> MLBBatterStat:
+    """Serialize MLB batter boxscore with baseball-specific fields."""
+    stats = player.stats or {}
+    return MLBBatterStat(
+        team=player.team.name if player.team else "Unknown",
+        player_name=player.player_name,
+        position=stats.get("position") or getattr(player, "position", None),
+        at_bats=_get_int_stat(stats, "atBats"),
+        hits=_get_int_stat(stats, "hits"),
+        runs=_get_int_stat(stats, "runs"),
+        rbi=_get_int_stat(stats, "rbi"),
+        home_runs=_get_int_stat(stats, "homeRuns"),
+        base_on_balls=_get_int_stat(stats, "baseOnBalls"),
+        strike_outs=_get_int_stat(stats, "strikeOuts"),
+        stolen_bases=_get_int_stat(stats, "stolenBases"),
+        avg=stats.get("avg"),
+        obp=stats.get("obp"),
+        slg=stats.get("slg"),
+        ops=stats.get("ops"),
+        raw_stats=stats,
+        source=player.source,
+        updated_at=player.updated_at,
+    )
+
+
+def serialize_mlb_pitcher(player: SportsPlayerBoxscore) -> MLBPitcherStat:
+    """Serialize MLB pitcher boxscore with pitching-specific fields."""
+    stats = player.stats or {}
+    return MLBPitcherStat(
+        team=player.team.name if player.team else "Unknown",
+        player_name=player.player_name,
+        innings_pitched=stats.get("inningsPitched"),
+        hits=_get_int_stat(stats, "hits"),
+        runs=_get_int_stat(stats, "runs"),
+        earned_runs=_get_int_stat(stats, "earnedRuns"),
+        base_on_balls=_get_int_stat(stats, "baseOnBalls"),
+        strike_outs=_get_int_stat(stats, "strikeOuts"),
+        home_runs=_get_int_stat(stats, "homeRuns"),
+        era=stats.get("era"),
+        pitch_count=_get_int_stat(stats, "pitchCount"),
+        strikes=_get_int_stat(stats, "strikes"),
         raw_stats=stats,
         source=player.source,
         updated_at=player.updated_at,

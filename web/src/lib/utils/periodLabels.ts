@@ -15,6 +15,11 @@ export function formatPeriodLabel(period: number, leagueCode: string): string {
     return "SO";
   }
 
+  if (code === "MLB") {
+    const ordinals: Record<number, string> = {1: "1st", 2: "2nd", 3: "3rd"};
+    return ordinals[period] ?? `${period}th`;
+  }
+
   if (code === "NCAAB") {
     if (period <= 2) return `H${period}`;
     const ot = period - 2;

@@ -29,11 +29,16 @@ from .pbp_ncaab import (
     ingest_pbp_via_ncaab_api,
     select_games_for_pbp_ncaab_api,
 )
+from .pbp_mlb import (
+    ingest_pbp_via_mlb_api,
+    select_games_for_pbp_mlb_api,
+)
 from .pbp_nhl import (
     ingest_pbp_via_nhl_api,
     populate_nhl_game_ids,
     select_games_for_pbp_nhl_api,
 )
+from .mlb_boxscore_ingestion import populate_mlb_game_ids
 
 __all__ = [
     # Main ingestion functions
@@ -41,13 +46,16 @@ __all__ = [
     "ingest_pbp_via_nba_api",
     "ingest_pbp_via_nhl_api",
     "ingest_pbp_via_ncaab_api",
+    "ingest_pbp_via_mlb_api",
     # Game selection functions
     "select_games_for_pbp_nba_api",
     "select_games_for_pbp_nhl_api",
     "select_games_for_pbp_ncaab_api",
+    "select_games_for_pbp_mlb_api",
     # Game ID population functions
     "populate_nba_game_ids",
     "populate_nhl_game_ids",
+    "populate_mlb_game_ids",
 ]
 
 

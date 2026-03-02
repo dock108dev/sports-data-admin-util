@@ -51,10 +51,33 @@ _BASKETBALL_STATS: tuple[StatDefinition, ...] = (
 NBA_STATS = _BASKETBALL_STATS
 NCAAB_STATS = _BASKETBALL_STATS
 
+MLB_STATS: tuple[StatDefinition, ...] = (
+    # Core line score
+    # Runs are stored as top-level "points" by _build_team_stats, and also
+    # nested under batting.runs in raw_stats.
+    StatDefinition("runs", "R", "scoring", "int", ("points", "batting.runs")),
+    StatDefinition("hits", "H", "scoring", "int", ("hits", "batting.hits")),
+    StatDefinition("errors", "E", "scoring", "int", ("fielding.errors",)),
+    StatDefinition("left_on_base", "LOB", "scoring", "int", ("batting.leftOnBase", "leftOnBase", "lob")),
+    # Batting
+    StatDefinition("at_bats", "AB", "batting", "int", ("batting.atBats", "atBats", "ab")),
+    StatDefinition("home_runs", "HR", "batting", "int", ("batting.homeRuns", "homeRuns", "hr")),
+    StatDefinition("rbi", "RBI", "batting", "int", ("batting.rbi", "rbi")),
+    StatDefinition("base_on_balls", "BB", "batting", "int", ("batting.baseOnBalls", "baseOnBalls", "bb")),
+    StatDefinition("strike_outs", "SO", "batting", "int", ("batting.strikeOuts", "strikeOuts", "so")),
+    StatDefinition("stolen_bases", "SB", "batting", "int", ("batting.stolenBases", "stolenBases", "sb")),
+    StatDefinition("avg", "AVG", "batting", "str", ("batting.avg",)),
+    StatDefinition("obp", "OBP", "batting", "str", ("batting.obp",)),
+    StatDefinition("slg", "SLG", "batting", "str", ("batting.slg",)),
+    # Pitching
+    StatDefinition("era", "ERA", "pitching", "str", ("pitching.era",)),
+)
+
 # Registry by league
 _LEAGUE_STATS: dict[str, tuple[StatDefinition, ...]] = {
     "NBA": NBA_STATS,
     "NCAAB": NCAAB_STATS,
+    "MLB": MLB_STATS,
 }
 
 

@@ -9,10 +9,11 @@ This document describes where data comes from and how it's ingested.
 | Boxscores | NBA API (cdn.nba.com) | NBA | Post-game |
 | Boxscores | CBB Stats API | NCAAB | Post-game |
 | Boxscores | NHL API | NHL | Post-game |
-| Play-by-Play | NBA API / NHL API / CBB API | NBA, NHL, NCAAB | Post-game |
-| Play-by-Play (Live) | League APIs | NBA, NHL, NCAAB | During game (5 min polling) |
-| Odds | The Odds API | NBA, NHL, NCAAB | Pre-game only (live games skipped) |
-| Social | X/Twitter | NBA, NHL, NCAAB | 24-hour game window |
+| Boxscores | MLB Stats API (statsapi.mlb.com) | MLB | Post-game |
+| Play-by-Play | NBA API / NHL API / CBB API / MLB Stats API | NBA, NHL, NCAAB, MLB | Post-game |
+| Play-by-Play (Live) | League APIs | NBA, NHL, NCAAB, MLB | During game (5 min polling) |
+| Odds | The Odds API | NBA, NHL, NCAAB, MLB | Pre-game only (live games skipped) |
+| Social | X/Twitter | NBA, NHL, NCAAB, MLB | 24-hour game window |
 
 ## Boxscores & Player Stats
 
@@ -20,6 +21,7 @@ This document describes where data comes from and how it's ingested.
 - **NBA**: NBA API (`cdn.nba.com/static/json/liveData/boxscore/boxscore_{game_id}.json`)
 - **NHL**: NHL API (`api-web.nhle.com/v1/gamecenter/{game_id}/boxscore`)
 - **NCAAB**: CBB Stats API (`/games/teams`, `/games/players`) with date range batching
+- **MLB**: MLB Stats API (`statsapi.mlb.com/api/v1.1/game/{game_pk}/feed/live`) — batter and pitcher stats
 
 ### NCAAB Team Mapping
 NCAAB boxscore ingestion requires `cbb_team_id` in `sports_teams.external_codes` to match games to the CBB API.
@@ -122,6 +124,8 @@ The Odds API (v4): `https://api.the-odds-api.com`
 **Props (NBA/NCAAB):** `player_points`, `player_rebounds`, `player_assists`, `player_threes`, `player_points_rebounds_assists`, `player_blocks`, `player_steals`, `team_totals`, `alternate_spreads`, `alternate_totals`
 
 **Props (NHL):** `player_points`, `player_goals`, `player_assists`, `player_shots_on_goal`, `player_total_saves`, `team_totals`, `alternate_spreads`, `alternate_totals`
+
+**Props (MLB):** `batter_hits`, `batter_total_bases`, `batter_rbis`, `batter_runs_scored`, `batter_home_runs`, `batter_stolen_bases`, `pitcher_strikeouts`, `pitcher_outs`, `pitcher_hits_allowed`, `pitcher_walks`, `pitcher_earned_runs`, `team_totals`, `alternate_spreads`, `alternate_totals`
 
 ### Sync Schedule
 

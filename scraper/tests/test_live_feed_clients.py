@@ -896,3 +896,111 @@ class TestNHLBoxscoreFetcher:
         assert result.shots_against == 33
         assert result.goals_against == 3
         assert result.player_role == "goalie"
+
+
+# ============================================================================
+# Tests for live/mlb.py - MLBLiveFeedClient schedule parsing
+# ============================================================================
+
+from sports_scraper.live.mlb import MLBLiveFeedClient
+
+
+def _make_mlb_schedule_game(
+    game_pk: int,
+    home_abbr: str = "NYY",
+    away_abbr: str = "BOS",
+    game_date_iso: str | None = None,
+    status: str = "Final",
+) -> dict:
+    """Build a minimal MLB schedule API game entry."""
+    game = {
+        "gamePk": game_pk,
+        "status": {"abstractGameState": status, "statusCode": "F" if status == "Final" else "S"},
+        "teams": {
+            "home": {"team": {"abbreviation": home_abbr, "name": f"{home_abbr} Team", "teamName": home_abbr}},
+            "away": {"team": {"abbreviation": away_abbr, "name": f"{away_abbr} Team", "teamName": away_abbr}},
+        },
+        "venue": {"name": "Test Park"},
+    }
+    if game_date_iso:
+        game["gameDate"] = game_date_iso
+    return game
+
+
+class TestMLBParseScheduleResponse:
+    """Tests for MLBLiveFeedClient._parse_schedule_response."""
+
+    def _make_client(self):
+        with patch("sports_scraper.live.mlb.settings") as mock_settings:
+            mock_settings.scraper_config.request_timeout_seconds = 30
+            mock_settings.scraper_config.html_cache_dir = "/tmp/test"
+            return MLBLiveFeedClient()
+
+    def test_parses_actual_game_datetime(self):
+        """Uses gameDate ISO datetime from API when available."""
+        client = self._make_client()
+        payload = {
+            "dates": [
+                {
+                    "games": [
+                        _make_mlb_schedule_game(
+                            748001,
+                            game_date_iso="2025-07-04T17:10:00Z",
+                        ),
+                    ]
+                }
+            ]
+        }
+        games = client._parse_schedule_response(payload, date(2025, 7, 4))
+
+        assert len(games) == 1
+        assert games[0].game_pk == 748001
+        assert games[0].game_date.hour == 17
+        assert games[0].game_date.minute == 10
+
+    def test_falls_back_to_target_date_when_no_game_date(self):
+        """Falls back to midnight target_date when gameDate is absent."""
+        client = self._make_client()
+        payload = {
+            "dates": [
+                {
+                    "games": [
+                        _make_mlb_schedule_game(748002),
+                    ]
+                }
+            ]
+        }
+        games = client._parse_schedule_response(payload, date(2025, 7, 4))
+
+        assert len(games) == 1
+        assert games[0].game_date.hour == 0
+        assert games[0].game_date.minute == 0
+
+    def test_doubleheader_produces_two_games(self):
+        """Two games for same teams on same date are both returned."""
+        client = self._make_client()
+        payload = {
+            "dates": [
+                {
+                    "games": [
+                        _make_mlb_schedule_game(
+                            748010,
+                            game_date_iso="2025-07-04T13:10:00Z",
+                        ),
+                        _make_mlb_schedule_game(
+                            748011,
+                            game_date_iso="2025-07-04T19:10:00Z",
+                        ),
+                    ]
+                }
+            ]
+        }
+        games = client._parse_schedule_response(payload, date(2025, 7, 4))
+
+        assert len(games) == 2
+        pks = {g.game_pk for g in games}
+        assert pks == {748010, 748011}
+        # Earlier game has earlier time
+        by_pk = sorted(games, key=lambda g: g.game_pk)
+        assert by_pk[0].game_date.hour == 13
+        assert by_pk[1].game_date.hour == 19

@@ -19,14 +19,14 @@ export interface TaskDef {
   params: TaskParam[];
 }
 
-export const LEAGUE_OPTIONS = ["NBA", "NHL", "NCAAB"];
+export const LEAGUE_OPTIONS = ["NBA", "NHL", "NCAAB", "MLB"];
 
 export const TASK_REGISTRY: TaskDef[] = [
   // Ingestion
   {
     name: "run_scheduled_ingestion",
     label: "Scheduled Ingestion",
-    description: "Full scheduled ingestion (NBA, NHL, NCAAB sequentially)",
+    description: "Full scheduled ingestion (NBA, NHL, NCAAB, MLB sequentially)",
     category: "Ingestion",
     queue: "sports-scraper",
     params: [],

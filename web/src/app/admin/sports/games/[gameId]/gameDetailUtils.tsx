@@ -102,15 +102,30 @@ export function formatStatValue(value: unknown): string {
 
 /**
  * Flatten nested stats object for better display.
- * Converts nested objects into flattened key-value pairs with descriptive keys.
+ *
+ * Prefers `normalizedStats` from the API when available — the server already
+ * resolves aliases (e.g. points→runs, batting.atBats→at_bats) and returns
+ * canonical keys with display labels for every league. Falls back to manual
+ * key lookup for older data that predates normalization.
  */
 export function flattenStats(
   stats: Record<string, unknown>,
+  leagueCode?: string,
+  normalizedStats?: Array<{ key: string; displayLabel: string; value: unknown }> | null,
 ): Array<{ key: string; label: string; value: string }> {
+  // Prefer server-computed normalizedStats when available
+  if (normalizedStats && normalizedStats.length > 0) {
+    return normalizedStats.map((s) => ({
+      key: s.key,
+      label: s.displayLabel,
+      value: formatStatValue(s.value),
+    }));
+  }
+
   const result: Array<{ key: string; label: string; value: string }> = [];
 
   // Stats to display in order, with display labels
-  const displayStats: Array<{ key: string; label: string }> = [
+  const basketballDisplayStats: Array<{ key: string; label: string }> = [
     { key: "points", label: "Points" },
     { key: "rebounds", label: "Rebounds" },
     { key: "assists", label: "Assists" },
@@ -126,7 +141,7 @@ export function flattenStats(
     { key: "trueShooting", label: "TS%" },
   ];
 
-  for (const { key, label } of displayStats) {
+  for (const { key, label } of basketballDisplayStats) {
     const value = stats[key];
 
     if (value === null || value === undefined) {
