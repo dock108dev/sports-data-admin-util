@@ -1055,7 +1055,7 @@ class TestFairOddsOutlierHandling:
         line_value: float,
         book: str,
         price: float,
-        market_category: str = "player_prop",
+        market_category: str = "team_prop",
     ) -> MagicMock:
         row = MagicMock()
         row.game_id = game_id
@@ -1143,7 +1143,7 @@ class TestFairOddsOutlierHandling:
                 {"scalar": 2},
                 {"scalars_all": rows},
                 {"all": [("Pinnacle",), ("DraftKings",), ("FanDuel",)]},
-                {"all": [("player_prop",)]},
+                {"all": [("team_prop",)]},
                 {"scalars_all": []},
             ],
         )
@@ -1193,7 +1193,7 @@ class TestFairOddsOutlierHandling:
                 {"scalar": 2},
                 {"scalars_all": rows},
                 {"all": [("Pinnacle",), ("DraftKings",), ("FanDuel",)]},
-                {"all": [("player_prop",)]},
+                {"all": [("team_prop",)]},
                 {"scalars_all": []},
             ],
         )
