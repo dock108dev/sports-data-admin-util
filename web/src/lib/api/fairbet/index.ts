@@ -56,6 +56,9 @@ export interface BetDefinition {
   estimated_sharp_price: number | null;
   extrapolation_ref_line: number | null;
   extrapolation_distance: number | null;
+  consensus_book_count: number | null;
+  consensus_iqr: number | null;
+  per_book_fair_probs: Record<string, number> | null;
 }
 
 export interface GameOption {

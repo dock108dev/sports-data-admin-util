@@ -127,6 +127,7 @@ class TestEvMethodDisplay:
     def test_known_method(self) -> None:
         assert ev_method_display_name("pinnacle_devig") == "Pinnacle Devig"
         assert ev_method_display_name("pinnacle_extrapolated") == "Pinnacle Extrapolated"
+        assert ev_method_display_name("median_consensus") == "Median Consensus"
 
     def test_unknown_method_fallback(self) -> None:
         assert ev_method_display_name("some_method") == "Some Method"
@@ -138,6 +139,11 @@ class TestEvMethodDisplay:
         result = ev_method_explanation("pinnacle_devig")
         assert result is not None
         assert "Pinnacle" in result
+
+    def test_explanation_consensus(self) -> None:
+        result = ev_method_explanation("median_consensus")
+        assert result is not None
+        assert "median" in result
 
     def test_explanation_unknown(self) -> None:
         assert ev_method_explanation("unknown") is None
@@ -314,6 +320,113 @@ class TestBuildExplanationSteps:
         )
         for i, step in enumerate(steps, start=1):
             assert step["step_number"] == i, f"Step {i} has step_number={step['step_number']}"
+
+    def test_median_consensus_full_path(self) -> None:
+        per_book = {"DraftKings": 0.52, "FanDuel": 0.51, "BetMGM": 0.50, "Caesars": 0.53}
+        steps = build_explanation_steps(
+            ev_method="median_consensus",
+            ev_disabled_reason=None,
+            true_prob=0.515,
+            reference_price=None,
+            opposite_reference_price=None,
+            fair_odds=-106,
+            best_book="DraftKings",
+            best_book_price=-105.0,
+            best_ev_percent=2.0,
+            estimated_sharp_price=None,
+            extrapolation_ref_line=None,
+            extrapolation_distance=None,
+            per_book_fair_probs=per_book,
+            consensus_iqr=0.015,
+        )
+        assert len(steps) == 3
+        assert steps[0]["title"] == "Devig each book individually"
+        assert steps[1]["title"] == "Take median fair probability"
+        assert steps[2]["title"] == "Calculate EV at best price"
+
+        # Step 1 should list each book's devigged prob
+        step1_labels = [r["label"] for r in steps[0]["detail_rows"]]
+        assert "Books contributing" in step1_labels
+        assert "DraftKings" in step1_labels
+        assert "FanDuel" in step1_labels
+        assert "BetMGM" in step1_labels
+        assert "Caesars" in step1_labels
+
+        # Step 2 should have fair probability highlighted and IQR
+        step2_labels = [r["label"] for r in steps[1]["detail_rows"]]
+        assert "Fair probability (median)" in step2_labels
+        assert "IQR (agreement)" in step2_labels
+        fair_row = next(r for r in steps[1]["detail_rows"] if r["label"] == "Fair probability (median)")
+        assert fair_row["is_highlight"] is True
+
+        # Step 3 EV row should be highlighted
+        ev_row = steps[2]["detail_rows"][3]
+        assert ev_row["is_highlight"] is True
+
+    def test_median_consensus_no_best_book(self) -> None:
+        per_book = {"DraftKings": 0.52, "FanDuel": 0.51, "BetMGM": 0.50, "Caesars": 0.53}
+        steps = build_explanation_steps(
+            ev_method="median_consensus",
+            ev_disabled_reason=None,
+            true_prob=0.515,
+            reference_price=None,
+            opposite_reference_price=None,
+            fair_odds=-106,
+            best_book=None,
+            best_book_price=None,
+            best_ev_percent=None,
+            estimated_sharp_price=None,
+            extrapolation_ref_line=None,
+            extrapolation_distance=None,
+            per_book_fair_probs=per_book,
+            consensus_iqr=0.015,
+        )
+        assert len(steps) == 2
+        assert steps[0]["title"] == "Devig each book individually"
+        assert steps[1]["title"] == "Take median fair probability"
+
+    def test_median_consensus_no_per_book_data(self) -> None:
+        steps = build_explanation_steps(
+            ev_method="median_consensus",
+            ev_disabled_reason=None,
+            true_prob=0.515,
+            reference_price=None,
+            opposite_reference_price=None,
+            fair_odds=-106,
+            best_book="DraftKings",
+            best_book_price=-105.0,
+            best_ev_percent=2.0,
+            estimated_sharp_price=None,
+            extrapolation_ref_line=None,
+            extrapolation_distance=None,
+            per_book_fair_probs=None,
+            consensus_iqr=None,
+        )
+        assert len(steps) == 3
+        assert steps[0]["title"] == "Devig each book individually"
+        # No book rows when per_book_fair_probs is None
+        assert len(steps[0]["detail_rows"]) == 0
+
+    def test_median_consensus_step_numbers_sequential(self) -> None:
+        per_book = {"DraftKings": 0.52, "FanDuel": 0.51, "BetMGM": 0.50, "Caesars": 0.53}
+        steps = build_explanation_steps(
+            ev_method="median_consensus",
+            ev_disabled_reason=None,
+            true_prob=0.515,
+            reference_price=None,
+            opposite_reference_price=None,
+            fair_odds=-106,
+            best_book="DraftKings",
+            best_book_price=-105.0,
+            best_ev_percent=2.0,
+            estimated_sharp_price=None,
+            extrapolation_ref_line=None,
+            extrapolation_distance=None,
+            per_book_fair_probs=per_book,
+            consensus_iqr=0.015,
+        )
+        for i, step in enumerate(steps, start=1):
+            assert step["step_number"] == i
 
     def test_ev_math_matches_calculate_ev(self) -> None:
         """Verify EV numbers in step 4 match calculate_ev() output."""

@@ -402,8 +402,9 @@ export default function FairbetOddsPage() {
                           </span>
                         )}
                         {openDerivation === idx &&
-                          bet.reference_price !== null &&
-                          bet.opposite_reference_price !== null && (
+                          ((bet.reference_price !== null &&
+                            bet.opposite_reference_price !== null) ||
+                            bet.ev_method === "median_consensus") && (
                             <DerivationContent
                               referencePrice={bet.reference_price}
                               oppositeReferencePrice={bet.opposite_reference_price}
@@ -412,6 +413,9 @@ export default function FairbetOddsPage() {
                               estimatedSharpPrice={bet.estimated_sharp_price}
                               extrapolationRefLine={bet.extrapolation_ref_line}
                               extrapolationDistance={bet.extrapolation_distance}
+                              perBookFairProbs={bet.per_book_fair_probs}
+                              consensusIqr={bet.consensus_iqr}
+                              consensusBookCount={bet.consensus_book_count}
                             />
                           )}
                       </div>

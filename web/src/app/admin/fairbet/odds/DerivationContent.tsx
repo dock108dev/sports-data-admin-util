@@ -9,15 +9,72 @@ export function DerivationContent({
   estimatedSharpPrice,
   extrapolationRefLine,
   extrapolationDistance,
+  perBookFairProbs,
+  consensusIqr,
+  consensusBookCount,
 }: {
-  referencePrice: number;
-  oppositeReferencePrice: number;
+  referencePrice?: number | null;
+  oppositeReferencePrice?: number | null;
   trueProb: number;
   evMethod?: string | null;
   estimatedSharpPrice?: number | null;
   extrapolationRefLine?: number | null;
   extrapolationDistance?: number | null;
+  perBookFairProbs?: Record<string, number> | null;
+  consensusIqr?: number | null;
+  consensusBookCount?: number | null;
 }) {
+  if (evMethod === "median_consensus") {
+    const sortedBooks = perBookFairProbs
+      ? Object.entries(perBookFairProbs).sort(([, a], [, b]) => b - a)
+      : [];
+
+    // Classify IQR for display
+    let iqrLabel = "";
+    if (consensusIqr != null) {
+      if (consensusIqr < 0.02) iqrLabel = "Strong";
+      else if (consensusIqr < 0.04) iqrLabel = "Moderate";
+      else iqrLabel = "Weak";
+    }
+
+    return (
+      <div className={styles.derivationPopover} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.derivationTitle}>Median Consensus</div>
+        <div className={styles.derivationDivider} />
+        <div className={styles.derivationRow}>
+          <span className={styles.derivationLabel}>Books used</span>
+          <span className={styles.derivationValue}>{consensusBookCount ?? sortedBooks.length}</span>
+        </div>
+        {sortedBooks.map(([book, prob]) => (
+          <div key={book} className={styles.derivationRow}>
+            <span className={styles.derivationLabel}>{book}</span>
+            <span className={styles.derivationValue}>{(prob * 100).toFixed(1)}%</span>
+          </div>
+        ))}
+        <div className={styles.derivationDivider} />
+        {consensusIqr != null && (
+          <div className={styles.derivationRow}>
+            <span className={styles.derivationLabel}>Agreement (IQR)</span>
+            <span className={styles.derivationValue}>
+              {(consensusIqr * 100).toFixed(1)}% {iqrLabel && `\u2014 ${iqrLabel}`}
+            </span>
+          </div>
+        )}
+        <div className={`${styles.derivationRow} ${styles.derivationFormula}`}>
+          <span className={styles.derivationValue}>
+            median of {sortedBooks.length} books = {(trueProb * 100).toFixed(1)}%
+          </span>
+        </div>
+        <div className={`${styles.derivationRow} ${styles.derivationResult}`}>
+          <span className={styles.derivationLabel}>Fair prob</span>
+          <span className={styles.derivationValue}>
+            {(trueProb * 100).toFixed(1)}% &rarr; {formatOdds(trueProbToAmerican(trueProb))}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (evMethod === "pinnacle_extrapolated") {
     return (
       <div className={styles.derivationPopover} onClick={(e) => e.stopPropagation()}>
@@ -35,10 +92,12 @@ export function DerivationContent({
             <span className={styles.derivationValue}>{extrapolationDistance} half-pts</span>
           </div>
         )}
-        <div className={styles.derivationRow}>
-          <span className={styles.derivationLabel}>Ref. PIN price</span>
-          <span className={styles.derivationValue}>{formatOdds(referencePrice)}</span>
-        </div>
+        {referencePrice != null && (
+          <div className={styles.derivationRow}>
+            <span className={styles.derivationLabel}>Ref. PIN price</span>
+            <span className={styles.derivationValue}>{formatOdds(referencePrice)}</span>
+          </div>
+        )}
         {estimatedSharpPrice != null && (
           <div className={styles.derivationRow}>
             <span className={styles.derivationLabel}>Est. PIN at target</span>
@@ -57,6 +116,10 @@ export function DerivationContent({
   }
 
   // Default: direct Pinnacle devig (Shin's method)
+  if (referencePrice == null || oppositeReferencePrice == null) {
+    return null;
+  }
+
   const impliedThis = americanToImplied(referencePrice);
   const impliedOther = americanToImplied(oppositeReferencePrice);
   const overround = impliedThis + impliedOther;
