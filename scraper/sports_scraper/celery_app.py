@@ -53,6 +53,8 @@ app.conf.task_routes = {
     "run_final_whistle_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
     # Hourly game social collection (all phases)
     "collect_game_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
+    # MLB advanced stats (Statcast-derived, post-game)
+    "ingest_mlb_advanced_stats": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
 }
 # Daily pipeline schedule (all times US Eastern / UTC during EST):
 #

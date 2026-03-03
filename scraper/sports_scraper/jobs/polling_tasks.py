@@ -75,6 +75,13 @@ def _dispatch_final_actions(game_id: int) -> None:
     except Exception as exc:
         logger.warning("flow_trigger_dispatch_error", game_id=game_id, error=str(exc))
 
+    try:
+        from .mlb_advanced_stats_tasks import ingest_mlb_advanced_stats
+        ingest_mlb_advanced_stats.apply_async(args=[game_id], countdown=60)
+        logger.info("mlb_advanced_stats_dispatched", game_id=game_id)
+    except Exception as exc:
+        logger.warning("mlb_advanced_stats_dispatch_error", game_id=game_id, error=str(exc))
+
 
 @shared_task(name="update_game_states")
 def update_game_states_task() -> dict:

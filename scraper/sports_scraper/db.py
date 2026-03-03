@@ -33,6 +33,7 @@ try:
     from app.db.config import (  # type: ignore
         GameReadingPosition,
     )
+    from app.db.mlb_advanced import MLBGameAdvancedStats  # type: ignore
     from app.db.flow import (  # type: ignore
         SportsGameFlow,
         SportsGameTimelineArtifact,
@@ -126,6 +127,8 @@ try:
         GameReadingPosition=GameReadingPosition,
         # Cache models
         OpenAIResponseCache=OpenAIResponseCache,
+        # MLB advanced stats
+        MLBGameAdvancedStats=MLBGameAdvancedStats,
     )
 except ImportError as exc:
     raise RuntimeError(
