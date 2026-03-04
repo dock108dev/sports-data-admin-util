@@ -197,8 +197,9 @@ services:
     container_name: sports-social-scraper
     profiles: ["dev", "prod"]
     logging: *default-logging
-    # Single worker (concurrency=1) ensures consistent IP and sequential X requests
-    command: ["celery", "-A", "sports_scraper.celery_app.app", "worker", "--loglevel=info", "--queues=social-scraper", "--concurrency=1"]
+    # Single worker (concurrency=1) ensures consistent IP and sequential X requests.
+    # social-scraper listed first so live tasks drain before bulk tasks.
+    command: ["celery", "-A", "sports_scraper.celery_app.app", "worker", "--loglevel=info", "--queues=social-scraper,social-bulk", "--concurrency=1"]
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sports}:${POSTGRES_PASSWORD:-sports}@postgres:5432/${POSTGRES_DB:-sports}
       REDIS_URL: redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/2
