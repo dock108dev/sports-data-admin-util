@@ -160,6 +160,20 @@ export type MLBPitcherStat = {
   rawStats: Record<string, unknown>;
 };
 
+export type MLBAdvancedTeamStats = {
+  team: string;
+  isHome: boolean;
+  totalPitches: number;
+  zSwingPct: number | null;
+  oSwingPct: number | null;
+  zContactPct: number | null;
+  oContactPct: number | null;
+  ballsInPlay: number;
+  avgExitVelo: number | null;
+  hardHitPct: number | null;
+  barrelPct: number | null;
+};
+
 export type OddsEntry = {
   book: string;
   marketType: string;
@@ -245,6 +259,7 @@ export type AdminGameDetail = {
   // MLB-specific player stats (only populated for MLB games)
   mlbBatters?: MLBBatterStat[] | null;
   mlbPitchers?: MLBPitcherStat[] | null;
+  mlbAdvancedStats?: MLBAdvancedTeamStats[] | null;
   odds: OddsEntry[];
   socialPosts: SocialPost[];
   plays: PlayEntry[];

@@ -12,6 +12,7 @@ import { PbpSection } from "./PbpSection";
 import { SocialPostsSection } from "./SocialPostsSection";
 import { FlowSection } from "./FlowSection";
 import { OddsSection } from "./OddsSection";
+import { MLBAdvancedStatsSection } from "./MLBAdvancedStatsSection";
 import { PlayerStatsSection } from "./PlayerStatsSection";
 import { ComputedFieldsSection } from "./ComputedFieldsSection";
 import { PipelineRunsSection } from "./PipelineRunsSection";
@@ -202,6 +203,10 @@ export default function GameDetailClient() {
         isNHL={g.leagueCode === "NHL"}
         isMLB={g.leagueCode === "MLB"}
       />
+
+      {game.mlbAdvancedStats && game.mlbAdvancedStats.length > 0 && (
+        <MLBAdvancedStatsSection stats={game.mlbAdvancedStats} />
+      )}
 
       <OddsSection odds={game.odds} />
 
