@@ -42,6 +42,16 @@ class TeamStatcastAggregates:
     barrel_count: int = 0
 
 
+@dataclass
+class PlayerStatcastAggregates:
+    """Per-batter Statcast counts for a game."""
+
+    batter_id: int
+    batter_name: str
+    side: str  # "home" or "away"
+    stats: TeamStatcastAggregates
+
+
 # ---------------------------------------------------------------------------
 # Pitch classification helpers
 # ---------------------------------------------------------------------------
@@ -111,6 +121,64 @@ def is_barrel(launch_speed: float | None, launch_angle: float | None) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _process_pitch_event(agg: TeamStatcastAggregates, event: dict) -> None:
+    """Process a single pitch event and update the aggregates in-place."""
+    details = event.get("details", {})
+    pitch_code = details.get("code")
+    zone = event.get("pitchData", {}).get("zone")
+
+    # Try to parse zone as int
+    if zone is not None:
+        try:
+            zone = int(zone)
+        except (ValueError, TypeError):
+            zone = None
+
+    agg.total_pitches += 1
+
+    # Zone classification
+    zone_class = is_in_zone(zone)
+    if zone_class is True:
+        agg.zone_pitches += 1
+        if is_swing(pitch_code):
+            agg.zone_swings += 1
+            if is_contact(pitch_code):
+                agg.zone_contact += 1
+    elif zone_class is False:
+        agg.outside_pitches += 1
+        if is_swing(pitch_code):
+            agg.outside_swings += 1
+            if is_contact(pitch_code):
+                agg.outside_contact += 1
+
+    # Quality of contact — only on batted balls with hitData
+    hit_data = event.get("hitData")
+    if hit_data:
+        launch_speed = hit_data.get("launchSpeed")
+        launch_angle = hit_data.get("launchAngle")
+
+        if launch_speed is not None:
+            try:
+                launch_speed = float(launch_speed)
+            except (ValueError, TypeError):
+                launch_speed = None
+
+        if launch_angle is not None:
+            try:
+                launch_angle = float(launch_angle)
+            except (ValueError, TypeError):
+                launch_angle = None
+
+        if launch_speed is not None:
+            agg.balls_in_play += 1
+            agg.total_exit_velo += launch_speed
+
+            if is_hard_hit(launch_speed):
+                agg.hard_hit_count += 1
+            if is_barrel(launch_speed, launch_angle):
+                agg.barrel_count += 1
+
+
 def aggregate_from_payload(
     payload: dict[str, Any],
 ) -> dict[str, TeamStatcastAggregates]:
@@ -134,63 +202,53 @@ def aggregate_from_payload(
         for event in at_bat.get("playEvents", []):
             if not event.get("isPitch", False):
                 continue
-
-            details = event.get("details", {})
-            pitch_code = details.get("code")
-            zone = event.get("pitchData", {}).get("zone")
-
-            # Try to parse zone as int
-            if zone is not None:
-                try:
-                    zone = int(zone)
-                except (ValueError, TypeError):
-                    zone = None
-
-            agg.total_pitches += 1
-
-            # Zone classification
-            zone_class = is_in_zone(zone)
-            if zone_class is True:
-                agg.zone_pitches += 1
-                if is_swing(pitch_code):
-                    agg.zone_swings += 1
-                    if is_contact(pitch_code):
-                        agg.zone_contact += 1
-            elif zone_class is False:
-                agg.outside_pitches += 1
-                if is_swing(pitch_code):
-                    agg.outside_swings += 1
-                    if is_contact(pitch_code):
-                        agg.outside_contact += 1
-
-            # Quality of contact — only on batted balls with hitData
-            hit_data = event.get("hitData")
-            if hit_data:
-                launch_speed = hit_data.get("launchSpeed")
-                launch_angle = hit_data.get("launchAngle")
-
-                if launch_speed is not None:
-                    try:
-                        launch_speed = float(launch_speed)
-                    except (ValueError, TypeError):
-                        launch_speed = None
-
-                if launch_angle is not None:
-                    try:
-                        launch_angle = float(launch_angle)
-                    except (ValueError, TypeError):
-                        launch_angle = None
-
-                if launch_speed is not None:
-                    agg.balls_in_play += 1
-                    agg.total_exit_velo += launch_speed
-
-                    if is_hard_hit(launch_speed):
-                        agg.hard_hit_count += 1
-                    if is_barrel(launch_speed, launch_angle):
-                        agg.barrel_count += 1
+            _process_pitch_event(agg, event)
 
     return {"home": home, "away": away}
+
+
+def aggregate_players_from_payload(
+    payload: dict[str, Any],
+) -> list[PlayerStatcastAggregates]:
+    """Aggregate pitch-level Statcast data per batter from a playByPlay payload.
+
+    Returns:
+        List of PlayerStatcastAggregates, one per (side, batter) combination.
+    """
+    # Key: (side, batter_id) -> (batter_name, TeamStatcastAggregates)
+    players: dict[tuple[str, int], tuple[str, TeamStatcastAggregates]] = {}
+
+    for at_bat in payload.get("allPlays", []):
+        about = at_bat.get("about", {})
+        is_top_inning = about.get("isTopInning", True)
+        side = "away" if is_top_inning else "home"
+
+        matchup = at_bat.get("matchup", {})
+        batter = matchup.get("batter", {})
+        batter_id = batter.get("id")
+        if not batter_id:
+            continue
+        batter_name = batter.get("fullName", "Unknown")
+
+        key = (side, batter_id)
+        if key not in players:
+            players[key] = (batter_name, TeamStatcastAggregates())
+        _, agg = players[key]
+
+        for event in at_bat.get("playEvents", []):
+            if not event.get("isPitch", False):
+                continue
+            _process_pitch_event(agg, event)
+
+    return [
+        PlayerStatcastAggregates(
+            batter_id=batter_id,
+            batter_name=name,
+            side=side,
+            stats=agg,
+        )
+        for (side, batter_id), (name, agg) in players.items()
+    ]
 
 
 class MLBStatcastFetcher:
@@ -200,18 +258,13 @@ class MLBStatcastFetcher:
         self.client = client
         self._cache = cache
 
-    def fetch_statcast_aggregates(
-        self, game_pk: int, game_status: str | None = None
-    ) -> dict[str, TeamStatcastAggregates]:
-        """Fetch PBP payload and return aggregated Statcast data per team.
-
-        Uses a separate cache key from PBP to avoid interference.
-        """
+    def _get_payload(self, game_pk: int, game_status: str | None = None) -> dict:
+        """Fetch (or retrieve from cache) the raw PBP payload."""
         cache_key = f"mlb_statcast_{game_pk}"
         cached = self._cache.get(cache_key)
         if cached is not None:
             logger.info("mlb_statcast_using_cache", game_pk=game_pk)
-            return aggregate_from_payload(cached)
+            return cached
 
         url = MLB_PBP_URL.format(game_pk=game_pk)
         logger.info("mlb_statcast_fetch", game_pk=game_pk, url=url)
@@ -224,4 +277,24 @@ class MLBStatcastFetcher:
         if should_cache_final(has_data, game_status):
             self._cache.put(cache_key, payload)
 
+        return payload
+
+    def fetch_statcast_aggregates(
+        self, game_pk: int, game_status: str | None = None
+    ) -> dict[str, TeamStatcastAggregates]:
+        """Fetch PBP payload and return aggregated Statcast data per team.
+
+        Uses a separate cache key from PBP to avoid interference.
+        """
+        payload = self._get_payload(game_pk, game_status)
         return aggregate_from_payload(payload)
+
+    def fetch_player_statcast_aggregates(
+        self, game_pk: int, game_status: str | None = None
+    ) -> list[PlayerStatcastAggregates]:
+        """Fetch PBP payload and return per-batter Statcast aggregates.
+
+        Reuses the same cached payload as fetch_statcast_aggregates.
+        """
+        payload = self._get_payload(game_pk, game_status)
+        return aggregate_players_from_payload(payload)

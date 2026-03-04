@@ -174,6 +174,21 @@ export type MLBAdvancedTeamStats = {
   barrelPct: number | null;
 };
 
+export type MLBAdvancedPlayerStats = {
+  team: string;
+  playerName: string;
+  isHome: boolean;
+  totalPitches: number;
+  zSwingPct: number | null;
+  oSwingPct: number | null;
+  zContactPct: number | null;
+  oContactPct: number | null;
+  ballsInPlay: number;
+  avgExitVelo: number | null;
+  hardHitPct: number | null;
+  barrelPct: number | null;
+};
+
 export type OddsEntry = {
   book: string;
   marketType: string;
@@ -260,6 +275,7 @@ export type AdminGameDetail = {
   mlbBatters?: MLBBatterStat[] | null;
   mlbPitchers?: MLBPitcherStat[] | null;
   mlbAdvancedStats?: MLBAdvancedTeamStats[] | null;
+  mlbAdvancedPlayerStats?: MLBAdvancedPlayerStats[] | null;
   odds: OddsEntry[];
   socialPosts: SocialPost[];
   plays: PlayEntry[];

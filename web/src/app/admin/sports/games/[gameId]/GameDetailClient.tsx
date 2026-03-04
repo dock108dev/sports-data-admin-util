@@ -205,7 +205,10 @@ export default function GameDetailClient() {
       />
 
       {game.mlbAdvancedStats && game.mlbAdvancedStats.length > 0 && (
-        <MLBAdvancedStatsSection stats={game.mlbAdvancedStats} />
+        <MLBAdvancedStatsSection
+          stats={game.mlbAdvancedStats}
+          playerStats={game.mlbAdvancedPlayerStats}
+        />
       )}
 
       <OddsSection odds={game.odds} />

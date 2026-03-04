@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from ...db import AsyncSession, get_db
 from ...db.flow import SportsGameFlow
-from ...db.mlb_advanced import MLBGameAdvancedStats
+from ...db.mlb_advanced import MLBGameAdvancedStats, MLBPlayerAdvancedStats
 from ...db.odds import SportsGameOdds
 from ...db.scraper import SportsGameConflict
 from ...db.social import TeamSocialPost
@@ -58,6 +58,7 @@ from .schemas import (
     GameMeta,
     GamePreviewScoreResponse,
     JobResponse,
+    MLBAdvancedPlayerStats,
     MLBAdvancedTeamStats,
     MLBBatterStat,
     MLBPitcherStat,
@@ -338,6 +339,9 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             selectinload(SportsGame.plays).selectinload(SportsGamePlay.team),
             selectinload(SportsGame.timeline_artifacts),
             selectinload(SportsGame.advanced_stats).selectinload(MLBGameAdvancedStats.team),
+            selectinload(SportsGame.player_advanced_stats).selectinload(
+                MLBPlayerAdvancedStats.team
+            ),
         )
         .where(SportsGame.id == game_id)
     )
@@ -578,6 +582,26 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             for stat in game.advanced_stats
         ]
 
+    mlb_advanced_player_stats_list: list[MLBAdvancedPlayerStats] | None = None
+    if is_mlb and game.player_advanced_stats:
+        mlb_advanced_player_stats_list = [
+            MLBAdvancedPlayerStats(
+                team=stat.team.name if stat.team else "Unknown",
+                player_name=stat.player_name,
+                is_home=stat.is_home,
+                total_pitches=stat.total_pitches,
+                z_swing_pct=stat.z_swing_pct,
+                o_swing_pct=stat.o_swing_pct,
+                z_contact_pct=stat.z_contact_pct,
+                o_contact_pct=stat.o_contact_pct,
+                balls_in_play=stat.balls_in_play,
+                avg_exit_velo=stat.avg_exit_velo,
+                hard_hit_pct=stat.hard_hit_pct,
+                barrel_pct=stat.barrel_pct,
+            )
+            for stat in game.player_advanced_stats
+        ]
+
     from ...services.play_tiers import enrich_play_entries
 
     if plays_entries and league_code:
@@ -595,6 +619,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         mlb_batters=mlb_batters,
         mlb_pitchers=mlb_pitchers,
         mlb_advanced_stats=mlb_advanced_stats_list,
+        mlb_advanced_player_stats=mlb_advanced_player_stats_list,
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,

@@ -37,7 +37,7 @@ try:
         SportsGameFlow,
         SportsGameTimelineArtifact,
     )
-    from app.db.mlb_advanced import MLBGameAdvancedStats  # type: ignore
+    from app.db.mlb_advanced import MLBGameAdvancedStats, MLBPlayerAdvancedStats  # type: ignore
     from app.db.odds import (  # type: ignore
         FairbetGameOddsWork,
         SportsGameOdds,
@@ -129,6 +129,7 @@ try:
         OpenAIResponseCache=OpenAIResponseCache,
         # MLB advanced stats
         MLBGameAdvancedStats=MLBGameAdvancedStats,
+        MLBPlayerAdvancedStats=MLBPlayerAdvancedStats,
     )
 except ImportError as exc:
     raise RuntimeError(

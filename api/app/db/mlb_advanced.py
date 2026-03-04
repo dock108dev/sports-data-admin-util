@@ -1,4 +1,7 @@
-"""MLB advanced game stats (Statcast-derived, post-game)."""
+"""MLB advanced game stats (Statcast-derived, post-game).
+
+Contains both team-level and player-level advanced batting stats.
+"""
 
 from __future__ import annotations
 
@@ -101,4 +104,85 @@ class MLBGameAdvancedStats(Base):
         UniqueConstraint("game_id", "team_id", name="uq_mlb_advanced_game_team"),
         Index("idx_mlb_advanced_game", "game_id"),
         Index("idx_mlb_advanced_team", "team_id"),
+    )
+
+
+class MLBPlayerAdvancedStats(Base):
+    """Player-level advanced batting stats for an MLB game.
+
+    Same stat columns as MLBGameAdvancedStats, plus player identification.
+    """
+
+    __tablename__ = "mlb_player_advanced_stats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sports_games.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    team_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sports_teams.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    is_home: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    player_external_ref: Mapped[str] = mapped_column(String(100), nullable=False)
+    player_name: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    # Plate discipline — raw counts
+    total_pitches: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    zone_pitches: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    zone_swings: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    zone_contact: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    outside_pitches: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    outside_swings: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    outside_contact: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Plate discipline — derived percentages
+    z_swing_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    o_swing_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    z_contact_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    o_contact_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Quality of contact — raw counts
+    balls_in_play: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_exit_velo: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    hard_hit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    barrel_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Quality of contact — derived percentages
+    avg_exit_velo: Mapped[float | None] = mapped_column(Float, nullable=True)
+    hard_hit_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    barrel_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Extensibility
+    raw_extras: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb"), nullable=False
+    )
+    source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    # Relationships
+    game = relationship("SportsGame", back_populates="player_advanced_stats")
+    team = relationship("SportsTeam")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "game_id", "team_id", "player_external_ref",
+            name="uq_mlb_player_advanced_game_team_player",
+        ),
+        Index("idx_mlb_player_advanced_game", "game_id"),
+        Index("idx_mlb_player_advanced_team", "team_id"),
     )

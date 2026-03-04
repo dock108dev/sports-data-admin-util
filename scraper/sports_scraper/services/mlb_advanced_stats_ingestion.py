@@ -106,6 +106,53 @@ def ingest_advanced_stats_for_game(session: Session, game_id: int) -> dict:
         session.execute(stmt)
         upserted += 1
 
+    # Player-level advanced stats
+    player_aggregates = client.fetch_player_statcast_aggregates(int(game_pk), game_status="final")
+    player_upserted = 0
+    for pa in player_aggregates:
+        team_id = game.home_team_id if pa.side == "home" else game.away_team_id
+        is_home = pa.side == "home"
+        agg = pa.stats
+        row = {
+            "game_id": game_id,
+            "team_id": team_id,
+            "is_home": is_home,
+            "player_external_ref": str(pa.batter_id),
+            "player_name": pa.batter_name,
+            "total_pitches": agg.total_pitches,
+            "zone_pitches": agg.zone_pitches,
+            "zone_swings": agg.zone_swings,
+            "zone_contact": agg.zone_contact,
+            "outside_pitches": agg.outside_pitches,
+            "outside_swings": agg.outside_swings,
+            "outside_contact": agg.outside_contact,
+            "z_swing_pct": _safe_div(agg.zone_swings, agg.zone_pitches),
+            "o_swing_pct": _safe_div(agg.outside_swings, agg.outside_pitches),
+            "z_contact_pct": _safe_div(agg.zone_contact, agg.zone_swings),
+            "o_contact_pct": _safe_div(agg.outside_contact, agg.outside_swings),
+            "balls_in_play": agg.balls_in_play,
+            "total_exit_velo": agg.total_exit_velo,
+            "hard_hit_count": agg.hard_hit_count,
+            "barrel_count": agg.barrel_count,
+            "avg_exit_velo": _safe_div(agg.total_exit_velo, agg.balls_in_play),
+            "hard_hit_pct": _safe_div(agg.hard_hit_count, agg.balls_in_play),
+            "barrel_pct": _safe_div(agg.barrel_count, agg.balls_in_play),
+            "source": "mlb_statsapi_playbyplay",
+            "updated_at": datetime.now(UTC),
+        }
+        stmt = pg_insert(db_models.MLBPlayerAdvancedStats).values(**row)
+        update_cols = {
+            col: stmt.excluded[col]
+            for col in row
+            if col not in ("game_id", "team_id", "player_external_ref")
+        }
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_mlb_player_advanced_game_team_player",
+            set_=update_cols,
+        )
+        session.execute(stmt)
+        player_upserted += 1
+
     game.last_advanced_stats_at = datetime.now(UTC)
     session.flush()
 
@@ -113,11 +160,13 @@ def ingest_advanced_stats_for_game(session: Session, game_id: int) -> dict:
         "mlb_adv_stats_ingested",
         game_id=game_id,
         game_pk=game_pk,
-        rows_upserted=upserted,
+        team_rows_upserted=upserted,
+        player_rows_upserted=player_upserted,
     )
 
     return {
         "game_id": game_id,
         "status": "success",
         "rows_upserted": upserted,
+        "player_rows_upserted": player_upserted,
     }
