@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from ..celery_app import SOCIAL_QUEUE
+from ..celery_app import SOCIAL_BULK_QUEUE
 from ..config import settings
 from ..config_sports import get_social_enabled_leagues
 from ..db import db_models, get_session
@@ -481,6 +481,7 @@ class ScrapeRunManager:
         queued social tasks are evicted when the queue exceeds 10.
         """
         import uuid
+        from datetime import timedelta
 
         if config.league_code not in self._supported_social_leagues:
             logger.info(
@@ -495,6 +496,22 @@ class ScrapeRunManager:
             # Enforce FIFO queue cap before adding a new task
             enforce_social_queue_limit(10)
 
+            # Cap social date range to yesterday+today to reduce team count.
+            # For historical backfills where end < yesterday, use the original range as-is.
+            yesterday = today_et() - timedelta(days=1)
+            social_start = max(start, yesterday) if end >= yesterday else start
+
+            if social_start > end:
+                logger.info(
+                    "social_dispatch_skipped_empty_range",
+                    run_id=run_id,
+                    league=config.league_code,
+                    social_start=str(social_start),
+                    end=str(end),
+                    reason="Capped social_start exceeds end date",
+                )
+                return
+
             # Pre-generate Celery task ID so we can store it in the DB
             task_id = str(uuid.uuid4())
             job_run_id = queue_job_run("social", [config.league_code], celery_task_id=task_id)
@@ -503,15 +520,15 @@ class ScrapeRunManager:
                 "social_dispatched_to_worker",
                 run_id=run_id,
                 league=config.league_code,
-                start_date=str(start),
+                start_date=str(social_start),
                 end_date=str(end),
                 job_run_id=job_run_id,
                 celery_task_id=task_id,
             )
             collect_team_social.apply_async(
-                args=[config.league_code, str(start), str(end)],
+                args=[config.league_code, str(social_start), str(end)],
                 kwargs={"scrape_run_id": run_id, "job_run_id": job_run_id},
-                queue=SOCIAL_QUEUE,
+                queue=SOCIAL_BULK_QUEUE,
                 task_id=task_id,
                 link_error=handle_social_task_failure.s(run_id),
             )

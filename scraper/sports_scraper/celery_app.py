@@ -13,6 +13,7 @@ from .utils.datetime_utils import now_utc
 # Canonical queue names — import these instead of using string literals
 DEFAULT_QUEUE = "sports-scraper"
 SOCIAL_QUEUE = "social-scraper"
+SOCIAL_BULK_QUEUE = "social-bulk"
 
 celery_config = {
     "task_serializer": "json",
@@ -25,6 +26,9 @@ celery_config = {
     "task_time_limit": 43200,  # 12 hours hard limit
     "task_soft_time_limit": 42600,  # 11h 50m soft limit
     "task_default_queue": DEFAULT_QUEUE,
+    "broker_transport_options": {
+        "visibility_timeout": 86400,  # 24h — prevents re-delivery of long tasks
+    },
 }
 
 app = Celery(
@@ -36,9 +40,9 @@ app = Celery(
 app.conf.update(**celery_config)
 app.conf.task_routes = {
     "run_scrape_job": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    # Social tasks route to dedicated social-scraper worker for consistent IP/session
-    "collect_social_for_league": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
-    "collect_team_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
+    # Bulk social tasks route to lower-priority queue so live tasks aren't starved
+    "collect_social_for_league": {"queue": SOCIAL_BULK_QUEUE, "routing_key": SOCIAL_BULK_QUEUE},
+    "collect_team_social": {"queue": SOCIAL_BULK_QUEUE, "routing_key": SOCIAL_BULK_QUEUE},
     "map_social_to_games": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
     # Social error callback runs on main scraper queue (DB writes only)
     "handle_social_task_failure": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
@@ -51,7 +55,7 @@ app.conf.task_routes = {
     "run_daily_sweep": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     # Final-whistle social scrape runs on social-scraper queue (concurrency=1)
     "run_final_whistle_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
-    # Hourly game social collection (all phases)
+    # Game social collection every 30 min (odds-gated + staleness targeting)
     "collect_game_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
     # MLB advanced stats (Statcast-derived, post-game)
     "ingest_mlb_advanced_stats": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
@@ -138,16 +142,16 @@ _scheduled_tasks = {
     },
 }
 
-# Social polling — game social collection + tweet mapping
+# Social polling — game social collection every 30 min, mapping staggered at :15/:45
 _live_polling_schedule = {
-    "game-social-every-60-min": {
+    "game-social-every-30-min": {
         "task": "collect_game_social",
-        "schedule": crontab(minute=30),
+        "schedule": crontab(minute="0,30"),
         "options": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
     },
     "map-social-to-games-every-30-min": {
         "task": "map_social_to_games",
-        "schedule": crontab(minute="0,30"),
+        "schedule": crontab(minute="15,45"),
         "options": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
     },
 }

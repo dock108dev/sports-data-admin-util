@@ -14,7 +14,7 @@ from datetime import date
 
 from celery import shared_task
 
-from ..celery_app import SOCIAL_QUEUE
+from ..celery_app import SOCIAL_BULK_QUEUE, SOCIAL_QUEUE
 from ..config import settings
 from ..logging import logger
 
@@ -101,18 +101,18 @@ def handle_social_task_failure(
 
 @shared_task(
     name="collect_social_for_league",
-    queue=SOCIAL_QUEUE,
+    queue=SOCIAL_BULK_QUEUE,
     autoretry_for=(Exception,),
     retry_backoff=True,
     retry_kwargs={"max_retries": 2},
 )
 def collect_social_for_league(league: str) -> dict:
-    """Collect social posts for a league. Runs on dedicated social-scraper worker.
+    """Collect social posts for a league. Runs on social-bulk queue.
 
     Manual social collection triggered from admin UI / API. It runs asynchronously
     (fire-and-forget) so sports ingestion doesn't wait for social.
 
-    Collects tweets for all teams that played in the last 3 days, then
+    Collects tweets for all teams that played yesterday or today, then
     maps unmapped tweets to games.
 
     Args:
@@ -131,7 +131,7 @@ def collect_social_for_league(league: str) -> dict:
     logger.info("social_task_started", league=league)
 
     end_date = today_et()
-    start_date = end_date - timedelta(days=3)
+    start_date = end_date - timedelta(days=1)
 
     with get_session() as session:
         collector = TeamTweetCollector()
@@ -188,46 +188,56 @@ def collect_team_social(
     from ..services.job_runs import track_job_run
     from ..social.team_collector import TeamTweetCollector
     from ..social.tweet_mapper import map_unmapped_tweets
+    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock
 
-    logger.info(
-        "collect_team_social_start",
-        league_code=league_code,
-        start_date=start_date,
-        end_date=end_date,
-    )
+    lock_name = f"lock:collect_team_social:{league_code}"
+    lock_token = acquire_redis_lock(lock_name, timeout=7200)  # 2h
+    if not lock_token:
+        logger.info("collect_team_social_skipped_locked", league_code=league_code)
+        return {"status": "skipped", "reason": "already_running"}
 
-    start = date.fromisoformat(start_date)
-    end = date.fromisoformat(end_date)
+    try:
+        logger.info(
+            "collect_team_social_start",
+            league_code=league_code,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
-    with track_job_run("social", [league_code], job_run_id=job_run_id) as tracker:
-        with get_session() as session:
-            collector = TeamTweetCollector()
-            result = collector.collect_for_date_range(
-                session=session,
-                league_code=league_code,
-                start_date=start,
-                end_date=end,
-            )
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
 
-            # Flush pending INSERTs so the mapper's query can see them
-            session.flush()
+        with track_job_run("social", [league_code], job_run_id=job_run_id) as tracker:
+            with get_session() as session:
+                collector = TeamTweetCollector()
+                result = collector.collect_for_date_range(
+                    session=session,
+                    league_code=league_code,
+                    start_date=start,
+                    end_date=end,
+                )
 
-            # Always map tweets to games after collection
-            map_result = map_unmapped_tweets(session=session, batch_size=settings.social_config.tweet_mapper_batch_size)
-            result["mapping"] = map_result
+                # Flush pending INSERTs so the mapper's query can see them
+                session.flush()
 
-        tracker.summary_data = result
+                # Always map tweets to games after collection
+                map_result = map_unmapped_tweets(session=session, batch_size=settings.social_config.tweet_mapper_batch_size)
+                result["mapping"] = map_result
 
-    logger.info(
-        "collect_team_social_complete",
-        league_code=league_code,
-        result=result,
-    )
+            tracker.summary_data = result
 
-    # Update parent SportsScrapeRun summary (replace "dispatched" placeholder)
-    _report_social_completion(scrape_run_id, result, error=None)
+        logger.info(
+            "collect_team_social_complete",
+            league_code=league_code,
+            result=result,
+        )
 
-    return result
+        # Update parent SportsScrapeRun summary (replace "dispatched" placeholder)
+        _report_social_completion(scrape_run_id, result, error=None)
+
+        return result
+    finally:
+        release_redis_lock(lock_name, lock_token)
 
 
 @shared_task(
@@ -269,140 +279,193 @@ def map_social_to_games(batch_size: int = 1000) -> dict:
     retry_kwargs={"max_retries": 2},
 )
 def collect_game_social() -> dict:
-    """Collect social posts for teams with games today (runs hourly at :30).
+    """Collect social posts for games with odds but missing/stale social data.
 
-    Queries today's games across all phases (scheduled, pregame, live, final),
-    deduplicates teams, and collects tweets for each. Runs on the
-    social-scraper queue with a 15-second cooldown between teams.
+    Runs every 30 min. Targets:
+    1. Games (today + yesterday) with odds but NO social data yet
+    2. Pregame/live games with stale social data (>2h since last scrape)
 
     Returns:
         Summary stats dict with teams_processed, total_new_tweets, errors
     """
     import random
     import time
+    from datetime import timedelta
 
     from ..db import db_models, get_session
     from ..services.job_runs import track_job_run
     from ..social.team_collector import TeamTweetCollector
     from ..social.tweet_mapper import map_unmapped_tweets
-    from ..utils.datetime_utils import today_et
+    from ..utils.datetime_utils import (
+        ET,
+        end_of_et_day_utc,
+        now_utc,
+        start_of_et_day_utc,
+        today_et,
+    )
+    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock
 
-    game_date = today_et()
-    logger.info("collect_game_social_start", game_date=str(game_date))
+    lock_token = acquire_redis_lock("lock:collect_game_social", timeout=3600)  # 1h
+    if not lock_token:
+        logger.info("collect_game_social_skipped_locked")
+        return {"status": "skipped", "reason": "already_running"}
 
-    with track_job_run("collect_game_social") as tracker, get_session() as session:
-        # Find today's games across all active phases
-        games = (
-            session.query(db_models.SportsGame)
-            .filter(
-                db_models.SportsGame.game_date == game_date,
-                db_models.SportsGame.status.in_([
-                    db_models.GameStatus.scheduled.value,
-                    db_models.GameStatus.pregame.value,
-                    db_models.GameStatus.live.value,
-                    db_models.GameStatus.final.value,
-                ]),
-            )
-            .all()
-        )
+    try:
+        game_date = today_et()
+        yesterday = game_date - timedelta(days=1)
+        utc_now = now_utc()
+        stale_cutoff = utc_now - timedelta(hours=2)
 
-        if not games:
-            logger.info("collect_game_social_no_games", game_date=str(game_date))
-            # Still map any leftover unmapped tweets from previous runs
-            map_result = map_unmapped_tweets(session=session, batch_size=settings.social_config.tweet_mapper_batch_size)
-            return {
-                "game_date": str(game_date),
-                "teams_processed": 0,
-                "total_new_tweets": 0,
-                "mapped": map_result.get("mapped", 0),
-            }
+        # Use proper UTC datetime bounds for timestamptz comparisons
+        window_start = start_of_et_day_utc(yesterday)
+        window_end = end_of_et_day_utc(game_date)
 
-        logger.info(
-            "collect_game_social_found",
-            game_date=str(game_date),
-            games=len(games),
-        )
+        logger.info("collect_game_social_start", game_date=str(game_date))
 
-        try:
-            collector = TeamTweetCollector()
-        except RuntimeError as exc:
-            logger.error("collect_game_social_collector_unavailable", error=str(exc))
-            return {
-                "game_date": str(game_date),
-                "teams_processed": 0,
-                "total_new_tweets": 0,
-                "error": str(exc),
-            }
+        with track_job_run("collect_game_social") as tracker, get_session() as session:
+            active_statuses = [
+                db_models.GameStatus.scheduled.value,
+                db_models.GameStatus.pregame.value,
+                db_models.GameStatus.live.value,
+                db_models.GameStatus.final.value,
+            ]
 
-        social_cfg = settings.social_config
-
-        total_new = 0
-        teams_processed = 0
-        errors = 0
-        games_completed = 0
-        scraped_team_ids: set[int] = set()
-
-        for i, game in enumerate(games):
-            # Inter-game cooldown — skip before the first game
-            if i > 0:
-                time.sleep(random.uniform(
-                    social_cfg.inter_game_delay_seconds,
-                    social_cfg.inter_game_delay_max_seconds,
-                ))
-
-            for team_id in (game.home_team_id, game.away_team_id):
-                if team_id in scraped_team_ids:
-                    continue
-                scraped_team_ids.add(team_id)
-
-                try:
-                    new_tweets = collector.collect_team_tweets(
-                        session=session,
-                        team_id=team_id,
-                        start_date=game_date,
-                        end_date=game_date,
-                    )
-                    total_new += new_tweets
-                    teams_processed += 1
-                    logger.info(
-                        "collect_game_social_team_done",
-                        team_id=team_id,
-                        new_tweets=new_tweets,
-                    )
-                except Exception as exc:
-                    errors += 1
-                    logger.warning(
-                        "collect_game_social_team_error",
-                        team_id=team_id,
-                        error=str(exc),
-                    )
-
-            games_completed += 1
-            if games_completed % social_cfg.game_batch_size == 0:
-                session.commit()
-                logger.info(
-                    "collect_game_social_batch_committed",
-                    games_processed=games_completed,
-                    total_new=total_new,
+            # Query 1: games with odds but NO social data (today + yesterday)
+            no_social_games = (
+                session.query(db_models.SportsGame)
+                .filter(
+                    db_models.SportsGame.game_date >= window_start,
+                    db_models.SportsGame.game_date < window_end,
+                    db_models.SportsGame.last_odds_at.isnot(None),
+                    db_models.SportsGame.last_social_at.is_(None),
+                    db_models.SportsGame.status.in_(active_statuses),
                 )
+                .all()
+            )
 
-        # Final commit for remaining games (< batch size)
-        session.commit()
+            # Query 2: pregame/live games with stale social data (>2h old)
+            stale_games = (
+                session.query(db_models.SportsGame)
+                .filter(
+                    db_models.SportsGame.game_date >= window_start,
+                    db_models.SportsGame.game_date < window_end,
+                    db_models.SportsGame.last_odds_at.isnot(None),
+                    db_models.SportsGame.last_social_at < stale_cutoff,
+                    db_models.SportsGame.status.in_([
+                        db_models.GameStatus.pregame.value,
+                        db_models.GameStatus.live.value,
+                    ]),
+                )
+                .all()
+            )
 
-        # Map newly collected tweets to games
-        map_result = map_unmapped_tweets(session=session, batch_size=settings.social_config.tweet_mapper_batch_size)
+            # Deduplicate by game ID
+            games = list({g.id: g for g in (no_social_games + stale_games)}.values())
 
-        result = {
-            "game_date": str(game_date),
-            "teams_processed": teams_processed,
-            "total_new_tweets": total_new,
-            "mapped": map_result.get("mapped", 0),
-            "errors": errors,
-        }
-        tracker.summary_data = result
+            if not games:
+                logger.info("collect_game_social_no_games", game_date=str(game_date))
+                map_result = map_unmapped_tweets(session=session, batch_size=settings.social_config.tweet_mapper_batch_size)
+                return {
+                    "game_date": str(game_date),
+                    "teams_processed": 0,
+                    "total_new_tweets": 0,
+                    "mapped": map_result.get("mapped", 0),
+                }
 
-    logger.info("collect_game_social_complete", **result)
+            logger.info(
+                "collect_game_social_found",
+                game_date=str(game_date),
+                games=len(games),
+                no_social=len(no_social_games),
+                stale=len(stale_games),
+            )
 
-    return result
+            try:
+                collector = TeamTweetCollector()
+            except RuntimeError as exc:
+                logger.error("collect_game_social_collector_unavailable", error=str(exc))
+                return {
+                    "game_date": str(game_date),
+                    "teams_processed": 0,
+                    "total_new_tweets": 0,
+                    "error": str(exc),
+                }
+
+            social_cfg = settings.social_config
+
+            total_new = 0
+            teams_processed = 0
+            errors = 0
+            games_completed = 0
+            scraped_team_ids: set[int] = set()
+
+            for i, game in enumerate(games):
+                # Inter-game cooldown — skip before the first game
+                if i > 0:
+                    time.sleep(random.uniform(
+                        social_cfg.inter_game_delay_seconds,
+                        social_cfg.inter_game_delay_max_seconds,
+                    ))
+
+                for team_id in (game.home_team_id, game.away_team_id):
+                    if team_id in scraped_team_ids:
+                        continue
+                    scraped_team_ids.add(team_id)
+
+                    try:
+                        sports_day = game.game_date.astimezone(ET).date()
+                        new_tweets = collector.collect_team_tweets(
+                            session=session,
+                            team_id=team_id,
+                            start_date=sports_day,
+                            end_date=sports_day,
+                        )
+                        total_new += new_tweets
+                        teams_processed += 1
+                        logger.info(
+                            "collect_game_social_team_done",
+                            team_id=team_id,
+                            new_tweets=new_tweets,
+                        )
+                    except Exception as exc:
+                        errors += 1
+                        logger.warning(
+                            "collect_game_social_team_error",
+                            team_id=team_id,
+                            error=str(exc),
+                        )
+
+                # Update last_social_at for this game
+                game.last_social_at = utc_now
+
+                games_completed += 1
+                if games_completed % social_cfg.game_batch_size == 0:
+                    session.commit()
+                    logger.info(
+                        "collect_game_social_batch_committed",
+                        games_processed=games_completed,
+                        total_new=total_new,
+                    )
+
+            # Final commit for remaining games (< batch size)
+            session.commit()
+
+            # Map newly collected tweets to games
+            map_result = map_unmapped_tweets(session=session, batch_size=settings.social_config.tweet_mapper_batch_size)
+
+            result = {
+                "game_date": str(game_date),
+                "teams_processed": teams_processed,
+                "total_new_tweets": total_new,
+                "mapped": map_result.get("mapped", 0),
+                "errors": errors,
+            }
+            tracker.summary_data = result
+
+        logger.info("collect_game_social_complete", **result)
+
+        return result
+    finally:
+        release_redis_lock("lock:collect_game_social", lock_token)
 
 
