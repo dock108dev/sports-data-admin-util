@@ -13,10 +13,10 @@ const PHASE_OPTIONS = [
   { value: "sync_mainline_odds", label: "Mainline Odds" },
   { value: "sync_prop_odds", label: "Prop Odds" },
   { value: "social", label: "Social" },
-  { value: "final_whistle_social", label: "Final Whistle Social" },
+  { value: "collect_game_social", label: "Game Social" },
+  { value: "map_social_to_games", label: "Map Social" },
   { value: "trigger_flow", label: "Trigger Flow" },
   { value: "daily_sweep", label: "Daily Sweep" },
-  { value: "collect_game_social", label: "Game Social" },
 ];
 
 const STATUS_OPTIONS = [
@@ -28,6 +28,44 @@ const STATUS_OPTIONS = [
 ];
 
 const AUTO_REFRESH_MS = 30_000;
+
+/** A single run or a group of consecutive runs with the same phase+status. */
+type RunOrGroup =
+  | { kind: "single"; run: JobRunResponse }
+  | { kind: "group"; phase: string; status: string; count: number; runs: JobRunResponse[] };
+
+/** Collapse consecutive runs with the same phase+status into groups. */
+function groupConsecutiveRuns(runs: JobRunResponse[]): RunOrGroup[] {
+  const result: RunOrGroup[] = [];
+  let i = 0;
+  while (i < runs.length) {
+    const run = runs[i];
+    let j = i + 1;
+    while (
+      j < runs.length &&
+      runs[j].phase === run.phase &&
+      runs[j].status === run.status
+    ) {
+      j++;
+    }
+    const count = j - i;
+    if (count >= 3) {
+      result.push({
+        kind: "group",
+        phase: run.phase,
+        status: run.status,
+        count,
+        runs: runs.slice(i, j),
+      });
+    } else {
+      for (let k = i; k < j; k++) {
+        result.push({ kind: "single", run: runs[k] });
+      }
+    }
+    i = j;
+  }
+  return result;
+}
 
 function formatDuration(seconds: number | null): string {
   if (seconds === null) return "-";
@@ -67,6 +105,7 @@ export function RunsDrawer() {
   const [phase, setPhase] = useState("");
   const [status, setStatus] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const [cancelingIds, setCancelingIds] = useState<Set<number>>(new Set());
 
   const fetchRuns = useCallback(async () => {
@@ -241,86 +280,198 @@ export function RunsDrawer() {
                   </tr>
                 </thead>
                 <tbody>
-                  {runs.map((run) => (
-                    <>
-                      <tr
-                        key={run.id}
-                        className={
-                          run.summaryData ? styles.expandable : undefined
-                        }
-                        onClick={() => {
-                          if (run.summaryData) {
-                            setExpandedId(
-                              expandedId === run.id ? null : run.id
-                            );
-                          }
-                        }}
-                      >
-                        <td>
-                          <span className={styles.phaseBadge}>
-                            {run.phase}
-                          </span>
-                        </td>
-                        <td>
-                          {run.leagues.map((lg) => (
-                            <span key={lg} className={styles.leagueBadge}>
-                              {lg}
-                            </span>
-                          ))}
-                        </td>
-                        <td>
-                          <span
-                            className={`${styles.statusPill} ${getStatusClass(run.status)}`}
+                  {groupConsecutiveRuns(runs).map((item, idx) => {
+                    if (item.kind === "group") {
+                      const isExpanded = expandedGroups.has(idx);
+                      const first = item.runs[0];
+                      const last = item.runs[item.runs.length - 1];
+                      return (
+                        <>
+                          <tr
+                            key={`group-${idx}`}
+                            className={styles.expandable}
+                            onClick={() => {
+                              setExpandedGroups((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(idx)) next.delete(idx);
+                                else next.add(idx);
+                                return next;
+                              });
+                            }}
                           >
-                            {run.status}
-                          </span>
-                        </td>
-                        <td>
-                          {run.status === "queued"
-                            ? `${formatDate(run.createdAt)} ${formatTime(run.createdAt)}`
-                            : `${formatDate(run.startedAt)} ${formatTime(run.startedAt)}`}
-                        </td>
-                        <td className={styles.durationCell}>
-                          {formatDuration(run.durationSeconds)}
-                        </td>
-                        <td>
-                          {run.errorSummary
-                            ? run.errorSummary.slice(0, 60)
-                            : run.summaryData
-                              ? "Click to expand"
-                              : "-"}
-                        </td>
-                        <td>
-                          {run.status === "running" || run.status === "queued" ? (
-                            <button
-                              className={styles.cancelBtn}
-                              disabled={cancelingIds.has(run.id)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCancel(run.id);
-                              }}
-                            >
-                              {cancelingIds.has(run.id) ? "Canceling..." : "Cancel"}
-                            </button>
-                          ) : (
-                            "-"
-                          )}
-                        </td>
-                      </tr>
-                      {expandedId === run.id && run.summaryData && (
+                            <td>
+                              <span className={styles.phaseBadge}>
+                                {item.phase}
+                              </span>
+                              <span className={styles.groupCount}>
+                                {"\u00D7"}{item.count}
+                              </span>
+                            </td>
+                            <td>-</td>
+                            <td>
+                              <span
+                                className={`${styles.statusPill} ${getStatusClass(item.status)}`}
+                              >
+                                {item.status}
+                              </span>
+                            </td>
+                            <td>
+                              {formatDate(last.startedAt)} {formatTime(last.startedAt)}
+                              {" \u2013 "}
+                              {formatTime(first.startedAt)}
+                            </td>
+                            <td className={styles.durationCell}>-</td>
+                            <td>{isExpanded ? "Click to collapse" : `${item.count} runs (click to expand)`}</td>
+                            <td>-</td>
+                          </tr>
+                          {isExpanded &&
+                            item.runs.map((run) => (
+                              <>
+                                <tr
+                                  key={run.id}
+                                  className={`${run.summaryData ? styles.expandable : ""} ${styles.groupedRow}`}
+                                  onClick={() => {
+                                    if (run.summaryData) {
+                                      setExpandedId(
+                                        expandedId === run.id ? null : run.id
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <td>
+                                    <span className={styles.phaseBadge}>
+                                      {run.phase}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    {run.leagues.map((lg) => (
+                                      <span key={lg} className={styles.leagueBadge}>
+                                        {lg}
+                                      </span>
+                                    ))}
+                                  </td>
+                                  <td>
+                                    <span
+                                      className={`${styles.statusPill} ${getStatusClass(run.status)}`}
+                                    >
+                                      {run.status}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    {formatDate(run.startedAt)} {formatTime(run.startedAt)}
+                                  </td>
+                                  <td className={styles.durationCell}>
+                                    {formatDuration(run.durationSeconds)}
+                                  </td>
+                                  <td>
+                                    {run.errorSummary
+                                      ? run.errorSummary.slice(0, 60)
+                                      : run.summaryData
+                                        ? "Click to expand"
+                                        : "-"}
+                                  </td>
+                                  <td>-</td>
+                                </tr>
+                                {expandedId === run.id && run.summaryData && (
+                                  <tr
+                                    key={`${run.id}-detail`}
+                                    className={styles.summaryRow}
+                                  >
+                                    <td colSpan={7}>
+                                      <pre className={styles.summaryPre}>
+                                        {JSON.stringify(run.summaryData, null, 2)}
+                                      </pre>
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
+                            ))}
+                        </>
+                      );
+                    }
+
+                    const run = item.run;
+                    return (
+                      <>
                         <tr
-                          key={`${run.id}-detail`}
-                          className={styles.summaryRow}
+                          key={run.id}
+                          className={
+                            run.summaryData ? styles.expandable : undefined
+                          }
+                          onClick={() => {
+                            if (run.summaryData) {
+                              setExpandedId(
+                                expandedId === run.id ? null : run.id
+                              );
+                            }
+                          }}
                         >
-                          <td colSpan={7}>
-                            <pre className={styles.summaryPre}>
-                              {JSON.stringify(run.summaryData, null, 2)}
-                            </pre>
+                          <td>
+                            <span className={styles.phaseBadge}>
+                              {run.phase}
+                            </span>
+                          </td>
+                          <td>
+                            {run.leagues.map((lg) => (
+                              <span key={lg} className={styles.leagueBadge}>
+                                {lg}
+                              </span>
+                            ))}
+                          </td>
+                          <td>
+                            <span
+                              className={`${styles.statusPill} ${getStatusClass(run.status)}`}
+                            >
+                              {run.status}
+                            </span>
+                          </td>
+                          <td>
+                            {run.status === "queued"
+                              ? `${formatDate(run.createdAt)} ${formatTime(run.createdAt)}`
+                              : `${formatDate(run.startedAt)} ${formatTime(run.startedAt)}`}
+                          </td>
+                          <td className={styles.durationCell}>
+                            {formatDuration(run.durationSeconds)}
+                          </td>
+                          <td>
+                            {run.errorSummary
+                              ? run.errorSummary.slice(0, 60)
+                              : run.summaryData
+                                ? "Click to expand"
+                                : "-"}
+                          </td>
+                          <td>
+                            {run.status === "running" || run.status === "queued" ? (
+                              <button
+                                className={styles.cancelBtn}
+                                disabled={cancelingIds.has(run.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCancel(run.id);
+                                }}
+                              >
+                                {cancelingIds.has(run.id) ? "Canceling..." : "Cancel"}
+                              </button>
+                            ) : (
+                              "-"
+                            )}
                           </td>
                         </tr>
-                      )}
-                    </>
-                  ))}
+                        {expandedId === run.id && run.summaryData && (
+                          <tr
+                            key={`${run.id}-detail`}
+                            className={styles.summaryRow}
+                          >
+                            <td colSpan={7}>
+                              <pre className={styles.summaryPre}>
+                                {JSON.stringify(run.summaryData, null, 2)}
+                              </pre>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

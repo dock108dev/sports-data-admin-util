@@ -280,17 +280,26 @@ def map_social_to_games(batch_size: int = 1000) -> dict:
     from ..db import get_session
     from ..services.job_runs import track_job_run
     from ..social.tweet_mapper import map_unmapped_tweets
+    from ..utils.redis_lock import acquire_redis_lock, release_redis_lock
 
-    logger.info("map_social_to_games_start", batch_size=batch_size)
+    lock_token = acquire_redis_lock("lock:map_social_to_games", timeout=300)
+    if not lock_token:
+        logger.info("map_social_to_games_skipped_locked")
+        return {"status": "skipped", "reason": "already_running"}
 
-    with track_job_run("map_social_to_games") as tracker:
-        with get_session() as session:
-            result = map_unmapped_tweets(session=session, batch_size=batch_size)
-        tracker.summary_data = result
+    try:
+        logger.info("map_social_to_games_start", batch_size=batch_size)
 
-    logger.info("map_social_to_games_complete", result=result)
+        with track_job_run("map_social_to_games") as tracker:
+            with get_session() as session:
+                result = map_unmapped_tweets(session=session, batch_size=batch_size)
+            tracker.summary_data = result
 
-    return result
+        logger.info("map_social_to_games_complete", result=result)
+
+        return result
+    finally:
+        release_redis_lock("lock:map_social_to_games", lock_token)
 
 
 @shared_task(

@@ -285,6 +285,19 @@
   font-size: 0.8rem;
 }
 
+.groupCount {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #6b7280;
+  margin-left: 0.35rem;
+}
+
+.groupedRow td {
+  padding-left: 1.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 /* ── Responsive: < 768px ── */
 @media (max-width: 767px) {
   .drawer {
