@@ -452,6 +452,7 @@ def collect_game_social() -> dict:
                             team_id=team_id,
                             start_date=sports_day,
                             end_date=sports_day,
+                            skip_if_fresh=True,
                         )
                         total_new += new_tweets
                         game_new_tweets += new_tweets

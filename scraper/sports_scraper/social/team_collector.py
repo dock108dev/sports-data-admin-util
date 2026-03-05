@@ -62,6 +62,8 @@ class TeamTweetCollector:
         team_id: int,
         start_date: date,
         end_date: date,
+        *,
+        skip_if_fresh: bool = False,
     ) -> int:
         """
         Scrape all tweets for a team in date range.
@@ -74,6 +76,9 @@ class TeamTweetCollector:
             team_id: ID of the team in sports_teams
             start_date: Start date (inclusive)
             end_date: End date (inclusive)
+            skip_if_fresh: If True, skip the scrape entirely when the team
+                already has posts in our DB for the requested window. Used
+                by collect_game_social to avoid redundant Playwright loads.
 
         Returns:
             Count of new tweets saved
@@ -134,6 +139,33 @@ class TeamTweetCollector:
             recent_post_ids = {row[0] for row in recent_rows}
         except Exception:
             pass  # Non-critical — scrolling just won't terminate early
+
+        # Skip the Playwright scrape entirely if this team already has
+        # recent posts in the window.  Used by collect_game_social to
+        # avoid launching a browser for teams we already covered.
+        if skip_if_fresh and recent_post_ids:
+            # Check if we have any posts within the requested date range
+            window_start_dt = date_to_utc_datetime(start_date)
+            window_end_dt = date_to_utc_datetime(end_date) + timedelta(days=2)
+            existing_in_window = (
+                session.query(db_models.TeamSocialPost.id)
+                .filter(
+                    db_models.TeamSocialPost.team_id == team_id,
+                    db_models.TeamSocialPost.posted_at >= window_start_dt,
+                    db_models.TeamSocialPost.posted_at < window_end_dt,
+                )
+                .limit(1)
+                .count()
+            )
+            if existing_in_window > 0:
+                logger.info(
+                    "team_collector_skip_fresh",
+                    team_id=team_id,
+                    team_abbr=team.abbreviation,
+                    start_date=str(start_date),
+                    end_date=str(end_date),
+                )
+                return 0
 
         # Collect tweets using the configured strategy
         try:
