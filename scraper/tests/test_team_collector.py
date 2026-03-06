@@ -142,7 +142,8 @@ class TestCollectTeamTweets:
     @patch("sports_scraper.social.team_collector.fetch_team_accounts")
     @patch("sports_scraper.social.team_collector.extract_x_post_id", return_value="123")
     @patch("sports_scraper.social.team_collector.now_utc", return_value=_utc(2025, 6, 15, 23, 0))
-    def test_collects_and_saves_new_tweets(self, mock_now, mock_extract, mock_fetch, mock_pw):
+    @patch("sqlalchemy.dialects.postgresql.insert")
+    def test_collects_and_saves_new_tweets(self, mock_pg_insert, mock_now, mock_extract, mock_fetch, mock_pw):
         from sports_scraper.social.team_collector import TeamTweetCollector
 
         team = MagicMock()
@@ -156,18 +157,19 @@ class TestCollectTeamTweets:
         collector = TeamTweetCollector(strategy=strategy)
         session = MagicMock()
         session.query.return_value.get.return_value = team
+        # Simulate rowcount=1 for the upsert (new row inserted)
+        session.execute.return_value.rowcount = 1
         mock_fetch.return_value = {}
         # No existing post in DB
         session.query.return_value.filter.return_value.first.return_value = None
 
         with patch("sports_scraper.social.team_collector.db_models", create=True) as mock_db:
-            mock_db.TeamSocialPost.return_value = MagicMock()
             result = collector.collect_team_tweets(
                 session, team_id=1, start_date=date(2025, 6, 15), end_date=date(2025, 6, 15),
             )
 
         assert result == 1
-        session.add.assert_called_once()
+        session.execute.assert_called_once()
         # commit is no longer called per-team; caller owns commit timing
         session.commit.assert_not_called()
 
