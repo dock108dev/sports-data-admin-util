@@ -219,6 +219,10 @@ class OddsSynchronizer:
         )
         return inserted
 
+    # Commit every N snapshots to keep transactions short and avoid deadlocks
+    # with the concurrent 60-second odds poller.
+    PERSIST_BATCH_SIZE = 50
+
     def _persist_snapshots(
         self,
         snapshots: list,
@@ -231,7 +235,7 @@ class OddsSynchronizer:
         batch_ts = now_utc()
 
         with get_session() as session:
-            for snapshot in snapshots:
+            for i, snapshot in enumerate(snapshots, 1):
                 try:
                     result = upsert_odds(session, snapshot)
                     if result is OddsUpsertResult.PERSISTED:
@@ -252,6 +256,10 @@ class OddsSynchronizer:
                         exc_info=True,
                     )
                     skipped += 1
+
+                # Commit in batches to keep transactions short
+                if i % self.PERSIST_BATCH_SIZE == 0:
+                    session.commit()
 
             if inserted > 0:
                 stale_deleted = delete_stale_fairbet_odds(session, batch_ts)
