@@ -68,15 +68,6 @@ class ModelService:
         if sort_by:
             models = _sort_models(models, sort_by, sort_desc)
 
-        # Determine active model per sport/model_type
-        active_map: dict[str, str | None] = {}
-        for m in models:
-            key = f"{m.get('sport')}:{m.get('model_type')}"
-            if m.get("active"):
-                active_map[key] = m["model_id"]
-            elif key not in active_map:
-                active_map[key] = None
-
         return {
             "models": models,
             "count": len(models),
@@ -117,7 +108,7 @@ class ModelService:
             if extra:
                 result["feature_config"] = extra.get("feature_config", "")
                 result["training_row_count"] = extra.get(
-                    "train_count", extra.get("dataset_size", 0),
+                    "training_row_count", 0,
                 )
                 result["random_state"] = extra.get("random_state")
 

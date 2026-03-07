@@ -64,6 +64,8 @@ class SimulationEngine:
         game_context: dict[str, Any],
         iterations: int = 10_000,
         seed: int | None = None,
+        *,
+        keep_results: bool = False,
     ) -> dict[str, Any]:
         """Run a full Monte Carlo simulation with aggregated results.
 
@@ -77,6 +79,8 @@ class SimulationEngine:
             game_context: Sport-specific game setup data.
             iterations: Number of games to simulate.
             seed: Optional seed for deterministic results.
+            keep_results: If True, include per-game results under
+                ``"raw_results"`` for downstream analysis.
 
         Returns:
             Dict with win probabilities, average scores, score
@@ -116,6 +120,7 @@ class SimulationEngine:
         result = runner.run_simulations(
             simulator, context,
             iterations=iterations, seed=seed,
+            keep_results=keep_results,
         )
 
         if prob_meta:

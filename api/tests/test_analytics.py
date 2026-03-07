@@ -4808,7 +4808,7 @@ class TestModelServiceGetDetails:
         meta_file = tmp_path / "meta.json"
         meta_file.write_text(json.dumps({
             "feature_config": "config_v2",
-            "train_count": 5000,
+            "training_row_count": 5000,
             "random_state": 42,
         }))
         registry = ModelRegistry(registry_path=tmp_path / "reg.json")

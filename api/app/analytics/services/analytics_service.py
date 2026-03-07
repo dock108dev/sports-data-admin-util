@@ -111,24 +111,17 @@ class AnalyticsService:
             optional sportsbook comparison.
         """
         sim = SimulationEngine(sport)
-        raw_summary = sim.run_simulation(
+        result = sim.run_simulation(
             game_context, iterations=iterations, seed=seed,
+            keep_results=True,
         )
 
-        # Run analysis on the raw simulation
-        # Re-simulate to get individual game results for analysis
-        simulator = sim._get_sport_simulator()
-        if simulator is None:
-            return raw_summary
-
-        import random
-        rng = random.Random(seed)
-        results = []
-        for _ in range(iterations):
-            results.append(simulator.simulate_game(game_context, rng=rng))
+        raw_results = result.pop("raw_results", None)
+        if raw_results is None:
+            return result
 
         analysis = SimulationAnalysis(sport)
-        return analysis.summarize_results(results, sportsbook=sportsbook)
+        return analysis.summarize_results(raw_results, sportsbook=sportsbook)
 
     def run_live_simulation(
         self,

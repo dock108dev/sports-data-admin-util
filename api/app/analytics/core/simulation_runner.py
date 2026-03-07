@@ -37,6 +37,8 @@ class SimulationRunner:
         game_context: dict[str, Any],
         iterations: int = 10_000,
         seed: int | None = None,
+        *,
+        keep_results: bool = False,
     ) -> dict[str, Any]:
         """Run multiple game simulations and aggregate results.
 
@@ -45,10 +47,13 @@ class SimulationRunner:
             game_context: Context dict passed to each simulation.
             iterations: Number of games to simulate.
             seed: Optional seed for deterministic results.
+            keep_results: If True, include per-game results under
+                ``"raw_results"`` for downstream analysis.
 
         Returns:
             Dict with win probabilities, average scores, and
-            score distribution.
+            score distribution. If *keep_results* is True, also
+            includes ``"raw_results"`` list.
         """
         rng = random.Random(seed)
         results: list[dict[str, Any]] = []
@@ -57,7 +62,10 @@ class SimulationRunner:
             result = simulator.simulate_game(game_context, rng=rng)
             results.append(result)
 
-        return self.aggregate_results(results)
+        summary = self.aggregate_results(results)
+        if keep_results:
+            summary["raw_results"] = results
+        return summary
 
     def aggregate_results(
         self,
