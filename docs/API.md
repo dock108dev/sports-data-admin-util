@@ -26,9 +26,10 @@
 16. [Entity Resolution](#entity-resolution)
 17. [Social](#social)
 18. [FairBet](#fairbet)
-19. [Realtime](#realtime)
-20. [Reading Positions](#reading-positions)
-21. [Response Models](#response-models)
+19. [Analytics](#analytics)
+20. [Realtime](#realtime)
+21. [Reading Positions](#reading-positions)
+22. [Response Models](#response-models)
 
 ---
 
@@ -1216,6 +1217,431 @@ Compute +EV fair-bet odds for a live in-game event. Reads aggregated multi-book 
 ```
 
 The `bets` array uses the same `BetDefinition` shape as the pre-game `/odds` endpoint, including all display enrichment fields (`fair_american_odds`, `selection_display`, `market_display_name`, `explanation_steps`, per-book `book_abbr`, `ev_tier`, etc.). See the `/odds` response documentation above for field semantics.
+
+---
+
+## Analytics
+
+**Base path:** `/api/analytics`
+
+Predictive modeling, simulation, and matchup analysis. See [ANALYTICS.md](ANALYTICS.md) for the full engine architecture.
+
+### Profiles & Matchups
+
+#### `GET /team`
+
+Get analytical profile for a team.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `sport` | `string` | Yes | Sport code (e.g., `mlb`) |
+| `team_id` | `string` | Yes | Team identifier |
+
+**Response:**
+```json
+{
+  "sport": "mlb",
+  "team_id": "NYY",
+  "name": "New York Yankees",
+  "metrics": { "contact_rate": 0.78, "power_index": 0.65, ... }
+}
+```
+
+#### `GET /player`
+
+Get analytical profile for a player.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `sport` | `string` | Yes | Sport code |
+| `player_id` | `string` | Yes | Player identifier |
+
+**Response:** Same shape as `/team` with `player_id` instead of `team_id`.
+
+#### `GET /matchup`
+
+Head-to-head matchup analysis between two entities.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `sport` | `string` | Yes | Sport code |
+| `entity_a` | `string` | Yes | First entity (e.g., batter) |
+| `entity_b` | `string` | Yes | Second entity (e.g., pitcher) |
+
+**Response:**
+```json
+{
+  "sport": "mlb",
+  "entity_a": "batter_123",
+  "entity_b": "pitcher_456",
+  "probabilities": { "strikeout": 0.22, "walk": 0.08, "single": 0.18, ... },
+  "comparison": { ... },
+  "advantages": { ... }
+}
+```
+
+### Simulation
+
+#### `POST /simulate`
+
+Run a full Monte Carlo simulation. Stores prediction for calibration tracking.
+
+**Request body:**
+```json
+{
+  "sport": "mlb",
+  "home_team": "NYY",
+  "away_team": "BOS",
+  "iterations": 5000,
+  "seed": 42,
+  "probability_mode": "ensemble",
+  "home_probabilities": null,
+  "away_probabilities": null,
+  "sportsbook": null
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `sport` | `string` | — | **Required.** Sport code |
+| `home_team` | `string` | — | **Required.** Home team ID |
+| `away_team` | `string` | — | **Required.** Away team ID |
+| `iterations` | `int` | 5000 | Simulation count (1–100,000) |
+| `seed` | `int?` | `null` | Deterministic seed |
+| `probability_mode` | `string?` | `null` | `rule_based`, `ml`, `ensemble`, or `pitch_level` |
+| `sportsbook` | `object?` | `null` | Sportsbook lines for comparison |
+
+**Response:**
+```json
+{
+  "sport": "mlb",
+  "home_team": "NYY",
+  "away_team": "BOS",
+  "home_win_probability": 0.5432,
+  "away_win_probability": 0.4568,
+  "average_home_score": 4.8,
+  "average_away_score": 4.2,
+  "score_distribution": { ... },
+  "iterations": 5000
+}
+```
+
+#### `POST /live-simulate`
+
+Simulate from a live game state (current inning, outs, bases, score).
+
+**Request body:**
+```json
+{
+  "sport": "mlb",
+  "inning": 5,
+  "half": "top",
+  "outs": 1,
+  "bases": { "first": true, "second": false, "third": false },
+  "score": { "home": 3, "away": 2 },
+  "iterations": 2000,
+  "probability_mode": "rule_based"
+}
+```
+
+#### `POST /simulate-job`
+
+Submit a simulation as a background job. Returns a `job_id` immediately.
+
+**Response:**
+```json
+{ "job_id": "sim_abc123", "status": "pending" }
+```
+
+#### `POST /live-simulate-job`
+
+Submit a live simulation as a background job.
+
+#### `GET /simulation-result`
+
+Poll for a background simulation result.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | `string` | Yes | Job ID from `/simulate-job` |
+
+**Response:** Job status plus `result` object when complete.
+
+#### `GET /simulation-history`
+
+List stored simulation results.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sport` | `string` | — | Filter by sport |
+| `limit` | `int` | 50 | Max results (1–200) |
+
+### Prediction Calibration
+
+#### `POST /record-outcome`
+
+Record an actual game outcome for calibration tracking.
+
+**Request body:**
+```json
+{
+  "prediction_id": "pred_abc123",
+  "home_score": 5,
+  "away_score": 3
+}
+```
+
+**Response:** Calibration evaluation (Brier score, log loss).
+
+#### `GET /model-performance`
+
+Aggregate model performance metrics.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sport` | `string` | — | Filter by sport |
+
+**Response:**
+```json
+{
+  "brier_score": 0.21,
+  "accuracy": 0.58,
+  "sample_size": 150,
+  "log_loss": 0.65,
+  "mae_score": 1.2,
+  "calibration_buckets": [ ... ]
+}
+```
+
+#### `GET /predictions`
+
+List stored predictions.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sport` | `string` | — | Filter by sport |
+| `limit` | `int` | 100 | Max results (1–500) |
+
+### Feature Configuration
+
+#### `GET /feature-config`
+
+Get a feature configuration by model name.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `model` | `string` | Yes | Config name (e.g., `mlb_pa_model`) |
+
+#### `GET /feature-configs`
+
+List all available and registered feature configurations.
+
+#### `POST /feature-config`
+
+Register or update a feature configuration.
+
+**Request body:**
+```json
+{
+  "model": "mlb_pa_model_v2",
+  "sport": "mlb",
+  "features": {
+    "contact_rate": { "enabled": true, "weight": 1.0 },
+    "barrel_rate": { "enabled": true, "weight": 1.2 }
+  }
+}
+```
+
+### Model Inference
+
+#### `POST /model-predict`
+
+Generate a prediction using the active ML model.
+
+**Request body:**
+```json
+{
+  "sport": "mlb",
+  "model_type": "plate_appearance",
+  "profiles": { "batter": { "contact_rate": 0.8 }, "pitcher": { "strikeout_rate": 0.25 } },
+  "config_name": null
+}
+```
+
+**Response:**
+```json
+{
+  "sport": "mlb",
+  "model_type": "plate_appearance",
+  "probabilities": { "strikeout": 0.22, "out": 0.46, "walk": 0.08, "single": 0.15, ... }
+}
+```
+
+#### `GET /model-predict`
+
+Sample prediction with empty profiles (useful for checking model availability).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `sport` | `string` | Yes | Sport code |
+| `model_type` | `string` | Yes | Model type |
+
+### Model Registry
+
+#### `GET /models`
+
+List registered models with filtering and sorting.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sport` | `string` | — | Filter by sport |
+| `model_type` | `string` | — | Filter by model type |
+| `sort_by` | `string` | — | Sort key: `created_at`, `accuracy`, `log_loss`, `brier_score`, `version` |
+| `sort_desc` | `bool` | `true` | Sort descending |
+| `active_only` | `bool` | `false` | Only active models |
+
+#### `GET /models/details`
+
+Full details for a single model.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `model_id` | `string` | Yes | Model ID |
+
+#### `GET /models/compare`
+
+Compare evaluation metrics across model versions.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `sport` | `string` | Yes | Sport code |
+| `model_type` | `string` | Yes | Model type |
+| `model_ids` | `string` | Yes | Comma-separated model IDs |
+
+#### `POST /models/activate`
+
+Activate a registered model. Clears the inference cache.
+
+**Request body:**
+```json
+{
+  "sport": "mlb",
+  "model_type": "plate_appearance",
+  "model_id": "pa_model_v3"
+}
+```
+
+#### `GET /models/active`
+
+Get the currently active model for a sport + model type.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `sport` | `string` | Yes | Sport code |
+| `model_type` | `string` | Yes | Model type |
+
+#### `GET /model-metrics`
+
+Get evaluation metrics for registered models.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model_id` | `string` | — | Filter by model ID |
+| `sport` | `string` | — | Filter by sport |
+| `model_type` | `string` | — | Filter by model type |
+
+### Ensemble Configuration
+
+#### `GET /ensemble-config`
+
+Get ensemble configuration for a sport + model type.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `sport` | `string` | Yes | Sport code |
+| `model_type` | `string` | Yes | Model type |
+
+**Response:**
+```json
+{
+  "sport": "mlb",
+  "model_type": "plate_appearance",
+  "providers": [
+    { "name": "rule_based", "weight": 0.4 },
+    { "name": "ml", "weight": 0.6 }
+  ]
+}
+```
+
+#### `GET /ensemble-configs`
+
+List all ensemble configurations.
+
+#### `POST /ensemble-config`
+
+Update ensemble weights for a sport + model type.
+
+**Request body:**
+```json
+{
+  "sport": "mlb",
+  "model_type": "plate_appearance",
+  "providers": [
+    { "name": "rule_based", "weight": 0.3 },
+    { "name": "ml", "weight": 0.7 }
+  ]
+}
+```
+
+### MLB Advanced Models
+
+#### `GET /mlb/pitch-model`
+
+Get pitch outcome probabilities.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pitcher_k_rate` | `float` | 0.22 | Pitcher strikeout rate |
+| `batter_contact_rate` | `float` | 0.80 | Batter contact rate |
+| `count_balls` | `int` | 0 | Balls (0–3) |
+| `count_strikes` | `int` | 0 | Strikes (0–2) |
+
+**Response:**
+```json
+{
+  "pitch_probabilities": {
+    "ball": 0.35, "called_strike": 0.17, "swinging_strike": 0.11,
+    "foul": 0.18, "in_play": 0.19
+  }
+}
+```
+
+#### `GET /mlb/pitch-sim`
+
+Simulate a full plate appearance pitch-by-pitch.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pitcher_k_rate` | `float` | 0.22 | Pitcher strikeout rate |
+| `batter_contact_rate` | `float` | 0.80 | Batter contact rate |
+
+**Response:** PA result (walk/strikeout/hit type), pitch count, final count.
+
+#### `GET /mlb/run-expectancy`
+
+Get expected runs for a base/out state.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `base_state` | `int` | 0 | Base state (0–7 encoded) |
+| `outs` | `int` | 0 | Outs (0–2) |
+| `batter_quality` | `float` | 0.0 | Batter quality adjustment |
+| `pitcher_quality` | `float` | 0.0 | Pitcher quality adjustment |
+
+**Response:**
+```json
+{ "expected_runs": 0.52 }
+```
 
 ---
 
