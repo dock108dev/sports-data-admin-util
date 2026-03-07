@@ -2265,3 +2265,354 @@ class TestFullCalibrationPipeline:
         assert all_metrics["brier_score"] > 0
         assert all_metrics["log_loss"] > 0
         assert all_metrics["winner_accuracy"] == 1.0
+
+
+class TestBaseModel:
+    """Verify model interface contract."""
+
+    def test_base_model_cannot_instantiate(self) -> None:
+        from app.analytics.models.core.model_interface import BaseModel
+
+        with pytest.raises(TypeError):
+            BaseModel()  # type: ignore[abstract]
+
+    def test_subclass_must_implement_predict(self) -> None:
+        from app.analytics.models.core.model_interface import BaseModel
+
+        class PartialModel(BaseModel):
+            def predict(self, features):
+                return {}
+
+        with pytest.raises(TypeError):
+            PartialModel()  # type: ignore[abstract]
+
+    def test_valid_subclass_instantiates(self) -> None:
+        from app.analytics.models.core.model_interface import BaseModel
+
+        class ValidModel(BaseModel):
+            model_type = "test"
+            sport = "test"
+
+            def predict(self, features):
+                return {"result": 1}
+
+            def predict_proba(self, features):
+                return {"a": 0.5, "b": 0.5}
+
+        m = ValidModel()
+        assert not m.is_loaded
+        info = m.get_info()
+        assert info["model_type"] == "test"
+        assert info["class"] == "ValidModel"
+
+
+class TestModelLoader:
+    """Verify model loader functionality."""
+
+    def test_load_nonexistent_file_raises(self) -> None:
+        from app.analytics.models.core.model_loader import ModelLoader
+
+        loader = ModelLoader()
+        with pytest.raises(FileNotFoundError):
+            loader.load_model("/nonexistent/path/model.pkl")
+
+    def test_load_valid_pickle(self, tmp_path) -> None:
+        import pickle
+        from app.analytics.models.core.model_loader import ModelLoader
+
+        # Create a simple pickle file
+        model_data = {"type": "test_model", "weights": [1, 2, 3]}
+        model_file = tmp_path / "test_model.pkl"
+        with open(model_file, "wb") as f:
+            pickle.dump(model_data, f)
+
+        loader = ModelLoader()
+        loaded = loader.load_model(str(model_file))
+        assert loaded == model_data
+
+
+class TestModelRegistry:
+    """Verify model registry operations."""
+
+    def test_register_and_get_info(self) -> None:
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry()
+        registry.register_model({
+            "model_id": "mlb_pa_v1",
+            "sport": "mlb",
+            "model_type": "plate_appearance",
+            "version": 1,
+            "active": True,
+        })
+        info = registry.get_model_info("mlb_pa_v1")
+        assert info is not None
+        assert info["sport"] == "mlb"
+        assert info["active"] is True
+
+    def test_register_requires_model_id(self) -> None:
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry()
+        with pytest.raises(ValueError):
+            registry.register_model({"sport": "mlb"})
+
+    def test_get_active_model_builtin(self) -> None:
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry()
+        model = registry.get_active_model("mlb", "plate_appearance")
+        assert model is not None
+        assert model.sport == "mlb"
+        assert model.model_type == "plate_appearance"
+
+    def test_get_active_model_game_builtin(self) -> None:
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry()
+        model = registry.get_active_model("mlb", "game")
+        assert model is not None
+        assert model.model_type == "game"
+
+    def test_get_active_model_unsupported_returns_none(self) -> None:
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry()
+        assert registry.get_active_model("cricket", "plate_appearance") is None
+
+    def test_set_active_deactivates_others(self) -> None:
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry()
+        registry.register_model({
+            "model_id": "v1",
+            "sport": "mlb",
+            "model_type": "plate_appearance",
+            "version": 1,
+            "active": True,
+        })
+        registry.register_model({
+            "model_id": "v2",
+            "sport": "mlb",
+            "model_type": "plate_appearance",
+            "version": 2,
+            "active": False,
+        })
+        registry.set_active("v2")
+        assert registry.get_model_info("v1")["active"] is False
+        assert registry.get_model_info("v2")["active"] is True
+
+    def test_list_models_filtered(self) -> None:
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry()
+        registry.register_model({"model_id": "a", "sport": "mlb", "model_type": "pa", "active": True})
+        registry.register_model({"model_id": "b", "sport": "nba", "model_type": "game", "active": True})
+        assert len(registry.list_models(sport="mlb")) == 1
+        assert len(registry.list_models()) == 2
+
+    def test_registered_model_overrides_builtin(self) -> None:
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry()
+        registry.register_model({
+            "model_id": "custom_pa",
+            "sport": "mlb",
+            "model_type": "plate_appearance",
+            "version": 1,
+            "active": True,
+            "class_path": "app.analytics.models.sports.mlb.pa_model.MLBPlateAppearanceModel",
+        })
+        info = registry.get_active_model_info("mlb", "plate_appearance")
+        assert info is not None
+        assert info["model_id"] == "custom_pa"
+
+
+class TestMLBPlateAppearanceModel:
+    """Verify MLB plate appearance model predictions."""
+
+    def test_predict_proba_returns_valid_distribution(self) -> None:
+        from app.analytics.models.sports.mlb.pa_model import MLBPlateAppearanceModel
+
+        model = MLBPlateAppearanceModel()
+        probs = model.predict_proba({})
+        assert "strikeout" in probs
+        assert "home_run" in probs
+        assert "out" in probs
+        total = sum(probs.values())
+        assert abs(total - 1.0) < 0.01
+
+    def test_predict_returns_event(self) -> None:
+        from app.analytics.models.sports.mlb.pa_model import MLBPlateAppearanceModel
+
+        model = MLBPlateAppearanceModel()
+        result = model.predict({})
+        assert "predicted_event" in result
+        assert "event_probabilities" in result
+        assert result["predicted_event"] in result["event_probabilities"]
+
+    def test_high_contact_reduces_strikeouts(self) -> None:
+        from app.analytics.models.sports.mlb.pa_model import MLBPlateAppearanceModel
+
+        model = MLBPlateAppearanceModel()
+        base = model.predict_proba({})
+        high_contact = model.predict_proba({"contact_rate": 0.90})
+        assert high_contact["strikeout"] < base["strikeout"]
+
+    def test_high_power_increases_hr(self) -> None:
+        from app.analytics.models.sports.mlb.pa_model import MLBPlateAppearanceModel
+
+        model = MLBPlateAppearanceModel()
+        base = model.predict_proba({})
+        high_power = model.predict_proba({"power_index": 1.5})
+        assert high_power["home_run"] > base["home_run"]
+
+    def test_to_simulation_probs(self) -> None:
+        from app.analytics.models.sports.mlb.pa_model import MLBPlateAppearanceModel
+
+        model = MLBPlateAppearanceModel()
+        probs = model.predict_proba({})
+        sim_probs = model.to_simulation_probs(probs)
+        assert "strikeout_probability" in sim_probs
+        assert "walk_probability" in sim_probs
+        assert "home_run_probability" in sim_probs
+
+    def test_model_info(self) -> None:
+        from app.analytics.models.sports.mlb.pa_model import MLBPlateAppearanceModel
+
+        model = MLBPlateAppearanceModel()
+        info = model.get_info()
+        assert info["sport"] == "mlb"
+        assert info["model_type"] == "plate_appearance"
+        assert info["loaded"] is False
+
+
+class TestMLBGameModel:
+    """Verify MLB game model predictions."""
+
+    def test_predict_returns_probabilities(self) -> None:
+        from app.analytics.models.sports.mlb.game_model import MLBGameModel
+
+        model = MLBGameModel()
+        result = model.predict({})
+        assert "home_win_probability" in result
+        assert "away_win_probability" in result
+        assert "expected_home_score" in result
+        assert "expected_away_score" in result
+
+    def test_probabilities_sum_to_one(self) -> None:
+        from app.analytics.models.sports.mlb.game_model import MLBGameModel
+
+        model = MLBGameModel()
+        result = model.predict({})
+        total = result["home_win_probability"] + result["away_win_probability"]
+        assert abs(total - 1.0) < 0.001
+
+    def test_predict_proba_keys(self) -> None:
+        from app.analytics.models.sports.mlb.game_model import MLBGameModel
+
+        model = MLBGameModel()
+        probs = model.predict_proba({})
+        assert "home_win" in probs
+        assert "away_win" in probs
+        assert abs(probs["home_win"] + probs["away_win"] - 1.0) < 0.001
+
+    def test_power_advantage_shifts_wp(self) -> None:
+        from app.analytics.models.sports.mlb.game_model import MLBGameModel
+
+        model = MLBGameModel()
+        base = model.predict({})
+        strong_home = model.predict({"home_power_index": 1.5, "away_power_index": 0.8})
+        assert strong_home["home_win_probability"] > base["home_win_probability"]
+
+    def test_default_favors_home(self) -> None:
+        from app.analytics.models.sports.mlb.game_model import MLBGameModel
+
+        model = MLBGameModel()
+        result = model.predict({})
+        assert result["home_win_probability"] > 0.5
+
+
+class TestSimulationEngineMLIntegration:
+    """Verify simulation engine can use ML models."""
+
+    def test_ml_model_integration(self) -> None:
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(
+            {"ml_model": "plate_appearance"},
+            iterations=100,
+            seed=42,
+        )
+        assert "home_win_probability" in result
+        assert result["iterations"] == 100
+
+    def test_ml_model_does_not_break_without(self) -> None:
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation({}, iterations=50, seed=42)
+        assert result["iterations"] == 50
+
+    def test_ml_model_nonexistent_type_falls_back(self) -> None:
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(
+            {"ml_model": "nonexistent_model"},
+            iterations=50,
+            seed=42,
+        )
+        # Should still work with defaults
+        assert result["iterations"] == 50
+
+    def test_ml_model_with_features(self) -> None:
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(
+            {
+                "ml_model": "plate_appearance",
+                "features": {"contact_rate": 0.85, "power_index": 1.3},
+            },
+            iterations=100,
+            seed=42,
+        )
+        assert "home_win_probability" in result
+
+
+class TestFullMLPipeline:
+    """Verify Aggregation -> Metrics -> Features -> ML Model -> Simulation."""
+
+    def test_end_to_end_ml_pipeline(self) -> None:
+        from app.analytics.core.aggregation_engine import AggregationEngine
+        from app.analytics.core.profile_builder import ProfileBuilder
+        from app.analytics.models.core.model_registry import ModelRegistry
+        from app.analytics.models.sports.mlb.pa_model import MLBPlateAppearanceModel
+
+        # Step 1: Aggregate
+        agg = AggregationEngine("mlb")
+        batter_agg = agg.aggregate_player_history("b1", [
+            {"zone_swing_pct": 0.75, "outside_swing_pct": 0.30,
+             "zone_contact_pct": 0.88, "outside_contact_pct": 0.60,
+             "avg_exit_velocity": 92.0, "hard_hit_pct": 0.45,
+             "barrel_pct": 0.11},
+        ])
+
+        # Step 2: Build profile -> get metrics as features
+        builder = ProfileBuilder("mlb")
+        profile = builder.build_player_profile("b1", batter_agg)
+        features = profile.metrics
+
+        # Step 3: ML model generates probabilities
+        registry = ModelRegistry()
+        pa_model = registry.get_active_model("mlb", "plate_appearance")
+        assert pa_model is not None
+
+        probs = pa_model.predict_proba(features)
+        assert sum(probs.values()) == pytest.approx(1.0, abs=0.01)
+
+        sim_probs = pa_model.to_simulation_probs(probs)
+
+        # Step 4: Simulation with ML probabilities
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(
+            {"home_probabilities": sim_probs, "away_probabilities": sim_probs},
+            iterations=200,
+            seed=42,
+        )
+        assert result["home_win_probability"] > 0
+        assert result["iterations"] == 200
