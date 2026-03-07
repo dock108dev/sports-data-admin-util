@@ -580,6 +580,256 @@ class TestEndToEndPipeline:
         assert profile.metrics["power_index"] > 1.0  # above baseline
 
 
+class TestMatchupEngine:
+    """Verify MatchupEngine routes to sport-specific modules."""
+
+    def _batter_profile(self) -> PlayerProfile:
+        return PlayerProfile(
+            player_id="batter_1",
+            sport="mlb",
+            name="Test Batter",
+            metrics={
+                "contact_rate": 0.82,
+                "whiff_rate": 0.18,
+                "swing_rate": 0.52,
+                "power_index": 1.2,
+                "barrel_rate": 0.10,
+                "hard_hit_rate": 0.42,
+                "avg_exit_velocity": 92.0,
+                "expected_slug": 0.984,
+            },
+        )
+
+    def _pitcher_profile(self) -> PlayerProfile:
+        return PlayerProfile(
+            player_id="pitcher_1",
+            sport="mlb",
+            name="Test Pitcher",
+            metrics={
+                "contact_suppression": 0.10,
+                "strikeout_rate": 0.28,
+                "walk_rate": 0.07,
+                "power_suppression": 0.05,
+            },
+        )
+
+    def test_player_vs_player_returns_matchup_profile(self) -> None:
+        from app.analytics.core.matchup_engine import MatchupEngine
+
+        engine = MatchupEngine("mlb")
+        result = engine.calculate_player_vs_player(
+            self._batter_profile(), self._pitcher_profile()
+        )
+        assert isinstance(result, MatchupProfile)
+        assert result.entity_a_id == "batter_1"
+        assert result.entity_b_id == "pitcher_1"
+        assert result.sport == "mlb"
+
+    def test_player_vs_player_has_probabilities(self) -> None:
+        from app.analytics.core.matchup_engine import MatchupEngine
+
+        engine = MatchupEngine("mlb")
+        result = engine.calculate_player_vs_player(
+            self._batter_profile(), self._pitcher_profile()
+        )
+        probs = result.probabilities
+        assert "contact_probability" in probs
+        assert "strikeout_probability" in probs
+        assert "walk_probability" in probs
+        assert "single_probability" in probs
+        assert "double_probability" in probs
+        assert "triple_probability" in probs
+        assert "home_run_probability" in probs
+
+    def test_probabilities_are_normalized(self) -> None:
+        from app.analytics.core.matchup_engine import MatchupEngine
+
+        engine = MatchupEngine("mlb")
+        result = engine.calculate_player_vs_player(
+            self._batter_profile(), self._pitcher_profile()
+        )
+        total = sum(result.probabilities.values())
+        assert abs(total - 1.0) < 0.01
+
+    def test_probabilities_in_valid_range(self) -> None:
+        from app.analytics.core.matchup_engine import MatchupEngine
+
+        engine = MatchupEngine("mlb")
+        result = engine.calculate_player_vs_player(
+            self._batter_profile(), self._pitcher_profile()
+        )
+        for key, val in result.probabilities.items():
+            assert 0.0 <= val <= 1.0, f"{key}={val} out of range"
+
+    def test_comparison_populated(self) -> None:
+        from app.analytics.core.matchup_engine import MatchupEngine
+
+        engine = MatchupEngine("mlb")
+        # Use two profiles with overlapping metric keys for comparison
+        player_a = PlayerProfile(
+            player_id="a", sport="mlb",
+            metrics={"contact_rate": 0.85, "power_index": 1.2},
+        )
+        player_b = PlayerProfile(
+            player_id="b", sport="mlb",
+            metrics={"contact_rate": 0.78, "power_index": 1.0},
+        )
+        result = engine.calculate_player_vs_player(player_a, player_b)
+        assert len(result.comparison) > 0
+        assert result.advantages.get("contact_rate") == "a"
+        assert result.advantages.get("power_index") == "a"
+
+    def test_team_vs_team(self) -> None:
+        from app.analytics.core.matchup_engine import MatchupEngine
+
+        engine = MatchupEngine("mlb")
+        team_a = TeamProfile(
+            team_id="NYY", sport="mlb",
+            metrics={"team_contact_rate": 0.80, "team_whiff_rate": 0.20,
+                     "team_swing_rate": 0.50, "team_power_index": 1.1,
+                     "team_barrel_rate": 0.09},
+        )
+        team_b = TeamProfile(
+            team_id="BOS", sport="mlb",
+            metrics={"team_strikeout_rate": 0.25, "team_walk_rate": 0.08,
+                     "team_contact_suppression": 0.05},
+        )
+        result = engine.calculate_team_vs_team(team_a, team_b)
+        assert isinstance(result, MatchupProfile)
+        assert result.entity_a_id == "NYY"
+        assert "contact_probability" in result.probabilities
+
+    def test_player_vs_team(self) -> None:
+        from app.analytics.core.matchup_engine import MatchupEngine
+
+        engine = MatchupEngine("mlb")
+        batter = self._batter_profile()
+        team = TeamProfile(
+            team_id="BOS", sport="mlb",
+            metrics={"strikeout_rate": 0.25, "walk_rate": 0.08},
+        )
+        result = engine.calculate_player_vs_team(batter, team)
+        assert isinstance(result, MatchupProfile)
+        assert result.entity_a_id == "batter_1"
+        assert result.entity_b_id == "BOS"
+        assert "contact_probability" in result.probabilities
+
+    def test_unsupported_sport_returns_empty(self) -> None:
+        from app.analytics.core.matchup_engine import MatchupEngine
+
+        engine = MatchupEngine("cricket")
+        batter = self._batter_profile()
+        pitcher = self._pitcher_profile()
+        result = engine.calculate_player_vs_player(batter, pitcher)
+        assert isinstance(result, MatchupProfile)
+        assert result.probabilities == {}
+
+    def test_baseline_fallbacks_with_empty_pitcher(self) -> None:
+        from app.analytics.core.matchup_engine import MatchupEngine
+
+        engine = MatchupEngine("mlb")
+        batter = self._batter_profile()
+        empty_pitcher = PlayerProfile(player_id="p2", sport="mlb", metrics={})
+        result = engine.calculate_player_vs_player(batter, empty_pitcher)
+        assert result.probabilities["contact_probability"] > 0
+
+
+class TestMLBMatchup:
+    """Verify MLB matchup probability calculations directly."""
+
+    def test_normalize_probabilities(self) -> None:
+        from app.analytics.sports.mlb.matchup import normalize_probabilities
+
+        raw = {"a": 0.3, "b": 0.7}
+        result = normalize_probabilities(raw)
+        assert abs(sum(result.values()) - 1.0) < 0.001
+
+    def test_normalize_handles_zero_total(self) -> None:
+        from app.analytics.sports.mlb.matchup import normalize_probabilities
+
+        result = normalize_probabilities({"a": 0.0, "b": 0.0})
+        assert result == {"a": 0.0, "b": 0.0}
+
+    def test_batter_vs_pitcher_direct(self) -> None:
+        from app.analytics.sports.mlb.matchup import MLBMatchup
+
+        matchup = MLBMatchup()
+        batter = PlayerProfile(
+            player_id="b1", sport="mlb",
+            metrics={"contact_rate": 0.85, "whiff_rate": 0.15,
+                     "swing_rate": 0.55, "power_index": 1.3,
+                     "barrel_rate": 0.12},
+        )
+        pitcher = PlayerProfile(
+            player_id="p1", sport="mlb",
+            metrics={"contact_suppression": 0.08, "strikeout_rate": 0.30,
+                     "walk_rate": 0.06, "power_suppression": 0.03},
+        )
+        result = matchup.batter_vs_pitcher(batter, pitcher)
+        assert abs(sum(result.values()) - 1.0) < 0.01
+        assert result["home_run_probability"] > 0
+
+    def test_high_power_batter_has_more_hr(self) -> None:
+        from app.analytics.sports.mlb.matchup import MLBMatchup
+
+        matchup = MLBMatchup()
+        base = {"contact_rate": 0.80, "whiff_rate": 0.20,
+                "swing_rate": 0.50}
+        low_power = PlayerProfile(
+            player_id="b1", sport="mlb",
+            metrics={**base, "power_index": 0.8, "barrel_rate": 0.05},
+        )
+        high_power = PlayerProfile(
+            player_id="b2", sport="mlb",
+            metrics={**base, "power_index": 1.5, "barrel_rate": 0.15},
+        )
+        pitcher = PlayerProfile(player_id="p1", sport="mlb", metrics={})
+        low_result = matchup.batter_vs_pitcher(low_power, pitcher)
+        high_result = matchup.batter_vs_pitcher(high_power, pitcher)
+        assert high_result["home_run_probability"] > low_result["home_run_probability"]
+
+
+class TestFullMatchupPipeline:
+    """Verify Aggregation → Metrics → Profiles → Matchups pipeline."""
+
+    def test_end_to_end_with_matchup(self) -> None:
+        from app.analytics.core.aggregation_engine import AggregationEngine
+        from app.analytics.core.matchup_engine import MatchupEngine
+        from app.analytics.core.profile_builder import ProfileBuilder
+
+        # Step 1: Aggregate raw games
+        agg_engine = AggregationEngine("mlb")
+        batter_games = [
+            {"zone_swing_pct": 0.75, "outside_swing_pct": 0.30,
+             "zone_contact_pct": 0.88, "outside_contact_pct": 0.60,
+             "avg_exit_velocity": 92.0, "hard_hit_pct": 0.45,
+             "barrel_pct": 0.11},
+        ]
+        batter_agg = agg_engine.aggregate_player_history("b1", batter_games)
+
+        # Step 2: Build profiles
+        builder = ProfileBuilder("mlb")
+        batter_profile = builder.build_player_profile("b1", batter_agg)
+        assert "contact_rate" in batter_profile.metrics
+
+        # Pitcher with suppression metrics (not from aggregation)
+        pitcher_profile = PlayerProfile(
+            player_id="p1", sport="mlb",
+            metrics={"contact_suppression": 0.10, "strikeout_rate": 0.28,
+                     "walk_rate": 0.07, "power_suppression": 0.05},
+        )
+
+        # Step 3: Run matchup
+        matchup_engine = MatchupEngine("mlb")
+        matchup = matchup_engine.calculate_player_vs_player(
+            batter_profile, pitcher_profile
+        )
+        assert isinstance(matchup, MatchupProfile)
+        assert "contact_probability" in matchup.probabilities
+        assert "home_run_probability" in matchup.probabilities
+        assert abs(sum(matchup.probabilities.values()) - 1.0) < 0.01
+
+
 class TestAnalyticsService:
     """Verify service layer wiring."""
 
