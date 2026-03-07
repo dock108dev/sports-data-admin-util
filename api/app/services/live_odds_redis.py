@@ -1,7 +1,10 @@
 """API-side Redis reader for live ephemeral odds data.
 
-Provides async-compatible reads from the Redis keys written by the scraper's
+Provides sync reads from the Redis keys written by the scraper's
 live_odds.redis_store module.
+
+Snapshot format: each key holds ALL bookmakers' odds for a (game, market),
+enabling fair-bet / +EV computation across books.
 """
 
 from __future__ import annotations
@@ -43,6 +46,36 @@ def read_live_snapshot(
         return None
 
 
+def read_all_live_snapshots_for_game(
+    league: str, game_id: int
+) -> dict[str, dict]:
+    """Read all live snapshots for a game (all market keys).
+
+    Returns dict mapping market_key -> snapshot dict.
+    Each snapshot contains a 'books' dict: {book_name: [selections]}.
+    """
+    try:
+        r = _get_redis()
+        pattern = f"live:odds:{league}:{game_id}:*"
+        result: dict[str, dict] = {}
+        for key in r.scan_iter(pattern, count=50):
+            # Skip history keys
+            if ":history:" in key:
+                continue
+            raw = r.get(key)
+            if raw:
+                data = json.loads(raw)
+                market_key = key.rsplit(":", 1)[-1]
+                data["ttl_seconds_remaining"] = r.ttl(key)
+                result[market_key] = data
+        return result
+    except Exception as exc:
+        logger.warning("live_odds_redis_scan_error", extra={
+            "game_id": game_id, "error": str(exc)
+        })
+        return {}
+
+
 def read_live_history(
     game_id: int, market_key: str, count: int = 50
 ) -> list[dict]:
@@ -57,26 +90,3 @@ def read_live_history(
             "game_id": game_id, "market_key": market_key, "error": str(exc)
         })
         return []
-
-
-def read_all_live_snapshots_for_game(
-    league: str, game_id: int
-) -> dict[str, dict]:
-    """Read all live snapshots for a game (all market keys)."""
-    try:
-        r = _get_redis()
-        pattern = f"live:odds:{league}:{game_id}:*"
-        result: dict[str, dict] = {}
-        for key in r.scan_iter(pattern, count=50):
-            raw = r.get(key)
-            if raw:
-                data = json.loads(raw)
-                market_key = key.rsplit(":", 1)[-1]
-                data["ttl_seconds_remaining"] = r.ttl(key)
-                result[market_key] = data
-        return result
-    except Exception as exc:
-        logger.warning("live_odds_redis_scan_error", extra={
-            "game_id": game_id, "error": str(exc)
-        })
-        return {}

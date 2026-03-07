@@ -1,4 +1,4 @@
-"""Tests for the live odds infrastructure: Redis store, closing lines model, FairBet live endpoint."""
+"""Tests for the live odds infrastructure: Redis store, ClosingLine model, FairBet live endpoint."""
 
 from __future__ import annotations
 
@@ -46,8 +46,13 @@ class TestLiveOddsRedisReader:
 
         snapshot = {
             "last_updated_at": time.time(),
-            "provider": "TestBook",
-            "selections": [{"selection": "home", "line": -3.5, "price": -110}],
+            "league": "NBA",
+            "game_id": 123,
+            "market_key": "spread",
+            "books": {
+                "DraftKings": [{"selection": "home", "line": -3.5, "price": -110}],
+                "Pinnacle": [{"selection": "home", "line": -3.5, "price": -108}],
+            },
         }
         r = MagicMock()
         r.get.return_value = json.dumps(snapshot)
@@ -57,9 +62,10 @@ class TestLiveOddsRedisReader:
         result = read_live_snapshot("NBA", 123, "spread")
 
         assert result is not None
-        assert result["provider"] == "TestBook"
         assert result["ttl_seconds_remaining"] == 12345
-        assert len(result["selections"]) == 1
+        assert "books" in result
+        assert "DraftKings" in result["books"]
+        assert "Pinnacle" in result["books"]
 
     @patch("app.services.live_odds_redis._get_redis")
     def test_read_live_snapshot_returns_none_when_missing(self, mock_redis):
@@ -85,8 +91,8 @@ class TestLiveOddsRedisReader:
         from app.services.live_odds_redis import read_live_history
 
         entries = [
-            json.dumps({"t": int(time.time()), "selections": [{"s": "home", "p": -110}]}),
-            json.dumps({"t": int(time.time()) - 10, "selections": [{"s": "home", "p": -105}]}),
+            json.dumps({"t": int(time.time()), "books": {"DK": [{"s": "home", "p": -110}]}}),
+            json.dumps({"t": int(time.time()) - 10, "books": {"DK": [{"s": "home", "p": -105}]}}),
         ]
         r = MagicMock()
         r.lrange.return_value = entries
@@ -94,7 +100,7 @@ class TestLiveOddsRedisReader:
 
         result = read_live_history(123, "spread", count=10)
         assert len(result) == 2
-        assert result[0]["selections"][0]["p"] == -110
+        assert "books" in result[0]
 
     @patch("app.services.live_odds_redis._get_redis")
     def test_read_all_live_snapshots_for_game(self, mock_redis):
@@ -102,8 +108,12 @@ class TestLiveOddsRedisReader:
 
         snapshot_data = json.dumps({
             "last_updated_at": time.time(),
-            "provider": "TestBook",
-            "selections": [],
+            "league": "NBA",
+            "game_id": 123,
+            "market_key": "spread",
+            "books": {
+                "DraftKings": [{"selection": "home", "line": -3.5, "price": -110}],
+            },
         })
 
         r = MagicMock()
@@ -125,29 +135,35 @@ class TestLiveOddsRedisReader:
 class TestFairbetLiveEndpoint:
     def test_response_models_importable(self):
         from app.routers.fairbet.live import (
-            ClosingLineResponse,
             FairbetLiveResponse,
-            LiveSnapshotResponse,
+            LiveBetDefinition,
         )
         # Verify the models can be instantiated
-        closing = ClosingLineResponse(
-            provider="TestBook",
+        live_bet = LiveBetDefinition(
+            game_id=1,
+            league_code="NBA",
+            home_team="Lakers",
+            away_team="Celtics",
+            game_date=None,
             market_key="spread",
-            selection="home",
+            selection_key="team:lakers",
             line_value=-3.5,
-            price_american=-110,
-            captured_at="2026-03-05T00:00:00",
-            source_type="closing",
+            books=[],
         )
-        assert closing.provider == "TestBook"
+        assert live_bet.league_code == "NBA"
 
-        live = LiveSnapshotResponse(
-            last_updated_at=time.time(),
-            provider="TestBook",
-            selections=[{"selection": "home", "price": -110}],
-            ttl_seconds_remaining=12345,
+        response = FairbetLiveResponse(
+            game_id=1,
+            league_code="NBA",
+            home_team="Lakers",
+            away_team="Celtics",
+            bets=[live_bet],
+            total=1,
+            books_available=["DraftKings"],
+            market_categories_available=["mainline"],
+            last_updated_at=None,
         )
-        assert live.provider == "TestBook"
+        assert response.total == 1
 
     def test_router_registered(self):
         from app.routers.fairbet import router

@@ -5,6 +5,9 @@ Key patterns:
   live:odds:history:{game_id}:{market_key}             -> ring buffer (Redis LIST)
 
 All keys auto-expire via TTL — nothing persists long-term.
+
+Snapshot format stores ALL bookmakers' odds per (game, market) so the API
+can compute fair-bet / +EV without additional lookups.
 """
 
 from __future__ import annotations
@@ -46,30 +49,28 @@ def write_live_snapshot(
     league: str,
     game_id: int,
     market_key: str,
-    selections: list[dict],
-    provider: str,
+    books: dict[str, list[dict]],
     *,
     source_request_id: str = "",
     rate_remaining: int | None = None,
 ) -> None:
-    """Write latest live odds snapshot to Redis with TTL.
+    """Write aggregated live odds snapshot to Redis with TTL.
 
     Args:
         league: League code (NBA, NHL, etc.)
         game_id: Internal game ID
         market_key: Market identifier (e.g., "spread", "total", "moneyline")
-        selections: List of dicts with {selection, line, price, implied_prob?}
-        provider: Provider name
+        books: Dict mapping book name -> list of selection dicts
+               Each selection: {selection, line, price}
         source_request_id: Optional request ID for tracing
         rate_remaining: Provider rate limit remaining count
     """
     snapshot = {
         "last_updated_at": time.time(),
-        "provider": provider,
         "league": league,
         "game_id": game_id,
         "market_key": market_key,
-        "selections": selections,
+        "books": books,
         "meta": {
             "source_request_id": source_request_id,
             "rate_remaining": rate_remaining,
@@ -86,10 +87,13 @@ def write_live_snapshot(
             hist_key = _history_key(game_id, market_key)
             compact = {
                 "t": round(time.time()),
-                "selections": [
-                    {"s": s.get("selection", ""), "l": s.get("line"), "p": s.get("price")}
-                    for s in selections
-                ],
+                "books": {
+                    book_name: [
+                        {"s": s.get("selection", ""), "l": s.get("line"), "p": s.get("price")}
+                        for s in sels
+                    ]
+                    for book_name, sels in books.items()
+                },
             }
             pipe = r.pipeline()
             pipe.lpush(hist_key, json.dumps(compact))

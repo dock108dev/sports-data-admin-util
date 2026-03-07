@@ -574,6 +574,87 @@
   color: #93c5fd;
 }
 
+/* Mode tabs (Pre-Game / Live) */
+.modeTabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: var(--space-section-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  width: fit-content;
+}
+
+.modeTab {
+  padding: 0.6rem 1.5rem;
+  font-size: var(--font-body-size);
+  font-weight: 500;
+  color: var(--text-muted);
+  background: white;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.modeTab:not(:last-child) {
+  border-right: 1px solid var(--border-default);
+}
+
+.modeTabActive {
+  color: white;
+  background: #1a1a2e;
+  font-weight: 600;
+}
+
+.modeTab:hover:not(.modeTabActive) {
+  background: var(--border-light);
+}
+
+/* Live status bar */
+.liveStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--space-section-card);
+  font-size: var(--font-body-size);
+  color: var(--text-muted);
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.refreshButton {
+  padding: 0.4rem 1rem;
+  font-size: var(--font-body-size);
+  font-weight: 500;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-button);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: auto;
+}
+
+.refreshButton:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.refreshButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Responsive: < 768px ── */
 @media (max-width: 767px) {
   .betsGrid {

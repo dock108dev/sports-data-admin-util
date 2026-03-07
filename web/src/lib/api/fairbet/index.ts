@@ -75,6 +75,19 @@ export interface FairbetOddsResponse {
   games_available: GameOption[];
 }
 
+export interface FairbetLiveResponse {
+  game_id: number;
+  league_code: string;
+  home_team: string;
+  away_team: string;
+  bets: BetDefinition[];
+  total: number;
+  books_available: string[];
+  market_categories_available: string[];
+  last_updated_at: string | null;
+  ev_diagnostics: Record<string, number>;
+}
+
 export interface FairbetOddsFilters {
   league?: string;
   market_category?: string;
@@ -86,6 +99,12 @@ export interface FairbetOddsFilters {
   sort_by?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface FairbetLiveFilters {
+  game_id: number;
+  market_category?: string;
+  sort_by?: string;
 }
 
 export async function fetchFairbetOdds(
@@ -115,6 +134,26 @@ export async function fetchFairbetOdds(
 
   if (!res.ok) {
     throw new Error(`Failed to fetch FairBet odds: ${res.statusText}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchFairbetLiveOdds(
+  filters: FairbetLiveFilters
+): Promise<FairbetLiveResponse> {
+  const params = new URLSearchParams();
+  params.set("game_id", filters.game_id.toString());
+  if (filters.market_category) params.set("market_category", filters.market_category);
+  if (filters.sort_by) params.set("sort_by", filters.sort_by);
+
+  const url = `${getApiBase()}/api/fairbet/live?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: buildHeaders(),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch live odds: ${res.statusText}`);
   }
 
   return res.json();

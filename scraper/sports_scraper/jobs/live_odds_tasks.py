@@ -8,6 +8,7 @@ Dispatched by the live_orchestrator_tick task at sport-appropriate cadences.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import UTC, datetime
 
 from celery import shared_task
@@ -23,6 +24,9 @@ def poll_live_odds_mainline(league_code: str, game_ids: list[int]) -> dict:
 
     Uses league-batched fetch from The Odds API (single API call returns
     odds for all live games in the league).
+
+    Aggregates ALL bookmakers per (game, market) into a single Redis
+    snapshot so the API can compute fair-bet / +EV across books.
     """
     from ..config import settings
     from ..live_odds.closing_lines import capture_closing_lines
@@ -97,29 +101,33 @@ def poll_live_odds_mainline(league_code: str, game_ids: list[int]) -> dict:
         if not isinstance(events, list):
             return {"status": "empty", "league": league_code}
 
-        # Parse and write to Redis per game
-        odds_written = 0
         rate_remaining = None
         try:
             rate_remaining = int(response.headers.get("x-requests-remaining", ""))
         except (ValueError, TypeError):
             pass
 
+        # Build event_id -> game_id lookup
+        event_to_game: dict[str, int] = {}
+        for gid, info in game_info.items():
+            eid = info["external_ids"].get("odds_api_event_id")
+            if eid:
+                event_to_game[eid] = gid
+
+        # Aggregate all bookmakers per (game_id, market_key)
+        # Structure: {(game_id, market_key): {book_name: [selections]}}
+        aggregated: dict[tuple[int, str], dict[str, list[dict]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+
         for event in events:
             event_id = event.get("id", "")
-
-            # Match event to our game_id via odds_api_event_id
-            matched_game_id = None
-            for gid, info in game_info.items():
-                if info["external_ids"].get("odds_api_event_id") == event_id:
-                    matched_game_id = gid
-                    break
-
+            matched_game_id = event_to_game.get(event_id)
             if matched_game_id is None:
                 continue
 
-            # Extract selections per market
             for bookmaker in event.get("bookmakers", []):
+                book_name = bookmaker.get("title", "unknown")
                 for market in bookmaker.get("markets", []):
                     mkt_key = MARKET_TYPES.get(market.get("key", ""))
                     if not mkt_key:
@@ -127,23 +135,26 @@ def poll_live_odds_mainline(league_code: str, game_ids: list[int]) -> dict:
 
                     selections = []
                     for outcome in market.get("outcomes", []):
-                        sel = {
+                        selections.append({
                             "selection": outcome.get("name", ""),
                             "line": outcome.get("point"),
                             "price": outcome.get("price"),
-                        }
-                        selections.append(sel)
+                        })
 
                     if selections:
-                        write_live_snapshot(
-                            league=league_code,
-                            game_id=matched_game_id,
-                            market_key=mkt_key,
-                            selections=selections,
-                            provider=bookmaker.get("title", "unknown"),
-                            rate_remaining=rate_remaining,
-                        )
-                        odds_written += 1
+                        aggregated[(matched_game_id, mkt_key)][book_name] = selections
+
+        # Write one snapshot per (game, market) with all books
+        odds_written = 0
+        for (game_id, market_key), books in aggregated.items():
+            write_live_snapshot(
+                league=league_code,
+                game_id=game_id,
+                market_key=market_key,
+                books=dict(books),
+                rate_remaining=rate_remaining,
+            )
+            odds_written += 1
 
         logger.info(
             "poll_live_odds_mainline_complete",
@@ -237,7 +248,13 @@ def poll_live_odds_props(league_code: str, game_ids: list[int]) -> dict:
             client._track_credits(response)
             payload = response.json()
 
+            # Aggregate all bookmakers per market_key for this game
+            aggregated: dict[str, dict[str, list[dict]]] = defaultdict(
+                lambda: defaultdict(list)
+            )
+
             for bookmaker in payload.get("bookmakers", []):
+                book_name = bookmaker.get("title", "unknown")
                 for market in bookmaker.get("markets", []):
                     mkt_key = market.get("key", "")
                     selections = [
@@ -250,14 +267,16 @@ def poll_live_odds_props(league_code: str, game_ids: list[int]) -> dict:
                         for o in market.get("outcomes", [])
                     ]
                     if selections:
-                        write_live_snapshot(
-                            league=league_code,
-                            game_id=game.id,
-                            market_key=mkt_key,
-                            selections=selections,
-                            provider=bookmaker.get("title", "unknown"),
-                        )
-                        props_written += 1
+                        aggregated[mkt_key][book_name] = selections
+
+            for mkt_key, books in aggregated.items():
+                write_live_snapshot(
+                    league=league_code,
+                    game_id=game.id,
+                    market_key=mkt_key,
+                    books=dict(books),
+                )
+                props_written += 1
 
             events_processed += 1
 
