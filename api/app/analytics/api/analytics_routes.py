@@ -30,6 +30,7 @@ from app.analytics.core.simulation_repository import SimulationRepository
 from app.analytics.features.config.feature_config_loader import FeatureConfigLoader
 from app.analytics.features.config.feature_config_registry import FeatureConfigRegistry
 from app.analytics.inference.model_inference_engine import ModelInferenceEngine
+from app.analytics.models.core.model_registry import ModelRegistry
 from app.analytics.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -43,7 +44,8 @@ _calibration = ModelCalibration()
 _model_metrics = ModelMetrics()
 _feature_config_loader = FeatureConfigLoader()
 _feature_config_registry = FeatureConfigRegistry(loader=_feature_config_loader)
-_inference_engine = ModelInferenceEngine()
+_model_registry = ModelRegistry()
+_inference_engine = ModelInferenceEngine(registry=_model_registry)
 
 
 class LiveSimulateRequest(BaseModel):
@@ -485,3 +487,40 @@ async def get_model_predict(
         "model_type": model_type,
         "probabilities": probs,
     }
+
+
+# ---------------------------------------------------------------------------
+# Model Registry endpoints
+# ---------------------------------------------------------------------------
+
+
+class ModelActivateRequest(BaseModel):
+    """Request body for POST /api/analytics/models/activate."""
+    sport: str = Field(..., description="Sport code (e.g., mlb)")
+    model_type: str = Field(..., description="Model type (e.g., plate_appearance)")
+    model_id: str = Field(..., description="Model ID to activate")
+
+
+@router.get("/models")
+async def get_models(
+    sport: str = Query(None, description="Filter by sport code"),
+    model_type: str = Query(None, description="Filter by model type"),
+) -> dict[str, Any]:
+    """List registered models with active status."""
+    models = _model_registry.list_models(sport=sport, model_type=model_type)
+    return {"models": models, "count": len(models)}
+
+
+@router.post("/models/activate")
+async def post_activate_model(req: ModelActivateRequest) -> dict[str, Any]:
+    """Activate a registered model."""
+    success = _model_registry.activate_model(
+        sport=req.sport,
+        model_type=req.model_type,
+        model_id=req.model_id,
+    )
+    if not success:
+        return {"status": "not_found", "model_id": req.model_id}
+    # Clear inference cache so the new model is loaded on next request
+    _inference_engine._cache.clear()
+    return {"status": "success", "active_model": req.model_id}

@@ -1,30 +1,40 @@
 """Model registry for tracking and loading available ML models.
 
 Maintains a catalog of registered models with version tracking and
-active-model selection. The simulation engine queries the registry
-to obtain the active model for a given sport and model type.
+active-model selection. Supports JSON persistence to disk and
+in-memory operation.
+
+The registry is organized by sport and model type, each supporting
+multiple versioned models with one active at a time.
 
 Usage::
 
     registry = ModelRegistry()
-    registry.register_model({
-        "model_id": "mlb_pa_model_v1",
-        "sport": "mlb",
-        "model_type": "plate_appearance",
-        "version": 1,
-        "path": "models/mlb/pa_model_v1.pkl",
-        "active": True,
-    })
-    model = registry.get_active_model("mlb", "plate_appearance")
+    registry.register_model(
+        sport="mlb",
+        model_type="plate_appearance",
+        model_id="mlb_pa_model_v1",
+        artifact_path="models/mlb/artifacts/mlb_pa_model_v1.pkl",
+        metadata={"accuracy": 0.61},
+    )
+    registry.activate_model("mlb", "plate_appearance", "mlb_pa_model_v1")
+    info = registry.get_active_model("mlb", "plate_appearance")
 """
 
 from __future__ import annotations
 
 import importlib
+import json
 import logging
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_REGISTRY_PATH = (
+    Path(__file__).resolve().parents[3] / ".." / "models" / "registry" / "registry.json"
+)
 
 # Built-in model classes: (sport, model_type) -> (module_path, class_name)
 _BUILTIN_MODELS: dict[tuple[str, str], tuple[str, str]] = {
@@ -43,89 +53,105 @@ class ModelRegistry:
     """Tracks registered ML models and resolves active models.
 
     Models can be registered explicitly or loaded from built-in
-    defaults. Each model record includes sport, type, version,
-    optional file path, and active flag.
+    defaults. The registry supports JSON persistence for durability
+    across restarts.
+
+    Args:
+        registry_path: Path to the JSON registry file. Set to
+            ``None`` to operate in memory-only mode.
     """
 
-    def __init__(self) -> None:
-        self._models: dict[str, dict[str, Any]] = {}
+    def __init__(self, registry_path: str | Path | None = _DEFAULT_REGISTRY_PATH) -> None:
+        self._registry_path: Path | None = Path(registry_path) if registry_path else None
+        self._data: dict[str, Any] = {}
+        if self._registry_path is not None:
+            self._load()
 
-    def register_model(self, model_info: dict[str, Any]) -> str:
-        """Register a model in the catalog.
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def register_model(
+        self,
+        sport: str,
+        model_type: str,
+        model_id: str,
+        artifact_path: str,
+        metadata: dict[str, Any] | None = None,
+        *,
+        metadata_path: str | None = None,
+        version: int | None = None,
+    ) -> str:
+        """Register a newly trained model in the registry.
+
+        The model is NOT automatically activated. Call
+        ``activate_model`` separately to make it the active model.
 
         Args:
-            model_info: Model record with keys ``model_id``, ``sport``,
-                ``model_type``, ``version``, ``path`` (optional),
-                ``active`` (bool).
+            sport: Sport code (e.g., ``"mlb"``).
+            model_type: Model type (e.g., ``"plate_appearance"``).
+            model_id: Unique identifier for this model version.
+            artifact_path: Path to the serialized model artifact.
+            metadata: Optional dict of training metrics / info.
+            metadata_path: Optional path to the metadata JSON file.
+            version: Optional explicit version number. Auto-increments
+                if not provided.
 
         Returns:
             The model_id.
         """
-        model_id = model_info.get("model_id", "")
-        if not model_id:
-            raise ValueError("model_info must include 'model_id'")
+        sport = sport.lower()
+        bucket = self._ensure_bucket(sport, model_type)
+        models_list: list[dict[str, Any]] = bucket["models"]
 
-        # If this model is set as active, deactivate others of same sport/type
-        if model_info.get("active", False):
-            sport = model_info.get("sport", "")
-            model_type = model_info.get("model_type", "")
-            for existing in self._models.values():
-                if (
-                    existing.get("sport") == sport
-                    and existing.get("model_type") == model_type
-                    and existing.get("model_id") != model_id
-                ):
-                    existing["active"] = False
+        # Auto-version if not specified
+        if version is None:
+            existing_versions = [m.get("version", 0) for m in models_list]
+            version = max(existing_versions, default=0) + 1
 
-        self._models[model_id] = model_info
-        logger.info("model_registered", extra={"model_id": model_id})
+        # Check for duplicate model_id
+        for existing in models_list:
+            if existing["model_id"] == model_id:
+                existing["artifact_path"] = artifact_path
+                existing["metadata_path"] = metadata_path or existing.get("metadata_path")
+                existing["metrics"] = metadata or existing.get("metrics", {})
+                existing["version"] = version
+                existing["updated_at"] = datetime.now(timezone.utc).isoformat()
+                self._save()
+                logger.info("model_updated", extra={"model_id": model_id})
+                return model_id
+
+        record: dict[str, Any] = {
+            "model_id": model_id,
+            "artifact_path": artifact_path,
+            "metadata_path": metadata_path,
+            "version": version,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "metrics": metadata or {},
+        }
+        models_list.append(record)
+        self._save()
+        logger.info("model_registered", extra={"model_id": model_id, "sport": sport, "model_type": model_type})
         return model_id
 
-    def get_model_info(self, model_id: str) -> dict[str, Any] | None:
-        """Retrieve a model record by ID."""
-        return self._models.get(model_id)
+    def get_active_model(self, sport: str, model_type: str) -> dict[str, Any] | None:
+        """Return the currently active model metadata.
 
-    def get_active_model(self, sport: str, model_type: str) -> Any | None:
-        """Get the active model instance for a sport and model type.
-
-        First checks registered models, then falls back to built-in
-        defaults. Returns an instantiated model (not just metadata).
-
-        Args:
-            sport: Sport code (e.g., ``"mlb"``).
-            model_type: Model type (e.g., ``"plate_appearance"``, ``"game"``).
-
-        Returns:
-            Instantiated model object, or ``None`` if unavailable.
+        Returns ``None`` if no model is active for the given
+        sport + model_type combination.
         """
         sport = sport.lower()
+        bucket = self._get_bucket(sport, model_type)
+        if bucket is None:
+            return None
 
-        # Check registered models first
-        for info in self._models.values():
-            if (
-                info.get("sport") == sport
-                and info.get("model_type") == model_type
-                and info.get("active", False)
-            ):
-                return self._instantiate_model(info)
+        active_id = bucket.get("active_model")
+        if not active_id:
+            return None
 
-        # Fall back to built-in
-        return self._load_builtin(sport, model_type)
-
-    def get_active_model_info(
-        self,
-        sport: str,
-        model_type: str,
-    ) -> dict[str, Any] | None:
-        """Get metadata for the active model (without instantiation)."""
-        sport = sport.lower()
-        for info in self._models.values():
-            if (
-                info.get("sport") == sport
-                and info.get("model_type") == model_type
-                and info.get("active", False)
-            ):
-                return info
+        for model in bucket.get("models", []):
+            if model["model_id"] == active_id:
+                return model
         return None
 
     def list_models(
@@ -133,67 +159,170 @@ class ModelRegistry:
         sport: str | None = None,
         model_type: str | None = None,
     ) -> list[dict[str, Any]]:
-        """List registered models, optionally filtered."""
-        records = list(self._models.values())
-        if sport:
-            records = [r for r in records if r.get("sport") == sport.lower()]
-        if model_type:
-            records = [r for r in records if r.get("model_type") == model_type]
-        return records
+        """Return all registered models, optionally filtered.
 
-    def set_active(self, model_id: str) -> bool:
-        """Set a registered model as the active one for its sport/type.
-
-        Returns:
-            ``True`` if the model was found and activated.
+        Each returned dict includes an ``active`` boolean field
+        indicating whether it is the currently active model.
         """
-        info = self._models.get(model_id)
-        if info is None:
+        results: list[dict[str, Any]] = []
+
+        sports = [sport.lower()] if sport else list(self._data.keys())
+        for s in sports:
+            sport_data = self._data.get(s, {})
+            types = [model_type] if model_type else list(sport_data.keys())
+            for mt in types:
+                bucket = sport_data.get(mt)
+                if bucket is None:
+                    continue
+                active_id = bucket.get("active_model")
+                for model in bucket.get("models", []):
+                    entry = {
+                        **model,
+                        "sport": s,
+                        "model_type": mt,
+                        "active": model["model_id"] == active_id,
+                    }
+                    results.append(entry)
+        return results
+
+    def activate_model(self, sport: str, model_type: str, model_id: str) -> bool:
+        """Set a model as the active model for its sport + model_type.
+
+        Returns ``True`` if the model was found and activated.
+        """
+        sport = sport.lower()
+        bucket = self._get_bucket(sport, model_type)
+        if bucket is None:
             return False
 
-        sport = info.get("sport", "")
-        model_type = info.get("model_type", "")
+        for model in bucket.get("models", []):
+            if model["model_id"] == model_id:
+                bucket["active_model"] = model_id
+                self._save()
+                logger.info(
+                    "model_activated",
+                    extra={"model_id": model_id, "sport": sport, "model_type": model_type},
+                )
+                return True
+        return False
 
-        # Deactivate others
-        for existing in self._models.values():
-            if (
-                existing.get("sport") == sport
-                and existing.get("model_type") == model_type
-            ):
-                existing["active"] = False
+    def deactivate_model(self, sport: str, model_type: str, model_id: str) -> bool:
+        """Clear the active model if it matches model_id.
 
-        info["active"] = True
-        return True
+        Returns ``True`` if the model was the active one and was
+        deactivated.
+        """
+        sport = sport.lower()
+        bucket = self._get_bucket(sport, model_type)
+        if bucket is None:
+            return False
 
-    def _instantiate_model(self, info: dict[str, Any]) -> Any | None:
-        """Create a model instance from a registry record."""
-        class_path = info.get("class_path")
-        if class_path:
-            module_path, class_name = class_path.rsplit(".", 1)
-            mod = importlib.import_module(module_path)
-            cls = getattr(mod, class_name)
-            instance = cls()
-        else:
-            # Try built-in
-            sport = info.get("sport", "")
-            model_type = info.get("model_type", "")
-            instance = self._load_builtin(sport, model_type)
-            if instance is None:
-                return None
+        if bucket.get("active_model") == model_id:
+            bucket["active_model"] = None
+            self._save()
+            return True
+        return False
 
-        # Load artifact if path specified
-        path = info.get("path")
-        if path:
-            instance.load(path)
+    # ------------------------------------------------------------------
+    # Inference engine integration helpers
+    # ------------------------------------------------------------------
 
-        return instance
+    def get_active_model_info(
+        self,
+        sport: str,
+        model_type: str,
+    ) -> dict[str, Any] | None:
+        """Get metadata for the active model (for inference engine).
+
+        Returns a dict with at least ``model_id`` and ``path`` keys,
+        or ``None`` if no active model is registered.
+        """
+        active = self.get_active_model(sport, model_type)
+        if active is None:
+            return None
+        return {
+            "model_id": active["model_id"],
+            "path": active.get("artifact_path"),
+            "sport": sport.lower(),
+            "model_type": model_type,
+            "version": active.get("version"),
+            "metrics": active.get("metrics", {}),
+        }
+
+    def get_active_model_instance(self, sport: str, model_type: str) -> Any | None:
+        """Get an instantiated model object for the active model.
+
+        If a registered active model has an artifact path, returns
+        a built-in model wrapper instance. Otherwise falls back to
+        the default built-in model.
+        """
+        return self._load_builtin(sport.lower(), model_type)
+
+    # ------------------------------------------------------------------
+    # Legacy compatibility — used by existing code
+    # ------------------------------------------------------------------
+
+    def set_active(self, model_id: str) -> bool:
+        """Activate a model by its ID (searches all sport/type buckets).
+
+        Legacy method for backward compatibility with existing code.
+        """
+        for sport, sport_data in self._data.items():
+            for model_type, bucket in sport_data.items():
+                for model in bucket.get("models", []):
+                    if model["model_id"] == model_id:
+                        bucket["active_model"] = model_id
+                        self._save()
+                        return True
+        return False
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _ensure_bucket(self, sport: str, model_type: str) -> dict[str, Any]:
+        """Get or create the bucket for a sport + model_type."""
+        if sport not in self._data:
+            self._data[sport] = {}
+        if model_type not in self._data[sport]:
+            self._data[sport][model_type] = {"active_model": None, "models": []}
+        return self._data[sport][model_type]
+
+    def _get_bucket(self, sport: str, model_type: str) -> dict[str, Any] | None:
+        sport_data = self._data.get(sport)
+        if sport_data is None:
+            return None
+        return sport_data.get(model_type)
+
+    def _load(self) -> None:
+        """Load registry from JSON file if it exists."""
+        if self._registry_path is None or not self._registry_path.exists():
+            self._data = {}
+            return
+        try:
+            with open(self._registry_path) as f:
+                self._data = json.load(f)
+            logger.debug("registry_loaded", extra={"path": str(self._registry_path)})
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("registry_load_failed", extra={"error": str(exc)})
+            self._data = {}
+
+    def _save(self) -> None:
+        """Persist registry to JSON file."""
+        if self._registry_path is None:
+            return
+        try:
+            self._registry_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._registry_path, "w") as f:
+                json.dump(self._data, f, indent=2)
+        except OSError as exc:
+            logger.error("registry_save_failed", extra={"error": str(exc)})
 
     def _load_builtin(self, sport: str, model_type: str) -> Any | None:
         """Load a built-in model class from the registry."""
         entry = _BUILTIN_MODELS.get((sport, model_type))
         if entry is None:
             return None
-
         module_path, class_name = entry
         mod = importlib.import_module(module_path)
         cls = getattr(mod, class_name)

@@ -270,6 +270,8 @@ class TrainingPipeline:
 
         artifact_path, metadata_path = self.save_artifact(model)
 
+        self._register_model(artifact_path, metadata_path, metrics)
+
         return {
             "model_id": self.model_id,
             "artifact_path": artifact_path,
@@ -279,6 +281,34 @@ class TrainingPipeline:
             "train_count": len(X_train),
             "test_count": len(X_test),
         }
+
+    def _register_model(
+        self,
+        artifact_path: str,
+        metadata_path: str,
+        metrics: dict[str, Any],
+    ) -> None:
+        """Register the trained model in the model registry."""
+        try:
+            from app.analytics.models.core.model_registry import ModelRegistry
+            registry = ModelRegistry()
+            registry.register_model(
+                sport=self.sport,
+                model_type=self.model_type,
+                model_id=self.model_id,
+                artifact_path=artifact_path,
+                metadata=metrics,
+                metadata_path=metadata_path,
+            )
+            logger.info(
+                "model_registered_in_registry",
+                extra={"model_id": self.model_id},
+            )
+        except Exception as exc:
+            logger.warning(
+                "model_registration_failed",
+                extra={"model_id": self.model_id, "error": str(exc)},
+            )
 
     def _default_model(self) -> Any:
         """Return a default sklearn model for the model type."""

@@ -2334,34 +2334,28 @@ class TestModelLoader:
 class TestModelRegistry:
     """Verify model registry operations."""
 
-    def test_register_and_get_info(self) -> None:
+    def test_register_and_get_active(self) -> None:
         from app.analytics.models.core.model_registry import ModelRegistry
 
-        registry = ModelRegistry()
-        registry.register_model({
-            "model_id": "mlb_pa_v1",
-            "sport": "mlb",
-            "model_type": "plate_appearance",
-            "version": 1,
-            "active": True,
-        })
-        info = registry.get_model_info("mlb_pa_v1")
-        assert info is not None
-        assert info["sport"] == "mlb"
-        assert info["active"] is True
-
-    def test_register_requires_model_id(self) -> None:
-        from app.analytics.models.core.model_registry import ModelRegistry
-
-        registry = ModelRegistry()
-        with pytest.raises(ValueError):
-            registry.register_model({"sport": "mlb"})
+        registry = ModelRegistry(registry_path=None)
+        registry.register_model(
+            sport="mlb",
+            model_type="plate_appearance",
+            model_id="mlb_pa_v1",
+            artifact_path="/tmp/mlb_pa_v1.pkl",
+            metadata={"accuracy": 0.61},
+            version=1,
+        )
+        registry.activate_model("mlb", "plate_appearance", "mlb_pa_v1")
+        active = registry.get_active_model("mlb", "plate_appearance")
+        assert active is not None
+        assert active["model_id"] == "mlb_pa_v1"
 
     def test_get_active_model_builtin(self) -> None:
         from app.analytics.models.core.model_registry import ModelRegistry
 
-        registry = ModelRegistry()
-        model = registry.get_active_model("mlb", "plate_appearance")
+        registry = ModelRegistry(registry_path=None)
+        model = registry.get_active_model_instance("mlb", "plate_appearance")
         assert model is not None
         assert model.sport == "mlb"
         assert model.model_type == "plate_appearance"
@@ -2369,60 +2363,43 @@ class TestModelRegistry:
     def test_get_active_model_game_builtin(self) -> None:
         from app.analytics.models.core.model_registry import ModelRegistry
 
-        registry = ModelRegistry()
-        model = registry.get_active_model("mlb", "game")
+        registry = ModelRegistry(registry_path=None)
+        model = registry.get_active_model_instance("mlb", "game")
         assert model is not None
         assert model.model_type == "game"
 
     def test_get_active_model_unsupported_returns_none(self) -> None:
         from app.analytics.models.core.model_registry import ModelRegistry
 
-        registry = ModelRegistry()
-        assert registry.get_active_model("cricket", "plate_appearance") is None
+        registry = ModelRegistry(registry_path=None)
+        assert registry.get_active_model_instance("cricket", "plate_appearance") is None
 
-    def test_set_active_deactivates_others(self) -> None:
+    def test_set_active_switches(self) -> None:
         from app.analytics.models.core.model_registry import ModelRegistry
 
-        registry = ModelRegistry()
-        registry.register_model({
-            "model_id": "v1",
-            "sport": "mlb",
-            "model_type": "plate_appearance",
-            "version": 1,
-            "active": True,
-        })
-        registry.register_model({
-            "model_id": "v2",
-            "sport": "mlb",
-            "model_type": "plate_appearance",
-            "version": 2,
-            "active": False,
-        })
+        registry = ModelRegistry(registry_path=None)
+        registry.register_model("mlb", "plate_appearance", "v1", "/tmp/v1.pkl", version=1)
+        registry.register_model("mlb", "plate_appearance", "v2", "/tmp/v2.pkl", version=2)
+        registry.activate_model("mlb", "plate_appearance", "v1")
         registry.set_active("v2")
-        assert registry.get_model_info("v1")["active"] is False
-        assert registry.get_model_info("v2")["active"] is True
+        active = registry.get_active_model("mlb", "plate_appearance")
+        assert active["model_id"] == "v2"
 
     def test_list_models_filtered(self) -> None:
         from app.analytics.models.core.model_registry import ModelRegistry
 
-        registry = ModelRegistry()
-        registry.register_model({"model_id": "a", "sport": "mlb", "model_type": "pa", "active": True})
-        registry.register_model({"model_id": "b", "sport": "nba", "model_type": "game", "active": True})
+        registry = ModelRegistry(registry_path=None)
+        registry.register_model("mlb", "pa", "a", "/tmp/a.pkl")
+        registry.register_model("nba", "game", "b", "/tmp/b.pkl")
         assert len(registry.list_models(sport="mlb")) == 1
         assert len(registry.list_models()) == 2
 
-    def test_registered_model_overrides_builtin(self) -> None:
+    def test_registered_model_active_info(self) -> None:
         from app.analytics.models.core.model_registry import ModelRegistry
 
-        registry = ModelRegistry()
-        registry.register_model({
-            "model_id": "custom_pa",
-            "sport": "mlb",
-            "model_type": "plate_appearance",
-            "version": 1,
-            "active": True,
-            "class_path": "app.analytics.models.sports.mlb.pa_model.MLBPlateAppearanceModel",
-        })
+        registry = ModelRegistry(registry_path=None)
+        registry.register_model("mlb", "plate_appearance", "custom_pa", "/tmp/pa.pkl", version=1)
+        registry.activate_model("mlb", "plate_appearance", "custom_pa")
         info = registry.get_active_model_info("mlb", "plate_appearance")
         assert info is not None
         assert info["model_id"] == "custom_pa"
@@ -4298,3 +4275,292 @@ class TestSimulationProbabilityIntegration:
         assert "probability_meta" in result
         meta = result["probability_meta"]
         assert meta.get("probability_source") == "rule_based"
+
+
+# ============================================================
+# Prompt 17 — Model Registry System
+# ============================================================
+
+
+class TestModelRegistryCore:
+    """Test ModelRegistry register, list, activate, deactivate."""
+
+    def test_register_model(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        model_id = registry.register_model(
+            sport="mlb",
+            model_type="plate_appearance",
+            model_id="mlb_pa_v1",
+            artifact_path="/tmp/mlb_pa_v1.pkl",
+            metadata={"accuracy": 0.61},
+        )
+        assert model_id == "mlb_pa_v1"
+        models = registry.list_models(sport="mlb", model_type="plate_appearance")
+        assert len(models) == 1
+        assert models[0]["model_id"] == "mlb_pa_v1"
+        assert models[0]["metrics"]["accuracy"] == 0.61
+
+    def test_register_auto_versions(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        registry.register_model("mlb", "pa", "v2", "/tmp/v2.pkl")
+        models = registry.list_models(sport="mlb", model_type="pa")
+        versions = [m["version"] for m in models]
+        assert versions == [1, 2]
+
+    def test_register_duplicate_updates(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl", {"accuracy": 0.5})
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1_new.pkl", {"accuracy": 0.7})
+        models = registry.list_models(sport="mlb", model_type="pa")
+        assert len(models) == 1
+        assert models[0]["artifact_path"] == "/tmp/v1_new.pkl"
+        assert models[0]["metrics"]["accuracy"] == 0.7
+
+    def test_get_active_model_none_by_default(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        active = registry.get_active_model("mlb", "pa")
+        assert active is None
+
+    def test_activate_model(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        registry.register_model("mlb", "pa", "v2", "/tmp/v2.pkl")
+
+        assert registry.activate_model("mlb", "pa", "v1")
+        active = registry.get_active_model("mlb", "pa")
+        assert active is not None
+        assert active["model_id"] == "v1"
+
+        # Switch to v2 (rollback)
+        assert registry.activate_model("mlb", "pa", "v2")
+        active = registry.get_active_model("mlb", "pa")
+        assert active["model_id"] == "v2"
+
+    def test_activate_nonexistent_returns_false(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        assert registry.activate_model("mlb", "pa", "no_such_model") is False
+
+    def test_deactivate_model(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        registry.activate_model("mlb", "pa", "v1")
+        assert registry.deactivate_model("mlb", "pa", "v1")
+        assert registry.get_active_model("mlb", "pa") is None
+
+    def test_deactivate_wrong_model_returns_false(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        registry.activate_model("mlb", "pa", "v1")
+        assert registry.deactivate_model("mlb", "pa", "v2") is False
+
+
+class TestModelRegistryPersistence:
+    """Test JSON file persistence."""
+
+    def test_persists_to_disk(self, tmp_path):
+        import json
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        path = tmp_path / "reg.json"
+        registry = ModelRegistry(registry_path=path)
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl", {"acc": 0.6})
+        registry.activate_model("mlb", "pa", "v1")
+
+        data = json.loads(path.read_text())
+        assert "mlb" in data
+        assert data["mlb"]["pa"]["active_model"] == "v1"
+        assert len(data["mlb"]["pa"]["models"]) == 1
+
+    def test_loads_from_disk(self, tmp_path):
+        import json
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        path = tmp_path / "reg.json"
+        data = {
+            "mlb": {
+                "pa": {
+                    "active_model": "v1",
+                    "models": [
+                        {
+                            "model_id": "v1",
+                            "artifact_path": "/tmp/v1.pkl",
+                            "version": 1,
+                            "metrics": {"accuracy": 0.55},
+                        }
+                    ],
+                }
+            }
+        }
+        path.write_text(json.dumps(data))
+
+        registry = ModelRegistry(registry_path=path)
+        active = registry.get_active_model("mlb", "pa")
+        assert active is not None
+        assert active["model_id"] == "v1"
+
+    def test_memory_only_mode(self):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=None)
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        assert len(registry.list_models()) == 1
+
+
+class TestModelRegistryListFiltering:
+    """Test list_models filtering."""
+
+    def test_list_all(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        registry.register_model("mlb", "game", "g1", "/tmp/g1.pkl")
+        registry.register_model("nba", "game", "n1", "/tmp/n1.pkl")
+
+        assert len(registry.list_models()) == 3
+
+    def test_filter_by_sport(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        registry.register_model("nba", "game", "n1", "/tmp/n1.pkl")
+
+        mlb = registry.list_models(sport="mlb")
+        assert len(mlb) == 1
+        assert mlb[0]["sport"] == "mlb"
+
+    def test_filter_by_model_type(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        registry.register_model("mlb", "game", "g1", "/tmp/g1.pkl")
+
+        pa_models = registry.list_models(sport="mlb", model_type="pa")
+        assert len(pa_models) == 1
+
+    def test_active_flag_in_list(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        registry.register_model("mlb", "pa", "v2", "/tmp/v2.pkl")
+        registry.activate_model("mlb", "pa", "v2")
+
+        models = registry.list_models(sport="mlb", model_type="pa")
+        active_flags = {m["model_id"]: m["active"] for m in models}
+        assert active_flags["v1"] is False
+        assert active_flags["v2"] is True
+
+
+class TestModelRegistryInferenceIntegration:
+    """Test that the inference engine loads active models via registry."""
+
+    def test_get_active_model_info(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl", {"accuracy": 0.6})
+        registry.activate_model("mlb", "pa", "v1")
+
+        info = registry.get_active_model_info("mlb", "pa")
+        assert info is not None
+        assert info["model_id"] == "v1"
+        assert info["path"] == "/tmp/v1.pkl"
+        assert info["sport"] == "mlb"
+        assert info["model_type"] == "pa"
+
+    def test_get_active_model_info_none_when_inactive(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        assert registry.get_active_model_info("mlb", "pa") is None
+
+    def test_inference_engine_uses_registry(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+        from app.analytics.inference.model_inference_engine import ModelInferenceEngine
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        engine = ModelInferenceEngine(registry=registry)
+
+        # No active model — should fall back to built-in
+        probs = engine.predict_proba("mlb", "plate_appearance", {})
+        assert isinstance(probs, dict)
+        assert len(probs) > 0
+
+    def test_inference_engine_with_active_artifact(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+        from app.analytics.inference.model_inference_engine import ModelInferenceEngine
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        # Register with a non-existent path — should fall back to builtin
+        registry.register_model("mlb", "plate_appearance", "v1", "/nonexistent/v1.pkl")
+        registry.activate_model("mlb", "plate_appearance", "v1")
+
+        engine = ModelInferenceEngine(registry=registry)
+        probs = engine.predict_proba("mlb", "plate_appearance", {})
+        # Falls back to built-in when artifact can't be loaded
+        assert isinstance(probs, dict)
+
+
+class TestModelRegistryTrainingIntegration:
+    """Test that training pipeline registers models."""
+
+    def test_training_pipeline_registers(self, tmp_path):
+        from unittest.mock import patch
+        from app.analytics.training.core.training_pipeline import TrainingPipeline
+
+        pipeline = TrainingPipeline(
+            sport="mlb",
+            model_type="plate_appearance",
+            config_name="mlb_pa_model",
+            model_id="test_train_reg",
+            artifact_dir=tmp_path / "models",
+        )
+
+        registered = []
+
+        def mock_register(*args, **kwargs):
+            registered.append(kwargs)
+            return kwargs.get("model_id", "")
+
+        with patch(
+            "app.analytics.models.core.model_registry.ModelRegistry.register_model",
+            side_effect=mock_register,
+        ):
+            pipeline._register_model(
+                "/tmp/artifact.pkl", "/tmp/metadata.json", {"accuracy": 0.7},
+            )
+
+        assert len(registered) == 1
+        assert registered[0]["model_id"] == "test_train_reg"
+        assert registered[0]["sport"] == "mlb"
+        assert registered[0]["artifact_path"] == "/tmp/artifact.pkl"
+
+    def test_set_active_legacy(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
+        assert registry.set_active("v1")
+        assert registry.get_active_model("mlb", "pa")["model_id"] == "v1"

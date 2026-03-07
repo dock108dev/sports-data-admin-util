@@ -145,7 +145,7 @@ class ModelInferenceEngine:
             try:
                 sklearn_model = self._cache.get_model(path)
                 # Wrap in the appropriate model class
-                wrapper = self._registry.get_active_model(sport, model_type)
+                wrapper = self._registry.get_active_model_instance(sport, model_type)
                 if wrapper is not None:
                     wrapper._model = sklearn_model
                     wrapper._loaded = True
@@ -157,7 +157,7 @@ class ModelInferenceEngine:
                 )
 
         # Fall back to built-in model (rule-based or with its own artifact)
-        return self._registry.get_active_model(sport, model_type)
+        return self._registry.get_active_model_instance(sport, model_type)
 
     def _build_features(
         self,

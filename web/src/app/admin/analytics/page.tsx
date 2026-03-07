@@ -36,6 +36,11 @@ const sections = [
     title: "Feature Config",
     desc: "Manage ML feature selection, weighting, and experimentation",
   },
+  {
+    href: ROUTES.ANALYTICS_MODELS,
+    title: "Model Registry",
+    desc: "View trained models, versions, metrics, and activate deployments",
+  },
 ];
 
 export default function AnalyticsPage() {

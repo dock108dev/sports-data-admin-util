@@ -33,6 +33,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: ROUTES.ANALYTICS_SIMULATOR, label: "Simulator" },
       { href: ROUTES.ANALYTICS_MODEL_PERFORMANCE, label: "Model Performance" },
       { href: ROUTES.ANALYTICS_FEATURE_CONFIG, label: "Feature Config" },
+      { href: ROUTES.ANALYTICS_MODELS, label: "Model Registry" },
     ],
   },
   {

@@ -212,3 +212,45 @@ export async function getModelPerformance(
     `${base()}/api/analytics/model-performance${qs ? `?${qs}` : ""}`,
   );
 }
+
+export interface RegisteredModel {
+  model_id: string;
+  artifact_path: string;
+  metadata_path?: string;
+  version: number;
+  created_at: string;
+  metrics: Record<string, number>;
+  sport: string;
+  model_type: string;
+  active: boolean;
+}
+
+export interface ModelsListResponse {
+  models: RegisteredModel[];
+  count: number;
+}
+
+export async function listRegisteredModels(
+  sport?: string,
+  modelType?: string,
+): Promise<ModelsListResponse> {
+  const params = new URLSearchParams();
+  if (sport) params.set("sport", sport);
+  if (modelType) params.set("model_type", modelType);
+  const qs = params.toString();
+  return fetchJson<ModelsListResponse>(
+    `${base()}/api/analytics/models${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export async function activateModel(
+  sport: string,
+  modelType: string,
+  modelId: string,
+): Promise<{ status: string; active_model?: string }> {
+  return fetchJson(`${base()}/api/analytics/models/activate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sport, model_type: modelType, model_id: modelId }),
+  });
+}
