@@ -30,8 +30,14 @@ from .phases.social_phase import dispatch_social
 
 
 def _social_task_exists_for_league(league_code: str) -> bool:
-    """Check if a social task is already queued or running for this league."""
+    """Check if a social task is already queued or running for this league.
+
+    Ignores job_runs that have been queued/running for more than 2 hours —
+    those are likely orphaned from a worker restart and should not block
+    new dispatches.
+    """
     try:
+        stale_cutoff = datetime.now(UTC) - timedelta(hours=2)
         with get_session() as session:
             existing = (
                 session.query(db_models.SportsJobRun)
@@ -39,6 +45,7 @@ def _social_task_exists_for_league(league_code: str) -> bool:
                     db_models.SportsJobRun.phase == "social",
                     db_models.SportsJobRun.status.in_(["queued", "running"]),
                     db_models.SportsJobRun.leagues.contains([league_code.upper()]),
+                    db_models.SportsJobRun.created_at > stale_cutoff,
                 )
                 .first()
             )
