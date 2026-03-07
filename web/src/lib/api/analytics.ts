@@ -255,43 +255,6 @@ export async function activateModel(
   });
 }
 
-export interface ActiveModelResponse {
-  sport: string;
-  model_type: string;
-  active_model: string | null;
-  version?: number;
-  metrics?: Record<string, number>;
-}
-
-export async function getActiveModel(
-  sport: string,
-  modelType: string,
-): Promise<ActiveModelResponse> {
-  const params = new URLSearchParams({ sport, model_type: modelType });
-  return fetchJson<ActiveModelResponse>(`${base()}/api/analytics/models/active?${params}`);
-}
-
-export interface ModelMetricsEntry {
-  model_id: string;
-  sport: string;
-  model_type: string;
-  version: number;
-  active: boolean;
-  metrics: Record<string, number>;
-}
-
-export async function getModelMetrics(
-  modelId?: string,
-  sport?: string,
-  modelType?: string,
-): Promise<{ models: ModelMetricsEntry[]; count: number }> {
-  const params = new URLSearchParams();
-  if (modelId) params.set("model_id", modelId);
-  if (sport) params.set("sport", sport);
-  if (modelType) params.set("model_type", modelType);
-  const qs = params.toString();
-  return fetchJson(`${base()}/api/analytics/model-metrics${qs ? `?${qs}` : ""}`);
-}
 
 export interface ModelDetails {
   model_id: string;

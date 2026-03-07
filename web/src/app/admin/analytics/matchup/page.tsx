@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AdminCard } from "@/components/admin";
 import { getMatchupAnalytics, type MatchupAnalytics } from "@/lib/api/analytics";
+import { formatMetricName } from "@/lib/utils/formatting";
 import styles from "../analytics.module.css";
 
 export default function MatchupPage() {
@@ -105,6 +106,3 @@ export default function MatchupPage() {
   );
 }
 
-function formatMetricName(key: string): string {
-  return key.replace(/_probability/, "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}

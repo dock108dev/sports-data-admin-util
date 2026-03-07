@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.analytics.core.types import MatchupProfile, PlayerProfile, TeamProfile
+from app.analytics.core.types import PlayerProfile, TeamProfile
 
 # League-average baselines (2024 MLB season approximations).
 # Used as fallbacks when a stat is missing from the input.
@@ -179,7 +179,8 @@ class MLBMetrics:
         # Walk and strikeout estimates from swing/contact tendencies
         b_whiff = batter.get("whiff_rate", 1.0 - _BASELINE_CONTACT_RATE)
         strikeout_prob = min(b_whiff * 0.60, 1.0)
-        walk_prob = max(0.0, min((1.0 - batter.get("swing_rate", _BASELINE_SWING_RATE)) * 0.25, 1.0))
+        swing = batter.get("swing_rate", _BASELINE_SWING_RATE)
+        walk_prob = max(0.0, min((1.0 - swing) * 0.25, 1.0))
 
         return {
             "contact_probability": _round(contact_prob),

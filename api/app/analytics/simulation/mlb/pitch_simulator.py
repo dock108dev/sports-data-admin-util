@@ -31,7 +31,6 @@ from app.analytics.models.sports.mlb.pitch_model import (
 )
 from app.analytics.models.sports.mlb.run_expectancy_model import (
     MLBRunExpectancyModel,
-    encode_base_state,
 )
 
 # Import base runner helpers from the existing game simulator.

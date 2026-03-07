@@ -14,7 +14,6 @@ Routes:
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, Query
@@ -492,7 +491,9 @@ class ModelActivateRequest(BaseModel):
 async def get_models(
     sport: str = Query(None, description="Filter by sport code"),
     model_type: str = Query(None, description="Filter by model type"),
-    sort_by: str = Query(None, description="Sort key (created_at, accuracy, log_loss, brier_score, version)"),
+    sort_by: str = Query(
+        None, description="Sort key (created_at, accuracy, log_loss, brier_score, version)",
+    ),
     sort_desc: bool = Query(True, description="Sort descending"),
     active_only: bool = Query(False, description="Only show active models"),
 ) -> dict[str, Any]:

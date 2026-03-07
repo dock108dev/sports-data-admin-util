@@ -21,5 +21,3 @@ export function AdminTable({ headers, children }: AdminTableProps) {
     </div>
   );
 }
-
-

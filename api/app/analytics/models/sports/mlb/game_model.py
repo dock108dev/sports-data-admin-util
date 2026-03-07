@@ -106,7 +106,9 @@ class MLBGameModel(BaseModel):
             "home_win_probability": round(home_wp, 4),
             "away_win_probability": round(1.0 - home_wp, 4),
             "expected_home_score": round(_DEFAULT_HOME_RUNS * (home_wp / _DEFAULT_HOME_WP), 1),
-            "expected_away_score": round(_DEFAULT_AWAY_RUNS * ((1.0 - home_wp) / (1.0 - _DEFAULT_HOME_WP)), 1),
+            "expected_away_score": round(
+                _DEFAULT_AWAY_RUNS * ((1.0 - home_wp) / (1.0 - _DEFAULT_HOME_WP)), 1,
+            ),
         }
 
     def _predict_rule_based(self, features: dict[str, Any]) -> dict[str, Any]:

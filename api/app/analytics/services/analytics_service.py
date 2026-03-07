@@ -117,13 +117,11 @@ class AnalyticsService:
 
         # Run analysis on the raw simulation
         # Re-simulate to get individual game results for analysis
-        from app.analytics.core.simulation_runner import SimulationRunner
         simulator = sim._get_sport_simulator()
         if simulator is None:
             return raw_summary
 
         import random
-        runner = SimulationRunner()
         rng = random.Random(seed)
         results = []
         for _ in range(iterations):

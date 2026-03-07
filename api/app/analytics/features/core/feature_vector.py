@@ -15,8 +15,6 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any
-
 
 class FeatureVector:
     """Immutable, ordered feature vector for ML model input.

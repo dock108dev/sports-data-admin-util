@@ -23,7 +23,6 @@ from .probability_provider import (
     MLProvider,
     ProbabilityProvider,
     RuleBasedProvider,
-    normalize_probabilities,
 )
 
 logger = logging.getLogger(__name__)

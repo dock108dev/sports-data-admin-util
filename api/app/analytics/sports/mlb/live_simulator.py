@@ -23,6 +23,7 @@ import random
 from typing import Any
 
 from app.analytics.sports.mlb.game_simulator import (
+    _MAX_EXTRA_INNINGS,
     EVENTS,
     _advance_double,
     _advance_home_run,
@@ -30,7 +31,6 @@ from app.analytics.sports.mlb.game_simulator import (
     _advance_triple,
     _advance_walk,
     _build_weights,
-    _MAX_EXTRA_INNINGS,
 )
 
 

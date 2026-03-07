@@ -61,7 +61,9 @@ class MLBMatchup:
 
         # Extract pitcher metrics with baseline fallbacks
         # Support both dedicated pitcher keys and team-prefixed keys
-        p_contact_supp = _get_pitcher_metric(p, "contact_suppression", _BASELINE_CONTACT_SUPPRESSION)
+        p_contact_supp = _get_pitcher_metric(
+            p, "contact_suppression", _BASELINE_CONTACT_SUPPRESSION,
+        )
         p_k_rate = _get_pitcher_metric(p, "strikeout_rate", _BASELINE_STRIKEOUT_RATE)
         p_bb_rate = _get_pitcher_metric(p, "walk_rate", _BASELINE_WALK_RATE)
         p_power_supp = _get_pitcher_metric(p, "power_suppression", _BASELINE_POWER_SUPPRESSION)
@@ -121,7 +123,9 @@ class MLBMatchup:
         o_barrel = _get_team_metric(off, "barrel_rate", _BASELINE_BARREL_RATE)
 
         # Extract pitching metrics
-        p_contact_supp = _get_team_metric(pitch, "contact_suppression", _BASELINE_CONTACT_SUPPRESSION)
+        p_contact_supp = _get_team_metric(
+            pitch, "contact_suppression", _BASELINE_CONTACT_SUPPRESSION,
+        )
         p_k_rate = _get_team_metric(pitch, "strikeout_rate", _BASELINE_STRIKEOUT_RATE)
         p_bb_rate = _get_team_metric(pitch, "walk_rate", _BASELINE_WALK_RATE)
         p_power_supp = _get_team_metric(pitch, "power_suppression", _BASELINE_POWER_SUPPRESSION)

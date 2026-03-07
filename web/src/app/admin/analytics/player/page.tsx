@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AdminCard } from "@/components/admin";
 import { getPlayerAnalytics, type PlayerAnalytics } from "@/lib/api/analytics";
+import { formatMetricName, formatMetricValue } from "@/lib/utils/formatting";
 import styles from "../analytics.module.css";
 
 export default function PlayerAnalyticsPage() {
@@ -84,13 +85,4 @@ export default function PlayerAnalyticsPage() {
       )}
     </div>
   );
-}
-
-function formatMetricName(key: string): string {
-  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function formatMetricValue(value: number): string {
-  if (value >= 10) return value.toFixed(1);
-  return value.toFixed(4);
 }

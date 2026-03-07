@@ -143,7 +143,10 @@ class ModelRegistry:
         }
         models_list.append(record)
         self._save()
-        logger.info("model_registered", extra={"model_id": model_id, "sport": sport, "model_type": model_type})
+        logger.info(
+            "model_registered",
+            extra={"model_id": model_id, "sport": sport, "model_type": model_type},
+        )
         return model_id
 
     def get_active_model(self, sport: str, model_type: str) -> dict[str, Any] | None:

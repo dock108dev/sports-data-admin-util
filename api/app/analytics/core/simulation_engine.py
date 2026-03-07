@@ -231,16 +231,6 @@ class SimulationEngine:
 
         return game_context, meta
 
-    def _run_single_iteration(
-        self,
-        game_context: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Execute one simulation iteration.
-
-        Override in sport-specific subclasses.
-        """
-        return {}
-
 
 def _to_simulation_keys(probs: dict[str, float]) -> dict[str, float]:
     """Convert event probability keys to simulation engine format.
