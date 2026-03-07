@@ -222,33 +222,4 @@ The API container health check calls `GET /healthz`, which performs a lightweigh
 
 ## Troubleshooting
 
-### Postgres connection refused
-
-```bash
-# Check if postgres is running
-docker compose ps postgres
-
-# Check postgres logs
-docker compose logs postgres
-```
-
-### API won't start
-
-```bash
-# Check API logs
-docker compose logs api
-
-# Common issues:
-# - Database not ready: wait for postgres healthcheck
-# - Migration error: check alembic version
-```
-
-### Scraper not processing jobs
-
-```bash
-# Check scraper logs
-docker compose logs scraper
-
-# Check Redis connection
-docker exec sports-redis redis-cli ping
-```
+See [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md#troubleshooting) for common issues (port conflicts, DB connections, scraper problems). For production troubleshooting, see [OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md#troubleshooting).

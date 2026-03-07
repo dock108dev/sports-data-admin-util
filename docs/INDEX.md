@@ -50,6 +50,12 @@
 |-------|-------------|
 | [Data Sources](DATA_SOURCES.md) | **Start here:** Where data comes from — NBA, NHL, NCAAB, MLB (boxscores, PBP, odds, social) |
 
+## Analytics & ML
+
+| Guide | Description |
+|-------|-------------|
+| [Analytics Engine](ANALYTICS.md) | **Start here:** Simulation, matchup analysis, ML models, ensemble predictions, and pitch-level modeling |
+
 ## Operations
 
 | Guide | Description |
