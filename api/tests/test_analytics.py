@@ -830,6 +830,154 @@ class TestFullMatchupPipeline:
         assert abs(sum(matchup.probabilities.values()) - 1.0) < 0.01
 
 
+class TestMLBGameSimulator:
+    """Verify MLB plate-appearance game simulation."""
+
+    def test_simulate_game_returns_scores(self) -> None:
+        from app.analytics.sports.mlb.game_simulator import MLBGameSimulator
+
+        sim = MLBGameSimulator()
+        result = sim.simulate_game({}, rng=__import__("random").Random(42))
+        assert "home_score" in result
+        assert "away_score" in result
+        assert result["winner"] in ("home", "away")
+
+    def test_deterministic_with_seed(self) -> None:
+        import random
+        from app.analytics.sports.mlb.game_simulator import MLBGameSimulator
+
+        sim = MLBGameSimulator()
+        ctx = {
+            "home_probabilities": {"strikeout_probability": 0.20, "walk_probability": 0.09,
+                                   "single_probability": 0.16, "double_probability": 0.05,
+                                   "triple_probability": 0.01, "home_run_probability": 0.04},
+            "away_probabilities": {"strikeout_probability": 0.22, "walk_probability": 0.08,
+                                   "single_probability": 0.15, "double_probability": 0.05,
+                                   "triple_probability": 0.01, "home_run_probability": 0.03},
+        }
+        r1 = sim.simulate_game(ctx, rng=random.Random(99))
+        r2 = sim.simulate_game(ctx, rng=random.Random(99))
+        assert r1 == r2
+
+    def test_scores_are_non_negative(self) -> None:
+        import random
+        from app.analytics.sports.mlb.game_simulator import MLBGameSimulator
+
+        sim = MLBGameSimulator()
+        for seed in range(10):
+            result = sim.simulate_game({}, rng=random.Random(seed))
+            assert result["home_score"] >= 0
+            assert result["away_score"] >= 0
+
+
+class TestSimulationRunner:
+    """Verify SimulationRunner aggregation."""
+
+    def test_run_simulations_returns_summary(self) -> None:
+        from app.analytics.core.simulation_runner import SimulationRunner
+        from app.analytics.sports.mlb.game_simulator import MLBGameSimulator
+
+        runner = SimulationRunner()
+        result = runner.run_simulations(MLBGameSimulator(), {}, iterations=100, seed=42)
+        assert "home_win_probability" in result
+        assert "away_win_probability" in result
+        assert "average_home_score" in result
+        assert "average_away_score" in result
+        assert "score_distribution" in result
+        assert result["iterations"] == 100
+
+    def test_probabilities_sum_to_one(self) -> None:
+        from app.analytics.core.simulation_runner import SimulationRunner
+        from app.analytics.sports.mlb.game_simulator import MLBGameSimulator
+
+        runner = SimulationRunner()
+        result = runner.run_simulations(MLBGameSimulator(), {}, iterations=200, seed=7)
+        total = result["home_win_probability"] + result["away_win_probability"]
+        assert abs(total - 1.0) < 0.001
+
+    def test_deterministic_results(self) -> None:
+        from app.analytics.core.simulation_runner import SimulationRunner
+        from app.analytics.sports.mlb.game_simulator import MLBGameSimulator
+
+        runner = SimulationRunner()
+        r1 = runner.run_simulations(MLBGameSimulator(), {}, iterations=50, seed=123)
+        r2 = runner.run_simulations(MLBGameSimulator(), {}, iterations=50, seed=123)
+        assert r1 == r2
+
+    def test_empty_results(self) -> None:
+        from app.analytics.core.simulation_runner import SimulationRunner
+
+        runner = SimulationRunner()
+        result = runner.aggregate_results([])
+        assert result["iterations"] == 0
+
+
+class TestSimulationEngineIntegration:
+    """Verify SimulationEngine routes to MLB simulator."""
+
+    def test_run_simulation_with_seed(self) -> None:
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation({}, iterations=100, seed=42)
+        assert "home_win_probability" in result
+        assert result["iterations"] == 100
+
+    def test_unsupported_sport_returns_empty(self) -> None:
+        engine = SimulationEngine("cricket")
+        result = engine.run_simulation({}, iterations=10)
+        assert result["iterations"] == 0
+
+    def test_simulate_game_backward_compat(self) -> None:
+        engine = SimulationEngine("mlb")
+        result = engine.simulate_game({}, iterations=50)
+        assert isinstance(result, SimulationResult)
+        assert result.iterations == 50
+        assert result.sport == "mlb"
+
+
+class TestFullSimulationPipeline:
+    """Verify Aggregation → Metrics → Profiles → Matchups → Simulation."""
+
+    def test_end_to_end_with_simulation(self) -> None:
+        from app.analytics.core.aggregation_engine import AggregationEngine
+        from app.analytics.core.matchup_engine import MatchupEngine
+        from app.analytics.core.profile_builder import ProfileBuilder
+
+        # Aggregate
+        agg = AggregationEngine("mlb")
+        batter_agg = agg.aggregate_player_history("b1", [
+            {"zone_swing_pct": 0.75, "outside_swing_pct": 0.30,
+             "zone_contact_pct": 0.88, "outside_contact_pct": 0.60,
+             "avg_exit_velocity": 92.0, "hard_hit_pct": 0.45,
+             "barrel_pct": 0.11},
+        ])
+
+        # Build profiles
+        builder = ProfileBuilder("mlb")
+        batter_profile = builder.build_player_profile("b1", batter_agg)
+        pitcher_profile = PlayerProfile(
+            player_id="p1", sport="mlb",
+            metrics={"contact_suppression": 0.10, "strikeout_rate": 0.28,
+                     "walk_rate": 0.07, "power_suppression": 0.05},
+        )
+
+        # Matchup probabilities
+        matchup_engine = MatchupEngine("mlb")
+        matchup = matchup_engine.calculate_player_vs_player(
+            batter_profile, pitcher_profile
+        )
+
+        # Simulate using matchup probabilities
+        game_context = {
+            "home_probabilities": matchup.probabilities,
+            "away_probabilities": matchup.probabilities,
+        }
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(game_context, iterations=500, seed=42)
+        assert result["home_win_probability"] >= 0
+        assert result["average_home_score"] > 0
+        assert result["iterations"] == 500
+
+
 class TestAnalyticsService:
     """Verify service layer wiring."""
 
