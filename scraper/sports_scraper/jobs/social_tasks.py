@@ -196,7 +196,6 @@ def collect_team_social(
     from ..services.job_runs import track_job_run
     from ..social.team_collector import TeamTweetCollector
     from ..social.tweet_mapper import map_unmapped_tweets
-    from ..utils.datetime_utils import cap_social_date_range
     from ..utils.redis_lock import acquire_redis_lock, release_redis_lock
 
     lock_name = f"lock:collect_team_social:{league_code}"
@@ -209,8 +208,9 @@ def collect_team_social(
         start = date.fromisoformat(start_date)
         end = date.fromisoformat(end_date)
 
-        # Re-cap date range at execution time (stale queued tasks may carry old ranges)
-        start, end = cap_social_date_range(start, end)
+        # No clamping — honour the exact range the caller requested.
+        # cap_social_date_range was destroying backfill ranges by clamping
+        # to yesterday+today.
 
         logger.info(
             "collect_team_social_start",

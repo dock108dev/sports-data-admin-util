@@ -60,6 +60,14 @@ function isFutureGame(gameDate: string): boolean {
   return d.getTime() > Date.now();
 }
 
+function isPastGame(gameDate: string): boolean {
+  const d = new Date(gameDate);
+  // Game date is at midnight — consider it "past" once we're past the end of that day
+  const endOfDay = new Date(d);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+  return Date.now() > endOfDay.getTime();
+}
+
 function isStale(timestamp: string | null | undefined, field: DataField): boolean {
   if (!timestamp) return false;
   const threshold = STALE_THRESHOLD_MS[field] ?? 7 * 24 * 60 * 60 * 1000;
@@ -92,8 +100,8 @@ export function deriveDataStatus(
     return { status: "missing", reason: MISSING_REASONS[field] };
   }
 
-  // Has data — check staleness
-  if (lastUpdated && isStale(lastUpdated, field)) {
+  // Has data — check staleness (but not for past/completed games where data is final)
+  if (!isPastGame(gameDate) && lastUpdated && isStale(lastUpdated, field)) {
     return {
       status: "stale",
       reason: `Last updated ${formatAgo(lastUpdated)}`,
