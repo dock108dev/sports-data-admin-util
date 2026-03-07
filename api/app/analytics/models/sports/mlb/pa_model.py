@@ -87,13 +87,27 @@ class MLBPlateAppearanceModel(BaseModel):
         return self._predict_rule_based(features)
 
     def _predict_with_model(self, features: dict[str, Any]) -> dict[str, float]:
-        """Use the loaded ML model for prediction."""
-        feature_vector = [features.get(k, 0.0) for k in FEATURE_KEYS]
+        """Use the loaded ML model for prediction.
+
+        Builds a feature vector from the input dict. If the model
+        expects more features than the legacy ``FEATURE_KEYS``, uses
+        all float values from the dict in sorted key order.
+        """
+        n_expected = getattr(self._model, "n_features_in_", len(FEATURE_KEYS))
+
+        if n_expected == len(FEATURE_KEYS):
+            feature_vector = [features.get(k, 0.0) for k in FEATURE_KEYS]
+        else:
+            # Use all numeric features in sorted order (from FeatureBuilder)
+            feature_vector = [
+                float(features.get(k, 0.0))
+                for k in sorted(features.keys())
+            ]
 
         if hasattr(self._model, "predict_proba"):
             proba = self._model.predict_proba([feature_vector])[0]
-            events = ["strikeout", "out", "walk", "single", "double", "triple", "home_run"]
-            return dict(zip(events, [round(float(p), 4) for p in proba]))
+            classes = list(self._model.classes_)
+            return {str(c): round(float(p), 4) for c, p in zip(classes, proba)}
 
         # Fallback: model only has predict()
         return self._predict_rule_based(features)

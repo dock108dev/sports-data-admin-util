@@ -21,4 +21,5 @@ export const ROUTES = {
   ANALYTICS_MATCHUP: "/admin/analytics/matchup",
   ANALYTICS_SIMULATOR: "/admin/analytics/simulator",
   ANALYTICS_MODEL_PERFORMANCE: "/admin/analytics/model-performance",
+  ANALYTICS_FEATURE_CONFIG: "/admin/analytics/feature-config",
 } as const;

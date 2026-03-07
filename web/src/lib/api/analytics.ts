@@ -161,6 +161,44 @@ export interface ModelPerformance {
   }[];
 }
 
+export interface FeatureConfigResponse {
+  model: string;
+  sport: string;
+  enabled_features: string[];
+  weights: Record<string, number>;
+  features: Record<string, { enabled: boolean; weight: number }>;
+}
+
+export interface FeatureConfigListResponse {
+  available: string[];
+  registered: { name: string; model: string; sport: string; feature_count: number }[];
+}
+
+export async function getFeatureConfig(
+  model: string,
+): Promise<FeatureConfigResponse> {
+  const params = new URLSearchParams({ model });
+  return fetchJson<FeatureConfigResponse>(
+    `${base()}/api/analytics/feature-config?${params}`,
+  );
+}
+
+export async function listFeatureConfigs(): Promise<FeatureConfigListResponse> {
+  return fetchJson<FeatureConfigListResponse>(
+    `${base()}/api/analytics/feature-configs`,
+  );
+}
+
+export async function saveFeatureConfig(
+  config: { model: string; sport: string; features: Record<string, { enabled: boolean; weight: number }> },
+): Promise<{ status: string; model: string; enabled_features: string[] }> {
+  return fetchJson(`${base()}/api/analytics/feature-config`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+}
+
 export async function getModelPerformance(
   sport?: string,
 ): Promise<ModelPerformance> {

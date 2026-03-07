@@ -31,6 +31,11 @@ const sections = [
     title: "Model Performance",
     desc: "Track prediction accuracy, calibration, and model bias",
   },
+  {
+    href: ROUTES.ANALYTICS_FEATURE_CONFIG,
+    title: "Feature Config",
+    desc: "Manage ML feature selection, weighting, and experimentation",
+  },
 ];
 
 export default function AnalyticsPage() {

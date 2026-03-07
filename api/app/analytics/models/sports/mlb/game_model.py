@@ -75,8 +75,21 @@ class MLBGameModel(BaseModel):
         }
 
     def _predict_with_model(self, features: dict[str, Any]) -> dict[str, Any]:
-        """Use the loaded ML model."""
-        feature_vector = [features.get(k, 0.0) for k in FEATURE_KEYS]
+        """Use the loaded ML model.
+
+        Builds a feature vector from the input dict. If the model
+        expects more features than the legacy ``FEATURE_KEYS``, uses
+        all float values from the dict in sorted key order.
+        """
+        n_expected = getattr(self._model, "n_features_in_", len(FEATURE_KEYS))
+
+        if n_expected == len(FEATURE_KEYS):
+            feature_vector = [features.get(k, 0.0) for k in FEATURE_KEYS]
+        else:
+            feature_vector = [
+                float(features.get(k, 0.0))
+                for k in sorted(features.keys())
+            ]
 
         if hasattr(self._model, "predict_proba"):
             proba = self._model.predict_proba([feature_vector])[0]

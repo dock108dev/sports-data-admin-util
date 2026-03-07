@@ -146,6 +146,9 @@ class SimulationEngine:
     ) -> dict[str, Any]:
         """Load an ML model and inject its predictions into the context.
 
+        Uses the ``ModelInferenceEngine`` for cached model loading and
+        feature building. Falls back gracefully on any failure.
+
         Args:
             game_context: Current game context.
             model_type: Model type to load (e.g., ``"plate_appearance"``).
@@ -154,24 +157,22 @@ class SimulationEngine:
             Updated game context with ML-generated probabilities.
         """
         try:
-            from app.analytics.models.core.model_registry import ModelRegistry
-            registry = ModelRegistry()
-            model = registry.get_active_model(self.sport, model_type)
-            if model is None:
+            from app.analytics.inference.model_inference_engine import (
+                ModelInferenceEngine,
+            )
+
+            engine = ModelInferenceEngine()
+            profiles = game_context.get("profiles", {})
+            sim_probs = engine.predict_for_simulation(
+                self.sport, model_type, profiles,
+            )
+
+            if not sim_probs:
                 logger.warning(
                     "ml_model_not_found",
                     extra={"sport": self.sport, "model_type": model_type},
                 )
                 return game_context
-
-            features = game_context.get("features", {})
-            probs = model.predict_proba(features)
-
-            # Convert to simulation probability keys if the model supports it
-            if hasattr(model, "to_simulation_probs"):
-                sim_probs = model.to_simulation_probs(probs)
-            else:
-                sim_probs = probs
 
             # Apply to both home and away unless specific overrides exist
             if "home_probabilities" not in game_context:

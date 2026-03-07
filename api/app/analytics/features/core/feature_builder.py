@@ -2,13 +2,22 @@
 
 Routes to sport-specific feature builders via a registry pattern.
 Accepts analytics profiles and model type, returning a ``FeatureVector``
-ready for ML model consumption.
+ready for ML model consumption. Supports configuration-driven feature
+selection and weighting via ``FeatureConfig``.
 
 Usage::
 
     builder = FeatureBuilder()
     vec = builder.build_features("mlb", profiles, "plate_appearance")
     arr = vec.to_array()
+
+With configuration::
+
+    from app.analytics.features.config.feature_config_loader import FeatureConfigLoader
+    loader = FeatureConfigLoader()
+    config = loader.load_config("mlb_pa_model")
+    vec = builder.build_features("mlb", profiles, "plate_appearance",
+                                 config=config.to_builder_config())
 """
 
 from __future__ import annotations
@@ -53,8 +62,9 @@ class FeatureBuilder:
                 ``pitcher_profile``).
             model_type: Target model type (e.g.,
                 ``"plate_appearance"``, ``"game"``).
-            config: Optional feature configuration. Keys are feature
-                names; set ``enabled: false`` to exclude.
+            config: Optional feature configuration dict. Keys are
+                feature names; each value is a dict with ``enabled``
+                (bool) and optional ``weight`` (float).
 
         Returns:
             ``FeatureVector`` with features in deterministic order.
@@ -67,15 +77,8 @@ class FeatureBuilder:
 
         vec = builder.build_features(entity_profiles, model_type)
 
-        # Apply config filtering
         if config:
-            filtered = {
-                k: v for k, v in vec.to_dict().items()
-                if config.get(k, {}).get("enabled", True) is not False
-            }
-            return FeatureVector(filtered, feature_order=[
-                n for n in vec.feature_names if n in filtered
-            ])
+            vec = _apply_config(vec, config)
 
         return vec
 
@@ -123,3 +126,22 @@ class FeatureBuilder:
         cls = getattr(mod, class_name)
         self._builders[sport] = cls()
         return self._builders[sport]
+
+
+def _apply_config(vec: FeatureVector, config: dict[str, Any]) -> FeatureVector:
+    """Filter disabled features and apply weights from config."""
+    raw = vec.to_dict()
+    order = vec.feature_names
+
+    filtered: dict[str, float] = {}
+    new_order: list[str] = []
+
+    for name in order:
+        cfg = config.get(name, {})
+        if cfg.get("enabled", True) is False:
+            continue
+        weight = float(cfg.get("weight", 1.0))
+        filtered[name] = raw.get(name, 0.0) * weight
+        new_order.append(name)
+
+    return FeatureVector(filtered, feature_order=new_order)

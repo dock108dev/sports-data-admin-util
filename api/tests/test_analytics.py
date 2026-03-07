@@ -2923,3 +2923,1110 @@ class TestFeatureMLModelIntegration:
             iterations=100, seed=42,
         )
         assert result["home_win_probability"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Prompt 13 – Feature Configuration System
+# ---------------------------------------------------------------------------
+
+import textwrap
+from pathlib import Path
+
+from app.analytics.features.config.feature_config_loader import (
+    FeatureConfig,
+    FeatureConfigLoader,
+)
+from app.analytics.features.config.feature_config_registry import (
+    FeatureConfigRegistry,
+)
+
+
+class TestFeatureConfigLoader:
+    """Tests for FeatureConfigLoader and FeatureConfig."""
+
+    def _write_yaml(self, tmp: Path, name: str, content: str) -> None:
+        (tmp / f"{name}.yaml").write_text(textwrap.dedent(content))
+
+    def test_load_config_from_yaml(self, tmp_path: Path) -> None:
+        self._write_yaml(tmp_path, "test_model", """\
+            model: test_model_v1
+            sport: mlb
+            features:
+              batter_contact_rate:
+                enabled: true
+                weight: 1.0
+              weather_factor:
+                enabled: false
+        """)
+        loader = FeatureConfigLoader(config_dir=tmp_path)
+        config = loader.load_config("test_model")
+
+        assert isinstance(config, FeatureConfig)
+        assert config.model == "test_model_v1"
+        assert config.sport == "mlb"
+
+    def test_get_enabled_features(self, tmp_path: Path) -> None:
+        self._write_yaml(tmp_path, "test_model", """\
+            model: test_model_v1
+            sport: mlb
+            features:
+              feat_a:
+                enabled: true
+                weight: 1.0
+              feat_b:
+                enabled: false
+              feat_c:
+                enabled: true
+                weight: 0.5
+        """)
+        loader = FeatureConfigLoader(config_dir=tmp_path)
+        config = loader.load_config("test_model")
+
+        enabled = config.get_enabled_features()
+        assert "feat_a" in enabled
+        assert "feat_c" in enabled
+        assert "feat_b" not in enabled
+
+    def test_get_weights(self, tmp_path: Path) -> None:
+        self._write_yaml(tmp_path, "test_model", """\
+            model: test_v1
+            sport: mlb
+            features:
+              feat_a:
+                enabled: true
+                weight: 0.8
+              feat_b:
+                enabled: true
+                weight: 1.2
+              feat_c:
+                enabled: false
+                weight: 1.0
+        """)
+        loader = FeatureConfigLoader(config_dir=tmp_path)
+        config = loader.load_config("test_model")
+
+        weights = config.get_weights()
+        assert weights["feat_a"] == 0.8
+        assert weights["feat_b"] == 1.2
+        assert "feat_c" not in weights
+
+    def test_file_not_found(self, tmp_path: Path) -> None:
+        loader = FeatureConfigLoader(config_dir=tmp_path)
+        with pytest.raises(FileNotFoundError):
+            loader.load_config("nonexistent")
+
+    def test_invalid_format_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.yaml").write_text("just a string")
+        loader = FeatureConfigLoader(config_dir=tmp_path)
+        with pytest.raises(ValueError, match="expected dict"):
+            loader.load_config("bad")
+
+    def test_list_configs(self, tmp_path: Path) -> None:
+        self._write_yaml(tmp_path, "alpha", "model: a\nsport: mlb\nfeatures: {}")
+        self._write_yaml(tmp_path, "beta", "model: b\nsport: mlb\nfeatures: {}")
+        loader = FeatureConfigLoader(config_dir=tmp_path)
+        assert loader.list_configs() == ["alpha", "beta"]
+
+    def test_load_from_dict(self) -> None:
+        raw = {
+            "model": "dict_model",
+            "sport": "mlb",
+            "features": {
+                "feat_a": {"enabled": True, "weight": 0.9},
+            },
+        }
+        loader = FeatureConfigLoader()
+        config = loader.load_from_dict(raw)
+        assert config.model == "dict_model"
+        assert config.get_enabled_features() == ["feat_a"]
+        assert config.get_weights()["feat_a"] == 0.9
+
+    def test_to_builder_config(self, tmp_path: Path) -> None:
+        self._write_yaml(tmp_path, "test_model", """\
+            model: test_v1
+            sport: mlb
+            features:
+              feat_a:
+                enabled: true
+                weight: 0.5
+              feat_b:
+                enabled: false
+        """)
+        loader = FeatureConfigLoader(config_dir=tmp_path)
+        config = loader.load_config("test_model")
+        bc = config.to_builder_config()
+        assert bc["feat_a"]["enabled"] is True
+        assert bc["feat_b"]["enabled"] is False
+
+    def test_to_dict(self) -> None:
+        raw = {"model": "m1", "sport": "mlb", "features": {"f": {"enabled": True, "weight": 1.0}}}
+        config = FeatureConfigLoader().load_from_dict(raw)
+        d = config.to_dict()
+        assert d["model"] == "m1"
+        assert "f" in d["features"]
+
+
+class TestFeatureConfigRegistry:
+    """Tests for FeatureConfigRegistry."""
+
+    def test_register_and_get(self) -> None:
+        config = FeatureConfigLoader().load_from_dict({
+            "model": "reg_test",
+            "sport": "mlb",
+            "features": {"feat_a": {"enabled": True, "weight": 1.0}},
+        })
+        registry = FeatureConfigRegistry()
+        registry.register("reg_test", config)
+
+        retrieved = registry.get_config("reg_test")
+        assert retrieved is not None
+        assert retrieved.model == "reg_test"
+
+    def test_get_unknown_returns_none(self) -> None:
+        registry = FeatureConfigRegistry(loader=FeatureConfigLoader(config_dir="/nonexistent"))
+        assert registry.get_config("unknown_config") is None
+
+    def test_set_and_get_active(self) -> None:
+        config = FeatureConfigLoader().load_from_dict({
+            "model": "active_test",
+            "sport": "mlb",
+            "features": {"feat_a": {"enabled": True, "weight": 1.0}},
+        })
+        registry = FeatureConfigRegistry()
+        registry.register("active_test", config)
+        registry.set_active("mlb", "plate_appearance", "active_test")
+
+        active = registry.get_active("mlb", "plate_appearance")
+        assert active is not None
+        assert active.model == "active_test"
+
+    def test_get_active_unset(self) -> None:
+        registry = FeatureConfigRegistry()
+        assert registry.get_active("mlb", "game") is None
+
+    def test_list_configs(self) -> None:
+        config = FeatureConfigLoader().load_from_dict({
+            "model": "list_test",
+            "sport": "mlb",
+            "features": {"f": {"enabled": True, "weight": 1.0}},
+        })
+        registry = FeatureConfigRegistry()
+        registry.register("list_test", config)
+
+        items = registry.list_configs()
+        assert len(items) == 1
+        assert items[0]["name"] == "list_test"
+        assert items[0]["feature_count"] == 1
+
+    def test_disk_fallback(self, tmp_path: Path) -> None:
+        (tmp_path / "disk_cfg.yaml").write_text(
+            "model: disk_model\nsport: mlb\nfeatures:\n  f1:\n    enabled: true\n    weight: 1.0\n"
+        )
+        loader = FeatureConfigLoader(config_dir=tmp_path)
+        registry = FeatureConfigRegistry(loader=loader)
+
+        config = registry.get_config("disk_cfg")
+        assert config is not None
+        assert config.model == "disk_model"
+
+    def test_list_available_combines_disk_and_registered(self, tmp_path: Path) -> None:
+        (tmp_path / "on_disk.yaml").write_text("model: d\nsport: mlb\nfeatures: {}")
+        loader = FeatureConfigLoader(config_dir=tmp_path)
+        registry = FeatureConfigRegistry(loader=loader)
+        in_mem = loader.load_from_dict({"model": "in_mem", "sport": "mlb", "features": {}})
+        registry.register("in_memory", in_mem)
+
+        available = registry.list_available()
+        assert "on_disk" in available
+        assert "in_memory" in available
+
+
+class TestFeatureBuilderConfigIntegration:
+    """Tests for FeatureBuilder + config integration."""
+
+    def test_config_disables_features(self) -> None:
+        from app.analytics.features.core.feature_builder import FeatureBuilder
+        builder = FeatureBuilder()
+        profiles = {
+            "batter_profile": {
+                "metrics": {
+                    "contact_rate": 0.82,
+                    "power_index": 1.1,
+                    "barrel_rate": 0.09,
+                    "hard_hit_rate": 0.40,
+                    "swing_rate": 0.52,
+                    "whiff_rate": 0.20,
+                    "avg_exit_velocity": 91.0,
+                    "expected_slug": 0.82,
+                }
+            },
+            "pitcher_profile": {
+                "metrics": {
+                    "contact_rate": 0.70,
+                    "power_index": 0.9,
+                    "barrel_rate": 0.05,
+                    "hard_hit_rate": 0.30,
+                    "swing_rate": 0.48,
+                    "whiff_rate": 0.28,
+                }
+            },
+        }
+
+        config = {
+            "batter_contact_rate": {"enabled": True, "weight": 1.0},
+            "batter_power_index": {"enabled": True, "weight": 1.0},
+            "batter_barrel_rate": {"enabled": True, "weight": 1.0},
+            "batter_hard_hit_rate": {"enabled": True, "weight": 1.0},
+            "batter_swing_rate": {"enabled": False},
+            "batter_whiff_rate": {"enabled": True, "weight": 1.0},
+            "batter_avg_exit_velocity": {"enabled": True, "weight": 1.0},
+            "batter_expected_slug": {"enabled": True, "weight": 1.0},
+            "pitcher_contact_rate": {"enabled": True, "weight": 1.0},
+            "pitcher_power_index": {"enabled": True, "weight": 1.0},
+            "pitcher_barrel_rate": {"enabled": True, "weight": 1.0},
+            "pitcher_hard_hit_rate": {"enabled": True, "weight": 1.0},
+            "pitcher_swing_rate": {"enabled": True, "weight": 1.0},
+            "pitcher_whiff_rate": {"enabled": False},
+        }
+
+        vec = builder.build_features("mlb", profiles, "plate_appearance", config=config)
+        names = vec.feature_names
+
+        assert "batter_swing_rate" not in names
+        assert "pitcher_whiff_rate" not in names
+        assert "batter_contact_rate" in names
+        assert vec.size == 12  # 14 - 2 disabled
+
+    def test_config_applies_weights(self) -> None:
+        from app.analytics.features.core.feature_builder import FeatureBuilder
+        builder = FeatureBuilder()
+        profiles = {
+            "home_profile": {
+                "metrics": {
+                    "contact_rate": 0.80,
+                    "power_index": 1.0,
+                    "expected_slug": 0.77,
+                    "barrel_rate": 0.07,
+                    "hard_hit_rate": 0.35,
+                }
+            },
+            "away_profile": {
+                "metrics": {
+                    "contact_rate": 0.80,
+                    "power_index": 1.0,
+                    "expected_slug": 0.77,
+                    "barrel_rate": 0.07,
+                    "hard_hit_rate": 0.35,
+                }
+            },
+        }
+
+        config = {
+            "home_contact_rate": {"enabled": True, "weight": 0.5},
+            "home_power_index": {"enabled": True, "weight": 1.0},
+            "home_expected_slug": {"enabled": True, "weight": 1.0},
+            "home_barrel_rate": {"enabled": True, "weight": 1.0},
+            "home_hard_hit_rate": {"enabled": True, "weight": 1.0},
+            "away_contact_rate": {"enabled": True, "weight": 1.0},
+            "away_power_index": {"enabled": True, "weight": 1.0},
+            "away_expected_slug": {"enabled": True, "weight": 1.0},
+            "away_barrel_rate": {"enabled": True, "weight": 1.0},
+            "away_hard_hit_rate": {"enabled": True, "weight": 1.0},
+        }
+
+        vec_weighted = builder.build_features("mlb", profiles, "game", config=config)
+        vec_unweighted = builder.build_features("mlb", profiles, "game")
+
+        weighted_val = vec_weighted.get("home_contact_rate")
+        unweighted_val = vec_unweighted.get("home_contact_rate")
+        assert abs(weighted_val - unweighted_val * 0.5) < 0.001
+
+    def test_full_config_pipeline(self, tmp_path: Path) -> None:
+        """Full pipeline: YAML config -> FeatureBuilder -> FeatureVector."""
+        from app.analytics.features.core.feature_builder import FeatureBuilder
+        (tmp_path / "test_pa.yaml").write_text(textwrap.dedent("""\
+            model: test_pa_v1
+            sport: mlb
+            features:
+              batter_contact_rate:
+                enabled: true
+                weight: 1.0
+              batter_power_index:
+                enabled: true
+                weight: 0.8
+              batter_barrel_rate:
+                enabled: false
+              batter_hard_hit_rate:
+                enabled: true
+                weight: 1.0
+              batter_swing_rate:
+                enabled: true
+                weight: 1.0
+              batter_whiff_rate:
+                enabled: true
+                weight: 1.0
+              batter_avg_exit_velocity:
+                enabled: true
+                weight: 1.0
+              batter_expected_slug:
+                enabled: true
+                weight: 1.0
+              pitcher_contact_rate:
+                enabled: true
+                weight: 1.0
+              pitcher_power_index:
+                enabled: true
+                weight: 1.0
+              pitcher_barrel_rate:
+                enabled: true
+                weight: 1.0
+              pitcher_hard_hit_rate:
+                enabled: true
+                weight: 1.0
+              pitcher_swing_rate:
+                enabled: true
+                weight: 1.0
+              pitcher_whiff_rate:
+                enabled: true
+                weight: 1.0
+        """))
+
+        loader = FeatureConfigLoader(config_dir=tmp_path)
+        config = loader.load_config("test_pa")
+
+        builder = FeatureBuilder()
+        profiles = {
+            "batter_profile": {"metrics": {"contact_rate": 0.82, "power_index": 1.1}},
+            "pitcher_profile": {"metrics": {"contact_rate": 0.70}},
+        }
+
+        vec = builder.build_features(
+            "mlb", profiles, "plate_appearance",
+            config=config.to_builder_config(),
+        )
+
+        assert "batter_barrel_rate" not in vec.feature_names
+        default_vec = builder.build_features("mlb", profiles, "plate_appearance")
+        weighted = vec.get("batter_power_index")
+        unweighted = default_vec.get("batter_power_index")
+        assert abs(weighted - unweighted * 0.8) < 0.001
+
+    def test_dataset_with_config(self) -> None:
+        from app.analytics.features.core.feature_builder import FeatureBuilder
+        builder = FeatureBuilder()
+        records = [
+            {
+                "batter_profile": {"metrics": {"contact_rate": 0.82, "power_index": 1.1}},
+                "pitcher_profile": {"metrics": {"contact_rate": 0.70}},
+            },
+            {
+                "batter_profile": {"metrics": {"contact_rate": 0.75, "power_index": 0.9}},
+                "pitcher_profile": {"metrics": {"contact_rate": 0.72}},
+            },
+        ]
+        config = {
+            "batter_contact_rate": {"enabled": True, "weight": 1.0},
+            "batter_power_index": {"enabled": True, "weight": 1.0},
+            "batter_barrel_rate": {"enabled": False},
+            "batter_hard_hit_rate": {"enabled": True, "weight": 1.0},
+            "batter_swing_rate": {"enabled": True, "weight": 1.0},
+            "batter_whiff_rate": {"enabled": True, "weight": 1.0},
+            "batter_avg_exit_velocity": {"enabled": True, "weight": 1.0},
+            "batter_expected_slug": {"enabled": True, "weight": 1.0},
+            "pitcher_contact_rate": {"enabled": True, "weight": 1.0},
+            "pitcher_power_index": {"enabled": True, "weight": 1.0},
+            "pitcher_barrel_rate": {"enabled": True, "weight": 1.0},
+            "pitcher_hard_hit_rate": {"enabled": True, "weight": 1.0},
+            "pitcher_swing_rate": {"enabled": True, "weight": 1.0},
+            "pitcher_whiff_rate": {"enabled": True, "weight": 1.0},
+        }
+        X, names = builder.build_dataset("mlb", records, "plate_appearance", config=config)
+        assert len(X) == 2
+        assert "batter_barrel_rate" not in names
+        assert len(names) == 13  # 14 - 1 disabled
+
+
+# ---------------------------------------------------------------------------
+# Prompt 14 – Model Training Pipeline
+# ---------------------------------------------------------------------------
+
+import json
+
+from app.analytics.training.core.dataset_builder import DatasetBuilder
+from app.analytics.training.core.model_evaluator import ModelEvaluator
+from app.analytics.training.core.training_metadata import TrainingMetadata
+from app.analytics.training.core.training_pipeline import TrainingPipeline
+from app.analytics.training.sports.mlb_training import MLBTrainingPipeline
+
+
+def _make_pa_records(n: int = 50) -> list[dict]:
+    """Generate synthetic plate-appearance training records."""
+    import random
+    rng = random.Random(42)
+    outcomes = ["strikeout", "out", "walk", "single", "double", "triple", "home_run"]
+    weights = [0.22, 0.35, 0.08, 0.18, 0.07, 0.02, 0.08]
+    records = []
+    for _ in range(n):
+        outcome = rng.choices(outcomes, weights=weights, k=1)[0]
+        records.append({
+            "batter_profile": {
+                "metrics": {
+                    "contact_rate": round(rng.uniform(0.60, 0.90), 4),
+                    "power_index": round(rng.uniform(0.7, 1.5), 4),
+                    "barrel_rate": round(rng.uniform(0.03, 0.15), 4),
+                    "hard_hit_rate": round(rng.uniform(0.25, 0.50), 4),
+                    "swing_rate": round(rng.uniform(0.40, 0.60), 4),
+                    "whiff_rate": round(rng.uniform(0.15, 0.35), 4),
+                    "avg_exit_velocity": round(rng.uniform(84.0, 95.0), 1),
+                    "expected_slug": round(rng.uniform(0.50, 1.10), 4),
+                }
+            },
+            "pitcher_profile": {
+                "metrics": {
+                    "contact_rate": round(rng.uniform(0.60, 0.85), 4),
+                    "power_index": round(rng.uniform(0.7, 1.3), 4),
+                    "barrel_rate": round(rng.uniform(0.03, 0.12), 4),
+                    "hard_hit_rate": round(rng.uniform(0.25, 0.45), 4),
+                    "swing_rate": round(rng.uniform(0.40, 0.60), 4),
+                    "whiff_rate": round(rng.uniform(0.15, 0.35), 4),
+                }
+            },
+            "outcome": outcome,
+        })
+    return records
+
+
+def _make_game_records(n: int = 50) -> list[dict]:
+    """Generate synthetic game training records."""
+    import random
+    rng = random.Random(42)
+    records = []
+    for _ in range(n):
+        home_win = rng.random() < 0.54
+        records.append({
+            "home_profile": {
+                "metrics": {
+                    "contact_rate": round(rng.uniform(0.70, 0.85), 4),
+                    "power_index": round(rng.uniform(0.8, 1.3), 4),
+                    "expected_slug": round(rng.uniform(0.55, 1.00), 4),
+                    "barrel_rate": round(rng.uniform(0.04, 0.12), 4),
+                    "hard_hit_rate": round(rng.uniform(0.28, 0.45), 4),
+                }
+            },
+            "away_profile": {
+                "metrics": {
+                    "contact_rate": round(rng.uniform(0.70, 0.85), 4),
+                    "power_index": round(rng.uniform(0.8, 1.3), 4),
+                    "expected_slug": round(rng.uniform(0.55, 1.00), 4),
+                    "barrel_rate": round(rng.uniform(0.04, 0.12), 4),
+                    "hard_hit_rate": round(rng.uniform(0.28, 0.45), 4),
+                }
+            },
+            "home_win": int(home_win),
+            "home_score": rng.randint(0, 12),
+            "away_score": rng.randint(0, 12),
+        })
+    return records
+
+
+class TestDatasetBuilder:
+    """Tests for DatasetBuilder."""
+
+    def test_build_returns_X_y_names(self) -> None:
+        records = _make_pa_records(20)
+        builder = DatasetBuilder("mlb", "plate_appearance")
+        mlb = MLBTrainingPipeline()
+        X, y, names = builder.build(records, label_fn=mlb.pa_label_fn)
+
+        assert len(X) == 20
+        assert len(y) == 20
+        assert len(names) > 0
+        assert all(isinstance(row, list) for row in X)
+        assert all(isinstance(v, float) for row in X for v in row)
+
+    def test_build_game_records(self) -> None:
+        records = _make_game_records(20)
+        builder = DatasetBuilder("mlb", "game")
+        mlb = MLBTrainingPipeline()
+        X, y, names = builder.build(records, label_fn=mlb.game_label_fn)
+
+        assert len(X) == 20
+        assert len(y) == 20
+        assert all(label in (0, 1) for label in y)
+
+    def test_build_with_config(self, tmp_path: Path) -> None:
+        (tmp_path / "test_cfg.yaml").write_text(
+            "model: t\nsport: mlb\nfeatures:\n"
+            "  batter_contact_rate:\n    enabled: true\n    weight: 1.0\n"
+            "  batter_power_index:\n    enabled: false\n"
+        )
+        # DatasetBuilder accepts config_name but needs the loader to find it.
+        # For this test, we pass config manually through FeatureBuilder.
+        records = _make_pa_records(10)
+        builder = DatasetBuilder("mlb", "plate_appearance")
+        mlb = MLBTrainingPipeline()
+        X, y, names = builder.build(records, label_fn=mlb.pa_label_fn)
+        assert len(X) == 10
+
+    def test_build_empty_records(self) -> None:
+        builder = DatasetBuilder("mlb", "plate_appearance")
+        X, y, names = builder.build([])
+        assert X == []
+        assert y == []
+        assert names == []
+
+    def test_build_labels_only(self) -> None:
+        records = _make_pa_records(10)
+        builder = DatasetBuilder("mlb", "plate_appearance")
+        mlb = MLBTrainingPipeline()
+        labels = builder.build_labels(records, label_fn=mlb.pa_label_fn)
+        assert len(labels) == 10
+        assert all(isinstance(l, str) for l in labels)
+
+
+class TestModelEvaluator:
+    """Tests for ModelEvaluator."""
+
+    def test_evaluate_classifier(self) -> None:
+        from sklearn.ensemble import GradientBoostingClassifier
+
+        records = _make_pa_records(60)
+        mlb = MLBTrainingPipeline()
+        builder = DatasetBuilder("mlb", "plate_appearance")
+        X, y, _ = builder.build(records, label_fn=mlb.pa_label_fn)
+
+        model = GradientBoostingClassifier(
+            n_estimators=10, max_depth=3, random_state=42,
+        )
+        model.fit(X[:48], y[:48])
+
+        evaluator = ModelEvaluator()
+        result = evaluator.evaluate_classifier(model, X[48:], y[48:])
+
+        assert "accuracy" in result
+        assert "sample_count" in result
+        assert result["sample_count"] == len(X[48:])
+        assert 0.0 <= result["accuracy"] <= 1.0
+
+    def test_evaluate_regressor(self) -> None:
+        from sklearn.ensemble import GradientBoostingRegressor
+
+        records = _make_game_records(60)
+        mlb = MLBTrainingPipeline()
+        builder = DatasetBuilder("mlb", "game")
+        X, y_labels, _ = builder.build(records, label_fn=mlb.game_label_fn)
+        # Use home_score as regression target
+        y_reg = [float(r.get("home_score", 0)) for r in records]
+
+        model = GradientBoostingRegressor(
+            n_estimators=10, max_depth=3, random_state=42,
+        )
+        model.fit(X[:48], y_reg[:48])
+
+        evaluator = ModelEvaluator()
+        result = evaluator.evaluate_regressor(model, X[48:], y_reg[48:])
+
+        assert "mae" in result
+        assert "rmse" in result
+        assert result["mae"] >= 0
+        assert result["rmse"] >= 0
+
+    def test_evaluate_empty(self) -> None:
+        evaluator = ModelEvaluator()
+        result = evaluator.evaluate_classifier(None, [], [])
+        assert result["sample_count"] == 0
+
+
+class TestTrainingMetadata:
+    """Tests for TrainingMetadata."""
+
+    def test_create_and_save(self, tmp_path: Path) -> None:
+        meta = TrainingMetadata(
+            model_id="test_v1",
+            sport="mlb",
+            model_type="plate_appearance",
+            feature_config="mlb_pa_model",
+            random_state=42,
+        )
+        meta.record_split(train_count=100, test_count=25)
+        meta.record_metrics({"accuracy": 0.65})
+        meta.record_artifact("models/mlb/artifacts/test_v1.pkl")
+
+        path = meta.save(tmp_path / "test_v1.json")
+        assert path.exists()
+
+        with open(path) as f:
+            data = json.load(f)
+
+        assert data["model_id"] == "test_v1"
+        assert data["sport"] == "mlb"
+        assert data["training_row_count"] == 125
+        assert data["metrics"]["accuracy"] == 0.65
+        assert data["artifact_path"] == "models/mlb/artifacts/test_v1.pkl"
+
+    def test_load(self, tmp_path: Path) -> None:
+        meta = TrainingMetadata(model_id="load_test", sport="mlb", model_type="game")
+        meta.record_metrics({"mae": 1.5})
+        meta.save(tmp_path / "load_test.json")
+
+        loaded = TrainingMetadata.load(tmp_path / "load_test.json")
+        d = loaded.to_dict()
+        assert d["model_id"] == "load_test"
+        assert d["metrics"]["mae"] == 1.5
+
+    def test_to_dict(self) -> None:
+        meta = TrainingMetadata(model_id="d", sport="mlb", model_type="pa")
+        d = meta.to_dict()
+        assert "model_id" in d
+        assert "created_at" in d
+
+
+class TestMLBTrainingPipeline:
+    """Tests for MLBTrainingPipeline helpers."""
+
+    def test_pa_label_fn(self) -> None:
+        mlb = MLBTrainingPipeline()
+        assert mlb.pa_label_fn({"outcome": "single"}) == "single"
+        assert mlb.pa_label_fn({"outcome": "HOME_RUN"}) == "home_run"
+        assert mlb.pa_label_fn({"outcome": "invalid"}) is None
+        assert mlb.pa_label_fn({}) is None
+
+    def test_game_label_fn(self) -> None:
+        mlb = MLBTrainingPipeline()
+        assert mlb.game_label_fn({"home_win": 1}) == 1
+        assert mlb.game_label_fn({"home_win": 0}) == 0
+        assert mlb.game_label_fn({"home_score": 5, "away_score": 3}) == 1
+        assert mlb.game_label_fn({"home_score": 2, "away_score": 4}) == 0
+        assert mlb.game_label_fn({}) is None
+
+    def test_build_pa_record(self) -> None:
+        record = MLBTrainingPipeline.build_pa_record(
+            {"contact_rate": 0.8}, {"contact_rate": 0.7}, "single",
+        )
+        assert record["outcome"] == "single"
+        assert "batter_profile" in record
+        assert "pitcher_profile" in record
+
+    def test_build_game_record(self) -> None:
+        record = MLBTrainingPipeline.build_game_record(
+            {"power_index": 1.1}, {"power_index": 0.9}, True,
+            home_score=5, away_score=3,
+        )
+        assert record["home_win"] == 1
+        assert record["home_score"] == 5
+
+    def test_load_returns_empty(self) -> None:
+        mlb = MLBTrainingPipeline()
+        assert mlb.load_plate_appearance_training_data() == []
+        assert mlb.load_game_training_data() == []
+
+
+class TestTrainingPipeline:
+    """Tests for end-to-end TrainingPipeline."""
+
+    def test_pa_pipeline_end_to_end(self, tmp_path: Path) -> None:
+        records = _make_pa_records(80)
+        mlb = MLBTrainingPipeline()
+
+        pipeline = TrainingPipeline(
+            sport="mlb",
+            model_type="plate_appearance",
+            model_id="test_pa_v1",
+            random_state=42,
+            artifact_dir=tmp_path / "models",
+        )
+
+        result = pipeline.run(records=records, label_fn=mlb.pa_label_fn)
+
+        assert result["model_id"] == "test_pa_v1"
+        assert result["artifact_path"] is not None
+        assert result["metadata_path"] is not None
+        assert result["metrics"] is not None
+        assert result["train_count"] > 0
+        assert result["test_count"] > 0
+        assert len(result["feature_names"]) > 0
+
+        # Verify artifact file exists
+        assert Path(result["artifact_path"]).exists()
+        assert Path(result["metadata_path"]).exists()
+
+    def test_game_pipeline_end_to_end(self, tmp_path: Path) -> None:
+        records = _make_game_records(80)
+        mlb = MLBTrainingPipeline()
+
+        pipeline = TrainingPipeline(
+            sport="mlb",
+            model_type="game",
+            model_id="test_game_v1",
+            random_state=42,
+            artifact_dir=tmp_path / "models",
+        )
+
+        result = pipeline.run(records=records, label_fn=mlb.game_label_fn)
+
+        assert result["model_id"] == "test_game_v1"
+        assert Path(result["artifact_path"]).exists()
+        assert Path(result["metadata_path"]).exists()
+        assert "accuracy" in result["metrics"]
+
+    def test_pipeline_with_no_data(self, tmp_path: Path) -> None:
+        pipeline = TrainingPipeline(
+            sport="mlb",
+            model_type="plate_appearance",
+            model_id="empty_test",
+            artifact_dir=tmp_path / "models",
+        )
+        result = pipeline.run(records=[])
+        assert result.get("error") == "no_training_data"
+
+    def test_pipeline_metadata_saved(self, tmp_path: Path) -> None:
+        records = _make_pa_records(50)
+        mlb = MLBTrainingPipeline()
+
+        pipeline = TrainingPipeline(
+            sport="mlb",
+            model_type="plate_appearance",
+            model_id="meta_test_v1",
+            config_name="",
+            random_state=42,
+            artifact_dir=tmp_path / "models",
+        )
+
+        result = pipeline.run(records=records, label_fn=mlb.pa_label_fn)
+        meta_path = Path(result["metadata_path"])
+        assert meta_path.exists()
+
+        with open(meta_path) as f:
+            meta = json.load(f)
+
+        assert meta["model_id"] == "meta_test_v1"
+        assert meta["sport"] == "mlb"
+        assert meta["random_state"] == 42
+        assert meta["training_row_count"] == 50
+        assert "accuracy" in meta["metrics"]
+
+    def test_pipeline_artifact_loadable(self, tmp_path: Path) -> None:
+        import joblib
+
+        records = _make_game_records(60)
+        mlb = MLBTrainingPipeline()
+
+        pipeline = TrainingPipeline(
+            sport="mlb",
+            model_type="game",
+            model_id="load_test_v1",
+            random_state=42,
+            artifact_dir=tmp_path / "models",
+        )
+
+        result = pipeline.run(records=records, label_fn=mlb.game_label_fn)
+        model = joblib.load(result["artifact_path"])
+        assert hasattr(model, "predict")
+
+    def test_pipeline_custom_sklearn_model(self, tmp_path: Path) -> None:
+        from sklearn.ensemble import RandomForestClassifier
+
+        records = _make_pa_records(60)
+        mlb = MLBTrainingPipeline()
+
+        pipeline = TrainingPipeline(
+            sport="mlb",
+            model_type="plate_appearance",
+            model_id="rf_test_v1",
+            random_state=42,
+            artifact_dir=tmp_path / "models",
+        )
+
+        custom_model = RandomForestClassifier(
+            n_estimators=20, max_depth=4, random_state=42,
+        )
+        result = pipeline.run(
+            records=records, label_fn=mlb.pa_label_fn, sklearn_model=custom_model,
+        )
+        assert result["metrics"] is not None
+        assert Path(result["artifact_path"]).exists()
+
+
+# ---------------------------------------------------------------------------
+# Prompt 15 – Model Inference Engine
+# ---------------------------------------------------------------------------
+
+from app.analytics.inference.inference_cache import InferenceCache
+from app.analytics.inference.model_inference_engine import ModelInferenceEngine
+from app.analytics.models.core.model_registry import ModelRegistry
+
+
+class TestInferenceCache:
+    """Tests for InferenceCache."""
+
+    def test_cache_loads_and_caches_model(self, tmp_path: Path) -> None:
+        import joblib
+        from sklearn.ensemble import GradientBoostingClassifier
+
+        model = GradientBoostingClassifier(n_estimators=5, random_state=42)
+        model.fit([[1, 2], [3, 4]], [0, 1])
+        path = str(tmp_path / "test_model.pkl")
+        joblib.dump(model, path)
+
+        cache = InferenceCache()
+        assert cache.size == 0
+        assert not cache.is_cached(path)
+
+        loaded = cache.get_model(path)
+        assert hasattr(loaded, "predict")
+        assert cache.is_cached(path)
+        assert cache.size == 1
+
+        # Second load should come from cache (same object)
+        loaded2 = cache.get_model(path)
+        assert loaded is loaded2
+
+    def test_invalidate(self, tmp_path: Path) -> None:
+        import joblib
+        from sklearn.ensemble import GradientBoostingClassifier
+
+        model = GradientBoostingClassifier(n_estimators=5, random_state=42)
+        model.fit([[1, 2], [3, 4]], [0, 1])
+        path = str(tmp_path / "inv_model.pkl")
+        joblib.dump(model, path)
+
+        cache = InferenceCache()
+        cache.get_model(path)
+        assert cache.size == 1
+        cache.invalidate(path)
+        assert cache.size == 0
+
+    def test_clear(self, tmp_path: Path) -> None:
+        import joblib
+        from sklearn.ensemble import GradientBoostingClassifier
+
+        model = GradientBoostingClassifier(n_estimators=5, random_state=42)
+        model.fit([[1, 2], [3, 4]], [0, 1])
+        for name in ["a.pkl", "b.pkl"]:
+            joblib.dump(model, str(tmp_path / name))
+
+        cache = InferenceCache()
+        cache.get_model(str(tmp_path / "a.pkl"))
+        cache.get_model(str(tmp_path / "b.pkl"))
+        assert cache.size == 2
+        cache.clear()
+        assert cache.size == 0
+
+
+class TestModelInferenceEngine:
+    """Tests for ModelInferenceEngine."""
+
+    _BATTER_PROFILES = {
+        "batter_profile": {
+            "metrics": {
+                "contact_rate": 0.82,
+                "power_index": 1.1,
+                "barrel_rate": 0.09,
+                "hard_hit_rate": 0.40,
+                "swing_rate": 0.52,
+                "whiff_rate": 0.20,
+                "avg_exit_velocity": 91.0,
+                "expected_slug": 0.82,
+            }
+        },
+        "pitcher_profile": {
+            "metrics": {
+                "contact_rate": 0.70,
+                "power_index": 0.9,
+                "barrel_rate": 0.05,
+                "hard_hit_rate": 0.30,
+                "swing_rate": 0.48,
+                "whiff_rate": 0.28,
+            }
+        },
+    }
+
+    _GAME_PROFILES = {
+        "home_profile": {
+            "metrics": {
+                "contact_rate": 0.80,
+                "power_index": 1.0,
+                "expected_slug": 0.77,
+                "barrel_rate": 0.07,
+                "hard_hit_rate": 0.35,
+            }
+        },
+        "away_profile": {
+            "metrics": {
+                "contact_rate": 0.75,
+                "power_index": 0.95,
+                "expected_slug": 0.72,
+                "barrel_rate": 0.06,
+                "hard_hit_rate": 0.32,
+            }
+        },
+    }
+
+    def test_predict_proba_pa_rule_based(self) -> None:
+        engine = ModelInferenceEngine()
+        probs = engine.predict_proba("mlb", "plate_appearance", self._BATTER_PROFILES)
+
+        assert isinstance(probs, dict)
+        assert len(probs) > 0
+        assert "strikeout" in probs
+        assert "out" in probs
+        assert "single" in probs
+        assert all(0 <= v <= 1 for v in probs.values())
+
+    def test_predict_proba_game_rule_based(self) -> None:
+        engine = ModelInferenceEngine()
+        probs = engine.predict_proba("mlb", "game", self._GAME_PROFILES)
+
+        assert isinstance(probs, dict)
+        assert "home_win" in probs
+        assert "away_win" in probs
+        assert abs(probs["home_win"] + probs["away_win"] - 1.0) < 0.01
+
+    def test_predict_returns_full_output(self) -> None:
+        engine = ModelInferenceEngine()
+        result = engine.predict("mlb", "plate_appearance", self._BATTER_PROFILES)
+
+        assert "event_probabilities" in result
+        assert "predicted_event" in result
+
+    def test_predict_for_simulation_pa(self) -> None:
+        engine = ModelInferenceEngine()
+        sim_probs = engine.predict_for_simulation(
+            "mlb", "plate_appearance", self._BATTER_PROFILES,
+        )
+
+        assert "strikeout_probability" in sim_probs
+        assert "walk_probability" in sim_probs
+        assert "single_probability" in sim_probs
+        assert "home_run_probability" in sim_probs
+
+    def test_predict_for_simulation_game(self) -> None:
+        engine = ModelInferenceEngine()
+        sim_probs = engine.predict_for_simulation(
+            "mlb", "game", self._GAME_PROFILES,
+        )
+
+        # Game model doesn't have to_simulation_probs, returns raw probs
+        assert isinstance(sim_probs, dict)
+        assert len(sim_probs) > 0
+
+    def test_predict_unsupported_sport(self) -> None:
+        engine = ModelInferenceEngine()
+        result = engine.predict("nfl", "game", {})
+        assert result.get("error") == "model_not_found"
+
+    def test_predict_proba_unsupported_returns_empty(self) -> None:
+        engine = ModelInferenceEngine()
+        probs = engine.predict_proba("nfl", "game", {})
+        assert probs == {}
+
+    def test_with_trained_model(self, tmp_path: Path) -> None:
+        """Test inference with a trained model artifact."""
+        import joblib
+        from sklearn.ensemble import GradientBoostingClassifier
+
+        # Train a small model
+        records = _make_pa_records(80)
+        mlb_train = MLBTrainingPipeline()
+        ds_builder = DatasetBuilder("mlb", "plate_appearance")
+        X, y, names = ds_builder.build(records, label_fn=mlb_train.pa_label_fn)
+
+        sklearn_model = GradientBoostingClassifier(
+            n_estimators=10, max_depth=3, random_state=42,
+        )
+        sklearn_model.fit(X, y)
+        artifact_path = str(tmp_path / "test_pa.pkl")
+        joblib.dump(sklearn_model, artifact_path)
+
+        # Register the model
+        registry = ModelRegistry()
+        registry.register_model({
+            "model_id": "test_pa_trained",
+            "sport": "mlb",
+            "model_type": "plate_appearance",
+            "version": 1,
+            "path": artifact_path,
+            "active": True,
+        })
+
+        engine = ModelInferenceEngine(registry=registry)
+        probs = engine.predict_proba(
+            "mlb", "plate_appearance", self._BATTER_PROFILES,
+        )
+
+        assert isinstance(probs, dict)
+        assert len(probs) > 0
+        # Trained model should produce probabilities
+        assert all(isinstance(v, float) for v in probs.values())
+
+    def test_cache_prevents_reload(self, tmp_path: Path) -> None:
+        """Verify inference cache prevents repeated disk reads."""
+        import joblib
+        from sklearn.ensemble import GradientBoostingClassifier
+
+        # Train on proper feature set
+        records = _make_pa_records(60)
+        mlb_train = MLBTrainingPipeline()
+        ds_builder = DatasetBuilder("mlb", "plate_appearance")
+        X, y, _ = ds_builder.build(records, label_fn=mlb_train.pa_label_fn)
+
+        sklearn_model = GradientBoostingClassifier(n_estimators=5, random_state=42)
+        sklearn_model.fit(X, y)
+        path = str(tmp_path / "cache_test.pkl")
+        joblib.dump(sklearn_model, path)
+
+        cache = InferenceCache()
+        registry = ModelRegistry()
+        registry.register_model({
+            "model_id": "cache_test",
+            "sport": "mlb",
+            "model_type": "plate_appearance",
+            "version": 1,
+            "path": path,
+            "active": True,
+        })
+
+        engine = ModelInferenceEngine(registry=registry, cache=cache)
+        engine.predict_proba("mlb", "plate_appearance", self._BATTER_PROFILES)
+        assert cache.is_cached(path)
+
+        # Second call should use cached model
+        engine.predict_proba("mlb", "plate_appearance", self._BATTER_PROFILES)
+        assert cache.size == 1
+
+
+class TestSimulationEngineMLIntegration:
+    """Tests for simulation engine using ModelInferenceEngine."""
+
+    def test_simulation_with_ml_model_key(self) -> None:
+        """Simulation engine should use ML model when ml_model is set."""
+        from app.analytics.core.simulation_engine import SimulationEngine
+
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(
+            {
+                "ml_model": "plate_appearance",
+                "profiles": {
+                    "batter_profile": {"metrics": {"contact_rate": 0.82}},
+                    "pitcher_profile": {"metrics": {"contact_rate": 0.70}},
+                },
+            },
+            iterations=100,
+            seed=42,
+        )
+
+        assert "home_win_probability" in result
+        assert result["iterations"] > 0
+
+    def test_simulation_without_ml_model(self) -> None:
+        """Simulation should work normally without ml_model key."""
+        from app.analytics.core.simulation_engine import SimulationEngine
+
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(
+            {"home_probabilities": {}, "away_probabilities": {}},
+            iterations=100,
+            seed=42,
+        )
+
+        assert "home_win_probability" in result

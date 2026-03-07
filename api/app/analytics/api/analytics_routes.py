@@ -27,6 +27,9 @@ from app.analytics.core.prediction_repository import PredictionRepository
 from app.analytics.core.simulation_cache import SimulationCache
 from app.analytics.core.simulation_job_manager import SimulationJobManager
 from app.analytics.core.simulation_repository import SimulationRepository
+from app.analytics.features.config.feature_config_loader import FeatureConfigLoader
+from app.analytics.features.config.feature_config_registry import FeatureConfigRegistry
+from app.analytics.inference.model_inference_engine import ModelInferenceEngine
 from app.analytics.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -38,6 +41,9 @@ _job_manager = SimulationJobManager(cache=_cache, repository=_repository)
 _prediction_repo = PredictionRepository()
 _calibration = ModelCalibration()
 _model_metrics = ModelMetrics()
+_feature_config_loader = FeatureConfigLoader()
+_feature_config_registry = FeatureConfigRegistry(loader=_feature_config_loader)
+_inference_engine = ModelInferenceEngine()
 
 
 class LiveSimulateRequest(BaseModel):
@@ -358,3 +364,114 @@ async def get_predictions(
     """List stored predictions."""
     records = _prediction_repo.list_predictions(sport=sport, limit=limit)
     return {"predictions": records, "count": len(records)}
+
+
+# ---------------------------------------------------------------------------
+# Feature Configuration endpoints
+# ---------------------------------------------------------------------------
+
+
+class FeatureConfigUpdateRequest(BaseModel):
+    """Request body for POST /api/analytics/feature-config."""
+    model: str = Field(..., description="Config model name (e.g., mlb_pa_model_v1)")
+    sport: str = Field(..., description="Sport code")
+    features: dict[str, dict[str, Any]] = Field(
+        ..., description="Feature definitions with enabled/weight",
+    )
+
+
+@router.get("/feature-config")
+async def get_feature_config(
+    model: str = Query(..., description="Config name (e.g., mlb_pa_model)"),
+) -> dict[str, Any]:
+    """Get a feature configuration by model name."""
+    config = _feature_config_registry.get_config(model)
+    if config is None:
+        return {"status": "not_found", "model": model}
+
+    return {
+        "model": config.model,
+        "sport": config.sport,
+        "enabled_features": config.get_enabled_features(),
+        "weights": config.get_weights(),
+        "features": config.features,
+    }
+
+
+@router.get("/feature-configs")
+async def list_feature_configs() -> dict[str, Any]:
+    """List all available feature configurations."""
+    available = _feature_config_registry.list_available()
+    registered = _feature_config_registry.list_configs()
+    return {"available": available, "registered": registered}
+
+
+@router.post("/feature-config")
+async def post_feature_config(req: FeatureConfigUpdateRequest) -> dict[str, Any]:
+    """Register or update a feature configuration.
+
+    Accepts a full feature config and registers it in the registry.
+    """
+    config = _feature_config_loader.load_from_dict(req.model_dump())
+    _feature_config_registry.register(req.model, config)
+    return {
+        "status": "registered",
+        "model": config.model,
+        "sport": config.sport,
+        "enabled_features": config.get_enabled_features(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Model Inference endpoints
+# ---------------------------------------------------------------------------
+
+
+class ModelPredictRequest(BaseModel):
+    """Request body for POST /api/analytics/model-predict."""
+    sport: str = Field(..., description="Sport code (e.g., mlb)")
+    model_type: str = Field(..., description="Model type (e.g., plate_appearance, game)")
+    profiles: dict[str, Any] = Field(
+        ..., description="Entity profiles for prediction",
+    )
+    config_name: str | None = Field(
+        None, description="Optional feature config name",
+    )
+
+
+@router.post("/model-predict")
+async def post_model_predict(req: ModelPredictRequest) -> dict[str, Any]:
+    """Generate a prediction using the active ML model.
+
+    Builds features from profiles, runs inference, and returns
+    structured probability output.
+    """
+    probs = _inference_engine.predict_proba(
+        sport=req.sport,
+        model_type=req.model_type,
+        profiles=req.profiles,
+        config_name=req.config_name,
+    )
+    return {
+        "sport": req.sport,
+        "model_type": req.model_type,
+        "probabilities": probs,
+    }
+
+
+@router.get("/model-predict")
+async def get_model_predict(
+    sport: str = Query(..., description="Sport code"),
+    model_type: str = Query(..., description="Model type"),
+) -> dict[str, Any]:
+    """Get model info and sample prediction with empty profiles."""
+    probs = _inference_engine.predict_proba(
+        sport=sport,
+        model_type=model_type,
+        profiles={},
+    )
+    return {
+        "sport": sport,
+        "model_type": model_type,
+        "probabilities": probs,
+    }
