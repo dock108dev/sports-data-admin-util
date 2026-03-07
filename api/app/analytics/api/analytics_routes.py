@@ -21,6 +21,9 @@ from typing import Any
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
+from app.analytics.core.model_calibration import ModelCalibration
+from app.analytics.core.model_metrics import ModelMetrics
+from app.analytics.core.prediction_repository import PredictionRepository
 from app.analytics.core.simulation_cache import SimulationCache
 from app.analytics.core.simulation_job_manager import SimulationJobManager
 from app.analytics.core.simulation_repository import SimulationRepository
@@ -32,6 +35,9 @@ _service = AnalyticsService()
 _cache = SimulationCache()
 _repository = SimulationRepository()
 _job_manager = SimulationJobManager(cache=_cache, repository=_repository)
+_prediction_repo = PredictionRepository()
+_calibration = ModelCalibration()
+_model_metrics = ModelMetrics()
 
 
 class LiveSimulateRequest(BaseModel):
@@ -164,12 +170,28 @@ async def post_simulate(req: SimulateRequest) -> dict[str, Any]:
         sportsbook=req.sportsbook,
     )
 
-    return {
+    response = {
         "sport": req.sport,
         "home_team": req.home_team,
         "away_team": req.away_team,
         **result,
     }
+
+    # Auto-store prediction for calibration
+    _prediction_repo.save_prediction({
+        "sport": req.sport,
+        "home_team": req.home_team,
+        "away_team": req.away_team,
+        "model_output": {
+            "home_win_probability": result.get("home_win_probability", 0),
+            "away_win_probability": result.get("away_win_probability", 0),
+            "expected_home_score": result.get("average_home_score", 0),
+            "expected_away_score": result.get("average_away_score", 0),
+        },
+        "sportsbook_lines": req.sportsbook,
+    })
+
+    return response
 
 
 @router.post("/live-simulate")
@@ -279,3 +301,60 @@ async def get_simulation_history(
     """List stored simulation results."""
     records = _repository.list_simulations(sport=sport, limit=limit)
     return {"simulations": records, "count": len(records)}
+
+
+class RecordOutcomeRequest(BaseModel):
+    """Request body for POST /api/analytics/record-outcome."""
+    prediction_id: str = Field(..., description="Prediction to update")
+    home_score: int = Field(..., ge=0, description="Actual home score")
+    away_score: int = Field(..., ge=0, description="Actual away score")
+
+
+@router.post("/record-outcome")
+async def post_record_outcome(req: RecordOutcomeRequest) -> dict[str, Any]:
+    """Record an actual game outcome for a stored prediction."""
+    actual = {"home_score": req.home_score, "away_score": req.away_score}
+    updated = _prediction_repo.record_outcome(req.prediction_id, actual)
+    if not updated:
+        return {"status": "not_found", "prediction_id": req.prediction_id}
+
+    pred = _prediction_repo.get_prediction(req.prediction_id)
+    evaluation = _calibration.evaluate_prediction(pred, actual)
+    return {"status": "recorded", **evaluation}
+
+
+@router.get("/model-performance")
+async def get_model_performance(
+    sport: str = Query(None, description="Filter by sport code"),
+) -> dict[str, Any]:
+    """Get aggregate model performance metrics.
+
+    Returns Brier score, log loss, MAE, accuracy, bias, and
+    calibration buckets.
+    """
+    predictions = _prediction_repo.get_evaluated_predictions(sport=sport)
+
+    if not predictions:
+        report = _calibration._empty_report()
+        metrics = _model_metrics._empty_metrics()
+    else:
+        report = _calibration.calibration_report(predictions)
+        metrics = _model_metrics.compute_all(predictions)
+
+    return {
+        **report,
+        "log_loss": metrics.get("log_loss", 0.0),
+        "mae_score": metrics.get("mae_score", 0.0),
+        "mae_total": metrics.get("mae_total", 0.0),
+        "calibration_buckets": metrics.get("calibration_buckets", []),
+    }
+
+
+@router.get("/predictions")
+async def get_predictions(
+    sport: str = Query(None, description="Filter by sport code"),
+    limit: int = Query(100, ge=1, le=500, description="Max results"),
+) -> dict[str, Any]:
+    """List stored predictions."""
+    records = _prediction_repo.list_predictions(sport=sport, limit=limit)
+    return {"predictions": records, "count": len(records)}

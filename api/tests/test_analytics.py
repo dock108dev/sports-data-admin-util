@@ -1551,3 +1551,330 @@ class TestFullLivePipeline:
         )
         # Home leading by 3 in 7th should have higher WP than start
         assert live["home_win_probability"] > pregame["home_win_probability"]
+
+
+class TestSimulationCache:
+    """Verify simulation result caching."""
+
+    def test_cache_miss_returns_none(self) -> None:
+        from app.analytics.core.simulation_cache import SimulationCache
+
+        cache = SimulationCache()
+        assert cache.get("nonexistent") is None
+
+    def test_cache_set_and_get(self) -> None:
+        from app.analytics.core.simulation_cache import SimulationCache
+
+        cache = SimulationCache()
+        key = cache.generate_cache_key({"sport": "mlb", "iterations": 100})
+        cache.set(key, {"home_win_probability": 0.55}, mode="pregame")
+        result = cache.get(key)
+        assert result is not None
+        assert result["home_win_probability"] == 0.55
+
+    def test_same_params_produce_same_key(self) -> None:
+        from app.analytics.core.simulation_cache import SimulationCache
+
+        cache = SimulationCache()
+        k1 = cache.generate_cache_key({"sport": "mlb", "home": "NYY"})
+        k2 = cache.generate_cache_key({"home": "NYY", "sport": "mlb"})
+        assert k1 == k2  # sort_keys ensures consistency
+
+    def test_different_params_produce_different_keys(self) -> None:
+        from app.analytics.core.simulation_cache import SimulationCache
+
+        cache = SimulationCache()
+        k1 = cache.generate_cache_key({"sport": "mlb"})
+        k2 = cache.generate_cache_key({"sport": "nba"})
+        assert k1 != k2
+
+    def test_live_mode_expires(self) -> None:
+        import time as _time
+        from unittest.mock import patch
+        from app.analytics.core.simulation_cache import SimulationCache
+
+        cache = SimulationCache()
+        key = "live_test"
+        cache.set(key, {"data": 1}, mode="live")
+        assert cache.get(key) is not None
+
+        # Fast-forward past TTL by patching the entry's created_at
+        entry = cache._store[key]
+        entry.created_at = _time.monotonic() - 60  # 60s ago, past 30s TTL
+        assert cache.get(key) is None
+
+    def test_invalidate(self) -> None:
+        from app.analytics.core.simulation_cache import SimulationCache
+
+        cache = SimulationCache()
+        cache.set("k1", {"v": 1})
+        assert cache.invalidate("k1") is True
+        assert cache.get("k1") is None
+        assert cache.invalidate("k1") is False
+
+    def test_eviction_at_max_entries(self) -> None:
+        from app.analytics.core.simulation_cache import SimulationCache
+
+        cache = SimulationCache(max_entries=3)
+        cache.set("a", {"v": 1})
+        cache.set("b", {"v": 2})
+        cache.set("c", {"v": 3})
+        assert cache.size == 3
+        cache.set("d", {"v": 4})
+        assert cache.size == 3  # one evicted
+
+    def test_clear(self) -> None:
+        from app.analytics.core.simulation_cache import SimulationCache
+
+        cache = SimulationCache()
+        cache.set("a", {"v": 1})
+        cache.set("b", {"v": 2})
+        cache.clear()
+        assert cache.size == 0
+
+
+class TestSimulationRepository:
+    """Verify simulation result storage."""
+
+    def test_save_and_get(self) -> None:
+        from app.analytics.core.simulation_repository import SimulationRepository
+
+        repo = SimulationRepository()
+        result = {"home_win_probability": 0.6}
+        sim_id = repo.save_simulation(result)
+        stored = repo.get_simulation(sim_id)
+        assert stored is not None
+        assert stored["result"] == result
+        assert stored["simulation_id"] == sim_id
+
+    def test_save_with_job_id(self) -> None:
+        from app.analytics.core.simulation_repository import SimulationRepository
+
+        repo = SimulationRepository()
+        sim_id = repo.save_simulation({"data": 1}, job_id="my-job-123")
+        assert sim_id == "my-job-123"
+        assert repo.get_simulation("my-job-123") is not None
+
+    def test_get_nonexistent_returns_none(self) -> None:
+        from app.analytics.core.simulation_repository import SimulationRepository
+
+        repo = SimulationRepository()
+        assert repo.get_simulation("nope") is None
+
+    def test_list_simulations(self) -> None:
+        from app.analytics.core.simulation_repository import SimulationRepository
+
+        repo = SimulationRepository()
+        repo.save_simulation({"r": 1}, metadata={"sport": "mlb"})
+        repo.save_simulation({"r": 2}, metadata={"sport": "nba"})
+        repo.save_simulation({"r": 3}, metadata={"sport": "mlb"})
+
+        all_sims = repo.list_simulations()
+        assert len(all_sims) == 3
+
+        mlb_sims = repo.list_simulations(sport="mlb")
+        assert len(mlb_sims) == 2
+
+    def test_delete_simulation(self) -> None:
+        from app.analytics.core.simulation_repository import SimulationRepository
+
+        repo = SimulationRepository()
+        sim_id = repo.save_simulation({"data": 1})
+        assert repo.delete_simulation(sim_id) is True
+        assert repo.get_simulation(sim_id) is None
+        assert repo.delete_simulation(sim_id) is False
+
+
+class TestSimulationJobManager:
+    """Verify job submission, execution, and result retrieval."""
+
+    def test_submit_sync_job(self) -> None:
+        from app.analytics.core.simulation_job_manager import SimulationJobManager
+
+        mgr = SimulationJobManager()
+        job_id = mgr.submit_job({
+            "sport": "mlb", "mode": "pregame",
+            "iterations": 50, "seed": 42,
+        }, sync=True)
+        assert job_id
+        result = mgr.get_job_result(job_id)
+        assert result is not None
+        assert "home_win_probability" in result
+
+    def test_job_status_lifecycle(self) -> None:
+        from app.analytics.core.simulation_job_manager import SimulationJobManager
+
+        mgr = SimulationJobManager()
+        job_id = mgr.submit_job({
+            "sport": "mlb", "iterations": 50, "seed": 42,
+        }, sync=True)
+        status = mgr.get_job_status(job_id)
+        assert status["status"] == "completed"
+        assert "completed_at" in status
+
+    def test_cache_hit_returns_immediately(self) -> None:
+        from app.analytics.core.simulation_cache import SimulationCache
+        from app.analytics.core.simulation_job_manager import SimulationJobManager
+
+        cache = SimulationCache()
+        mgr = SimulationJobManager(cache=cache)
+
+        params = {"sport": "mlb", "iterations": 50, "seed": 42}
+
+        # First run populates cache
+        job1 = mgr.submit_job(params, sync=True)
+        result1 = mgr.get_job_result(job1)
+
+        # Second run should hit cache
+        job2 = mgr.submit_job(params, sync=True)
+        result2 = mgr.get_job_result(job2)
+        assert result1 == result2
+
+    def test_nonexistent_job_returns_not_found(self) -> None:
+        from app.analytics.core.simulation_job_manager import SimulationJobManager
+
+        mgr = SimulationJobManager()
+        status = mgr.get_job_status("fake-id")
+        assert status["status"] == "not_found"
+
+    def test_get_result_for_nonexistent_returns_none(self) -> None:
+        from app.analytics.core.simulation_job_manager import SimulationJobManager
+
+        mgr = SimulationJobManager()
+        assert mgr.get_job_result("fake-id") is None
+
+    def test_live_simulation_job(self) -> None:
+        from app.analytics.core.simulation_job_manager import SimulationJobManager
+
+        mgr = SimulationJobManager()
+        job_id = mgr.submit_job({
+            "sport": "mlb",
+            "mode": "live",
+            "inning": 5,
+            "half": "top",
+            "outs": 1,
+            "bases": {"first": False, "second": False, "third": False},
+            "score": {"home": 2, "away": 1},
+            "iterations": 100,
+            "seed": 42,
+        }, sync=True)
+        result = mgr.get_job_result(job_id)
+        assert result is not None
+        assert "home_win_probability" in result
+
+    def test_repository_integration(self) -> None:
+        from app.analytics.core.simulation_job_manager import SimulationJobManager
+        from app.analytics.core.simulation_repository import SimulationRepository
+
+        repo = SimulationRepository()
+        mgr = SimulationJobManager(repository=repo)
+        job_id = mgr.submit_job({
+            "sport": "mlb", "iterations": 50, "seed": 42,
+        }, sync=True)
+        stored = repo.get_simulation(job_id)
+        assert stored is not None
+        assert stored["metadata"]["sport"] == "mlb"
+
+
+class TestJobRoutes:
+    """Verify job-based API route responses."""
+
+    def test_post_simulate_job_endpoint(self) -> None:
+        from fastapi.testclient import TestClient
+        from app.analytics.api.analytics_routes import router
+        from fastapi import FastAPI
+
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+
+        resp = client.post("/api/analytics/simulate-job", json={
+            "sport": "mlb",
+            "home_team": "LAD",
+            "away_team": "TOR",
+            "iterations": 50,
+            "seed": 42,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "job_id" in data
+        assert data["status"] == "completed"
+
+    def test_get_simulation_result_endpoint(self) -> None:
+        from fastapi.testclient import TestClient
+        from app.analytics.api.analytics_routes import router
+        from fastapi import FastAPI
+
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+
+        # Submit a job first
+        resp = client.post("/api/analytics/simulate-job", json={
+            "sport": "mlb",
+            "home_team": "LAD",
+            "away_team": "TOR",
+            "iterations": 50,
+            "seed": 42,
+        })
+        job_id = resp.json()["job_id"]
+
+        # Poll for result
+        resp = client.get(f"/api/analytics/simulation-result?job_id={job_id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "completed"
+        assert "result" in data
+        assert "home_win_probability" in data["result"]
+
+    def test_live_simulate_job_endpoint(self) -> None:
+        from fastapi.testclient import TestClient
+        from app.analytics.api.analytics_routes import router
+        from fastapi import FastAPI
+
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+
+        resp = client.post("/api/analytics/live-simulate-job", json={
+            "sport": "mlb",
+            "inning": 5,
+            "half": "top",
+            "outs": 1,
+            "bases": {"first": False, "second": False, "third": False},
+            "score": {"home": 2, "away": 1},
+            "iterations": 100,
+            "seed": 42,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "completed"
+
+    def test_simulation_history_endpoint(self) -> None:
+        from fastapi.testclient import TestClient
+        from app.analytics.api.analytics_routes import router
+        from fastapi import FastAPI
+
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+
+        resp = client.get("/api/analytics/simulation-history")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "simulations" in data
+        assert "count" in data
+
+    def test_simulation_result_not_found(self) -> None:
+        from fastapi.testclient import TestClient
+        from app.analytics.api.analytics_routes import router
+        from fastapi import FastAPI
+
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+
+        resp = client.get("/api/analytics/simulation-result?job_id=nonexistent")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "not_found"
