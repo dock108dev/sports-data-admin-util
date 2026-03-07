@@ -4030,3 +4030,271 @@ class TestSimulationEngineMLIntegration:
         )
 
         assert "home_win_probability" in result
+
+
+# ---------------------------------------------------------------------------
+# Prompt 16 – Simulation + ML Integration
+# ---------------------------------------------------------------------------
+
+from app.analytics.probabilities.probability_provider import (
+    MLProvider,
+    RuleBasedProvider,
+    normalize_probabilities,
+    validate_probabilities,
+    MLB_PA_EVENTS,
+)
+from app.analytics.probabilities.probability_resolver import (
+    ProbabilityResolver,
+    MODE_ML,
+    MODE_RULE_BASED,
+)
+
+
+class TestNormalizeProbabilities:
+    """Tests for normalize_probabilities helper."""
+
+    def test_normalizes_to_one(self) -> None:
+        raw = {"a": 0.3, "b": 0.5, "c": 0.2}
+        result = normalize_probabilities(raw)
+        assert abs(sum(result.values()) - 1.0) < 0.001
+
+    def test_clamps_negatives(self) -> None:
+        raw = {"a": -0.1, "b": 0.6, "c": 0.5}
+        result = normalize_probabilities(raw)
+        assert result["a"] == 0.0
+        assert abs(sum(result.values()) - 1.0) < 0.001
+
+    def test_uniform_on_all_zero(self) -> None:
+        raw = {"a": 0.0, "b": 0.0}
+        result = normalize_probabilities(raw)
+        assert abs(result["a"] - 0.5) < 0.001
+        assert abs(result["b"] - 0.5) < 0.001
+
+    def test_fills_missing_events(self) -> None:
+        raw = {"strikeout": 0.3}
+        result = normalize_probabilities(raw, valid_events=["strikeout", "out"])
+        assert "out" in result
+        assert abs(sum(result.values()) - 1.0) < 0.001
+
+    def test_empty_raises(self) -> None:
+        with pytest.raises(ValueError):
+            normalize_probabilities({}, valid_events=[])
+
+
+class TestValidateProbabilities:
+    """Tests for validate_probabilities helper."""
+
+    def test_valid_probs(self) -> None:
+        probs = {"a": 0.6, "b": 0.4}
+        issues = validate_probabilities(probs)
+        assert issues == []
+
+    def test_negative_flagged(self) -> None:
+        probs = {"a": -0.1, "b": 1.1}
+        issues = validate_probabilities(probs)
+        assert any("negative" in i for i in issues)
+
+    def test_sum_not_one(self) -> None:
+        probs = {"a": 0.3, "b": 0.3}
+        issues = validate_probabilities(probs)
+        assert any("sum_not_one" in i for i in issues)
+
+    def test_missing_event(self) -> None:
+        probs = {"a": 1.0}
+        issues = validate_probabilities(probs, valid_events=["a", "b"])
+        assert any("missing_event" in i for i in issues)
+
+    def test_empty(self) -> None:
+        issues = validate_probabilities({})
+        assert "empty_probabilities" in issues
+
+
+class TestRuleBasedProvider:
+    """Tests for RuleBasedProvider."""
+
+    def test_returns_normalized_probs(self) -> None:
+        provider = RuleBasedProvider()
+        probs = provider.get_event_probabilities("mlb", {})
+        assert abs(sum(probs.values()) - 1.0) < 0.001
+        for event in MLB_PA_EVENTS:
+            assert event in probs
+
+    def test_with_profiles(self) -> None:
+        provider = RuleBasedProvider()
+        context = {
+            "batter_profile": {"metrics": {"contact_rate": 0.85, "power_index": 1.2}},
+            "pitcher_profile": {"metrics": {"contact_rate": 0.70}},
+        }
+        probs = provider.get_event_probabilities("mlb", context)
+        assert abs(sum(probs.values()) - 1.0) < 0.001
+        assert all(0 <= v <= 1 for v in probs.values())
+
+    def test_provider_name(self) -> None:
+        assert RuleBasedProvider().provider_name == "rule_based"
+
+
+class TestMLProvider:
+    """Tests for MLProvider."""
+
+    def test_returns_normalized_probs(self) -> None:
+        provider = MLProvider(model_type="plate_appearance")
+        context = {
+            "batter_profile": {"metrics": {"contact_rate": 0.82, "power_index": 1.1}},
+            "pitcher_profile": {"metrics": {"contact_rate": 0.70}},
+        }
+        probs = provider.get_event_probabilities("mlb", context)
+        assert abs(sum(probs.values()) - 1.0) < 0.001
+        for event in MLB_PA_EVENTS:
+            assert event in probs
+
+    def test_empty_profiles_uses_defaults(self) -> None:
+        provider = MLProvider(model_type="plate_appearance")
+        probs = provider.get_event_probabilities("mlb", {})
+        assert abs(sum(probs.values()) - 1.0) < 0.001
+
+    def test_provider_name(self) -> None:
+        assert MLProvider().provider_name == "ml"
+
+
+class TestProbabilityResolver:
+    """Tests for ProbabilityResolver."""
+
+    def test_rule_based_mode(self) -> None:
+        resolver = ProbabilityResolver(config={"probability_mode": "rule_based"})
+        probs = resolver.get_probabilities("mlb", "plate_appearance", {})
+        assert abs(sum(probs.values()) - 1.0) < 0.001
+
+    def test_ml_mode(self) -> None:
+        resolver = ProbabilityResolver(config={"probability_mode": "ml"})
+        context = {
+            "batter_profile": {"metrics": {"contact_rate": 0.82}},
+            "pitcher_profile": {"metrics": {"contact_rate": 0.70}},
+        }
+        probs = resolver.get_probabilities("mlb", "plate_appearance", context)
+        assert abs(sum(probs.values()) - 1.0) < 0.001
+
+    def test_resolver_chooses_correct_provider(self) -> None:
+        resolver = ProbabilityResolver(config={"probability_mode": "rule_based"})
+        provider = resolver.resolve_provider("mlb", "plate_appearance")
+        assert provider.provider_name == "rule_based"
+
+        resolver2 = ProbabilityResolver(config={"probability_mode": "ml"})
+        provider2 = resolver2.resolve_provider("mlb", "plate_appearance")
+        assert provider2.provider_name == "ml"
+
+    def test_fallback_on_failure(self) -> None:
+        """ML failure should fall back to rule_based."""
+        resolver = ProbabilityResolver(config={
+            "probability_mode": "ml",
+            "fallback_mode": "rule_based",
+            "strict_mode": False,
+        })
+        # Force ML failure by using unsupported sport
+        # ML provider will return empty probs -> raise RuntimeError -> fallback
+        result = resolver.get_probabilities_with_meta(
+            "unknown_sport", "plate_appearance", {},
+        )
+        meta = result.get("_meta", {})
+        assert meta.get("fallback_used") is True
+        assert meta.get("probability_source") == "rule_based"
+
+    def test_strict_mode_raises(self) -> None:
+        resolver = ProbabilityResolver(config={
+            "probability_mode": "ml",
+            "fallback_mode": "rule_based",
+            "strict_mode": True,
+        })
+        # ML for unsupported sport should raise (no model available)
+        with pytest.raises(RuntimeError):
+            resolver.get_probabilities("unknown_sport", "plate_appearance", {})
+
+    def test_metadata_included(self) -> None:
+        resolver = ProbabilityResolver(config={"probability_mode": "rule_based"})
+        result = resolver.get_probabilities_with_meta("mlb", "plate_appearance", {})
+        meta = result.get("_meta", {})
+        assert meta.get("probability_source") == "rule_based"
+        assert meta.get("fallback_used") is False
+
+    def test_unsupported_mode_raises(self) -> None:
+        resolver = ProbabilityResolver()
+        with pytest.raises(ValueError, match="Unsupported"):
+            resolver.resolve_provider("mlb", "pa", mode="ensemble")
+
+
+class TestSimulationProbabilityIntegration:
+    """Tests for simulation engine with probability modes."""
+
+    def test_rule_based_mode(self) -> None:
+        from app.analytics.core.simulation_engine import SimulationEngine
+
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(
+            {"probability_mode": "rule_based"},
+            iterations=100,
+            seed=42,
+        )
+        assert "home_win_probability" in result
+        assert result.get("probability_source") == "rule_based"
+
+    def test_ml_mode(self) -> None:
+        from app.analytics.core.simulation_engine import SimulationEngine
+
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(
+            {
+                "probability_mode": "ml",
+                "profiles": {
+                    "batter_profile": {"metrics": {"contact_rate": 0.82}},
+                    "pitcher_profile": {"metrics": {"contact_rate": 0.70}},
+                },
+            },
+            iterations=100,
+            seed=42,
+        )
+        assert "home_win_probability" in result
+        assert result.get("probability_source") in ("ml", "rule_based")
+
+    def test_no_mode_uses_defaults(self) -> None:
+        from app.analytics.core.simulation_engine import SimulationEngine
+
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(
+            {"home_probabilities": {}, "away_probabilities": {}},
+            iterations=100,
+            seed=42,
+        )
+        assert "home_win_probability" in result
+        # No probability_source when no mode specified
+        assert result["iterations"] == 100
+
+    def test_legacy_ml_model_key(self) -> None:
+        """Legacy ml_model key should still work."""
+        from app.analytics.core.simulation_engine import SimulationEngine
+
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(
+            {
+                "ml_model": "plate_appearance",
+                "profiles": {
+                    "batter_profile": {"metrics": {"contact_rate": 0.82}},
+                    "pitcher_profile": {"metrics": {"contact_rate": 0.70}},
+                },
+            },
+            iterations=100,
+            seed=42,
+        )
+        assert "home_win_probability" in result
+        assert result.get("probability_source") in ("ml", "rule_based")
+
+    def test_result_includes_metadata(self) -> None:
+        from app.analytics.core.simulation_engine import SimulationEngine
+
+        engine = SimulationEngine("mlb")
+        result = engine.run_simulation(
+            {"probability_mode": "rule_based"},
+            iterations=50,
+            seed=42,
+        )
+        assert "probability_meta" in result
+        meta = result["probability_meta"]
+        assert meta.get("probability_source") == "rule_based"

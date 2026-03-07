@@ -1,0 +1,198 @@
+"""Probability resolver.
+
+Chooses the correct probability provider based on configuration,
+handles fallback logic, and provides a single interface for the
+simulation engine.
+
+Usage::
+
+    resolver = ProbabilityResolver(config={
+        "probability_mode": "ml",
+        "fallback_mode": "rule_based",
+    })
+    probs = resolver.get_probabilities("mlb", "plate_appearance", context)
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from .probability_provider import (
+    MLProvider,
+    ProbabilityProvider,
+    RuleBasedProvider,
+    normalize_probabilities,
+)
+
+logger = logging.getLogger(__name__)
+
+# Supported modes.
+MODE_RULE_BASED = "rule_based"
+MODE_ML = "ml"
+MODE_ENSEMBLE = "ensemble"  # reserved
+
+_DEFAULT_CONFIG: dict[str, Any] = {
+    "probability_mode": MODE_RULE_BASED,
+    "fallback_mode": MODE_RULE_BASED,
+    "strict_mode": False,
+}
+
+
+class ProbabilityResolver:
+    """Resolve and execute the correct probability provider.
+
+    Args:
+        config: Configuration dict with ``probability_mode``,
+            ``fallback_mode``, and ``strict_mode`` keys.
+    """
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        self._config = {**_DEFAULT_CONFIG, **(config or {})}
+        self._providers: dict[str, ProbabilityProvider] = {}
+
+    @property
+    def mode(self) -> str:
+        """Current probability mode."""
+        return self._config.get("probability_mode", MODE_RULE_BASED)
+
+    @property
+    def fallback_mode(self) -> str:
+        """Fallback mode when primary fails."""
+        return self._config.get("fallback_mode", MODE_RULE_BASED)
+
+    @property
+    def strict(self) -> bool:
+        """If True, do not fall back on failure."""
+        return bool(self._config.get("strict_mode", False))
+
+    def resolve_provider(
+        self,
+        sport: str,
+        model_type: str,
+        mode: str | None = None,
+    ) -> ProbabilityProvider:
+        """Get the provider for the given mode.
+
+        Args:
+            sport: Sport code.
+            model_type: Model type (e.g., ``"plate_appearance"``).
+            mode: Override mode. Uses config default if ``None``.
+
+        Returns:
+            ``ProbabilityProvider`` instance.
+
+        Raises:
+            ValueError: If the mode is not supported.
+        """
+        mode = mode or self.mode
+
+        if mode == MODE_RULE_BASED:
+            return self._get_or_create(MODE_RULE_BASED, RuleBasedProvider)
+
+        if mode == MODE_ML:
+            key = f"{MODE_ML}:{model_type}"
+            if key not in self._providers:
+                self._providers[key] = MLProvider(model_type=model_type)
+            return self._providers[key]
+
+        raise ValueError(f"Unsupported probability mode: {mode}")
+
+    def get_probabilities(
+        self,
+        sport: str,
+        model_type: str,
+        context: dict[str, Any],
+        mode: str | None = None,
+    ) -> dict[str, float]:
+        """Get normalized event probabilities.
+
+        Tries the primary provider. On failure, falls back to the
+        fallback mode (unless ``strict_mode`` is True).
+
+        Args:
+            sport: Sport code.
+            model_type: Model type.
+            context: Profiles and game context.
+            mode: Override mode.
+
+        Returns:
+            Normalized probability dict with ``_meta`` key removed
+            (metadata is attached to the return of
+            ``get_probabilities_with_meta``).
+        """
+        result = self.get_probabilities_with_meta(
+            sport, model_type, context, mode,
+        )
+        # Strip metadata key if present
+        result.pop("_meta", None)
+        return result
+
+    def get_probabilities_with_meta(
+        self,
+        sport: str,
+        model_type: str,
+        context: dict[str, Any],
+        mode: str | None = None,
+    ) -> dict[str, Any]:
+        """Get probabilities with source metadata.
+
+        Returns:
+            Probability dict with an additional ``_meta`` key containing
+            ``probability_source`` and optionally ``fallback_used``.
+        """
+        effective_mode = mode or self.mode
+
+        try:
+            provider = self.resolve_provider(sport, model_type, effective_mode)
+            probs = provider.get_event_probabilities(sport, context)
+            meta = {
+                "probability_source": provider.provider_name,
+                "model_type": model_type,
+                "fallback_used": False,
+            }
+            return {**probs, "_meta": meta}
+
+        except Exception as exc:
+            logger.warning(
+                "probability_provider_failed",
+                extra={
+                    "mode": effective_mode,
+                    "sport": sport,
+                    "error": str(exc),
+                },
+            )
+
+            if self.strict:
+                raise
+
+            # Fallback
+            if effective_mode != self.fallback_mode:
+                try:
+                    fallback = self.resolve_provider(
+                        sport, model_type, self.fallback_mode,
+                    )
+                    probs = fallback.get_event_probabilities(sport, context)
+                    meta = {
+                        "probability_source": fallback.provider_name,
+                        "model_type": model_type,
+                        "fallback_used": True,
+                        "primary_error": str(exc),
+                    }
+                    return {**probs, "_meta": meta}
+                except Exception as fallback_exc:
+                    raise RuntimeError(
+                        f"Both primary ({effective_mode}) and fallback "
+                        f"({self.fallback_mode}) providers failed"
+                    ) from fallback_exc
+
+            raise
+
+    def _get_or_create(
+        self,
+        key: str,
+        cls: type[ProbabilityProvider],
+    ) -> ProbabilityProvider:
+        if key not in self._providers:
+            self._providers[key] = cls()
+        return self._providers[key]

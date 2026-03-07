@@ -11,9 +11,9 @@ Supports three usage modes:
 2. **Full Monte Carlo** — ``SimulationEngine("mlb").run_simulation(ctx,
    iterations=10000, seed=42)`` delegates to a sport-specific game
    simulator via ``SimulationRunner`` and returns aggregated results.
-3. **ML-enhanced** — When ``ml_model`` is set in ``game_context``, the
-   engine loads the ML model from the registry and uses its probability
-   output for simulation.
+3. **ML-enhanced** — When ``probability_mode`` is ``"ml"`` in the game
+   context, the engine uses the ``ProbabilityResolver`` to generate
+   event probabilities from trained ML models.
 """
 
 from __future__ import annotations
@@ -37,8 +37,8 @@ class SimulationEngine:
     """Sport-agnostic simulation orchestrator.
 
     Routes to sport-specific game simulators and aggregates results
-    via ``SimulationRunner``. Optionally integrates ML models when
-    ``game_context["ml_model"]`` is specified.
+    via ``SimulationRunner``. Supports pluggable probability sources
+    through the ``ProbabilityResolver``.
     """
 
     def __init__(self, sport: str) -> None:
@@ -100,21 +100,20 @@ class SimulationEngine:
     ) -> dict[str, Any]:
         """Run a full Monte Carlo simulation with aggregated results.
 
-        If ``game_context`` contains ``ml_model`` (a model type string
-        like ``"plate_appearance"``), the engine loads the active ML
-        model from the registry and injects its probability output
-        into the game context before simulating.
+        Supports probability mode selection via ``game_context`` keys:
+
+        - ``probability_mode``: ``"rule_based"`` (default) or ``"ml"``
+        - ``ml_model``: Legacy key — sets mode to ``"ml"`` if present
+        - ``profiles``: Entity profiles for ML probability generation
 
         Args:
-            game_context: Sport-specific game setup data including
-                probability distributions from the matchup engine.
-                Optional ``ml_model`` key to enable ML integration.
+            game_context: Sport-specific game setup data.
             iterations: Number of games to simulate.
             seed: Optional seed for deterministic results.
 
         Returns:
-            Dict with win probabilities, average scores, and
-            score distribution.
+            Dict with win probabilities, average scores, score
+            distribution, and probability source metadata.
         """
         simulator = self._get_sport_simulator()
         if simulator is None:
@@ -127,72 +126,103 @@ class SimulationEngine:
                 "iterations": 0,
             }
 
-        # ML model integration: inject probabilities if requested
         context = dict(game_context)
+        prob_meta: dict[str, Any] = {}
+
+        # Resolve probability mode
+        probability_mode = context.pop("probability_mode", None)
         ml_model_type = context.pop("ml_model", None)
-        if ml_model_type:
-            context = self._apply_ml_model(context, ml_model_type)
+
+        if probability_mode in ("ml",) or ml_model_type:
+            model_type = ml_model_type or "plate_appearance"
+            context, prob_meta = self._apply_probability_resolver(
+                context, probability_mode or "ml", model_type,
+            )
+        elif probability_mode == "rule_based":
+            context, prob_meta = self._apply_probability_resolver(
+                context, "rule_based", "plate_appearance",
+            )
 
         runner = SimulationRunner()
-        return runner.run_simulations(
+        result = runner.run_simulations(
             simulator, context,
             iterations=iterations, seed=seed,
         )
 
-    def _apply_ml_model(
+        if prob_meta:
+            result["probability_source"] = prob_meta.get(
+                "probability_source", "default",
+            )
+            result["probability_meta"] = prob_meta
+
+        return result
+
+    def _apply_probability_resolver(
         self,
         game_context: dict[str, Any],
+        mode: str,
         model_type: str,
-    ) -> dict[str, Any]:
-        """Load an ML model and inject its predictions into the context.
-
-        Uses the ``ModelInferenceEngine`` for cached model loading and
-        feature building. Falls back gracefully on any failure.
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Use the ProbabilityResolver to generate event probabilities.
 
         Args:
             game_context: Current game context.
-            model_type: Model type to load (e.g., ``"plate_appearance"``).
+            mode: Probability mode (``"rule_based"`` or ``"ml"``).
+            model_type: Model type (e.g., ``"plate_appearance"``).
 
         Returns:
-            Updated game context with ML-generated probabilities.
+            Tuple of (updated context, metadata dict).
         """
+        meta: dict[str, Any] = {}
         try:
-            from app.analytics.inference.model_inference_engine import (
-                ModelInferenceEngine,
+            from app.analytics.probabilities.probability_resolver import (
+                ProbabilityResolver,
             )
 
-            engine = ModelInferenceEngine()
+            resolver_config = {
+                "probability_mode": mode,
+                "fallback_mode": "rule_based",
+                "strict_mode": False,
+            }
+            resolver = ProbabilityResolver(config=resolver_config)
+
             profiles = game_context.get("profiles", {})
-            sim_probs = engine.predict_for_simulation(
-                self.sport, model_type, profiles,
+            result = resolver.get_probabilities_with_meta(
+                self.sport, model_type, profiles, mode=mode,
             )
 
-            if not sim_probs:
-                logger.warning(
-                    "ml_model_not_found",
-                    extra={"sport": self.sport, "model_type": model_type},
-                )
-                return game_context
+            prob_meta = result.pop("_meta", {})
+            meta = prob_meta
 
-            # Apply to both home and away unless specific overrides exist
+            # Convert to simulation probability keys
+            sim_probs = _to_simulation_keys(result)
+
             if "home_probabilities" not in game_context:
                 game_context["home_probabilities"] = sim_probs
             if "away_probabilities" not in game_context:
                 game_context["away_probabilities"] = sim_probs
 
-            game_context["_ml_model_used"] = model_type
+            game_context["_probability_source"] = meta.get(
+                "probability_source", mode,
+            )
+
             logger.info(
-                "ml_model_applied",
-                extra={"sport": self.sport, "model_type": model_type},
+                "probability_resolved",
+                extra={
+                    "sport": self.sport,
+                    "mode": mode,
+                    "source": meta.get("probability_source"),
+                },
             )
 
         except Exception as exc:
             logger.error(
-                "ml_model_error",
-                extra={"sport": self.sport, "error": str(exc)},
+                "probability_resolution_error",
+                extra={"sport": self.sport, "mode": mode, "error": str(exc)},
             )
+            meta = {"probability_source": "default", "error": str(exc)}
 
-        return game_context
+        return game_context, meta
 
     def _run_single_iteration(
         self,
@@ -203,3 +233,19 @@ class SimulationEngine:
         Override in sport-specific subclasses.
         """
         return {}
+
+
+def _to_simulation_keys(probs: dict[str, float]) -> dict[str, float]:
+    """Convert event probability keys to simulation engine format.
+
+    Maps ``"strikeout"`` → ``"strikeout_probability"``, etc.
+    """
+    result: dict[str, float] = {}
+    for key, val in probs.items():
+        if key.startswith("_"):
+            continue
+        if not key.endswith("_probability"):
+            result[f"{key}_probability"] = val
+        else:
+            result[key] = val
+    return result

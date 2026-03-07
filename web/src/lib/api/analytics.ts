@@ -40,6 +40,7 @@ export interface SimulationRequest {
   home_probabilities?: Record<string, number>;
   away_probabilities?: Record<string, number>;
   sportsbook?: Record<string, unknown>;
+  probability_mode?: "rule_based" | "ml";
 }
 
 export interface ScoreEntry {
@@ -60,6 +61,8 @@ export interface SimulationResult {
   most_common_scores: ScoreEntry[];
   iterations: number;
   sportsbook_comparison?: Record<string, unknown>;
+  probability_source?: string;
+  probability_meta?: Record<string, unknown>;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {

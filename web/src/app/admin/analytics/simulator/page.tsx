@@ -53,6 +53,7 @@ function PregameSimulator() {
   const [homeTeam, setHomeTeam] = useState("");
   const [awayTeam, setAwayTeam] = useState("");
   const [iterations, setIterations] = useState(5000);
+  const [probabilityMode, setProbabilityMode] = useState<"rule_based" | "ml">("rule_based");
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +68,7 @@ function PregameSimulator() {
         home_team: homeTeam.trim(),
         away_team: awayTeam.trim(),
         iterations,
+        probability_mode: probabilityMode,
       });
       setResult(res);
     } catch (err) {
@@ -99,6 +101,13 @@ function PregameSimulator() {
             <label>Iterations</label>
             <input type="number" value={iterations} onChange={(e) => setIterations(Math.max(1, parseInt(e.target.value) || 1))} min={1} max={100000} />
           </div>
+          <div className={styles.formGroup}>
+            <label>Probability Mode</label>
+            <select value={probabilityMode} onChange={(e) => setProbabilityMode(e.target.value as "rule_based" | "ml")}>
+              <option value="rule_based">Rule Based</option>
+              <option value="ml">ML Model</option>
+            </select>
+          </div>
           <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={handleSimulate} disabled={loading || !homeTeam.trim() || !awayTeam.trim()}>
             {loading ? "Simulating..." : "Run Simulation"}
           </button>
@@ -128,6 +137,17 @@ function PregameSimulator() {
               <span className={styles.probLabel} style={{ textAlign: "right" }}>{result.away_team}</span>
             </div>
           </AdminCard>
+
+          {result.probability_source && (
+            <AdminCard title="Simulation Mode" subtitle={`Probability source: ${result.probability_source}`}>
+              <div className={styles.statsRow}>
+                <div className={styles.statBox}>
+                  <div className={styles.statValue} style={{ fontSize: "1rem" }}>{result.probability_source}</div>
+                  <div className={styles.statLabel}>Source</div>
+                </div>
+              </div>
+            </AdminCard>
+          )}
 
           <AdminCard title="Average Score" subtitle={`Based on ${result.iterations.toLocaleString()} simulations`}>
             <div className={styles.statsRow}>

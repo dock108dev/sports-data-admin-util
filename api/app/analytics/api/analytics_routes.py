@@ -68,6 +68,9 @@ class LiveSimulateRequest(BaseModel):
     away_probabilities: dict[str, float] | None = Field(
         None, description="Custom away team probability distribution",
     )
+    probability_mode: str | None = Field(
+        None, description="Probability source: rule_based or ml",
+    )
 
 
 class SimulateRequest(BaseModel):
@@ -82,6 +85,9 @@ class SimulateRequest(BaseModel):
     )
     away_probabilities: dict[str, float] | None = Field(
         None, description="Custom away team probability distribution",
+    )
+    probability_mode: str | None = Field(
+        None, description="Probability source: rule_based or ml",
     )
     sportsbook: dict[str, Any] | None = Field(
         None, description="Optional sportsbook lines for comparison",
@@ -167,6 +173,8 @@ async def post_simulate(req: SimulateRequest) -> dict[str, Any]:
         game_context["home_probabilities"] = req.home_probabilities
     if req.away_probabilities:
         game_context["away_probabilities"] = req.away_probabilities
+    if req.probability_mode:
+        game_context["probability_mode"] = req.probability_mode
 
     result = _service.run_full_simulation(
         sport=req.sport,
@@ -219,6 +227,8 @@ async def post_live_simulate(req: LiveSimulateRequest) -> dict[str, Any]:
         game_state["home_probabilities"] = req.home_probabilities
     if req.away_probabilities:
         game_state["away_probabilities"] = req.away_probabilities
+    if req.probability_mode:
+        game_state["probability_mode"] = req.probability_mode
 
     result = _service.run_live_simulation(
         sport=req.sport,

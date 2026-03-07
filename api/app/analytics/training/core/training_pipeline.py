@@ -21,9 +21,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import joblib
-from sklearn.model_selection import train_test_split
-
 from .dataset_builder import DatasetBuilder
 from .model_evaluator import ModelEvaluator
 from .training_metadata import TrainingMetadata
@@ -213,6 +210,7 @@ class TrainingPipeline:
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         metadata_path.parent.mkdir(parents=True, exist_ok=True)
 
+        import joblib
         joblib.dump(model, artifact_path)
         self._metadata.record_artifact(str(artifact_path))
         self._metadata.save(metadata_path)
@@ -249,6 +247,7 @@ class TrainingPipeline:
         if not X or not y:
             return {"error": "empty_dataset", "model_id": self.model_id}
 
+        from sklearn.model_selection import train_test_split
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=self.test_size, random_state=self.random_state,
         )
