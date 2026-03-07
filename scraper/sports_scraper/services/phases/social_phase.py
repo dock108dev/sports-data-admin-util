@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from ...celery_app import SOCIAL_BULK_QUEUE
+from ...celery_app import SOCIAL_QUEUE
 from ...logging import logger
 from ...utils.datetime_utils import cap_social_date_range
 
@@ -85,7 +85,7 @@ def dispatch_social(
         collect_team_social.apply_async(
             args=[config.league_code, str(social_start), str(social_end)],
             kwargs={"scrape_run_id": run_id, "job_run_id": job_run_id},
-            queue=SOCIAL_BULK_QUEUE,
+            queue=SOCIAL_QUEUE,
             task_id=task_id,
             link_error=handle_social_task_failure.s(run_id),
         )

@@ -14,7 +14,7 @@ from datetime import date
 
 from celery import shared_task
 
-from ..celery_app import SOCIAL_BULK_QUEUE, SOCIAL_QUEUE
+from ..celery_app import SOCIAL_QUEUE
 from ..config import settings
 from ..logging import logger
 
@@ -101,7 +101,7 @@ def handle_social_task_failure(
 
 @shared_task(
     name="collect_social_for_league",
-    queue=SOCIAL_BULK_QUEUE,
+    queue=SOCIAL_QUEUE,
     autoretry_for=(Exception,),
     retry_backoff=True,
     retry_kwargs={"max_retries": 2},
@@ -253,19 +253,6 @@ def collect_team_social(
 
         # Update parent SportsScrapeRun summary (replace "dispatched" placeholder)
         _report_social_completion(scrape_run_id, result, error=None)
-
-        # Queue one collect_game_social + map after this backfill so
-        # newly collected tweets get mapped and today's games refreshed.
-        # The singleton lock inside collect_game_social prevents overlap
-        # if one is already running.
-        try:
-            collect_game_social.apply_async(
-                queue=SOCIAL_QUEUE,
-                countdown=10,  # small delay so lock from any prior run clears
-            )
-            logger.info("collect_team_social_chained_game_social", league_code=league_code)
-        except Exception as exc:
-            logger.warning("collect_team_social_chain_failed", error=str(exc))
 
         return result
     finally:

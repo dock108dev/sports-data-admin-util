@@ -82,8 +82,8 @@ TASK_REGISTRY: dict[str, TaskRegistryEntry] = {
         ),
         TaskRegistryEntry(
             name="collect_social_for_league",
-            queue="social-bulk",
-            description="Collect social content for a specific league (bulk queue)",
+            queue="social-scraper",
+            description="Collect social content for a specific league",
         ),
         TaskRegistryEntry(
             name="map_social_to_games",

@@ -40,9 +40,9 @@ app = Celery(
 app.conf.update(**celery_config)
 app.conf.task_routes = {
     "run_scrape_job": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
-    # Bulk social tasks route to lower-priority queue so live tasks aren't starved
-    "collect_social_for_league": {"queue": SOCIAL_BULK_QUEUE, "routing_key": SOCIAL_BULK_QUEUE},
-    "collect_team_social": {"queue": SOCIAL_BULK_QUEUE, "routing_key": SOCIAL_BULK_QUEUE},
+    # All X scraping on one queue — single Playwright session, no parallel X hits
+    "collect_social_for_league": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
+    "collect_team_social": {"queue": SOCIAL_QUEUE, "routing_key": SOCIAL_QUEUE},
     "map_social_to_games": {"queue": SOCIAL_BULK_QUEUE, "routing_key": SOCIAL_BULK_QUEUE},
     # Social error callback runs on main scraper queue (DB writes only)
     "handle_social_task_failure": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},

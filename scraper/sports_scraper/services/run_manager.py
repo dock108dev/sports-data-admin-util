@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from ..celery_app import SOCIAL_BULK_QUEUE
 from ..config import settings
 from ..config_sports import get_social_enabled_leagues
 from ..db import db_models, get_session
