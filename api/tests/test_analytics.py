@@ -4785,3 +4785,145 @@ class TestModelMetricsAPIEndpoint:
         m = models[0]
         assert m["metrics"]["accuracy"] == 0.61
         assert m["metrics"]["brier_score"] == 0.204
+
+
+# ---------------------------------------------------------------------------
+# Prompt 19 – Model Performance Dashboard (ModelService)
+# ---------------------------------------------------------------------------
+
+
+class TestModelServiceListModels:
+    """Test ModelService.list_models with filtering and sorting."""
+
+    def _make_service(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+        from app.analytics.services.model_service import ModelService
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "mlb_pa_v1", "/a.pkl", metadata={"accuracy": 0.80, "log_loss": 0.50})
+        registry.register_model("mlb", "pa", "mlb_pa_v2", "/b.pkl", metadata={"accuracy": 0.85, "log_loss": 0.45})
+        registry.register_model("nba", "game", "nba_game_v1", "/c.pkl", metadata={"accuracy": 0.70})
+        registry.activate_model("mlb", "pa", "mlb_pa_v2")
+        return ModelService(registry=registry)
+
+    def test_list_all(self, tmp_path):
+        svc = self._make_service(tmp_path)
+        result = svc.list_models()
+        assert result["count"] == 3
+
+    def test_filter_by_sport(self, tmp_path):
+        svc = self._make_service(tmp_path)
+        result = svc.list_models(sport="mlb")
+        assert result["count"] == 2
+        assert all(m["sport"] == "mlb" for m in result["models"])
+
+    def test_filter_by_model_type(self, tmp_path):
+        svc = self._make_service(tmp_path)
+        result = svc.list_models(model_type="game")
+        assert result["count"] == 1
+
+    def test_active_only(self, tmp_path):
+        svc = self._make_service(tmp_path)
+        result = svc.list_models(active_only=True)
+        assert result["count"] == 1
+        assert result["models"][0]["model_id"] == "mlb_pa_v2"
+
+    def test_sort_by_accuracy_desc(self, tmp_path):
+        svc = self._make_service(tmp_path)
+        result = svc.list_models(sport="mlb", sort_by="accuracy", sort_desc=True)
+        ids = [m["model_id"] for m in result["models"]]
+        assert ids[0] == "mlb_pa_v2"
+
+    def test_sort_by_accuracy_asc(self, tmp_path):
+        svc = self._make_service(tmp_path)
+        result = svc.list_models(sport="mlb", sort_by="accuracy", sort_desc=False)
+        ids = [m["model_id"] for m in result["models"]]
+        assert ids[0] == "mlb_pa_v1"
+
+
+class TestModelServiceGetDetails:
+    """Test ModelService.get_model_details."""
+
+    def test_returns_details(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+        from app.analytics.services.model_service import ModelService
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/a.pkl", metadata={"accuracy": 0.80})
+        svc = ModelService(registry=registry)
+        details = svc.get_model_details("v1")
+        assert details is not None
+        assert details["model_id"] == "v1"
+        assert details["sport"] == "mlb"
+        assert details["metrics"]["accuracy"] == 0.80
+
+    def test_returns_none_for_missing(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+        from app.analytics.services.model_service import ModelService
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        svc = ModelService(registry=registry)
+        assert svc.get_model_details("nonexistent") is None
+
+    def test_enriches_from_metadata_file(self, tmp_path):
+        import json
+        from app.analytics.models.core.model_registry import ModelRegistry
+        from app.analytics.services.model_service import ModelService
+
+        meta_file = tmp_path / "meta.json"
+        meta_file.write_text(json.dumps({
+            "feature_config": "config_v2",
+            "train_count": 5000,
+            "random_state": 42,
+        }))
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model(
+            "mlb", "pa", "v1", "/a.pkl",
+            metadata={"accuracy": 0.80},
+            metadata_path=str(meta_file),
+        )
+        svc = ModelService(registry=registry)
+        details = svc.get_model_details("v1")
+        assert details["feature_config"] == "config_v2"
+        assert details["training_row_count"] == 5000
+        assert details["random_state"] == 42
+
+
+class TestModelServiceCompare:
+    """Test ModelService.compare_models."""
+
+    def test_compare_two_models(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+        from app.analytics.services.model_service import ModelService
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/a.pkl", metadata={"accuracy": 0.80, "log_loss": 0.50})
+        registry.register_model("mlb", "pa", "v2", "/b.pkl", metadata={"accuracy": 0.85, "log_loss": 0.45})
+        svc = ModelService(registry=registry)
+        result = svc.compare_models("mlb", "pa", ["v1", "v2"])
+        assert result["sport"] == "mlb"
+        assert len(result["models"]) == 2
+        assert "comparison" in result
+        assert result["comparison"]["better_model"] in ("v1", "v2")
+
+    def test_compare_three_models_no_comparison(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+        from app.analytics.services.model_service import ModelService
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model("mlb", "pa", "v1", "/a.pkl", metadata={"accuracy": 0.80})
+        registry.register_model("mlb", "pa", "v2", "/b.pkl", metadata={"accuracy": 0.85})
+        registry.register_model("mlb", "pa", "v3", "/c.pkl", metadata={"accuracy": 0.90})
+        svc = ModelService(registry=registry)
+        result = svc.compare_models("mlb", "pa", ["v1", "v2", "v3"])
+        assert len(result["models"]) == 3
+        assert "comparison" not in result
+
+    def test_compare_unknown_ids_returns_empty(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+        from app.analytics.services.model_service import ModelService
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        svc = ModelService(registry=registry)
+        result = svc.compare_models("mlb", "pa", ["nope1", "nope2"])
+        assert result["models"] == []

@@ -32,6 +32,7 @@ from app.analytics.features.config.feature_config_registry import FeatureConfigR
 from app.analytics.inference.model_inference_engine import ModelInferenceEngine
 from app.analytics.models.core.model_registry import ModelRegistry
 from app.analytics.services.analytics_service import AnalyticsService
+from app.analytics.services.model_service import ModelService
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -45,6 +46,7 @@ _model_metrics = ModelMetrics()
 _feature_config_loader = FeatureConfigLoader()
 _feature_config_registry = FeatureConfigRegistry(loader=_feature_config_loader)
 _model_registry = ModelRegistry()
+_model_service = ModelService(registry=_model_registry)
 _inference_engine = ModelInferenceEngine(registry=_model_registry)
 
 
@@ -505,10 +507,40 @@ class ModelActivateRequest(BaseModel):
 async def get_models(
     sport: str = Query(None, description="Filter by sport code"),
     model_type: str = Query(None, description="Filter by model type"),
+    sort_by: str = Query(None, description="Sort key (created_at, accuracy, log_loss, brier_score, version)"),
+    sort_desc: bool = Query(True, description="Sort descending"),
+    active_only: bool = Query(False, description="Only show active models"),
 ) -> dict[str, Any]:
-    """List registered models with active status."""
-    models = _model_registry.list_models(sport=sport, model_type=model_type)
-    return {"models": models, "count": len(models)}
+    """List registered models with active status, filtering, and sorting."""
+    return _model_service.list_models(
+        sport=sport,
+        model_type=model_type,
+        sort_by=sort_by,
+        sort_desc=sort_desc,
+        active_only=active_only,
+    )
+
+
+@router.get("/models/details")
+async def get_model_details(
+    model_id: str = Query(..., description="Model ID"),
+) -> dict[str, Any]:
+    """Get full details for a single registered model."""
+    details = _model_service.get_model_details(model_id)
+    if details is None:
+        return {"status": "not_found", "model_id": model_id}
+    return details
+
+
+@router.get("/models/compare")
+async def get_model_compare(
+    sport: str = Query(..., description="Sport code"),
+    model_type: str = Query(..., description="Model type"),
+    model_ids: str = Query(..., description="Comma-separated model IDs"),
+) -> dict[str, Any]:
+    """Compare evaluation metrics across model versions."""
+    ids = [mid.strip() for mid in model_ids.split(",") if mid.strip()]
+    return _model_service.compare_models(sport, model_type, ids)
 
 
 @router.post("/models/activate")

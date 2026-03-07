@@ -276,3 +276,48 @@ export async function getModelMetrics(
   const qs = params.toString();
   return fetchJson(`${base()}/api/analytics/model-metrics${qs ? `?${qs}` : ""}`);
 }
+
+export interface ModelDetails {
+  model_id: string;
+  sport: string;
+  model_type: string;
+  version: number;
+  active: boolean;
+  artifact_path?: string;
+  metadata_path?: string;
+  created_at?: string;
+  metrics: Record<string, number>;
+  feature_config?: string;
+  training_row_count?: number;
+  random_state?: number;
+}
+
+export async function getModelDetails(modelId: string): Promise<ModelDetails> {
+  const params = new URLSearchParams({ model_id: modelId });
+  return fetchJson<ModelDetails>(`${base()}/api/analytics/models/details?${params}`);
+}
+
+export interface ModelComparison {
+  sport: string;
+  model_type: string;
+  models: { model_id: string; version?: number; active: boolean; metrics: Record<string, number> }[];
+  comparison?: {
+    better_model: string;
+    metric_differences: Record<string, number>;
+    model_a: string;
+    model_b: string;
+  };
+}
+
+export async function compareModels(
+  sport: string,
+  modelType: string,
+  modelIds: string[],
+): Promise<ModelComparison> {
+  const params = new URLSearchParams({
+    sport,
+    model_type: modelType,
+    model_ids: modelIds.join(","),
+  });
+  return fetchJson<ModelComparison>(`${base()}/api/analytics/models/compare?${params}`);
+}
