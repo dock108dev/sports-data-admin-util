@@ -225,7 +225,9 @@ class TeamTweetCollector:
                 handle=x_handle,
                 error=str(exc),
             )
-            return 0
+            # Re-raise so callers (collect_game_social) can track the failure
+            # and avoid stamping last_social_at on broken scrapes.
+            raise
 
         self.rate_limiter.record()
 

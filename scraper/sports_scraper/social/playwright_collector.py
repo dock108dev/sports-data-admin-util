@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from importlib.util import find_spec
 
@@ -83,10 +84,21 @@ class PlaywrightXCollector:
         self._browser = None
         self._context = None
 
+        # Dedicated thread for all Playwright operations.
+        # Celery workers using psycopg v3 run inside an asyncio event loop,
+        # which prevents Playwright's sync API from starting.  A single-thread
+        # executor keeps all browser work on a thread without an event loop.
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pw")
+
         if self.auth_token and self.ct0:
             logger.info("x_auth_configured", token_len=len(self.auth_token), ct0_len=len(self.ct0))
         else:
             logger.warning("x_auth_missing", message="X_AUTH_TOKEN and/or X_CT0 not set - search will not work")
+
+    def _run_in_thread(self, fn, *args, **kwargs):
+        """Run *fn* in the dedicated browser thread (no asyncio loop)."""
+        future = self._executor.submit(fn, *args, **kwargs)
+        return future.result()
 
     def _ensure_browser(self) -> None:  # pragma: no cover - browser lifecycle
         """Lazily start Playwright + Chromium if not already running."""
@@ -108,8 +120,8 @@ class PlaywrightXCollector:
             )
         logger.info("x_browser_started")
 
-    def close(self) -> None:  # pragma: no cover - browser lifecycle
-        """Shut down the browser and Playwright server."""
+    def _close_browser(self) -> None:  # pragma: no cover - browser lifecycle
+        """Internal close — must run on the browser thread."""
         if self._browser is not None:
             try:
                 self._browser.close()
@@ -124,6 +136,19 @@ class PlaywrightXCollector:
                 pass
             self._pw = None
             logger.info("x_browser_stopped")
+
+    def close(self) -> None:  # pragma: no cover - browser lifecycle
+        """Shut down the browser and Playwright server."""
+        if self._browser is not None or self._pw is not None:
+            try:
+                self._run_in_thread(self._close_browser)
+            except Exception:
+                # Executor already shut down or other error — force cleanup
+                self._close_browser()
+        try:
+            self._executor.shutdown(wait=True)
+        except Exception:
+            pass
 
     def __enter__(self):
         return self
@@ -185,7 +210,19 @@ class PlaywrightXCollector:
         window_end: datetime,
         known_post_ids: set[str] | None = None,
     ) -> tuple[list[CollectedPost], str | None]:
-        """Execute a single scrape attempt.
+        """Dispatch scrape to the dedicated browser thread."""
+        return self._run_in_thread(
+            self._scrape_once_impl, x_handle, window_start, window_end, known_post_ids
+        )
+
+    def _scrape_once_impl(  # pragma: no cover - requires browser
+        self,
+        x_handle: str,
+        window_start: datetime,
+        window_end: datetime,
+        known_post_ids: set[str] | None = None,
+    ) -> tuple[list[CollectedPost], str | None]:
+        """Execute a single scrape attempt (runs on the browser thread).
 
         Returns:
             Tuple of (posts, error_message). error_message is None on success

@@ -443,6 +443,7 @@ def collect_game_social() -> dict:
                     time.sleep(delay)
 
                 game_new_tweets = 0
+                game_errors = 0
                 for team_id in (game.home_team_id, game.away_team_id):
                     if team_id in scraped_team_ids:
                         continue
@@ -466,14 +467,20 @@ def collect_game_social() -> dict:
                         )
                     except Exception as exc:
                         errors += 1
+                        game_errors += 1
                         logger.warning(
                             "collect_game_social_team_error",
                             team_id=team_id,
                             error=str(exc),
                         )
 
-                # Update last_social_at for this game
-                game.last_social_at = utc_now
+                # Only stamp last_social_at when at least one team produced
+                # tweets OR both teams completed without errors.  When
+                # Playwright is broken every team silently returns 0 and
+                # stamping would mark the game "fresh", hiding the failure
+                # for 2 hours.
+                if game_new_tweets > 0 or game_errors == 0:
+                    game.last_social_at = utc_now
 
                 games_completed += 1
                 if games_completed % social_cfg.game_batch_size == 0:
