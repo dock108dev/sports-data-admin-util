@@ -171,17 +171,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for GitHub secrets, deploy flow, and rollback
 
 ## Environment Variables (Production)
 
-Production secrets live in `infra/.env` on the server (never committed).
-
-| Variable | Purpose |
-|----------|---------|
-| `DATABASE_URL` | Postgres connection string |
-| `REDIS_URL` | Redis connection string |
-| `CELERY_BROKER_URL` | Celery broker override |
-| `ALLOWED_CORS_ORIGINS` | Comma-separated trusted origins |
-| `RATE_LIMIT_REQUESTS` | Rate limit requests per window |
-| `RATE_LIMIT_WINDOW_SECONDS` | Rate limit window size |
-| `ENVIRONMENT` | Must be `production` |
+Production secrets live in `infra/.env` on the server (never committed). See [INFRA.md](INFRA.md#environment-variables) for the full variable reference.
 
 ### Startup Validation (Fail-Fast)
 

@@ -4,6 +4,40 @@ All notable changes to Sports Data Admin.
 
 ## [2026-03-06] - Current
 
+### Analytics Engine
+
+- **Monte Carlo simulation**: `POST /api/analytics/simulate` runs N-iteration game simulations with pluggable probability sources (`rule_based`, `ml`, `ensemble`, `pitch_level`)
+- **Live simulation**: `POST /api/analytics/live-simulate` simulates from a mid-game state (inning, outs, bases, score)
+- **Async simulation jobs**: `POST /api/analytics/simulate-job` and `/live-simulate-job` for background execution with polling via `/simulation-result`
+- **Team/Player/Matchup profiles**: `GET /api/analytics/team`, `/player`, `/matchup` endpoints for analytical profiles and head-to-head probability distributions
+- **ML model registry**: `GET/POST /api/analytics/models/*` endpoints for listing, activating, comparing, and inspecting registered models (JSON-backed, one active per sport/model_type)
+- **Model inference**: `POST /api/analytics/model-predict` runs predictions through the active ML model with feature extraction from entity profiles
+- **Feature configuration**: YAML-based feature configs (`GET/POST /api/analytics/feature-config`) with runtime registry for A/B testing feature sets
+- **Ensemble system**: Weighted combination of rule-based and ML predictions (`GET/POST /api/analytics/ensemble-config`) with configurable provider weights
+- **Prediction calibration**: `POST /api/analytics/record-outcome` stores actual results; `GET /api/analytics/model-performance` returns Brier score, log loss, MAE, and calibration buckets
+- **MLB advanced models**: Pitch outcome model (`/mlb/pitch-model`), pitch-level PA simulation (`/mlb/pitch-sim`), run expectancy (`/mlb/run-expectancy`)
+- **5 built-in MLB models**: plate appearance, game, pitch outcome, batted ball, run expectancy — each with rule-based fallbacks using league-average baselines
+- **Admin UI pages**: 11 analytics pages (Overview, Simulator, Team, Player, Matchup, Model Registry, Model Performance, Feature Config, Ensemble, Baseball Models, Model Detail)
+
+### Repository Cleanup
+
+- **Dead code removed**: Unused `_run_single_iteration()` method from `SimulationEngine`, unused `runner` variable in `AnalyticsService`, unused `getActiveModel()`/`getModelMetrics()` functions from web API client
+- **Lint fixes (15 total)**: 8 unused imports, 1 unsorted import block, 6 line-too-long violations across analytics package
+- **Duplicate utilities consolidated**: `formatMetricName()`/`formatMetricValue()` extracted from 3 analytics pages into shared `web/src/lib/utils/formatting.ts`
+- **Missing nav links added**: AdminNav now includes all 10 analytics routes (was missing Team, Player, Matchup, Ensemble, Baseball Models)
+- **Trailing whitespace removed**: `AdminTable.tsx`
+
+### Documentation
+
+- **ANALYTICS.md** (NEW): Full documentation of the analytics/ML engine — package structure, simulation, probability providers, model registry, feature pipeline, training, MLB models, ensemble system, and all 29 API endpoints
+- **API.md**: Added Analytics section (29 endpoints across 8 subsections) with parameter tables, request/response examples
+- **ARCHITECTURE.md**: Added Analytics Engine as first-class component (Section 3) with endpoint listing
+- **INDEX.md**: Added Analytics & ML section
+- **README.md**: Updated directory descriptions, added analytics doc link
+- **INFRA.md**: Replaced duplicated troubleshooting section with cross-reference to LOCAL_DEVELOPMENT.md
+- **LOCAL_DEVELOPMENT.md**: Simplified env vars table, added cross-reference to INFRA.md
+- **OPERATOR_RUNBOOK.md**: Replaced duplicated env vars table with cross-reference to INFRA.md
+
 ### Live +EV Fair-Bet Computation
 
 - **Live EV pipeline**: `GET /api/fairbet/live` now runs the same EV pipeline as pre-game odds (Shin devig, Pinnacle reference, extrapolation) on live in-game odds from Redis — nothing persisted to the DB

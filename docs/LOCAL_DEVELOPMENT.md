@@ -142,7 +142,7 @@ pnpm dev
 
 ## Environment Variables
 
-Key variables in `infra/.env`:
+Key variables in `infra/.env`. See [INFRA.md](INFRA.md#environment-variables) for the full reference.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -152,13 +152,11 @@ Key variables in `infra/.env`:
 | POSTGRES_USER | Yes | Database user |
 | POSTGRES_PASSWORD | Yes | Database password |
 | ENVIRONMENT | Yes | `development`, `staging`, or `production` |
-| API_KEY | Prod/Staging | API authentication key (min 32 chars). Generate: `openssl rand -hex 32` |
-| OPENAI_API_KEY | No | For AI enrichment (moment summaries) |
+| NEXT_PUBLIC_SPORTS_API_URL | Yes (web) | API base URL for frontend |
+| OPENAI_API_KEY | No | For AI enrichment (game flow narratives) |
 | ODDS_API_KEY | No | The Odds API key for live odds |
 | X_AUTH_TOKEN | No | X auth cookie for social scraping |
 | X_CT0 | No | X CSRF cookie for social scraping |
-| NEXT_PUBLIC_SPORTS_API_URL | Yes (web) | API base URL for frontend |
-| RUN_MIGRATIONS | No | Run Alembic on startup (default: false) |
 
 ---
 

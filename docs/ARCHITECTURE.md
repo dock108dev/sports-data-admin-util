@@ -60,7 +60,20 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 - **Admin Endpoints:** Scraper management, data browser
 - **Server-Side Services:** Status flags (`game_status.py`), date sections (`date_section.py`), FairBet display helpers (`fairbet_display.py`), odds table builder (`odds_table.py`), stat normalization (`stat_normalization.py`), stat annotations (`stat_annotations.py`), play timeline enrichment (`play_tiers.py`), period labels (`period_labels.py`), derived metrics (`derived_metrics.py`)
 
-### 3. Admin UI (`web/`)
+### 3. Analytics Engine (`api/app/analytics/`)
+**Purpose:** Predictive modeling, simulation, and matchup analysis
+
+- **Simulation:** Monte Carlo game simulation with pluggable probability sources (rule-based, ML, ensemble, pitch-level)
+- **Models:** Sport-specific ML models (plate appearance, game outcome, pitch outcome, batted ball, run expectancy)
+- **Features:** Feature extraction pipeline with configurable feature sets per sport/model type
+- **Inference:** Model registry, activation controls, inference caching, auto-reload on model changes
+- **Ensemble:** Weighted probability combination from multiple providers
+- **Training:** Dataset building, label extraction, model evaluation metrics
+- **API:** `/api/analytics/*` endpoints for team/player profiles, matchup analysis, simulation, model management, ensemble config, MLB advanced models
+
+See [ANALYTICS.md](ANALYTICS.md) for details.
+
+### 4. Admin UI (`web/`)
 **Purpose:** Data management and monitoring
 
 - **Framework:** React + TypeScript + Next.js
@@ -72,7 +85,7 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
   - Container log viewer
   - Game detail with boxscores, player stats, odds, social, PBP, flow, and pipeline runs
 
-### 4. Database (PostgreSQL)
+### 5. Database (PostgreSQL)
 **Purpose:** Single source of truth
 
 - **Schema:** Normalized across sports
@@ -191,6 +204,16 @@ Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). R
 - `GET /api/admin/sports/pbp/game/{id}` - PBP events by period
 - `GET /api/admin/sports/pbp/game/{id}/detail` - Detailed PBP with resolution stats
 - `GET /api/admin/sports/pbp/game/{id}/snapshots` - PBP snapshot history
+
+### Analytics Endpoints
+- `GET /api/analytics/team` — Team analytical profile
+- `GET /api/analytics/player` — Player analytical profile
+- `GET /api/analytics/matchup` — Head-to-head matchup analysis
+- `POST /api/analytics/simulate` — Full Monte Carlo simulation
+- `POST /api/analytics/live-simulate` — Live game simulation from current state
+- `GET /api/analytics/models/*` — Model registry and activation
+- `GET/POST /api/analytics/ensemble-config` — Ensemble weight configuration
+- `GET /api/analytics/mlb/*` — MLB pitch model, pitch simulation, run expectancy
 
 ### FairBet Endpoints
 - `GET /api/fairbet/odds` — Cross-book odds comparison with EV annotations and display fields

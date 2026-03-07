@@ -58,13 +58,14 @@ For manual setup, see [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md).
 ## Directory Structure
 
 ```
-api/          FastAPI backend
-scraper/      Multi-sport data scraper
-web/          Admin UI
-infra/        Docker, deployment config
+api/          FastAPI backend + analytics engine
+scraper/      Multi-sport data scraper (Celery workers)
+web/          Admin UI (Next.js)
+infra/        Docker Compose, Dockerfiles, env config
 docs/         Documentation
-packages/     Shared JS libraries (js-core, ui, ui-kit)
-scripts/      Backup and deployment scripts
+packages/     Shared JS packages
+scripts/      Utility scripts
+sql/          Reference SQL queries
 ```
 
 ## Documentation
@@ -75,6 +76,7 @@ scripts/      Backup and deployment scripts
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
 | [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) | Development setup |
 | [docs/API.md](docs/API.md) | API reference |
+| [docs/ANALYTICS.md](docs/ANALYTICS.md) | Analytics & ML engine |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment guide |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release changelog |
 
