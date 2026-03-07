@@ -1150,51 +1150,72 @@ Evaluate a parlay by multiplying true probabilities. Returns combined fair proba
 
 ### `GET /live`
 
-Get closing-line snapshot (DB) + live odds (Redis) for a game. Combines durable closing lines captured when the game went LIVE with ephemeral live line snapshots and movement history from Redis.
+Compute +EV fair-bet odds for a live in-game event. Reads aggregated multi-book live odds from Redis, runs the same EV pipeline as pre-game (Shin devig, Pinnacle reference, extrapolation), and returns annotated bet definitions. Nothing is persisted to the DB.
 
 **Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `game_id` | `int` | **Required.** Game ID |
-| `market_key` | `string` | Market key (`spread`, `total`, `moneyline`). Omit for all markets. |
-| `history_count` | `int` | Number of history entries (0-300, default 50) |
+| `market_category` | `string` | Filter by market category (`mainline`, `player_prop`, `team_prop`, `alternate`) |
+| `sort_by` | `string` | Sort order: `ev` (default), `market` |
 
 **Response:**
 
 ```json
 {
   "game_id": 123,
-  "market_key": "spread",
-  "closing": [
+  "league_code": "NBA",
+  "home_team": "Los Angeles Lakers",
+  "away_team": "Boston Celtics",
+  "bets": [
     {
-      "provider": "DraftKings",
-      "market_key": "spread",
-      "selection": "home",
+      "game_id": 123,
+      "league_code": "NBA",
+      "home_team": "Los Angeles Lakers",
+      "away_team": "Boston Celtics",
+      "game_date": "2026-03-05T19:00:00Z",
+      "market_key": "spreads",
+      "selection_key": "team:los_angeles_lakers",
       "line_value": -3.5,
-      "price_american": -110,
-      "captured_at": "2026-03-05T19:00:00+00:00",
-      "source_type": "closing"
+      "market_category": "mainline",
+      "true_prob": 0.5432,
+      "reference_price": -118,
+      "ev_method": "pinnacle_devig",
+      "has_fair": true,
+      "fair_american_odds": -119,
+      "selection_display": "LAL -3.5",
+      "market_display_name": "Spread",
+      "best_book": "DraftKings",
+      "best_ev_percent": 2.15,
+      "explanation_steps": ["..."],
+      "books": [
+        {
+          "book": "DraftKings",
+          "price": -110,
+          "observed_at": "2026-03-05T19:30:00Z",
+          "ev_percent": 2.15,
+          "is_sharp": false,
+          "book_abbr": "DK",
+          "ev_tier": "positive"
+        }
+      ]
     }
   ],
-  "live": {
-    "last_updated_at": 1741209600.0,
-    "provider": "DraftKings",
-    "selections": [{"selection": "home", "line": -4.5, "price": -115}],
-    "ttl_seconds_remaining": 21000
-  },
-  "history": [
-    {"t": 1741209590, "selections": [{"s": "home", "p": -110}]}
-  ],
-  "meta": {
-    "league": "NBA",
-    "live_updated_at": "2026-03-05T19:00:00",
-    "closing_count": 6
+  "total": 12,
+  "books_available": ["DraftKings", "FanDuel", "Pinnacle"],
+  "market_categories_available": ["mainline"],
+  "last_updated_at": "2026-03-05T19:30:00+00:00",
+  "ev_diagnostics": {
+    "total_pairs": 6,
+    "total_unpaired": 0,
+    "passed": 5,
+    "reference_missing": 1
   }
 }
 ```
 
-When `market_key` is omitted, `live` is a dict keyed by market (`{"spread": {...}, "total": {...}}`). When specified, `live` is a single `LiveSnapshotResponse`.
+The `bets` array uses the same `BetDefinition` shape as the pre-game `/odds` endpoint, including all display enrichment fields (`fair_american_odds`, `selection_display`, `market_display_name`, `explanation_steps`, per-book `book_abbr`, `ev_tier`, etc.). See the `/odds` response documentation above for field semantics.
 
 ---
 

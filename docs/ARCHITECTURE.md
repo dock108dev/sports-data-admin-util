@@ -195,7 +195,7 @@ Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). R
 ### FairBet Endpoints
 - `GET /api/fairbet/odds` — Cross-book odds comparison with EV annotations and display fields
 - `POST /api/fairbet/parlay/evaluate` — Parlay evaluation (combined fair probability + odds)
-- `GET /api/fairbet/live` — Live odds with closing-line baseline, live Redis snapshot, and movement history
+- `GET /api/fairbet/live` — Live in-game +EV odds computed from multi-book Redis snapshots (same EV pipeline as pre-game, nothing persisted)
 
 ### Realtime Endpoints
 - `WS /v1/realtime/ws` — WebSocket feed for live game updates (scores, PBP, odds)

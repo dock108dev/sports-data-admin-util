@@ -14,7 +14,8 @@ How odds enter the system, get matched to games, populate the FairBet work table
 4. [FairBet Work Table & Selection Keys](#fairbet-work-table--selection-keys)
 5. [EV Computation](#ev-computation)
 6. [API Consumption Guide](#api-consumption-guide)
-7. [Known Limitations](#known-limitations)
+7. [Live +EV (In-Game Odds)](#live-ev-in-game-odds)
+8. [Known Limitations](#known-limitations)
 
 ---
 
@@ -515,6 +516,98 @@ GET /api/fairbet/odds?league=NBA&market_category=mainline
 ```
 GET /api/fairbet/odds?market_category=player_prop&has_fair=true
 ```
+
+---
+
+## Live +EV (In-Game Odds)
+
+Live odds use the same EV pipeline as pre-game but operate entirely on ephemeral Redis data — nothing is persisted to the database.
+
+### Architecture
+
+```
+The Odds API (live events)
+      │
+      ▼
+Live Orchestrator (5s tick)
+  ├─ poll_live_odds_mainline (every 15s)
+  └─ poll_live_odds_props    (every 45s)
+      │
+      ▼
+Aggregated Redis Snapshots
+  Key: live:odds:{league}:{game_id}:{market_key}
+  Value: { books: { "DraftKings": [...], "Pinnacle": [...] }, last_updated_at: ... }
+  TTL: 6h snapshots, 12h history ring buffer (300 entries)
+      │
+      ▼
+GET /api/fairbet/live?game_id=...
+  ├─ read_all_live_snapshots_for_game() → all markets for a game
+  ├─ Build bets_map from multi-book snapshots
+  ├─ _annotate_pair_ev()       (Shin devig on Pinnacle)
+  ├─ _try_extrapolated_ev()    (fallback)
+  ├─ Enrich with display fields
+  └─ Return FairbetLiveResponse
+```
+
+### How It Differs From Pre-Game
+
+| Aspect | Pre-Game | Live |
+|--------|----------|------|
+| Source | `fairbet_game_odds_work` (PostgreSQL) | Redis snapshots |
+| Selection keys | Canonical DB team names | Built from Odds API names via `_build_selection_key()` |
+| Persistence | FairBet work table continuously upserted | Nothing persisted |
+| Refresh | On each odds sync (~60s) | 15–45s polling via live orchestrator |
+| Scope | All upcoming non-completed games | Single game at a time |
+
+### Redis Snapshot Format
+
+Each snapshot key holds all bookmakers for one (game, market):
+
+```json
+{
+  "last_updated_at": 1741209600.0,
+  "league": "NBA",
+  "game_id": 123,
+  "market_key": "spread",
+  "books": {
+    "DraftKings": [{"selection": "home", "line": -3.5, "price": -110}],
+    "Pinnacle": [{"selection": "home", "line": -3.5, "price": -108}],
+    "FanDuel": [{"selection": "home", "line": -3.5, "price": -112}]
+  }
+}
+```
+
+The scraper aggregates all bookmakers before writing a single snapshot per (game, market) — this is critical for cross-book EV computation.
+
+### API: `GET /api/fairbet/live`
+
+See [API Consumption Guide](#api-consumption-guide) for the pre-game endpoint. The live endpoint returns the same `BetDefinition` shape with identical EV fields, display enrichment, and explanation steps.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `game_id` | int | **required** | Game ID |
+| `market_category` | string | — | Filter by category |
+| `sort_by` | string | `ev` | Sort: `ev`, `market` |
+
+**Response:** `FairbetLiveResponse` — same structure as `FairbetOddsResponse` scoped to a single game, plus `last_updated_at` and `ev_diagnostics`.
+
+### Frontend
+
+The FairBet odds page has **Pre-Game** and **Live** tabs sharing the same `BetCard` component. The Live tab:
+- Requires selecting a game from the game selector dropdown
+- Auto-refreshes every 15 seconds
+- Shows a pulsing live indicator with last-update timestamp
+- Uses the same EV display (cards, explanation steps, confidence tiers)
+
+Code:
+- Scraper tasks: `scraper/sports_scraper/jobs/live_odds_tasks.py`
+- Redis store: `scraper/sports_scraper/live_odds/redis_store.py`
+- API endpoint: `api/app/routers/fairbet/live.py`
+- API Redis reader: `api/app/services/live_odds_redis.py`
+- Frontend: `web/src/app/admin/fairbet/odds/page.tsx`
+- Frontend API client: `web/src/lib/api/fairbet/index.ts`
 
 ---
 

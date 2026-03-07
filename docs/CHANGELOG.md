@@ -2,7 +2,32 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-03-04] - Current
+## [2026-03-06] - Current
+
+### Live +EV Fair-Bet Computation
+
+- **Live EV pipeline**: `GET /api/fairbet/live` now runs the same EV pipeline as pre-game odds (Shin devig, Pinnacle reference, extrapolation) on live in-game odds from Redis — nothing persisted to the DB
+- **Multi-book Redis snapshots**: Live odds scraper now aggregates all bookmakers per (game, market) into a single Redis snapshot instead of writing per-bookmaker (which caused last-write-wins data loss)
+- **`write_live_snapshot` signature change**: From `(selections, provider)` to `(books: dict[str, list[dict]])` — stores all bookmakers in one key enabling cross-book EV computation
+- **Removed old closing-lines comparison**: Old `ClosingLineResponse` / `LiveSnapshotResponse` models and the closing-lines-vs-live-snapshot UI removed; replaced with full EV-annotated `LiveBetDefinition` and `FairbetLiveResponse`
+- **Frontend Pre-Game/Live tabs**: FairBet odds page split into Pre-Game and Live tabs sharing a `BetCard` component; Live tab has game selector, 15s auto-refresh, and pulsing live indicator
+- **Frontend API client**: Added `FairbetLiveResponse`, `FairbetLiveFilters` types and `fetchFairbetLiveOdds()` function
+
+### NCAAB SSOT Consolidation
+
+- **CBB API as single source of truth**: NCAAB game ingestion uses CBB Stats API exclusively for schedule, boxscores, and PBP — removed duplicate data paths
+- **MLB Schedule API pre-population**: `populate_mlb_games_from_schedule()` creates game stubs from the MLB Schedule API before the boxscore phase, ensuring all games exist regardless of Odds API coverage (fixes ~66% game gap in MLB backfills)
+
+### Documentation
+
+- **ODDS_AND_FAIRBET.md**: Added "Live +EV (In-Game Odds)" section documenting architecture, Redis snapshot format, API parameters, frontend, and file references
+- **API.md**: Rewrote `GET /live` endpoint from old closing-lines format to new EV-annotated response
+- **ARCHITECTURE.md**: Updated FairBet Live endpoint description
+- **CHANGELOG.md**: Added today's entries
+
+---
+
+## [2026-03-04]
 
 ### Social Scraping Hardening
 

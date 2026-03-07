@@ -208,7 +208,7 @@ When games are live, the **live orchestrator** dispatches per-game odds polling 
 | `poll_live_odds_mainline` | Every 15s | h2h, spreads, totals (league-batched) |
 | `poll_live_odds_props` | Every 45s | Player/team props (per-event) |
 
-**Closing line snapshots** are captured to the `closing_lines` table when a game transitions to LIVE, providing a durable baseline for CLV (closing line value) tracking. Live odds are stored ephemerally in Redis with TTL (6h snapshots, 12h history ring buffer of 300 entries per game/market).
+**Closing line snapshots** are captured to the `closing_lines` table when a game transitions to LIVE, providing a durable baseline for CLV (closing line value) tracking. Live odds are stored ephemerally in Redis as **aggregated multi-book snapshots** — one key per (game, market) containing all bookmakers — with TTL (6h snapshots, 12h history ring buffer of 300 entries per game/market). This aggregation enables the live +EV pipeline (`GET /api/fairbet/live`) to compute cross-book EV at query time using the same Shin devig / Pinnacle reference logic as pre-game odds.
 
 The live orchestrator (`live_orchestrator_tick`) runs every 5 seconds via Celery Beat and uses Redis scheduling keys to track per-game cadences with jitter. It dispatches work only when live games exist.
 
