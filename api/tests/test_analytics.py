@@ -2575,8 +2575,8 @@ class TestFullMLPipeline:
         features = profile.metrics
 
         # Step 3: ML model generates probabilities
-        registry = ModelRegistry()
-        pa_model = registry.get_active_model("mlb", "plate_appearance")
+        registry = ModelRegistry(registry_path=None)
+        pa_model = registry.get_active_model_instance("mlb", "plate_appearance")
         assert pa_model is not None
 
         probs = pa_model.predict_proba(features)
@@ -3916,15 +3916,15 @@ class TestModelInferenceEngine:
         joblib.dump(sklearn_model, artifact_path)
 
         # Register the model
-        registry = ModelRegistry()
-        registry.register_model({
-            "model_id": "test_pa_trained",
-            "sport": "mlb",
-            "model_type": "plate_appearance",
-            "version": 1,
-            "path": artifact_path,
-            "active": True,
-        })
+        registry = ModelRegistry(registry_path=None)
+        registry.register_model(
+            sport="mlb",
+            model_type="plate_appearance",
+            model_id="test_pa_trained",
+            artifact_path=artifact_path,
+            version=1,
+        )
+        registry.activate_model("mlb", "plate_appearance", "test_pa_trained")
 
         engine = ModelInferenceEngine(registry=registry)
         probs = engine.predict_proba(
@@ -3953,15 +3953,15 @@ class TestModelInferenceEngine:
         joblib.dump(sklearn_model, path)
 
         cache = InferenceCache()
-        registry = ModelRegistry()
-        registry.register_model({
-            "model_id": "cache_test",
-            "sport": "mlb",
-            "model_type": "plate_appearance",
-            "version": 1,
-            "path": path,
-            "active": True,
-        })
+        registry = ModelRegistry(registry_path=None)
+        registry.register_model(
+            sport="mlb",
+            model_type="plate_appearance",
+            model_id="cache_test",
+            artifact_path=path,
+            version=1,
+        )
+        registry.activate_model("mlb", "plate_appearance", "cache_test")
 
         engine = ModelInferenceEngine(registry=registry, cache=cache)
         engine.predict_proba("mlb", "plate_appearance", self._BATTER_PROFILES)
@@ -4564,3 +4564,224 @@ class TestModelRegistryTrainingIntegration:
         registry.register_model("mlb", "pa", "v1", "/tmp/v1.pkl")
         assert registry.set_active("v1")
         assert registry.get_active_model("mlb", "pa")["model_id"] == "v1"
+
+
+# ============================================================
+# Prompt 18 — Model Evaluation Metrics System
+# ============================================================
+
+
+class TestModelMetricsClassifier:
+    """Test classification metrics from ModelMetrics."""
+
+    def test_evaluate_classifier_basic(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        result = mm.evaluate_classifier(
+            y_true=[1, 0, 1],
+            y_pred=[1, 0, 0],
+            y_proba=[0.8, 0.3, 0.4],
+        )
+        assert "accuracy" in result
+        assert "log_loss" in result
+        assert "brier_score" in result
+        assert result["accuracy"] == pytest.approx(2 / 3, abs=0.01)
+        assert result["sample_count"] == 3
+
+    def test_evaluate_classifier_multiclass(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        result = mm.evaluate_classifier(
+            y_true=["a", "b", "c", "a"],
+            y_pred=["a", "b", "a", "a"],
+            y_proba=[
+                [0.7, 0.2, 0.1],
+                [0.1, 0.8, 0.1],
+                [0.3, 0.3, 0.4],
+                [0.6, 0.2, 0.2],
+            ],
+            labels=["a", "b", "c"],
+        )
+        assert result["accuracy"] == 0.75
+        assert result["log_loss"] > 0
+        assert result["brier_score"] > 0
+
+    def test_evaluate_classifier_perfect(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        result = mm.evaluate_classifier(
+            y_true=[1, 0, 1],
+            y_pred=[1, 0, 1],
+            y_proba=[0.99, 0.01, 0.99],
+        )
+        assert result["accuracy"] == 1.0
+        assert result["brier_score"] < 0.01
+
+    def test_evaluate_classifier_empty(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        result = mm.evaluate_classifier([], [], [])
+        assert result["accuracy"] == 0.0
+        assert result["sample_count"] == 0
+
+    def test_evaluate_classifier_2d_proba(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        result = mm.evaluate_classifier(
+            y_true=[0, 1, 0],
+            y_pred=[0, 1, 1],
+            y_proba=[[0.8, 0.2], [0.3, 0.7], [0.4, 0.6]],
+        )
+        assert result["accuracy"] == pytest.approx(2 / 3, abs=0.01)
+        assert result["brier_score"] > 0
+
+
+class TestModelMetricsRegressor:
+    """Test regression metrics from ModelMetrics."""
+
+    def test_evaluate_regressor_basic(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        result = mm.evaluate_regressor(
+            y_true=[3.0, 5.0, 7.0],
+            y_pred=[2.5, 5.5, 6.0],
+        )
+        assert "mae" in result
+        assert "rmse" in result
+        assert result["sample_count"] == 3
+        assert result["mae"] > 0
+        assert result["rmse"] >= result["mae"]
+
+    def test_evaluate_regressor_perfect(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        result = mm.evaluate_regressor(
+            y_true=[1.0, 2.0, 3.0],
+            y_pred=[1.0, 2.0, 3.0],
+        )
+        assert result["mae"] == 0.0
+        assert result["rmse"] == 0.0
+
+    def test_evaluate_regressor_empty(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        result = mm.evaluate_regressor([], [])
+        assert result["mae"] == 0.0
+        assert result["sample_count"] == 0
+
+
+class TestModelMetricsReport:
+    """Test build_report and compare_models."""
+
+    def test_build_report(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        evaluation = mm.evaluate_classifier(
+            y_true=[1, 0, 1],
+            y_pred=[1, 0, 0],
+            y_proba=[0.8, 0.3, 0.4],
+        )
+        report = mm.build_report(
+            model_id="test_v1",
+            model_type="plate_appearance",
+            sport="mlb",
+            evaluation=evaluation,
+        )
+        assert report["model_id"] == "test_v1"
+        assert report["sport"] == "mlb"
+        assert report["dataset_size"] == 3
+        assert "accuracy" in report["metrics"]
+        assert "log_loss" in report["metrics"]
+        assert "brier_score" in report["metrics"]
+        # class_distribution excluded from metrics
+        assert "class_distribution" not in report["metrics"]
+
+    def test_compare_models_lower_is_better(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        metrics_a = {"log_loss": 0.94, "brier_score": 0.204, "accuracy": 0.61}
+        metrics_b = {"log_loss": 0.89, "brier_score": 0.195, "accuracy": 0.64}
+        comparison = mm.compare_models(
+            metrics_a, metrics_b,
+            model_a_id="v1", model_b_id="v2",
+        )
+        assert comparison["better_model"] == "v2"
+        assert comparison["metric_differences"]["log_loss"] == pytest.approx(-0.05, abs=0.001)
+
+    def test_compare_models_a_better(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        metrics_a = {"log_loss": 0.80, "accuracy": 0.70}
+        metrics_b = {"log_loss": 0.95, "accuracy": 0.55}
+        comparison = mm.compare_models(metrics_a, metrics_b, model_a_id="a", model_b_id="b")
+        assert comparison["better_model"] == "a"
+
+    def test_compare_models_tie(self):
+        from app.analytics.models.core.model_metrics import ModelMetrics
+
+        mm = ModelMetrics()
+        metrics = {"log_loss": 0.9, "accuracy": 0.6}
+        comparison = mm.compare_models(metrics, metrics, model_a_id="x", model_b_id="y")
+        # Tie defaults to model_a
+        assert comparison["better_model"] == "x"
+
+
+class TestModelMetricsTrainingIntegration:
+    """Test that training pipeline stores metrics including Brier score."""
+
+    def test_pipeline_includes_brier_score(self, tmp_path):
+        from app.analytics.training.core.training_pipeline import TrainingPipeline
+
+        records = _make_pa_records(80)
+        pipeline = TrainingPipeline(
+            sport="mlb",
+            model_type="plate_appearance",
+            config_name="mlb_pa_model",
+            model_id="brier_test_v1",
+            artifact_dir=tmp_path / "models",
+        )
+        result = pipeline.run(records)
+        assert "metrics" in result
+        assert "brier_score" in result["metrics"]
+        assert isinstance(result["metrics"]["brier_score"], float)
+
+    def test_metrics_stored_in_registry(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model(
+            "mlb", "pa", "v1", "/tmp/v1.pkl",
+            metadata={"accuracy": 0.61, "log_loss": 0.94, "brier_score": 0.204},
+        )
+        models = registry.list_models(sport="mlb", model_type="pa")
+        assert models[0]["metrics"]["brier_score"] == 0.204
+        assert models[0]["metrics"]["accuracy"] == 0.61
+
+
+class TestModelMetricsAPIEndpoint:
+    """Test GET /api/analytics/model-metrics returns metrics."""
+
+    def test_endpoint_returns_metrics(self, tmp_path):
+        from app.analytics.models.core.model_registry import ModelRegistry
+
+        registry = ModelRegistry(registry_path=tmp_path / "reg.json")
+        registry.register_model(
+            "mlb", "pa", "v1", "/tmp/v1.pkl",
+            metadata={"accuracy": 0.61, "log_loss": 0.94, "brier_score": 0.204},
+        )
+        models = registry.list_models(sport="mlb", model_type="pa")
+        assert len(models) == 1
+        m = models[0]
+        assert m["metrics"]["accuracy"] == 0.61
+        assert m["metrics"]["brier_score"] == 0.204

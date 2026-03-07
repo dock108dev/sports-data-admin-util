@@ -524,3 +524,37 @@ async def post_activate_model(req: ModelActivateRequest) -> dict[str, Any]:
     # Clear inference cache so the new model is loaded on next request
     _inference_engine._cache.clear()
     return {"status": "success", "active_model": req.model_id}
+
+
+@router.get("/model-metrics")
+async def get_model_metrics(
+    model_id: str = Query(None, description="Filter by model ID"),
+    sport: str = Query(None, description="Filter by sport code"),
+    model_type: str = Query(None, description="Filter by model type"),
+) -> dict[str, Any]:
+    """Get evaluation metrics for registered models.
+
+    Returns metrics from the model registry. If model_id is specified,
+    returns metrics for that model. Otherwise returns metrics for all
+    models matching the filters.
+    """
+    models = _model_registry.list_models(sport=sport, model_type=model_type)
+
+    if model_id:
+        models = [m for m in models if m["model_id"] == model_id]
+
+    if not models:
+        return {"models": [], "count": 0}
+
+    results = []
+    for m in models:
+        results.append({
+            "model_id": m["model_id"],
+            "sport": m.get("sport", ""),
+            "model_type": m.get("model_type", ""),
+            "version": m.get("version"),
+            "active": m.get("active", False),
+            "metrics": m.get("metrics", {}),
+        })
+
+    return {"models": results, "count": len(results)}

@@ -190,11 +190,30 @@ class TrainingPipeline:
     ) -> dict[str, Any]:
         """Evaluate the trained model.
 
+        Uses ModelEvaluator for basic metrics and ModelMetrics for
+        Brier score (classifiers only).
+
         Returns:
             Dict of evaluation metrics.
         """
         if self.model_type in ("plate_appearance", "game"):
-            return self._evaluator.evaluate_classifier(model, X_test, y_test)
+            result = self._evaluator.evaluate_classifier(model, X_test, y_test)
+            # Add Brier score via ModelMetrics
+            if hasattr(model, "predict_proba") and X_test and y_test:
+                try:
+                    from app.analytics.models.core.model_metrics import ModelMetrics
+                    y_pred = model.predict(X_test)
+                    y_proba = model.predict_proba(X_test).tolist()
+                    labels = list(model.classes_) if hasattr(model, "classes_") else None
+                    mm = ModelMetrics()
+                    mm_result = mm.evaluate_classifier(
+                        list(y_test), list(y_pred), y_proba, labels=labels,
+                    )
+                    if "brier_score" in mm_result:
+                        result["brier_score"] = mm_result["brier_score"]
+                except Exception:
+                    pass
+            return result
         return self._evaluator.evaluate_regressor(model, X_test, y_test)
 
     def save_artifact(self, model: Any) -> tuple[str, str]:

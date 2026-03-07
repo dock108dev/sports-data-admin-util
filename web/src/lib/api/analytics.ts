@@ -254,3 +254,25 @@ export async function activateModel(
     body: JSON.stringify({ sport, model_type: modelType, model_id: modelId }),
   });
 }
+
+export interface ModelMetricsEntry {
+  model_id: string;
+  sport: string;
+  model_type: string;
+  version: number;
+  active: boolean;
+  metrics: Record<string, number>;
+}
+
+export async function getModelMetrics(
+  modelId?: string,
+  sport?: string,
+  modelType?: string,
+): Promise<{ models: ModelMetricsEntry[]; count: number }> {
+  const params = new URLSearchParams();
+  if (modelId) params.set("model_id", modelId);
+  if (sport) params.set("sport", sport);
+  if (modelType) params.set("model_type", modelType);
+  const qs = params.toString();
+  return fetchJson(`${base()}/api/analytics/model-metrics${qs ? `?${qs}` : ""}`);
+}

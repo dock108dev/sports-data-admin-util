@@ -73,7 +73,7 @@ export default function ModelsPage() {
       {Object.entries(grouped).map(([group, groupModels]) => (
         <AdminCard key={group} title={group.toUpperCase()} subtitle={`${groupModels.length} version(s)`}>
           <AdminTable
-            headers={["Model ID", "Version", "Accuracy", "Log Loss", "Created", "Active", ""]}
+            headers={["Model ID", "Version", "Accuracy", "Log Loss", "Brier Score", "Created", "Active", ""]}
           >
             {groupModels.map((m) => (
               <tr key={m.model_id}>
@@ -81,6 +81,7 @@ export default function ModelsPage() {
                 <td>v{m.version}</td>
                 <td>{m.metrics?.accuracy != null ? m.metrics.accuracy.toFixed(3) : "-"}</td>
                 <td>{m.metrics?.log_loss != null ? m.metrics.log_loss.toFixed(3) : "-"}</td>
+                <td>{m.metrics?.brier_score != null ? m.metrics.brier_score.toFixed(3) : "-"}</td>
                 <td>{m.created_at ? new Date(m.created_at).toLocaleDateString() : "-"}</td>
                 <td>{m.active ? "Active" : ""}</td>
                 <td>
