@@ -324,7 +324,7 @@ class TestCollectTeamTweets:
     @patch("sports_scraper.social.team_collector.fetch_team_accounts")
     @patch("sports_scraper.social.team_collector.extract_x_post_id", return_value="123")
     @patch("sports_scraper.social.team_collector.now_utc", return_value=_utc(2025, 6, 15, 23, 0))
-    def test_generic_error_returns_0(self, mock_now, mock_extract, mock_fetch, mock_pw):
+    def test_generic_error_propagates(self, mock_now, mock_extract, mock_fetch, mock_pw):
         from sports_scraper.social.team_collector import TeamTweetCollector
 
         team = MagicMock()
@@ -339,10 +339,10 @@ class TestCollectTeamTweets:
         session.query.return_value.get.return_value = team
         mock_fetch.return_value = {}
 
-        result = collector.collect_team_tweets(
-            session, team_id=1, start_date=date(2025, 6, 15), end_date=date(2025, 6, 15),
-        )
-        assert result == 0
+        with pytest.raises(RuntimeError, match="network error"):
+            collector.collect_team_tweets(
+                session, team_id=1, start_date=date(2025, 6, 15), end_date=date(2025, 6, 15),
+            )
 
 
 # ---------------------------------------------------------------------------
