@@ -21,11 +21,17 @@ from typing import Any
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
+from app.analytics.core.simulation_cache import SimulationCache
+from app.analytics.core.simulation_job_manager import SimulationJobManager
+from app.analytics.core.simulation_repository import SimulationRepository
 from app.analytics.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 _service = AnalyticsService()
+_cache = SimulationCache()
+_repository = SimulationRepository()
+_job_manager = SimulationJobManager(cache=_cache, repository=_repository)
 
 
 class LiveSimulateRequest(BaseModel):
@@ -194,3 +200,82 @@ async def post_live_simulate(req: LiveSimulateRequest) -> dict[str, Any]:
     )
 
     return {"sport": req.sport, **result}
+
+
+@router.post("/simulate-job")
+async def post_simulate_job(req: SimulateRequest) -> dict[str, Any]:
+    """Submit a simulation as a background job.
+
+    Returns a job_id immediately. Poll ``/simulation-result`` to
+    retrieve the result once complete.
+    """
+    params: dict[str, Any] = {
+        "sport": req.sport,
+        "home_team": req.home_team,
+        "away_team": req.away_team,
+        "iterations": req.iterations,
+        "mode": "pregame",
+    }
+    if req.seed is not None:
+        params["seed"] = req.seed
+    if req.home_probabilities:
+        params["home_probabilities"] = req.home_probabilities
+    if req.away_probabilities:
+        params["away_probabilities"] = req.away_probabilities
+    if req.sportsbook:
+        params["sportsbook"] = req.sportsbook
+
+    job_id = _job_manager.submit_job(params, sync=True)
+    status = _job_manager.get_job_status(job_id)
+    return status
+
+
+@router.post("/live-simulate-job")
+async def post_live_simulate_job(req: LiveSimulateRequest) -> dict[str, Any]:
+    """Submit a live simulation as a background job."""
+    params: dict[str, Any] = {
+        "sport": req.sport,
+        "inning": req.inning,
+        "half": req.half,
+        "outs": req.outs,
+        "bases": req.bases,
+        "score": req.score,
+        "iterations": req.iterations,
+        "mode": "live",
+    }
+    if req.seed is not None:
+        params["seed"] = req.seed
+    if req.home_probabilities:
+        params["home_probabilities"] = req.home_probabilities
+    if req.away_probabilities:
+        params["away_probabilities"] = req.away_probabilities
+
+    job_id = _job_manager.submit_job(params, sync=True)
+    status = _job_manager.get_job_status(job_id)
+    return status
+
+
+@router.get("/simulation-result")
+async def get_simulation_result(
+    job_id: str = Query(..., description="Job ID from simulate-job endpoint"),
+) -> dict[str, Any]:
+    """Poll for simulation job result.
+
+    Returns the job status and result if complete.
+    """
+    status = _job_manager.get_job_status(job_id)
+    result = _job_manager.get_job_result(job_id)
+
+    if result is not None:
+        return {**status, "result": result}
+    return status
+
+
+@router.get("/simulation-history")
+async def get_simulation_history(
+    sport: str = Query(None, description="Filter by sport code"),
+    limit: int = Query(50, ge=1, le=200, description="Max results"),
+) -> dict[str, Any]:
+    """List stored simulation results."""
+    records = _repository.list_simulations(sport=sport, limit=limit)
+    return {"simulations": records, "count": len(records)}
