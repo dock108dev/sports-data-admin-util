@@ -1,15 +1,12 @@
-"""Analytics API endpoints.
+"""Analytics API — assembles sub-routers into one prefix.
 
-Provides REST endpoints for team analysis, player analysis, matchup
-comparison, and game simulation. All endpoints return structured JSON
-and delegate to the AnalyticsService layer.
+All endpoints live under ``/api/analytics``. Route implementations
+are split across sub-modules for maintainability:
 
-Routes:
-    GET  /api/analytics/team          — Team analytical profile
-    GET  /api/analytics/player        — Player analytical profile
-    GET  /api/analytics/matchup       — Head-to-head matchup analysis
-    POST /api/analytics/simulate      — Full Monte Carlo simulation
-    POST /api/analytics/live-simulate — Live game simulation from state
+- ``_calibration_routes`` — prediction outcomes, calibration, degradation alerts
+- ``_feature_routes`` — feature loadout CRUD, available features
+- ``_pipeline_routes`` — training, backtest, batch simulation jobs
+- ``_model_routes`` — model registry, inference, ensemble config
 """
 
 from __future__ import annotations
@@ -19,86 +16,67 @@ from typing import Any
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from app.analytics.core.model_calibration import ModelCalibration
-from app.analytics.core.model_metrics import ModelMetrics
-from app.analytics.core.prediction_repository import PredictionRepository
 from app.analytics.core.simulation_cache import SimulationCache
-from app.analytics.core.simulation_job_manager import SimulationJobManager
-from app.analytics.core.simulation_repository import SimulationRepository
-from app.analytics.features.config.feature_config_loader import FeatureConfigLoader
-from app.analytics.features.config.feature_config_registry import FeatureConfigRegistry
-from app.analytics.inference.model_inference_engine import ModelInferenceEngine
-from app.analytics.models.core.model_registry import ModelRegistry
 from app.analytics.services.analytics_service import AnalyticsService
-from app.analytics.services.model_service import ModelService
+
+from ._calibration_routes import router as _calibration_router
+from ._feature_routes import router as _feature_router
+from ._model_routes import router as _model_router
+from ._pipeline_routes import router as _pipeline_router
+
+# Re-export serializers used by tests
+from ._calibration_routes import (  # noqa: F401
+    _serialize_degradation_alert,
+    _serialize_prediction_outcome,
+)
+from ._pipeline_routes import _serialize_batch_sim_job  # noqa: F401
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 _service = AnalyticsService()
 _cache = SimulationCache()
-_repository = SimulationRepository()
-_job_manager = SimulationJobManager(cache=_cache, repository=_repository)
-_prediction_repo = PredictionRepository()
-_calibration = ModelCalibration()
-_model_metrics = ModelMetrics()
-_feature_config_loader = FeatureConfigLoader()
-_feature_config_registry = FeatureConfigRegistry(loader=_feature_config_loader)
-_model_registry = ModelRegistry()
-_model_service = ModelService(registry=_model_registry)
-_inference_engine = ModelInferenceEngine(registry=_model_registry)
+
+
+# ---------------------------------------------------------------------------
+# Core simulation & profile endpoints (kept here — small and foundational)
+# ---------------------------------------------------------------------------
 
 
 class LiveSimulateRequest(BaseModel):
     """Request body for POST /api/analytics/live-simulate."""
     sport: str = Field(..., description="Sport code (e.g., mlb)")
-    inning: int = Field(1, ge=1, le=20, description="Current inning")
-    half: str = Field("top", description="top or bottom")
-    outs: int = Field(0, ge=0, le=2, description="Current outs")
+    inning: int = Field(..., ge=1, description="Current inning")
+    half: str = Field(..., description="top or bottom")
+    outs: int = Field(..., ge=0, le=3, description="Current outs")
     bases: dict[str, bool] = Field(
-        default_factory=lambda: {"first": False, "second": False, "third": False},
-        description="Base runner state",
+        ..., description="Base occupancy (first, second, third)",
     )
     score: dict[str, int] = Field(
-        default_factory=lambda: {"home": 0, "away": 0},
-        description="Current score",
+        ..., description="Current score (home, away)",
     )
-    iterations: int = Field(2000, ge=1, le=50000, description="Simulation iterations")
-    seed: int | None = Field(None, description="Optional seed for determinism")
-    home_probabilities: dict[str, float] | None = Field(
-        None, description="Custom home team probability distribution",
-    )
-    away_probabilities: dict[str, float] | None = Field(
-        None, description="Custom away team probability distribution",
-    )
-    probability_mode: str | None = Field(
-        None, description="Probability source: rule_based or ml",
-    )
+    iterations: int = Field(5000, ge=100, le=50000, description="Monte Carlo iterations")
+    seed: int | None = Field(None, description="Random seed for reproducibility")
+    home_probabilities: dict[str, float] | None = Field(None, description="Custom home team probabilities")
+    away_probabilities: dict[str, float] | None = Field(None, description="Custom away team probabilities")
+    probability_mode: str | None = Field(None, description="Probability mode: rule_based, ml, ensemble")
 
 
 class SimulateRequest(BaseModel):
     """Request body for POST /api/analytics/simulate."""
     sport: str = Field(..., description="Sport code (e.g., mlb)")
-    home_team: str = Field(..., description="Home team identifier")
-    away_team: str = Field(..., description="Away team identifier")
-    iterations: int = Field(5000, ge=1, le=100000, description="Simulation iterations")
-    seed: int | None = Field(None, description="Optional seed for determinism")
-    home_probabilities: dict[str, float] | None = Field(
-        None, description="Custom home team probability distribution",
-    )
-    away_probabilities: dict[str, float] | None = Field(
-        None, description="Custom away team probability distribution",
-    )
-    probability_mode: str | None = Field(
-        None, description="Probability source: rule_based or ml",
-    )
-    sportsbook: dict[str, Any] | None = Field(
-        None, description="Optional sportsbook lines for comparison",
-    )
+    home_team: str = Field("", description="Home team identifier")
+    away_team: str = Field("", description="Away team identifier")
+    iterations: int = Field(5000, ge=100, le=50000, description="Monte Carlo iterations")
+    seed: int | None = Field(None, description="Random seed for reproducibility")
+    home_probabilities: dict[str, float] | None = Field(None, description="Custom home team probabilities")
+    away_probabilities: dict[str, float] | None = Field(None, description="Custom away team probabilities")
+    sportsbook: dict[str, Any] | None = Field(None, description="Sportsbook lines for comparison")
+    probability_mode: str | None = Field(None, description="Probability mode: rule_based, ml, ensemble, pitch_level")
 
 
 @router.get("/team")
 async def get_team_analytics(
-    sport: str = Query(..., description="Sport code (e.g., mlb, nba)"),
+    sport: str = Query(..., description="Sport code (e.g., mlb)"),
     team_id: str = Query(..., description="Team identifier"),
 ) -> dict[str, Any]:
     """Get analytical profile for a team."""
@@ -113,7 +91,7 @@ async def get_team_analytics(
 
 @router.get("/player")
 async def get_player_analytics(
-    sport: str = Query(..., description="Sport code (e.g., mlb, nba)"),
+    sport: str = Query(..., description="Sport code (e.g., mlb)"),
     player_id: str = Query(..., description="Player identifier"),
 ) -> dict[str, Any]:
     """Get analytical profile for a player."""
@@ -128,7 +106,7 @@ async def get_player_analytics(
 
 @router.get("/matchup")
 async def get_matchup_analytics(
-    sport: str = Query(..., description="Sport code (e.g., mlb, nba)"),
+    sport: str = Query(..., description="Sport code (e.g., mlb)"),
     entity_a: str = Query(..., description="First entity identifier"),
     entity_b: str = Query(..., description="Second entity identifier"),
 ) -> dict[str, Any]:
@@ -146,12 +124,7 @@ async def get_matchup_analytics(
 
 @router.post("/simulate")
 async def post_simulate(req: SimulateRequest) -> dict[str, Any]:
-    """Run a full Monte Carlo simulation with analysis.
-
-    Accepts team identifiers and optional custom probability
-    distributions. Returns win probabilities, score distributions,
-    and optional sportsbook comparison.
-    """
+    """Run a full Monte Carlo simulation with analysis."""
     game_context: dict[str, Any] = {
         "home_team": req.home_team,
         "away_team": req.away_team,
@@ -179,30 +152,12 @@ async def post_simulate(req: SimulateRequest) -> dict[str, Any]:
         **result,
     }
 
-    # Auto-store prediction for calibration
-    _prediction_repo.save_prediction({
-        "sport": req.sport,
-        "home_team": req.home_team,
-        "away_team": req.away_team,
-        "model_output": {
-            "home_win_probability": result.get("home_win_probability", 0),
-            "away_win_probability": result.get("away_win_probability", 0),
-            "expected_home_score": result.get("average_home_score", 0),
-            "expected_away_score": result.get("average_away_score", 0),
-        },
-        "sportsbook_lines": req.sportsbook,
-    })
-
     return response
 
 
 @router.post("/live-simulate")
 async def post_live_simulate(req: LiveSimulateRequest) -> dict[str, Any]:
-    """Run a simulation from a live game state.
-
-    Accepts current inning, outs, base runners, and score. Returns
-    win probabilities and expected final score.
-    """
+    """Run a simulation from a live game state."""
     game_state: dict[str, Any] = {
         "inning": req.inning,
         "half": req.half,
@@ -228,495 +183,11 @@ async def post_live_simulate(req: LiveSimulateRequest) -> dict[str, Any]:
     return {"sport": req.sport, **result}
 
 
-@router.post("/simulate-job")
-async def post_simulate_job(req: SimulateRequest) -> dict[str, Any]:
-    """Submit a simulation as a background job.
-
-    Returns a job_id immediately. Poll ``/simulation-result`` to
-    retrieve the result once complete.
-    """
-    params: dict[str, Any] = {
-        "sport": req.sport,
-        "home_team": req.home_team,
-        "away_team": req.away_team,
-        "iterations": req.iterations,
-        "mode": "pregame",
-    }
-    if req.seed is not None:
-        params["seed"] = req.seed
-    if req.home_probabilities:
-        params["home_probabilities"] = req.home_probabilities
-    if req.away_probabilities:
-        params["away_probabilities"] = req.away_probabilities
-    if req.sportsbook:
-        params["sportsbook"] = req.sportsbook
-
-    job_id = _job_manager.submit_job(params, sync=True)
-    status = _job_manager.get_job_status(job_id)
-    return status
-
-
-@router.post("/live-simulate-job")
-async def post_live_simulate_job(req: LiveSimulateRequest) -> dict[str, Any]:
-    """Submit a live simulation as a background job."""
-    params: dict[str, Any] = {
-        "sport": req.sport,
-        "inning": req.inning,
-        "half": req.half,
-        "outs": req.outs,
-        "bases": req.bases,
-        "score": req.score,
-        "iterations": req.iterations,
-        "mode": "live",
-    }
-    if req.seed is not None:
-        params["seed"] = req.seed
-    if req.home_probabilities:
-        params["home_probabilities"] = req.home_probabilities
-    if req.away_probabilities:
-        params["away_probabilities"] = req.away_probabilities
-
-    job_id = _job_manager.submit_job(params, sync=True)
-    status = _job_manager.get_job_status(job_id)
-    return status
-
-
-@router.get("/simulation-result")
-async def get_simulation_result(
-    job_id: str = Query(..., description="Job ID from simulate-job endpoint"),
-) -> dict[str, Any]:
-    """Poll for simulation job result.
-
-    Returns the job status and result if complete.
-    """
-    status = _job_manager.get_job_status(job_id)
-    result = _job_manager.get_job_result(job_id)
-
-    if result is not None:
-        return {**status, "result": result}
-    return status
-
-
-@router.get("/simulation-history")
-async def get_simulation_history(
-    sport: str = Query(None, description="Filter by sport code"),
-    limit: int = Query(50, ge=1, le=200, description="Max results"),
-) -> dict[str, Any]:
-    """List stored simulation results."""
-    records = _repository.list_simulations(sport=sport, limit=limit)
-    return {"simulations": records, "count": len(records)}
-
-
-class RecordOutcomeRequest(BaseModel):
-    """Request body for POST /api/analytics/record-outcome."""
-    prediction_id: str = Field(..., description="Prediction to update")
-    home_score: int = Field(..., ge=0, description="Actual home score")
-    away_score: int = Field(..., ge=0, description="Actual away score")
-
-
-@router.post("/record-outcome")
-async def post_record_outcome(req: RecordOutcomeRequest) -> dict[str, Any]:
-    """Record an actual game outcome for a stored prediction."""
-    actual = {"home_score": req.home_score, "away_score": req.away_score}
-    updated = _prediction_repo.record_outcome(req.prediction_id, actual)
-    if not updated:
-        return {"status": "not_found", "prediction_id": req.prediction_id}
-
-    pred = _prediction_repo.get_prediction(req.prediction_id)
-    evaluation = _calibration.evaluate_prediction(pred, actual)
-    return {"status": "recorded", **evaluation}
-
-
-@router.get("/model-performance")
-async def get_model_performance(
-    sport: str = Query(None, description="Filter by sport code"),
-) -> dict[str, Any]:
-    """Get aggregate model performance metrics.
-
-    Returns Brier score, log loss, MAE, accuracy, bias, and
-    calibration buckets.
-    """
-    predictions = _prediction_repo.get_evaluated_predictions(sport=sport)
-
-    if not predictions:
-        report = _calibration._empty_report()
-        metrics = _model_metrics._empty_metrics()
-    else:
-        report = _calibration.calibration_report(predictions)
-        metrics = _model_metrics.compute_all(predictions)
-
-    return {
-        **report,
-        "log_loss": metrics.get("log_loss", 0.0),
-        "mae_score": metrics.get("mae_score", 0.0),
-        "mae_total": metrics.get("mae_total", 0.0),
-        "calibration_buckets": metrics.get("calibration_buckets", []),
-    }
-
-
-@router.get("/predictions")
-async def get_predictions(
-    sport: str = Query(None, description="Filter by sport code"),
-    limit: int = Query(100, ge=1, le=500, description="Max results"),
-) -> dict[str, Any]:
-    """List stored predictions."""
-    records = _prediction_repo.list_predictions(sport=sport, limit=limit)
-    return {"predictions": records, "count": len(records)}
-
-
 # ---------------------------------------------------------------------------
-# Feature Configuration endpoints
+# Include sub-routers
 # ---------------------------------------------------------------------------
 
-
-class FeatureConfigUpdateRequest(BaseModel):
-    """Request body for POST /api/analytics/feature-config."""
-    model: str = Field(..., description="Config model name (e.g., mlb_pa_model_v1)")
-    sport: str = Field(..., description="Sport code")
-    features: dict[str, dict[str, Any]] = Field(
-        ..., description="Feature definitions with enabled/weight",
-    )
-
-
-@router.get("/feature-config")
-async def get_feature_config(
-    model: str = Query(..., description="Config name (e.g., mlb_pa_model)"),
-) -> dict[str, Any]:
-    """Get a feature configuration by model name."""
-    config = _feature_config_registry.get_config(model)
-    if config is None:
-        return {"status": "not_found", "model": model}
-
-    return {
-        "model": config.model,
-        "sport": config.sport,
-        "enabled_features": config.get_enabled_features(),
-        "weights": config.get_weights(),
-        "features": config.features,
-    }
-
-
-@router.get("/feature-configs")
-async def list_feature_configs() -> dict[str, Any]:
-    """List all available feature configurations."""
-    available = _feature_config_registry.list_available()
-    registered = _feature_config_registry.list_configs()
-    return {"available": available, "registered": registered}
-
-
-@router.post("/feature-config")
-async def post_feature_config(req: FeatureConfigUpdateRequest) -> dict[str, Any]:
-    """Register or update a feature configuration.
-
-    Accepts a full feature config and registers it in the registry.
-    """
-    config = _feature_config_loader.load_from_dict(req.model_dump())
-    _feature_config_registry.register(req.model, config)
-    return {
-        "status": "registered",
-        "model": config.model,
-        "sport": config.sport,
-        "enabled_features": config.get_enabled_features(),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Model Inference endpoints
-# ---------------------------------------------------------------------------
-
-
-class ModelPredictRequest(BaseModel):
-    """Request body for POST /api/analytics/model-predict."""
-    sport: str = Field(..., description="Sport code (e.g., mlb)")
-    model_type: str = Field(..., description="Model type (e.g., plate_appearance, game)")
-    profiles: dict[str, Any] = Field(
-        ..., description="Entity profiles for prediction",
-    )
-    config_name: str | None = Field(
-        None, description="Optional feature config name",
-    )
-
-
-@router.post("/model-predict")
-async def post_model_predict(req: ModelPredictRequest) -> dict[str, Any]:
-    """Generate a prediction using the active ML model.
-
-    Builds features from profiles, runs inference, and returns
-    structured probability output.
-    """
-    probs = _inference_engine.predict_proba(
-        sport=req.sport,
-        model_type=req.model_type,
-        profiles=req.profiles,
-        config_name=req.config_name,
-    )
-    return {
-        "sport": req.sport,
-        "model_type": req.model_type,
-        "probabilities": probs,
-    }
-
-
-@router.get("/model-predict")
-async def get_model_predict(
-    sport: str = Query(..., description="Sport code"),
-    model_type: str = Query(..., description="Model type"),
-) -> dict[str, Any]:
-    """Get model info and sample prediction with empty profiles."""
-    probs = _inference_engine.predict_proba(
-        sport=sport,
-        model_type=model_type,
-        profiles={},
-    )
-    return {
-        "sport": sport,
-        "model_type": model_type,
-        "probabilities": probs,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Model Registry endpoints
-# ---------------------------------------------------------------------------
-
-
-class ModelActivateRequest(BaseModel):
-    """Request body for POST /api/analytics/models/activate."""
-    sport: str = Field(..., description="Sport code (e.g., mlb)")
-    model_type: str = Field(..., description="Model type (e.g., plate_appearance)")
-    model_id: str = Field(..., description="Model ID to activate")
-
-
-@router.get("/models")
-async def get_models(
-    sport: str = Query(None, description="Filter by sport code"),
-    model_type: str = Query(None, description="Filter by model type"),
-    sort_by: str = Query(
-        None, description="Sort key (created_at, accuracy, log_loss, brier_score, version)",
-    ),
-    sort_desc: bool = Query(True, description="Sort descending"),
-    active_only: bool = Query(False, description="Only show active models"),
-) -> dict[str, Any]:
-    """List registered models with active status, filtering, and sorting."""
-    return _model_service.list_models(
-        sport=sport,
-        model_type=model_type,
-        sort_by=sort_by,
-        sort_desc=sort_desc,
-        active_only=active_only,
-    )
-
-
-@router.get("/models/details")
-async def get_model_details(
-    model_id: str = Query(..., description="Model ID"),
-) -> dict[str, Any]:
-    """Get full details for a single registered model."""
-    details = _model_service.get_model_details(model_id)
-    if details is None:
-        return {"status": "not_found", "model_id": model_id}
-    return details
-
-
-@router.get("/models/compare")
-async def get_model_compare(
-    sport: str = Query(..., description="Sport code"),
-    model_type: str = Query(..., description="Model type"),
-    model_ids: str = Query(..., description="Comma-separated model IDs"),
-) -> dict[str, Any]:
-    """Compare evaluation metrics across model versions."""
-    ids = [mid.strip() for mid in model_ids.split(",") if mid.strip()]
-    return _model_service.compare_models(sport, model_type, ids)
-
-
-@router.post("/models/activate")
-async def post_activate_model(req: ModelActivateRequest) -> dict[str, Any]:
-    """Activate a registered model.
-
-    Validates the model exists, verifies artifact/metadata paths,
-    updates the registry, and clears the inference cache so the
-    new model is loaded on the next request.
-    """
-    result = _model_service.activate_model(
-        sport=req.sport,
-        model_type=req.model_type,
-        model_id=req.model_id,
-    )
-    if result["status"] == "success":
-        # Clear inference cache so the new model is loaded on next request
-        _inference_engine._cache.clear()
-    return result
-
-
-@router.get("/models/active")
-async def get_active_models(
-    sport: str = Query(..., description="Sport code"),
-    model_type: str = Query(..., description="Model type"),
-) -> dict[str, Any]:
-    """Get the currently active model for a sport + model type."""
-    active = _model_registry.get_active_model(sport, model_type)
-    if active is None:
-        return {
-            "sport": sport,
-            "model_type": model_type,
-            "active_model": None,
-        }
-    return {
-        "sport": sport,
-        "model_type": model_type,
-        "active_model": active["model_id"],
-        "version": active.get("version"),
-        "metrics": active.get("metrics", {}),
-    }
-
-
-@router.get("/model-metrics")
-async def get_model_metrics(
-    model_id: str = Query(None, description="Filter by model ID"),
-    sport: str = Query(None, description="Filter by sport code"),
-    model_type: str = Query(None, description="Filter by model type"),
-) -> dict[str, Any]:
-    """Get evaluation metrics for registered models.
-
-    Returns metrics from the model registry. If model_id is specified,
-    returns metrics for that model. Otherwise returns metrics for all
-    models matching the filters.
-    """
-    models = _model_registry.list_models(sport=sport, model_type=model_type)
-
-    if model_id:
-        models = [m for m in models if m["model_id"] == model_id]
-
-    if not models:
-        return {"models": [], "count": 0}
-
-    results = []
-    for m in models:
-        results.append({
-            "model_id": m["model_id"],
-            "sport": m.get("sport", ""),
-            "model_type": m.get("model_type", ""),
-            "version": m.get("version"),
-            "active": m.get("active", False),
-            "metrics": m.get("metrics", {}),
-        })
-
-    return {"models": results, "count": len(results)}
-
-
-# ---------------------------------------------------------------------------
-# Ensemble Configuration endpoints
-# ---------------------------------------------------------------------------
-
-
-class EnsembleConfigRequest(BaseModel):
-    """Request body for POST /api/analytics/ensemble-config."""
-    sport: str = Field(..., description="Sport code (e.g., mlb)")
-    model_type: str = Field(..., description="Model type (e.g., plate_appearance)")
-    providers: list[dict[str, Any]] = Field(
-        ..., description="List of {name, weight} dicts",
-    )
-
-
-@router.get("/ensemble-config")
-async def get_ensemble_config_endpoint(
-    sport: str = Query(..., description="Sport code"),
-    model_type: str = Query(..., description="Model type"),
-) -> dict[str, Any]:
-    """Get the ensemble configuration for a sport + model type."""
-    from app.analytics.ensemble.ensemble_config import get_ensemble_config
-    config = get_ensemble_config(sport, model_type)
-    return config.to_dict()
-
-
-@router.get("/ensemble-configs")
-async def list_ensemble_configs_endpoint() -> dict[str, Any]:
-    """List all ensemble configurations."""
-    from app.analytics.ensemble.ensemble_config import list_ensemble_configs
-    configs = list_ensemble_configs()
-    return {"configs": [c.to_dict() for c in configs], "count": len(configs)}
-
-
-@router.post("/ensemble-config")
-async def post_ensemble_config(req: EnsembleConfigRequest) -> dict[str, Any]:
-    """Update ensemble configuration for a sport + model type."""
-    from app.analytics.ensemble.ensemble_config import (
-        EnsembleConfig,
-        ProviderWeight,
-        set_ensemble_config,
-    )
-
-    providers = [
-        ProviderWeight(name=p["name"], weight=float(p["weight"]))
-        for p in req.providers
-    ]
-    config = EnsembleConfig(
-        sport=req.sport,
-        model_type=req.model_type,
-        providers=providers,
-    )
-    set_ensemble_config(config)
-    return {"status": "updated", **config.to_dict()}
-
-
-# ---------------------------------------------------------------------------
-# MLB Advanced Model endpoints
-# ---------------------------------------------------------------------------
-
-
-@router.get("/mlb/pitch-model")
-async def get_pitch_model(
-    pitcher_k_rate: float = Query(0.22, description="Pitcher K rate"),
-    batter_contact_rate: float = Query(0.80, description="Batter contact rate"),
-    count_balls: int = Query(0, ge=0, le=3, description="Balls"),
-    count_strikes: int = Query(0, ge=0, le=2, description="Strikes"),
-) -> dict[str, Any]:
-    """Get pitch outcome probabilities from the pitch model."""
-    from app.analytics.models.sports.mlb.pitch_model import MLBPitchOutcomeModel
-
-    model = MLBPitchOutcomeModel()
-    probs = model.predict_proba({
-        "pitcher_k_rate": pitcher_k_rate,
-        "batter_contact_rate": batter_contact_rate,
-        "count_balls": count_balls,
-        "count_strikes": count_strikes,
-    })
-    return {"pitch_probabilities": probs}
-
-
-@router.get("/mlb/pitch-sim")
-async def get_pitch_sim(
-    pitcher_k_rate: float = Query(0.22, description="Pitcher K rate"),
-    batter_contact_rate: float = Query(0.80, description="Batter contact rate"),
-) -> dict[str, Any]:
-    """Simulate a single plate appearance at the pitch level."""
-    from app.analytics.simulation.mlb.pitch_simulator import PitchSimulator
-
-    sim = PitchSimulator()
-    result = sim.simulate_plate_appearance({
-        "pitcher_k_rate": pitcher_k_rate,
-        "batter_contact_rate": batter_contact_rate,
-    })
-    return result
-
-
-@router.get("/mlb/run-expectancy")
-async def get_run_expectancy(
-    base_state: int = Query(0, ge=0, le=7, description="Base state (0-7)"),
-    outs: int = Query(0, ge=0, le=2, description="Outs"),
-    batter_quality: float = Query(0.0, description="Batter quality (0-1)"),
-    pitcher_quality: float = Query(0.0, description="Pitcher quality (0-1)"),
-) -> dict[str, Any]:
-    """Get run expectancy for a given game state."""
-    from app.analytics.models.sports.mlb.run_expectancy_model import (
-        MLBRunExpectancyModel,
-    )
-
-    model = MLBRunExpectancyModel()
-    result = model.predict({
-        "base_state": base_state,
-        "outs": outs,
-        "batter_quality": batter_quality,
-        "pitcher_quality": pitcher_quality,
-    })
-    return result
+router.include_router(_calibration_router)
+router.include_router(_feature_router)
+router.include_router(_pipeline_router)
+router.include_router(_model_router)

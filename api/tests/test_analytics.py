@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 
 import pytest
 
@@ -1601,317 +1602,6 @@ class TestSimulationCache:
         assert cache.size == 0
 
 
-class TestSimulationRepository:
-    """Verify simulation result storage."""
-
-    def test_save_and_get(self) -> None:
-        from app.analytics.core.simulation_repository import SimulationRepository
-
-        repo = SimulationRepository()
-        result = {"home_win_probability": 0.6}
-        sim_id = repo.save_simulation(result)
-        stored = repo.get_simulation(sim_id)
-        assert stored is not None
-        assert stored["result"] == result
-        assert stored["simulation_id"] == sim_id
-
-    def test_save_with_job_id(self) -> None:
-        from app.analytics.core.simulation_repository import SimulationRepository
-
-        repo = SimulationRepository()
-        sim_id = repo.save_simulation({"data": 1}, job_id="my-job-123")
-        assert sim_id == "my-job-123"
-        assert repo.get_simulation("my-job-123") is not None
-
-    def test_get_nonexistent_returns_none(self) -> None:
-        from app.analytics.core.simulation_repository import SimulationRepository
-
-        repo = SimulationRepository()
-        assert repo.get_simulation("nope") is None
-
-    def test_list_simulations(self) -> None:
-        from app.analytics.core.simulation_repository import SimulationRepository
-
-        repo = SimulationRepository()
-        repo.save_simulation({"r": 1}, metadata={"sport": "mlb"})
-        repo.save_simulation({"r": 2}, metadata={"sport": "nba"})
-        repo.save_simulation({"r": 3}, metadata={"sport": "mlb"})
-
-        all_sims = repo.list_simulations()
-        assert len(all_sims) == 3
-
-        mlb_sims = repo.list_simulations(sport="mlb")
-        assert len(mlb_sims) == 2
-
-    def test_delete_simulation(self) -> None:
-        from app.analytics.core.simulation_repository import SimulationRepository
-
-        repo = SimulationRepository()
-        sim_id = repo.save_simulation({"data": 1})
-        assert repo.delete_simulation(sim_id) is True
-        assert repo.get_simulation(sim_id) is None
-        assert repo.delete_simulation(sim_id) is False
-
-
-class TestSimulationJobManager:
-    """Verify job submission, execution, and result retrieval."""
-
-    def test_submit_sync_job(self) -> None:
-        from app.analytics.core.simulation_job_manager import SimulationJobManager
-
-        mgr = SimulationJobManager()
-        job_id = mgr.submit_job({
-            "sport": "mlb", "mode": "pregame",
-            "iterations": 50, "seed": 42,
-        }, sync=True)
-        assert job_id
-        result = mgr.get_job_result(job_id)
-        assert result is not None
-        assert "home_win_probability" in result
-
-    def test_job_status_lifecycle(self) -> None:
-        from app.analytics.core.simulation_job_manager import SimulationJobManager
-
-        mgr = SimulationJobManager()
-        job_id = mgr.submit_job({
-            "sport": "mlb", "iterations": 50, "seed": 42,
-        }, sync=True)
-        status = mgr.get_job_status(job_id)
-        assert status["status"] == "completed"
-        assert "completed_at" in status
-
-    def test_cache_hit_returns_immediately(self) -> None:
-        from app.analytics.core.simulation_cache import SimulationCache
-        from app.analytics.core.simulation_job_manager import SimulationJobManager
-
-        cache = SimulationCache()
-        mgr = SimulationJobManager(cache=cache)
-
-        params = {"sport": "mlb", "iterations": 50, "seed": 42}
-
-        # First run populates cache
-        job1 = mgr.submit_job(params, sync=True)
-        result1 = mgr.get_job_result(job1)
-
-        # Second run should hit cache
-        job2 = mgr.submit_job(params, sync=True)
-        result2 = mgr.get_job_result(job2)
-        assert result1 == result2
-
-    def test_nonexistent_job_returns_not_found(self) -> None:
-        from app.analytics.core.simulation_job_manager import SimulationJobManager
-
-        mgr = SimulationJobManager()
-        status = mgr.get_job_status("fake-id")
-        assert status["status"] == "not_found"
-
-    def test_get_result_for_nonexistent_returns_none(self) -> None:
-        from app.analytics.core.simulation_job_manager import SimulationJobManager
-
-        mgr = SimulationJobManager()
-        assert mgr.get_job_result("fake-id") is None
-
-    def test_live_simulation_job(self) -> None:
-        from app.analytics.core.simulation_job_manager import SimulationJobManager
-
-        mgr = SimulationJobManager()
-        job_id = mgr.submit_job({
-            "sport": "mlb",
-            "mode": "live",
-            "inning": 5,
-            "half": "top",
-            "outs": 1,
-            "bases": {"first": False, "second": False, "third": False},
-            "score": {"home": 2, "away": 1},
-            "iterations": 100,
-            "seed": 42,
-        }, sync=True)
-        result = mgr.get_job_result(job_id)
-        assert result is not None
-        assert "home_win_probability" in result
-
-    def test_repository_integration(self) -> None:
-        from app.analytics.core.simulation_job_manager import SimulationJobManager
-        from app.analytics.core.simulation_repository import SimulationRepository
-
-        repo = SimulationRepository()
-        mgr = SimulationJobManager(repository=repo)
-        job_id = mgr.submit_job({
-            "sport": "mlb", "iterations": 50, "seed": 42,
-        }, sync=True)
-        stored = repo.get_simulation(job_id)
-        assert stored is not None
-        assert stored["metadata"]["sport"] == "mlb"
-
-
-class TestJobRoutes:
-    """Verify job-based API route responses."""
-
-    def test_post_simulate_job_endpoint(self) -> None:
-        from fastapi.testclient import TestClient
-        from app.analytics.api.analytics_routes import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
-
-        resp = client.post("/api/analytics/simulate-job", json={
-            "sport": "mlb",
-            "home_team": "LAD",
-            "away_team": "TOR",
-            "iterations": 50,
-            "seed": 42,
-        })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "job_id" in data
-        assert data["status"] == "completed"
-
-    def test_get_simulation_result_endpoint(self) -> None:
-        from fastapi.testclient import TestClient
-        from app.analytics.api.analytics_routes import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
-
-        # Submit a job first
-        resp = client.post("/api/analytics/simulate-job", json={
-            "sport": "mlb",
-            "home_team": "LAD",
-            "away_team": "TOR",
-            "iterations": 50,
-            "seed": 42,
-        })
-        job_id = resp.json()["job_id"]
-
-        # Poll for result
-        resp = client.get(f"/api/analytics/simulation-result?job_id={job_id}")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "completed"
-        assert "result" in data
-        assert "home_win_probability" in data["result"]
-
-    def test_live_simulate_job_endpoint(self) -> None:
-        from fastapi.testclient import TestClient
-        from app.analytics.api.analytics_routes import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
-
-        resp = client.post("/api/analytics/live-simulate-job", json={
-            "sport": "mlb",
-            "inning": 5,
-            "half": "top",
-            "outs": 1,
-            "bases": {"first": False, "second": False, "third": False},
-            "score": {"home": 2, "away": 1},
-            "iterations": 100,
-            "seed": 42,
-        })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "completed"
-
-    def test_simulation_history_endpoint(self) -> None:
-        from fastapi.testclient import TestClient
-        from app.analytics.api.analytics_routes import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
-
-        resp = client.get("/api/analytics/simulation-history")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "simulations" in data
-        assert "count" in data
-
-    def test_simulation_result_not_found(self) -> None:
-        from fastapi.testclient import TestClient
-        from app.analytics.api.analytics_routes import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
-
-        resp = client.get("/api/analytics/simulation-result?job_id=nonexistent")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "not_found"
-
-
-class TestPredictionRepository:
-    """Verify prediction storage and retrieval."""
-
-    def test_save_and_get(self) -> None:
-        from app.analytics.core.prediction_repository import PredictionRepository
-
-        repo = PredictionRepository()
-        pred_id = repo.save_prediction({
-            "sport": "mlb",
-            "game_id": "game_1",
-            "home_team": "LAD",
-            "away_team": "TOR",
-            "model_output": {"home_win_probability": 0.61},
-        })
-        pred = repo.get_prediction(pred_id)
-        assert pred is not None
-        assert pred["sport"] == "mlb"
-        assert pred["model_output"]["home_win_probability"] == 0.61
-
-    def test_get_predictions_for_game(self) -> None:
-        from app.analytics.core.prediction_repository import PredictionRepository
-
-        repo = PredictionRepository()
-        repo.save_prediction({"game_id": "g1", "sport": "mlb"})
-        repo.save_prediction({"game_id": "g1", "sport": "mlb"})
-        repo.save_prediction({"game_id": "g2", "sport": "mlb"})
-        assert len(repo.get_predictions_for_game("g1")) == 2
-        assert len(repo.get_predictions_for_game("g2")) == 1
-
-    def test_record_outcome(self) -> None:
-        from app.analytics.core.prediction_repository import PredictionRepository
-
-        repo = PredictionRepository()
-        pred_id = repo.save_prediction({"sport": "mlb", "game_id": "g1"})
-        assert repo.record_outcome(pred_id, {"home_score": 5, "away_score": 3})
-        pred = repo.get_prediction(pred_id)
-        assert pred["actual_result"]["home_score"] == 5
-
-    def test_record_outcome_not_found(self) -> None:
-        from app.analytics.core.prediction_repository import PredictionRepository
-
-        repo = PredictionRepository()
-        assert repo.record_outcome("nope", {"home_score": 1, "away_score": 2}) is False
-
-    def test_get_evaluated_predictions(self) -> None:
-        from app.analytics.core.prediction_repository import PredictionRepository
-
-        repo = PredictionRepository()
-        p1 = repo.save_prediction({"sport": "mlb"})
-        p2 = repo.save_prediction({"sport": "mlb"})
-        repo.record_outcome(p1, {"home_score": 3, "away_score": 2})
-        evaluated = repo.get_evaluated_predictions()
-        assert len(evaluated) == 1
-
-    def test_list_predictions_filtered(self) -> None:
-        from app.analytics.core.prediction_repository import PredictionRepository
-
-        repo = PredictionRepository()
-        repo.save_prediction({"sport": "mlb"})
-        repo.save_prediction({"sport": "nba"})
-        assert len(repo.list_predictions(sport="mlb")) == 1
-        assert len(repo.list_predictions()) == 2
-
-
 class TestModelCalibration:
     """Verify calibration calculations."""
 
@@ -2099,140 +1789,6 @@ class TestModelMetrics:
         ]
         buckets = metrics._calibration_buckets(predictions)
         assert len(buckets) >= 2  # at least two buckets with data
-
-
-class TestCalibrationRoutes:
-    """Verify calibration API endpoints."""
-
-    def test_model_performance_endpoint(self) -> None:
-        from fastapi.testclient import TestClient
-        from app.analytics.api.analytics_routes import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
-
-        resp = client.get("/api/analytics/model-performance")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "brier_score" in data
-        assert "prediction_bias" in data
-        assert "total_predictions" in data
-
-    def test_predictions_endpoint(self) -> None:
-        from fastapi.testclient import TestClient
-        from app.analytics.api.analytics_routes import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
-
-        resp = client.get("/api/analytics/predictions")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "predictions" in data
-        assert "count" in data
-
-    def test_record_outcome_not_found(self) -> None:
-        from fastapi.testclient import TestClient
-        from app.analytics.api.analytics_routes import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
-
-        resp = client.post("/api/analytics/record-outcome", json={
-            "prediction_id": "nonexistent",
-            "home_score": 5,
-            "away_score": 3,
-        })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "not_found"
-
-    def test_simulate_auto_stores_prediction(self) -> None:
-        from fastapi.testclient import TestClient
-        from app.analytics.api.analytics_routes import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
-
-        # Run a simulation (auto-stores prediction)
-        resp = client.post("/api/analytics/simulate", json={
-            "sport": "mlb",
-            "home_team": "LAD",
-            "away_team": "TOR",
-            "iterations": 50,
-            "seed": 42,
-        })
-        assert resp.status_code == 200
-
-        # Check predictions were stored
-        resp = client.get("/api/analytics/predictions")
-        data = resp.json()
-        assert data["count"] > 0
-
-
-class TestFullCalibrationPipeline:
-    """Verify end-to-end: Simulation -> Prediction -> Outcome -> Calibration."""
-
-    def test_end_to_end_calibration(self) -> None:
-        from app.analytics.core.model_calibration import ModelCalibration
-        from app.analytics.core.model_metrics import ModelMetrics
-        from app.analytics.core.prediction_repository import PredictionRepository
-
-        repo = PredictionRepository()
-        cal = ModelCalibration()
-        metrics = ModelMetrics()
-
-        # Store predictions
-        p1 = repo.save_prediction({
-            "sport": "mlb",
-            "game_id": "g1",
-            "home_team": "LAD",
-            "away_team": "TOR",
-            "model_output": {
-                "home_win_probability": 0.65,
-                "expected_home_score": 5.2,
-                "expected_away_score": 3.8,
-            },
-            "sportsbook_lines": {"home_ml": -180},
-        })
-        p2 = repo.save_prediction({
-            "sport": "mlb",
-            "game_id": "g2",
-            "home_team": "NYY",
-            "away_team": "BOS",
-            "model_output": {
-                "home_win_probability": 0.45,
-                "expected_home_score": 3.5,
-                "expected_away_score": 4.2,
-            },
-        })
-
-        # Record outcomes
-        repo.record_outcome(p1, {"home_score": 6, "away_score": 3})
-        repo.record_outcome(p2, {"home_score": 2, "away_score": 5})
-
-        # Evaluate
-        evaluated = repo.get_evaluated_predictions()
-        assert len(evaluated) == 2
-
-        report = cal.calibration_report(evaluated)
-        assert report["total_predictions"] == 2
-        assert report["winner_accuracy"] == 1.0  # both correct
-        assert report["brier_score"] > 0
-
-        all_metrics = metrics.compute_all(evaluated)
-        assert all_metrics["total_predictions"] == 2
-        assert all_metrics["brier_score"] > 0
-        assert all_metrics["log_loss"] > 0
-        assert all_metrics["winner_accuracy"] == 1.0
 
 
 class TestBaseModel:
@@ -2849,222 +2405,6 @@ class TestFeatureMLModelIntegration:
         assert result["home_win_probability"] > 0
 
 
-# ---------------------------------------------------------------------------
-# Prompt 13 – Feature Configuration System
-# ---------------------------------------------------------------------------
-
-import textwrap
-from pathlib import Path
-
-from app.analytics.features.config.feature_config_loader import (
-    FeatureConfig,
-    FeatureConfigLoader,
-)
-from app.analytics.features.config.feature_config_registry import (
-    FeatureConfigRegistry,
-)
-
-
-class TestFeatureConfigLoader:
-    """Tests for FeatureConfigLoader and FeatureConfig."""
-
-    def _write_yaml(self, tmp: Path, name: str, content: str) -> None:
-        (tmp / f"{name}.yaml").write_text(textwrap.dedent(content))
-
-    def test_load_config_from_yaml(self, tmp_path: Path) -> None:
-        self._write_yaml(tmp_path, "test_model", """\
-            model: test_model_v1
-            sport: mlb
-            features:
-              batter_contact_rate:
-                enabled: true
-                weight: 1.0
-              weather_factor:
-                enabled: false
-        """)
-        loader = FeatureConfigLoader(config_dir=tmp_path)
-        config = loader.load_config("test_model")
-
-        assert isinstance(config, FeatureConfig)
-        assert config.model == "test_model_v1"
-        assert config.sport == "mlb"
-
-    def test_get_enabled_features(self, tmp_path: Path) -> None:
-        self._write_yaml(tmp_path, "test_model", """\
-            model: test_model_v1
-            sport: mlb
-            features:
-              feat_a:
-                enabled: true
-                weight: 1.0
-              feat_b:
-                enabled: false
-              feat_c:
-                enabled: true
-                weight: 0.5
-        """)
-        loader = FeatureConfigLoader(config_dir=tmp_path)
-        config = loader.load_config("test_model")
-
-        enabled = config.get_enabled_features()
-        assert "feat_a" in enabled
-        assert "feat_c" in enabled
-        assert "feat_b" not in enabled
-
-    def test_get_weights(self, tmp_path: Path) -> None:
-        self._write_yaml(tmp_path, "test_model", """\
-            model: test_v1
-            sport: mlb
-            features:
-              feat_a:
-                enabled: true
-                weight: 0.8
-              feat_b:
-                enabled: true
-                weight: 1.2
-              feat_c:
-                enabled: false
-                weight: 1.0
-        """)
-        loader = FeatureConfigLoader(config_dir=tmp_path)
-        config = loader.load_config("test_model")
-
-        weights = config.get_weights()
-        assert weights["feat_a"] == 0.8
-        assert weights["feat_b"] == 1.2
-        assert "feat_c" not in weights
-
-    def test_file_not_found(self, tmp_path: Path) -> None:
-        loader = FeatureConfigLoader(config_dir=tmp_path)
-        with pytest.raises(FileNotFoundError):
-            loader.load_config("nonexistent")
-
-    def test_invalid_format_raises(self, tmp_path: Path) -> None:
-        (tmp_path / "bad.yaml").write_text("just a string")
-        loader = FeatureConfigLoader(config_dir=tmp_path)
-        with pytest.raises(ValueError, match="expected dict"):
-            loader.load_config("bad")
-
-    def test_list_configs(self, tmp_path: Path) -> None:
-        self._write_yaml(tmp_path, "alpha", "model: a\nsport: mlb\nfeatures: {}")
-        self._write_yaml(tmp_path, "beta", "model: b\nsport: mlb\nfeatures: {}")
-        loader = FeatureConfigLoader(config_dir=tmp_path)
-        assert loader.list_configs() == ["alpha", "beta"]
-
-    def test_load_from_dict(self) -> None:
-        raw = {
-            "model": "dict_model",
-            "sport": "mlb",
-            "features": {
-                "feat_a": {"enabled": True, "weight": 0.9},
-            },
-        }
-        loader = FeatureConfigLoader()
-        config = loader.load_from_dict(raw)
-        assert config.model == "dict_model"
-        assert config.get_enabled_features() == ["feat_a"]
-        assert config.get_weights()["feat_a"] == 0.9
-
-    def test_to_builder_config(self, tmp_path: Path) -> None:
-        self._write_yaml(tmp_path, "test_model", """\
-            model: test_v1
-            sport: mlb
-            features:
-              feat_a:
-                enabled: true
-                weight: 0.5
-              feat_b:
-                enabled: false
-        """)
-        loader = FeatureConfigLoader(config_dir=tmp_path)
-        config = loader.load_config("test_model")
-        bc = config.to_builder_config()
-        assert bc["feat_a"]["enabled"] is True
-        assert bc["feat_b"]["enabled"] is False
-
-    def test_to_dict(self) -> None:
-        raw = {"model": "m1", "sport": "mlb", "features": {"f": {"enabled": True, "weight": 1.0}}}
-        config = FeatureConfigLoader().load_from_dict(raw)
-        d = config.to_dict()
-        assert d["model"] == "m1"
-        assert "f" in d["features"]
-
-
-class TestFeatureConfigRegistry:
-    """Tests for FeatureConfigRegistry."""
-
-    def test_register_and_get(self) -> None:
-        config = FeatureConfigLoader().load_from_dict({
-            "model": "reg_test",
-            "sport": "mlb",
-            "features": {"feat_a": {"enabled": True, "weight": 1.0}},
-        })
-        registry = FeatureConfigRegistry()
-        registry.register("reg_test", config)
-
-        retrieved = registry.get_config("reg_test")
-        assert retrieved is not None
-        assert retrieved.model == "reg_test"
-
-    def test_get_unknown_returns_none(self) -> None:
-        registry = FeatureConfigRegistry(loader=FeatureConfigLoader(config_dir="/nonexistent"))
-        assert registry.get_config("unknown_config") is None
-
-    def test_set_and_get_active(self) -> None:
-        config = FeatureConfigLoader().load_from_dict({
-            "model": "active_test",
-            "sport": "mlb",
-            "features": {"feat_a": {"enabled": True, "weight": 1.0}},
-        })
-        registry = FeatureConfigRegistry()
-        registry.register("active_test", config)
-        registry.set_active("mlb", "plate_appearance", "active_test")
-
-        active = registry.get_active("mlb", "plate_appearance")
-        assert active is not None
-        assert active.model == "active_test"
-
-    def test_get_active_unset(self) -> None:
-        registry = FeatureConfigRegistry()
-        assert registry.get_active("mlb", "game") is None
-
-    def test_list_configs(self) -> None:
-        config = FeatureConfigLoader().load_from_dict({
-            "model": "list_test",
-            "sport": "mlb",
-            "features": {"f": {"enabled": True, "weight": 1.0}},
-        })
-        registry = FeatureConfigRegistry()
-        registry.register("list_test", config)
-
-        items = registry.list_configs()
-        assert len(items) == 1
-        assert items[0]["name"] == "list_test"
-        assert items[0]["feature_count"] == 1
-
-    def test_disk_fallback(self, tmp_path: Path) -> None:
-        (tmp_path / "disk_cfg.yaml").write_text(
-            "model: disk_model\nsport: mlb\nfeatures:\n  f1:\n    enabled: true\n    weight: 1.0\n"
-        )
-        loader = FeatureConfigLoader(config_dir=tmp_path)
-        registry = FeatureConfigRegistry(loader=loader)
-
-        config = registry.get_config("disk_cfg")
-        assert config is not None
-        assert config.model == "disk_model"
-
-    def test_list_available_combines_disk_and_registered(self, tmp_path: Path) -> None:
-        (tmp_path / "on_disk.yaml").write_text("model: d\nsport: mlb\nfeatures: {}")
-        loader = FeatureConfigLoader(config_dir=tmp_path)
-        registry = FeatureConfigRegistry(loader=loader)
-        in_mem = loader.load_from_dict({"model": "in_mem", "sport": "mlb", "features": {}})
-        registry.register("in_memory", in_mem)
-
-        available = registry.list_available()
-        assert "on_disk" in available
-        assert "in_memory" in available
-
-
 class TestFeatureBuilderConfigIntegration:
     """Tests for FeatureBuilder + config integration."""
 
@@ -3164,76 +2504,6 @@ class TestFeatureBuilderConfigIntegration:
         weighted_val = vec_weighted.get("home_contact_rate")
         unweighted_val = vec_unweighted.get("home_contact_rate")
         assert abs(weighted_val - unweighted_val * 0.5) < 0.001
-
-    def test_full_config_pipeline(self, tmp_path: Path) -> None:
-        """Full pipeline: YAML config -> FeatureBuilder -> FeatureVector."""
-        from app.analytics.features.core.feature_builder import FeatureBuilder
-        (tmp_path / "test_pa.yaml").write_text(textwrap.dedent("""\
-            model: test_pa_v1
-            sport: mlb
-            features:
-              batter_contact_rate:
-                enabled: true
-                weight: 1.0
-              batter_power_index:
-                enabled: true
-                weight: 0.8
-              batter_barrel_rate:
-                enabled: false
-              batter_hard_hit_rate:
-                enabled: true
-                weight: 1.0
-              batter_swing_rate:
-                enabled: true
-                weight: 1.0
-              batter_whiff_rate:
-                enabled: true
-                weight: 1.0
-              batter_avg_exit_velocity:
-                enabled: true
-                weight: 1.0
-              batter_expected_slug:
-                enabled: true
-                weight: 1.0
-              pitcher_contact_rate:
-                enabled: true
-                weight: 1.0
-              pitcher_power_index:
-                enabled: true
-                weight: 1.0
-              pitcher_barrel_rate:
-                enabled: true
-                weight: 1.0
-              pitcher_hard_hit_rate:
-                enabled: true
-                weight: 1.0
-              pitcher_swing_rate:
-                enabled: true
-                weight: 1.0
-              pitcher_whiff_rate:
-                enabled: true
-                weight: 1.0
-        """))
-
-        loader = FeatureConfigLoader(config_dir=tmp_path)
-        config = loader.load_config("test_pa")
-
-        builder = FeatureBuilder()
-        profiles = {
-            "batter_profile": {"metrics": {"contact_rate": 0.82, "power_index": 1.1}},
-            "pitcher_profile": {"metrics": {"contact_rate": 0.70}},
-        }
-
-        vec = builder.build_features(
-            "mlb", profiles, "plate_appearance",
-            config=config.to_builder_config(),
-        )
-
-        assert "batter_barrel_rate" not in vec.feature_names
-        default_vec = builder.build_features("mlb", profiles, "plate_appearance")
-        weighted = vec.get("batter_power_index")
-        unweighted = default_vec.get("batter_power_index")
-        assert abs(weighted - unweighted * 0.8) < 0.001
 
     def test_dataset_with_config(self) -> None:
         from app.analytics.features.core.feature_builder import FeatureBuilder
@@ -5534,3 +4804,686 @@ class TestMLBTrainingLabels:
         assert mlb.run_expectancy_label_fn({"runs_scored_after_state": 2.5}) == 2.5
         assert mlb.run_expectancy_label_fn({"runs_scored_after_state": 0}) == 0.0
         assert mlb.run_expectancy_label_fn({}) is None
+
+
+# ---------------------------------------------------------------------------
+# SSOT Enforcement Tests
+# ---------------------------------------------------------------------------
+
+
+class TestSSOTRoutes:
+    """Assert that analytics routes use DB-backed SSOT modules, not legacy YAML."""
+
+    def test_analytics_routes_has_no_yaml_loader_import(self):
+        """Legacy FeatureConfigLoader must not be imported in routes."""
+        import inspect
+
+        from app.analytics.api import analytics_routes
+
+        source = inspect.getsource(analytics_routes)
+        assert "FeatureConfigLoader" not in source, (
+            "analytics_routes still references FeatureConfigLoader — "
+            "DB-backed loadouts are the SSOT"
+        )
+
+    def test_analytics_routes_has_no_yaml_registry_import(self):
+        """Legacy FeatureConfigRegistry must not be imported in routes."""
+        import inspect
+
+        from app.analytics.api import analytics_routes
+
+        source = inspect.getsource(analytics_routes)
+        assert "FeatureConfigRegistry" not in source, (
+            "analytics_routes still references FeatureConfigRegistry — "
+            "DB-backed loadouts are the SSOT"
+        )
+
+    def test_no_yaml_configs_field_in_routes(self):
+        """The yaml_configs backwards-compat field must not appear in routes."""
+        import inspect
+
+        from app.analytics.api import analytics_routes
+
+        source = inspect.getsource(analytics_routes)
+        assert "yaml_configs" not in source
+
+    def test_training_tasks_module_exists(self):
+        """The Celery training task module must be importable."""
+        spec = importlib.util.find_spec("app.tasks.training_tasks")
+        assert spec is not None, "app.tasks.training_tasks module not found"
+
+    def test_db_models_exist(self):
+        """DB analytics models must be importable."""
+        from app.db.analytics import AnalyticsFeatureConfig, AnalyticsTrainingJob
+
+        assert AnalyticsFeatureConfig.__tablename__ == "analytics_feature_configs"
+        assert AnalyticsTrainingJob.__tablename__ == "analytics_training_jobs"
+
+
+class TestSSOTNoLegacyFiles:
+    """Assert deleted legacy files stay deleted."""
+
+    def test_no_yaml_config_files(self):
+        import os
+
+        config_dir = os.path.join(
+            os.path.dirname(__file__), "..", "config", "features"
+        )
+        if os.path.isdir(config_dir):
+            yamls = [f for f in os.listdir(config_dir) if f.endswith((".yaml", ".yml"))]
+            assert yamls == [], f"Legacy YAML configs still exist: {yamls}"
+
+    def test_no_legacy_training_scripts(self):
+        import os
+
+        scripts_dir = os.path.join(
+            os.path.dirname(__file__), "..", "scripts", "train_models"
+        )
+        assert not os.path.isdir(scripts_dir), (
+            "Legacy scripts/train_models/ directory still exists — "
+            "training is handled by Celery tasks"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Rolling Profile Aggregation Tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildRollingProfile:
+    """Test _build_rolling_profile from training_tasks."""
+
+    def _make_stats(self, **overrides):
+        """Create a mock MLBGameAdvancedStats-like object."""
+        defaults = {
+            "z_contact_pct": 0.80,
+            "o_contact_pct": 0.60,
+            "avg_exit_velo": 90.0,
+            "barrel_pct": 0.08,
+            "hard_hit_pct": 0.38,
+            "z_swing_pct": 0.70,
+            "o_swing_pct": 0.30,
+            "zone_swings": 50,
+            "outside_swings": 30,
+            "zone_contact": 40,
+            "outside_contact": 18,
+        }
+        defaults.update(overrides)
+
+        class MockStats:
+            pass
+
+        obj = MockStats()
+        for k, v in defaults.items():
+            setattr(obj, k, v)
+        return obj
+
+    def test_returns_none_when_insufficient_history(self):
+        from app.tasks.training_tasks import _build_rolling_profile
+
+        # Only 3 games before target date, min_games=5
+        games = [("2025-04-01", self._make_stats()) for _ in range(3)]
+        result = _build_rolling_profile(
+            games, before_date="2025-05-01", window=30
+        )
+        assert result is None
+
+    def test_returns_profile_with_sufficient_history(self):
+        from app.tasks.training_tasks import _build_rolling_profile
+
+        games = [(f"2025-04-{i+1:02d}", self._make_stats()) for i in range(10)]
+        result = _build_rolling_profile(
+            games, before_date="2025-05-01", window=30
+        )
+        assert result is not None
+        assert "contact_rate" in result
+        assert "power_index" in result
+        assert "barrel_rate" in result
+        assert "hard_hit_rate" in result
+        assert "swing_rate" in result
+        assert "whiff_rate" in result
+        assert "avg_exit_velocity" in result
+        assert "expected_slug" in result
+
+    def test_excludes_games_on_or_after_target_date(self):
+        from app.tasks.training_tasks import _build_rolling_profile
+
+        # 3 games before target, 7 on or after
+        games = [(f"2025-04-{i+1:02d}", self._make_stats()) for i in range(3)]
+        games += [(f"2025-04-15", self._make_stats()) for _ in range(7)]
+        result = _build_rolling_profile(
+            games, before_date="2025-04-04", window=30
+        )
+        # Only 3 prior games, below min_games=5
+        assert result is None
+
+    def test_window_limits_games_used(self):
+        from app.tasks.training_tasks import _build_rolling_profile
+
+        # 20 games, window=5 — should average only last 5
+        early_stats = self._make_stats(avg_exit_velo=80.0)
+        late_stats = self._make_stats(avg_exit_velo=100.0)
+
+        games = [(f"2025-04-{i+1:02d}", early_stats) for i in range(15)]
+        games += [(f"2025-04-{i+16:02d}", late_stats) for i in range(5)]
+
+        result = _build_rolling_profile(
+            games, before_date="2025-05-01", window=5, min_games=3
+        )
+        assert result is not None
+        # Should be close to 100.0 (the last 5 games)
+        assert result["avg_exit_velocity"] == 100.0
+
+    def test_averages_metrics_correctly(self):
+        from app.tasks.training_tasks import _build_rolling_profile
+
+        stats_a = self._make_stats(barrel_pct=0.10, hard_hit_pct=0.40)
+        stats_b = self._make_stats(barrel_pct=0.20, hard_hit_pct=0.50)
+
+        games = [
+            ("2025-04-01", stats_a),
+            ("2025-04-02", stats_b),
+            ("2025-04-03", stats_a),
+            ("2025-04-04", stats_b),
+            ("2025-04-05", stats_a),
+        ]
+
+        result = _build_rolling_profile(
+            games, before_date="2025-05-01", window=30
+        )
+        assert result is not None
+        # 3 x 0.10 + 2 x 0.20 = 0.70 / 5 = 0.14
+        assert result["barrel_rate"] == 0.14
+        # 3 x 0.40 + 2 x 0.50 = 2.20 / 5 = 0.44
+        assert result["hard_hit_rate"] == 0.44
+
+
+class TestRollingWindowColumn:
+    """Verify rolling_window column on AnalyticsTrainingJob."""
+
+    def test_training_job_has_rolling_window(self):
+        from app.db.analytics import AnalyticsTrainingJob
+
+        assert hasattr(AnalyticsTrainingJob, "rolling_window")
+
+    def test_rolling_window_default(self):
+        from app.db.analytics import AnalyticsTrainingJob
+
+        col = AnalyticsTrainingJob.__table__.columns["rolling_window"]
+        assert col.default.arg == 30
+
+
+# ---------------------------------------------------------------------------
+# Backtest Tests
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureImportance:
+    """Test feature importance extraction from trained models."""
+
+    def test_extract_from_model_with_importances(self):
+        from app.analytics.training.core.training_pipeline import (
+            _extract_feature_importance,
+        )
+
+        class MockModel:
+            feature_importances_ = [0.4, 0.3, 0.2, 0.1]
+
+        result = _extract_feature_importance(
+            MockModel(), ["feat_a", "feat_b", "feat_c", "feat_d"]
+        )
+        assert result is not None
+        assert len(result) == 4
+        # Should be sorted highest first
+        assert result[0]["name"] == "feat_a"
+        assert result[0]["importance"] == 0.4
+        assert result[-1]["name"] == "feat_d"
+        assert result[-1]["importance"] == 0.1
+
+    def test_returns_none_for_model_without_importances(self):
+        from app.analytics.training.core.training_pipeline import (
+            _extract_feature_importance,
+        )
+
+        class MockModel:
+            pass
+
+        result = _extract_feature_importance(MockModel(), ["feat_a", "feat_b"])
+        assert result is None
+
+    def test_training_job_has_feature_importance_column(self):
+        from app.db.analytics import AnalyticsTrainingJob
+
+        assert hasattr(AnalyticsTrainingJob, "feature_importance")
+        col = AnalyticsTrainingJob.__table__.columns["feature_importance"]
+        assert col.nullable is True
+
+
+class TestBacktestJobModel:
+    """Verify AnalyticsBacktestJob DB model."""
+
+    def test_backtest_job_table_exists(self):
+        from app.db.analytics import AnalyticsBacktestJob
+
+        assert AnalyticsBacktestJob.__tablename__ == "analytics_backtest_jobs"
+
+    def test_backtest_job_columns(self):
+        from app.db.analytics import AnalyticsBacktestJob
+
+        cols = {c.name for c in AnalyticsBacktestJob.__table__.columns}
+        required = {
+            "id", "model_id", "artifact_path", "sport", "model_type",
+            "date_start", "date_end", "rolling_window", "status",
+            "celery_task_id", "game_count", "correct_count", "metrics",
+            "predictions", "error_message", "created_at", "completed_at",
+        }
+        assert required <= cols
+
+    def test_rolling_window_default(self):
+        from app.db.analytics import AnalyticsBacktestJob
+
+        col = AnalyticsBacktestJob.__table__.columns["rolling_window"]
+        assert col.default.arg == 30
+
+
+class TestBacktestTaskImportable:
+    """Verify backtest task is importable."""
+
+    def test_backtest_task_exists(self):
+        from app.tasks.training_tasks import backtest_analytics_model
+
+        assert backtest_analytics_model.name == "backtest_analytics_model"
+
+    def test_execute_backtest_callable(self):
+        from app.tasks.training_tasks import _execute_backtest
+
+        assert callable(_execute_backtest)
+
+
+class TestBacktestRoutes:
+    """Verify backtest API routes are defined."""
+
+    def test_backtest_route_exists(self):
+        import inspect
+        from app.analytics.api import _pipeline_routes
+
+        source = inspect.getsource(_pipeline_routes)
+        assert "start_backtest" in source
+        assert "list_backtest_jobs" in source
+        assert "get_backtest_job" in source
+        assert "BacktestRequest" in source
+
+
+# ---------------------------------------------------------------------------
+# Batch Simulation
+# ---------------------------------------------------------------------------
+
+
+class TestBatchSimJobModel:
+    """Verify AnalyticsBatchSimJob DB model."""
+
+    def test_table_exists(self):
+        from app.db.analytics import AnalyticsBatchSimJob
+
+        assert AnalyticsBatchSimJob.__tablename__ == "analytics_batch_sim_jobs"
+
+    def test_columns_present(self):
+        from app.db.analytics import AnalyticsBatchSimJob
+
+        cols = {c.name for c in AnalyticsBatchSimJob.__table__.columns}
+        expected = {
+            "id", "sport", "probability_mode", "iterations", "rolling_window",
+            "date_start", "date_end", "status", "celery_task_id",
+            "game_count", "results", "error_message", "created_at", "completed_at",
+        }
+        assert expected.issubset(cols)
+
+    def test_status_column_default(self):
+        from app.db.analytics import AnalyticsBatchSimJob
+
+        col = AnalyticsBatchSimJob.__table__.columns["status"]
+        assert col.default is not None
+        assert col.default.arg == "pending"
+
+
+class TestBatchSimTaskImportable:
+    """Verify batch_simulate_games Celery task exists."""
+
+    def test_task_exists(self):
+        from app.tasks.training_tasks import batch_simulate_games
+
+        assert batch_simulate_games is not None
+
+    def test_task_callable(self):
+        from app.tasks.training_tasks import batch_simulate_games
+
+        assert callable(batch_simulate_games)
+
+
+class TestBatchSimRoutes:
+    """Verify batch simulation API routes are defined."""
+
+    def test_batch_sim_routes_exist(self):
+        import inspect
+        from app.analytics.api import _pipeline_routes
+
+        source = inspect.getsource(_pipeline_routes)
+        assert "post_batch_simulate" in source
+        assert "list_batch_simulate_jobs" in source
+        assert "get_batch_simulate_job" in source
+        assert "BatchSimulateRequest" in source
+
+    def test_serialize_function_exists(self):
+        from app.analytics.api.analytics_routes import _serialize_batch_sim_job
+
+        assert callable(_serialize_batch_sim_job)
+
+
+# ---------------------------------------------------------------------------
+# Prediction Outcomes / Auto-Record (Phase 6)
+# ---------------------------------------------------------------------------
+
+
+class TestPredictionOutcomeModel:
+    """Verify AnalyticsPredictionOutcome DB model."""
+
+    def test_table_exists(self):
+        from app.db.analytics import AnalyticsPredictionOutcome
+
+        assert AnalyticsPredictionOutcome.__tablename__ == "analytics_prediction_outcomes"
+
+    def test_columns_present(self):
+        from app.db.analytics import AnalyticsPredictionOutcome
+
+        cols = {c.name for c in AnalyticsPredictionOutcome.__table__.columns}
+        expected = {
+            "id", "game_id", "sport", "batch_sim_job_id",
+            "home_team", "away_team",
+            "predicted_home_wp", "predicted_away_wp",
+            "predicted_home_score", "predicted_away_score",
+            "probability_mode", "game_date",
+            "actual_home_score", "actual_away_score",
+            "home_win_actual", "correct_winner", "brier_score",
+            "outcome_recorded_at", "created_at",
+        }
+        assert expected.issubset(cols)
+
+    def test_game_id_indexed(self):
+        from app.db.analytics import AnalyticsPredictionOutcome
+
+        col = AnalyticsPredictionOutcome.__table__.columns["game_id"]
+        assert col.index is True
+
+    def test_outcome_fields_nullable(self):
+        from app.db.analytics import AnalyticsPredictionOutcome
+
+        for name in ("actual_home_score", "actual_away_score", "home_win_actual",
+                      "correct_winner", "brier_score", "outcome_recorded_at"):
+            col = AnalyticsPredictionOutcome.__table__.columns[name]
+            assert col.nullable is True, f"{name} should be nullable"
+
+
+class TestRecordOutcomesTask:
+    """Verify record_completed_outcomes Celery task exists."""
+
+    def test_task_exists(self):
+        from app.tasks.training_tasks import record_completed_outcomes
+
+        assert record_completed_outcomes is not None
+
+    def test_task_callable(self):
+        from app.tasks.training_tasks import record_completed_outcomes
+
+        assert callable(record_completed_outcomes)
+
+
+class TestSavePredictionOutcomes:
+    """Verify _save_prediction_outcomes helper."""
+
+    def test_function_exists(self):
+        from app.tasks.training_tasks import _save_prediction_outcomes
+
+        assert callable(_save_prediction_outcomes)
+
+
+class TestRunRecordOutcomes:
+    """Verify _run_record_outcomes async implementation."""
+
+    def test_function_exists(self):
+        from app.tasks.training_tasks import _run_record_outcomes
+
+        assert callable(_run_record_outcomes)
+
+    def test_is_coroutine(self):
+        import asyncio
+        from app.tasks.training_tasks import _run_record_outcomes
+
+        assert asyncio.iscoroutinefunction(_run_record_outcomes)
+
+
+class TestOutcomeRoutes:
+    """Verify prediction outcome API routes are defined."""
+
+    def test_outcome_routes_exist(self):
+        import inspect
+        from app.analytics.api import _calibration_routes
+
+        source = inspect.getsource(_calibration_routes)
+        assert "post_record_outcomes" in source
+        assert "list_prediction_outcomes" in source
+        assert "get_calibration_report" in source
+
+    def test_serialize_function_exists(self):
+        from app.analytics.api._calibration_routes import _serialize_prediction_outcome
+
+        assert callable(_serialize_prediction_outcome)
+
+    def test_calibration_report_endpoint_exists(self):
+        import inspect
+        from app.analytics.api import _calibration_routes
+
+        source = inspect.getsource(_calibration_routes)
+        assert "calibration-report" in source
+
+
+class TestBrierScoreCalculation:
+    """Verify Brier score calculation logic used in auto-record."""
+
+    def test_perfect_prediction_home_win(self):
+        # predicted 1.0 for home, home wins -> brier = 0
+        pred_wp = 1.0
+        actual_home_win = True
+        actual_indicator = 1.0 if actual_home_win else 0.0
+        brier = (pred_wp - actual_indicator) ** 2
+        assert brier == 0.0
+
+    def test_worst_prediction_home_win(self):
+        # predicted 0.0 for home, home wins -> brier = 1
+        pred_wp = 0.0
+        actual_home_win = True
+        actual_indicator = 1.0 if actual_home_win else 0.0
+        brier = (pred_wp - actual_indicator) ** 2
+        assert brier == 1.0
+
+    def test_coin_flip_prediction(self):
+        # predicted 0.5, home wins -> brier = 0.25
+        pred_wp = 0.5
+        actual_home_win = True
+        actual_indicator = 1.0 if actual_home_win else 0.0
+        brier = (pred_wp - actual_indicator) ** 2
+        assert abs(brier - 0.25) < 1e-9
+
+    def test_correct_winner_detection(self):
+        # predicted 0.6 for home, home wins -> correct
+        pred_wp = 0.6
+        actual_home_win = True
+        predicted_home_win = pred_wp > 0.5
+        assert predicted_home_win == actual_home_win
+
+    def test_wrong_winner_detection(self):
+        # predicted 0.3 for home, home wins -> wrong
+        pred_wp = 0.3
+        actual_home_win = True
+        predicted_home_win = pred_wp > 0.5
+        assert predicted_home_win != actual_home_win
+
+
+# ---------------------------------------------------------------------------
+# Degradation Alerts (Phase 6)
+# ---------------------------------------------------------------------------
+
+
+class TestDegradationAlertModel:
+    """Verify AnalyticsDegradationAlert DB model."""
+
+    def test_table_exists(self):
+        from app.db.analytics import AnalyticsDegradationAlert
+
+        assert AnalyticsDegradationAlert.__tablename__ == "analytics_degradation_alerts"
+
+    def test_columns_present(self):
+        from app.db.analytics import AnalyticsDegradationAlert
+
+        cols = {c.name for c in AnalyticsDegradationAlert.__table__.columns}
+        expected = {
+            "id", "sport", "alert_type",
+            "baseline_brier", "recent_brier",
+            "baseline_accuracy", "recent_accuracy",
+            "baseline_count", "recent_count",
+            "delta_brier", "delta_accuracy",
+            "severity", "message", "acknowledged",
+            "created_at",
+        }
+        assert expected.issubset(cols)
+
+    def test_severity_default(self):
+        from app.db.analytics import AnalyticsDegradationAlert
+
+        col = AnalyticsDegradationAlert.__table__.columns["severity"]
+        assert col.default is not None
+        assert col.default.arg == "warning"
+
+    def test_acknowledged_default(self):
+        from app.db.analytics import AnalyticsDegradationAlert
+
+        col = AnalyticsDegradationAlert.__table__.columns["acknowledged"]
+        assert col.default is not None
+        assert col.default.arg is False
+
+
+class TestDegradationCheckTask:
+    """Verify check_model_degradation Celery task."""
+
+    def test_task_exists(self):
+        from app.tasks.training_tasks import check_model_degradation
+
+        assert check_model_degradation is not None
+
+    def test_task_callable(self):
+        from app.tasks.training_tasks import check_model_degradation
+
+        assert callable(check_model_degradation)
+
+    def test_run_function_is_coroutine(self):
+        import asyncio
+        from app.tasks.training_tasks import _run_degradation_check
+
+        assert asyncio.iscoroutinefunction(_run_degradation_check)
+
+
+class TestDegradationThresholds:
+    """Verify degradation threshold constants."""
+
+    def test_thresholds_exist(self):
+        from app.tasks.training_tasks import (
+            _BRIER_CRITICAL_THRESHOLD,
+            _BRIER_WARNING_THRESHOLD,
+            _MIN_WINDOW_SIZE,
+        )
+
+        assert isinstance(_BRIER_WARNING_THRESHOLD, float)
+        assert isinstance(_BRIER_CRITICAL_THRESHOLD, float)
+        assert isinstance(_MIN_WINDOW_SIZE, int)
+
+    def test_critical_exceeds_warning(self):
+        from app.tasks.training_tasks import (
+            _BRIER_CRITICAL_THRESHOLD,
+            _BRIER_WARNING_THRESHOLD,
+        )
+
+        assert _BRIER_CRITICAL_THRESHOLD > _BRIER_WARNING_THRESHOLD
+
+    def test_min_window_reasonable(self):
+        from app.tasks.training_tasks import _MIN_WINDOW_SIZE
+
+        assert _MIN_WINDOW_SIZE >= 5
+        assert _MIN_WINDOW_SIZE <= 50
+
+
+class TestDegradationDetectionLogic:
+    """Test the degradation detection math."""
+
+    def test_no_degradation(self):
+        # Recent is same as baseline -> delta = 0 -> no alert
+        baseline_brier = 0.20
+        recent_brier = 0.20
+        delta = recent_brier - baseline_brier
+        assert delta < 0.03  # Below warning threshold
+
+    def test_warning_level(self):
+        # Recent is 0.04 worse -> warning
+        baseline_brier = 0.20
+        recent_brier = 0.24
+        delta = recent_brier - baseline_brier
+        assert 0.03 <= delta < 0.06
+
+    def test_critical_level(self):
+        # Recent is 0.08 worse -> critical
+        baseline_brier = 0.20
+        recent_brier = 0.28
+        delta = recent_brier - baseline_brier
+        assert delta >= 0.06
+
+    def test_improvement_no_alert(self):
+        # Recent is better -> negative delta -> no alert
+        baseline_brier = 0.25
+        recent_brier = 0.20
+        delta = recent_brier - baseline_brier
+        assert delta < 0  # Model improved
+
+    def test_severity_assignment(self):
+        from app.tasks.training_tasks import (
+            _BRIER_CRITICAL_THRESHOLD,
+            _BRIER_WARNING_THRESHOLD,
+        )
+
+        # Simulate the logic from _run_degradation_check
+        for delta, expected_severity in [
+            (0.01, None),
+            (0.04, "warning"),
+            (0.08, "critical"),
+        ]:
+            severity = None
+            if delta >= _BRIER_CRITICAL_THRESHOLD:
+                severity = "critical"
+            elif delta >= _BRIER_WARNING_THRESHOLD:
+                severity = "warning"
+            assert severity == expected_severity, f"delta={delta}: got {severity}, expected {expected_severity}"
+
+
+class TestDegradationRoutes:
+    """Verify degradation alert API routes exist."""
+
+    def test_routes_exist(self):
+        import inspect
+        from app.analytics.api import _calibration_routes
+
+        source = inspect.getsource(_calibration_routes)
+        assert "post_degradation_check" in source
+        assert "list_degradation_alerts" in source
+        assert "acknowledge_degradation_alert" in source
+
+    def test_serialize_function_exists(self):
+        from app.analytics.api._calibration_routes import _serialize_degradation_alert
+
+        assert callable(_serialize_degradation_alert)

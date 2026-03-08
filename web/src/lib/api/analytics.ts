@@ -142,76 +142,190 @@ export async function runLiveSimulation(
   });
 }
 
-export interface ModelPerformance {
-  total_predictions: number;
-  brier_score: number;
-  log_loss: number;
-  average_score_error: number;
-  average_total_error: number;
-  winner_accuracy: number;
-  mae_score: number;
-  mae_total: number;
-  prediction_bias: {
-    home_bias: number;
-    total_bias: number;
-    home_score_bias: number;
-  };
-  calibration_buckets: {
-    bucket: string;
-    count: number;
-    avg_predicted: number;
-    avg_actual: number;
-  }[];
-}
 
-export interface FeatureConfigResponse {
-  model: string;
+// ---------------------------------------------------------------------------
+// Feature Loadout CRUD (DB-backed)
+// ---------------------------------------------------------------------------
+
+export interface FeatureLoadout {
+  id: number;
+  name: string;
   sport: string;
-  enabled_features: string[];
-  weights: Record<string, number>;
-  features: Record<string, { enabled: boolean; weight: number }>;
+  model_type: string;
+  features: { name: string; enabled: boolean; weight: number }[];
+  is_default: boolean;
+  enabled_count: number;
+  total_count: number;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
-export interface FeatureConfigListResponse {
-  available: string[];
-  registered: { name: string; model: string; sport: string; feature_count: number }[];
+export interface FeatureLoadoutListResponse {
+  loadouts: FeatureLoadout[];
+  count: number;
 }
 
-export async function getFeatureConfig(
-  model: string,
-): Promise<FeatureConfigResponse> {
-  const params = new URLSearchParams({ model });
-  return fetchJson<FeatureConfigResponse>(
-    `${base()}/api/analytics/feature-config?${params}`,
+export async function listFeatureLoadouts(
+  sport?: string,
+  modelType?: string,
+): Promise<FeatureLoadoutListResponse> {
+  const params = new URLSearchParams();
+  if (sport) params.set("sport", sport);
+  if (modelType) params.set("model_type", modelType);
+  const qs = params.toString();
+  return fetchJson<FeatureLoadoutListResponse>(
+    `${base()}/api/analytics/feature-configs${qs ? `?${qs}` : ""}`,
   );
 }
 
-export async function listFeatureConfigs(): Promise<FeatureConfigListResponse> {
-  return fetchJson<FeatureConfigListResponse>(
-    `${base()}/api/analytics/feature-configs`,
-  );
+export async function getFeatureLoadout(id: number): Promise<FeatureLoadout> {
+  return fetchJson<FeatureLoadout>(`${base()}/api/analytics/feature-config/${id}`);
 }
 
-export async function saveFeatureConfig(
-  config: { model: string; sport: string; features: Record<string, { enabled: boolean; weight: number }> },
-): Promise<{ status: string; model: string; enabled_features: string[] }> {
+export async function createFeatureLoadout(data: {
+  name: string;
+  sport: string;
+  model_type: string;
+  features: { name: string; enabled: boolean; weight: number }[];
+  is_default?: boolean;
+}): Promise<{ status: string } & FeatureLoadout> {
   return fetchJson(`${base()}/api/analytics/feature-config`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(config),
+    body: JSON.stringify(data),
   });
 }
 
-export async function getModelPerformance(
-  sport?: string,
-): Promise<ModelPerformance> {
+export async function updateFeatureLoadout(
+  id: number,
+  data: Partial<{
+    name: string;
+    sport: string;
+    model_type: string;
+    features: { name: string; enabled: boolean; weight: number }[];
+    is_default: boolean;
+  }>,
+): Promise<{ status: string } & FeatureLoadout> {
+  return fetchJson(`${base()}/api/analytics/feature-config/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteFeatureLoadout(
+  id: number,
+): Promise<{ status: string; id: number; name: string }> {
+  return fetchJson(`${base()}/api/analytics/feature-config/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function cloneFeatureLoadout(
+  id: number,
+  name?: string,
+): Promise<{ status: string } & FeatureLoadout> {
   const params = new URLSearchParams();
-  if (sport) params.set("sport", sport);
+  if (name) params.set("name", name);
   const qs = params.toString();
-  return fetchJson<ModelPerformance>(
-    `${base()}/api/analytics/model-performance${qs ? `?${qs}` : ""}`,
+  return fetchJson(`${base()}/api/analytics/feature-config/${id}/clone${qs ? `?${qs}` : ""}`, {
+    method: "POST",
+  });
+}
+
+export interface AvailableFeature {
+  name: string;
+  entity: string;
+  source_key: string;
+  description: string;
+  data_type: string;
+  model_types: string[];
+}
+
+export interface AvailableFeaturesResponse {
+  sport: string;
+  total_games_with_data: number;
+  plate_appearance_features: AvailableFeature[];
+  game_features: AvailableFeature[];
+  all_features: AvailableFeature[];
+}
+
+export async function getAvailableFeatures(
+  sport: string = "mlb",
+): Promise<AvailableFeaturesResponse> {
+  const params = new URLSearchParams({ sport });
+  return fetchJson<AvailableFeaturesResponse>(
+    `${base()}/api/analytics/available-features?${params}`,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Training Pipeline
+// ---------------------------------------------------------------------------
+
+export interface TrainingJobRequest {
+  feature_config_id?: number | null;
+  sport: string;
+  model_type: string;
+  date_start?: string | null;
+  date_end?: string | null;
+  test_split?: number;
+  algorithm?: string;
+  random_state?: number;
+  rolling_window?: number;
+}
+
+export interface TrainingJob {
+  id: number;
+  feature_config_id: number | null;
+  sport: string;
+  model_type: string;
+  algorithm: string;
+  date_start: string | null;
+  date_end: string | null;
+  test_split: number;
+  random_state: number;
+  rolling_window: number;
+  status: "pending" | "queued" | "running" | "completed" | "failed";
+  celery_task_id: string | null;
+  model_id: string | null;
+  artifact_path: string | null;
+  metrics: Record<string, number> | null;
+  train_count: number | null;
+  test_count: number | null;
+  feature_names: string[] | null;
+  feature_importance: { name: string; importance: number }[] | null;
+  error_message: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  completed_at: string | null;
+}
+
+export async function startTraining(
+  req: TrainingJobRequest,
+): Promise<{ status: string; job: TrainingJob }> {
+  return fetchJson(`${base()}/api/analytics/train`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export async function listTrainingJobs(
+  sport?: string,
+  status?: string,
+): Promise<{ jobs: TrainingJob[]; count: number }> {
+  const params = new URLSearchParams();
+  if (sport) params.set("sport", sport);
+  if (status) params.set("status", status);
+  const qs = params.toString();
+  return fetchJson(`${base()}/api/analytics/training-jobs${qs ? `?${qs}` : ""}`);
+}
+
+export async function getTrainingJob(id: number): Promise<TrainingJob> {
+  return fetchJson<TrainingJob>(`${base()}/api/analytics/training-job/${id}`);
+}
+
 
 export interface RegisteredModel {
   model_id: string;
@@ -269,6 +383,7 @@ export interface ModelDetails {
   feature_config?: string;
   training_row_count?: number;
   random_state?: number;
+  feature_importance?: { name: string; importance: number }[];
 }
 
 export async function getModelDetails(modelId: string): Promise<ModelDetails> {
@@ -302,6 +417,254 @@ export async function compareModels(
 }
 
 // ---------------------------------------------------------------------------
+// Backtesting
+// ---------------------------------------------------------------------------
+
+export interface BacktestRequest {
+  model_id: string;
+  artifact_path: string;
+  sport: string;
+  model_type: string;
+  date_start?: string | null;
+  date_end?: string | null;
+  rolling_window?: number;
+}
+
+export interface BacktestPrediction {
+  predicted: number;
+  actual: number;
+  correct: boolean;
+  home_score?: number;
+  away_score?: number;
+  probabilities?: Record<string, number>;
+}
+
+export interface BacktestJob {
+  id: number;
+  model_id: string;
+  artifact_path: string;
+  sport: string;
+  model_type: string;
+  date_start: string | null;
+  date_end: string | null;
+  rolling_window: number;
+  status: "pending" | "queued" | "running" | "completed" | "failed";
+  celery_task_id: string | null;
+  game_count: number | null;
+  correct_count: number | null;
+  metrics: Record<string, number> | null;
+  predictions: BacktestPrediction[] | null;
+  error_message: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export async function startBacktest(
+  req: BacktestRequest,
+): Promise<{ status: string; job: BacktestJob }> {
+  return fetchJson(`${base()}/api/analytics/backtest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export async function listBacktestJobs(
+  modelId?: string,
+  sport?: string,
+): Promise<{ jobs: BacktestJob[]; count: number }> {
+  const params = new URLSearchParams();
+  if (modelId) params.set("model_id", modelId);
+  if (sport) params.set("sport", sport);
+  const qs = params.toString();
+  return fetchJson(`${base()}/api/analytics/backtest-jobs${qs ? `?${qs}` : ""}`);
+}
+
+// ---------------------------------------------------------------------------
+// Batch Simulation
+// ---------------------------------------------------------------------------
+
+export interface BatchSimRequest {
+  sport: string;
+  probability_mode?: string;
+  iterations?: number;
+  rolling_window?: number;
+  date_start?: string;
+  date_end?: string;
+}
+
+export interface BatchSimGameResult {
+  game_id: string;
+  game_date: string;
+  home_team: string;
+  away_team: string;
+  home_win_probability: number;
+  away_win_probability: number;
+  average_home_score: number;
+  average_away_score: number;
+  probability_source: string;
+  has_profiles: boolean;
+}
+
+export interface BatchSimJob {
+  id: number;
+  sport: string;
+  probability_mode: string;
+  iterations: number;
+  rolling_window: number;
+  date_start: string | null;
+  date_end: string | null;
+  status: string;
+  celery_task_id: string | null;
+  game_count: number | null;
+  results: BatchSimGameResult[] | null;
+  error_message: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export async function startBatchSimulation(
+  req: BatchSimRequest,
+): Promise<{ job: BatchSimJob }> {
+  return fetchJson<{ job: BatchSimJob }>(`${base()}/api/analytics/batch-simulate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export async function listBatchSimJobs(
+  sport?: string,
+): Promise<{ jobs: BatchSimJob[]; count: number }> {
+  const params = new URLSearchParams();
+  if (sport) params.set("sport", sport);
+  return fetchJson<{ jobs: BatchSimJob[]; count: number }>(
+    `${base()}/api/analytics/batch-simulate-jobs?${params}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Prediction Outcomes / Calibration
+// ---------------------------------------------------------------------------
+
+export interface PredictionOutcome {
+  id: number;
+  game_id: number;
+  sport: string;
+  batch_sim_job_id: number | null;
+  home_team: string;
+  away_team: string;
+  predicted_home_wp: number;
+  predicted_away_wp: number;
+  predicted_home_score: number | null;
+  predicted_away_score: number | null;
+  probability_mode: string | null;
+  game_date: string | null;
+  actual_home_score: number | null;
+  actual_away_score: number | null;
+  home_win_actual: boolean | null;
+  correct_winner: boolean | null;
+  brier_score: number | null;
+  outcome_recorded_at: string | null;
+  created_at: string | null;
+}
+
+export interface CalibrationReport {
+  total_predictions: number;
+  resolved: number;
+  accuracy: number;
+  brier_score: number;
+  avg_home_score_error: number;
+  avg_away_score_error: number;
+  home_bias: number;
+}
+
+export async function triggerRecordOutcomes(): Promise<{ status: string; task_id: string }> {
+  return fetchJson<{ status: string; task_id: string }>(`${base()}/api/analytics/record-outcomes`, {
+    method: "POST",
+  });
+}
+
+export async function listPredictionOutcomes(opts?: {
+  sport?: string;
+  resolved?: boolean;
+  batch_sim_job_id?: number;
+  limit?: number;
+}): Promise<{ outcomes: PredictionOutcome[]; count: number }> {
+  const params = new URLSearchParams();
+  if (opts?.sport) params.set("sport", opts.sport);
+  if (opts?.resolved !== undefined) params.set("resolved", String(opts.resolved));
+  if (opts?.batch_sim_job_id !== undefined) params.set("batch_sim_job_id", String(opts.batch_sim_job_id));
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  return fetchJson<{ outcomes: PredictionOutcome[]; count: number }>(
+    `${base()}/api/analytics/prediction-outcomes?${params}`,
+  );
+}
+
+export async function getCalibrationReport(
+  sport?: string,
+): Promise<CalibrationReport> {
+  const params = new URLSearchParams();
+  if (sport) params.set("sport", sport);
+  return fetchJson<CalibrationReport>(`${base()}/api/analytics/calibration-report?${params}`);
+}
+
+// ---------------------------------------------------------------------------
+// Degradation Alerts
+// ---------------------------------------------------------------------------
+
+export interface DegradationAlert {
+  id: number;
+  sport: string;
+  alert_type: string;
+  baseline_brier: number;
+  recent_brier: number;
+  baseline_accuracy: number;
+  recent_accuracy: number;
+  baseline_count: number;
+  recent_count: number;
+  delta_brier: number;
+  delta_accuracy: number;
+  severity: string;
+  message: string;
+  acknowledged: boolean;
+  created_at: string | null;
+}
+
+export async function triggerDegradationCheck(
+  sport: string = "mlb",
+): Promise<{ status: string; task_id: string }> {
+  const params = new URLSearchParams({ sport });
+  return fetchJson<{ status: string; task_id: string }>(
+    `${base()}/api/analytics/degradation-check?${params}`,
+    { method: "POST" },
+  );
+}
+
+export async function listDegradationAlerts(opts?: {
+  sport?: string;
+  acknowledged?: boolean;
+  limit?: number;
+}): Promise<{ alerts: DegradationAlert[]; count: number }> {
+  const params = new URLSearchParams();
+  if (opts?.sport) params.set("sport", opts.sport);
+  if (opts?.acknowledged !== undefined) params.set("acknowledged", String(opts.acknowledged));
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  return fetchJson<{ alerts: DegradationAlert[]; count: number }>(
+    `${base()}/api/analytics/degradation-alerts?${params}`,
+  );
+}
+
+export async function acknowledgeDegradationAlert(
+  alertId: number,
+): Promise<DegradationAlert> {
+  return fetchJson<DegradationAlert>(
+    `${base()}/api/analytics/degradation-alerts/${alertId}/acknowledge`,
+    { method: "POST" },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Ensemble Configuration
 // ---------------------------------------------------------------------------
 
@@ -314,14 +677,6 @@ export interface EnsembleConfigResponse {
   sport: string;
   model_type: string;
   providers: EnsembleProviderWeight[];
-}
-
-export async function getEnsembleConfig(
-  sport: string,
-  modelType: string,
-): Promise<EnsembleConfigResponse> {
-  const params = new URLSearchParams({ sport, model_type: modelType });
-  return fetchJson<EnsembleConfigResponse>(`${base()}/api/analytics/ensemble-config?${params}`);
 }
 
 export async function listEnsembleConfigs(): Promise<{
@@ -343,44 +698,3 @@ export async function saveEnsembleConfig(
   });
 }
 
-// ---------------------------------------------------------------------------
-// MLB Advanced Models
-// ---------------------------------------------------------------------------
-
-export async function getPitchModel(params: {
-  pitcher_k_rate?: number;
-  batter_contact_rate?: number;
-  count_balls?: number;
-  count_strikes?: number;
-}): Promise<{ pitch_probabilities: Record<string, number> }> {
-  const qs = new URLSearchParams();
-  if (params.pitcher_k_rate != null) qs.set("pitcher_k_rate", String(params.pitcher_k_rate));
-  if (params.batter_contact_rate != null) qs.set("batter_contact_rate", String(params.batter_contact_rate));
-  if (params.count_balls != null) qs.set("count_balls", String(params.count_balls));
-  if (params.count_strikes != null) qs.set("count_strikes", String(params.count_strikes));
-  return fetchJson(`${base()}/api/analytics/mlb/pitch-model?${qs}`);
-}
-
-export async function getPitchSim(params: {
-  pitcher_k_rate?: number;
-  batter_contact_rate?: number;
-}): Promise<{ result: string; pitches: number; final_count: string; batted_ball_result?: string }> {
-  const qs = new URLSearchParams();
-  if (params.pitcher_k_rate != null) qs.set("pitcher_k_rate", String(params.pitcher_k_rate));
-  if (params.batter_contact_rate != null) qs.set("batter_contact_rate", String(params.batter_contact_rate));
-  return fetchJson(`${base()}/api/analytics/mlb/pitch-sim?${qs}`);
-}
-
-export async function getRunExpectancy(params: {
-  base_state?: number;
-  outs?: number;
-  batter_quality?: number;
-  pitcher_quality?: number;
-}): Promise<{ expected_runs: number }> {
-  const qs = new URLSearchParams();
-  if (params.base_state != null) qs.set("base_state", String(params.base_state));
-  if (params.outs != null) qs.set("outs", String(params.outs));
-  if (params.batter_quality != null) qs.set("batter_quality", String(params.batter_quality));
-  if (params.pitcher_quality != null) qs.set("pitcher_quality", String(params.pitcher_quality));
-  return fetchJson(`${base()}/api/analytics/mlb/run-expectancy?${qs}`);
-}

@@ -16,13 +16,9 @@ export const ROUTES = {
 
   /** Analytics */
   ANALYTICS: "/admin/analytics",
-  ANALYTICS_TEAM: "/admin/analytics/team",
-  ANALYTICS_PLAYER: "/admin/analytics/player",
-  ANALYTICS_MATCHUP: "/admin/analytics/matchup",
+  ANALYTICS_WORKBENCH: "/admin/analytics/workbench",
+  ANALYTICS_MODELS: "/admin/analytics/models",
   ANALYTICS_SIMULATOR: "/admin/analytics/simulator",
   ANALYTICS_MODEL_PERFORMANCE: "/admin/analytics/model-performance",
-  ANALYTICS_FEATURE_CONFIG: "/admin/analytics/feature-config",
-  ANALYTICS_MODELS: "/admin/analytics/models",
-  ANALYTICS_ENSEMBLE: "/admin/analytics/ensemble",
-  ANALYTICS_BASEBALL_MODELS: "/admin/analytics/baseball-models",
+  ANALYTICS_EXPLORER: "/admin/analytics/explorer",
 } as const;
