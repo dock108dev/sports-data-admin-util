@@ -142,27 +142,6 @@ export async function runLiveSimulation(
   });
 }
 
-export interface ModelPerformance {
-  total_predictions: number;
-  brier_score: number;
-  log_loss: number;
-  average_score_error: number;
-  average_total_error: number;
-  winner_accuracy: number;
-  mae_score: number;
-  mae_total: number;
-  prediction_bias: {
-    home_bias: number;
-    total_bias: number;
-    home_score_bias: number;
-  };
-  calibration_buckets: {
-    bucket: string;
-    count: number;
-    avg_predicted: number;
-    avg_actual: number;
-  }[];
-}
 
 // ---------------------------------------------------------------------------
 // Feature Loadout CRUD (DB-backed)
@@ -347,16 +326,6 @@ export async function getTrainingJob(id: number): Promise<TrainingJob> {
   return fetchJson<TrainingJob>(`${base()}/api/analytics/training-job/${id}`);
 }
 
-export async function getModelPerformance(
-  sport?: string,
-): Promise<ModelPerformance> {
-  const params = new URLSearchParams();
-  if (sport) params.set("sport", sport);
-  const qs = params.toString();
-  return fetchJson<ModelPerformance>(
-    `${base()}/api/analytics/calibration-report${qs ? `?${qs}` : ""}`,
-  );
-}
 
 export interface RegisteredModel {
   model_id: string;

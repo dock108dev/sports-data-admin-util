@@ -3,14 +3,12 @@
 import { useState, useCallback, useEffect } from "react";
 import { AdminCard, AdminTable } from "@/components/admin";
 import {
-  getModelPerformance,
   getCalibrationReport,
   listPredictionOutcomes,
   triggerRecordOutcomes,
   listDegradationAlerts,
   triggerDegradationCheck,
   acknowledgeDegradationAlert,
-  type ModelPerformance,
   type CalibrationReport,
   type PredictionOutcome,
   type DegradationAlert,
@@ -19,14 +17,14 @@ import styles from "../analytics.module.css";
 
 export default function ModelPerformancePage() {
   const [sport, setSport] = useState<string>("");
-  const [data, setData] = useState<ModelPerformance | null>(null);
+  const [data, setData] = useState<CalibrationReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleLoad = useCallback(() => {
     setLoading(true);
     setError(null);
-    getModelPerformance(sport || undefined)
+    getCalibrationReport(sport || undefined)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
@@ -65,107 +63,59 @@ export default function ModelPerformancePage() {
         <div className={styles.resultsSection}>
           <AdminCard
             title="Overview"
-            subtitle={`Based on ${data.total_predictions} predictions`}
+            subtitle={`Based on ${data.total_predictions} resolved predictions`}
           >
-            <div className={styles.statsRow}>
-              <div className={styles.statBox}>
-                <div className={styles.statValue}>
-                  {data.total_predictions}
+            {data.total_predictions === 0 ? (
+              <p style={{ color: "var(--text-muted)" }}>
+                No resolved predictions yet. Run a batch simulation, then record outcomes after games finish.
+              </p>
+            ) : (
+              <>
+                <div className={styles.statsRow}>
+                  <div className={styles.statBox}>
+                    <div className={styles.statValue}>
+                      {data.total_predictions}
+                    </div>
+                    <div className={styles.statLabel}>Resolved</div>
+                  </div>
+                  <div className={styles.statBox}>
+                    <div className={styles.statValue}>
+                      {(data.accuracy * 100).toFixed(1)}%
+                    </div>
+                    <div className={styles.statLabel}>Winner Accuracy</div>
+                  </div>
+                  <div className={styles.statBox}>
+                    <div className={styles.statValue}>
+                      {data.brier_score.toFixed(4)}
+                    </div>
+                    <div className={styles.statLabel}>Brier Score</div>
+                  </div>
                 </div>
-                <div className={styles.statLabel}>Total Predictions</div>
-              </div>
-              <div className={styles.statBox}>
-                <div className={styles.statValue}>
-                  {(data.winner_accuracy * 100).toFixed(1)}%
-                </div>
-                <div className={styles.statLabel}>Winner Accuracy</div>
-              </div>
-              <div className={styles.statBox}>
-                <div className={styles.statValue}>
-                  {data.brier_score.toFixed(3)}
-                </div>
-                <div className={styles.statLabel}>Brier Score</div>
-              </div>
-              <div className={styles.statBox}>
-                <div className={styles.statValue}>
-                  {data.log_loss.toFixed(3)}
-                </div>
-                <div className={styles.statLabel}>Log Loss</div>
-              </div>
-            </div>
-          </AdminCard>
 
-          <AdminCard title="Score Accuracy">
-            <div className={styles.statsRow}>
-              <div className={styles.statBox}>
-                <div className={styles.statValue}>
-                  {data.average_score_error.toFixed(1)}
+                <div className={styles.statsRow}>
+                  <div className={styles.statBox}>
+                    <div className={styles.statValue}>
+                      {data.avg_home_score_error.toFixed(1)}
+                    </div>
+                    <div className={styles.statLabel}>Avg Home Score Error</div>
+                  </div>
+                  <div className={styles.statBox}>
+                    <div className={styles.statValue}>
+                      {data.avg_away_score_error.toFixed(1)}
+                    </div>
+                    <div className={styles.statLabel}>Avg Away Score Error</div>
+                  </div>
+                  <div className={styles.statBox}>
+                    <div className={styles.statValue}>
+                      {data.home_bias > 0 ? "+" : ""}
+                      {(data.home_bias * 100).toFixed(1)}%
+                    </div>
+                    <div className={styles.statLabel}>Home Win Bias</div>
+                  </div>
                 </div>
-                <div className={styles.statLabel}>Avg Score Error</div>
-              </div>
-              <div className={styles.statBox}>
-                <div className={styles.statValue}>
-                  {data.mae_score.toFixed(1)}
-                </div>
-                <div className={styles.statLabel}>MAE (Score)</div>
-              </div>
-              <div className={styles.statBox}>
-                <div className={styles.statValue}>
-                  {data.average_total_error.toFixed(1)}
-                </div>
-                <div className={styles.statLabel}>Avg Total Error</div>
-              </div>
-              <div className={styles.statBox}>
-                <div className={styles.statValue}>
-                  {data.mae_total.toFixed(1)}
-                </div>
-                <div className={styles.statLabel}>MAE (Total)</div>
-              </div>
-            </div>
+              </>
+            )}
           </AdminCard>
-
-          <AdminCard title="Model Bias">
-            <div className={styles.statsRow}>
-              <div className={styles.statBox}>
-                <div className={styles.statValue}>
-                  {data.prediction_bias.home_bias > 0 ? "+" : ""}
-                  {(data.prediction_bias.home_bias * 100).toFixed(1)}%
-                </div>
-                <div className={styles.statLabel}>Home Win Bias</div>
-              </div>
-              <div className={styles.statBox}>
-                <div className={styles.statValue}>
-                  {data.prediction_bias.total_bias > 0 ? "+" : ""}
-                  {data.prediction_bias.total_bias.toFixed(1)} runs
-                </div>
-                <div className={styles.statLabel}>Total Bias</div>
-              </div>
-              <div className={styles.statBox}>
-                <div className={styles.statValue}>
-                  {data.prediction_bias.home_score_bias > 0 ? "+" : ""}
-                  {data.prediction_bias.home_score_bias.toFixed(1)} runs
-                </div>
-                <div className={styles.statLabel}>Home Score Bias</div>
-              </div>
-            </div>
-          </AdminCard>
-
-          {data.calibration_buckets.length > 0 && (
-            <AdminCard title="Calibration Buckets">
-              <AdminTable
-                headers={["Probability Range", "Count", "Avg Predicted", "Avg Actual"]}
-              >
-                {data.calibration_buckets.map((b) => (
-                  <tr key={b.bucket}>
-                    <td>{b.bucket}</td>
-                    <td>{b.count}</td>
-                    <td>{(b.avg_predicted * 100).toFixed(1)}%</td>
-                    <td>{(b.avg_actual * 100).toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </AdminTable>
-            </AdminCard>
-          )}
         </div>
       )}
 
