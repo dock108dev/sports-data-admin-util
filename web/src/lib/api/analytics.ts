@@ -583,6 +583,127 @@ export async function getBatchSimJob(id: number): Promise<BatchSimJob> {
 }
 
 // ---------------------------------------------------------------------------
+// Prediction Outcomes / Calibration
+// ---------------------------------------------------------------------------
+
+export interface PredictionOutcome {
+  id: number;
+  game_id: number;
+  sport: string;
+  batch_sim_job_id: number | null;
+  home_team: string;
+  away_team: string;
+  predicted_home_wp: number;
+  predicted_away_wp: number;
+  predicted_home_score: number | null;
+  predicted_away_score: number | null;
+  probability_mode: string | null;
+  game_date: string | null;
+  actual_home_score: number | null;
+  actual_away_score: number | null;
+  home_win_actual: boolean | null;
+  correct_winner: boolean | null;
+  brier_score: number | null;
+  outcome_recorded_at: string | null;
+  created_at: string | null;
+}
+
+export interface CalibrationReport {
+  total_predictions: number;
+  resolved: number;
+  accuracy: number;
+  brier_score: number;
+  avg_home_score_error: number;
+  avg_away_score_error: number;
+  home_bias: number;
+}
+
+export async function triggerRecordOutcomes(): Promise<{ status: string; task_id: string }> {
+  return fetchJson<{ status: string; task_id: string }>(`${base()}/api/analytics/record-outcomes`, {
+    method: "POST",
+  });
+}
+
+export async function listPredictionOutcomes(opts?: {
+  sport?: string;
+  resolved?: boolean;
+  batch_sim_job_id?: number;
+  limit?: number;
+}): Promise<{ outcomes: PredictionOutcome[]; count: number }> {
+  const params = new URLSearchParams();
+  if (opts?.sport) params.set("sport", opts.sport);
+  if (opts?.resolved !== undefined) params.set("resolved", String(opts.resolved));
+  if (opts?.batch_sim_job_id !== undefined) params.set("batch_sim_job_id", String(opts.batch_sim_job_id));
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  return fetchJson<{ outcomes: PredictionOutcome[]; count: number }>(
+    `${base()}/api/analytics/prediction-outcomes?${params}`,
+  );
+}
+
+export async function getCalibrationReport(
+  sport?: string,
+): Promise<CalibrationReport> {
+  const params = new URLSearchParams();
+  if (sport) params.set("sport", sport);
+  return fetchJson<CalibrationReport>(`${base()}/api/analytics/calibration-report?${params}`);
+}
+
+// ---------------------------------------------------------------------------
+// Degradation Alerts
+// ---------------------------------------------------------------------------
+
+export interface DegradationAlert {
+  id: number;
+  sport: string;
+  alert_type: string;
+  baseline_brier: number;
+  recent_brier: number;
+  baseline_accuracy: number;
+  recent_accuracy: number;
+  baseline_count: number;
+  recent_count: number;
+  delta_brier: number;
+  delta_accuracy: number;
+  severity: string;
+  message: string;
+  acknowledged: boolean;
+  created_at: string | null;
+}
+
+export async function triggerDegradationCheck(
+  sport: string = "mlb",
+): Promise<{ status: string; task_id: string }> {
+  const params = new URLSearchParams({ sport });
+  return fetchJson<{ status: string; task_id: string }>(
+    `${base()}/api/analytics/degradation-check?${params}`,
+    { method: "POST" },
+  );
+}
+
+export async function listDegradationAlerts(opts?: {
+  sport?: string;
+  acknowledged?: boolean;
+  limit?: number;
+}): Promise<{ alerts: DegradationAlert[]; count: number }> {
+  const params = new URLSearchParams();
+  if (opts?.sport) params.set("sport", opts.sport);
+  if (opts?.acknowledged !== undefined) params.set("acknowledged", String(opts.acknowledged));
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  return fetchJson<{ alerts: DegradationAlert[]; count: number }>(
+    `${base()}/api/analytics/degradation-alerts?${params}`,
+  );
+}
+
+export async function acknowledgeDegradationAlert(
+  alertId: number,
+): Promise<DegradationAlert> {
+  return fetchJson<DegradationAlert>(
+    `${base()}/api/analytics/degradation-alerts/${alertId}/acknowledge`,
+    { method: "POST" },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Ensemble Configuration
 // ---------------------------------------------------------------------------
 

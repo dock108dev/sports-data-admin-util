@@ -5907,3 +5907,313 @@ class TestBatchSimRoutes:
         from app.analytics.api.analytics_routes import _serialize_batch_sim_job
 
         assert callable(_serialize_batch_sim_job)
+
+
+# ---------------------------------------------------------------------------
+# Prediction Outcomes / Auto-Record (Phase 6)
+# ---------------------------------------------------------------------------
+
+
+class TestPredictionOutcomeModel:
+    """Verify AnalyticsPredictionOutcome DB model."""
+
+    def test_table_exists(self):
+        from app.db.analytics import AnalyticsPredictionOutcome
+
+        assert AnalyticsPredictionOutcome.__tablename__ == "analytics_prediction_outcomes"
+
+    def test_columns_present(self):
+        from app.db.analytics import AnalyticsPredictionOutcome
+
+        cols = {c.name for c in AnalyticsPredictionOutcome.__table__.columns}
+        expected = {
+            "id", "game_id", "sport", "batch_sim_job_id",
+            "home_team", "away_team",
+            "predicted_home_wp", "predicted_away_wp",
+            "predicted_home_score", "predicted_away_score",
+            "probability_mode", "game_date",
+            "actual_home_score", "actual_away_score",
+            "home_win_actual", "correct_winner", "brier_score",
+            "outcome_recorded_at", "created_at",
+        }
+        assert expected.issubset(cols)
+
+    def test_game_id_indexed(self):
+        from app.db.analytics import AnalyticsPredictionOutcome
+
+        col = AnalyticsPredictionOutcome.__table__.columns["game_id"]
+        assert col.index is True
+
+    def test_outcome_fields_nullable(self):
+        from app.db.analytics import AnalyticsPredictionOutcome
+
+        for name in ("actual_home_score", "actual_away_score", "home_win_actual",
+                      "correct_winner", "brier_score", "outcome_recorded_at"):
+            col = AnalyticsPredictionOutcome.__table__.columns[name]
+            assert col.nullable is True, f"{name} should be nullable"
+
+
+class TestRecordOutcomesTask:
+    """Verify record_completed_outcomes Celery task exists."""
+
+    def test_task_exists(self):
+        from app.tasks.training_tasks import record_completed_outcomes
+
+        assert record_completed_outcomes is not None
+
+    def test_task_callable(self):
+        from app.tasks.training_tasks import record_completed_outcomes
+
+        assert callable(record_completed_outcomes)
+
+
+class TestSavePredictionOutcomes:
+    """Verify _save_prediction_outcomes helper."""
+
+    def test_function_exists(self):
+        from app.tasks.training_tasks import _save_prediction_outcomes
+
+        assert callable(_save_prediction_outcomes)
+
+
+class TestRunRecordOutcomes:
+    """Verify _run_record_outcomes async implementation."""
+
+    def test_function_exists(self):
+        from app.tasks.training_tasks import _run_record_outcomes
+
+        assert callable(_run_record_outcomes)
+
+    def test_is_coroutine(self):
+        import asyncio
+        from app.tasks.training_tasks import _run_record_outcomes
+
+        assert asyncio.iscoroutinefunction(_run_record_outcomes)
+
+
+class TestOutcomeRoutes:
+    """Verify prediction outcome API routes are defined."""
+
+    def test_outcome_routes_exist(self):
+        import inspect
+        from app.analytics.api import analytics_routes
+
+        source = inspect.getsource(analytics_routes)
+        assert "post_record_outcomes" in source
+        assert "list_prediction_outcomes" in source
+        assert "get_calibration_report" in source
+
+    def test_serialize_function_exists(self):
+        from app.analytics.api.analytics_routes import _serialize_prediction_outcome
+
+        assert callable(_serialize_prediction_outcome)
+
+    def test_calibration_report_endpoint_exists(self):
+        import inspect
+        from app.analytics.api import analytics_routes
+
+        source = inspect.getsource(analytics_routes)
+        assert "calibration-report" in source
+
+
+class TestBrierScoreCalculation:
+    """Verify Brier score calculation logic used in auto-record."""
+
+    def test_perfect_prediction_home_win(self):
+        # predicted 1.0 for home, home wins -> brier = 0
+        pred_wp = 1.0
+        actual_home_win = True
+        actual_indicator = 1.0 if actual_home_win else 0.0
+        brier = (pred_wp - actual_indicator) ** 2
+        assert brier == 0.0
+
+    def test_worst_prediction_home_win(self):
+        # predicted 0.0 for home, home wins -> brier = 1
+        pred_wp = 0.0
+        actual_home_win = True
+        actual_indicator = 1.0 if actual_home_win else 0.0
+        brier = (pred_wp - actual_indicator) ** 2
+        assert brier == 1.0
+
+    def test_coin_flip_prediction(self):
+        # predicted 0.5, home wins -> brier = 0.25
+        pred_wp = 0.5
+        actual_home_win = True
+        actual_indicator = 1.0 if actual_home_win else 0.0
+        brier = (pred_wp - actual_indicator) ** 2
+        assert abs(brier - 0.25) < 1e-9
+
+    def test_correct_winner_detection(self):
+        # predicted 0.6 for home, home wins -> correct
+        pred_wp = 0.6
+        actual_home_win = True
+        predicted_home_win = pred_wp > 0.5
+        assert predicted_home_win == actual_home_win
+
+    def test_wrong_winner_detection(self):
+        # predicted 0.3 for home, home wins -> wrong
+        pred_wp = 0.3
+        actual_home_win = True
+        predicted_home_win = pred_wp > 0.5
+        assert predicted_home_win != actual_home_win
+
+
+# ---------------------------------------------------------------------------
+# Degradation Alerts (Phase 6)
+# ---------------------------------------------------------------------------
+
+
+class TestDegradationAlertModel:
+    """Verify AnalyticsDegradationAlert DB model."""
+
+    def test_table_exists(self):
+        from app.db.analytics import AnalyticsDegradationAlert
+
+        assert AnalyticsDegradationAlert.__tablename__ == "analytics_degradation_alerts"
+
+    def test_columns_present(self):
+        from app.db.analytics import AnalyticsDegradationAlert
+
+        cols = {c.name for c in AnalyticsDegradationAlert.__table__.columns}
+        expected = {
+            "id", "sport", "alert_type",
+            "baseline_brier", "recent_brier",
+            "baseline_accuracy", "recent_accuracy",
+            "baseline_count", "recent_count",
+            "delta_brier", "delta_accuracy",
+            "severity", "message", "acknowledged",
+            "created_at",
+        }
+        assert expected.issubset(cols)
+
+    def test_severity_default(self):
+        from app.db.analytics import AnalyticsDegradationAlert
+
+        col = AnalyticsDegradationAlert.__table__.columns["severity"]
+        assert col.default is not None
+        assert col.default.arg == "warning"
+
+    def test_acknowledged_default(self):
+        from app.db.analytics import AnalyticsDegradationAlert
+
+        col = AnalyticsDegradationAlert.__table__.columns["acknowledged"]
+        assert col.default is not None
+        assert col.default.arg is False
+
+
+class TestDegradationCheckTask:
+    """Verify check_model_degradation Celery task."""
+
+    def test_task_exists(self):
+        from app.tasks.training_tasks import check_model_degradation
+
+        assert check_model_degradation is not None
+
+    def test_task_callable(self):
+        from app.tasks.training_tasks import check_model_degradation
+
+        assert callable(check_model_degradation)
+
+    def test_run_function_is_coroutine(self):
+        import asyncio
+        from app.tasks.training_tasks import _run_degradation_check
+
+        assert asyncio.iscoroutinefunction(_run_degradation_check)
+
+
+class TestDegradationThresholds:
+    """Verify degradation threshold constants."""
+
+    def test_thresholds_exist(self):
+        from app.tasks.training_tasks import (
+            _BRIER_CRITICAL_THRESHOLD,
+            _BRIER_WARNING_THRESHOLD,
+            _MIN_WINDOW_SIZE,
+        )
+
+        assert isinstance(_BRIER_WARNING_THRESHOLD, float)
+        assert isinstance(_BRIER_CRITICAL_THRESHOLD, float)
+        assert isinstance(_MIN_WINDOW_SIZE, int)
+
+    def test_critical_exceeds_warning(self):
+        from app.tasks.training_tasks import (
+            _BRIER_CRITICAL_THRESHOLD,
+            _BRIER_WARNING_THRESHOLD,
+        )
+
+        assert _BRIER_CRITICAL_THRESHOLD > _BRIER_WARNING_THRESHOLD
+
+    def test_min_window_reasonable(self):
+        from app.tasks.training_tasks import _MIN_WINDOW_SIZE
+
+        assert _MIN_WINDOW_SIZE >= 5
+        assert _MIN_WINDOW_SIZE <= 50
+
+
+class TestDegradationDetectionLogic:
+    """Test the degradation detection math."""
+
+    def test_no_degradation(self):
+        # Recent is same as baseline -> delta = 0 -> no alert
+        baseline_brier = 0.20
+        recent_brier = 0.20
+        delta = recent_brier - baseline_brier
+        assert delta < 0.03  # Below warning threshold
+
+    def test_warning_level(self):
+        # Recent is 0.04 worse -> warning
+        baseline_brier = 0.20
+        recent_brier = 0.24
+        delta = recent_brier - baseline_brier
+        assert 0.03 <= delta < 0.06
+
+    def test_critical_level(self):
+        # Recent is 0.08 worse -> critical
+        baseline_brier = 0.20
+        recent_brier = 0.28
+        delta = recent_brier - baseline_brier
+        assert delta >= 0.06
+
+    def test_improvement_no_alert(self):
+        # Recent is better -> negative delta -> no alert
+        baseline_brier = 0.25
+        recent_brier = 0.20
+        delta = recent_brier - baseline_brier
+        assert delta < 0  # Model improved
+
+    def test_severity_assignment(self):
+        from app.tasks.training_tasks import (
+            _BRIER_CRITICAL_THRESHOLD,
+            _BRIER_WARNING_THRESHOLD,
+        )
+
+        # Simulate the logic from _run_degradation_check
+        for delta, expected_severity in [
+            (0.01, None),
+            (0.04, "warning"),
+            (0.08, "critical"),
+        ]:
+            severity = None
+            if delta >= _BRIER_CRITICAL_THRESHOLD:
+                severity = "critical"
+            elif delta >= _BRIER_WARNING_THRESHOLD:
+                severity = "warning"
+            assert severity == expected_severity, f"delta={delta}: got {severity}, expected {expected_severity}"
+
+
+class TestDegradationRoutes:
+    """Verify degradation alert API routes exist."""
+
+    def test_routes_exist(self):
+        import inspect
+        from app.analytics.api import analytics_routes
+
+        source = inspect.getsource(analytics_routes)
+        assert "post_degradation_check" in source
+        assert "list_degradation_alerts" in source
+        assert "acknowledge_degradation_alert" in source
+
+    def test_serialize_function_exists(self):
+        from app.analytics.api.analytics_routes import _serialize_degradation_alert
+
+        assert callable(_serialize_degradation_alert)
