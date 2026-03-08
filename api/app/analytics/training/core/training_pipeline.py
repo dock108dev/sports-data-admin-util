@@ -313,10 +313,16 @@ class TrainingPipeline:
         metadata_path: str,
         metrics: dict[str, Any],
     ) -> None:
-        """Register the trained model in the model registry."""
+        """Register the trained model in the model registry.
+
+        Uses the registry file co-located with the artifact directory
+        so that test pipelines (which use tmp_path) don't pollute
+        the production registry.
+        """
         try:
             from app.analytics.models.core.model_registry import ModelRegistry
-            registry = ModelRegistry()
+            registry_path = self.artifact_dir / "registry" / "registry.json"
+            registry = ModelRegistry(registry_path=registry_path)
             registry.register_model(
                 sport=self.sport,
                 model_type=self.model_type,

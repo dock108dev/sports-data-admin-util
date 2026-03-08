@@ -17,6 +17,7 @@ import {
   type EnsembleProviderWeight,
   type EnsembleConfigResponse,
 } from "@/lib/api/analytics";
+import { ScoreDistributionChart, PAProbabilitiesChart, WinProbabilityTimeline } from "../charts";
 import styles from "../analytics.module.css";
 
 type Mode = "pregame" | "live" | "batch";
@@ -314,15 +315,12 @@ function PregameSimulator() {
           {/* PA Probabilities used */}
           {result.home_pa_probabilities && result.away_pa_probabilities && (
             <AdminCard title="PA Probabilities" subtitle={`From rolling ${result.profile_meta?.rolling_window ?? 30}-game profiles`}>
-              <AdminTable headers={["Event", `${result.home_team} (Home)`, `${result.away_team} (Away)`]}>
-                {Object.keys(result.home_pa_probabilities).map((key) => (
-                  <tr key={key}>
-                    <td style={{ fontWeight: 500 }}>{key.replace("_probability", "")}</td>
-                    <td>{((result.home_pa_probabilities?.[key] ?? 0) * 100).toFixed(1)}%</td>
-                    <td>{((result.away_pa_probabilities?.[key] ?? 0) * 100).toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </AdminTable>
+              <PAProbabilitiesChart
+                homeProbs={result.home_pa_probabilities}
+                awayProbs={result.away_pa_probabilities}
+                homeLabel={result.home_team}
+                awayLabel={result.away_team}
+              />
             </AdminCard>
           )}
 
@@ -358,14 +356,7 @@ function PregameSimulator() {
 
           {result.most_common_scores.length > 0 && (
             <AdminCard title="Most Common Scores">
-              <AdminTable headers={["Score", "Probability"]}>
-                {result.most_common_scores.map((entry) => (
-                  <tr key={entry.score}>
-                    <td>{entry.score}</td>
-                    <td>{(entry.probability * 100).toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </AdminTable>
+              <ScoreDistributionChart data={result.most_common_scores} />
             </AdminCard>
           )}
         </div>
@@ -377,6 +368,26 @@ function PregameSimulator() {
 /* ------------------------------------------------------------------ */
 /* Live Game Simulator                                                 */
 /* ------------------------------------------------------------------ */
+
+const LIVE_SIM_STORAGE_KEY = "live-sim-timeline";
+
+function loadPersistedTimeline(): LiveSimulateResult[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(LIVE_SIM_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistTimeline(timeline: LiveSimulateResult[]) {
+  try {
+    sessionStorage.setItem(LIVE_SIM_STORAGE_KEY, JSON.stringify(timeline));
+  } catch {
+    // storage full or unavailable — silently ignore
+  }
+}
 
 function LiveSimulator() {
   const [sport, setSport] = useState("mlb");
@@ -394,6 +405,15 @@ function LiveSimulator() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Restore timeline from session storage on mount
+  useEffect(() => {
+    const saved = loadPersistedTimeline();
+    if (saved.length > 0) {
+      setTimeline(saved);
+      setResult(saved[saved.length - 1]);
+    }
+  }, []);
+
   async function handleSimulate() {
     setLoading(true);
     setError(null);
@@ -408,7 +428,11 @@ function LiveSimulator() {
         iterations,
       });
       setResult(res);
-      setTimeline((prev) => [...prev, res]);
+      setTimeline((prev) => {
+        const next = [...prev, res];
+        persistTimeline(next);
+        return next;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setResult(null);
@@ -483,7 +507,7 @@ function LiveSimulator() {
             {loading ? "Simulating..." : "Run Live Simulation"}
           </button>
           {timeline.length > 0 && (
-            <button className={styles.btn} onClick={() => setTimeline([])}>
+            <button className={styles.btn} onClick={() => { setTimeline([]); persistTimeline([]); }}>
               Clear Timeline
             </button>
           )}
@@ -539,16 +563,25 @@ function LiveSimulator() {
 
       {timeline.length > 1 && (
         <AdminCard title="Win Probability Timeline">
-          <AdminTable headers={["State", "Home WP", "Away WP", "Score"]}>
-            {timeline.map((snap, i) => (
-              <tr key={i}>
-                <td>{snap.half === "top" ? "T" : "B"}{snap.inning}</td>
-                <td>{(snap.home_win_probability * 100).toFixed(1)}%</td>
-                <td>{(snap.away_win_probability * 100).toFixed(1)}%</td>
-                <td>{snap.score.away}-{snap.score.home}</td>
-              </tr>
-            ))}
-          </AdminTable>
+          <WinProbabilityTimeline
+            data={timeline.map((snap) => ({
+              label: `${snap.half === "top" ? "T" : "B"}${snap.inning}`,
+              home: +(snap.home_win_probability * 100).toFixed(1),
+              away: +(snap.away_win_probability * 100).toFixed(1),
+            }))}
+          />
+          <div style={{ marginTop: "1rem" }}>
+            <AdminTable headers={["State", "Home WP", "Away WP", "Score"]}>
+              {timeline.map((snap, i) => (
+                <tr key={i}>
+                  <td>{snap.half === "top" ? "T" : "B"}{snap.inning}</td>
+                  <td>{(snap.home_win_probability * 100).toFixed(1)}%</td>
+                  <td>{(snap.away_win_probability * 100).toFixed(1)}%</td>
+                  <td>{snap.score.away}-{snap.score.home}</td>
+                </tr>
+              ))}
+            </AdminTable>
+          </div>
         </AdminCard>
       )}
     </>

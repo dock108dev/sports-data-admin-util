@@ -46,6 +46,11 @@ yarn.lock
 dist/
 build/
 
+# ML model artifacts
+*.pkl
+*.joblib
+api/models/
+
 # Scraper cache (optional - can be large)
 scraper/game_data/
 *.json
