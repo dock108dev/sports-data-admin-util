@@ -33,6 +33,13 @@ async def _start_job_run(
     summary_data: dict[str, Any] | None = None,
 ) -> int:
     """Create a SportsJobRun row with status='running' and return its ID."""
+    # Import all models referenced by string relationships on SportsGame
+    # so SQLAlchemy's mapper configuration can resolve them.
+    import app.db.flow  # noqa: F401
+    import app.db.mlb_advanced  # noqa: F401
+    import app.db.odds  # noqa: F401
+    import app.db.social  # noqa: F401
+
     from app.db.scraper import SportsJobRun
 
     async with sf() as db:
@@ -58,7 +65,7 @@ async def _complete_job_run(
     summary_data: dict[str, Any] | None = None,
 ) -> None:
     """Finalize a SportsJobRun row with status + duration."""
-    from app.db.scraper import SportsJobRun
+    from app.db.scraper import SportsJobRun  # mapper deps loaded by _start_job_run
 
     async with sf() as db:
         run = await db.get(SportsJobRun, run_id)

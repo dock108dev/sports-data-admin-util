@@ -153,6 +153,39 @@ async def get_training_job(
     return _serialize_training_job(job)
 
 
+@router.post("/training-job/{job_id}/cancel")
+async def cancel_training_job(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Cancel a queued or running training job."""
+    from app.db.analytics import AnalyticsTrainingJob
+
+    job = await db.get(AnalyticsTrainingJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Training job not found")
+
+    if job.status not in ("pending", "queued", "running"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel job with status '{job.status}'",
+        )
+
+    # Revoke the Celery task if we have a task ID
+    if job.celery_task_id:
+        try:
+            from app.celery_app import celery_app
+            celery_app.control.revoke(job.celery_task_id, terminate=True)
+        except Exception:
+            pass  # best-effort revocation
+
+    job.status = "failed"
+    job.error_message = "Canceled by user"
+    await db.flush()
+    await db.refresh(job)
+    return {"status": "canceled", **_serialize_training_job(job)}
+
+
 # ---------------------------------------------------------------------------
 # Backtest
 # ---------------------------------------------------------------------------

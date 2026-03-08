@@ -13,6 +13,7 @@ import {
   startTraining,
   listTrainingJobs,
   getTrainingJob,
+  cancelTrainingJob,
   listEnsembleConfigs,
   saveEnsembleConfig,
   type FeatureLoadout,
@@ -426,6 +427,24 @@ function TrainingPanel() {
     return () => clearInterval(interval);
   }, [jobs]);
 
+  const [cancelingIds, setCancelingIds] = useState<Set<number>>(new Set());
+
+  const handleCancel = async (jobId: number) => {
+    setCancelingIds((prev) => new Set(prev).add(jobId));
+    try {
+      await cancelTrainingJob(jobId);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCancelingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(jobId);
+        return next;
+      });
+    }
+  };
+
   const handleTrain = async () => {
     setSubmitting(true);
     setError(null);
@@ -553,7 +572,7 @@ function TrainingPanel() {
         {jobs.length === 0 ? (
           <p style={{ color: "#666" }}>No training jobs yet. Start one from the form.</p>
         ) : (
-          <AdminTable headers={["ID", "Type", "Algorithm", "Status", "Metrics"]}>
+          <AdminTable headers={["ID", "Type", "Algorithm", "Status", "Metrics", "Actions"]}>
             {jobs.map((job) => (
               <tr key={job.id}>
                 <td>#{job.id}</td>
@@ -574,6 +593,28 @@ function TrainingPanel() {
                     <span style={{ color: "#c00" }} title={job.error_message}>
                       Error
                     </span>
+                  ) : (
+                    <span style={{ color: "#999" }}>--</span>
+                  )}
+                </td>
+                <td>
+                  {["pending", "queued", "running"].includes(job.status) ? (
+                    <button
+                      onClick={() => handleCancel(job.id)}
+                      disabled={cancelingIds.has(job.id)}
+                      style={{
+                        padding: "2px 8px",
+                        fontSize: "0.75rem",
+                        borderRadius: "4px",
+                        border: "1px solid #c00",
+                        background: "#fff",
+                        color: "#c00",
+                        cursor: cancelingIds.has(job.id) ? "not-allowed" : "pointer",
+                        opacity: cancelingIds.has(job.id) ? 0.6 : 1,
+                      }}
+                    >
+                      {cancelingIds.has(job.id) ? "Canceling..." : "Cancel"}
+                    </button>
                   ) : (
                     <span style={{ color: "#999" }}>--</span>
                   )}

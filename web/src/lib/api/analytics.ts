@@ -333,6 +333,12 @@ export async function getTrainingJob(id: number): Promise<TrainingJob> {
   return fetchJson<TrainingJob>(`${base()}/api/analytics/training-job/${id}`);
 }
 
+export async function cancelTrainingJob(id: number): Promise<{ status: string }> {
+  return fetchJson(`${base()}/api/analytics/training-job/${id}/cancel`, {
+    method: "POST",
+  });
+}
+
 
 export interface RegisteredModel {
   model_id: string;
