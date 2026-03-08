@@ -2459,7 +2459,7 @@ class TestFeatureBuilderConfigIntegration:
         assert "batter_swing_rate" not in names
         assert "pitcher_whiff_rate" not in names
         assert "batter_contact_rate" in names
-        assert vec.size == 12  # 14 - 2 disabled
+        assert vec.size == 26  # 28 - 2 disabled
 
     def test_config_applies_weights(self) -> None:
         from app.analytics.features.core.feature_builder import FeatureBuilder
@@ -2537,7 +2537,7 @@ class TestFeatureBuilderConfigIntegration:
         X, names = builder.build_dataset("mlb", records, "plate_appearance", config=config)
         assert len(X) == 2
         assert "batter_barrel_rate" not in names
-        assert len(names) == 13  # 14 - 1 disabled
+        assert len(names) == 27  # 28 - 1 disabled
 
 
 # ---------------------------------------------------------------------------
@@ -4907,6 +4907,12 @@ class TestBuildRollingProfile:
             "outside_swings": 30,
             "zone_contact": 40,
             "outside_contact": 18,
+            "total_pitches": 145,
+            "balls_in_play": 30,
+            "outside_pitches": 80,
+            "zone_pitches": 65,
+            "hard_hit_count": 10,
+            "barrel_count": 2,
         }
         defaults.update(overrides)
 
