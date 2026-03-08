@@ -322,3 +322,58 @@ class TestPostEnsembleConfig:
             "model_type": "game",
         })
         assert resp.status_code == 422
+
+    def test_validation_empty_providers(self) -> None:
+        client = _make_client()
+        resp = client.post("/api/analytics/ensemble-config", json={
+            "sport": "mlb",
+            "model_type": "game",
+            "providers": [],
+        })
+        assert resp.status_code == 422
+
+    def test_validation_negative_weight(self) -> None:
+        client = _make_client()
+        resp = client.post("/api/analytics/ensemble-config", json={
+            "sport": "mlb",
+            "model_type": "game",
+            "providers": [
+                {"name": "rule_based", "weight": -0.5},
+                {"name": "ml", "weight": 0.6},
+            ],
+        })
+        assert resp.status_code == 422
+
+    def test_validation_all_zero_weights(self) -> None:
+        client = _make_client()
+        resp = client.post("/api/analytics/ensemble-config", json={
+            "sport": "mlb",
+            "model_type": "game",
+            "providers": [
+                {"name": "rule_based", "weight": 0},
+                {"name": "ml", "weight": 0},
+            ],
+        })
+        assert resp.status_code == 422
+
+    def test_validation_missing_name_key(self) -> None:
+        client = _make_client()
+        resp = client.post("/api/analytics/ensemble-config", json={
+            "sport": "mlb",
+            "model_type": "game",
+            "providers": [{"weight": 0.5}],
+        })
+        assert resp.status_code == 422
+
+    def test_non_normalized_weights_accepted(self) -> None:
+        """Weights that don't sum to 1.0 are accepted (engine normalizes)."""
+        client = _make_client()
+        resp = client.post("/api/analytics/ensemble-config", json={
+            "sport": "mlb",
+            "model_type": "game",
+            "providers": [
+                {"name": "rule_based", "weight": 0.3},
+                {"name": "ml", "weight": 0.3},
+            ],
+        })
+        assert resp.status_code == 200

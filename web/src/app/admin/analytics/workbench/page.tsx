@@ -419,8 +419,8 @@ function TrainingPanel() {
       try {
         const jobsRes = await listTrainingJobs("mlb");
         setJobs(jobsRes.jobs);
-      } catch {
-        // ignore poll errors
+      } catch (err) {
+        console.warn("Training job poll failed:", err);
       }
     }, 5000);
 
@@ -710,8 +710,22 @@ function EnsemblePanel() {
 
   const totalWeight = editing.reduce((sum, p) => sum + p.weight, 0);
 
+  const hasNegativeWeight = editing.some((p) => p.weight < 0);
+
   const handleSave = async () => {
     if (!selected) return;
+    if (editing.length === 0) {
+      setError("At least one provider is required");
+      return;
+    }
+    if (editing.some((p) => p.weight < 0)) {
+      setError("Weights cannot be negative");
+      return;
+    }
+    if (totalWeight <= 0) {
+      setError("At least one provider must have a positive weight");
+      return;
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -889,7 +903,7 @@ function EnsemblePanel() {
               <button
                 className={`${styles.btn} ${styles.btnPrimary}`}
                 onClick={handleSave}
-                disabled={saving || editing.length === 0}
+                disabled={saving || editing.length === 0 || hasNegativeWeight || totalWeight <= 0}
               >
                 {saving ? "Saving..." : "Save Config"}
               </button>
@@ -907,8 +921,19 @@ function EnsemblePanel() {
               >
                 + Add Provider
               </button>
-              <span style={{ fontSize: "0.8rem", color: totalWeight > 0.99 && totalWeight < 1.01 ? "#22c55e" : "#f59e0b" }}>
-                Total weight: {totalWeight.toFixed(3)}
+              <span style={{
+                fontSize: "0.8rem",
+                color: hasNegativeWeight || totalWeight <= 0
+                  ? "#ef4444"
+                  : totalWeight > 0.99 && totalWeight < 1.01
+                    ? "#22c55e"
+                    : "#f59e0b",
+              }}>
+                {hasNegativeWeight
+                  ? "Negative weights not allowed"
+                  : totalWeight <= 0
+                    ? "Total weight must be > 0"
+                    : `Total weight: ${totalWeight.toFixed(3)}`}
               </span>
             </div>
           </AdminCard>

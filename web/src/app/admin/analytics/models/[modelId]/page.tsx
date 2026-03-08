@@ -171,8 +171,8 @@ function BacktestPanel({ model }: { model: ModelDetails }) {
     try {
       const res = await listBacktestJobs(model.model_id);
       setJobs(res.jobs);
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load backtest jobs");
     }
   }, [model.model_id]);
 

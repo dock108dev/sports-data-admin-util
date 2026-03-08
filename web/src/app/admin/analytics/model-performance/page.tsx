@@ -136,8 +136,11 @@ function CalibrationPanel({ sport }: { sport?: string }) {
   const [recording, setRecording] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [rep, oc] = await Promise.all([
         getCalibrationReport(sport),
@@ -145,8 +148,8 @@ function CalibrationPanel({ sport }: { sport?: string }) {
       ]);
       setReport(rep);
       setOutcomes(oc.outcomes);
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load calibration data");
     } finally {
       setLoading(false);
     }
@@ -175,6 +178,7 @@ function CalibrationPanel({ sport }: { sport?: string }) {
 
   return (
     <>
+      {error && <div className={styles.error}>{error}</div>}
       <AdminCard
         title="Prediction Calibration (Batch Sims)"
         subtitle="Tracks batch simulation predictions vs actual game outcomes"
@@ -300,13 +304,16 @@ function DegradationAlertsPanel({ sport }: { sport?: string }) {
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await listDegradationAlerts({ sport, limit: 20 });
       setAlerts(res.alerts);
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load degradation alerts");
     } finally {
       setLoading(false);
     }
@@ -334,8 +341,8 @@ function DegradationAlertsPanel({ sport }: { sport?: string }) {
     try {
       await acknowledgeDegradationAlert(id);
       await refresh();
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to acknowledge alert");
     }
   };
 
@@ -349,6 +356,8 @@ function DegradationAlertsPanel({ sport }: { sport?: string }) {
   };
 
   return (
+    <>
+    {error && <div className={styles.error}>{error}</div>}
     <AdminCard
       title={hasActiveAlerts ? "Model Degradation Alerts" : "Model Health"}
       subtitle={hasActiveAlerts
@@ -444,5 +453,6 @@ function DegradationAlertsPanel({ sport }: { sport?: string }) {
         );
       })}
     </AdminCard>
+    </>
   );
 }

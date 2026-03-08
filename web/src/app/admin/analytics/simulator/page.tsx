@@ -90,8 +90,8 @@ function PregameSimulator() {
       try {
         const res = await listMLBTeams();
         setTeams(res.teams);
-      } catch {
-        // fallback — teams will be empty
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load teams");
       } finally {
         setTeamsLoading(false);
       }
@@ -113,8 +113,8 @@ function PregameSimulator() {
           if (rb) setRuleWeight(rb.weight);
           if (ml) setMlWeight(ml.weight);
         }
-      } catch {
-        // use defaults
+      } catch (err) {
+        console.warn("Failed to load ensemble configs, using defaults:", err);
       }
     })();
   }, []);
@@ -151,8 +151,8 @@ function PregameSimulator() {
         { name: "ml", weight: mlWeight },
       ];
       await saveEnsembleConfig("mlb", "game", providers);
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save ensemble config");
     } finally {
       setSavingEnsemble(false);
     }
@@ -576,8 +576,8 @@ function BatchSimulator() {
     try {
       const res = await listBatchSimJobs(sport);
       setJobs(res.jobs);
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load batch jobs");
     }
   }, [sport]);
 
