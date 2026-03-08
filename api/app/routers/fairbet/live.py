@@ -281,15 +281,8 @@ async def fairbet_live(
         books_data = snapshot.get("books", {})
         market_category = _classify_market(market_key)
 
-        if market_category and market_category != (market_category or ""):
-            pass  # no filter
-
         if market_category:
             all_categories.add(market_category)
-
-        # Filter by category if requested
-        if market_category and market_category:
-            pass
 
         ts = snapshot.get("last_updated_at")
         if ts and (latest_update is None or ts > latest_update):

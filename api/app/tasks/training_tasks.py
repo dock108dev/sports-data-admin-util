@@ -1086,7 +1086,6 @@ async def _execute_batch_sim(
 
 from app.tasks._training_helpers import (  # noqa: E402
     build_rolling_profile as _build_rolling_profile,
-    get_game_score as _get_game_score,
     get_sklearn_model as _get_sklearn_model,
     load_training_data_from_db as _load_training_data_from_db,
 )
