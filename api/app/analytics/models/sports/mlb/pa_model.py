@@ -16,18 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.analytics.models.core.model_interface import BaseModel
-
-# Default (league-average) event probabilities when no trained model
-# is loaded. These match the simulation engine defaults.
-_DEFAULT_EVENT_PROBS: dict[str, float] = {
-    "strikeout": 0.22,
-    "out": 0.46,
-    "walk": 0.08,
-    "single": 0.15,
-    "double": 0.05,
-    "triple": 0.01,
-    "home_run": 0.03,
-}
+from app.analytics.sports.mlb.constants import DEFAULT_EVENT_PROBS as _DEFAULT_EVENT_PROBS
 
 # Feature keys this model expects.
 FEATURE_KEYS = [

@@ -16,28 +16,11 @@ from __future__ import annotations
 import random
 from typing import Any
 
-# Event constants — order matters for weighted selection.
-EVENTS = [
-    "strikeout",
-    "out",
-    "walk",
-    "single",
-    "double",
-    "triple",
-    "home_run",
-]
-
-# Default probability distribution (league-average approximation).
-_DEFAULT_PROBS: dict[str, float] = {
-    "strikeout_probability": 0.22,
-    "walk_probability": 0.08,
-    "single_probability": 0.15,
-    "double_probability": 0.05,
-    "triple_probability": 0.01,
-    "home_run_probability": 0.03,
-}
-
-_MAX_EXTRA_INNINGS = 10
+from app.analytics.sports.mlb.constants import (
+    DEFAULT_EVENT_PROBS_SUFFIXED as _DEFAULT_PROBS,
+    MAX_EXTRA_INNINGS as _MAX_EXTRA_INNINGS,
+    PA_EVENTS as EVENTS,
+)
 
 
 class MLBGameSimulator:

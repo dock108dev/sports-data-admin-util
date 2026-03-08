@@ -23,27 +23,10 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# MLB event keys — canonical set for plate-appearance simulation.
-MLB_PA_EVENTS: list[str] = [
-    "strikeout",
-    "out",
-    "walk",
-    "single",
-    "double",
-    "triple",
-    "home_run",
-]
-
-# League-average defaults.
-_MLB_DEFAULTS: dict[str, float] = {
-    "strikeout": 0.22,
-    "out": 0.46,
-    "walk": 0.08,
-    "single": 0.15,
-    "double": 0.05,
-    "triple": 0.01,
-    "home_run": 0.03,
-}
+from app.analytics.sports.mlb.constants import (
+    DEFAULT_EVENT_PROBS as _MLB_DEFAULTS,
+    PA_EVENTS as MLB_PA_EVENTS,
+)
 
 
 def normalize_probabilities(

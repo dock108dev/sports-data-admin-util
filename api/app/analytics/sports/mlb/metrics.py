@@ -18,15 +18,14 @@ from __future__ import annotations
 from typing import Any
 
 from app.analytics.core.types import PlayerProfile, TeamProfile
-
-# League-average baselines (2024 MLB season approximations).
-# Used as fallbacks when a stat is missing from the input.
-_BASELINE_CONTACT_RATE = 0.77
-_BASELINE_POWER_INDEX = 1.0
-_BASELINE_AVG_EV = 88.0
-_BASELINE_HARD_HIT = 0.35
-_BASELINE_BARREL = 0.07
-_BASELINE_SWING_RATE = 0.50
+from app.analytics.sports.mlb.constants import (
+    BASELINE_AVG_EXIT_VELOCITY as _BASELINE_AVG_EV,
+    BASELINE_BARREL_RATE as _BASELINE_BARREL,
+    BASELINE_CONTACT_RATE as _BASELINE_CONTACT_RATE,
+    BASELINE_HARD_HIT_RATE as _BASELINE_HARD_HIT,
+    BASELINE_POWER_INDEX as _BASELINE_POWER_INDEX,
+    BASELINE_SWING_RATE as _BASELINE_SWING_RATE,
+)
 
 
 class MLBMetrics:

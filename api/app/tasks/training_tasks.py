@@ -396,9 +396,15 @@ async def _execute_backtest(
     from app.analytics.features.core.feature_builder import FeatureBuilder
     from app.analytics.training.sports.mlb_training import MLBTrainingPipeline
 
-    # 1. Load model artifact
+    # 1. Validate and load model artifact
+    from pathlib import Path as _Path
+    artifact = _Path(artifact_path) if artifact_path else None
+    if not artifact or not artifact.exists():
+        return {"error": f"Model artifact not found: {artifact_path}"}
+    if not artifact.is_file():
+        return {"error": f"Model artifact path is not a file: {artifact_path}"}
     try:
-        sklearn_model = joblib.load(artifact_path)
+        sklearn_model = joblib.load(str(artifact))
     except Exception as exc:
         return {"error": f"Failed to load model artifact: {exc}"}
 
