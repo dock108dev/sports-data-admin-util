@@ -105,6 +105,10 @@ async def start_training(
         job.error_message = f"Failed to dispatch task: {exc}"
         await db.flush()
 
+    # Refresh after second flush so server-side onupdate columns
+    # (updated_at) are loaded — avoids MissingGreenlet on serialize.
+    await db.refresh(job)
+
     return {"status": "submitted", "job": _serialize_training_job(job)}
 
 
@@ -220,6 +224,8 @@ async def start_backtest(
         job.status = "failed"
         job.error_message = f"Failed to dispatch task: {exc}"
         await db.flush()
+
+    await db.refresh(job)
 
     return {"status": "submitted", "job": _serialize_backtest_job(job)}
 
