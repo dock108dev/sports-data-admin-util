@@ -11,12 +11,67 @@ import asyncio
 import logging
 import traceback
 from datetime import datetime, timezone
+from typing import Any
 
 from contextlib import asynccontextmanager
 
 from app.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Job-run tracking helpers (writes to sports_job_runs so analytics tasks
+# appear in the shared Runs drawer alongside scraper tasks).
+# ---------------------------------------------------------------------------
+
+
+async def _start_job_run(
+    sf,
+    phase: str,
+    celery_task_id: str | None = None,
+    summary_data: dict[str, Any] | None = None,
+) -> int:
+    """Create a SportsJobRun row with status='running' and return its ID."""
+    from app.db.scraper import SportsJobRun
+
+    async with sf() as db:
+        run = SportsJobRun(
+            phase=phase,
+            leagues=[],  # analytics tasks aren't league-scoped
+            status="running",
+            started_at=datetime.now(timezone.utc),
+            celery_task_id=celery_task_id,
+            summary_data=summary_data,
+        )
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        return int(run.id)
+
+
+async def _complete_job_run(
+    sf,
+    run_id: int,
+    status: str,
+    error_summary: str | None = None,
+    summary_data: dict[str, Any] | None = None,
+) -> None:
+    """Finalize a SportsJobRun row with status + duration."""
+    from app.db.scraper import SportsJobRun
+
+    async with sf() as db:
+        run = await db.get(SportsJobRun, run_id)
+        if not run:
+            return
+        finished = datetime.now(timezone.utc)
+        run.status = status
+        run.finished_at = finished
+        run.duration_seconds = (finished - run.started_at).total_seconds()
+        run.error_summary = error_summary
+        if summary_data is not None:
+            run.summary_data = summary_data
+        await db.commit()
 
 
 @asynccontextmanager
@@ -70,9 +125,16 @@ async def _run_training(job_id: int, celery_task_id: str | None = None) -> dict:
     from app.db.analytics import AnalyticsFeatureConfig, AnalyticsTrainingJob
 
     async with _task_db() as sf:
+        # Register in the shared job-runs table
+        run_id = await _start_job_run(
+            sf, "analytics_train", celery_task_id,
+            summary_data={"analytics_job_id": job_id},
+        )
+
         async with sf() as db:
             job = await db.get(AnalyticsTrainingJob, job_id)
             if job is None:
+                await _complete_job_run(sf, run_id, "error", "job_not_found")
                 return {"error": "job_not_found", "job_id": job_id}
 
             # Mark as running
@@ -109,6 +171,7 @@ async def _run_training(job_id: int, celery_task_id: str | None = None) -> dict:
                     job.error_message = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
                     job.completed_at = datetime.now(timezone.utc)
                     await db.commit()
+            await _complete_job_run(sf, run_id, "error", str(exc)[:500])
             return {"error": str(exc), "job_id": job_id}
 
         # Write results back
@@ -129,6 +192,15 @@ async def _run_training(job_id: int, celery_task_id: str | None = None) -> dict:
                     job.feature_importance = result.get("feature_importance")
                 job.completed_at = datetime.now(timezone.utc)
                 await db.commit()
+
+        summary = {
+            "analytics_job_id": job_id,
+            "model_id": result.get("model_id"),
+            "train_count": result.get("train_count"),
+            "test_count": result.get("test_count"),
+        }
+        final_status = "error" if "error" in result else "success"
+        await _complete_job_run(sf, run_id, final_status, summary_data=summary)
 
     return result
 
@@ -212,9 +284,15 @@ async def _run_backtest(job_id: int, celery_task_id: str | None = None) -> dict:
     from app.db.analytics import AnalyticsBacktestJob
 
     async with _task_db() as sf:
+        run_id = await _start_job_run(
+            sf, "analytics_backtest", celery_task_id,
+            summary_data={"analytics_job_id": job_id},
+        )
+
         async with sf() as db:
             job = await db.get(AnalyticsBacktestJob, job_id)
             if job is None:
+                await _complete_job_run(sf, run_id, "error", "job_not_found")
                 return {"error": "job_not_found", "job_id": job_id}
 
             job.status = "running"
@@ -242,6 +320,7 @@ async def _run_backtest(job_id: int, celery_task_id: str | None = None) -> dict:
                     job.error_message = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
                     job.completed_at = datetime.now(timezone.utc)
                     await db.commit()
+            await _complete_job_run(sf, run_id, "error", str(exc)[:500])
             return {"error": str(exc), "job_id": job_id}
 
         async with sf() as db:
@@ -258,6 +337,14 @@ async def _run_backtest(job_id: int, celery_task_id: str | None = None) -> dict:
                     job.predictions = result.get("predictions")
                 job.completed_at = datetime.now(timezone.utc)
                 await db.commit()
+
+        summary = {
+            "analytics_job_id": job_id,
+            "game_count": result.get("game_count"),
+            "accuracy": result.get("metrics", {}).get("accuracy"),
+        }
+        final_status = "error" if "error" in result else "success"
+        await _complete_job_run(sf, run_id, final_status, summary_data=summary)
 
     return result
 
@@ -417,9 +504,15 @@ async def _run_batch_sim(job_id: int, celery_task_id: str | None = None) -> dict
     from app.db.analytics import AnalyticsBatchSimJob
 
     async with _task_db() as sf:
+        run_id = await _start_job_run(
+            sf, "analytics_batch_sim", celery_task_id,
+            summary_data={"analytics_job_id": job_id},
+        )
+
         async with sf() as db:
             job = await db.get(AnalyticsBatchSimJob, job_id)
             if job is None:
+                await _complete_job_run(sf, run_id, "error", "job_not_found")
                 return {"error": "job_not_found", "job_id": job_id}
 
             job.status = "running"
@@ -446,6 +539,7 @@ async def _run_batch_sim(job_id: int, celery_task_id: str | None = None) -> dict
                     job.error_message = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
                     job.completed_at = datetime.now(timezone.utc)
                     await db.commit()
+            await _complete_job_run(sf, run_id, "error", str(exc)[:500])
             return {"error": str(exc), "job_id": job_id}
 
         async with sf() as db:
@@ -464,6 +558,10 @@ async def _run_batch_sim(job_id: int, celery_task_id: str | None = None) -> dict
                     )
                 job.completed_at = datetime.now(timezone.utc)
                 await db.commit()
+
+        summary = {"analytics_job_id": job_id, "game_count": result.get("game_count")}
+        final_status = "error" if "error" in result else "success"
+        await _complete_job_run(sf, run_id, final_status, summary_data=summary)
 
     return result
 
@@ -529,6 +627,8 @@ async def _run_record_outcomes() -> dict:
     skipped = 0
 
     async with _task_db() as sf:
+        run_id = await _start_job_run(sf, "analytics_record_outcomes")
+
         async with sf() as db:
             # Find predictions that have not been resolved yet
             stmt = (
@@ -584,6 +684,11 @@ async def _run_record_outcomes() -> dict:
 
             await db.commit()
 
+        await _complete_job_run(
+            sf, run_id, "success",
+            summary_data={"recorded": recorded, "skipped": skipped},
+        )
+
     logger.info(
         "record_completed_outcomes_done",
         extra={"recorded": recorded, "skipped": skipped},
@@ -623,6 +728,11 @@ async def _run_degradation_check(sport: str) -> dict:
     from app.db.analytics import AnalyticsDegradationAlert, AnalyticsPredictionOutcome
 
     async with _task_db() as sf:
+        run_id = await _start_job_run(
+            sf, "analytics_degradation_check",
+            summary_data={"sport": sport},
+        )
+
         async with sf() as db:
             stmt = (
                 select(AnalyticsPredictionOutcome)
@@ -637,6 +747,10 @@ async def _run_degradation_check(sport: str) -> dict:
             outcomes = list(result.scalars().all())
 
             if len(outcomes) < _MIN_WINDOW_SIZE * 2:
+                await _complete_job_run(
+                    sf, run_id, "success",
+                    summary_data={"sport": sport, "status": "insufficient_data", "total": len(outcomes)},
+                )
                 return {
                     "status": "insufficient_data",
                     "total": len(outcomes),
@@ -698,6 +812,16 @@ async def _run_degradation_check(sport: str) -> dict:
                         "delta_brier": round(delta_brier, 4),
                     },
                 )
+
+        await _complete_job_run(
+            sf, run_id, "success",
+            summary_data={
+                "sport": sport,
+                "status": "alert_created" if alert_created else "healthy",
+                "severity": severity,
+                "delta_brier": round(delta_brier, 4),
+            },
+        )
 
     return {
         "status": "alert_created" if alert_created else "healthy",

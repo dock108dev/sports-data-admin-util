@@ -155,6 +155,32 @@ TASK_REGISTRY: dict[str, TaskRegistryEntry] = {
             queue="sports-scraper",
             description="Poll live prop odds for a league (args: [league_code, [game_ids]])",
         ),
+        # Analytics (runs on api-worker via default celery queue)
+        TaskRegistryEntry(
+            name="train_analytics_model",
+            queue="celery",
+            description="Train an analytics model (args: [training_job_id])",
+        ),
+        TaskRegistryEntry(
+            name="backtest_analytics_model",
+            queue="celery",
+            description="Backtest a trained model (args: [backtest_job_id])",
+        ),
+        TaskRegistryEntry(
+            name="batch_simulate_games",
+            queue="celery",
+            description="Run batch Monte Carlo simulations (args: [batch_sim_job_id])",
+        ),
+        TaskRegistryEntry(
+            name="record_completed_outcomes",
+            queue="celery",
+            description="Match pending predictions against finalized game outcomes",
+        ),
+        TaskRegistryEntry(
+            name="check_model_degradation",
+            queue="celery",
+            description="Check for model degradation via Brier score comparison (args: [sport])",
+        ),
     ]
 }
 

@@ -17,6 +17,11 @@ const PHASE_OPTIONS = [
   { value: "map_social_to_games", label: "Map Social" },
   { value: "trigger_flow", label: "Trigger Flow" },
   { value: "daily_sweep", label: "Daily Sweep" },
+  { value: "analytics_train", label: "Analytics: Train" },
+  { value: "analytics_backtest", label: "Analytics: Backtest" },
+  { value: "analytics_batch_sim", label: "Analytics: Batch Sim" },
+  { value: "analytics_record_outcomes", label: "Analytics: Record Outcomes" },
+  { value: "analytics_degradation_check", label: "Analytics: Degradation Check" },
 ];
 
 const STATUS_OPTIONS = [
