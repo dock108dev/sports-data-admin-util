@@ -20,6 +20,7 @@ from app.analytics.features.core.feature_vector import FeatureVector
 
 # League-average baselines for normalization (2024 MLB approximations).
 _BASELINES: dict[str, float] = {
+    # Derived composites
     "contact_rate": 0.77,
     "power_index": 1.0,
     "barrel_rate": 0.07,
@@ -28,11 +29,38 @@ _BASELINES: dict[str, float] = {
     "whiff_rate": 0.23,
     "avg_exit_velocity": 88.0,
     "expected_slug": 0.77,
+    # Raw plate discipline percentages
+    "z_swing_pct": 0.68,
+    "o_swing_pct": 0.32,
+    "z_contact_pct": 0.84,
+    "o_contact_pct": 0.60,
+    # Raw quality of contact
+    "avg_exit_velo": 88.0,
+    "hard_hit_pct": 0.35,
+    "barrel_pct": 0.07,
+    # Raw counts (absolute — normalized as ratio to baseline)
+    "total_pitches": 145.0,
+    "balls_in_play": 30.0,
+    "hard_hit_count": 10.0,
+    "barrel_count": 2.0,
+    "zone_pitches": 65.0,
+    "zone_swings": 44.0,
+    "zone_contact": 37.0,
+    "outside_pitches": 80.0,
+    "outside_swings": 26.0,
+    "outside_contact": 16.0,
+    # Additional derived ratios
+    "zone_swing_rate": 0.68,
+    "chase_rate": 0.32,
+    "zone_contact_rate": 0.84,
+    "outside_contact_rate": 0.60,
+    "plate_discipline_index": 0.52,
 }
 
 # Ordered feature definitions by model type.
 # Each entry: (feature_name, source_entity, source_key)
 _PA_FEATURES: list[tuple[str, str, str]] = [
+    # Derived composites
     ("batter_contact_rate", "batter", "contact_rate"),
     ("batter_power_index", "batter", "power_index"),
     ("batter_barrel_rate", "batter", "barrel_rate"),
@@ -47,19 +75,67 @@ _PA_FEATURES: list[tuple[str, str, str]] = [
     ("pitcher_hard_hit_rate", "pitcher", "hard_hit_rate"),
     ("pitcher_swing_rate", "pitcher", "swing_rate"),
     ("pitcher_whiff_rate", "pitcher", "whiff_rate"),
+    # Raw split percentages
+    ("batter_z_swing_pct", "batter", "z_swing_pct"),
+    ("batter_o_swing_pct", "batter", "o_swing_pct"),
+    ("batter_z_contact_pct", "batter", "z_contact_pct"),
+    ("batter_o_contact_pct", "batter", "o_contact_pct"),
+    ("pitcher_z_swing_pct", "pitcher", "z_swing_pct"),
+    ("pitcher_o_swing_pct", "pitcher", "o_swing_pct"),
+    ("pitcher_z_contact_pct", "pitcher", "z_contact_pct"),
+    ("pitcher_o_contact_pct", "pitcher", "o_contact_pct"),
+    # Additional derived ratios
+    ("batter_zone_swing_rate", "batter", "zone_swing_rate"),
+    ("batter_chase_rate", "batter", "chase_rate"),
+    ("batter_plate_discipline_index", "batter", "plate_discipline_index"),
+    ("pitcher_zone_swing_rate", "pitcher", "zone_swing_rate"),
+    ("pitcher_chase_rate", "pitcher", "chase_rate"),
+    ("pitcher_plate_discipline_index", "pitcher", "plate_discipline_index"),
+]
+
+# All metrics exposed as both home_ and away_ for game-level models.
+_GAME_METRIC_KEYS: list[str] = [
+    # Derived composites
+    "contact_rate",
+    "power_index",
+    "barrel_rate",
+    "hard_hit_rate",
+    "swing_rate",
+    "whiff_rate",
+    "avg_exit_velocity",
+    "expected_slug",
+    # Raw plate discipline percentages
+    "z_swing_pct",
+    "o_swing_pct",
+    "z_contact_pct",
+    "o_contact_pct",
+    # Raw quality of contact
+    "avg_exit_velo",
+    "hard_hit_pct",
+    "barrel_pct",
+    # Raw counts
+    "total_pitches",
+    "balls_in_play",
+    "hard_hit_count",
+    "barrel_count",
+    "zone_pitches",
+    "zone_swings",
+    "zone_contact",
+    "outside_pitches",
+    "outside_swings",
+    "outside_contact",
+    # Additional derived ratios
+    "zone_swing_rate",
+    "chase_rate",
+    "zone_contact_rate",
+    "outside_contact_rate",
+    "plate_discipline_index",
 ]
 
 _GAME_FEATURES: list[tuple[str, str, str]] = [
-    ("home_contact_rate", "home", "contact_rate"),
-    ("home_power_index", "home", "power_index"),
-    ("home_expected_slug", "home", "expected_slug"),
-    ("home_barrel_rate", "home", "barrel_rate"),
-    ("home_hard_hit_rate", "home", "hard_hit_rate"),
-    ("away_contact_rate", "away", "contact_rate"),
-    ("away_power_index", "away", "power_index"),
-    ("away_expected_slug", "away", "expected_slug"),
-    ("away_barrel_rate", "away", "barrel_rate"),
-    ("away_hard_hit_rate", "away", "hard_hit_rate"),
+    (f"{side}_{key}", side, key)
+    for side in ("home", "away")
+    for key in _GAME_METRIC_KEYS
 ]
 
 

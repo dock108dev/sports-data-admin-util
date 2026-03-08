@@ -233,14 +233,41 @@ async def _get_mlb_available_features(db: AsyncSession) -> dict[str, Any]:
 def _feature_description(feat_name: str, source_key: str) -> str:
     """Generate a human-readable description for a feature."""
     descriptions: dict[str, str] = {
-        "contact_rate": "Rate of contact made on swings",
-        "power_index": "Composite power metric based on exit velocity and barrel rate",
+        # Derived composites
+        "contact_rate": "Rate of contact made on swings (zone + outside avg)",
+        "power_index": "Composite power metric (exit velo × barrel rate)",
         "barrel_rate": "Percentage of batted balls classified as barrels",
-        "hard_hit_rate": "Percentage of batted balls with exit velocity >= 95 mph",
-        "swing_rate": "Percentage of pitches swung at",
-        "whiff_rate": "Percentage of swings that miss (swinging strikes / swings)",
+        "hard_hit_rate": "Percentage of batted balls with exit velo >= 95 mph",
+        "swing_rate": "Overall swing rate (zone + outside avg)",
+        "whiff_rate": "Swing-and-miss rate (1 − contact/swings)",
         "avg_exit_velocity": "Average exit velocity on batted balls (mph)",
-        "expected_slug": "Expected slugging percentage based on quality of contact",
+        "expected_slug": "Expected slugging from quality of contact metrics",
+        # Raw plate discipline percentages
+        "z_swing_pct": "Zone swing percentage (swings at strikes)",
+        "o_swing_pct": "Outside swing percentage (chase rate)",
+        "z_contact_pct": "Zone contact percentage (contact on in-zone swings)",
+        "o_contact_pct": "Outside contact percentage (contact on out-of-zone swings)",
+        # Raw quality of contact
+        "avg_exit_velo": "Average exit velocity (raw column, mph)",
+        "hard_hit_pct": "Hard-hit percentage (raw column)",
+        "barrel_pct": "Barrel percentage (raw column)",
+        # Raw counts
+        "total_pitches": "Total pitches seen in game",
+        "zone_pitches": "Number of pitches in the strike zone",
+        "zone_swings": "Swings at pitches in the strike zone",
+        "zone_contact": "Contact made on in-zone swings",
+        "outside_pitches": "Number of pitches outside the strike zone",
+        "outside_swings": "Swings at pitches outside the zone",
+        "outside_contact": "Contact made on out-of-zone swings",
+        "balls_in_play": "Total balls put in play",
+        "hard_hit_count": "Number of hard-hit balls (>= 95 mph)",
+        "barrel_count": "Number of barreled balls",
+        # Additional derived ratios
+        "zone_swing_rate": "Zone swing rate (zone swings / zone pitches)",
+        "chase_rate": "Chase rate (outside swings / outside pitches)",
+        "zone_contact_rate": "Zone contact rate (zone contact / zone swings)",
+        "outside_contact_rate": "Outside contact rate (outside contact / outside swings)",
+        "plate_discipline_index": "Composite discipline: zone aggression − chase penalty",
     }
     prefix = feat_name.split("_")[0]
     entity_label = {

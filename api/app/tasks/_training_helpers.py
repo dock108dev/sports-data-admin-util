@@ -259,8 +259,37 @@ def build_rolling_profile(
 
 
 def stats_to_metrics(stats: Any) -> dict:
-    """Convert MLBGameAdvancedStats row to metrics dict for feature builder."""
+    """Convert MLBGameAdvancedStats row to metrics dict for feature builder.
+
+    Exposes both raw DB columns and derived composites so the feature
+    builder has a rich set of inputs to choose from.
+    """
+    total_pitches = stats.total_pitches or 0
+    balls_in_play = stats.balls_in_play or 0
+
     return {
+        # --- Raw plate discipline columns ---
+        "total_pitches": float(total_pitches),
+        "zone_pitches": float(stats.zone_pitches or 0),
+        "zone_swings": float(stats.zone_swings or 0),
+        "zone_contact": float(stats.zone_contact or 0),
+        "outside_pitches": float(stats.outside_pitches or 0),
+        "outside_swings": float(stats.outside_swings or 0),
+        "outside_contact": float(stats.outside_contact or 0),
+        # --- Raw plate discipline percentages ---
+        "z_swing_pct": stats.z_swing_pct or 0.0,
+        "o_swing_pct": stats.o_swing_pct or 0.0,
+        "z_contact_pct": stats.z_contact_pct or 0.0,
+        "o_contact_pct": stats.o_contact_pct or 0.0,
+        # --- Raw quality of contact columns ---
+        "balls_in_play": float(balls_in_play),
+        "hard_hit_count": float(stats.hard_hit_count or 0),
+        "barrel_count": float(stats.barrel_count or 0),
+        # --- Raw quality of contact percentages ---
+        "avg_exit_velo": stats.avg_exit_velo or 88.0,
+        "hard_hit_pct": stats.hard_hit_pct or 0.0,
+        "barrel_pct": stats.barrel_pct or 0.0,
+        # --- Derived composites (original 8) ---
         "contact_rate": _safe_rate(stats.z_contact_pct, stats.o_contact_pct),
         "power_index": _power_index(stats.avg_exit_velo, stats.barrel_pct),
         "barrel_rate": stats.barrel_pct or 0.0,
@@ -269,6 +298,24 @@ def stats_to_metrics(stats: Any) -> dict:
         "whiff_rate": _whiff_rate(stats),
         "avg_exit_velocity": stats.avg_exit_velo or 88.0,
         "expected_slug": _expected_slug(stats),
+        # --- Additional derived ratios ---
+        "zone_swing_rate": (
+            (stats.zone_swings / stats.zone_pitches)
+            if (stats.zone_pitches or 0) > 0 else 0.0
+        ),
+        "chase_rate": (
+            (stats.outside_swings / stats.outside_pitches)
+            if (stats.outside_pitches or 0) > 0 else 0.0
+        ),
+        "zone_contact_rate": (
+            (stats.zone_contact / stats.zone_swings)
+            if (stats.zone_swings or 0) > 0 else 0.0
+        ),
+        "outside_contact_rate": (
+            (stats.outside_contact / stats.outside_swings)
+            if (stats.outside_swings or 0) > 0 else 0.0
+        ),
+        "plate_discipline_index": _plate_discipline_index(stats),
     }
 
 
@@ -301,6 +348,14 @@ def _expected_slug(stats: Any) -> float:
     hh = stats.hard_hit_pct or 0.35
     bp = stats.barrel_pct or 0.07
     return round(0.3 + (ev - 80) * 0.01 + hh * 0.5 + bp * 2.0, 4)
+
+
+def _plate_discipline_index(stats: Any) -> float:
+    """Composite plate discipline: high zone swing + low chase = good."""
+    z_swing = stats.z_swing_pct or 0.0
+    o_swing = stats.o_swing_pct or 0.0
+    # Reward swinging at strikes, penalize chasing
+    return round(z_swing - o_swing * 0.5, 4) if (z_swing or o_swing) else 0.0
 
 
 # ---------------------------------------------------------------------------

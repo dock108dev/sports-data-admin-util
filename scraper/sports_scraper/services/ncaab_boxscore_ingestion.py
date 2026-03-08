@@ -180,6 +180,74 @@ def ingest_boxscores_via_ncaab_api(
             )
             continue
 
+    # --- NCAA API fallback for games that didn't get boxscores from CBB ---
+    ncaa_fallback = _select_ncaa_boxscore_fallback_games(
+        session,
+        start_date=start_date,
+        end_date=end_date,
+        only_missing=only_missing,
+        already_have_boxscore={
+            game_id
+            for game_id, cbb_game_id, _, _, _ in games
+            if boxscores.get(cbb_game_id)
+        },
+    )
+
+    if ncaa_fallback:
+        logger.info(
+            "ncaab_boxscore_ncaa_fallback_start",
+            run_id=run_id,
+            games=len(ncaa_fallback),
+        )
+
+        from ..persistence.boxscores import upsert_player_boxscores, upsert_team_boxscores
+
+        for game_id, ncaa_game_id, home_team_name, away_team_name in ncaa_fallback:
+            try:
+                boxscore = client.fetch_ncaa_boxscore(
+                    ncaa_game_id,
+                    home_team_name=home_team_name,
+                    away_team_name=away_team_name,
+                    game_status="final",
+                )
+
+                if not boxscore:
+                    continue
+
+                if boxscore.team_boxscores:
+                    upsert_team_boxscores(
+                        session, game_id, boxscore.team_boxscores,
+                        source="ncaa_api",
+                    )
+                if boxscore.player_boxscores:
+                    upsert_player_boxscores(
+                        session, game_id, boxscore.player_boxscores,
+                        source="ncaa_api",
+                    )
+
+                games_processed += 1
+                if boxscore.player_boxscores:
+                    games_with_stats += 1
+
+                logger.info(
+                    "ncaab_boxscore_ncaa_ingested",
+                    run_id=run_id,
+                    game_id=game_id,
+                    ncaa_game_id=ncaa_game_id,
+                    team_stats=len(boxscore.team_boxscores),
+                    player_stats=len(boxscore.player_boxscores),
+                )
+
+            except Exception as exc:
+                logger.warning(
+                    "ncaab_boxscore_ncaa_fetch_failed",
+                    run_id=run_id,
+                    game_id=game_id,
+                    ncaa_game_id=ncaa_game_id,
+                    error=str(exc),
+                )
+                continue
+
     logger.info(
         "ncaab_boxscore_ingestion_complete",
         run_id=run_id,
@@ -189,6 +257,73 @@ def ingest_boxscores_via_ncaab_api(
     )
 
     return (games_processed, games_enriched, games_with_stats)
+
+
+def _select_ncaa_boxscore_fallback_games(
+    session: Session,
+    *,
+    start_date: date,
+    end_date: date,
+    only_missing: bool,
+    already_have_boxscore: set[int],
+) -> list[tuple[int, str, str, str]]:
+    """Select games with ncaa_game_id that still need boxscores (NCAA API fallback).
+
+    Returns:
+        List of (game_id, ncaa_game_id, home_team_name, away_team_name) tuples.
+    """
+    from sqlalchemy import exists, not_
+
+    from ..db import db_models
+    from ..utils.datetime_utils import end_of_et_day_utc
+
+    league = session.query(db_models.SportsLeague).filter(
+        db_models.SportsLeague.code == "NCAAB"
+    ).first()
+    if not league:
+        return []
+
+    ncaa_game_id_expr = db_models.SportsGame.external_ids["ncaa_game_id"].astext
+
+    home_team = db_models.SportsTeam.__table__.alias("home_team")
+    away_team = db_models.SportsTeam.__table__.alias("away_team")
+
+    query = session.query(
+        db_models.SportsGame.id,
+        ncaa_game_id_expr.label("ncaa_game_id"),
+        home_team.c.name.label("home_team_name"),
+        away_team.c.name.label("away_team_name"),
+    ).join(
+        home_team,
+        db_models.SportsGame.home_team_id == home_team.c.id,
+    ).join(
+        away_team,
+        db_models.SportsGame.away_team_id == away_team.c.id,
+    ).filter(
+        db_models.SportsGame.league_id == league.id,
+        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
+        ncaa_game_id_expr.isnot(None),
+    )
+
+    if only_missing:
+        has_boxscores = exists().where(
+            db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id
+        )
+        query = query.filter(not_(has_boxscores))
+
+    rows = query.all()
+    results = []
+    for game_id, ncaa_game_id, home_team_name, away_team_name in rows:
+        if not ncaa_game_id:
+            continue
+        # Skip games already covered by CBB API
+        if game_id in already_have_boxscore:
+            continue
+        if home_team_name and away_team_name:
+            results.append((game_id, ncaa_game_id, home_team_name, away_team_name))
+
+    return results
 
 
 def convert_ncaab_boxscore_to_normalized_game(
