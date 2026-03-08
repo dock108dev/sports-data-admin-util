@@ -276,5 +276,3 @@ See [API.md](API.md) for complete endpoint reference.
 3. **Zero silent failures** — Log everything
 4. **Traceable changes** — Every transformation explainable
 5. **Single source of truth** — Normalized data across sports
-
-See the Key Principles section above for coding standards.

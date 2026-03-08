@@ -20,9 +20,9 @@ Predictive modeling, simulation, and matchup analysis for sports data.
 | `probabilities/` | Provider abstraction — rule-based, ML, ensemble; ProbabilityResolver for routing |
 | `services/` | AnalyticsService (API adapter), ModelService (model management) |
 | `simulation/` | Pitch-level simulators (PitchSimulator, PitchLevelGameSimulator) |
-| `sports/mlb/` | MLB PA-level game simulator, transforms, metrics, matchup logic |
+| `sports/mlb/` | MLB PA-level game simulator, transforms, metrics, matchup logic; `constants.py` is the SSOT for all MLB baselines, event probabilities, and feature defaults |
 | `training/core/` | TrainingPipeline, DatasetBuilder, ModelEvaluator |
-| `training/sports/` | Sport-specific training (MLBTrainingPipeline — data loading, label extraction) |
+| `training/sports/` | Sport-specific training (MLBTrainingPipeline — label extraction, record builders; stubs only for data loading) |
 
 ---
 
@@ -141,7 +141,9 @@ End-to-end flow: data → features → train → evaluate → register. Training
 
 1. `POST /api/analytics/train` creates an `AnalyticsTrainingJob` record and dispatches the Celery task
 2. `_execute_training()` converts the DB-backed `AnalyticsFeatureConfig` (JSONB array of `{name, enabled, weight}`) into a `{feat_name: {enabled, weight}}` dict and passes it through the pipeline
-3. `load_training_data()` — queries `MLBGameAdvancedStats` + `SportsGame` for games in the date range
+3. `load_training_data()` — handled by `app.tasks._training_helpers` (the SSOT for DB-backed training data loading):
+   - **Game model:** queries `MLBGameAdvancedStats` + `SportsGame` for games in the date range, builds rolling home/away team profiles
+   - **PA model:** queries `MLBPlayerAdvancedStats` for player stats in the date range, builds rolling batter profiles paired with opposing team profiles, derives PA outcome labels heuristically from Statcast metrics (whiff rate, barrel rate, exit velocity, hard-hit rate, swing rates)
 4. `build_dataset()` — `DatasetBuilder` → `FeatureBuilder.build_features(config=...)` → `_apply_config()` filters disabled features and applies weights from the linked loadout
 5. `train_test_split()` — sklearn split (configurable, default 80/20)
 6. `train_model()` — fits sklearn model (gradient_boosting default; also random_forest, xgboost)
@@ -151,8 +153,16 @@ End-to-end flow: data → features → train → evaluate → register. Training
 
 ### Label Extraction (MLB)
 
+Label functions live in `MLBTrainingPipeline` (`training/sports/mlb_training.py`):
+
 - `pa_label_fn()` — PA outcome (strikeout, walk, single, double, triple, home_run, out)
-- `game_label_fn()` — game outcome (home_win, away_win)
+- `game_label_fn()` — game outcome (1 = home win, 0 = away win)
+
+For PA training data, outcomes are derived heuristically from Statcast game-level metrics by `_derive_pa_outcome()` in `_training_helpers.py`, since pitch-level outcome data is not stored per-PA.
+
+### Constants SSOT
+
+All MLB baseline constants, default event probabilities, and feature defaults are centralized in `app.analytics.sports.mlb.constants`. Consumer modules (`matchup.py`, `metrics.py`, `game_simulator.py`, `mlb_features.py`, `probability_provider.py`, `pa_model.py`, `mlb_training.py`) import from this single source.
 
 ---
 

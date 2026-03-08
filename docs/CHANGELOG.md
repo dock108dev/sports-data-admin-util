@@ -4,6 +4,38 @@ All notable changes to Sports Data Admin.
 
 ## [2026-03-08] - Current
 
+### MLB Constants SSOT (P2-B)
+
+- **Centralized MLB constants**: All baseline values, default event probabilities, hit-type fractions, feature baselines, and simulation parameters consolidated into `app.analytics.sports.mlb.constants` — single source of truth
+- **7 consumer modules updated**: `matchup.py`, `metrics.py`, `game_simulator.py`, `mlb_features.py`, `probability_provider.py`, `pa_model.py`, `mlb_training.py` now import from the constants module instead of defining their own copies
+- **SSOT enforcement tests**: 7 negative tests in `TestSSOTMLBConstants` guard against regression (deleted functions stay deleted, imports come from SSOT)
+
+### PA Model Implementation (P2)
+
+- **PA training data loading**: `_training_helpers.py` now loads plate appearance training data from `MLBPlayerAdvancedStats` — builds rolling batter profiles paired with opposing team profiles using configurable window sizes
+- **Heuristic outcome derivation**: `_derive_pa_outcome()` classifies PA outcomes (strikeout, walk, home_run, double, single, out) from Statcast game-level metrics (whiff rate, barrel rate, exit velocity, hard-hit rate, swing rates)
+- **Multi-class Brier score**: Backtest evaluation now computes multi-class Brier score for PA models (sum of squared probability errors across all outcome classes)
+- **Frontend enabled**: Removed `disabled` attribute from plate appearance option in workbench training dropdown — PA model training is now end-to-end functional
+- **9 new tests**: `test_training_helpers_pa.py` covers all outcome derivation paths plus validity check against `PA_EVENTS`
+
+### Model Registry & Charting (P3)
+
+- **Registry cleanup**: Reset `models/registry/registry.json` (was full of 12 stale entries pointing to non-existent pytest temp dirs); training pipeline now uses artifact_dir-local registry to prevent test pollution
+- **`.gitignore` updated**: Added `*.pkl`, `*.joblib`, `api/models/` to prevent model artifacts from being committed
+- **Recharts charting library**: Added `recharts` to web dependencies; 4 chart components (`ScoreDistributionChart`, `PAProbabilitiesChart`, `WinProbabilityTimeline`, `CalibrationChart`) in `charts.tsx`
+- **Simulator page charts**: PA probabilities, score distribution, and win probability timeline now render as interactive charts instead of raw tables
+- **Model performance chart**: Calibration chart showing predicted WP vs actual win rate across 6 probability buckets
+- **Live sim persistence**: Timeline state persisted to `sessionStorage` — survives page navigation, restored on mount, cleared on explicit reset
+
+### Legacy Code Removal (P4)
+
+- **Dead label functions deleted**: `pitch_label_fn()`, `batted_ball_label_fn()`, `run_expectancy_label_fn()` removed from `MLBTrainingPipeline` — no callers in production code
+- **Dead constants deleted**: `PITCH_OUTCOMES`, `BATTED_BALL_OUTCOMES` removed from `mlb_training.py` — duplicated in model files, only consumed by deleted label functions
+- **Dead test class deleted**: `TestMLBTrainingLabels` (3 tests) removed — tested the now-deleted functions
+- **Unused import removed**: `HTTPException` from `_model_routes.py`
+- **PA_OUTCOMES sourced from SSOT**: `mlb_training.py` now imports `PA_EVENTS as PA_OUTCOMES` from `constants.py` instead of maintaining a local copy
+- **Intentionally kept**: Pitch/batted_ball/run_expectancy models are NOT dead code — they are used by `PitchSimulator` via `pitch_level` probability mode in the simulation API
+
 ### Analytics P0 Fixes
 
 - **Feature config enforcement (P0-A)**: Fixed broken chain where DB-backed feature loadouts were never applied during training. Added `_feature_config_to_dict()` converter in `training_tasks.py` that transforms `AnalyticsFeatureConfig.features` (JSONB `[{name, enabled, weight}]`) into the `{feat_name: {enabled, weight}}` dict expected by `FeatureBuilder._apply_config()`. Threaded `feature_config` through `TrainingPipeline` → `DatasetBuilder` → `FeatureBuilder.build_features(config=...)`.
