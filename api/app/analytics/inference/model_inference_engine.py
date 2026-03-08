@@ -16,7 +16,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.analytics.features.config.feature_config_loader import FeatureConfigLoader
 from app.analytics.features.core.feature_builder import FeatureBuilder
 from app.analytics.models.core.model_registry import ModelRegistry
 
@@ -28,8 +27,8 @@ logger = logging.getLogger(__name__)
 class ModelInferenceEngine:
     """Runtime inference engine for ML model predictions.
 
-    Integrates the FeatureBuilder, FeatureConfigLoader, ModelRegistry,
-    and InferenceCache to produce predictions from entity profiles.
+    Integrates the FeatureBuilder, ModelRegistry, and InferenceCache
+    to produce predictions from entity profiles.
 
     Args:
         registry: Optional ``ModelRegistry`` instance. Creates one
@@ -45,7 +44,6 @@ class ModelInferenceEngine:
         self._registry = registry or ModelRegistry()
         self._cache = cache or InferenceCache()
         self._feature_builder = FeatureBuilder()
-        self._config_loader = FeatureConfigLoader()
         # Track loaded model IDs for auto-reload detection
         self._loaded_model_ids: dict[str, str] = {}  # "sport:model_type" -> model_id
 
@@ -191,16 +189,8 @@ class ModelInferenceEngine:
         Returns feature values as a flat dict suitable for model
         wrapper ``predict()`` / ``predict_proba()`` methods.
         """
-        config = None
-        if config_name:
-            try:
-                cfg = self._config_loader.load_config(config_name)
-                config = cfg.to_builder_config()
-            except FileNotFoundError:
-                pass
-
         vec = self._feature_builder.build_features(
-            sport, profiles, model_type, config=config,
+            sport, profiles, model_type,
         )
 
         return vec.to_dict()

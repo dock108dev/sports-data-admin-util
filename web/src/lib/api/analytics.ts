@@ -354,7 +354,7 @@ export async function getModelPerformance(
   if (sport) params.set("sport", sport);
   const qs = params.toString();
   return fetchJson<ModelPerformance>(
-    `${base()}/api/analytics/model-performance${qs ? `?${qs}` : ""}`,
+    `${base()}/api/analytics/calibration-report${qs ? `?${qs}` : ""}`,
   );
 }
 
@@ -745,44 +745,3 @@ export async function saveEnsembleConfig(
   });
 }
 
-// ---------------------------------------------------------------------------
-// MLB Advanced Models
-// ---------------------------------------------------------------------------
-
-export async function getPitchModel(params: {
-  pitcher_k_rate?: number;
-  batter_contact_rate?: number;
-  count_balls?: number;
-  count_strikes?: number;
-}): Promise<{ pitch_probabilities: Record<string, number> }> {
-  const qs = new URLSearchParams();
-  if (params.pitcher_k_rate != null) qs.set("pitcher_k_rate", String(params.pitcher_k_rate));
-  if (params.batter_contact_rate != null) qs.set("batter_contact_rate", String(params.batter_contact_rate));
-  if (params.count_balls != null) qs.set("count_balls", String(params.count_balls));
-  if (params.count_strikes != null) qs.set("count_strikes", String(params.count_strikes));
-  return fetchJson(`${base()}/api/analytics/mlb/pitch-model?${qs}`);
-}
-
-export async function getPitchSim(params: {
-  pitcher_k_rate?: number;
-  batter_contact_rate?: number;
-}): Promise<{ result: string; pitches: number; final_count: string; batted_ball_result?: string }> {
-  const qs = new URLSearchParams();
-  if (params.pitcher_k_rate != null) qs.set("pitcher_k_rate", String(params.pitcher_k_rate));
-  if (params.batter_contact_rate != null) qs.set("batter_contact_rate", String(params.batter_contact_rate));
-  return fetchJson(`${base()}/api/analytics/mlb/pitch-sim?${qs}`);
-}
-
-export async function getRunExpectancy(params: {
-  base_state?: number;
-  outs?: number;
-  batter_quality?: number;
-  pitcher_quality?: number;
-}): Promise<{ expected_runs: number }> {
-  const qs = new URLSearchParams();
-  if (params.base_state != null) qs.set("base_state", String(params.base_state));
-  if (params.outs != null) qs.set("outs", String(params.outs));
-  if (params.batter_quality != null) qs.set("batter_quality", String(params.batter_quality));
-  if (params.pitcher_quality != null) qs.set("pitcher_quality", String(params.pitcher_quality));
-  return fetchJson(`${base()}/api/analytics/mlb/run-expectancy?${qs}`);
-}

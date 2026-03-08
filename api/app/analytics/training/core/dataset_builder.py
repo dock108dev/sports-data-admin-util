@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.analytics.features.config.feature_config_loader import FeatureConfigLoader
 from app.analytics.features.core.feature_builder import FeatureBuilder
 
 logger = logging.getLogger(__name__)
@@ -41,19 +40,13 @@ class DatasetBuilder:
         self._config = self._load_config()
 
     def _load_config(self) -> dict[str, Any] | None:
-        """Load feature config if a config name is specified."""
-        if not self.config_name:
-            return None
-        try:
-            loader = FeatureConfigLoader()
-            cfg = loader.load_config(self.config_name)
-            return cfg.to_builder_config()
-        except FileNotFoundError:
-            logger.warning(
-                "feature_config_not_found",
-                extra={"config_name": self.config_name},
-            )
-            return None
+        """Load feature config if a config name is specified.
+
+        Currently returns None — feature configs are loaded from the
+        DB-backed ``AnalyticsFeatureConfig`` and passed directly to
+        the training pipeline rather than being resolved by name here.
+        """
+        return None
 
     def build(
         self,

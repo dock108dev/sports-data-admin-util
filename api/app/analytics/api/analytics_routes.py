@@ -1,26 +1,8 @@
 """Analytics API endpoints.
 
 Provides REST endpoints for team analysis, player analysis, matchup
-comparison, game simulation, and feature loadout management.
-
-Routes:
-    GET  /api/analytics/team          — Team analytical profile
-    GET  /api/analytics/player        — Player analytical profile
-    GET  /api/analytics/matchup       — Head-to-head matchup analysis
-    POST /api/analytics/simulate      — Full Monte Carlo simulation
-    POST /api/analytics/live-simulate — Live game simulation from state
-    Feature Loadout CRUD:
-        GET    /api/analytics/feature-configs       — List all loadouts
-        GET    /api/analytics/feature-config/{id}   — Get loadout by ID
-        POST   /api/analytics/feature-config        — Create new loadout
-        PUT    /api/analytics/feature-config/{id}   — Update loadout
-        DELETE /api/analytics/feature-config/{id}   — Delete loadout
-        POST   /api/analytics/feature-config/{id}/clone — Clone loadout
-        GET    /api/analytics/available-features    — List available features
-    Training:
-        POST   /api/analytics/train                 — Start training job
-        GET    /api/analytics/training-jobs         — List training jobs
-        GET    /api/analytics/training-job/{id}     — Get training job details
+comparison, game simulation, feature loadout management, training,
+prediction outcomes, and model management.
 """
 
 from __future__ import annotations
@@ -34,10 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analytics.core.model_calibration import ModelCalibration
 from app.analytics.core.model_metrics import ModelMetrics
-from app.analytics.core.prediction_repository import PredictionRepository
 from app.analytics.core.simulation_cache import SimulationCache
-from app.analytics.core.simulation_job_manager import SimulationJobManager
-from app.analytics.core.simulation_repository import SimulationRepository
 from app.analytics.inference.model_inference_engine import ModelInferenceEngine
 from app.analytics.models.core.model_registry import ModelRegistry
 from app.analytics.services.analytics_service import AnalyticsService
@@ -49,9 +28,6 @@ router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 _service = AnalyticsService()
 _cache = SimulationCache()
-_repository = SimulationRepository()
-_job_manager = SimulationJobManager(cache=_cache, repository=_repository)
-_prediction_repo = PredictionRepository()
 _calibration = ModelCalibration()
 _model_metrics = ModelMetrics()
 _model_registry = ModelRegistry()
@@ -190,20 +166,6 @@ async def post_simulate(req: SimulateRequest) -> dict[str, Any]:
         **result,
     }
 
-    # Auto-store prediction for calibration
-    _prediction_repo.save_prediction({
-        "sport": req.sport,
-        "home_team": req.home_team,
-        "away_team": req.away_team,
-        "model_output": {
-            "home_win_probability": result.get("home_win_probability", 0),
-            "away_win_probability": result.get("away_win_probability", 0),
-            "expected_home_score": result.get("average_home_score", 0),
-            "expected_away_score": result.get("average_away_score", 0),
-        },
-        "sportsbook_lines": req.sportsbook,
-    })
-
     return response
 
 
@@ -237,142 +199,6 @@ async def post_live_simulate(req: LiveSimulateRequest) -> dict[str, Any]:
     )
 
     return {"sport": req.sport, **result}
-
-
-@router.post("/simulate-job")
-async def post_simulate_job(req: SimulateRequest) -> dict[str, Any]:
-    """Submit a simulation as a background job.
-
-    Returns a job_id immediately. Poll ``/simulation-result`` to
-    retrieve the result once complete.
-    """
-    params: dict[str, Any] = {
-        "sport": req.sport,
-        "home_team": req.home_team,
-        "away_team": req.away_team,
-        "iterations": req.iterations,
-        "mode": "pregame",
-    }
-    if req.seed is not None:
-        params["seed"] = req.seed
-    if req.home_probabilities:
-        params["home_probabilities"] = req.home_probabilities
-    if req.away_probabilities:
-        params["away_probabilities"] = req.away_probabilities
-    if req.sportsbook:
-        params["sportsbook"] = req.sportsbook
-
-    job_id = _job_manager.submit_job(params, sync=True)
-    status = _job_manager.get_job_status(job_id)
-    return status
-
-
-@router.post("/live-simulate-job")
-async def post_live_simulate_job(req: LiveSimulateRequest) -> dict[str, Any]:
-    """Submit a live simulation as a background job."""
-    params: dict[str, Any] = {
-        "sport": req.sport,
-        "inning": req.inning,
-        "half": req.half,
-        "outs": req.outs,
-        "bases": req.bases,
-        "score": req.score,
-        "iterations": req.iterations,
-        "mode": "live",
-    }
-    if req.seed is not None:
-        params["seed"] = req.seed
-    if req.home_probabilities:
-        params["home_probabilities"] = req.home_probabilities
-    if req.away_probabilities:
-        params["away_probabilities"] = req.away_probabilities
-
-    job_id = _job_manager.submit_job(params, sync=True)
-    status = _job_manager.get_job_status(job_id)
-    return status
-
-
-@router.get("/simulation-result")
-async def get_simulation_result(
-    job_id: str = Query(..., description="Job ID from simulate-job endpoint"),
-) -> dict[str, Any]:
-    """Poll for simulation job result.
-
-    Returns the job status and result if complete.
-    """
-    status = _job_manager.get_job_status(job_id)
-    result = _job_manager.get_job_result(job_id)
-
-    if result is not None:
-        return {**status, "result": result}
-    return status
-
-
-@router.get("/simulation-history")
-async def get_simulation_history(
-    sport: str = Query(None, description="Filter by sport code"),
-    limit: int = Query(50, ge=1, le=200, description="Max results"),
-) -> dict[str, Any]:
-    """List stored simulation results."""
-    records = _repository.list_simulations(sport=sport, limit=limit)
-    return {"simulations": records, "count": len(records)}
-
-
-class RecordOutcomeRequest(BaseModel):
-    """Request body for POST /api/analytics/record-outcome."""
-    prediction_id: str = Field(..., description="Prediction to update")
-    home_score: int = Field(..., ge=0, description="Actual home score")
-    away_score: int = Field(..., ge=0, description="Actual away score")
-
-
-@router.post("/record-outcome")
-async def post_record_outcome(req: RecordOutcomeRequest) -> dict[str, Any]:
-    """Record an actual game outcome for a stored prediction."""
-    actual = {"home_score": req.home_score, "away_score": req.away_score}
-    updated = _prediction_repo.record_outcome(req.prediction_id, actual)
-    if not updated:
-        return {"status": "not_found", "prediction_id": req.prediction_id}
-
-    pred = _prediction_repo.get_prediction(req.prediction_id)
-    evaluation = _calibration.evaluate_prediction(pred, actual)
-    return {"status": "recorded", **evaluation}
-
-
-@router.get("/model-performance")
-async def get_model_performance(
-    sport: str = Query(None, description="Filter by sport code"),
-) -> dict[str, Any]:
-    """Get aggregate model performance metrics.
-
-    Returns Brier score, log loss, MAE, accuracy, bias, and
-    calibration buckets.
-    """
-    predictions = _prediction_repo.get_evaluated_predictions(sport=sport)
-
-    if not predictions:
-        report = _calibration._empty_report()
-        metrics = _model_metrics._empty_metrics()
-    else:
-        report = _calibration.calibration_report(predictions)
-        metrics = _model_metrics.compute_all(predictions)
-
-    return {
-        **report,
-        "log_loss": metrics.get("log_loss", 0.0),
-        "mae_score": metrics.get("mae_score", 0.0),
-        "mae_total": metrics.get("mae_total", 0.0),
-        "calibration_buckets": metrics.get("calibration_buckets", []),
-    }
-
-
-@router.get("/predictions")
-async def get_predictions(
-    sport: str = Query(None, description="Filter by sport code"),
-    limit: int = Query(100, ge=1, le=500, description="Max results"),
-) -> dict[str, Any]:
-    """List stored predictions."""
-    records = _prediction_repo.list_predictions(sport=sport, limit=limit)
-    return {"predictions": records, "count": len(records)}
 
 
 # ---------------------------------------------------------------------------
@@ -1466,66 +1292,3 @@ async def post_ensemble_config(req: EnsembleConfigRequest) -> dict[str, Any]:
     )
     set_ensemble_config(config)
     return {"status": "updated", **config.to_dict()}
-
-
-# ---------------------------------------------------------------------------
-# MLB Advanced Model endpoints
-# ---------------------------------------------------------------------------
-
-
-@router.get("/mlb/pitch-model")
-async def get_pitch_model(
-    pitcher_k_rate: float = Query(0.22, description="Pitcher K rate"),
-    batter_contact_rate: float = Query(0.80, description="Batter contact rate"),
-    count_balls: int = Query(0, ge=0, le=3, description="Balls"),
-    count_strikes: int = Query(0, ge=0, le=2, description="Strikes"),
-) -> dict[str, Any]:
-    """Get pitch outcome probabilities from the pitch model."""
-    from app.analytics.models.sports.mlb.pitch_model import MLBPitchOutcomeModel
-
-    model = MLBPitchOutcomeModel()
-    probs = model.predict_proba({
-        "pitcher_k_rate": pitcher_k_rate,
-        "batter_contact_rate": batter_contact_rate,
-        "count_balls": count_balls,
-        "count_strikes": count_strikes,
-    })
-    return {"pitch_probabilities": probs}
-
-
-@router.get("/mlb/pitch-sim")
-async def get_pitch_sim(
-    pitcher_k_rate: float = Query(0.22, description="Pitcher K rate"),
-    batter_contact_rate: float = Query(0.80, description="Batter contact rate"),
-) -> dict[str, Any]:
-    """Simulate a single plate appearance at the pitch level."""
-    from app.analytics.simulation.mlb.pitch_simulator import PitchSimulator
-
-    sim = PitchSimulator()
-    result = sim.simulate_plate_appearance({
-        "pitcher_k_rate": pitcher_k_rate,
-        "batter_contact_rate": batter_contact_rate,
-    })
-    return result
-
-
-@router.get("/mlb/run-expectancy")
-async def get_run_expectancy(
-    base_state: int = Query(0, ge=0, le=7, description="Base state (0-7)"),
-    outs: int = Query(0, ge=0, le=2, description="Outs"),
-    batter_quality: float = Query(0.0, description="Batter quality (0-1)"),
-    pitcher_quality: float = Query(0.0, description="Pitcher quality (0-1)"),
-) -> dict[str, Any]:
-    """Get run expectancy for a given game state."""
-    from app.analytics.models.sports.mlb.run_expectancy_model import (
-        MLBRunExpectancyModel,
-    )
-
-    model = MLBRunExpectancyModel()
-    result = model.predict({
-        "base_state": base_state,
-        "outs": outs,
-        "batter_quality": batter_quality,
-        "pitcher_quality": pitcher_quality,
-    })
-    return result

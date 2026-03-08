@@ -11,13 +11,11 @@ Usage::
     vec = builder.build_features("mlb", profiles, "plate_appearance")
     arr = vec.to_array()
 
-With configuration::
+With configuration (from DB-backed AnalyticsFeatureConfig)::
 
-    from app.analytics.features.config.feature_config_loader import FeatureConfigLoader
-    loader = FeatureConfigLoader()
-    config = loader.load_config("mlb_pa_model")
+    config = {"feat_a": {"enabled": True, "weight": 0.9}}
     vec = builder.build_features("mlb", profiles, "plate_appearance",
-                                 config=config.to_builder_config())
+                                 config=config)
 """
 
 from __future__ import annotations
