@@ -425,7 +425,12 @@ async def _execute_backtest(
     # 3. Build features and run predictions
     feature_builder = FeatureBuilder()
     mlb_pipeline = MLBTrainingPipeline()
-    label_fn = mlb_pipeline.game_label_fn if model_type == "game" else None
+    if model_type == "game":
+        label_fn = mlb_pipeline.game_label_fn
+    elif model_type == "plate_appearance":
+        label_fn = mlb_pipeline.pa_label_fn
+    else:
+        label_fn = None
 
     predictions = []
     correct = 0
@@ -460,12 +465,20 @@ async def _execute_backtest(
             if is_correct:
                 correct += 1
 
-            # Brier score for binary classification
-            if pred_proba and model_type == "game":
-                # For game model, actual_label is 1 (home_win) or 0
-                home_win_prob = pred_proba.get("1", pred_proba.get(1, 0.5))
-                brier = (home_win_prob - float(actual_label)) ** 2
-                brier_scores.append(brier)
+            # Brier score
+            if pred_proba:
+                if model_type == "game":
+                    # Binary: home_win probability vs actual
+                    home_win_prob = pred_proba.get("1", pred_proba.get(1, 0.5))
+                    brier = (home_win_prob - float(actual_label)) ** 2
+                    brier_scores.append(brier)
+                elif model_type == "plate_appearance":
+                    # Multi-class: sum of squared errors across all classes
+                    brier = sum(
+                        (float(p) - (1.0 if str(c) == str(actual_label) else 0.0)) ** 2
+                        for c, p in pred_proba.items()
+                    )
+                    brier_scores.append(brier)
 
             pred_entry = {
                 "predicted": int(y_pred) if hasattr(y_pred, "__int__") else y_pred,
