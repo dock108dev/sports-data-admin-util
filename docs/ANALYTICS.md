@@ -112,10 +112,8 @@ Sport-agnostic `FeatureBuilder` routes to sport-specific builders. Features are 
 ### MLB Features
 
 **Plate-appearance features (28 total):**
-- Batter (14): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, avg_exit_velocity, expected_slug, z_swing_pct, o_swing_pct, z_contact_pct, o_contact_pct, zone_swing_rate, chase_rate, plate_discipline_index
-- Pitcher (14): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, z_swing_pct, o_swing_pct, z_contact_pct, o_contact_pct, zone_swing_rate, chase_rate, plate_discipline_index
-
-Note: Batter has 15 source keys but pitcher has 13, totaling 28 features (count includes the full tuple list in `_PA_FEATURES`).
+- Batter (15): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, avg_exit_velocity, expected_slug, z_swing_pct, o_swing_pct, z_contact_pct, o_contact_pct, zone_swing_rate, chase_rate, plate_discipline_index
+- Pitcher (13): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, z_swing_pct, o_swing_pct, z_contact_pct, o_contact_pct, zone_swing_rate, chase_rate, plate_discipline_index
 
 **Game-level features (60 total):**
 - Home (30) + Away (30): Each side exposes 30 metrics from `_GAME_METRIC_KEYS`:

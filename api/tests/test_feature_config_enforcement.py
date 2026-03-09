@@ -9,9 +9,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
-from app.analytics.features.core.feature_builder import FeatureBuilder, _apply_config
+from app.analytics.features.core.feature_builder import _apply_config
 from app.analytics.features.core.feature_vector import FeatureVector
 from app.analytics.training.core.dataset_builder import DatasetBuilder
 from app.tasks.training_tasks import _feature_config_to_dict

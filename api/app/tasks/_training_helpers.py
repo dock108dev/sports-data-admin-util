@@ -454,8 +454,6 @@ def _derive_pa_outcome(player_stats: object) -> str:
     barrel = getattr(player_stats, "barrel_pct", None) or 0.0
     hard_hit = getattr(player_stats, "hard_hit_pct", None) or 0.0
     avg_ev = getattr(player_stats, "avg_exit_velo", None) or 88.0
-    z_contact = getattr(player_stats, "z_contact_pct", None) or 0.0
-    o_contact = getattr(player_stats, "o_contact_pct", None) or 0.0
     z_swing = getattr(player_stats, "z_swing_pct", None) or 0.0
     o_swing = getattr(player_stats, "o_swing_pct", None) or 0.0
     bip = getattr(player_stats, "balls_in_play", None) or 0
