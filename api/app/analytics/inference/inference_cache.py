@@ -40,8 +40,18 @@ class InferenceCache:
         if path in self._cache:
             return self._cache[path]
 
+        from pathlib import Path as _Path
+        p = _Path(path)
+        if not p.exists():
+            raise FileNotFoundError(f"Model artifact not found: {path}")
+        if not p.is_file():
+            raise FileNotFoundError(f"Model artifact path is not a file: {path}")
+
         import joblib
-        model = joblib.load(path)
+        try:
+            model = joblib.load(path)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to load model artifact {path}: {exc}") from exc
         self._cache[path] = model
         logger.info("model_cached", extra={"path": path})
         return model

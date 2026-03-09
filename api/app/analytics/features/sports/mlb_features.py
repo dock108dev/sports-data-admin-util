@@ -17,45 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.analytics.features.core.feature_vector import FeatureVector
-
-# League-average baselines for normalization (2024 MLB approximations).
-_BASELINES: dict[str, float] = {
-    # Derived composites
-    "contact_rate": 0.77,
-    "power_index": 1.0,
-    "barrel_rate": 0.07,
-    "hard_hit_rate": 0.35,
-    "swing_rate": 0.50,
-    "whiff_rate": 0.23,
-    "avg_exit_velocity": 88.0,
-    "expected_slug": 0.77,
-    # Raw plate discipline percentages
-    "z_swing_pct": 0.68,
-    "o_swing_pct": 0.32,
-    "z_contact_pct": 0.84,
-    "o_contact_pct": 0.60,
-    # Raw quality of contact
-    "avg_exit_velo": 88.0,
-    "hard_hit_pct": 0.35,
-    "barrel_pct": 0.07,
-    # Raw counts (absolute — normalized as ratio to baseline)
-    "total_pitches": 145.0,
-    "balls_in_play": 30.0,
-    "hard_hit_count": 10.0,
-    "barrel_count": 2.0,
-    "zone_pitches": 65.0,
-    "zone_swings": 44.0,
-    "zone_contact": 37.0,
-    "outside_pitches": 80.0,
-    "outside_swings": 26.0,
-    "outside_contact": 16.0,
-    # Additional derived ratios
-    "zone_swing_rate": 0.68,
-    "chase_rate": 0.32,
-    "zone_contact_rate": 0.84,
-    "outside_contact_rate": 0.60,
-    "plate_discipline_index": 0.52,
-}
+from app.analytics.sports.mlb.constants import FEATURE_BASELINES as _BASELINES
 
 # Ordered feature definitions by model type.
 # Each entry: (feature_name, source_entity, source_key)

@@ -13,6 +13,7 @@ import {
   type PredictionOutcome,
   type DegradationAlert,
 } from "@/lib/api/analytics";
+import { CalibrationChart } from "../charts";
 import styles from "../analytics.module.css";
 
 export default function ModelPerformancePage() {
@@ -136,8 +137,11 @@ function CalibrationPanel({ sport }: { sport?: string }) {
   const [recording, setRecording] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [rep, oc] = await Promise.all([
         getCalibrationReport(sport),
@@ -145,8 +149,8 @@ function CalibrationPanel({ sport }: { sport?: string }) {
       ]);
       setReport(rep);
       setOutcomes(oc.outcomes);
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load calibration data");
     } finally {
       setLoading(false);
     }
@@ -175,6 +179,7 @@ function CalibrationPanel({ sport }: { sport?: string }) {
 
   return (
     <>
+      {error && <div className={styles.error}>{error}</div>}
       <AdminCard
         title="Prediction Calibration (Batch Sims)"
         subtitle="Tracks batch simulation predictions vs actual game outcomes"
@@ -234,6 +239,43 @@ function CalibrationPanel({ sport }: { sport?: string }) {
           </p>
         )}
       </AdminCard>
+
+      {/* Calibration curve from resolved predictions */}
+      {resolved.length >= 5 && (
+        <AdminCard title="Calibration Curve" subtitle="Predicted win probability vs actual win rate by bucket">
+          <CalibrationChart
+            data={(() => {
+              const buckets = [
+                { min: 0, max: 0.3, label: "0-30%" },
+                { min: 0.3, max: 0.4, label: "30-40%" },
+                { min: 0.4, max: 0.5, label: "40-50%" },
+                { min: 0.5, max: 0.6, label: "50-60%" },
+                { min: 0.6, max: 0.7, label: "60-70%" },
+                { min: 0.7, max: 1.01, label: "70-100%" },
+              ];
+              return buckets.map((b) => {
+                const inBucket = resolved.filter(
+                  (o) => o.predicted_home_wp >= b.min && o.predicted_home_wp < b.max,
+                );
+                const avgPred = inBucket.length
+                  ? inBucket.reduce((s, o) => s + o.predicted_home_wp, 0) / inBucket.length
+                  : (b.min + b.max) / 2;
+                const actualWin = inBucket.length
+                  ? inBucket.filter((o) => o.home_win_actual).length / inBucket.length
+                  : 0;
+                return {
+                  label: `${b.label} (${inBucket.length})`,
+                  predicted: +(avgPred * 100).toFixed(1),
+                  actual: +(actualWin * 100).toFixed(1),
+                };
+              }).filter((b) => {
+                const n = parseInt(b.label.match(/\((\d+)\)/)?.[1] ?? "0");
+                return n > 0;
+              });
+            })()}
+          />
+        </AdminCard>
+      )}
 
       {/* Pending predictions */}
       {pending.length > 0 && (
@@ -300,13 +342,16 @@ function DegradationAlertsPanel({ sport }: { sport?: string }) {
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await listDegradationAlerts({ sport, limit: 20 });
       setAlerts(res.alerts);
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load degradation alerts");
     } finally {
       setLoading(false);
     }
@@ -334,8 +379,8 @@ function DegradationAlertsPanel({ sport }: { sport?: string }) {
     try {
       await acknowledgeDegradationAlert(id);
       await refresh();
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to acknowledge alert");
     }
   };
 
@@ -349,6 +394,8 @@ function DegradationAlertsPanel({ sport }: { sport?: string }) {
   };
 
   return (
+    <>
+    {error && <div className={styles.error}>{error}</div>}
     <AdminCard
       title={hasActiveAlerts ? "Model Degradation Alerts" : "Model Health"}
       subtitle={hasActiveAlerts
@@ -444,5 +491,6 @@ function DegradationAlertsPanel({ sport }: { sport?: string }) {
         );
       })}
     </AdminCard>
+    </>
   );
 }

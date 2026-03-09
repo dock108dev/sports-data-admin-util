@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -342,8 +342,24 @@ class EnsembleConfigRequest(BaseModel):
     sport: str = Field(..., description="Sport code (e.g., mlb)")
     model_type: str = Field(..., description="Model type (e.g., plate_appearance)")
     providers: list[dict[str, Any]] = Field(
-        ..., description="List of {name, weight} dicts",
+        ..., description="List of {name, weight} dicts", min_length=1,
     )
+
+    @field_validator("providers")
+    @classmethod
+    def validate_providers(cls, v: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for i, p in enumerate(v):
+            if "name" not in p or "weight" not in p:
+                raise ValueError(f"Provider {i} must have 'name' and 'weight' keys")
+            w = float(p["weight"])
+            if w < 0:
+                raise ValueError(
+                    f"Provider '{p['name']}' has negative weight {w}; weights must be >= 0"
+                )
+        total = sum(float(p["weight"]) for p in v)
+        if total <= 0:
+            raise ValueError("Total weight must be > 0 (at least one provider needs a positive weight)")
+        return v
 
 
 @router.get("/ensemble-config")

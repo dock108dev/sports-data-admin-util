@@ -212,6 +212,26 @@ async def _run_training(job_id: int, celery_task_id: str | None = None) -> dict:
     return result
 
 
+def _feature_config_to_dict(
+    feature_config: object | None,
+) -> dict[str, dict] | None:
+    """Convert a DB AnalyticsFeatureConfig to the dict format expected by FeatureBuilder.
+
+    DB format (JSONB array): [{"name": "feat", "enabled": true, "weight": 1.0}, ...]
+    FeatureBuilder format:   {"feat": {"enabled": True, "weight": 1.0}, ...}
+    """
+    if feature_config is None:
+        return None
+    features = getattr(feature_config, "features", None)
+    if not features:
+        return None
+    return {
+        f["name"]: {"enabled": f.get("enabled", True), "weight": f.get("weight", 1.0)}
+        for f in features
+        if "name" in f
+    }
+
+
 async def _execute_training(
     *,
     sf,
@@ -235,6 +255,7 @@ async def _execute_training(
     from app.analytics.training.core.training_pipeline import TrainingPipeline
 
     model_id = f"{sport}_{model_type}_{uuid.uuid4().hex[:8]}"
+    config_dict = _feature_config_to_dict(feature_config)
 
     pipeline = TrainingPipeline(
         sport=sport,
@@ -243,6 +264,7 @@ async def _execute_training(
         model_id=model_id,
         random_state=random_state,
         test_size=test_split,
+        feature_config=config_dict,
     )
 
     # Load training data from DB using the task's session factory
@@ -374,9 +396,15 @@ async def _execute_backtest(
     from app.analytics.features.core.feature_builder import FeatureBuilder
     from app.analytics.training.sports.mlb_training import MLBTrainingPipeline
 
-    # 1. Load model artifact
+    # 1. Validate and load model artifact
+    from pathlib import Path as _Path
+    artifact = _Path(artifact_path) if artifact_path else None
+    if not artifact or not artifact.exists():
+        return {"error": f"Model artifact not found: {artifact_path}"}
+    if not artifact.is_file():
+        return {"error": f"Model artifact path is not a file: {artifact_path}"}
     try:
-        sklearn_model = joblib.load(artifact_path)
+        sklearn_model = joblib.load(str(artifact))
     except Exception as exc:
         return {"error": f"Failed to load model artifact: {exc}"}
 
@@ -397,7 +425,12 @@ async def _execute_backtest(
     # 3. Build features and run predictions
     feature_builder = FeatureBuilder()
     mlb_pipeline = MLBTrainingPipeline()
-    label_fn = mlb_pipeline.game_label_fn if model_type == "game" else None
+    if model_type == "game":
+        label_fn = mlb_pipeline.game_label_fn
+    elif model_type == "plate_appearance":
+        label_fn = mlb_pipeline.pa_label_fn
+    else:
+        label_fn = None
 
     predictions = []
     correct = 0
@@ -432,12 +465,20 @@ async def _execute_backtest(
             if is_correct:
                 correct += 1
 
-            # Brier score for binary classification
-            if pred_proba and model_type == "game":
-                # For game model, actual_label is 1 (home_win) or 0
-                home_win_prob = pred_proba.get("1", pred_proba.get(1, 0.5))
-                brier = (home_win_prob - float(actual_label)) ** 2
-                brier_scores.append(brier)
+            # Brier score
+            if pred_proba:
+                if model_type == "game":
+                    # Binary: home_win probability vs actual
+                    home_win_prob = pred_proba.get("1", pred_proba.get(1, 0.5))
+                    brier = (home_win_prob - float(actual_label)) ** 2
+                    brier_scores.append(brier)
+                elif model_type == "plate_appearance":
+                    # Multi-class: sum of squared errors across all classes
+                    brier = sum(
+                        (float(p) - (1.0 if str(c) == str(actual_label) else 0.0)) ** 2
+                        for c, p in pred_proba.items()
+                    )
+                    brier_scores.append(brier)
 
             pred_entry = {
                 "predicted": int(y_pred) if hasattr(y_pred, "__int__") else y_pred,
@@ -1045,7 +1086,6 @@ async def _execute_batch_sim(
 
 from app.tasks._training_helpers import (  # noqa: E402
     build_rolling_profile as _build_rolling_profile,
-    get_game_score as _get_game_score,
     get_sklearn_model as _get_sklearn_model,
     load_training_data_from_db as _load_training_data_from_db,
 )

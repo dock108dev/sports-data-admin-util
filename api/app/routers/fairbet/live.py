@@ -34,7 +34,7 @@ from app.services.fairbet_display import (
     market_display_name,
     selection_display,
 )
-from app.services.live_odds_redis import read_all_live_snapshots_for_game
+from app.services.live_odds_redis import discover_live_game_ids, read_all_live_snapshots_for_game
 
 from .ev_annotation import (
     BookOdds,
@@ -126,6 +126,66 @@ class LiveBetDefinition(BaseModel):
     explanation_steps: list[dict] | None = None
 
 
+class LiveGameInfo(BaseModel):
+    """A game that currently has live odds in Redis."""
+    game_id: int
+    league_code: str
+    home_team: str
+    away_team: str
+    game_date: datetime | None
+    status: str | None
+
+
+@router.get("/live/games")
+async def fairbet_live_games(
+    league: str | None = Query(None, description="Filter by league code"),
+) -> list[LiveGameInfo]:
+    """List all games that currently have live odds data in Redis."""
+    pairs = discover_live_game_ids(league)
+    if not pairs:
+        return []
+
+    game_ids = [gid for _, gid in pairs]
+    league_map = {gid: lc for lc, gid in pairs}
+
+    results: list[LiveGameInfo] = []
+    async for session in get_db():
+        from sqlalchemy.orm import aliased
+
+        from app.db.sports import SportsTeam
+
+        HomeTeam = aliased(SportsTeam)
+        AwayTeam = aliased(SportsTeam)
+
+        stmt = (
+            select(
+                SportsGame.id,
+                SportsGame.game_date,
+                SportsGame.status,
+                HomeTeam.name.label("home_name"),
+                AwayTeam.name.label("away_name"),
+            )
+            .outerjoin(HomeTeam, SportsGame.home_team_id == HomeTeam.id)
+            .outerjoin(AwayTeam, SportsGame.away_team_id == AwayTeam.id)
+            .where(SportsGame.id.in_(game_ids))
+        )
+        rows = await session.execute(stmt)
+
+        for gid, game_date, status, home_name, away_name in rows:
+            results.append(LiveGameInfo(
+                game_id=gid,
+                league_code=league_map.get(gid, ""),
+                home_team=home_name or "Unknown",
+                away_team=away_name or "Unknown",
+                game_date=game_date,
+                status=status,
+            ))
+
+    # Sort by game_date
+    results.sort(key=lambda g: g.game_date or datetime.min.replace(tzinfo=UTC))
+    return results
+
+
 class FairbetLiveResponse(BaseModel):
     """Response with EV-annotated live odds."""
 
@@ -155,14 +215,25 @@ async def fairbet_live(
     """
     # Look up game info from DB
     async for session in get_db():
+        from sqlalchemy.orm import aliased
+
+        from app.db.sports import SportsTeam
+
+        HomeTeam = aliased(SportsTeam)
+        AwayTeam = aliased(SportsTeam)
+
         stmt = (
             select(
                 SportsGame.id,
                 SportsGame.game_date,
                 SportsGame.status,
                 SportsLeague.code,
+                HomeTeam.name.label("home_name"),
+                AwayTeam.name.label("away_name"),
             )
             .join(SportsLeague, SportsGame.league_id == SportsLeague.id)
+            .outerjoin(HomeTeam, SportsGame.home_team_id == HomeTeam.id)
+            .outerjoin(AwayTeam, SportsGame.away_team_id == AwayTeam.id)
             .where(SportsGame.id == game_id)
         )
         result = await session.execute(stmt)
@@ -171,23 +242,9 @@ async def fairbet_live(
         if not row:
             raise HTTPException(status_code=404, detail="Game not found")
 
-        _, game_date, game_status, league_code = row
-
-        # Get team names
-        from app.db.sports import SportsTeam
-
-        game_obj = await session.get(SportsGame, game_id)
-        home_team_name = "Unknown"
-        away_team_name = "Unknown"
-        if game_obj:
-            if game_obj.home_team_id:
-                ht = await session.get(SportsTeam, game_obj.home_team_id)
-                if ht:
-                    home_team_name = ht.name
-            if game_obj.away_team_id:
-                at = await session.get(SportsTeam, game_obj.away_team_id)
-                if at:
-                    away_team_name = at.name
+        _, game_date, game_status, league_code, home_team_name, away_team_name = row
+        home_team_name = home_team_name or "Unknown"
+        away_team_name = away_team_name or "Unknown"
 
     # Read all live snapshots from Redis
     snapshots = read_all_live_snapshots_for_game(league_code, game_id)
@@ -216,15 +273,8 @@ async def fairbet_live(
         books_data = snapshot.get("books", {})
         market_category = _classify_market(market_key)
 
-        if market_category and market_category != (market_category or ""):
-            pass  # no filter
-
         if market_category:
             all_categories.add(market_category)
-
-        # Filter by category if requested
-        if market_category and market_category:
-            pass
 
         ts = snapshot.get("last_updated_at")
         if ts and (latest_update is None or ts > latest_update):

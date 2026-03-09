@@ -20,9 +20,9 @@ Predictive modeling, simulation, and matchup analysis for sports data.
 | `probabilities/` | Provider abstraction — rule-based, ML, ensemble; ProbabilityResolver for routing |
 | `services/` | AnalyticsService (API adapter), ModelService (model management) |
 | `simulation/` | Pitch-level simulators (PitchSimulator, PitchLevelGameSimulator) |
-| `sports/mlb/` | MLB PA-level game simulator, transforms, metrics, matchup logic |
+| `sports/mlb/` | MLB PA-level game simulator, transforms, metrics, matchup logic; `constants.py` is the SSOT for all MLB baselines, event probabilities, and feature defaults |
 | `training/core/` | TrainingPipeline, DatasetBuilder, ModelEvaluator |
-| `training/sports/` | Sport-specific training (MLBTrainingPipeline — data loading, label extraction) |
+| `training/sports/` | Sport-specific training (MLBTrainingPipeline — label extraction, record builders; stubs only for data loading) |
 
 ---
 
@@ -112,11 +112,18 @@ Sport-agnostic `FeatureBuilder` routes to sport-specific builders. Features are 
 ### MLB Features
 
 **Plate-appearance features (28 total):**
-- Batter (14): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, avg_exit_velocity, expected_slug, chase_rate, plate_discipline_index, z_contact_rate, o_contact_rate, z_swing_rate, o_swing_rate
-- Pitcher (14): Same set as batter — allows the model to capture pitcher-side tendencies
+- Batter (15): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, avg_exit_velocity, expected_slug, z_swing_pct, o_swing_pct, z_contact_pct, o_contact_pct, zone_swing_rate, chase_rate, plate_discipline_index
+- Pitcher (13): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, z_swing_pct, o_swing_pct, z_contact_pct, o_contact_pct, zone_swing_rate, chase_rate, plate_discipline_index
 
-**Game-level features (28 total):**
-- Home/Away (14 each): contact_rate, power_index, barrel_rate, hard_hit_rate, whiff_rate, expected_slug, avg_exit_velo, chase_rate, plate_discipline_index, z_contact_rate, o_contact_rate, z_swing_rate, o_swing_rate, swing_rate
+**Game-level features (60 total):**
+- Home (30) + Away (30): Each side exposes 30 metrics from `_GAME_METRIC_KEYS`:
+  - Derived composites (8): contact_rate, power_index, barrel_rate, hard_hit_rate, swing_rate, whiff_rate, avg_exit_velocity, expected_slug
+  - Raw plate discipline (4): z_swing_pct, o_swing_pct, z_contact_pct, o_contact_pct
+  - Raw quality of contact (3): avg_exit_velo, hard_hit_pct, barrel_pct
+  - Raw counts (10): total_pitches, balls_in_play, hard_hit_count, barrel_count, zone_pitches, zone_swings, zone_contact, outside_pitches, outside_swings, outside_contact
+  - Derived ratios (5): zone_swing_rate, chase_rate, zone_contact_rate, outside_contact_rate, plate_discipline_index
+
+Feature names are prefixed with `home_` or `away_` (e.g., `home_contact_rate`, `away_barrel_rate`).
 
 ### Feature Configuration
 
@@ -131,18 +138,29 @@ End-to-end flow: data → features → train → evaluate → register. Training
 ### Steps
 
 1. `POST /api/analytics/train` creates an `AnalyticsTrainingJob` record and dispatches the Celery task
-2. `load_training_data()` — queries `MLBGameAdvancedStats` + `SportsGame` for games in the date range
-3. `build_dataset()` — extracts features (from the linked feature loadout) and labels via DatasetBuilder
-4. `train_test_split()` — sklearn split (configurable, default 80/20)
-5. `train_model()` — fits sklearn model (gradient_boosting default; also random_forest, xgboost)
-6. `evaluate_model()` — accuracy, precision, recall, F1, Brier score
-7. `save_artifact()` — serializes to `{sport}/artifacts/{model_id}.pkl` via joblib
-8. Register in model registry; update job record with metrics and artifact path
+2. `_execute_training()` converts the DB-backed `AnalyticsFeatureConfig` (JSONB array of `{name, enabled, weight}`) into a `{feat_name: {enabled, weight}}` dict and passes it through the pipeline
+3. `load_training_data()` — handled by `app.tasks._training_helpers` (the SSOT for DB-backed training data loading):
+   - **Game model:** queries `MLBGameAdvancedStats` + `SportsGame` for games in the date range, builds rolling home/away team profiles
+   - **PA model:** queries `MLBPlayerAdvancedStats` for player stats in the date range, builds rolling batter profiles paired with opposing team profiles, derives PA outcome labels heuristically from Statcast metrics (whiff rate, barrel rate, exit velocity, hard-hit rate, swing rates)
+4. `build_dataset()` — `DatasetBuilder` → `FeatureBuilder.build_features(config=...)` → `_apply_config()` filters disabled features and applies weights from the linked loadout
+5. `train_test_split()` — sklearn split (configurable, default 80/20)
+6. `train_model()` — fits sklearn model (gradient_boosting default; also random_forest, xgboost)
+7. `evaluate_model()` — accuracy, precision, recall, F1, Brier score
+8. `save_artifact()` — serializes to `{sport}/artifacts/{model_id}.pkl` via joblib
+9. Register in model registry; update job record with metrics and artifact path
 
 ### Label Extraction (MLB)
 
+Label functions live in `MLBTrainingPipeline` (`training/sports/mlb_training.py`):
+
 - `pa_label_fn()` — PA outcome (strikeout, walk, single, double, triple, home_run, out)
-- `game_label_fn()` — game outcome (home_win, away_win)
+- `game_label_fn()` — game outcome (1 = home win, 0 = away win)
+
+For PA training data, outcomes are derived heuristically from Statcast game-level metrics by `_derive_pa_outcome()` in `_training_helpers.py`, since pitch-level outcome data is not stored per-PA.
+
+### Constants SSOT
+
+All MLB baseline constants, default event probabilities, and feature defaults are centralized in `app.analytics.sports.mlb.constants`. Consumer modules (`matchup.py`, `metrics.py`, `game_simulator.py`, `mlb_features.py`, `probability_provider.py`, `pa_model.py`, `mlb_training.py`) import from this single source.
 
 ---
 

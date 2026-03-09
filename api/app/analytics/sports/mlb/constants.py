@@ -1,0 +1,117 @@
+"""Centralized MLB constants.
+
+Single source of truth for league-average baselines, default event
+probabilities, and simulation parameters. Import from here instead
+of defining local copies.
+
+All baseline values are 2024 MLB season approximations.
+"""
+
+from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# Plate-appearance event types (canonical order)
+# ---------------------------------------------------------------------------
+
+PA_EVENTS: list[str] = [
+    "strikeout",
+    "out",
+    "walk",
+    "single",
+    "double",
+    "triple",
+    "home_run",
+]
+
+# ---------------------------------------------------------------------------
+# Default event probabilities (league-average)
+# ---------------------------------------------------------------------------
+
+DEFAULT_EVENT_PROBS: dict[str, float] = {
+    "strikeout": 0.22,
+    "out": 0.46,
+    "walk": 0.08,
+    "single": 0.15,
+    "double": 0.05,
+    "triple": 0.01,
+    "home_run": 0.03,
+}
+
+# Keyed with ``_probability`` suffix (used by game simulator).
+DEFAULT_EVENT_PROBS_SUFFIXED: dict[str, float] = {
+    "strikeout_probability": 0.22,
+    "walk_probability": 0.08,
+    "single_probability": 0.15,
+    "double_probability": 0.05,
+    "triple_probability": 0.01,
+    "home_run_probability": 0.03,
+}
+
+# ---------------------------------------------------------------------------
+# League-average baselines (batting / pitching / contact)
+# ---------------------------------------------------------------------------
+
+BASELINE_CONTACT_RATE = 0.77
+BASELINE_WHIFF_RATE = 0.23
+BASELINE_SWING_RATE = 0.50
+BASELINE_POWER_INDEX = 1.0
+BASELINE_BARREL_RATE = 0.07
+BASELINE_STRIKEOUT_RATE = 0.22
+BASELINE_WALK_RATE = 0.08
+BASELINE_AVG_EXIT_VELOCITY = 88.0
+BASELINE_HARD_HIT_RATE = 0.35
+BASELINE_CONTACT_SUPPRESSION = 0.0
+BASELINE_POWER_SUPPRESSION = 0.0
+
+# Hit-type distribution fractions (of balls in play).
+SINGLE_FRACTION = 0.60
+DOUBLE_FRACTION = 0.15
+TRIPLE_FRACTION = 0.02
+
+# ---------------------------------------------------------------------------
+# Feature-builder baselines (superset used for normalization)
+# ---------------------------------------------------------------------------
+
+FEATURE_BASELINES: dict[str, float] = {
+    # Derived composites
+    "contact_rate": BASELINE_CONTACT_RATE,
+    "power_index": BASELINE_POWER_INDEX,
+    "barrel_rate": BASELINE_BARREL_RATE,
+    "hard_hit_rate": BASELINE_HARD_HIT_RATE,
+    "swing_rate": BASELINE_SWING_RATE,
+    "whiff_rate": BASELINE_WHIFF_RATE,
+    "avg_exit_velocity": BASELINE_AVG_EXIT_VELOCITY,
+    "expected_slug": 0.77,
+    # Raw plate discipline percentages
+    "z_swing_pct": 0.68,
+    "o_swing_pct": 0.32,
+    "z_contact_pct": 0.84,
+    "o_contact_pct": 0.60,
+    # Raw quality of contact
+    "avg_exit_velo": BASELINE_AVG_EXIT_VELOCITY,
+    "hard_hit_pct": BASELINE_HARD_HIT_RATE,
+    "barrel_pct": BASELINE_BARREL_RATE,
+    # Raw counts (absolute — normalized as ratio to baseline)
+    "total_pitches": 145.0,
+    "balls_in_play": 30.0,
+    "hard_hit_count": 10.0,
+    "barrel_count": 2.0,
+    "zone_pitches": 65.0,
+    "zone_swings": 44.0,
+    "zone_contact": 37.0,
+    "outside_pitches": 80.0,
+    "outside_swings": 26.0,
+    "outside_contact": 16.0,
+    # Additional derived ratios
+    "zone_swing_rate": 0.68,
+    "chase_rate": 0.32,
+    "zone_contact_rate": 0.84,
+    "outside_contact_rate": 0.60,
+    "plate_discipline_index": 0.52,
+}
+
+# ---------------------------------------------------------------------------
+# Simulation parameters
+# ---------------------------------------------------------------------------
+
+MAX_EXTRA_INNINGS = 10

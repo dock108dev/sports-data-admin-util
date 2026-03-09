@@ -1,13 +1,12 @@
-"""MLB-specific training data loading and label extraction.
+"""MLB-specific training label extraction and record builders.
 
-Provides sport-specific logic for loading MLB historical data
-and extracting training labels for plate-appearance and game models.
+Provides label functions for plate-appearance and game models,
+plus convenience record builders for constructing training data.
 
-Usage::
-
-    mlb = MLBTrainingPipeline()
-    records = mlb.load_plate_appearance_training_data()
-    label = mlb.pa_label_fn(record)
+Data loading is handled by ``app.tasks._training_helpers`` which
+queries the database directly. The stub loaders here exist only
+as a fallback for the ``TrainingPipeline`` when no records are
+passed; they return empty lists.
 """
 
 from __future__ import annotations
@@ -15,78 +14,25 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.analytics.sports.mlb.constants import PA_EVENTS as PA_OUTCOMES
+
 logger = logging.getLogger(__name__)
-
-# Plate appearance outcome classes
-PA_OUTCOMES: list[str] = [
-    "strikeout",
-    "out",
-    "walk",
-    "single",
-    "double",
-    "triple",
-    "home_run",
-]
-
-# Pitch outcome classes
-PITCH_OUTCOMES: list[str] = [
-    "ball",
-    "called_strike",
-    "swinging_strike",
-    "foul",
-    "in_play",
-]
-
-# Batted ball outcome classes
-BATTED_BALL_OUTCOMES: list[str] = [
-    "out",
-    "single",
-    "double",
-    "triple",
-    "home_run",
-]
 
 
 class MLBTrainingPipeline:
-    """MLB-specific training data and label helpers.
-
-    Data loading methods return empty lists by default. In production,
-    these would query the database (SportsGame, MLBGameAdvancedStats,
-    etc.). Training scripts can also pass records directly to the
-    core TrainingPipeline.
-    """
+    """MLB-specific training label helpers and record builders."""
 
     def load_plate_appearance_training_data(self) -> list[dict[str, Any]]:
-        """Load historical plate-appearance training data.
-
-        Returns:
-            List of record dicts with batter_profile, pitcher_profile,
-            and label keys. Returns empty list if no data source
-            is configured.
-        """
-        logger.info("mlb_pa_training_data_load_start")
-        # Production: query MLBPlayerAdvancedStats + play-by-play data.
-        # For now, returns empty — caller should pass records directly.
+        """Stub — returns ``[]``.  Real loading is in ``_training_helpers``."""
         return []
 
     def load_game_training_data(self) -> list[dict[str, Any]]:
-        """Load historical game-level training data.
-
-        Returns:
-            List of record dicts with home_profile, away_profile,
-            and label keys.
-        """
-        logger.info("mlb_game_training_data_load_start")
-        # Production: query SportsGame with home/away team profiles.
+        """Stub — returns ``[]``.  Real loading is in ``_training_helpers``."""
         return []
 
     @staticmethod
     def pa_label_fn(record: dict[str, Any]) -> str | None:
-        """Extract plate-appearance outcome label from a record.
-
-        Looks for ``outcome`` or ``label`` key.
-        Returns ``None`` if no valid label is found.
-        """
+        """Extract plate-appearance outcome label from a record."""
         outcome = record.get("outcome") or record.get("label")
         if outcome is None:
             return None
@@ -100,7 +46,6 @@ class MLBTrainingPipeline:
         """Extract game outcome label from a record.
 
         Returns 1 for home win, 0 for away win.
-        Looks for ``home_win``, ``label``, or computes from scores.
         """
         if "home_win" in record:
             return int(record["home_win"])
@@ -118,51 +63,12 @@ class MLBTrainingPipeline:
         pitcher_metrics: dict[str, Any],
         outcome: str,
     ) -> dict[str, Any]:
-        """Build a training record for plate-appearance model.
-
-        Convenience method for constructing training data in the
-        format expected by the DatasetBuilder.
-        """
+        """Build a training record for plate-appearance model."""
         return {
             "batter_profile": {"metrics": batter_metrics},
             "pitcher_profile": {"metrics": pitcher_metrics},
             "outcome": outcome,
         }
-
-    @staticmethod
-    def pitch_label_fn(record: dict[str, Any]) -> str | None:
-        """Extract pitch outcome label from a record."""
-        outcome = record.get("pitch_result") or record.get("outcome") or record.get("label")
-        if outcome is None:
-            return None
-        outcome = str(outcome).lower().strip()
-        if outcome in PITCH_OUTCOMES:
-            return outcome
-        return None
-
-    @staticmethod
-    def batted_ball_label_fn(record: dict[str, Any]) -> str | None:
-        """Extract batted ball outcome label from a record."""
-        outcome = record.get("batted_ball_result") or record.get("outcome") or record.get("label")
-        if outcome is None:
-            return None
-        outcome = str(outcome).lower().strip()
-        if outcome in BATTED_BALL_OUTCOMES:
-            return outcome
-        return None
-
-    @staticmethod
-    def run_expectancy_label_fn(record: dict[str, Any]) -> float | None:
-        """Extract runs scored label for run expectancy training."""
-        val = record.get("runs_scored_after_state")
-        if val is None:
-            val = record.get("label")
-        if val is None:
-            return None
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            return None
 
     @staticmethod
     def build_game_record(
@@ -173,10 +79,7 @@ class MLBTrainingPipeline:
         home_score: int | None = None,
         away_score: int | None = None,
     ) -> dict[str, Any]:
-        """Build a training record for game model.
-
-        Convenience method for constructing training data.
-        """
+        """Build a training record for game model."""
         record: dict[str, Any] = {
             "home_profile": {"metrics": home_metrics},
             "away_profile": {"metrics": away_metrics},
