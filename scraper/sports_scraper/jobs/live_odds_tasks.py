@@ -54,10 +54,26 @@ def poll_live_odds_mainline(league_code: str, game_ids: list[int]) -> dict:
                 .filter(db_models.SportsGame.id.in_(game_id_set))
                 .all()
             )
+            # Pre-load team names for fallback matching
+            team_ids = set()
+            for g in games:
+                team_ids.add(g.home_team_id)
+                team_ids.add(g.away_team_id)
+            team_name_map: dict[int, str] = {}
+            if team_ids:
+                teams = (
+                    session.query(db_models.SportsTeam.id, db_models.SportsTeam.name)
+                    .filter(db_models.SportsTeam.id.in_(team_ids))
+                    .all()
+                )
+                team_name_map = {t.id: t.name for t in teams}
+
             for g in games:
                 game_info[g.id] = {
                     "status": g.status,
                     "external_ids": g.external_ids or {},
+                    "home_team_name": team_name_map.get(g.home_team_id, ""),
+                    "away_team_name": team_name_map.get(g.away_team_id, ""),
                 }
 
         # Ensure closing lines captured for games transitioning to live
@@ -113,6 +129,76 @@ def poll_live_odds_mainline(league_code: str, game_ids: list[int]) -> dict:
             eid = info["external_ids"].get("odds_api_event_id")
             if eid:
                 event_to_game[eid] = gid
+
+        # Fallback: match events by team name for games missing odds_api_event_id
+        games_without_eid = {
+            gid for gid, info in game_info.items()
+            if not info["external_ids"].get("odds_api_event_id")
+        }
+        if games_without_eid and events:
+            from ..normalization import normalize_team_name
+
+            # Build normalized name lookup: (home_norm, away_norm) -> game_id
+            name_to_game: dict[tuple[str, str], int] = {}
+            for gid in games_without_eid:
+                info = game_info[gid]
+                h_norm, _ = normalize_team_name(league_code, info["home_team_name"])
+                a_norm, _ = normalize_team_name(league_code, info["away_team_name"])
+                name_to_game[(h_norm.lower(), a_norm.lower())] = gid
+
+            for event in events:
+                eid = event.get("id", "")
+                if eid in event_to_game:
+                    continue  # Already matched
+                h_name = event.get("home_team", "")
+                a_name = event.get("away_team", "")
+                h_norm, _ = normalize_team_name(league_code, h_name)
+                a_norm, _ = normalize_team_name(league_code, a_name)
+                key = (h_norm.lower(), a_norm.lower())
+                matched_gid = name_to_game.get(key)
+                # Also try swapped (neutral sites)
+                if matched_gid is None:
+                    matched_gid = name_to_game.get((a_norm.lower(), h_norm.lower()))
+                if matched_gid is not None:
+                    event_to_game[eid] = matched_gid
+                    # Persist the event ID so future polls use fast path
+                    try:
+                        with get_session() as session:
+                            game = session.get(db_models.SportsGame, matched_gid)
+                            if game:
+                                ext = dict(game.external_ids or {})
+                                ext["odds_api_event_id"] = eid
+                                game.external_ids = ext
+                                session.commit()
+                        logger.info(
+                            "live_odds_event_id_backfilled",
+                            game_id=matched_gid,
+                            event_id=eid,
+                            league=league_code,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "live_odds_event_id_backfill_error",
+                            game_id=matched_gid,
+                            error=str(exc),
+                        )
+
+        # Log match summary for debugging
+        matched_count = len(event_to_game)
+        unmatched_events = [
+            {"id": e.get("id", ""), "home": e.get("home_team", ""), "away": e.get("away_team", "")}
+            for e in events if e.get("id", "") not in event_to_game
+        ]
+        if unmatched_events:
+            logger.warning(
+                "live_odds_unmatched_events",
+                league=league_code,
+                matched=matched_count,
+                unmatched=len(unmatched_events),
+                samples=unmatched_events[:5],
+                db_games=len(game_info),
+                games_with_eid=len(event_to_game),
+            )
 
         # Aggregate all bookmakers per (game_id, market_key)
         # Structure: {(game_id, market_key): {book_name: [selections]}}

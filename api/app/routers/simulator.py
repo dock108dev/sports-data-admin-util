@@ -30,6 +30,14 @@ from app.analytics.services.profile_service import (
 )
 from app.db import get_db
 
+# Canonical 30 MLB team abbreviations — excludes All-Star, minor league,
+# and spring training teams that may exist in the DB under the MLB league.
+_MLB_TEAM_ABBRS = frozenset({
+    "ARI", "ATL", "BAL", "BOS", "CHC", "CWS", "CIN", "CLE", "COL", "DET",
+    "HOU", "KC", "LAA", "LAD", "MIA", "MIL", "MIN", "NYM", "NYY", "OAK",
+    "PHI", "PIT", "SD", "SF", "SEA", "STL", "TB", "TEX", "TOR", "WSH",
+})
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/simulator", tags=["simulator"])
@@ -238,14 +246,7 @@ async def list_simulator_teams(
     from sqlalchemy import func as sa_func, select as sa_select
 
     from app.db.mlb_advanced import MLBGameAdvancedStats
-    from app.db.sports import SportsLeague, SportsTeam
-
-    # Subquery to get the MLB league ID
-    mlb_league_sq = (
-        sa_select(SportsLeague.id)
-        .where(SportsLeague.code == "MLB")
-        .scalar_subquery()
-    )
+    from app.db.sports import SportsTeam
 
     stmt = (
         sa_select(
@@ -259,8 +260,7 @@ async def list_simulator_teams(
             MLBGameAdvancedStats,
             MLBGameAdvancedStats.team_id == SportsTeam.id,
         )
-        .where(SportsTeam.abbreviation.isnot(None))
-        .where(SportsTeam.league_id == mlb_league_sq)
+        .where(SportsTeam.abbreviation.in_(_MLB_TEAM_ABBRS))
         .group_by(SportsTeam.id)
         .order_by(SportsTeam.name)
     )
