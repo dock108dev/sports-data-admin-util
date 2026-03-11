@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -101,7 +102,14 @@ async def signup(
         is_active=True,
     )
     db.add(user)
-    await db.flush()  # populate user.id
+    try:
+        await db.flush()  # populate user.id
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
+        )
 
     token = create_access_token(user.id, user.role)
     logger.info("user_signup", extra={"user_id": user.id, "email": user.email})
@@ -215,7 +223,11 @@ async def update_email(
         raise HTTPException(status_code=409, detail="Email already registered")
 
     user.email = body.email.lower()
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Email already registered")
 
     logger.info("user_email_updated", extra={"user_id": user.id, "new_email": user.email})
     return MeResponse(id=user.id, email=user.email, role=user.role)
