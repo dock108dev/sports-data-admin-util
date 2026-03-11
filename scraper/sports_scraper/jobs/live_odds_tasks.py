@@ -290,7 +290,7 @@ def poll_live_odds_props(league_code: str, game_ids: list[int]) -> dict:
                 session.query(db_models.SportsGame)
                 .filter(
                     db_models.SportsGame.id.in_(game_ids),
-                    db_models.SportsGame.status.in_(["live", "pregame"]),
+                    db_models.SportsGame.status == "live",
                 )
                 .all()
             )

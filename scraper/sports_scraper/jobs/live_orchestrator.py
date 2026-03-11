@@ -77,7 +77,10 @@ def live_orchestrator_tick() -> dict:
         r = redis_lib.from_url(settings.redis_url, decode_responses=True)
 
         with get_session() as session:
-            # Find all live/pregame games
+            # Only poll live odds for games actually in progress.
+            # Pregame odds are handled by the Beat-scheduled sync_mainline_odds
+            # task.  Including pregame here would write pregame lines into the
+            # live Redis keys and pollute the live odds view.
             live_games = (
                 session.query(
                     db_models.SportsGame.id,
@@ -86,7 +89,7 @@ def live_orchestrator_tick() -> dict:
                 )
                 .join(db_models.SportsLeague)
                 .filter(
-                    db_models.SportsGame.status.in_(["live", "pregame"])
+                    db_models.SportsGame.status == "live",
                 )
                 .all()
             )
