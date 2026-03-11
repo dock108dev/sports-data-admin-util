@@ -95,12 +95,13 @@ Response: same as signup.
 
 #### Using the Token
 
-Include the JWT in the `Authorization` header:
+Include the JWT in the `Authorization` header **alongside** the API key.
+Without a JWT, role-gated endpoints treat the caller as `guest`:
 
 ```http
 GET /api/fairbet/odds HTTP/1.1
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 X-API-Key: your-api-key-here
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 #### Get Current Identity
