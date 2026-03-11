@@ -51,7 +51,9 @@ docker compose --profile prod up -d
 
 ### Edge Routing (Caddy)
 
-The canonical Caddyfile lives at `infra/Caddyfile`. Copy it to the server and reload Caddy whenever routes change.
+The canonical sports-data-admin site block lives at `infra/Caddyfile`.
+Merge/update that site block into the active server config at `/etc/caddy/Caddyfile`, then reload Caddy.
+Do **not** blindly overwrite `/etc/caddy/Caddyfile` if it also contains other domains.
 
 All FastAPI route prefixes (`/api/*`, `/auth/*`, `/v1/*`, `/healthz`, `/docs`, `/openapi.json`) must be routed to `localhost:8000`. Everything else goes to the Next.js admin UI on `localhost:3000`.
 
@@ -66,6 +68,8 @@ handle_path /api/* {
 With `handle_path`, a request to `/api/admin/sports/games` becomes `/admin/sports/games` upstream, causing FastAPI to return 404.
 
 **Another pitfall:** Forgetting to route `/auth/*` to FastAPI. Without it, auth requests (login, signup, etc.) fall through to Next.js, which rejects them with its own Basic auth middleware — returning a misleading `401 Basic realm="Sports Admin"` that looks like a Caddy issue.
+
+**Deployment note:** The GitHub Actions deploy workflow does not currently update or reload Caddy. Route changes in this repository are not active until `/etc/caddy/Caddyfile` is manually updated on the server and Caddy is reloaded.
 
 ---
 

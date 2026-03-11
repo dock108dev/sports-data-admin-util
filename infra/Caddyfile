@@ -1,4 +1,7 @@
-# Edge reverse-proxy for sports-data-admin.
+# Edge reverse-proxy site block for sports-data-admin.
+#
+# Merge this site block into /etc/caddy/Caddyfile on the server.
+# Do not overwrite the full file if it contains other domains.
 #
 # Caddy sits on the host (outside Docker) and routes traffic to:
 #   - FastAPI  (localhost:8000) — API + auth + realtime + docs

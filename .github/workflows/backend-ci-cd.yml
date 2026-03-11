@@ -156,11 +156,14 @@ jobs:
           GH_REPO: ${{ github.repository }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           GH_REF: ${{ github.ref_name }}
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_BEFORE: ${{ github.event.before }}
+          GH_SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: GHCR_TOKEN,GH_ACTOR,GH_REPO,DEPLOY_PATH,GH_REF
+          envs: GHCR_TOKEN,GH_ACTOR,GH_REPO,DEPLOY_PATH,GH_REF,GH_EVENT_NAME,GH_BEFORE,GH_SHA
           script: |
             set -euo pipefail
 
@@ -187,6 +190,91 @@ jobs:
             echo "Resetting to origin/$BRANCH..."
             git checkout -B "$BRANCH" "origin/$BRANCH"
             git reset --hard "origin/$BRANCH"
+
+            CADDY_CHANGED=false
+            if [ "${GH_EVENT_NAME:-}" = "push" ] && [ -n "${GH_BEFORE:-}" ] && [ -n "${GH_SHA:-}" ]; then
+              if git diff --name-only "$GH_BEFORE" "$GH_SHA" -- infra/Caddyfile | grep -q "infra/Caddyfile"; then
+                CADDY_CHANGED=true
+              fi
+            fi
+
+            if [ "$CADDY_CHANGED" = true ]; then
+              echo "Detected infra/Caddyfile change in this deploy. Updating active Caddy config..."
+
+              if [ ! -f "infra/Caddyfile" ]; then
+                echo "ERROR: infra/Caddyfile missing in repo checkout"
+                exit 1
+              fi
+
+              if [ ! -f "/etc/caddy/Caddyfile" ]; then
+                echo "ERROR: /etc/caddy/Caddyfile not found on server"
+                exit 1
+              fi
+
+              python3 - <<'PY'
+import pathlib
+import sys
+
+repo_caddy = pathlib.Path("infra/Caddyfile").read_text()
+live_path = pathlib.Path("/etc/caddy/Caddyfile")
+live_caddy = live_path.read_text()
+
+site_header = "sports-data-admin.dock108.ai"
+
+def extract_site_block(content: str, header: str) -> str:
+    start = content.find(header)
+    if start == -1:
+        raise RuntimeError(f"Could not find site header '{header}' in infra/Caddyfile")
+
+    open_brace = content.find("{", start)
+    if open_brace == -1:
+        raise RuntimeError("Could not find opening brace for site block in infra/Caddyfile")
+
+    depth = 0
+    for i in range(open_brace, len(content)):
+        ch = content[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                block = content[start:i + 1]
+                return block.strip() + "\n"
+    raise RuntimeError("Could not find closing brace for site block in infra/Caddyfile")
+
+def replace_or_append_site_block(content: str, header: str, new_block: str) -> str:
+    start = content.find(header)
+    if start == -1:
+        return content.rstrip() + "\n\n" + new_block
+
+    open_brace = content.find("{", start)
+    if open_brace == -1:
+        raise RuntimeError("Malformed /etc/caddy/Caddyfile: site header found without opening brace")
+
+    depth = 0
+    for i in range(open_brace, len(content)):
+        ch = content[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                return content[:start] + new_block + content[end:]
+    raise RuntimeError("Malformed /etc/caddy/Caddyfile: unmatched braces in site block")
+
+new_block = extract_site_block(repo_caddy, site_header)
+updated = replace_or_append_site_block(live_caddy, site_header, new_block)
+live_path.write_text(updated)
+print("Updated sports-data-admin.dock108.ai site block in /etc/caddy/Caddyfile")
+PY
+
+              caddy validate --config /etc/caddy/Caddyfile
+              systemctl reload caddy
+              echo "Caddy reload complete."
+            else
+              echo "No infra/Caddyfile change detected; skipping Caddy update."
+            fi
 
             if [ ! -f "infra/.env" ]; then
               echo "ERROR: infra/.env file missing in $BASE_DIR"
