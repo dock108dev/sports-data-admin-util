@@ -60,11 +60,14 @@ class SimulationRunner:
         rng = random.Random(seed)
         results: list[dict[str, Any]] = []
 
-        sim_fn = (
-            simulator.simulate_game_with_lineups
-            if use_lineup and hasattr(simulator, "simulate_game_with_lineups")
-            else simulator.simulate_game
-        )
+        if use_lineup:
+            if not hasattr(simulator, "simulate_game_with_lineups"):
+                raise RuntimeError(
+                    f"{type(simulator).__name__} does not support lineup-aware simulation"
+                )
+            sim_fn = simulator.simulate_game_with_lineups
+        else:
+            sim_fn = simulator.simulate_game
 
         for _ in range(iterations):
             result = sim_fn(game_context, rng=rng)

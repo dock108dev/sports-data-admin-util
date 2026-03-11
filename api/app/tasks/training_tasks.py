@@ -1,6 +1,6 @@
 """Celery tasks for analytics model training and backtesting.
 
-Dispatched from the workbench UI when a user kicks off model training
+Dispatched from the models UI when a user kicks off model training
 or backtesting. Runs pipelines asynchronously and updates DB job rows
 with results.
 """
