@@ -28,8 +28,8 @@ export default function BatchSimsPage() {
     try {
       const res = await listBatchSimJobs(sport);
       setJobs(res.jobs);
-    } catch (err) {
-      console.warn("Failed to load batch sim jobs:", err);
+    } catch {
+      setError("Failed to load batch sim jobs");
     }
   }, [sport]);
 

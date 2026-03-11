@@ -102,8 +102,8 @@ export function PregameSimulator() {
           setAwayStarter({ external_ref: top.external_ref, name: top.name });
         }
       }
-    } catch (err) {
-      console.warn(`Failed to load roster for ${team}:`, err);
+    } catch {
+      setError(`Failed to load roster for ${team}`);
     } finally {
       setRosterLoading(false);
     }
