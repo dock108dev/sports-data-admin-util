@@ -368,7 +368,7 @@ export function PregameSimulator() {
               </div>
               <span className={styles.probLabel} style={{ textAlign: "right" }}>{result.away_team}</span>
             </div>
-            {result.profile_meta?.lineup_mode && (
+            {!!result.profile_meta?.lineup_mode && (
               <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.5rem" }}>
                 Lineup-aware simulation with per-batter matchup probabilities
               </p>

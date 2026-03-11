@@ -54,22 +54,22 @@ class TestPitcherTransition:
         """Before transition inning, starter weights are used."""
         sim = MLBGameSimulator()
         # Starter weights: all strikeouts (0 runs)
-        # Bullpen weights: all home runs (lots of runs)
+        # Bullpen weights: high-K but some walks (avoids infinite inning)
         k_weights = [1.0, 0, 0, 0, 0, 0, 0]
-        hr_weights = [0, 0, 0, 0, 0, 0, 1.0]
+        # Bullpen: 70% K, 20% walk, 10% single — will produce outs
+        bp_weights = [0.70, 0, 0.20, 0.10, 0, 0, 0]
 
         game_context = {
             "home_lineup_weights": [k_weights] * 9,
             "away_lineup_weights": [k_weights] * 9,
-            "home_bullpen_weights": [hr_weights] * 9,
-            "away_bullpen_weights": [hr_weights] * 9,
+            "home_bullpen_weights": [bp_weights] * 9,
+            "away_bullpen_weights": [bp_weights] * 9,
             "starter_innings": 6.0,
         }
 
         rng = random.Random(99)
         result = sim.simulate_game_with_lineups(game_context, rng)
-        # With strikeout starters through 6 innings and HR bullpen after,
-        # scores should be non-zero (bullpen innings produce runs)
+        # Starter innings (1-6) produce 0 runs, bullpen (7-9) may allow some
         assert result["home_score"] >= 0
         assert result["away_score"] >= 0
         assert "winner" in result
