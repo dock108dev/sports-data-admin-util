@@ -23,6 +23,12 @@ export default function UsersPage() {
   const [newRole, setNewRole] = useState("user");
   const [creating, setCreating] = useState(false);
 
+  // Inline edit state
+  const [editingEmailId, setEditingEmailId] = useState<number | null>(null);
+  const [editEmailValue, setEditEmailValue] = useState("");
+  const [resetPasswordId, setResetPasswordId] = useState<number | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
@@ -92,6 +98,56 @@ export default function UsersPage() {
       fetchUsers();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update status");
+    }
+  }
+
+  async function handleEmailUpdate(userId: number) {
+    try {
+      const res = await fetch(`/proxy/api/admin/users/${userId}/email`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: editEmailValue }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `Failed to update email (${res.status})`);
+      }
+      setEditingEmailId(null);
+      setEditEmailValue("");
+      fetchUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update email");
+    }
+  }
+
+  async function handleResetPassword(userId: number) {
+    try {
+      const res = await fetch(`/proxy/api/admin/users/${userId}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: resetPasswordValue }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `Failed to reset password (${res.status})`);
+      }
+      setResetPasswordId(null);
+      setResetPasswordValue("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reset password");
+    }
+  }
+
+  async function handleDelete(userId: number, email: string) {
+    if (!confirm(`Delete user ${email}? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/proxy/api/admin/users/${userId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`Failed to delete user (${res.status})`);
+      fetchUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete user");
     }
   }
 
@@ -189,7 +245,42 @@ export default function UsersPage() {
             {users.map((user) => (
               <tr key={user.id} className={!user.is_active ? styles.inactive : ""}>
                 <td>{user.id}</td>
-                <td>{user.email}</td>
+                <td>
+                  {editingEmailId === user.id ? (
+                    <span className={styles.inlineEdit}>
+                      <input
+                        type="email"
+                        value={editEmailValue}
+                        onChange={(e) => setEditEmailValue(e.target.value)}
+                        className={styles.inlineInput}
+                        autoFocus
+                      />
+                      <button
+                        className={styles.inlineSave}
+                        onClick={() => handleEmailUpdate(user.id)}
+                      >
+                        Save
+                      </button>
+                      <button
+                        className={styles.inlineCancel}
+                        onClick={() => setEditingEmailId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <span
+                      className={styles.editableEmail}
+                      onClick={() => {
+                        setEditingEmailId(user.id);
+                        setEditEmailValue(user.email);
+                      }}
+                      title="Click to edit"
+                    >
+                      {user.email}
+                    </span>
+                  )}
+                </td>
                 <td>
                   <select
                     value={user.role}
@@ -209,12 +300,56 @@ export default function UsersPage() {
                 </td>
                 <td>{new Date(user.created_at).toLocaleDateString()}</td>
                 <td>
-                  <button
-                    className={`${styles.actionBtn} ${user.is_active ? styles.disableBtn : styles.enableBtn}`}
-                    onClick={() => handleToggleActive(user.id, user.is_active)}
-                  >
-                    {user.is_active ? "Disable" : "Enable"}
-                  </button>
+                  <div className={styles.actions}>
+                    <button
+                      className={`${styles.actionBtn} ${user.is_active ? styles.disableBtn : styles.enableBtn}`}
+                      onClick={() => handleToggleActive(user.id, user.is_active)}
+                    >
+                      {user.is_active ? "Disable" : "Enable"}
+                    </button>
+                    {resetPasswordId === user.id ? (
+                      <span className={styles.inlineEdit}>
+                        <input
+                          type="password"
+                          value={resetPasswordValue}
+                          onChange={(e) => setResetPasswordValue(e.target.value)}
+                          className={styles.inlineInput}
+                          placeholder="New password"
+                          minLength={8}
+                          autoFocus
+                        />
+                        <button
+                          className={styles.inlineSave}
+                          onClick={() => handleResetPassword(user.id)}
+                          disabled={resetPasswordValue.length < 8}
+                        >
+                          Set
+                        </button>
+                        <button
+                          className={styles.inlineCancel}
+                          onClick={() => {
+                            setResetPasswordId(null);
+                            setResetPasswordValue("");
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        className={`${styles.actionBtn} ${styles.resetBtn}`}
+                        onClick={() => setResetPasswordId(user.id)}
+                      >
+                        Reset PW
+                      </button>
+                    )}
+                    <button
+                      className={`${styles.actionBtn} ${styles.deleteBtn}`}
+                      onClick={() => handleDelete(user.id, user.email)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
