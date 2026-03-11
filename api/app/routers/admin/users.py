@@ -1,0 +1,183 @@
+"""Admin users management endpoints.
+
+These endpoints are for the admin UI to manage user accounts.
+No additional authentication is required because the admin utility
+runs on a secured internal server.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from passlib.context import CryptContext
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import get_db
+from app.db.users import User
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(tags=["admin", "users"])
+
+_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+# ---------------------------------------------------------------------------
+# Request / Response models
+# ---------------------------------------------------------------------------
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    role: str
+    is_active: bool
+    created_at: str
+
+    model_config = {"from_attributes": True}
+
+
+class CreateUserRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8)
+    role: str = Field(default="user", pattern="^(user|admin)$")
+
+
+class UpdateRoleRequest(BaseModel):
+    role: str = Field(..., pattern="^(user|admin)$")
+
+
+class SetActiveRequest(BaseModel):
+    is_active: bool
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/users",
+    response_model=list[UserOut],
+    summary="List all user accounts",
+)
+async def list_users(db: AsyncSession = Depends(get_db)) -> list[UserOut]:
+    result = await db.execute(
+        select(User).order_by(User.created_at.desc())
+    )
+    users = result.scalars().all()
+    return [
+        UserOut(
+            id=u.id,
+            email=u.email,
+            role=u.role,
+            is_active=u.is_active,
+            created_at=u.created_at.isoformat(),
+        )
+        for u in users
+    ]
+
+
+@router.post(
+    "/users",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a user account (admin)",
+)
+async def create_user(
+    body: CreateUserRequest,
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    existing = await db.execute(
+        select(User).where(User.email == body.email.lower())
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
+        )
+
+    user = User(
+        email=body.email.lower(),
+        password_hash=_pwd_ctx.hash(body.password),
+        role=body.role,
+        is_active=True,
+    )
+    db.add(user)
+    await db.flush()
+
+    logger.info("admin_create_user", extra={"user_id": user.id, "email": user.email})
+
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        created_at=user.created_at.isoformat(),
+    )
+
+
+@router.patch(
+    "/users/{user_id}/role",
+    response_model=UserOut,
+    summary="Change a user's role",
+)
+async def update_role(
+    user_id: int,
+    body: UpdateRoleRequest,
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.role = body.role
+    await db.flush()
+
+    logger.info(
+        "admin_update_role",
+        extra={"user_id": user.id, "new_role": body.role},
+    )
+
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        created_at=user.created_at.isoformat(),
+    )
+
+
+@router.patch(
+    "/users/{user_id}/active",
+    response_model=UserOut,
+    summary="Enable or disable a user account",
+)
+async def set_active(
+    user_id: int,
+    body: SetActiveRequest,
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_active = body.is_active
+    await db.flush()
+
+    action = "enabled" if body.is_active else "disabled"
+    logger.info(
+        f"admin_user_{action}",
+        extra={"user_id": user.id},
+    )
+
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        created_at=user.created_at.isoformat(),
+    )

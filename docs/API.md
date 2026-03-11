@@ -36,11 +36,11 @@
 
 ## Authentication
 
-All API endpoints (except `/healthz`) require API key authentication.
+The API supports two authentication mechanisms:
 
-### Request Header
+### 1. API Key (Admin/Internal)
 
-Include your API key in the `X-API-Key` header:
+Admin UI endpoints require API key authentication via the `X-API-Key` header:
 
 ```http
 GET /api/admin/sports/games HTTP/1.1
@@ -48,27 +48,107 @@ Host: sports-data-admin.dock108.ai
 X-API-Key: your-api-key-here
 ```
 
+### 2. JWT Bearer Token (Downstream Apps)
+
+Downstream consuming applications authenticate using JWT tokens obtained from the `/auth` endpoints.
+
+#### Sign Up
+
+```http
+POST /auth/signup
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "securepassword"
+}
+```
+
+Response:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "token_type": "bearer",
+  "role": "user"
+}
+```
+
+#### Log In
+
+```http
+POST /auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "securepassword"
+}
+```
+
+Response: same as signup.
+
+#### Using the Token
+
+Include the JWT in the `Authorization` header:
+
+```http
+GET /api/fairbet/odds HTTP/1.1
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+X-API-Key: your-api-key-here
+```
+
+#### Get Current Identity
+
+```http
+GET /auth/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+Guest response (no token):
+```json
+{ "id": null, "email": null, "role": "guest" }
+```
+
+Authenticated response:
+```json
+{ "id": 42, "email": "user@example.com", "role": "user" }
+```
+
+### Roles
+
+| Role | Description | Access |
+|------|-------------|--------|
+| `guest` | No token provided | Games, settings, pregame FairBet |
+| `user` | Authenticated beta user | Everything guest + full FairBet |
+| `admin` | Developer access | Everything user + analytics, history |
+
+### JWT Payload
+
+```json
+{
+  "sub": "42",
+  "role": "user",
+  "exp": 1710000000
+}
+```
+
 ### Error Responses
 
 | Status | Description |
 |--------|-------------|
-| `401 Unauthorized` | Missing or invalid API key |
-
-**Example error response:**
-```json
-{
-  "detail": "Missing API key"
-}
-```
+| `401 Unauthorized` | Missing/invalid API key or expired/invalid JWT |
+| `403 Forbidden` | Valid token but insufficient role for the endpoint |
 
 ### Configuration
 
-The API key is configured via the `API_KEY` environment variable on the server.
+| Variable | Description |
+|----------|-------------|
+| `API_KEY` | API key for admin endpoints (min 32 chars in production) |
+| `JWT_SECRET` | Secret key for signing JWTs (change in production) |
+| `JWT_EXPIRE_MINUTES` | Token lifetime in minutes (default: 1440 = 24h) |
+| `AUTH_ENABLED` | Set to `false` to bypass role checks (all requests get admin). Default: `true` |
 
-**Requirements:**
-- Must be set in production/staging environments
-- Minimum 32 characters
-- Generate with: `openssl rand -hex 32`
+Generate secrets: `openssl rand -hex 32`
 
 ### Health Check Exception
 
