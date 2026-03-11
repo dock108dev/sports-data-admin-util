@@ -211,63 +211,10 @@ jobs:
                 exit 1
               fi
 
-              python3 - <<'PY'
-import pathlib
-import sys
-
-repo_caddy = pathlib.Path("infra/Caddyfile").read_text()
-live_path = pathlib.Path("/etc/caddy/Caddyfile")
-live_caddy = live_path.read_text()
-
-site_header = "sports-data-admin.dock108.ai"
-
-def extract_site_block(content: str, header: str) -> str:
-    start = content.find(header)
-    if start == -1:
-        raise RuntimeError(f"Could not find site header '{header}' in infra/Caddyfile")
-
-    open_brace = content.find("{", start)
-    if open_brace == -1:
-        raise RuntimeError("Could not find opening brace for site block in infra/Caddyfile")
-
-    depth = 0
-    for i in range(open_brace, len(content)):
-        ch = content[i]
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                block = content[start:i + 1]
-                return block.strip() + "\n"
-    raise RuntimeError("Could not find closing brace for site block in infra/Caddyfile")
-
-def replace_or_append_site_block(content: str, header: str, new_block: str) -> str:
-    start = content.find(header)
-    if start == -1:
-        return content.rstrip() + "\n\n" + new_block
-
-    open_brace = content.find("{", start)
-    if open_brace == -1:
-        raise RuntimeError("Malformed /etc/caddy/Caddyfile: site header found without opening brace")
-
-    depth = 0
-    for i in range(open_brace, len(content)):
-        ch = content[i]
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                end = i + 1
-                return content[:start] + new_block + content[end:]
-    raise RuntimeError("Malformed /etc/caddy/Caddyfile: unmatched braces in site block")
-
-new_block = extract_site_block(repo_caddy, site_header)
-updated = replace_or_append_site_block(live_caddy, site_header, new_block)
-live_path.write_text(updated)
-print("Updated sports-data-admin.dock108.ai site block in /etc/caddy/Caddyfile")
-PY
+              python3 infra/scripts/update_caddy_site_block.py \
+                infra/Caddyfile \
+                /etc/caddy/Caddyfile \
+                sports-data-admin.dock108.ai
 
               caddy validate --config /etc/caddy/Caddyfile
               systemctl reload caddy
