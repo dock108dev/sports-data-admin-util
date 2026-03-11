@@ -14,7 +14,6 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -23,12 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.db.users import User
 from app.dependencies.roles import create_access_token, require_user, resolve_role
+from app.security import pwd_context as _pwd_ctx
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # ---------------------------------------------------------------------------

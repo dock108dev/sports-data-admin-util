@@ -13,19 +13,17 @@ import asyncio
 import os
 import sys
 
-from passlib.context import CryptContext
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Ensure app modules are importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.db.users import User  # noqa: E402
+from app.security import pwd_context as _pwd_ctx  # noqa: E402
 
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-ADMIN_EMAIL = "mike.fuscoletti@gmail.com"
-ADMIN_PASSWORD = "4815162342bogey"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 ADMIN_ROLE = "admin"
 
 
@@ -33,6 +31,9 @@ async def main() -> None:
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         print("ERROR: DATABASE_URL environment variable is required.")
+        sys.exit(1)
+    if not ADMIN_EMAIL or not ADMIN_PASSWORD:
+        print("ERROR: ADMIN_EMAIL and ADMIN_PASSWORD environment variables are required.")
         sys.exit(1)
 
     engine = create_async_engine(database_url, echo=False)
