@@ -1,0 +1,42 @@
+# Edge reverse-proxy for sports-data-admin.
+#
+# Caddy sits on the host (outside Docker) and routes traffic to:
+#   - FastAPI  (localhost:8000) — API + auth + realtime + docs
+#   - Next.js  (localhost:3000) — Admin web UI
+#
+# IMPORTANT: Use `handle`, NOT `handle_path`. handle_path strips the
+# matched prefix, causing FastAPI to 404 on /api/admin/... routes.
+
+sports-data-admin.dock108.ai {
+	encode gzip
+
+	# ── FastAPI backend ──────────────────────────────────────────
+	handle /api/* {
+		reverse_proxy localhost:8000
+	}
+
+	handle /auth/* {
+		reverse_proxy localhost:8000
+	}
+
+	handle /v1/* {
+		reverse_proxy localhost:8000
+	}
+
+	handle /healthz {
+		reverse_proxy localhost:8000
+	}
+
+	handle /docs {
+		reverse_proxy localhost:8000
+	}
+
+	handle /openapi.json {
+		reverse_proxy localhost:8000
+	}
+
+	# ── Next.js admin UI (catch-all) ────────────────────────────
+	handle {
+		reverse_proxy localhost:3000
+	}
+}

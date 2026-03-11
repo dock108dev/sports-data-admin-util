@@ -87,9 +87,8 @@ function unauthorizedResponse(): NextResponse {
   });
 }
 
-// Apply to all routes except static assets, API proxy, API routes, and healthz.
-// API routes use X-API-Key auth, not basic auth.
-// The /proxy/ route forwards browser requests to the backend with the API key.
+// Apply to admin UI pages only. Exempt all backend-bound paths so that if
+// Caddy mis-routes them here they pass through instead of getting a spurious 401.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|proxy/|healthz).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|proxy/|auth/|v1/|healthz|docs|openapi\\.json).*)"],
 };
