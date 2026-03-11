@@ -36,6 +36,24 @@ def _normalize_ncaab_name_for_matching(name: str) -> str:
     # Replace parenthetical locations with space-separated
     normalized = re.sub(r"\s*\(([^)]+)\)\s*", r" \1 ", normalized)
 
+    # Expand parenthetical city/state abbreviations used in NCAAB canonical
+    # names so they match the full-name forms returned by external APIs.
+    # e.g. "loyola chi" ↔ "loyola chicago"
+    _parens_expansions = [
+        (r"\bchi\b", "chicago"),
+        (r"\bmd\b", "maryland"),
+        (r"\boh\b", "ohio"),
+        (r"\bpa\b", "pennsylvania"),
+        (r"\bmn\b", "minnesota"),
+        (r"\bnc\b", "north carolina"),
+        (r"\bca\b", "california"),
+        (r"\bfl\b", "florida"),
+        (r"\btx\b", "texas"),
+        (r"\bny\b", "new york"),
+    ]
+    for pattern, replacement in _parens_expansions:
+        normalized = re.sub(pattern, replacement, normalized)
+
     # Common abbreviations
     replacements = [
         (r"\bst\.\s*", "saint "),
