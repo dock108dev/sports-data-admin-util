@@ -422,11 +422,18 @@ def _regress_pitcher_profile(
 def _pitching_metrics_from_profile(
     team_profile: dict[str, float] | None,
 ) -> dict[str, float] | None:
-    """Derive pitcher-shaped metrics from a team's rolling profile.
+    """Derive mild bullpen adjustments from a team's batting profile.
 
-    Maps team batting metrics to the opposing pitcher's perspective so
-    that bullpen weights reflect the actual team pitching tendencies
-    rather than a generic league-average fallback.
+    The previous implementation tried to invert batting stats into pitcher
+    metrics, producing nonsensical values (e.g., -90% power suppression).
+
+    Now: use league-average pitcher baselines with small nudges based on
+    the team's own offensive tendencies as a proxy for pitching staff
+    quality.  Teams that strike out a lot tend to have pitchers with
+    higher K rates; teams with low barrel rates tend to suppress power.
+
+    The adjustments are deliberately small (clamped to +-0.05) because
+    batting stats are a weak proxy for pitching ability.
     """
     if not team_profile:
         return None
@@ -434,11 +441,19 @@ def _pitching_metrics_from_profile(
     contact = team_profile.get("contact_rate")
     if whiff is None and contact is None:
         return None
+
+    # Small offsets from league average, clamped to avoid extreme values
+    k_offset = min(max((whiff or 0.23) - 0.23, -0.05), 0.05)
+    bb_offset = min(max(0.08 - (team_profile.get("plate_discipline_index", 0.52) - 0.52) * 0.1, -0.03), 0.03)
+    contact_offset = min(max(0.77 - (contact or 0.77), -0.05), 0.05) * 0.3
+    barrel = team_profile.get("barrel_rate", 0.07)
+    power_offset = min(max((0.07 - barrel) / 0.07, -0.15), 0.15) * 0.3
+
     return {
-        "strikeout_rate": whiff if whiff is not None else 0.22,
-        "walk_rate": 1.0 - team_profile.get("plate_discipline_index", 0.52) if "plate_discipline_index" in team_profile else 0.08,
-        "contact_suppression": round(1.0 - (contact or 0.77) - 0.23, 4),
-        "power_suppression": round(1.0 - (team_profile.get("barrel_rate", 0.07) / 0.07), 4) if team_profile.get("barrel_rate") else 0.0,
+        "strikeout_rate": round(0.22 + k_offset, 4),
+        "walk_rate": round(max(0.04, min(0.12, 0.08 + bb_offset)), 4),
+        "contact_suppression": round(max(-0.05, min(0.05, contact_offset)), 4),
+        "power_suppression": round(max(-0.05, min(0.05, power_offset)), 4),
     }
 
 

@@ -378,10 +378,10 @@ async def get_pitcher_rolling_profile(
                 "strikeout_rate": strike_outs / approx_bf,
                 "walk_rate": base_on_balls / approx_bf,
                 "contact_suppression": _clamp(
-                    1.0 - (hits / approx_bf) - 0.30, -0.3, 0.5
+                    1.0 - (hits / approx_bf) - 0.30, -0.15, 0.30
                 ),
                 "power_suppression": _clamp(
-                    1.0 - ((home_runs / approx_bf) / 0.03), -1.0, 0.8
+                    1.0 - ((home_runs / approx_bf) / 0.03), -0.30, 0.50
                 ),
             }
         )

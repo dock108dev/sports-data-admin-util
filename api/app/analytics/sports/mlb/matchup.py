@@ -97,7 +97,11 @@ class MLBMatchup:
         # Core probabilities
         contact_prob = _clamp(b_contact * (1.0 - p_contact_supp))
         strikeout_prob = _clamp(b_whiff * p_k_rate / _BASELINE_WHIFF_RATE)
-        walk_prob = _clamp(p_bb_rate * (1.0 - b_swing))
+        # Walk rate: pitcher BB% is the baseline; adjust by how selective
+        # the batter is relative to average.  A patient batter (low swing%)
+        # walks more; a free-swinger walks less.
+        discipline_factor = (1.0 - b_swing) / (1.0 - _BASELINE_SWING_RATE)
+        walk_prob = _clamp(p_bb_rate * discipline_factor)
 
         # Power adjustment for home runs
         adjusted_power = b_power * (1.0 - p_power_supp)
@@ -160,7 +164,8 @@ class MLBMatchup:
 
         contact_prob = _clamp(o_contact * (1.0 - p_contact_supp))
         strikeout_prob = _clamp(o_whiff * p_k_rate / _BASELINE_WHIFF_RATE)
-        walk_prob = _clamp(p_bb_rate * (1.0 - o_swing))
+        discipline_factor = (1.0 - o_swing) / (1.0 - _BASELINE_SWING_RATE)
+        walk_prob = _clamp(p_bb_rate * discipline_factor)
 
         adjusted_power = o_power * (1.0 - p_power_supp)
         hr_prob = _clamp(o_barrel * adjusted_power * _BARREL_HR_CONVERSION)
