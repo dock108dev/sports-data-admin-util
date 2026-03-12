@@ -108,8 +108,15 @@ class TestNormalizeTeamNameNHL:
         canonical, abbr = normalize_team_name("NHL", "Montreal Canadiens")
         assert abbr == "MTL"
 
-    def test_utah_hockey_club(self):
+    def test_utah_mammoth(self):
+        canonical, abbr = normalize_team_name("NHL", "Utah Mammoth")
+        assert canonical == "Utah Mammoth"
+        assert abbr == "UTA"
+
+    def test_utah_hockey_club_alias(self):
+        """Legacy name 'Utah Hockey Club' resolves to Utah Mammoth."""
         canonical, abbr = normalize_team_name("NHL", "Utah Hockey Club")
+        assert canonical == "Utah Mammoth"
         assert abbr == "UTA"
 
 
