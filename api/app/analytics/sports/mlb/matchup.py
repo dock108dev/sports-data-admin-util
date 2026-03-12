@@ -13,6 +13,8 @@ from typing import Any
 
 from app.analytics.core.types import PlayerProfile, TeamProfile
 from app.analytics.sports.mlb.constants import (
+    BARREL_HR_CONVERSION as _BARREL_HR_CONVERSION,
+    BASELINE_BABIP as _BASELINE_BABIP,
     BASELINE_BARREL_RATE as _BASELINE_BARREL_RATE,
     BASELINE_CONTACT_RATE as _BASELINE_CONTACT_RATE,
     BASELINE_CONTACT_SUPPRESSION as _BASELINE_CONTACT_SUPPRESSION,
@@ -73,16 +75,18 @@ class MLBMatchup:
 
         # Power adjustment for home runs
         adjusted_power = b_power * (1.0 - p_power_supp)
-        hr_prob = _clamp(b_barrel * adjusted_power)
+        hr_prob = _clamp(b_barrel * adjusted_power * _BARREL_HR_CONVERSION)
 
-        # Hit-type distribution from contact probability (excluding HR)
+        # Hit-type distribution: apply BABIP to convert contact into
+        # realistic hit rates.  Only ~30% of balls in play become hits;
+        # the rest are fielded outs (absorbed by _build_weights residual).
         in_play_contact = max(contact_prob - hr_prob, 0.0)
-        single_prob = in_play_contact * _SINGLE_FRACTION
-        double_prob = in_play_contact * _DOUBLE_FRACTION
-        triple_prob = in_play_contact * _TRIPLE_FRACTION
+        hits_in_play = in_play_contact * _BASELINE_BABIP
+        single_prob = hits_in_play * _SINGLE_FRACTION
+        double_prob = hits_in_play * _DOUBLE_FRACTION
+        triple_prob = hits_in_play * _TRIPLE_FRACTION
 
         raw = {
-            "contact_probability": contact_prob,
             "strikeout_probability": strikeout_prob,
             "walk_probability": walk_prob,
             "single_probability": single_prob,
@@ -133,15 +137,15 @@ class MLBMatchup:
         walk_prob = _clamp(p_bb_rate * (1.0 - o_swing))
 
         adjusted_power = o_power * (1.0 - p_power_supp)
-        hr_prob = _clamp(o_barrel * adjusted_power)
+        hr_prob = _clamp(o_barrel * adjusted_power * _BARREL_HR_CONVERSION)
 
         in_play_contact = max(contact_prob - hr_prob, 0.0)
-        single_prob = in_play_contact * _SINGLE_FRACTION
-        double_prob = in_play_contact * _DOUBLE_FRACTION
-        triple_prob = in_play_contact * _TRIPLE_FRACTION
+        hits_in_play = in_play_contact * _BASELINE_BABIP
+        single_prob = hits_in_play * _SINGLE_FRACTION
+        double_prob = hits_in_play * _DOUBLE_FRACTION
+        triple_prob = hits_in_play * _TRIPLE_FRACTION
 
         raw = {
-            "contact_probability": contact_prob,
             "strikeout_probability": strikeout_prob,
             "walk_probability": walk_prob,
             "single_probability": single_prob,
@@ -212,15 +216,21 @@ class MLBMatchup:
 
 
 def normalize_probabilities(prob_dict: dict[str, float]) -> dict[str, float]:
-    """Normalize a probability distribution so values sum to 1.0.
+    """Ensure event probabilities leave room for the implicit "out" residual.
 
-    Values are clamped to [0, 1] before normalization. If the total is
-    zero, returns the original dict unchanged.
+    The dict should contain only named non-out events (strikeout, walk,
+    single, double, triple, home_run).  ``_build_weights()`` computes
+    ``out = 1 - sum(named)`` as the fielded-out probability.
+
+    If the total exceeds 1.0 (extreme matchups), we scale down
+    proportionally so the out residual is at least 0.  Values are
+    clamped to [0, 1] before the check.
     """
     clamped = {k: max(0.0, min(v, 1.0)) for k, v in prob_dict.items()}
     total = sum(clamped.values())
-    if total == 0:
+    if total <= 1.0:
         return clamped
+    # Scale down so total == 1.0 (out residual will be 0)
     return {k: round(v / total, 4) for k, v in clamped.items()}
 
 

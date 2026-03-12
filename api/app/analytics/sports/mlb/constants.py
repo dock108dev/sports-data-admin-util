@@ -63,10 +63,22 @@ BASELINE_HARD_HIT_RATE = 0.35
 BASELINE_CONTACT_SUPPRESSION = 0.0
 BASELINE_POWER_SUPPRESSION = 0.0
 
-# Hit-type distribution fractions (of balls in play).
-SINGLE_FRACTION = 0.60
-DOUBLE_FRACTION = 0.15
-TRIPLE_FRACTION = 0.02
+# Fraction of barrelled balls that become home runs (~43% in real MLB).
+# Without this, hr_prob = barrel_rate × power_index ≈ 0.07, which is
+# roughly double the true MLB HR/PA rate of ~0.03.
+BARREL_HR_CONVERSION = 0.43
+
+# BABIP — batting average on balls in play.  ~30% of batted balls in
+# play become hits; the rest are fielded outs.  This is the critical
+# factor that converts "contact" into a realistic mix of hits vs outs.
+BASELINE_BABIP = 0.300
+
+# Hit-type distribution fractions (of non-HR hits, i.e. balls in play
+# that fall for a hit).  Must sum to ~1.0.
+#   Real MLB split of non-HR hits: singles ~73%, doubles ~22%, triples ~5%.
+SINGLE_FRACTION = 0.73
+DOUBLE_FRACTION = 0.22
+TRIPLE_FRACTION = 0.05
 
 # ---------------------------------------------------------------------------
 # Feature-builder baselines (superset used for normalization)

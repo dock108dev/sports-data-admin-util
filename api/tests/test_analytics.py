@@ -631,7 +631,6 @@ class TestMatchupEngine:
             self._batter_profile(), self._pitcher_profile()
         )
         probs = result.probabilities
-        assert "contact_probability" in probs
         assert "strikeout_probability" in probs
         assert "walk_probability" in probs
         assert "single_probability" in probs
@@ -639,7 +638,7 @@ class TestMatchupEngine:
         assert "triple_probability" in probs
         assert "home_run_probability" in probs
 
-    def test_probabilities_are_normalized(self) -> None:
+    def test_probabilities_leave_room_for_out_residual(self) -> None:
         from app.analytics.core.matchup_engine import MatchupEngine
 
         engine = MatchupEngine("mlb")
@@ -647,7 +646,9 @@ class TestMatchupEngine:
             self._batter_profile(), self._pitcher_profile()
         )
         total = sum(result.probabilities.values())
-        assert abs(total - 1.0) < 0.01
+        # Named events should sum to < 1.0; the remainder is fielded outs
+        assert total < 1.0
+        assert total > 0.3  # sanity — should not be trivially small
 
     def test_probabilities_in_valid_range(self) -> None:
         from app.analytics.core.matchup_engine import MatchupEngine
@@ -695,7 +696,7 @@ class TestMatchupEngine:
         result = engine.calculate_team_vs_team(team_a, team_b)
         assert isinstance(result, MatchupProfile)
         assert result.entity_a_id == "NYY"
-        assert "contact_probability" in result.probabilities
+        assert "strikeout_probability" in result.probabilities
 
     def test_player_vs_team(self) -> None:
         from app.analytics.core.matchup_engine import MatchupEngine
@@ -710,7 +711,7 @@ class TestMatchupEngine:
         assert isinstance(result, MatchupProfile)
         assert result.entity_a_id == "batter_1"
         assert result.entity_b_id == "BOS"
-        assert "contact_probability" in result.probabilities
+        assert "strikeout_probability" in result.probabilities
 
     def test_unsupported_sport_returns_empty(self) -> None:
         from app.analytics.core.matchup_engine import MatchupEngine
@@ -729,18 +730,27 @@ class TestMatchupEngine:
         batter = self._batter_profile()
         empty_pitcher = PlayerProfile(player_id="p2", sport="mlb", metrics={})
         result = engine.calculate_player_vs_player(batter, empty_pitcher)
-        assert result.probabilities["contact_probability"] > 0
+        assert result.probabilities["strikeout_probability"] > 0
 
 
 class TestMLBMatchup:
     """Verify MLB matchup probability calculations directly."""
 
-    def test_normalize_probabilities(self) -> None:
+    def test_normalize_probabilities_passthrough(self) -> None:
         from app.analytics.sports.mlb.matchup import normalize_probabilities
 
-        raw = {"a": 0.3, "b": 0.7}
+        raw = {"a": 0.3, "b": 0.2}
         result = normalize_probabilities(raw)
-        assert abs(sum(result.values()) - 1.0) < 0.001
+        # Sum <= 1.0 should pass through unchanged
+        assert result == raw
+
+    def test_normalize_probabilities_scales_down_when_over_one(self) -> None:
+        from app.analytics.sports.mlb.matchup import normalize_probabilities
+
+        raw = {"a": 0.8, "b": 0.6}
+        result = normalize_probabilities(raw)
+        # Sum > 1.0 should be scaled down
+        assert abs(sum(result.values()) - 1.0) < 0.01
 
     def test_normalize_handles_zero_total(self) -> None:
         from app.analytics.sports.mlb.matchup import normalize_probabilities
@@ -764,7 +774,10 @@ class TestMLBMatchup:
                      "walk_rate": 0.06, "power_suppression": 0.03},
         )
         result = matchup.batter_vs_pitcher(batter, pitcher)
-        assert abs(sum(result.values()) - 1.0) < 0.01
+        # Named events sum to < 1.0; remainder = fielded outs
+        total = sum(result.values())
+        assert total < 1.0
+        assert total > 0.3
         assert result["home_run_probability"] > 0
 
     def test_high_power_batter_has_more_hr(self) -> None:
@@ -823,9 +836,10 @@ class TestFullMatchupPipeline:
             batter_profile, pitcher_profile
         )
         assert isinstance(matchup, MatchupProfile)
-        assert "contact_probability" in matchup.probabilities
+        assert "strikeout_probability" in matchup.probabilities
         assert "home_run_probability" in matchup.probabilities
-        assert abs(sum(matchup.probabilities.values()) - 1.0) < 0.01
+        # Named events sum < 1.0; remainder = fielded outs
+        assert sum(matchup.probabilities.values()) < 1.0
 
 
 class TestMLBGameSimulator:
