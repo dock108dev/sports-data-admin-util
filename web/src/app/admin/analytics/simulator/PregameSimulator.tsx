@@ -29,7 +29,6 @@ export function PregameSimulator() {
   const [homeTeam, setHomeTeam] = useState("");
   const [awayTeam, setAwayTeam] = useState("");
   const [iterations, setIterations] = useState(5000);
-  const [rollingWindow, setRollingWindow] = useState(30);
   const [probabilityMode, setProbabilityMode] = useState<"rule_based" | "ml" | "ensemble">("ml");
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -143,7 +142,6 @@ export function PregameSimulator() {
         away_team: awayTeam,
         iterations,
         probability_mode: probabilityMode,
-        rolling_window: rollingWindow,
         exclude_playoffs: excludePlayoffs || undefined,
       };
       if (useLineup && lineupFilled(homeLineup) && lineupFilled(awayLineup)) {
@@ -232,10 +230,6 @@ export function PregameSimulator() {
           <div className={styles.formGroup}>
             <label>Iterations</label>
             <input type="number" value={iterations} onChange={(e) => setIterations(Math.max(100, parseInt(e.target.value) || 100))} min={100} max={50000} />
-          </div>
-          <div className={styles.formGroup}>
-            <label>Rolling Window: {rollingWindow}</label>
-            <input type="range" min={5} max={80} step={5} value={rollingWindow} onChange={(e) => setRollingWindow(parseInt(e.target.value))} />
           </div>
           <div className={styles.formGroup}>
             <label>Probability Mode</label>
@@ -421,7 +415,7 @@ export function PregameSimulator() {
           )}
 
           {result.home_pa_probabilities && result.away_pa_probabilities && (
-            <AdminCard title="PA Probabilities" subtitle={`From rolling ${result.profile_meta?.rolling_window ?? 30}-game profiles`}>
+            <AdminCard title="PA Probabilities" subtitle="From rolling 30-game profiles">
               <PAProbabilitiesChart
                 homeProbs={result.home_pa_probabilities}
                 awayProbs={result.away_pa_probabilities}
