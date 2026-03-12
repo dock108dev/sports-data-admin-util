@@ -6,6 +6,7 @@ import { AdminCard, AdminTable } from "@/components/admin";
 import {
   listRegisteredModels,
   activateModel,
+  deleteModel,
   compareModels,
   getCalibrationReport,
   type RegisteredModel,
@@ -84,6 +85,7 @@ function RegistryPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activating, setActivating] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   // Filters
   const [sportFilter, setSportFilter] = useState("");
@@ -131,6 +133,32 @@ function RegistryPanel() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setActivating(null);
+    }
+  }
+
+  async function handleDelete(m: RegisteredModel) {
+    const alsoDeleteFile = m.artifact_status === "valid"
+      ? window.confirm(
+          `Delete model "${m.model_id}"?\n\nThe artifact file exists on disk. Also delete the .pkl file?`,
+        )
+      : false;
+
+    if (!window.confirm(`Are you sure you want to delete model "${m.model_id}"? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(m.model_id);
+    try {
+      const res = await deleteModel(m.model_id, alsoDeleteFile);
+      if (res.status === "not_found") {
+        setError(`Model ${m.model_id} not found`);
+      } else {
+        await load();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -256,6 +284,7 @@ function RegistryPanel() {
                 sortHeader("Brier Score", "brier_score"),
                 sortHeader("Created", "created_at"),
                 "Status",
+                "Artifact",
                 "",
               ]}
             >
@@ -289,6 +318,21 @@ function RegistryPanel() {
                     ) : ""}
                   </td>
                   <td>
+                    {m.artifact_status === "valid" ? (
+                      <span style={{ background: "#22c55e", color: "#fff", padding: "2px 8px", borderRadius: "4px", fontSize: "0.8rem" }}>
+                        OK
+                      </span>
+                    ) : m.artifact_status === "missing" ? (
+                      <span style={{ background: "#ef4444", color: "#fff", padding: "2px 8px", borderRadius: "4px", fontSize: "0.8rem" }}>
+                        Missing
+                      </span>
+                    ) : (
+                      <span style={{ background: "#6b7280", color: "#fff", padding: "2px 8px", borderRadius: "4px", fontSize: "0.8rem" }}>
+                        No Path
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ display: "flex", gap: "4px" }}>
                     {!m.active && (
                       <button
                         className={`${styles.btn} ${styles.btnPrimary}`}
@@ -299,6 +343,21 @@ function RegistryPanel() {
                         {activating === m.model_id ? "..." : "Activate"}
                       </button>
                     )}
+                    <button
+                      className={styles.btn}
+                      onClick={() => handleDelete(m)}
+                      disabled={deleting === m.model_id}
+                      style={{
+                        fontSize: "0.8rem",
+                        padding: "4px 8px",
+                        background: "#ef4444",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      {deleting === m.model_id ? "..." : "Delete"}
+                    </button>
                   </td>
                 </tr>
               ))}

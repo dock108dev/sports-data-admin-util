@@ -245,6 +245,7 @@ export interface RegisteredModel {
   sport: string;
   model_type: string;
   active: boolean;
+  artifact_status?: "valid" | "missing" | "no_path";
 }
 
 export interface ModelsListResponse {

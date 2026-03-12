@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -128,15 +129,25 @@ async def get_models(
         is_active = job.model_id in active_ids
         if active_only and not is_active:
             continue
+        # Check artifact existence on disk
+        artifact_path = job.artifact_path
+        if artifact_path and Path(artifact_path).is_file():
+            artifact_status = "valid"
+        elif artifact_path:
+            artifact_status = "missing"
+        else:
+            artifact_status = "no_path"
+
         models.append({
             "model_id": job.model_id,
-            "artifact_path": job.artifact_path,
+            "artifact_path": artifact_path,
             "version": job.id,  # use job ID as version
             "created_at": job.created_at.isoformat() if job.created_at else None,
             "metrics": job.metrics or {},
             "sport": job.sport,
             "model_type": job.model_type,
             "active": is_active,
+            "artifact_status": artifact_status,
             "feature_config_id": job.feature_config_id,
             "algorithm": job.algorithm,
             "train_count": job.train_count,
@@ -279,6 +290,68 @@ async def post_activate_model(
     if result["status"] == "success":
         _inference_engine._cache.clear()
     return result
+
+
+class ModelDeleteRequest(BaseModel):
+    """Request body for DELETE /api/analytics/models."""
+    model_id: str = Field(..., description="Model ID to delete")
+    delete_artifact: bool = Field(
+        False, description="Also delete the .pkl artifact file from disk",
+    )
+
+
+@router.delete("/models")
+async def delete_model(
+    req: ModelDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Delete a model from the DB and file registry.
+
+    Deactivates the model if it is currently active, removes it from
+    the file registry, deletes the training job DB row, and optionally
+    removes the artifact file from disk.
+    """
+    from app.db.analytics import AnalyticsTrainingJob
+
+    # Look up the training job to get sport/model_type
+    stmt = (
+        select(AnalyticsTrainingJob)
+        .where(AnalyticsTrainingJob.model_id == req.model_id)
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    job = result.scalar_one_or_none()
+
+    if job is None:
+        return {"status": "not_found", "model_id": req.model_id}
+
+    sport = job.sport
+    model_type = job.model_type
+    artifact_path = job.artifact_path
+
+    # Remove from file registry (also deactivates if active)
+    _model_registry.remove_model(sport, model_type, req.model_id)
+
+    # Clear inference cache in case this was the active model
+    _inference_engine._cache.clear()
+
+    # Delete training job from DB
+    await db.delete(job)
+    await db.commit()
+
+    # Optionally delete artifact file
+    artifact_deleted = False
+    if req.delete_artifact and artifact_path:
+        artifact = Path(artifact_path)
+        if artifact.is_file():
+            artifact.unlink()
+            artifact_deleted = True
+
+    return {
+        "status": "deleted",
+        "model_id": req.model_id,
+        "artifact_deleted": artifact_deleted,
+    }
 
 
 @router.get("/models/active")

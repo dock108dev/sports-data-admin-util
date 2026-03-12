@@ -283,6 +283,17 @@ export async function activateModel(
   });
 }
 
+export async function deleteModel(
+  modelId: string,
+  deleteArtifact: boolean = false,
+): Promise<{ status: string; model_id: string; artifact_deleted: boolean }> {
+  return fetchJson(`${base()}/api/analytics/models`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model_id: modelId, delete_artifact: deleteArtifact }),
+  });
+}
+
 export async function getModelDetails(modelId: string): Promise<ModelDetails> {
   const params = new URLSearchParams({ model_id: modelId });
   return fetchJson<ModelDetails>(`${base()}/api/analytics/models/details?${params}`);

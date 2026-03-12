@@ -274,6 +274,27 @@ class ModelRegistry:
             return True
         return False
 
+    def remove_model(self, sport: str, model_type: str, model_id: str) -> bool:
+        """Remove a model from the file registry.
+
+        Deactivates it first if it's the active model. Returns ``True``
+        if the model was found and removed.
+        """
+        sport = sport.lower()
+        self.deactivate_model(sport, model_type, model_id)
+        bucket = self._get_bucket(sport, model_type)
+        if bucket is None:
+            return False
+
+        models_list: list[dict[str, Any]] = bucket.get("models", [])
+        before = len(models_list)
+        bucket["models"] = [m for m in models_list if m["model_id"] != model_id]
+        if len(bucket["models"]) < before:
+            self._save()
+            logger.info("model_removed", extra={"model_id": model_id})
+            return True
+        return False
+
     # ------------------------------------------------------------------
     # Inference engine integration helpers
     # ------------------------------------------------------------------
