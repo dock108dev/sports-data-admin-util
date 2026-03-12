@@ -335,9 +335,10 @@ async def get_pitcher_rolling_profile(
     game_dates_for_weighting: list[datetime] = []
     for row, game_date in rows:
         stats = row.stats or {}
-        strike_outs = float(stats.get("strike_outs", 0))
-        base_on_balls = float(stats.get("base_on_balls", 0))
-        home_runs = float(stats.get("home_runs", 0))
+        # Support both camelCase (MLB API) and snake_case key conventions
+        strike_outs = float(stats.get("strikeOuts", stats.get("strike_outs", 0)))
+        base_on_balls = float(stats.get("baseOnBalls", stats.get("base_on_balls", 0)))
+        home_runs = float(stats.get("homeRuns", stats.get("home_runs", 0)))
         hits = float(stats.get("hits", 0))
 
         approx_bf = hits + base_on_balls + strike_outs + home_runs
@@ -473,7 +474,7 @@ async def get_team_roster(
                 func.count().label("games"),
                 func.avg(
                     cast(
-                        SportsPlayerBoxscore.stats["innings_pitched"].as_float(),
+                        SportsPlayerBoxscore.stats["inningsPitched"].as_float(),
                         Float,
                     )
                 ).label("avg_ip"),
@@ -481,7 +482,7 @@ async def get_team_roster(
             .where(
                 SportsPlayerBoxscore.team_id == team.id,
                 SportsPlayerBoxscore.game_id.in_(recent_games_sq),
-                SportsPlayerBoxscore.stats["innings_pitched"].as_float() > 0,
+                SportsPlayerBoxscore.stats["inningsPitched"].as_float() > 0,
             )
             .group_by(
                 SportsPlayerBoxscore.player_external_ref,
