@@ -66,16 +66,29 @@ class TestFilterStaleBooks:
         assert len(remaining) == 3
         assert "Pinnacle" in remaining
 
-    def test_no_pinnacle_no_filtering(self):
-        """When no sharp book is present, all books are kept."""
+    def test_no_pinnacle_uses_newest_book_as_reference(self):
+        """When no sharp book is present, newest book is the reference — stale books dropped."""
         bet = _make_bet(
             [
                 ("DraftKings", 0),
-                ("FanDuel", 3.0),
-                ("BetMGM", 5.0),
+                ("FanDuel", 3.0),  # 3 min behind newest → stale
+                ("BetMGM", 5.0),  # 5 min behind newest → stale
             ]
         )
-        # Remove Pinnacle from books (none present)
+        bets_map = {KEY: bet}
+        result = filter_stale_books(bets_map, sharp_books={"Pinnacle"})
+        remaining = [b["book"] for b in result[KEY]["books"]]
+        assert remaining == ["DraftKings"]
+
+    def test_no_pinnacle_all_fresh(self):
+        """When no sharp book but all books are within lag threshold, all are kept."""
+        bet = _make_bet(
+            [
+                ("DraftKings", 0),
+                ("FanDuel", 1.0),
+                ("BetMGM", 1.5),
+            ]
+        )
         bets_map = {KEY: bet}
         result = filter_stale_books(bets_map, sharp_books={"Pinnacle"})
         assert len(result[KEY]["books"]) == 3

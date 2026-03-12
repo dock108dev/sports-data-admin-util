@@ -26,8 +26,9 @@ def filter_stale_books(
     For each bet entry, finds the sharp book's observed_at timestamp and drops
     any non-sharp book more than ``max_lag_seconds`` behind it.
 
-    If no sharp book is present in a bet, all books are kept (no reference to
-    compare against).
+    If no sharp book is present (e.g., player props using median consensus),
+    the most recent book's timestamp is used as the reference instead, so
+    books that are lagging behind the market still get dropped.
 
     Args:
         bets_map: Mapping of bet keys to bet dicts (each with a ``books`` list
@@ -52,8 +53,14 @@ def filter_stale_books(
                 if sharp_ts is None or ts > sharp_ts:
                     sharp_ts = ts
 
+        # When no sharp book is present (e.g., player props using median
+        # consensus), fall back to the most recent book's timestamp as the
+        # reference.  This catches a stale line at one book when the rest of
+        # the market has already moved — the main source of phantom +40% edges.
         if sharp_ts is None:
-            continue  # No sharp book — nothing to compare against
+            ref_ts = max(b["observed_at"] for b in books)
+        else:
+            ref_ts = sharp_ts
 
         fresh: list[dict[str, Any]] = []
         for b in books:
@@ -61,7 +68,7 @@ def filter_stale_books(
                 fresh.append(b)
                 continue
 
-            lag = (sharp_ts - b["observed_at"]).total_seconds()
+            lag = (ref_ts - b["observed_at"]).total_seconds()
             if lag > max_lag_seconds:
                 total_dropped += 1
                 logger.info(
@@ -70,8 +77,9 @@ def filter_stale_books(
                         "bet_key": str(key),
                         "book": b["book"],
                         "lag_seconds": round(lag, 1),
-                        "sharp_observed_at": sharp_ts.isoformat(),
+                        "ref_observed_at": ref_ts.isoformat(),
                         "book_observed_at": b["observed_at"].isoformat(),
+                        "ref_source": "sharp" if sharp_ts else "newest_book",
                     },
                 )
             else:
