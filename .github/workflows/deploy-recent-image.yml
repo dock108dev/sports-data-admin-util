@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Image tag to deploy (for example: <commit-sha> or pr-<number>-<commit-sha>)"
-        required: true
+        description: "Optional image tag to deploy (defaults to latest)"
+        required: false
+        default: latest
         type: string
 
 permissions:
