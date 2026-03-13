@@ -59,9 +59,10 @@ async def send_email(*, to: str, subject: str, html: str) -> None:
 # Pre-built email helpers
 # ---------------------------------------------------------------------------
 
-async def send_password_reset_email(*, to: str, token: str) -> None:
+async def send_password_reset_email(*, to: str, token: str, base_url: str | None = None) -> None:
     """Send a password-reset email with a link containing *token*."""
-    reset_url = f"{settings.frontend_url}/auth/reset-password?token={token}"
+    base = (base_url or settings.frontend_url).rstrip("/")
+    reset_url = f"{base}/auth/reset-password?token={token}"
     html = f"""\
 <h2>Reset your password</h2>
 <p>Click the link below to choose a new password. This link expires in 30 minutes.</p>
@@ -71,9 +72,10 @@ async def send_password_reset_email(*, to: str, token: str) -> None:
     await send_email(to=to, subject="Reset your password", html=html)
 
 
-async def send_magic_link_email(*, to: str, token: str) -> None:
+async def send_magic_link_email(*, to: str, token: str, base_url: str | None = None) -> None:
     """Send a magic-link login email."""
-    login_url = f"{settings.frontend_url}/auth/magic-link?token={token}"
+    base = (base_url or settings.frontend_url).rstrip("/")
+    login_url = f"{base}/auth/magic-link?token={token}"
     html = f"""\
 <h2>Sign in to TradeLens</h2>
 <p>Click the link below to sign in. This link expires in 15 minutes.</p>

@@ -33,6 +33,7 @@ from app.dependencies.roles import (
     require_user,
     resolve_role,
 )
+from app.config import settings as _settings
 from app.security import pwd_context as _pwd_ctx
 from app.services.email import send_magic_link_email, send_password_reset_email
 
@@ -83,6 +84,10 @@ class DeleteAccountRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr = Field(..., description="Account email address")
+    redirect_url: str | None = Field(
+        None,
+        description="Base URL for the reset link (must be an allowed origin). Defaults to FRONTEND_URL.",
+    )
 
 
 class ResetPasswordRequest(BaseModel):
@@ -92,10 +97,37 @@ class ResetPasswordRequest(BaseModel):
 
 class MagicLinkRequest(BaseModel):
     email: EmailStr = Field(..., description="Account email address")
+    redirect_url: str | None = Field(
+        None,
+        description="Base URL for the magic link (must be an allowed origin). Defaults to FRONTEND_URL.",
+    )
 
 
 class MagicLinkVerifyRequest(BaseModel):
     token: str = Field(..., description="Magic link token from email")
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _resolve_redirect_url(redirect_url: str | None) -> str:
+    """Return the redirect base URL, validated against ALLOWED_CORS_ORIGINS.
+
+    Falls back to FRONTEND_URL when *redirect_url* is ``None`` or not in the
+    allowlist.  This prevents phishing via arbitrary redirect URLs.
+    """
+    if redirect_url is None:
+        return _settings.frontend_url
+
+    # Strip trailing slash for comparison
+    candidate = redirect_url.rstrip("/")
+    allowed = {o.rstrip("/") for o in _settings.allowed_cors_origins}
+    allowed.add(_settings.frontend_url.rstrip("/"))
+
+    if candidate in allowed:
+        return candidate
+    return _settings.frontend_url
 
 
 # ---------------------------------------------------------------------------
@@ -196,11 +228,12 @@ async def forgot_password(
 
     if user is not None and user.is_active:
         token = create_reset_token(user.id)
+        base_url = _resolve_redirect_url(body.redirect_url)
         logger.info(
             "password_reset_requested",
             extra={"user_id": user.id},
         )
-        await send_password_reset_email(to=user.email, token=token)
+        await send_password_reset_email(to=user.email, token=token, base_url=base_url)
     else:
         # Log but don't reveal whether the account exists
         logger.info(
@@ -262,11 +295,12 @@ async def request_magic_link(
 
     if user is not None and user.is_active:
         token = create_magic_link_token(user.id)
+        base_url = _resolve_redirect_url(body.redirect_url)
         logger.info(
             "magic_link_requested",
             extra={"user_id": user.id},
         )
-        await send_magic_link_email(to=user.email, token=token)
+        await send_magic_link_email(to=user.email, token=token, base_url=base_url)
     else:
         logger.info(
             "magic_link_no_match",
