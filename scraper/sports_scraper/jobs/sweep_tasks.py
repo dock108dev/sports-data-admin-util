@@ -72,6 +72,13 @@ def run_daily_sweep() -> dict:
             results["job_run_pruning"] = {"error": str(exc)}
             logger.exception("daily_sweep_job_run_pruning_error", error=str(exc))
 
+        # --- Phase 4: Purge stale fairbet odds for completed games ---
+        try:
+            results["fairbet_odds_cleanup"] = _purge_completed_game_odds()
+        except Exception as exc:
+            results["fairbet_odds_cleanup"] = {"error": str(exc)}
+            logger.exception("daily_sweep_fairbet_odds_cleanup_error", error=str(exc))
+
         tracker.summary_data = results
         logger.info("daily_sweep_complete", results=results)
         return results
@@ -411,3 +418,33 @@ def _prune_old_job_runs(retention_days: int = 7) -> dict:
     )
 
     return {"deleted": deleted, "retention_days": retention_days}
+
+
+def _purge_completed_game_odds() -> dict:
+    """Delete fairbet_game_odds_work rows for final/archived games.
+
+    The work table is meant to hold only active pregame odds. Once a game
+    completes, its odds rows are never cleaned up by the per-batch stale
+    DELETE (which only fires when new odds are upserted). Without this
+    cleanup the table grows unbounded — 1.5M+ rows causing 30+ second
+    query times from IO contention.
+    """
+    from sqlalchemy import text
+
+    with get_session() as session:
+        result = session.execute(text("""
+            DELETE FROM fairbet_game_odds_work
+            WHERE game_id IN (
+                SELECT id FROM sports_games
+                WHERE status IN ('final', 'archived')
+            )
+        """))
+        deleted = result.rowcount
+        session.commit()
+
+    if deleted:
+        logger.info("fairbet_odds_purge_complete", deleted=deleted)
+    else:
+        logger.debug("fairbet_odds_purge_nothing_to_delete")
+
+    return {"deleted": deleted}
