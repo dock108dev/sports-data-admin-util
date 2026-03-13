@@ -188,6 +188,13 @@ docker exec sports-postgres psql -U sports -d sports -c "SELECT COUNT(*) FROM sp
 | `JWT_SECRET` | Prod | Secret key for signing JWTs (`openssl rand -hex 32`) |
 | `JWT_EXPIRE_MINUTES` | No | Token lifetime in minutes (default: 1440 = 24h) |
 | `AUTH_ENABLED` | No | Set `false` to bypass role checks (default: `true`) |
+| `SMTP_HOST` | No | SMTP server hostname — emails are logged when unset. Gmail: `smtp.gmail.com`, SendGrid: `smtp.sendgrid.net` |
+| `SMTP_PORT` | No | SMTP port (default: 587) |
+| `SMTP_USER` | No | SMTP username (Gmail: your email, SendGrid: `apikey`) |
+| `SMTP_PASSWORD` | No | SMTP password (Gmail: [app password](https://myaccount.google.com/apppasswords), requires 2FA) |
+| `SMTP_USE_TLS` | No | Use STARTTLS (default: `true`) |
+| `MAIL_FROM` | No | Sender address (default: `noreply@scrolldownsports.com`). Gmail requires this to match `SMTP_USER` |
+| `FRONTEND_URL` | No | Base URL for email links (default: `http://localhost:3000`) |
 | `OPENAI_API_KEY` | No | OpenAI key for AI enrichment (game flow narratives) |
 | `OPENAI_MODEL_CLASSIFICATION` | No | OpenAI model for play classification (default: `gpt-4o-mini`) |
 | `OPENAI_MODEL_SUMMARY` | No | OpenAI model for narrative rendering (default: `gpt-4o`) |

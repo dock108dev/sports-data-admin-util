@@ -42,7 +42,7 @@ role-based access on top.
 
 ### 1. API Key (Required for all non-auth endpoints)
 
-Every request (except `/auth/*` signup/login/reset and `/healthz`) must
+Every request (except `/auth/*` signup/login/reset/magic-link and `/healthz`) must
 include the `X-API-Key` header. This applies to both admin UI routes
 **and** downstream consumer routes:
 
@@ -104,6 +104,61 @@ X-API-Key: your-api-key-here
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
+#### Forgot Password
+
+```http
+POST /auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+Always returns `200` with `{"detail": "If that email is registered, a reset link has been sent."}` to avoid leaking whether the email exists. If the account exists, a reset email is sent with a link to `{FRONTEND_URL}/auth/reset-password?token=...` (30-minute expiry).
+
+#### Reset Password
+
+```http
+POST /auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "new_password": "new-password-min-8-chars"
+}
+```
+
+Returns `{"detail": "Password has been reset."}`. `400` if the token is invalid or expired.
+
+#### Magic Link (Passwordless Login)
+
+Request a magic-link email:
+
+```http
+POST /auth/magic-link
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+Always returns `200` with `{"detail": "If that email is registered, a sign-in link has been sent."}`. If the account exists, a login email is sent with a link to `{FRONTEND_URL}/auth/magic-link?token=...` (15-minute expiry).
+
+Exchange the token for a JWT:
+
+```http
+POST /auth/magic-link/verify
+Content-Type: application/json
+
+{
+  "token": "eyJhbGciOiJIUzI1NiIs..."
+}
+```
+
+Response: same as login (returns `TokenResponse` with `access_token` and `role`). `400` if the token is invalid or expired.
+
 #### Get Current Identity
 
 ```http
@@ -154,6 +209,11 @@ Authenticated response:
 | `JWT_SECRET` | Secret key for signing JWTs (change in production) |
 | `JWT_EXPIRE_MINUTES` | Token lifetime in minutes (default: 1440 = 24h) |
 | `AUTH_ENABLED` | Set to `false` to bypass role checks (all requests get admin). Default: `true` |
+| `SMTP_HOST` | SMTP server for transactional email (password reset, magic links). Gmail: `smtp.gmail.com`. Emails are logged when unset |
+| `SMTP_USER` | SMTP username (Gmail: your email address) |
+| `SMTP_PASSWORD` | SMTP password (Gmail: [app password](https://myaccount.google.com/apppasswords), requires 2FA) |
+| `MAIL_FROM` | Sender address. Gmail requires this to match `SMTP_USER` |
+| `FRONTEND_URL` | Base URL for email links (default: `http://localhost:3000`) |
 
 Generate secrets: `openssl rand -hex 32`
 

@@ -57,6 +57,19 @@ class Settings(BaseSettings):
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     jwt_expire_minutes: int = Field(default=1440, alias="JWT_EXPIRE_MINUTES")  # 24h
 
+    # Email / SMTP
+    smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_user: str | None = Field(default=None, alias="SMTP_USER")
+    smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
+    mail_from: str = Field(
+        default="noreply@scrolldownsports.com", alias="MAIL_FROM"
+    )
+    frontend_url: str = Field(
+        default="http://localhost:3000", alias="FRONTEND_URL"
+    )
+
     # OpenAI Configuration (SSOT for model defaults — docker-compose defers to these)
     # AI is used for interpretation/narration only, never for ordering/filtering
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")

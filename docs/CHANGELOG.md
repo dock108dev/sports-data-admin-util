@@ -2,7 +2,17 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-03-12] - Current
+## [2026-03-13] - Current
+
+### User Account Email Flows
+
+- **Email service** (`app/services/email.py`): Async SMTP delivery via `aiosmtplib`. Falls back to logging when `SMTP_HOST` is not configured (local dev)
+- **Password reset emails**: `POST /auth/forgot-password` now sends a reset link via email instead of only logging the token. Link points to `{FRONTEND_URL}/auth/reset-password?token=...` (30-minute expiry)
+- **Magic-link login**: New `POST /auth/magic-link` and `POST /auth/magic-link/verify` endpoints for passwordless sign-in. Sends a login link via email (15-minute expiry), user exchanges the token for a JWT
+- **Config**: Added `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `MAIL_FROM`, `FRONTEND_URL` settings
+- **Dependency**: Added `aiosmtplib==3.0.2`
+
+## [2026-03-12]
 
 ### Game Simulator Overhaul — Diagnostics, Freshness & Priority Fix
 

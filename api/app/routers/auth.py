@@ -2,8 +2,10 @@
 
 POST /auth/signup            — create a new user account, returns JWT
 POST /auth/login             — authenticate with email/password, returns JWT
-POST /auth/forgot-password   — request a password reset token
+POST /auth/forgot-password   — request a password reset email
 POST /auth/reset-password    — reset password using a valid token
+POST /auth/magic-link        — request a magic-link login email
+POST /auth/magic-link/verify — exchange a magic-link token for a JWT
 GET  /auth/me                — return current caller identity & role
 PATCH /auth/me/email         — update own email (authenticated)
 PATCH /auth/me/password      — change own password (authenticated)
@@ -24,12 +26,15 @@ from app.db import get_db
 from app.db.users import User
 from app.dependencies.roles import (
     create_access_token,
+    create_magic_link_token,
     create_reset_token,
+    decode_magic_link_token,
     decode_reset_token,
     require_user,
     resolve_role,
 )
 from app.security import pwd_context as _pwd_ctx
+from app.services.email import send_magic_link_email, send_password_reset_email
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +88,14 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str = Field(..., description="Password reset token")
     new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+
+
+class MagicLinkRequest(BaseModel):
+    email: EmailStr = Field(..., description="Account email address")
+
+
+class MagicLinkVerifyRequest(BaseModel):
+    token: str = Field(..., description="Magic link token from email")
 
 
 # ---------------------------------------------------------------------------
@@ -183,11 +196,11 @@ async def forgot_password(
 
     if user is not None and user.is_active:
         token = create_reset_token(user.id)
-        # TODO: wire up email delivery — for now the token is logged
         logger.info(
             "password_reset_requested",
-            extra={"user_id": user.id, "reset_token": token},
+            extra={"user_id": user.id},
         )
+        await send_password_reset_email(to=user.email, token=token)
     else:
         # Log but don't reveal whether the account exists
         logger.info(
@@ -227,6 +240,70 @@ async def reset_password(
 
     logger.info("password_reset_completed", extra={"user_id": user.id})
     return {"detail": "Password has been reset."}
+
+
+@router.post(
+    "/magic-link",
+    summary="Request a magic-link login email",
+    description=(
+        "Accepts an email address. If a matching active account exists, "
+        "sends a short-lived login link via email. The response always "
+        "returns 200 to avoid leaking whether the email is registered."
+    ),
+)
+async def request_magic_link(
+    body: MagicLinkRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    result = await db.execute(
+        select(User).where(User.email == body.email.lower())
+    )
+    user = result.scalar_one_or_none()
+
+    if user is not None and user.is_active:
+        token = create_magic_link_token(user.id)
+        logger.info(
+            "magic_link_requested",
+            extra={"user_id": user.id},
+        )
+        await send_magic_link_email(to=user.email, token=token)
+    else:
+        logger.info(
+            "magic_link_no_match",
+            extra={"email": body.email.lower()},
+        )
+
+    return {"detail": "If that email is registered, a sign-in link has been sent."}
+
+
+@router.post(
+    "/magic-link/verify",
+    response_model=TokenResponse,
+    summary="Exchange a magic-link token for a JWT",
+)
+async def verify_magic_link(
+    body: MagicLinkVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    try:
+        user_id = decode_magic_link_token(body.token)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired magic link",
+        ) from exc
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired magic link",
+        )
+
+    token = create_access_token(user.id, user.role)
+    logger.info("magic_link_login", extra={"user_id": user.id, "email": user.email})
+    return TokenResponse(access_token=token, role=user.role)
 
 
 @router.get(

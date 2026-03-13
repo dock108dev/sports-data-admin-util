@@ -50,6 +50,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
 
 _RESET_TOKEN_EXPIRE_MINUTES = 30
+_MAGIC_LINK_EXPIRE_MINUTES = 15
 
 
 def create_reset_token(user_id: int) -> str:
@@ -77,6 +78,34 @@ def decode_reset_token(token: str) -> int:
     )
     if payload.get("purpose") != "password_reset":
         raise ValueError("Token is not a password reset token")
+    return int(payload["sub"])
+
+
+def create_magic_link_token(user_id: int) -> str:
+    """Issue a short-lived JWT for magic-link login."""
+    now = datetime.now(UTC)
+    payload: dict[str, Any] = {
+        "sub": str(user_id),
+        "purpose": "magic_link",
+        "iat": now,
+        "exp": now + timedelta(minutes=_MAGIC_LINK_EXPIRE_MINUTES),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_magic_link_token(token: str) -> int:
+    """Decode a magic-link JWT and return the user ID.
+
+    Raises ``jwt.PyJWTError`` on expiry/signature failure and
+    ``ValueError`` if the token is not a magic-link token.
+    """
+    payload = jwt.decode(
+        token,
+        settings.jwt_secret,
+        algorithms=[settings.jwt_algorithm],
+    )
+    if payload.get("purpose") != "magic_link":
+        raise ValueError("Token is not a magic link token")
     return int(payload["sub"])
 
 
