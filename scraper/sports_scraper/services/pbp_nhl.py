@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
-from ..persistence.plays import upsert_plays
 
 
 def select_games_for_pbp_nhl_api(
@@ -238,9 +237,6 @@ def ingest_pbp_via_nhl_api(
     Returns:
         Tuple of (games_with_pbp, total_events_inserted)
     """
-    from ..live.nhl import NHLLiveFeedClient
-    from ..live.nhl_constants import NHL_MIN_EXPECTED_PLAYS
-
     # Step 1: Populate missing NHL game IDs
     populate_nhl_game_ids(
         session,
@@ -276,51 +272,37 @@ def ingest_pbp_via_nhl_api(
         updated_before=str(updated_before) if updated_before else None,
     )
 
-    # Step 3: Fetch and persist PBP
-    client = NHLLiveFeedClient()
+    # Step 3: Fetch and persist PBP via SSOT game_processors
+    from .game_processors import process_game_pbp_nhl
+
     pbp_games = 0
     pbp_events = 0
 
     for game_id, nhl_game_id in games:
         try:
-            # Fetch PBP from NHL API
-            payload = client.fetch_play_by_play(nhl_game_id)
-
-            if not payload.plays:
-                logger.warning(
-                    "nhl_pbp_empty_response",
-                    run_id=run_id,
-                    game_id=game_id,
-                    nhl_game_id=nhl_game_id,
-                )
+            game = session.query(db_models.SportsGame).get(game_id)
+            if not game:
                 continue
 
-            # Validation: Check if game is final and event count is suspiciously low
-            game = session.query(db_models.SportsGame).get(game_id)
-            if game and game.status == db_models.GameStatus.final.value:
-                if len(payload.plays) < NHL_MIN_EXPECTED_PLAYS:
-                    logger.warning(
-                        "nhl_pbp_insufficient_events",
-                        run_id=run_id,
-                        game_id=game_id,
-                        nhl_game_id=nhl_game_id,
-                        play_count=len(payload.plays),
-                        expected_min=NHL_MIN_EXPECTED_PLAYS,
-                    )
+            result = process_game_pbp_nhl(session, game)
 
-            # Persist plays
-            inserted = upsert_plays(session, game_id, payload.plays, source="nhl_api")
-
-            if inserted:
+            if result.events_inserted:
                 pbp_games += 1
-                pbp_events += inserted
+                pbp_events += result.events_inserted
 
                 logger.info(
                     "nhl_pbp_ingested",
                     run_id=run_id,
                     game_id=game_id,
                     nhl_game_id=nhl_game_id,
-                    events_inserted=inserted,
+                    events_inserted=result.events_inserted,
+                )
+            elif not result.events_inserted and result.api_calls > 0:
+                logger.warning(
+                    "nhl_pbp_empty_response",
+                    run_id=run_id,
+                    game_id=game_id,
+                    nhl_game_id=nhl_game_id,
                 )
 
         except Exception as exc:

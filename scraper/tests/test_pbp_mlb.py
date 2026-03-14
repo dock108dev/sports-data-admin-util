@@ -111,6 +111,15 @@ class TestSelectGamesForPbpMlbApi:
 # ingest_pbp_via_mlb_api
 # ---------------------------------------------------------------------------
 
+def _make_game(*, status="final", mlb_game_pk="717001"):
+    """Create a game mock with proper external_ids for game_processors."""
+    game = MagicMock()
+    game.status = status
+    game.external_ids = {"mlb_game_pk": str(mlb_game_pk)}
+    game.id = 100
+    return game
+
+
 class TestIngestPbpViaMlbApi:
     @patch("sports_scraper.services.pbp_mlb.select_games_for_pbp_mlb_api", return_value=[])
     @patch("sports_scraper.services.mlb_boxscore_ingestion.populate_mlb_game_ids")
@@ -122,7 +131,7 @@ class TestIngestPbpViaMlbApi:
         )
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_mlb.upsert_plays", return_value=25)
+    @patch("sports_scraper.persistence.plays.upsert_plays", return_value=25)
     @patch("sports_scraper.live.mlb.MLBLiveFeedClient")
     @patch("sports_scraper.services.pbp_mlb.select_games_for_pbp_mlb_api")
     @patch("sports_scraper.services.mlb_boxscore_ingestion.populate_mlb_game_ids")
@@ -133,9 +142,7 @@ class TestIngestPbpViaMlbApi:
         payload.plays = [MagicMock() for _ in range(60)]
         mock_client_cls.return_value.fetch_play_by_play.return_value = payload
 
-        # Game is final
-        game = MagicMock()
-        game.status = "final"
+        game = _make_game()
         session = MagicMock()
         session.query.return_value.get.return_value = game
 
@@ -157,7 +164,10 @@ class TestIngestPbpViaMlbApi:
         payload.plays = []
         mock_client_cls.return_value.fetch_play_by_play.return_value = payload
 
+        game = _make_game()
         session = MagicMock()
+        session.query.return_value.get.return_value = game
+
         result = ingest_pbp_via_mlb_api(
             session, run_id=1, start_date=date(2024, 7, 1), end_date=date(2024, 7, 31),
             only_missing=False, updated_before=None,
@@ -171,14 +181,17 @@ class TestIngestPbpViaMlbApi:
         mock_select.return_value = [(100, 717001, "final")]
         mock_client_cls.return_value.fetch_play_by_play.side_effect = Exception("timeout")
 
+        game = _make_game()
         session = MagicMock()
+        session.query.return_value.get.return_value = game
+
         result = ingest_pbp_via_mlb_api(
             session, run_id=1, start_date=date(2024, 7, 1), end_date=date(2024, 7, 31),
             only_missing=False, updated_before=None,
         )
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_mlb.upsert_plays", return_value=0)
+    @patch("sports_scraper.persistence.plays.upsert_plays", return_value=0)
     @patch("sports_scraper.live.mlb.MLBLiveFeedClient")
     @patch("sports_scraper.services.pbp_mlb.select_games_for_pbp_mlb_api")
     @patch("sports_scraper.services.mlb_boxscore_ingestion.populate_mlb_game_ids")
@@ -189,8 +202,7 @@ class TestIngestPbpViaMlbApi:
         payload.plays = [MagicMock() for _ in range(60)]
         mock_client_cls.return_value.fetch_play_by_play.return_value = payload
 
-        game = MagicMock()
-        game.status = "final"
+        game = _make_game()
         session = MagicMock()
         session.query.return_value.get.return_value = game
 
@@ -200,7 +212,7 @@ class TestIngestPbpViaMlbApi:
         )
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_mlb.upsert_plays", return_value=10)
+    @patch("sports_scraper.persistence.plays.upsert_plays", return_value=10)
     @patch("sports_scraper.live.mlb.MLBLiveFeedClient")
     @patch("sports_scraper.services.pbp_mlb.select_games_for_pbp_mlb_api")
     @patch("sports_scraper.services.mlb_boxscore_ingestion.populate_mlb_game_ids")
@@ -212,8 +224,7 @@ class TestIngestPbpViaMlbApi:
         payload.plays = [MagicMock() for _ in range(10)]  # below threshold
         mock_client_cls.return_value.fetch_play_by_play.return_value = payload
 
-        game = MagicMock()
-        game.status = "final"
+        game = _make_game()
         session = MagicMock()
         session.query.return_value.get.return_value = game
 
@@ -224,17 +235,12 @@ class TestIngestPbpViaMlbApi:
         # Still persists despite warning
         assert result == (1, 10)
 
-    @patch("sports_scraper.services.pbp_mlb.upsert_plays", return_value=10)
     @patch("sports_scraper.live.mlb.MLBLiveFeedClient")
     @patch("sports_scraper.services.pbp_mlb.select_games_for_pbp_mlb_api")
     @patch("sports_scraper.services.mlb_boxscore_ingestion.populate_mlb_game_ids")
-    def test_game_not_found_still_persists(self, mock_populate, mock_select, mock_client_cls, mock_upsert):
-        """If game lookup returns None, plays are still persisted."""
+    def test_game_not_found_skips(self, mock_populate, mock_select, mock_client_cls):
+        """If game lookup returns None, the game is skipped."""
         mock_select.return_value = [(100, 717001, "final")]
-
-        payload = MagicMock()
-        payload.plays = [MagicMock() for _ in range(60)]
-        mock_client_cls.return_value.fetch_play_by_play.return_value = payload
 
         session = MagicMock()
         session.query.return_value.get.return_value = None  # game not found
@@ -243,4 +249,4 @@ class TestIngestPbpViaMlbApi:
             session, run_id=1, start_date=date(2024, 7, 1), end_date=date(2024, 7, 31),
             only_missing=False, updated_before=None,
         )
-        assert result == (1, 10)
+        assert result == (0, 0)
