@@ -66,9 +66,6 @@ def populate_mlb_games_from_schedule(
 
     created = 0
     for mg in mlb_games:
-        game_day_et = mg.game_date.astimezone(ET).date()
-        game_date_utc = datetime.combine(game_day_et, datetime.min.time(), tzinfo=UTC)
-
         external_ids = {"mlb_game_pk": str(mg.game_pk)}
         season_type = MLB_GAME_TYPE_MAP.get(mg.game_type, "regular") if mg.game_type else "regular"
 
@@ -76,7 +73,7 @@ def populate_mlb_games_from_schedule(
             _game_id, was_created = upsert_game_stub(
                 session,
                 league_code="MLB",
-                game_date=game_date_utc,
+                game_date=mg.game_date,
                 home_team=mg.home_team,
                 away_team=mg.away_team,
                 status=mg.status,
