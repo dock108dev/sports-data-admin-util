@@ -379,9 +379,9 @@ class TestPostSimulateLineupLevel:
         return [{"external_ref": f"player_{i}", "name": f"Player {i}"} for i in range(n)]
 
     @patch("app.analytics.api.analytics_routes._predict_with_game_model")
-    @patch("app.analytics.api.analytics_routes.get_player_rolling_profile")
-    @patch("app.analytics.api.analytics_routes.get_pitcher_rolling_profile")
-    @patch("app.analytics.api.analytics_routes.get_team_info")
+    @patch("app.analytics.api._simulation_helpers.get_player_rolling_profile")
+    @patch("app.analytics.api._simulation_helpers.get_pitcher_rolling_profile")
+    @patch("app.analytics.api._simulation_helpers.get_team_info")
     @patch("app.analytics.api.analytics_routes.get_team_rolling_profile")
     @patch("app.analytics.api.analytics_routes._service")
     def test_lineup_simulation_full_flow(
@@ -455,7 +455,7 @@ class TestPostSimulateLineupLevel:
         assert call_kwargs.kwargs.get("use_lineup") is True
 
     @patch("app.analytics.api.analytics_routes._predict_with_game_model")
-    @patch("app.analytics.api.analytics_routes.get_team_info")
+    @patch("app.analytics.api._simulation_helpers.get_team_info")
     @patch("app.analytics.api.analytics_routes.get_team_rolling_profile")
     @patch("app.analytics.api.analytics_routes._service")
     def test_lineup_team_info_missing_returns_false(
@@ -498,9 +498,9 @@ class TestPostSimulateLineupLevel:
         assert call_kwargs.kwargs.get("use_lineup") is False
 
     @patch("app.analytics.api.analytics_routes._predict_with_game_model")
-    @patch("app.analytics.api.analytics_routes.get_player_rolling_profile")
-    @patch("app.analytics.api.analytics_routes.get_pitcher_rolling_profile")
-    @patch("app.analytics.api.analytics_routes.get_team_info")
+    @patch("app.analytics.api._simulation_helpers.get_player_rolling_profile")
+    @patch("app.analytics.api._simulation_helpers.get_pitcher_rolling_profile")
+    @patch("app.analytics.api._simulation_helpers.get_team_info")
     @patch("app.analytics.api.analytics_routes.get_team_rolling_profile")
     @patch("app.analytics.api.analytics_routes._service")
     def test_lineup_exception_falls_back(

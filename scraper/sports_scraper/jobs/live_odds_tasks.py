@@ -9,7 +9,6 @@ Dispatched by the live_orchestrator_tick task at sport-appropriate cadences.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import UTC, datetime
 
 from celery import shared_task
 
