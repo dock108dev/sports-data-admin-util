@@ -12,7 +12,7 @@ from ..logging import logger
 from ..models import IngestionConfig
 from ..persistence import persist_game_payload
 from ..scrapers import get_all_scrapers
-from ..utils.datetime_utils import cap_social_date_range, now_utc, sports_today_et, today_et
+from ..utils.datetime_utils import now_utc, today_et
 from .diagnostics import detect_external_id_conflicts, detect_missing_pbp
 from .game_selection import select_games_for_boxscores
 from .job_runs import complete_job_run, enforce_social_queue_limit, queue_job_run, start_job_run

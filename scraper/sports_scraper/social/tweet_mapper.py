@@ -53,21 +53,8 @@ def _game_duration_hours(game) -> float:
 
 
 def _get_game_start(game) -> datetime:
-    """Resolve game start time from tip_time or game_date, always UTC-aware."""
-    if game.tip_time:
-        game_start = game.tip_time
-    else:
-        game_start = game.game_date
-        # If game_date is at midnight, estimate 7 PM ET on that calendar date.
-        # game_date is stored as midnight UTC for the ET calendar date,
-        # so we use the UTC date directly and construct 7 PM ET on that date.
-        if game_start.hour == 0 and game_start.minute == 0:
-            game_day = game_start.date()  # The correct ET calendar date
-            estimated_et = datetime.combine(
-                game_day, datetime.min.time(), tzinfo=EASTERN
-            ).replace(hour=19)
-            game_start = estimated_et.astimezone(UTC)
-
+    """Resolve game start time from game_date, always UTC-aware."""
+    game_start = game.game_date
     if game_start.tzinfo is None:
         game_start = game_start.replace(tzinfo=UTC)
     return game_start
@@ -85,11 +72,8 @@ def _get_game_end(game, game_start: datetime) -> datetime:
 
 
 def _pregame_start_utc(game) -> datetime:
-    """Return pregame_start_hour_et on the game's calendar date, as a UTC datetime.
-
-    game.game_date is stored as midnight UTC representing the ET calendar date.
-    """
-    game_day = game.game_date.date()
+    """Return pregame_start_hour_et on the game's ET calendar date, as a UTC datetime."""
+    game_day = _to_et(game.game_date).date()
     pregame_et = datetime.combine(
         game_day, datetime.min.time(), tzinfo=EASTERN
     ).replace(hour=settings.social_config.pregame_start_hour_et)
@@ -110,7 +94,7 @@ def get_game_window(
     The window will cross midnight ET for evening games — this is expected.
 
     Args:
-        game: SportsGame object (must have game_date, tip_time, end_time)
+        game: SportsGame object (must have game_date, end_time)
         postgame_hours: Hours after game end to include (default: from LeagueConfig)
 
     Returns:
@@ -132,7 +116,7 @@ def get_game_window(
     # Floor: window must extend to at least 4 AM ET on the day after game_date.
     # Late-night games (ending after midnight ET) need postgame tweets captured
     # until the sports day boundary.
-    next_day = game.game_date.date() + timedelta(days=1)
+    next_day = _to_et(game.game_date).date() + timedelta(days=1)
     floor_et = datetime.combine(
         next_day, datetime.min.time(), tzinfo=EASTERN
     ).replace(hour=SPORTS_DAY_BOUNDARY_HOUR_ET)
@@ -149,8 +133,8 @@ def classify_game_phase(
     """Classify a tweet as pregame/in_game/postgame relative to a game.
 
     All comparisons in ET. Boundaries:
-    - pregame:  posted_at < tip_time
-    - in_game:  tip_time <= posted_at <= end_time
+    - pregame:  posted_at < game_date
+    - in_game:  game_date <= posted_at <= end_time
     - postgame: end_time < posted_at
 
     Uses sport-specific game duration when end_time is unavailable.

@@ -12,18 +12,13 @@ import json
 from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import httpx
 
 from ..config import settings
 from ..logging import logger
-from ..models import NormalizedOddsSnapshot, TeamIdentity, classify_market
-from ..normalization import normalize_team_name
-
-# US sports use Eastern Time for game dates
-US_EASTERN = ZoneInfo("America/New_York")
-
+from ..models import NormalizedOddsSnapshot
+from .parser import ALLOWED_BOOKS, parse_odds_events, parse_prop_event
 
 SPORT_KEY_MAP = {
     "NBA": "basketball_nba",
@@ -72,29 +67,6 @@ PROP_MARKETS: dict[str, list[str]] = {
 CREDIT_WARNING_THRESHOLD = 1000
 CREDIT_ABORT_THRESHOLD = 500
 
-# Books in scope for odds ingestion — only these are persisted.
-# Matches INCLUDED_BOOKS in api/app/services/ev_config.py.
-ALLOWED_BOOKS: frozenset[str] = frozenset(
-    {
-        # US sportsbooks
-        "BetMGM",
-        "BetRivers",
-        "Caesars",
-        "DraftKings",
-        "FanDuel",
-        # EU / sharp
-        "Pinnacle",
-        "888sport",
-        "William Hill",
-        # UK sportsbooks
-        "Betfair Exchange",
-        "Betfair Sportsbook",
-        "Ladbrokes",
-        "Paddy Power",
-        "William Hill (UK)",
-    }
-)
-
 # Default snapshot times for closing lines (in UTC)
 # Evening games typically close around these times
 CLOSING_LINE_HOURS = {
@@ -120,6 +92,13 @@ class OddsAPIClient:
         self._cache_dir = Path(settings.scraper_config.html_cache_dir) / "odds"
         # Track remaining credits from API response headers
         self._credits_remaining: int | None = None
+
+    # Thin wrappers so tests that call client._parse_* still work
+    def _parse_odds_events(self, league_code: str, events: list, books: list[str] | None = None) -> list:
+        return parse_odds_events(league_code, events, books)
+
+    def _parse_prop_event(self, league_code: str, event_data: dict) -> list:
+        return parse_prop_event(league_code, event_data)
 
     def _truncate_body(self, body: str | None, limit: int = 500) -> str | None:
         if not body:
@@ -230,7 +209,7 @@ class OddsAPIClient:
             remaining=response.headers.get("x-requests-remaining"),
         )
 
-        return self._parse_odds_events(league_code, payload, books)
+        return parse_odds_events(league_code, payload, books)
 
     def fetch_historical_odds(
         self,
@@ -267,7 +246,7 @@ class OddsAPIClient:
             logger.info("odds_using_cache", league=league_code, date=str(game_date), type="historical")
             # Cached data is the full API response, extract events
             events = cached.get("data", []) if isinstance(cached, dict) else cached
-            return self._parse_odds_events(league_code, events, books)
+            return parse_odds_events(league_code, events, books)
 
         # Build snapshot time - use closing line hour for this sport
         closing_hour = CLOSING_LINE_HOURS.get(league_code.upper(), 23)
@@ -333,136 +312,7 @@ class OddsAPIClient:
             snapshot_timestamp=result.get("timestamp"),
         )
 
-        return self._parse_odds_events(league_code, events, books)
-
-    def _parse_odds_events(
-        self,
-        league_code: str,
-        events: list,
-        books: list[str] | None = None,
-    ) -> list[NormalizedOddsSnapshot]:
-        """Parse events list into normalized odds snapshots.
-
-        Shared logic for both live and historical endpoints.
-        """
-        snapshots: list[NormalizedOddsSnapshot] = []
-
-        for event in events:
-            # Store event ID for downstream prop fetching
-            event_id = event.get("id")
-
-            # Parse commence_time as UTC
-            commence_utc = datetime.fromisoformat(event["commence_time"].replace("Z", "+00:00"))
-            # Convert to Eastern Time for date extraction (US sports use ET dates)
-            # This ensures games at 7pm ET on Jan 22 are stored as Jan 22, not Jan 23 UTC
-            commence_et = commence_utc.astimezone(US_EASTERN)
-            # Create game_date at midnight ET, then convert back to UTC for storage
-            game_date_et = datetime.combine(commence_et.date(), datetime.min.time(), tzinfo=US_EASTERN)
-            game_date = game_date_et.astimezone(UTC)
-
-            # Normalize team names to canonical form
-            raw_home_name = event["home_team"]
-            raw_away_name = event["away_team"]
-            home_canonical, home_abbr = normalize_team_name(league_code, raw_home_name)
-            away_canonical, away_abbr = normalize_team_name(league_code, raw_away_name)
-
-            # Log normalization - always log to help debug matching issues
-            logger.debug(
-                "odds_team_normalization",
-                league=league_code,
-                raw_home=raw_home_name,
-                normalized_home=home_canonical,
-                home_abbr=home_abbr,
-                raw_away=raw_away_name,
-                normalized_away=away_canonical,
-                away_abbr=away_abbr,
-                was_normalized=(raw_home_name != home_canonical or raw_away_name != away_canonical),
-            )
-
-            # Warn if normalization fell back to generating abbreviation
-            # (indicates team name not in mappings)
-            # Skip this check for NCAAB since abbreviations are None
-            if league_code != "NCAAB" and (
-                (home_abbr and len(home_abbr) > 3) or (away_abbr and len(away_abbr) > 3)
-            ):
-                logger.warning(
-                    "odds_team_abbreviation_generated",
-                    league=league_code,
-                    raw_home=raw_home_name,
-                    generated_home_abbr=home_abbr,
-                    raw_away=raw_away_name,
-                    generated_away_abbr=away_abbr,
-                    message="Team names not found in mappings - using generated abbreviations",
-                )
-
-            home_team = TeamIdentity(
-                league_code=league_code,
-                name=home_canonical,
-                short_name=home_canonical,
-                abbreviation=home_abbr,
-            )
-            away_team = TeamIdentity(
-                league_code=league_code,
-                name=away_canonical,
-                short_name=away_canonical,
-                abbreviation=away_abbr,
-            )
-
-            for bookmaker in event.get("bookmakers", []):
-                if books and bookmaker["key"] not in books:
-                    continue
-                if bookmaker.get("title") not in ALLOWED_BOOKS:
-                    continue
-                for market in bookmaker.get("markets", []):
-                    market_type = MARKET_TYPES.get(market["key"])
-                    if not market_type:
-                        continue
-                    for outcome in market.get("outcomes", []):
-                        side = outcome.get("name")
-                        price = outcome.get("price")
-                        line = outcome.get("point")
-                        if not side or price is None:
-                            logger.debug(
-                                "odds_outcome_skipped",
-                                league=league_code,
-                                book=bookmaker.get("title"),
-                                market=market.get("key"),
-                                reason="missing_side_or_price",
-                            )
-                            continue
-                        if market_type in ("spread", "total") and line is None:
-                            logger.debug(
-                                "odds_outcome_skipped",
-                                league=league_code,
-                                book=bookmaker.get("title"),
-                                market=market.get("key"),
-                                side=side,
-                                reason="missing_line",
-                            )
-                            continue
-                        snapshots.append(
-                            NormalizedOddsSnapshot(
-                                league_code=league_code,
-                                book=bookmaker["title"],
-                                market_type=market_type,  # type: ignore[arg-type]
-                                side=side,
-                                line=line,
-                                price=price,
-                                observed_at=datetime.fromisoformat(
-                                    bookmaker["last_update"].replace("Z", "+00:00")
-                                ),
-                                home_team=home_team,
-                                away_team=away_team,
-                                game_date=game_date,
-                                tip_time=commence_utc,  # Actual start time in UTC
-                                source_key=market.get("key"),
-                                is_closing_line=True,
-                                raw_payload=outcome,
-                                event_id=event_id,
-                            )
-                        )
-
-        return snapshots
+        return parse_odds_events(league_code, events, books)
 
     def _track_credits(self, response: httpx.Response) -> int | None:
         """Parse and track credit usage from API response headers.
@@ -559,92 +409,4 @@ class OddsAPIClient:
             remaining=response.headers.get("x-requests-remaining"),
         )
 
-        return self._parse_prop_event(league_code, payload)
-
-    def _parse_prop_event(
-        self,
-        league_code: str,
-        event_data: dict,
-    ) -> list[NormalizedOddsSnapshot]:
-        """Parse a single event's prop odds into normalized snapshots."""
-        snapshots: list[NormalizedOddsSnapshot] = []
-
-        event_id = event_data.get("id")
-        commence_str = event_data.get("commence_time")
-        if not commence_str:
-            return []
-
-        commence_utc = datetime.fromisoformat(commence_str.replace("Z", "+00:00"))
-        commence_et = commence_utc.astimezone(US_EASTERN)
-        game_date_et = datetime.combine(commence_et.date(), datetime.min.time(), tzinfo=US_EASTERN)
-        game_date = game_date_et.astimezone(UTC)
-
-        raw_home_name = event_data.get("home_team", "")
-        raw_away_name = event_data.get("away_team", "")
-        home_canonical, home_abbr = normalize_team_name(league_code, raw_home_name)
-        away_canonical, away_abbr = normalize_team_name(league_code, raw_away_name)
-
-        home_team = TeamIdentity(
-            league_code=league_code,
-            name=home_canonical,
-            short_name=home_canonical,
-            abbreviation=home_abbr,
-        )
-        away_team = TeamIdentity(
-            league_code=league_code,
-            name=away_canonical,
-            short_name=away_canonical,
-            abbreviation=away_abbr,
-        )
-
-        for bookmaker in event_data.get("bookmakers", []):
-            if bookmaker.get("title") not in ALLOWED_BOOKS:
-                continue
-            for market in bookmaker.get("markets", []):
-                market_key = market.get("key", "")
-                market_category = classify_market(market_key)
-
-                for outcome in market.get("outcomes", []):
-                    side = outcome.get("name")
-                    price = outcome.get("price")
-                    line = outcome.get("point")
-                    description = outcome.get("description")
-
-                    if not side or price is None:
-                        continue
-
-                    # Extract player name from description field (props use this)
-                    player_name = description if market_category == "player_prop" else None
-
-                    # last_update lives on market in event-level API
-                    last_update_str = market.get("last_update") or bookmaker.get("last_update", "")
-                    observed_at = (
-                        datetime.fromisoformat(last_update_str.replace("Z", "+00:00"))
-                        if last_update_str
-                        else commence_utc
-                    )
-
-                    snapshots.append(
-                        NormalizedOddsSnapshot(
-                            league_code=league_code,
-                            book=bookmaker["title"],
-                            market_type=market_key,
-                            side=side,
-                            line=line,
-                            price=price,
-                            observed_at=observed_at,
-                            home_team=home_team,
-                            away_team=away_team,
-                            game_date=game_date,
-                            tip_time=commence_utc,
-                            source_key=market_key,
-                            is_closing_line=True,
-                            raw_payload=outcome,
-                            event_id=event_id,
-                            market_category=market_category,
-                            player_name=player_name,
-                            description=description,
-                        )
-                    )
-
-        return snapshots
+        return parse_prop_event(league_code, payload)

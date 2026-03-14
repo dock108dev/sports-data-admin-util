@@ -5213,9 +5213,9 @@ class TestBacktestRoutes:
     def test_backtest_route_exists(self):
         import inspect
 
-        from app.analytics.api import _pipeline_routes
+        from app.analytics.api import _backtest_routes
 
-        source = inspect.getsource(_pipeline_routes)
+        source = inspect.getsource(_backtest_routes)
         assert "start_backtest" in source
         assert "list_backtest_jobs" in source
         assert "get_backtest_job" in source

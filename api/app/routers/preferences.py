@@ -166,6 +166,7 @@ async def put_preferences(
     prefs.pinned_game_ids = pinned
     prefs.revealed_game_ids = revealed
     await db.flush()
+    await db.refresh(prefs, ["updated_at"])
 
     logger.info("preferences_replaced", extra={"user_id": user_id})
     return OkResponse(updatedAt=prefs.updated_at)
@@ -200,6 +201,7 @@ async def patch_preferences(
         prefs.revealed_game_ids = body.revealedGameIds
 
     await db.flush()
+    await db.refresh(prefs, ["updated_at"])
 
     logger.info("preferences_patched", extra={"user_id": user_id})
     return OkResponse(updatedAt=prefs.updated_at)

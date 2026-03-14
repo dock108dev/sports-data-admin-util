@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from ...celery_app import SOCIAL_QUEUE
 from ...logging import logger
