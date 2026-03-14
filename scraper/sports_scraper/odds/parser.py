@@ -6,15 +6,11 @@ Split from client.py for maintainability.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime
 
 from ..logging import logger
 from ..models import NormalizedOddsSnapshot, TeamIdentity, classify_market
 from ..normalization import normalize_team_name
-
-# US sports use Eastern Time for game dates
-US_EASTERN = ZoneInfo("America/New_York")
 
 # Books in scope for odds ingestion — only these are persisted.
 # Matches INCLUDED_BOOKS in api/app/services/ev_config.py.
@@ -62,14 +58,9 @@ def parse_odds_events(
         # Store event ID for downstream prop fetching
         event_id = event.get("id")
 
-        # Parse commence_time as UTC
+        # Parse commence_time as UTC — preserve the real scheduled start time
         commence_utc = datetime.fromisoformat(event["commence_time"].replace("Z", "+00:00"))
-        # Convert to Eastern Time for date extraction (US sports use ET dates)
-        # This ensures games at 7pm ET on Jan 22 are stored as Jan 22, not Jan 23 UTC
-        commence_et = commence_utc.astimezone(US_EASTERN)
-        # Create game_date at midnight ET, then convert back to UTC for storage
-        game_date_et = datetime.combine(commence_et.date(), datetime.min.time(), tzinfo=US_EASTERN)
-        game_date = game_date_et.astimezone(UTC)
+        game_date = commence_utc
 
         # Normalize team names to canonical form
         raw_home_name = event["home_team"]
@@ -188,9 +179,7 @@ def parse_prop_event(
         return []
 
     commence_utc = datetime.fromisoformat(commence_str.replace("Z", "+00:00"))
-    commence_et = commence_utc.astimezone(US_EASTERN)
-    game_date_et = datetime.combine(commence_et.date(), datetime.min.time(), tzinfo=US_EASTERN)
-    game_date = game_date_et.astimezone(UTC)
+    game_date = commence_utc
 
     raw_home_name = event_data.get("home_team", "")
     raw_away_name = event_data.get("away_team", "")

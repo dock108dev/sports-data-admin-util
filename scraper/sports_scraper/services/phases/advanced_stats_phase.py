@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from ...db import db_models
 from ...logging import logger
+from ...utils.datetime_utils import start_of_et_day_utc
 
 
 def ingest_advanced_stats(
@@ -43,7 +44,7 @@ def ingest_advanced_stats(
         from ..mlb_advanced_stats_ingestion import ingest_advanced_stats_for_game
 
         with get_session() as session:
-            window_start = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
+            window_start = start_of_et_day_utc(start)
             window_end = datetime.combine(end, datetime.max.time(), tzinfo=UTC)
 
             query = (

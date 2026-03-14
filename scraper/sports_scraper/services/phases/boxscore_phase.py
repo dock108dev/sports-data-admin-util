@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from ...db import db_models
 from ...logging import logger
-from ...utils.datetime_utils import sports_today_et
+from ...utils.datetime_utils import start_of_et_day_utc, sports_today_et
 
 
 def ingest_boxscores(
@@ -230,7 +230,7 @@ def ingest_boxscores(
     # Gap detection: compare DB games for the date range vs enriched count
     try:
         bs_end = min(end, boxscore_cutoff)
-        window_start = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
+        window_start = start_of_et_day_utc(start)
         window_end = datetime.combine(bs_end, datetime.max.time(), tzinfo=UTC)
         with get_session() as session:
             total_final_games = (

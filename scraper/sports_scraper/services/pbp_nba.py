@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
-from ..utils.datetime_utils import end_of_et_day_utc, to_et_date
+from ..utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc, to_et_date
 
 from sqlalchemy import exists, not_, or_
 from sqlalchemy.orm import Session
@@ -52,7 +52,7 @@ def select_games_for_pbp_nba_api(
         db_models.SportsGame.status,
     ).filter(
         db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date >= start_of_et_day_utc(start_date),
         db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
         # nba_game_id is required for NBA API PBP fetch
         nba_game_id_expr.isnot(None),
@@ -113,7 +113,7 @@ def populate_nba_game_ids(
         )
         .filter(
             db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+            db_models.SportsGame.game_date >= start_of_et_day_utc(start_date),
             db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
             or_(
                 nba_game_id_expr.is_(None),

@@ -90,13 +90,14 @@ interface UseGameFiltersReturn {
  */
 export function useGameFilters(options: UseGameFiltersOptions = {}): UseGameFiltersReturn {
   const { defaultLimit = 25, loadMoreMode = false } = options;
-  
-  const [formFilters, setFormFilters] = useState<GameFilters>(() =>
-    loadSavedFilters(defaultLimit) ?? getDefaultGameFilters(defaultLimit),
+
+  const [formFilters, setFormFilters] = useState<GameFilters>(
+    getDefaultGameFilters(defaultLimit),
   );
-  const [appliedFilters, setAppliedFilters] = useState<GameFilters>(() =>
-    loadSavedFilters(defaultLimit) ?? getDefaultGameFilters(defaultLimit),
+  const [appliedFilters, setAppliedFilters] = useState<GameFilters>(
+    getDefaultGameFilters(defaultLimit),
   );
+  const [hydrated, setHydrated] = useState(false);
   const [games, setGames] = useState<GameSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [aggregates, setAggregates] = useState<{
@@ -112,7 +113,18 @@ export function useGameFilters(options: UseGameFiltersOptions = {}): UseGameFilt
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Load saved filters from localStorage after mount to avoid hydration mismatch
   useEffect(() => {
+    const saved = loadSavedFilters(defaultLimit);
+    if (saved) {
+      setFormFilters(saved);
+      setAppliedFilters(saved);
+    }
+    setHydrated(true);
+  }, [defaultLimit]);
+
+  useEffect(() => {
+    if (!hydrated) return;
     let cancelled = false;
     async function load() {
       setLoading(true);
@@ -120,13 +132,13 @@ export function useGameFilters(options: UseGameFiltersOptions = {}): UseGameFilt
       try {
         const response = await listGames(appliedFilters);
         if (cancelled) return;
-        
+
         if (loadMoreMode && appliedFilters.offset && appliedFilters.offset > 0) {
           setGames((prev) => [...prev, ...response.games]);
         } else {
           setGames(response.games);
         }
-        
+
         setTotal(response.total);
         setAggregates({
           withBoxscore: response.withBoxscoreCount ?? 0,
@@ -149,7 +161,7 @@ export function useGameFilters(options: UseGameFiltersOptions = {}): UseGameFilt
     return () => {
       cancelled = true;
     };
-  }, [appliedFilters, loadMoreMode]);
+  }, [appliedFilters, loadMoreMode, hydrated]);
 
   const applyFilters = useCallback(
     (nextFilters?: GameFilters) => {

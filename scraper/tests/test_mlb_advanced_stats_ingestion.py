@@ -22,6 +22,8 @@ from sports_scraper.live.mlb_statcast import (
     TeamStatcastAggregates,
 )
 from sports_scraper.services.mlb_advanced_stats_ingestion import (
+    _extract_pitcher_boxscore_data,
+    _parse_ip,
     _safe_div,
     ingest_advanced_stats_for_game,
 )
@@ -45,6 +47,107 @@ class TestSafeDiv:
         result = _safe_div(1, 3)
         assert result is not None
         assert abs(result - 0.3333) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# _parse_ip
+# ---------------------------------------------------------------------------
+
+
+class TestParseIp:
+    def test_full_innings(self):
+        assert _parse_ip("6.0") == 6.0
+
+    def test_one_third(self):
+        result = _parse_ip("1.1")
+        assert abs(result - 1.333) < 0.01
+
+    def test_two_thirds(self):
+        result = _parse_ip("6.2")
+        assert abs(result - 6.667) < 0.01
+
+    def test_zero(self):
+        assert _parse_ip("0.0") == 0.0
+
+    def test_empty_string(self):
+        assert _parse_ip("") == 0.0
+
+    def test_whole_only(self):
+        assert _parse_ip("5") == 5.0
+
+
+# ---------------------------------------------------------------------------
+# _extract_pitcher_boxscore_data
+# ---------------------------------------------------------------------------
+
+
+class TestExtractPitcherBoxscoreData:
+    def test_extracts_starter_and_reliever(self):
+        boxscore_raw = {
+            "teams": {
+                "home": {
+                    "pitchers": [501, 502],
+                    "players": {
+                        "ID501": {
+                            "stats": {
+                                "pitching": {
+                                    "inningsPitched": "6.0",
+                                    "hits": 5, "runs": 2, "earnedRuns": 2,
+                                    "baseOnBalls": 1, "strikeOuts": 7,
+                                    "homeRuns": 1, "numberOfPitches": 90,
+                                    "strikes": 60, "balls": 30,
+                                    "battersFaced": 24,
+                                }
+                            }
+                        },
+                        "ID502": {
+                            "stats": {
+                                "pitching": {
+                                    "inningsPitched": "3.0",
+                                    "hits": 2, "runs": 1, "earnedRuns": 1,
+                                    "baseOnBalls": 0, "strikeOuts": 4,
+                                    "homeRuns": 0, "numberOfPitches": 40,
+                                    "strikes": 28, "balls": 12,
+                                    "battersFaced": 10,
+                                }
+                            }
+                        },
+                    },
+                },
+                "away": {
+                    "pitchers": [601],
+                    "players": {
+                        "ID601": {
+                            "stats": {
+                                "pitching": {
+                                    "inningsPitched": "9.0",
+                                    "hits": 4, "runs": 0, "earnedRuns": 0,
+                                    "baseOnBalls": 2, "strikeOuts": 10,
+                                    "homeRuns": 0, "numberOfPitches": 110,
+                                    "strikes": 75, "balls": 35,
+                                    "battersFaced": 30,
+                                }
+                            }
+                        },
+                    },
+                },
+            }
+        }
+        result = _extract_pitcher_boxscore_data(boxscore_raw)
+
+        assert result["501"]["is_starter"] is True
+        assert result["501"]["innings_pitched"] == 6.0
+        assert result["501"]["strikeouts"] == 7
+
+        assert result["502"]["is_starter"] is False
+        assert result["502"]["innings_pitched"] == 3.0
+
+        assert result["601"]["is_starter"] is True
+        assert result["601"]["strikeouts"] == 10
+
+    def test_empty_teams(self):
+        result = _extract_pitcher_boxscore_data({"teams": {}})
+        assert result == {}
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +323,55 @@ class TestIngestAdvancedStatsForGame:
         mock_client.fetch_pitcher_statcast_aggregates.return_value = [
             pitcher_agg_home, pitcher_agg_away,
         ]
+
+        # Mock raw boxscore with pitcher lines
+        mock_client.fetch_boxscore_raw.return_value = {
+            "teams": {
+                "home": {
+                    "pitchers": [300, 301],
+                    "players": {
+                        "ID300": {
+                            "stats": {
+                                "pitching": {
+                                    "inningsPitched": "6.2", "hits": 5,
+                                    "runs": 2, "earnedRuns": 2,
+                                    "baseOnBalls": 1, "strikeOuts": 8,
+                                    "homeRuns": 1, "numberOfPitches": 95,
+                                    "strikes": 62, "balls": 33,
+                                    "battersFaced": 25,
+                                }
+                            }
+                        },
+                        "ID301": {"stats": {"pitching": {
+                            "inningsPitched": "2.1", "hits": 1,
+                            "runs": 0, "earnedRuns": 0,
+                            "baseOnBalls": 0, "strikeOuts": 3,
+                            "homeRuns": 0, "numberOfPitches": 30,
+                            "strikes": 20, "balls": 10,
+                            "battersFaced": 8,
+                        }}},
+                    },
+                },
+                "away": {
+                    "pitchers": [400],
+                    "players": {
+                        "ID400": {
+                            "stats": {
+                                "pitching": {
+                                    "inningsPitched": "9.0", "hits": 4,
+                                    "runs": 1, "earnedRuns": 1,
+                                    "baseOnBalls": 2, "strikeOuts": 10,
+                                    "homeRuns": 0, "numberOfPitches": 110,
+                                    "strikes": 75, "balls": 35,
+                                    "battersFaced": 30,
+                                }
+                            }
+                        },
+                    },
+                },
+            }
+        }
+
         MockClient.return_value = mock_client
 
         result = ingest_advanced_stats_for_game(session, 1)
@@ -237,6 +389,7 @@ class TestIngestAdvancedStatsForGame:
         mock_client.fetch_pitcher_statcast_aggregates.assert_called_once_with(
             12345, game_status="final"
         )
+        mock_client.fetch_boxscore_raw.assert_called_once_with(12345, game_status="final")
 
         # 2 team rows + 2 player rows + 2 pitcher rows = 6 execute calls
         assert session.execute.call_count == 6
@@ -246,6 +399,42 @@ class TestIngestAdvancedStatsForGame:
 
         # Verify flush was called
         session.flush.assert_called_once()
+
+    @patch("sports_scraper.live.mlb.MLBLiveFeedClient")
+    def test_boxscore_fetch_returns_none(self, MockClient):
+        """Pitcher stats still upserted with Statcast-only when boxscore fails."""
+        game = self._make_game()
+        league = self._make_league(code="MLB")
+        session = self._make_session(game, league)
+
+        home_agg = TeamStatcastAggregates(total_pitches=100)
+        away_agg = TeamStatcastAggregates(total_pitches=95)
+
+        pitcher_agg = PitcherStatcastAggregates(
+            pitcher_id=300,
+            pitcher_name="Home Pitcher",
+            side="home",
+            total_batters_faced=15,
+            stats=TeamStatcastAggregates(
+                total_pitches=80, zone_pitches=40, zone_swings=20, zone_contact=15,
+                outside_pitches=30, outside_swings=8, outside_contact=3,
+                balls_in_play=12, total_exit_velo=1000.0, hard_hit_count=5, barrel_count=2,
+            ),
+        )
+
+        mock_client = MagicMock()
+        mock_client.fetch_statcast_aggregates.return_value = {"home": home_agg, "away": away_agg}
+        mock_client.fetch_player_statcast_aggregates.return_value = []
+        mock_client.fetch_pitcher_statcast_aggregates.return_value = [pitcher_agg]
+        mock_client.fetch_boxscore_raw.return_value = None
+        MockClient.return_value = mock_client
+
+        result = ingest_advanced_stats_for_game(session, 1)
+
+        assert result["status"] == "success"
+        assert result["pitcher_rows_upserted"] == 1
+        # 2 team + 0 player + 1 pitcher = 3
+        assert session.execute.call_count == 3
 
     @patch("sports_scraper.live.mlb.MLBLiveFeedClient")
     def test_ingestion_no_players_or_pitchers(self, MockClient):

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
-from ..utils.datetime_utils import end_of_et_day_utc
+from ..utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc
 
 from sqlalchemy import exists, not_
 from sqlalchemy.orm import Session
@@ -48,7 +48,7 @@ def select_games_for_pbp_mlb_api(
         db_models.SportsGame.status,
     ).filter(
         db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date >= start_of_et_day_utc(start_date),
         db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
         mlb_game_pk_expr.isnot(None),
     )

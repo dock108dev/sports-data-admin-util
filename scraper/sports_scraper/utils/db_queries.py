@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
-from .datetime_utils import end_of_et_day_utc
+from .datetime_utils import end_of_et_day_utc, start_of_et_day_utc
 
 from sqlalchemy import exists, func, not_, or_, select
 from sqlalchemy.orm import Session
@@ -109,7 +109,7 @@ def find_games_in_date_range(
         db_models.SportsGame.game_date,
     ).filter(
         db_models.SportsGame.league_id == league_id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date >= start_of_et_day_utc(start_date),
         db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
     )
 

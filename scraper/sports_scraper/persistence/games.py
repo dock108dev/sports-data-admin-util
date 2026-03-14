@@ -163,6 +163,12 @@ def upsert_game_stub(
             if merged_external_ids != existing.external_ids:
                 existing.external_ids = merged_external_ids
                 updated = True
+        # Backfill game_date if existing is midnight ET placeholder and incoming has real time
+        existing_is_midnight = existing.game_date == start_of_et_day_utc(to_et_date(existing.game_date))
+        incoming_is_midnight = game_date == start_of_et_day_utc(to_et_date(game_date))
+        if existing_is_midnight and not incoming_is_midnight:
+            existing.game_date = game_date
+            updated = True
         # Backfill season_type if existing value is "regular" and new value differs
         if season_type != "regular" and existing.season_type == "regular":
             existing.season_type = season_type

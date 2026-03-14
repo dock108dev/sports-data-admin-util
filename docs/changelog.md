@@ -4,6 +4,15 @@ All notable changes to Sports Data Admin.
 
 ## [2026-03-14] - Current
 
+### Datetime SSOT — `to_et_date()` Consolidation
+
+- **Bug fix:** After the `tip_time` → `game_date` migration, ~25 call sites used `.date()` on `game_date` (now a full UTC datetime). This returned the UTC date, not the ET sports-calendar date — breaking late-night games (e.g., 11 PM ET = 4 AM UTC next day → wrong date). Games ending after midnight ET were stuck on LIVE with no stats because API queries used the wrong date to populate external IDs
+- **New utility:** `to_et_date(dt)` added to both `scraper/sports_scraper/utils/datetime_utils.py` and `api/app/utils/datetime_utils.py`. Converts UTC datetime to ET calendar date. All `.date()` calls on `game_date` replaced with `to_et_date()`
+- **Name collision fix:** `api/app/realtime/models.py::to_et_date()` (returned `str`) renamed to `to_et_date_str()` to avoid collision with the SSOT `to_et_date()` (returns `date`)
+- **Removed:** `today_eastern()` renamed to `today_et()` for cross-package naming consistency. `eastern_date_to_utc_range()` deleted (dead in production, duplicated scraper's `start_of_et_day_utc()`/`end_of_et_day_utc()`)
+- **Inline consolidation:** 4 remaining inline `.astimezone(ET).date()` patterns replaced with `to_et_date()` in `sweep_tasks.py`, `mlb_boxscore_ingestion.py`, `games.py`, `social_tasks.py`
+- **Files changed:** 19 scraper files, 4 API files, 3 test files. Net -126 lines
+
 ### game_date SSOT — tip_time Removal
 
 - **Breaking:** `tip_time` column removed from `sports_games`. `game_date` now stores the actual scheduled start time (UTC datetime) instead of a midnight placeholder

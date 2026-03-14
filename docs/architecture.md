@@ -300,6 +300,36 @@ See [API Reference](api.md) for complete endpoint reference.
 
 ---
 
+## Configuration SSOTs
+
+### League Configuration (`config_sports.py`)
+
+Centralized per-league feature flags and timing config. Exists in both `api/app/config_sports.py` and `scraper/sports_scraper/config_sports.py` (identical, independent packages). Controls:
+
+- Pipeline feature flags (boxscores, odds, social, PBP, timeline)
+- Game state machine windows (pregame, postgame, estimated duration)
+- Live polling behavior (PBP, boxscore, odds)
+- Scheduled ingestion inclusion
+
+To add a new league, see [Adding New Sports](adding-sports.md).
+
+### Datetime Utilities (`utils/datetime_utils.py`)
+
+All date/time conversions go through shared utility functions. Exists in both `api/app/utils/datetime_utils.py` and `scraper/sports_scraper/utils/datetime_utils.py` (independent packages, aligned names).
+
+| Function | Purpose |
+|----------|---------|
+| `to_et_date(dt)` | UTC datetime → ET calendar date. **Use instead of `.date()` on game datetimes.** |
+| `today_et()` | Current date in Eastern Time (midnight boundary) |
+| `sports_today_et()` | Current sports day (4 AM ET boundary — scraper only) |
+| `start_of_et_day_utc(d)` | ET midnight → UTC. Use as `>=` bound in queries |
+| `end_of_et_day_utc(d)` | ET next-midnight → UTC. Use as `<` bound in queries |
+| `date_to_utc_datetime(d)` | Date → UTC midnight datetime |
+
+**Critical rule:** Never call `.date()` on a `game_date` field. Use `to_et_date(game_date)` instead. A game at 4 AM UTC is 11 PM ET the previous day — `.date()` returns the wrong calendar date.
+
+---
+
 ## Key Principles
 
 1. **Stability over speed** — Downstream apps depend on this
