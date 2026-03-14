@@ -19,18 +19,23 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_index(
-        "idx_fairbet_odds_game_book_cat",
-        "fairbet_game_odds_work",
-        ["game_id", "book", "market_category"],
-        if_not_exists=True,
-    )
-    op.create_index(
-        "idx_fairbet_odds_updated_at",
-        "fairbet_game_odds_work",
-        ["updated_at"],
-        if_not_exists=True,
-    )
+    # Use CONCURRENTLY to avoid locking the table while scrapers are writing.
+    # This requires autocommit mode (no enclosing transaction).
+    with op.get_context().autocommit_block():
+        op.create_index(
+            "idx_fairbet_odds_game_book_cat",
+            "fairbet_game_odds_work",
+            ["game_id", "book", "market_category"],
+            if_not_exists=True,
+            postgresql_concurrently=True,
+        )
+        op.create_index(
+            "idx_fairbet_odds_updated_at",
+            "fairbet_game_odds_work",
+            ["updated_at"],
+            if_not_exists=True,
+            postgresql_concurrently=True,
+        )
 
 
 def downgrade() -> None:
