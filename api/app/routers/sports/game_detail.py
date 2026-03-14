@@ -435,7 +435,7 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
 
     # MLB fielding stats (seasonal context for teams in this game)
     mlb_fielding_stats_list: list[MLBFieldingStatSchema] | None = None
-    if is_mlb and game.home_team and game.away_team:
+    if is_mlb and game.home_team and game.away_team and game.season_type in ("regular", "postseason"):
         team_ids = [game.home_team.id, game.away_team.id]
         fielding_result = await session.execute(
             select(MLBPlayerFieldingStats)

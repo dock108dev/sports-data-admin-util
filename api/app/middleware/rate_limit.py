@@ -12,6 +12,9 @@ from starlette.responses import JSONResponse
 from app.config import settings
 
 
+_EXEMPT_PREFIXES = ("/v1/sse", "/auth/me")
+
+
 class RateLimitMiddleware:
     """Sliding window limiter based on client IP."""
 
@@ -21,6 +24,11 @@ class RateLimitMiddleware:
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
         if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        if any(path.startswith(p) for p in _EXEMPT_PREFIXES):
             await self.app(scope, receive, send)
             return
 
