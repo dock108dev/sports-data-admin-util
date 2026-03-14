@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedGame, NormalizedPlayerBoxscore, NormalizedTeamBoxscore
-from ..utils.datetime_utils import now_utc
+from ..utils.datetime_utils import now_utc, to_et_date
 from ..utils.db_queries import get_league_id
 from .boxscore_helpers import (
     GamePersistResult,
@@ -262,7 +262,7 @@ def persist_game_payload(
                 away_team=payload.identity.away_team.name,
                 home_team_found=home_team_id is not None,
                 away_team_found=away_team_id is not None,
-                game_date=str(payload.identity.game_date.date()),
+                game_date=str(to_et_date(payload.identity.game_date)),
                 source_game_key=payload.identity.source_game_key,
             )
             return GamePersistResult(game_id=None, enriched=False)
@@ -277,7 +277,7 @@ def persist_game_payload(
                 league=payload.identity.league_code,
                 home_team=payload.identity.home_team.name,
                 away_team=payload.identity.away_team.name,
-                game_date=str(payload.identity.game_date.date()),
+                game_date=str(to_et_date(payload.identity.game_date)),
                 source_game_key=payload.identity.source_game_key,
             )
             return GamePersistResult(game_id=None, enriched=False)

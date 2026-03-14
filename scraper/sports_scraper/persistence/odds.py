@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedOddsSnapshot
-from ..utils.datetime_utils import now_utc
+from ..utils.datetime_utils import now_utc, to_et_date
 from ..utils.db_queries import get_league_id
 
 
@@ -154,7 +154,7 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
                 league=snapshot.league_code,
             )
 
-    game_day = snapshot.game_date.date()
+    game_day = to_et_date(snapshot.game_date)
     cache_key = (
         snapshot.league_code,
         game_day,
@@ -339,7 +339,7 @@ def upsert_odds(session: Session, snapshot: NormalizedOddsSnapshot) -> OddsUpser
     if game_id is None:
         # Game not found - create it via upsert_game_stub
         # Odds API is the sole creator of game records (for both historical and future dates)
-        game_date_only = snapshot.game_date.date()
+        game_date_only = to_et_date(snapshot.game_date)
         today = date.today()
         is_historical = game_date_only < today
 

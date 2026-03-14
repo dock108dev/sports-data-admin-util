@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from ..utils.datetime_utils import end_of_et_day_utc
+from ..utils.datetime_utils import end_of_et_day_utc, to_et_date
 
 from sqlalchemy import exists, not_, or_
 from sqlalchemy.orm import Session
@@ -164,7 +164,7 @@ def populate_nhl_game_ids(
         key = (
             ng.home_team.abbreviation.upper(),
             ng.away_team.abbreviation.upper(),
-            ng.game_date.date(),
+            to_et_date(ng.game_date),
         )
         nhl_lookup[key] = ng.game_id
 
@@ -173,7 +173,7 @@ def populate_nhl_game_ids(
     for game_id, game_date, home_team_id, away_team_id in games_missing_pk:
         home_abbr = team_id_to_abbr.get(home_team_id, "").upper()
         away_abbr = team_id_to_abbr.get(away_team_id, "").upper()
-        game_day = game_date.date() if game_date else None
+        game_day = to_et_date(game_date) if game_date else None
 
         if not home_abbr or not away_abbr or not game_day:
             continue

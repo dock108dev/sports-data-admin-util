@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from ..utils.datetime_utils import end_of_et_day_utc
+from ..utils.datetime_utils import end_of_et_day_utc, to_et_date
 
 from sqlalchemy import exists, not_
 from sqlalchemy.orm import Session
@@ -91,7 +91,7 @@ def select_games_for_boxscores_nhl_api(
         if nhl_game_pk:
             try:
                 nhl_game_id = int(nhl_game_pk)
-                game_day = game_date.date() if game_date else None
+                game_day = to_et_date(game_date) if game_date else None
                 if game_day:
                     results.append((game_id, nhl_game_id, game_day))
             except (ValueError, TypeError):

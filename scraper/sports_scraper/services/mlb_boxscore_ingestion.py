@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from ..utils.datetime_utils import ET, end_of_et_day_utc
+from ..utils.datetime_utils import ET, end_of_et_day_utc, to_et_date
 
 from sqlalchemy import exists, not_, or_
 from sqlalchemy.orm import Session
@@ -209,7 +209,7 @@ def populate_mlb_game_ids(
     for game_id, game_date, home_team_id, away_team_id in games_missing_pk:
         home_abbr = team_id_to_abbr.get(home_team_id, "").upper()
         away_abbr = team_id_to_abbr.get(away_team_id, "").upper()
-        game_day = game_date.date() if game_date else None
+        game_day = to_et_date(game_date) if game_date else None
 
         if not home_abbr or not away_abbr or not game_day:
             continue
@@ -294,7 +294,7 @@ def select_games_for_boxscores_mlb_api(
         if mlb_game_pk:
             try:
                 mlb_pk = int(mlb_game_pk)
-                game_day = game_date.date() if game_date else None
+                game_day = to_et_date(game_date) if game_date else None
                 if game_day:
                     results.append((game_id, mlb_pk, game_day, status))
             except (ValueError, TypeError):

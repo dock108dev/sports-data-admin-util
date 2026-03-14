@@ -63,6 +63,11 @@ def eastern_date_to_utc_range(game_date: date) -> tuple[datetime, datetime]:
     return eastern_start.astimezone(UTC), eastern_end.astimezone(UTC)
 
 
+def to_et_date(dt: datetime) -> date:
+    """Convert a UTC datetime to its Eastern Time calendar date."""
+    return dt.astimezone(ZoneInfo("America/New_York")).date()
+
+
 def parse_clock_to_seconds(clock: str | None) -> int | None:
     """
     Parse game clock string to seconds remaining.

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from ..utils.datetime_utils import end_of_et_day_utc
+from ..utils.datetime_utils import end_of_et_day_utc, to_et_date
 
 from sqlalchemy import exists, not_
 from sqlalchemy.orm import Session
@@ -94,7 +94,7 @@ def select_games_for_boxscores_nba_api(
     results = []
     for game_id, nba_game_id, game_date in rows:
         if nba_game_id:
-            game_day = game_date.date() if game_date else None
+            game_day = to_et_date(game_date) if game_date else None
             if game_day:
                 results.append((game_id, nba_game_id, game_day))
     return results

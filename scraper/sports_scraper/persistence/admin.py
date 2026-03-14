@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
+from ..utils.datetime_utils import to_et_date
 from .odds_matching import cache_clear, cache_invalidate_game
 
 
@@ -39,7 +40,7 @@ def delete_game(session: Session, game_id: int, clear_cache: bool = True) -> dic
         "game_id": game_id,
         "home_team_id": game.home_team_id,
         "away_team_id": game.away_team_id,
-        "game_date": str(game.game_date.date()) if game.game_date else None,
+        "game_date": str(to_et_date(game.game_date)) if game.game_date else None,
         "source_game_key": game.source_game_key,
     }
 

@@ -12,6 +12,7 @@ from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedOddsSnapshot
 from ..normalization import normalize_team_name
+from ..utils.datetime_utils import to_et_date
 from .teams import _NCAAB_STOPWORDS, _normalize_ncaab_name_for_matching
 
 # Odds API team name -> DB team name mappings for NCAAB
@@ -225,7 +226,7 @@ def match_game_by_names_ncaab(
                 away_db_name=away_db_name,
                 away_db_normalized=away_db_norm,
                 matched_game_id=game_id_candidate,
-                game_date=str(snapshot.game_date.date()),
+                game_date=str(to_et_date(snapshot.game_date)),
             )
             return game_id_candidate
 
@@ -249,7 +250,7 @@ def match_game_by_names_ncaab(
                 matched_as_home=away_db_name,
                 matched_as_away=home_db_name,
                 matched_game_id=game_id_candidate,
-                game_date=str(snapshot.game_date.date()),
+                game_date=str(to_et_date(snapshot.game_date)),
             )
             return game_id_candidate
 
@@ -321,7 +322,7 @@ def match_game_by_names_non_ncaab(
             home_team_name=snapshot.home_team.name,
             away_team_name=snapshot.away_team.name,
             matched_game_id=name_match_id,
-            game_date=str(snapshot.game_date.date()),
+            game_date=str(to_et_date(snapshot.game_date)),
         )
 
     return name_match_id

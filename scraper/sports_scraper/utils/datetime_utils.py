@@ -91,6 +91,16 @@ def date_window_for_matching(day: date, days_before: int = 1, days_after: int = 
     return start_of_et_day_utc(start_day), end_of_et_day_utc(end_day)
 
 
+def to_et_date(dt: datetime) -> date:
+    """Convert a UTC datetime to its Eastern Time calendar date.
+
+    Use this instead of ``dt.date()`` when the datetime is in UTC and you
+    need the sports-calendar date (ET). A game at 4 AM UTC on March 14 is
+    an 11 PM ET game on March 13.
+    """
+    return dt.astimezone(ET).date()
+
+
 def start_of_et_day_utc(d: date) -> datetime:
     """Midnight ET on date *d*, expressed in UTC. Use as ``>=`` bound."""
     return datetime.combine(d, datetime.min.time(), tzinfo=ET).astimezone(UTC)

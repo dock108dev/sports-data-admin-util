@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from ..utils.datetime_utils import end_of_et_day_utc
+from ..utils.datetime_utils import end_of_et_day_utc, to_et_date
 
 from sqlalchemy import exists, not_
 from sqlalchemy.orm import Session
@@ -53,7 +53,7 @@ def select_games_for_boxscores(
         query = query.filter(db_models.SportsGame.updated_at < updated_before)
 
     results = query.all()
-    return [(r.id, r.source_game_key, r.game_date.date() if r.game_date else None) for r in results]
+    return [(r.id, r.source_game_key, to_et_date(r.game_date) if r.game_date else None) for r in results]
 
 
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from ..utils.datetime_utils import end_of_et_day_utc
+from ..utils.datetime_utils import end_of_et_day_utc, to_et_date
 
 from sqlalchemy import exists, not_, or_
 from sqlalchemy.orm import Session
@@ -120,7 +120,7 @@ def populate_ncaab_game_ids(
     cbb_by_names: dict[tuple[str, str], tuple[date, int]] = {}
 
     for cg in cbb_games:
-        game_day = cg.game_date.date()
+        game_day = to_et_date(cg.game_date)
 
         cbb_by_teams[(cg.home_team_id, cg.away_team_id)] = (game_day, cg.game_id)
         cbb_by_teams[(cg.away_team_id, cg.home_team_id)] = (game_day, cg.game_id)
@@ -169,7 +169,7 @@ def populate_ncaab_game_ids(
             unmatched += 1
             continue
 
-        game_day = game_date.date()
+        game_day = to_et_date(game_date)
         cbb_game_id = None
 
         # Try matching by team IDs first
@@ -318,7 +318,7 @@ def select_games_for_boxscores_ncaab_api(
         if cbb_game_id:
             try:
                 cbb_id = int(cbb_game_id)
-                game_day = game_date.date() if game_date else None
+                game_day = to_et_date(game_date) if game_date else None
                 if game_day and home_team_name and away_team_name:
                     results.append((game_id, cbb_id, game_day, home_team_name, away_team_name))
             except (ValueError, TypeError):

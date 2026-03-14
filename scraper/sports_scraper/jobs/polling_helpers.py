@@ -9,6 +9,7 @@ These are called by the @shared_task entry points in polling_tasks.py.
 from __future__ import annotations
 
 from ..logging import logger
+from ..utils.datetime_utils import to_et_date
 
 # Shared constants (also defined in polling_tasks.py for task-level use)
 _JITTER_MIN = 1.0
@@ -64,7 +65,7 @@ def _poll_nba_game(session, game) -> dict:
 
     # Fetch scoreboard for status check
     try:
-        game_day = game.game_date.date() if game.game_date else None
+        game_day = to_et_date(game.game_date) if game.game_date else None
         if game_day:
             scoreboard_games = client.fetch_scoreboard(game_day)
             result["api_calls"] += 1
@@ -166,7 +167,7 @@ def _poll_nhl_game(session, game) -> dict:
 
     # Fetch schedule for status check
     try:
-        game_day = game.game_date.date() if game.game_date else None
+        game_day = to_et_date(game.game_date) if game.game_date else None
         if game_day:
             schedule_games = client.fetch_schedule(game_day, game_day)
             result["api_calls"] += 1
@@ -264,7 +265,7 @@ def _poll_mlb_game(session, game) -> dict:
 
     # Fetch schedule for status check
     try:
-        game_day = game.game_date.date() if game.game_date else None
+        game_day = to_et_date(game.game_date) if game.game_date else None
         if game_day:
             schedule_games = client.fetch_schedule(game_day, game_day)
             result["api_calls"] += 1

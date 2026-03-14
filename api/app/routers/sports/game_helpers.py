@@ -17,6 +17,7 @@ from ...db.social import TeamSocialPost
 from ...db.sports import SportsGame, SportsLeague, SportsTeam
 from ...game_metadata.models import GameContext, StandingsEntry, TeamRatings
 from ...services.game_status import compute_status_flags
+from ...utils.datetime_utils import to_et_date
 from .schemas import GameSummary, JobResponse, LiveSnapshot, ScrapeRunConfig, SocialPostEntry
 
 logger = logging.getLogger(__name__)
@@ -395,8 +396,8 @@ async def enqueue_single_game_run(
         league_code=game.league.code,
         season=game.season,
         season_type=getattr(game, "season_type", "regular"),
-        start_date=game.game_date.date(),
-        end_date=game.game_date.date(),
+        start_date=to_et_date(game.game_date),
+        end_date=to_et_date(game.game_date),
         boxscores=include_boxscores,
         odds=include_odds,
         social=False,
@@ -411,8 +412,8 @@ async def enqueue_single_game_run(
         league_id=game.league_id,
         season=game.season,
         season_type=getattr(game, "season_type", "regular"),
-        start_date=datetime.combine(game.game_date.date(), datetime.min.time()),
-        end_date=datetime.combine(game.game_date.date(), datetime.min.time()),
+        start_date=datetime.combine(to_et_date(game.game_date), datetime.min.time()),
+        end_date=datetime.combine(to_et_date(game.game_date), datetime.min.time()),
         status="pending",
         requested_by="admin_boxscore_viewer",
         config=config.model_dump(by_alias=False),

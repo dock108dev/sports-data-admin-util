@@ -229,7 +229,7 @@ def _repair_stale_statuses() -> dict:
     from ..live.nba import NBALiveFeedClient
     from ..live.nhl import NHLLiveFeedClient
     from ..persistence.games import resolve_status_transition
-    from ..utils.datetime_utils import now_utc
+    from ..utils.datetime_utils import now_utc, to_et_date
 
     now = now_utc()
     # Games with game_date > 3 hours ago that are still scheduled/pregame
@@ -277,7 +277,7 @@ def _repair_stale_statuses() -> dict:
         if nba_games:
             try:
                 client = NBALiveFeedClient()
-                dates = {g.game_date.date() for g in nba_games if g.game_date}
+                dates = {to_et_date(g.game_date) for g in nba_games if g.game_date}
                 nba_status_map: dict[str, str] = {}
 
                 for d in dates:
@@ -310,7 +310,7 @@ def _repair_stale_statuses() -> dict:
         if nhl_games:
             try:
                 client = NHLLiveFeedClient()
-                dates = {g.game_date.date() for g in nhl_games if g.game_date}
+                dates = {to_et_date(g.game_date) for g in nhl_games if g.game_date}
                 if dates:
                     start = min(dates)
                     end = max(dates)

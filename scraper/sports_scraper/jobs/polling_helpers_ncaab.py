@@ -16,6 +16,7 @@ import random
 import time
 
 from ..logging import logger
+from ..utils.datetime_utils import to_et_date
 from .polling_helpers import _JITTER_MIN, _JITTER_MAX, _RateLimitError
 
 
@@ -193,7 +194,7 @@ def _update_ncaab_statuses(session, games: list, client) -> list[dict]:
         ncaa_available=ncaa_success,
     )
 
-    game_dates = [g.game_date.date() for g in games if g.game_date]
+    game_dates = [to_et_date(g.game_date) for g in games if g.game_date]
     if not game_dates:
         return transitions
 
@@ -460,7 +461,7 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
     ]
 
     if cbb_live_or_final:
-        game_dates = [g.game_date.date() for g in cbb_live_or_final if g.game_date]
+        game_dates = [to_et_date(g.game_date) for g in cbb_live_or_final if g.game_date]
         if game_dates:
             start_date = min(game_dates)
             end_date = max(game_dates)

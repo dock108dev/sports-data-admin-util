@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..db import db_models
 from ..logging import logger
 from ..models import NormalizedGame, NormalizedPlayerBoxscore, NormalizedTeamBoxscore
-from ..utils.datetime_utils import date_window_for_matching, now_utc
+from ..utils.datetime_utils import date_window_for_matching, now_utc, to_et_date
 from .games import _normalize_status, resolve_status_transition
 
 
@@ -216,7 +216,7 @@ def _find_game_for_boxscore(
 
     This range-based matching ensures games are found regardless of which source created them.
     """
-    day_start, day_end = date_window_for_matching(game_date.date(), days_before=0, days_after=1)
+    day_start, day_end = date_window_for_matching(to_et_date(game_date), days_before=0, days_after=1)
     return (
         session.query(db_models.SportsGame)
         .filter(db_models.SportsGame.league_id == league_id)

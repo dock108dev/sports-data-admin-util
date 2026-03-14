@@ -170,7 +170,8 @@ def poll_live_pbp_task() -> dict:
                 from ..services.pbp_nba import populate_nba_game_ids
                 from ..services.pbp_nhl import populate_nhl_game_ids
 
-                game_dates = [g.game_date.date() for g in pbp_games if g.game_date]
+                from ..utils.datetime_utils import to_et_date
+                game_dates = [to_et_date(g.game_date) for g in pbp_games if g.game_date]
                 if game_dates:
                     start = min(game_dates)
                     end = max(game_dates)
