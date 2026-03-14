@@ -1,8 +1,8 @@
 """Datetime helpers for the API layer.
 
-NOTE: Some utilities (now_utc, today_utc, date_to_utc_datetime) are intentionally
-duplicated in scraper/sports_scraper/utils/datetime_utils.py because api/ and
-scraper/ deploy as independent packages.
+NOTE: Utilities shared with scraper/ (now_utc, today_utc, today_et, to_et_date,
+date_to_utc_datetime) are intentionally duplicated because api/ and scraper/
+deploy as independent packages. Names must stay aligned across both.
 
 DATE CONVENTION:
 All date parameters in the API use Eastern Time (America/New_York).
@@ -12,7 +12,7 @@ on Jan 22 is a "Jan 22 game", regardless of UTC date.
 All datetime fields in responses are UTC (ISO 8601).
 """
 
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 # Eastern timezone for game date interpretation
@@ -29,38 +29,14 @@ def today_utc() -> date:
     return now_utc().date()
 
 
-def today_eastern() -> date:
-    """Return the current date in Eastern timezone."""
+def today_et() -> date:
+    """Return the current date in Eastern Time."""
     return datetime.now(EASTERN).date()
 
 
 def date_to_utc_datetime(day: date) -> datetime:
     """Convert a date to a timezone-aware UTC datetime at midnight."""
     return datetime.combine(day, datetime.min.time()).replace(tzinfo=UTC)
-
-
-def eastern_date_to_utc_range(game_date: date) -> tuple[datetime, datetime]:
-    """Convert an Eastern Time date to UTC datetime range.
-
-    A game on "Jan 22 Eastern" spans from midnight Jan 22 ET
-    to just before midnight Jan 23 ET.
-
-    Args:
-        game_date: A date in Eastern Time (America/New_York)
-
-    Returns:
-        Tuple of (start_utc, end_utc) where end is exclusive.
-        The range covers the full 24-hour period in Eastern Time.
-
-    Example:
-        Jan 22, 2026 (EST) -> (2026-01-22 05:00:00 UTC, 2026-01-23 05:00:00 UTC)
-        Jul 15, 2026 (EDT) -> (2026-07-15 04:00:00 UTC, 2026-07-16 04:00:00 UTC)
-    """
-    eastern_start = datetime.combine(game_date, time.min, tzinfo=EASTERN)
-    eastern_end = datetime.combine(
-        game_date + timedelta(days=1), time.min, tzinfo=EASTERN
-    )
-    return eastern_start.astimezone(UTC), eastern_end.astimezone(UTC)
 
 
 def to_et_date(dt: datetime) -> date:

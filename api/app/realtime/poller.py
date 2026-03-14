@@ -27,7 +27,7 @@ from app.db.odds import FairbetGameOddsWork
 from app.db.sports import SportsGame, SportsGamePlay, SportsLeague
 
 from .manager import REALTIME_DEBUG, realtime_manager
-from .models import EASTERN, parse_channel, to_et_date
+from .models import EASTERN, parse_channel, to_et_date_str
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +292,7 @@ class DBPoller:
             }
 
             league_code = row.league_code
-            game_date_et = to_et_date(row.game_date)
+            game_date_et = to_et_date_str(row.game_date)
 
             # Publish to game:{gameId}:summary
             summary_channel = f"game:{game_id}:summary"

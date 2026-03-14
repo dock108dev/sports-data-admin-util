@@ -33,14 +33,14 @@ class TestTodayUtc:
         assert isinstance(result, date)
 
 
-class TestTodayEastern:
-    """Tests for today_eastern function."""
+class TestTodayEt:
+    """Tests for today_et function."""
 
     def test_returns_date(self):
         """Returns a date object."""
-        from app.utils.datetime_utils import today_eastern
+        from app.utils.datetime_utils import today_et
 
-        result = today_eastern()
+        result = today_et()
         assert isinstance(result, date)
 
 
@@ -74,51 +74,24 @@ class TestDateToUtcDatetime:
         assert result.second == 0
 
 
-class TestEasternDateToUtcRange:
-    """Tests for eastern_date_to_utc_range function."""
+class TestToEtDate:
+    """Tests for to_et_date function."""
 
-    def test_winter_date(self):
-        """Winter date converts correctly (EST = UTC-5)."""
-        from app.utils.datetime_utils import eastern_date_to_utc_range
+    def test_utc_evening_maps_to_same_et_date(self):
+        """UTC evening time stays on same ET date."""
+        from app.utils.datetime_utils import to_et_date
 
-        start, end = eastern_date_to_utc_range(date(2026, 1, 22))
+        # 2026-03-05 22:00 UTC = 2026-03-05 17:00 ET (same day)
+        dt = datetime(2026, 3, 5, 22, 0, tzinfo=UTC)
+        assert to_et_date(dt) == date(2026, 3, 5)
 
-        # EST is UTC-5, so midnight ET = 5:00 UTC
-        assert start.tzinfo == UTC
-        assert start.hour == 5
-        assert start.day == 22
-        assert end.hour == 5
-        assert end.day == 23
+    def test_utc_late_night_maps_to_previous_et_date(self):
+        """UTC after midnight maps to previous ET date."""
+        from app.utils.datetime_utils import to_et_date
 
-    def test_summer_date(self):
-        """Summer date converts correctly (EDT = UTC-4)."""
-        from app.utils.datetime_utils import eastern_date_to_utc_range
-
-        start, end = eastern_date_to_utc_range(date(2026, 7, 15))
-
-        # EDT is UTC-4, so midnight ET = 4:00 UTC
-        assert start.tzinfo == UTC
-        assert start.hour == 4
-        assert end.hour == 4
-
-    def test_returns_tuple(self):
-        """Returns tuple of two datetimes."""
-        from app.utils.datetime_utils import eastern_date_to_utc_range
-
-        result = eastern_date_to_utc_range(date(2026, 1, 22))
-        assert isinstance(result, tuple)
-        assert len(result) == 2
-        assert isinstance(result[0], datetime)
-        assert isinstance(result[1], datetime)
-
-    def test_24_hour_span(self):
-        """Range spans exactly 24 hours."""
-        from datetime import timedelta
-
-        from app.utils.datetime_utils import eastern_date_to_utc_range
-
-        start, end = eastern_date_to_utc_range(date(2026, 1, 22))
-        assert (end - start) == timedelta(days=1)
+        # 2026-03-06 03:00 UTC = 2026-03-05 22:00 ET (previous day)
+        dt = datetime(2026, 3, 6, 3, 0, tzinfo=UTC)
+        assert to_et_date(dt) == date(2026, 3, 5)
 
 
 class TestParseClockToSeconds:

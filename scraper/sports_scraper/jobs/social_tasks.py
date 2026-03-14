@@ -329,10 +329,10 @@ def collect_game_social() -> dict:
     from ..social.team_collector import TeamTweetCollector
     from ..social.tweet_mapper import map_unmapped_tweets
     from ..utils.datetime_utils import (
-        ET,
         end_of_et_day_utc,
         now_utc,
         start_of_et_day_utc,
+        to_et_date,
         today_et,
     )
     from ..utils.redis_lock import acquire_redis_lock, release_redis_lock
@@ -451,7 +451,7 @@ def collect_game_social() -> dict:
                     scraped_team_ids.add(team_id)
 
                     try:
-                        sports_day = game.game_date.astimezone(ET).date()
+                        sports_day = to_et_date(game.game_date)
                         new_tweets = collector.collect_team_tweets(
                             session=session,
                             team_id=team_id,

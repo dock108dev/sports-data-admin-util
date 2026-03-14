@@ -54,7 +54,7 @@ def parse_channel(channel: str) -> dict[str, str]:
     return {}
 
 
-def to_et_date(dt: datetime) -> str:
+def to_et_date_str(dt: datetime) -> str:
     """Convert a datetime to America/New_York date string YYYY-MM-DD."""
     return dt.astimezone(EASTERN).strftime("%Y-%m-%d")
 

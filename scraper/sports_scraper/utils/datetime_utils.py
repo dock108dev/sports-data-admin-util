@@ -45,13 +45,12 @@ def today_utc() -> date:
 
 
 def today_et() -> date:
-    """Return the current date in US Eastern Time (sports calendar day).
+    """Return the current date in Eastern Time.
 
-    US sports schedule on Eastern Time. A 10 PM ET game on Feb 5 is a
-    "Feb 5 game" even though it's Feb 6 in UTC. Use this instead of
-    today_utc() when determining sports calendar dates.
+    Use this instead of today_utc() when working with sports dates.
+    For the 4 AM sports-day boundary, use sports_today_et() instead.
     """
-    return datetime.now(ZoneInfo("America/New_York")).date()
+    return datetime.now(ET).date()
 
 
 def date_to_utc_datetime(day: date) -> datetime:

@@ -15,7 +15,7 @@ from app.realtime.models import (
     RealtimeEvent,
     is_valid_channel,
     parse_channel,
-    to_et_date,
+    to_et_date_str,
 )
 
 # ---------------------------------------------------------------------------
@@ -71,7 +71,7 @@ class TestChannelValidation:
 
 
 # ---------------------------------------------------------------------------
-# to_et_date helper
+# to_et_date_str helper
 # ---------------------------------------------------------------------------
 
 
@@ -79,17 +79,17 @@ class TestToEtDate:
     def test_utc_evening_maps_to_same_et_date(self):
         # 2026-03-05 22:00 UTC = 2026-03-05 17:00 ET (same day)
         dt = datetime(2026, 3, 5, 22, 0, tzinfo=UTC)
-        assert to_et_date(dt) == "2026-03-05"
+        assert to_et_date_str(dt) == "2026-03-05"
 
     def test_utc_late_night_maps_to_previous_et_date(self):
         # 2026-03-06 03:00 UTC = 2026-03-05 22:00 ET (previous day)
         dt = datetime(2026, 3, 6, 3, 0, tzinfo=UTC)
-        assert to_et_date(dt) == "2026-03-05"
+        assert to_et_date_str(dt) == "2026-03-05"
 
     def test_utc_early_morning_maps_correctly(self):
         # 2026-03-05 06:00 UTC = 2026-03-05 01:00 ET (same day)
         dt = datetime(2026, 3, 5, 6, 0, tzinfo=UTC)
-        assert to_et_date(dt) == "2026-03-05"
+        assert to_et_date_str(dt) == "2026-03-05"
 
 
 # ---------------------------------------------------------------------------
