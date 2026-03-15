@@ -474,6 +474,24 @@ function PerformanceSection() {
                     <div className={styles.statLabel}>Brier Score</div>
                   </div>
                 </div>
+
+                {/* Model quality context */}
+                <div style={{
+                  marginTop: "0.5rem",
+                  padding: "0.75rem 1rem",
+                  background: "rgba(59, 130, 246, 0.05)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "0.5rem",
+                  fontSize: "0.8rem",
+                  color: "var(--text-muted)",
+                  lineHeight: 1.6,
+                }}>
+                  <strong>Baselines:</strong>
+                  <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0 }}>
+                    <li>Pitch-level model (7-class): Random baseline: 14.3%, majority-class baseline: ~46%</li>
+                    <li>Brier score: Perfect = 0.0, uninformed = 0.25</li>
+                  </ul>
+                </div>
                 <div className={styles.statsRow}>
                   <div className={styles.statBox}>
                     <div className={styles.statValue}>{data.avg_home_score_error.toFixed(1)}</div>

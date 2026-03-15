@@ -65,13 +65,14 @@ Sports Data Admin is the **centralized sports data hub for all Dock108 apps**.
 ### 3. Analytics Engine (`api/app/analytics/`)
 **Purpose:** Predictive modeling, simulation, and matchup analysis
 
-- **Simulation:** Monte Carlo game simulation with pluggable probability sources (rule-based, ML, ensemble, pitch-level); supports both team-level and lineup-aware modes with per-batter probability distributions
-- **Models:** Sport-specific ML models (plate appearance, game outcome, pitch outcome, batted ball, run expectancy)
-- **Features:** Feature extraction pipeline with DB-backed configurable loadouts per sport/model type
+- **Simulation:** Monte Carlo game simulation using pitch-level data and team profiles; supports both team-level and lineup-aware modes with per-batter probability distributions
+- **Models:** ML models trained on pitch-level data (plate appearance outcomes, pitch outcomes, batted ball outcomes, run expectancy)
+- **Features:** Feature extraction pipeline with DB-backed configurable loadouts
 - **Inference:** Model registry, activation controls, inference caching, auto-reload on model changes
 - **Ensemble:** Weighted probability combination from multiple providers
 - **Training:** Async Celery-based training pipeline — dataset building, label extraction, model evaluation, joblib artifact generation
-- **API:** `/api/analytics/*` endpoints for team/player profiles, matchup analysis, simulation, model management, feature loadout CRUD, training jobs, ensemble config, MLB advanced models
+- **Experiments:** Parameter sweep training with combinatorial grid of algorithms, rolling windows, test splits, and feature loadouts
+- **API:** `/api/analytics/*` endpoints for team profiles, simulation, model management, feature loadout CRUD, training jobs, experiments, ensemble config
 
 See [Analytics](analytics.md) for details.
 
@@ -84,7 +85,7 @@ See [Analytics](analytics.md) for details.
   - Control Panel for on-demand Celery task dispatch (ingestion, odds, social, flows, timelines, utility)
   - Job run monitoring via RunsDrawer (IDE-style bottom panel, available on all admin pages)
   - Cross-book odds comparison: pre-game (`/admin/fairbet/odds`) and dedicated live odds page (`/admin/fairbet/live`) with auto-refresh, multi-game view, and game scoreboard strips
-  - Analytics section (4 pages): Simulator (team-level or lineup-aware), Models (registry, loadouts, training, performance), Batch Sims, Team Explorer
+  - Analytics section (5 pages): Simulator (MLB Monte Carlo), Models (registry, loadouts, training, performance), Batch Sims, Experiments (parameter sweeps), Profiles (team scouting)
   - Container log viewer
   - Game detail with boxscores, player stats, odds, social, PBP, flow, and pipeline runs
 
@@ -244,12 +245,10 @@ Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). R
 - `GET /api/admin/sports/pbp/game/{id}/snapshots` - PBP snapshot history
 
 ### Analytics Endpoints
-- `GET /api/analytics/team` — Team analytical profile
-- `GET /api/analytics/player` — Player analytical profile
-- `GET /api/analytics/matchup` — Head-to-head matchup analysis
+- `GET /api/analytics/team-profile` — Team rolling profile with league baselines
 - `POST /api/analytics/simulate` — Full Monte Carlo simulation (team-level or lineup-aware)
+- `GET /api/analytics/mlb-teams` — MLB teams with stats count (for dropdowns)
 - `GET /api/analytics/mlb-roster` — Team roster for lineup selection
-- `POST /api/analytics/live-simulate` — Live game simulation from current state
 - `GET /api/analytics/models/*` — Model registry and activation
 - `GET/POST /api/analytics/feature-config*` — Feature loadout CRUD (DB-backed)
 - `GET /api/analytics/available-features` — Available features with DB coverage
@@ -258,6 +257,8 @@ Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). R
 - `GET/POST /api/analytics/ensemble-config` — Ensemble weight configuration
 - `POST /api/analytics/backtest` — Start model backtest (Celery)
 - `POST /api/analytics/batch-simulate` — Batch Monte Carlo simulation
+- `POST /api/analytics/experiments` — Create experiment suite (parameter sweep)
+- `POST /api/analytics/replay` — Start historical replay job
 
 ### FairBet Endpoints
 - `GET /api/fairbet/odds` — Cross-book odds comparison with EV annotations and display fields (pre-game)

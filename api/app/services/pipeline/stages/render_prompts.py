@@ -16,6 +16,7 @@ from .render_prompt_helpers import (
     _detect_close_game,
     _format_contributors_line,
     _format_lead_line,
+    detect_game_winning_play,
 )
 from .render_validation import FORBIDDEN_WORDS
 
@@ -244,7 +245,7 @@ def build_block_prompt(
         "  * A RESPONSE block MUST describe an actual scoring response or tactical adjustment.",
         "  * If the score did not change in this block, do NOT frame it as a 'response' — describe the state of play instead.",
         "- DECISION_POINT: Highest specificity. Name exact plays and players. This block earns detail.",
-        "- RESOLUTION: Land the outcome. No re-narration. Final impression + score. May be the shortest block.",
+        "- RESOLUTION: Land the outcome with the defining play. For close games or game-winners, narrate the final moment — don't summarize generically. For blowouts, keep it short.",
         "",
         "PLAYER NAMES (CRITICAL):",
         "- Use FULL NAME on first mention (e.g., 'Donovan Mitchell', 'Brandon Miller')",
@@ -402,6 +403,18 @@ def build_block_prompt(
             final_margin = abs(score_after[0] - score_after[1])
             if final_margin >= 15:
                 prompt_parts.append("(Outcome decided — summarize the final margin, skip garbage time)")
+            else:
+                # Detect buzzer beaters and game-winning plays
+                gw_hint = detect_game_winning_play(
+                    block, pbp_events, home_team, away_team, league_code,
+                )
+                if gw_hint:
+                    prompt_parts.append(f"*** {gw_hint} ***")
+                    prompt_parts.append(
+                        "- This play DECIDED the game. Narrate it with specificity — "
+                        "do NOT use generic 'held on' or 'managed to hold' framing. "
+                        "Name the player, the shot/play, and the moment."
+                    )
 
         # Lead/margin context
         lead_line = _format_lead_line(score_before, score_after, home_team, away_team)

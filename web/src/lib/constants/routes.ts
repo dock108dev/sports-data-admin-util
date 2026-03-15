@@ -21,7 +21,8 @@ export const ROUTES = {
   ANALYTICS_SIMULATOR: "/admin/analytics/simulator",
   ANALYTICS_MODELS: "/admin/analytics/models",
   ANALYTICS_BATCH: "/admin/analytics/batch",
-  ANALYTICS_EXPLORER: "/admin/analytics/explorer",
+  ANALYTICS_PROFILES: "/admin/analytics/profiles",
+  ANALYTICS_EXPERIMENTS: "/admin/analytics/experiments",
   /** System */
   USERS: "/admin/users",
 } as const;

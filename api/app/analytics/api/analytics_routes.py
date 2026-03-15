@@ -20,11 +20,9 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics.core.simulation_cache import SimulationCache
 from app.analytics.services.analytics_service import AnalyticsService
 from app.analytics.services.profile_service import (
     ProfileResult,
-    get_team_info,
     get_team_rolling_profile,
     get_team_roster,
     profile_to_pa_probabilities,
@@ -64,31 +62,11 @@ from ._pipeline_routes import router as _pipeline_router
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 _service = AnalyticsService()
-_cache = SimulationCache()
 
 
 # ---------------------------------------------------------------------------
 # Core simulation & profile endpoints (kept here — small and foundational)
 # ---------------------------------------------------------------------------
-
-
-class LiveSimulateRequest(BaseModel):
-    """Request body for POST /api/analytics/live-simulate."""
-    sport: str = Field(..., description="Sport code (e.g., mlb)")
-    inning: int = Field(..., ge=1, description="Current inning")
-    half: str = Field(..., description="top or bottom")
-    outs: int = Field(..., ge=0, le=3, description="Current outs")
-    bases: dict[str, bool] = Field(
-        ..., description="Base occupancy (first, second, third)",
-    )
-    score: dict[str, int] = Field(
-        ..., description="Current score (home, away)",
-    )
-    iterations: int = Field(5000, ge=100, le=50000, description="Monte Carlo iterations")
-    seed: int | None = Field(None, description="Random seed for reproducibility")
-    home_probabilities: dict[str, float] | None = Field(None, description="Custom home team probabilities")
-    away_probabilities: dict[str, float] | None = Field(None, description="Custom away team probabilities")
-    probability_mode: str | None = Field(None, description="Probability mode: rule_based, ml, ensemble")
 
 
 class LineupSlot(BaseModel):
@@ -123,91 +101,6 @@ class SimulateRequest(BaseModel):
     away_starter: PitcherSlot | None = Field(None, description="Away starting pitcher")
     starter_innings: float = Field(6.0, ge=4.0, le=9.0, description="Innings before bullpen takes over")
     exclude_playoffs: bool = Field(False, description="Exclude postseason games from rolling profiles")
-
-
-@router.get("/team")
-async def get_team_analytics(
-    sport: str = Query(..., description="Sport code (e.g., mlb)"),
-    team_id: str = Query(..., description="Team identifier (abbreviation, e.g., NYY)"),
-    rolling_window: int = Query(30, ge=5, le=162, description="Rolling window (prior games)"),
-    db: AsyncSession = Depends(get_db),
-) -> dict[str, Any]:
-    """Get analytical profile for a team from rolling game stats."""
-    team_info = await get_team_info(team_id, db=db)
-    name = team_info["name"] if team_info else team_id
-
-    profile_result = await get_team_rolling_profile(
-        team_id, sport, rolling_window=rolling_window, db=db,
-    )
-
-    return {
-        "sport": sport,
-        "team_id": team_id.upper(),
-        "name": name,
-        "metrics": profile_result.metrics if profile_result else {},
-        "rolling_window": rolling_window,
-        "games_in_profile": profile_result.games_used if profile_result else 0,
-    }
-
-
-@router.get("/player")
-async def get_player_analytics(
-    sport: str = Query(..., description="Sport code (e.g., mlb)"),
-    player_id: str = Query(..., description="Player identifier"),
-) -> dict[str, Any]:
-    """Get analytical profile for a player."""
-    profile = _service.get_player_analysis(sport, player_id)
-    return {
-        "sport": profile.sport,
-        "player_id": profile.player_id,
-        "name": profile.name,
-        "metrics": profile.metrics,
-    }
-
-
-@router.get("/matchup")
-async def get_matchup_analytics(
-    sport: str = Query(..., description="Sport code (e.g., mlb)"),
-    entity_a: str = Query(..., description="First team abbreviation"),
-    entity_b: str = Query(..., description="Second team abbreviation"),
-    rolling_window: int = Query(30, ge=5, le=162),
-    db: AsyncSession = Depends(get_db),
-) -> dict[str, Any]:
-    """Get head-to-head matchup analysis from rolling profiles."""
-    profile_result_a = await get_team_rolling_profile(
-        entity_a, sport, rolling_window=rolling_window, db=db,
-    )
-    profile_result_b = await get_team_rolling_profile(
-        entity_b, sport, rolling_window=rolling_window, db=db,
-    )
-    profile_a = profile_result_a.metrics if profile_result_a else None
-    profile_b = profile_result_b.metrics if profile_result_b else None
-
-    comparison: dict[str, Any] = {}
-    advantages: dict[str, str] = {}
-
-    if profile_a and profile_b:
-        # Compare key metrics
-        for key in ["contact_rate", "power_index", "barrel_rate", "whiff_rate",
-                     "hard_hit_rate", "plate_discipline_index", "avg_exit_velo"]:
-            a_val = profile_a.get(key, 0)
-            b_val = profile_b.get(key, 0)
-            comparison[key] = {entity_a.upper(): round(a_val, 4), entity_b.upper(): round(b_val, 4)}
-            # Lower whiff is better; higher everything else is better
-            if key == "whiff_rate":
-                advantages[key] = entity_a.upper() if a_val < b_val else entity_b.upper()
-            else:
-                advantages[key] = entity_a.upper() if a_val > b_val else entity_b.upper()
-
-    return {
-        "sport": sport,
-        "entity_a": entity_a.upper(),
-        "entity_b": entity_b.upper(),
-        "profile_a": profile_a or {},
-        "profile_b": profile_b or {},
-        "comparison": comparison,
-        "advantages": advantages,
-    }
 
 
 @router.post("/simulate")
@@ -349,6 +242,13 @@ async def post_simulate(
         **result,
     }
 
+    # Thread raw profiles and baselines into profile_meta for edge analysis
+    if home_profile and away_profile:
+        from app.analytics.sports.mlb.constants import FEATURE_BASELINES
+        profile_meta["home_profile"] = home_profile
+        profile_meta["away_profile"] = away_profile
+        profile_meta["baselines"] = {k: v for k, v in FEATURE_BASELINES.items() if k in home_profile}
+
     # Merge profile metadata into response
     if profile_meta:
         response["profile_meta"] = profile_meta
@@ -361,14 +261,14 @@ async def post_simulate(
         response["home_pa_probabilities"] = game_context["home_probabilities"]
         response["away_pa_probabilities"] = game_context.get("away_probabilities")
 
-    # --- Phase 1C: Surface diagnostics in response ---
+    # Surface simulation diagnostics (mode, fallback, model info)
     diagnostics = result.get("_diagnostics")
     if diagnostics is not None:
         response["simulation_info"] = diagnostics.to_dict()
         # Clean up internal key
         response.pop("_diagnostics", None)
 
-    # --- Phase 3C: Clarify the two prediction systems ---
+    # Bundle both prediction systems: MC simulation + trained classifier
     predictions: dict[str, Any] = {
         "monte_carlo": {
             "home_win_probability": response.get("home_win_probability"),
@@ -387,6 +287,35 @@ async def post_simulate(
     response["predictions"] = predictions
 
     return response
+
+
+@router.get("/team-profile")
+async def get_team_profile(
+    team: str = Query(..., description="Team abbreviation (e.g., NYY)"),
+    rolling_window: int = Query(30, ge=5, le=162, description="Rolling window for profile building"),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Get a team's rolling profile with league baselines for comparison."""
+    from app.analytics.sports.mlb.constants import FEATURE_BASELINES
+
+    profile_result = await get_team_rolling_profile(
+        team, "mlb", rolling_window=rolling_window, db=db,
+    )
+    if profile_result is None:
+        return {"error": f"No profile data found for {team}", "team": team, "games_used": 0,
+                "date_range": [None, None], "season_breakdown": {}, "metrics": {}, "baselines": {}}
+
+    metrics = profile_result.metrics
+    baselines = {k: v for k, v in FEATURE_BASELINES.items() if k in metrics}
+
+    return {
+        "team": team,
+        "games_used": profile_result.games_used,
+        "date_range": list(profile_result.date_range),
+        "season_breakdown": {str(k): v for k, v in profile_result.season_breakdown.items()},
+        "metrics": metrics,
+        "baselines": baselines,
+    }
 
 
 @router.get("/mlb-teams")
@@ -449,34 +378,6 @@ async def get_mlb_roster(
     if roster is None:
         return {"error": f"Team not found: {team}", "batters": [], "pitchers": []}
     return roster
-
-
-@router.post("/live-simulate")
-async def post_live_simulate(req: LiveSimulateRequest) -> dict[str, Any]:
-    """Run a simulation from a live game state."""
-    game_state: dict[str, Any] = {
-        "inning": req.inning,
-        "half": req.half,
-        "outs": req.outs,
-        "bases": req.bases,
-        "score": req.score,
-    }
-
-    if req.home_probabilities:
-        game_state["home_probabilities"] = req.home_probabilities
-    if req.away_probabilities:
-        game_state["away_probabilities"] = req.away_probabilities
-    if req.probability_mode:
-        game_state["probability_mode"] = req.probability_mode
-
-    result = _service.run_live_simulation(
-        sport=req.sport,
-        game_state=game_state,
-        iterations=req.iterations,
-        seed=req.seed,
-    )
-
-    return {"sport": req.sport, **result}
 
 
 # ---------------------------------------------------------------------------

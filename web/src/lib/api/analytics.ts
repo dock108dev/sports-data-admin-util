@@ -7,13 +7,8 @@
 import { getApiBase } from "./apiBase";
 
 import type {
-  TeamAnalytics,
-  PlayerAnalytics,
-  MatchupAnalytics,
   SimulationRequest,
   SimulationResult,
-  LiveSimulateRequest,
-  LiveSimulateResult,
   FeatureLoadout,
   FeatureLoadoutListResponse,
   AvailableFeaturesResponse,
@@ -35,13 +30,16 @@ import type {
   EnsembleConfigResponse,
   MLBTeam,
   MLBRosterResponse,
+  TeamProfileResponse,
+  ExperimentSuiteRequest,
+  ExperimentSuite,
+  ExperimentVariant,
+  ReplayRequest,
+  ReplayJob,
 } from "./analyticsTypes";
 
 // Re-export every type so existing consumers of "@/lib/api/analytics" keep working.
 export type {
-  TeamAnalytics,
-  PlayerAnalytics,
-  MatchupAnalytics,
   SimulationRequest,
   PitcherAnalytics,
   ScoreEntry,
@@ -50,8 +48,6 @@ export type {
   DataFreshness,
   PredictionEntry,
   SimulationResult,
-  LiveSimulateRequest,
-  LiveSimulateResult,
   FeatureLoadout,
   FeatureLoadoutListResponse,
   AvailableFeature,
@@ -77,6 +73,12 @@ export type {
   RosterBatter,
   RosterPitcher,
   MLBRosterResponse,
+  TeamProfileResponse,
+  ExperimentSuiteRequest,
+  ExperimentSuite,
+  ExperimentVariant,
+  ReplayRequest,
+  ReplayJob,
 } from "./analyticsTypes";
 
 const base = () => getApiBase();
@@ -96,31 +98,6 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function getTeamAnalytics(
-  sport: string,
-  teamId: string,
-): Promise<TeamAnalytics> {
-  const params = new URLSearchParams({ sport, team_id: teamId });
-  return fetchJson<TeamAnalytics>(`${base()}/api/analytics/team?${params}`);
-}
-
-export async function getPlayerAnalytics(
-  sport: string,
-  playerId: string,
-): Promise<PlayerAnalytics> {
-  const params = new URLSearchParams({ sport, player_id: playerId });
-  return fetchJson<PlayerAnalytics>(`${base()}/api/analytics/player?${params}`);
-}
-
-export async function getMatchupAnalytics(
-  sport: string,
-  entityA: string,
-  entityB: string,
-): Promise<MatchupAnalytics> {
-  const params = new URLSearchParams({ sport, entity_a: entityA, entity_b: entityB });
-  return fetchJson<MatchupAnalytics>(`${base()}/api/analytics/matchup?${params}`);
-}
-
 export async function runSimulation(
   req: SimulationRequest,
 ): Promise<SimulationResult> {
@@ -130,17 +107,6 @@ export async function runSimulation(
     body: JSON.stringify(req),
   });
 }
-
-export async function runLiveSimulation(
-  req: LiveSimulateRequest,
-): Promise<LiveSimulateResult> {
-  return fetchJson<LiveSimulateResult>(`${base()}/api/analytics/live-simulate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
-}
-
 
 // ---------------------------------------------------------------------------
 // Feature Loadout CRUD (DB-backed)
@@ -472,4 +438,81 @@ export async function saveEnsembleConfig(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sport, model_type: modelType, providers }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Team Profile
+// ---------------------------------------------------------------------------
+
+export async function getTeamProfile(
+  team: string,
+  rollingWindow: number = 30,
+): Promise<TeamProfileResponse> {
+  const params = new URLSearchParams({ team, rolling_window: String(rollingWindow) });
+  return fetchJson<TeamProfileResponse>(`${base()}/api/analytics/team-profile?${params}`);
+}
+
+// ---------------------------------------------------------------------------
+// Experiment Suites
+// ---------------------------------------------------------------------------
+
+export async function createExperimentSuite(
+  req: ExperimentSuiteRequest,
+): Promise<{ status: string; suite: ExperimentSuite }> {
+  return fetchJson(`${base()}/api/analytics/experiments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export async function listExperimentSuites(
+  sport?: string,
+  status?: string,
+): Promise<{ suites: ExperimentSuite[]; count: number }> {
+  const params = new URLSearchParams();
+  if (sport) params.set("sport", sport);
+  if (status) params.set("status", status);
+  const qs = params.toString();
+  return fetchJson(`${base()}/api/analytics/experiments${qs ? `?${qs}` : ""}`);
+}
+
+export async function getExperimentSuite(
+  suiteId: number,
+): Promise<ExperimentSuite> {
+  return fetchJson<ExperimentSuite>(`${base()}/api/analytics/experiments/${suiteId}`);
+}
+
+export async function promoteExperimentVariant(
+  suiteId: number,
+  variantId: number,
+): Promise<{ status: string; model_id: string; suite: ExperimentSuite }> {
+  return fetchJson(`${base()}/api/analytics/experiments/${suiteId}/promote/${variantId}`, {
+    method: "POST",
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Historical Replay
+// ---------------------------------------------------------------------------
+
+export async function startReplay(
+  req: ReplayRequest,
+): Promise<{ status: string; job: ReplayJob }> {
+  return fetchJson(`${base()}/api/analytics/replay`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export async function listReplayJobs(
+  sport?: string,
+  suiteId?: number,
+): Promise<{ jobs: ReplayJob[]; count: number }> {
+  const params = new URLSearchParams();
+  if (sport) params.set("sport", sport);
+  if (suiteId !== undefined) params.set("suite_id", String(suiteId));
+  const qs = params.toString();
+  return fetchJson(`${base()}/api/analytics/replay-jobs${qs ? `?${qs}` : ""}`);
 }

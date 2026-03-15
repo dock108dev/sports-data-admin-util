@@ -2,17 +2,20 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { AdminCard, AdminTable } from "@/components/admin";
+import Link from "next/link";
 import {
   startBatchSimulation,
   listBatchSimJobs,
+  listPredictionOutcomes,
   type BatchSimJob,
   type BatchSimGameResult,
+  type PredictionOutcome,
 } from "@/lib/api/analytics";
+import { ROUTES } from "@/lib/constants/routes";
 import styles from "../analytics.module.css";
 
 export default function BatchSimsPage() {
-  const [sport] = useState("mlb");
-  const [probabilityMode, setProbabilityMode] = useState("ml");
+  const sport = "mlb";
   const [iterations, setIterations] = useState(5000);
   const [rollingWindow, setRollingWindow] = useState(30);
   const [dateStart, setDateStart] = useState("");
@@ -24,6 +27,17 @@ export default function BatchSimsPage() {
   const [jobs, setJobs] = useState<BatchSimJob[]>([]);
   const [jobsError, setJobsError] = useState<string | null>(null);
   const [expandedJob, setExpandedJob] = useState<number | null>(null);
+  const [accuracyData, setAccuracyData] = useState<Record<number, { outcomes: PredictionOutcome[]; loading: boolean }>>({});
+
+  async function loadAccuracy(jobId: number) {
+    setAccuracyData((prev) => ({ ...prev, [jobId]: { outcomes: [], loading: true } }));
+    try {
+      const res = await listPredictionOutcomes({ batch_sim_job_id: jobId, resolved: true });
+      setAccuracyData((prev) => ({ ...prev, [jobId]: { outcomes: res.outcomes, loading: false } }));
+    } catch {
+      setAccuracyData((prev) => ({ ...prev, [jobId]: { outcomes: [], loading: false } }));
+    }
+  }
 
   const refresh = useCallback(async () => {
     try {
@@ -56,7 +70,7 @@ export default function BatchSimsPage() {
     try {
       const res = await startBatchSimulation({
         sport,
-        probability_mode: probabilityMode,
+        probability_mode: "ml",
         iterations,
         rolling_window: rollingWindow,
         date_start: dateStart || undefined,
@@ -96,28 +110,14 @@ export default function BatchSimsPage() {
         </p>
       </header>
 
-      <AdminCard title="Run New Batch">
+      <AdminCard title="Run New Batch" subtitle="Uses the active ML model — falls back to rule-based if none trained">
         <div className={styles.formRow}>
-          <div className={styles.formGroup}>
-            <label>Sport</label>
-            <select value={sport} disabled>
-              <option value="mlb">MLB</option>
-            </select>
-          </div>
-          <div className={styles.formGroup}>
-            <label>Probability Mode</label>
-            <select value={probabilityMode} onChange={(e) => setProbabilityMode(e.target.value)}>
-              <option value="ml">ML Model</option>
-              <option value="rule_based">Rule Based</option>
-              <option value="ensemble">Ensemble</option>
-            </select>
-          </div>
           <div className={styles.formGroup}>
             <label>Iterations</label>
             <input type="number" value={iterations} onChange={(e) => setIterations(Math.max(100, parseInt(e.target.value) || 100))} min={100} max={50000} />
           </div>
           <div className={styles.formGroup}>
-            <label>Rolling Window: {rollingWindow}</label>
+            <label>Rolling Window: {rollingWindow} games</label>
             <input type="range" min={5} max={80} step={5} value={rollingWindow} onChange={(e) => setRollingWindow(parseInt(e.target.value))} />
           </div>
         </div>
@@ -149,11 +149,10 @@ export default function BatchSimsPage() {
         {jobs.length === 0 && !jobsError ? (
           <p style={{ color: "var(--text-muted)" }}>No batch simulation jobs yet.</p>
         ) : (
-          <AdminTable headers={["ID", "Mode", "Iterations", "Window", "Date Range", "Status", "Games", "Created", ""]}>
+          <AdminTable headers={["ID", "Iterations", "Window", "Date Range", "Status", "Games", "Created", ""]}>
             {jobs.map((job) => (
               <tr key={job.id}>
                 <td>#{job.id}</td>
-                <td>{job.probability_mode}</td>
                 <td>{job.iterations.toLocaleString()}</td>
                 <td>{job.rolling_window}</td>
                 <td style={{ fontSize: "0.85rem" }}>
@@ -165,15 +164,26 @@ export default function BatchSimsPage() {
                   {job.created_at ? new Date(job.created_at).toLocaleDateString() : "-"}
                 </td>
                 <td>
-                  {job.results && job.results.length > 0 && (
-                    <button
-                      className={styles.btn}
-                      onClick={() => setExpandedJob(expandedJob === job.id ? null : job.id)}
-                      style={{ fontSize: "0.8rem", padding: "2px 8px" }}
-                    >
-                      {expandedJob === job.id ? "Hide" : "Results"}
-                    </button>
-                  )}
+                  <div style={{ display: "flex", gap: "4px" }}>
+                    {job.results && job.results.length > 0 && (
+                      <button
+                        className={styles.btn}
+                        onClick={() => setExpandedJob(expandedJob === job.id ? null : job.id)}
+                        style={{ fontSize: "0.8rem", padding: "2px 8px" }}
+                      >
+                        {expandedJob === job.id ? "Hide" : "Results"}
+                      </button>
+                    )}
+                    {job.status === "completed" && !accuracyData[job.id] && (
+                      <button
+                        className={styles.btn}
+                        onClick={() => loadAccuracy(job.id)}
+                        style={{ fontSize: "0.8rem", padding: "2px 8px" }}
+                      >
+                        Load Accuracy
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -187,6 +197,76 @@ export default function BatchSimsPage() {
           return (
             <div style={{ marginTop: "1rem" }}>
               <h4 style={{ marginBottom: "0.5rem" }}>Results for Batch #{job.id}</h4>
+
+              {/* Results Summary */}
+              {(() => {
+                const results = job.results!;
+                const totalGames = results.length;
+                const avgHomeWP = results.reduce((s, g) => s + g.home_win_probability, 0) / totalGames;
+                const dist = { "50-55": 0, "55-60": 0, "60-70": 0, "70+": 0 };
+                results.forEach((g) => {
+                  const wp = Math.max(g.home_win_probability, g.away_win_probability) * 100;
+                  if (wp >= 70) dist["70+"]++;
+                  else if (wp >= 60) dist["60-70"]++;
+                  else if (wp >= 55) dist["55-60"]++;
+                  else dist["50-55"]++;
+                });
+                return (
+                  <div className={styles.statsRow} style={{ marginBottom: "1rem" }}>
+                    <div className={styles.statBox}>
+                      <div className={styles.statValue}>{totalGames}</div>
+                      <div className={styles.statLabel}>Games</div>
+                    </div>
+                    <div className={styles.statBox}>
+                      <div className={styles.statValue}>{(avgHomeWP * 100).toFixed(1)}%</div>
+                      <div className={styles.statLabel}>Avg Home WP</div>
+                    </div>
+                    <div className={styles.statBox}>
+                      <div className={styles.statValue}>{dist["50-55"]}/{dist["55-60"]}/{dist["60-70"]}/{dist["70+"]}</div>
+                      <div className={styles.statLabel}>50-55/55-60/60-70/70+%</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Accuracy data */}
+              {accuracyData[job.id] && (() => {
+                const ad = accuracyData[job.id];
+                if (ad.loading) return <p style={{ color: "var(--text-muted)" }}>Loading accuracy...</p>;
+                if (ad.outcomes.length === 0) return <p style={{ color: "var(--text-muted)" }}>No resolved outcomes yet.</p>;
+                const total = ad.outcomes.length;
+                const correct = ad.outcomes.filter((o) => o.correct_winner).length;
+                const acc = correct / total;
+                const brierOutcomes = ad.outcomes.filter((o) => o.brier_score != null);
+                const avgBrier = brierOutcomes.length > 0
+                  ? brierOutcomes.reduce((s, o) => s + o.brier_score!, 0) / brierOutcomes.length
+                  : null;
+                return (
+                  <div style={{ marginBottom: "1rem", padding: "0.75rem", background: "#fafbfc", borderRadius: "6px" }}>
+                    <div className={styles.statsRow}>
+                      <div className={styles.statBox}>
+                        <div className={styles.statValue}>{correct}/{total}</div>
+                        <div className={styles.statLabel}>Correct</div>
+                      </div>
+                      <div className={styles.statBox}>
+                        <div className={styles.statValue}>{(acc * 100).toFixed(1)}%</div>
+                        <div className={styles.statLabel}>Accuracy</div>
+                      </div>
+                      <div className={styles.statBox}>
+                        <div className={styles.statValue}>{avgBrier != null ? avgBrier.toFixed(4) : "-"}</div>
+                        <div className={styles.statLabel}>Brier Score</div>
+                      </div>
+                    </div>
+                    <Link
+                      href={`${ROUTES.ANALYTICS_MODELS}?tab=performance`}
+                      style={{ fontSize: "0.8rem", color: "#3b82f6" }}
+                    >
+                      View in Calibration &rarr;
+                    </Link>
+                  </div>
+                );
+              })()}
+
               <AdminTable headers={["Matchup", "Home WP", "Away WP", "Avg Home", "Avg Away", "Source", "Profiles"]}>
                 {job.results.map((g: BatchSimGameResult, i: number) => (
                   <tr key={i}>

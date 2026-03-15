@@ -9,7 +9,7 @@ const sections = [
   {
     href: ROUTES.ANALYTICS_SIMULATOR,
     title: "Simulator",
-    desc: "Run lineup-aware Monte Carlo pregame and live simulations",
+    desc: "Monte Carlo simulations using pitch-level data and team profiles",
   },
   {
     href: ROUTES.ANALYTICS_MODELS,
@@ -22,9 +22,14 @@ const sections = [
     desc: "Queue and monitor batch simulation runs",
   },
   {
-    href: ROUTES.ANALYTICS_EXPLORER,
-    title: "Team Explorer",
-    desc: "Browse team and matchup data with advanced stats",
+    href: ROUTES.ANALYTICS_EXPERIMENTS,
+    title: "Experiments",
+    desc: "Run parameter sweeps — permutate algorithms, features, and windows, then compare results",
+  },
+  {
+    href: ROUTES.ANALYTICS_PROFILES,
+    title: "Profiles",
+    desc: "View and compare team rolling profiles and scouting metrics",
   },
 ];
 

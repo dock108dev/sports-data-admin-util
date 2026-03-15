@@ -33,7 +33,8 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: ROUTES.ANALYTICS_SIMULATOR, label: "Simulator" },
       { href: ROUTES.ANALYTICS_MODELS, label: "Models" },
       { href: ROUTES.ANALYTICS_BATCH, label: "Batch Sims" },
-      { href: ROUTES.ANALYTICS_EXPLORER, label: "Team Explorer" },
+      { href: ROUTES.ANALYTICS_EXPERIMENTS, label: "Experiments" },
+      { href: ROUTES.ANALYTICS_PROFILES, label: "Profiles" },
     ],
   },
   {

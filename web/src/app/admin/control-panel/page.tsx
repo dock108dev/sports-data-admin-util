@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import styles from "./styles.module.css";
 import {
   triggerTask,
   createScrapeRun,
   triggerBulkFlowGeneration,
+  getHoldStatus,
+  setHoldStatus,
 } from "@/lib/api/sportsAdmin/taskControl";
 import {
   type TaskDef,
@@ -432,6 +434,27 @@ function GameflowCard() {
 // ── Main page ──
 
 export default function ControlPanelPage() {
+  const [held, setHeld] = useState(false);
+  const [toggling, setToggling] = useState(false);
+
+  useEffect(() => {
+    getHoldStatus()
+      .then((s) => setHeld(s.held))
+      .catch(() => {});
+  }, []);
+
+  const toggleHold = useCallback(async () => {
+    setToggling(true);
+    try {
+      const res = await setHoldStatus(!held);
+      setHeld(res.held);
+    } catch {
+      // ignore
+    } finally {
+      setToggling(false);
+    }
+  }, [held]);
+
   return (
     <div className={styles.container}>
       <h1>Control Panel</h1>
@@ -439,6 +462,27 @@ export default function ControlPanelPage() {
         Trigger Celery tasks on-demand. Open the Runs drawer at the bottom to
         monitor job history.
       </p>
+
+      <div className={held ? styles.holdBannerActive : styles.holdBanner}>
+        <div className={styles.holdBannerContent}>
+          <span className={styles.holdBannerText}>
+            {held
+              ? "Schedulers are HELD — beat tasks will be skipped. Manual triggers still work."
+              : "Schedulers are active."}
+          </span>
+          <button
+            className={held ? styles.holdButtonRelease : styles.holdButtonHold}
+            disabled={toggling}
+            onClick={toggleHold}
+          >
+            {toggling
+              ? "..."
+              : held
+                ? "Release Hold"
+                : "Hold All Tasks"}
+          </button>
+        </div>
+      </div>
 
       <div className={styles.categoryGroup}>
         <h2 className={styles.categoryTitle}>Backfill</h2>

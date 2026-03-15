@@ -1418,3 +1418,67 @@ class TestKeyPlayTeamNames:
         prompt = build_block_prompt(blocks, game_context, pbp_events)
 
         assert "- End of period" in prompt
+
+
+class TestDetectGameWinningPlay:
+    """Tests for detect_game_winning_play — buzzer beaters and final-seconds winners."""
+
+    def test_buzzer_beater_detected(self) -> None:
+        """Detects a buzzer-beater that breaks a tie at 0:00."""
+        from app.services.pipeline.stages.render_prompt_helpers import detect_game_winning_play
+
+        block = {
+            "role": "RESOLUTION",
+            "score_after": [82, 80],
+            "play_ids": [50, 51],
+            "period_end": 2,
+        }
+        pbp_events = [
+            {"play_index": 50, "period": 2, "game_clock": "0:15", "home_score": 80, "away_score": 80,
+             "description": "Jumper by Iowa St.'s Tamin Lipsey", "team_abbreviation": "ISU", "player_name": "Tamin Lipsey"},
+            {"play_index": 51, "period": 2, "game_clock": "0:00", "home_score": 82, "away_score": 80,
+             "description": "2 Pointer by Arizona's Jaden Bradley", "team_abbreviation": "ARIZ", "player_name": "Jaden Bradley"},
+        ]
+        result = detect_game_winning_play(block, pbp_events, "Arizona", "Iowa State", "NCAAB")
+        assert result is not None
+        assert "GAME-WINNING" in result
+        assert "Jaden Bradley" in result
+        assert "buzzer" in result.lower() or "BUZZER" in result
+
+    def test_no_game_winner_in_blowout(self) -> None:
+        """No game-winner detected when margin is large."""
+        from app.services.pipeline.stages.render_prompt_helpers import detect_game_winning_play
+
+        block = {
+            "role": "RESOLUTION",
+            "score_after": [105, 85],
+            "play_ids": [50],
+            "period_end": 4,
+        }
+        pbp_events = [
+            {"play_index": 50, "period": 4, "game_clock": "0:30", "home_score": 105, "away_score": 85,
+             "description": "Free throw", "team_abbreviation": "ATL", "player_name": "Young"},
+        ]
+        result = detect_game_winning_play(block, pbp_events, "Hawks", "Celtics", "NBA")
+        assert result is None
+
+    def test_go_ahead_in_final_seconds(self) -> None:
+        """Detects go-ahead score with 3 seconds left."""
+        from app.services.pipeline.stages.render_prompt_helpers import detect_game_winning_play
+
+        block = {
+            "role": "RESOLUTION",
+            "score_after": [101, 99],
+            "play_ids": [80, 81],
+            "period_end": 4,
+        }
+        pbp_events = [
+            {"play_index": 80, "period": 4, "game_clock": "0:10", "home_score": 99, "away_score": 99,
+             "description": "Free throw", "team_abbreviation": "BOS", "player_name": "Tatum"},
+            {"play_index": 81, "period": 4, "game_clock": "0:03", "home_score": 101, "away_score": 99,
+             "description": "3-pointer by Celtics' Jaylen Brown", "team_abbreviation": "BOS", "player_name": "Jaylen Brown"},
+        ]
+        result = detect_game_winning_play(block, pbp_events, "Celtics", "Hawks", "NBA")
+        assert result is not None
+        assert "GAME-WINNING" in result
+        assert "Jaylen Brown" in result
