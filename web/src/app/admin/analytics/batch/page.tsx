@@ -2,12 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { AdminCard, AdminTable } from "@/components/admin";
+import Link from "next/link";
 import {
   startBatchSimulation,
   listBatchSimJobs,
+  listPredictionOutcomes,
   type BatchSimJob,
   type BatchSimGameResult,
+  type PredictionOutcome,
 } from "@/lib/api/analytics";
+import { ROUTES } from "@/lib/constants/routes";
 import styles from "../analytics.module.css";
 
 export default function BatchSimsPage() {
@@ -24,6 +28,17 @@ export default function BatchSimsPage() {
   const [jobs, setJobs] = useState<BatchSimJob[]>([]);
   const [jobsError, setJobsError] = useState<string | null>(null);
   const [expandedJob, setExpandedJob] = useState<number | null>(null);
+  const [accuracyData, setAccuracyData] = useState<Record<number, { outcomes: PredictionOutcome[]; loading: boolean }>>({});
+
+  async function loadAccuracy(jobId: number) {
+    setAccuracyData((prev) => ({ ...prev, [jobId]: { outcomes: [], loading: true } }));
+    try {
+      const res = await listPredictionOutcomes({ batch_sim_job_id: jobId, resolved: true });
+      setAccuracyData((prev) => ({ ...prev, [jobId]: { outcomes: res.outcomes, loading: false } }));
+    } catch {
+      setAccuracyData((prev) => ({ ...prev, [jobId]: { outcomes: [], loading: false } }));
+    }
+  }
 
   const refresh = useCallback(async () => {
     try {
@@ -165,15 +180,26 @@ export default function BatchSimsPage() {
                   {job.created_at ? new Date(job.created_at).toLocaleDateString() : "-"}
                 </td>
                 <td>
-                  {job.results && job.results.length > 0 && (
-                    <button
-                      className={styles.btn}
-                      onClick={() => setExpandedJob(expandedJob === job.id ? null : job.id)}
-                      style={{ fontSize: "0.8rem", padding: "2px 8px" }}
-                    >
-                      {expandedJob === job.id ? "Hide" : "Results"}
-                    </button>
-                  )}
+                  <div style={{ display: "flex", gap: "4px" }}>
+                    {job.results && job.results.length > 0 && (
+                      <button
+                        className={styles.btn}
+                        onClick={() => setExpandedJob(expandedJob === job.id ? null : job.id)}
+                        style={{ fontSize: "0.8rem", padding: "2px 8px" }}
+                      >
+                        {expandedJob === job.id ? "Hide" : "Results"}
+                      </button>
+                    )}
+                    {job.status === "completed" && !accuracyData[job.id] && (
+                      <button
+                        className={styles.btn}
+                        onClick={() => loadAccuracy(job.id)}
+                        style={{ fontSize: "0.8rem", padding: "2px 8px" }}
+                      >
+                        Load Accuracy
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -187,6 +213,73 @@ export default function BatchSimsPage() {
           return (
             <div style={{ marginTop: "1rem" }}>
               <h4 style={{ marginBottom: "0.5rem" }}>Results for Batch #{job.id}</h4>
+
+              {/* Results Summary */}
+              {(() => {
+                const results = job.results!;
+                const totalGames = results.length;
+                const avgHomeWP = results.reduce((s, g) => s + g.home_win_probability, 0) / totalGames;
+                const dist = { "50-55": 0, "55-60": 0, "60-70": 0, "70+": 0 };
+                results.forEach((g) => {
+                  const wp = Math.max(g.home_win_probability, g.away_win_probability) * 100;
+                  if (wp >= 70) dist["70+"]++;
+                  else if (wp >= 60) dist["60-70"]++;
+                  else if (wp >= 55) dist["55-60"]++;
+                  else dist["50-55"]++;
+                });
+                return (
+                  <div className={styles.statsRow} style={{ marginBottom: "1rem" }}>
+                    <div className={styles.statBox}>
+                      <div className={styles.statValue}>{totalGames}</div>
+                      <div className={styles.statLabel}>Games</div>
+                    </div>
+                    <div className={styles.statBox}>
+                      <div className={styles.statValue}>{(avgHomeWP * 100).toFixed(1)}%</div>
+                      <div className={styles.statLabel}>Avg Home WP</div>
+                    </div>
+                    <div className={styles.statBox}>
+                      <div className={styles.statValue}>{dist["50-55"]}/{dist["55-60"]}/{dist["60-70"]}/{dist["70+"]}</div>
+                      <div className={styles.statLabel}>50-55/55-60/60-70/70+%</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Accuracy data */}
+              {accuracyData[job.id] && (() => {
+                const ad = accuracyData[job.id];
+                if (ad.loading) return <p style={{ color: "var(--text-muted)" }}>Loading accuracy...</p>;
+                if (ad.outcomes.length === 0) return <p style={{ color: "var(--text-muted)" }}>No resolved outcomes yet.</p>;
+                const total = ad.outcomes.length;
+                const correct = ad.outcomes.filter((o) => o.correct_winner).length;
+                const acc = correct / total;
+                const avgBrier = ad.outcomes.reduce((s, o) => s + (o.brier_score ?? 0), 0) / total;
+                return (
+                  <div style={{ marginBottom: "1rem", padding: "0.75rem", background: "#fafbfc", borderRadius: "6px" }}>
+                    <div className={styles.statsRow}>
+                      <div className={styles.statBox}>
+                        <div className={styles.statValue}>{correct}/{total}</div>
+                        <div className={styles.statLabel}>Correct</div>
+                      </div>
+                      <div className={styles.statBox}>
+                        <div className={styles.statValue}>{(acc * 100).toFixed(1)}%</div>
+                        <div className={styles.statLabel}>Accuracy</div>
+                      </div>
+                      <div className={styles.statBox}>
+                        <div className={styles.statValue}>{avgBrier.toFixed(4)}</div>
+                        <div className={styles.statLabel}>Brier Score</div>
+                      </div>
+                    </div>
+                    <Link
+                      href={`${ROUTES.ANALYTICS_MODELS}?tab=performance`}
+                      style={{ fontSize: "0.8rem", color: "#3b82f6" }}
+                    >
+                      View in Calibration &rarr;
+                    </Link>
+                  </div>
+                );
+              })()}
+
               <AdminTable headers={["Matchup", "Home WP", "Away WP", "Avg Home", "Avg Away", "Source", "Profiles"]}>
                 {job.results.map((g: BatchSimGameResult, i: number) => (
                   <tr key={i}>

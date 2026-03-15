@@ -107,28 +107,17 @@ export interface SimulationResult {
   };
 }
 
-export interface LiveSimulateRequest {
-  sport: string;
-  inning: number;
-  half: "top" | "bottom";
-  outs: number;
-  bases: { first: boolean; second: boolean; third: boolean };
-  score: { home: number; away: number };
-  iterations?: number;
-  seed?: number | null;
-  home_probabilities?: Record<string, number>;
-  away_probabilities?: Record<string, number>;
-}
+// ---------------------------------------------------------------------------
+// Team Profile
+// ---------------------------------------------------------------------------
 
-export interface LiveSimulateResult {
-  sport: string;
-  inning: number;
-  half: string;
-  score: { home: number; away: number };
-  home_win_probability: number;
-  away_win_probability: number;
-  expected_final_score: { home: number; away: number };
-  iterations: number;
+export interface TeamProfileResponse {
+  team: string;
+  games_used: number;
+  date_range: [string, string];
+  season_breakdown: Record<string, number>;
+  metrics: Record<string, number>;
+  baselines: Record<string, number>;
 }
 
 // ---------------------------------------------------------------------------

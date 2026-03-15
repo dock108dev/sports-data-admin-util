@@ -9,8 +9,6 @@ import { getApiBase } from "./apiBase";
 import type {
   SimulationRequest,
   SimulationResult,
-  LiveSimulateRequest,
-  LiveSimulateResult,
   FeatureLoadout,
   FeatureLoadoutListResponse,
   AvailableFeaturesResponse,
@@ -32,6 +30,7 @@ import type {
   EnsembleConfigResponse,
   MLBTeam,
   MLBRosterResponse,
+  TeamProfileResponse,
 } from "./analyticsTypes";
 
 // Re-export every type so existing consumers of "@/lib/api/analytics" keep working.
@@ -44,8 +43,6 @@ export type {
   DataFreshness,
   PredictionEntry,
   SimulationResult,
-  LiveSimulateRequest,
-  LiveSimulateResult,
   FeatureLoadout,
   FeatureLoadoutListResponse,
   AvailableFeature,
@@ -71,6 +68,7 @@ export type {
   RosterBatter,
   RosterPitcher,
   MLBRosterResponse,
+  TeamProfileResponse,
 } from "./analyticsTypes";
 
 const base = () => getApiBase();
@@ -99,17 +97,6 @@ export async function runSimulation(
     body: JSON.stringify(req),
   });
 }
-
-export async function runLiveSimulation(
-  req: LiveSimulateRequest,
-): Promise<LiveSimulateResult> {
-  return fetchJson<LiveSimulateResult>(`${base()}/api/analytics/live-simulate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
-}
-
 
 // ---------------------------------------------------------------------------
 // Feature Loadout CRUD (DB-backed)
@@ -441,4 +428,16 @@ export async function saveEnsembleConfig(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sport, model_type: modelType, providers }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Team Profile
+// ---------------------------------------------------------------------------
+
+export async function getTeamProfile(
+  team: string,
+  rollingWindow: number = 30,
+): Promise<TeamProfileResponse> {
+  const params = new URLSearchParams({ team, rolling_window: String(rollingWindow) });
+  return fetchJson<TeamProfileResponse>(`${base()}/api/analytics/team-profile?${params}`);
 }

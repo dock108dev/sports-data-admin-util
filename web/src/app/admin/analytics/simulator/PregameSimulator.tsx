@@ -17,6 +17,8 @@ import { SimulationInfoBanner } from "./SimulationInfoBanner";
 import { DataFreshnessDisplay } from "./DataFreshnessDisplay";
 import { PitcherProfileCard, MetricsTable } from "./PitcherProfileCard";
 import { LineupEditor, type LineupSlot } from "./LineupEditor";
+import { TeamProfileComparison } from "./TeamProfileComparison";
+import { EdgeAnalysis } from "./EdgeAnalysis";
 
 interface StarterSlot {
   external_ref: string;
@@ -40,6 +42,10 @@ export function PregameSimulator() {
 
   // Playoff exclusion
   const [excludePlayoffs, setExcludePlayoffs] = useState(false);
+
+  // Sportsbook comparison
+  const [homeMoneyline, setHomeMoneyline] = useState("");
+  const [awayMoneyline, setAwayMoneyline] = useState("");
 
   // Lineup mode
   const [useLineup, setUseLineup] = useState(false);
@@ -144,6 +150,13 @@ export function PregameSimulator() {
         probability_mode: probabilityMode,
         exclude_playoffs: excludePlayoffs || undefined,
       };
+      // Sportsbook lines
+      if (homeMoneyline && awayMoneyline) {
+        req.sportsbook = {
+          home_moneyline: parseFloat(homeMoneyline),
+          away_moneyline: parseFloat(awayMoneyline),
+        };
+      }
       if (useLineup && lineupFilled(homeLineup) && lineupFilled(awayLineup)) {
         req.home_lineup = homeLineup;
         req.away_lineup = awayLineup;
@@ -271,6 +284,28 @@ export function PregameSimulator() {
           </label>
         </div>
 
+        {/* Sportsbook Lines (optional) */}
+        <div className={styles.formRow} style={{ marginTop: "0.5rem" }}>
+          <div className={styles.formGroup}>
+            <label>Home Moneyline (optional)</label>
+            <input
+              type="number"
+              placeholder="e.g. -150"
+              value={homeMoneyline}
+              onChange={(e) => setHomeMoneyline(e.target.value)}
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label>Away Moneyline (optional)</label>
+            <input
+              type="number"
+              placeholder="e.g. +130"
+              value={awayMoneyline}
+              onChange={(e) => setAwayMoneyline(e.target.value)}
+            />
+          </div>
+        </div>
+
         <div className={styles.formRow} style={{ marginTop: "0.75rem" }}>
           <button
             className={`${styles.btn} ${styles.btnPrimary}`}
@@ -365,6 +400,11 @@ export function PregameSimulator() {
         </AdminCard>
       )}
 
+      {/* Team Profile Comparison (shows when both teams selected) */}
+      {homeTeam && awayTeam && homeTeam !== awayTeam && (
+        <TeamProfileComparison homeTeam={homeTeam} awayTeam={awayTeam} />
+      )}
+
       {error && <div className={styles.error}>{error}</div>}
 
       {result && (
@@ -398,6 +438,54 @@ export function PregameSimulator() {
           {result.simulation_info && (
             <SimulationInfoBanner info={result.simulation_info} />
           )}
+
+          {/* Edge Analysis */}
+          {result.profile_meta && (
+            <EdgeAnalysis
+              profileMeta={result.profile_meta}
+              homeTeam={result.home_team}
+              awayTeam={result.away_team}
+              homeWP={result.home_win_probability}
+            />
+          )}
+
+          {/* Sportsbook Comparison */}
+          {result.sportsbook_comparison && homeMoneyline && awayMoneyline && (() => {
+            const toImpliedProb = (ml: number) => {
+              if (ml > 0) return 100 / (ml + 100);
+              return Math.abs(ml) / (Math.abs(ml) + 100);
+            };
+            const homeImplied = toImpliedProb(parseFloat(homeMoneyline));
+            const awayImplied = toImpliedProb(parseFloat(awayMoneyline));
+            const homeEdge = result.home_win_probability - homeImplied;
+            const awayEdge = result.away_win_probability - awayImplied;
+            return (
+              <AdminCard title="Sportsbook Comparison" subtitle="Sim vs implied probability from moneylines">
+                <div className={styles.statsRow}>
+                  <div className={styles.statBox}>
+                    <div className={styles.statValue}>{(homeImplied * 100).toFixed(1)}%</div>
+                    <div className={styles.statLabel}>{result.home_team} Implied</div>
+                  </div>
+                  <div className={styles.statBox}>
+                    <div className={styles.statValue}>{(awayImplied * 100).toFixed(1)}%</div>
+                    <div className={styles.statLabel}>{result.away_team} Implied</div>
+                  </div>
+                  <div className={styles.statBox}>
+                    <div className={styles.statValue} style={{ color: homeEdge > 0 ? "#16a34a" : "#dc2626" }}>
+                      {homeEdge > 0 ? "+" : ""}{(homeEdge * 100).toFixed(1)}%
+                    </div>
+                    <div className={styles.statLabel}>{result.home_team} Edge</div>
+                  </div>
+                  <div className={styles.statBox}>
+                    <div className={styles.statValue} style={{ color: awayEdge > 0 ? "#16a34a" : "#dc2626" }}>
+                      {awayEdge > 0 ? "+" : ""}{(awayEdge * 100).toFixed(1)}%
+                    </div>
+                    <div className={styles.statLabel}>{result.away_team} Edge</div>
+                  </div>
+                </div>
+              </AdminCard>
+            );
+          })()}
 
           {result.model_home_win_probability != null && (
             <AdminCard title="Game Model Prediction" subtitle="Trained classifier (separate from Monte Carlo)">

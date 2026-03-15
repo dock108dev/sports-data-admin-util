@@ -48,7 +48,7 @@ export function SimulationInfoBanner({ info }: { info: SimulationInfo }) {
         <div style={{ marginTop: "0.35rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
           Model v{info.model_info.version}
           {info.model_info.trained_at && `, trained ${info.model_info.trained_at}`}
-          {info.model_info.metrics?.accuracy != null && `, accuracy: ${(info.model_info.metrics.accuracy * 100).toFixed(1)}%`}
+          {info.model_info.metrics?.accuracy != null && `, accuracy: ${(info.model_info.metrics.accuracy * 100).toFixed(1)}% (random: 14.3%)`}
         </div>
       )}
       {info.warnings.length > 0 && (

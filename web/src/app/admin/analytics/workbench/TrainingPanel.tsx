@@ -40,6 +40,7 @@ function StatusBadge({ status }: { status: string }) {
 export function TrainingPanel() {
   const [loadouts, setLoadouts] = useState<FeatureLoadout[]>([]);
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
+  const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
   const [selectedLoadout, setSelectedLoadout] = useState<number | null>(null);
   const [modelType, setModelType] = useState("game");
   const [algorithm, setAlgorithm] = useState("gradient_boosting");
@@ -233,7 +234,7 @@ export function TrainingPanel() {
           <p style={{ color: "#666" }}>No training jobs yet. Start one from the form.</p>
         ) : (
           <AdminTable headers={["ID", "Type", "Algorithm", "Status", "Metrics", "Actions"]}>
-            {jobs.map((job) => (
+            {jobs.flatMap((job) => [
               <tr key={job.id}>
                 <td>#{job.id}</td>
                 <td style={{ fontSize: "0.85rem" }}>{job.model_type}</td>
@@ -243,14 +244,20 @@ export function TrainingPanel() {
                 </td>
                 <td style={{ fontSize: "0.8rem" }}>
                   {job.metrics ? (
-                    <span>
+                    <span
+                      style={{ cursor: "pointer", textDecoration: "underline dotted" }}
+                      onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
+                    >
                       acc: {((job.metrics.accuracy ?? 0) * 100).toFixed(1)}%
                       {job.metrics.brier_score != null && (
                         <> &middot; brier: {job.metrics.brier_score.toFixed(3)}</>
                       )}
                     </span>
                   ) : job.error_message ? (
-                    <span style={{ color: "#c00" }} title={job.error_message}>
+                    <span
+                      style={{ color: "#c00", cursor: "pointer", textDecoration: "underline dotted" }}
+                      onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
+                    >
                       Error
                     </span>
                   ) : (
@@ -279,8 +286,37 @@ export function TrainingPanel() {
                     <span style={{ color: "#999" }}>--</span>
                   )}
                 </td>
-              </tr>
-            ))}
+              </tr>,
+              expandedJobId === job.id && (job.error_message || job.metrics) ? (
+                <tr key={`${job.id}-detail`}>
+                  <td colSpan={6} style={{ padding: "0.5rem 1rem", background: "#fafbfc" }}>
+                    {job.error_message && (
+                      <pre style={{
+                        fontFamily: "monospace",
+                        fontSize: "0.8rem",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                        maxHeight: "200px",
+                        overflow: "auto",
+                        margin: 0,
+                        color: "#c00",
+                      }}>
+                        {job.error_message}
+                      </pre>
+                    )}
+                    {job.metrics && (
+                      <div style={{ fontSize: "0.8rem" }}>
+                        {Object.entries(job.metrics).map(([k, v]) => (
+                          <div key={k}>
+                            <strong>{k}:</strong> {typeof v === "number" ? v.toFixed(4) : String(v)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ) : null,
+            ])}
           </AdminTable>
         )}
       </AdminCard>

@@ -263,6 +263,13 @@ async def post_simulate(
         **result,
     }
 
+    # Thread raw profiles and baselines into profile_meta for edge analysis
+    if home_profile and away_profile:
+        from app.analytics.sports.mlb.constants import FEATURE_BASELINES
+        profile_meta["home_profile"] = home_profile
+        profile_meta["away_profile"] = away_profile
+        profile_meta["baselines"] = {k: v for k, v in FEATURE_BASELINES.items() if k in home_profile}
+
     # Merge profile metadata into response
     if profile_meta:
         response["profile_meta"] = profile_meta
@@ -301,6 +308,35 @@ async def post_simulate(
     response["predictions"] = predictions
 
     return response
+
+
+@router.get("/team-profile")
+async def get_team_profile(
+    team: str = Query(..., description="Team abbreviation (e.g., NYY)"),
+    rolling_window: int = Query(30, ge=5, le=162, description="Rolling window for profile building"),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Get a team's rolling profile with league baselines for comparison."""
+    from app.analytics.sports.mlb.constants import FEATURE_BASELINES
+
+    profile_result = await get_team_rolling_profile(
+        team, "mlb", rolling_window=rolling_window, db=db,
+    )
+    if profile_result is None:
+        return {"error": f"No profile data found for {team}", "team": team, "games_used": 0,
+                "date_range": [], "season_breakdown": {}, "metrics": {}, "baselines": {}}
+
+    metrics = profile_result.metrics
+    baselines = {k: v for k, v in FEATURE_BASELINES.items() if k in metrics}
+
+    return {
+        "team": team,
+        "games_used": profile_result.games_used,
+        "date_range": list(profile_result.date_range),
+        "season_breakdown": {str(k): v for k, v in profile_result.season_breakdown.items()},
+        "metrics": metrics,
+        "baselines": baselines,
+    }
 
 
 @router.get("/mlb-teams")
