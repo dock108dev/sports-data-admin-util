@@ -150,6 +150,9 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             selectinload(SportsGame.pitcher_game_stats).selectinload(
                 MLBPitcherGameStats.team
             ),
+            selectinload(SportsGame.fielding_stats).selectinload(
+                MLBPlayerFieldingStats.team
+            ),
         )
         .where(SportsGame.id == game_id)
     )
@@ -398,14 +401,16 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
                 player_name=stat.player_name,
                 is_home=stat.is_home,
                 total_pitches=stat.total_pitches,
-                z_swing_pct=stat.z_swing_pct,
-                o_swing_pct=stat.o_swing_pct,
-                z_contact_pct=stat.z_contact_pct,
-                o_contact_pct=stat.o_contact_pct,
+                zone_pitches=stat.zone_pitches,
+                zone_swings=stat.zone_swings,
+                zone_contact=stat.zone_contact,
+                outside_pitches=stat.outside_pitches,
+                outside_swings=stat.outside_swings,
+                outside_contact=stat.outside_contact,
                 balls_in_play=stat.balls_in_play,
                 avg_exit_velo=stat.avg_exit_velo,
-                hard_hit_pct=stat.hard_hit_pct,
-                barrel_pct=stat.barrel_pct,
+                hard_hit_count=stat.hard_hit_count,
+                barrel_count=stat.barrel_count,
             )
             for stat in game.player_advanced_stats
         ]
@@ -419,49 +424,41 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
                 player_name=stat.player_name,
                 is_starter=stat.is_starter or False,
                 innings_pitched=stat.innings_pitched,
+                batters_faced=stat.batters_faced,
+                pitches_thrown=stat.pitches_thrown,
                 strikeouts=stat.strikeouts,
                 walks=stat.walks,
-                k_rate=stat.k_rate,
-                bb_rate=stat.bb_rate,
-                whiff_rate=stat.whiff_rate,
-                z_contact_pct=stat.z_contact_pct,
-                chase_rate=stat.chase_rate,
+                zone_pitches=stat.zone_pitches,
+                zone_swings=stat.zone_swings,
+                zone_contact=stat.zone_contact,
+                outside_pitches=stat.outside_pitches,
+                outside_swings=stat.outside_swings,
+                outside_contact=stat.outside_contact,
+                balls_in_play=stat.balls_in_play,
                 avg_exit_velo_against=stat.avg_exit_velo_against,
-                hard_hit_pct_against=stat.hard_hit_pct_against,
-                barrel_pct_against=stat.barrel_pct_against,
+                hard_hit_against=stat.hard_hit_against,
+                barrel_against=stat.barrel_against,
             )
             for stat in game.pitcher_game_stats
         ]
 
-    # MLB fielding stats (seasonal context for teams in this game)
+    # MLB fielding stats (per-game, loaded via game relationship)
     mlb_fielding_stats_list: list[MLBFieldingStatSchema] | None = None
-    if is_mlb and game.home_team and game.away_team and game.season_type in ("regular", "postseason"):
-        team_ids = [game.home_team.id, game.away_team.id]
-        fielding_result = await session.execute(
-            select(MLBPlayerFieldingStats)
-            .options(selectinload(MLBPlayerFieldingStats.team))
-            .where(
-                MLBPlayerFieldingStats.team_id.in_(team_ids),
-                MLBPlayerFieldingStats.season == game.season,
+    if is_mlb and game.fielding_stats:
+        mlb_fielding_stats_list = [
+            MLBFieldingStatSchema(
+                team=row.team.name if row.team else "Unknown",
+                player_name=row.player_name,
+                position=row.position,
+                outs_above_average=row.outs_above_average,
+                defensive_runs_saved=row.defensive_runs_saved,
+                uzr=row.uzr,
+                errors=row.errors,
+                assists=row.assists,
+                putouts=row.putouts,
             )
-        )
-        fielding_rows = fielding_result.scalars().all()
-        if fielding_rows:
-            mlb_fielding_stats_list = [
-                MLBFieldingStatSchema(
-                    team=row.team.name if row.team else "Unknown",
-                    player_name=row.player_name,
-                    position=row.position,
-                    outs_above_average=row.outs_above_average,
-                    defensive_runs_saved=row.defensive_runs_saved,
-                    uzr=row.uzr,
-                    errors=row.errors,
-                    assists=row.assists,
-                    putouts=row.putouts,
-                    games_played=row.games_played,
-                )
-                for row in fielding_rows
-            ]
+            for row in game.fielding_stats
+        ]
 
     from ...services.play_tiers import enrich_play_entries
 

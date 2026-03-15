@@ -345,6 +345,7 @@ class TestUpsertGameStub:
         existing_game.away_score = None
         existing_game.venue = None
         existing_game.external_ids = {}
+        existing_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = existing_game
 
         home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
@@ -383,6 +384,7 @@ class TestUpsertGameStub:
         existing_game.away_score = None
         existing_game.venue = None
         existing_game.external_ids = {}
+        existing_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = existing_game
 
         home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")
@@ -417,6 +419,7 @@ class TestUpsertGameStub:
         existing_game.away_score = None
         existing_game.venue = None
         existing_game.external_ids = {"existing": "123"}
+        existing_game.game_date = datetime(2024, 1, 15, 19, 0, tzinfo=UTC)
         mock_session.query.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = existing_game
 
         home_team = TeamIdentity(league_code="NBA", name="Lakers", abbreviation="LAL")

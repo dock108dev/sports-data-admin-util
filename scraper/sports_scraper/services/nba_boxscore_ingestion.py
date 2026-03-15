@@ -15,9 +15,9 @@ already know which game we're enriching.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
-from ..utils.datetime_utils import end_of_et_day_utc, to_et_date
+from ..utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc, to_et_date
 
 from sqlalchemy import exists, not_
 from sqlalchemy.orm import Session
@@ -73,7 +73,7 @@ def select_games_for_boxscores_nba_api(
         db_models.SportsGame.game_date,
     ).filter(
         db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date >= start_of_et_day_utc(start_date),
         db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
     )
 
@@ -223,6 +223,10 @@ def ingest_boxscores_via_nba_api(
     )
 
     # Step 3: Fetch and persist boxscores using direct game_id
+    # NBA boxscore ingestion uses its own enrichment logic (_enrich_game_from_boxscore)
+    # and team identity remapping, so it doesn't use the SSOT game_processors for
+    # boxscores. The polling path uses process_game_boxscore_nba which does
+    # simpler upserts without enrichment.
     client = NBALiveFeedClient()
     games_processed = 0
     games_enriched = 0

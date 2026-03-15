@@ -11,7 +11,7 @@ Benefits:
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from ..models import (
 )
 from ..persistence import persist_game_payload
 from ..utils.date_utils import season_ending_year
+from ..utils.datetime_utils import start_of_et_day_utc
 from .ncaab_game_ids import (
     populate_ncaab_game_ids,
     select_games_for_boxscores_ncaab_api,
@@ -108,24 +109,29 @@ def ingest_boxscores_via_ncaab_api(
     client = NCAABLiveFeedClient()
     season = season_ending_year(start_date)
 
-    cbb_game_ids = [cbb_game_id for _, cbb_game_id, _, _, _ in games]
+    # Filter out cbb_game_id=0 (games with only ncaa_game_id, handled by fallback)
+    cbb_game_ids = [cbb_game_id for _, cbb_game_id, _, _, _ in games if cbb_game_id]
     team_names_by_game = {
         cbb_game_id: (home_team_name, away_team_name)
         for _, cbb_game_id, _, home_team_name, away_team_name in games
+        if cbb_game_id
     }
 
-    boxscores = client.fetch_boxscores_batch(
-        game_ids=cbb_game_ids,
-        start_date=start_date,
-        end_date=end_date,
-        season=season,
-        team_names_by_game=team_names_by_game,
-    )
+    boxscores: dict = {}
+    if cbb_game_ids:
+        boxscores = client.fetch_boxscores_batch(
+            game_ids=cbb_game_ids,
+            start_date=start_date,
+            end_date=end_date,
+            season=season,
+            team_names_by_game=team_names_by_game,
+        )
 
     logger.info(
         "ncaab_boxscore_batch_fetched",
         run_id=run_id,
         requested_games=len(games),
+        cbb_games=len(cbb_game_ids),
         boxscores_received=len(boxscores),
     )
 
@@ -147,12 +153,11 @@ def ingest_boxscores_via_ncaab_api(
             continue
 
         try:
-            game_datetime = datetime.combine(game_date, datetime.min.time(), tzinfo=UTC)
-            boxscore.game_date = game_datetime
+            boxscore.game_date = start_of_et_day_utc(game_date)
 
             normalized_game = convert_ncaab_boxscore_to_normalized_game(boxscore)
 
-            result = persist_game_payload(session, normalized_game)
+            result = persist_game_payload(session, normalized_game, game_id=game_id)
 
             if result.game_id is not None:
                 games_processed += 1
@@ -275,7 +280,7 @@ def _select_ncaa_boxscore_fallback_games(
     from sqlalchemy import exists, not_
 
     from ..db import db_models
-    from ..utils.datetime_utils import end_of_et_day_utc
+    from ..utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc
 
     league = session.query(db_models.SportsLeague).filter(
         db_models.SportsLeague.code == "NCAAB"
@@ -301,7 +306,7 @@ def _select_ncaa_boxscore_fallback_games(
         db_models.SportsGame.away_team_id == away_team.c.id,
     ).filter(
         db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date >= start_of_et_day_utc(start_date),
         db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
         ncaa_game_id_expr.isnot(None),
     )

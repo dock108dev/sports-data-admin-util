@@ -86,6 +86,52 @@ class MLBBoxscoreFetcher:
 
         return self._parse_boxscore_response(payload, game_pk, game_status)
 
+    def fetch_boxscore_raw(
+        self, game_pk: int, game_status: str | None = None
+    ) -> dict | None:
+        """Fetch raw boxscore JSON dict from MLB Stats API.
+
+        Reuses the same cache key as fetch_boxscore() so cached responses
+        from normal ingestion are reused (no extra API call for final games).
+
+        Returns the raw payload dict, or None on failure.
+        """
+        cache_key = f"mlb_boxscore_{game_pk}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            logger.info("mlb_boxscore_raw_using_cache", game_pk=game_pk)
+            return cached
+
+        url = MLB_BOXSCORE_URL.format(game_pk=game_pk)
+        logger.info("mlb_boxscore_raw_fetch", url=url, game_pk=game_pk)
+
+        try:
+            response = self.client.get(url)
+        except Exception as exc:
+            logger.error("mlb_boxscore_raw_fetch_error", game_pk=game_pk, error=str(exc))
+            return None
+
+        if response.status_code != 200:
+            logger.warning(
+                "mlb_boxscore_raw_fetch_failed",
+                game_pk=game_pk,
+                status=response.status_code,
+            )
+            return None
+
+        payload = response.json()
+
+        teams = payload.get("teams", {})
+        has_data = bool(
+            teams.get("home", {}).get("players")
+            or teams.get("away", {}).get("players")
+        )
+
+        if should_cache_final(has_data, game_status):
+            self._cache.put(cache_key, payload)
+
+        return payload
+
     def _parse_boxscore_response(
         self, payload: dict, game_pk: int, game_status: str | None = None
     ) -> MLBBoxscore:

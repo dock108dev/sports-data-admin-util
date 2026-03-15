@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Literal
 
-from sqlalchemy import case, literal_column, or_
+from sqlalchemy import case, exists, literal_column, not_, or_
 from sqlalchemy.orm import Session
 
 from ..config_sports import LEAGUE_CONFIG, LeagueConfig
@@ -172,17 +172,34 @@ class ActiveGamesResolver:
         if not league_id_list:
             return []
 
+        # Include pregame/live games with stale PBP, plus final games
+        # that never got any play data (backfill after missed live window).
+        has_plays = exists().where(
+            db_models.SportsGamePlay.game_id == db_models.SportsGame.id
+        )
+
         games = (
             session.query(db_models.SportsGame)
             .filter(
                 db_models.SportsGame.league_id.in_(league_id_list),
-                db_models.SportsGame.status.in_([
-                    db_models.GameStatus.pregame.value,
-                    db_models.GameStatus.live.value,
-                ]),
                 or_(
-                    db_models.SportsGame.last_pbp_at.is_(None),
-                    db_models.SportsGame.last_pbp_at < stale_threshold,
+                    # Normal: pregame/live with stale PBP
+                    (
+                        db_models.SportsGame.status.in_([
+                            db_models.GameStatus.pregame.value,
+                            db_models.GameStatus.live.value,
+                        ])
+                        & or_(
+                            db_models.SportsGame.last_pbp_at.is_(None),
+                            db_models.SportsGame.last_pbp_at < stale_threshold,
+                        )
+                    ),
+                    # Backfill: final games from last 48 hours with no play data at all
+                    (
+                        (db_models.SportsGame.status == db_models.GameStatus.final.value)
+                        & (db_models.SportsGame.game_date > now - timedelta(hours=48))
+                        & not_(has_plays)
+                    ),
                 ),
             )
             .order_by(db_models.SportsGame.game_date.asc().nullslast())
@@ -220,21 +237,38 @@ class ActiveGamesResolver:
         if not league_id_list:
             return []
 
+        # Include live/recently-final with stale boxscores, plus final games
+        # that never got any boxscore data (backfill after missed live window).
+        has_boxscores = exists().where(
+            db_models.SportsTeamBoxscore.game_id == db_models.SportsGame.id
+        )
+
         games = (
             session.query(db_models.SportsGame)
             .filter(
                 db_models.SportsGame.league_id.in_(league_id_list),
                 or_(
-                    db_models.SportsGame.status == db_models.GameStatus.live.value,
+                    # Normal: live or recently-final with stale boxscore
+                    (
+                        or_(
+                            db_models.SportsGame.status == db_models.GameStatus.live.value,
+                            (
+                                (db_models.SportsGame.status == db_models.GameStatus.final.value)
+                                & (db_models.SportsGame.end_time.isnot(None))
+                                & (db_models.SportsGame.end_time > now - timedelta(hours=self.postgame_hours))
+                            ),
+                        )
+                        & or_(
+                            db_models.SportsGame.last_boxscore_at.is_(None),
+                            db_models.SportsGame.last_boxscore_at < stale_threshold,
+                        )
+                    ),
+                    # Backfill: final games from last 48 hours with no boxscore data at all
                     (
                         (db_models.SportsGame.status == db_models.GameStatus.final.value)
-                        & (db_models.SportsGame.end_time.isnot(None))
-                        & (db_models.SportsGame.end_time > now - timedelta(hours=self.postgame_hours))
+                        & (db_models.SportsGame.game_date > now - timedelta(hours=48))
+                        & not_(has_boxscores)
                     ),
-                ),
-                or_(
-                    db_models.SportsGame.last_boxscore_at.is_(None),
-                    db_models.SportsGame.last_boxscore_at < stale_threshold,
                 ),
             )
             .order_by(db_models.SportsGame.game_date.asc().nullslast())
@@ -251,13 +285,34 @@ class ActiveGamesResolver:
         """Return (game_id, team_id) pairs for games in active windows.
 
         Returns unique team IDs across all active games so social collection
-        can be dispatched per-team without duplicates.
+        can be dispatched per-team without duplicates.  Also includes final
+        games that never got any social posts (backfill).
         """
         active = self.get_active_games(session)
         seen_teams: set[int] = set()
         pairs: list[tuple[int, int]] = []
 
         for game, _ws in active:
+            for team_id in (game.home_team_id, game.away_team_id):
+                if team_id not in seen_teams:
+                    seen_teams.add(team_id)
+                    pairs.append((game.id, team_id))
+
+        # Backfill: final games from last 48 hours with no social posts at all
+        now = now_utc()
+        has_social = exists().where(
+            db_models.TeamSocialPost.game_id == db_models.SportsGame.id
+        )
+        backfill_games = (
+            session.query(db_models.SportsGame)
+            .filter(
+                db_models.SportsGame.status == db_models.GameStatus.final.value,
+                db_models.SportsGame.game_date > now - timedelta(hours=48),
+                not_(has_social),
+            )
+            .all()
+        )
+        for game in backfill_games:
             for team_id in (game.home_team_id, game.away_team_id):
                 if team_id not in seen_teams:
                     seen_teams.add(team_id)

@@ -180,7 +180,7 @@ See [Timeline Validation](gameflow/timeline-validation.md) for validation rules.
 - `mlb_game_advanced_stats` - Statcast-derived advanced batting stats per team per game
 - `mlb_player_advanced_stats` - Statcast-derived advanced batting stats per batter per game
 - `mlb_pitcher_game_stats` - Per-game pitching stats (IP, K, BB, ERA, etc.)
-- `mlb_player_fielding_stats` - Seasonal fielding stats (OAA, DRS, UZR, errors)
+- `mlb_player_fielding_stats` - Per-game fielding stats (errors, assists, putouts, position) from boxscore data
 - `team_social_posts` - Social media content (mapped to games via `mapping_status`)
 - `users` - User accounts for downstream app authentication (email, password_hash, role, is_active)
 
@@ -266,8 +266,8 @@ Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). R
 - `GET /api/fairbet/live` — Live in-game +EV odds for a single game from multi-book Redis snapshots (same EV pipeline as pre-game, nothing persisted)
 
 ### Realtime Endpoints
-- `WS /v1/realtime/ws` — WebSocket feed for live game updates (scores, PBP, odds)
-- `GET /v1/realtime/sse` — SSE feed (same data as WS, alternative transport)
+- `WS /v1/ws` — WebSocket feed for live game updates (scores, PBP, odds)
+- `GET /v1/sse` — SSE feed (same data as WS, alternative transport)
 - `GET /v1/realtime/status` — Connected clients, channel subscriptions, and poller stats
 
 FairBet reads from the `fairbet_game_odds_work` table (populated during odds ingestion with canonical DB team names) and annotates each bet with expected value computed at query time using Pinnacle as the sharp reference. Each bet includes server-computed display fields (fair American odds, selection display name, market display name, book abbreviations, confidence labels, EV method explanations) so clients don't need to maintain their own formatting logic.
@@ -297,6 +297,36 @@ See [API Reference](api.md) for complete endpoint reference.
 - **Package Manager:** uv
 - **HTTP:** httpx
 - **Parsing:** BeautifulSoup, lxml
+
+---
+
+## Configuration SSOTs
+
+### League Configuration (`config_sports.py`)
+
+Centralized per-league feature flags and timing config. Exists in both `api/app/config_sports.py` and `scraper/sports_scraper/config_sports.py` (identical, independent packages). Controls:
+
+- Pipeline feature flags (boxscores, odds, social, PBP, timeline)
+- Game state machine windows (pregame, postgame, estimated duration)
+- Live polling behavior (PBP, boxscore, odds)
+- Scheduled ingestion inclusion
+
+To add a new league, see [Adding New Sports](adding-sports.md).
+
+### Datetime Utilities (`utils/datetime_utils.py`)
+
+All date/time conversions go through shared utility functions. Exists in both `api/app/utils/datetime_utils.py` and `scraper/sports_scraper/utils/datetime_utils.py` (independent packages, aligned names).
+
+| Function | Purpose |
+|----------|---------|
+| `to_et_date(dt)` | UTC datetime → ET calendar date. **Use instead of `.date()` on game datetimes.** |
+| `today_et()` | Current date in Eastern Time (midnight boundary) |
+| `sports_today_et()` | Current sports day (4 AM ET boundary — scraper only) |
+| `start_of_et_day_utc(d)` | ET midnight → UTC. Use as `>=` bound in queries |
+| `end_of_et_day_utc(d)` | ET next-midnight → UTC. Use as `<` bound in queries |
+| `date_to_utc_datetime(d)` | Date → UTC midnight datetime |
+
+**Critical rule:** Never call `.date()` on a `game_date` field. Use `to_et_date(game_date)` instead. A game at 4 AM UTC is 11 PM ET the previous day — `.date()` returns the wrong calendar date.
 
 ---
 

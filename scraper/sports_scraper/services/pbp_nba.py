@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
-from ..utils.datetime_utils import end_of_et_day_utc, to_et_date
+from ..utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc, to_et_date
 
 from sqlalchemy import exists, not_, or_
 from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
-from ..persistence.plays import upsert_plays
 
 
 def select_games_for_pbp_nba_api(
@@ -52,7 +51,7 @@ def select_games_for_pbp_nba_api(
         db_models.SportsGame.status,
     ).filter(
         db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date >= start_of_et_day_utc(start_date),
         db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
         # nba_game_id is required for NBA API PBP fetch
         nba_game_id_expr.isnot(None),
@@ -113,7 +112,7 @@ def populate_nba_game_ids(
         )
         .filter(
             db_models.SportsGame.league_id == league.id,
-            db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+            db_models.SportsGame.game_date >= start_of_et_day_utc(start_date),
             db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
             or_(
                 nba_game_id_expr.is_(None),
@@ -237,9 +236,6 @@ def ingest_pbp_via_nba_api(
     Returns:
         Tuple of (games_with_pbp, total_events_inserted)
     """
-    from ..live.nba import NBALiveFeedClient
-    from ..live.nba_constants import NBA_MIN_EXPECTED_PLAYS
-
     logger.info(
         "nba_pbp_ingestion_start",
         run_id=run_id,
@@ -283,51 +279,37 @@ def ingest_pbp_via_nba_api(
         updated_before=str(updated_before) if updated_before else None,
     )
 
-    # Step 3: Fetch and persist PBP
-    client = NBALiveFeedClient()
+    # Step 3: Fetch and persist PBP via SSOT game_processors
+    from .game_processors import process_game_pbp_nba
+
     pbp_games = 0
     pbp_events = 0
 
     for game_id, nba_game_id in games:
         try:
-            # Fetch PBP from NBA API
-            payload = client.fetch_play_by_play(nba_game_id)
-
-            if not payload.plays:
-                logger.warning(
-                    "nba_pbp_empty_response",
-                    run_id=run_id,
-                    game_id=game_id,
-                    nba_game_id=nba_game_id,
-                )
+            game = session.query(db_models.SportsGame).get(game_id)
+            if not game:
                 continue
 
-            # Validation: Check if game is final and event count is suspiciously low
-            game = session.query(db_models.SportsGame).get(game_id)
-            if game and game.status == db_models.GameStatus.final.value:
-                if len(payload.plays) < NBA_MIN_EXPECTED_PLAYS:
-                    logger.warning(
-                        "nba_pbp_insufficient_events",
-                        run_id=run_id,
-                        game_id=game_id,
-                        nba_game_id=nba_game_id,
-                        play_count=len(payload.plays),
-                        expected_min=NBA_MIN_EXPECTED_PLAYS,
-                    )
+            result = process_game_pbp_nba(session, game)
 
-            # Persist plays
-            inserted = upsert_plays(session, game_id, payload.plays, source="nba_api")
-
-            if inserted:
+            if result.events_inserted:
                 pbp_games += 1
-                pbp_events += inserted
+                pbp_events += result.events_inserted
 
                 logger.info(
                     "nba_pbp_ingested",
                     run_id=run_id,
                     game_id=game_id,
                     nba_game_id=nba_game_id,
-                    events_inserted=inserted,
+                    events_inserted=result.events_inserted,
+                )
+            elif not result.events_inserted and result.api_calls > 0:
+                logger.warning(
+                    "nba_pbp_empty_response",
+                    run_id=run_id,
+                    game_id=game_id,
+                    nba_game_id=nba_game_id,
                 )
 
         except Exception as exc:

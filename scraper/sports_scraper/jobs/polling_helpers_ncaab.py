@@ -8,6 +8,8 @@ Data source strategy (SSOT):
   ncaa_game_id for reference but this does NOT affect PBP/boxscore routing.
 
 Called by poll_live_pbp_task in polling_tasks.py.
+
+Per-game processing logic lives in services.game_processors (SSOT).
 """
 
 from __future__ import annotations
@@ -269,12 +271,17 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
     Uses CBB API (cbb_game_id) as primary source, with NCAA API
     (ncaa_game_id) as fallback for PBP and boxscores when CBB data
     is unavailable or the game lacks a cbb_game_id.
+
+    Per-game processing delegates to game_processors (SSOT).
+    Batch boxscores use game_processors.process_game_boxscores_ncaab_batch.
     """
     from ..db import db_models
     from ..live.ncaab import NCAABLiveFeedClient
-    from ..persistence.boxscores import upsert_player_boxscores, upsert_team_boxscores
-    from ..persistence.plays import upsert_plays
-    from ..utils.datetime_utils import now_utc
+    from ..services.game_processors import (
+        process_game_boxscore_ncaab,
+        process_game_boxscores_ncaab_batch,
+        process_game_pbp_ncaab,
+    )
 
     client = NCAABLiveFeedClient()
 
@@ -284,7 +291,7 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
     pbp_updated = 0
     boxscores_updated = 0
 
-    # Collect games with cbb_game_id or ncaa_game_id (either enables data fetch)
+    # Collect eligible games
     eligible_games: list = []
     team_names_by_game_id: dict[int, tuple[str, str]] = {}
 
@@ -316,141 +323,28 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
         total_games=len(games),
     )
 
-    # Track which games got PBP/boxscores (for NCAA API fallback)
-    games_with_pbp: set[int] = set()
-    games_with_boxscore: set[int] = set()
-
-    # --- PBP Phase 1: CBB API (per-game, for games with cbb_game_id) ---
+    # --- PBP: per-game via game_processors ---
     for game in eligible_games:
-        cbb_game_id = (game.external_ids or {}).get("cbb_game_id")
-        if not cbb_game_id:
-            continue
-
         if api_calls > 0:
             time.sleep(random.uniform(_JITTER_MIN, _JITTER_MAX))
 
         try:
-            cbb_id = int(cbb_game_id)
-        except (ValueError, TypeError):
-            logger.warning(
-                "poll_ncaab_cbb_invalid_id",
-                game_id=game.id,
-                cbb_game_id=cbb_game_id,
-            )
-            continue
-
-        try:
-            payload = client.fetch_play_by_play(cbb_id, game_status=game.status)
-            api_calls += 1
-
-            if payload.plays:
-                inserted = upsert_plays(session, game.id, payload.plays, source="cbb_api")
-                if inserted:
-                    pbp_updated += 1
-                    games_with_pbp.add(game.id)
-                game.last_pbp_at = now_utc()
-
-                if game.status == db_models.GameStatus.pregame.value:
-                    game.status = db_models.GameStatus.live.value
-                    game.updated_at = now_utc()
-                    ncaab_transitions.append({
-                        "game_id": game.id,
-                        "from": "pregame",
-                        "to": "live",
-                    })
-                    logger.info(
-                        "poll_pbp_inferred_live",
-                        game_id=game.id,
-                        league="NCAAB",
-                        reason="pbp_plays_found",
-                        play_count=len(payload.plays),
-                        cbb_game_id=cbb_id,
-                    )
-            else:
-                logger.debug(
-                    "poll_ncaab_cbb_no_plays",
-                    game_id=game.id,
-                    cbb_game_id=cbb_id,
-                )
-
+            pbp_result = process_game_pbp_ncaab(session, game, client=client)
+            api_calls += pbp_result.api_calls
+            if pbp_result.events_inserted:
+                pbp_updated += 1
+            if pbp_result.transition:
+                ncaab_transitions.append(pbp_result.transition)
         except Exception as exc:
             if "429" in str(exc):
                 raise _RateLimitError() from exc
             logger.warning(
                 "poll_ncaab_pbp_error",
                 game_id=game.id,
-                cbb_game_id=cbb_id,
                 error=str(exc),
             )
 
-    # --- PBP Phase 2: NCAA API fallback (for games without CBB PBP) ---
-    ncaa_pbp_candidates = [
-        g for g in eligible_games
-        if g.id not in games_with_pbp and (g.external_ids or {}).get("ncaa_game_id")
-    ]
-
-    for game in ncaa_pbp_candidates:
-        ncaa_game_id = game.external_ids["ncaa_game_id"]
-
-        if api_calls > 0:
-            time.sleep(random.uniform(_JITTER_MIN, _JITTER_MAX))
-
-        try:
-            home_name, away_name = team_names_by_game_id[game.id]
-            home_team_obj = session.query(db_models.SportsTeam).get(game.home_team_id)
-            away_team_obj = session.query(db_models.SportsTeam).get(game.away_team_id)
-            home_abbr = home_team_obj.abbreviation if home_team_obj else None
-            away_abbr = away_team_obj.abbreviation if away_team_obj else None
-
-            payload = client.fetch_ncaa_play_by_play(
-                ncaa_game_id,
-                game_status=game.status,
-                home_abbr=home_abbr,
-                away_abbr=away_abbr,
-            )
-            api_calls += 1
-
-            if payload.plays:
-                inserted = upsert_plays(session, game.id, payload.plays, source="ncaa_api")
-                if inserted:
-                    pbp_updated += 1
-                    games_with_pbp.add(game.id)
-                game.last_pbp_at = now_utc()
-
-                if game.status == db_models.GameStatus.pregame.value:
-                    game.status = db_models.GameStatus.live.value
-                    game.updated_at = now_utc()
-                    ncaab_transitions.append({
-                        "game_id": game.id,
-                        "from": "pregame",
-                        "to": "live",
-                    })
-                    logger.info(
-                        "poll_pbp_inferred_live",
-                        game_id=game.id,
-                        league="NCAAB",
-                        reason="ncaa_pbp_plays_found",
-                        play_count=len(payload.plays),
-                        ncaa_game_id=ncaa_game_id,
-                    )
-            else:
-                logger.debug(
-                    "poll_ncaab_ncaa_no_plays",
-                    game_id=game.id,
-                    ncaa_game_id=ncaa_game_id,
-                )
-
-        except Exception as exc:
-            if "429" in str(exc):
-                raise _RateLimitError() from exc
-            logger.warning(
-                "poll_ncaab_ncaa_pbp_error",
-                game_id=game.id,
-                ncaa_game_id=ncaa_game_id,
-                error=str(exc),
-            )
-
-    # --- Boxscores Phase 1: CBB API (batch for live/final games with cbb_game_id) ---
+    # --- Boxscores Phase 1: CBB API batch for live/final games ---
     live_or_final = [
         g for g in eligible_games
         if g.status in (db_models.GameStatus.live.value, db_models.GameStatus.final.value)
@@ -460,65 +354,33 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
         g for g in live_or_final if (g.external_ids or {}).get("cbb_game_id")
     ]
 
+    games_with_boxscore: set[int] = set()
+
     if cbb_live_or_final:
-        game_dates = [to_et_date(g.game_date) for g in cbb_live_or_final if g.game_date]
-        if game_dates:
-            start_date = min(game_dates)
-            end_date = max(game_dates)
+        if api_calls > 0:
+            time.sleep(random.uniform(_JITTER_MIN, _JITTER_MAX))
 
-            cbb_game_ids = []
-            cbb_team_names: dict[int, tuple[str, str]] = {}
-            for game in cbb_live_or_final:
-                try:
-                    cbb_id = int(game.external_ids["cbb_game_id"])
-                    cbb_game_ids.append(cbb_id)
-                    cbb_team_names[cbb_id] = team_names_by_game_id[game.id]
-                except (ValueError, TypeError):
-                    continue
-
-            if cbb_game_ids:
-                if api_calls > 0:
-                    time.sleep(random.uniform(_JITTER_MIN, _JITTER_MAX))
-
-                try:
-                    from ..utils.date_utils import season_ending_year
-
-                    season = season_ending_year(start_date)
-                    boxscores_by_id = client.fetch_boxscores_batch(
-                        cbb_game_ids, start_date, end_date, season, cbb_team_names,
-                    )
-                    api_calls += 2  # batch endpoint makes 2 API calls
-
-                    for game in cbb_live_or_final:
-                        try:
-                            cbb_id = int(game.external_ids["cbb_game_id"])
-                        except (ValueError, TypeError):
-                            continue
-
-                        boxscore = boxscores_by_id.get(cbb_id)
-                        if boxscore:
-                            if boxscore.team_boxscores:
-                                upsert_team_boxscores(
-                                    session, game.id, boxscore.team_boxscores,
-                                    source="cbb_api",
-                                )
-                            if boxscore.player_boxscores:
-                                upsert_player_boxscores(
-                                    session, game.id, boxscore.player_boxscores,
-                                    source="cbb_api",
-                                )
-                            game.last_boxscore_at = now_utc()
-                            boxscores_updated += 1
-                            games_with_boxscore.add(game.id)
-
-                except Exception as exc:
-                    if "429" in str(exc):
-                        raise _RateLimitError() from exc
-                    logger.warning(
-                        "poll_ncaab_cbb_boxscore_batch_error",
-                        game_count=len(cbb_game_ids),
-                        error=str(exc),
-                    )
+        try:
+            batch_results = process_game_boxscores_ncaab_batch(
+                session,
+                cbb_live_or_final,
+                client=client,
+                team_names_by_game_id=team_names_by_game_id,
+            )
+            for game, br in zip(cbb_live_or_final, batch_results):
+                if br.boxscore_updated:
+                    boxscores_updated += 1
+                    games_with_boxscore.add(game.id)
+            # batch counts as 2 API calls
+            api_calls += 2
+        except Exception as exc:
+            if "429" in str(exc):
+                raise _RateLimitError() from exc
+            logger.warning(
+                "poll_ncaab_cbb_boxscore_batch_error",
+                game_count=len(cbb_live_or_final),
+                error=str(exc),
+            )
 
     # --- Boxscores Phase 2: NCAA API fallback (per-game for missing boxscores) ---
     ncaa_box_candidates = [
@@ -527,57 +389,22 @@ def _poll_ncaab_games_batch(session, games: list) -> dict:
     ]
 
     for game in ncaa_box_candidates:
-        ncaa_game_id = game.external_ids["ncaa_game_id"]
-
         if api_calls > 0:
             time.sleep(random.uniform(_JITTER_MIN, _JITTER_MAX))
 
         try:
-            home_name, away_name = team_names_by_game_id[game.id]
-            boxscore = client.fetch_ncaa_boxscore(
-                ncaa_game_id,
-                home_team_name=home_name,
-                away_team_name=away_name,
-                game_status=game.status,
-            )
-            api_calls += 1
-
-            if boxscore:
-                if boxscore.team_boxscores:
-                    upsert_team_boxscores(
-                        session, game.id, boxscore.team_boxscores,
-                        source="ncaa_api",
-                    )
-                if boxscore.player_boxscores:
-                    upsert_player_boxscores(
-                        session, game.id, boxscore.player_boxscores,
-                        source="ncaa_api",
-                    )
-                game.last_boxscore_at = now_utc()
+            box_result = process_game_boxscore_ncaab(session, game, client=client)
+            api_calls += box_result.api_calls
+            if box_result.boxscore_updated:
                 boxscores_updated += 1
                 games_with_boxscore.add(game.id)
-
-                logger.info(
-                    "poll_ncaab_ncaa_boxscore_fetched",
-                    game_id=game.id,
-                    ncaa_game_id=ncaa_game_id,
-                    team_stats=len(boxscore.team_boxscores),
-                    player_stats=len(boxscore.player_boxscores),
-                )
-            else:
-                logger.debug(
-                    "poll_ncaab_ncaa_no_boxscore",
-                    game_id=game.id,
-                    ncaa_game_id=ncaa_game_id,
-                )
-
         except Exception as exc:
             if "429" in str(exc):
                 raise _RateLimitError() from exc
             logger.warning(
                 "poll_ncaab_ncaa_boxscore_error",
                 game_id=game.id,
-                ncaa_game_id=ncaa_game_id,
+                ncaa_game_id=(game.external_ids or {}).get("ncaa_game_id"),
                 error=str(exc),
             )
 

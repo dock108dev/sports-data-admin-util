@@ -203,3 +203,7 @@ class MLBLiveFeedClient:
     def fetch_boxscore(self, game_pk: int, game_status: str | None = None) -> MLBBoxscore | None:
         """Fetch boxscore from MLB Stats API."""
         return self._boxscore_fetcher.fetch_boxscore(game_pk, game_status=game_status)
+
+    def fetch_boxscore_raw(self, game_pk: int, game_status: str | None = None) -> dict | None:
+        """Fetch raw boxscore JSON dict from MLB Stats API."""
+        return self._boxscore_fetcher.fetch_boxscore_raw(game_pk, game_status=game_status)

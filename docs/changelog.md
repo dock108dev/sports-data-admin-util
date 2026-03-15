@@ -4,6 +4,15 @@ All notable changes to Sports Data Admin.
 
 ## [2026-03-14] - Current
 
+### Datetime SSOT — `to_et_date()` Consolidation
+
+- **Bug fix:** After the `tip_time` → `game_date` migration, ~25 call sites used `.date()` on `game_date` (now a full UTC datetime). This returned the UTC date, not the ET sports-calendar date — breaking late-night games (e.g., 11 PM ET = 4 AM UTC next day → wrong date). Games ending after midnight ET were stuck on LIVE with no stats because API queries used the wrong date to populate external IDs
+- **New utility:** `to_et_date(dt)` added to both `scraper/sports_scraper/utils/datetime_utils.py` and `api/app/utils/datetime_utils.py`. Converts UTC datetime to ET calendar date. All `.date()` calls on `game_date` replaced with `to_et_date()`
+- **Name collision fix:** `api/app/realtime/models.py::to_et_date()` (returned `str`) renamed to `to_et_date_str()` to avoid collision with the SSOT `to_et_date()` (returns `date`)
+- **Removed:** `today_eastern()` renamed to `today_et()` for cross-package naming consistency. `eastern_date_to_utc_range()` deleted (dead in production, duplicated scraper's `start_of_et_day_utc()`/`end_of_et_day_utc()`)
+- **Inline consolidation:** 4 remaining inline `.astimezone(ET).date()` patterns replaced with `to_et_date()` in `sweep_tasks.py`, `mlb_boxscore_ingestion.py`, `games.py`, `social_tasks.py`
+- **Files changed:** 19 scraper files, 4 API files, 3 test files. Net -126 lines
+
 ### game_date SSOT — tip_time Removal
 
 - **Breaking:** `tip_time` column removed from `sports_games`. `game_date` now stores the actual scheduled start time (UTC datetime) instead of a midnight placeholder
@@ -18,8 +27,22 @@ All notable changes to Sports Data Admin.
 ### MLB Game Detail — Pitcher and Fielding Stats
 
 - **Pitcher game stats:** Game detail endpoint now loads `MLBPitcherGameStats` for the current game via `selectinload`
-- **Seasonal fielding stats:** Game detail endpoint queries `MLBPlayerFieldingStats` for both teams in the current season. Gated to regular season and postseason games only
+- **Per-game fielding stats:** `MLBPlayerFieldingStats` refactored from seasonal aggregates to per-game rows (one row per player per game). Game detail endpoint queries fielding stats for both teams in the current game. Gated to regular season and postseason only
 - **Migration:** `20260313_add_mlb_player_level_tables` adds `mlb_pitcher_game_stats` and `mlb_player_fielding_stats` tables
+
+### game_processors SSOT — PBP & Boxscore Processing
+
+- **Refactor:** Extracted per-game PBP and boxscore processing into `scraper/sports_scraper/services/game_processors.py`. Both live polling (`polling_helpers.py`) and scheduled ingestion (`pbp_*.py`, `*_boxscore_ingestion.py`) now call the same functions, ensuring identical processing regardless of trigger
+- **Dead code removal:** `_select_ncaa_pbp_fallback_games()` deleted from `pbp_ncaab.py` (superseded by `game_processors.process_game_pbp_ncaab`)
+
+### MLB Advanced Stats — Raw Counts & Pitcher Enrichment
+
+- **Refactor:** MLB advanced stats display switched from derived rates to raw Statcast counts. Frontend (`MLBAdvancedStatsSection.tsx`) updated to show raw values; rate fields removed from TypeScript types
+- **Pitcher stats:** `mlb_pitcher_game_stats` now populated with IP, K, BB, pitch count, zone/chase metrics from Statcast `playByPlay` endpoint
+
+### NCAA Game ID Population — Scoreboard Fallback
+
+- **Enhancement:** `ncaab_game_ids.py` now falls back to the NCAA scoreboard API when the CBB schedule API cannot match a game. Uses team name fuzzy matching against scoreboard entries to populate `ncaa_game_id` for games the CBB API doesn't cover
 
 ### Rate Limiting — SSE/Auth Exemption
 
@@ -818,5 +841,5 @@ Moves client-side display logic to the API so clients become dumb renderers. All
 
 ### Documentation
 
-- [GAMEFLOW_CONTRACT.md](GAMEFLOW_CONTRACT.md) - Authoritative game flow specification
-- [GAMEFLOW_PIPELINE.md](GAMEFLOW_PIPELINE.md) - Pipeline stages and implementation
+- [Game Flow Contract](gameflow/contract.md) - Authoritative game flow specification
+- [Game Flow Pipeline](gameflow/pipeline.md) - Pipeline stages and implementation

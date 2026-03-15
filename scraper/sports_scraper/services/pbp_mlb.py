@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
-from ..utils.datetime_utils import end_of_et_day_utc
+from ..utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc
 
 from sqlalchemy import exists, not_
 from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
-from ..persistence.plays import upsert_plays
 
 
 def select_games_for_pbp_mlb_api(
@@ -48,7 +47,7 @@ def select_games_for_pbp_mlb_api(
         db_models.SportsGame.status,
     ).filter(
         db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date >= start_of_et_day_utc(start_date),
         db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
         mlb_game_pk_expr.isnot(None),
     )
@@ -99,8 +98,6 @@ def ingest_pbp_via_mlb_api(
     Returns:
         Tuple of (games_with_pbp, total_events_inserted)
     """
-    from ..live.mlb import MLBLiveFeedClient
-    from ..live.mlb_constants import MLB_MIN_EXPECTED_PLAYS
     from .mlb_boxscore_ingestion import populate_mlb_game_ids
 
     # Step 1: Populate missing MLB game IDs
@@ -138,49 +135,37 @@ def ingest_pbp_via_mlb_api(
         updated_before=str(updated_before) if updated_before else None,
     )
 
-    # Step 3: Fetch and persist PBP
-    client = MLBLiveFeedClient()
+    # Step 3: Fetch and persist PBP via SSOT game_processors
+    from .game_processors import process_game_pbp_mlb
+
     pbp_games = 0
     pbp_events = 0
 
     for game_id, mlb_game_pk, game_status in games:
         try:
-            payload = client.fetch_play_by_play(mlb_game_pk, game_status=game_status)
-
-            if not payload.plays:
-                logger.warning(
-                    "mlb_pbp_empty_response",
-                    run_id=run_id,
-                    game_id=game_id,
-                    mlb_game_pk=mlb_game_pk,
-                )
+            game = session.query(db_models.SportsGame).get(game_id)
+            if not game:
                 continue
 
-            # Validation: Check if game is final and event count is suspiciously low
-            game = session.query(db_models.SportsGame).get(game_id)
-            if game and game.status == db_models.GameStatus.final.value and len(payload.plays) < MLB_MIN_EXPECTED_PLAYS:
-                logger.warning(
-                    "mlb_pbp_insufficient_events",
-                    run_id=run_id,
-                    game_id=game_id,
-                    mlb_game_pk=mlb_game_pk,
-                    play_count=len(payload.plays),
-                    expected_min=MLB_MIN_EXPECTED_PLAYS,
-                )
+            result = process_game_pbp_mlb(session, game)
 
-            # Persist plays
-            inserted = upsert_plays(session, game_id, payload.plays, source="mlb_api")
-
-            if inserted:
+            if result.events_inserted:
                 pbp_games += 1
-                pbp_events += inserted
+                pbp_events += result.events_inserted
 
                 logger.info(
                     "mlb_pbp_ingested",
                     run_id=run_id,
                     game_id=game_id,
                     mlb_game_pk=mlb_game_pk,
-                    events_inserted=inserted,
+                    events_inserted=result.events_inserted,
+                )
+            elif not result.events_inserted and result.api_calls > 0:
+                logger.warning(
+                    "mlb_pbp_empty_response",
+                    run_id=run_id,
+                    game_id=game_id,
+                    mlb_game_pk=mlb_game_pk,
                 )
 
         except Exception as exc:

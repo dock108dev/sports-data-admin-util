@@ -64,7 +64,6 @@ class MLBPADatasetBuilder:
         """
         from sqlalchemy import select
 
-        from app.db.mlb_advanced import MLBGameAdvancedStats, MLBPlayerAdvancedStats
         from app.db.sports import SportsGame, SportsGamePlay
 
         db = self._db
@@ -380,7 +379,6 @@ class MLBPADatasetBuilder:
                 MLBPlayerFieldingStats.team_id,
                 func.avg(MLBPlayerFieldingStats.outs_above_average).label("avg_oaa"),
                 func.avg(MLBPlayerFieldingStats.defensive_runs_saved).label("avg_drs"),
-                func.avg(MLBPlayerFieldingStats.defensive_value).label("avg_def_value"),
                 func.count().label("player_count"),
             )
             .where(MLBPlayerFieldingStats.team_id.isnot(None))
@@ -393,7 +391,7 @@ class MLBPADatasetBuilder:
             fielding[row.team_id] = {
                 "team_oaa": round(float(row.avg_oaa or 0), 4),
                 "team_drs": round(float(row.avg_drs or 0), 4),
-                "team_defensive_value": round(float(row.avg_def_value or 0), 4),
+                "team_defensive_value": 0.0,
                 "fielding_player_count": int(row.player_count),
             }
         return fielding
@@ -447,6 +445,7 @@ def _pitcher_stats_to_metrics(stats: Any) -> dict[str, float]:
         "power_suppression": max(-0.30, min(0.50,
             1.0 - (((stats.home_runs_allowed or 0) / bf) / 0.03) if bf > 0 else 0.0
         )),
+        # Aliases for matchup.py compatibility (same values as k_rate/bb_rate)
         "strikeout_rate": (stats.strikeouts / bf) if bf > 0 else 0.22,
         "walk_rate": (stats.walks / bf) if bf > 0 else 0.08,
     }

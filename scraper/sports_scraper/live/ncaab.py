@@ -1,12 +1,12 @@
 """NCAAB live feed helpers (schedule, play-by-play, boxscores).
 
-Uses the College Basketball Data API (api.collegebasketballdata.com) as the
-legacy data source, and the NCAA API (ncaa-api.henrygd.me) as the primary
-live data source for real-time game states, PBP, and boxscores.
+Uses two complementary data sources:
+- CBB API (api.collegebasketballdata.com): schedule lookup, batch boxscores
+- NCAA API (ncaa-api.henrygd.me): live scoreboard, PBP, per-game boxscores
 
 This module provides the main NCAABLiveFeedClient which composes:
-- CBB API: NCAABBoxscoreFetcher, NCAABPbpFetcher (legacy/fallback)
-- NCAA API: NCAAScoreboardClient, NCAAPbpFetcher, NCAABoxscoreFetcher (primary live)
+- CBB API: NCAABBoxscoreFetcher, NCAABPbpFetcher
+- NCAA API: NCAAScoreboardClient, NCAAPbpFetcher, NCAABoxscoreFetcher
 """
 
 from __future__ import annotations
@@ -43,8 +43,8 @@ class NCAABLiveFeedClient:
     """Client for NCAAB data using both CBB API and NCAA API.
 
     Composes separate fetchers for boxscore and PBP data:
-    - CBB API (api.collegebasketballdata.com): legacy/fallback for schedule, batch boxscores
-    - NCAA API (ncaa-api.henrygd.me): primary live source for scoreboard, PBP, boxscores
+    - CBB API (api.collegebasketballdata.com): schedule lookup, batch boxscores
+    - NCAA API (ncaa-api.henrygd.me): live scoreboard, PBP, per-game boxscores
     """
 
     def __init__(self) -> None:
@@ -64,11 +64,11 @@ class NCAABLiveFeedClient:
         self._team_names: dict[int, str] = {}
         self._team_names_loaded_for_season: int | None = None
 
-        # CBB API fetchers (legacy/fallback)
+        # CBB API fetchers (schedule, batch boxscores)
         self._boxscore_fetcher = NCAABBoxscoreFetcher(self.client, self._cache)
         self._pbp_fetcher = NCAABPbpFetcher(self.client, self._cache)
 
-        # NCAA API client and fetchers (primary live source)
+        # NCAA API fetchers (live scoreboard, PBP, per-game boxscores)
         self._ncaa_client = httpx.Client(timeout=15.0)
         ncaa_cache = APICache(cache_dir=cache_dir, api_name="ncaa")
         self._ncaa_scoreboard = NCAAScoreboardClient(self._ncaa_client)
@@ -293,9 +293,13 @@ class NCAABLiveFeedClient:
 
     # --- NCAA API delegation methods ---
 
-    def fetch_ncaa_scoreboard(self) -> list[NCAAScoreboardGame]:
-        """Fetch today's NCAA scoreboard for live game states."""
-        return self._ncaa_scoreboard.fetch_scoreboard()
+    def fetch_ncaa_scoreboard(self, game_date=None) -> list[NCAAScoreboardGame]:
+        """Fetch NCAA scoreboard for live game states.
+
+        Args:
+            game_date: Specific date to fetch. None = today's scoreboard.
+        """
+        return self._ncaa_scoreboard.fetch_scoreboard(game_date)
 
     def fetch_ncaa_play_by_play(
         self,

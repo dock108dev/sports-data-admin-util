@@ -2,72 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
-from ..utils.datetime_utils import end_of_et_day_utc
+from ..utils.datetime_utils import end_of_et_day_utc, start_of_et_day_utc
 
-from sqlalchemy import exists, not_
+from sqlalchemy import exists, not_, or_
 from sqlalchemy.orm import Session
 
 from ..db import db_models
 from ..logging import logger
-from ..persistence.plays import upsert_plays
-
-
-def _select_ncaa_pbp_fallback_games(
-    session: Session,
-    *,
-    start_date: date,
-    end_date: date,
-    only_missing: bool,
-    already_have_pbp: set[int],
-) -> list[tuple[int, str, str | None, str | None, str | None]]:
-    """Select games with ncaa_game_id that still need PBP (NCAA API fallback).
-
-    Returns:
-        List of (game_id, ncaa_game_id, status, home_abbr, away_abbr) tuples.
-    """
-    from ..utils.datetime_utils import end_of_et_day_utc
-
-    league = session.query(db_models.SportsLeague).filter(
-        db_models.SportsLeague.code == "NCAAB"
-    ).first()
-    if not league:
-        return []
-
-    ncaa_game_id_expr = db_models.SportsGame.external_ids["ncaa_game_id"].astext
-
-    query = session.query(
-        db_models.SportsGame.id,
-        ncaa_game_id_expr.label("ncaa_game_id"),
-        db_models.SportsGame.status,
-        db_models.SportsGame.home_team_id,
-        db_models.SportsGame.away_team_id,
-    ).filter(
-        db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
-        db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
-        ncaa_game_id_expr.isnot(None),
-    )
-
-    if only_missing:
-        has_pbp = exists().where(db_models.SportsGamePlay.game_id == db_models.SportsGame.id)
-        query = query.filter(not_(has_pbp))
-
-    rows = query.all()
-    results: list[tuple[int, str, str | None, str | None, str | None]] = []
-    for game_id, ncaa_game_id, status, home_team_id, away_team_id in rows:
-        if not ncaa_game_id or game_id in already_have_pbp:
-            continue
-
-        home_team = session.query(db_models.SportsTeam).get(home_team_id)
-        away_team = session.query(db_models.SportsTeam).get(away_team_id)
-        home_abbr = home_team.abbreviation if home_team else None
-        away_abbr = away_team.abbreviation if away_team else None
-
-        results.append((game_id, ncaa_game_id, status, home_abbr, away_abbr))
-
-    return results
 
 
 def select_games_for_pbp_ncaab_api(
@@ -77,11 +20,11 @@ def select_games_for_pbp_ncaab_api(
     end_date: date,
     only_missing: bool,
     updated_before: datetime | None,
-) -> list[tuple[int, int, str | None]]:
-    """Return game ids, CBB game IDs, and status for NCAAB API play-by-play ingestion.
+) -> list[tuple[int, int | None, str | None]]:
+    """Return games needing NCAAB PBP ingestion.
 
-    NCAAB PBP is fetched via the College Basketball Data API using the CBB game ID
-    stored in external_ids['cbb_game_id'].
+    Selects games with either cbb_game_id OR ncaa_game_id — the SSOT
+    game_processors handle fallback between the two APIs internally.
 
     Args:
         session: Database session
@@ -91,7 +34,8 @@ def select_games_for_pbp_ncaab_api(
         updated_before: Only include games with stale PBP data
 
     Returns:
-        List of (game_id, cbb_game_id, status) tuples for games needing PBP
+        List of (game_id, cbb_game_id_or_0, status) tuples for games needing PBP.
+        cbb_game_id may be 0 for games with only ncaa_game_id.
     """
     league = session.query(db_models.SportsLeague).filter(
         db_models.SportsLeague.code == "NCAAB"
@@ -99,8 +43,8 @@ def select_games_for_pbp_ncaab_api(
     if not league:
         return []
 
-    # CBB game ID is stored in external_ids JSONB field under 'cbb_game_id' key
     cbb_game_id_expr = db_models.SportsGame.external_ids["cbb_game_id"].astext
+    ncaa_game_id_expr = db_models.SportsGame.external_ids["ncaa_game_id"].astext
 
     query = session.query(
         db_models.SportsGame.id,
@@ -108,10 +52,10 @@ def select_games_for_pbp_ncaab_api(
         db_models.SportsGame.status,
     ).filter(
         db_models.SportsGame.league_id == league.id,
-        db_models.SportsGame.game_date >= datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
+        db_models.SportsGame.game_date >= start_of_et_day_utc(start_date),
         db_models.SportsGame.game_date < end_of_et_day_utc(end_date),
-        # cbb_game_id is required for CBB API PBP fetch
-        cbb_game_id_expr.isnot(None),
+        # Need at least one game ID for data fetching
+        or_(cbb_game_id_expr.isnot(None), ncaa_game_id_expr.isnot(None)),
     )
 
     if only_missing:
@@ -126,7 +70,7 @@ def select_games_for_pbp_ncaab_api(
         query = query.filter(not_(has_fresh))
 
     rows = query.all()
-    results: list[tuple[int, int, str | None]] = []
+    results: list[tuple[int, int | None, str | None]] = []
     for game_id, cbb_game_id, status in rows:
         if cbb_game_id:
             try:
@@ -138,6 +82,9 @@ def select_games_for_pbp_ncaab_api(
                     game_id=game_id,
                     cbb_game_id=cbb_game_id,
                 )
+        else:
+            # Game has ncaa_game_id only — process_game_pbp_ncaab handles this
+            results.append((game_id, 0, status))
     return results
 
 
@@ -169,7 +116,6 @@ def ingest_pbp_via_ncaab_api(
         Tuple of (games_with_pbp, total_events_inserted)
     """
     from ..live.ncaab import NCAABLiveFeedClient
-    from ..live.ncaab_constants import NCAAB_MIN_EXPECTED_PLAYS
     from .ncaab_game_ids import populate_ncaab_game_ids
 
     logger.info(
@@ -215,53 +161,38 @@ def ingest_pbp_via_ncaab_api(
         updated_before=str(updated_before) if updated_before else None,
     )
 
-    # Fetch and persist PBP
+    # Fetch and persist PBP via SSOT game_processors
+    from .game_processors import process_game_pbp_ncaab
+
     client = NCAABLiveFeedClient()
     pbp_games = 0
     pbp_events = 0
-    games_with_pbp: set[int] = set()
 
     for game_id, cbb_game_id, game_status in games:
         try:
-            # Fetch PBP from CBB API
-            payload = client.fetch_play_by_play(cbb_game_id, game_status=game_status)
-
-            if not payload.plays:
-                logger.warning(
-                    "ncaab_pbp_empty_response",
-                    run_id=run_id,
-                    game_id=game_id,
-                    cbb_game_id=cbb_game_id,
-                )
+            game = session.query(db_models.SportsGame).get(game_id)
+            if not game:
                 continue
 
-            # Validation: Check if game is final and event count is suspiciously low
-            game = session.query(db_models.SportsGame).get(game_id)
-            if game and game.status == db_models.GameStatus.final.value:
-                if len(payload.plays) < NCAAB_MIN_EXPECTED_PLAYS:
-                    logger.warning(
-                        "ncaab_pbp_insufficient_events",
-                        run_id=run_id,
-                        game_id=game_id,
-                        cbb_game_id=cbb_game_id,
-                        play_count=len(payload.plays),
-                        expected_min=NCAAB_MIN_EXPECTED_PLAYS,
-                    )
+            result = process_game_pbp_ncaab(session, game, client=client)
 
-            # Persist plays
-            inserted = upsert_plays(session, game_id, payload.plays, source="cbb_api")
-
-            if inserted:
+            if result.events_inserted:
                 pbp_games += 1
-                pbp_events += inserted
-                games_with_pbp.add(game_id)
+                pbp_events += result.events_inserted
 
                 logger.info(
                     "ncaab_pbp_ingested",
                     run_id=run_id,
                     game_id=game_id,
                     cbb_game_id=cbb_game_id,
-                    events_inserted=inserted,
+                    events_inserted=result.events_inserted,
+                )
+            elif not result.events_inserted and result.api_calls > 0:
+                logger.warning(
+                    "ncaab_pbp_empty_response",
+                    run_id=run_id,
+                    game_id=game_id,
+                    cbb_game_id=cbb_game_id,
                 )
 
         except Exception as exc:
@@ -273,58 +204,6 @@ def ingest_pbp_via_ncaab_api(
                 error=str(exc),
             )
             continue
-
-    # --- NCAA API fallback for games where CBB API returned empty ---
-    ncaa_fallback_games = _select_ncaa_pbp_fallback_games(
-        session,
-        start_date=start_date,
-        end_date=end_date,
-        only_missing=only_missing,
-        already_have_pbp=games_with_pbp,
-    )
-
-    if ncaa_fallback_games:
-        logger.info(
-            "ncaab_pbp_ncaa_fallback_start",
-            run_id=run_id,
-            games=len(ncaa_fallback_games),
-        )
-
-        for game_id, ncaa_game_id, game_status, home_abbr, away_abbr in ncaa_fallback_games:
-            try:
-                payload = client.fetch_ncaa_play_by_play(
-                    ncaa_game_id,
-                    game_status=game_status,
-                    home_abbr=home_abbr,
-                    away_abbr=away_abbr,
-                )
-
-                if not payload.plays:
-                    continue
-
-                inserted = upsert_plays(session, game_id, payload.plays, source="ncaa_api")
-
-                if inserted:
-                    pbp_games += 1
-                    pbp_events += inserted
-
-                    logger.info(
-                        "ncaab_pbp_ncaa_ingested",
-                        run_id=run_id,
-                        game_id=game_id,
-                        ncaa_game_id=ncaa_game_id,
-                        events_inserted=inserted,
-                    )
-
-            except Exception as exc:
-                logger.warning(
-                    "ncaab_pbp_ncaa_fetch_failed",
-                    run_id=run_id,
-                    game_id=game_id,
-                    ncaa_game_id=ncaa_game_id,
-                    error=str(exc),
-                )
-                continue
 
     logger.info(
         "ncaab_pbp_ingestion_complete",

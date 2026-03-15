@@ -128,7 +128,7 @@ class TestIngestPbpViaNbaApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_nba.upsert_plays")
+    @patch("sports_scraper.persistence.plays.upsert_plays")
     @patch("sports_scraper.live.nba.NBALiveFeedClient")
     @patch("sports_scraper.services.pbp_nba.populate_nba_game_ids")
     @patch("sports_scraper.services.pbp_nba.select_games_for_pbp_nba_api")
@@ -154,7 +154,10 @@ class TestIngestPbpViaNbaApi:
         mock_client.fetch_play_by_play.return_value = mock_payload
         mock_client_class.return_value = mock_client
 
-        mock_session.query.return_value.get.return_value = None  # No game found
+        mock_game = MagicMock()
+        mock_game.status = "final"
+        mock_game.external_ids = {"nba_game_id": "0022400123"}
+        mock_session.query.return_value.get.return_value = mock_game
         mock_upsert.return_value = 1
 
         result = ingest_pbp_via_nba_api(
@@ -184,6 +187,11 @@ class TestIngestPbpViaNbaApi:
         mock_client.fetch_play_by_play.return_value = mock_payload
         mock_client_class.return_value = mock_client
 
+        mock_game = MagicMock()
+        mock_game.status = "final"
+        mock_game.external_ids = {"nba_game_id": "0022400123"}
+        mock_session.query.return_value.get.return_value = mock_game
+
         result = ingest_pbp_via_nba_api(
             mock_session,
             run_id=1,
@@ -207,6 +215,11 @@ class TestIngestPbpViaNbaApi:
         mock_client.fetch_play_by_play.side_effect = Exception("NBA API error")
         mock_client_class.return_value = mock_client
 
+        mock_game = MagicMock()
+        mock_game.status = "final"
+        mock_game.external_ids = {"nba_game_id": "0022400123"}
+        mock_session.query.return_value.get.return_value = mock_game
+
         result = ingest_pbp_via_nba_api(
             mock_session,
             run_id=1,
@@ -218,7 +231,7 @@ class TestIngestPbpViaNbaApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_nba.upsert_plays")
+    @patch("sports_scraper.persistence.plays.upsert_plays")
     @patch("sports_scraper.live.nba.NBALiveFeedClient")
     @patch("sports_scraper.services.pbp_nba.populate_nba_game_ids")
     @patch("sports_scraper.services.pbp_nba.select_games_for_pbp_nba_api")
@@ -243,6 +256,7 @@ class TestIngestPbpViaNbaApi:
         # Mock game as final
         mock_game = MagicMock()
         mock_game.status = db_models.GameStatus.final.value
+        mock_game.external_ids = {"nba_game_id": "0022400123"}
         mock_session.query.return_value.get.return_value = mock_game
         mock_upsert.return_value = 5
 
@@ -660,7 +674,7 @@ class TestIngestPbpViaNhlApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_nhl.upsert_plays")
+    @patch("sports_scraper.persistence.plays.upsert_plays")
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
     @patch("sports_scraper.services.pbp_nhl.populate_nhl_game_ids")
     @patch("sports_scraper.services.pbp_nhl.select_games_for_pbp_nhl_api")
@@ -679,7 +693,10 @@ class TestIngestPbpViaNhlApi:
         mock_client.fetch_play_by_play.return_value = mock_payload
         mock_client_class.return_value = mock_client
 
-        mock_session.query.return_value.get.return_value = None  # No game found
+        mock_game = MagicMock()
+        mock_game.status = "final"
+        mock_game.external_ids = {"nhl_game_pk": "2025020001"}
+        mock_session.query.return_value.get.return_value = mock_game
         mock_upsert.return_value = 1
 
         result = ingest_pbp_via_nhl_api(
@@ -707,6 +724,11 @@ class TestIngestPbpViaNhlApi:
         mock_client.fetch_play_by_play.return_value = mock_payload
         mock_client_class.return_value = mock_client
 
+        mock_game = MagicMock()
+        mock_game.status = "final"
+        mock_game.external_ids = {"nhl_game_pk": "2025020001"}
+        mock_session.query.return_value.get.return_value = mock_game
+
         result = ingest_pbp_via_nhl_api(
             mock_session,
             run_id=1,
@@ -730,6 +752,11 @@ class TestIngestPbpViaNhlApi:
         mock_client.fetch_play_by_play.side_effect = Exception("Fetch error")
         mock_client_class.return_value = mock_client
 
+        mock_game = MagicMock()
+        mock_game.status = "final"
+        mock_game.external_ids = {"nhl_game_pk": "2025020001"}
+        mock_session.query.return_value.get.return_value = mock_game
+
         result = ingest_pbp_via_nhl_api(
             mock_session,
             run_id=1,
@@ -741,7 +768,7 @@ class TestIngestPbpViaNhlApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_nhl.upsert_plays")
+    @patch("sports_scraper.persistence.plays.upsert_plays")
     @patch("sports_scraper.live.nhl.NHLLiveFeedClient")
     @patch("sports_scraper.services.pbp_nhl.populate_nhl_game_ids")
     @patch("sports_scraper.services.pbp_nhl.select_games_for_pbp_nhl_api")
@@ -766,6 +793,7 @@ class TestIngestPbpViaNhlApi:
         # Mock game as final
         mock_game = MagicMock()
         mock_game.status = db_models.GameStatus.final.value
+        mock_game.external_ids = {"nhl_game_pk": "2025020001"}
         mock_session.query.return_value.get.return_value = mock_game
         mock_upsert.return_value = 5
 
@@ -803,7 +831,7 @@ class TestIngestPbpViaNcaabApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_ncaab.upsert_plays")
+    @patch("sports_scraper.persistence.plays.upsert_plays")
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
     @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
     @patch("sports_scraper.services.pbp_ncaab.select_games_for_pbp_ncaab_api")
@@ -822,7 +850,10 @@ class TestIngestPbpViaNcaabApi:
         mock_client.fetch_play_by_play.return_value = mock_payload
         mock_client_class.return_value = mock_client
 
-        mock_session.query.return_value.get.return_value = None
+        mock_game = MagicMock()
+        mock_game.status = "final"
+        mock_game.external_ids = {"cbb_game_id": "123456"}
+        mock_session.query.return_value.get.return_value = mock_game
         mock_upsert.return_value = 1
 
         result = ingest_pbp_via_ncaab_api(
@@ -850,6 +881,11 @@ class TestIngestPbpViaNcaabApi:
         mock_client.fetch_play_by_play.return_value = mock_payload
         mock_client_class.return_value = mock_client
 
+        mock_game = MagicMock()
+        mock_game.status = "final"
+        mock_game.external_ids = {"cbb_game_id": "123456"}
+        mock_session.query.return_value.get.return_value = mock_game
+
         result = ingest_pbp_via_ncaab_api(
             mock_session,
             run_id=1,
@@ -873,6 +909,11 @@ class TestIngestPbpViaNcaabApi:
         mock_client.fetch_play_by_play.side_effect = Exception("CBB API error")
         mock_client_class.return_value = mock_client
 
+        mock_game = MagicMock()
+        mock_game.status = "final"
+        mock_game.external_ids = {"cbb_game_id": "123456"}
+        mock_session.query.return_value.get.return_value = mock_game
+
         result = ingest_pbp_via_ncaab_api(
             mock_session,
             run_id=1,
@@ -884,7 +925,7 @@ class TestIngestPbpViaNcaabApi:
 
         assert result == (0, 0)
 
-    @patch("sports_scraper.services.pbp_ncaab.upsert_plays")
+    @patch("sports_scraper.persistence.plays.upsert_plays")
     @patch("sports_scraper.live.ncaab.NCAABLiveFeedClient")
     @patch("sports_scraper.services.ncaab_boxscore_ingestion.populate_ncaab_game_ids")
     @patch("sports_scraper.services.pbp_ncaab.select_games_for_pbp_ncaab_api")
@@ -909,6 +950,7 @@ class TestIngestPbpViaNcaabApi:
         # Mock game as final
         mock_game = MagicMock()
         mock_game.status = db_models.GameStatus.final.value
+        mock_game.external_ids = {"cbb_game_id": "123456"}
         mock_session.query.return_value.get.return_value = mock_game
         mock_upsert.return_value = 10
 
