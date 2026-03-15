@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { AdminCard } from "@/components/admin";
 import { getTeamProfile, type TeamProfileResponse } from "@/lib/api/analytics";
 import styles from "../analytics.module.css";
@@ -73,21 +73,30 @@ export function TeamProfileComparison({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!homeTeam || !awayTeam) return;
+  const fetchProfiles = useCallback(async (home: string, away: string, window: number) => {
     setLoading(true);
     setError(null);
-    Promise.all([
-      getTeamProfile(homeTeam, rollingWindow),
-      getTeamProfile(awayTeam, rollingWindow),
-    ])
-      .then(([home, away]) => {
-        setHomeProfile(home);
-        setAwayProfile(away);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
-  }, [homeTeam, awayTeam, rollingWindow]);
+    try {
+      const [homeRes, awayRes] = await Promise.all([
+        getTeamProfile(home, window),
+        getTeamProfile(away, window),
+      ]);
+      setHomeProfile(homeRes);
+      setAwayProfile(awayRes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const prevKey = useRef("");
+  useEffect(() => {
+    const key = `${homeTeam}|${awayTeam}|${rollingWindow}`;
+    if (!homeTeam || !awayTeam || key === prevKey.current) return;
+    prevKey.current = key;
+    fetchProfiles(homeTeam, awayTeam, rollingWindow);
+  }, [homeTeam, awayTeam, rollingWindow, fetchProfiles]);
 
   if (!homeTeam || !awayTeam) return null;
   if (loading) return <p style={{ color: "var(--text-muted)" }}>Loading team profiles...</p>;
