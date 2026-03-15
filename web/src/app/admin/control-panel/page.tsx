@@ -18,7 +18,7 @@ import {
 
 // ── TaskCard component ──
 
-function TaskCard({ task, held }: { task: TaskDef; held: boolean }) {
+function TaskCard({ task }: { task: TaskDef }) {
   const [paramValues, setParamValues] = useState<Record<string, string>>(() => {
     const defaults: Record<string, string> = {};
     for (const p of task.params) {
@@ -131,7 +131,7 @@ function TaskCard({ task, held }: { task: TaskDef; held: boolean }) {
       <div className={styles.taskFooter}>
         <button
           className={styles.runButton}
-          disabled={!canRun || dispatching || held}
+          disabled={!canRun || dispatching}
           onClick={handleRun}
         >
           {dispatching ? "Dispatching..." : "Run"}
@@ -467,8 +467,8 @@ export default function ControlPanelPage() {
         <div className={styles.holdBannerContent}>
           <span className={styles.holdBannerText}>
             {held
-              ? "All task dispatch is HELD — no tasks will be sent to workers."
-              : "Task dispatch is active."}
+              ? "Schedulers are HELD — beat tasks will be skipped. Manual triggers still work."
+              : "Schedulers are active."}
           </span>
           <button
             className={held ? styles.holdButtonRelease : styles.holdButtonHold}
@@ -497,7 +497,7 @@ export default function ControlPanelPage() {
           <h2 className={styles.categoryTitle}>{cat}</h2>
           <div className={styles.taskGrid}>
             {TASK_REGISTRY.filter((t) => t.category === cat).map((task) => (
-              <TaskCard key={task.name} task={task} held={held} />
+              <TaskCard key={task.name} task={task} />
             ))}
           </div>
         </div>

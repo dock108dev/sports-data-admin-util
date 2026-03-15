@@ -226,12 +226,6 @@ async def get_task_registry() -> list[TaskRegistryEntry]:
 @router.post("/tasks/trigger", response_model=TriggerResponse)
 async def trigger_task(body: TriggerRequest) -> TriggerResponse:
     """Dispatch a registered Celery task by name with optional arguments."""
-    if _redis().get(HOLD_KEY) == "1":
-        raise HTTPException(
-            status_code=409,
-            detail="Task dispatch is currently held. Release the hold from the control panel first.",
-        )
-
     entry = TASK_REGISTRY.get(body.task_name)
     if entry is None:
         raise HTTPException(
@@ -245,6 +239,7 @@ async def trigger_task(body: TriggerRequest) -> TriggerResponse:
         args=body.args if body.args else [],
         queue=entry.queue,
         routing_key=entry.queue,
+        headers={"manual_trigger": True},
     )
 
     logger.info(

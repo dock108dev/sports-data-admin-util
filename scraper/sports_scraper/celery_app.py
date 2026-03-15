@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import redis as _redis
 from celery import Celery, signals
 from celery.schedules import crontab
 
@@ -9,6 +10,17 @@ from .config import settings
 from .db import db_models, get_session
 from .logging import logger
 from .utils.datetime_utils import now_utc
+
+HOLD_KEY = "sports:tasks_held"
+
+
+def _is_held() -> bool:
+    """Check whether the admin has held all scheduled task dispatch."""
+    try:
+        r = _redis.from_url(settings.redis_url, decode_responses=True)
+        return r.get(HOLD_KEY) == "1"
+    except Exception:
+        return False
 
 # Canonical queue names — import these instead of using string literals
 DEFAULT_QUEUE = "sports-scraper"
@@ -248,6 +260,29 @@ def mark_stale_runs_interrupted():
                 logger.debug("no_stale_runs_found")
     except Exception as exc:
         logger.exception("failed_to_mark_stale_runs", error=str(exc))
+
+
+@signals.task_prerun.connect
+def check_hold_before_run(sender=None, task_id=None, task=None, args=None, kwargs=None, **kw):
+    """Skip task execution when hold is active, unless manually triggered.
+
+    Manual triggers from the admin control panel include a
+    ``manual_trigger=True`` header. Beat-scheduled tasks do not, so they
+    are the only ones blocked by the hold.
+    """
+    from celery.exceptions import Ignore
+
+    if not _is_held():
+        return
+
+    # Check if this was a manual trigger (header set by the API)
+    request = getattr(task, "request", None)
+    if request and getattr(request, "manual_trigger", False):
+        return
+
+    task_name = getattr(task, "name", None) or str(sender)
+    logger.info("task_held_skipping", task=task_name, task_id=task_id)
+    raise Ignore()
 
 
 @signals.worker_ready.connect
