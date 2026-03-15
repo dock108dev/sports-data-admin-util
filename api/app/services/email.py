@@ -107,7 +107,7 @@ async def send_magic_link_email(*, to: str, token: str, base_url: str | None = N
     base = (base_url or settings.frontend_url).rstrip("/")
     login_url = f"{base}/auth/magic-link?token={token}"
     html = f"""\
-<h2>Sign in to TradeLens</h2>
+<h2>Sign in to Sports Data Admin</h2>
 <p>Click the link below to sign in. This link expires in 15 minutes.</p>
 <p><a href="{login_url}">{login_url}</a></p>
 <p>If you didn't request this, you can safely ignore this email.</p>
