@@ -180,7 +180,7 @@ See [Timeline Validation](gameflow/timeline-validation.md) for validation rules.
 - `mlb_game_advanced_stats` - Statcast-derived advanced batting stats per team per game
 - `mlb_player_advanced_stats` - Statcast-derived advanced batting stats per batter per game
 - `mlb_pitcher_game_stats` - Per-game pitching stats (IP, K, BB, ERA, etc.)
-- `mlb_player_fielding_stats` - Seasonal fielding stats (OAA, DRS, UZR, errors)
+- `mlb_player_fielding_stats` - Per-game fielding stats (errors, assists, putouts, position) from boxscore data
 - `team_social_posts` - Social media content (mapped to games via `mapping_status`)
 - `users` - User accounts for downstream app authentication (email, password_hash, role, is_active)
 
@@ -266,8 +266,8 @@ Schema is defined in the baseline Alembic migration (`api/alembic/versions/`). R
 - `GET /api/fairbet/live` — Live in-game +EV odds for a single game from multi-book Redis snapshots (same EV pipeline as pre-game, nothing persisted)
 
 ### Realtime Endpoints
-- `WS /v1/realtime/ws` — WebSocket feed for live game updates (scores, PBP, odds)
-- `GET /v1/realtime/sse` — SSE feed (same data as WS, alternative transport)
+- `WS /v1/ws` — WebSocket feed for live game updates (scores, PBP, odds)
+- `GET /v1/sse` — SSE feed (same data as WS, alternative transport)
 - `GET /v1/realtime/status` — Connected clients, channel subscriptions, and poller stats
 
 FairBet reads from the `fairbet_game_odds_work` table (populated during odds ingestion with canonical DB team names) and annotates each bet with expected value computed at query time using Pinnacle as the sharp reference. Each bet includes server-computed display fields (fair American odds, selection display name, market display name, book abbreviations, confidence labels, EV method explanations) so clients don't need to maintain their own formatting logic.

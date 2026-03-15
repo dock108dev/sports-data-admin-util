@@ -33,7 +33,7 @@ DATABASE_URL = "postgresql+psycopg://user:pass@host:5432/sports"
 | `mlb_game_advanced_stats` | Statcast-derived team-level advanced batting stats (2 rows per game: home + away) |
 | `mlb_player_advanced_stats` | Statcast-derived player-level advanced batting stats (one row per batter per game) |
 | `mlb_pitcher_game_stats` | Per-game pitching stats (IP, K, BB, ERA, pitch count, etc.) linked to `sports_games` |
-| `mlb_player_fielding_stats` | Seasonal fielding stats (OAA, DRS, UZR, errors, innings) per player per team per season |
+| `mlb_player_fielding_stats` | Per-game fielding stats (errors, assists, putouts, position) per player per game, from boxscore data |
 
 ### Odds & FairBet
 
