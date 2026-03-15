@@ -194,7 +194,7 @@ class ActiveGamesResolver:
                             db_models.SportsGame.last_pbp_at < stale_threshold,
                         )
                     ),
-                    # Backfill: final games from last 7 days with no play data at all
+                    # Backfill: final games from last 48 hours with no play data at all
                     (
                         (db_models.SportsGame.status == db_models.GameStatus.final.value)
                         & (db_models.SportsGame.game_date > now - timedelta(hours=48))
@@ -263,7 +263,7 @@ class ActiveGamesResolver:
                             db_models.SportsGame.last_boxscore_at < stale_threshold,
                         )
                     ),
-                    # Backfill: final games from last 7 days with no boxscore data at all
+                    # Backfill: final games from last 48 hours with no boxscore data at all
                     (
                         (db_models.SportsGame.status == db_models.GameStatus.final.value)
                         & (db_models.SportsGame.game_date > now - timedelta(hours=48))

@@ -34,7 +34,7 @@ export function MLBAdvancedStatsSection({
     .filter((p) => !p.isHome)
     .sort((a, b) => b.totalPitches - a.totalPitches);
 
-  const pitcherStatsByTeam = useMemo(() => {
+  const pitcherStatsByTeam = useMemo((): Record<string, MLBPitcherGameStat[]> => {
     if (!pitcherGameStats) return {};
     return pitcherGameStats.reduce<Record<string, MLBPitcherGameStat[]>>((acc, p) => {
       acc[p.team] = acc[p.team] || [];

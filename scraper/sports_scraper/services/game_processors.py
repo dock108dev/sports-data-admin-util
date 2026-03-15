@@ -33,7 +33,7 @@ class GameProcessResult:
 # ---------------------------------------------------------------------------
 
 
-def check_game_status_nba(session, game) -> GameProcessResult:
+def check_game_status_nba(session, game, *, client=None) -> GameProcessResult:
     """Check NBA scoreboard for status transitions and score updates."""
     from ..db import db_models
     from ..live.nba import NBALiveFeedClient
@@ -44,7 +44,8 @@ def check_game_status_nba(session, game) -> GameProcessResult:
     if not nba_game_id:
         return GameProcessResult()
 
-    client = NBALiveFeedClient()
+    if client is None:
+        client = NBALiveFeedClient()
     result = GameProcessResult()
 
     game_day = to_et_date(game.game_date) if game.game_date else None
@@ -87,7 +88,7 @@ def check_game_status_nba(session, game) -> GameProcessResult:
     return result
 
 
-def process_game_pbp_nba(session, game) -> GameProcessResult:
+def process_game_pbp_nba(session, game, *, client=None) -> GameProcessResult:
     """Fetch and persist PBP for a single NBA game."""
     from ..db import db_models
     from ..live.nba import NBALiveFeedClient
@@ -98,7 +99,8 @@ def process_game_pbp_nba(session, game) -> GameProcessResult:
     if not nba_game_id:
         return GameProcessResult()
 
-    client = NBALiveFeedClient()
+    if client is None:
+        client = NBALiveFeedClient()
     result = GameProcessResult()
 
     payload = client.fetch_play_by_play(nba_game_id)
@@ -129,7 +131,7 @@ def process_game_pbp_nba(session, game) -> GameProcessResult:
     return result
 
 
-def process_game_boxscore_nba(session, game) -> GameProcessResult:
+def process_game_boxscore_nba(session, game, *, client=None) -> GameProcessResult:
     """Fetch and persist boxscore for a single NBA game."""
     from ..live.nba import NBALiveFeedClient
     from ..persistence.boxscores import upsert_player_boxscores, upsert_team_boxscores
@@ -139,7 +141,8 @@ def process_game_boxscore_nba(session, game) -> GameProcessResult:
     if not nba_game_id:
         return GameProcessResult()
 
-    client = NBALiveFeedClient()
+    if client is None:
+        client = NBALiveFeedClient()
     result = GameProcessResult()
 
     boxscore = client.fetch_boxscore(nba_game_id)
@@ -172,7 +175,7 @@ def process_game_boxscore_nba(session, game) -> GameProcessResult:
 # ---------------------------------------------------------------------------
 
 
-def check_game_status_nhl(session, game) -> GameProcessResult:
+def check_game_status_nhl(session, game, *, client=None) -> GameProcessResult:
     """Check NHL schedule for status transitions and score updates."""
     from ..db import db_models
     from ..live.nhl import NHLLiveFeedClient
@@ -188,7 +191,8 @@ def check_game_status_nhl(session, game) -> GameProcessResult:
     except (ValueError, TypeError):
         return GameProcessResult()
 
-    client = NHLLiveFeedClient()
+    if client is None:
+        client = NHLLiveFeedClient()
     result = GameProcessResult()
 
     game_day = to_et_date(game.game_date) if game.game_date else None
@@ -231,7 +235,7 @@ def check_game_status_nhl(session, game) -> GameProcessResult:
     return result
 
 
-def process_game_pbp_nhl(session, game) -> GameProcessResult:
+def process_game_pbp_nhl(session, game, *, client=None) -> GameProcessResult:
     """Fetch and persist PBP for a single NHL game."""
     from ..db import db_models
     from ..live.nhl import NHLLiveFeedClient
@@ -247,7 +251,8 @@ def process_game_pbp_nhl(session, game) -> GameProcessResult:
     except (ValueError, TypeError):
         return GameProcessResult()
 
-    client = NHLLiveFeedClient()
+    if client is None:
+        client = NHLLiveFeedClient()
     result = GameProcessResult()
 
     payload = client.fetch_play_by_play(nhl_game_id)
@@ -277,7 +282,7 @@ def process_game_pbp_nhl(session, game) -> GameProcessResult:
     return result
 
 
-def process_game_boxscore_nhl(session, game) -> GameProcessResult:
+def process_game_boxscore_nhl(session, game, *, client=None) -> GameProcessResult:
     """Fetch and persist boxscore for a single NHL game."""
     from ..live.nhl import NHLLiveFeedClient
     from ..persistence.boxscores import upsert_player_boxscores, upsert_team_boxscores
@@ -292,7 +297,8 @@ def process_game_boxscore_nhl(session, game) -> GameProcessResult:
     except (ValueError, TypeError):
         return GameProcessResult()
 
-    client = NHLLiveFeedClient()
+    if client is None:
+        client = NHLLiveFeedClient()
     result = GameProcessResult()
 
     boxscore = client.fetch_boxscore(nhl_game_id)
@@ -325,7 +331,7 @@ def process_game_boxscore_nhl(session, game) -> GameProcessResult:
 # ---------------------------------------------------------------------------
 
 
-def check_game_status_mlb(session, game) -> GameProcessResult:
+def check_game_status_mlb(session, game, *, client=None) -> GameProcessResult:
     """Check MLB schedule for status transitions and score updates."""
     from ..db import db_models
     from ..live.mlb import MLBLiveFeedClient
@@ -341,7 +347,8 @@ def check_game_status_mlb(session, game) -> GameProcessResult:
     except (ValueError, TypeError):
         return GameProcessResult()
 
-    client = MLBLiveFeedClient()
+    if client is None:
+        client = MLBLiveFeedClient()
     result = GameProcessResult()
 
     game_day = to_et_date(game.game_date) if game.game_date else None
@@ -384,7 +391,7 @@ def check_game_status_mlb(session, game) -> GameProcessResult:
     return result
 
 
-def process_game_pbp_mlb(session, game) -> GameProcessResult:
+def process_game_pbp_mlb(session, game, *, client=None) -> GameProcessResult:
     """Fetch and persist PBP for a single MLB game."""
     from ..db import db_models
     from ..live.mlb import MLBLiveFeedClient
@@ -400,7 +407,8 @@ def process_game_pbp_mlb(session, game) -> GameProcessResult:
     except (ValueError, TypeError):
         return GameProcessResult()
 
-    client = MLBLiveFeedClient()
+    if client is None:
+        client = MLBLiveFeedClient()
     result = GameProcessResult()
 
     payload = client.fetch_play_by_play(mlb_game_id, game_status=game.status)
@@ -430,7 +438,7 @@ def process_game_pbp_mlb(session, game) -> GameProcessResult:
     return result
 
 
-def process_game_boxscore_mlb(session, game) -> GameProcessResult:
+def process_game_boxscore_mlb(session, game, *, client=None) -> GameProcessResult:
     """Fetch and persist boxscore for a single MLB game."""
     from ..live.mlb import MLBLiveFeedClient
     from ..persistence.boxscores import upsert_player_boxscores, upsert_team_boxscores
@@ -445,7 +453,8 @@ def process_game_boxscore_mlb(session, game) -> GameProcessResult:
     except (ValueError, TypeError):
         return GameProcessResult()
 
-    client = MLBLiveFeedClient()
+    if client is None:
+        client = MLBLiveFeedClient()
     result = GameProcessResult()
 
     boxscore = client.fetch_boxscore(mlb_game_id, game_status=game.status)

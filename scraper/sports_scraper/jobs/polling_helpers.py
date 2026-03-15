@@ -52,6 +52,7 @@ def _poll_single_game_pbp(session, game) -> dict:
 def _poll_nba_game(session, game) -> dict:
     """Poll a single NBA game via the NBA live API."""
     from ..db import db_models
+    from ..live.nba import NBALiveFeedClient
     from ..services.game_processors import (
         check_game_status_nba,
         process_game_pbp_nba,
@@ -62,11 +63,12 @@ def _poll_nba_game(session, game) -> dict:
         logger.debug("poll_nba_skip_no_game_id", game_id=game.id)
         return {"api_calls": 0}
 
+    client = NBALiveFeedClient()
     result: dict = {"api_calls": 0}
 
     # Fetch scoreboard for status check
     try:
-        status_result = check_game_status_nba(session, game)
+        status_result = check_game_status_nba(session, game, client=client)
         result["api_calls"] += status_result.api_calls
         if status_result.transition:
             result["transition"] = status_result.transition
@@ -78,7 +80,7 @@ def _poll_nba_game(session, game) -> dict:
     # Fetch PBP if game is live or pregame
     if game.status in (db_models.GameStatus.live.value, db_models.GameStatus.pregame.value):
         try:
-            pbp_result = process_game_pbp_nba(session, game)
+            pbp_result = process_game_pbp_nba(session, game, client=client)
             result["api_calls"] += pbp_result.api_calls
             if pbp_result.events_inserted:
                 result["pbp_events"] = pbp_result.events_inserted
@@ -95,6 +97,7 @@ def _poll_nba_game(session, game) -> dict:
 def _poll_nhl_game(session, game) -> dict:
     """Poll a single NHL game via the NHL live API."""
     from ..db import db_models
+    from ..live.nhl import NHLLiveFeedClient
     from ..services.game_processors import (
         check_game_status_nhl,
         process_game_pbp_nhl,
@@ -111,11 +114,12 @@ def _poll_nhl_game(session, game) -> dict:
         logger.warning("poll_nhl_invalid_game_pk", game_id=game.id, nhl_game_pk=nhl_game_pk)
         return {"api_calls": 0}
 
+    client = NHLLiveFeedClient()
     result: dict = {"api_calls": 0}
 
     # Fetch schedule for status check
     try:
-        status_result = check_game_status_nhl(session, game)
+        status_result = check_game_status_nhl(session, game, client=client)
         result["api_calls"] += status_result.api_calls
         if status_result.transition:
             result["transition"] = status_result.transition
@@ -127,7 +131,7 @@ def _poll_nhl_game(session, game) -> dict:
     # Fetch PBP if game is live or pregame
     if game.status in (db_models.GameStatus.live.value, db_models.GameStatus.pregame.value):
         try:
-            pbp_result = process_game_pbp_nhl(session, game)
+            pbp_result = process_game_pbp_nhl(session, game, client=client)
             result["api_calls"] += pbp_result.api_calls
             if pbp_result.events_inserted:
                 result["pbp_events"] = pbp_result.events_inserted
@@ -144,6 +148,7 @@ def _poll_nhl_game(session, game) -> dict:
 def _poll_mlb_game(session, game) -> dict:
     """Poll a single MLB game via the MLB Stats API."""
     from ..db import db_models
+    from ..live.mlb import MLBLiveFeedClient
     from ..services.game_processors import (
         check_game_status_mlb,
         process_game_pbp_mlb,
@@ -160,11 +165,12 @@ def _poll_mlb_game(session, game) -> dict:
         logger.warning("poll_mlb_invalid_game_pk", game_id=game.id, mlb_game_pk=mlb_game_pk)
         return {"api_calls": 0}
 
+    client = MLBLiveFeedClient()
     result: dict = {"api_calls": 0}
 
     # Fetch schedule for status check
     try:
-        status_result = check_game_status_mlb(session, game)
+        status_result = check_game_status_mlb(session, game, client=client)
         result["api_calls"] += status_result.api_calls
         if status_result.transition:
             result["transition"] = status_result.transition
@@ -176,7 +182,7 @@ def _poll_mlb_game(session, game) -> dict:
     # Fetch PBP if game is live or pregame
     if game.status in (db_models.GameStatus.live.value, db_models.GameStatus.pregame.value):
         try:
-            pbp_result = process_game_pbp_mlb(session, game)
+            pbp_result = process_game_pbp_mlb(session, game, client=client)
             result["api_calls"] += pbp_result.api_calls
             if pbp_result.events_inserted:
                 result["pbp_events"] = pbp_result.events_inserted
