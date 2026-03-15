@@ -497,13 +497,17 @@ class TestPopulateNcaabGameIds:
         # Teams with cbb_team_id
         mock_team_row = (10, {"cbb_team_id": 100})
         mock_session.query.return_value.filter.return_value.all.side_effect = [
-            [mock_game_row],  # Games missing ID
-            [mock_team_row],  # Teams
+            [mock_game_row],  # Games missing cbb_game_id
+            [mock_team_row],  # Teams with cbb_team_id
+            [],               # Team names for matching (NCAA fallback)
+            [],               # Games missing ncaa_game_id (NCAA fallback)
+            [],               # All teams for name normalization (NCAA fallback)
         ]
 
         # No games from API
         mock_client = MagicMock()
         mock_client.fetch_games.return_value = []
+        mock_client.fetch_ncaa_scoreboard.return_value = []
         mock_client_class.return_value = mock_client
 
         result = _populate_ncaab_game_ids(

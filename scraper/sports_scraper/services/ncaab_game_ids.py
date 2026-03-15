@@ -71,7 +71,11 @@ def populate_ncaab_game_ids(
             start_date=str(start_date),
             end_date=str(end_date),
         )
-        return 0
+        # Don't return — still need NCAA scoreboard fallback for ncaa_game_id
+        ncaa_updated = _populate_ncaa_game_ids_from_scoreboard(
+            session, run_id=run_id, start_date=start_date, end_date=end_date,
+        )
+        return ncaa_updated
 
     logger.info(
         "ncaab_game_ids_missing",
@@ -113,7 +117,8 @@ def populate_ncaab_game_ids(
             end_date=str(end_date),
             season=season,
         )
-        return 0
+        # Don't return early — fall through to NCAA scoreboard fallback below
+        cbb_games = []
 
     # Build lookup by team IDs
     cbb_by_teams: dict[tuple[int, int], tuple[date, int]] = {}
