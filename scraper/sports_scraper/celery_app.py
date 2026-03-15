@@ -275,10 +275,14 @@ def check_hold_before_run(sender=None, task_id=None, task=None, args=None, kwarg
     if not _is_held():
         return
 
-    # Check if this was a manual trigger (header set by the API)
+    # Check if this was a manual trigger (header set by the API via
+    # apply_async(headers={"manual_trigger": True})).  Custom headers
+    # are exposed on request.headers, not as top-level request attrs.
     request = getattr(task, "request", None)
-    if request and getattr(request, "manual_trigger", False):
-        return
+    if request:
+        headers = getattr(request, "headers", None) or {}
+        if headers.get("manual_trigger") in (True, "True", "true", 1, "1"):
+            return
 
     task_name = getattr(task, "name", None) or str(sender)
     logger.info("task_held_skipping", task=task_name, task_id=task_id)

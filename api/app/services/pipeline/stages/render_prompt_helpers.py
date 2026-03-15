@@ -8,7 +8,163 @@ from __future__ import annotations
 
 from typing import Any
 
+import re
+
 from .game_stats_helpers import _extract_last_name, compute_lead_context
+
+
+def detect_game_winning_play(
+    resolution_block: dict[str, Any],
+    pbp_events: list[dict[str, Any]],
+    home_team: str,
+    away_team: str,
+    league_code: str,
+) -> str | None:
+    """Detect if the game ended on a dramatic final-seconds play.
+
+    Scans PBP events in the RESOLUTION block for a go-ahead or
+    game-tying-then-winning score in the final 15 seconds (or at 0:00).
+    Returns a prompt hint string like:
+      "GAME-WINNER: Arizona's Jaden Bradley hit the go-ahead shot at 0:00 (buzzer beater)"
+    or None if no dramatic finish detected.
+    """
+    final_score = resolution_block.get("score_after", [0, 0])
+    final_margin = abs(final_score[0] - final_score[1])
+
+    # Only look for game-winners in close finishes (margin <= 5)
+    if final_margin > 5:
+        return None
+
+    play_ids = set(resolution_block.get("play_ids", []))
+    if not play_ids:
+        return None
+
+    # Get the last period of the game
+    period_end = resolution_block.get("period_end", 1)
+
+    # Find scoring plays in the final period that are in this block
+    candidates: list[dict[str, Any]] = []
+    for evt in pbp_events:
+        if evt.get("play_index") not in play_ids:
+            continue
+        if evt.get("period", 0) != period_end:
+            continue
+        # Must be a scoring play (score changed from previous)
+        home_s = evt.get("home_score", 0)
+        away_s = evt.get("away_score", 0)
+        if home_s == 0 and away_s == 0:
+            continue
+        candidates.append(evt)
+
+    if not candidates:
+        return None
+
+    # Sort by play_index descending to find the last scoring play
+    candidates.sort(key=lambda e: e.get("play_index", 0), reverse=True)
+
+    # Check the last few plays for game-winning characteristics
+    for evt in candidates[:3]:
+        clock = evt.get("game_clock", "")
+        desc = evt.get("description", "")
+        home_s = evt.get("home_score", 0)
+        away_s = evt.get("away_score", 0)
+
+        # Parse clock to seconds
+        clock_secs = _parse_clock_seconds(clock)
+        if clock_secs is None:
+            continue
+
+        # Only care about plays in the final 15 seconds
+        if clock_secs > 15:
+            continue
+
+        # Check if this play created or changed the lead
+        # (go-ahead, game-tying, or winning score)
+        is_final_score = (home_s == final_score[0] and away_s == final_score[1])
+        if not is_final_score:
+            continue
+
+        # This is the play that produced the final score in the last 15 seconds
+        # Determine the scoring team
+        team_abbrev = (evt.get("team_abbreviation") or "").upper()
+        scorer = evt.get("player_name", "")
+
+        # Clean up play description for the hint
+        clean_desc = re.sub(r"^\[([^\]]+)\]\s*", "", desc)
+        clean_desc = re.sub(r"\b\d+'(?![a-zA-Z])\s*", "", clean_desc)
+
+        is_buzzer = clock_secs == 0
+        clock_label = "at the buzzer" if is_buzzer else f"with {clock} remaining"
+
+        parts = ["GAME-WINNING PLAY:"]
+        if scorer:
+            parts.append(f"{scorer} scored {clock_label}")
+        else:
+            parts.append(f"Scoring play {clock_label}")
+        if clean_desc:
+            parts.append(f"({clean_desc})")
+
+        # Was the game tied just before this play?
+        # Check the previous scoring state
+        prev_margin = _get_pre_play_margin(evt, pbp_events)
+        if prev_margin == 0:
+            if is_buzzer:
+                parts.append("— BUZZER BEATER to break a tie")
+            else:
+                parts.append("— broke the tie in the final seconds")
+        elif is_buzzer:
+            parts.append("— buzzer beater")
+
+        return " ".join(parts)
+
+    return None
+
+
+def _parse_clock_seconds(clock: str | None) -> int | None:
+    """Parse a game clock string like '0:15' or '00:00' to total seconds."""
+    if not clock:
+        return None
+    # Handle formats like "0:15", "00:00", "1:30", "PT0M15S"
+    match = re.match(r"^(\d+):(\d+)$", str(clock).strip())
+    if match:
+        return int(match.group(1)) * 60 + int(match.group(2))
+    # Handle "0" or "0.0"
+    try:
+        val = float(str(clock).strip())
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def _get_pre_play_margin(
+    play: dict[str, Any],
+    pbp_events: list[dict[str, Any]],
+) -> int | None:
+    """Find the score margin just before a given play.
+
+    Looks at the previous play in the same period to determine
+    what the score was before this play happened.
+    """
+    play_idx = play.get("play_index", -1)
+    period = play.get("period", 0)
+
+    # Find the previous play with a score in the same period
+    prev_home = None
+    prev_away = None
+    for evt in pbp_events:
+        if evt.get("period") != period:
+            continue
+        if evt.get("play_index", -1) >= play_idx:
+            continue
+        h = evt.get("home_score")
+        a = evt.get("away_score")
+        if h is not None and a is not None:
+            prev_home = h
+            prev_away = a
+
+    if prev_home is not None and prev_away is not None:
+        return abs(prev_home - prev_away)
+    return None
 
 
 def _format_lead_line(

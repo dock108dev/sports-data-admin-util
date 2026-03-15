@@ -147,7 +147,7 @@ function ExperimentBuilder() {
               <input
                 type="checkbox"
                 checked={selectedAlgorithms.has(a.value)}
-                onChange={() => setSelectedAlgorithms(toggleSet(selectedAlgorithms, a.value))}
+                onChange={() => setSelectedAlgorithms((prev) => toggleSet(prev, a.value))}
               />
               {a.label}
             </label>
@@ -169,7 +169,7 @@ function ExperimentBuilder() {
                   background: selectedWindows.has(w) ? "#3b82f6" : "#f3f4f6",
                   color: selectedWindows.has(w) ? "#fff" : "#374151",
                 }}
-                onClick={() => setSelectedWindows(toggleSet(selectedWindows, w))}
+                onClick={() => setSelectedWindows((prev) => toggleSet(prev, w))}
               >
                 {w}
               </button>
@@ -192,7 +192,7 @@ function ExperimentBuilder() {
                   background: selectedSplits.has(s) ? "#3b82f6" : "#f3f4f6",
                   color: selectedSplits.has(s) ? "#fff" : "#374151",
                 }}
-                onClick={() => setSelectedSplits(toggleSet(selectedSplits, s))}
+                onClick={() => setSelectedSplits((prev) => toggleSet(prev, s))}
               >
                 {(s * 100).toFixed(0)}%
               </button>
@@ -215,7 +215,7 @@ function ExperimentBuilder() {
               <input
                 type="checkbox"
                 checked={selectedLoadoutIds.has(l.id)}
-                onChange={() => setSelectedLoadoutIds(toggleSet(selectedLoadoutIds, l.id))}
+                onChange={() => setSelectedLoadoutIds((prev) => toggleSet(prev, l.id))}
               />
               {l.name} ({l.enabled_count} features)
             </label>

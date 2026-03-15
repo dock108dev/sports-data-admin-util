@@ -26,7 +26,7 @@ export function LoadoutsPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newModelType, setNewModelType] = useState("plate_appearance");
+  const newModelType = "plate_appearance";
 
   const refresh = useCallback(async () => {
     setLoading(true);

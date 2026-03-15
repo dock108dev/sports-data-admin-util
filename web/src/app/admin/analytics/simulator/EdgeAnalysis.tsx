@@ -23,13 +23,19 @@ const EDGE_METRICS: EdgeMetric[] = [
   { key: "o_swing_pct", label: "O-swing %", higherIsBetter: false },
 ];
 
-function fmt(v: number): string {
-  if (v > 10) return v.toFixed(1);
-  return (v * 100).toFixed(1) + "%";
+/** Slash-line metrics (AVG/OBP/SLG/OPS) are displayed as raw decimals, not percentages. */
+const SLASH_LINE_KEYS = new Set(["box_avg", "box_obp", "box_slg", "box_ops"]);
+
+function fmt(v: number, key?: string): string {
+  if (v > 10) return v.toFixed(1);              // exit velocity, etc.
+  if (key && SLASH_LINE_KEYS.has(key)) return v.toFixed(3);  // .250, .320
+  return (v * 100).toFixed(1) + "%";            // rates
 }
 
 interface Edge {
+  key: string;
   label: string;
+  higherIsBetter: boolean;
   favored: "home" | "away";
   favoredVal: number;
   otherVal: number;
@@ -74,7 +80,9 @@ export function EdgeAnalysis({
 
     const magnitude = Math.abs(hv - av) / (bl || 1);
     edges.push({
+      key: m.key,
       label: m.label,
+      higherIsBetter: m.higherIsBetter,
       favored,
       favoredVal: favored === "home" ? hv : av,
       otherVal: favored === "home" ? av : hv,
@@ -97,7 +105,7 @@ export function EdgeAnalysis({
       <ul style={{ margin: 0, padding: "0 0 0 1.25rem", fontSize: "0.9rem", lineHeight: 1.8 }}>
         {topEdges.map((e) => (
           <li key={e.label}>
-            Higher {e.label} ({fmt(e.favoredVal)} vs {fmt(e.otherVal)}, league avg {fmt(e.baseline)})
+            {e.higherIsBetter ? "Higher" : "Lower"} {e.label} ({fmt(e.favoredVal, e.key)} vs {fmt(e.otherVal, e.key)}, league avg {fmt(e.baseline, e.key)})
           </li>
         ))}
       </ul>
@@ -122,9 +130,9 @@ export function EdgeAnalysis({
               return (
                 <tr key={m.key} style={{ borderBottom: "1px solid #f1f5f9" }}>
                   <td style={{ padding: "0.25rem 0.5rem", color: "var(--text-secondary)" }}>{m.label}</td>
-                  <td style={{ textAlign: "right", padding: "0.25rem 0.5rem" }}>{hv !== undefined ? fmt(hv) : "-"}</td>
-                  <td style={{ textAlign: "center", padding: "0.25rem 0.5rem", color: "var(--text-muted)" }}>{bl !== undefined ? fmt(bl) : "-"}</td>
-                  <td style={{ textAlign: "right", padding: "0.25rem 0.5rem" }}>{av !== undefined ? fmt(av) : "-"}</td>
+                  <td style={{ textAlign: "right", padding: "0.25rem 0.5rem" }}>{hv !== undefined ? fmt(hv, m.key) : "-"}</td>
+                  <td style={{ textAlign: "center", padding: "0.25rem 0.5rem", color: "var(--text-muted)" }}>{bl !== undefined ? fmt(bl, m.key) : "-"}</td>
+                  <td style={{ textAlign: "right", padding: "0.25rem 0.5rem" }}>{av !== undefined ? fmt(av, m.key) : "-"}</td>
                 </tr>
               );
             })}

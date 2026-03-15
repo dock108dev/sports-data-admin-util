@@ -42,7 +42,7 @@ export function TrainingPanel() {
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
   const [selectedLoadout, setSelectedLoadout] = useState<number | null>(null);
-  const [modelType, setModelType] = useState("plate_appearance");
+  const modelType = "plate_appearance";
   const [algorithm, setAlgorithm] = useState("gradient_boosting");
   const [dateStart, setDateStart] = useState("");
   const [dateEnd, setDateEnd] = useState("");

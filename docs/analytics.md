@@ -11,7 +11,7 @@ Predictive modeling, simulation, and matchup analysis for sports data.
 | Package | Description |
 |---------|-------------|
 | `api/` | REST endpoints — profiles, simulations, models, ensemble config |
-| `core/` | Orchestration — SimulationEngine, SimulationRunner, SimulationAnalysis, MatchupEngine, ProfileBuilder |
+| `core/` | Orchestration — SimulationEngine, SimulationRunner, SimulationAnalysis, ProfileBuilder |
 | `ensemble/` | Weighted probability combination from multiple providers |
 | `features/` | Feature extraction pipeline with configurable feature sets |
 | `inference/` | Model inference engine with in-memory artifact caching |
@@ -337,22 +337,20 @@ Configurations are adjustable at runtime via the `/api/analytics/ensemble-config
 
 All endpoints prefixed with `/api/analytics`.
 
-### Profiles & Matchups
+### Teams & Profiles
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/team` | Team analytical profile (rolling window from DB) |
-| GET | `/player` | Player analytical profile |
-| GET | `/matchup` | Head-to-head matchup analysis (rolling profiles from DB) |
+| GET | `/team-profile` | Team rolling profile with league baselines (for comparison UI) |
 | GET | `/mlb-teams` | List MLB teams with games_with_stats count (for dropdowns) |
 | GET | `/mlb-roster` | Team roster (recent batters + pitchers) for lineup selection |
+| GET | `/mlb-data-coverage` | Data family readiness status (PA, Pitch, Fielding) |
 
-### Simulation (Admin)
+### Simulation
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/simulate` | Monte Carlo sim with full control (probability mode, ensemble, custom probabilities, optional lineup). Response includes `simulation_info` (diagnostics), `predictions` (Monte Carlo + game model), and `profile_meta.data_freshness` |
-| POST | `/live-simulate` | Live game simulation from current state |
+| POST | `/simulate` | Monte Carlo sim using active ML model (falls back to rule-based). Response includes `simulation_info` (diagnostics), `predictions`, `profile_meta` with edge analysis data |
 | POST | `/batch-simulate` | Async batch simulation over upcoming games (Celery task) |
 | GET | `/batch-simulate-jobs` | List batch simulation jobs |
 | GET | `/batch-simulate-job/{id}` | Get batch simulation job details |
@@ -367,6 +365,17 @@ Separate router at `/api/simulator` — simplified, downstream-friendly interfac
 | POST | `/api/simulator/mlb` | Run MLB game simulation (only home_team + away_team required) |
 
 See [API — Simulator](api.md#simulator) for full request/response documentation.
+
+### Experiments & Replay
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/experiments` | Create experiment suite (parameter sweep across algorithms, windows, splits, loadouts) |
+| GET | `/experiments` | List experiment suites |
+| GET | `/experiments/{id}` | Suite detail with variant leaderboard |
+| POST | `/experiments/{id}/promote/{variant_id}` | Activate winning variant's model |
+| POST | `/replay` | Start historical replay job (evaluate model on past games) |
+| GET | `/replay-jobs` | List replay jobs |
 
 ### Prediction Outcomes & Calibration
 

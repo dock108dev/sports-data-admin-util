@@ -303,7 +303,7 @@ async def get_team_profile(
     )
     if profile_result is None:
         return {"error": f"No profile data found for {team}", "team": team, "games_used": 0,
-                "date_range": [], "season_breakdown": {}, "metrics": {}, "baselines": {}}
+                "date_range": [None, None], "season_breakdown": {}, "metrics": {}, "baselines": {}}
 
     metrics = profile_result.metrics
     baselines = {k: v for k, v in FEATURE_BASELINES.items() if k in metrics}

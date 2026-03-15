@@ -1465,57 +1465,26 @@ The `bets` array uses the same `BetDefinition` shape as the pre-game `/odds` end
 
 Predictive modeling, simulation, and matchup analysis. See [Analytics](analytics.md) for the full engine architecture.
 
-### Profiles & Matchups
+### Team Profile
 
-#### `GET /team`
+#### `GET /team-profile`
 
-Get analytical profile for a team.
+Get a team's rolling profile with league baselines for comparison.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `sport` | `string` | Yes | Sport code (e.g., `mlb`) |
-| `team_id` | `string` | Yes | Team identifier |
-
-**Response:**
-```json
-{
-  "sport": "mlb",
-  "team_id": "NYY",
-  "name": "New York Yankees",
-  "metrics": { "contact_rate": 0.78, "power_index": 0.65, ... }
-}
-```
-
-#### `GET /player`
-
-Get analytical profile for a player.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `sport` | `string` | Yes | Sport code |
-| `player_id` | `string` | Yes | Player identifier |
-
-**Response:** Same shape as `/team` with `player_id` instead of `team_id`.
-
-#### `GET /matchup`
-
-Head-to-head matchup analysis between two entities.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `sport` | `string` | Yes | Sport code |
-| `entity_a` | `string` | Yes | First entity (e.g., batter) |
-| `entity_b` | `string` | Yes | Second entity (e.g., pitcher) |
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `team` | `string` | Yes | — | Team abbreviation (e.g., `NYY`) |
+| `rolling_window` | `int` | No | 30 | Number of recent games to aggregate |
 
 **Response:**
 ```json
 {
-  "sport": "mlb",
-  "entity_a": "batter_123",
-  "entity_b": "pitcher_456",
-  "probabilities": { "strikeout": 0.22, "walk": 0.08, "single": 0.18, ... },
-  "comparison": { ... },
-  "advantages": { ... }
+  "team": "NYY",
+  "games_used": 30,
+  "date_range": ["2025-03-01", "2025-04-15"],
+  "season_breakdown": { "2025": 28, "2024": 2 },
+  "metrics": { "barrel_rate": 0.082, "whiff_rate": 0.21, "box_ops": 0.745, ... },
+  "baselines": { "barrel_rate": 0.07, "whiff_rate": 0.23, "box_ops": 0.720, ... }
 }
 ```
 
@@ -1681,24 +1650,6 @@ Run a full Monte Carlo simulation. Supports two modes:
     "home_run_probability": 0.0315
   },
   "away_pa_probabilities": { "..." : "..." }
-}
-```
-
-#### `POST /live-simulate`
-
-Simulate from a live game state (current inning, outs, bases, score).
-
-**Request body:**
-```json
-{
-  "sport": "mlb",
-  "inning": 5,
-  "half": "top",
-  "outs": 1,
-  "bases": { "first": true, "second": false, "third": false },
-  "score": { "home": 3, "away": 2 },
-  "iterations": 2000,
-  "probability_mode": "rule_based"
 }
 ```
 
@@ -1977,6 +1928,70 @@ Update ensemble weights for a sport + model type.
   ]
 }
 ```
+
+### Experiment Suites
+
+Parameter sweep training — combinatorial grid of algorithms, rolling windows, test splits, and feature loadouts. All variants are trained and ranked automatically.
+
+#### `POST /experiments`
+
+Create and launch an experiment suite.
+
+**Request body:**
+```json
+{
+  "name": "pitch model sweep v2",
+  "sport": "mlb",
+  "model_type": "plate_appearance",
+  "parameter_grid": {
+    "algorithms": ["gradient_boosting", "random_forest", "xgboost"],
+    "rolling_windows": [20, 30, 40],
+    "test_splits": [0.15, 0.2, 0.25],
+    "feature_config_ids": [1, 3]
+  },
+  "tags": ["baseline"]
+}
+```
+
+#### `GET /experiments`
+
+List experiment suites.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sport` | `string` | — | Filter by sport |
+| `status` | `string` | — | Filter by status |
+
+#### `GET /experiments/{suite_id}`
+
+Get suite detail including all variants with metrics and rankings.
+
+#### `POST /experiments/{suite_id}/promote/{variant_id}`
+
+Activate the winning variant's model in the registry.
+
+### Historical Replay
+
+Evaluate a trained model on historical games using point-in-time profiles (no data leakage).
+
+#### `POST /replay`
+
+**Request body:**
+```json
+{
+  "sport": "mlb",
+  "model_id": "mlb_plate_appearance_abc123",
+  "model_type": "plate_appearance",
+  "date_start": "2025-04-01",
+  "date_end": "2025-06-01",
+  "game_count": 100,
+  "rolling_window": 30
+}
+```
+
+#### `GET /replay-jobs`
+
+List replay jobs. Filter by `sport` or `suite_id`.
 
 ---
 

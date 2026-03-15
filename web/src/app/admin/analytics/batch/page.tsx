@@ -237,7 +237,10 @@ export default function BatchSimsPage() {
                 const total = ad.outcomes.length;
                 const correct = ad.outcomes.filter((o) => o.correct_winner).length;
                 const acc = correct / total;
-                const avgBrier = ad.outcomes.reduce((s, o) => s + (o.brier_score ?? 0), 0) / total;
+                const brierOutcomes = ad.outcomes.filter((o) => o.brier_score != null);
+                const avgBrier = brierOutcomes.length > 0
+                  ? brierOutcomes.reduce((s, o) => s + o.brier_score!, 0) / brierOutcomes.length
+                  : null;
                 return (
                   <div style={{ marginBottom: "1rem", padding: "0.75rem", background: "#fafbfc", borderRadius: "6px" }}>
                     <div className={styles.statsRow}>
@@ -250,7 +253,7 @@ export default function BatchSimsPage() {
                         <div className={styles.statLabel}>Accuracy</div>
                       </div>
                       <div className={styles.statBox}>
-                        <div className={styles.statValue}>{avgBrier.toFixed(4)}</div>
+                        <div className={styles.statValue}>{avgBrier != null ? avgBrier.toFixed(4) : "-"}</div>
                         <div className={styles.statLabel}>Brier Score</div>
                       </div>
                     </div>

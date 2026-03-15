@@ -51,6 +51,7 @@ export function ScoreDistributionChart({ data }: { data: ScoreEntry[] }) {
 /** League-average pitch-level outcome probabilities (2024 MLB season). */
 const LEAGUE_AVG_PA: Record<string, number> = {
   strikeout: 0.22,
+  out: 0.46,
   walk: 0.08,
   single: 0.15,
   double: 0.05,

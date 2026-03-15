@@ -461,16 +461,15 @@ def collect_game_social() -> dict:
                     # the worker restarted).  This avoids the 30-60s polite
                     # delay per team just to hit the consecutive-known early
                     # exit inside the collector.
-                    fresh_count = (
+                    has_fresh = (
                         session.query(db_models.TeamSocialPost.id)
                         .filter(
                             db_models.TeamSocialPost.team_id == team_id,
                             db_models.TeamSocialPost.created_at >= fresh_cutoff,
                         )
-                        .limit(1)
-                        .count()
-                    )
-                    if fresh_count:
+                        .first()
+                    ) is not None
+                    if has_fresh:
                         logger.debug(
                             "collect_game_social_team_skip_fresh",
                             team_id=team_id,
