@@ -123,6 +123,10 @@ export interface ExperimentSuiteRequest {
     test_splits?: number[];
     date_start?: string;
     date_end?: string;
+    feature_grid?: {
+      features: { name: string; enabled: boolean; weight_min: number; weight_max: number; vary_enabled?: boolean }[];
+      max_combos?: number;
+    };
   };
   tags?: string[];
 }

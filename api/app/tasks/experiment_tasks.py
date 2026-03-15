@@ -59,6 +59,17 @@ async def _run_suite(suite_id: int, celery_task_id: str | None = None) -> dict:
             async with sf() as db:
                 suite = await db.get(AnalyticsExperimentSuite, suite_id)
                 grid = suite.parameter_grid or {}
+
+                # If feature_grid is present, generate loadout combos first
+                feature_config_ids = grid.get("feature_config_ids", [None])
+                feature_grid = grid.get("feature_grid")
+                if feature_grid:
+                    generated_ids = await _generate_feature_loadouts(
+                        db, feature_grid, suite,
+                    )
+                    feature_config_ids = generated_ids or [None]
+                    grid["feature_config_ids"] = feature_config_ids
+
                 variants = _generate_variants(grid, suite)
 
                 suite.total_variants = len(variants)
@@ -286,3 +297,144 @@ async def _build_leaderboard(
         await db.commit()
 
     return entries
+
+
+async def _generate_feature_loadouts(
+    db: Any,
+    feature_grid: dict[str, Any],
+    suite: Any,
+) -> list[int]:
+    """Generate feature loadout combinations from a feature grid spec.
+
+    The feature_grid contains:
+      - features: list of {name, enabled, weight_min, weight_max} entries
+      - max_combos: cap on number of generated loadouts (default 100)
+
+    Strategy:
+      1. Separate features into "fixed" (always on, single weight) and
+         "variable" (toggled on/off or weight range).
+      2. Generate combinations using Latin hypercube-style sampling
+         for weight ranges, plus ablation sets (drop one feature at a time).
+      3. Cap at max_combos, prioritizing diverse coverage.
+    """
+    import random
+
+    from app.db.analytics import AnalyticsFeatureConfig
+
+    features = feature_grid.get("features", [])
+    max_combos = min(feature_grid.get("max_combos", 100), 100)
+
+    if not features:
+        return []
+
+    # Separate fixed vs variable features
+    fixed: list[dict] = []
+    variable: list[dict] = []
+    for f in features:
+        if not f.get("enabled", True):
+            continue
+        w_min = f.get("weight_min", f.get("weight", 1.0))
+        w_max = f.get("weight_max", f.get("weight", 1.0))
+        entry = {"name": f["name"], "weight_min": w_min, "weight_max": w_max}
+        if w_min == w_max and f.get("vary_enabled") is not True:
+            fixed.append(entry)
+        else:
+            variable.append(entry)
+
+    if not variable:
+        # No variation — just create one loadout with all fixed features
+        loadout_features = [
+            {"name": f["name"], "enabled": True, "weight": f["weight_min"]}
+            for f in fixed
+        ]
+        row = AnalyticsFeatureConfig(
+            name=f"exp-{suite.id}-baseline",
+            sport=suite.sport,
+            model_type=suite.model_type,
+            features=loadout_features,
+            is_default=False,
+        )
+        db.add(row)
+        await db.flush()
+        await db.refresh(row)
+        return [row.id]
+
+    rng = random.Random(suite.id)  # deterministic per suite
+    combos: list[list[dict]] = []
+
+    # 1. Baseline: all features on at midpoint weights
+    baseline = [
+        {"name": f["name"], "enabled": True, "weight": round((f["weight_min"] + f["weight_max"]) / 2, 2)}
+        for f in variable
+    ]
+    combos.append(baseline)
+
+    # 2. Ablation: drop each variable feature one at a time
+    for i in range(len(variable)):
+        ablation = []
+        for j, f in enumerate(variable):
+            if i == j:
+                ablation.append({"name": f["name"], "enabled": False, "weight": 0})
+            else:
+                ablation.append({"name": f["name"], "enabled": True, "weight": round((f["weight_min"] + f["weight_max"]) / 2, 2)})
+        combos.append(ablation)
+
+    # 3. Boundary: all min, all max
+    combos.append([
+        {"name": f["name"], "enabled": True, "weight": f["weight_min"]}
+        for f in variable
+    ])
+    combos.append([
+        {"name": f["name"], "enabled": True, "weight": f["weight_max"]}
+        for f in variable
+    ])
+
+    # 4. Random samples to fill remaining budget
+    budget = max_combos - len(combos)
+    for _ in range(max(0, budget)):
+        sample = []
+        for f in variable:
+            # 20% chance of disabling a variable feature
+            enabled = rng.random() > 0.2
+            weight = round(rng.uniform(f["weight_min"], f["weight_max"]), 2) if enabled else 0
+            sample.append({"name": f["name"], "enabled": enabled, "weight": weight})
+        combos.append(sample)
+
+    # De-duplicate and cap
+    seen: set[str] = set()
+    unique_combos: list[list[dict]] = []
+    for combo in combos:
+        key = "|".join(f"{c['name']}:{c['enabled']}:{c['weight']}" for c in combo)
+        if key not in seen:
+            seen.add(key)
+            unique_combos.append(combo)
+        if len(unique_combos) >= max_combos:
+            break
+
+    # Create DB loadouts
+    loadout_ids: list[int] = []
+    for i, combo in enumerate(unique_combos):
+        # Combine fixed features (always on) + variable features (from combo)
+        all_features = [
+            {"name": f["name"], "enabled": True, "weight": f["weight_min"]}
+            for f in fixed
+        ] + combo
+
+        row = AnalyticsFeatureConfig(
+            name=f"exp-{suite.id}-v{i}",
+            sport=suite.sport,
+            model_type=suite.model_type,
+            features=all_features,
+            is_default=False,
+        )
+        db.add(row)
+        await db.flush()
+        await db.refresh(row)
+        loadout_ids.append(row.id)
+
+    logger.info(
+        "feature_loadouts_generated",
+        extra={"suite_id": suite.id, "count": len(loadout_ids),
+               "fixed": len(fixed), "variable": len(variable)},
+    )
+    return loadout_ids
