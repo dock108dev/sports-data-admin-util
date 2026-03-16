@@ -140,7 +140,7 @@ function ExperimentBuilder() {
     if (!name.trim()) { setError("Name is required"); return; }
     if (selectedAlgorithms.size === 0) { setError("Select at least one algorithm"); return; }
     if (enabledFeatures.length === 0) { setError("Enable at least one feature"); return; }
-    if (totalVariants > 500) { setError("Too many estimated variants. Reduce parameters or max feature combos."); return; }
+    if (totalVariants > 1000) { setError("Too many estimated variants (max 1000). Reduce parameters or max feature combos."); return; }
 
     setSubmitting(true);
     setError(null);
@@ -266,9 +266,9 @@ function ExperimentBuilder() {
             <input
               type="number"
               value={maxCombos}
-              onChange={(e) => setMaxCombos(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+              onChange={(e) => setMaxCombos(Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
               min={1}
-              max={100}
+              max={1000}
               style={{ width: "60px", padding: "2px 4px", fontSize: "0.8rem" }}
             />
             <button
@@ -386,7 +386,7 @@ function ExperimentBuilder() {
       <button
         className={`${styles.btn} ${styles.btnPrimary}`}
         onClick={handleSubmit}
-        disabled={submitting || enabledFeatures.length === 0}
+        disabled={submitting || enabledFeatures.length === 0 || totalVariants > 1000}
         style={{ marginTop: "0.75rem" }}
       >
         {submitting ? "Submitting..." : `Run Experiment (~${totalVariants} variants)`}

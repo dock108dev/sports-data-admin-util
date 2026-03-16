@@ -97,12 +97,22 @@ async def _run_suite(suite_id: int, celery_task_id: str | None = None) -> dict:
             failed = 0
 
             async with sf() as db:
+                from sqlalchemy import select
                 suite = await db.get(AnalyticsExperimentSuite, suite_id)
-                variant_rows = list(suite.variants)
+                stmt = (
+                    select(AnalyticsExperimentVariant)
+                    .where(AnalyticsExperimentVariant.suite_id == suite_id)
+                    .order_by(AnalyticsExperimentVariant.variant_index)
+                )
+                result_rows = await db.execute(stmt)
+                variant_rows = list(result_rows.scalars().all())
+                # Cache suite attrs — session expires objects after close
+                suite_sport = suite.sport
+                suite_model_type = suite.model_type
 
             for variant_row in variant_rows:
                 try:
-                    result = await _train_variant(sf, suite, variant_row)
+                    result = await _train_variant(sf, suite_sport, suite_model_type, variant_row)
                     if "error" in result:
                         failed += 1
                     else:
@@ -194,7 +204,8 @@ def _generate_variants(
 
 async def _train_variant(
     sf: Any,
-    suite: Any,
+    suite_sport: str,
+    suite_model_type: str,
     variant: Any,
 ) -> dict:
     """Train a single experiment variant."""
@@ -203,8 +214,8 @@ async def _train_variant(
     # Create training job
     async with sf() as db:
         job = AnalyticsTrainingJob(
-            sport=suite.sport,
-            model_type=suite.model_type,
+            sport=suite_sport,
+            model_type=suite_model_type,
             algorithm=variant.algorithm,
             feature_config_id=variant.feature_config_id,
             date_start=variant.training_date_start,
@@ -322,7 +333,7 @@ async def _generate_feature_loadouts(
     from app.db.analytics import AnalyticsFeatureConfig
 
     features = feature_grid.get("features", [])
-    max_combos = min(feature_grid.get("max_combos", 100), 100)
+    max_combos = min(feature_grid.get("max_combos", 100), 1000)
 
     if not features:
         return []
