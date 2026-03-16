@@ -1,14 +1,13 @@
 """Probability resolver.
 
-Chooses the correct probability provider based on configuration,
-handles fallback logic, and provides a single interface for the
-simulation engine.
+Chooses the correct probability provider based on configuration
+and provides a single interface for the simulation engine.
+No silent fallback — if the ML model fails, the error propagates.
 
 Usage::
 
     resolver = ProbabilityResolver(config={
         "probability_mode": "ml",
-        "fallback_mode": "rule_based",
     })
     probs = resolver.get_probabilities("mlb", "plate_appearance", context)
 """
@@ -33,9 +32,7 @@ MODE_ML = "ml"
 MODE_ENSEMBLE = "ensemble"
 
 _DEFAULT_CONFIG: dict[str, Any] = {
-    "probability_mode": MODE_RULE_BASED,
-    "fallback_mode": MODE_RULE_BASED,
-    "strict_mode": False,
+    "probability_mode": MODE_ML,
 }
 
 
@@ -43,8 +40,7 @@ class ProbabilityResolver:
     """Resolve and execute the correct probability provider.
 
     Args:
-        config: Configuration dict with ``probability_mode``,
-            ``fallback_mode``, and ``strict_mode`` keys.
+        config: Configuration dict with ``probability_mode`` key.
     """
 
     def __init__(self, config: dict[str, Any] | None = None) -> None:
@@ -54,17 +50,7 @@ class ProbabilityResolver:
     @property
     def mode(self) -> str:
         """Current probability mode."""
-        return self._config.get("probability_mode", MODE_RULE_BASED)
-
-    @property
-    def fallback_mode(self) -> str:
-        """Fallback mode when primary fails."""
-        return self._config.get("fallback_mode", MODE_RULE_BASED)
-
-    @property
-    def strict(self) -> bool:
-        """If True, do not fall back on failure."""
-        return bool(self._config.get("strict_mode", False))
+        return self._config.get("probability_mode", MODE_ML)
 
     def resolve_provider(
         self,
@@ -113,8 +99,7 @@ class ProbabilityResolver:
     ) -> dict[str, float]:
         """Get normalized event probabilities.
 
-        Tries the primary provider. On failure, falls back to the
-        fallback mode (unless ``strict_mode`` is True).
+        Executes the configured provider. Raises on failure — no silent fallback.
 
         Args:
             sport: Sport code.
@@ -167,43 +152,15 @@ class ProbabilityResolver:
             return {**probs, "_meta": meta}
 
         except Exception as exc:
-            logger.warning(
-                "probability_provider_failed",
-                extra={
-                    "mode": effective_mode,
-                    "sport": sport,
-                    "error": str(exc),
-                },
+            logger.error(
+                "probability_provider_failed mode=%s sport=%s error=%s",
+                effective_mode, sport, exc,
+                exc_info=True,
             )
-
-            if self.strict:
-                raise
-
-            # Fallback
-            if effective_mode != self.fallback_mode:
-                try:
-                    fallback = self.resolve_provider(
-                        sport, model_type, self.fallback_mode,
-                    )
-                    probs = fallback.get_event_probabilities(sport, context)
-                    meta = {
-                        "probability_source": fallback.provider_name,
-                        "model_type": model_type,
-                        "requested_mode": effective_mode,
-                        "executed_mode": fallback.provider_name,
-                        "fallback_used": True,
-                        "fallback_reason": str(exc),
-                        "primary_error": str(exc),
-                        "model_info": None,
-                    }
-                    return {**probs, "_meta": meta}
-                except Exception as fallback_exc:
-                    raise RuntimeError(
-                        f"Both primary ({effective_mode}) and fallback "
-                        f"({self.fallback_mode}) providers failed"
-                    ) from fallback_exc
-
-            raise
+            raise RuntimeError(
+                f"ML probability provider failed (mode={effective_mode}, "
+                f"sport={sport}, model_type={model_type}): {exc}"
+            ) from exc
 
     @staticmethod
     def _get_model_info(sport: str, model_type: str) -> dict[str, Any] | None:

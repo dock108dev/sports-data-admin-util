@@ -1,7 +1,7 @@
 """Tests for SimulationDiagnostics and the diagnostics threading.
 
 Covers:
-1. ML mode + no active model → fallback
+1. ML mode + failure → error propagates (no fallback)
 2. ML mode + active model → model_info populated
 3. Rule-based mode → profile-derived PA probs, executed_mode="rule_based"
 4. Priority: user-explicit > resolver > profile-derived
@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+import pytest
 from unittest.mock import MagicMock, patch
 
 from app.analytics.core.simulation_diagnostics import (
@@ -84,33 +85,17 @@ class TestApplyProbabilityResolver:
         return SimulationEngine("mlb")
 
     @patch("app.analytics.probabilities.probability_resolver.ProbabilityResolver")
-    def test_ml_with_fallback(self, MockResolver):
-        """ML mode + resolver returns fallback_used=True → diagnostics populated."""
+    def test_ml_failure_raises(self, MockResolver):
+        """ML mode failure should raise — no silent fallback."""
         instance = MockResolver.return_value
-        instance.get_probabilities_with_meta.return_value = {
-            "strikeout": 0.22, "walk": 0.08, "single": 0.18,
-            "double": 0.05, "triple": 0.01, "home_run": 0.03,
-            "_meta": {
-                "probability_source": "rule_based",
-                "model_type": "plate_appearance",
-                "requested_mode": "ml",
-                "executed_mode": "rule_based",
-                "fallback_used": True,
-                "fallback_reason": "ML inference returned empty probabilities (sport=mlb, model_type=plate_appearance)",
-                "primary_error": "ML inference returned empty probabilities (sport=mlb, model_type=plate_appearance)",
-                "model_info": None,
-            },
-        }
+        instance.get_probabilities_with_meta.side_effect = RuntimeError(
+            "ML probability provider failed"
+        )
 
         engine = self._make_engine()
         ctx = {"profiles": {}}
-        ctx, meta = engine._apply_probability_resolver(ctx, "ml", "plate_appearance")
-
-        diag = meta.get("_diagnostics")
-        assert diag is not None
-        assert diag.fallback_used is True
-        assert diag.executed_mode == "rule_based"
-        assert "empty probabilities" in (diag.fallback_reason or "")
+        with pytest.raises(RuntimeError, match="ML probability provider failed"):
+            engine._apply_probability_resolver(ctx, "ml", "plate_appearance")
 
     @patch("app.analytics.probabilities.probability_resolver.ProbabilityResolver")
     def test_ml_with_active_model(self, MockResolver):
@@ -171,23 +156,17 @@ class TestApplyProbabilityResolver:
         assert diag.executed_mode == "rule_based"
         assert diag.fallback_used is False
 
-    def test_exception_in_resolver_sets_diagnostics(self):
-        """When the resolver throws, diagnostics capture the error."""
+    def test_exception_in_resolver_propagates(self):
+        """When the resolver throws, error propagates — no silent fallback."""
         engine = self._make_engine()
-        # Use an empty profiles dict — with a broken import mock this won't matter
         ctx = {"profiles": {}}
 
         with patch(
             "app.analytics.probabilities.probability_resolver.ProbabilityResolver",
             side_effect=RuntimeError("test boom"),
         ):
-            ctx, meta = engine._apply_probability_resolver(ctx, "ml", "plate_appearance")
-
-        diag = meta.get("_diagnostics")
-        assert diag is not None
-        assert diag.executed_mode == "default"
-        assert diag.fallback_used is True
-        assert "test boom" in (diag.fallback_reason or "")
+            with pytest.raises(RuntimeError, match="test boom"):
+                engine._apply_probability_resolver(ctx, "ml", "plate_appearance")
 
 
 # ---------------------------------------------------------------------------

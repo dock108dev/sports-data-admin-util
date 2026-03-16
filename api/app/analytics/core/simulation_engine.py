@@ -205,81 +205,63 @@ class SimulationEngine:
         )
         meta: dict[str, Any] = {}
 
-        try:
-            from app.analytics.probabilities.probability_provider import (
-                validate_probabilities,
-            )
-            from app.analytics.probabilities.probability_resolver import (
-                ProbabilityResolver,
-            )
+        from app.analytics.probabilities.probability_provider import (
+            validate_probabilities,
+        )
+        from app.analytics.probabilities.probability_resolver import (
+            ProbabilityResolver,
+        )
 
-            resolver_config = {
-                "probability_mode": mode,
-                "fallback_mode": "rule_based",
-                "strict_mode": False,
-            }
-            resolver = ProbabilityResolver(config=resolver_config)
+        resolver_config = {
+            "probability_mode": mode,
+        }
+        resolver = ProbabilityResolver(config=resolver_config)
 
-            profiles = game_context.get("profiles", {})
-            result = resolver.get_probabilities_with_meta(
-                self.sport, model_type, profiles, mode=mode,
-            )
+        profiles = game_context.get("profiles", {})
+        result = resolver.get_probabilities_with_meta(
+            self.sport, model_type, profiles, mode=mode,
+        )
 
-            prob_meta = result.pop("_meta", {})
-            meta = prob_meta
+        prob_meta = result.pop("_meta", {})
+        meta = prob_meta
 
-            # Build diagnostics from resolver metadata
-            diagnostics.executed_mode = prob_meta.get("executed_mode", mode)
-            diagnostics.fallback_used = prob_meta.get("fallback_used", False)
-            diagnostics.fallback_reason = prob_meta.get("fallback_reason")
+        # Build diagnostics from resolver metadata
+        diagnostics.executed_mode = prob_meta.get("executed_mode", mode)
+        diagnostics.fallback_used = False
+        diagnostics.fallback_reason = None
 
-            model_info_raw = prob_meta.get("model_info")
-            if model_info_raw and isinstance(model_info_raw, dict):
-                diagnostics.model_info = ModelInfo(
-                    model_id=model_info_raw.get("model_id", ""),
-                    version=model_info_raw.get("version", 0),
-                    trained_at=model_info_raw.get("trained_at"),
-                    metrics=model_info_raw.get("metrics", {}),
-                )
-
-            # Convert to simulation probability keys
-            sim_probs = _to_simulation_keys(result)
-
-            # Validate resolver output and add issues as warnings
-            validation_issues = validate_probabilities(sim_probs)
-            if validation_issues:
-                diagnostics.warnings.extend(validation_issues)
-
-            # Always set resolver output — resolver is the authority when
-            # it runs.  The old guard (`if key not in game_context`) caused
-            # a priority bug: profile-derived PA probs pre-set in
-            # analytics_routes blocked ML/ensemble resolver output.
-            game_context["home_probabilities"] = sim_probs
-            game_context["away_probabilities"] = sim_probs
-
-            game_context["_probability_source"] = meta.get(
-                "probability_source", mode,
+        model_info_raw = prob_meta.get("model_info")
+        if model_info_raw and isinstance(model_info_raw, dict):
+            diagnostics.model_info = ModelInfo(
+                model_id=model_info_raw.get("model_id", ""),
+                version=model_info_raw.get("version", 0),
+                trained_at=model_info_raw.get("trained_at"),
+                metrics=model_info_raw.get("metrics", {}),
             )
 
-            logger.info(
-                "probability_resolved",
-                extra={
-                    "sport": self.sport,
-                    "mode": mode,
-                    "source": meta.get("probability_source"),
-                    "fallback_used": diagnostics.fallback_used,
-                },
-            )
+        # Convert to simulation probability keys
+        sim_probs = _to_simulation_keys(result)
 
-        except Exception as exc:
-            logger.error(
-                "probability_resolution_error",
-                extra={"sport": self.sport, "mode": mode, "error": str(exc)},
-            )
-            diagnostics.executed_mode = "default"
-            diagnostics.fallback_used = True
-            diagnostics.fallback_reason = str(exc)
-            meta = {"probability_source": "default", "error": str(exc)}
+        # Validate resolver output and add issues as warnings
+        validation_issues = validate_probabilities(sim_probs)
+        if validation_issues:
+            diagnostics.warnings.extend(validation_issues)
+
+        game_context["home_probabilities"] = sim_probs
+        game_context["away_probabilities"] = sim_probs
+
+        game_context["_probability_source"] = meta.get(
+            "probability_source", mode,
+        )
+
+        logger.info(
+            "probability_resolved",
+            extra={
+                "sport": self.sport,
+                "mode": mode,
+                "source": meta.get("probability_source"),
+            },
+        )
 
         # Attach diagnostics to meta for upstream consumption
         meta["_diagnostics"] = diagnostics
