@@ -19,6 +19,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from app.analytics.datasets._profile_mixin import ProfileMixin
 from app.analytics.datasets.mlb_pa_labeler import label_pa_event
 from app.tasks._training_helpers import build_rolling_profile, stats_to_metrics
 
@@ -27,12 +28,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Maps MLB Stats API at-bat event strings to our canonical PA outcomes.
-# Populated by mlb_pa_labeler.
 
+class MLBPADatasetBuilder(ProfileMixin):
+    """Build a true PA dataset from PBP play events with point-in-time profiles.
 
-class MLBPADatasetBuilder:
-    """Build a true PA dataset from PBP play events with point-in-time profiles."""
+    Extends ``ProfileMixin`` with PA-specific extras: boxscore history
+    merging in player profiles and team fielding aggregates.
+    """
 
     def __init__(self, db: AsyncSession):
         self._db = db
@@ -131,8 +133,12 @@ class MLBPADatasetBuilder:
 
         # 4. Extract PAs from plays
         records = []
-        stats = {"total_plays": 0, "labeled_pas": 0, "skipped_no_label": 0,
-                 "skipped_no_profile": 0}
+        stats = {
+            "total_plays": 0,
+            "labeled_pas": 0,
+            "skipped_no_label": 0,
+            "skipped_no_profile": 0,
+        }
 
         for game_id, game_plays in plays_by_game.items():
             game = game_map.get(game_id)
@@ -263,7 +269,7 @@ class MLBPADatasetBuilder:
         logger.info("mlb_pa_dataset_built", extra=stats)
         return records
 
-    def _build_player_profile(
+    def _build_player_profile(  # type: ignore[override]
         self,
         player_ref: str,
         history: dict[str, list[tuple[str, Any]]],
@@ -271,11 +277,11 @@ class MLBPADatasetBuilder:
         window: int,
         min_games: int,
     ) -> dict[str, float] | None:
-        """Build a player rolling profile from pre-loaded history.
+        """Override: merges Statcast + boxscore batting stats.
 
-        Merges Statcast metrics (from MLBPlayerAdvancedStats) with standard
-        batting stats (from SportsPlayerBoxscore) when boxscore history is
-        available.
+        Extends the base ``ProfileMixin._build_player_profile`` by also
+        incorporating standard slash-line stats from ``SportsPlayerBoxscore``
+        when boxscore history has been pre-loaded.
         """
         player_games = history.get(player_ref, [])
         prior = [s for d, s in player_games if d < before_date]
@@ -304,29 +310,7 @@ class MLBPADatasetBuilder:
 
         return aggregated
 
-    def _build_pitcher_profile(
-        self,
-        pitcher_ref: str,
-        history: dict[str, list[tuple[str, Any]]],
-        before_date: str,
-        window: int,
-        min_games: int,
-    ) -> dict[str, float] | None:
-        """Build a pitcher rolling profile from pitcher game stats history."""
-        pitcher_games = history.get(pitcher_ref, [])
-        prior = [s for d, s in pitcher_games if d < before_date]
-        if len(prior) < min_games:
-            return None
-        recent = prior[-window:]
-        metrics_list = [_pitcher_stats_to_metrics(s) for s in recent]
-        if not metrics_list:
-            return None
-        aggregated: dict[str, float] = {}
-        for key in metrics_list[0]:
-            vals = [m[key] for m in metrics_list if key in m]
-            if vals:
-                aggregated[key] = round(sum(vals) / len(vals), 4)
-        return aggregated
+    # _build_pitcher_profile inherited from ProfileMixin
 
     async def _load_profile_histories(
         self,

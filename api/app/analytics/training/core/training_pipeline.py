@@ -374,10 +374,10 @@ class TrainingPipeline:
             )
 
         if self.model_type == "pitch":
-            from sklearn.ensemble import GradientBoostingClassifier
-            return GradientBoostingClassifier(
+            from sklearn.ensemble import RandomForestClassifier
+            return RandomForestClassifier(
                 n_estimators=100,
-                max_depth=5,
+                max_depth=8,
                 random_state=self.random_state,
                 class_weight="balanced",
             )

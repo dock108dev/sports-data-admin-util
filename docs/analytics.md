@@ -11,7 +11,8 @@ Predictive modeling, simulation, and matchup analysis for sports data.
 | Package | Description |
 |---------|-------------|
 | `api/` | REST endpoints — profiles, simulations, models, ensemble config |
-| `core/` | Orchestration — SimulationEngine, SimulationRunner, SimulationAnalysis, ProfileBuilder |
+| `core/` | Orchestration — SimulationEngine, SimulationRunner, SimulationAnalysis |
+| `datasets/` | Training data extraction — PA, pitch, and batted ball dataset builders with shared ProfileMixin for rolling profile assembly |
 | `ensemble/` | Weighted probability combination from multiple providers |
 | `features/` | Feature extraction pipeline with configurable feature sets |
 | `inference/` | Model inference engine with in-memory artifact caching |
@@ -33,11 +34,12 @@ The simulation engine runs Monte Carlo simulations with pluggable probability so
 ### Flow
 
 1. `SimulationEngine.run_simulation()` receives game context (teams, probability mode, iterations)
-2. `ProbabilityResolver` selects the provider based on mode (`rule_based`, `ml`, `ensemble`, `pitch_level`)
-3. The resolver always overwrites `game_context["home_probabilities"]` — profile-derived PA probs are only pre-set when mode is `rule_based`
-4. `SimulationRunner` invokes the sport-specific simulator N times (default 5,000–10,000)
-5. Results aggregated: win probabilities, average scores, score distribution
-6. `SimulationDiagnostics` attached to result with execution metadata
+2. If `pitch_level` mode: routes to `_run_pitch_level()` (see Pitch-Level Simulation below)
+3. Otherwise: `ProbabilityResolver` selects the provider based on mode (`rule_based`, `ml`, `ensemble`)
+4. When home/away team profiles are both present, PA probabilities are resolved separately for each team — each team's batting profile is paired with the opposing team as the "pitcher" side, producing differentiated probabilities per team
+5. `SimulationRunner` invokes the sport-specific simulator N times (default 5,000–10,000)
+6. Results aggregated: win probabilities, average scores, score distribution, event summary
+7. `SimulationDiagnostics` attached to result with execution metadata
 
 ### Simulation Diagnostics
 
@@ -179,10 +181,31 @@ Warnings are included in both the `/simulate` response (`simulation_info.sanity_
 
 ### Pitch-Level Simulation
 
-Alternative path using `PitchLevelGameSimulator`. Simulates individual pitches within each plate appearance for more granular analytics. Slower than PA-level but provides pitch-sequence data. Does not support lineup-aware mode.
+Alternative simulation path using `PitchLevelGameSimulator`. Instead of sampling PA outcomes directly, it simulates individual pitches within each plate appearance — producing realistic count distributions, walk/strikeout rates, and pitch-level analytics.
+
+**How it works:**
+
+1. `SimulationEngine._run_pitch_level()` resolves per-team profiles from the game context
+2. Profiles are mapped to pitch simulator feature keys via `_profile_to_pitch_features()` — home batting is paired with away pitching and vice versa, producing differentiated team features
+3. If trained `pitch` and `batted_ball` models are active in the registry, they are loaded; otherwise rule-based defaults are used
+4. `PitchLevelGameSimulator` is passed to `SimulationRunner` (same aggregation as PA-level)
+5. Each game simulates 9+ innings, each half-inning pitch-by-pitch:
+   - `MLBPitchOutcomeModel` predicts ball/called_strike/swinging_strike/foul/in_play
+   - On ball-in-play, `MLBBattedBallModel` predicts out/single/double/triple/home_run
+   - Count state (balls/strikes) updates between pitches
+6. Event diagnostics (`home_events`/`away_events`, `innings_played`, `total_pitches`) are returned per game, enabling full `event_summary` aggregation
+
+**Per-team differentiation:** Each team gets distinct feature dicts. The home team's batting profile is evaluated against the away team's pitching profile, producing different pitch/batted-ball probabilities for each side. This prevents the 50/50 WP compression that occurs when both teams share identical probabilities.
+
+**Trained model support:** When trained `pitch` and `batted_ball` models are activated in the registry, `_load_pitch_models()` wraps them and injects them into the simulator. Rule-based defaults serve as the fallback.
+
+Does not support lineup-aware mode.
 
 **Key files:**
-- `simulation/mlb/pitch_simulator.py` — pitch-level PA simulation
+- `simulation/mlb/pitch_simulator.py` — `PitchSimulator` (per-PA) and `PitchLevelGameSimulator` (per-game)
+- `core/simulation_engine.py` — `_run_pitch_level()`, `_profile_to_pitch_features()`, `_load_pitch_models()`
+- `models/sports/mlb/pitch_model.py` — pitch outcome model (rule-based + trained)
+- `models/sports/mlb/batted_ball_model.py` — batted ball outcome model (rule-based + trained)
 
 ---
 
@@ -295,14 +318,34 @@ End-to-end flow: data → features → train → evaluate → register. Training
 8. `save_artifact()` — serializes to `{sport}/artifacts/{model_id}.pkl` via joblib
 9. Register in model registry; update job record with metrics and artifact path
 
+### Model Types
+
+| Model Type | Dataset Builder | Label Function | Default Classifier |
+|------------|----------------|----------------|--------------------|
+| `game` | `_training_data.py` (team rolling profiles) | `game_label_fn()` — 1=home win, 0=away | GradientBoostingClassifier |
+| `plate_appearance` | `MLBPADatasetBuilder` (PBP events + profiles) | `pa_label_fn()` — canonical PA outcome | GradientBoostingClassifier |
+| `player_plate_appearance` | `MLBPADatasetBuilder` (player-level) | `pa_label_fn()` | GradientBoostingClassifier |
+| `pitch` | `MLBPitchDatasetBuilder` (pitch events from `playEvents`) | `pitch_label_fn()` — ball/called_strike/swinging_strike/foul/in_play | RandomForestClassifier (balanced) |
+| `batted_ball` | `MLBBattedBallDatasetBuilder` (hit data from BIP plays) | `batted_ball_label_fn()` — out/single/double/triple/home_run | RandomForestClassifier (balanced) |
+
+### Dataset Builders
+
+All dataset builders live in `analytics/datasets/` and share profile-loading logic via `ProfileMixin`:
+
+- **`MLBPADatasetBuilder`** — Extracts one row per plate appearance from `SportsGamePlay.raw_data`. Labels derived from `result.event` via `mlb_pa_labeler.py`. Includes point-in-time batter/pitcher profiles with optional boxscore history merging and team fielding context.
+- **`MLBPitchDatasetBuilder`** — Extracts one row per pitch from `raw_data["playEvents"]` where `isPitch == True`. Labels derived from `details.code` via `mlb_pitch_labeler.py` (e.g., `B` → ball, `S` → swinging_strike, `X` → in_play). Includes count state, pitch zone, and speed.
+- **`MLBBattedBallDatasetBuilder`** — Extracts one row per ball-in-play from plays with Statcast `hitData`. Includes exit velocity, launch angle, and spray angle (derived from hit coordinates via `atan2`). Rows without `launchSpeed` are skipped.
+
+All three builders use rolling point-in-time profiles (batter + pitcher) to prevent data leakage. Profile loading is centralized in `_profile_mixin.py`.
+
 ### Label Extraction (MLB)
 
 Label functions live in `MLBTrainingPipeline` (`training/sports/mlb_training.py`):
 
 - `pa_label_fn()` — PA outcome (strikeout, walk, single, double, triple, home_run, out)
 - `game_label_fn()` — game outcome (1 = home win, 0 = away win)
-
-For PA training data, outcomes are derived heuristically from Statcast game-level metrics by `_derive_pa_outcome()` in `_training_helpers.py`, since pitch-level outcome data is not stored per-PA.
+- `pitch_label_fn()` — pitch outcome (ball, called_strike, swinging_strike, foul, in_play)
+- `batted_ball_label_fn()` — batted ball outcome (out, single, double, triple, home_run)
 
 ### Constants SSOT
 

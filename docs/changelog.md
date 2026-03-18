@@ -2,7 +2,24 @@
 
 All notable changes to Sports Data Admin.
 
-## [2026-03-17] - Current
+## [2026-03-18] - Current
+
+### Pitch-Level Training & Simulation Overhaul
+
+- **Pitch outcome dataset builder:** `MLBPitchDatasetBuilder` extracts individual pitches from `raw_data["playEvents"]` with count state, zone, speed, and point-in-time batter/pitcher profiles. Labels derived from `details.code` via `mlb_pitch_labeler.py`
+- **Batted ball dataset builder:** `MLBBattedBallDatasetBuilder` extracts BIP outcomes with exit velocity, launch angle, and spray angle (derived from hit coordinates). Rows without `launchSpeed` are skipped
+- **Profile loading consolidation:** Extracted `_profile_mixin.py` (ProfileMixin) with shared `_load_profile_histories()`, `_build_player_profile()`, `_build_pitcher_profile()`. All three dataset builders (PA, pitch, batted ball) now inherit from this mixin
+- **Training pipeline:** Registered `pitch` and `batted_ball` model types in `TrainingPipeline`. Added `pitch_label_fn()` and `batted_ball_label_fn()` to `MLBTrainingPipeline`. Default classifiers: RandomForestClassifier with `class_weight="balanced"` for both
+- **Feature builder:** Added `_PITCH_FEATURES` and `_BATTED_BALL_FEATURES` specs to `mlb_features.py` with routing in `build_features()` for `model_type="pitch"` and `"batted_ball"`
+- **Pitch-level simulation refactor:** `_run_pitch_level()` now uses `SimulationRunner` (not manual iteration), resolves per-team profiles for differentiated probabilities, and loads trained models from the registry
+- **Event diagnostics:** `PitchLevelGameSimulator` returns `home_events`/`away_events` with PA counts, enabling `SimulationRunner._aggregate_events()` to produce full event summaries for pitch-level mode
+- **Dead code removal:** Removed unused `MLBRunExpectancyModel` import/instantiation from pitch simulator, dead `_simulate_half_inning()` wrapper, wasteful re-run sampling loop, stale `import random` from simulation engine
+- **Bug fix:** `GradientBoostingClassifier` does not support `class_weight` — switched pitch model default to `RandomForestClassifier`
+- **Security:** Replaced `passlib` with direct `bcrypt` for password hashing
+
+**Files changed:** `simulation_engine.py`, `pitch_simulator.py`, `training_pipeline.py`, `mlb_training.py`, `mlb_features.py`, `_training_data.py`, `analytics_routes.py`, `security.py`, `requirements.txt`. **New:** `_profile_mixin.py`, `mlb_pitch_dataset.py`, `mlb_pitch_labeler.py`, `mlb_batted_ball_dataset.py`, `test_pitch_dataset.py`, `test_batted_ball_dataset.py`, `test_models_and_features.py`, `test_simulation_training_coverage.py`, `test_profile_mixin_and_datasets.py`
+
+## [2026-03-17]
 
 ### Post-Simulation Diagnostics & Sanity Analysis
 
