@@ -153,6 +153,32 @@ _GAME_METRIC_KEYS: list[str] = [
     "plate_discipline_index",
 ]
 
+# Pitch outcome model features — match FEATURE_KEYS in pitch_model.py
+_PITCH_FEATURES: list[tuple[str, str, str]] = [
+    ("pitcher_k_rate", "pitcher", "k_rate"),
+    ("pitcher_walk_rate", "pitcher", "walk_rate"),
+    ("pitcher_zone_rate", "pitcher", "zone_rate"),
+    ("pitcher_contact_allowed", "pitcher", "contact_allowed"),
+    ("batter_contact_rate", "batter", "contact_rate"),
+    ("batter_swing_rate", "batter", "swing_rate"),
+    ("batter_zone_swing_rate", "batter", "zone_swing_rate"),
+    ("batter_chase_rate", "batter", "chase_rate"),
+    ("count_balls", "context", "count_balls"),
+    ("count_strikes", "context", "count_strikes"),
+]
+
+# Batted ball model features — match FEATURE_KEYS in batted_ball_model.py
+_BATTED_BALL_FEATURES: list[tuple[str, str, str]] = [
+    ("exit_velocity", "context", "exit_velocity"),
+    ("launch_angle", "context", "launch_angle"),
+    ("spray_angle", "context", "spray_angle"),
+    ("batter_barrel_rate", "batter", "barrel_rate"),
+    ("batter_hard_hit_rate", "batter", "hard_hit_rate"),
+    ("pitcher_hard_hit_allowed", "pitcher", "hard_hit_pct_against"),
+    ("park_factor", "context", "park_factor"),
+    ("batter_power_index", "batter", "power_index"),
+]
+
 _GAME_FEATURES: list[tuple[str, str, str]] = [
     (f"{side}_{key}", side, key)
     for side in ("home", "away")
@@ -197,6 +223,18 @@ class MLBFeatureBuilder:
             home = _extract_metrics(entity_profiles, "home_profile", "home")
             away = _extract_metrics(entity_profiles, "away_profile", "away")
             return self.build_game_features(home, away)
+
+        if model_type == "pitch":
+            batter = _extract_metrics(entity_profiles, "batter_profile", "batter")
+            pitcher = _extract_metrics(entity_profiles, "pitcher_profile", "pitcher")
+            context = entity_profiles.get("context", {})
+            return self.build_pitch_features(batter, pitcher, context)
+
+        if model_type == "batted_ball":
+            batter = _extract_metrics(entity_profiles, "batter_profile", "batter")
+            pitcher = _extract_metrics(entity_profiles, "pitcher_profile", "pitcher")
+            context = entity_profiles.get("context", {})
+            return self.build_batted_ball_features(batter, pitcher, context)
 
         return FeatureVector({})
 
@@ -253,6 +291,38 @@ class MLBFeatureBuilder:
             spec.extend(_FIELDING_FEATURES)
 
         features, order = _build_from_spec(spec, sources)
+        return FeatureVector(features, feature_order=order)
+
+    def build_pitch_features(
+        self,
+        batter_metrics: dict[str, Any],
+        pitcher_metrics: dict[str, Any],
+        context: dict[str, Any] | None = None,
+    ) -> FeatureVector:
+        """Build feature vector for pitch outcome modeling."""
+        context = context or {}
+        sources = {
+            "batter": batter_metrics,
+            "pitcher": pitcher_metrics,
+            "context": context,
+        }
+        features, order = _build_from_spec(_PITCH_FEATURES, sources)
+        return FeatureVector(features, feature_order=order)
+
+    def build_batted_ball_features(
+        self,
+        batter_metrics: dict[str, Any],
+        pitcher_metrics: dict[str, Any],
+        context: dict[str, Any] | None = None,
+    ) -> FeatureVector:
+        """Build feature vector for batted ball outcome modeling."""
+        context = context or {}
+        sources = {
+            "batter": batter_metrics,
+            "pitcher": pitcher_metrics,
+            "context": context,
+        }
+        features, order = _build_from_spec(_BATTED_BALL_FEATURES, sources)
         return FeatureVector(features, feature_order=order)
 
     def build_game_features(

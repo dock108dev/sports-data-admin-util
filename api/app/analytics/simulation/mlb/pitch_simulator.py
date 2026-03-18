@@ -160,7 +160,8 @@ class PitchLevelGameSimulator:
 
         Returns:
             Dict with ``home_score``, ``away_score``, ``winner``,
-            ``total_pitches``, and ``run_expectancy`` samples.
+            ``total_pitches``, ``home_events``, ``away_events``,
+            and ``innings_played``.
         """
         if rng is None:
             rng = random.Random()
@@ -171,30 +172,51 @@ class PitchLevelGameSimulator:
         home_score = 0
         away_score = 0
         total_pitches = 0
+        innings_played = 0
+
+        home_events: dict[str, int] = {}
+        away_events: dict[str, int] = {}
 
         for inning in range(1, 10):
-            runs, pitches = self._simulate_half_inning(away_features, rng)
+            innings_played = inning
+
+            runs, pitches, events = self._simulate_half_inning_with_events(
+                away_features, rng,
+            )
             away_score += runs
             total_pitches += pitches
+            _merge_events(away_events, events)
 
             if inning == 9 and home_score > away_score:
                 break
 
-            runs, pitches = self._simulate_half_inning(home_features, rng)
+            runs, pitches, events = self._simulate_half_inning_with_events(
+                home_features, rng,
+            )
             home_score += runs
             total_pitches += pitches
+            _merge_events(home_events, events)
 
             if inning == 9 and home_score > away_score:
                 break
 
         extra = 0
         while home_score == away_score and extra < _MAX_EXTRA_INNINGS:
-            runs, pitches = self._simulate_half_inning(away_features, rng)
+            innings_played += 1
+
+            runs, pitches, events = self._simulate_half_inning_with_events(
+                away_features, rng,
+            )
             away_score += runs
             total_pitches += pitches
-            runs, pitches = self._simulate_half_inning(home_features, rng)
+            _merge_events(away_events, events)
+
+            runs, pitches, events = self._simulate_half_inning_with_events(
+                home_features, rng,
+            )
             home_score += runs
             total_pitches += pitches
+            _merge_events(home_events, events)
             extra += 1
 
         winner = "home" if home_score >= away_score else "away"
@@ -204,6 +226,9 @@ class PitchLevelGameSimulator:
             "away_score": away_score,
             "winner": winner,
             "total_pitches": total_pitches,
+            "home_events": home_events,
+            "away_events": away_events,
+            "innings_played": innings_played,
         }
 
     def _simulate_half_inning(
@@ -212,30 +237,56 @@ class PitchLevelGameSimulator:
         rng: random.Random,
     ) -> tuple[int, int]:
         """Simulate one half-inning. Returns (runs, pitches)."""
+        runs, pitches, _ = self._simulate_half_inning_with_events(features, rng)
+        return runs, pitches
+
+    def _simulate_half_inning_with_events(
+        self,
+        features: dict[str, Any],
+        rng: random.Random,
+    ) -> tuple[int, int, dict[str, int]]:
+        """Simulate one half-inning. Returns (runs, pitches, events)."""
         outs = 0
         bases = [False, False, False]
         runs = 0
         pitches = 0
+        events: dict[str, int] = {"pa_total": 0}
 
         while outs < 3:
             pa = self._pa_sim.simulate_plate_appearance(features, rng)
             pitches += pa.get("pitches", 1)
             result = pa["result"]
+            events["pa_total"] = events.get("pa_total", 0) + 1
 
             if result in ("strikeout", "out"):
                 outs += 1
+                events[result] = events.get(result, 0) + 1
             elif result == "walk":
                 runs += _advance_walk(bases)
+                events["walk"] = events.get("walk", 0) + 1
             elif result == "single":
                 runs += _advance_single(bases)
+                events["single"] = events.get("single", 0) + 1
             elif result == "double":
                 runs += _advance_double(bases)
+                events["double"] = events.get("double", 0) + 1
             elif result == "triple":
                 runs += _advance_triple(bases)
+                events["triple"] = events.get("triple", 0) + 1
             elif result == "home_run":
                 runs += _advance_home_run(bases)
+                events["home_run"] = events.get("home_run", 0) + 1
 
-        return runs, pitches
+        return runs, pitches, events
+
+
+def _merge_events(
+    target: dict[str, int],
+    source: dict[str, int],
+) -> None:
+    """Merge event counts from source into target (in-place)."""
+    for key, val in source.items():
+        target[key] = target.get(key, 0) + val
 
 
 def _sample(

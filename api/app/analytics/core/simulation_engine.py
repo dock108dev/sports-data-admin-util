@@ -145,37 +145,64 @@ class SimulationEngine:
         iterations: int,
         seed: int | None,
     ) -> dict[str, Any]:
-        """Run pitch-level simulation using PitchLevelGameSimulator."""
+        """Run pitch-level simulation using PitchLevelGameSimulator.
+
+        Resolves per-team profiles from ``game_context["profiles"]`` to
+        create differentiated feature dicts, then delegates to
+        ``SimulationRunner`` for iteration and aggregation.
+        """
         from app.analytics.simulation.mlb.pitch_simulator import (
             PitchLevelGameSimulator,
         )
 
-        sim = PitchLevelGameSimulator()
-        rng = random.Random(seed)
+        context = dict(game_context)
 
-        home_wins = 0
-        total_home = 0
-        total_away = 0
-        total_pitches = 0
+        # Resolve per-team features from profiles
+        profiles = context.pop("profiles", {})
+        home_profile = profiles.get("home_profile", {})
+        away_profile = profiles.get("away_profile", {})
 
-        for _ in range(iterations):
-            result = sim.simulate_game(game_context, rng=rng)
-            total_home += result["home_score"]
-            total_away += result["away_score"]
-            total_pitches += result.get("total_pitches", 0)
-            if result["winner"] == "home":
-                home_wins += 1
+        if home_profile or away_profile:
+            home_metrics = _extract_profile_metrics(home_profile)
+            away_metrics = _extract_profile_metrics(away_profile)
 
-        n = max(iterations, 1)
-        return {
-            "home_win_probability": round(home_wins / n, 4),
-            "away_win_probability": round(1.0 - home_wins / n, 4),
-            "average_home_score": round(total_home / n, 2),
-            "average_away_score": round(total_away / n, 2),
-            "iterations": iterations,
-            "probability_source": "pitch_level",
-            "average_pitches_per_game": round(total_pitches / n, 1),
-        }
+            # Home batting vs away pitching
+            context["home_features"] = _profile_to_pitch_features(
+                home_metrics, away_metrics,
+            )
+            # Away batting vs home pitching
+            context["away_features"] = _profile_to_pitch_features(
+                away_metrics, home_metrics,
+            )
+
+        # Attempt to load trained models
+        pitch_model, bb_model = _load_pitch_models()
+        sim = PitchLevelGameSimulator(
+            pitch_model=pitch_model,
+            batted_ball_model=bb_model,
+        )
+
+        runner = SimulationRunner()
+        result = runner.run_simulations(
+            sim, context,
+            iterations=iterations, seed=seed,
+        )
+        result["probability_source"] = "pitch_level"
+
+        # Add average pitches per game from raw results if available
+        if "raw_results" not in result:
+            # Re-run a quick sample to get pitch count
+            rng = random.Random(seed)
+            pitch_total = 0
+            sample_n = min(iterations, 100)
+            for _ in range(sample_n):
+                r = sim.simulate_game(context, rng=rng)
+                pitch_total += r.get("total_pitches", 0)
+            result["average_pitches_per_game"] = round(
+                pitch_total / max(sample_n, 1), 1,
+            )
+
+        return result
 
     def _apply_probability_resolver(
         self,
@@ -222,14 +249,67 @@ class SimulationEngine:
         resolver = ProbabilityResolver(config=resolver_config)
 
         profiles = game_context.get("profiles", {})
-        if model_id:
-            profiles = {**profiles, "_model_id": model_id}
-        result = resolver.get_probabilities_with_meta(
-            self.sport, model_type, profiles, mode=mode,
-        )
+        base_extra = {"_model_id": model_id} if model_id else {}
 
-        prob_meta = result.pop("_meta", {})
-        meta = prob_meta
+        # When team profiles are provided (home_profile / away_profile),
+        # resolve PA probabilities separately for each team — each team's
+        # batting profile is paired with the opposing team's profile as
+        # the "pitcher" side so the PA model sees differentiated features.
+        home_profile = profiles.get("home_profile")
+        away_profile = profiles.get("away_profile")
+
+        if home_profile and away_profile:
+            home_ctx = {
+                "batter_profile": home_profile,
+                "pitcher_profile": away_profile,
+                **base_extra,
+            }
+            away_ctx = {
+                "batter_profile": away_profile,
+                "pitcher_profile": home_profile,
+                **base_extra,
+            }
+            home_result = resolver.get_probabilities_with_meta(
+                self.sport, model_type, home_ctx, mode=mode,
+            )
+            away_result = resolver.get_probabilities_with_meta(
+                self.sport, model_type, away_ctx, mode=mode,
+            )
+
+            prob_meta = home_result.pop("_meta", {})
+            away_result.pop("_meta", None)
+            meta = prob_meta
+
+            home_sim_probs = _to_simulation_keys(home_result)
+            away_sim_probs = _to_simulation_keys(away_result)
+
+            for issues in (
+                validate_probabilities(home_sim_probs),
+                validate_probabilities(away_sim_probs),
+            ):
+                if issues:
+                    diagnostics.warnings.extend(issues)
+
+            game_context["home_probabilities"] = home_sim_probs
+            game_context["away_probabilities"] = away_sim_probs
+        else:
+            # Single-context resolution (batter_profile/pitcher_profile
+            # already set, or empty profiles for league defaults)
+            ctx = {**profiles, **base_extra}
+            result = resolver.get_probabilities_with_meta(
+                self.sport, model_type, ctx, mode=mode,
+            )
+
+            prob_meta = result.pop("_meta", {})
+            meta = prob_meta
+
+            sim_probs = _to_simulation_keys(result)
+            validation_issues = validate_probabilities(sim_probs)
+            if validation_issues:
+                diagnostics.warnings.extend(validation_issues)
+
+            game_context["home_probabilities"] = sim_probs
+            game_context["away_probabilities"] = sim_probs
 
         # Build diagnostics from resolver metadata
         diagnostics.executed_mode = prob_meta.get("executed_mode", mode)
@@ -241,17 +321,6 @@ class SimulationEngine:
                 trained_at=model_info_raw.get("trained_at"),
                 metrics=model_info_raw.get("metrics", {}),
             )
-
-        # Convert to simulation probability keys
-        sim_probs = _to_simulation_keys(result)
-
-        # Validate resolver output and add issues as warnings
-        validation_issues = validate_probabilities(sim_probs)
-        if validation_issues:
-            diagnostics.warnings.extend(validation_issues)
-
-        game_context["home_probabilities"] = sim_probs
-        game_context["away_probabilities"] = sim_probs
 
         game_context["_probability_source"] = meta.get(
             "probability_source", mode,
@@ -269,6 +338,86 @@ class SimulationEngine:
         # Attach diagnostics to meta for upstream consumption
         meta["_diagnostics"] = diagnostics
         return game_context, meta
+
+
+def _extract_profile_metrics(profile: Any) -> dict[str, float]:
+    """Extract metrics dict from a profile (dict or object)."""
+    if not profile:
+        return {}
+    if isinstance(profile, dict):
+        return profile.get("metrics", profile)
+    if hasattr(profile, "metrics"):
+        return profile.metrics
+    return {}
+
+
+def _profile_to_pitch_features(
+    batting_metrics: dict[str, float],
+    pitching_metrics: dict[str, float],
+) -> dict[str, float]:
+    """Map team profile metrics to pitch simulator feature keys.
+
+    Maps batter profile metrics and opposing pitcher profile metrics
+    to the flat feature keys expected by ``MLBPitchOutcomeModel`` and
+    ``MLBBattedBallModel``.
+    """
+    return {
+        # Pitcher features (from opposing team's pitching profile)
+        "pitcher_k_rate": pitching_metrics.get("k_rate", pitching_metrics.get("strikeout_rate", 0.22)),
+        "pitcher_walk_rate": pitching_metrics.get("bb_rate", pitching_metrics.get("walk_rate", 0.08)),
+        "pitcher_zone_rate": pitching_metrics.get("zone_swing_rate", 0.45),
+        "pitcher_contact_allowed": 1.0 - pitching_metrics.get("whiff_rate", 0.23),
+        # Batter features (from team's batting profile)
+        "batter_contact_rate": batting_metrics.get("contact_rate", 0.77),
+        "batter_swing_rate": batting_metrics.get("swing_rate", 0.47),
+        "batter_zone_swing_rate": batting_metrics.get("zone_swing_rate", 0.65),
+        "batter_chase_rate": batting_metrics.get("chase_rate", 0.30),
+        # Batted ball features
+        "batter_barrel_rate": batting_metrics.get("barrel_rate", 0.06),
+        "batter_hard_hit_rate": batting_metrics.get("hard_hit_rate", 0.35),
+        "batter_power_index": batting_metrics.get("power_index", 1.0),
+        "pitcher_hard_hit_allowed": pitching_metrics.get("hard_hit_pct_against", 0.35),
+        "exit_velocity": batting_metrics.get("avg_exit_velocity", batting_metrics.get("avg_exit_velo", 88.0)),
+    }
+
+
+def _load_pitch_models() -> tuple[Any, Any]:
+    """Attempt to load trained pitch and batted ball models.
+
+    Returns (pitch_model, batted_ball_model) — either may be None
+    if no trained model is available.
+    """
+    pitch_model = None
+    bb_model = None
+    try:
+        from app.analytics.models.core.model_registry import ModelRegistry
+        registry = ModelRegistry()
+
+        pitch_entry = registry.get_active_model("mlb", "pitch")
+        if pitch_entry:
+            import joblib
+            pitch_model_raw = joblib.load(pitch_entry["artifact_path"])
+            from app.analytics.models.sports.mlb.pitch_model import (
+                MLBPitchOutcomeModel,
+            )
+            pm = MLBPitchOutcomeModel()
+            pm._model = pitch_model_raw
+            pitch_model = pm
+
+        bb_entry = registry.get_active_model("mlb", "batted_ball")
+        if bb_entry:
+            import joblib
+            bb_model_raw = joblib.load(bb_entry["artifact_path"])
+            from app.analytics.models.sports.mlb.batted_ball_model import (
+                MLBBattedBallModel,
+            )
+            bbm = MLBBattedBallModel()
+            bbm._model = bb_model_raw
+            bb_model = bbm
+    except Exception:
+        logger.debug("pitch_models_load_skipped", exc_info=True)
+
+    return pitch_model, bb_model
 
 
 def _to_simulation_keys(probs: dict[str, float]) -> dict[str, float]:

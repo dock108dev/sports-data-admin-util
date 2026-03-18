@@ -14,6 +14,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.analytics.datasets.mlb_pitch_labeler import PITCH_OUTCOME_LABELS
+from app.analytics.models.sports.mlb.batted_ball_model import BATTED_BALL_OUTCOMES
 from app.analytics.sports.mlb.constants import PA_EVENTS as PA_OUTCOMES
 from app.analytics.sports.mlb.constants import PA_EVENTS_V2 as PA_OUTCOMES_V2
 
@@ -61,6 +63,28 @@ class MLBTrainingPipeline:
         away_score = record.get("away_score")
         if home_score is not None and away_score is not None:
             return 1 if home_score > away_score else 0
+        return None
+
+    @staticmethod
+    def pitch_label_fn(record: dict[str, Any]) -> str | None:
+        """Extract pitch outcome label from a record."""
+        outcome = record.get("outcome") or record.get("label")
+        if outcome is None:
+            return None
+        outcome = str(outcome).lower().strip()
+        if outcome in PITCH_OUTCOME_LABELS:
+            return outcome
+        return None
+
+    @staticmethod
+    def batted_ball_label_fn(record: dict[str, Any]) -> str | None:
+        """Extract batted ball outcome label from a record."""
+        outcome = record.get("outcome") or record.get("label")
+        if outcome is None:
+            return None
+        outcome = str(outcome).lower().strip()
+        if outcome in BATTED_BALL_OUTCOMES:
+            return outcome
         return None
 
     @staticmethod

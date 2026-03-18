@@ -4029,17 +4029,17 @@ class TestSSOTNoLegacyFiles:
 class TestSSOTMLBConstants:
     """Assert MLB constants SSOT is used and legacy duplicates are gone."""
 
-    def test_mlb_training_has_no_pitch_label_fn(self):
-        """Deleted pitch_label_fn must stay deleted."""
+    def test_mlb_training_has_pitch_label_fn(self):
+        """pitch_label_fn reintroduced for pitch-level training pipeline."""
         from app.analytics.training.sports.mlb_training import MLBTrainingPipeline
 
-        assert not hasattr(MLBTrainingPipeline, "pitch_label_fn")
+        assert hasattr(MLBTrainingPipeline, "pitch_label_fn")
 
-    def test_mlb_training_has_no_batted_ball_label_fn(self):
-        """Deleted batted_ball_label_fn must stay deleted."""
+    def test_mlb_training_has_batted_ball_label_fn(self):
+        """batted_ball_label_fn reintroduced for batted ball training pipeline."""
         from app.analytics.training.sports.mlb_training import MLBTrainingPipeline
 
-        assert not hasattr(MLBTrainingPipeline, "batted_ball_label_fn")
+        assert hasattr(MLBTrainingPipeline, "batted_ball_label_fn")
 
     def test_mlb_training_has_no_run_expectancy_label_fn(self):
         """Deleted run_expectancy_label_fn must stay deleted."""

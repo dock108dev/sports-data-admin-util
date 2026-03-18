@@ -39,6 +39,14 @@ _SPORT_TRAINING: dict[tuple[str, str], tuple[str, str]] = {
         "app.analytics.training.sports.mlb_training",
         "MLBTrainingPipeline",
     ),
+    ("mlb", "pitch"): (
+        "app.analytics.training.sports.mlb_training",
+        "MLBTrainingPipeline",
+    ),
+    ("mlb", "batted_ball"): (
+        "app.analytics.training.sports.mlb_training",
+        "MLBTrainingPipeline",
+    ),
 }
 
 
@@ -154,6 +162,10 @@ class TrainingPipeline:
                 label_extractor = self._sport_pipeline.pa_label_fn
             elif self.model_type == "game":
                 label_extractor = self._sport_pipeline.game_label_fn
+            elif self.model_type == "pitch":
+                label_extractor = self._sport_pipeline.pitch_label_fn
+            elif self.model_type == "batted_ball":
+                label_extractor = self._sport_pipeline.batted_ball_label_fn
 
         X, y, names = self._dataset_builder.build(records, label_fn=label_extractor)
         self._feature_names = names
@@ -200,7 +212,7 @@ class TrainingPipeline:
         Returns:
             Dict of evaluation metrics.
         """
-        if self.model_type in ("plate_appearance", "game"):
+        if self.model_type in ("plate_appearance", "game", "pitch", "batted_ball"):
             result = self._evaluator.evaluate_classifier(model, X_test, y_test)
             # Add Brier score via ModelMetrics
             if hasattr(model, "predict_proba") and X_test and y_test:
@@ -359,6 +371,24 @@ class TrainingPipeline:
                 n_estimators=100,
                 max_depth=4,
                 random_state=self.random_state,
+            )
+
+        if self.model_type == "pitch":
+            from sklearn.ensemble import GradientBoostingClassifier
+            return GradientBoostingClassifier(
+                n_estimators=100,
+                max_depth=5,
+                random_state=self.random_state,
+                class_weight="balanced",
+            )
+
+        if self.model_type == "batted_ball":
+            from sklearn.ensemble import RandomForestClassifier
+            return RandomForestClassifier(
+                n_estimators=100,
+                max_depth=8,
+                random_state=self.random_state,
+                class_weight="balanced",
             )
 
         from sklearn.ensemble import GradientBoostingRegressor
