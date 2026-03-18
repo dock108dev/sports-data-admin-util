@@ -19,7 +19,13 @@ from app.tasks._task_infra import _complete_job_run, _start_job_run, _task_db
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="run_experiment_suite", bind=True, max_retries=0)
+@celery_app.task(
+    name="run_experiment_suite",
+    bind=True,
+    max_retries=0,
+    soft_time_limit=43200,  # 12 hours — experiments train many models sequentially
+    time_limit=43500,       # hard kill 5 min after soft
+)
 def run_experiment_suite(self, suite_id: int) -> dict:
     """Launch an experiment suite: train variants, replay, rank."""
     loop = asyncio.new_event_loop()
@@ -92,42 +98,45 @@ async def _run_suite(suite_id: int, celery_task_id: str | None = None) -> dict:
                     db.add(variant)
                 await db.commit()
 
-            # Train each variant sequentially
-            completed = 0
-            failed = 0
-
+            # Dispatch variant training as parallel Celery tasks
             async with sf() as db:
+                from sqlalchemy import select
                 suite = await db.get(AnalyticsExperimentSuite, suite_id)
-                variant_rows = list(suite.variants)
+                stmt = (
+                    select(AnalyticsExperimentVariant)
+                    .where(AnalyticsExperimentVariant.suite_id == suite_id)
+                    .order_by(AnalyticsExperimentVariant.variant_index)
+                )
+                result_rows = await db.execute(stmt)
+                variant_rows = list(result_rows.scalars().all())
+                suite_sport = suite.sport
+                suite_model_type = suite.model_type
 
+            # Create training jobs and dispatch to worker pool
+            variant_jobs: list[tuple[int, int, str]] = []  # (variant_id, job_id, celery_task_id)
+            dispatch_failures = 0
             for variant_row in variant_rows:
                 try:
-                    result = await _train_variant(sf, suite, variant_row)
-                    if "error" in result:
-                        failed += 1
-                    else:
-                        completed += 1
+                    v_id, job_id, task_id = await _dispatch_variant_training(
+                        sf, suite_sport, suite_model_type, variant_row,
+                    )
+                    variant_jobs.append((v_id, job_id, task_id))
                 except Exception as exc:
-                    logger.exception(
-                        "variant_failed",
+                    logger.warning(
+                        "variant_dispatch_failed",
                         extra={"variant_id": variant_row.id, "error": str(exc)},
                     )
-                    async with sf() as db:
-                        v = await db.get(AnalyticsExperimentVariant, variant_row.id)
-                        if v:
-                            v.status = "failed"
-                            v.error_message = str(exc)[:500]
-                            v.completed_at = datetime.now(UTC)
-                            await db.commit()
-                    failed += 1
+                    dispatch_failures += 1
 
-                # Update suite progress
-                async with sf() as db:
-                    s = await db.get(AnalyticsExperimentSuite, suite_id)
-                    if s:
-                        s.completed_variants = completed
-                        s.failed_variants = failed
-                        await db.commit()
+            logger.info(
+                "experiment_variants_dispatched",
+                extra={"suite_id": suite_id, "count": len(variant_jobs)},
+            )
+
+            # Poll until all variants are done — progress updated in DB inline
+            completed, failed = await _poll_variant_completion(
+                sf, suite_id, variant_jobs,
+            )
 
             # Build leaderboard
             leaderboard = await _build_leaderboard(sf, suite_id)
@@ -192,19 +201,22 @@ def _generate_variants(
     return variants
 
 
-async def _train_variant(
+async def _dispatch_variant_training(
     sf: Any,
-    suite: Any,
+    suite_sport: str,
+    suite_model_type: str,
     variant: Any,
-) -> dict:
-    """Train a single experiment variant."""
+) -> tuple[int, int, str]:
+    """Create a training job and dispatch it as a Celery task.
+
+    Returns (variant_id, job_id, celery_task_id).
+    """
     from app.db.analytics import AnalyticsExperimentVariant, AnalyticsTrainingJob
 
-    # Create training job
     async with sf() as db:
         job = AnalyticsTrainingJob(
-            sport=suite.sport,
-            model_type=suite.model_type,
+            sport=suite_sport,
+            model_type=suite_model_type,
             algorithm=variant.algorithm,
             feature_config_id=variant.feature_config_id,
             date_start=variant.training_date_start,
@@ -218,27 +230,119 @@ async def _train_variant(
         await db.refresh(job)
         job_id = job.id
 
-    # Run training inline (not dispatching to Celery — we're already in a task)
-    from app.tasks.training_tasks import _run_training
+    # Dispatch before marking variant as running — if dispatch fails,
+    # the variant stays pending and the job stays pending (no orphans).
+    from app.tasks.training_tasks import train_analytics_model
+    try:
+        task_result = train_analytics_model.apply_async(args=[job_id])
+        celery_task_id = task_result.id
+    except Exception as exc:
+        # Broker/serialization failure — mark both as failed
+        async with sf() as db:
+            j = await db.get(AnalyticsTrainingJob, job_id)
+            if j:
+                j.status = "failed"
+                j.error_message = f"Dispatch failed: {exc}"
+            v = await db.get(AnalyticsExperimentVariant, variant.id)
+            if v:
+                v.training_job_id = job_id
+                v.status = "failed"
+                v.error_message = f"Dispatch failed: {exc}"[:500]
+                v.completed_at = datetime.now(UTC)
+            await db.commit()
+        raise
 
-    result = await _run_training(job_id)
-
-    # Update variant with results
+    # Dispatch succeeded — link variant to job and store celery_task_id
     async with sf() as db:
+        j = await db.get(AnalyticsTrainingJob, job_id)
+        if j:
+            j.celery_task_id = celery_task_id
         v = await db.get(AnalyticsExperimentVariant, variant.id)
         if v:
             v.training_job_id = job_id
-            if "error" in result:
-                v.status = "failed"
-                v.error_message = result.get("error", "unknown")
-            else:
-                v.status = "completed"
-                v.model_id = result.get("model_id")
-                v.training_metrics = result.get("metrics")
-            v.completed_at = datetime.now(UTC)
+            v.status = "running"
+        await db.commit()
+
+    return variant.id, job_id, celery_task_id
+
+
+async def _poll_variant_completion(
+    sf: Any,
+    suite_id: int,
+    variant_jobs: list[tuple[int, int, str]],
+    *,
+    poll_interval: float = 10.0,
+) -> tuple[int, int]:
+    """Poll training jobs until all variants are complete.
+
+    Checks job status in DB every poll_interval seconds.
+    Returns (completed_count, failed_count).
+    """
+    from app.db.analytics import (
+        AnalyticsExperimentSuite,
+        AnalyticsExperimentVariant,
+        AnalyticsTrainingJob,
+    )
+
+    pending = {job_id: variant_id for variant_id, job_id, _ in variant_jobs}
+    completed = 0
+    failed = 0
+
+    while pending:
+        await asyncio.sleep(poll_interval)
+
+        async with sf() as db:
+            for job_id, variant_id in list(pending.items()):
+                job = await db.get(AnalyticsTrainingJob, job_id)
+
+                if job is None:
+                    # Job row deleted or corrupted — mark variant failed, remove from pending
+                    v = await db.get(AnalyticsExperimentVariant, variant_id)
+                    if v and v.status not in ("completed", "failed"):
+                        v.status = "failed"
+                        v.error_message = f"Training job {job_id} not found"
+                        v.completed_at = datetime.now(UTC)
+                        failed += 1
+                    del pending[job_id]
+                    continue
+
+                if job.status in ("pending", "queued", "running"):
+                    continue
+
+                # Job finished — update variant
+                v = await db.get(AnalyticsExperimentVariant, variant_id)
+                if v and v.status not in ("completed", "failed"):
+                    if job.status == "completed":
+                        v.status = "completed"
+                        v.model_id = job.model_id
+                        v.training_metrics = job.metrics
+                        completed += 1
+                    else:
+                        v.status = "failed"
+                        v.error_message = (job.error_message or "unknown")[:500]
+                        failed += 1
+                    v.completed_at = datetime.now(UTC)
+
+                del pending[job_id]
+
+            # Update suite progress
+            s = await db.get(AnalyticsExperimentSuite, suite_id)
+            if s:
+                s.completed_variants = completed
+                s.failed_variants = failed
             await db.commit()
 
-    return result
+        logger.info(
+            "experiment_poll",
+            extra={
+                "suite_id": suite_id,
+                "completed": completed,
+                "failed": failed,
+                "pending": len(pending),
+            },
+        )
+
+    return completed, failed
 
 
 async def _build_leaderboard(
@@ -322,7 +426,7 @@ async def _generate_feature_loadouts(
     from app.db.analytics import AnalyticsFeatureConfig
 
     features = feature_grid.get("features", [])
-    max_combos = min(feature_grid.get("max_combos", 100), 100)
+    max_combos = min(feature_grid.get("max_combos", 100), 1000)
 
     if not features:
         return []
@@ -362,12 +466,17 @@ async def _generate_feature_loadouts(
     rng = random.Random(suite.id)  # deterministic per suite
     combos: list[list[dict]] = []
 
+    def _mid(f: dict) -> float:
+        return round((f["weight_min"] + f["weight_max"]) / 2, 2)
+
+    def _rand_weight(f: dict) -> float:
+        return round(rng.uniform(f["weight_min"], f["weight_max"]), 2)
+
     # 1. Baseline: all features on at midpoint weights
-    baseline = [
-        {"name": f["name"], "enabled": True, "weight": round((f["weight_min"] + f["weight_max"]) / 2, 2)}
+    combos.append([
+        {"name": f["name"], "enabled": True, "weight": _mid(f)}
         for f in variable
-    ]
-    combos.append(baseline)
+    ])
 
     # 2. Ablation: drop each variable feature one at a time
     for i in range(len(variable)):
@@ -376,27 +485,32 @@ async def _generate_feature_loadouts(
             if i == j:
                 ablation.append({"name": f["name"], "enabled": False, "weight": 0})
             else:
-                ablation.append({"name": f["name"], "enabled": True, "weight": round((f["weight_min"] + f["weight_max"]) / 2, 2)})
+                ablation.append({"name": f["name"], "enabled": True, "weight": _mid(f)})
         combos.append(ablation)
 
-    # 3. Boundary: all min, all max
-    combos.append([
-        {"name": f["name"], "enabled": True, "weight": f["weight_min"]}
-        for f in variable
-    ])
-    combos.append([
-        {"name": f["name"], "enabled": True, "weight": f["weight_max"]}
-        for f in variable
-    ])
+    # 3. Solo boost: one feature at max while others at midpoint
+    for i, fi in enumerate(variable):
+        if fi["weight_min"] == fi["weight_max"]:
+            continue  # no weight range to boost
+        solo = []
+        for j, f in enumerate(variable):
+            if i == j:
+                solo.append({"name": f["name"], "enabled": True, "weight": f["weight_max"]})
+            else:
+                solo.append({"name": f["name"], "enabled": True, "weight": _mid(f)})
+        combos.append(solo)
 
-    # 4. Random samples to fill remaining budget
+    # 4. Random samples — each feature gets an independent random weight
     budget = max_combos - len(combos)
     for _ in range(max(0, budget)):
         sample = []
         for f in variable:
-            # 20% chance of disabling a variable feature
-            enabled = rng.random() > 0.2
-            weight = round(rng.uniform(f["weight_min"], f["weight_max"]), 2) if enabled else 0
+            if f.get("vary_enabled"):
+                # 15% chance of disabling when vary_enabled is on
+                enabled = rng.random() > 0.15
+            else:
+                enabled = True
+            weight = _rand_weight(f) if enabled else 0
             sample.append({"name": f["name"], "enabled": enabled, "weight": weight})
         combos.append(sample)
 

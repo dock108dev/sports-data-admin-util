@@ -2,6 +2,7 @@
 
 POST /auth/signup            — create a new user account, returns JWT
 POST /auth/login             — authenticate with email/password, returns JWT
+POST /auth/refresh           — exchange a valid JWT for a fresh one
 POST /auth/forgot-password   — request a password reset email
 POST /auth/reset-password    — reset password using a valid token
 POST /auth/magic-link        — request a magic-link login email
@@ -54,6 +55,7 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr = Field(..., description="User email address")
     password: str = Field(..., description="Password")
+    remember_me: bool = Field(default=False, description="Issue a long-lived token (30 days)")
 
 
 class TokenResponse(BaseModel):
@@ -202,9 +204,41 @@ async def login(
             detail="Account is disabled",
         )
 
-    token = create_access_token(user.id, user.role)
-    logger.info("user_login", extra={"user_id": user.id, "email": user.email})
+    token = create_access_token(user.id, user.role, remember_me=body.remember_me)
+    logger.info("user_login", extra={"user_id": user.id, "email": user.email, "remember_me": body.remember_me})
 
+    return TokenResponse(access_token=token, role=user.role)
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    summary="Refresh an access token",
+    description=(
+        "Accepts a valid (non-expired) JWT via the Authorization header "
+        "and returns a fresh token with a new expiration. Preserves the "
+        "TTL tier — remember-me tokens produce new remember-me tokens."
+    ),
+)
+async def refresh_token(
+    request: Request,
+    _role: str = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    user_id: int | None = getattr(request.state, "user_id", None)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or disabled")
+
+    # Preserve TTL tier — resolve_role stashes the rm claim on request.state
+    remember_me = getattr(request.state, "remember_me", False)
+    token = create_access_token(user.id, user.role, remember_me=remember_me)
+
+    logger.info("token_refreshed", extra={"user_id": user.id, "remember_me": remember_me})
     return TokenResponse(access_token=token, role=user.role)
 
 

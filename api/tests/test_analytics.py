@@ -2834,6 +2834,7 @@ class TestModelInferenceEngine:
             n_estimators=10, max_depth=3, random_state=42,
         )
         sklearn_model.fit(X, y)
+        sklearn_model._training_feature_names = names
         artifact_path = str(tmp_path / "test_pa.pkl")
         joblib.dump(sklearn_model, artifact_path)
 
@@ -2868,10 +2869,11 @@ class TestModelInferenceEngine:
         records = _make_pa_records(60)
         mlb_train = MLBTrainingPipeline()
         ds_builder = DatasetBuilder("mlb", "plate_appearance")
-        X, y, _ = ds_builder.build(records, label_fn=mlb_train.pa_label_fn)
+        X, y, names = ds_builder.build(records, label_fn=mlb_train.pa_label_fn)
 
         sklearn_model = GradientBoostingClassifier(n_estimators=5, random_state=42)
         sklearn_model.fit(X, y)
+        sklearn_model._training_feature_names = names
         path = str(tmp_path / "cache_test.pkl")
         joblib.dump(sklearn_model, path)
 
@@ -3080,30 +3082,12 @@ class TestProbabilityResolver:
         provider2 = resolver2.resolve_provider("mlb", "plate_appearance")
         assert provider2.provider_name == "ml"
 
-    def test_fallback_on_failure(self) -> None:
-        """ML failure should fall back to rule_based."""
+    def test_ml_failure_raises(self) -> None:
+        """ML failure should raise — no silent fallback."""
         resolver = ProbabilityResolver(config={
             "probability_mode": "ml",
-            "fallback_mode": "rule_based",
-            "strict_mode": False,
         })
-        # Force ML failure by using unsupported sport
-        # ML provider will return empty probs -> raise RuntimeError -> fallback
-        result = resolver.get_probabilities_with_meta(
-            "unknown_sport", "plate_appearance", {},
-        )
-        meta = result.get("_meta", {})
-        assert meta.get("fallback_used") is True
-        assert meta.get("probability_source") == "rule_based"
-
-    def test_strict_mode_raises(self) -> None:
-        resolver = ProbabilityResolver(config={
-            "probability_mode": "ml",
-            "fallback_mode": "rule_based",
-            "strict_mode": True,
-        })
-        # ML for unsupported sport should raise (no model available)
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="ML probability provider failed"):
             resolver.get_probabilities("unknown_sport", "plate_appearance", {})
 
     def test_metadata_included(self) -> None:

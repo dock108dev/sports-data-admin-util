@@ -167,6 +167,48 @@ def _get_pre_play_margin(
     return None
 
 
+def detect_sustained_lead(
+    blocks: list[dict[str, Any]],
+) -> tuple[bool, int, str | None]:
+    """Detect if one team held a comfortable lead for most of the game.
+
+    A sustained lead = the leading team's margin never dropped below 5
+    after halftime (second half of blocks). This means there was no real
+    threat from the trailing team, even if the margin fluctuated by 1-3 pts.
+
+    Returns:
+        (is_sustained, min_margin_second_half, leading_side)
+        leading_side is "home" or "away" or None.
+    """
+    if len(blocks) < 3:
+        return False, 0, None
+
+    # Look at the second half of blocks (roughly halftime onward)
+    half_idx = len(blocks) // 2
+    second_half = blocks[half_idx:]
+
+    # Track the minimum margin and who leads
+    min_margin = 999
+    lead_sides: set[str] = set()
+    for block in second_half:
+        for score_key in ("score_before", "score_after"):
+            s = block.get(score_key, [0, 0])
+            margin = s[0] - s[1]  # positive = home leads
+            abs_margin = abs(margin)
+            if abs_margin < min_margin:
+                min_margin = abs_margin
+            if margin > 0:
+                lead_sides.add("home")
+            elif margin < 0:
+                lead_sides.add("away")
+
+    # Sustained lead: one team always ahead by 5+ in second half
+    if min_margin >= 5 and len(lead_sides) == 1:
+        return True, min_margin, lead_sides.pop()
+
+    return False, min_margin, None
+
+
 def _format_lead_line(
     score_before: list[int],
     score_after: list[int],
