@@ -130,6 +130,11 @@ class SimulationRunner:
         if sim_results and "home_events" in sim_results[0]:
             summary["event_summary"] = self._aggregate_events(sim_results)
 
+        # Add average pitches per game if results contain pitch counts
+        if sim_results and "total_pitches" in sim_results[0]:
+            pitch_total = sum(r.get("total_pitches", 0) for r in sim_results)
+            summary["average_pitches_per_game"] = round(pitch_total / n, 1)
+
         return summary
 
     def _aggregate_events(

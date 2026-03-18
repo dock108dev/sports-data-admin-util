@@ -68,9 +68,20 @@ async def load_training_data_from_db(
             date_start, date_end, rolling_window=rolling_window, db=db
         )
 
+    if model_type == "pitch":
+        return await _load_mlb_pitch_training_data(
+            date_start, date_end, rolling_window=rolling_window, db=db
+        )
+
+    if model_type == "batted_ball":
+        return await _load_mlb_batted_ball_training_data(
+            date_start, date_end, rolling_window=rolling_window, db=db
+        )
+
     raise ValueError(
         f"Unsupported model_type: {model_type}. "
-        f"Supported types: 'game', 'plate_appearance', 'player_plate_appearance'."
+        f"Supported types: 'game', 'plate_appearance', 'player_plate_appearance', "
+        f"'pitch', 'batted_ball'."
     )
 
 
@@ -243,3 +254,63 @@ async def _load_mlb_game_training_data_impl(
         },
     )
     return records
+
+
+async def _load_mlb_pitch_training_data(
+    date_start: str | None,
+    date_end: str | None,
+    *,
+    rolling_window: int = 30,
+    db: AsyncSession | None = None,
+) -> list[dict]:
+    """Load MLB pitch-outcome training data using MLBPitchDatasetBuilder."""
+    from app.analytics.datasets.mlb_pitch_dataset import MLBPitchDatasetBuilder
+
+    if db is None:
+        from app.db import get_async_session
+
+        async with get_async_session() as db:
+            builder = MLBPitchDatasetBuilder(db)
+            return await builder.build(
+                date_start=date_start,
+                date_end=date_end,
+                rolling_window=rolling_window,
+            )
+
+    builder = MLBPitchDatasetBuilder(db)
+    return await builder.build(
+        date_start=date_start,
+        date_end=date_end,
+        rolling_window=rolling_window,
+    )
+
+
+async def _load_mlb_batted_ball_training_data(
+    date_start: str | None,
+    date_end: str | None,
+    *,
+    rolling_window: int = 30,
+    db: AsyncSession | None = None,
+) -> list[dict]:
+    """Load MLB batted ball training data using MLBBattedBallDatasetBuilder."""
+    from app.analytics.datasets.mlb_batted_ball_dataset import (
+        MLBBattedBallDatasetBuilder,
+    )
+
+    if db is None:
+        from app.db import get_async_session
+
+        async with get_async_session() as db:
+            builder = MLBBattedBallDatasetBuilder(db)
+            return await builder.build(
+                date_start=date_start,
+                date_end=date_end,
+                rolling_window=rolling_window,
+            )
+
+    builder = MLBBattedBallDatasetBuilder(db)
+    return await builder.build(
+        date_start=date_start,
+        date_end=date_end,
+        rolling_window=rolling_window,
+    )

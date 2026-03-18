@@ -4029,17 +4029,17 @@ class TestSSOTNoLegacyFiles:
 class TestSSOTMLBConstants:
     """Assert MLB constants SSOT is used and legacy duplicates are gone."""
 
-    def test_mlb_training_has_no_pitch_label_fn(self):
-        """Deleted pitch_label_fn must stay deleted."""
+    def test_mlb_training_has_pitch_label_fn(self):
+        """pitch_label_fn reintroduced for pitch-level training pipeline."""
         from app.analytics.training.sports.mlb_training import MLBTrainingPipeline
 
-        assert not hasattr(MLBTrainingPipeline, "pitch_label_fn")
+        assert hasattr(MLBTrainingPipeline, "pitch_label_fn")
 
-    def test_mlb_training_has_no_batted_ball_label_fn(self):
-        """Deleted batted_ball_label_fn must stay deleted."""
+    def test_mlb_training_has_batted_ball_label_fn(self):
+        """batted_ball_label_fn reintroduced for batted ball training pipeline."""
         from app.analytics.training.sports.mlb_training import MLBTrainingPipeline
 
-        assert not hasattr(MLBTrainingPipeline, "batted_ball_label_fn")
+        assert hasattr(MLBTrainingPipeline, "batted_ball_label_fn")
 
     def test_mlb_training_has_no_run_expectancy_label_fn(self):
         """Deleted run_expectancy_label_fn must stay deleted."""
@@ -4084,6 +4084,73 @@ class TestSSOTMLBConstants:
 
         source = inspect.getsource(mlb_features)
         assert "from app.analytics.sports.mlb.constants import FEATURE_BASELINES" in source
+
+
+class TestSSOTPitchSimulator:
+    """Assert pitch simulator uses SSOT patterns with no dead code."""
+
+    def test_no_run_expectancy_model_import(self):
+        """MLBRunExpectancyModel must not be imported — it was never used."""
+        import inspect
+
+        from app.analytics.simulation.mlb import pitch_simulator
+
+        source = inspect.getsource(pitch_simulator)
+        assert "MLBRunExpectancyModel" not in source, (
+            "pitch_simulator still imports MLBRunExpectancyModel — "
+            "it was never called and is dead code"
+        )
+
+    def test_no_dead_simulate_half_inning_wrapper(self):
+        """The old _simulate_half_inning wrapper must not exist."""
+        from app.analytics.simulation.mlb.pitch_simulator import (
+            PitchLevelGameSimulator,
+        )
+
+        assert not hasattr(PitchLevelGameSimulator, "_simulate_half_inning"), (
+            "_simulate_half_inning is dead code — "
+            "_simulate_half_inning_with_events is the SSOT"
+        )
+
+    def test_simulation_engine_no_rerun_sampling(self):
+        """SimulationEngine must not re-run sims just for pitch counts."""
+        import inspect
+
+        from app.analytics.core import simulation_engine
+
+        source = inspect.getsource(simulation_engine)
+        assert "sample_n = min(iterations" not in source, (
+            "simulation_engine still has the wasteful re-run sampling loop — "
+            "pitch counts are aggregated by SimulationRunner"
+        )
+
+    def test_dataset_builders_use_profile_mixin(self):
+        """New dataset builders must inherit from ProfileMixin."""
+        from app.analytics.datasets._profile_mixin import ProfileMixin
+        from app.analytics.datasets.mlb_batted_ball_dataset import (
+            MLBBattedBallDatasetBuilder,
+        )
+        from app.analytics.datasets.mlb_pitch_dataset import (
+            MLBPitchDatasetBuilder,
+        )
+
+        assert issubclass(MLBPitchDatasetBuilder, ProfileMixin)
+        assert issubclass(MLBBattedBallDatasetBuilder, ProfileMixin)
+
+    def test_pitch_simulator_returns_event_diagnostics(self):
+        """PitchLevelGameSimulator must return home_events/away_events."""
+        import random
+
+        from app.analytics.simulation.mlb.pitch_simulator import (
+            PitchLevelGameSimulator,
+        )
+
+        sim = PitchLevelGameSimulator()
+        result = sim.simulate_game({}, rng=random.Random(42))
+        assert "home_events" in result
+        assert "away_events" in result
+        assert "innings_played" in result
+        assert "pa_total" in result["home_events"]
 
 
 # ---------------------------------------------------------------------------
