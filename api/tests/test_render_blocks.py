@@ -1482,3 +1482,107 @@ class TestDetectGameWinningPlay:
         assert result is not None
         assert "GAME-WINNING" in result
         assert "Jaylen Brown" in result
+
+
+class TestSustainedLeadInPrompt:
+    """Tests for sustained-lead guidance in the block prompt."""
+
+    def _make_blocks(self, second_half_scores):
+        """Build a 4-block game with given second-half score pairs."""
+        blocks = [
+            {
+                "block_index": 0,
+                "role": SemanticRole.SETUP.value,
+                "score_before": [0, 0],
+                "score_after": [20, 15],
+                "key_play_ids": [],
+            },
+            {
+                "block_index": 1,
+                "role": SemanticRole.MOMENTUM_SHIFT.value,
+                "score_before": [20, 15],
+                "score_after": [40, 30],
+                "key_play_ids": [],
+            },
+        ]
+        for i, (sb, sa) in enumerate(second_half_scores):
+            blocks.append({
+                "block_index": i + 2,
+                "role": SemanticRole.RESPONSE.value if i == 0 else SemanticRole.RESOLUTION.value,
+                "score_before": list(sb),
+                "score_after": list(sa),
+                "key_play_ids": [],
+            })
+        return blocks
+
+    def test_sustained_lead_appears(self) -> None:
+        """Sustained-lead guidance appears when home leads by 8+ in second half."""
+        blocks = self._make_blocks([
+            ((40, 30), (60, 50)),   # margin: 10
+            ((60, 50), (80, 72)),   # margin: 8
+        ])
+        game_context = {
+            "home_team_name": "Purdue",
+            "away_team_name": "Michigan",
+            "sport": "NCAAB",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+
+        assert "SUSTAINED LEAD" in prompt
+        assert "Purdue" in prompt
+        assert "Do NOT frame minor margin changes" in prompt
+
+    def test_sustained_lead_suppressed_for_close_game(self) -> None:
+        """No sustained-lead guidance when game is close (max margin <= 7)."""
+        blocks = self._make_blocks([
+            ((20, 15), (25, 20)),   # margin: 5
+            ((25, 20), (30, 26)),   # margin: 4
+        ])
+        # Override first half to be close too
+        blocks[0]["score_after"] = [10, 7]
+        blocks[1]["score_before"] = [10, 7]
+        blocks[1]["score_after"] = [20, 15]
+
+        game_context = {
+            "home_team_name": "Purdue",
+            "away_team_name": "Michigan",
+            "sport": "NCAAB",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+
+        assert "SUSTAINED LEAD" not in prompt
+
+    def test_sustained_lead_suppressed_when_lead_changes(self) -> None:
+        """No sustained-lead guidance when lead swaps in second half."""
+        blocks = self._make_blocks([
+            ((40, 30), (50, 55)),   # away takes lead
+            ((50, 55), (60, 58)),   # home retakes
+        ])
+        game_context = {
+            "home_team_name": "Purdue",
+            "away_team_name": "Michigan",
+            "sport": "NCAAB",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+
+        assert "SUSTAINED LEAD" not in prompt
+
+    def test_sustained_lead_shows_correct_leader_away(self) -> None:
+        """Sustained-lead guidance shows away team name when away leads."""
+        blocks = self._make_blocks([
+            ((30, 40), (50, 60)),   # away leads by 10
+            ((50, 60), (65, 80)),   # away leads by 15
+        ])
+        blocks[0]["score_after"] = [15, 25]
+        blocks[1]["score_before"] = [15, 25]
+        blocks[1]["score_after"] = [30, 40]
+
+        game_context = {
+            "home_team_name": "Purdue",
+            "away_team_name": "Michigan",
+            "sport": "NCAAB",
+        }
+        prompt = build_block_prompt(blocks, game_context, [])
+
+        assert "SUSTAINED LEAD" in prompt
+        assert "Michigan" in prompt

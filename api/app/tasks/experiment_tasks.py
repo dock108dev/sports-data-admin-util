@@ -114,11 +114,19 @@ async def _run_suite(suite_id: int, celery_task_id: str | None = None) -> dict:
 
             # Create training jobs and dispatch to worker pool
             variant_jobs: list[tuple[int, int, str]] = []  # (variant_id, job_id, celery_task_id)
+            dispatch_failures = 0
             for variant_row in variant_rows:
-                job_id, task_id = await _dispatch_variant_training(
-                    sf, suite_sport, suite_model_type, variant_row,
-                )
-                variant_jobs.append((variant_row.id, job_id, task_id))
+                try:
+                    v_id, job_id, task_id = await _dispatch_variant_training(
+                        sf, suite_sport, suite_model_type, variant_row,
+                    )
+                    variant_jobs.append((v_id, job_id, task_id))
+                except Exception as exc:
+                    logger.warning(
+                        "variant_dispatch_failed",
+                        extra={"variant_id": variant_row.id, "error": str(exc)},
+                    )
+                    dispatch_failures += 1
 
             logger.info(
                 "experiment_variants_dispatched",
@@ -198,10 +206,10 @@ async def _dispatch_variant_training(
     suite_sport: str,
     suite_model_type: str,
     variant: Any,
-) -> tuple[int, str]:
+) -> tuple[int, int, str]:
     """Create a training job and dispatch it as a Celery task.
 
-    Returns (job_id, celery_task_id).
+    Returns (variant_id, job_id, celery_task_id).
     """
     from app.db.analytics import AnalyticsExperimentVariant, AnalyticsTrainingJob
 
@@ -222,18 +230,40 @@ async def _dispatch_variant_training(
         await db.refresh(job)
         job_id = job.id
 
-        # Link variant to job
+    # Dispatch before marking variant as running — if dispatch fails,
+    # the variant stays pending and the job stays pending (no orphans).
+    from app.tasks.training_tasks import train_analytics_model
+    try:
+        task_result = train_analytics_model.apply_async(args=[job_id])
+        celery_task_id = task_result.id
+    except Exception as exc:
+        # Broker/serialization failure — mark both as failed
+        async with sf() as db:
+            j = await db.get(AnalyticsTrainingJob, job_id)
+            if j:
+                j.status = "failed"
+                j.error_message = f"Dispatch failed: {exc}"
+            v = await db.get(AnalyticsExperimentVariant, variant.id)
+            if v:
+                v.training_job_id = job_id
+                v.status = "failed"
+                v.error_message = f"Dispatch failed: {exc}"[:500]
+                v.completed_at = datetime.now(UTC)
+            await db.commit()
+        raise
+
+    # Dispatch succeeded — link variant to job and store celery_task_id
+    async with sf() as db:
+        j = await db.get(AnalyticsTrainingJob, job_id)
+        if j:
+            j.celery_task_id = celery_task_id
         v = await db.get(AnalyticsExperimentVariant, variant.id)
         if v:
             v.training_job_id = job_id
             v.status = "running"
-            await db.commit()
+        await db.commit()
 
-    # Dispatch as a separate Celery task — runs in the worker pool
-    from app.tasks.training_tasks import train_analytics_model
-    task_result = train_analytics_model.apply_async(args=[job_id])
-
-    return job_id, task_result.id
+    return variant.id, job_id, celery_task_id
 
 
 async def _poll_variant_completion(
@@ -241,7 +271,6 @@ async def _poll_variant_completion(
     suite_id: int,
     variant_jobs: list[tuple[int, int, str]],
     *,
-    on_progress: Any = None,
     poll_interval: float = 10.0,
 ) -> tuple[int, int]:
     """Poll training jobs until all variants are complete.
@@ -265,7 +294,19 @@ async def _poll_variant_completion(
         async with sf() as db:
             for job_id, variant_id in list(pending.items()):
                 job = await db.get(AnalyticsTrainingJob, job_id)
-                if job is None or job.status in ("pending", "queued", "running"):
+
+                if job is None:
+                    # Job row deleted or corrupted — mark variant failed, remove from pending
+                    v = await db.get(AnalyticsExperimentVariant, variant_id)
+                    if v and v.status not in ("completed", "failed"):
+                        v.status = "failed"
+                        v.error_message = f"Training job {job_id} not found"
+                        v.completed_at = datetime.now(UTC)
+                        failed += 1
+                    del pending[job_id]
+                    continue
+
+                if job.status in ("pending", "queued", "running"):
                     continue
 
                 # Job finished — update variant

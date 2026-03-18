@@ -234,19 +234,9 @@ async def refresh_token(
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or disabled")
 
-    # Preserve TTL tier from the original token
-    from app.dependencies.roles import decode_access_token
-    from fastapi.security import HTTPAuthorizationCredentials
-
-    credentials = request.headers.get("authorization", "")
-    raw_token = credentials.replace("Bearer ", "").replace("bearer ", "")
-    try:
-        payload = decode_access_token(raw_token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    remember_me = payload.get("rm", False)
-    token = create_access_token(user.id, user.role, remember_me=bool(remember_me))
+    # Preserve TTL tier — resolve_role stashes the rm claim on request.state
+    remember_me = getattr(request.state, "remember_me", False)
+    token = create_access_token(user.id, user.role, remember_me=remember_me)
 
     logger.info("token_refreshed", extra={"user_id": user.id, "remember_me": remember_me})
     return TokenResponse(access_token=token, role=user.role)

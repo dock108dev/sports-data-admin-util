@@ -175,6 +175,7 @@ async def resolve_role(
             detail="Invalid token",
         )
     request.state.user_role = role
+    request.state.remember_me = bool(payload.get("rm"))
     return role
 
 

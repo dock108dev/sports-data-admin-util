@@ -203,9 +203,6 @@ def populate_nhl_game_ids(
                 "nhl_game_id_no_match",
                 game_id=game_id,
                 db_key=f"{home_abbr}v{away_abbr}@{game_day}",
-                api_keys_for_date=[
-                    f"{k[0]}v{k[1]}" for k in nhl_lookup if k[2] == game_day
-                ],
             )
 
         if nhl_game_id:
