@@ -286,7 +286,10 @@ function ExperimentBuilder({ onSubmitted }: { onSubmitted: () => void }) {
                 style={{ fontSize: "0.75rem", padding: "2px 4px" }}
                 defaultValue=""
                 onChange={(e) => {
-                  const id = parseInt(e.target.value);
+                  const raw = e.target.value;
+                  if (!raw) return;
+                  const id = parseInt(raw, 10);
+                  if (Number.isNaN(id)) return;
                   const loadout = loadouts.find((l) => l.id === id);
                   if (loadout) applyLoadout(loadout);
                   e.target.value = "";
@@ -304,7 +307,10 @@ function ExperimentBuilder({ onSubmitted }: { onSubmitted: () => void }) {
             <input
               type="number"
               value={maxCombos}
-              onChange={(e) => setMaxCombos(Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                setMaxCombos(Number.isNaN(n) ? 1 : Math.max(1, Math.min(1000, n)));
+              }}
               min={1}
               max={1000}
               style={{ width: "60px", padding: "2px 4px", fontSize: "0.8rem" }}
@@ -376,7 +382,10 @@ function ExperimentBuilder({ onSubmitted }: { onSubmitted: () => void }) {
                         <input
                           type="number"
                           value={f.weight_min}
-                          onChange={(e) => updateFeature(f.name, { weight_min: parseFloat(e.target.value) || 0 })}
+                          onChange={(e) => {
+                            const n = parseFloat(e.target.value);
+                            updateFeature(f.name, { weight_min: Number.isNaN(n) ? 0 : n });
+                          }}
                           disabled={!f.enabled}
                           min={0}
                           max={3}
@@ -387,7 +396,10 @@ function ExperimentBuilder({ onSubmitted }: { onSubmitted: () => void }) {
                         <input
                           type="number"
                           value={f.weight_max}
-                          onChange={(e) => updateFeature(f.name, { weight_max: parseFloat(e.target.value) || 0 })}
+                          onChange={(e) => {
+                            const n = parseFloat(e.target.value);
+                            updateFeature(f.name, { weight_max: Number.isNaN(n) ? 0 : n });
+                          }}
                           disabled={!f.enabled}
                           min={0}
                           max={3}

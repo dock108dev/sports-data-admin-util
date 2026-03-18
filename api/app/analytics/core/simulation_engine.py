@@ -106,7 +106,9 @@ class SimulationEngine:
 
         # Pitch-level simulation uses a different simulator entirely
         if probability_mode == "pitch_level" and self.sport == "mlb":
-            return self._run_pitch_level(context, iterations, seed)
+            return self._run_pitch_level(
+                context, iterations, seed, keep_results=keep_results,
+            )
 
         if probability_mode in ("ml", "ensemble"):
             context, prob_meta = self._apply_probability_resolver(
@@ -143,6 +145,8 @@ class SimulationEngine:
         game_context: dict[str, Any],
         iterations: int,
         seed: int | None,
+        *,
+        keep_results: bool = False,
     ) -> dict[str, Any]:
         """Run pitch-level simulation using PitchLevelGameSimulator.
 
@@ -185,17 +189,9 @@ class SimulationEngine:
         result = runner.run_simulations(
             sim, context,
             iterations=iterations, seed=seed,
-            keep_results=True,
+            keep_results=keep_results,
         )
         result["probability_source"] = "pitch_level"
-
-        # Compute average pitches per game from raw results
-        raw = result.pop("raw_results", [])
-        if raw:
-            pitch_total = sum(r.get("total_pitches", 0) for r in raw)
-            result["average_pitches_per_game"] = round(
-                pitch_total / len(raw), 1,
-            )
 
         return result
 
@@ -379,6 +375,9 @@ def _profile_to_pitch_features(
 def _load_pitch_models() -> tuple[Any, Any]:
     """Attempt to load trained pitch and batted ball models.
 
+    Uses ``BaseModel.load()`` so the standard joblib→pickle fallback
+    and ``_loaded`` flag are set correctly.
+
     Returns (pitch_model, batted_ball_model) — either may be None
     if no trained model is available.
     """
@@ -390,24 +389,20 @@ def _load_pitch_models() -> tuple[Any, Any]:
 
         pitch_entry = registry.get_active_model("mlb", "pitch")
         if pitch_entry:
-            import joblib
-            pitch_model_raw = joblib.load(pitch_entry["artifact_path"])
             from app.analytics.models.sports.mlb.pitch_model import (
                 MLBPitchOutcomeModel,
             )
             pm = MLBPitchOutcomeModel()
-            pm._model = pitch_model_raw
+            pm.load(pitch_entry["artifact_path"])
             pitch_model = pm
 
         bb_entry = registry.get_active_model("mlb", "batted_ball")
         if bb_entry:
-            import joblib
-            bb_model_raw = joblib.load(bb_entry["artifact_path"])
             from app.analytics.models.sports.mlb.batted_ball_model import (
                 MLBBattedBallModel,
             )
             bbm = MLBBattedBallModel()
-            bbm._model = bb_model_raw
+            bbm.load(bb_entry["artifact_path"])
             bb_model = bbm
     except Exception:
         logger.debug("pitch_models_load_skipped", exc_info=True)

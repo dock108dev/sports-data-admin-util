@@ -124,7 +124,7 @@ class MLBPADatasetBuilder(ProfileMixin):
         if include_profiles:
             batter_history, pitcher_history, team_history = (
                 await self._load_profile_histories(
-                    game_ids, dt_end, rolling_window
+                    dt_start, dt_end, rolling_window
                 )
             )
 
@@ -314,7 +314,7 @@ class MLBPADatasetBuilder(ProfileMixin):
 
     async def _load_profile_histories(
         self,
-        game_ids: list[int],
+        dt_start: datetime | None,
         dt_end: datetime | None,
         rolling_window: int,
     ) -> tuple[
@@ -322,68 +322,29 @@ class MLBPADatasetBuilder(ProfileMixin):
         dict[str, list[tuple[str, Any]]],
         dict[int, list[tuple[str, Any]]],
     ]:
-        """Pre-load all batter, pitcher, and team history for profile assembly."""
+        """Override: also loads boxscore batting history for slash-line stats."""
+        from datetime import timedelta
+
         from sqlalchemy import select
 
-        from app.db.mlb_advanced import (
-            MLBGameAdvancedStats,
-            MLBPitcherGameStats,
-            MLBPlayerAdvancedStats,
-        )
+        from app.analytics.datasets._profile_mixin import _CALENDAR_DAYS_PER_GAME
         from app.db.sports import SportsGame
+
+        # Delegate batter/pitcher/team loading to the base mixin
+        batter_history, pitcher_history, team_history = (
+            await super()._load_profile_histories(dt_start, dt_end, rolling_window)
+        )
 
         db = self._db
 
-        # Batter history from MLBPlayerAdvancedStats
-        batter_stmt = (
-            select(MLBPlayerAdvancedStats, SportsGame.game_date)
-            .join(SportsGame, SportsGame.id == MLBPlayerAdvancedStats.game_id)
-            .where(SportsGame.status.in_(["final", "archived"]))
-            .order_by(SportsGame.game_date.asc())
-        )
-        if dt_end:
-            batter_stmt = batter_stmt.where(SportsGame.game_date <= dt_end)
-        batter_result = await db.execute(batter_stmt)
-
-        batter_history: dict[str, list[tuple[str, Any]]] = defaultdict(list)
-        for stats_row, game_date in batter_result:
-            batter_history[stats_row.player_external_ref].append(
-                (str(game_date), stats_row)
+        # Compute the same date floor the base mixin uses
+        dt_floor = None
+        if dt_start:
+            dt_floor = dt_start - timedelta(
+                days=rolling_window * _CALENDAR_DAYS_PER_GAME,
             )
 
-        # Pitcher history from MLBPitcherGameStats
-        pitcher_stmt = (
-            select(MLBPitcherGameStats, SportsGame.game_date)
-            .join(SportsGame, SportsGame.id == MLBPitcherGameStats.game_id)
-            .where(SportsGame.status.in_(["final", "archived"]))
-            .order_by(SportsGame.game_date.asc())
-        )
-        if dt_end:
-            pitcher_stmt = pitcher_stmt.where(SportsGame.game_date <= dt_end)
-        pitcher_result = await db.execute(pitcher_stmt)
-
-        pitcher_history: dict[str, list[tuple[str, Any]]] = defaultdict(list)
-        for stats_row, game_date in pitcher_result:
-            pitcher_history[stats_row.player_external_ref].append(
-                (str(game_date), stats_row)
-            )
-
-        # Team history for fallback pitcher profiles
-        team_stmt = (
-            select(MLBGameAdvancedStats, SportsGame.game_date)
-            .join(SportsGame, SportsGame.id == MLBGameAdvancedStats.game_id)
-            .where(SportsGame.status.in_(["final", "archived"]))
-            .order_by(SportsGame.game_date.asc())
-        )
-        if dt_end:
-            team_stmt = team_stmt.where(SportsGame.game_date <= dt_end)
-        team_result = await db.execute(team_stmt)
-
-        team_history: dict[int, list[tuple[str, Any]]] = defaultdict(list)
-        for stats_row, game_date in team_result:
-            team_history[stats_row.team_id].append((str(game_date), stats_row))
-
-        # Batter boxscore history from SportsPlayerBoxscore for standard batting stats
+        # Batter boxscore history from SportsPlayerBoxscore
         from app.db.sports import SportsPlayerBoxscore
 
         box_stmt = (
@@ -395,6 +356,8 @@ class MLBPADatasetBuilder(ProfileMixin):
             )
             .order_by(SportsGame.game_date.asc())
         )
+        if dt_floor:
+            box_stmt = box_stmt.where(SportsGame.game_date >= dt_floor)
         if dt_end:
             box_stmt = box_stmt.where(SportsGame.game_date <= dt_end)
         box_result = await db.execute(box_stmt)
@@ -407,7 +370,6 @@ class MLBPADatasetBuilder(ProfileMixin):
                     (str(game_date), raw)
                 )
 
-        # Attach to batter_history metadata for profile building
         self._boxscore_history = boxscore_history
 
         return batter_history, pitcher_history, team_history

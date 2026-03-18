@@ -106,7 +106,7 @@ class MLBPitchDatasetBuilder(ProfileMixin):
 
         if include_profiles:
             batter_history, pitcher_history, _ = (
-                await self._load_profile_histories(game_ids, dt_end, rolling_window)
+                await self._load_profile_histories(dt_start, dt_end, rolling_window)
             )
 
         # 4. Extract pitches from playEvents

@@ -4121,7 +4121,7 @@ class TestSSOTPitchSimulator:
         source = inspect.getsource(simulation_engine)
         assert "sample_n = min(iterations" not in source, (
             "simulation_engine still has the wasteful re-run sampling loop — "
-            "pitch counts should come from keep_results"
+            "pitch counts are aggregated by SimulationRunner"
         )
 
     def test_dataset_builders_use_profile_mixin(self):

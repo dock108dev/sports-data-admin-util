@@ -138,10 +138,13 @@ class TestLoadPitchModels:
             {"artifact_path": "/fake/bb.pkl"},
         ]
 
+        # Patch BaseModel.load so it doesn't hit the filesystem
         with patch(
             "app.analytics.models.core.model_registry.ModelRegistry",
             return_value=mock_registry_instance,
-        ), patch("joblib.load", return_value=MagicMock()):
+        ), patch(
+            "app.analytics.models.core.model_interface.BaseModel.load",
+        ):
             pitch_model, bb_model = _load_pitch_models()
 
         assert pitch_model is not None

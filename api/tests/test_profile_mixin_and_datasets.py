@@ -235,7 +235,7 @@ class TestLoadProfileHistories:
     async def test_returns_three_dicts(self, mixin_with_mock_db):
         builder = mixin_with_mock_db
         batter_h, pitcher_h, team_h = await builder._load_profile_histories(
-            game_ids=[1, 2], dt_end=None, rolling_window=30,
+            dt_start=None, dt_end=None, rolling_window=30,
         )
         assert isinstance(batter_h, dict)
         assert isinstance(pitcher_h, dict)
@@ -245,7 +245,7 @@ class TestLoadProfileHistories:
     async def test_calls_execute_three_times(self, mixin_with_mock_db):
         builder = mixin_with_mock_db
         await builder._load_profile_histories(
-            game_ids=[1], dt_end=None, rolling_window=30,
+            dt_start=None, dt_end=None, rolling_window=30,
         )
         assert builder._db.execute.call_count == 3
 
@@ -256,7 +256,7 @@ class TestLoadProfileHistories:
         builder = mixin_with_mock_db
         dt = datetime(2025, 7, 1, tzinfo=UTC)
         batter_h, pitcher_h, team_h = await builder._load_profile_histories(
-            game_ids=[1], dt_end=dt, rolling_window=30,
+            dt_start=None, dt_end=dt, rolling_window=30,
         )
         assert builder._db.execute.call_count == 3
 
@@ -299,7 +299,7 @@ class TestLoadProfileHistories:
         builder._db.execute = mock_execute
 
         batter_h, pitcher_h, team_h = await builder._load_profile_histories(
-            game_ids=[1], dt_end=None, rolling_window=30,
+            dt_start=None, dt_end=None, rolling_window=30,
         )
 
         assert "b1" in batter_h

@@ -825,7 +825,7 @@ class TestMLBPADatasetBuilder:
 
         builder = MLBPADatasetBuilder(db)
         batter_h, pitcher_h, team_h = await builder._load_profile_histories(
-            [1], None, 30,
+            None, None, 30,
         )
         assert "100" in batter_h
         assert len(batter_h["100"]) == 1
@@ -853,7 +853,7 @@ class TestMLBPADatasetBuilder:
 
         builder = MLBPADatasetBuilder(db)
         batter_h, pitcher_h, team_h = await builder._load_profile_histories(
-            [1], dt_end, 30,
+            None, dt_end, 30,
         )
         assert batter_h == {}
         assert pitcher_h == {}

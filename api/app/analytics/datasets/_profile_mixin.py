@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from app.tasks._training_helpers import stats_to_metrics
@@ -17,6 +17,12 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+# Each rolling-window game ≈ 1.5 calendar days on average (off-days,
+# travel days, rainouts).  Multiplying the game window by this factor
+# gives a conservative calendar-day lookback so the SQL query loads
+# enough history without scanning the entire table.
+_CALENDAR_DAYS_PER_GAME = 2
 
 
 class ProfileMixin:
@@ -30,7 +36,7 @@ class ProfileMixin:
 
     async def _load_profile_histories(
         self,
-        game_ids: list[int],
+        dt_start: datetime | None,
         dt_end: datetime | None,
         rolling_window: int,
     ) -> tuple[
@@ -38,7 +44,14 @@ class ProfileMixin:
         dict[str, list[tuple[str, Any]]],
         dict[int, list[tuple[str, Any]]],
     ]:
-        """Pre-load batter, pitcher, and team history for profile assembly."""
+        """Pre-load batter, pitcher, and team history for profile assembly.
+
+        Queries are bounded by ``dt_end`` (upper) and a computed floor
+        derived from ``dt_start`` and ``rolling_window`` (lower).  The
+        floor ensures we load enough history to build a full rolling
+        profile for the earliest game in the date range, without
+        scanning all rows back to the beginning of time.
+        """
         from sqlalchemy import select
 
         from app.db.mlb_advanced import (
@@ -50,15 +63,27 @@ class ProfileMixin:
 
         db = self._db
 
+        # Lower bound: enough history before the earliest target game
+        # to fill a full rolling window.
+        dt_floor = None
+        if dt_start:
+            lookback_days = rolling_window * _CALENDAR_DAYS_PER_GAME
+            dt_floor = dt_start - timedelta(days=lookback_days)
+
+        def _apply_date_bounds(stmt):  # type: ignore[no-untyped-def]
+            if dt_floor:
+                stmt = stmt.where(SportsGame.game_date >= dt_floor)
+            if dt_end:
+                stmt = stmt.where(SportsGame.game_date <= dt_end)
+            return stmt
+
         # Batter history from MLBPlayerAdvancedStats
-        batter_stmt = (
+        batter_stmt = _apply_date_bounds(
             select(MLBPlayerAdvancedStats, SportsGame.game_date)
             .join(SportsGame, SportsGame.id == MLBPlayerAdvancedStats.game_id)
             .where(SportsGame.status.in_(["final", "archived"]))
             .order_by(SportsGame.game_date.asc())
         )
-        if dt_end:
-            batter_stmt = batter_stmt.where(SportsGame.game_date <= dt_end)
         batter_result = await db.execute(batter_stmt)
 
         batter_history: dict[str, list[tuple[str, Any]]] = defaultdict(list)
@@ -68,14 +93,12 @@ class ProfileMixin:
             )
 
         # Pitcher history from MLBPitcherGameStats
-        pitcher_stmt = (
+        pitcher_stmt = _apply_date_bounds(
             select(MLBPitcherGameStats, SportsGame.game_date)
             .join(SportsGame, SportsGame.id == MLBPitcherGameStats.game_id)
             .where(SportsGame.status.in_(["final", "archived"]))
             .order_by(SportsGame.game_date.asc())
         )
-        if dt_end:
-            pitcher_stmt = pitcher_stmt.where(SportsGame.game_date <= dt_end)
         pitcher_result = await db.execute(pitcher_stmt)
 
         pitcher_history: dict[str, list[tuple[str, Any]]] = defaultdict(list)
@@ -85,14 +108,12 @@ class ProfileMixin:
             )
 
         # Team history for fallback pitcher profiles
-        team_stmt = (
+        team_stmt = _apply_date_bounds(
             select(MLBGameAdvancedStats, SportsGame.game_date)
             .join(SportsGame, SportsGame.id == MLBGameAdvancedStats.game_id)
             .where(SportsGame.status.in_(["final", "archived"]))
             .order_by(SportsGame.game_date.asc())
         )
-        if dt_end:
-            team_stmt = team_stmt.where(SportsGame.game_date <= dt_end)
         team_result = await db.execute(team_stmt)
 
         team_history: dict[int, list[tuple[str, Any]]] = defaultdict(list)
