@@ -291,6 +291,70 @@ class TestNormalizeProbabilitiesCanonicalLabels:
 
 
 # ---------------------------------------------------------------------------
+# 4c. anchor_to_baseline — prevents miscalibrated models from producing
+#     absurd simulations
+# ---------------------------------------------------------------------------
+
+
+class TestAnchorToBaseline:
+    """anchor_to_baseline clamps ML probs within a band around league average."""
+
+    def test_badly_calibrated_model_is_clamped(self):
+        from app.analytics.probabilities.probability_provider import (
+            anchor_to_baseline,
+        )
+
+        # 60% hit rate — massively miscalibrated
+        bad = {
+            "strikeout": 0.10,
+            "ball_in_play_out": 0.02,
+            "walk_or_hbp": 0.01,
+            "single": 0.40,
+            "double": 0.20,
+            "triple": 0.07,
+            "home_run": 0.20,
+        }
+        result = anchor_to_baseline(bad)
+
+        # ball_in_play_out should be pulled up toward baseline (0.46)
+        assert result["ball_in_play_out"] > 0.30
+        # single should be pulled down from 0.40
+        assert result["single"] < 0.25
+        assert abs(sum(result.values()) - 1.0) < 0.01
+
+    def test_well_calibrated_model_passes_through(self):
+        from app.analytics.probabilities.probability_provider import (
+            anchor_to_baseline,
+        )
+
+        good = {
+            "strikeout": 0.23,
+            "ball_in_play_out": 0.45,
+            "walk_or_hbp": 0.07,
+            "single": 0.16,
+            "double": 0.05,
+            "triple": 0.01,
+            "home_run": 0.03,
+        }
+        result = anchor_to_baseline(good)
+
+        # Should be nearly unchanged
+        for event in good:
+            assert abs(result[event] - good[event]) < 0.02, (
+                f"{event}: {result[event]} vs {good[event]}"
+            )
+
+    def test_sums_to_one(self):
+        from app.analytics.probabilities.probability_provider import (
+            anchor_to_baseline,
+        )
+
+        probs = {"strikeout": 0.5, "ball_in_play_out": 0.5}
+        result = anchor_to_baseline(probs)
+        assert abs(sum(result.values()) - 1.0) < 0.01
+
+
+# ---------------------------------------------------------------------------
 # 5. ProfileResult / data_freshness
 # ---------------------------------------------------------------------------
 

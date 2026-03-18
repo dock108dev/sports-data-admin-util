@@ -31,6 +31,15 @@ from app.analytics.sports.mlb.constants import (
 )
 
 
+# Maximum deviation from league-average baseline.  A value of 0.5 means
+# the model can shift each event probability by at most 50% of its
+# baseline value.  For example, strikeout baseline is 0.22, so the model
+# output is clamped to 0.11–0.33.  This prevents poorly-calibrated
+# models from producing absurd simulations (e.g., 60% hit rate) while
+# still allowing meaningful team differentiation.
+_MAX_BASELINE_DEVIATION = 0.25
+
+
 def normalize_probabilities(
     probs: dict[str, float],
     valid_events: list[str] | None = None,
@@ -64,6 +73,48 @@ def normalize_probabilities(
         return {e: round(uniform, 6) for e in events}
 
     return {e: round(v / total, 6) for e, v in clamped.items()}
+
+
+def anchor_to_baseline(
+    probs: dict[str, float],
+    baseline: dict[str, float] | None = None,
+    max_deviation: float = _MAX_BASELINE_DEVIATION,
+) -> dict[str, float]:
+    """Clamp ML probabilities so they stay within a band around the baseline.
+
+    For each event, the output is clamped to:
+        ``baseline * (1 - max_deviation)`` ≤ output ≤ ``baseline * (1 + max_deviation)``
+
+    Then renormalized to sum to 1.0.  This prevents poorly-calibrated
+    models from producing absurd simulations while preserving the
+    direction and relative magnitude of the model's predictions.
+
+    Args:
+        probs: Normalized probability dict from the model.
+        baseline: League-average defaults. If None, uses MLB defaults.
+        max_deviation: Maximum fractional deviation from baseline (0-1).
+
+    Returns:
+        Anchored and renormalized probability dict.
+    """
+    if baseline is None:
+        baseline = _MLB_DEFAULTS
+
+    anchored: dict[str, float] = {}
+    for event, model_prob in probs.items():
+        base = baseline.get(event, 0.0)
+        if base <= 0:
+            anchored[event] = model_prob
+            continue
+        lo = base * (1.0 - max_deviation)
+        hi = base * (1.0 + max_deviation)
+        anchored[event] = max(lo, min(hi, model_prob))
+
+    # Renormalize after clamping
+    total = sum(anchored.values())
+    if total <= 0:
+        return probs
+    return {e: round(v / total, 6) for e, v in anchored.items()}
 
 
 def validate_probabilities(
@@ -224,7 +275,14 @@ class MLProvider(ProbabilityProvider):
             )
 
         valid_events = MLB_PA_EVENTS if sport.lower() == "mlb" else None
-        return normalize_probabilities(probs, valid_events)
+        normalized = normalize_probabilities(probs, valid_events)
+
+        # Anchor to baseline so miscalibrated models can't produce
+        # absurd simulations (e.g., 60% hit rate → 30 runs/game).
+        if sport.lower() == "mlb":
+            normalized = anchor_to_baseline(normalized)
+
+        return normalized
 
 
 class EnsembleProvider(ProbabilityProvider):
