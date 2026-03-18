@@ -173,6 +173,16 @@ export async function deleteFeatureLoadout(
   });
 }
 
+export async function bulkDeleteFeatureLoadouts(
+  ids: number[],
+): Promise<{ status: string; deleted: number; ids: number[] }> {
+  return fetchJson(`${base()}/api/analytics/feature-configs/bulk-delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+}
+
 export async function cloneFeatureLoadout(
   id: number,
   name?: string,

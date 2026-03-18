@@ -8,6 +8,7 @@ import {
   createFeatureLoadout,
   updateFeatureLoadout,
   deleteFeatureLoadout,
+  bulkDeleteFeatureLoadouts,
   cloneFeatureLoadout,
   getAvailableFeatures,
   type FeatureLoadout,
@@ -27,6 +28,7 @@ export function LoadoutsPanel() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const newModelType = "plate_appearance";
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -98,6 +100,38 @@ export function LoadoutsPanel() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setError(null);
+    try {
+      const ids = Array.from(selectedIds);
+      await bulkDeleteFeatureLoadouts(ids);
+      if (selected && selectedIds.has(selected.id)) setSelected(null);
+      setSelectedIds(new Set());
+      await refresh();
+      setMessage(`Deleted ${ids.length} loadout${ids.length !== 1 ? "s" : ""}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const toggleSelectId = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === loadouts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(loadouts.map((l) => l.id)));
+    }
+  };
+
   const handleToggle = (featureName: string) => {
     if (!selected) return;
     const updated = selected.features.map((f) =>
@@ -155,6 +189,27 @@ export function LoadoutsPanel() {
       {/* Left panel: loadout list */}
       <div>
         <AdminCard title="Loadouts" subtitle={`${loadouts.length} saved`}>
+          {loadouts.length > 1 && (
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.5rem", paddingBottom: "0.5rem", borderBottom: "1px solid #e0e0e0" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", cursor: "pointer", fontSize: "0.75rem", color: "#666" }}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size === loadouts.length && loadouts.length > 0}
+                  onChange={toggleSelectAll}
+                />
+                Select all
+              </label>
+              {selectedIds.size > 0 && (
+                <button
+                  className={styles.btn}
+                  style={{ fontSize: "0.7rem", padding: "2px 6px", color: "#c00", marginLeft: "auto" }}
+                  onClick={handleBulkDelete}
+                >
+                  Delete {selectedIds.size}
+                </button>
+              )}
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
             {loadouts.map((l) => (
               <div
@@ -165,28 +220,40 @@ export function LoadoutsPanel() {
                   borderRadius: "4px",
                   background: selected?.id === l.id ? "var(--color-primary-bg, #e8f0fe)" : "transparent",
                   border: selected?.id === l.id ? "1px solid var(--color-primary, #4285f4)" : "1px solid transparent",
+                  display: "flex",
+                  gap: "0.5rem",
+                  alignItems: "flex-start",
                 }}
                 onClick={() => handleSelect(l.id)}
               >
-                <div style={{ fontWeight: 500, fontSize: "0.875rem" }}>{l.name}</div>
-                <div style={{ fontSize: "0.75rem", color: "#666" }}>
-                  {l.enabled_count}/{l.total_count} features
-                </div>
-                <div style={{ display: "flex", gap: "0.25rem", marginTop: "0.25rem" }}>
-                  <button
-                    className={styles.btn}
-                    style={{ fontSize: "0.7rem", padding: "2px 6px" }}
-                    onClick={(e) => { e.stopPropagation(); handleClone(l.id); }}
-                  >
-                    Clone
-                  </button>
-                  <button
-                    className={styles.btn}
-                    style={{ fontSize: "0.7rem", padding: "2px 6px", color: "#c00" }}
-                    onClick={(e) => { e.stopPropagation(); handleDelete(l.id); }}
-                  >
-                    Delete
-                  </button>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(l.id)}
+                  onChange={(e) => { e.stopPropagation(); toggleSelectId(l.id); }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ marginTop: "0.2rem" }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 500, fontSize: "0.875rem" }}>{l.name}</div>
+                  <div style={{ fontSize: "0.75rem", color: "#666" }}>
+                    {l.enabled_count}/{l.total_count} features
+                  </div>
+                  <div style={{ display: "flex", gap: "0.25rem", marginTop: "0.25rem" }}>
+                    <button
+                      className={styles.btn}
+                      style={{ fontSize: "0.7rem", padding: "2px 6px" }}
+                      onClick={(e) => { e.stopPropagation(); handleClone(l.id); }}
+                    >
+                      Clone
+                    </button>
+                    <button
+                      className={styles.btn}
+                      style={{ fontSize: "0.7rem", padding: "2px 6px", color: "#c00" }}
+                      onClick={(e) => { e.stopPropagation(); handleDelete(l.id); }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
