@@ -1591,7 +1591,7 @@ Run a full Monte Carlo simulation. Supports two modes:
 | `iterations` | `int` | 5000 | Simulation count (100–50,000) |
 | `rolling_window` | `int` | 30 | Recent games for profile building (5–162) |
 | `seed` | `int?` | `null` | Deterministic seed for reproducibility |
-| `probability_mode` | `string?` | `"ml"` | Always uses trained ML model. Accepts `ml`, `ensemble`, `rule_based`. |
+| `probability_mode` | `string?` | `"ml"` | Probability source: `ml` (trained model), `ensemble` (weighted blend), or `rule_based` (league-average defaults). ML failures raise — no silent fallback. |
 | `sportsbook` | `object?` | `null` | Sportsbook lines for EV comparison |
 | `home_lineup` | `LineupSlot[9]?` | `null` | Home batting order (exactly 9 batters) |
 | `away_lineup` | `LineupSlot[9]?` | `null` | Away batting order (exactly 9 batters) |

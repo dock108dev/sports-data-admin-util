@@ -152,7 +152,7 @@ Four probability sources, selected via `probability_mode`:
 | **EnsembleProvider** | Weighted average of rule-based and ML predictions (configurable weights). |
 | **Pitch-level** | Implicit — when mode is `pitch_level`, SimulationEngine routes to PitchLevelGameSimulator. |
 
-**No silent fallback.** If the ML model fails (missing artifact, feature mismatch, inference error), the error propagates directly. The system always uses a trained model — there is no automatic degradation to rule-based.
+**No silent fallback.** If the requested provider fails (missing artifact, feature mismatch, inference error), the error propagates directly — there is no automatic degradation to a different provider.
 
 ---
 
