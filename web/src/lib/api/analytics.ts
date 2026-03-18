@@ -332,6 +332,14 @@ export async function listBatchSimJobs(
   );
 }
 
+export async function getBatchSimJob(
+  jobId: number,
+): Promise<BatchSimJob> {
+  return fetchJson<BatchSimJob>(
+    `${base()}/api/analytics/batch-simulate-job/${jobId}`,
+  );
+}
+
 export async function deleteBatchSimJob(
   jobId: number,
 ): Promise<{ status: string; id: number }> {

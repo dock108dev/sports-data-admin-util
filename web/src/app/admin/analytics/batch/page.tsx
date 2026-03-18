@@ -6,12 +6,12 @@ import Link from "next/link";
 import {
   startBatchSimulation,
   listBatchSimJobs,
+  getBatchSimJob,
   listPredictionOutcomes,
   deleteBatchSimJob,
   type BatchSimJob,
   type BatchSimGameResult,
   type PredictionOutcome,
-  type EventSummary,
 } from "@/lib/api/analytics";
 import { ROUTES } from "@/lib/constants/routes";
 import styles from "../analytics.module.css";
@@ -32,6 +32,28 @@ export default function BatchSimsPage() {
   const [accuracyData, setAccuracyData] = useState<Record<number, { outcomes: PredictionOutcome[]; loading: boolean }>>({});
   const [selectedJobs, setSelectedJobs] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  async function expandJob(jobId: number) {
+    if (expandedJob === jobId) {
+      setExpandedJob(null);
+      return;
+    }
+    setExpandedJob(jobId);
+    // Fetch detail endpoint for batch_summary/warnings (only computed there)
+    const job = jobs.find((j) => j.id === jobId);
+    if (job && job.status === "completed" && !job.batch_summary) {
+      try {
+        const detail = await getBatchSimJob(jobId);
+        setJobs((prev) => prev.map((j) =>
+          j.id === jobId
+            ? { ...j, batch_summary: detail.batch_summary, warnings: detail.warnings }
+            : j
+        ));
+      } catch {
+        // Detail fetch failed — expand still works, just no diagnostics
+      }
+    }
+  }
 
   async function loadAccuracy(jobId: number) {
     setAccuracyData((prev) => ({ ...prev, [jobId]: { outcomes: [], loading: true } }));
@@ -232,7 +254,7 @@ export default function BatchSimsPage() {
                     {job.results && job.results.length > 0 && (
                       <button
                         className={styles.btn}
-                        onClick={() => setExpandedJob(expandedJob === job.id ? null : job.id)}
+                        onClick={() => expandJob(job.id)}
                         style={{ fontSize: "0.8rem", padding: "2px 8px" }}
                       >
                         {expandedJob === job.id ? "Hide" : "Results"}

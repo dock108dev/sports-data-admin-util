@@ -623,6 +623,204 @@ class TestSimulationAnalysis:
         assert "edge" in comp["moneyline_comparison"]["home"]
 
 
+class TestCheckSimulationSanity:
+    """Verify check_simulation_sanity threshold logic and edge cases."""
+
+    def _normal_summary(self) -> dict:
+        """Event summary with realistic MLB values — should produce no warnings."""
+        return {
+            "home": {
+                "avg_pa": 38.0, "avg_hits": 8.5, "avg_hr": 1.1,
+                "avg_bb": 3.2, "avg_k": 8.5, "avg_runs": 4.3,
+                "pa_rates": {
+                    "k_pct": 0.224, "bb_pct": 0.084, "single_pct": 0.150,
+                    "double_pct": 0.048, "triple_pct": 0.005,
+                    "hr_pct": 0.029, "out_pct": 0.460,
+                },
+            },
+            "away": {
+                "avg_pa": 37.5, "avg_hits": 8.0, "avg_hr": 1.0,
+                "avg_bb": 3.0, "avg_k": 8.8, "avg_runs": 4.1,
+                "pa_rates": {
+                    "k_pct": 0.235, "bb_pct": 0.080, "single_pct": 0.148,
+                    "double_pct": 0.045, "triple_pct": 0.006,
+                    "hr_pct": 0.027, "out_pct": 0.459,
+                },
+            },
+            "game": {
+                "avg_total_runs": 8.4, "median_total_runs": 8,
+                "extra_innings_pct": 0.08, "shutout_pct": 0.04,
+                "one_run_game_pct": 0.19,
+            },
+        }
+
+    def test_no_warnings_for_normal_values(self) -> None:
+        from app.analytics.core.simulation_analysis import check_simulation_sanity
+
+        warnings = check_simulation_sanity(self._normal_summary())
+        assert warnings == []
+
+    def test_warns_high_runs(self) -> None:
+        from app.analytics.core.simulation_analysis import check_simulation_sanity
+
+        s = self._normal_summary()
+        s["home"]["avg_runs"] = 16.0
+        warnings = check_simulation_sanity(s)
+        assert any("Home avg runs" in w and ">15" in w for w in warnings)
+
+    def test_warns_low_runs(self) -> None:
+        from app.analytics.core.simulation_analysis import check_simulation_sanity
+
+        s = self._normal_summary()
+        s["away"]["avg_runs"] = 0.5
+        warnings = check_simulation_sanity(s)
+        assert any("Away avg runs" in w and "<1" in w for w in warnings)
+
+    def test_warns_pa_out_of_range(self) -> None:
+        from app.analytics.core.simulation_analysis import check_simulation_sanity
+
+        s = self._normal_summary()
+        s["home"]["avg_pa"] = 55.0
+        warnings = check_simulation_sanity(s)
+        assert any("Home avg PA" in w for w in warnings)
+
+        s2 = self._normal_summary()
+        s2["away"]["avg_pa"] = 25.0
+        warnings2 = check_simulation_sanity(s2)
+        assert any("Away avg PA" in w for w in warnings2)
+
+    def test_warns_high_hr(self) -> None:
+        from app.analytics.core.simulation_analysis import check_simulation_sanity
+
+        s = self._normal_summary()
+        s["home"]["avg_hr"] = 6.0
+        warnings = check_simulation_sanity(s)
+        assert any("Home avg HR" in w and ">5" in w for w in warnings)
+
+    def test_warns_k_pct_out_of_range(self) -> None:
+        from app.analytics.core.simulation_analysis import check_simulation_sanity
+
+        s = self._normal_summary()
+        s["home"]["pa_rates"]["k_pct"] = 0.05
+        warnings = check_simulation_sanity(s)
+        assert any("Home K%" in w for w in warnings)
+
+        s2 = self._normal_summary()
+        s2["away"]["pa_rates"]["k_pct"] = 0.45
+        warnings2 = check_simulation_sanity(s2)
+        assert any("Away K%" in w for w in warnings2)
+
+    def test_warns_bb_pct_out_of_range(self) -> None:
+        from app.analytics.core.simulation_analysis import check_simulation_sanity
+
+        s = self._normal_summary()
+        s["home"]["pa_rates"]["bb_pct"] = 0.01
+        warnings = check_simulation_sanity(s)
+        assert any("Home BB%" in w for w in warnings)
+
+    def test_warns_high_extra_innings(self) -> None:
+        from app.analytics.core.simulation_analysis import check_simulation_sanity
+
+        s = self._normal_summary()
+        s["game"]["extra_innings_pct"] = 0.30
+        warnings = check_simulation_sanity(s)
+        assert any("Extra innings" in w for w in warnings)
+
+    def test_boundary_values_no_warning(self) -> None:
+        """Values exactly at boundary should not trigger warnings."""
+        from app.analytics.core.simulation_analysis import check_simulation_sanity
+
+        s = self._normal_summary()
+        s["home"]["avg_runs"] = 1.0   # boundary, not < 1
+        s["away"]["avg_runs"] = 15.0  # boundary, not > 15
+        s["home"]["avg_pa"] = 30.0    # boundary
+        s["away"]["avg_pa"] = 50.0    # boundary
+        s["home"]["avg_hr"] = 5.0     # boundary, not > 5
+        s["home"]["pa_rates"]["k_pct"] = 0.10   # boundary
+        s["away"]["pa_rates"]["k_pct"] = 0.40   # boundary
+        s["home"]["pa_rates"]["bb_pct"] = 0.02  # boundary
+        s["away"]["pa_rates"]["bb_pct"] = 0.20  # boundary
+        s["game"]["extra_innings_pct"] = 0.25   # boundary, not > 0.25
+        warnings = check_simulation_sanity(s)
+        assert warnings == []
+
+    def test_missing_keys_no_crash(self) -> None:
+        from app.analytics.core.simulation_analysis import check_simulation_sanity
+
+        # Empty dict should not crash, just produce no warnings
+        warnings = check_simulation_sanity({})
+        assert isinstance(warnings, list)
+
+        # Missing pa_rates
+        warnings2 = check_simulation_sanity({"home": {"avg_runs": 4}, "away": {}})
+        assert isinstance(warnings2, list)
+
+
+class TestCheckBatchSanity:
+    """Verify check_batch_sanity batch-level checks."""
+
+    def test_no_warnings_for_varied_wps(self) -> None:
+        from app.analytics.core.simulation_analysis import check_batch_sanity
+
+        results = [
+            {"home_win_probability": 0.55, "away_win_probability": 0.45},
+            {"home_win_probability": 0.62, "away_win_probability": 0.38},
+            {"home_win_probability": 0.48, "away_win_probability": 0.52},
+        ]
+        warnings = check_batch_sanity(results)
+        assert not any("49-51%" in w for w in warnings)
+
+    def test_warns_wp_flatness(self) -> None:
+        from app.analytics.core.simulation_analysis import check_batch_sanity
+
+        results = [
+            {"home_win_probability": 0.505, "away_win_probability": 0.495},
+            {"home_win_probability": 0.498, "away_win_probability": 0.502},
+            {"home_win_probability": 0.501, "away_win_probability": 0.499},
+        ]
+        warnings = check_batch_sanity(results)
+        assert any("49-51%" in w for w in warnings)
+
+    def test_single_game_no_flatness_warning(self) -> None:
+        """A single game at 50/50 should not trigger flatness (need > 1)."""
+        from app.analytics.core.simulation_analysis import check_batch_sanity
+
+        results = [
+            {"home_win_probability": 0.50, "away_win_probability": 0.50},
+        ]
+        warnings = check_batch_sanity(results)
+        assert not any("49-51%" in w for w in warnings)
+
+    def test_skips_error_results(self) -> None:
+        from app.analytics.core.simulation_analysis import check_batch_sanity
+
+        results = [
+            {"error": "failed"},
+            {"home_win_probability": 0.60, "away_win_probability": 0.40},
+        ]
+        warnings = check_batch_sanity(results)
+        # Should not crash or warn about flatness with only 1 success
+        assert isinstance(warnings, list)
+
+    def test_delegates_event_checks(self) -> None:
+        from app.analytics.core.simulation_analysis import check_batch_sanity
+
+        bad_events = {
+            "home": {"avg_runs": 20, "avg_pa": 38, "avg_hr": 1, "pa_rates": {"k_pct": 0.22, "bb_pct": 0.08}},
+            "away": {"avg_runs": 4, "avg_pa": 37, "avg_hr": 1, "pa_rates": {"k_pct": 0.22, "bb_pct": 0.08}},
+            "game": {"extra_innings_pct": 0.05},
+        }
+        results = [{"home_win_probability": 0.55, "away_win_probability": 0.45}]
+        warnings = check_batch_sanity(results, bad_events)
+        assert any("Home avg runs" in w for w in warnings)
+
+    def test_empty_results(self) -> None:
+        from app.analytics.core.simulation_analysis import check_batch_sanity
+
+        warnings = check_batch_sanity([])
+        assert warnings == []
+
+
 class TestOddsAnalysis:
     """Verify odds conversion and comparison."""
 
@@ -737,6 +935,65 @@ class TestAnalyticsRoutes:
         assert "home_win_probability" in data
         assert "average_home_score" in data
         assert data["iterations"] == 100
+
+    def test_simulate_returns_event_summary(self) -> None:
+        """Verify /simulate includes event_summary with PA rates and game shape."""
+        client = self._make_test_client()
+
+        resp = client.post("/api/analytics/simulate", json={
+            "sport": "mlb",
+            "iterations": 200,
+            "seed": 42,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert "event_summary" in data
+        es = data["event_summary"]
+        assert "home" in es and "away" in es and "game" in es
+
+        # Team-level structure
+        for side in ("home", "away"):
+            team = es[side]
+            assert "avg_pa" in team
+            assert "avg_k" in team
+            assert "avg_runs" in team
+            assert "pa_rates" in team
+            rates = team["pa_rates"]
+            assert "k_pct" in rates
+            assert "bb_pct" in rates
+            assert "hr_pct" in rates
+            assert "out_pct" in rates
+            # PA rates should be plausible (league defaults)
+            assert 0.10 <= rates["k_pct"] <= 0.40
+            assert 0.02 <= rates["bb_pct"] <= 0.20
+
+        # Game-level structure
+        game = es["game"]
+        assert "avg_total_runs" in game
+        assert "extra_innings_pct" in game
+        assert "shutout_pct" in game
+        assert "one_run_game_pct" in game
+
+    def test_simulate_no_sanity_warnings_for_defaults(self) -> None:
+        """League defaults should not trigger sanity warnings."""
+        client = self._make_test_client()
+
+        resp = client.post("/api/analytics/simulate", json={
+            "sport": "mlb",
+            "iterations": 500,
+            "seed": 42,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+
+        # simulation_info may or may not be present; if present,
+        # sanity_warnings should be absent or empty for league defaults
+        sim_info = data.get("simulation_info")
+        if sim_info and isinstance(sim_info, dict):
+            assert not sim_info.get("sanity_warnings", []), (
+                f"League defaults triggered sanity warnings: {sim_info['sanity_warnings']}"
+            )
 
 
 

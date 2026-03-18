@@ -290,26 +290,41 @@ async def _execute_batch_sim(
             "away_team": away_name,
         }
 
-        # Compute per-team PA probabilities from rolling profiles.
-        # When a specific model_id is provided, route through the ML
-        # pipeline instead of rule-based profile conversion.
-        if home_profile and away_profile:
-            if model_id or probability_mode in ("ml", "ensemble"):
-                # Use ML pipeline — attach profiles for the resolver
-                game_context["profiles"] = {
-                    "home_profile": {"metrics": home_profile},
-                    "away_profile": {"metrics": away_profile},
-                }
-                game_context["probability_mode"] = probability_mode
-                if model_id:
-                    game_context["_model_id"] = model_id
-            else:
-                # Rule-based: convert profiles directly to PA probabilities
-                from app.analytics.services.profile_service import profile_to_pa_probabilities
-                home_pa = profile_to_pa_probabilities(home_profile)
-                away_pa = profile_to_pa_probabilities(away_profile)
-                game_context["home_probabilities"] = home_pa
-                game_context["away_probabilities"] = away_pa
+        has_profiles = bool(home_profile and away_profile)
+        use_ml = model_id or probability_mode in ("ml", "ensemble")
+
+        if has_profiles and use_ml:
+            # ML pipeline — attach profiles for the resolver
+            game_context["profiles"] = {
+                "home_profile": {"metrics": home_profile},
+                "away_profile": {"metrics": away_profile},
+            }
+            game_context["probability_mode"] = probability_mode
+            if model_id:
+                game_context["_model_id"] = model_id
+        elif has_profiles:
+            # Rule-based: convert profiles directly to PA probabilities
+            from app.analytics.services.profile_service import profile_to_pa_probabilities
+            home_pa = profile_to_pa_probabilities(home_profile)
+            away_pa = profile_to_pa_probabilities(away_profile)
+            game_context["home_probabilities"] = home_pa
+            game_context["away_probabilities"] = away_pa
+        elif use_ml:
+            # ML/model_id requested but profiles unavailable — still set
+            # the mode so the engine can attempt inference (and fail
+            # visibly) rather than silently falling back to defaults.
+            game_context["probability_mode"] = probability_mode
+            if model_id:
+                game_context["_model_id"] = model_id
+            logger.warning(
+                "batch_sim_missing_profiles_for_ml",
+                extra={
+                    "game_id": game.id,
+                    "probability_mode": probability_mode,
+                    "model_id": model_id,
+                },
+            )
+        # else: no profiles, rule-based mode → league defaults (no overrides)
 
         try:
             sim = engine.run_simulation(
@@ -330,6 +345,14 @@ async def _execute_batch_sim(
             })
             continue
 
+        # Derive accurate probability_source from what actually ran
+        if "probability_source" in sim:
+            prob_source = sim["probability_source"]
+        elif has_profiles:
+            prob_source = "team_profile"
+        else:
+            prob_source = "league_defaults"
+
         game_result = {
             "game_id": game.id,
             "game_date": game_date_str,
@@ -339,8 +362,8 @@ async def _execute_batch_sim(
             "away_win_probability": sim.get("away_win_probability"),
             "average_home_score": sim.get("average_home_score"),
             "average_away_score": sim.get("average_away_score"),
-            "probability_source": sim.get("probability_source", "team_profile"),
-            "has_profiles": bool(home_profile and away_profile),
+            "probability_source": prob_source,
+            "has_profiles": has_profiles,
         }
         if "event_summary" in sim:
             game_result["event_summary"] = sim["event_summary"]
@@ -409,13 +432,63 @@ def _build_batch_summary(
         "wp_distribution": wp_dist,
     }
 
-    # Sanity warnings
+    # Sanity warnings — aggregate event stats across all games, not just first
     from app.analytics.core.simulation_analysis import check_batch_sanity
-    # Use the first game's event_summary for event-level checks if available
-    first_event_summary = event_summaries[0] if event_summaries else None
-    warnings = check_batch_sanity(success, first_event_summary)
+    aggregate_events = _aggregate_event_summaries(event_summaries) if event_summaries else None
+    warnings = check_batch_sanity(success, aggregate_events)
 
     return batch_summary, warnings
+
+
+def _aggregate_event_summaries(
+    summaries: list[dict],
+) -> dict:
+    """Average per-game event summaries into a single batch-level summary.
+
+    Produces the same shape as a single-game ``event_summary`` so it can
+    be passed directly to ``check_simulation_sanity()``.
+    """
+    n = len(summaries)
+    if n == 0:
+        return {}
+
+    def _avg_team(side: str) -> dict:
+        teams = [s.get(side, {}) for s in summaries]
+        avg = lambda key: round(sum(t.get(key, 0) for t in teams) / n, 1)  # noqa: E731
+        rates = [t.get("pa_rates", {}) for t in teams]
+        avg_rate = lambda key: round(sum(r.get(key, 0) for r in rates) / n, 3)  # noqa: E731
+        return {
+            "avg_pa": avg("avg_pa"),
+            "avg_hits": avg("avg_hits"),
+            "avg_hr": avg("avg_hr"),
+            "avg_bb": avg("avg_bb"),
+            "avg_k": avg("avg_k"),
+            "avg_runs": avg("avg_runs"),
+            "pa_rates": {
+                "k_pct": avg_rate("k_pct"),
+                "bb_pct": avg_rate("bb_pct"),
+                "single_pct": avg_rate("single_pct"),
+                "double_pct": avg_rate("double_pct"),
+                "triple_pct": avg_rate("triple_pct"),
+                "hr_pct": avg_rate("hr_pct"),
+                "out_pct": avg_rate("out_pct"),
+            },
+        }
+
+    games = [s.get("game", {}) for s in summaries]
+    avg_game = lambda key: round(sum(g.get(key, 0) for g in games) / n, 3)  # noqa: E731
+
+    return {
+        "home": _avg_team("home"),
+        "away": _avg_team("away"),
+        "game": {
+            "avg_total_runs": round(sum(g.get("avg_total_runs", 0) for g in games) / n, 1),
+            "median_total_runs": round(sum(g.get("median_total_runs", 0) for g in games) / n, 0),
+            "extra_innings_pct": avg_game("extra_innings_pct"),
+            "shutout_pct": avg_game("shutout_pct"),
+            "one_run_game_pct": avg_game("one_run_game_pct"),
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -264,7 +264,7 @@ async def get_batch_simulate_job(
     job = await db.get(AnalyticsBatchSimJob, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Batch sim job not found")
-    return _serialize_batch_sim_job(job)
+    return _serialize_batch_sim_job(job, include_diagnostics=True)
 
 
 @router.delete("/batch-simulate-job/{job_id}")
@@ -292,7 +292,19 @@ async def delete_batch_simulate_job(
     return {"status": "deleted", "id": job_id}
 
 
-def _serialize_batch_sim_job(job: Any) -> dict[str, Any]:
+def _serialize_batch_sim_job(
+    job: Any,
+    *,
+    include_diagnostics: bool = False,
+) -> dict[str, Any]:
+    """Serialize a batch sim job to a dict.
+
+    Args:
+        job: ``AnalyticsBatchSimJob`` ORM instance.
+        include_diagnostics: When True, compute ``batch_summary`` and
+            ``warnings`` from stored results. Skipped for list endpoints
+            to avoid O(num_jobs x num_games) cost.
+    """
     data: dict[str, Any] = {
         "id": job.id,
         "sport": job.sport,
@@ -310,8 +322,7 @@ def _serialize_batch_sim_job(job: Any) -> dict[str, Any]:
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
     }
 
-    # Compute batch_summary and warnings from stored results
-    if job.results and job.status == "completed":
+    if include_diagnostics and job.results and job.status == "completed":
         from app.tasks.batch_sim_tasks import _build_batch_summary
         batch_summary, warnings = _build_batch_summary(job.results)
         if batch_summary:
