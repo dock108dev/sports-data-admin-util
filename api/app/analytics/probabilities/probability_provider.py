@@ -205,13 +205,16 @@ class MLProvider(ProbabilityProvider):
         """Generate ML-based event probabilities.
 
         Builds features from profiles and runs inference through
-        the active model.
+        the active model (or a specific model if ``_model_id`` is
+        present in the context).
         """
         engine = self._get_engine()
+        model_id = context.get("_model_id")
         probs = engine.predict_proba(
             sport=sport,
             model_type=self._model_type,
             profiles=context,
+            model_id=model_id,
         )
 
         if not probs:

@@ -28,20 +28,32 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name="batch_simulate_games", bind=True, max_retries=0)
-def batch_simulate_games(self, job_id: int) -> dict:
+def batch_simulate_games(self, job_id: int, model_id: str | None = None) -> dict:
     """Run Monte Carlo simulations on upcoming games.
 
     Loads scheduled/pregame games, builds rolling team profiles,
     and runs the SimulationEngine for each game.
+
+    Args:
+        job_id: DB job ID.
+        model_id: Optional specific model ID to use instead of
+            the active model.
     """
     loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(_run_batch_sim(job_id, self.request.id))
+        return loop.run_until_complete(
+            _run_batch_sim(job_id, self.request.id, model_id=model_id)
+        )
     finally:
         loop.close()
 
 
-async def _run_batch_sim(job_id: int, celery_task_id: str | None = None) -> dict:
+async def _run_batch_sim(
+    job_id: int,
+    celery_task_id: str | None = None,
+    *,
+    model_id: str | None = None,
+) -> dict:
     """Async implementation of batch simulation."""
     from app.db.analytics import AnalyticsBatchSimJob
 
@@ -71,6 +83,7 @@ async def _run_batch_sim(job_id: int, celery_task_id: str | None = None) -> dict
                 rolling_window=getattr(job, "rolling_window", 30),
                 date_start=job.date_start,
                 date_end=job.date_end,
+                model_id=model_id,
             )
         except Exception as exc:
             logger.exception("batch_sim_failed", extra={"job_id": job_id})
@@ -147,6 +160,7 @@ async def _execute_batch_sim(
     rolling_window: int,
     date_start: str | None,
     date_end: str | None,
+    model_id: str | None = None,
 ) -> dict:
     """Run simulations on upcoming games using rolling team profiles."""
     from sqlalchemy import select
@@ -277,16 +291,25 @@ async def _execute_batch_sim(
         }
 
         # Compute per-team PA probabilities from rolling profiles.
-        # Each team's batting profile → PA outcome distribution.
-        # Set directly as simulator input — the ML resolver is not used
-        # for batch sims because the PA model expects batter/pitcher
-        # matchup features, not team-level aggregate profiles.
+        # When a specific model_id is provided, route through the ML
+        # pipeline instead of rule-based profile conversion.
         if home_profile and away_profile:
-            from app.analytics.services.profile_service import profile_to_pa_probabilities
-            home_pa = profile_to_pa_probabilities(home_profile)
-            away_pa = profile_to_pa_probabilities(away_profile)
-            game_context["home_probabilities"] = home_pa
-            game_context["away_probabilities"] = away_pa
+            if model_id or probability_mode in ("ml", "ensemble"):
+                # Use ML pipeline — attach profiles for the resolver
+                game_context["profiles"] = {
+                    "home_profile": {"metrics": home_profile},
+                    "away_profile": {"metrics": away_profile},
+                }
+                game_context["probability_mode"] = probability_mode
+                if model_id:
+                    game_context["_model_id"] = model_id
+            else:
+                # Rule-based: convert profiles directly to PA probabilities
+                from app.analytics.services.profile_service import profile_to_pa_probabilities
+                home_pa = profile_to_pa_probabilities(home_profile)
+                away_pa = profile_to_pa_probabilities(away_profile)
+                game_context["home_probabilities"] = home_pa
+                game_context["away_probabilities"] = away_pa
 
         try:
             sim = engine.run_simulation(

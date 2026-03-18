@@ -122,6 +122,24 @@ class AnalyticsService:
         if raw_results is None:
             return result
 
+        # Preserve event_summary and diagnostics computed by the runner
+        event_summary = result.get("event_summary")
+        diagnostics = result.get("_diagnostics")
+        prob_source = result.get("probability_source")
+        prob_meta = result.get("probability_meta")
+
         analysis = SimulationAnalysis(sport)
-        return analysis.summarize_results(raw_results, sportsbook=sportsbook)
+        summary = analysis.summarize_results(raw_results, sportsbook=sportsbook)
+
+        # Re-attach data that summarize_results doesn't know about
+        if event_summary is not None:
+            summary["event_summary"] = event_summary
+        if diagnostics is not None:
+            summary["_diagnostics"] = diagnostics
+        if prob_source is not None:
+            summary["probability_source"] = prob_source
+        if prob_meta is not None:
+            summary["probability_meta"] = prob_meta
+
+        return summary
 

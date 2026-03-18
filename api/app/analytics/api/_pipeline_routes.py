@@ -199,6 +199,7 @@ class BatchSimulateRequest(BaseModel):
     rolling_window: int = Field(30, ge=5, le=162, description="Rolling window for profile building")
     date_start: str | None = Field(None, description="Start date (YYYY-MM-DD)")
     date_end: str | None = Field(None, description="End date (YYYY-MM-DD)")
+    model_id: str | None = Field(None, description="Specific model ID to test (uses active model if omitted)")
 
 
 @router.post("/batch-simulate")
@@ -223,7 +224,7 @@ async def post_batch_simulate(
     await db.commit()
     await db.refresh(job)
 
-    task = batch_simulate_games.delay(job.id)
+    task = batch_simulate_games.delay(job.id, model_id=req.model_id)
     job.celery_task_id = task.id
     job.status = "queued"
     await db.commit()

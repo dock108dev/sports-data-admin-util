@@ -103,6 +103,7 @@ export interface SimulationResult {
     monte_carlo: PredictionEntry;
     game_model?: PredictionEntry;
   };
+  event_summary?: EventSummary;
 }
 
 // ---------------------------------------------------------------------------
@@ -406,6 +407,7 @@ export interface BatchSimRequest {
   rolling_window?: number;
   date_start?: string;
   date_end?: string;
+  model_id?: string;
 }
 
 export interface BatchSimSummary {
