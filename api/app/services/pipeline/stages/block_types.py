@@ -94,6 +94,8 @@ class NarrativeBlock:
     mini_box: dict[str, Any] | None = None
     peak_margin: int = 0  # Largest absolute margin within this block
     peak_leader: int = 0  # 1=home led at peak, -1=away led at peak
+    start_clock: str | None = None  # Game clock at block start (from first moment)
+    end_clock: str | None = None  # Game clock at block end (from last moment)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
@@ -114,6 +116,10 @@ class NarrativeBlock:
         if self.peak_margin:
             result["peak_margin"] = self.peak_margin
             result["peak_leader"] = self.peak_leader
+        if self.start_clock is not None:
+            result["start_clock"] = self.start_clock
+        if self.end_clock is not None:
+            result["end_clock"] = self.end_clock
         return result
 
     @classmethod
@@ -133,6 +139,8 @@ class NarrativeBlock:
             mini_box=data.get("mini_box"),
             peak_margin=data.get("peak_margin", 0),
             peak_leader=data.get("peak_leader", 0),
+            start_clock=data.get("start_clock"),
+            end_clock=data.get("end_clock"),
         )
 
     @property

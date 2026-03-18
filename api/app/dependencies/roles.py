@@ -28,15 +28,35 @@ _ROLE_LEVEL = {"guest": 0, "user": 1, "admin": 2}
 # JWT helpers
 # ---------------------------------------------------------------------------
 
-def create_access_token(user_id: int, role: str) -> str:
-    """Issue a signed JWT for *user_id* with the given *role*."""
+_REMEMBER_ME_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
+
+
+def create_access_token(
+    user_id: int,
+    role: str,
+    *,
+    remember_me: bool = False,
+) -> str:
+    """Issue a signed JWT for *user_id* with the given *role*.
+
+    When *remember_me* is True, the token lives for 30 days instead of
+    the default TTL. A ``rm`` claim is embedded so the refresh endpoint
+    can preserve the TTL tier.
+    """
     now = datetime.now(UTC)
+    ttl = (
+        timedelta(minutes=_REMEMBER_ME_EXPIRE_MINUTES)
+        if remember_me
+        else timedelta(minutes=settings.jwt_expire_minutes)
+    )
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "role": role,
         "iat": now,
-        "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
+        "exp": now + ttl,
     }
+    if remember_me:
+        payload["rm"] = True
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 

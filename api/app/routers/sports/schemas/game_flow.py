@@ -138,6 +138,8 @@ class GameFlowBlock(BaseModel):
     narrative: str | None = None
     mini_box: BlockMiniBox | None = Field(None, alias="miniBox")
     embedded_social_post_id: int | None = Field(None, alias="embeddedSocialPostId")
+    start_clock: str | None = Field(None, alias="startClock")
+    end_clock: str | None = Field(None, alias="endClock")
 
 
 class GameFlowResponse(BaseModel):

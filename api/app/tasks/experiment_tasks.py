@@ -19,7 +19,13 @@ from app.tasks._task_infra import _complete_job_run, _start_job_run, _task_db
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="run_experiment_suite", bind=True, max_retries=0)
+@celery_app.task(
+    name="run_experiment_suite",
+    bind=True,
+    max_retries=0,
+    soft_time_limit=43200,  # 12 hours — experiments train many models sequentially
+    time_limit=43500,       # hard kill 5 min after soft
+)
 def run_experiment_suite(self, suite_id: int) -> dict:
     """Launch an experiment suite: train variants, replay, rank."""
     loop = asyncio.new_event_loop()
@@ -92,10 +98,7 @@ async def _run_suite(suite_id: int, celery_task_id: str | None = None) -> dict:
                     db.add(variant)
                 await db.commit()
 
-            # Train each variant sequentially
-            completed = 0
-            failed = 0
-
+            # Dispatch variant training as parallel Celery tasks
             async with sf() as db:
                 from sqlalchemy import select
                 suite = await db.get(AnalyticsExperimentSuite, suite_id)
@@ -106,38 +109,26 @@ async def _run_suite(suite_id: int, celery_task_id: str | None = None) -> dict:
                 )
                 result_rows = await db.execute(stmt)
                 variant_rows = list(result_rows.scalars().all())
-                # Cache suite attrs — session expires objects after close
                 suite_sport = suite.sport
                 suite_model_type = suite.model_type
 
+            # Create training jobs and dispatch to worker pool
+            variant_jobs: list[tuple[int, int, str]] = []  # (variant_id, job_id, celery_task_id)
             for variant_row in variant_rows:
-                try:
-                    result = await _train_variant(sf, suite_sport, suite_model_type, variant_row)
-                    if "error" in result:
-                        failed += 1
-                    else:
-                        completed += 1
-                except Exception as exc:
-                    logger.exception(
-                        "variant_failed",
-                        extra={"variant_id": variant_row.id, "error": str(exc)},
-                    )
-                    async with sf() as db:
-                        v = await db.get(AnalyticsExperimentVariant, variant_row.id)
-                        if v:
-                            v.status = "failed"
-                            v.error_message = str(exc)[:500]
-                            v.completed_at = datetime.now(UTC)
-                            await db.commit()
-                    failed += 1
+                job_id, task_id = await _dispatch_variant_training(
+                    sf, suite_sport, suite_model_type, variant_row,
+                )
+                variant_jobs.append((variant_row.id, job_id, task_id))
 
-                # Update suite progress
-                async with sf() as db:
-                    s = await db.get(AnalyticsExperimentSuite, suite_id)
-                    if s:
-                        s.completed_variants = completed
-                        s.failed_variants = failed
-                        await db.commit()
+            logger.info(
+                "experiment_variants_dispatched",
+                extra={"suite_id": suite_id, "count": len(variant_jobs)},
+            )
+
+            # Poll until all variants are done — progress updated in DB inline
+            completed, failed = await _poll_variant_completion(
+                sf, suite_id, variant_jobs,
+            )
 
             # Build leaderboard
             leaderboard = await _build_leaderboard(sf, suite_id)
@@ -202,16 +193,18 @@ def _generate_variants(
     return variants
 
 
-async def _train_variant(
+async def _dispatch_variant_training(
     sf: Any,
     suite_sport: str,
     suite_model_type: str,
     variant: Any,
-) -> dict:
-    """Train a single experiment variant."""
+) -> tuple[int, str]:
+    """Create a training job and dispatch it as a Celery task.
+
+    Returns (job_id, celery_task_id).
+    """
     from app.db.analytics import AnalyticsExperimentVariant, AnalyticsTrainingJob
 
-    # Create training job
     async with sf() as db:
         job = AnalyticsTrainingJob(
             sport=suite_sport,
@@ -229,27 +222,86 @@ async def _train_variant(
         await db.refresh(job)
         job_id = job.id
 
-    # Run training inline (not dispatching to Celery — we're already in a task)
-    from app.tasks.training_tasks import _run_training
-
-    result = await _run_training(job_id)
-
-    # Update variant with results
-    async with sf() as db:
+        # Link variant to job
         v = await db.get(AnalyticsExperimentVariant, variant.id)
         if v:
             v.training_job_id = job_id
-            if "error" in result:
-                v.status = "failed"
-                v.error_message = result.get("error", "unknown")
-            else:
-                v.status = "completed"
-                v.model_id = result.get("model_id")
-                v.training_metrics = result.get("metrics")
-            v.completed_at = datetime.now(UTC)
+            v.status = "running"
             await db.commit()
 
-    return result
+    # Dispatch as a separate Celery task — runs in the worker pool
+    from app.tasks.training_tasks import train_analytics_model
+    task_result = train_analytics_model.apply_async(args=[job_id])
+
+    return job_id, task_result.id
+
+
+async def _poll_variant_completion(
+    sf: Any,
+    suite_id: int,
+    variant_jobs: list[tuple[int, int, str]],
+    *,
+    on_progress: Any = None,
+    poll_interval: float = 10.0,
+) -> tuple[int, int]:
+    """Poll training jobs until all variants are complete.
+
+    Checks job status in DB every poll_interval seconds.
+    Returns (completed_count, failed_count).
+    """
+    from app.db.analytics import (
+        AnalyticsExperimentSuite,
+        AnalyticsExperimentVariant,
+        AnalyticsTrainingJob,
+    )
+
+    pending = {job_id: variant_id for variant_id, job_id, _ in variant_jobs}
+    completed = 0
+    failed = 0
+
+    while pending:
+        await asyncio.sleep(poll_interval)
+
+        async with sf() as db:
+            for job_id, variant_id in list(pending.items()):
+                job = await db.get(AnalyticsTrainingJob, job_id)
+                if job is None or job.status in ("pending", "queued", "running"):
+                    continue
+
+                # Job finished — update variant
+                v = await db.get(AnalyticsExperimentVariant, variant_id)
+                if v and v.status not in ("completed", "failed"):
+                    if job.status == "completed":
+                        v.status = "completed"
+                        v.model_id = job.model_id
+                        v.training_metrics = job.metrics
+                        completed += 1
+                    else:
+                        v.status = "failed"
+                        v.error_message = (job.error_message or "unknown")[:500]
+                        failed += 1
+                    v.completed_at = datetime.now(UTC)
+
+                del pending[job_id]
+
+            # Update suite progress
+            s = await db.get(AnalyticsExperimentSuite, suite_id)
+            if s:
+                s.completed_variants = completed
+                s.failed_variants = failed
+            await db.commit()
+
+        logger.info(
+            "experiment_poll",
+            extra={
+                "suite_id": suite_id,
+                "completed": completed,
+                "failed": failed,
+                "pending": len(pending),
+            },
+        )
+
+    return completed, failed
 
 
 async def _build_leaderboard(

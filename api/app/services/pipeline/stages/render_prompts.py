@@ -17,6 +17,7 @@ from .render_prompt_helpers import (
     _format_contributors_line,
     _format_lead_line,
     detect_game_winning_play,
+    detect_sustained_lead,
 )
 from .render_validation import FORBIDDEN_WORDS
 
@@ -170,6 +171,9 @@ def build_block_prompt(
 
     # Detect big lead / comeback
     is_comeback, game_peak_margin, final_margin = _detect_big_lead_comeback(blocks)
+
+    # Detect sustained lead (one team in control throughout second half)
+    is_sustained, sustained_min_margin, sustained_leader = detect_sustained_lead(blocks)
 
     # Build play lookup
     play_lookup: dict[int, dict[str, Any]] = {
@@ -334,6 +338,18 @@ def build_block_prompt(
                 f"it was a rally that fell short. Frame it as tightening, not a real threat."
             )
         prompt_parts.append("")
+
+    # Add sustained-lead guidance — prevent manufacturing drama from small margin changes
+    if is_sustained and not is_close_game and not is_comeback:
+        leader_name = home_team if sustained_leader == "home" else away_team
+        prompt_parts.extend([
+            f"SUSTAINED LEAD ({leader_name} led by {sustained_min_margin}+ the entire second half):",
+            f"- {leader_name} was in firm control. Do NOT frame minor margin changes (1-3 {score_unit}) as 'runs', 'pushes', 'responses', or comeback attempts.",
+            "- If the trailing team cut the lead from 10 to 8, that is routine scoring — not a surge, rally, or threat.",
+            "- Use language like 'maintained control', 'kept the margin comfortable', 'never seriously threatened'.",
+            "- Only narrate an actual run if the margin drops by 6+ points in a single block.",
+            "",
+        ])
 
     # Add overtime-specific guidance if game went to OT
     if has_any_overtime:

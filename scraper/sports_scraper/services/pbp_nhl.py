@@ -167,6 +167,16 @@ def populate_nhl_game_ids(
         )
         nhl_lookup[key] = ng.game_id
 
+    # Log both sides of the lookup for debugging mismatches
+    if nhl_lookup:
+        sample_api_keys = list(nhl_lookup.keys())[:3]
+        logger.info(
+            "nhl_game_id_lookup_built",
+            run_id=run_id,
+            api_keys_count=len(nhl_lookup),
+            sample_api_keys=[f"{k[0]}v{k[1]}@{k[2]}" for k in sample_api_keys],
+        )
+
     # Match and update
     updated = 0
     for game_id, game_date, home_team_id, away_team_id in games_missing_pk:
@@ -175,10 +185,28 @@ def populate_nhl_game_ids(
         game_day = to_et_date(game_date) if game_date else None
 
         if not home_abbr or not away_abbr or not game_day:
+            logger.debug(
+                "nhl_game_id_skip_no_abbr",
+                game_id=game_id,
+                home_team_id=home_team_id,
+                away_team_id=away_team_id,
+                home_abbr=home_abbr,
+                away_abbr=away_abbr,
+            )
             continue
 
         key = (home_abbr, away_abbr, game_day)
         nhl_game_id = nhl_lookup.get(key)
+
+        if not nhl_game_id:
+            logger.debug(
+                "nhl_game_id_no_match",
+                game_id=game_id,
+                db_key=f"{home_abbr}v{away_abbr}@{game_day}",
+                api_keys_for_date=[
+                    f"{k[0]}v{k[1]}" for k in nhl_lookup if k[2] == game_day
+                ],
+            )
 
         if nhl_game_id:
             game = session.query(db_models.SportsGame).get(game_id)

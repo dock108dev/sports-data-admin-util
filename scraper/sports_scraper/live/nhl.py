@@ -9,7 +9,7 @@ This module provides the main NHLLiveFeedClient which composes:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import httpx
 
@@ -17,7 +17,7 @@ from ..config import settings
 from ..logging import logger
 from ..models import NormalizedPlayByPlay
 from ..utils.cache import APICache
-from ..utils.datetime_utils import date_to_utc_datetime
+from ..utils.datetime_utils import date_to_utc_datetime, start_of_et_day_utc
 from ..utils.parsing import parse_int
 from .nhl_boxscore import NHLBoxscoreFetcher
 from .nhl_constants import NHL_SCHEDULE_URL
@@ -34,6 +34,15 @@ __all__ = [
     "NHLBoxscore",
     "NHLLiveFeedClient",
 ]
+
+
+def _et_noon_utc(day: date):
+    """Return UTC datetime for noon ET on the given date.
+
+    Used for schedule matching — to_et_date() on this value always
+    returns the correct calendar date regardless of DST.
+    """
+    return start_of_et_day_utc(day) + timedelta(hours=12)
 
 
 class NHLLiveFeedClient:
@@ -127,10 +136,9 @@ class NHLLiveFeedClient:
                 status = map_nhl_game_state(game_state)
                 status_text = game.get("gameScheduleState")
 
-                # Use schedule date (not UTC start time) for game_date matching
-                # Late-night West Coast games have UTC times on the next calendar day
-                # but should match against the Eastern Time schedule date
-                game_date = date_to_utc_datetime(target_date)
+                # Store ET noon so to_et_date() returns the correct schedule
+                # date. Using UTC midnight would convert to the previous ET day.
+                game_date = _et_noon_utc(target_date)
 
                 # Extract team info
                 home_team_data = game.get("homeTeam", {})
