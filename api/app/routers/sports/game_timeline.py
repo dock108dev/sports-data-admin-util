@@ -40,6 +40,20 @@ def _swap_score(raw: list | None) -> list[int]:
     return [0, 0]
 
 
+def _block_clock(
+    moments: list[dict], block: dict, edge: str,
+) -> str | None:
+    """Derive block start/end clock from its moments (fallback for older flows)."""
+    indices = block.get("moment_indices", [])
+    if not indices:
+        return None
+    idx = indices[0] if edge == "start" else indices[-1]
+    if idx < 0 or idx >= len(moments):
+        return None
+    m = moments[idx]
+    return m.get("start_clock") if edge == "start" else m.get("end_clock")
+
+
 @router.get("/games/{game_id}/timeline", response_model=TimelineArtifactResponse)
 async def get_game_timeline(
     game_id: int,
@@ -244,6 +258,8 @@ async def get_game_flow(
                     narrative=block.get("narrative"),
                     miniBox=block.get("mini_box"),
                     embeddedSocialPostId=block.get("embedded_social_post_id"),
+                    startClock=block.get("start_clock") or _block_clock(moments_data, block, "start"),
+                    endClock=block.get("end_clock") or _block_clock(moments_data, block, "end"),
                 )
             )
         # Calculate total words from accepted block narratives

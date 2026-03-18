@@ -219,9 +219,11 @@ def create_blocks(
         for idx in moment_indices:
             all_play_ids.extend(moments[idx].get("play_ids", []))
 
-        # Get period range
+        # Get period and clock range from moments
         period_start = moments[start_idx].get("period", 1)
         period_end = moments[end_idx - 1].get("period", 1)
+        start_clock = moments[start_idx].get("start_clock")
+        end_clock = moments[end_idx - 1].get("end_clock")
 
         # Get score range
         score_before = tuple(moments[start_idx].get("score_before", [0, 0]))
@@ -272,6 +274,8 @@ def create_blocks(
             mini_box=mini_box,
             peak_margin=peak_margin,
             peak_leader=peak_leader,
+            start_clock=start_clock,
+            end_clock=end_clock,
         )
         blocks.append(block)
 

@@ -440,6 +440,72 @@ class TestPeakMarginInBlocks:
         assert block.peak_margin == 0
         assert block.peak_leader == 0
 
+    def test_clock_serialization(self) -> None:
+        """start_clock/end_clock survive to_dict/from_dict round trip."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock, SemanticRole
+
+        block = NarrativeBlock(
+            block_index=0,
+            role=SemanticRole.SETUP,
+            moment_indices=[0, 1],
+            period_start=1,
+            period_end=1,
+            score_before=(0, 0),
+            score_after=(25, 18),
+            play_ids=[1, 2],
+            key_play_ids=[1],
+            start_clock="12:00",
+            end_clock="6:45",
+        )
+
+        d = block.to_dict()
+        assert d["start_clock"] == "12:00"
+        assert d["end_clock"] == "6:45"
+
+        restored = NarrativeBlock.from_dict(d)
+        assert restored.start_clock == "12:00"
+        assert restored.end_clock == "6:45"
+
+    def test_clock_backward_compatible(self) -> None:
+        """from_dict works without start_clock/end_clock (older persisted flows)."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock
+
+        d = {
+            "block_index": 0,
+            "role": "SETUP",
+            "moment_indices": [0],
+            "period_start": 1,
+            "period_end": 1,
+            "score_before": [0, 0],
+            "score_after": [10, 8],
+            "play_ids": [1],
+            "key_play_ids": [1],
+        }
+
+        block = NarrativeBlock.from_dict(d)
+        assert block.start_clock is None
+        assert block.end_clock is None
+
+    def test_clock_omitted_from_dict_when_none(self) -> None:
+        """to_dict omits start_clock/end_clock when None (compact JSON)."""
+        from app.services.pipeline.stages.block_types import NarrativeBlock, SemanticRole
+
+        block = NarrativeBlock(
+            block_index=0,
+            role=SemanticRole.SETUP,
+            moment_indices=[0],
+            period_start=1,
+            period_end=1,
+            score_before=(0, 0),
+            score_after=(10, 8),
+            play_ids=[1],
+            key_play_ids=[1],
+        )
+
+        d = block.to_dict()
+        assert "start_clock" not in d
+        assert "end_clock" not in d
+
 
 class TestBlockConstraints:
     """Tests for block system constraints."""
