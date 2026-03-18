@@ -2,92 +2,18 @@
 
 Provides a clean interface for the router layer to call without
 needing to know about engine internals or sport module resolution.
-
-Pipeline: AggregationEngine → ProfileBuilder → MetricsEngine
-          → MatchupEngine → SimulationEngine → SimulationAnalysis
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from app.analytics.core.analytics_engine import AnalyticsEngine
-from app.analytics.core.matchup_engine import MatchupEngine
 from app.analytics.core.simulation_analysis import SimulationAnalysis
 from app.analytics.core.simulation_engine import SimulationEngine
-from app.analytics.core.types import (
-    MatchupProfile,
-    PlayerProfile,
-    TeamProfile,
-)
 
 
 class AnalyticsService:
     """High-level analytics service used by API routes."""
-
-    def get_team_analysis(self, sport: str, team_id: str) -> TeamProfile:
-        """Retrieve team analytical profile.
-
-        Args:
-            sport: Sport code (e.g., ``"mlb"``).
-            team_id: Team identifier.
-
-        Returns:
-            Populated TeamProfile.
-        """
-        engine = AnalyticsEngine(sport)
-        return engine.get_team_profile(team_id)
-
-    def get_player_analysis(self, sport: str, player_id: str) -> PlayerProfile:
-        """Retrieve player analytical profile.
-
-        Args:
-            sport: Sport code.
-            player_id: Player identifier.
-
-        Returns:
-            Populated PlayerProfile.
-        """
-        engine = AnalyticsEngine(sport)
-        return engine.get_player_profile(player_id)
-
-    def get_matchup_analysis(
-        self,
-        sport: str,
-        entity_a: str,
-        entity_b: str,
-    ) -> MatchupProfile:
-        """Analyze a matchup between two entities.
-
-        Args:
-            sport: Sport code.
-            entity_a: First entity identifier.
-            entity_b: Second entity identifier.
-
-        Returns:
-            MatchupProfile with comparison data.
-        """
-        engine = AnalyticsEngine(sport)
-        return engine.get_matchup(entity_a, entity_b)
-
-    def get_matchup_probabilities(
-        self,
-        sport: str,
-        player_a: PlayerProfile,
-        player_b: PlayerProfile,
-    ) -> MatchupProfile:
-        """Calculate matchup probabilities between two player profiles.
-
-        Args:
-            sport: Sport code.
-            player_a: First player profile.
-            player_b: Second player profile.
-
-        Returns:
-            MatchupProfile with probability distributions.
-        """
-        engine = MatchupEngine(sport)
-        return engine.calculate_player_vs_player(player_a, player_b)
 
     def run_full_simulation(
         self,
@@ -142,4 +68,3 @@ class AnalyticsService:
             summary["probability_meta"] = prob_meta
 
         return summary
-

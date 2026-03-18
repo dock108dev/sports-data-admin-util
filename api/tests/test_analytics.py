@@ -10,14 +10,9 @@ import pytest
 _has_sklearn = importlib.util.find_spec("sklearn") is not None
 _has_joblib = importlib.util.find_spec("joblib") is not None
 
-from app.analytics.core.analytics_engine import AnalyticsEngine
-from app.analytics.core.metrics_engine import MetricsEngine
 from app.analytics.core.simulation_engine import SimulationEngine
 from app.analytics.core.types import (
-    MatchupProfile,
-    PlayerProfile,
     SimulationResult,
-    TeamProfile,
 )
 from app.analytics.services.analytics_service import AnalyticsService
 from app.analytics.sports.mlb.metrics import MLBMetrics
@@ -27,115 +22,6 @@ from app.analytics.sports.mlb.transforms import (
     transform_matchup_data,
     transform_player_stats,
 )
-
-
-class TestAnalyticsEngine:
-    """Verify AnalyticsEngine initializes and returns correct types."""
-
-    def test_init_stores_sport(self) -> None:
-        engine = AnalyticsEngine("mlb")
-        assert engine.sport == "mlb"
-
-    def test_init_normalizes_sport_case(self) -> None:
-        engine = AnalyticsEngine("MLB")
-        assert engine.sport == "mlb"
-
-    def test_get_team_profile_returns_team_profile(self) -> None:
-        engine = AnalyticsEngine("mlb")
-        profile = engine.get_team_profile("NYY")
-        assert isinstance(profile, TeamProfile)
-        assert profile.team_id == "NYY"
-        assert profile.sport == "mlb"
-
-    def test_get_player_profile_returns_player_profile(self) -> None:
-        engine = AnalyticsEngine("mlb")
-        profile = engine.get_player_profile("player_123")
-        assert isinstance(profile, PlayerProfile)
-        assert profile.player_id == "player_123"
-        assert profile.sport == "mlb"
-
-    def test_get_matchup_returns_matchup_profile(self) -> None:
-        engine = AnalyticsEngine("mlb")
-        matchup = engine.get_matchup("NYY", "BOS")
-        assert isinstance(matchup, MatchupProfile)
-        assert matchup.entity_a_id == "NYY"
-        assert matchup.entity_b_id == "BOS"
-
-    def test_unsupported_sport_raises_on_load(self) -> None:
-        engine = AnalyticsEngine("cricket")
-        with pytest.raises(ValueError, match="Unsupported sport"):
-            engine._load_module()
-
-
-class TestMetricsEngine:
-    """Verify MetricsEngine routes to sport-specific modules."""
-
-    def test_init_stores_sport(self) -> None:
-        engine = MetricsEngine("mlb")
-        assert engine.sport == "mlb"
-
-    def test_calculate_player_metrics_delegates_to_mlb(self) -> None:
-        engine = MetricsEngine("mlb")
-        result = engine.calculate_player_metrics({
-            "zone_swing_pct": 0.75,
-            "outside_swing_pct": 0.30,
-            "zone_contact_pct": 0.88,
-            "outside_contact_pct": 0.60,
-            "avg_exit_velocity": 90.0,
-            "hard_hit_pct": 0.40,
-        })
-        assert isinstance(result, dict)
-        assert "contact_rate" in result
-        assert "power_index" in result
-        assert "swing_rate" in result
-        assert "whiff_rate" in result
-        assert "expected_slug" in result
-
-    def test_calculate_team_metrics_delegates_to_mlb(self) -> None:
-        engine = MetricsEngine("mlb")
-        result = engine.calculate_team_metrics({
-            "zone_swing_pct": 0.70,
-            "outside_swing_pct": 0.28,
-            "zone_contact_pct": 0.85,
-            "outside_contact_pct": 0.55,
-            "avg_exit_velocity": 89.0,
-            "hard_hit_pct": 0.38,
-        })
-        assert isinstance(result, dict)
-        assert "team_contact_rate" in result
-        assert "team_power_index" in result
-
-    def test_calculate_matchup_metrics_delegates_to_mlb(self) -> None:
-        engine = MetricsEngine("mlb")
-        batter = {
-            "zone_swing_pct": 0.75,
-            "outside_swing_pct": 0.30,
-            "zone_contact_pct": 0.88,
-            "outside_contact_pct": 0.60,
-            "avg_exit_velocity": 90.0,
-            "hard_hit_pct": 0.40,
-            "barrel_pct": 0.10,
-        }
-        pitcher = {
-            "zone_contact_pct": 0.70,
-            "outside_contact_pct": 0.45,
-        }
-        result = engine.calculate_matchup_metrics(batter, pitcher)
-        assert "contact_probability" in result
-        assert "hit_probability" in result
-        assert "strikeout_probability" in result
-
-    def test_unsupported_sport_returns_empty(self) -> None:
-        engine = MetricsEngine("cricket")
-        assert engine.calculate_player_metrics({}) == {}
-        assert engine.calculate_team_metrics({}) == {}
-        assert engine.calculate_matchup_metrics({}, {}) == {}
-
-    def test_empty_stats_returns_empty_dict(self) -> None:
-        engine = MetricsEngine("mlb")
-        result = engine.calculate_player_metrics({})
-        assert isinstance(result, dict)
-        assert len(result) == 0
 
 
 class TestSimulationEngine:
@@ -363,118 +249,6 @@ class TestMLBTransforms:
 
     def test_transform_matchup_data_returns_dict(self) -> None:
         assert isinstance(transform_matchup_data({}, {}), dict)
-
-
-class TestAggregationEngine:
-    """Verify AggregationEngine routes to sport-specific modules."""
-
-    def test_aggregate_player_history_mlb(self) -> None:
-        from app.analytics.core.aggregation_engine import AggregationEngine
-
-        engine = AggregationEngine("mlb")
-        games = [
-            {"zone_swing_pct": 0.70, "zone_contact_pct": 0.85, "avg_exit_velocity": 90.0, "hard_hit_pct": 0.40, "pitches": 80},
-            {"zone_swing_pct": 0.80, "zone_contact_pct": 0.90, "avg_exit_velocity": 92.0, "hard_hit_pct": 0.45, "pitches": 90},
-        ]
-        result = engine.aggregate_player_history("p1", games)
-        assert result["player_id"] == "p1"
-        assert result["zone_swing_pct"] == 0.75
-        assert result["avg_exit_velocity"] == 91.0
-        assert result["pitches"] == 170.0
-
-    def test_aggregate_player_history_empty(self) -> None:
-        from app.analytics.core.aggregation_engine import AggregationEngine
-
-        engine = AggregationEngine("mlb")
-        result = engine.aggregate_player_history("p1", [])
-        assert result == {"player_id": "p1"}
-
-    def test_aggregate_player_history_with_recency(self) -> None:
-        from app.analytics.core.aggregation_engine import AggregationEngine
-
-        engine = AggregationEngine("mlb")
-        games = [
-            {"avg_exit_velocity": 85.0, "hard_hit_pct": 0.30},
-            {"avg_exit_velocity": 86.0, "hard_hit_pct": 0.31},
-            {"avg_exit_velocity": 87.0, "hard_hit_pct": 0.32},
-            {"avg_exit_velocity": 95.0, "hard_hit_pct": 0.50},
-            {"avg_exit_velocity": 96.0, "hard_hit_pct": 0.52},
-        ]
-        result = engine.aggregate_player_history("p1", games, recent_n=2)
-        # Recent avg EV = 95.5, season avg EV = 89.8
-        # Blended = 95.5 * 0.7 + 89.8 * 0.3 = 66.85 + 26.94 = 93.79
-        assert result["avg_exit_velocity"] == pytest.approx(93.79, abs=0.01)
-
-    def test_aggregate_team_history_mlb(self) -> None:
-        from app.analytics.core.aggregation_engine import AggregationEngine
-
-        engine = AggregationEngine("mlb")
-        games = [
-            {"zone_contact_pct": 0.80, "outside_contact_pct": 0.55},
-            {"zone_contact_pct": 0.90, "outside_contact_pct": 0.65},
-        ]
-        result = engine.aggregate_team_history("NYY", games)
-        assert result["team_id"] == "NYY"
-        assert result["zone_contact_pct"] == 0.85
-
-    def test_unsupported_sport_returns_id_only(self) -> None:
-        from app.analytics.core.aggregation_engine import AggregationEngine
-
-        engine = AggregationEngine("cricket")
-        result = engine.aggregate_player_history("p1", [{"foo": 1}])
-        assert result == {"player_id": "p1"}
-
-    def test_build_matchup_dataset(self) -> None:
-        from app.analytics.core.aggregation_engine import AggregationEngine
-
-        engine = AggregationEngine("mlb")
-        a_games = [{"avg_exit_velocity": 90.0}]
-        b_games = [{"avg_exit_velocity": 85.0}]
-        result = engine.build_matchup_dataset("a1", "b1", a_games, b_games)
-        assert result["entity_a_profile"]["player_id"] == "a1"
-        assert result["entity_b_profile"]["player_id"] == "b1"
-
-
-class TestProfileBuilder:
-    """Verify ProfileBuilder creates typed profiles from aggregated stats."""
-
-    def test_build_player_profile(self) -> None:
-        from app.analytics.core.profile_builder import ProfileBuilder
-
-        builder = ProfileBuilder("mlb")
-        agg = {
-            "name": "Test Player",
-            "zone_swing_pct": 0.75,
-            "outside_swing_pct": 0.30,
-            "zone_contact_pct": 0.88,
-            "outside_contact_pct": 0.60,
-            "avg_exit_velocity": 90.0,
-            "hard_hit_pct": 0.40,
-        }
-        profile = builder.build_player_profile("p1", agg)
-        assert isinstance(profile, PlayerProfile)
-        assert profile.player_id == "p1"
-        assert profile.sport == "mlb"
-        assert profile.name == "Test Player"
-        assert "contact_rate" in profile.metrics
-        assert "power_index" in profile.metrics
-
-    def test_build_team_profile(self) -> None:
-        from app.analytics.core.profile_builder import ProfileBuilder
-
-        builder = ProfileBuilder("mlb")
-        agg = {
-            "name": "Yankees",
-            "zone_contact_pct": 0.85,
-            "outside_contact_pct": 0.55,
-            "avg_exit_velocity": 89.0,
-            "hard_hit_pct": 0.38,
-        }
-        profile = builder.build_team_profile("NYY", agg)
-        assert isinstance(profile, TeamProfile)
-        assert profile.team_id == "NYY"
-        assert profile.name == "Yankees"
-        assert "team_contact_rate" in profile.metrics
 
 
 class TestMLBAggregation:
@@ -1178,23 +952,6 @@ class TestFullAnalysisPipeline:
 class TestAnalyticsService:
     """Verify service layer wiring."""
 
-    def test_get_team_analysis(self) -> None:
-        svc = AnalyticsService()
-        profile = svc.get_team_analysis("mlb", "NYY")
-        assert isinstance(profile, TeamProfile)
-        assert profile.team_id == "NYY"
-
-    def test_get_player_analysis(self) -> None:
-        svc = AnalyticsService()
-        profile = svc.get_player_analysis("mlb", "p1")
-        assert isinstance(profile, PlayerProfile)
-        assert profile.player_id == "p1"
-
-    def test_get_matchup_analysis(self) -> None:
-        svc = AnalyticsService()
-        matchup = svc.get_matchup_analysis("mlb", "NYY", "BOS")
-        assert isinstance(matchup, MatchupProfile)
-
     def test_run_full_simulation(self) -> None:
         svc = AnalyticsService()
         result = svc.run_full_simulation("mlb", {}, iterations=100, seed=42)
@@ -1259,145 +1016,6 @@ class TestAnalyticsRoutes:
         assert "average_home_score" in data
         assert data["iterations"] == 100
 
-
-
-class TestWinProbabilityModel:
-    """Verify WinProbabilityModel calculations."""
-
-    def test_calculate_win_probability(self) -> None:
-        from app.analytics.core.win_probability_model import WinProbabilityModel
-
-        model = WinProbabilityModel()
-        results = [
-            {"winner": "home"}, {"winner": "home"}, {"winner": "away"},
-            {"winner": "home"}, {"winner": "away"},
-        ]
-        wp = model.calculate_win_probability(results)
-        assert wp["home_wp"] == 0.6
-        assert wp["away_wp"] == 0.4
-
-    def test_empty_results(self) -> None:
-        from app.analytics.core.win_probability_model import WinProbabilityModel
-
-        wp = WinProbabilityModel().calculate_win_probability([])
-        assert wp["home_wp"] == 0.5
-
-    def test_build_timeline(self) -> None:
-        from app.analytics.core.win_probability_model import WinProbabilityModel
-
-        model = WinProbabilityModel()
-        snapshots = [
-            {"inning": 1, "half": "top", "home_win_probability": 0.52},
-            {"inning": 3, "half": "bottom", "home_win_probability": 0.48},
-            {"inning": 6, "half": "top", "home_win_probability": 0.65},
-        ]
-        timeline = model.build_timeline(snapshots)
-        assert len(timeline) == 3
-        assert timeline[0]["label"] == "T1"
-        assert timeline[1]["label"] == "B3"
-        assert timeline[2]["home_wp"] == 0.65
-
-
-
-class TestModelCalibration:
-    """Verify calibration calculations."""
-
-    def test_evaluate_prediction_home_win(self) -> None:
-        from app.analytics.core.model_calibration import ModelCalibration
-
-        cal = ModelCalibration()
-        pred = {
-            "prediction_id": "p1",
-            "model_output": {
-                "home_win_probability": 0.61,
-                "expected_home_score": 4.8,
-                "expected_away_score": 3.9,
-            },
-        }
-        actual = {"home_score": 5, "away_score": 3}
-        result = cal.evaluate_prediction(pred, actual)
-        # Brier: (0.61 - 1)^2 = 0.1521
-        assert abs(result["brier_score"] - 0.1521) < 0.001
-        assert result["correct_winner"] is True
-        assert result["home_score_error"] == pytest.approx(0.2, abs=0.01)
-
-    def test_evaluate_prediction_away_win(self) -> None:
-        from app.analytics.core.model_calibration import ModelCalibration
-
-        cal = ModelCalibration()
-        pred = {
-            "model_output": {
-                "home_win_probability": 0.61,
-                "expected_home_score": 4.8,
-                "expected_away_score": 3.9,
-            },
-        }
-        actual = {"home_score": 2, "away_score": 5}
-        result = cal.evaluate_prediction(pred, actual)
-        # Brier: (0.61 - 0)^2 = 0.3721
-        assert abs(result["brier_score"] - 0.3721) < 0.001
-        assert result["correct_winner"] is False
-
-    def test_calibration_report(self) -> None:
-        from app.analytics.core.model_calibration import ModelCalibration
-
-        cal = ModelCalibration()
-        predictions = [
-            {
-                "model_output": {"home_win_probability": 0.7, "expected_home_score": 5, "expected_away_score": 3},
-                "actual_result": {"home_score": 6, "away_score": 2},
-            },
-            {
-                "model_output": {"home_win_probability": 0.4, "expected_home_score": 3, "expected_away_score": 4},
-                "actual_result": {"home_score": 2, "away_score": 5},
-            },
-        ]
-        report = cal.calibration_report(predictions)
-        assert report["total_predictions"] == 2
-        assert report["winner_accuracy"] == 1.0  # both correct
-        assert report["brier_score"] > 0
-        assert "prediction_bias" in report
-
-    def test_calibration_report_empty(self) -> None:
-        from app.analytics.core.model_calibration import ModelCalibration
-
-        report = ModelCalibration().calibration_report([])
-        assert report["total_predictions"] == 0
-
-    def test_bias_detection(self) -> None:
-        from app.analytics.core.model_calibration import ModelCalibration
-
-        cal = ModelCalibration()
-        # Model consistently overestimates home team
-        predictions = [
-            {
-                "model_output": {"home_win_probability": 0.8, "expected_home_score": 6, "expected_away_score": 3},
-                "actual_result": {"home_score": 3, "away_score": 4},
-            },
-            {
-                "model_output": {"home_win_probability": 0.75, "expected_home_score": 5, "expected_away_score": 3},
-                "actual_result": {"home_score": 2, "away_score": 5},
-            },
-        ]
-        bias = cal._detect_bias(predictions)
-        assert bias["home_bias"] > 0  # overestimates home win prob
-        assert bias["home_score_bias"] > 0  # overestimates home score
-
-    def test_sportsbook_comparison(self) -> None:
-        from app.analytics.core.model_calibration import ModelCalibration
-
-        cal = ModelCalibration()
-        pred = {
-            "model_output": {"home_win_probability": 0.61},
-            "sportsbook_lines": {"home_ml": -150},
-        }
-        actual = {"home_score": 5, "away_score": 3}
-        result = cal.evaluate_prediction(pred, actual)
-        assert "sportsbook_comparison" in result
-        comp = result["sportsbook_comparison"]
-        assert "model_error" in comp
-        assert "sportsbook_error" in comp
-        assert isinstance(comp["model_closer"], bool)
 
 
 class TestModelMetrics:
@@ -4576,6 +4194,33 @@ class TestSSOTNoLegacyFiles:
             "Legacy scripts/train_models/ directory still exists — "
             "training is handled by Celery tasks"
         )
+
+    def test_no_dead_analytics_core_modules(self):
+        """Deleted analytics core modules must stay deleted.
+
+        These were superseded by profile_service.py and _calibration_routes.py.
+        """
+        import os
+
+        core_dir = os.path.join(
+            os.path.dirname(__file__), "..", "app", "analytics", "core"
+        )
+        dead_modules = [
+            "aggregation_engine.py",
+            "analytics_engine.py",
+            "matchup_engine.py",
+            "metrics_engine.py",
+            "model_calibration.py",
+            "profile_builder.py",
+            "win_probability_model.py",
+        ]
+        for mod in dead_modules:
+            path = os.path.join(core_dir, mod)
+            assert not os.path.exists(path), (
+                f"Dead module {mod} was reintroduced — "
+                f"this functionality is handled by profile_service.py / "
+                f"_calibration_routes.py / SimulationRunner"
+            )
 
 
 class TestSSOTMLBConstants:

@@ -171,17 +171,13 @@ class SimulationRunner:
             }
 
         # Game-level metrics
+        from .simulation_analysis import _median
+
         total_runs = [
             r.get("home_score", 0) + r.get("away_score", 0)
             for r in sim_results
         ]
-        sorted_totals = sorted(total_runs)
-        mid = len(sorted_totals) // 2
-        median_total = (
-            (sorted_totals[mid - 1] + sorted_totals[mid]) / 2.0
-            if len(sorted_totals) % 2 == 0
-            else float(sorted_totals[mid])
-        )
+        median_total = _median(total_runs)
         extra_innings = sum(
             1 for r in sim_results if r.get("innings_played", 9) > 9
         )
