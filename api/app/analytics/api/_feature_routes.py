@@ -152,6 +152,34 @@ async def delete_feature_config(
     return {"status": "deleted", "id": config_id, "name": name}
 
 
+class BulkDeleteRequest(BaseModel):
+    """Request body for POST /api/analytics/feature-configs/bulk-delete."""
+    ids: list[int] = Field(..., description="List of loadout IDs to delete")
+
+
+@router.post("/feature-configs/bulk-delete")
+async def bulk_delete_feature_configs(
+    req: BulkDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Delete multiple feature loadouts by ID."""
+    if not req.ids:
+        return {"status": "ok", "deleted": 0, "ids": []}
+
+    stmt = select(AnalyticsFeatureConfig).where(
+        AnalyticsFeatureConfig.id.in_(req.ids)
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+
+    deleted_ids = []
+    for row in rows:
+        deleted_ids.append(row.id)
+        await db.delete(row)
+
+    return {"status": "deleted", "deleted": len(deleted_ids), "ids": deleted_ids}
+
+
 @router.post("/feature-config/{config_id}/clone")
 async def clone_feature_config(
     config_id: int,

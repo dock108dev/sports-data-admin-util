@@ -13,6 +13,8 @@ const DEFAULT_TABS: LogsTab[] = [
   { label: "API", container: "sports-api" },
   { label: "Scraper", container: "sports-scraper" },
   { label: "Social Scraper", container: "sports-social-scraper" },
+  { label: "API Worker", container: "sports-api-worker" },
+  { label: "Training Worker", container: "sports-api-training-worker" },
 ];
 
 type LogsDrawerProps = {

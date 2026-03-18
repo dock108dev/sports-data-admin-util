@@ -119,7 +119,7 @@ function ExperimentBuilder({ onSubmitted }: { onSubmitted: () => void }) {
   useEffect(() => {
     Promise.all([
       getAvailableFeatures("mlb"),
-      listFeatureLoadouts("mlb", "plate_appearance").catch(() => ({ loadouts: [] })),
+      listFeatureLoadouts("mlb").catch(() => ({ loadouts: [] })),
     ])
       .then(([featRes, loadoutRes]) => {
         const feats = featRes.plate_appearance_features || featRes.all_features || [];

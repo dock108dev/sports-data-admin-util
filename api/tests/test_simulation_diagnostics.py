@@ -213,12 +213,12 @@ class TestValidateProbabilities:
         )
         probs = {
             "strikeout_probability": 0.22,
-            "walk_probability": 0.08,
+            "walk_or_hbp_probability": 0.08,
             "single_probability": 0.18,
             "double_probability": 0.05,
             "triple_probability": 0.01,
             "home_run_probability": 0.03,
-            "out_probability": 0.43,
+            "ball_in_play_out_probability": 0.43,
         }
         issues = validate_probabilities(probs)
         assert issues == []
@@ -245,6 +245,49 @@ class TestValidateProbabilities:
         probs = {"a": 0.3, "b": 0.3}
         issues = validate_probabilities(probs)
         assert any("sum_not_one" in i for i in issues)
+
+
+# ---------------------------------------------------------------------------
+# 4b. normalize_probabilities with canonical PA labels
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeProbabilitiesCanonicalLabels:
+    """PA labels use canonical names (walk_or_hbp, ball_in_play_out)."""
+
+    def test_canonical_labels_normalize(self):
+        from app.analytics.probabilities.probability_provider import (
+            normalize_probabilities,
+        )
+        from app.analytics.sports.mlb.constants import PA_EVENTS
+
+        probs = {
+            "strikeout": 0.22,
+            "walk_or_hbp": 0.08,
+            "single": 0.15,
+            "double": 0.05,
+            "triple": 0.01,
+            "home_run": 0.03,
+            "ball_in_play_out": 0.46,
+        }
+        result = normalize_probabilities(probs, PA_EVENTS)
+
+        assert result["walk_or_hbp"] > 0
+        assert result["ball_in_play_out"] > 0
+        assert abs(sum(result.values()) - 1.0) < 0.01
+
+    def test_missing_events_default_to_zero(self):
+        from app.analytics.probabilities.probability_provider import (
+            normalize_probabilities,
+        )
+        from app.analytics.sports.mlb.constants import PA_EVENTS
+
+        # Only provide a few events — rest should be 0
+        probs = {"strikeout": 0.5, "home_run": 0.5}
+        result = normalize_probabilities(probs, PA_EVENTS)
+        assert result["walk_or_hbp"] == 0.0
+        assert result["ball_in_play_out"] == 0.0
+        assert abs(sum(result.values()) - 1.0) < 0.01
 
 
 # ---------------------------------------------------------------------------
