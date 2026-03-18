@@ -192,7 +192,22 @@ class TrainingPipeline:
         if sklearn_model is None:
             sklearn_model = self._default_model()
 
-        sklearn_model.fit(X_train, y_train)
+        # XGBoost requires integer-encoded labels, not strings.
+        # Encode them and store the mapping so predict_proba can
+        # return the original class names.
+        y_fit = y_train
+        label_encoder = None
+        if _needs_label_encoding(sklearn_model):
+            from sklearn.preprocessing import LabelEncoder
+            label_encoder = LabelEncoder()
+            y_fit = label_encoder.fit_transform(y_train)
+
+        sklearn_model.fit(X_train, y_fit)
+
+        # Re-map classes_ back to original string labels so downstream
+        # inference returns human-readable probability keys.
+        if label_encoder is not None:
+            sklearn_model.classes_ = label_encoder.classes_
         # Attach feature names so inference can filter to the correct features
         sklearn_model._training_feature_names = list(self._feature_names)
         self._model = sklearn_model
@@ -397,6 +412,13 @@ class TrainingPipeline:
             max_depth=4,
             random_state=self.random_state,
         )
+
+
+def _needs_label_encoding(model: Any) -> bool:
+    """Check if a model requires integer-encoded labels (e.g., XGBoost)."""
+    cls_name = type(model).__name__
+    module = type(model).__module__ or ""
+    return "xgboost" in module.lower() or "XGB" in cls_name
 
 
 def _extract_feature_importance(
