@@ -163,6 +163,47 @@ _scheduled_tasks = {
         ),  # 6:00 AM EST = 11:00 UTC (+30 min after NCAAB flow)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
+    # === Golf (DataGolf API) ===
+    "golf-schedule-daily-7am-eastern": {
+        "task": "golf_sync_schedule",
+        "schedule": crontab(minute=0, hour=12),  # 7:00 AM EST = 12:00 UTC
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+    "golf-players-weekly-monday": {
+        "task": "golf_sync_players",
+        "schedule": crontab(minute=0, hour=12, day_of_week="monday"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+    "golf-field-every-6h": {
+        "task": "golf_sync_field",
+        "schedule": crontab(minute=0, hour="6,12,18,0"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+    "golf-odds-every-30m": {
+        "task": "golf_sync_odds",
+        "schedule": crontab(minute="0,30"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+    "golf-leaderboard-every-5m": {
+        "task": "golf_sync_leaderboard",
+        "schedule": crontab(minute="*/5"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+    "golf-dfs-every-6h": {
+        "task": "golf_sync_dfs",
+        "schedule": crontab(minute=30, hour="6,12,18,0"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+    "golf-stats-weekly-tuesday": {
+        "task": "golf_sync_stats",
+        "schedule": crontab(minute=0, hour=12, day_of_week="tuesday"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
+    "golf-score-pools-every-5m": {
+        "task": "golf_score_pools",
+        "schedule": crontab(minute="*/5"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
     # === Daily sweep (status repair, social scrape #2, embedded tweets, archive) ===
     # Lightweight housekeeping — no full pipeline re-runs or flow generation
     "daily-sweep-4am-eastern": {

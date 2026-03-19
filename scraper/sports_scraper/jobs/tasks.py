@@ -63,6 +63,16 @@ from .live_odds_tasks import (
     poll_live_odds_mainline,
     poll_live_odds_props,
 )
+from .golf_tasks import (  # noqa: F401
+    golf_sync_schedule,
+    golf_sync_players,
+    golf_sync_field,
+    golf_sync_leaderboard,
+    golf_sync_odds,
+    golf_sync_dfs,
+    golf_sync_stats,
+    golf_score_pools,
+)
 
 __all__ = [
     "run_scrape_job",

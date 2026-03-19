@@ -38,6 +38,15 @@ const navSections: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
+    title: "Golf",
+    items: [
+      { href: ROUTES.GOLF, label: "Golf Dashboard", exact: true },
+      { href: ROUTES.GOLF_TOURNAMENTS, label: "Tournaments" },
+      { href: ROUTES.GOLF_PLAYERS, label: "Players" },
+      { href: ROUTES.GOLF_POOLS, label: "Pools" },
+    ],
+  },
+  {
     title: "System",
     items: [
       { href: ROUTES.CONTROL_PANEL, label: "Control Panel" },

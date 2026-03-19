@@ -23,6 +23,14 @@ export const ROUTES = {
   ANALYTICS_BATCH: "/admin/analytics/batch",
   ANALYTICS_PROFILES: "/admin/analytics/profiles",
   ANALYTICS_EXPERIMENTS: "/admin/analytics/experiments",
+  /** Golf */
+  GOLF: "/admin/golf",
+  GOLF_TOURNAMENTS: "/admin/golf/tournaments",
+  GOLF_PLAYERS: "/admin/golf/players",
+  GOLF_POOLS: "/admin/golf/pools",
+  GOLF_POOL_CREATE: "/admin/golf/pools/create",
+  GOLF_POOL: (id: number | string) => `/admin/golf/pools/${id}`,
+
   /** System */
   USERS: "/admin/users",
 } as const;

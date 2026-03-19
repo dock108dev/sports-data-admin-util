@@ -13,3 +13,4 @@ import app.db.flow  # noqa: F401, E402
 import app.db.odds  # noqa: F401, E402
 import app.db.scraper  # noqa: F401, E402
 import app.db.social  # noqa: F401, E402
+import app.db.golf_pools  # noqa: F401, E402
