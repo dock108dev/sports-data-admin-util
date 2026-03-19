@@ -147,6 +147,7 @@ class Settings(BaseSettings):
     scraper_html_cache_dir_override: str | None = Field(None, alias="SCRAPER_HTML_CACHE_DIR")
     scraper_force_cache_refresh_override: bool | None = Field(None, alias="SCRAPER_FORCE_CACHE_REFRESH")
     odds_api_regions: str | None = Field(None, alias="ODDS_API_REGIONS")
+    datagolf_api_key: str | None = Field(None, alias="DATAGOLF_API_KEY")
 
     @model_validator(mode="after")
     def _apply_scraper_overrides(self) -> Settings:

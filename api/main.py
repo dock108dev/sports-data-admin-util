@@ -21,6 +21,7 @@ from app.realtime.poller import db_poller
 from app.realtime.sse import router as sse_router
 from app.realtime.ws import router as ws_router
 from app.routers import auth, fairbet, preferences, reading_positions, simulator, social, sports
+from app.routers.golf import router as golf_router
 from app.routers.admin import (
     odds_sync,
     pbp,
@@ -119,6 +120,11 @@ app.include_router(fairbet.router, dependencies=auth_dependency)
 # role-based deps (require_admin) would 403 in production.
 # ---------------------------------------------------------------------------
 app.include_router(analytics_router, dependencies=auth_dependency)
+
+# ---------------------------------------------------------------------------
+# Golf — tournament, player, odds, and DFS endpoints
+# ---------------------------------------------------------------------------
+app.include_router(golf_router, dependencies=auth_dependency)
 
 # ---------------------------------------------------------------------------
 # Admin UI routers — secured by API key (admin utility on secured server)
