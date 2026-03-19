@@ -12,11 +12,9 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-import httpx
+import time
 
-from ..config import settings
-from ..logging import logger
-from ..utils.provider_request import ProviderRequestConfig, provider_request
+import httpx
 
 from .models import (
     DGDFSProjection,
@@ -35,42 +33,59 @@ from .models import (
 
 _BASE_URL = "https://feeds.datagolf.com"
 
-# 45 req/min = 0.75 req/sec.  Use 0.7 to leave headroom.
-_PROVIDER_CONFIG = ProviderRequestConfig(
-    provider_name="datagolf",
-    rate_limit_qps=0.7,
-    rate_limit_burst=5,
-    timeout_seconds=30,
-)
+# 45 req/min = 0.75 req/sec.  Minimum interval between requests.
+_MIN_REQUEST_INTERVAL = 1.4  # seconds (~43 req/min, under the 45 limit)
+
+# Lazy import to avoid circular import at module load time
+_logger = None
+
+
+def _get_logger():
+    global _logger
+    if _logger is None:
+        from ..logging import logger
+        _logger = logger
+    return _logger
 
 
 class DataGolfClient:
     """Client for the DataGolf feeds API."""
 
     def __init__(self, api_key: str | None = None) -> None:
-        self._api_key = api_key or getattr(settings, "datagolf_api_key", "") or ""
+        self._api_key = api_key or ""
         if not self._api_key:
-            logger.warning("datagolf_client_no_api_key")
+            # Try loading from settings at runtime (not import time)
+            try:
+                from ..config import settings
+                self._api_key = getattr(settings, "datagolf_api_key", "") or ""
+            except Exception:
+                pass
         self._client = httpx.Client(
             timeout=30.0,
             headers={"User-Agent": "sports-data-admin/1.0"},
         )
+        self._last_request_at = 0.0
 
     def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         """Make an authenticated GET request to DataGolf."""
+        logger = _get_logger()
         url = f"{_BASE_URL}{path}"
         all_params = {"key": self._api_key, "file_format": "json"}
         if params:
             all_params.update(params)
 
-        resp = provider_request(
-            client=self._client,
-            method="GET",
-            url=url,
-            params=all_params,
-            config=_PROVIDER_CONFIG,
-            league="PGA",
-        )
+        # Simple rate limiting
+        now = time.monotonic()
+        elapsed = now - self._last_request_at
+        if elapsed < _MIN_REQUEST_INTERVAL:
+            time.sleep(_MIN_REQUEST_INTERVAL - elapsed)
+
+        try:
+            resp = self._client.get(url, params=all_params)
+            self._last_request_at = time.monotonic()
+        except Exception as exc:
+            logger.warning("datagolf_request_failed", path=path, error=str(exc))
+            return None
 
         if resp.status_code != 200:
             logger.warning(
