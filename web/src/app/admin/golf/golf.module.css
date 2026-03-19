@@ -1,0 +1,204 @@
+/* Golf admin page styles — mirrors analytics.module.css */
+.container {
+  color: var(--text-secondary);
+}
+
+.pageHeader {
+  margin-bottom: var(--space-page-section);
+}
+
+.pageTitle {
+  font-size: var(--font-page-title-size);
+  font-weight: var(--font-page-title-weight);
+  letter-spacing: var(--font-page-title-spacing);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-row) 0;
+}
+
+.pageSubtitle {
+  color: var(--text-muted);
+  font-size: var(--font-body-size);
+  margin: 0;
+}
+
+/* Dashboard nav grid */
+.navGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-card-inner);
+}
+
+.navLink {
+  text-decoration: none;
+  transition: transform 0.1s ease;
+}
+
+.navLink:hover {
+  transform: translateY(-2px);
+}
+
+.navArrow {
+  color: var(--text-muted);
+  font-size: 1.25rem;
+}
+
+/* Filter bar */
+.filterBar {
+  display: flex;
+  gap: var(--space-card-inner);
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: var(--space-card-inner);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.formGroup label {
+  font-size: var(--font-label-size);
+  color: var(--text-muted);
+  font-weight: var(--font-table-header-weight);
+}
+
+.formGroup input,
+.formGroup select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  font-size: var(--font-body-size);
+  color: var(--text-secondary);
+  background: #fff;
+  min-width: 180px;
+}
+
+.formGroup input:focus,
+.formGroup select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: var(--space-card-inner);
+}
+
+.tab {
+  padding: 0.625rem 1.25rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: var(--font-body-size);
+  color: var(--text-muted);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tabActive {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+  font-weight: 500;
+}
+
+/* Table row click */
+.clickableRow {
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.clickableRow:hover {
+  background: #f8fafc;
+}
+
+/* Info card */
+.infoCard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-card-inner);
+  margin-bottom: var(--space-card-inner);
+}
+
+.infoItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.infoLabel {
+  font-size: var(--font-label-size);
+  color: var(--text-muted);
+  margin-bottom: 0.125rem;
+}
+
+.infoValue {
+  font-size: var(--font-body-size);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Buttons */
+.btn {
+  padding: 0.5rem 1.25rem;
+  border: none;
+  border-radius: 6px;
+  font-size: var(--font-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btnPrimary {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.btnPrimary:hover {
+  background: #2563eb;
+}
+
+/* Loading & error */
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-muted);
+}
+
+.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-card);
+  padding: var(--space-card-inner);
+  color: #dc2626;
+  margin-top: var(--space-card-inner);
+}
+
+.empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-muted);
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .filterBar {
+    flex-direction: column;
+  }
+
+  .formGroup input,
+  .formGroup select {
+    min-width: 100%;
+  }
+
+  .navGrid {
+    grid-template-columns: 1fr;
+  }
+}
