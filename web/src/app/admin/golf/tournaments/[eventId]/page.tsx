@@ -65,7 +65,8 @@ export default function TournamentDetailPage() {
         if (tab === "leaderboard") {
           setLeaderboard(await fetchTournamentLeaderboard(eventId));
         } else if (tab === "field") {
-          setField(await fetchTournamentField(eventId));
+          const fieldRes = await fetchTournamentField(eventId);
+          setField(fieldRes.field ?? []);
         } else if (tab === "rounds") {
           setRounds(await fetchTournamentRounds(eventId, selectedRound));
         } else if (tab === "odds" && tournament?.id) {

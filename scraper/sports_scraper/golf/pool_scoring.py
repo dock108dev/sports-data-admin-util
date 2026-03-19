@@ -7,6 +7,16 @@ This is a lightweight DB-backed scoring pipeline that:
 4. Upserts materialized results to ``golf_pool_entry_scores`` / ``golf_pool_entry_score_players``
 
 Uses ``sqlalchemy.text()`` for raw SQL following the ``persistence.py`` pattern.
+
+Column naming conventions (from the Alembic migration):
+- ``golf_pools``: uses ``rules_json`` (JSONB), no ``last_scored_at``
+- ``golf_pool_entry_picks``: uses ``player_name_snapshot`` (not ``player_name``)
+- ``golf_pool_entry_score_players``: uses ``*_snapshot`` suffix for
+  ``player_name_snapshot``, ``status_snapshot``, ``position_snapshot``,
+  ``thru_snapshot``, ``total_score_snapshot``, ``made_cut_snapshot``.
+  Round columns ``r1``-``r4`` have NO suffix.
+- ``golf_pool_entry_scores``: unique on ``entry_id`` (not ``pool_id, entry_id``)
+- ``golf_pool_entry_score_players``: unique on ``(entry_id, dg_id)``
 """
 
 from __future__ import annotations
@@ -36,7 +46,7 @@ def _load_live_pools(session: Session) -> list[dict[str, Any]]:
     """Load all pools with status='live' and scoring_enabled=True."""
     rows = session.execute(
         text("""
-            SELECT id, club_code, tournament_id, rules, status
+            SELECT id, club_code, tournament_id, rules_json, status
             FROM golf_pools
             WHERE status = 'live' AND scoring_enabled = TRUE
         """)
@@ -47,7 +57,7 @@ def _load_live_pools(session: Session) -> list[dict[str, Any]]:
             "id": r[0],
             "club_code": r[1],
             "tournament_id": r[2],
-            "rules": r[3],
+            "rules_json": r[3],
             "status": r[4],
         }
         for r in rows
@@ -70,7 +80,7 @@ def _load_entries_and_picks(session: Session, pool_id: int) -> list[dict[str, An
         entry_id = er[0]
         pick_rows = session.execute(
             text("""
-                SELECT dg_id, player_name, pick_slot, bucket_number
+                SELECT dg_id, player_name_snapshot, pick_slot, bucket_number
                 FROM golf_pool_entry_picks
                 WHERE entry_id = :entry_id
                 ORDER BY pick_slot
@@ -134,7 +144,6 @@ def _load_leaderboard(session: Session, tournament_id: int) -> dict[int, dict[st
 def _parse_rules(rules_json: dict[str, Any] | None) -> dict[str, Any]:
     """Parse rules JSONB into structured config."""
     if not rules_json:
-        # Default to RVCC rules
         return {
             "variant": "rvcc",
             "pick_count": 7,
@@ -221,7 +230,6 @@ def _score_entry(
 
         scored_picks.append(scored_pick)
 
-    # Determine qualification
     qualified_count = len(eligible_picks)
 
     if qualified_count >= rules["min_cuts_to_qualify"]:
@@ -231,7 +239,6 @@ def _score_entry(
     else:
         qualification_status = "not_qualified"
 
-    # Select best N picks to count
     eligible_picks.sort(key=lambda p: p["sort_score"] if p["sort_score"] is not None else 999)
     counted = eligible_picks[: rules["count_best"]]
 
@@ -241,14 +248,12 @@ def _score_entry(
             sp["counts_toward_total"] = True
             sp["is_dropped"] = False
 
-    # Compute aggregate
     aggregate = None
     if counted:
         scores = [p["total_score"] for p in counted if p["total_score"] is not None]
         if scores:
             aggregate = sum(scores)
 
-    # Check completeness
     is_complete = all(
         p["thru"] == 18 or p["thru"] is None
         for p in counted
@@ -302,18 +307,23 @@ def _rank_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def _upsert_entry_score(session: Session, pool_id: int, scored: dict[str, Any]) -> None:
-    """Upsert a single materialized entry score row."""
+    """Upsert a single materialized entry score row.
+
+    Unique constraint: ``entry_id`` (not ``pool_id, entry_id``).
+    """
     session.execute(
         text("""
             INSERT INTO golf_pool_entry_scores
                 (pool_id, entry_id, rank, is_tied, aggregate_score,
                  qualified_golfers_count, counted_golfers_count,
-                 qualification_status, is_complete, updated_at)
+                 qualification_status, is_complete, last_scored_at,
+                 updated_at)
             VALUES
                 (:pool_id, :entry_id, :rank, :is_tied, :aggregate_score,
                  :qualified_golfers_count, :counted_golfers_count,
-                 :qualification_status, :is_complete, NOW())
-            ON CONFLICT (pool_id, entry_id) DO UPDATE SET
+                 :qualification_status, :is_complete, NOW(), NOW())
+            ON CONFLICT (entry_id) DO UPDATE SET
+                pool_id                 = EXCLUDED.pool_id,
                 rank                    = EXCLUDED.rank,
                 is_tied                 = EXCLUDED.is_tied,
                 aggregate_score         = EXCLUDED.aggregate_score,
@@ -321,6 +331,7 @@ def _upsert_entry_score(session: Session, pool_id: int, scored: dict[str, Any]) 
                 counted_golfers_count   = EXCLUDED.counted_golfers_count,
                 qualification_status    = EXCLUDED.qualification_status,
                 is_complete             = EXCLUDED.is_complete,
+                last_scored_at          = NOW(),
                 updated_at              = NOW()
         """),
         {
@@ -343,36 +354,51 @@ def _upsert_score_players(
     entry_id: int,
     picks: list[dict[str, Any]],
 ) -> None:
-    """Upsert per-golfer score detail rows."""
+    """Upsert per-golfer score detail rows.
+
+    Column names use ``_snapshot`` suffix where the migration defines them:
+    ``player_name_snapshot``, ``status_snapshot``, ``position_snapshot``,
+    ``thru_snapshot``, ``total_score_snapshot``, ``made_cut_snapshot``.
+    Round columns ``r1``-``r4`` have no suffix.
+
+    Unique constraint: ``(entry_id, dg_id)``
+    """
     for pick in picks:
         session.execute(
             text("""
                 INSERT INTO golf_pool_entry_score_players
-                    (pool_id, entry_id, dg_id, player_name, pick_slot,
-                     bucket_number, status, position, total_score, thru,
+                    (pool_id, entry_id, dg_id, player_name_snapshot, pick_slot,
+                     bucket_number, status_snapshot, position_snapshot,
+                     total_score_snapshot, thru_snapshot,
                      r1, r2, r3, r4,
-                     made_cut, counts_toward_total, is_dropped, updated_at)
+                     made_cut_snapshot, counts_toward_total, is_dropped,
+                     sort_score, last_scored_at, updated_at)
                 VALUES
                     (:pool_id, :entry_id, :dg_id, :player_name, :pick_slot,
-                     :bucket_number, :status, :position, :total_score, :thru,
+                     :bucket_number, :status, :position,
+                     :total_score, :thru,
                      :r1, :r2, :r3, :r4,
-                     :made_cut, :counts_toward_total, :is_dropped, NOW())
-                ON CONFLICT (pool_id, entry_id, dg_id) DO UPDATE SET
-                    player_name         = EXCLUDED.player_name,
-                    pick_slot           = EXCLUDED.pick_slot,
-                    bucket_number       = EXCLUDED.bucket_number,
-                    status              = EXCLUDED.status,
-                    position            = EXCLUDED.position,
-                    total_score         = EXCLUDED.total_score,
-                    thru                = EXCLUDED.thru,
-                    r1                  = EXCLUDED.r1,
-                    r2                  = EXCLUDED.r2,
-                    r3                  = EXCLUDED.r3,
-                    r4                  = EXCLUDED.r4,
-                    made_cut            = EXCLUDED.made_cut,
-                    counts_toward_total = EXCLUDED.counts_toward_total,
-                    is_dropped          = EXCLUDED.is_dropped,
-                    updated_at          = NOW()
+                     :made_cut, :counts_toward_total, :is_dropped,
+                     :sort_score, NOW(), NOW())
+                ON CONFLICT (entry_id, dg_id) DO UPDATE SET
+                    pool_id                 = EXCLUDED.pool_id,
+                    player_name_snapshot    = EXCLUDED.player_name_snapshot,
+                    pick_slot               = EXCLUDED.pick_slot,
+                    bucket_number           = EXCLUDED.bucket_number,
+                    status_snapshot         = EXCLUDED.status_snapshot,
+                    position_snapshot       = EXCLUDED.position_snapshot,
+                    total_score_snapshot    = EXCLUDED.total_score_snapshot,
+                    thru_snapshot           = EXCLUDED.thru_snapshot,
+                    r1                      = EXCLUDED.r1,
+                    r2                      = EXCLUDED.r2,
+                    r3                      = EXCLUDED.r3,
+                    r4                      = EXCLUDED.r4,
+                    made_cut_snapshot       = EXCLUDED.made_cut_snapshot,
+                    counts_toward_total     = EXCLUDED.counts_toward_total,
+                    is_dropped              = EXCLUDED.is_dropped,
+                    sort_score              = EXCLUDED.sort_score,
+                    last_scored_at          = NOW(),
+                    updated_at              = NOW()
             """),
             {
                 "pool_id": pool_id,
@@ -392,18 +418,9 @@ def _upsert_score_players(
                 "made_cut": pick["made_cut"],
                 "counts_toward_total": pick["counts_toward_total"],
                 "is_dropped": pick["is_dropped"],
+                "sort_score": pick.get("sort_score"),
             },
         )
-
-
-def _update_pool_last_scored(session: Session, pool_id: int) -> None:
-    """Stamp the pool's last_scored_at timestamp."""
-    session.execute(
-        text("""
-            UPDATE golf_pools SET last_scored_at = NOW() WHERE id = :pool_id
-        """),
-        {"pool_id": pool_id},
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -439,18 +456,15 @@ def score_all_live_pools(session: Session) -> dict[str, Any]:
                 logger.debug("golf_pool_scoring_no_leaderboard", pool_id=pool_id, tournament_id=tournament_id)
                 continue
 
-            rules = _parse_rules(pool.get("rules"))
+            rules = _parse_rules(pool.get("rules_json"))
 
-            # Score all entries
             scored_entries = [_score_entry(e, leaderboard, rules) for e in entries]
             ranked = _rank_entries(scored_entries)
 
-            # Persist materialized results
             for scored in ranked:
                 _upsert_entry_score(session, pool_id, scored)
                 _upsert_score_players(session, pool_id, scored["entry_id"], scored["picks"])
 
-            _update_pool_last_scored(session, pool_id)
             session.commit()
 
             total_entries += len(ranked)

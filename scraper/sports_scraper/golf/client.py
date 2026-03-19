@@ -36,15 +36,21 @@ _BASE_URL = "https://feeds.datagolf.com"
 # 45 req/min = 0.75 req/sec.  Minimum interval between requests.
 _MIN_REQUEST_INTERVAL = 1.4  # seconds (~43 req/min, under the 45 limit)
 
-# Lazy import to avoid circular import at module load time
+# Use the scraper's structured logger (supports keyword args like
+# logger.warning("msg", key=val)).  Imported lazily at first use to
+# avoid circular imports during test collection.
 _logger = None
 
 
-def _get_logger():
+def _log():
     global _logger
     if _logger is None:
-        from ..logging import logger
-        _logger = logger
+        try:
+            from ..logging import logger as _l
+            _logger = _l
+        except Exception:
+            import logging
+            _logger = logging.getLogger(__name__)
     return _logger
 
 
@@ -68,7 +74,6 @@ class DataGolfClient:
 
     def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         """Make an authenticated GET request to DataGolf."""
-        logger = _get_logger()
         url = f"{_BASE_URL}{path}"
         all_params = {"key": self._api_key, "file_format": "json"}
         if params:
@@ -84,11 +89,11 @@ class DataGolfClient:
             resp = self._client.get(url, params=all_params)
             self._last_request_at = time.monotonic()
         except Exception as exc:
-            logger.warning("datagolf_request_failed", path=path, error=str(exc))
+            _log().warning("datagolf_request_failed", path=path, error=str(exc))
             return None
 
         if resp.status_code != 200:
-            logger.warning(
+            _log().warning(
                 "datagolf_api_error",
                 path=path,
                 status=resp.status_code,
@@ -131,7 +136,7 @@ class DataGolfClient:
                     season=season,
                 ))
             except Exception as exc:
-                logger.warning("datagolf_schedule_parse_error", event=evt, error=str(exc))
+                _log().warning("datagolf_schedule_parse_error", event=evt, error=str(exc))
         return tournaments
 
     def get_player_list(self) -> list[DGPlayer]:
@@ -154,7 +159,7 @@ class DataGolfClient:
                     yahoo_id=_safe_int(p.get("yahoo_id")),
                 ))
             except Exception as exc:
-                logger.warning("datagolf_player_parse_error", player=p, error=str(exc))
+                _log().warning("datagolf_player_parse_error", player=p, error=str(exc))
         return players
 
     def get_field_updates(self, tour: str = "pga") -> list[DGFieldEntry]:
@@ -183,7 +188,7 @@ class DataGolfClient:
                     r2_teetime=f.get("r2_teetime"),
                 ))
             except Exception as exc:
-                logger.warning("datagolf_field_parse_error", entry=f, error=str(exc))
+                _log().warning("datagolf_field_parse_error", entry=f, error=str(exc))
         return entries
 
     # ------------------------------------------------------------------
@@ -216,7 +221,7 @@ class DataGolfClient:
                     sample_size=_safe_int(p.get("sample_size")),
                 ))
             except Exception as exc:
-                logger.warning("datagolf_skill_parse_error", player=p, error=str(exc))
+                _log().warning("datagolf_skill_parse_error", player=p, error=str(exc))
         return ratings
 
     def get_rankings(self) -> list[DGRanking]:
@@ -241,7 +246,7 @@ class DataGolfClient:
                     am=bool(r.get("am", False)),
                 ))
             except Exception as exc:
-                logger.warning("datagolf_ranking_parse_error", entry=r, error=str(exc))
+                _log().warning("datagolf_ranking_parse_error", entry=r, error=str(exc))
         return rankings
 
     def get_pre_tournament_predictions(
@@ -269,7 +274,7 @@ class DataGolfClient:
                     make_cut_prob=_safe_float(p.get("make_cut")),
                 ))
             except Exception as exc:
-                logger.warning("datagolf_pred_parse_error", player=p, error=str(exc))
+                _log().warning("datagolf_pred_parse_error", player=p, error=str(exc))
         return preds
 
     def get_live_predictions(self) -> list[DGLeaderboardEntry]:
@@ -401,7 +406,7 @@ class DataGolfClient:
                     projected_ownership=_safe_float(p.get("proj_own", p.get("projected_ownership"))),
                 ))
             except Exception as exc:
-                logger.warning("datagolf_dfs_parse_error", player=p, error=str(exc))
+                _log().warning("datagolf_dfs_parse_error", player=p, error=str(exc))
         return projections
 
     # ------------------------------------------------------------------
@@ -450,7 +455,7 @@ class DataGolfClient:
                     putts_per_round=_safe_float(r.get("putts_per_round")),
                 ))
             except Exception as exc:
-                logger.warning("datagolf_round_parse_error", round_data=r, error=str(exc))
+                _log().warning("datagolf_round_parse_error", round_data=r, error=str(exc))
         return rounds
 
     def get_historical_results(
@@ -486,7 +491,7 @@ class DataGolfClient:
                     season=_safe_int(r.get("season", r.get("year"))),
                 ))
             except Exception as exc:
-                logger.warning("datagolf_result_parse_error", result=r, error=str(exc))
+                _log().warning("datagolf_result_parse_error", result=r, error=str(exc))
         return results
 
     # ------------------------------------------------------------------

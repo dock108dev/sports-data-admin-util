@@ -1,3 +1,5 @@
+/** API client functions for golf data endpoints. */
+
 import { request } from "./sportsAdmin/client";
 import type {
   GolfTournament,
@@ -29,7 +31,10 @@ export async function listTournaments(
   if (params?.status) query.append("status", params.status);
   if (params?.limit != null) query.append("limit", String(params.limit));
   const qs = query.toString();
-  return request(`/api/golf/tournaments${qs ? `?${qs}` : ""}`);
+  const res = await request<{ tournaments: GolfTournament[]; count: number }>(
+    `/api/golf/tournaments${qs ? `?${qs}` : ""}`
+  );
+  return res.tournaments;
 }
 
 export async function fetchTournament(
@@ -40,14 +45,17 @@ export async function fetchTournament(
 
 export async function fetchTournamentField(
   eventId: string
-): Promise<GolfFieldEntry[]> {
+): Promise<{ field?: GolfFieldEntry[]; buckets?: unknown[]; count?: number }> {
   return request(`/api/golf/tournaments/${eventId}/field`);
 }
 
 export async function fetchTournamentLeaderboard(
   eventId: string
 ): Promise<GolfLeaderboardEntry[]> {
-  return request(`/api/golf/tournaments/${eventId}/leaderboard`);
+  const res = await request<{ leaderboard: GolfLeaderboardEntry[]; count: number }>(
+    `/api/golf/tournaments/${eventId}/leaderboard`
+  );
+  return res.leaderboard;
 }
 
 export async function fetchTournamentRounds(
@@ -55,9 +63,12 @@ export async function fetchTournamentRounds(
   roundNum?: number
 ): Promise<GolfRound[]> {
   const query = new URLSearchParams();
-  if (roundNum != null) query.append("round", String(roundNum));
+  if (roundNum != null) query.append("round_num", String(roundNum));
   const qs = query.toString();
-  return request(`/api/golf/tournaments/${eventId}/rounds${qs ? `?${qs}` : ""}`);
+  const res = await request<{ rounds: GolfRound[]; count: number }>(
+    `/api/golf/tournaments/${eventId}/rounds${qs ? `?${qs}` : ""}`
+  );
+  return res.rounds;
 }
 
 // ── Players ──
@@ -68,7 +79,10 @@ export async function searchPlayers(
 ): Promise<GolfPlayer[]> {
   const query = new URLSearchParams({ q });
   if (limit != null) query.append("limit", String(limit));
-  return request(`/api/golf/players?${query.toString()}`);
+  const res = await request<{ players: GolfPlayer[]; count: number }>(
+    `/api/golf/players?${query.toString()}`
+  );
+  return res.players;
 }
 
 export async function fetchPlayer(dgId: number): Promise<GolfPlayer> {
@@ -78,7 +92,10 @@ export async function fetchPlayer(dgId: number): Promise<GolfPlayer> {
 export async function fetchPlayerStats(
   dgId: number
 ): Promise<GolfPlayerStats[]> {
-  return request(`/api/golf/players/${dgId}/stats`);
+  const res = await request<{ stats: GolfPlayerStats[]; count: number }>(
+    `/api/golf/players/${dgId}/stats`
+  );
+  return res.stats;
 }
 
 // ── Odds ──
@@ -98,7 +115,10 @@ export async function fetchOutrightOdds(
   if (params?.market) query.append("market", params.market);
   if (params?.book) query.append("book", params.book);
   const qs = query.toString();
-  return request(`/api/golf/odds${qs ? `?${qs}` : ""}`);
+  const res = await request<{ odds: GolfOddsEntry[]; count: number }>(
+    `/api/golf/odds/outrights${qs ? `?${qs}` : ""}`
+  );
+  return res.odds;
 }
 
 // ── DFS ──
@@ -116,7 +136,10 @@ export async function fetchDFSProjections(
     query.append("tournament_id", String(params.tournament_id));
   if (params?.site) query.append("site", params.site);
   const qs = query.toString();
-  return request(`/api/golf/dfs${qs ? `?${qs}` : ""}`);
+  const res = await request<{ projections: GolfDFSProjection[]; count: number }>(
+    `/api/golf/dfs/projections${qs ? `?${qs}` : ""}`
+  );
+  return res.projections;
 }
 
 // ── Admin triggers ──

@@ -359,17 +359,6 @@ class TestUpsertScorePlayers:
         assert session.execute.call_count == 2
 
 
-class TestUpdatePoolLastScored:
-    """Test _update_pool_last_scored."""
-
-    def test_calls_execute(self):
-        from sports_scraper.golf.pool_scoring import _update_pool_last_scored
-
-        session = MagicMock()
-        _update_pool_last_scored(session, 1)
-        session.execute.assert_called_once()
-
-
 # ============================================================================
 # persistence.py
 # ============================================================================

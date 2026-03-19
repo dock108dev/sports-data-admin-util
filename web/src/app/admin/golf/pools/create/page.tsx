@@ -9,8 +9,8 @@ import type { GolfTournament } from "@/lib/api/golfTypes";
 import styles from "../../golf.module.css";
 
 const CLUB_OPTIONS = [
-  { code: "RVCC", label: "RVCC", variant: "rvcc", pickCount: 7, countBest: 5, minCuts: 5 },
-  { code: "Crestmont", label: "Crestmont", variant: "crestmont", pickCount: 6, countBest: 4, minCuts: 4 },
+  { code: "rvcc", label: "RVCC", variant: "rvcc", pickCount: 7, countBest: 5, minCuts: 5 },
+  { code: "crestmont", label: "Crestmont", variant: "crestmont", pickCount: 6, countBest: 4, minCuts: 4 },
 ];
 
 export default function CreatePoolPage() {
@@ -21,7 +21,7 @@ export default function CreatePoolPage() {
 
   // Form state
   const [name, setName] = useState("");
-  const [clubCode, setClubCode] = useState("RVCC");
+  const [clubCode, setClubCode] = useState("rvcc");
   const [tournamentId, setTournamentId] = useState<number | "">("");
   const [entryDeadline, setEntryDeadline] = useState("");
   const [maxEntriesPerEmail, setMaxEntriesPerEmail] = useState<number | "">(1);
@@ -51,12 +51,15 @@ export default function CreatePoolPage() {
 
     try {
       const pool = await createPool({
+        code: `${clubCode}-${tournamentId}-${Date.now()}`,
         name: name.trim(),
         club_code: clubCode,
         tournament_id: Number(tournamentId),
         entry_deadline: entryDeadline || undefined,
         max_entries_per_email: maxEntriesPerEmail ? Number(maxEntriesPerEmail) : undefined,
-        rules: {
+        scoring_enabled: true,
+        allow_self_service_entry: true,
+        rules_json: {
           variant: selectedClub.variant,
           pick_count: selectedClub.pickCount,
           count_best: selectedClub.countBest,

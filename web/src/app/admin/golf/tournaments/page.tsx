@@ -7,7 +7,13 @@ import { listTournaments } from "@/lib/api/golf";
 import type { GolfTournament } from "@/lib/api/golfTypes";
 import styles from "../golf.module.css";
 
-const TOUR_OPTIONS = ["PGA", "European", "Korn Ferry", "LIV"];
+const TOUR_OPTIONS = [
+  { value: "pga", label: "PGA Tour" },
+  { value: "euro", label: "European Tour" },
+  { value: "kft", label: "Korn Ferry" },
+  { value: "alt", label: "LIV Golf" },
+  { value: "opp", label: "Opposite Field" },
+];
 const STATUS_OPTIONS = ["all", "scheduled", "in_progress", "completed"];
 
 export default function TournamentsPage() {
@@ -53,7 +59,7 @@ export default function TournamentsPage() {
           <select value={tour} onChange={(e) => setTour(e.target.value)}>
             <option value="">All Tours</option>
             {TOUR_OPTIONS.map((t) => (
-              <option key={t} value={t}>{t}</option>
+              <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </select>
         </div>
