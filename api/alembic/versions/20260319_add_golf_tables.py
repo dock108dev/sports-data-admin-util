@@ -15,7 +15,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 
 revision = "golf_001"
-down_revision = None  # Will be set by Alembic auto-detection
+down_revision = "20260314_fielding_per_game"
 branch_labels = None
 depends_on = None
 
