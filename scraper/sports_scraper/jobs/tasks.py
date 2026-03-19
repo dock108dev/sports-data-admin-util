@@ -71,6 +71,7 @@ from .golf_tasks import (  # noqa: F401
     golf_sync_odds,
     golf_sync_dfs,
     golf_sync_stats,
+    golf_score_pools,
 )
 
 __all__ = [

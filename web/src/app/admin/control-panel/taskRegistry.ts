@@ -245,6 +245,14 @@ export const TASK_REGISTRY: TaskDef[] = [
     queue: "sports-scraper",
     params: [],
   },
+  {
+    name: "golf_score_pools",
+    label: "Golf: Score Pools",
+    description: "Score all live golf pools and write materialized results",
+    category: "Golf",
+    queue: "sports-scraper",
+    params: [],
+  },
   // Utility
   {
     name: "clear_scraper_cache",

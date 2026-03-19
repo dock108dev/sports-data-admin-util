@@ -27,6 +27,9 @@ export const ROUTES = {
   GOLF: "/admin/golf",
   GOLF_TOURNAMENTS: "/admin/golf/tournaments",
   GOLF_PLAYERS: "/admin/golf/players",
+  GOLF_POOLS: "/admin/golf/pools",
+  GOLF_POOL_CREATE: "/admin/golf/pools/create",
+  GOLF_POOL: (id: number | string) => `/admin/golf/pools/${id}`,
 
   /** System */
   USERS: "/admin/users",

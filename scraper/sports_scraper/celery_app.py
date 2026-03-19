@@ -199,6 +199,11 @@ _scheduled_tasks = {
         "schedule": crontab(minute=0, hour=12, day_of_week="tuesday"),
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
+    "golf-score-pools-every-5m": {
+        "task": "golf_score_pools",
+        "schedule": crontab(minute="*/5"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
     # === Daily sweep (status repair, social scrape #2, embedded tweets, archive) ===
     # Lightweight housekeeping — no full pipeline re-runs or flow generation
     "daily-sweep-4am-eastern": {

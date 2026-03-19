@@ -50,6 +50,12 @@
 |-------|-------------|
 | [Data Sources](ingestion/data-sources.md) | **Start here:** Where data comes from — NBA, NHL, NCAAB, MLB (boxscores, PBP, odds, social) |
 
+## Golf
+
+| Guide | Description |
+|-------|-------------|
+| [Golf Pools](golf-pools.md) | Country club pool feature — RVCC and Crestmont variants, live scoring, CSV import, admin operations |
+
 ## Analytics & ML
 
 | Guide | Description |

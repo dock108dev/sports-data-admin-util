@@ -149,3 +149,21 @@ def golf_sync_stats(tour: str = "pga") -> dict:
     result = sync_stats(tour=tour)
     logger.info("golf_sync_stats_done", **result)
     return result
+
+
+@shared_task(
+    name="golf_score_pools",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
+def golf_score_pools() -> dict:
+    """Score all live golf pools and write materialized results."""
+    from ..db import get_session
+    from ..golf.pool_scoring import score_all_live_pools
+
+    logger.info("golf_score_pools_start")
+    with get_session() as session:
+        result = score_all_live_pools(session)
+    logger.info("golf_score_pools_done", **result)
+    return result
