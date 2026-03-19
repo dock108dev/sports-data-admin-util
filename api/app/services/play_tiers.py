@@ -31,7 +31,7 @@ _TIER_2_TYPES: dict[str, frozenset[str]] = {
         ]
     ),
     "NHL": frozenset(
-        ["penalty", "delayed_penalty", "takeaway", "giveaway", "hit"]
+        ["penalty", "delayed_penalty"]
     ),
     "MLB": frozenset([
         "strikeout", "walk", "intent_walk", "hit_by_pitch",

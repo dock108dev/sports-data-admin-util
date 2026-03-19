@@ -123,6 +123,14 @@ _polling_schedule = {
         "schedule": 5.0,  # Every 5 seconds (numeric = seconds interval)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
+    # Calendar poll: creates game stubs from league schedule APIs every 15 min.
+    # Catches postseason matchups, schedule changes, and late-added games
+    # that appear after the daily 3:30 AM ingestion.
+    "calendar-poll-every-15m": {
+        "task": "poll_game_calendars",
+        "schedule": crontab(minute="*/15"),
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
 }
 
 # Scheduled tasks — active in all environments.

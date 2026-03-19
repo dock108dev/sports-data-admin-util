@@ -34,6 +34,7 @@ from .polling_tasks import (
 
 # Re-export all tasks for Celery discovery
 from .scrape_tasks import (
+    poll_game_calendars,
     run_scheduled_ingestion,
     run_scrape_job,
 )
@@ -66,6 +67,7 @@ from .live_odds_tasks import (
 __all__ = [
     "run_scrape_job",
     "run_scheduled_ingestion",
+    "poll_game_calendars",
     "sync_mainline_odds",
     "sync_prop_odds",
     "generate_missing_timelines_task",

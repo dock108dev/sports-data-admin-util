@@ -3037,38 +3037,128 @@ interface TimelineEvent {
 
 ## Appendix: Play Types by Sport
 
-### NBA Play Types
-- `tip` - Jump ball / tip-off
-- `made_shot` - Made field goal
-- `missed_shot` - Missed field goal
-- `3pt` - Three-point shot
-- `free_throw` - Free throw attempt
-- `rebound` - Offensive or defensive rebound
-- `turnover` - Turnover
-- `steal` - Steal
-- `block` - Blocked shot
-- `foul` - Personal foul
-- `timeout` - Timeout
-- `substitution` - Player substitution
-- `period_end` - End of period
+### NBA
 
-### NHL Event Types
-- `faceoff` - Face-off
-- `shot` - Shot on goal
-- `goal` - Goal scored
-- `save` - Goalie save
-- `miss` - Missed shot
-- `block` - Blocked shot
-- `hit` - Body check
-- `penalty` - Penalty called
-- `giveaway` - Puck giveaway
-- `takeaway` - Puck takeaway
-- `period_start` - Period start
-- `period_end` - Period end
-- `stoppage` - Play stoppage
+| Play Type | Description |
+|-----------|-------------|
+| `2pt` | Two-point field goal (made or missed — check score change) |
+| `3pt` | Three-point field goal |
+| `freethrow` | Free throw attempt |
+| `rebound` | Offensive or defensive rebound |
+| `turnover` | Turnover |
+| `steal` | Steal |
+| `block` | Blocked shot |
+| `foul` | Personal foul |
+| `timeout` | Timeout |
+| `substitution` | Player substitution |
+| `jumpball` | Jump ball / tip-off |
+| `violation` | Violation (lane, backcourt, etc.) |
+| `heave` | Half-court / full-court heave |
+| `period` | Period boundary |
+| `ejection` | Player ejection |
+| `game` | Game start/end marker |
 
-### NCAAB Play Types
-- Similar to NBA play types
-- `made_shot`, `missed_shot`, `3pt`, `free_throw`
-- `rebound`, `turnover`, `steal`, `block`, `foul`
-- `timeout`, `substitution`
+### NHL
+
+| Play Type | Description Format |
+|-----------|-------------------|
+| `GOAL` | `"Goal (wrist) (assists: Player A, Player B)"` |
+| `SHOT` | `"Shot on goal (snap)"` — includes shot type |
+| `MISS` | `"Missed shot (wide-left)"` — includes miss reason |
+| `BLOCK` | `"Blocked shot (Player A blocks Player B)"` — includes both players |
+| `HIT` | `"Hit (Player A on Player B) in D zone"` — includes hitter, hittee, zone |
+| `PENALTY` | `"Penalty: tripping (2 min)"` — includes infraction type + duration |
+| `FACEOFF` | `"Faceoff (O zone)"` — includes zone |
+| `GIVEAWAY` | `"Giveaway (N zone)"` — includes zone |
+| `TAKEAWAY` | `"Takeaway (O zone)"` — includes zone |
+| `STOPPAGE` | `"Stoppage: offside"` — includes reason |
+| `DELAYED_PENALTY` | Delayed penalty signal |
+| `PERIOD_START` / `PERIOD_END` | Period boundaries |
+| `GAME_END` | Game end marker |
+| `SHOOTOUT_COMPLETE` | Shootout conclusion |
+| `FAILED_SHOT` | Failed shot attempt |
+
+**Deduplication:** The NHL API sometimes returns duplicate events with different sort orders. The ingestion pipeline deduplicates on `(period, game_clock, play_type, team, player)` before persisting.
+
+### NCAAB
+
+| Play Type | Description |
+|-----------|-------------|
+| `MADE_SHOT` | Made field goal |
+| `MISSED_SHOT` | Missed field goal |
+| `MADE_FREE_THROW` | Made free throw |
+| `MISSED_FREE_THROW` | Missed free throw |
+| `OFFENSIVE_REBOUND` | Offensive rebound |
+| `DEFENSIVE_REBOUND` | Defensive rebound |
+| `REBOUND` | Unspecified rebound (team/deadball) |
+| `TURNOVER` | Turnover |
+| `STEAL` | Steal |
+| `BLOCK` | Blocked shot |
+| `ASSIST` | Assist |
+| `PERSONAL_FOUL` | Personal foul |
+| `SHOOTING_FOUL` | Shooting foul |
+| `OFFENSIVE_FOUL` | Offensive foul (charge) |
+| `TECHNICAL_FOUL` | Technical foul |
+| `TIMEOUT` | Timeout |
+| `SUBSTITUTION` | Player substitution |
+| `JUMP_BALL` | Jump ball |
+| `CHALLENGE` | Coach's challenge |
+| `END_PERIOD` / `END_GAME` | Period/game boundaries |
+| `UNKNOWN` | Events not yet classified by the NCAA API |
+
+### MLB
+
+| Play Type | Description |
+|-----------|-------------|
+| `FIELD_OUT` | Groundout, flyout, lineout, pop out |
+| `STRIKEOUT` | Strikeout |
+| `SINGLE` | Single |
+| `DOUBLE` | Double |
+| `TRIPLE` | Triple |
+| `HOME_RUN` | Home run |
+| `WALK` | Base on balls |
+| `HIT_BY_PITCH` | Hit by pitch |
+| `DOUBLE_PLAY` | Double play |
+| `FORCE_OUT` | Force out |
+| `ERROR` | Fielding error |
+| `SAC_FLY` | Sacrifice fly |
+| `SAC_BUNT` | Sacrifice bunt |
+| `FIELDERS_CHOICE` | Fielder's choice |
+| `CAUGHT_STEALING` | Caught stealing |
+| `PICKOFF` | Pickoff |
+| `STRIKEOUT_DOUBLE_PLAY` | Strikeout + double play |
+| `CATCHER_INTERFERENCE` | Catcher interference |
+| `OTHER_OUT` | Other out types |
+| `GAME_ADVISORY` | Game advisory (delay, etc.) |
+
+---
+
+## Appendix: Play Tier Classification
+
+Every PBP play is classified into a tier. Tiers are computed server-side and included in the API response — consumers should not re-implement this logic.
+
+### Tier Definitions
+
+| Tier | Meaning | Rule |
+|------|---------|------|
+| **Tier 1** | Scoring plays | Any play that changes the score (goal, made shot, TD, etc.) |
+| **Tier 2** | Notable non-scoring | Sport-specific notable events (see below) |
+| **Tier 3** | Routine | Everything else |
+
+### Sport-Specific Tier 2 Events
+
+| Sport | Tier 2 Events |
+|-------|---------------|
+| **NBA** | foul, turnover, steal, block, offensive foul, offensive_rebound |
+| **NCAAB** | personal_foul, shooting_foul, offensive_foul, technical_foul, flagrant_foul, foul, turnover, steal, block, offensive_rebound |
+| **NHL** | penalty, delayed_penalty |
+| **MLB** | strikeout, walk, intent_walk, hit_by_pitch, stolen_base, caught_stealing, field_error, wild_pitch, balk, double_play, triple_play, pickoff, passed_ball |
+
+**NHL note:** Hits, giveaways, and takeaways are Tier 3 (routine). Only penalties are Tier 2. This keeps the secondary view focused on game-changing events rather than routine physical play.
+
+### Tier 3 Grouping
+
+Consecutive Tier 3 plays are grouped into collapsed summaries in the `tier3Groups` array. Each group has:
+- `startIndex` / `endIndex`: Bounding play indices
+- `playIndices`: All play indices in the group
+- `summaryLabel`: Human-readable summary (e.g., "4 plays: faceoff, shot, block, stoppage")

@@ -172,6 +172,26 @@ class NHLPbpFetcher:
         # Sort by sortOrder to ensure canonical ordering
         plays.sort(key=lambda p: p.play_index)
 
+        # Deduplicate: the NHL API sometimes returns the same logical event
+        # with different sortOrder values.  Collapse on
+        # (period, game_clock, play_type, team, player) keeping the first.
+        seen: set[tuple] = set()
+        deduped: list[NormalizedPlay] = []
+        for p in plays:
+            key = (p.quarter, p.game_clock, p.play_type, p.team_abbreviation, p.player_name)
+            if key not in seen:
+                seen.add(key)
+                deduped.append(p)
+        if len(deduped) < len(plays):
+            logger.info(
+                "nhl_pbp_deduped",
+                game_id=game_id,
+                before=len(plays),
+                after=len(deduped),
+                removed=len(plays) - len(deduped),
+            )
+        plays = deduped
+
         return plays
 
     def _normalize_play(
@@ -319,13 +339,35 @@ class NHLPbpFetcher:
             reason = details.get("reason", "")
             return f"Missed shot ({reason})" if reason else "Missed shot"
         elif type_desc_key == "blocked-shot":
+            blocker_id = parse_int(details.get("blockingPlayerId"))
+            blocker = player_id_to_name.get(blocker_id, "") if player_id_to_name and blocker_id else ""
+            shooter_id = parse_int(details.get("shootingPlayerId"))
+            shooter = player_id_to_name.get(shooter_id, "") if player_id_to_name and shooter_id else ""
+            if blocker and shooter:
+                return f"Blocked shot ({blocker} blocks {shooter})"
             return "Blocked shot"
         elif type_desc_key == "hit":
-            return "Hit"
+            hitter_id = parse_int(details.get("hittingPlayerId"))
+            hittee_id = parse_int(details.get("hitteePlayerId"))
+            hitter = player_id_to_name.get(hitter_id, "") if player_id_to_name and hitter_id else ""
+            hittee = player_id_to_name.get(hittee_id, "") if player_id_to_name and hittee_id else ""
+            zone = details.get("zoneCode", "")
+            parts = ["Hit"]
+            if hitter and hittee:
+                parts.append(f"({hitter} on {hittee})")
+            if zone:
+                parts.append(f"in {zone} zone")
+            return " ".join(parts)
         elif type_desc_key == "penalty":
             desc_key = details.get("descKey", "")
             duration = details.get("duration", 2)
             return f"Penalty: {desc_key} ({duration} min)" if desc_key else "Penalty"
+        elif type_desc_key == "giveaway":
+            zone = details.get("zoneCode", "")
+            return f"Giveaway ({zone} zone)" if zone else "Giveaway"
+        elif type_desc_key == "takeaway":
+            zone = details.get("zoneCode", "")
+            return f"Takeaway ({zone} zone)" if zone else "Takeaway"
         elif type_desc_key == "faceoff":
             zone = details.get("zoneCode", "")
             return f"Faceoff ({zone} zone)" if zone else "Faceoff"
