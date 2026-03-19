@@ -71,6 +71,10 @@ jobs:
             echo "Logging into GHCR..."
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 
+            echo "Pre-deploy cleanup (free space for new images)..."
+            docker image prune -af --filter "until=1h" 2>/dev/null || true
+            docker builder prune -af 2>/dev/null || true
+
             echo "Pulling images for selected tag..."
             docker compose --profile prod pull --policy always
 
@@ -78,9 +82,9 @@ jobs:
             docker compose --profile prod run --rm migrate
 
             echo "Starting services..."
-            docker compose --profile prod up -d
+            docker compose --profile prod up -d --remove-orphans
 
-            echo "Cleaning up old Docker images..."
+            echo "Post-deploy cleanup..."
             docker image prune -af
             docker builder prune -af
 
