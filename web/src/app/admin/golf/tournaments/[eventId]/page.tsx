@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { AdminCard, AdminTable } from "@/components/admin";
 import {
@@ -44,37 +44,39 @@ export default function TournamentDetailPage() {
 
   // Load tournament info
   useEffect(() => {
-    setLoading(true);
-    fetchTournament(eventId)
-      .then((res) => setTournament(res))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await fetchTournament(eventId);
+        setTournament(res);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, [eventId]);
 
-  // Load tab data
-  const loadTabData = useCallback(async () => {
-    try {
-      if (tab === "leaderboard") {
-        const res = await fetchTournamentLeaderboard(eventId);
-        setLeaderboard(res);
-      } else if (tab === "field") {
-        const res = await fetchTournamentField(eventId);
-        setField(res);
-      } else if (tab === "rounds") {
-        const res = await fetchTournamentRounds(eventId, selectedRound);
-        setRounds(res);
-      } else if (tab === "odds") {
-        const res = await fetchOutrightOdds({ tournament_id: tournament?.id, market });
-        setOdds(res);
-      }
-    } catch {
-      // Tab data load failure is non-fatal — empty state is shown
-    }
-  }, [eventId, tab, selectedRound, market, tournament?.id]);
-
+  // Load tab data when tab/filters change
   useEffect(() => {
-    loadTabData();
-  }, [loadTabData]);
+    const loadTab = async () => {
+      try {
+        if (tab === "leaderboard") {
+          setLeaderboard(await fetchTournamentLeaderboard(eventId));
+        } else if (tab === "field") {
+          setField(await fetchTournamentField(eventId));
+        } else if (tab === "rounds") {
+          setRounds(await fetchTournamentRounds(eventId, selectedRound));
+        } else if (tab === "odds" && tournament?.id) {
+          setOdds(await fetchOutrightOdds({ tournament_id: tournament.id, market }));
+        }
+      } catch {
+        // Tab data load failure is non-fatal — empty state is shown
+      }
+    };
+    loadTab();
+  }, [eventId, tab, selectedRound, market, tournament?.id]);
 
   if (loading) return <div className={styles.loading}>Loading tournament...</div>;
   if (error) return <div className={styles.error}>{error}</div>;

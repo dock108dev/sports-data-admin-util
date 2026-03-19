@@ -18,22 +18,29 @@ export default function PlayerDetailPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
-    Promise.all([fetchPlayer(dgId), fetchPlayerStats(dgId)])
-      .then(([playerRes, statsRes]) => {
-        if (cancelled) return;
-        setPlayer(playerRes);
-        setStats(statsRes);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [playerRes, statsRes] = await Promise.all([
+          fetchPlayer(dgId),
+          fetchPlayerStats(dgId),
+        ]);
+        if (!cancelled) {
+          setPlayer(playerRes);
+          setStats(statsRes);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    };
+
+    load();
 
     return () => {
       cancelled = true;
