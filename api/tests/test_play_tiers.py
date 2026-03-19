@@ -144,13 +144,14 @@ class TestClassifyAllTiers:
         assert tiers == [3]
 
     def test_nhl_tier2_types(self):
+        """Only penalties are T2 in NHL. Hits/giveaways/takeaways are T3."""
         plays = [
             _play(1, quarter=1, play_type="penalty"),
             _play(2, quarter=1, play_type="hit"),
             _play(3, quarter=1, play_type="takeaway"),
         ]
         tiers = classify_all_tiers(plays, "NHL")
-        assert tiers == [2, 2, 2]
+        assert tiers == [2, 3, 3]
 
     # -- Tier 3: routine --
 
