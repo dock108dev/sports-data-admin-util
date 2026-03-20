@@ -21,6 +21,7 @@ os.environ.setdefault("ENVIRONMENT", "development")
 from sports_scraper.models import NormalizedPlay
 from sports_scraper.persistence.plays import (
     create_raw_pbp_snapshot,
+    get_final_scores_from_pbp,
     upsert_plays,
 )
 
@@ -560,5 +561,189 @@ class TestCreateRawPbpSnapshotWithPlays:
         result = create_raw_pbp_snapshot(mock_session, game_id=1, plays=plays, source="test")
 
         assert result is None
+
+
+class TestGetFinalScoresFromPbp:
+    """Tests for get_final_scores_from_pbp function."""
+
+    @patch("sports_scraper.persistence.plays.db_models")
+    def test_returns_scores_from_last_play(self, mock_db_models):
+        """Returns (home, away) from the last play with scores."""
+        mock_session = MagicMock()
+        mock_row = MagicMock()
+        mock_row.home_score = 64
+        mock_row.away_score = 73
+        (
+            mock_session.query.return_value
+            .filter.return_value
+            .filter.return_value
+            .order_by.return_value
+            .first.return_value
+        ) = mock_row
+
+        result = get_final_scores_from_pbp(mock_session, game_id=1)
+        assert result == (64, 73)
+
+    @patch("sports_scraper.persistence.plays.db_models")
+    def test_returns_none_when_no_plays(self, mock_db_models):
+        """Returns None when no plays exist."""
+        mock_session = MagicMock()
+        (
+            mock_session.query.return_value
+            .filter.return_value
+            .filter.return_value
+            .order_by.return_value
+            .first.return_value
+        ) = None
+
+        result = get_final_scores_from_pbp(mock_session, game_id=1)
+        assert result is None
+
+    @patch("sports_scraper.persistence.plays.db_models")
+    def test_returns_none_when_home_score_is_none(self, mock_db_models):
+        """Returns None when last play has None home_score."""
+        mock_session = MagicMock()
+        mock_row = MagicMock()
+        mock_row.home_score = None
+        mock_row.away_score = None
+        (
+            mock_session.query.return_value
+            .filter.return_value
+            .filter.return_value
+            .order_by.return_value
+            .first.return_value
+        ) = mock_row
+
+        result = get_final_scores_from_pbp(mock_session, game_id=1)
+        assert result is None
+
+
+class TestScoreReconciliation:
+    """Tests for PBP score reconciliation in upsert_plays."""
+
+    @patch("sports_scraper.persistence.plays.get_final_scores_from_pbp")
+    def test_reconciles_when_scores_differ(self, mock_get_scores):
+        """Updates game scores when PBP scores differ from game scores."""
+        mock_session = MagicMock()
+        mock_get_scores.return_value = (64, 73)
+
+        mock_home_team = MagicMock()
+        mock_home_team.id = 10
+        mock_home_team.abbreviation = "KENN"
+        mock_home_team.name = "Kennesaw St"
+
+        mock_away_team = MagicMock()
+        mock_away_team.id = 20
+        mock_away_team.abbreviation = "GONZ"
+        mock_away_team.name = "Gonzaga"
+
+        mock_game = MagicMock()
+        mock_game.id = 1
+        mock_game.league_id = 9
+        mock_game.home_team = mock_home_team
+        mock_game.away_team = mock_away_team
+        mock_game.home_score = 56
+        mock_game.away_score = 65
+        mock_game.status = "in_progress"
+        mock_game.end_time = None
+
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_game
+        mock_session.query.return_value.filter.return_value.all.return_value = []
+
+        plays = [
+            NormalizedPlay(
+                play_index=1, quarter=1, game_clock="12:00",
+                play_type="shot", description="Shot",
+                home_score=64, away_score=73,
+            ),
+        ]
+
+        upsert_plays(mock_session, game_id=1, plays=plays, create_snapshot=False)
+
+        assert mock_game.home_score == 64
+        assert mock_game.away_score == 73
+
+    @patch("sports_scraper.persistence.plays.get_final_scores_from_pbp")
+    def test_no_update_when_scores_match(self, mock_get_scores):
+        """Does not update game scores when PBP matches."""
+        mock_session = MagicMock()
+        mock_get_scores.return_value = (64, 73)
+
+        mock_home_team = MagicMock()
+        mock_home_team.id = 10
+        mock_home_team.abbreviation = "BOS"
+        mock_home_team.name = "Celtics"
+
+        mock_away_team = MagicMock()
+        mock_away_team.id = 20
+        mock_away_team.abbreviation = "LAL"
+        mock_away_team.name = "Lakers"
+
+        mock_game = MagicMock()
+        mock_game.id = 1
+        mock_game.league_id = 1
+        mock_game.home_team = mock_home_team
+        mock_game.away_team = mock_away_team
+        mock_game.home_score = 64
+        mock_game.away_score = 73
+        mock_game.status = "in_progress"
+        mock_game.end_time = None
+
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_game
+        mock_session.query.return_value.filter.return_value.all.return_value = []
+
+        plays = [
+            NormalizedPlay(
+                play_index=1, quarter=1, game_clock="12:00",
+                play_type="shot", description="Shot",
+            ),
+        ]
+
+        upsert_plays(mock_session, game_id=1, plays=plays, create_snapshot=False)
+
+        # flush called once (for plays), not twice (no reconciliation needed)
+        assert mock_session.flush.call_count == 1
+
+    @patch("sports_scraper.persistence.plays.get_final_scores_from_pbp")
+    def test_no_update_when_no_pbp_scores(self, mock_get_scores):
+        """Does not update when PBP has no scores."""
+        mock_session = MagicMock()
+        mock_get_scores.return_value = None
+
+        mock_home_team = MagicMock()
+        mock_home_team.id = 10
+        mock_home_team.abbreviation = "BOS"
+        mock_home_team.name = "Celtics"
+
+        mock_away_team = MagicMock()
+        mock_away_team.id = 20
+        mock_away_team.abbreviation = "LAL"
+        mock_away_team.name = "Lakers"
+
+        mock_game = MagicMock()
+        mock_game.id = 1
+        mock_game.league_id = 1
+        mock_game.home_team = mock_home_team
+        mock_game.away_team = mock_away_team
+        mock_game.home_score = 56
+        mock_game.away_score = 65
+        mock_game.status = "in_progress"
+        mock_game.end_time = None
+
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_game
+        mock_session.query.return_value.filter.return_value.all.return_value = []
+
+        plays = [
+            NormalizedPlay(
+                play_index=1, quarter=1, game_clock="12:00",
+                play_type="shot", description="Shot",
+            ),
+        ]
+
+        upsert_plays(mock_session, game_id=1, plays=plays, create_snapshot=False)
+
+        # Scores unchanged
+        assert mock_game.home_score == 56
+        assert mock_game.away_score == 65
 
 

@@ -121,6 +121,23 @@ def create_raw_pbp_snapshot(
         return None
 
 
+def get_final_scores_from_pbp(session: Session, game_id: int) -> tuple[int, int] | None:
+    """Get (home_score, away_score) from the last PBP play for a game."""
+    last_play = (
+        session.query(
+            db_models.SportsGamePlay.home_score,
+            db_models.SportsGamePlay.away_score,
+        )
+        .filter(db_models.SportsGamePlay.game_id == game_id)
+        .filter(db_models.SportsGamePlay.home_score.isnot(None))
+        .order_by(db_models.SportsGamePlay.play_index.desc())
+        .first()
+    )
+    if last_play and last_play.home_score is not None:
+        return (last_play.home_score, last_play.away_score)
+    return None
+
+
 def upsert_plays(
     session: Session,
     game_id: int,
@@ -279,4 +296,22 @@ def upsert_plays(
                 )
 
         session.flush()
+
+        # Reconcile game-level scores from PBP data
+        final_scores = get_final_scores_from_pbp(session, game_id)
+        if final_scores:
+            pbp_home, pbp_away = final_scores
+            if game.home_score != pbp_home or game.away_score != pbp_away:
+                logger.info(
+                    "score_reconciled_from_pbp",
+                    game_id=game_id,
+                    old_home=game.home_score,
+                    old_away=game.away_score,
+                    pbp_home=pbp_home,
+                    pbp_away=pbp_away,
+                )
+                game.home_score = pbp_home
+                game.away_score = pbp_away
+                session.flush()
+
     return plays_processed
