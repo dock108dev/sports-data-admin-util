@@ -167,9 +167,9 @@ class TestClientHelpers:
 
         assert _parse_date("2026-04-09") == date(2026, 4, 9)
         assert _parse_date("2026-04-09T10:00:00Z") == date(2026, 4, 9)
-        assert _parse_date(None) == date.today()
-        assert _parse_date("") == date.today()
-        assert _parse_date("invalid") == date.today()
+        assert _parse_date(None) is None
+        assert _parse_date("") is None
+        assert _parse_date("invalid") is None
 
 
 # ---------------------------------------------------------------------------

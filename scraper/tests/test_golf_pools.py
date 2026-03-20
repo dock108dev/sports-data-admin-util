@@ -555,6 +555,7 @@ class TestSyncSchedule:
                 start_date=date(2026, 1, 1), end_date=date(2026, 1, 4),
                 season=2026, purse=10_000_000, currency="USD",
                 country="USA", latitude=33.0, longitude=-84.0,
+                status="scheduled",
             ),
         ]
 
@@ -603,17 +604,17 @@ class TestSyncLeaderboard:
         from sports_scraper.golf.ingestion import sync_leaderboard
 
         mock_client = MockClient.return_value
-        mock_client.get_live_tournament_stats.return_value = [
-            SimpleNamespace(
-                dg_id=1, player_name="P1", position=1, total_score=-5,
-                today_score=-3, thru=18, total_strokes=270,
-                r1=68, r2=69, r3=67, r4=66,
-                status="active", sg_total=2.0, sg_ott=0.5,
-                sg_app=0.5, sg_arg=0.5, sg_putt=0.5,
-                win_prob=0.25, top_5_prob=0.5, top_10_prob=0.7,
-                make_cut_prob=0.95,
-            ),
-        ]
+        player = SimpleNamespace(
+            dg_id=1, player_name="P1", position=1, total_score=-5,
+            today_score=-3, thru=18, total_strokes=270,
+            r1=68, r2=69, r3=67, r4=66,
+            status="active", sg_total=2.0, sg_ott=0.5,
+            sg_app=0.5, sg_arg=0.5, sg_putt=0.5,
+            win_prob=0.25, top_5_prob=0.5, top_10_prob=0.7,
+            make_cut_prob=0.95,
+        )
+        mock_client.get_live_predictions.return_value = [player]
+        mock_client.get_live_tournament_stats.return_value = [player]
 
         mock_session = MagicMock()
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -632,6 +633,7 @@ class TestSyncLeaderboard:
         from sports_scraper.golf.ingestion import sync_leaderboard
 
         mock_client = MockClient.return_value
+        mock_client.get_live_predictions.return_value = []
         mock_client.get_live_tournament_stats.return_value = []
 
         result = sync_leaderboard()
@@ -644,17 +646,17 @@ class TestSyncLeaderboard:
         from sports_scraper.golf.ingestion import sync_leaderboard
 
         mock_client = MockClient.return_value
-        mock_client.get_live_tournament_stats.return_value = [
-            SimpleNamespace(
-                dg_id=1, player_name="P1", position=1, total_score=-5,
-                today_score=-3, thru=18, total_strokes=270,
-                r1=68, r2=69, r3=67, r4=66,
-                status="active", sg_total=2.0, sg_ott=0.5,
-                sg_app=0.5, sg_arg=0.5, sg_putt=0.5,
-                win_prob=0.25, top_5_prob=0.5, top_10_prob=0.7,
-                make_cut_prob=0.95,
-            ),
-        ]
+        player = SimpleNamespace(
+            dg_id=1, player_name="P1", position=1, total_score=-5,
+            today_score=-3, thru=18, total_strokes=270,
+            r1=68, r2=69, r3=67, r4=66,
+            status="active", sg_total=2.0, sg_ott=0.5,
+            sg_app=0.5, sg_arg=0.5, sg_putt=0.5,
+            win_prob=0.25, top_5_prob=0.5, top_10_prob=0.7,
+            make_cut_prob=0.95,
+        )
+        mock_client.get_live_predictions.return_value = [player]
+        mock_client.get_live_tournament_stats.return_value = [player]
 
         mock_session = MagicMock()
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
