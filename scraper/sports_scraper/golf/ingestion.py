@@ -98,6 +98,7 @@ def sync_schedule(tour: str = "pga", season: int | None = None) -> dict:
                 "country": t.country,
                 "latitude": t.latitude,
                 "longitude": t.longitude,
+                "status": t.status,
             })
             count += 1
 
@@ -182,13 +183,32 @@ def sync_field(tour: str = "pga") -> dict:
 # ---------------------------------------------------------------------------
 
 def sync_leaderboard() -> dict:
-    """Fetch live tournament stats and upsert leaderboard entries."""
-    client = DataGolfClient()
-    entries = client.get_live_tournament_stats()
+    """Fetch in-play predictions and live stats, merge, and upsert leaderboard.
 
-    if not entries:
+    Two DataGolf endpoints are combined:
+    - ``/preds/in-play`` — positions, round scores (R1-R4), today, thru, probabilities
+    - ``/preds/live-tournament-stats`` — strokes-gained metrics (SG total/OTT/APP/ARG/putt)
+
+    They are merged by ``dg_id`` so the leaderboard has both scoring and SG data.
+    """
+    client = DataGolfClient()
+
+    # Fetch both endpoints
+    in_play = client.get_live_predictions()
+    stats = client.get_live_tournament_stats()
+
+    if not in_play and not stats:
         logger.info("golf_sync_leaderboard_empty")
         return {"leaderboard_entries_upserted": 0, "tournament_id": None}
+
+    # Build lookup of SG stats by dg_id
+    sg_by_id: dict[int, Any] = {}
+    for e in stats:
+        sg_by_id[e.dg_id] = e
+
+    # Use in-play as the primary source (has positions, scores, probs).
+    # Merge SG stats from the stats endpoint.
+    primary = in_play if in_play else stats
 
     with get_session() as session:
         tournament_id = _find_active_tournament(session)
@@ -196,8 +216,10 @@ def sync_leaderboard() -> dict:
             logger.warning("golf_sync_leaderboard_no_active_tournament")
             return {"leaderboard_entries_upserted": 0, "tournament_id": None}
 
-        lb_dicts = [
-            {
+        lb_dicts = []
+        for e in primary:
+            sg = sg_by_id.get(e.dg_id)
+            lb_dicts.append({
                 "dg_id": e.dg_id,
                 "player_name": e.player_name,
                 "position": e.position,
@@ -210,18 +232,16 @@ def sync_leaderboard() -> dict:
                 "r3": e.r3,
                 "r4": e.r4,
                 "status": e.status,
-                "sg_total": e.sg_total,
-                "sg_ott": e.sg_ott,
-                "sg_app": e.sg_app,
-                "sg_arg": e.sg_arg,
-                "sg_putt": e.sg_putt,
+                "sg_total": (sg.sg_total if sg else None) or e.sg_total,
+                "sg_ott": (sg.sg_ott if sg else None) or e.sg_ott,
+                "sg_app": (sg.sg_app if sg else None) or e.sg_app,
+                "sg_arg": (sg.sg_arg if sg else None) or e.sg_arg,
+                "sg_putt": (sg.sg_putt if sg else None) or e.sg_putt,
                 "win_prob": e.win_prob,
                 "top_5_prob": e.top_5_prob,
                 "top_10_prob": e.top_10_prob,
                 "make_cut_prob": e.make_cut_prob,
-            }
-            for e in entries
-        ]
+            })
 
         count = upsert_leaderboard(session, tournament_id, lb_dicts)
 

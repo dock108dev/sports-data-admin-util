@@ -20,8 +20,9 @@ class DGTournament:
     course: str
     course_key: str  # DataGolf course identifier
     start_date: date
-    end_date: date
+    end_date: date | None
     tour: str  # "pga", "euro", "kft", "alt", "opp"
+    status: str | None = None  # "completed", "in_progress", "scheduled"
     purse: float | None = None
     currency: str = "USD"
     latitude: float | None = None

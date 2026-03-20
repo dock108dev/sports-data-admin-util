@@ -121,14 +121,28 @@ class DataGolfClient:
         tournaments = []
         for evt in schedule:
             try:
+                from datetime import timedelta
+
+                start = _parse_date(evt.get("start_date", evt.get("date", "")))
+                end = _parse_date(evt.get("end_date"))
+                # DataGolf doesn't return end_date; estimate as start + 3 days
+                # (standard PGA event: Thu–Sun)
+                if end is None and start is not None:
+                    end = start + timedelta(days=3)
+
+                # Map DataGolf status to our convention
+                dg_status = evt.get("status", "")
+                status = _map_tournament_status(dg_status)
+
                 tournaments.append(DGTournament(
                     event_id=str(evt.get("event_id", "")),
                     event_name=evt.get("event_name", ""),
                     course=evt.get("course", ""),
                     course_key=evt.get("course_key", evt.get("course", "")),
-                    start_date=_parse_date(evt.get("date", evt.get("start_date", ""))),
-                    end_date=_parse_date(evt.get("end_date", evt.get("date", ""))),
+                    start_date=start,
+                    end_date=end,
                     tour=tour,
+                    status=status,
                     purse=_safe_float(evt.get("purse")),
                     latitude=_safe_float(evt.get("latitude")),
                     longitude=_safe_float(evt.get("longitude")),
@@ -499,11 +513,18 @@ class DataGolfClient:
     # ------------------------------------------------------------------
 
     def _parse_leaderboard_entry(self, p: dict) -> DGLeaderboardEntry:
+        # Position: in-play uses "current_pos" (e.g. "T4"), stats uses "position"
+        pos_raw = p.get("current_pos") or p.get("position") or p.get("pos")
+        position = _safe_int(str(pos_raw).lstrip("T")) if pos_raw else None
+
+        # Score: in-play uses "current_score", stats uses "total"
+        total_score = _safe_int(p.get("current_score")) or _safe_int(p.get("total", p.get("total_score")))
+
         return DGLeaderboardEntry(
             dg_id=int(p.get("dg_id", 0)),
             player_name=p.get("player_name", ""),
-            position=_safe_int(p.get("position", p.get("pos"))),
-            total_score=_safe_int(p.get("total", p.get("total_score"))),
+            position=position,
+            total_score=total_score,
             today_score=_safe_int(p.get("today", p.get("today_score"))),
             thru=_safe_int(p.get("thru")),
             total_strokes=_safe_int(p.get("total_strokes")),
@@ -517,7 +538,7 @@ class DataGolfClient:
             sg_arg=_safe_float(p.get("sg_arg")),
             sg_putt=_safe_float(p.get("sg_putt")),
             status=p.get("status", "active"),
-            win_prob=_safe_float(p.get("win_prob")),
+            win_prob=_safe_float(p.get("win", p.get("win_prob"))),
             top_5_prob=_safe_float(p.get("top_5")),
             top_10_prob=_safe_float(p.get("top_10")),
             make_cut_prob=_safe_float(p.get("make_cut")),
@@ -547,10 +568,22 @@ def _safe_int(val: Any) -> int | None:
         return None
 
 
-def _parse_date(val: str | None) -> date:
+def _map_tournament_status(dg_status: str) -> str:
+    """Map DataGolf status strings to our convention."""
+    s = (dg_status or "").lower().strip()
+    if s in ("completed", "complete"):
+        return "completed"
+    if s in ("in progress", "in_progress", "live"):
+        return "in_progress"
+    if s in ("canceled", "cancelled"):
+        return "canceled"
+    return "scheduled"
+
+
+def _parse_date(val: str | None) -> date | None:
     if not val:
-        return date.today()
+        return None
     try:
         return date.fromisoformat(val[:10])
     except (ValueError, TypeError):
-        return date.today()
+        return None
