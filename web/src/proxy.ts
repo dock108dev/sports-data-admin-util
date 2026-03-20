@@ -30,12 +30,12 @@ async function timingSafeCompare(a: string, b: string): Promise<boolean> {
 }
 
 /**
- * Basic auth middleware for production admin console.
- * 
+ * Basic auth proxy for production admin console.
+ *
  * Requires ADMIN_PASSWORD env var to be set in production.
  * Username is "admin", password is the configured value.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const adminPassword = process.env.ADMIN_PASSWORD;
   const environment = process.env.ENVIRONMENT || process.env.NODE_ENV;
 
