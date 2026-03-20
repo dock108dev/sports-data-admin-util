@@ -30,7 +30,9 @@
 20. [Simulator](#simulator)
 21. [Realtime](#realtime)
 22. [Reading Positions](#reading-positions)
-23. [Response Models](#response-models)
+23. [Golf API](#golf-api)
+24. [Golf Pools API](#golf-pools-api)
+25. [Response Models](#response-models)
 
 ---
 
@@ -328,14 +330,27 @@ GET /api/admin/sports/games/123
 GET /api/admin/sports/games/123/flow
 ```
 
+**Golf — list tournaments:**
+```http
+GET /api/golf/tournaments?tour=pga&status=in_progress
+```
+
+**Golf — get live leaderboard:**
+```http
+GET /api/golf/tournaments/{event_id}/leaderboard
+```
+
 ### Supported Leagues
 
-| League | Code | Data Available |
-|--------|------|----------------|
-| NBA | `NBA` | Boxscores, PBP, Social, Odds, Game Flow, Timelines |
-| NHL | `NHL` | Boxscores, PBP, Social, Odds, Game Flow, Timelines |
-| NCAAB | `NCAAB` | Boxscores, PBP, Social, Odds, Game Flow, Timelines |
-| MLB | `MLB` | Boxscores, PBP, Social, Odds, Game Flow, Timelines, Advanced Stats |
+| League | Code | Base URL | Data Available |
+|--------|------|----------|----------------|
+| NBA | `NBA` | `/api/admin/sports` | Boxscores, PBP, Social, Odds, Game Flow, Timelines |
+| NHL | `NHL` | `/api/admin/sports` | Boxscores, PBP, Social, Odds, Game Flow, Timelines |
+| NCAAB | `NCAAB` | `/api/admin/sports` | Boxscores, PBP, Social, Odds, Game Flow, Timelines |
+| MLB | `MLB` | `/api/admin/sports` | Boxscores, PBP, Social, Odds, Game Flow, Timelines, Advanced Stats |
+| PGA Tour | `PGA` | `/api/golf` | Tournaments, Leaderboards, Player Stats, Odds, DFS, Pools |
+
+> **Note:** Team sports (NBA, NHL, NCAAB, MLB) share the `/api/admin/sports` endpoints and use `league` query params for filtering. Golf uses a dedicated `/api/golf` endpoint namespace with its own data model (tournaments, fields, rounds) — see [Golf API](#golf-api) and [Golf Pools API](#golf-pools-api).
 
 ---
 

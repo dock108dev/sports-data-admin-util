@@ -193,6 +193,47 @@ TASK_REGISTRY: dict[str, TaskRegistryEntry] = {
             queue="celery",
             description="Check for model degradation via Brier score comparison (args: [sport])",
         ),
+        # Golf
+        TaskRegistryEntry(
+            name="golf_sync_schedule",
+            queue="sports-scraper",
+            description="Sync PGA Tour tournament schedule from DataGolf (args: [tour, season])",
+        ),
+        TaskRegistryEntry(
+            name="golf_sync_players",
+            queue="sports-scraper",
+            description="Sync full golf player catalog from DataGolf",
+        ),
+        TaskRegistryEntry(
+            name="golf_sync_field",
+            queue="sports-scraper",
+            description="Sync tournament field updates from DataGolf (args: [tour])",
+        ),
+        TaskRegistryEntry(
+            name="golf_sync_leaderboard",
+            queue="sports-scraper",
+            description="Sync live leaderboard and tournament stats from DataGolf",
+        ),
+        TaskRegistryEntry(
+            name="golf_sync_odds",
+            queue="sports-scraper",
+            description="Sync outright golf odds for all markets (args: [tour])",
+        ),
+        TaskRegistryEntry(
+            name="golf_sync_dfs",
+            queue="sports-scraper",
+            description="Sync DFS projections for all supported sites (args: [tour])",
+        ),
+        TaskRegistryEntry(
+            name="golf_sync_stats",
+            queue="sports-scraper",
+            description="Sync player skill ratings from DataGolf (args: [tour])",
+        ),
+        TaskRegistryEntry(
+            name="golf_score_pools",
+            queue="sports-scraper",
+            description="Score all live golf pools and write materialized results",
+        ),
     ]
 }
 

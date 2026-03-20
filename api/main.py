@@ -68,6 +68,22 @@ app = FastAPI(
                 "teams, then `POST /api/simulator/mlb` to run a simulation."
             ),
         },
+        {
+            "name": "golf",
+            "description": (
+                "**Golf** — PGA Tour tournament data powered by DataGolf. "
+                "Tournaments, live leaderboards, player stats, outright odds, "
+                "and DFS projections. All endpoints under `/api/golf`."
+            ),
+        },
+        {
+            "name": "golf-pools",
+            "description": (
+                "**Golf Pools** — Country club pick'em pools for PGA tournaments. "
+                "Create pools, manage entries, and view live scored leaderboards. "
+                "Endpoints under `/api/golf/pools`."
+            ),
+        },
     ],
 )
 logger = logging.getLogger(__name__)
