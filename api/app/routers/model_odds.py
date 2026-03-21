@@ -9,6 +9,7 @@ Distinct from FairBet (which derives fair odds from cross-book Pinnacle devig).
 from __future__ import annotations
 
 import logging
+from datetime import date as date_type
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.services.ev import implied_to_american
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +76,7 @@ async def get_model_odds_mlb(
     from app.services.ev import american_to_implied, remove_vig
     from app.services.model_odds import compute_model_odds
 
-    game_date = date or str(__import__("datetime").date.today())
+    game_date = date or str(date_type.today())
 
     # 1. Get predictions for this date
     pred_stmt = (
@@ -222,9 +224,7 @@ def _decision_to_dict(decision, best_book: str | None) -> dict:
         "model_line_conservative": decision.fair_line_conservative,
         "model_range": [decision.fair_line_low, decision.fair_line_high],
         "current_market": {
-            "best_price": decision.p_market and round(
-                __import__("app.services.ev", fromlist=["implied_to_american"]).implied_to_american(decision.p_market), 1
-            ),
+            "best_price": round(implied_to_american(decision.p_market), 1) if decision.p_market else None,
             "best_book": best_book,
         } if decision.p_market else None,
         "edge_vs_conservative": decision.edge_vs_market,
