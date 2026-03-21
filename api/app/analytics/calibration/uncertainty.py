@@ -35,6 +35,15 @@ TIER_REQUIRED_EDGE: dict[str, float] = {
 # Tax / friction buffer added to required edge
 TAX_FRICTION_BUFFER: float = 0.005
 
+# Factor weights for uncertainty scoring — shared between
+# compute_uncertainty() and model_odds.compute_model_odds()
+UNCERTAINTY_WEIGHTS: dict[str, float] = {
+    "sim_variance": 0.15,
+    "profile_freshness": 0.30,
+    "market_disagreement": 0.35,
+    "pitcher_data": 0.20,
+}
+
 
 # ---------------------------------------------------------------------------
 # Data types
@@ -144,14 +153,8 @@ def compute_uncertainty(
     # Factor 4: Pitcher data quality
     factors["pitcher_data"] = 0.0 if pitcher_data_quality else 0.5
 
-    # Weighted average → tier
-    weights = {
-        "sim_variance": 0.15,
-        "profile_freshness": 0.30,
-        "market_disagreement": 0.35,
-        "pitcher_data": 0.20,
-    }
-    score = sum(factors.get(k, 0) * w for k, w in weights.items())
+    # Weighted average → tier (uses shared UNCERTAINTY_WEIGHTS)
+    score = sum(factors.get(k, 0) * w for k, w in UNCERTAINTY_WEIGHTS.items())
 
     if score < 0.15:
         tier = "high"

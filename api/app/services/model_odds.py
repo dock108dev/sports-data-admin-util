@@ -133,9 +133,13 @@ def compute_model_odds(
         confidence_tier=uncertainty.confidence_tier,
     )
 
-    # Composite uncertainty score (0-1)
+    # Weighted uncertainty score (0-1), consistent with tier assignment
+    # in compute_uncertainty() which uses the same weights.
+    from app.analytics.calibration.uncertainty import UNCERTAINTY_WEIGHTS
     factors = uncertainty.factors
-    uncertainty_score = round(sum(factors.values()) / max(len(factors), 1), 4)
+    uncertainty_score = round(
+        sum(factors.get(k, 0) * w for k, w in UNCERTAINTY_WEIGHTS.items()), 4,
+    )
 
     return ModelOddsDecision(
         p_true=core.p_true,

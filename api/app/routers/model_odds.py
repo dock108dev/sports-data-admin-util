@@ -18,7 +18,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.services.ev import implied_to_american
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,7 @@ def _get_calibrator(sport: str = "mlb"):
 
 @router.get("/mlb")
 async def get_model_odds_mlb(
-    date: str = Query(default=None, description="Game date (YYYY-MM-DD)"),
+    date: str | None = Query(default=None, description="Game date (YYYY-MM-DD)"),
     game_id: int | None = Query(default=None, description="Specific game ID"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -78,28 +77,30 @@ async def get_model_odds_mlb(
 
     game_date = date or str(date_type.today())
 
-    # 1. Get predictions for this date
-    pred_stmt = (
-        select(AnalyticsPredictionOutcome)
+    # 1. Get most recent prediction per game_id (deduplicated at DB level)
+    # Uses a subquery to find the max created_at per game_id, avoiding
+    # pulling all rows and deduplicating in Python.
+    from sqlalchemy import func as sa_func
+
+    latest_sq = (
+        select(
+            AnalyticsPredictionOutcome.game_id,
+            sa_func.max(AnalyticsPredictionOutcome.id).label("max_id"),
+        )
         .where(AnalyticsPredictionOutcome.sport == "mlb")
     )
     if game_id:
-        pred_stmt = pred_stmt.where(AnalyticsPredictionOutcome.game_id == game_id)
+        latest_sq = latest_sq.where(AnalyticsPredictionOutcome.game_id == game_id)
     else:
-        pred_stmt = pred_stmt.where(AnalyticsPredictionOutcome.game_date == game_date)
+        latest_sq = latest_sq.where(AnalyticsPredictionOutcome.game_date == game_date)
+    latest_sq = latest_sq.group_by(AnalyticsPredictionOutcome.game_id).subquery()
 
-    # Get the most recent prediction per game_id
-    pred_stmt = pred_stmt.order_by(AnalyticsPredictionOutcome.created_at.desc())
+    pred_stmt = (
+        select(AnalyticsPredictionOutcome)
+        .join(latest_sq, AnalyticsPredictionOutcome.id == latest_sq.c.max_id)
+    )
     pred_result = await db.execute(pred_stmt)
-    all_preds = list(pred_result.scalars().all())
-
-    # Deduplicate: keep most recent per game_id
-    seen_games: set[int] = set()
-    predictions: list = []
-    for p in all_preds:
-        if p.game_id not in seen_games:
-            seen_games.add(p.game_id)
-            predictions.append(p)
+    predictions = list(pred_result.scalars().all())
 
     if not predictions:
         return {"games": [], "date": game_date, "count": 0}
@@ -140,9 +141,13 @@ async def get_model_odds_mlb(
             _find_best_prices(market_entries, pred.home_team, pred.away_team)
         )
 
-        # Devig market for disagreement calculation
-        market_home_wp = _devig_market_prices(
-            best_home_price, best_away_price, american_to_implied, remove_vig,
+        # Devig from a single book's pair (avoids cross-book distortion)
+        market_home_wp = _devig_same_book_pair(
+            market_entries,
+            _slugify(pred.home_team),
+            _slugify(pred.away_team),
+            american_to_implied,
+            remove_vig,
         )
         market_disagreement = (
             abs(calibrated_wp - market_home_wp)
@@ -180,8 +185,8 @@ async def get_model_odds_mlb(
             "away_team": pred.away_team,
             "sim_raw_home_wp": round(raw_wp, 4),
             "calibrated": calibrator is not None,
-            "home": _decision_to_dict(home_decision, best_home_book),
-            "away": _decision_to_dict(away_decision, best_away_book),
+            "home": _decision_to_dict(home_decision, best_home_price, best_home_book),
+            "away": _decision_to_dict(away_decision, best_away_price, best_away_book),
         })
 
     return {
@@ -192,22 +197,41 @@ async def get_model_odds_mlb(
     }
 
 
+def _slugify(text: str) -> str:
+    """Convert team name to the slug format used in FairBet selection keys.
+
+    Mirrors scraper/sports_scraper/odds/fairbet.py:slugify() so that
+    "New York Yankees" → "new_york_yankees" matches "team:new_york_yankees".
+    """
+    import re
+    slug = text.lower()
+    slug = re.sub(r"[\s\-]+", "_", slug)
+    slug = re.sub(r"[^a-z0-9_]", "", slug)
+    return slug
+
+
 def _find_best_prices(
     market_entries: list[dict],
     home_team: str,
     away_team: str,
 ) -> tuple[float | None, str | None, float | None, str | None]:
-    """Match market entries to home/away sides, return best price and book per side."""
+    """Match market entries to home/away sides using slugified team names.
+
+    FairBet selection_keys are formatted as "team:{slug}" (e.g.
+    "team:new_york_yankees"). We slugify the team names and check
+    for that pattern rather than doing raw substring matching.
+    """
     home_prices = []
     away_prices = []
-    home_lower = home_team.lower()
-    away_lower = away_team.lower()
+    home_slug = _slugify(home_team)
+    away_slug = _slugify(away_team)
 
     for entry in market_entries:
-        sel = entry["selection_key"].lower()
-        if home_lower in sel or sel in home_lower:
+        sel = entry["selection_key"]
+        # selection_key is "team:{slug}" for moneyline bets
+        if f"team:{home_slug}" == sel:
             home_prices.append(entry)
-        elif away_lower in sel or sel in away_lower:
+        elif f"team:{away_slug}" == sel:
             away_prices.append(entry)
 
     best_home_price = max((e["price"] for e in home_prices), default=None)
@@ -223,25 +247,54 @@ def _find_best_prices(
     return best_home_price, best_home_book, best_away_price, best_away_book
 
 
-def _devig_market_prices(
-    home_price: float | None,
-    away_price: float | None,
+def _devig_same_book_pair(
+    market_entries: list[dict],
+    home_slug: str,
+    away_slug: str,
     american_to_implied_fn,
     remove_vig_fn,
 ) -> float | None:
-    """Devig a home/away moneyline pair to get home implied probability."""
-    if home_price is None or away_price is None:
-        return None
-    try:
-        imp_h = american_to_implied_fn(home_price)
-        imp_a = american_to_implied_fn(away_price)
-        return remove_vig_fn([imp_h, imp_a])[0]
-    except ValueError:
-        return None
+    """Devig a home/away moneyline pair from the same book.
+
+    Cross-book devig produces invalid probabilities because each book's
+    vig structure is different. We find a single book that has both sides
+    and devig that pair. Prefers Pinnacle, falls back to any complete pair.
+    """
+    # Group by book → collect (side, price)
+    by_book: dict[str, dict[str, float]] = {}
+    for entry in market_entries:
+        sel = entry["selection_key"]
+        book = entry["book"]
+        by_book.setdefault(book, {})[sel] = entry["price"]
+
+    # Prefer Pinnacle if it has both sides
+    preferred_order = ["Pinnacle"] + [b for b in by_book if b != "Pinnacle"]
+
+    for book in preferred_order:
+        sides = by_book.get(book, {})
+        home_price = sides.get(f"team:{home_slug}")
+        away_price = sides.get(f"team:{away_slug}")
+        if home_price is not None and away_price is not None:
+            try:
+                imp_h = american_to_implied_fn(home_price)
+                imp_a = american_to_implied_fn(away_price)
+                return remove_vig_fn([imp_h, imp_a])[0]
+            except ValueError:
+                continue
+
+    return None
 
 
-def _decision_to_dict(decision, best_book: str | None) -> dict:
-    """Convert ModelOddsDecision to API response dict."""
+def _decision_to_dict(
+    decision,
+    raw_market_price: float | None,
+    best_book: str | None,
+) -> dict:
+    """Convert ModelOddsDecision to API response dict.
+
+    Uses the raw market price directly instead of round-tripping
+    through probability conversion, which avoids rounding drift.
+    """
     return {
         "p_true": decision.p_true,
         "p_conservative": decision.p_conservative,
@@ -249,9 +302,9 @@ def _decision_to_dict(decision, best_book: str | None) -> dict:
         "model_line_conservative": decision.fair_line_conservative,
         "model_range": [decision.fair_line_low, decision.fair_line_high],
         "current_market": {
-            "best_price": round(implied_to_american(decision.p_market), 1) if decision.p_market else None,
+            "best_price": raw_market_price,
             "best_book": best_book,
-        } if decision.p_market else None,
+        } if raw_market_price is not None else None,
         "edge_vs_conservative": decision.edge_vs_market,
         "target_entry": decision.target_bet_line,
         "strong_play_at": decision.strong_bet_line,
