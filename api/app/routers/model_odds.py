@@ -134,39 +134,16 @@ async def get_model_odds_mlb(
         raw_wp = pred.predicted_home_wp
         calibrated_wp = calibrator.calibrate(raw_wp) if calibrator else raw_wp
 
-        # Find best market prices for each side
+        # Match market entries to home/away sides
         market_entries = market_by_game.get(pred.game_id, [])
-        home_prices = []
-        away_prices = []
-        for entry in market_entries:
-            sel = entry["selection_key"].lower()
-            if pred.home_team.lower() in sel or sel in pred.home_team.lower():
-                home_prices.append(entry)
-            elif pred.away_team.lower() in sel or sel in pred.away_team.lower():
-                away_prices.append(entry)
+        best_home_price, best_home_book, best_away_price, best_away_book = (
+            _find_best_prices(market_entries, pred.home_team, pred.away_team)
+        )
 
-        best_home_price = max((e["price"] for e in home_prices), default=None)
-        best_away_price = max((e["price"] for e in away_prices), default=None)
-        best_home_book = next(
-            (e["book"] for e in home_prices if e["price"] == best_home_price),
-            None,
-        ) if best_home_price is not None else None
-        best_away_book = next(
-            (e["book"] for e in away_prices if e["price"] == best_away_price),
-            None,
-        ) if best_away_price is not None else None
-
-        # Market implied probability for disagreement calculation
-        market_home_wp = None
-        if best_home_price is not None and best_away_price is not None:
-            try:
-                imp_h = american_to_implied(best_home_price)
-                imp_a = american_to_implied(best_away_price)
-                devigged = remove_vig([imp_h, imp_a])
-                market_home_wp = devigged[0]
-            except ValueError:
-                pass
-
+        # Devig market for disagreement calculation
+        market_home_wp = _devig_market_prices(
+            best_home_price, best_away_price, american_to_implied, remove_vig,
+        )
         market_disagreement = (
             abs(calibrated_wp - market_home_wp)
             if market_home_wp is not None else None
@@ -213,6 +190,54 @@ async def get_model_odds_mlb(
         "count": len(games_output),
         "calibrator_loaded": calibrator is not None,
     }
+
+
+def _find_best_prices(
+    market_entries: list[dict],
+    home_team: str,
+    away_team: str,
+) -> tuple[float | None, str | None, float | None, str | None]:
+    """Match market entries to home/away sides, return best price and book per side."""
+    home_prices = []
+    away_prices = []
+    home_lower = home_team.lower()
+    away_lower = away_team.lower()
+
+    for entry in market_entries:
+        sel = entry["selection_key"].lower()
+        if home_lower in sel or sel in home_lower:
+            home_prices.append(entry)
+        elif away_lower in sel or sel in away_lower:
+            away_prices.append(entry)
+
+    best_home_price = max((e["price"] for e in home_prices), default=None)
+    best_away_price = max((e["price"] for e in away_prices), default=None)
+
+    best_home_book = next(
+        (e["book"] for e in home_prices if e["price"] == best_home_price), None,
+    ) if best_home_price is not None else None
+    best_away_book = next(
+        (e["book"] for e in away_prices if e["price"] == best_away_price), None,
+    ) if best_away_price is not None else None
+
+    return best_home_price, best_home_book, best_away_price, best_away_book
+
+
+def _devig_market_prices(
+    home_price: float | None,
+    away_price: float | None,
+    american_to_implied_fn,
+    remove_vig_fn,
+) -> float | None:
+    """Devig a home/away moneyline pair to get home implied probability."""
+    if home_price is None or away_price is None:
+        return None
+    try:
+        imp_h = american_to_implied_fn(home_price)
+        imp_a = american_to_implied_fn(away_price)
+        return remove_vig_fn([imp_h, imp_a])[0]
+    except ValueError:
+        return None
 
 
 def _decision_to_dict(decision, best_book: str | None) -> dict:

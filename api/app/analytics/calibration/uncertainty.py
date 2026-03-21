@@ -1,6 +1,6 @@
 """Uncertainty scoring and conservative probability computation.
 
-Produces confidence tiers, probability penalties, and fair-odds
+Produces confidence tiers, probability penalties, and model-odds
 confidence bands from sim variance, profile freshness, market
 disagreement, and data quality signals.
 """
@@ -52,7 +52,7 @@ class UncertaintyResult:
 
 @dataclass(frozen=True, slots=True)
 class ModelOddsCore:
-    """Core fair-odds output: probabilities + confidence band + American lines."""
+    """Core model-odds output: probabilities + confidence band + American lines."""
 
     p_true: float
     p_conservative: float

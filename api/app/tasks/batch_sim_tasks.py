@@ -386,12 +386,12 @@ async def _execute_batch_sim(
             "iterations": sim.get("iterations"),
             "score_std_home": sim.get("score_std_home"),
             "score_std_away": sim.get("score_std_away"),
-            "profile_games_home": len(
-                [s for d, s in team_history.get(game.home_team_id, []) if d < profile_cutoff][-rolling_window:]
-            ) if game.home_team_id in team_history else None,
-            "profile_games_away": len(
-                [s for d, s in team_history.get(game.away_team_id, []) if d < profile_cutoff][-rolling_window:]
-            ) if game.away_team_id in team_history else None,
+            "profile_games_home": _count_profile_games(
+                team_history, game.home_team_id, profile_cutoff, rolling_window,
+            ),
+            "profile_games_away": _count_profile_games(
+                team_history, game.away_team_id, profile_cutoff, rolling_window,
+            ),
             "feature_snapshot": feature_snap,
         }
         if "event_summary" in sim:
@@ -518,6 +518,19 @@ def _aggregate_event_summaries(
             "one_run_game_pct": avg_game("one_run_game_pct"),
         },
     }
+
+
+def _count_profile_games(
+    team_history: dict[int, list[tuple[str, object]]],
+    team_id: int,
+    cutoff: str,
+    window: int,
+) -> int | None:
+    """Count games used in a team's rolling profile for observability."""
+    if team_id not in team_history:
+        return None
+    prior = [s for d, s in team_history[team_id] if d < cutoff]
+    return len(prior[-window:])
 
 
 # ---------------------------------------------------------------------------
