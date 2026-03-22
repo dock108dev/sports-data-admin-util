@@ -20,10 +20,16 @@ const navSections: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
-    title: "Data",
+    title: "Sports Data",
     items: [
       { href: ROUTES.GAMES, label: "Games" },
-      { href: ROUTES.FAIRBET_ODDS, label: "Odds (FairBet)", exact: true },
+      { href: ROUTES.SEASON_AUDIT, label: "Season Audit" },
+    ],
+  },
+  {
+    title: "Odds",
+    items: [
+      { href: ROUTES.FAIRBET_ODDS, label: "FairBet", exact: true },
       { href: ROUTES.FAIRBET_LIVE, label: "Live Odds" },
     ],
   },
