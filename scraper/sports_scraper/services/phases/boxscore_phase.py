@@ -98,6 +98,14 @@ def ingest_boxscores(
                 "mlb_api",
                 "mlb_boxscore_ingestion_failed",
             )
+        elif config.league_code == "NFL":
+            from ..nfl_boxscore_ingestion import ingest_boxscores_via_nfl_api
+
+            _LEAGUE_DISPATCH["NFL"] = (
+                ingest_boxscores_via_nfl_api,
+                "espn_nfl_api",
+                "nfl_boxscore_ingestion_failed",
+            )
 
         dispatch = _LEAGUE_DISPATCH.get(config.league_code)
 

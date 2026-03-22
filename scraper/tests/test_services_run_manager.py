@@ -143,7 +143,7 @@ class TestScrapeRunManagerRun:
         manager = ScrapeRunManager()
         # Use a non-API league (NBA, NHL, NCAAB, MLB all use API paths now)
         config = IngestionConfig(
-            league_code="NFL",
+            league_code="NCAAF",
             boxscores=True,
         )
 
@@ -403,7 +403,8 @@ class TestScrapeRunManagerBoxscores:
         mock_payload = MagicMock()
         mock_scraper.fetch_single_boxscore.return_value = mock_payload
         # Use a non-API league so the SR scraper path is taken
-        mock_scrapers.return_value = {"NFL": mock_scraper}
+        # (NFL now has its own API path, use NCAAF as the SR-only league)
+        mock_scrapers.return_value = {"NCAAF": mock_scraper}
 
         mock_session = MagicMock()
         mock_run = MagicMock()
@@ -424,7 +425,7 @@ class TestScrapeRunManagerBoxscores:
         manager = ScrapeRunManager()
         past_date = date.today() - timedelta(days=5)
         config = IngestionConfig(
-            league_code="NFL",
+            league_code="NCAAF",
             start_date=past_date,
             end_date=past_date,
             boxscores=True,
@@ -549,7 +550,7 @@ class TestScrapeRunManagerBoxscores:
         mock_payload.identity.game_date = date(2024, 1, 15)
         mock_scraper.fetch_date_range.return_value = [mock_payload]
         # Use a non-API league so the SR scraper path is taken
-        mock_scrapers.return_value = {"NFL": mock_scraper}
+        mock_scrapers.return_value = {"NCAAF": mock_scraper}
 
         mock_session = MagicMock()
         mock_run = MagicMock()
@@ -566,7 +567,7 @@ class TestScrapeRunManagerBoxscores:
         manager = ScrapeRunManager()
         past_date = date.today() - timedelta(days=5)
         config = IngestionConfig(
-            league_code="NFL",
+            league_code="NCAAF",
             start_date=past_date,
             end_date=past_date,
             boxscores=True,
@@ -651,7 +652,7 @@ class TestScrapeRunManagerBoxscores:
         manager = ScrapeRunManager()
         past_date = date.today() - timedelta(days=5)
         config = IngestionConfig(
-            league_code="NFL",  # Unsupported league without API fallback
+            league_code="NCAAF",  # Unsupported league without API fallback
             start_date=past_date,
             end_date=past_date,
             boxscores=True,
@@ -1095,7 +1096,7 @@ class TestScrapeRunManagerSocial:
 
         manager = ScrapeRunManager()
         config = IngestionConfig(
-            league_code="NFL",
+            league_code="NCAAF",
             boxscores=False,
             odds=False,
             social=True,

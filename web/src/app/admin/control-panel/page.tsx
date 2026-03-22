@@ -184,12 +184,8 @@ const DATA_TYPES = ["Boxscores", "Odds", "PBP", "Social", "Advanced Stats"] as c
 function DataBackfillCard() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [leagues, setLeagues] = useState<Set<string>>(
-    () => new Set(LEAGUE_OPTIONS)
-  );
-  const [dataTypes, setDataTypes] = useState<Set<string>>(
-    () => new Set(["Boxscores", "Odds", "PBP"])
-  );
+  const [leagues, setLeagues] = useState<Set<string>>(() => new Set());
+  const [dataTypes, setDataTypes] = useState<Set<string>>(() => new Set());
   const [forceAll, setForceAll] = useState(false);
   const [dispatching, setDispatching] = useState(false);
   const [results, setResults] = useState<

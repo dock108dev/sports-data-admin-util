@@ -60,6 +60,9 @@ omit = [
   # logic tested indirectly via polling_helpers and live client tests)
   "**/services/game_processors.py",
   "**/services/game_processors_*.py",
+  # NFL boxscore/PBP ingestion (requires ESPN API + DB)
+  "**/services/nfl_boxscore_ingestion.py",
+  "**/services/pbp_nfl.py",
 ]
 
 [tool.coverage.report]
