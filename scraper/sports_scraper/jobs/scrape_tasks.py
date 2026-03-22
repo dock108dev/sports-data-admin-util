@@ -82,7 +82,7 @@ def run_scheduled_ingestion() -> dict:
         schedule_single_league_and_wait,
     )
 
-    leagues = ["NBA", "NHL", "NCAAB"]
+    leagues = ["NBA", "NHL", "NCAAB", "NFL"]
 
     with track_job_run("scheduled_ingestion", leagues) as tracker:
         results = {}
@@ -123,10 +123,22 @@ def run_scheduled_ingestion() -> dict:
         _append_pbp_to_run_summary(ncaab_result.get("run_id"), ncaab_pbp_result.get("pbp_games", 0))
         logger.info("scheduled_ingestion_ncaab_pbp_complete", **ncaab_pbp_result)
 
+        # === NFL ===
+        logger.info("scheduled_ingestion_nfl_start")
+        nfl_result = schedule_single_league_and_wait("NFL")
+        results["NFL"] = nfl_result
+        logger.info("scheduled_ingestion_nfl_complete", **nfl_result)
+
+        logger.info("scheduled_ingestion_nfl_pbp_start")
+        nfl_pbp_result = run_pbp_ingestion_for_league("NFL")
+        results["NFL_PBP"] = nfl_pbp_result
+        _append_pbp_to_run_summary(nfl_result.get("run_id"), nfl_pbp_result.get("pbp_games", 0))
+        logger.info("scheduled_ingestion_nfl_pbp_complete", **nfl_pbp_result)
+
         summary = {
             "leagues": results,
-            "total_runs_created": nba_result["runs_created"] + nhl_result["runs_created"] + ncaab_result["runs_created"],
-            "total_pbp_games": nba_pbp_result["pbp_games"] + nhl_pbp_result["pbp_games"] + ncaab_pbp_result["pbp_games"],
+            "total_runs_created": nba_result["runs_created"] + nhl_result["runs_created"] + ncaab_result["runs_created"] + nfl_result["runs_created"],
+            "total_pbp_games": nba_pbp_result["pbp_games"] + nhl_pbp_result["pbp_games"] + ncaab_pbp_result["pbp_games"] + nfl_pbp_result["pbp_games"],
         }
         tracker.summary_data = summary
 
@@ -280,6 +292,39 @@ def poll_game_calendars() -> dict:
     except Exception as exc:
         logger.warning("calendar_poll_ncaab_failed", error=str(exc))
         results["NCAAB"] = {"created": 0, "status": "error", "error": str(exc)}
+
+    # --- NFL (ESPN scoreboard, date range via per-day iteration) ---
+    try:
+        from ..live.nfl import NFLLiveFeedClient
+
+        client = NFLLiveFeedClient()
+        created = 0
+        with get_session() as session:
+            for game in client.fetch_schedule(today, end_day):
+                try:
+                    if game.season_type == "preseason":
+                        continue
+                    _gid, was_created = upsert_game_stub(
+                        session,
+                        league_code="NFL",
+                        game_date=game.game_date,
+                        home_team=game.home_team,
+                        away_team=game.away_team,
+                        status=game.status,
+                        home_score=game.home_score,
+                        away_score=game.away_score,
+                        external_ids={"espn_game_id": game.game_id},
+                        season_type=game.season_type or "regular",
+                    )
+                    if was_created:
+                        created += 1
+                except Exception:
+                    pass
+            session.commit()
+        results["NFL"] = {"created": created, "status": "ok"}
+    except Exception as exc:
+        logger.warning("calendar_poll_nfl_failed", error=str(exc))
+        results["NFL"] = {"created": 0, "status": "error", "error": str(exc)}
 
     total_created = sum(r.get("created", 0) for r in results.values())
     logger.info(

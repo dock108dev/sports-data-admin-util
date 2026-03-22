@@ -38,6 +38,10 @@ try:
         SportsGameTimelineArtifact,
     )
     from app.db.mlb_advanced import MLBGameAdvancedStats, MLBPlayerFieldingStats, MLBPitcherGameStats, MLBPlayerAdvancedStats  # type: ignore
+    from app.db.nba_advanced import NBAGameAdvancedStats, NBAPlayerAdvancedStats  # type: ignore
+    from app.db.ncaab_advanced import NCAABGameAdvancedStats, NCAABPlayerAdvancedStats  # type: ignore
+    from app.db.nfl_advanced import NFLGameAdvancedStats, NFLPlayerAdvancedStats  # type: ignore
+    from app.db.nhl_advanced import NHLGameAdvancedStats, NHLGoalieAdvancedStats, NHLSkaterAdvancedStats  # type: ignore
     from app.db.odds import (  # type: ignore
         ClosingLine,
         FairbetGameOddsWork,
@@ -134,6 +138,19 @@ try:
         MLBPlayerAdvancedStats=MLBPlayerAdvancedStats,
         MLBPitcherGameStats=MLBPitcherGameStats,
         MLBPlayerFieldingStats=MLBPlayerFieldingStats,
+        # NBA advanced stats
+        NBAGameAdvancedStats=NBAGameAdvancedStats,
+        NBAPlayerAdvancedStats=NBAPlayerAdvancedStats,
+        # NHL advanced stats
+        NHLGameAdvancedStats=NHLGameAdvancedStats,
+        NHLSkaterAdvancedStats=NHLSkaterAdvancedStats,
+        NHLGoalieAdvancedStats=NHLGoalieAdvancedStats,
+        # NFL advanced stats
+        NFLGameAdvancedStats=NFLGameAdvancedStats,
+        NFLPlayerAdvancedStats=NFLPlayerAdvancedStats,
+        # NCAAB advanced stats
+        NCAABGameAdvancedStats=NCAABGameAdvancedStats,
+        NCAABPlayerAdvancedStats=NCAABPlayerAdvancedStats,
     )
 except ImportError as exc:
     raise RuntimeError(

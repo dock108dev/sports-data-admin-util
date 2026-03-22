@@ -59,9 +59,32 @@ LEAGUE_CONFIG: dict[str, dict[str, Any]] = {
         "period_noun": "half",
         "extra_period_label": "overtime",
     },
+    "NFL": {
+        **_NBA_DEFAULTS,
+        "regulation_periods": 4,
+        "momentum_swing": 14,
+        "deficit_overcome": 10,
+        "close_game_margin": 7,
+        "close_game_swing": 7,
+        "close_game_deficit": 3,
+        "late_game_period": 4,
+        "blowout_margin": 21,
+        "garbage_time_margin": 21,
+        "garbage_time_period": 3,
+        "scoring_run_min": 10,
+        "period_noun": "quarter",
+        "score_noun": "point",
+        "extra_period_label": "overtime",
+    },
 }
 
 
 def get_config(league_code: str) -> dict[str, Any]:
-    """Return league config, falling back to NBA defaults for unknown leagues."""
-    return LEAGUE_CONFIG.get(league_code.upper(), LEAGUE_CONFIG["NBA"])
+    """Return league config. Raises KeyError for unconfigured leagues."""
+    code = league_code.upper()
+    if code not in LEAGUE_CONFIG:
+        raise KeyError(
+            f"No pipeline config for league '{code}'. "
+            f"Valid: {', '.join(LEAGUE_CONFIG.keys())}"
+        )
+    return LEAGUE_CONFIG[code]

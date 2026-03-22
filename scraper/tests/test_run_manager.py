@@ -162,8 +162,12 @@ class TestScrapeRunManagerRun:
     @patch("sports_scraper.services.run_manager.get_session")
     @patch("sports_scraper.services.run_manager.LiveFeedManager")
     @patch("sports_scraper.services.run_manager.get_all_scrapers")
+    @patch("sports_scraper.services.run_manager.dispatch_social")
+    @patch("sports_scraper.services.run_manager._social_task_exists_for_league", return_value=False)
     def test_run_skips_unsupported_social_leagues(
         self,
+        mock_social_exists,
+        mock_dispatch_social,
         mock_get_scrapers,
         mock_live,
         mock_get_session,
@@ -172,7 +176,7 @@ class TestScrapeRunManagerRun:
         mock_complete_job,
         mock_start_job,
     ):
-        """Skips social for unsupported leagues."""
+        """Social dispatch for NFL uses mock session (no real DB needed)."""
         mock_get_scrapers.return_value = {}
         mock_session = MagicMock()
         mock_run = MagicMock()
@@ -183,7 +187,7 @@ class TestScrapeRunManagerRun:
 
         from sports_scraper.models import IngestionConfig
         config = IngestionConfig(
-            league_code="NFL",  # WNBA not in supported social leagues
+            league_code="NFL",
             start_date=date(2024, 1, 15),
             end_date=date(2024, 1, 15),
             boxscores=False,

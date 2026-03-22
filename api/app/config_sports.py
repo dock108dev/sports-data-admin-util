@@ -47,6 +47,10 @@ class LeagueConfig:
     live_odds_enabled: bool = False   # Must remain False — closing-line-only architecture
     estimated_game_duration_hours: float = 3.0  # Typical game length for time-based fallback
 
+    # Season audit baselines (total league-wide unique games, not per-team)
+    expected_regular_season_games: int | None = None
+    expected_teams: int | None = None
+
 
 # Master configuration for all leagues
 LEAGUE_CONFIG: dict[str, LeagueConfig] = {
@@ -59,6 +63,8 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         pbp_enabled=True,
         timeline_enabled=True,
         scheduled_ingestion=True,
+        expected_regular_season_games=1230,  # 82 * 30 / 2
+        expected_teams=30,
     ),
     "NHL": LeagueConfig(
         code="NHL",
@@ -69,6 +75,8 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         pbp_enabled=True,
         timeline_enabled=True,
         scheduled_ingestion=True,
+        expected_regular_season_games=1312,  # 82 * 32 / 2
+        expected_teams=32,
     ),
     "NCAAB": LeagueConfig(
         code="NCAAB",
@@ -81,6 +89,8 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         scheduled_ingestion=True,  # Uses api.collegebasketballdata.com
         live_pbp_enabled=True,  # Handled via NCAAB batch polling
         estimated_game_duration_hours=2.5,  # Regulation ~2h + OT buffer
+        expected_regular_season_games=5460,  # ~30 * 364 / 2 (approximate)
+        expected_teams=364,
     ),
     "MLB": LeagueConfig(
         code="MLB",
@@ -94,6 +104,23 @@ LEAGUE_CONFIG: dict[str, LeagueConfig] = {
         live_pbp_enabled=True,
         live_boxscore_enabled=True,
         estimated_game_duration_hours=3.5,
+        expected_regular_season_games=2430,  # 162 * 30 / 2
+        expected_teams=30,
+    ),
+    "NFL": LeagueConfig(
+        code="NFL",
+        display_name="NFL Football",
+        boxscores_enabled=True,
+        odds_enabled=True,
+        social_enabled=True,
+        pbp_enabled=True,
+        timeline_enabled=True,
+        scheduled_ingestion=True,
+        live_pbp_enabled=True,
+        live_boxscore_enabled=True,
+        estimated_game_duration_hours=3.5,
+        expected_regular_season_games=272,  # 17 * 32 / 2
+        expected_teams=32,
     ),
 }
 

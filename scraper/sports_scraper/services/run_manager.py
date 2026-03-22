@@ -63,7 +63,7 @@ class ScrapeRunManager:
         # Feature support varies by league. When a toggle is enabled for an unsupported
         # league, we must NOT fail the run; we log and continue.
         self._supported_social_leagues = tuple(get_social_enabled_leagues())
-        self._supported_live_pbp_leagues = ("NBA", "NHL", "NCAAB", "MLB")
+        self._supported_live_pbp_leagues = ("NBA", "NHL", "NCAAB", "MLB", "NFL")
 
     def _update_run(self, run_id: int, **updates) -> None:
         try:

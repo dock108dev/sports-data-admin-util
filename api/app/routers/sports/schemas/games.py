@@ -27,6 +27,23 @@ from .mlb_advanced import (
     MLBFieldingStatSchema,
     MLBPitcherGameStatSchema,
 )
+from .nba_advanced import (
+    NBAAdvancedPlayerStats,
+    NBAAdvancedTeamStats,
+)
+from .ncaab_advanced import (
+    NCAABAdvancedPlayerStats,
+    NCAABAdvancedTeamStats,
+)
+from .nfl_advanced import (
+    NFLAdvancedPlayerStats,
+    NFLAdvancedTeamStats,
+)
+from .nhl_advanced import (
+    NHLAdvancedTeamStats,
+    NHLGoalieAdvancedStats,
+    NHLSkaterAdvancedStats,
+)
 
 
 class GameSummary(BaseModel):
@@ -169,6 +186,37 @@ class GameDetailResponse(BaseModel):
     )
     mlb_fielding_stats: list[MLBFieldingStatSchema] | None = Field(
         None, alias="mlbFieldingStats"
+    )
+    # NBA advanced stats (only populated for NBA games)
+    nba_advanced_stats: list["NBAAdvancedTeamStats"] | None = Field(
+        None, alias="nbaAdvancedStats"
+    )
+    nba_player_advanced_stats: list["NBAAdvancedPlayerStats"] | None = Field(
+        None, alias="nbaPlayerAdvancedStats"
+    )
+    # NHL advanced stats (only populated for NHL games)
+    nhl_advanced_stats: list["NHLAdvancedTeamStats"] | None = Field(
+        None, alias="nhlAdvancedStats"
+    )
+    nhl_skater_advanced_stats: list["NHLSkaterAdvancedStats"] | None = Field(
+        None, alias="nhlSkaterAdvancedStats"
+    )
+    nhl_goalie_advanced_stats: list["NHLGoalieAdvancedStats"] | None = Field(
+        None, alias="nhlGoalieAdvancedStats"
+    )
+    # NFL advanced stats (only populated for NFL games)
+    nfl_advanced_stats: list["NFLAdvancedTeamStats"] | None = Field(
+        None, alias="nflAdvancedStats"
+    )
+    nfl_player_advanced_stats: list["NFLAdvancedPlayerStats"] | None = Field(
+        None, alias="nflPlayerAdvancedStats"
+    )
+    # NCAAB advanced stats (only populated for NCAAB games)
+    ncaab_advanced_stats: list["NCAABAdvancedTeamStats"] | None = Field(
+        None, alias="ncaabAdvancedStats"
+    )
+    ncaab_player_advanced_stats: list["NCAABAdvancedPlayerStats"] | None = Field(
+        None, alias="ncaabPlayerAdvancedStats"
     )
     odds: list[OddsEntry]
     social_posts: list[SocialPostEntry] = Field(..., alias="socialPosts")

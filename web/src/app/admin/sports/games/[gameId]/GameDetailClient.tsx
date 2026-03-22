@@ -13,6 +13,10 @@ import { SocialPostsSection } from "./SocialPostsSection";
 import { FlowSection } from "./FlowSection";
 import { OddsSection } from "./OddsSection";
 import { MLBAdvancedStatsSection } from "./MLBAdvancedStatsSection";
+import { NBAAdvancedStatsSection } from "./NBAAdvancedStatsSection";
+import { NHLAdvancedStatsSection } from "./NHLAdvancedStatsSection";
+import { NFLAdvancedStatsSection } from "./NFLAdvancedStatsSection";
+import { NCAABAdvancedStatsSection } from "./NCAABAdvancedStatsSection";
 import { PlayerStatsSection } from "./PlayerStatsSection";
 import { ComputedFieldsSection } from "./ComputedFieldsSection";
 import { PipelineRunsSection } from "./PipelineRunsSection";
@@ -226,6 +230,40 @@ export default function GameDetailClient() {
           stats={game.mlbAdvancedStats}
           playerStats={game.mlbAdvancedPlayerStats}
           pitcherGameStats={game.mlbPitcherGameStats}
+        />
+      )}
+
+      {((game.nbaAdvancedStats && game.nbaAdvancedStats.length > 0) ||
+        (game.nbaPlayerAdvancedStats && game.nbaPlayerAdvancedStats.length > 0)) && (
+        <NBAAdvancedStatsSection
+          teamStats={game.nbaAdvancedStats}
+          playerStats={game.nbaPlayerAdvancedStats}
+        />
+      )}
+
+      {((game.nhlAdvancedStats && game.nhlAdvancedStats.length > 0) ||
+        (game.nhlSkaterAdvancedStats && game.nhlSkaterAdvancedStats.length > 0) ||
+        (game.nhlGoalieAdvancedStats && game.nhlGoalieAdvancedStats.length > 0)) && (
+        <NHLAdvancedStatsSection
+          teamStats={game.nhlAdvancedStats}
+          skaterStats={game.nhlSkaterAdvancedStats}
+          goalieStats={game.nhlGoalieAdvancedStats}
+        />
+      )}
+
+      {((game.nflAdvancedStats && game.nflAdvancedStats.length > 0) ||
+        (game.nflPlayerAdvancedStats && game.nflPlayerAdvancedStats.length > 0)) && (
+        <NFLAdvancedStatsSection
+          teamStats={game.nflAdvancedStats}
+          playerStats={game.nflPlayerAdvancedStats}
+        />
+      )}
+
+      {((game.ncaabAdvancedStats && game.ncaabAdvancedStats.length > 0) ||
+        (game.ncaabPlayerAdvancedStats && game.ncaabPlayerAdvancedStats.length > 0)) && (
+        <NCAABAdvancedStatsSection
+          teamStats={game.ncaabAdvancedStats}
+          playerStats={game.ncaabPlayerAdvancedStats}
         />
       )}
 

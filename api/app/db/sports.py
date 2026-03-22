@@ -26,6 +26,10 @@ from .base import Base
 if TYPE_CHECKING:
     from .flow import SportsGameTimelineArtifact
     from .mlb_advanced import MLBGameAdvancedStats, MLBPlayerFieldingStats, MLBPitcherGameStats, MLBPlayerAdvancedStats
+    from .nba_advanced import NBAGameAdvancedStats, NBAPlayerAdvancedStats
+    from .ncaab_advanced import NCAABGameAdvancedStats, NCAABPlayerAdvancedStats
+    from .nfl_advanced import NFLGameAdvancedStats, NFLPlayerAdvancedStats
+    from .nhl_advanced import NHLGameAdvancedStats, NHLGoalieAdvancedStats, NHLSkaterAdvancedStats
     from .odds import SportsGameOdds
     from .scraper import SportsScrapeRun
     from .social import TeamSocialAccount, TeamSocialPost
@@ -292,6 +296,51 @@ class SportsGame(Base):
     )
     fielding_stats: Mapped[list[MLBPlayerFieldingStats]] = relationship(
         "MLBPlayerFieldingStats",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+    nba_advanced_stats: Mapped[list[NBAGameAdvancedStats]] = relationship(
+        "NBAGameAdvancedStats",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+    nba_player_advanced_stats: Mapped[list[NBAPlayerAdvancedStats]] = relationship(
+        "NBAPlayerAdvancedStats",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+    nhl_advanced_stats: Mapped[list[NHLGameAdvancedStats]] = relationship(
+        "NHLGameAdvancedStats",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+    nhl_skater_advanced_stats: Mapped[list[NHLSkaterAdvancedStats]] = relationship(
+        "NHLSkaterAdvancedStats",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+    nhl_goalie_advanced_stats: Mapped[list[NHLGoalieAdvancedStats]] = relationship(
+        "NHLGoalieAdvancedStats",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+    nfl_advanced_stats: Mapped[list[NFLGameAdvancedStats]] = relationship(
+        "NFLGameAdvancedStats",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+    nfl_player_advanced_stats: Mapped[list[NFLPlayerAdvancedStats]] = relationship(
+        "NFLPlayerAdvancedStats",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+    ncaab_advanced_stats: Mapped[list[NCAABGameAdvancedStats]] = relationship(
+        "NCAABGameAdvancedStats",
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+    ncaab_player_advanced_stats: Mapped[list[NCAABPlayerAdvancedStats]] = relationship(
+        "NCAABPlayerAdvancedStats",
         back_populates="game",
         cascade="all, delete-orphan",
     )

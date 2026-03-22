@@ -163,6 +163,13 @@ _scheduled_tasks = {
         ),  # 6:00 AM EST = 11:00 UTC (+30 min after NCAAB flow)
         "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
     },
+    "daily-nfl-flow-generation-630am-eastern": {
+        "task": "run_scheduled_nfl_flow_generation",
+        "schedule": crontab(
+            minute=30, hour=11
+        ),  # 6:30 AM EST = 11:30 UTC (+30 min after MLB flow)
+        "options": {"queue": DEFAULT_QUEUE, "routing_key": DEFAULT_QUEUE},
+    },
     # === Golf (DataGolf API) ===
     "golf-schedule-daily-7am-eastern": {
         "task": "golf_sync_schedule",

@@ -16,6 +16,23 @@ from ...db.mlb_advanced import (
     MLBPlayerAdvancedStats,
     MLBPlayerFieldingStats,
 )
+from ...db.nba_advanced import (
+    NBAGameAdvancedStats,
+    NBAPlayerAdvancedStats,
+)
+from ...db.ncaab_advanced import (
+    NCAABGameAdvancedStats,
+    NCAABPlayerAdvancedStats,
+)
+from ...db.nfl_advanced import (
+    NFLGameAdvancedStats,
+    NFLPlayerAdvancedStats,
+)
+from ...db.nhl_advanced import (
+    NHLGameAdvancedStats,
+    NHLGoalieAdvancedStats,
+    NHLSkaterAdvancedStats,
+)
 from ...db.social import TeamSocialPost
 from ...db.sports import (
     SportsGame,
@@ -51,16 +68,19 @@ from .game_helpers import (
     serialize_social_posts,
 )
 from .nhl_helpers import compute_nhl_data_health
+from .game_detail_advanced import (
+    serialize_mlb_advanced,
+    serialize_nba_advanced,
+    serialize_ncaab_advanced,
+    serialize_nfl_advanced,
+    serialize_nhl_advanced,
+)
 from .schemas import (
     GameDetailResponse,
     GameMeta,
     GamePreviewScoreResponse,
     LiveSnapshot,
-    MLBAdvancedPlayerStats,
-    MLBAdvancedTeamStats,
     MLBBatterStat,
-    MLBFieldingStatSchema,
-    MLBPitcherGameStatSchema,
     MLBPitcherStat,
     NHLGoalieStat,
     NHLSkaterStat,
@@ -152,6 +172,33 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
             ),
             selectinload(SportsGame.fielding_stats).selectinload(
                 MLBPlayerFieldingStats.team
+            ),
+            selectinload(SportsGame.nba_advanced_stats).selectinload(
+                NBAGameAdvancedStats.team
+            ),
+            selectinload(SportsGame.nba_player_advanced_stats).selectinload(
+                NBAPlayerAdvancedStats.team
+            ),
+            selectinload(SportsGame.nhl_advanced_stats).selectinload(
+                NHLGameAdvancedStats.team
+            ),
+            selectinload(SportsGame.nhl_skater_advanced_stats).selectinload(
+                NHLSkaterAdvancedStats.team
+            ),
+            selectinload(SportsGame.nhl_goalie_advanced_stats).selectinload(
+                NHLGoalieAdvancedStats.team
+            ),
+            selectinload(SportsGame.nfl_advanced_stats).selectinload(
+                NFLGameAdvancedStats.team
+            ),
+            selectinload(SportsGame.nfl_player_advanced_stats).selectinload(
+                NFLPlayerAdvancedStats.team
+            ),
+            selectinload(SportsGame.ncaab_advanced_stats).selectinload(
+                NCAABGameAdvancedStats.team
+            ),
+            selectinload(SportsGame.ncaab_player_advanced_stats).selectinload(
+                NCAABPlayerAdvancedStats.team
             ),
         )
         .where(SportsGame.id == game_id)
@@ -373,92 +420,16 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
                 league_code,
             )
 
-    # MLB advanced stats (Statcast-derived)
-    mlb_advanced_stats_list: list[MLBAdvancedTeamStats] | None = None
-    if is_mlb and game.advanced_stats:
-        mlb_advanced_stats_list = [
-            MLBAdvancedTeamStats(
-                team=stat.team.name if stat.team else "Unknown",
-                is_home=stat.is_home,
-                total_pitches=stat.total_pitches,
-                z_swing_pct=stat.z_swing_pct,
-                o_swing_pct=stat.o_swing_pct,
-                z_contact_pct=stat.z_contact_pct,
-                o_contact_pct=stat.o_contact_pct,
-                balls_in_play=stat.balls_in_play,
-                avg_exit_velo=stat.avg_exit_velo,
-                hard_hit_pct=stat.hard_hit_pct,
-                barrel_pct=stat.barrel_pct,
-            )
-            for stat in game.advanced_stats
-        ]
+    # Advanced stats serialization (delegated to game_detail_advanced module)
+    is_nba = league_code == "NBA"
+    is_nfl = league_code == "NFL"
+    is_ncaab = league_code == "NCAAB"
 
-    mlb_advanced_player_stats_list: list[MLBAdvancedPlayerStats] | None = None
-    if is_mlb and game.player_advanced_stats:
-        mlb_advanced_player_stats_list = [
-            MLBAdvancedPlayerStats(
-                team=stat.team.name if stat.team else "Unknown",
-                player_name=stat.player_name,
-                is_home=stat.is_home,
-                total_pitches=stat.total_pitches,
-                zone_pitches=stat.zone_pitches,
-                zone_swings=stat.zone_swings,
-                zone_contact=stat.zone_contact,
-                outside_pitches=stat.outside_pitches,
-                outside_swings=stat.outside_swings,
-                outside_contact=stat.outside_contact,
-                balls_in_play=stat.balls_in_play,
-                avg_exit_velo=stat.avg_exit_velo,
-                hard_hit_count=stat.hard_hit_count,
-                barrel_count=stat.barrel_count,
-            )
-            for stat in game.player_advanced_stats
-        ]
-
-    # MLB pitcher game stats (Statcast per-pitcher)
-    mlb_pitcher_game_stats_list: list[MLBPitcherGameStatSchema] | None = None
-    if is_mlb and game.pitcher_game_stats:
-        mlb_pitcher_game_stats_list = [
-            MLBPitcherGameStatSchema(
-                team=stat.team.name if stat.team else "Unknown",
-                player_name=stat.player_name,
-                is_starter=stat.is_starter or False,
-                innings_pitched=stat.innings_pitched,
-                batters_faced=stat.batters_faced,
-                pitches_thrown=stat.pitches_thrown,
-                strikeouts=stat.strikeouts,
-                walks=stat.walks,
-                zone_pitches=stat.zone_pitches,
-                zone_swings=stat.zone_swings,
-                zone_contact=stat.zone_contact,
-                outside_pitches=stat.outside_pitches,
-                outside_swings=stat.outside_swings,
-                outside_contact=stat.outside_contact,
-                balls_in_play=stat.balls_in_play,
-                avg_exit_velo_against=stat.avg_exit_velo_against,
-                hard_hit_against=stat.hard_hit_against,
-                barrel_against=stat.barrel_against,
-            )
-            for stat in game.pitcher_game_stats
-        ]
-
-    # MLB fielding stats (per-game, loaded via game relationship)
-    mlb_fielding_stats_list: list[MLBFieldingStatSchema] | None = None
-    if is_mlb and game.fielding_stats:
-        mlb_fielding_stats_list = [
-            MLBFieldingStatSchema(
-                team=row.team.name if row.team else "Unknown",
-                player_name=row.player_name,
-                position=row.position,
-                outs_above_average=row.outs_above_average,
-                defensive_runs_saved=row.defensive_runs_saved,
-                uzr=row.uzr,
-                errors=row.errors,
-                assists=row.assists,
-                putouts=row.putouts,
-            )
-            for row in game.fielding_stats
-        ]
+    mlb_advanced_stats_list, mlb_advanced_player_stats_list, mlb_pitcher_game_stats_list, mlb_fielding_stats_list = serialize_mlb_advanced(game) if is_mlb else (None, None, None, None)
+    nba_advanced_stats_list, nba_player_advanced_stats_list = serialize_nba_advanced(game) if is_nba else (None, None)
+    nhl_advanced_stats_list, nhl_skater_advanced_stats_list, nhl_goalie_advanced_stats_list = serialize_nhl_advanced(game) if is_nhl else (None, None, None)
+    nfl_advanced_stats_list, nfl_player_advanced_stats_list = serialize_nfl_advanced(game) if is_nfl else (None, None)
+    ncaab_advanced_stats_list, ncaab_player_advanced_stats_list = serialize_ncaab_advanced(game) if is_ncaab else (None, None)
 
     from ...services.play_tiers import enrich_play_entries
 
@@ -480,6 +451,15 @@ async def get_game(game_id: int, session: AsyncSession = Depends(get_db)) -> Gam
         mlb_advanced_player_stats=mlb_advanced_player_stats_list,
         mlb_pitcher_game_stats=mlb_pitcher_game_stats_list,
         mlb_fielding_stats=mlb_fielding_stats_list,
+        nba_advanced_stats=nba_advanced_stats_list,
+        nba_player_advanced_stats=nba_player_advanced_stats_list,
+        nhl_advanced_stats=nhl_advanced_stats_list,
+        nhl_skater_advanced_stats=nhl_skater_advanced_stats_list,
+        nhl_goalie_advanced_stats=nhl_goalie_advanced_stats_list,
+        nfl_advanced_stats=nfl_advanced_stats_list,
+        nfl_player_advanced_stats=nfl_player_advanced_stats_list,
+        ncaab_advanced_stats=ncaab_advanced_stats_list,
+        ncaab_player_advanced_stats=ncaab_player_advanced_stats_list,
         odds=odds_entries,
         social_posts=social_posts_entries,
         plays=plays_entries,

@@ -10,6 +10,7 @@ export const ROUTES = {
   GAMES: "/admin/sports/browser",
   LOGS: "/admin/sports/logs",
 
+  SEASON_AUDIT: "/admin/sports/season-audit",
   CONTROL_PANEL: "/admin/control-panel",
   FAIRBET_ODDS: "/admin/fairbet/odds",
   FAIRBET_LIVE: "/admin/fairbet/live",
