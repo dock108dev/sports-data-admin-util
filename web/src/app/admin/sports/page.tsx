@@ -105,6 +105,12 @@ export default function AdminDashboardPage() {
               <div className={styles.quickLinkDesc}>Filter games, odds, and completeness</div>
             </div>
           </Link>
+          <Link href={ROUTES.SEASON_AUDIT} className={styles.quickLink}>
+            <div className={styles.quickLinkContent}>
+              <div className={styles.quickLinkTitle}>Season Audit</div>
+              <div className={styles.quickLinkDesc}>Check data completeness per league season</div>
+            </div>
+          </Link>
           <Link href={ROUTES.CONTROL_PANEL} className={styles.quickLink}>
             <div className={styles.quickLinkContent}>
               <div className={styles.quickLinkTitle}>Control Panel</div>

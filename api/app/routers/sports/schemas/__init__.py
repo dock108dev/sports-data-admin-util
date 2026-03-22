@@ -49,6 +49,7 @@ from .mlb_advanced import (
     MLBPitcherGameStatSchema,
 )
 from .scraper import ScrapeRunConfig, ScrapeRunCreateRequest, ScrapeRunResponse
+from .season_audit import SeasonAuditResponse
 from .teams import (
     TeamColorUpdate,
     TeamDetail,
@@ -113,4 +114,6 @@ __all__ = [
     "TeamListResponse",
     "TeamSocialInfo",
     "TeamSummary",
+    # season_audit
+    "SeasonAuditResponse",
 ]

@@ -1,0 +1,217 @@
+.container {
+  color: var(--text-secondary);
+}
+
+.header {
+  margin-bottom: var(--space-page-section);
+}
+
+.title {
+  font-size: var(--font-page-title-size);
+  font-weight: var(--font-page-title-weight);
+  letter-spacing: var(--font-page-title-spacing);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-row) 0;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: var(--font-body-size);
+  font-weight: 500;
+}
+
+/* ── Controls ── */
+.controls {
+  display: flex;
+  gap: var(--space-card-inner);
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-page-section);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.fieldLabel {
+  font-size: var(--font-label-size);
+  color: var(--text-muted);
+  font-weight: var(--font-label-weight);
+  letter-spacing: 0.05em;
+}
+
+.select,
+.input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  font-size: var(--font-body-size);
+  background: #ffffff;
+  color: var(--text-primary);
+  min-width: 120px;
+}
+
+.button {
+  padding: 0.5rem 1.25rem;
+  background: #3b82f6;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: var(--font-body-size);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.button:hover {
+  background: #2563eb;
+}
+
+.button:disabled {
+  background: #93c5fd;
+  cursor: not-allowed;
+}
+
+/* ── Summary card ── */
+.summaryCard {
+  background: #ffffff;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-card);
+  margin-bottom: var(--space-page-section);
+}
+
+.summaryHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 1rem;
+}
+
+.summaryTitle {
+  font-size: var(--font-section-title-size);
+  font-weight: var(--font-section-title-weight);
+  color: var(--text-primary);
+}
+
+.summaryMeta {
+  font-size: var(--font-hint-size);
+  color: var(--text-muted);
+}
+
+/* ── Big numbers row ── */
+.bigNumbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-card-inner);
+  margin-bottom: 1.5rem;
+}
+
+.bigNumber {
+  text-align: center;
+}
+
+.bigNumberValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.bigNumberLabel {
+  font-size: var(--font-label-size);
+  color: var(--text-muted);
+  margin-top: 0.125rem;
+}
+
+/* ── Progress rows ── */
+.progressRows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.progressRow {
+  display: grid;
+  grid-template-columns: 120px 1fr 60px 60px;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.progressLabel {
+  font-size: var(--font-body-size);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.progressBarOuter {
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progressBarInner {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.progressPct {
+  font-size: var(--font-body-size);
+  font-weight: 600;
+  text-align: right;
+}
+
+.progressCount {
+  font-size: var(--font-hint-size);
+  color: var(--text-muted);
+  text-align: right;
+}
+
+/* Colors by threshold */
+.green { color: #16a34a; }
+.yellow { color: #ca8a04; }
+.red { color: #dc2626; }
+
+.barGreen { background: #22c55e; }
+.barYellow { background: #eab308; }
+.barRed { background: #ef4444; }
+.barBlue { background: #3b82f6; }
+
+/* ── States ── */
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-muted);
+}
+
+.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-card);
+  padding: var(--space-card-inner);
+  color: #dc2626;
+}
+
+.empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-muted);
+  font-size: var(--font-body-size);
+}
+
+@media (max-width: 767px) {
+  .controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .progressRow {
+    grid-template-columns: 90px 1fr 50px 50px;
+  }
+  .bigNumbers {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
